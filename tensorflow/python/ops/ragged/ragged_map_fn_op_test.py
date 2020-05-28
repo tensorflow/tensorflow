@@ -23,7 +23,6 @@ import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras import backend
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops as mo
 from tensorflow.python.ops import string_ops
@@ -46,13 +45,16 @@ class RaggedMapOpTest(test_util.TensorFlowTestCase,
       dict(
           fn=mo.reduce_mean,
           elems=[[1, 2, 3], [4, 5], [6, 7]],
+          elems_dtype=dtypes.int32,
           expected_output=[2, 4, 6],
+          result_dtype=dtypes.int32,
       ),
       dict(
           fn=string_ops.reduce_join,
           elems=[['foo', 'bar', 'baz'], ['a'], ['b', 'c']],
           expected_output=[b'foobarbaz', b'a', b'bc'],
-          dtype=dtypes.string,
+          elems_dtype=dtypes.string,
+          result_dtype=dtypes.string,
       ),
       # [d1, (d2)] -> [d1, 2]
       dict(
@@ -60,7 +62,8 @@ class RaggedMapOpTest(test_util.TensorFlowTestCase,
           # fn=self.stack_mean_and_sum,
           elems=[[1, 2, 3], [4, 5], [6, 7]],
           expected_output=[[2, 6], [4.5, 9], [6.5, 13]],
-          dtype=dtypes.float32,
+          elems_dtype=dtypes.float32,
+          result_dtype=dtypes.float32,
           expected_ragged_rank=0,
       ),
       # [d1, (d2)] -> [d1, (d2)]
@@ -68,7 +71,7 @@ class RaggedMapOpTest(test_util.TensorFlowTestCase,
           fn=lambda x: x + np.int64(1),
           elems=[[1, 2, 3], [4, 5], [6, 7]],
           expected_output=[[2, 3, 4], [5, 6], [7, 8]],
-          dtype=dtypes.int64,
+          elems_dtype=dtypes.int64,
           result_dtype=ragged_tensor.RaggedTensorType(
               dtype=dtypes.int64, ragged_rank=1),
       ),
@@ -157,11 +160,11 @@ class RaggedMapOpTest(test_util.TensorFlowTestCase,
       expected_ragged_rank=None,
       result_ragged_rank=None,
       elems_ragged_rank=None,
-      dtype=dtypes.int64,
+      elems_dtype=dtypes.int64,
       result_dtype=None,
-      infer_shape=False,
+      infer_shape=True,
   ):
-    elems = ragged_factory_ops.constant(elems, dtype, elems_ragged_rank)
+    elems = ragged_factory_ops.constant(elems, elems_dtype, elems_ragged_rank)
     output = ragged_map_ops.map_fn(
         fn=fn, elems=elems, dtype=result_dtype, infer_shape=infer_shape)
 
@@ -225,7 +228,7 @@ class RaggedMapOpTest(test_util.TensorFlowTestCase,
 
     def _zip(foo):
       y_val, x_val = foo
-      bar = backend.tile(y_val, array_ops.shape(x_val))
+      bar = array_ops.tile(y_val, array_ops.shape(x_val))
       return array_ops.stack([bar, x_val], axis=1)
 
     output = ragged_map_ops.map_fn(
@@ -260,8 +263,8 @@ class RaggedMapOpTest(test_util.TensorFlowTestCase,
   def testMismatchRaggedRank(self):
     elems = ragged_factory_ops.constant([[[1, 2, 3]], [[4, 5], [6, 7]]])
     fn = lambda x: ragged_math_ops.reduce_sum(x, axis=0)
-    with self.assertRaisesWithLiteralMatch(
-        ValueError, r'The declared ragged rank (23) mismatches the result (1)'):
+    with self.assertRaisesRegexp(
+        ValueError, r'(?s)Expected `fn` to return.*But it returned.*'):
       _ = ragged_map_ops.map_fn(
           fn,
           elems,
@@ -271,8 +274,8 @@ class RaggedMapOpTest(test_util.TensorFlowTestCase,
   def testMismatchRaggedRank2(self):
     elems = ragged_factory_ops.constant([[1, 2, 3], [4, 5], [6, 7]])
     fn = lambda x: ragged_tensor.RaggedTensor.from_row_starts(x, [0])
-    with self.assertRaisesWithLiteralMatch(
-        ValueError, r'The declared ragged rank (10) mismatches the result (2)'):
+    with self.assertRaisesRegexp(
+        ValueError, r'(?s)Expected `fn` to return.*But it returned.*'):
       _ = ragged_map_ops.map_fn(
           fn,
           elems,

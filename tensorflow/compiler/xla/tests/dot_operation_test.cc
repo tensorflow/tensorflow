@@ -416,6 +416,10 @@ XLA_TEST_P(ParametricDotTest, TestF16) { TestImpl<Eigen::half>(); }
 #endif
 XLA_TEST_P(ParametricDotTest, TestF32) { TestImpl<float>(); }
 XLA_TEST_P(ParametricDotTest, TestF64) { TestImpl<double>(); }
+XLA_TEST_P(ParametricDotTest, TestC64) { TestImpl<std::complex<float>>(); }
+#ifndef XLA_BACKEND_DOES_NOT_SUPPORT_COMPLEX128
+XLA_TEST_P(ParametricDotTest, TestC128) { TestImpl<std::complex<double>>(); }
+#endif
 XLA_TEST_P(ParametricDotTest, TestS32) { TestImpl<int32>(); }
 
 INSTANTIATE_TEST_CASE_P(DotTests, ParametricDotTest,
@@ -1672,11 +1676,10 @@ void DOT_ReorderContracting(int num_iters) {
       client->LiteralToShapedBuffer(input_literal, device_ordinal)
           .ConsumeValueOrDie();
 
-  std::unique_ptr<LocalExecutable> executable =
-      client
-          ->Compile(computation, {&buffer0.on_host_shape()},
-                    ExecutableBuildOptions())
-          .ConsumeValueOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executables, client->Compile(computation, {&buffer0.on_host_shape()},
+                                        ExecutableBuildOptions()));
+  auto executable = std::move(executables[0]);
 
   se::Stream stream(executors[device_ordinal]);
   stream.Init();

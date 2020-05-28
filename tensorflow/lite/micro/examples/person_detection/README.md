@@ -5,12 +5,103 @@ network to recognize people in images captured by a camera.  It is designed to
 run on systems with small amounts of memory such as microcontrollers and DSPs.
 
 ## Table of contents
+
 -   [Getting started](#getting-started)
+-   [Running on ARC EM SDP](#running-on-arc-em-sdp)
 -   [Running on Arduino](#running-on-arduino)
+-   [Running on ESP32](#running-on-esp32)
 -   [Running on SparkFun Edge](#running-on-sparkfun-edge)
 -   [Run the tests on a development machine](#run-the-tests-on-a-development-machine)
 -   [Debugging image capture](#debugging-image-capture)
 -   [Training your own model](#training-your-own-model)
+
+## Running on ARC EM SDP
+
+The following instructions will help you to build and deploy this example to
+[ARC EM SDP](https://www.synopsys.com/dw/ipdir.php?ds=arc-em-software-development-platform)
+board. General information and instructions on using the board with TensorFlow
+Lite Micro can be found in the common
+[ARC targets description](/tensorflow/lite/micro/tools/make/targets/arc/README.md).
+
+This example is quantized with symmetric uint8 scheme. As noted in
+[kernels/arc_mli/README.md](/tensorflow/lite/micro/kernels/arc_mli/README.md),
+embARC MLI supports optimized kernels for int8 quantization only. Therefore,
+this example will only use TFLM reference kernels.
+
+The ARC EM SDP board contains the reach set of extension interfaces. You can
+choose any compatible camera and modify
+[image_provider.cc](/tensorflow/lite/micro/examples/person_detection/image_provider.cc)
+file accordingly to use input from your specific camera. By default, results of
+running this example are printed to the console. If you would like to instead
+implement some target-specific actions, you need to modify
+[detection_responder.cc](/tensorflow/lite/micro/examples/person_detection/detection_responder.cc)
+accordingly.
+
+The reference implementations of these files are used by default on the EM SDP.
+
+### Initial setup
+
+Follow the instructions on the
+[ARC EM SDP Initial Setup](/tensorflow/lite/micro/tools/make/targets/arc/README.md#ARC-EM-Software-Development-Platform-ARC-EM-SDP)
+to get and install all required tools for work with ARC EM SDP.
+
+### Generate Example Project
+
+The example project for ARC EM SDP platform can be generated with the following
+command:
+
+```
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=arc_emsdp TAGS=no_arc_mli generate_person_detection_make_project
+```
+
+### Build and Run Example
+
+For more detailed information on building and running examples see the
+appropriate sections of general descriptions of the
+[ARC EM SDP usage with TFLM](/tensorflow/lite/micro/tools/make/targets/arc/README.md#ARC-EM-Software-Development-Platform-ARC-EM-SDP).
+In the directory with generated project you can also find a
+*README_ARC_EMSDP.md* file with instructions and options on building and
+running. Here we only briefly mention main steps which are typically enough to
+get it started.
+
+1.  You need to
+    [connect the board](/tensorflow/lite/micro/tools/make/targets/arc/README.md#connect-the-board)
+    and open an serial connection.
+
+2.  Go to the generated example project director
+
+    ```
+    cd tensorflow/lite/micro/tools/make/gen/arc_emsdp_arc/prj/person_detection/make
+    ```
+
+3.  Build the example using
+
+    ```
+    make app
+    ```
+
+4.  To generate artefacts for self-boot of example from the board use
+
+    ```
+    make flash
+    ```
+
+5.  To run application from the board using microSD card:
+
+    *   Copy the content of the created /bin folder into the root of microSD
+        card. Note that the card must be formatted as FAT32 with default cluster
+        size (but less than 32 Kbytes)
+    *   Plug in the microSD card into the J11 connector.
+    *   Push the RST button. If a red LED is lit beside RST button, push the CFG
+        button.
+
+6.  If you have the MetaWare Debugger installed in your environment:
+
+    *   To run application from the console using it type `make run`.
+    *   To stop the execution type `Ctrl+C` in the console several times.
+
+In both cases (step 5 and 6) you will see the application output in the serial
+terminal.
 
 ## Running on Arduino
 
@@ -170,6 +261,69 @@ takes:
 From the log, we can see that it took around 170 ms to capture and read the
 image data from the camera module, 180 ms to decode the JPEG and convert it to
 greyscale, and 18.6 seconds to run inference.
+
+## Running on ESP32
+
+The following instructions will help you build and deploy this sample to
+[ESP32](https://www.espressif.com/en/products/hardware/esp32/overview) devices
+using the [ESP IDF](https://github.com/espressif/esp-idf).
+
+The sample has been tested on ESP-IDF version 4.0 with the following devices: -
+[ESP32-DevKitC](http://esp-idf.readthedocs.io/en/latest/get-started/get-started-devkitc.html) -
+[ESP-EYE](https://github.com/espressif/esp-who/blob/master/docs/en/get-started/ESP-EYE_Getting_Started_Guide.md)
+
+ESP-EYE is a board which has a built-in camera which can be used to run this
+example , if you want to use other esp boards you will have to connect camera
+externally and write your own
+[image_provider.cc](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/person_detection/esp/image_provider.cc).
+and
+[app_camera_esp.c](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/person_detection/esp/app_camera_esp.c).
+You can also write you own
+[detection_responder.cc](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/person_detection/detection_responder.cc).
+
+### Install the ESP IDF
+
+Follow the instructions of the
+[ESP-IDF get started guide](https://docs.espressif.com/projects/esp-idf/en/latest/get-started/index.html)
+to setup the toolchain and the ESP-IDF itself.
+
+The next steps assume that the
+[IDF environment variables are set](https://docs.espressif.com/projects/esp-idf/en/latest/get-started/index.html#step-4-set-up-the-environment-variables) :
+
+*   The `IDF_PATH` environment variable is set
+*   `idf.py` and Xtensa-esp32 tools (e.g. `xtensa-esp32-elf-gcc`) are in `$PATH`
+*   `esp32-camera` should be downloaded in `components/` dir of example as
+    explained in `Building the example`(below)
+
+### Generate the examples
+
+The example project can be generated with the following command: `make -f
+tensorflow/lite/micro/tools/make/Makefile TARGET=esp
+generate_person_detection_esp_project`
+
+### Building the example
+
+Go the the example project directory `cd
+tensorflow/lite/micro/tools/make/gen/esp_xtensa-esp32/prj/person_detection/esp-idf`
+
+As the `person_detection` example requires an external component `esp32-camera`
+for functioning hence we will have to manually clone it in `components/`
+directory of the example with following command. `git clone
+https://github.com/espressif/esp32-camera.git components/esp32-camera`
+
+Then build with `idf.py` `idf.py build`
+
+### Load and run the example
+
+To flash (replace `/dev/ttyUSB0` with the device serial port): `idf.py --port
+/dev/ttyUSB0 flash`
+
+Monitor the serial output: `idf.py --port /dev/ttyUSB0 monitor`
+
+Use `Ctrl+]` to exit.
+
+The previous two commands can be combined: `idf.py --port /dev/ttyUSB0 flash
+monitor`
 
 ## Running on SparkFun Edge
 

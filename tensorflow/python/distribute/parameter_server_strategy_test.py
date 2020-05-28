@@ -42,10 +42,11 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.layers import core
+from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
@@ -186,7 +187,7 @@ class ParameterServerStrategyTestBase(
           g = e + 1.0
         self.assertEqual(g.device, worker_device + '/device:CPU:1')
 
-        # Ths ops.colocate_with will be ignored when defining a variale but not
+        # Ths ops.colocate_with will be ignored when defining a variable but not
         # for a normal tensor.
         with ops.colocate_with(x):
           u = variable_scope.get_variable('u', initializer=30.0)
@@ -340,7 +341,7 @@ class ParameterServerStrategyTestBase(
           g = e + 1.0
         self.assertEqual(g.device, device_util.canonicalize('/device:CPU:1'))
 
-        # Ths ops.colocate_with will be ignored when defining a variale but not
+        # Ths ops.colocate_with will be ignored when defining a variable but not
         # for a normal tensor.
         with ops.colocate_with(x):
           u = variable_scope.get_variable('u', initializer=30.0)
@@ -401,10 +402,6 @@ class ParameterServerStrategyTestBase(
 
       x, y, z, train_op = d.extended.call_for_each_replica(model_fn)
       train_op = d.group(train_op)
-
-      if context.num_gpus() < sum(
-          1 for d in d.extended.worker_devices if 'GPU' in d.upper()):
-        return True
 
       if task_id == 0:
         variables.global_variables_initializer().run()
@@ -491,10 +488,6 @@ class ParameterServerStrategyTestBase(
         return before_list, after_list
 
       before_out, after_out = step()
-
-      if context.num_gpus() < sum(
-          1 for d in d.extended.worker_devices if 'GPU' in d.upper()):
-        return True
 
       if (not task_type or
           multi_worker_util.is_chief(
@@ -620,31 +613,26 @@ class ParameterServerStrategyTest(
                                     self._cluster_spec, context.num_gpus())
 
   @combinations.generate(
-      combinations.combine(mode=['graph'], num_gpus=[0, 1, 2]))
-  def testLocalSimpleIncrement(self, num_gpus):
-    self._test_simple_increment(None, 0, num_gpus)
+      combinations.combine(mode=['graph'], required_gpus=[0, 1, 2]))
+  def testLocalSimpleIncrement(self, required_gpus):
+    self._test_simple_increment(None, 0, required_gpus)
 
   @combinations.generate(
-      combinations.combine(mode=['graph'], num_gpus=[0, 1, 2]))
-  def testMinimizeLossGraphDistributed(self, num_gpus):
+      combinations.combine(mode=['graph'], required_gpus=[0, 1, 2]))
+  def testMinimizeLossGraphDistributed(self, required_gpus):
     self._run_between_graph_clients(self._test_minimize_loss_graph,
-                                    self._cluster_spec, num_gpus)
+                                    self._cluster_spec, required_gpus)
 
   @combinations.generate(
-      combinations.combine(mode=['graph'], num_gpus=[0, 1, 2]))
-  def testMinimizeLossGraphLocal(self, num_gpus):
-    self._test_minimize_loss_graph(None, None, num_gpus)
+      combinations.combine(mode=['graph'], required_gpus=[0, 1, 2]))
+  def testMinimizeLossGraphLocal(self, required_gpus):
+    self._test_minimize_loss_graph(None, None, required_gpus)
 
   # TODO(priyag): Refactor this and other multi worker tests.
   @combinations.generate(
       combinations.combine(
-          mode=['graph'],
-          num_gpus=[1, 2],
-          required_gpus=1,
-          use_dataset=[True, False]))
-  def testMakeInputFnIteratorDistributed(self, num_gpus, use_dataset):
-    if context.num_gpus() < num_gpus:
-      self.skipTest('Not enough GPUs')
+          mode=['graph'], required_gpus=[1, 2], use_dataset=[True, False]))
+  def testMakeInputFnIteratorDistributed(self, required_gpus, use_dataset):
     if use_dataset:
       fn = lambda: dataset_ops.Dataset.range(100)
     else:
@@ -652,18 +640,20 @@ class ParameterServerStrategyTest(
         dataset = dataset_ops.Dataset.range(100)
         it = dataset_ops.make_one_shot_iterator(dataset)
         return it.get_next
-    expected_values = [[i+j for j in range(num_gpus)]
-                       for i in range(0, 100, num_gpus)]
+
+    expected_values = [[i + j
+                        for j in range(required_gpus)]
+                       for i in range(0, 100, required_gpus)]
 
     input_fn = self._input_fn_to_test_input_context(
         fn,
-        expected_num_replicas_in_sync=num_gpus,
+        expected_num_replicas_in_sync=required_gpus,
         expected_num_input_pipelines=3,
         expected_input_pipeline_id=1)  # because task_id = 1
     self._test_input_fn_iterator(
         'worker',
         1,
-        num_gpus,
+        required_gpus,
         input_fn,
         expected_values,
         test_reinitialize=use_dataset,
@@ -671,32 +661,30 @@ class ParameterServerStrategyTest(
 
   @combinations.generate(
       combinations.combine(
-          mode=['graph'],
-          num_gpus=[1, 2],
-          required_gpus=1,
-          use_dataset=[True, False]))
-  def testMakeInputFnIteratorLocal(self, num_gpus, use_dataset):
-    if context.num_gpus() < num_gpus:
-      self.skipTest('Not enough GPUs')
+          mode=['graph'], required_gpus=[1, 2], use_dataset=[True, False]))
+  def testMakeInputFnIteratorLocal(self, required_gpus, use_dataset):
     if use_dataset:
       fn = lambda: dataset_ops.Dataset.range(100)
     else:
+
       def fn():
         dataset = dataset_ops.Dataset.range(100)
         it = dataset_ops.make_one_shot_iterator(dataset)
         return it.get_next
-    expected_values = [[i+j for j in range(num_gpus)]
-                       for i in range(0, 100, num_gpus)]
+
+    expected_values = [[i + j
+                        for j in range(required_gpus)]
+                       for i in range(0, 100, required_gpus)]
 
     input_fn = self._input_fn_to_test_input_context(
         fn,
-        expected_num_replicas_in_sync=num_gpus,
+        expected_num_replicas_in_sync=required_gpus,
         expected_num_input_pipelines=1,
         expected_input_pipeline_id=0)  # only one worker and pipeline for local.
     self._test_input_fn_iterator(
         None,
         None,
-        num_gpus,
+        required_gpus,
         input_fn,
         expected_values,
         test_reinitialize=use_dataset,
@@ -736,6 +724,46 @@ class ParameterServerStrategyTest(
     # Verify isolate_session_state
     self.assertTrue(new_config.isolate_session_state)
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def testInMultiWorkerMode(self):
+    strategy, _, _ = create_test_objects(
+        cluster_spec=self._cluster_spec,
+        task_type='worker',
+        task_id=1,
+        num_gpus=0)
+    self.assertTrue(strategy.extended._in_multi_worker_mode())
+
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def testEagerCustomTrainingUnimplementedError(self):
+    cluster_spec = multi_worker_test_base.create_in_process_cluster(
+        num_workers=3, num_ps=2)
+    cluster_resolver = SimpleClusterResolver(
+        cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
+        task_type='worker',
+        task_id=1,
+        num_accelerators={'GPU': 0})
+    strategy = parameter_server_strategy.ParameterServerStrategy(
+        cluster_resolver)
+    dataset = dataset_ops.DatasetV2.from_tensor_slices([5., 6., 7., 8.])
+
+    def train_step(data):
+      return math_ops.square(data)
+
+    self.assertRaisesRegex(NotImplementedError, 'ParameterServerStrategy*',
+                           strategy.experimental_distribute_dataset,
+                           dataset.batch(2))
+
+    self.assertRaisesRegex(
+        NotImplementedError, 'ParameterServerStrategy*',
+        strategy.experimental_distribute_datasets_from_function,
+        lambda _: dataset)
+
+    self.assertRaisesRegex(NotImplementedError, 'ParameterServerStrategy*',
+                           strategy.scope)
+
+    self.assertRaisesRegex(NotImplementedError, 'ParameterServerStrategy*',
+                           strategy.run, train_step)
+
 
 class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
                                            parameterized.TestCase):
@@ -746,10 +774,11 @@ class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
         num_workers=3, num_ps=2, has_chief=True)
     cls._default_target = 'grpc://' + cls._cluster_spec[CHIEF][0]
 
-  @combinations.generate(combinations.combine(mode=['graph']))
-  def testSimpleBetweenGraph(self):
+  @combinations.generate(
+      combinations.combine(mode=['graph'], required_gpus=[0, 1, 2]))
+  def testSimpleBetweenGraph(self, required_gpus):
     self._run_between_graph_clients(self._test_simple_increment,
-                                    self._cluster_spec, context.num_gpus())
+                                    self._cluster_spec, required_gpus)
 
   @combinations.generate(
       combinations.combine(mode=['graph'], num_gpus=[0, 1, 2]))
@@ -788,7 +817,7 @@ class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
       self.assertFalse(hasattr(strategy, 'distribute_strategy'))
       self.assertIs(strategy, created_step._distribute_strategy)
 
-  @combinations.generate(combinations.combine(mode=['graph']))
+  @combinations.generate(combinations.combine(mode=['graph'], required_gpus=2))
   def testValueContainer(self):
     strategy, _, _ = create_test_objects(num_gpus=2)
     with ops.Graph().as_default(), strategy.scope():
@@ -812,6 +841,11 @@ class CentralStorageStrategyTest(strategy_test_lib.DistributionTestBase,
   def testNumpyDataset(self):
     strategy, _, _ = create_test_objects(num_gpus=2)
     self._test_numpy_dataset(strategy)
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def testInMultiWorkerMode(self):
+    strategy, _, _ = create_test_objects(num_gpus=0)
+    self.assertFalse(strategy.extended._in_multi_worker_mode())
 
 
 if __name__ == '__main__':

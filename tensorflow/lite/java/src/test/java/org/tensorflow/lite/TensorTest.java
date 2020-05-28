@@ -31,6 +31,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
+import org.tensorflow.lite.Tensor.QuantizationParams;
 
 /** Unit tests for {@link org.tensorflow.lite.Tensor}. */
 @RunWith(JUnit4.class)
@@ -44,6 +45,9 @@ public final class TensorTest {
 
   private static final String LONG_MODEL_PATH =
       "tensorflow/lite/java/src/testdata/int64.bin";
+
+  private static final String QUANTIZED_MODEL_PATH =
+      "tensorflow/lite/java/src/testdata/quantized.bin";
 
   private NativeInterpreterWrapper wrapper;
   private Tensor tensor;
@@ -73,6 +77,7 @@ public final class TensorTest {
     assertThat(tensor).isNotNull();
     int[] expectedShape = {2, 8, 8, 3};
     assertThat(tensor.shape()).isEqualTo(expectedShape);
+    assertThat(tensor.shapeSignature()).isEqualTo(expectedShape);
     assertThat(tensor.dataType()).isEqualTo(DataType.FLOAT32);
     assertThat(tensor.numBytes()).isEqualTo(2 * 8 * 8 * 3 * 4);
     assertThat(tensor.numElements()).isEqualTo(2 * 8 * 8 * 3);
@@ -237,6 +242,22 @@ public final class TensorTest {
     tensor.setTo(inputFloatBuffer);
     tensor.copyTo(output);
     assertThat(output[0][0][0][0]).isEqualTo(5.0f);
+
+    // Assign from scalar float.
+    wrapper.resizeInput(0, new int[0]);
+    wrapper.allocateTensors();
+    float scalar = 5.0f;
+    tensor.setTo(scalar);
+    FloatBuffer outputScalar = FloatBuffer.allocate(1);
+    tensor.copyTo(outputScalar);
+    assertThat(outputScalar.get(0)).isEqualTo(5.0f);
+
+    // Assign from boxed scalar Float.
+    Float boxedScalar = 9.0f;
+    tensor.setTo(boxedScalar);
+    outputScalar = FloatBuffer.allocate(1);
+    tensor.copyTo(outputScalar);
+    assertThat(outputScalar.get(0)).isEqualTo(9.0f);
   }
 
   @Test
@@ -369,6 +390,9 @@ public final class TensorTest {
     float[][][][] differentShapeInput = new float[1][8][8][3];
     assertThat(tensor.getInputShapeIfDifferent(differentShapeInput))
         .isEqualTo(new int[] {1, 8, 8, 3});
+
+    Float differentShapeInputScalar = 5.0f;
+    assertThat(tensor.getInputShapeIfDifferent(differentShapeInputScalar)).isEqualTo(new int[] {});
   }
 
   @Test
@@ -384,6 +408,9 @@ public final class TensorTest {
     assertThat(dataType).isEqualTo(DataType.FLOAT32);
     FloatBuffer testFloatBuffer = FloatBuffer.allocate(1);
     dataType = Tensor.dataTypeOf(testFloatBuffer);
+    assertThat(dataType).isEqualTo(DataType.FLOAT32);
+    float testFloat = 1.0f;
+    dataType = Tensor.dataTypeOf(testFloat);
     assertThat(dataType).isEqualTo(DataType.FLOAT32);
     try {
       double[] testDoubleArray = {0.783, 0.251};
@@ -441,6 +468,20 @@ public final class TensorTest {
   }
 
   @Test
+  public void testCopyToScalarUnsupported() {
+    wrapper.resizeInput(0, new int[0]);
+    wrapper.allocateTensors();
+    tensor.setTo(5.0f);
+    Float outputScalar = 7.0f;
+    try {
+      tensor.copyTo(outputScalar);
+      fail();
+    } catch (IllegalArgumentException e) {
+      // Expected failure.
+    }
+  }
+
+  @Test
   public void testUseAfterClose() {
     tensor.close();
     try {
@@ -449,5 +490,28 @@ public final class TensorTest {
     } catch (IllegalArgumentException e) {
       // Expected failure.
     }
+  }
+
+  @Test
+  public void testQuantizationParameters_floatModel() {
+    QuantizationParams quantizationParams = tensor.quantizationParams();
+    float scale = quantizationParams.getScale();
+    long zeroPoint = quantizationParams.getZeroPoint();
+
+    assertThat(scale).isWithin(1e-6f).of(0.0f);
+    assertThat(zeroPoint).isEqualTo(0);
+  }
+
+  @Test
+  public void testQuantizationParameters_quantizedModel() {
+    wrapper = new NativeInterpreterWrapper(QUANTIZED_MODEL_PATH);
+    tensor = wrapper.getOutputTensor(0);
+
+    QuantizationParams quantizationParams = tensor.quantizationParams();
+    float scale = quantizationParams.getScale();
+    long zeroPoint = quantizationParams.getZeroPoint();
+
+    assertThat(scale).isWithin(1e-6f).of(0.25f);
+    assertThat(zeroPoint).isEqualTo(127);
   }
 }

@@ -124,11 +124,6 @@ class TensorLikeDataAdapterTest(DataAdapterTestBase):
     self.assertFalse(self.adapter_cls.can_handle(self.generator_input))
     self.assertFalse(self.adapter_cls.can_handle(self.sequence_input))
 
-  def test_iterator_expect_batch_size_numpy(self):
-    with self.assertRaisesRegexp(
-        ValueError, r'`batch_size` or `steps` is required'):
-      self.adapter_cls(self.numpy_input, self.numpy_target)
-
   def test_size_numpy(self):
     adapter = self.adapter_cls(
         self.numpy_input, self.numpy_target, batch_size=5)
@@ -428,12 +423,6 @@ class GenericArrayLikeDataAdapterTest(DataAdapterTestBase):
     self.assertFalse(self.adapter_cls.can_handle(self.generator_input))
     self.assertFalse(self.adapter_cls.can_handle(self.sequence_input))
 
-  def test_iterator_expect_batch_size_generic_arraylike(self):
-    with self.assertRaisesRegexp(
-        ValueError, r'`batch_size` or `steps` is required'):
-      self.adapter_cls(self.arraylike_input,
-                       self.arraylike_target)
-
   def test_size(self):
     adapter = self.adapter_cls(
         self.arraylike_input,
@@ -457,7 +446,7 @@ class GenericArrayLikeDataAdapterTest(DataAdapterTestBase):
   def test_training(self):
     # First verify that DummyArrayLike can't be converted to a Tensor
     with self.assertRaises(TypeError):
-      ops.convert_to_tensor(self.arraylike_input)
+      ops.convert_to_tensor_v2(self.arraylike_input)
 
     # Then train on the array like.
     # It should not be converted to a tensor directly (which would force it into
@@ -797,7 +786,8 @@ class DataHandlerTest(keras_parameterized.TestCase):
     # User can choose to only partially consume `Dataset`.
     data_handler = data_adapter.DataHandler(
         data, initial_epoch=0, epochs=2, steps_per_epoch=2)
-    self.assertFalse(data_handler._train_adapter.should_recreate_iterator())
+    self.assertEqual(data_handler.inferred_steps, 2)
+    self.assertFalse(data_handler._adapter.should_recreate_iterator())
     returned_data = []
     for _, iterator in data_handler.enumerate_epochs():
       epoch_data = []
@@ -809,6 +799,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
   def test_finite_dataset_without_steps_per_epoch(self):
     data = dataset_ops.Dataset.from_tensor_slices([0, 1, 2]).batch(1)
     data_handler = data_adapter.DataHandler(data, initial_epoch=0, epochs=2)
+    self.assertEqual(data_handler.inferred_steps, 3)
     returned_data = []
     for _, iterator in data_handler.enumerate_epochs():
       epoch_data = []
@@ -823,7 +814,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
     # create a new iterator each epoch.
     data_handler = data_adapter.DataHandler(
         data, initial_epoch=0, epochs=2, steps_per_epoch=4)
-    self.assertTrue(data_handler._train_adapter.should_recreate_iterator())
+    self.assertTrue(data_handler._adapter.should_recreate_iterator())
     returned_data = []
     for _, iterator in data_handler.enumerate_epochs():
       epoch_data = []
@@ -853,7 +844,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
     # User can choose to only partially consume `Dataset`.
     data_handler = data_adapter.DataHandler(
         filtered_ds, initial_epoch=0, epochs=2, steps_per_epoch=2)
-    self.assertFalse(data_handler._train_adapter.should_recreate_iterator())
+    self.assertFalse(data_handler._adapter.should_recreate_iterator())
     returned_data = []
     for _, iterator in data_handler.enumerate_epochs():
       epoch_data = []
@@ -862,6 +853,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
       returned_data.append(epoch_data)
     returned_data = self.evaluate(returned_data)
     self.assertEqual(returned_data, [[0, 1], [2, 3]])
+    self.assertEqual(data_handler.inferred_steps, 2)
 
   def test_unknown_cardinality_dataset_without_steps_per_epoch(self):
     ds = dataset_ops.DatasetV2.from_tensor_slices([0, 1, 2, 3, 4, 5, 6])
@@ -871,7 +863,8 @@ class DataHandlerTest(keras_parameterized.TestCase):
 
     data_handler = data_adapter.DataHandler(
         filtered_ds, initial_epoch=0, epochs=2)
-    self.assertTrue(data_handler._train_adapter.should_recreate_iterator())
+    self.assertEqual(data_handler.inferred_steps, None)
+    self.assertTrue(data_handler._adapter.should_recreate_iterator())
     returned_data = []
     for _, iterator in data_handler.enumerate_epochs():
       epoch_data = []
@@ -881,10 +874,11 @@ class DataHandlerTest(keras_parameterized.TestCase):
       returned_data.append(epoch_data)
     returned_data = self.evaluate(returned_data)
     self.assertEqual(returned_data, [[0, 1, 2, 3], [0, 1, 2, 3]])
-    self.assertEqual(data_handler._steps_per_epoch, 4)
+    self.assertEqual(data_handler.inferred_steps, 4)
 
   def test_insufficient_data(self):
     ds = dataset_ops.DatasetV2.from_tensor_slices([0, 1])
+    ds = ds.filter(lambda *args, **kwargs: True)
     data_handler = data_adapter.DataHandler(
         ds, initial_epoch=0, epochs=2, steps_per_epoch=3)
     returned_data = []
@@ -920,7 +914,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
     def generator():
       for _ in range(2):
         for step in range(3):
-          yield (ops.convert_to_tensor([step]),)
+          yield (ops.convert_to_tensor_v2([step]),)
 
     data_handler = data_adapter.DataHandler(
         generator(), epochs=2, steps_per_epoch=3)
@@ -963,53 +957,6 @@ class DataHandlerTest(keras_parameterized.TestCase):
     self.assertEqual(returned_data, [[([0],), ([1],),
                                       ([2],)], [([0],), ([1],), ([2],)]])
 
-  def test_class_weight(self):
-    data_handler = data_adapter.DataHandler(
-        x=[[0], [1], [2]],
-        y=[[2], [1], [0]],
-        class_weight={
-            0: 0.5,
-            1: 1.,
-            2: 1.5
-        },
-        epochs=2,
-        steps_per_epoch=3)
-    returned_data = []
-    for _, iterator in data_handler.enumerate_epochs():
-      epoch_data = []
-      for _ in data_handler.steps():
-        epoch_data.append(next(iterator))
-      returned_data.append(epoch_data)
-    returned_data = self.evaluate(returned_data)
-    self.assertEqual(returned_data, [[([0], [2], [1.5]), ([1], [1], [1.]),
-                                      ([2], [0], [0.5])],
-                                     [([0], [2], [1.5]), ([1], [1], [1.]),
-                                      ([2], [0], [0.5])]])
-
-  def test_class_weight_and_sample_weight(self):
-    data_handler = data_adapter.DataHandler(
-        x=[[0], [1], [2]],
-        y=[[2], [1], [0]],
-        sample_weight=[[1.], [2.], [4.]],
-        class_weight={
-            0: 0.5,
-            1: 1.,
-            2: 1.5
-        },
-        epochs=2,
-        steps_per_epoch=3)
-    returned_data = []
-    for _, iterator in data_handler.enumerate_epochs():
-      epoch_data = []
-      for _ in data_handler.steps():
-        epoch_data.append(next(iterator))
-      returned_data.append(epoch_data)
-    returned_data = self.evaluate(returned_data)
-    self.assertEqual(returned_data, [[([0], [2], [1.5]), ([1], [1], [2.]),
-                                      ([2], [0], [2.])],
-                                     [([0], [2], [1.5]), ([1], [1], [2.]),
-                                      ([2], [0], [2.])]])
-
   def test_class_weight_user_errors(self):
     with self.assertRaisesRegexp(ValueError, 'to be a dict with keys'):
       data_adapter.DataHandler(
@@ -1044,9 +991,9 @@ class TestValidationSplit(keras_parameterized.TestCase):
       y = np.array([0, 2, 4, 6, 8])
       sw = np.array([0, 4, 8, 12, 16])
     else:
-      x = ops.convert_to_tensor([0, 1, 2, 3, 4])
-      y = ops.convert_to_tensor([0, 2, 4, 6, 8])
-      sw = ops.convert_to_tensor([0, 4, 8, 12, 16])
+      x = ops.convert_to_tensor_v2([0, 1, 2, 3, 4])
+      y = ops.convert_to_tensor_v2([0, 2, 4, 6, 8])
+      sw = ops.convert_to_tensor_v2([0, 4, 8, 12, 16])
 
     (train_x, train_y, train_sw), (val_x, val_y, val_sw) = (
         data_adapter.train_validation_split((x, y, sw), validation_split=0.2))
@@ -1070,13 +1017,13 @@ class TestValidationSplit(keras_parameterized.TestCase):
     # Check that arrays contain expected values.
     self.assertEqual(
         sorted(array_ops.concat([train_x, val_x], axis=0).numpy().tolist()),
-        sorted(ops.convert_to_tensor(x).numpy().tolist()))
+        sorted(ops.convert_to_tensor_v2(x).numpy().tolist()))
     self.assertEqual(
         sorted(array_ops.concat([train_y, val_y], axis=0).numpy().tolist()),
-        sorted(ops.convert_to_tensor(y).numpy().tolist()))
+        sorted(ops.convert_to_tensor_v2(y).numpy().tolist()))
     self.assertEqual(
         sorted(array_ops.concat([train_sw, val_sw], axis=0).numpy().tolist()),
-        sorted(ops.convert_to_tensor(sw).numpy().tolist()))
+        sorted(ops.convert_to_tensor_v2(sw).numpy().tolist()))
 
   @parameterized.named_parameters(('numpy_arrays', True), ('tensors', False))
   def test_validation_split_unshuffled(self, use_numpy):
@@ -1085,9 +1032,9 @@ class TestValidationSplit(keras_parameterized.TestCase):
       y = np.array([0, 2, 4, 6, 8])
       sw = np.array([0, 4, 8, 12, 16])
     else:
-      x = ops.convert_to_tensor([0, 1, 2, 3, 4])
-      y = ops.convert_to_tensor([0, 2, 4, 6, 8])
-      sw = ops.convert_to_tensor([0, 4, 8, 12, 16])
+      x = ops.convert_to_tensor_v2([0, 1, 2, 3, 4])
+      y = ops.convert_to_tensor_v2([0, 2, 4, 6, 8])
+      sw = ops.convert_to_tensor_v2([0, 4, 8, 12, 16])
 
     (train_x, train_y, train_sw), (val_x, val_y, val_sw) = (
         data_adapter.train_validation_split((x, y, sw),
@@ -1107,6 +1054,12 @@ class TestValidationSplit(keras_parameterized.TestCase):
       data_adapter.train_validation_split(
           lambda: np.ones((10, 1)), validation_split=0.2)
 
+  def test_validation_split_examples_too_few(self):
+    with self.assertRaisesRegexp(
+        ValueError, 'not sufficient to split it'):
+      data_adapter.train_validation_split(
+          np.ones((1, 10)), validation_split=0.2)
+
   def test_validation_split_none(self):
     train_sw, val_sw = data_adapter.train_validation_split(
         None, validation_split=0.2)
@@ -1117,6 +1070,15 @@ class TestValidationSplit(keras_parameterized.TestCase):
         (np.ones((10, 1)), None), validation_split=0.2)
     self.assertIsNone(train_sw)
     self.assertIsNone(val_sw)
+
+
+class TestUtils(keras_parameterized.TestCase):
+
+  def test_expand_1d_sparse_tensors_untouched(self):
+    st = sparse_tensor.SparseTensor(
+        indices=[[0], [10]], values=[1, 2], dense_shape=[10])
+    st = data_adapter.expand_1d(st)
+    self.assertEqual(st.shape.rank, 1)
 
 
 if __name__ == '__main__':

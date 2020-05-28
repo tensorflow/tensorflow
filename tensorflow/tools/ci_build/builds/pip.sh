@@ -30,7 +30,7 @@
 #
 # TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES overrides the default extra pip packages
 # to be installed in virtualenv before run_pip_tests.sh is called. Multiple
-# pakcage names are separated with spaces.
+# package names are separated with spaces.
 #
 # If NO_TEST_ON_INSTALL has any non-empty and non-0 value, the test-on-install
 # part will be skipped.

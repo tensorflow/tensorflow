@@ -156,16 +156,18 @@ class StatefulScatterNdTest(test.TestCase):
 
   def testSimple(self):
     indices = constant_op.constant([[4], [3], [1], [7]], dtype=dtypes.int32)
-    updates = constant_op.constant([9, 10, 11, 12], dtype=dtypes.float32)
-    ref = variables.Variable([0, 0, 0, 0, 0, 0, 0, 0], dtype=dtypes.float32)
-    expected = np.array([0, 11, 0, 10, 9, 0, 0, 12])
-    scatter = state_ops.scatter_nd_update(ref, indices, updates)
-    init = variables.global_variables_initializer()
+    for dtype in (dtypes.int64, dtypes.float32, dtypes.float64,
+                  dtypes.complex64, dtypes.complex128):
+      updates = constant_op.constant([9, 10, 11, 12], dtype=dtype)
+      ref = variables.Variable([0, 0, 0, 0, 0, 0, 0, 0], dtype=dtype)
+      expected = np.array([0, 11, 0, 10, 9, 0, 0, 12])
+      scatter = state_ops.scatter_nd_update(ref, indices, updates)
+      init = variables.global_variables_initializer()
 
-    with self.session(use_gpu=True) as sess:
-      self.evaluate(init)
-      result = self.evaluate(scatter)
-      self.assertAllClose(result, expected)
+      with test_util.use_gpu():
+        self.evaluate(init)
+        result = self.evaluate(scatter)
+        self.assertAllClose(result, expected)
 
   @test_util.run_in_graph_and_eager_modes
   def testString(self):
@@ -657,7 +659,7 @@ class ScatterNdTest(test.TestCase):
           self.assertAllEqual(expected_input_grad, self.evaluate(input_grad))
 
   @test_util.run_deprecated_v1
-  def testScatterNdRepatedIndicesAdd(self):
+  def testScatterNdRepeatedIndicesAdd(self):
     indices = array_ops.zeros([100000, 1], dtypes.int32)
     values = np.random.randn(100000)
     shape = [1]

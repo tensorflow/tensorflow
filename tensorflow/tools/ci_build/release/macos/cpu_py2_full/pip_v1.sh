@@ -17,12 +17,7 @@ set -e
 set -x
 
 source tensorflow/tools/ci_build/release/common.sh
-
-# Install latest bazel
-update_bazel_macos
-which bazel
-bazel version
-set_bazel_outdir
+install_bazelisk
 
 # Install pip dependencies
 install_macos_pip_deps sudo
@@ -44,7 +39,7 @@ export TF_TEST_FLAGS="--define=no_tensorflow_py_deps=true --test_lang_filters=py
 export TF_TEST_TARGETS="//tensorflow/python/..."
 export TF_PIP_TESTS="test_pip_virtualenv_non_clean test_pip_virtualenv_clean"
 export TF_TEST_FILTER_TAGS='-nomac,-no_mac,-no_oss,-oss_serial,-no_oss_py2'
-export IS_NIGHTLY=0 # Not nightly
+#export IS_NIGHTLY=0 # Not nightly; uncomment if building from tf repo.
 export TF_PROJECT_NAME="tensorflow"
 export TF_PIP_TEST_ROOT="pip_test"
 

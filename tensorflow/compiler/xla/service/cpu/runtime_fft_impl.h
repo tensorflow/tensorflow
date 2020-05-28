@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -27,6 +26,15 @@ limitations under the License.
 // qualification.
 namespace tensorflow {
 namespace xla {
+
+enum class FftType : int32 {
+  FFT = 0,    // Forward FFT; complex in, complex out.
+  IFFT = 1,   // Inverse FFT; complex in, complex out.
+  RFFT = 2,   // Forward real FFT; real in, fft_length / 2 + 1 complex out
+  IRFFT = 3,  // Inverse real FFT; fft_length / 2 + 1 complex in,
+              //                   fft_length real out
+};
+static constexpr int kFftTypeArraySize = 4;
 
 namespace internal {
 
@@ -170,27 +178,27 @@ void EigenFftC2R(const EigenDevice& device, float* out, complex64* operand,
 
 template <int FFTRank, typename EigenDevice>
 void EigenFftWithRank(const EigenDevice& device, void* out, void* operand,
-                      int32 fft_type, int64 input_batch, int64 fft_length0,
+                      FftType fft_type, int64 input_batch, int64 fft_length0,
                       int64 fft_length1, int64 fft_length2) {
   switch (fft_type) {
-    case ::xla::FftType::FFT:
+    case FftType::FFT:
       EigenFftC2C<true, FFTRank, EigenDevice>(
           device, static_cast<complex64*>(out),
           static_cast<complex64*>(operand), input_batch, fft_length0,
           fft_length1, fft_length2);
       break;
-    case ::xla::FftType::IFFT:
+    case FftType::IFFT:
       EigenFftC2C<false, FFTRank, EigenDevice>(
           device, static_cast<complex64*>(out),
           static_cast<complex64*>(operand), input_batch, fft_length0,
           fft_length1, fft_length2);
       break;
-    case ::xla::FftType::RFFT:
+    case FftType::RFFT:
       EigenFftR2C<FFTRank, EigenDevice>(
           device, static_cast<complex64*>(out), static_cast<float*>(operand),
           input_batch, fft_length0, fft_length1, fft_length2);
       break;
-    case ::xla::FftType::IRFFT:
+    case FftType::IRFFT:
       EigenFftC2R<FFTRank, EigenDevice>(
           device, static_cast<float*>(out), static_cast<complex64*>(operand),
           input_batch, fft_length0, fft_length1, fft_length2);
@@ -205,7 +213,7 @@ void EigenFftWithRank(const EigenDevice& device, void* out, void* operand,
 
 template <typename EigenDevice>
 void EigenFftImpl(const EigenDevice& device, void* out, void* operand,
-                  int32 fft_type, int32 fft_rank, int64 input_batch,
+                  FftType fft_type, int32 fft_rank, int64 input_batch,
                   int64 fft_length0, int64 fft_length1, int64 fft_length2) {
   switch (fft_rank) {
     case 1:

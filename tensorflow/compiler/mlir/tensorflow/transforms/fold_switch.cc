@@ -30,24 +30,23 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
-#include "mlir/Analysis/LoopAnalysis.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Block.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/OperationSupport.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/IR/Visitors.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
-#include "mlir/Support/Functional.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/Analysis/LoopAnalysis.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -58,7 +57,7 @@ limitations under the License.
 namespace mlir {
 namespace {
 
-class SwitchFoldPass : public mlir::FunctionPass<SwitchFoldPass> {
+class SwitchFoldPass : public mlir::PassWrapper<SwitchFoldPass, FunctionPass> {
  public:
   void runOnFunction() override;
 };
@@ -67,7 +66,7 @@ class SwitchFoldPass : public mlir::FunctionPass<SwitchFoldPass> {
 // Returns the defining op for a value looking through islands.
 static Operation* GetDefiningOp(Value val) {
   Operation* op = val.getDefiningOp();
-  auto island_op = dyn_cast<tf_executor::IslandOp>(op);
+  auto island_op = dyn_cast_or_null<tf_executor::IslandOp>(op);
   if (!island_op) return op;
   auto yield_op = island_op.GetYield();
   auto index = val.cast<mlir::OpResult>().getResultNumber();
@@ -84,7 +83,8 @@ static Operation* GetDefiningOp(Value val) {
 static Value LookThroughIdentityOp(Value pred_val) {
   if (!pred_val) return pred_val;
   auto op = GetDefiningOp(pred_val);
-  if (auto id_op = dyn_cast<TF::IdentityOp>(op)) pred_val = id_op.input();
+  if (auto id_op = dyn_cast_or_null<TF::IdentityOp>(op))
+    pred_val = id_op.input();
   return pred_val;
 }
 
@@ -201,7 +201,7 @@ static void MatchSwitchFoldOps(tf_executor::SwitchOp switch_op,
 static LogicalResult FoldMergeNodes(FuncOp function, const DeadQueue& queue) {
   // Create builder for val_index of MergeOp.
   auto* block = &function.getBlocks().front();
-  OpBuilder builder(block);
+  OpBuilder builder = OpBuilder::atBlockEnd(block);
   auto type = builder.getIntegerType(32);
   auto build_index = [&](Location loc, int value) {
     return builder.create<ConstantOp>(loc, type,
@@ -278,7 +278,7 @@ void SwitchFoldPass::runOnFunction() {
 }  // namespace mlir
 
 namespace tf_executor {
-std::unique_ptr<OpPassBase<FuncOp>> CreateSwitchFoldPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateSwitchFoldPass() {
   return std::make_unique<SwitchFoldPass>();
 }
 }  // namespace tf_executor

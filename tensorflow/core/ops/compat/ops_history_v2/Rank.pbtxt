@@ -1,0 +1,15 @@
+op {
+  name: "Rank"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type: DT_INT32
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}

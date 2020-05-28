@@ -626,7 +626,30 @@ def enable_mlir_bridge():
   context.context().enable_mlir_bridge = True
 
 
+@tf_export('config.experimental.enable_mlir_graph_optimization')
+def enable_mlir_graph_optimization():
+  """Enables experimental MLIR-Based TensorFlow Compiler Optimizations.
+
+  DO NOT USE, DEV AND TESTING ONLY AT THE MOMENT.
+
+  NOTE: MLIR-Based TensorFlow Compiler is under active development and has
+  missing features, please refrain from using. This API exists for development
+  and testing only.
+
+  TensorFlow Compiler Optimizations are responsible general graph level
+  optimizations that in the current stack mostly done by Grappler graph
+  optimizers.
+  """
+  context.context().enable_mlir_graph_optimization = True
+
+
 @tf_export('config.experimental.disable_mlir_bridge')
 def disable_mlir_bridge():
   """Disables experimental MLIR-Based TensorFlow Compiler Bridge."""
   context.context().enable_mlir_bridge = False
+
+
+@tf_export('config.experimental.disable_mlir_graph_optimization')
+def disable_mlir_graph_optimization():
+  """Disables experimental MLIR-Based TensorFlow Compiler Optimizations."""
+  context.context().enable_mlir_graph_optimization = False

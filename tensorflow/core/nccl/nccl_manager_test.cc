@@ -60,7 +60,7 @@ class NcclManagerTest : public ::testing::Test {
 
     mutex mu;
     Status final_status;
-    int num_completed GUARDED_BY(mu) = 0;
+    int num_completed TF_GUARDED_BY(mu) = 0;
     condition_variable done_cv;
   };
 
@@ -663,8 +663,8 @@ TYPED_TEST(NcclManagerTest, MultiNodeBroadcast) {
   this->RunMultiNodeBroadcastTest(num_nodes, num_ranks_per_node,
                                   /*src_node=*/0, /*src_local_rank=*/0,
                                   /*in_place=*/true);
-#endif
 }
+#endif
 
 // Checks that we return error status if a collective_key is used for different
 // types of collectives, e.g.a reduction and a broadcast.

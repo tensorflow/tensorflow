@@ -98,7 +98,7 @@ reorders = {
     'tf.pad': ['tensor', 'paddings', 'mode', 'name', 'constant_values'],
     'tf.parse_example': ['serialized', 'features', 'name', 'example_names'],
     'tf.parse_single_example': ['serialized', 'features', 'name', 'example_names'],
-    'tf.quantize_v2': ['input', 'min_range', 'max_range', 'T', 'mode', 'name', 'round_mode'],
+    'tf.quantize_v2': ['input', 'min_range', 'max_range', 'T', 'mode', 'name', 'round_mode', 'narrow_range', 'axis', 'ensure_minimum_range'],
     'tf.random.multinomial': ['logits', 'num_samples', 'seed', 'name', 'output_dtype'],
     'tf.random.poisson': ['lam', 'shape', 'dtype', 'seed', 'name'],
     'tf.random_poisson': ['lam', 'shape', 'dtype', 'seed', 'name'],

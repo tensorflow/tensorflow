@@ -18,20 +18,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util as tf_test_util
-from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 
 
-@keras_parameterized.run_all_keras_modes
-class SimpleRNNLayerTest(keras_parameterized.TestCase):
+@combinations.generate(combinations.keras_mode_combinations())
+class SimpleRNNLayerTest(test.TestCase, parameterized.TestCase):
 
   def test_return_sequences_SimpleRNN(self):
     num_samples = 2
@@ -145,14 +146,14 @@ class SimpleRNNLayerTest(keras_parameterized.TestCase):
         bias_regularizer='l2',
         activity_regularizer='l1')
     layer.build((None, None, 2))
-    self.assertEqual(len(layer.losses), 3)
+    self.assertLen(layer.losses, 3)
 
     x = keras.backend.variable(np.ones((2, 3, 2)))
     layer(x)
     if context.executing_eagerly():
-      self.assertEqual(len(layer.losses), 4)
+      self.assertLen(layer.losses, 4)
     else:
-      self.assertEqual(len(layer.get_losses_for(x)), 1)
+      self.assertLen(layer.get_losses_for(x), 1)
 
   def test_statefulness_SimpleRNN(self):
     num_samples = 2
@@ -174,8 +175,7 @@ class SimpleRNNLayerTest(keras_parameterized.TestCase):
     model.compile(
         optimizer=gradient_descent.GradientDescentOptimizer(0.01),
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     out1 = model.predict(np.ones((num_samples, timesteps)))
     self.assertEqual(out1.shape, (num_samples, units))
 
@@ -225,8 +225,7 @@ class SimpleRNNLayerTest(keras_parameterized.TestCase):
     initial_state = cell.get_initial_state(
         batch_size=batch_size, dtype=dtypes.float32)
     _, state = cell(np.ones((batch_size, 20), dtype=np.float32), initial_state)
-    self.assertLen(state, 1)
-    self.assertEqual(state[0].shape, initial_state.shape)
+    self.assertEqual(state.shape, initial_state.shape)
 
 
 if __name__ == '__main__':

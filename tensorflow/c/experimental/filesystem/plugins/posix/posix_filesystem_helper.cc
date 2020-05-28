@@ -44,7 +44,7 @@ int TransferFileContents(const char* src, const char* dst, mode_t mode,
   }
 
   // Both files have been opened, do the transfer.
-  // Since errno would be overriden by `close` below, save it here.
+  // Since errno would be overridden by `close` below, save it here.
   int error_code = 0;
   if (CopyFileContents(dst_fd, src_fd, size) < 0) error_code = errno;
 

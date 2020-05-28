@@ -22,22 +22,28 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/dump_graph.h"
 
@@ -163,12 +169,11 @@ Status XlaCompilationCache::BuildExecutable(
   build_options.set_device_allocator(options.device_allocator);
   build_options.set_alias_passthrough_params(options.alias_passthrough_params);
 
-  auto compile_result =
-      client_->Compile(*result.computation, argument_layouts, build_options);
-  if (!compile_result.ok()) {
-    return compile_result.status();
-  }
-  *executable = std::move(compile_result.ValueOrDie());
+  TF_ASSIGN_OR_RETURN(
+      auto executables,
+      client_->Compile(*result.computation, argument_layouts, build_options));
+  TF_RET_CHECK(executables.size() == 1);
+  *executable = std::move(executables[0]);
   return Status::OK();
 }
 
@@ -203,6 +208,52 @@ static bool ShouldBeMegamorphic(int64 compile_count, int64 execution_count) {
          execution_count < kMinExecutionsPerCompile * compile_count;
 }
 
+// Creates a simple graph using the specified op as the only op apart from the
+// arg and retval nodes.
+static xla::StatusOr<std::unique_ptr<Graph>> CreateGraph(
+    const NodeDef& node_def, absl::Span<const XlaCompiler::Argument> args,
+    absl::Span<const DataType> result_types) {
+  // TODO(b/74182462): We implement this by creating a new dummy Graph including
+  // _Arg nodes, and let CompileGraph walk it. This could be optimized.
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+
+  Status status;
+  // First create the actual node we care about computing.
+  Node* main_node = graph->AddNode(node_def, &status);
+  TF_RETURN_IF_ERROR(status);
+
+  // Create dummy _Arg nodes. Link these to `node` and also via a control
+  // dependency edge to the _SOURCE node.
+  for (int64 i = 0; i < args.size(); ++i) {
+    Node* node;
+    string arg_name = absl::StrCat("_arg", i);
+    Status status =
+        NodeBuilder(arg_name, FunctionLibraryDefinition::kArgOp)
+            .ControlInput(graph->source_node())
+            .Attr("T", args[i].kind == XlaCompiler::Argument::kResource
+                           ? DT_RESOURCE
+                           : args[i].type)
+            .Attr("index", i)
+            .Finalize(graph.get(), &node);
+    TF_RETURN_IF_ERROR(status);
+    graph->AddEdge(node, 0, main_node, i);
+  }
+
+  // Similarly with return values, create dummy _Retval nodes fed by `node`.
+  for (int64 i = 0; i < result_types.size(); ++i) {
+    Node* node;
+    string retval_name = absl::StrCat("_retval", i);
+    Status status = NodeBuilder(retval_name, FunctionLibraryDefinition::kRetOp)
+                        .Input(main_node, i)
+                        .Attr("T", result_types[i])
+                        .Attr("index", i)
+                        .Finalize(graph.get(), &node);
+    TF_RETURN_IF_ERROR(status);
+  }
+  FixupSourceAndSinkEdges(graph.get());
+  return graph;
+}
+
 Status XlaCompilationCache::CompileSingleOp(
     const XlaCompiler::Options& options,
     absl::Span<const XlaCompiler::Argument> args, OpKernelContext* ctx,
@@ -223,8 +274,29 @@ Status XlaCompilationCache::CompileSingleOp(
     for (int i = 0; i < result_dtypes.size(); ++i) {
       result_dtypes[i] = ctx->expected_output_dtype(i);
     }
-    return compiler->CompileSingleOp(compile_options, ctx->op_kernel().def(),
-                                     args, result_dtypes, result);
+
+    const NodeDef& node_def = ctx->op_kernel().def();
+    TF_ASSIGN_OR_RETURN(auto graph, CreateGraph(node_def, args, result_dtypes));
+
+    bool are_args_supported =
+        absl::c_all_of(args, [](const XlaCompiler::Argument arg) {
+          return arg.kind == XlaCompiler::Argument::kConstant ||
+                 arg.kind == XlaCompiler::Argument::kParameter;
+        });
+    const ConfigProto* config = ctx->function_library()->config_proto();
+    bool use_mlir = config && config->experimental().enable_mlir_bridge();
+    // TODO(b/155596779): Understand the source of other argument types and
+    // depending on the source either support those or avoid these codepath.
+    if (!use_mlir || !are_args_supported) {
+      return compiler->CompileGraph(compile_options, node_def.name(),
+                                    std::move(graph), args, result);
+    }
+
+    GraphDebugInfo debug_info;
+    return CompileGraphToXlaHlo(
+        *graph, {args.data(), args.size()}, options.device_type.type_string(),
+        compile_options.use_tuple_arg, *options.flib_def, debug_info,
+        options.shape_representation_fn, result);
   };
   return CompileImpl(options, name, args, compile_op,
                      /*compile_threshold=*/absl::nullopt,

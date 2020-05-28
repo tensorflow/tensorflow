@@ -2,7 +2,7 @@ path: "tensorflow.distribute.experimental.ParameterServerStrategy"
 tf_class {
   is_instance: "<class \'tensorflow.python.distribute.parameter_server_strategy.ParameterServerStrategyV1\'>"
   is_instance: "<class \'tensorflow.python.distribute.distribute_lib.StrategyV1\'>"
-  is_instance: "<class \'tensorflow.python.distribute.distribute_lib.Strategy\'>"
+  is_instance: "<class \'tensorflow.python.distribute.distribute_lib.StrategyBase\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "extended"
@@ -46,7 +46,7 @@ tf_class {
   }
   member_method {
     name: "experimental_run_v2"
-    argspec: "args=[\'self\', \'fn\', \'args\', \'kwargs\'], varargs=None, keywords=None, defaults=[\'()\', \'None\'], "
+    argspec: "args=[\'self\', \'fn\', \'args\', \'kwargs\', \'options\'], varargs=None, keywords=None, defaults=[\'()\', \'None\', \'None\'], "
   }
   member_method {
     name: "group"
@@ -63,6 +63,10 @@ tf_class {
   member_method {
     name: "reduce"
     argspec: "args=[\'self\', \'reduce_op\', \'value\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "run"
+    argspec: "args=[\'self\', \'fn\', \'args\', \'kwargs\', \'options\'], varargs=None, keywords=None, defaults=[\'()\', \'None\', \'None\'], "
   }
   member_method {
     name: "scope"

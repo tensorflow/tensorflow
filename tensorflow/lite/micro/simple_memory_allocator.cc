@@ -16,45 +16,90 @@ limitations under the License.
 #include "tensorflow/lite/micro/simple_memory_allocator.h"
 
 #include <cstddef>
+#include <cstdint>
 
-#include "tensorflow/lite/core/api/flatbuffer_conversions.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/micro/memory_helpers.h"
 
 namespace tflite {
 
-uint8_t* SimpleMemoryAllocator::AllocateFromTail(size_t size,
+SimpleMemoryAllocator::SimpleMemoryAllocator(ErrorReporter* error_reporter,
+                                             uint8_t* buffer_head,
+                                             uint8_t* buffer_tail)
+    : error_reporter_(error_reporter),
+      buffer_head_(buffer_head),
+      buffer_tail_(buffer_tail),
+      head_(buffer_head),
+      tail_(buffer_tail) {}
+
+SimpleMemoryAllocator::SimpleMemoryAllocator(ErrorReporter* error_reporter,
+                                             uint8_t* buffer,
+                                             size_t buffer_size)
+    : SimpleMemoryAllocator(error_reporter, buffer, buffer + buffer_size) {}
+
+SimpleMemoryAllocator* CreateInPlaceSimpleMemoryAllocator(
+    ErrorReporter* error_reporter, uint8_t* buffer, size_t buffer_size) {
+  SimpleMemoryAllocator tmp =
+      SimpleMemoryAllocator(error_reporter, buffer, buffer_size);
+  SimpleMemoryAllocator* in_place_allocator =
+      reinterpret_cast<SimpleMemoryAllocator*>(tmp.AllocateFromTail(
+          sizeof(SimpleMemoryAllocator), alignof(SimpleMemoryAllocator)));
+  *in_place_allocator = tmp;
+  return in_place_allocator;
+}
+
+uint8_t* SimpleMemoryAllocator::AllocateFromHead(size_t size,
                                                  size_t alignment) {
-  if (has_child_allocator_) {
-    // TODO(wangtz): Add error reporting when the parent allocator is locked!
+  uint8_t* const aligned_result = AlignPointerUp(head_, alignment);
+  const size_t available_memory = tail_ - aligned_result;
+  if (available_memory < size) {
+    TF_LITE_REPORT_ERROR(
+        error_reporter_,
+        "Failed to allocate memory. Requested: %u, available %u, missing: %u",
+        size, available_memory, size - available_memory);
     return nullptr;
   }
-  uint8_t* previous_free = (data_ + data_size_max_) - data_size_;
-  uint8_t* current_data = previous_free - size;
-  uint8_t* aligned_result = AlignPointerDown(current_data, alignment);
-  std::ptrdiff_t aligned_size = (previous_free - aligned_result);
-  if ((data_size_ + aligned_size) > data_size_max_) {
-    // TODO(petewarden): Add error reporting beyond returning null!
-    return nullptr;
-  }
-  data_size_ += aligned_size;
+  head_ = aligned_result + size;
   return aligned_result;
 }
 
-SimpleMemoryAllocator SimpleMemoryAllocator::CreateChildAllocator() {
-  // Note that the parameterized constructor initializes data_size_ to 0 which
-  // is not what we expected.
-  SimpleMemoryAllocator child = *this;
-  child.parent_allocator_ = this;
-  // With C++ copy elision, &child should be available after return.
-  has_child_allocator_ = true;
-  return child;
+uint8_t* SimpleMemoryAllocator::AllocateFromTail(size_t size,
+                                                 size_t alignment) {
+  uint8_t* const aligned_result = AlignPointerDown(tail_ - size, alignment);
+  if (aligned_result < head_) {
+    const size_t missing_memory = head_ - aligned_result;
+    TF_LITE_REPORT_ERROR(
+        error_reporter_,
+        "Failed to allocate memory. Requested: %u, available %u, missing: %u",
+        size, size - missing_memory, missing_memory);
+    return nullptr;
+  }
+  tail_ = aligned_result;
+  return aligned_result;
 }
 
-SimpleMemoryAllocator::~SimpleMemoryAllocator() {
-  // Root allocator doesn't have a parent.
-  if (nullptr != parent_allocator_) {
-    parent_allocator_->has_child_allocator_ = false;
-  }
+uint8_t* SimpleMemoryAllocator::GetHead() const { return head_; }
+
+uint8_t* SimpleMemoryAllocator::GetTail() const { return tail_; }
+
+size_t SimpleMemoryAllocator::GetHeadUsedBytes() const {
+  return head_ - buffer_head_;
+}
+
+size_t SimpleMemoryAllocator::GetTailUsedBytes() const {
+  return buffer_tail_ - tail_;
+}
+
+size_t SimpleMemoryAllocator::GetAvailableMemory() const {
+  return tail_ - head_;
+}
+
+size_t SimpleMemoryAllocator::GetUsedBytes() const {
+  return GetBufferSize() - GetAvailableMemory();
+}
+
+size_t SimpleMemoryAllocator::GetBufferSize() const {
+  return buffer_tail_ - buffer_head_;
 }
 
 }  // namespace tflite

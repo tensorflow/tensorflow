@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_3X3_FILTER_COMMON_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_3X3_FILTER_COMMON_H_
 
-#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
+#include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -176,6 +176,8 @@ inline int32x4_t vdotq_four_lane_s32(int32x4_t acc, int8x16_t lhs,
 #endif  // !__ARM_FEATURE_DOTPROD
 #endif  // ARM NEON
 
+//  This structure is typically used for reducing the magnitude of outputs, and
+//  the historical name reflects that.
 template <DepthwiseConvOutputRounding output_rounding>
 struct DivideByPOT {};
 
@@ -185,6 +187,11 @@ struct DivideByPOT<DepthwiseConvOutputRounding::kAwayFromZero> {
   static inline IntegerType Run(IntegerType x, int exponent) {
     return RoundingDivideByPOT(x, exponent);
   }
+  // Mult versions use the exponents directly, rather than negated.
+  template <typename IntegerType>
+  static inline IntegerType RunMult(IntegerType x, int exponent) {
+    return RoundingDivideByPOT(x, -exponent);
+  }
 };
 
 #ifdef USE_NEON
@@ -193,6 +200,14 @@ struct DivideByPOT<DepthwiseConvOutputRounding::kUpward> {
   template <typename IntegerType>
   static inline IntegerType Run(IntegerType x, int exponent) {
     return vqrshlq_s32(x, vdupq_n_s32(static_cast<int32>(-exponent)));
+  }
+  template <typename IntegerType>
+  static inline IntegerType RunMult(IntegerType x, IntegerType exponent) {
+    return vqrshlq_s32(x, exponent);
+  }
+  template <typename IntegerType>
+  static inline IntegerType RunMult(IntegerType x, int exponent) {
+    return vqrshlq_s32(x, vdupq_n_s32(static_cast<int32>(exponent)));
   }
 };
 #endif  // ARM NEON
@@ -206,10 +221,38 @@ enum class DotProduct3x3KernelType {
   kStride2,
 };
 
+enum class QuantizationType {
+  kNonPerChannelUint8 = 0,
+  kPerChannelInt8 = 1,
+};
+
+template <QuantizationType quantization_type>
+struct QuantizationTypeImpl {};
+
+template <>
+struct QuantizationTypeImpl<QuantizationType::kNonPerChannelUint8> {
+  typedef uint8 ExternalType;
+
+  static constexpr int kIntSymmetricZeroPoint = 128;
+  static constexpr uint8 kUint8SignBit = 0x80;
+};
+
+template <>
+struct QuantizationTypeImpl<QuantizationType::kPerChannelInt8> {
+  typedef int8 ExternalType;
+
+  static constexpr int kIntSymmetricZeroPoint = 0;
+  static constexpr uint8 kUint8SignBit = 0x0;
+};
+
+template <
+    QuantizationType quantization_type = QuantizationType::kNonPerChannelUint8>
 inline DotProduct3x3KernelType CategorizeDotProductKernel(
     const RuntimeShape& input_shape, const RuntimeShape& filter_shape,
-    const DepthwiseParams& params) {
-  constexpr int kSymmetricZeroPoint = 128;
+    const RuntimeShape& output_shape, const DepthwiseParams& params,
+    const int32* output_shift_ptr = nullptr) {
+  constexpr int kSymmetricZeroPoint =
+      QuantizationTypeImpl<quantization_type>::kIntSymmetricZeroPoint;
   const int padding =
       std::max(params.padding_values.width, params.padding_values.height);
   const int stride = params.stride_width;
@@ -218,15 +261,26 @@ inline DotProduct3x3KernelType CategorizeDotProductKernel(
   const int32 filter_height = filter_shape.Dims(1);
   const int32 filter_width = filter_shape.Dims(2);
 
-  bool supported =
-      params.weights_offset == -kSymmetricZeroPoint &&
-      stride == params.stride_height && stride <= 2 && padding <= 1 &&
-      filter_width == 3 && filter_height == 3 && params.output_shift <= 0 &&
-      params.dilation_width_factor == 1 && params.dilation_height_factor == 1 &&
-      (((input_depth % 8) == 0 && depth_multiplier == 1) ||
-       (input_depth == 1 && depth_multiplier > 1));
+  bool supported = stride == params.stride_height && stride <= 2 &&
+                   padding <= 1 && filter_width == 3 && filter_height == 3 &&
+                   params.dilation_width_factor == 1 &&
+                   params.dilation_height_factor == 1 &&
+                   (((input_depth % 8) == 0 && depth_multiplier == 1) ||
+                    (input_depth == 1 && depth_multiplier > 1));
 
   if (!supported) {
+    return DotProduct3x3KernelType::kNone;
+  }
+
+  if (params.weights_offset != -kSymmetricZeroPoint) {
+    return DotProduct3x3KernelType::kNone;
+  }
+
+  if (quantization_type == QuantizationType::kPerChannelInt8) {
+    if (output_shift_ptr == nullptr) {
+      return DotProduct3x3KernelType::kNone;
+    }
+  } else if (params.output_shift > 0) {
     return DotProduct3x3KernelType::kNone;
   }
 
@@ -270,6 +324,8 @@ struct DepthwiseConvParams {
   int32 stride_height;
   int32 output_width;
   int32 output_height;
+  float float_output_activation_min;
+  float float_output_activation_max;
 };
 
 // Encapsulates constant parameters used in DepthwiseConv using dot-product ops.
@@ -313,6 +369,9 @@ struct DepthwiseConvDotProdParams {
   int32 workspace_height_stride;
   //
   int32 four_over_stride;
+  //
+  const int32* output_multiplier_per_channel;
+  const int32* output_shift_per_channel;
 };
 
 template <DepthwiseConvOutputRounding output_rounding, int32 kDepth,
@@ -375,11 +434,6 @@ struct ShuffleParams {
         input_height(get_shuffle_input_size(stride_height, output_height)) {}
 };
 
-enum class QuantizationType {
-  kNonPerChannelUint8 = 0,
-  kPerChannelInt8 = 1,
-};
-
 template <
     QuantizationType quantization_type = QuantizationType::kNonPerChannelUint8>
 inline bool Fast3x3FilterKernelSupported(
@@ -395,7 +449,6 @@ inline bool Fast3x3FilterKernelSupported(
   const int32 filter_width = filter_shape.Dims(2);
   const int32 output_height = output_shape.Dims(1);
   const int32 output_width = output_shape.Dims(2);
-  const int32 output_depth = output_shape.Dims(3);
 
   bool supported =
       filter_width == 3 && filter_height == 3 && depth_multiplier == 1 &&
@@ -408,14 +461,6 @@ inline bool Fast3x3FilterKernelSupported(
 
   if (!supported) {
     return false;
-  }
-
-  if (quantization_type == QuantizationType::kPerChannelInt8) {
-    for (int i = 0; i < output_depth; ++i) {
-      if (output_shift_ptr[i] > 0) {
-        return false;
-      }
-    }
   }
 
   // Handle case where padding is zero but padding type is not kValid.
@@ -458,7 +503,8 @@ inline bool Fast3x3FilterKernelSupported(
 // kUseCModel3x3DotProduct version.
 //
 // See the comments preceding DepthwiseConvDotProduct3x3() for further notes.
-template <DepthwiseConvImplementation implementation>
+template <DepthwiseConvImplementation implementation,
+          QuantizationType quantization_type>
 struct ProcessPerDepth {
   // Routine is contained in a static Run() method. No default template version
   // is supplied, so that all implementations are deliberate choices of template
@@ -477,6 +523,7 @@ struct ProcessPerDepth {
 //
 // See the comments preceding DepthwiseConvDotProduct3x3() for further notes.
 template <DepthwiseConvImplementation implementation,
+          QuantizationType quantization_type,
           DepthwiseConvDepthMultiplication depth_multiplication,
           int32 max_padding>
 struct PackMacroBlock {
@@ -495,6 +542,7 @@ struct PackMacroBlock {
 //
 // See the comments preceding DepthwiseConvDotProduct3x3() for further notes.
 template <DepthwiseConvImplementation implementation,
+          QuantizationType quantization_type,
           DepthwiseConvDepthMultiplication depth_multiplication, int32 stride>
 struct KernelMacroBlock {
   // Routine is contained in a static Run() method. No default template version

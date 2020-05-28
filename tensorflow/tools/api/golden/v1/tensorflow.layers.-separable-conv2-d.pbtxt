@@ -1,14 +1,15 @@
 path: "tensorflow.layers.SeparableConv2D"
 tf_class {
-  is_instance: "<class \'tensorflow.python.layers.convolutional.SeparableConv2D\'>"
+  is_instance: "<class \'tensorflow.python.keras.legacy_tf_layers.convolutional.SeparableConv2D\'>"
   is_instance: "<class \'tensorflow.python.keras.layers.convolutional.SeparableConv2D\'>"
   is_instance: "<class \'tensorflow.python.keras.layers.convolutional.SeparableConv\'>"
   is_instance: "<class \'tensorflow.python.keras.layers.convolutional.Conv\'>"
-  is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
+  is_instance: "<class \'tensorflow.python.keras.legacy_tf_layers.base.Layer\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"
   is_instance: "<class \'tensorflow.python.training.tracking.tracking.AutoTrackable\'>"
   is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<class \'tensorflow.python.keras.utils.version_utils.LayerVersionSelector\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "activity_regularizer"
@@ -132,7 +133,7 @@ tf_class {
   }
   member_method {
     name: "add_metric"
-    argspec: "args=[\'self\', \'value\', \'aggregation\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'self\', \'value\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'None\'], "
   }
   member_method {
     name: "add_update"

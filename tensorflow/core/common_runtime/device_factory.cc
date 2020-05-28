@@ -52,7 +52,7 @@ std::unordered_map<string, FactoryItem>& device_factories() {
 
 // static
 int32 DeviceFactory::DevicePriority(const string& device_type) {
-  mutex_lock l(*get_device_factory_lock());
+  tf_shared_lock l(*get_device_factory_lock());
   std::unordered_map<string, FactoryItem>& factories = device_factories();
   auto iter = factories.find(device_type);
   if (iter != factories.end()) {
@@ -82,7 +82,7 @@ void DeviceFactory::Register(const string& device_type, DeviceFactory* factory,
 }
 
 DeviceFactory* DeviceFactory::GetFactory(const string& device_type) {
-  mutex_lock l(*get_device_factory_lock());  // could use reader lock
+  tf_shared_lock l(*get_device_factory_lock());
   auto it = device_factories().find(device_type);
   if (it == device_factories().end()) {
     return nullptr;
@@ -105,7 +105,7 @@ Status DeviceFactory::ListAllPhysicalDevices(std::vector<string>* devices) {
   }
 
   // Then the rest (including GPU).
-  mutex_lock l(*get_device_factory_lock());
+  tf_shared_lock l(*get_device_factory_lock());
   for (auto& p : device_factories()) {
     auto factory = p.second.factory.get();
     if (factory != cpu_factory) {

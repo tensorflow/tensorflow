@@ -129,7 +129,8 @@ void TFE_DeleteContextCapsule(PyObject* context);
 bool EagerTensor_CheckExact(const PyObject* o);
 
 // Helper function to construct a new EagerTensor from a TFE_TensorHandle.
-PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle);
+PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle,
+                                const bool is_packed = false);
 
 // Extracts the handle inside EagerTensor object `o`. Returns nullptr on error.
 TFE_TensorHandle* EagerTensor_Handle(const PyObject* o);
@@ -197,7 +198,7 @@ PyObject* TFE_Py_TapeSetIsStopped();
 //    forwardprop to, given the gradients of the output tensors, produce the
 //    gradients of the input tensors. This function is automatically transposed
 //    during forwardprop.
-//  - forward_function is an optional special-case for fowardprop, taking input
+//  - forward_function is an optional special-case for forwardprop, taking input
 //    jvps and returning output jvps.
 //
 // Records an operation both for backprop (gradient tape) and forwardprop
@@ -257,7 +258,6 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
 // correctly formatted (i.e. EagerTensors). If it doesn't find EagerTensors,
 // it will simply fail with a NotImplementedError.
 //
-// The first PyObject* is unused.
 // The "args" PyObject* is meant to be a tuple with the following structure:
 //  Item 1: The TFE Context
 //  Item 2: device_name: Name of the device on which to execute the operation,
@@ -272,11 +272,12 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
 // This is named _C since there doesn't seem to be any way to make it visible
 // in the SWIG interface without renaming due to the use of the %native
 // directive.
-PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args);
+PyObject* TFE_Py_FastPathExecute_C(PyObject* args);
 
 // Record the gradient for a given op.
 PyObject* TFE_Py_RecordGradient(PyObject* op_name, PyObject* inputs,
-                                PyObject* attrs, PyObject* results);
+                                PyObject* attrs, PyObject* results,
+                                PyObject* forward_pass_name_scope);
 
 // Returns all variables watched by the given tape in the order those variables
 // were created.
@@ -307,7 +308,7 @@ PyObject* TFE_Py_ForwardAccumulatorJVP(PyObject* accumulator, PyObject* tensor);
 // temporarily reset its state. This is useful when building forwardprop
 // versions of functions, where an accumulator will trigger function building
 // and then must process captured symbolic tensors while building it. Without
-// pushing and poping, accumulators ignore operations executed as a direct
+// pushing and popping, accumulators ignore operations executed as a direct
 // result of their own jvp computations.
 PyObject* TFE_Py_ForwardAccumulatorPushState();
 PyObject* TFE_Py_ForwardAccumulatorPopState();
@@ -330,6 +331,22 @@ PyObject* TFE_Py_ForwardAccumulatorPopState();
 //   jvps: A flat list of Tensors. Best interpreted as a sequence to be
 //       appended to `tensors`.
 PyObject* TFE_Py_PackJVPs(PyObject* tensors);
+
+// Variable Watcher methods.
+
+// Creates a new variable watcher and adds it to the set of active variable
+// watchers.
+PyObject* TFE_Py_VariableWatcherNew();
+
+// Removes the passed variable watcher from the set of active variable watchers.
+void TFE_Py_VariableWatcherRemove(PyObject* variable_watcher);
+
+// Notifies all variable watchers that a variable has been accessed.
+void TFE_Py_VariableWatcherVariableAccessed(PyObject* variable);
+
+// Returns all variables watched by the given variable_watcher in the order
+// those variables were created.
+PyObject* TFE_Py_VariableWatcherWatchedVariables(PyObject* variable_watcher);
 
 // Returns an EagerTensor of dimension [len(`tensors`)] containing
 // the `slice_dim`'th dimension of each tensor in `tensors`. In other words,
@@ -363,7 +380,7 @@ void TFE_Py_EnableInteractivePythonLogging();
 // Py_None.
 //
 // This function is not thread-safe.
-PyObject* TFE_Py_SetEagerContext(PyObject* python_context);
+PyObject* TFE_Py_SetEagerContext(PyObject* py_context);
 
 // Returns the current eager Context object (defined in eager/context.py)
 // that was last set using TFE_Py_SetEagerContext.

@@ -21,34 +21,39 @@ public class OvicClassificationResult {
 
   /** Top K classes and probabilities. */
   public final ArrayList<String> topKClasses;
+
   public final ArrayList<Float> topKProbs;
   public final ArrayList<Integer> topKIndices;
 
   /** Latency (ms). */
-  public Long latency;
+  public Long latencyMilli;
+
+  /** Latency (ns). */
+  public Long latencyNano;
 
   OvicClassificationResult() {
     topKClasses = new ArrayList<>();
     topKProbs = new ArrayList<>();
     topKIndices = new ArrayList<>();
-    latency = -1L;
+    latencyMilli = -1L;
+    latencyNano = -1L;
   }
 
   @Override
   public String toString() {
-    String textToShow = latency + "ms";
+    String textToShow = latencyMilli + "ms";
+    textToShow += "\n" + latencyNano + "ns";
     for (int k = 0; k < topKProbs.size(); ++k) {
       textToShow +=
           "\nPrediction ["
               + k
               + "] = Class "
-              + Integer.toString(topKIndices.get(k))
+              + topKIndices.get(k)
               + " ("
               + topKClasses.get(k)
               + ") : "
-              + Float.toString(topKProbs.get(k));
+              + topKProbs.get(k);
     }
     return textToShow;
   }
-
 }

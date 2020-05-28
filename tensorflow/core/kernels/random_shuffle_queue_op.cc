@@ -69,7 +69,7 @@ class RandomShuffleQueue : public TypedQueue<std::vector<PersistentTensor> > {
 
   // Helper for dequeuing a single random element from queues_.
   void DequeueLocked(OpKernelContext* ctx, Tuple* tuple)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   static Status GetElementComponentFromBatch(const Tuple& tuple, int64 index,
                                              int component,
@@ -80,8 +80,9 @@ class RandomShuffleQueue : public TypedQueue<std::vector<PersistentTensor> > {
   const int64 original_seed_;
   const int64 original_seed2_;
 
-  random::PhiloxRandom parent_generator_ GUARDED_BY(mu_);
-  random::SingleSampleAdapter<random::PhiloxRandom> generator_ GUARDED_BY(mu_);
+  random::PhiloxRandom parent_generator_ TF_GUARDED_BY(mu_);
+  random::SingleSampleAdapter<random::PhiloxRandom> generator_
+      TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(RandomShuffleQueue);
 };
@@ -136,7 +137,7 @@ void RandomShuffleQueue::TryEnqueue(const Tuple& tuple, OpKernelContext* ctx,
     if (!already_cancelled) {
       enqueue_attempts_.emplace_back(
           1, callback, ctx, cm, token,
-          [tuple, this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          [tuple, this](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             if (closed_) {
               attempt->context->SetStatus(errors::Cancelled(
                   "RandomShuffleQueue '", name_, "' is closed."));
@@ -194,7 +195,7 @@ void RandomShuffleQueue::TryEnqueueMany(const Tuple& tuple,
     if (!already_cancelled) {
       enqueue_attempts_.emplace_back(
           batch_size, callback, ctx, cm, token,
-          [tuple, this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          [tuple, this](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             if (closed_) {
               attempt->context->SetStatus(errors::Cancelled(
                   "RandomShuffleQueue '", name_, "' is closed."));
@@ -242,7 +243,7 @@ void RandomShuffleQueue::TryDequeue(OpKernelContext* ctx,
       // TODO(josh11b): This makes two copies of callback, avoid this if possible.
       dequeue_attempts_.emplace_back(
           1, [callback]() { callback(Tuple()); }, ctx, cm, token,
-          [callback, this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          [callback, this](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             int32 queue_size = queues_[0].size();
             if (closed_ && queue_size == 0) {
               attempt->context->SetStatus(errors::OutOfRange(
@@ -335,7 +336,7 @@ void RandomShuffleQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
       dequeue_attempts_.emplace_back(
           num_elements, [callback]() { callback(Tuple()); }, ctx, cm, token,
           [callback, allow_small_batch,
-           this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+           this](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             int32 queue_size = queues_[0].size();
             if (closed_ && queue_size < attempt->elements_requested) {
               // If we don't have enough for a full dequeue, we have
@@ -493,7 +494,7 @@ class RandomShuffleQueueOp : public TypedQueueOp {
 
  private:
   Status CreateResource(QueueInterface** ret) override
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     RandomShuffleQueue* queue = new RandomShuffleQueue(
         capacity_, min_after_dequeue_, seed_, seed2_, component_types_,
         component_shapes_, cinfo_.name());

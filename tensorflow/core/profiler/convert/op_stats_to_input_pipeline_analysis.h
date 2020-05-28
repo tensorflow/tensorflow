@@ -16,39 +16,31 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_OP_STATS_TO_INPUT_PIPELINE_ANALYSIS_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_OP_STATS_TO_INPUT_PIPELINE_ANALYSIS_H_
 
+#include <string>
+
+#include "google/protobuf/any.pb.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
+#include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 
 namespace tensorflow {
 namespace profiler {
 
-// Common performance bottleneck.
-struct CommonBottleneck {
-  // Indicates if input is a bottleneck. Possible values:  "host", "device",
-  // "both", or "unknown"
-  string input_classification;
-  // A human-readable description of the input bottleneck.
-  string input_statement;
-};
+// If the percent of input-time spent on host-to-device transfer is greater than
+// kHostToDeviceTimePercentAsSignificant, we should advise the
+// user to optimize this transfer.
+constexpr double kHostToDeviceTimePercentAsSignificant = 10.0;
 
-// Generic hardware bottleneck.
-struct GenericBottleneck {
-  // Bottleneck that exists on all hardware.
-  CommonBottleneck common;
-  // Indicates if kernel launching is a bottleneck. Possible values: "no",
-  // "moderate", "high".
-  string kernel_launch_classification;
-  // A human-readable description of the kernel launching overhead.
-  string kernel_launch_statement;
-  // Indicates if all other is a bottleneck. Possible values: "no", "moderate",
-  // "high".
-  string all_other_classification;
-  // A human-readable description of the all other overhead.
-  string all_other_statement;
-};
+// If the percent of input-time spent on host-to-device transfer is greater than
+// kHostToDeviceTimePercentAsDominant, we should ONLY advise the
+// user to optimize this transfer; we won't bother to suggest optimization for
+// tf.data.
+constexpr double kHostToDeviceTimePercentAsDominant = 90.0;
 
 // Computes the summary of step time in milliseconds.
 StepSummary ComputeStepTimeSummaryInMs(
@@ -61,15 +53,33 @@ void GenerateHostResult(const OpMetricsDb& host_tf_metrics_db,
 InputPipelineAnalysisRecommendation GenerateRecommendation();
 
 // Returns the performance bottleneck of the program executed.
-GenericBottleneck GenericOverallBottleneck(
-    const InputPipelineAnalysisResult& result);
+BottleneckAnalysis ComputeBottleneckAnalysis(
+    const InputTimeBreakdown& input_time_breakdown,
+    const ::tensorflow::protobuf::RepeatedPtrField<::google::protobuf::Any>&
+        any_step_details);
 
 InputPipelineAnalysisResult ConvertOpStatsToInputPipelineAnalysis(
     const OpStats& op_stats, const HardwareType& hardware_type);
 
-void InfeedAnalysis(HardwareType hardware_type, double infeed_percent,
-                    int* observation_index, string* input_classification,
-                    string* input_statement);
+// Returns true if explanation for "All Others" time is also included in
+// input_statement.
+bool InputAnalysis(double input_percent, double all_other_percent,
+                   std::string* input_classification,
+                   std::string* input_statement);
+
+void OutputAnalysis(double output_percent, std::string* output_classification,
+                    std::string* output_statement);
+
+string GetSummaryNextStep(absl::string_view input_classification,
+                          const InputTimeBreakdown& breakdown);
+
+// Returns the percentage of the input time that is spent on transferring the
+// data from host to device.
+double HostToDeviceTransferAsPercentOfInputTime(
+    const InputTimeBreakdown& breakdown);
+
+void AddErrorMessages(const OpStats& op_stats,
+                      InputPipelineAnalysisResult* result);
 
 }  // namespace profiler
 }  // namespace tensorflow

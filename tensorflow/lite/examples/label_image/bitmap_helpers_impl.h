@@ -60,6 +60,7 @@ void resize(T* out, uint8_t* in, int image_height, int image_width,
   auto* params = reinterpret_cast<TfLiteResizeBilinearParams*>(
       malloc(sizeof(TfLiteResizeBilinearParams)));
   params->align_corners = false;
+  params->half_pixel_centers = false;
   interpreter->AddNodeWithParameters({0, 1}, {2}, nullptr, 0, params, resize_op,
                                      nullptr);
 
@@ -82,10 +83,19 @@ void resize(T* out, uint8_t* in, int image_height, int image_width,
   auto output_number_of_pixels = wanted_height * wanted_width * wanted_channels;
 
   for (int i = 0; i < output_number_of_pixels; i++) {
-    if (s->input_floating)
-      out[i] = (output[i] - s->input_mean) / s->input_std;
-    else
-      out[i] = (uint8_t)output[i];
+    switch (s->input_type) {
+      case kTfLiteFloat32:
+        out[i] = (output[i] - s->input_mean) / s->input_std;
+        break;
+      case kTfLiteInt8:
+        out[i] = static_cast<int8_t>(output[i] - 128);
+        break;
+      case kTfLiteUInt8:
+        out[i] = static_cast<uint8_t>(output[i]);
+        break;
+      default:
+        break;
+    }
   }
 }
 

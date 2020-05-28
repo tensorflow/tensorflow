@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Transforms/Utils/Cloning.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
@@ -90,7 +91,9 @@ llvm::CallInst* EmitCallToIntrinsic(
 
 llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
                           llvm::IRBuilder<>* b) {
-  if (b->getFastMathFlags().noNaNs()) {
+  // TODO(tpopp): Pass this information down from the HLO's ModuleConfig.
+  if (b->getFastMathFlags().noNaNs() ||
+      GetDebugOptionsFromFlags().xla_cpu_enable_fast_min_max()) {
     auto cmp = b->CreateFCmpUGE(lhs_value, rhs_value);
     return b->CreateSelect(cmp, lhs_value, rhs_value);
   } else {
@@ -103,7 +106,9 @@ llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
 
 llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
                           llvm::IRBuilder<>* b) {
-  if (b->getFastMathFlags().noNaNs()) {
+  // TODO(tpopp): Pass this information down from the HLO's ModuleConfig.
+  if (b->getFastMathFlags().noNaNs() ||
+      GetDebugOptionsFromFlags().xla_cpu_enable_fast_min_max()) {
     auto cmp = b->CreateFCmpULE(lhs_value, rhs_value);
     return b->CreateSelect(cmp, lhs_value, rhs_value);
   } else {
@@ -287,7 +292,7 @@ llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(llvm::Type* type,
   llvm::AllocaInst* alloca =
       b->CreateAlloca(type, element_count, AsStringRef(name));
   if (alignment != 0) {
-    alloca->setAlignment(llvm::MaybeAlign(alignment));
+    alloca->setAlignment(llvm::Align(alignment));
   }
   return alloca;
 }
@@ -580,7 +585,7 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
   // XlaJitCompiledCpuFunction::Compile.  Avoid overwriting IR files previously
   // dumped from the same process in such cases.
   string suffix = absl::StrCat("ir-", optimized ? "with" : "no", "-opt");
-  DumpToFileInDirOrStdout(hlo_module, absl::StrCat(suffix, ".ll"),
+  DumpToFileInDirOrStdout(hlo_module, "", absl::StrCat(suffix, ".ll"),
                           DumpModuleToString(llvm_module));
 
   // For some models the embedded constants can be huge, so also dump the module
@@ -588,7 +593,7 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
   // this if we're dumping to stdout; there's no point in duplicating everything
   // when writing to the terminal.
   if (!DumpingToStdout(debug_opts)) {
-    DumpToFileInDir(hlo_module, absl::StrCat(suffix, "-noconst.ll"),
+    DumpToFileInDir(hlo_module, "", absl::StrCat(suffix, "-noconst.ll"),
                     DumpModuleToString(*DropConstantInitializers(llvm_module)));
   }
 }

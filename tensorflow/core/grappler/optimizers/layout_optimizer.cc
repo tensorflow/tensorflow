@@ -735,7 +735,7 @@ class NodeProcessor : public GraphProcessor {
     if (IsConstant(*param_node)) {
       TF_RETURN_IF_ERROR(UpdateAttrValueOfInput(param_index, permute));
     } else {
-      AddDataFormatTranformToParamInput(op, param_index, dtype);
+      AddDataFormatTransformToParamInput(op, param_index, dtype);
     }
     return Status::OK();
   }
@@ -1038,8 +1038,8 @@ class NodeProcessor : public GraphProcessor {
     return added_node;
   }
 
-  void AddDataFormatTranformToParamInput(const string& op, int input_pos,
-                                         DataType dtype) {
+  void AddDataFormatTransformToParamInput(const string& op, int input_pos,
+                                          DataType dtype) {
     string suffix = (op == "DataFormatVecPermute") ? kVecPermuteNHWCToNCHW
                                                    : kDimMapNHWCToNCHW;
     string name = LayoutOptimizerNode(
@@ -2226,7 +2226,8 @@ int GetNumGPUs(const Cluster& cluster) {
 Status LayoutOptimizer::Tune(const GrapplerItem& item,
                              const GraphProperties& graph_properties,
                              const TuningConfig& config, GraphDef* output) {
-  auto status = graph_properties.AnnotateOutputShapes(output);
+  auto status = graph_properties.AnnotateOutputShapes(
+      output, /*allow_symbolic_shapes=*/true);
   if (!status.ok()) {
     VLOG(1) << "Annotate shape return status: " << status.ToString();
     *output = item.graph;

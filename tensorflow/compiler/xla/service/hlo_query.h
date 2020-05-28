@@ -81,6 +81,11 @@ bool ContainsLayoutConstrainedAllReduce(const HloModule& module);
 // (for HloChannelInstructions).
 int64 NextChannelId(const HloModule& module);
 
+// Returns whether the module contains host send/recv with X64 data type.
+// This function is called after X64Rewriter, so X64 host transfers are already
+// rewritten into tuple shaped transfers.
+bool HasX64TransformedHostTransfer(const HloModule& module);
+
 }  // namespace hlo_query
 }  // namespace xla
 

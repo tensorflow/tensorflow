@@ -26,16 +26,16 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/IR/Visitors.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -53,8 +53,9 @@ constexpr char kFuncDeviceAttr[] = "tf.device";
 //
 // This pass changes the module by adding "tf.device" attribute to function
 // arguments and adding "device" attribute to TF ops.
-struct ResourceDeviceInference : public ModulePass<ResourceDeviceInference> {
-  void runOnModule() override;
+struct ResourceDeviceInference
+    : public PassWrapper<ResourceDeviceInference, OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
 // A class that records each resource's device assignment in a function.
@@ -148,7 +149,7 @@ LogicalResult ComputeResourceDevicesInComputation(FuncOp func_op,
   }
   auto walk_res = func_op.walk([&](Operation* op) {
     if (auto var_handle = llvm::dyn_cast<TF::VarHandleOp>(op)) {
-      // Record VarHanldeOp's device attribute.
+      // Record VarHandleOp's device attribute.
       auto device_attr =
           var_handle.getAttrOfType<mlir::StringAttr>(kDeviceAttr);
       if (!device_attr || device_attr.getValue().empty()) {
@@ -190,8 +191,8 @@ LogicalResult ComputeResourceDevicesInComputation(FuncOp func_op,
   return failure(walk_res.wasInterrupted());
 }
 
-void ResourceDeviceInference::runOnModule() {
-  auto module = getModule();
+void ResourceDeviceInference::runOnOperation() {
+  auto module = getOperation();
   llvm::SmallDenseMap<Operation*, PerFunctionResult, 4> per_function_results;
   llvm::SetVector<FuncOp> worklist;
   module.walk([&](FuncOp func_op) {
@@ -265,7 +266,7 @@ void ResourceDeviceInference::runOnModule() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateResourceDeviceInferencePass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateResourceDeviceInferencePass() {
   return std::make_unique<ResourceDeviceInference>();
 }
 

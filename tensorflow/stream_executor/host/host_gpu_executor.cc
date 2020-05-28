@@ -19,6 +19,8 @@ limitations under the License.
 
 #include <string.h>
 
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"
@@ -41,6 +43,20 @@ HostExecutor::HostExecutor(const PluginConfig &plugin_config)
     : plugin_config_(plugin_config) {}
 
 HostExecutor::~HostExecutor() {}
+
+port::Status HostExecutor::Init(int device_ordinal,
+                                DeviceOptions device_options) {
+  auto it =
+      device_options.non_portable_tags.find("host_thread_stack_size_in_bytes");
+  if (it != device_options.non_portable_tags.end()) {
+    if (!absl::SimpleAtoi(it->second, &thread_stack_size_in_bytes_)) {
+      return port::InvalidArgumentError(absl::StrCat(
+          "Unable to parse host_thread_stack_size_in_bytes as an integer: ",
+          it->second));
+    }
+  }
+  return port::Status::OK();
+}
 
 DeviceMemoryBase HostExecutor::Allocate(uint64 size, int64 memory_space) {
   CHECK_EQ(memory_space, 0);
@@ -330,6 +346,12 @@ rng::RngSupport *HostExecutor::CreateRng() {
   }
 
   return status.ValueOrDie()(this);
+}
+
+std::unique_ptr<internal::StreamInterface>
+HostExecutor::GetStreamImplementation() {
+  return std::unique_ptr<internal::StreamInterface>(
+      new HostStream(thread_stack_size_in_bytes_));
 }
 
 }  // namespace host

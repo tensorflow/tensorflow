@@ -53,7 +53,7 @@ inline void BroadcastPrelu4DSlowFloat(
           auto in2_idx = SubscriptToIndex(desc2, b, y, x, c);
           auto in1_val = input1_data[in1_idx];
           auto in2_val = input2_data[in2_idx];
-          output_data[out_idx] = in1_val >= 0.0 ? in1_val : in1_val * in2_val;
+          output_data[out_idx] = in1_val >= 0.0f ? in1_val : in1_val * in2_val;
         }
       }
     }
@@ -64,13 +64,21 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, 0);
   const TfLiteTensor* alpha = GetInput(context, node, 1);
   TfLiteTensor* output = GetOutput(context, node, 0);
-  int32_t output_multiplier = 0;
-  int output_shift = 0;
-  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt16) {
-    double real_multiplier =
-        input->params.scale * alpha->params.scale / output->params.scale;
-    QuantizeMultiplierSmallerThanOneExp(real_multiplier, &output_multiplier,
-                                        &output_shift);
+  int32_t output_multiplier_1 = 0;
+  int output_shift_1 = 0;
+  int32_t output_multiplier_2 = 0;
+  int output_shift_2 = 0;
+  if (output->type == kTfLiteInt8 || output->type == kTfLiteUInt8 ||
+      output->type == kTfLiteInt16) {
+    double real_multiplier_1 = static_cast<double>(input->params.scale) /
+                               static_cast<double>(output->params.scale);
+    double real_multiplier_2 = static_cast<double>(input->params.scale) *
+                               static_cast<double>(alpha->params.scale) /
+                               static_cast<double>(output->params.scale);
+    QuantizeMultiplier(real_multiplier_1, &output_multiplier_1,
+                       &output_shift_1);
+    QuantizeMultiplier(real_multiplier_2, &output_multiplier_2,
+                       &output_shift_2);
   }
   switch (input->type) {
     case kTfLiteFloat32: {
@@ -85,16 +93,33 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
       op_params.input_offset = -input->params.zero_point;
       op_params.alpha_offset = -alpha->params.zero_point;
       op_params.output_offset = output->params.zero_point;
-      op_params.output_multiplier = output_multiplier;
-      op_params.output_shift = output_shift;
+      op_params.output_multiplier_1 = output_multiplier_1;
+      op_params.output_shift_1 = output_shift_1;
+      op_params.output_multiplier_2 = output_multiplier_2;
+      op_params.output_shift_2 = output_shift_2;
       reference_ops::BroadcastPrelu4DSlow(
           op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
           GetTensorShape(alpha), GetTensorData<uint8_t>(alpha),
           GetTensorShape(output), GetTensorData<uint8_t>(output));
       return kTfLiteOk;
     } break;
+    case kTfLiteInt8: {
+      PreluParams op_params;
+      op_params.input_offset = -input->params.zero_point;
+      op_params.alpha_offset = -alpha->params.zero_point;
+      op_params.output_offset = output->params.zero_point;
+      op_params.output_multiplier_1 = output_multiplier_1;
+      op_params.output_shift_1 = output_shift_1;
+      op_params.output_multiplier_2 = output_multiplier_2;
+      op_params.output_shift_2 = output_shift_2;
+      reference_ops::BroadcastPrelu4DSlow(
+          op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+          GetTensorShape(alpha), GetTensorData<int8_t>(alpha),
+          GetTensorShape(output), GetTensorData<int8_t>(output));
+      return kTfLiteOk;
+    } break;
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context, "Only float32 and uint8 are supported currently, got %d.",
           TfLiteTypeGetName(input->type));
       return kTfLiteError;
@@ -104,8 +129,14 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace activations
 
 TfLiteRegistration* Register_PRELU() {
-  static TfLiteRegistration r = {nullptr, nullptr, activations::PreluPrepare,
-                                 activations::PreluEval};
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/activations::PreluPrepare,
+                                 /*invoke=*/activations::PreluEval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

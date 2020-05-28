@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -28,6 +29,7 @@ void CombineOpMetrics(const OpMetrics& src, OpMetrics* dst) {
   DCHECK_EQ(src.name(), dst->name());
   dst->set_category(src.category());
   dst->set_provenance(src.provenance());
+  dst->set_is_eager(dst->is_eager() || src.is_eager());
   dst->set_deduplicated_name(src.deduplicated_name());
   if (!dst->has_layout() && src.has_layout()) {
     *dst->mutable_layout() = src.layout();
@@ -43,6 +45,11 @@ void CombineOpMetrics(const OpMetrics& src, OpMetrics* dst) {
   dst->set_dma_stall_ps(src.dma_stall_ps() + dst->dma_stall_ps());
 }
 
+void CombinePrecisionStats(const PrecisionStats& src, PrecisionStats* dst) {
+  dst->set_compute_16bit_ps(src.compute_16bit_ps() + dst->compute_16bit_ps());
+  dst->set_compute_32bit_ps(src.compute_32bit_ps() + dst->compute_32bit_ps());
+}
+
 }  // namespace
 
 void OpMetricsDbCombiner::Combine(const OpMetricsDb& src) {
@@ -55,6 +62,7 @@ void OpMetricsDbCombiner::Combine(const OpMetricsDb& src) {
       dst->total_host_infeed_enq_start_timestamp_ps_diff());
   dst->set_total_time_ps(src.total_time_ps() + dst->total_time_ps());
   dst->set_total_op_time_ps(src.total_op_time_ps() + dst->total_op_time_ps());
+  CombinePrecisionStats(src.precision_stats(), dst->mutable_precision_stats());
 
   for (const auto& src_metrics : src.metrics_db()) {
     auto* dst_metrics = LookupOrInsertNewOpMetrics(src_metrics.hlo_module_id(),

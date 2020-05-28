@@ -80,7 +80,7 @@ void PriorityQueue::TryEnqueue(const Tuple& tuple, OpKernelContext* ctx,
     if (!already_cancelled) {
       enqueue_attempts_.emplace_back(
           1, callback, ctx, cm, token,
-          [tuple, this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          [tuple, this](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             if (closed_) {
               attempt->context->SetStatus(
                   errors::Cancelled("PriorityQueue '", name_, "' is closed."));
@@ -145,7 +145,8 @@ void PriorityQueue::TryEnqueueMany(const Tuple& tuple, OpKernelContext* ctx,
     if (!already_cancelled) {
       enqueue_attempts_.emplace_back(
           batch_size, callback, ctx, cm, token,
-          [tuple, this, ctx](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          [tuple, this,
+           ctx](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             if (closed_) {
               attempt->context->SetStatus(
                   errors::Cancelled("PriorityQueue '", name_, "' is closed."));
@@ -207,7 +208,7 @@ void PriorityQueue::TryDequeue(OpKernelContext* ctx,
       // TODO(josh11b): This makes two copies of callback, avoid this if possible.
       dequeue_attempts_.emplace_back(
           1, [callback]() { callback(Tuple()); }, ctx, cm, token,
-          [callback, this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          [callback, this](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             const int32 s = queues_[0].size();
             if (closed_ && s == 0) {
               attempt->context->SetStatus(errors::OutOfRange(
@@ -298,8 +299,8 @@ void PriorityQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
       // TODO(josh11b): This makes two copies of callback, avoid this if possible.
       dequeue_attempts_.emplace_back(
           num_elements, [callback]() { callback(Tuple()); }, ctx, cm, token,
-          [callback, this,
-           allow_small_batch](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          [callback, this, allow_small_batch](
+              Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             int32 s = queues_[0].size();
             // Return OutOfRange if closed and there are fewer elements
             // available than requested.  *Unless* allow_small_batch

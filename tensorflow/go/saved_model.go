@@ -17,12 +17,12 @@ limitations under the License.
 package tensorflow
 
 import (
+	"fmt"
 	"runtime"
 	"unsafe"
 
 	"github.com/golang/protobuf/proto"
-
-	tfpb "github.com/tensorflow/tensorflow/tensorflow/go/genop/internal/proto/github.com/tensorflow/tensorflow/tensorflow/go/core"
+	corepb "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto"
 )
 
 // #include <stdlib.h>
@@ -58,6 +58,9 @@ func LoadSavedModel(exportDir string, tags []string, options *SessionOptions) (*
 		return nil, err
 	}
 	cExportDir := C.CString(exportDir)
+	if len(tags) == 0 {
+		return nil, fmt.Errorf("empty tags are not allowed")
+	}
 	cTags := make([]*C.char, len(tags))
 	for i := range tags {
 		cTags[i] = C.CString(tags[i])
@@ -73,7 +76,7 @@ func LoadSavedModel(exportDir string, tags []string, options *SessionOptions) (*
 	C.free(unsafe.Pointer(cExportDir))
 
 	metaGraphDefBytes := C.GoBytes(metaGraphDefBuf.data, C.int(metaGraphDefBuf.length))
-	metaGraphDef := new(tfpb.MetaGraphDef)
+	metaGraphDef := new(corepb.MetaGraphDef)
 	if err := proto.Unmarshal(metaGraphDefBytes, metaGraphDef); err != nil {
 		return nil, err
 	}
@@ -88,7 +91,7 @@ func LoadSavedModel(exportDir string, tags []string, options *SessionOptions) (*
 	return &SavedModel{Session: s, Graph: graph, Signatures: signatures}, nil
 }
 
-func generateSignatures(pb map[string]*tfpb.SignatureDef) map[string]Signature {
+func generateSignatures(pb map[string]*corepb.SignatureDef) map[string]Signature {
 	signatures := make(map[string]Signature)
 	for name, signature := range pb {
 		signatures[name] = signatureDefFromProto(signature)

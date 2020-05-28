@@ -17,29 +17,32 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
 
 using mlir::DenseIntElementsAttr;
 using mlir::ElementsAttr;
+using mlir::failure;
 using mlir::FunctionPass;
+using mlir::LogicalResult;
 using mlir::MLIRContext;
 using mlir::OpRewritePattern;
 using mlir::OwningRewritePatternList;
 using mlir::PassRegistration;
-using mlir::PatternMatchResult;
+using mlir::PassWrapper;
 using mlir::PatternRewriter;
 using mlir::RankedTensorType;
+using mlir::success;
 using mlir::Value;
 
 namespace {
@@ -135,14 +138,14 @@ struct GeneralDotConvert
   explicit GeneralDotConvert(MLIRContext *context)
       : OpRewritePattern(context) {}
 
-  PatternMatchResult matchAndRewrite(mlir::xla_hlo::DotGeneralOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(mlir::xla_hlo::DotGeneralOp op,
+                                PatternRewriter &rewriter) const override {
     auto dot_element_type = mlir::getElementTypeOrSelf(op);
 
     auto dot_numbers = op.dot_dimension_numbers();
     if (dot_numbers.lhs_batching_dimensions().getNumElements() != 0 ||
         dot_numbers.rhs_batching_dimensions().getNumElements() != 0) {
-      return matchFailure();
+      return failure();
     }
 
     auto lhs = ProcessDotArg(op.lhs(), op.getLoc(),
@@ -164,17 +167,18 @@ struct GeneralDotConvert
 
     rewriter.replaceOpWithNewOp<mlir::xla_hlo::ReshapeOp>(op, op.getType(),
                                                           new_dot_op);
-    return matchSuccess();
+    return success();
   }
 };
 
-struct LegalizeGeneralDot : public FunctionPass<LegalizeGeneralDot> {
+struct LegalizeGeneralDot
+    : public PassWrapper<LegalizeGeneralDot, FunctionPass> {
   /// Lower all general dots that can be represented as a non-batched matmul.
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     mlir::xla_hlo::PopulateGeneralDotOpLoweringPatterns(&patterns,
                                                         &getContext());
-    applyPatternsGreedily(getFunction(), patterns);
+    applyPatternsAndFoldGreedily(getFunction(), patterns);
   }
 };
 

@@ -94,23 +94,19 @@ class ExportTest(test_util.TensorFlowTestCase):
     expected_signature_defs = {
         "serving_default":
             signature_def_utils.regression_signature_def(
-                receiver_tensor,
-                output_1),
+                receiver_tensor, output_1),
         "head-2":
             signature_def_utils.classification_signature_def(
-                receiver_tensor,
-                output_2, None),
+                receiver_tensor, output_2, None),
         "head-3":
             signature_def_utils.predict_signature_def(
-                {"input": receiver_tensor},
-                {"some_output_3": output_3}),
+                {"input": receiver_tensor}, {"some_output_3": output_3}),
         "other:head-3":
             signature_def_utils.predict_signature_def(
-                receiver_tensors_alternative_1,
-                {"some_output_3": output_3})
+                receiver_tensors_alternative_1, {"some_output_3": output_3})
 
         # Note that the alternatives 'other:serving_default' and
-        # 'other:head-2' are invalid, because regession and classification
+        # 'other:head-2' are invalid, because regression and classification
         # signatures must take a single string input.  Here we verify that
         # these invalid signatures are not included in the export_utils.
     }
@@ -147,16 +143,13 @@ class ExportTest(test_util.TensorFlowTestCase):
     expected_signature_defs = {
         "serving_default":
             signature_def_utils.regression_signature_def(
-                receiver_tensor,
-                output_1),
+                receiver_tensor, output_1),
         "head-2":
             signature_def_utils.classification_signature_def(
-                receiver_tensor,
-                output_2, None),
+                receiver_tensor, output_2, None),
         "head-3":
             signature_def_utils.predict_signature_def(
-                {"input": receiver_tensor},
-                {"some_output_3": output_3}),
+                {"input": receiver_tensor}, {"some_output_3": output_3}),
         "other1:head-3":
             signature_def_utils.predict_signature_def(
                 {"input": receiver_tensors_alternative_1},
@@ -167,7 +160,7 @@ class ExportTest(test_util.TensorFlowTestCase):
                 {"some_output_3": output_3})
 
         # Note that the alternatives 'other:serving_default' and 'other:head-2'
-        # are invalid, because regession and classification signatures must take
+        # are invalid, because regression and classification signatures must take
         # a single string input.  Here we verify that these invalid signatures
         # are not included in the export_utils.
     }

@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import functools
 import math
+import os
+import shutil
 
 from absl.testing import parameterized
 import numpy as np
@@ -27,13 +29,18 @@ import numpy as np
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend as keras_backend
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.engine import input_layer
+from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import kernelized as kernel_layers
+from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.utils import kernelized_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -52,6 +59,7 @@ def _exact_laplacian(stddev):
       kernelized_utils.exact_laplacian_kernel, stddev=stddev)
 
 
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
 
   def _assert_all_close(self, expected, actual, atol=0.001):
@@ -62,27 +70,39 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
     else:
       self.assertAllClose(expected, actual, atol=atol)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_v2_only
+  def test_state_saving_and_loading(self):
+    input_data = np.random.random((1, 2))
+    rff_layer = kernel_layers.RandomFourierFeatures(output_dim=10, scale=3.0)
+    inputs = input_layer.Input((2,))
+    outputs = rff_layer(inputs)
+    model = training.Model(inputs, outputs)
+    output_data = model.predict(input_data)
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir)
+    saved_model_dir = os.path.join(temp_dir, 'rff_model')
+    model.save(saved_model_dir)
+    new_model = save.load_model(saved_model_dir)
+    new_output_data = new_model.predict(input_data)
+    self.assertAllClose(output_data, new_output_data, atol=1e-4)
+
   def test_invalid_output_dim(self):
     with self.assertRaisesRegexp(
         ValueError, r'`output_dim` should be a positive integer. Given: -3.'):
       _ = kernel_layers.RandomFourierFeatures(output_dim=-3, scale=2.0)
 
-  @test_util.run_in_graph_and_eager_modes()
   def test_unsupported_kernel_type(self):
     with self.assertRaisesRegexp(
         ValueError, r'Unsupported kernel type: \'unsupported_kernel\'.'):
       _ = kernel_layers.RandomFourierFeatures(
           3, 'unsupported_kernel', stddev=2.0)
 
-  @test_util.run_in_graph_and_eager_modes()
   def test_invalid_scale(self):
     with self.assertRaisesRegexp(
         ValueError,
         r'When provided, `scale` should be a positive float. Given: 0.0.'):
       _ = kernel_layers.RandomFourierFeatures(output_dim=10, scale=0.0)
 
-  @test_util.run_in_graph_and_eager_modes()
   def test_invalid_input_shape(self):
     inputs = random_ops.random_uniform((3, 2, 4), seed=1)
     rff_layer = kernel_layers.RandomFourierFeatures(output_dim=10, scale=3.0)
@@ -94,7 +114,6 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
   @parameterized.named_parameters(
       ('gaussian', 'gaussian', 10.0, False),
       ('random', init_ops.random_uniform_initializer, 1.0, True))
-  @test_util.run_in_graph_and_eager_modes()
   def test_random_features_properties(self, initializer, scale, trainable):
     rff_layer = kernel_layers.RandomFourierFeatures(
         output_dim=10,
@@ -109,7 +128,6 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
   @parameterized.named_parameters(('gaussian', 'gaussian', False),
                                   ('laplacian', 'laplacian', True),
                                   ('other', init_ops.ones_initializer, True))
-  @test_util.run_in_graph_and_eager_modes()
   def test_call(self, initializer, trainable):
     rff_layer = kernel_layers.RandomFourierFeatures(
         output_dim=10,
@@ -131,7 +149,6 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
     kernel_layers.RandomFourierFeatures(output_dim=4, name='rff')(inputs)
     kernel_layers.RandomFourierFeatures(output_dim=10, scale=2.0)(inputs)
 
-  @test_util.run_in_graph_and_eager_modes()
   def test_output_shape(self):
     inputs = random_ops.random_uniform((3, 2), seed=1)
     rff_layer = kernel_layers.RandomFourierFeatures(
@@ -142,37 +159,36 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
   @parameterized.named_parameters(
       ('gaussian', 'gaussian'), ('laplacian', 'laplacian'),
       ('other', init_ops.random_uniform_initializer))
-  @test_util.run_deprecated_v1
   def test_call_on_placeholder(self, initializer):
-    inputs = array_ops.placeholder(dtype=dtypes.float32, shape=[None, None])
-    rff_layer = kernel_layers.RandomFourierFeatures(
-        output_dim=5,
-        kernel_initializer=initializer,
-        name='random_fourier_features')
-    with self.assertRaisesRegexp(
-        ValueError, r'The last dimension of the inputs to '
-        '`RandomFourierFeatures` should be defined. Found `None`.'):
-      rff_layer(inputs)
+    with ops.Graph().as_default():
+      inputs = array_ops.placeholder(dtype=dtypes.float32, shape=[None, None])
+      rff_layer = kernel_layers.RandomFourierFeatures(
+          output_dim=5,
+          kernel_initializer=initializer,
+          name='random_fourier_features')
+      with self.assertRaisesRegexp(
+          ValueError, r'The last dimension of the inputs to '
+          '`RandomFourierFeatures` should be defined. Found `None`.'):
+        rff_layer(inputs)
 
-    inputs = array_ops.placeholder(dtype=dtypes.float32, shape=[2, None])
-    rff_layer = kernel_layers.RandomFourierFeatures(
-        output_dim=5,
-        kernel_initializer=initializer,
-        name='random_fourier_features')
-    with self.assertRaisesRegexp(
-        ValueError, r'The last dimension of the inputs to '
-        '`RandomFourierFeatures` should be defined. Found `None`.'):
-      rff_layer(inputs)
+      inputs = array_ops.placeholder(dtype=dtypes.float32, shape=[2, None])
+      rff_layer = kernel_layers.RandomFourierFeatures(
+          output_dim=5,
+          kernel_initializer=initializer,
+          name='random_fourier_features')
+      with self.assertRaisesRegexp(
+          ValueError, r'The last dimension of the inputs to '
+          '`RandomFourierFeatures` should be defined. Found `None`.'):
+        rff_layer(inputs)
 
-    inputs = array_ops.placeholder(dtype=dtypes.float32, shape=[None, 3])
-    rff_layer = kernel_layers.RandomFourierFeatures(
-        output_dim=5, name='random_fourier_features')
-    rff_layer(inputs)
+      inputs = array_ops.placeholder(dtype=dtypes.float32, shape=[None, 3])
+      rff_layer = kernel_layers.RandomFourierFeatures(
+          output_dim=5, name='random_fourier_features')
+      rff_layer(inputs)
 
   @parameterized.named_parameters(('gaussian', 10, 'gaussian', 2.0),
                                   ('laplacian', 5, 'laplacian', None),
                                   ('other', 10, init_ops.ones_initializer, 1.0))
-  @test_util.run_in_graph_and_eager_modes()
   def test_compute_output_shape(self, output_dim, initializer, scale):
     rff_layer = kernel_layers.RandomFourierFeatures(
         output_dim, initializer, scale=scale, name='rff')
@@ -201,7 +217,6 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
       ('gaussian', 10, 'gaussian', 3.0, False),
       ('laplacian', 5, 'laplacian', 5.5, True),
       ('other', 7, init_ops.random_uniform_initializer(), None, True))
-  @test_util.run_in_graph_and_eager_modes()
   def test_get_config(self, output_dim, initializer, scale, trainable):
     rff_layer = kernel_layers.RandomFourierFeatures(
         output_dim,
@@ -232,7 +247,6 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
       ('gaussian', 5, 'gaussian', None, True),
       ('laplacian', 5, 'laplacian', 5.5, False),
       ('other', 7, init_ops.ones_initializer(), 2.0, True))
-  @test_util.run_in_graph_and_eager_modes()
   def test_from_config(self, output_dim, initializer, scale, trainable):
     model_config = {
         'output_dim': output_dim,
@@ -253,7 +267,7 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
     num_trainable_vars = 1 if trainable else 0
     self.assertLen(rff_layer.trainable_variables, num_trainable_vars)
     if trainable:
-      self.assertEqual('random_fourier_features/random_features_scale:0',
+      self.assertEqual('random_fourier_features/kernel_scale:0',
                        rff_layer.trainable_variables[0].name)
     self.assertLen(rff_layer.non_trainable_variables, 3 - num_trainable_vars)
 
@@ -261,7 +275,6 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
       ('gaussian', 10, 'gaussian', 3.0, True),
       ('laplacian', 5, 'laplacian', 5.5, False),
       ('other', 10, init_ops.random_uniform_initializer(), None, True))
-  @test_util.run_in_graph_and_eager_modes()
   def test_same_random_features_params_reused(self, output_dim, initializer,
                                               scale, trainable):
     """Applying the layer on the same input twice gives the same output."""
@@ -280,7 +293,6 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
   @parameterized.named_parameters(
       ('gaussian', 'gaussian', 5.0), ('laplacian', 'laplacian', 3.0),
       ('other', init_ops.random_uniform_initializer(), 5.0))
-  @test_util.run_in_graph_and_eager_modes()
   def test_different_params_similar_approximation(self, initializer, scale):
     random_seed.set_random_seed(12345)
     rff_layer1 = kernel_layers.RandomFourierFeatures(
@@ -313,7 +325,6 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
   @parameterized.named_parameters(
       ('gaussian', 'gaussian', 5.0, _exact_gaussian(stddev=5.0)),
       ('laplacian', 'laplacian', 20.0, _exact_laplacian(stddev=20.0)))
-  @test_util.run_in_graph_and_eager_modes()
   def test_bad_kernel_approximation(self, initializer, scale, exact_kernel_fn):
     """Approximation is bad when output dimension is small."""
     # Two distinct inputs.
@@ -352,7 +363,6 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
   @parameterized.named_parameters(
       ('gaussian', 'gaussian', 5.0, _exact_gaussian(stddev=5.0)),
       ('laplacian', 'laplacian', 10.0, _exact_laplacian(stddev=10.0)))
-  @test_util.run_in_graph_and_eager_modes()
   def test_good_kernel_approximation_multiple_inputs(self, initializer, scale,
                                                      exact_kernel_fn):
     # Parameters.

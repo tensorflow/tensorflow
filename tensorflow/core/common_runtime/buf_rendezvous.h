@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -28,6 +27,7 @@ limitations under the License.
 namespace tensorflow {
 class Device;
 class DeviceContext;
+class DeviceMgr;
 class Tensor;
 
 // EXPERIMENTAL: RDMA oriented producer/consumer rendezvous on a local
@@ -103,9 +103,9 @@ class BufRendezvous {
   const uint64 step_id_;
   const DeviceMgr* const dev_mgr_;  // Not owned.
   mutex mu_;
-  Status status_ GUARDED_BY(mu_);
+  Status status_ TF_GUARDED_BY(mu_);
   typedef absl::flat_hash_map<string, Hook*> HookTable;
-  HookTable hook_table_ GUARDED_BY(mu_);
+  HookTable hook_table_ TF_GUARDED_BY(mu_);
 
   void PurgeTable(const Status& s, HookTable* table);
 };

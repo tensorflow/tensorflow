@@ -62,7 +62,7 @@ Adding a call to `tf.config.experimental_execute_functions_eagerly` before
 executing the function will land the debugger in the original code instead:
 
 ```
-tf.config.experimental_run_functions_eagerly(True)
+tf.config.run_functions_eagerly(True)
 f(1)
 ```
 

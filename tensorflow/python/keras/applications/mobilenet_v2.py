@@ -69,7 +69,7 @@ MACs stands for Multiply Adds
 | [mobilenet_v2_0.35_128] | 20  | 1.66 |          50.8 | 75.0 |
 | [mobilenet_v2_0.35_96]  | 11  | 1.66 |          45.5 | 70.4 |
 
-Reference paper:
+  Reference paper:
   - [MobileNetV2: Inverted Residuals and Linear Bottlenecks]
   (https://arxiv.org/abs/1801.04381) (CVPR 2018)
 """
@@ -77,20 +77,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
 from tensorflow.python.keras import backend
-from tensorflow.python.keras import layers
 from tensorflow.python.keras.applications import imagenet_utils
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.layers import VersionAwareLayers
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import keras_export
 
-
 BASE_WEIGHT_PATH = ('https://storage.googleapis.com/tensorflow/'
                     'keras-applications/mobilenet_v2/')
+layers = None
 
 
 @keras_export('keras.applications.mobilenet_v2.MobileNetV2',
@@ -102,12 +101,22 @@ def MobileNetV2(input_shape=None,
                 input_tensor=None,
                 pooling=None,
                 classes=1000,
+                classifier_activation='softmax',
                 **kwargs):
   """Instantiates the MobileNetV2 architecture.
 
+  Reference:
+  - [MobileNetV2: Inverted Residuals and Linear Bottlenecks](
+      https://arxiv.org/abs/1801.04381) (CVPR 2018)
+
+  Optionally loads weights pre-trained on ImageNet.
+
+  Caution: Be sure to properly pre-process your inputs to the application.
+  Please see `applications.mobilenet_v2.preprocess_input` for an example.
+
   Arguments:
-    input_shape: optional shape tuple, to be specified if you would
-      like to use a model with an input img resolution that is not
+    input_shape: Optional shape tuple, to be specified if you would
+      like to use a model with an input image resolution that is not
       (224, 224, 3).
       It should have exactly 3 inputs channels (224, 224, 3).
       You can also omit this option if you would like
@@ -116,24 +125,25 @@ def MobileNetV2(input_shape=None,
       input_shape will be used if they match, if the shapes
       do not match then we will throw an error.
       E.g. `(160, 160, 3)` would be one valid value.
-    alpha: controls the width of the network. This is known as the
-    width multiplier in the MobileNetV2 paper, but the name is kept for
-    consistency with MobileNetV1 in Keras.
+    alpha: Float between 0 and 1. controls the width of the network.
+      This is known as the width multiplier in the MobileNetV2 paper,
+      but the name is kept for consistency with `applications.MobileNetV1`
+      model in Keras.
       - If `alpha` < 1.0, proportionally decreases the number
           of filters in each layer.
       - If `alpha` > 1.0, proportionally increases the number
           of filters in each layer.
       - If `alpha` = 1, default number of filters from the paper
-           are used at each layer.
-    include_top: whether to include the fully-connected
-      layer at the top of the network.
-    weights: one of `None` (random initialization),
-        'imagenet' (pre-training on ImageNet),
-        or the path to the weights file to be loaded.
-    input_tensor: optional Keras tensor (i.e. output of
+          are used at each layer.
+    include_top: Boolean, whether to include the fully-connected
+      layer at the top of the network. Defaults to `True`.
+    weights: String, one of `None` (random initialization),
+      'imagenet' (pre-training on ImageNet),
+      or the path to the weights file to be loaded.
+    input_tensor: Optional Keras tensor (i.e. output of
       `layers.Input()`)
       to use as image input for the model.
-    pooling: Optional pooling mode for feature extraction
+    pooling: String, optional pooling mode for feature extraction
       when `include_top` is `False`.
       - `None` means that the output of the model
           will be the 4D tensor output of the
@@ -145,25 +155,32 @@ def MobileNetV2(input_shape=None,
           2D tensor.
       - `max` means that global max pooling will
           be applied.
-    classes: optional number of classes to classify images
+    classes: Integer, optional number of classes to classify images
       into, only to be specified if `include_top` is True, and
       if no `weights` argument is specified.
+    classifier_activation: A `str` or callable. The activation function to use
+      on the "top" layer. Ignored unless `include_top=True`. Set
+      `classifier_activation=None` to return the logits of the "top" layer.
     **kwargs: For backwards compatibility only.
 
   Returns:
-    A Keras model instance.
+    A `keras.Model` instance.
 
   Raises:
     ValueError: in case of invalid argument for `weights`,
       or invalid input shape or invalid alpha, rows when
       weights='imagenet'
+    ValueError: if `classifier_activation` is not `softmax` or `None` when
+      using a pretrained top layer.
   """
+  global layers
   if 'layers' in kwargs:
-    global layers
     layers = kwargs.pop('layers')
+  else:
+    layers = VersionAwareLayers()
   if kwargs:
     raise ValueError('Unknown argument(s): %s' % (kwargs,))
-  if not (weights in {'imagenet', None} or os.path.exists(weights)):
+  if not (weights in {'imagenet', None} or file_io.file_exists(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '
@@ -356,9 +373,10 @@ def MobileNetV2(input_shape=None,
 
   if include_top:
     x = layers.GlobalAveragePooling2D()(x)
-    x = layers.Dense(
-        classes, activation='softmax', use_bias=True, name='Logits')(
-            x)
+    imagenet_utils.validate_activation(classifier_activation, weights)
+    x = layers.Dense(classes, activation=classifier_activation,
+                     name='predictions')(x)
+
   else:
     if pooling == 'avg':
       x = layers.GlobalAveragePooling2D()(x)
@@ -487,3 +505,8 @@ def preprocess_input(x, data_format=None):
 @keras_export('keras.applications.mobilenet_v2.decode_predictions')
 def decode_predictions(preds, top=5):
   return imagenet_utils.decode_predictions(preds, top=top)
+
+
+preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
+    mode='', ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TF)
+decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-"""Utlity to convert FunctionDef to GraphDef and Graph."""
+"""Utility to convert FunctionDef to GraphDef and Graph."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -175,7 +175,9 @@ def function_def_to_graph_def(fdef, input_shapes=None):
     for k in arg_attrs:
       # Only copy internal attributes. Normal attributes for nodes cannot be
       # applied to these Placeholder nodes.
-      if k.startswith("_"):
+      if k == "_output_shapes":
+        node_def.attr["shape"].shape.CopyFrom(arg_attrs[k].list.shape[0])
+      elif k.startswith("_"):
         node_def.attr[k].CopyFrom(arg_attrs[k])
 
   # 2. Copy all body NodeDefs to the GraphDef.

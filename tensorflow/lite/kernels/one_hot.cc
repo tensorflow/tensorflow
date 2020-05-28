@@ -128,6 +128,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt16:
     case kTfLiteInt32:
     case kTfLiteInt64:
+    case kTfLiteInt8:
+    case kTfLiteUInt8:
     case kTfLiteBool:
       op_context.output->type = op_context.dtype;
       break;
@@ -171,6 +173,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     case kTfLiteInt64:
       OneHotCompute<int64_t>(op_context);
+      break;
+    case kTfLiteInt8:
+      OneHotCompute<int8_t>(op_context);
+      break;
+    case kTfLiteUInt8:
+      OneHotCompute<uint8_t>(op_context);
       break;
     case kTfLiteBool:
       OneHotCompute<bool>(op_context);

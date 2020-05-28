@@ -17,25 +17,28 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/core/lib/io/path.h"
-
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-const char kSaxpyIRFile[] =
-    "compiler/xla/service/gpu/llvm_gpu_backend/tests_data/saxpy.ll";
+string SaxpyIRFile() {
+  return tensorflow::io::JoinPath("tensorflow", "compiler", "xla", "service",
+                                  "gpu", "llvm_gpu_backend", "tests_data",
+                                  "saxpy.ll");
+}
 
 TEST(UtilsTest, TestLoadIRModule) {
   llvm::LLVMContext llvm_context;
   string test_srcdir = tensorflow::testing::TensorFlowSrcRoot();
   std::unique_ptr<llvm::Module> module = LoadIRModule(
-      tensorflow::io::JoinPath(test_srcdir, kSaxpyIRFile), &llvm_context);
+      tensorflow::GetDataDependencyFilepath(SaxpyIRFile()), &llvm_context);
   // Sanity check that the module was loaded properly.
   ASSERT_NE(nullptr, module);
   ASSERT_NE(std::string::npos, module->getModuleIdentifier().find("saxpy.ll"));

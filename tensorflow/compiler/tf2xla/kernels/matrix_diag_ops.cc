@@ -278,8 +278,10 @@ class MatrixDiagOp : public XlaOpKernel {
         errors::InvalidArgument(
             "The number of diagonals provided in the input does not "
             "match the lower_diag_index and upper_diag_index range."));
-    const int64 min_num_rows = max_diag_len - std::min(upper_diag_index, 0LL);
-    const int64 min_num_cols = max_diag_len + std::max(lower_diag_index, 0LL);
+    const int64 min_num_rows =
+        max_diag_len - std::min(upper_diag_index, int64{0});
+    const int64 min_num_cols =
+        max_diag_len + std::max(lower_diag_index, int64{0});
     OP_REQUIRES(context, num_rows == -1 || num_rows >= min_num_rows,
                 errors::InvalidArgument("The number of rows is too small."));
     OP_REQUIRES(context, num_cols == -1 || num_cols >= min_num_cols,
@@ -387,8 +389,8 @@ class MatrixDiagPartOp : public XlaOpKernel {
     const int num_diags = upper_diag_index - lower_diag_index + 1;
     if (num_diags > 1) output_shape.AddDim(num_diags);
     const int32 max_diag_len =
-        std::min(num_rows + std::min(upper_diag_index, 0LL),
-                 num_cols - std::max(lower_diag_index, 0LL));
+        std::min(num_rows + std::min(upper_diag_index, int64{0}),
+                 num_cols - std::max(lower_diag_index, int64{0}));
     output_shape.AddDim(max_diag_len);
 
     // Computes output.
@@ -502,8 +504,8 @@ class MatrixSetDiagOp : public XlaOpKernel {
     expected_diag_shape.RemoveLastDims(2);
     if (num_diags > 1) expected_diag_shape.AddDim(num_diags);
     const int32 max_diag_len =
-        std::min(num_rows + std::min(upper_diag_index, 0LL),
-                 num_cols - std::max(lower_diag_index, 0LL));
+        std::min(num_rows + std::min(upper_diag_index, int64{0}),
+                 num_cols - std::max(lower_diag_index, int64{0}));
     expected_diag_shape.AddDim(max_diag_len);
     OP_REQUIRES(
         context, expected_diag_shape == diag_shape,

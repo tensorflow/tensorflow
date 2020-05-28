@@ -16,31 +16,32 @@ limitations under the License.
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
 
 #include <memory>
-#include <utility>
+#include <string>
 
 #include "grpcpp/grpcpp.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 
-std::unique_ptr<Thread> StartProfilerServer(int32 port) {
-  Env* env = Env::Default();
-  return WrapUnique(env->StartThread({}, "profiler server", [port]() {
-    string server_address = absl::StrCat("0.0.0.0:", port);
-    std::unique_ptr<grpc::ProfilerService::Service> service =
-        CreateProfilerService();
-    ::grpc::ServerBuilder builder;
-    builder.AddListeningPort(server_address,
-                             ::grpc::InsecureServerCredentials());
-    builder.RegisterService(service.get());
-    std::unique_ptr<::grpc::Server> server(builder.BuildAndStart());
-    LOG(INFO) << "Profiling Server listening on " << server_address;
-    server->Wait();
-  }));
+void ProfilerServer::StartProfilerServer(int32 port) {
+  std::string server_address = absl::StrCat("0.0.0.0:", port);
+  service_ = CreateProfilerService();
+  ::grpc::ServerBuilder builder;
+  builder.AddListeningPort(server_address, ::grpc::InsecureServerCredentials());
+  builder.RegisterService(service_.get());
+  server_ = builder.BuildAndStart();
+  LOG(INFO) << "Profiling Server listening on " << server_address;
+}
+
+ProfilerServer::~ProfilerServer() {
+  if (server_) {
+    server_->Shutdown();
+    server_->Wait();
+  }
 }
 
 }  // namespace tensorflow

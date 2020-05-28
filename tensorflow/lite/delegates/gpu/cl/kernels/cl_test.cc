@@ -21,17 +21,18 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
-                           const CreationContext& creation_context,
-                           GPUOperation* operation,
-                           const std::vector<BHWC>& dst_sizes,
-                           const std::vector<TensorFloat32*>& dst_cpu) {
+absl::Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
+                                 const CreationContext& creation_context,
+                                 GPUOperation* operation,
+                                 const std::vector<BHWC>& dst_sizes,
+                                 const std::vector<TensorFloat32*>& dst_cpu) {
   const OperationDef& op_def = operation->GetDefinition();
   std::vector<Tensor> src(src_cpu.size());
   for (int i = 0; i < src_cpu.size(); ++i) {
     auto src_shape = src_cpu[i].shape;
-    if (src_shape.b != 1 && !op_def.batch_support) {
-      return InvalidArgumentError("op_def.batch_support must be enabled");
+    if (src_shape.b != 1 && !op_def.IsBatchSupported()) {
+      return absl::InvalidArgumentError(
+          "Layout doesn't have Batch dimension, but shape.b != 1");
     }
     RETURN_IF_ERROR(CreateTensor(*creation_context.context,
                                  *creation_context.device, src_shape,
@@ -43,8 +44,9 @@ Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
   std::vector<Tensor> dst(dst_cpu.size());
   for (int i = 0; i < dst_cpu.size(); ++i) {
     auto dst_shape = dst_sizes[i];
-    if (dst_shape.b != 1 && !op_def.batch_support) {
-      return InvalidArgumentError("op_def.batch_support must be enabled");
+    if (dst_shape.b != 1 && !op_def.IsBatchSupported()) {
+      return absl::InvalidArgumentError(
+          "Layout doesn't have Batch dimension, but shape.b != 1");
     }
     RETURN_IF_ERROR(CreateTensor(*creation_context.context,
                                  *creation_context.device, dst_shape,
@@ -62,22 +64,22 @@ Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
     dst_cpu[i]->data = std::vector<float>(dst_sizes[i].DimensionsProduct(), 0);
     RETURN_IF_ERROR(dst[i].ReadData(creation_context.queue, dst_cpu[i]));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
-                           const CreationContext& creation_context,
-                           GPUOperation* operation, const BHWC& dst_size,
-                           TensorFloat32* result) {
+absl::Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
+                                 const CreationContext& creation_context,
+                                 GPUOperation* operation, const BHWC& dst_size,
+                                 TensorFloat32* result) {
   return ExecuteGPUOperation(
       std::vector<TensorFloat32>{src_cpu}, creation_context, operation,
       std::vector<BHWC>{dst_size}, std::vector<TensorFloat32*>{result});
 }
 
-Status ExecuteGPUOperation(const TensorFloat32& src_cpu,
-                           const CreationContext& creation_context,
-                           GPUOperation* operation, const BHWC& dst_size,
-                           TensorFloat32* result) {
+absl::Status ExecuteGPUOperation(const TensorFloat32& src_cpu,
+                                 const CreationContext& creation_context,
+                                 GPUOperation* operation, const BHWC& dst_size,
+                                 TensorFloat32* result) {
   return ExecuteGPUOperation(std::vector<TensorFloat32>{src_cpu},
                              creation_context, operation, dst_size, result);
 }

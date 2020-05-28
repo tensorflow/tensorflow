@@ -241,6 +241,12 @@ REGISTER_OP("StatelessWhile")
     .Attr("parallel_iterations: int = 10")
     .SetShapeFn(WhileShapeInferenceFn);
 
+REGISTER_OP("ToBool")
+    .Input("input: T")
+    .Output("output: bool")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("For")
     .Input("start: int32")
     .Input("limit: int32")
@@ -292,5 +298,11 @@ REGISTER_OP("FakeParam")
       c->set_output(0, out);
       return Status::OK();
     });
+
+// Returns the device index.
+REGISTER_OP("DeviceIndex")
+    .Output("index: int32")
+    .Attr("device_names: list(string)")
+    .SetShapeFn(shape_inference::ScalarShape);
 
 }  // end namespace tensorflow

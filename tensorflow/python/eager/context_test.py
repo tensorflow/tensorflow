@@ -24,9 +24,9 @@ import numpy as np
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
-from tensorflow.python.tpu import tpu
 
 
 class ContextTest(test.TestCase):
@@ -79,7 +79,7 @@ class ContextTest(test.TestCase):
     def f(x):
       return x + constant_op.constant(1.)
 
-    with context.collect_optimized_graphs() as graphs:
+    with context.collect_graphs() as graphs:
       with ops.device('CPU:0'):
         f(constant_op.constant(1.))
 
@@ -87,39 +87,26 @@ class ContextTest(test.TestCase):
     graph, = graphs
     self.assertIn('CPU:0', graph.node[0].device)
 
-  def testTPUInitialization(self):
-    """Tests that TPUs are fully functional with no explicit initialization."""
-    ctx = context.context()
-    if not ctx.list_physical_devices('TPU'):
-      self.assertEmpty(ctx.tpu_topologies)
-      self.skipTest('A TPU is required to run this test.')
+  def testGetFunctionDef(self):
 
     @def_function.function
-    def f(x):
-      return x * constant_op.constant(2.)
+    def f():
+      return constant_op.constant(1.)
 
-    @def_function.function
-    def replicated_f():
-      return tpu.replicate(f, inputs=[[constant_op.constant([1., 2., 3., 4.])]])
+    concrete = f.get_concrete_function()
+    function_def = context.get_function_def(concrete.name)
 
-    y = replicated_f()
+    self.assertIsNot(function_def, None)
 
-    self.assertAllClose([[[2., 4., 6., 8.]]], y)
+    found_const_node = False
+    for node_def in function_def.node_def:
+      if node_def.op == 'Const':
+        found_const_node = True
+        break
+    self.assertTrue(found_const_node)
 
-    with ops.device('TPU:0'):
-      x = constant_op.constant([1., 2., 3., 4.])
-
-    with ops.device('TPU:0'):
-      y = x * constant_op.constant(2.)
-    self.assertIn('TPU:0', y.device)
-
-    with ops.device('TPU:0'):
-      y = f(x)
-      self.assertAllClose([2., 4., 6., 8.], y)
-    self.assertIn('TPU:0', y.device)
-    topology, = ctx.tpu_topologies
-    self.assertGreater(topology.num_tasks, 0)
-    self.assertGreater(topology.num_tpus_per_task, 0)
+    with self.assertRaises(errors.NotFoundError):
+      _ = context.get_function_def('this_should_not_be_found')
 
 
 if __name__ == '__main__':

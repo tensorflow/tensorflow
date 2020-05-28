@@ -71,7 +71,7 @@ class TrivialResolver : public OpResolver {
   TfLiteRegistration* constant_return_;
 };
 
-TEST(BasicFlatBufferModel, TestNonExistantFiles) {
+TEST(BasicFlatBufferModel, TestNonExistentFiles) {
   ASSERT_TRUE(!FlatBufferModel::BuildFromFile("/tmp/tflite_model_1234"));
 }
 
@@ -366,7 +366,7 @@ TEST(BasicFlatBufferModel, TestReadRuntimeVersionFromModel) {
       "tensorflow/lite/testdata/test_min_runtime.bin");
   ASSERT_TRUE(model2);
   // Check that we have read the runtime string correctly.
-  ASSERT_EQ(model2->GetMinimumRuntime(), "1.10.0");
+  ASSERT_EQ(model2->GetMinimumRuntime(), "1.5.0");
 }
 
 // The test model has the following tensor encoded in the TACO format:
@@ -386,7 +386,7 @@ TEST(BasicFlatBufferModel, TestParseModelWithSparseTensor) {
   ASSERT_EQ(InterpreterBuilder(*model, TrivialResolver())(&interpreter),
             kTfLiteOk);
   ASSERT_NE(interpreter, nullptr);
-  ASSERT_EQ(interpreter->tensors_size(), 1);
+  ASSERT_EQ(interpreter->tensors_size(), 2);
   TfLiteTensor* t1 = interpreter->tensor(0);
   ASSERT_EQ(t1->allocation_type, kTfLiteMmapRo);
 
@@ -440,6 +440,8 @@ TEST(BasicFlatBufferModel, TestParseModelWithSparseTensor) {
   ASSERT_EQ(t1->sparsity->dim_metadata[3].array_segments, nullptr);
   ASSERT_EQ(t1->sparsity->dim_metadata[3].array_indices, nullptr);
 }
+
+// TODO(b/150072943): Add malformed model with sparse tensor tests.
 
 // TODO(aselle): Add tests for serialization of builtin op data types.
 // These tests will occur with the evaluation tests of individual operators,

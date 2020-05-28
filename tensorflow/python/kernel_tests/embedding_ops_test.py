@@ -40,6 +40,7 @@ from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import compat
@@ -643,6 +644,12 @@ class EmbeddingLookupTest(test.TestCase):
           # implementations of sqrt are not guaranteed to produce exactly the
           # same results. Therefore, an exact comparison cannot be made.
           self.assertAllClose(simple, sharded)
+
+  def testRaggedMaxNorm(self):
+    embeddings = constant_op.constant([[2.0]])
+    ids = ragged_factory_ops.constant([[0, 0], [0]], dtype=dtypes.int32)
+    embedding = embedding_ops.embedding_lookup([embeddings], ids, max_norm=1.0)
+    self.assertAllEqual(embedding, [[[1.0], [1.0]], [[1.0]]])
 
 
 class EmbeddingLookupSparseTest(test.TestCase):

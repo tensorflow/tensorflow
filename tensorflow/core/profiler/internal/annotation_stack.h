@@ -18,6 +18,7 @@ limitations under the License.
 #include <stddef.h>
 
 #include <atomic>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -30,7 +31,7 @@ namespace internal {
 
 // Whether annotations are enabled.
 // Static atomic so Annotation::IsEnabled can be fast and non-blocking.
-extern std::atomic<bool> g_annotation_enabled;
+TF_EXPORT extern std::atomic<int> g_annotation_enabled;
 
 }  // namespace internal
 

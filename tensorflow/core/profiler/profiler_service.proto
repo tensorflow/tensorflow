@@ -2,9 +2,7 @@ syntax = "proto3";
 
 package tensorflow;
 
-import "tensorflow/core/framework/graph.proto";
-import "tensorflow/core/profiler/op_profile.proto";
-import "tensorflow/core/protobuf/config.proto";
+import "tensorflow/core/profiler/profiler_options.proto";
 import "tensorflow/core/profiler/profiler_service_monitor_result.proto";
 
 // The ProfilerService service retrieves performance information about
@@ -12,16 +10,12 @@ import "tensorflow/core/profiler/profiler_service_monitor_result.proto";
 service ProfilerService {
   // Starts a profiling session, blocks until it completes, and returns data.
   rpc Profile(ProfileRequest) returns (ProfileResponse) {}
+  // Signal to terminate the Profile rpc for a on-going profiling session,
+  // The Profile rpc will return successfully and prematurely without timeout.
+  // This is used by programmatic mode to end the session in workers.
+  rpc Terminate(TerminateRequest) returns (TerminateResponse) {}
   // Collects profiling data and returns user-friendly metrics.
   rpc Monitor(MonitorRequest) returns (MonitorResponse) {}
-}
-
-message ProfileOptions {
-  // We don't collect the dataset ops by default for better trace-viewer
-  // scalability. The caller can mannually set this field to include the ops.
-  bool include_dataset_ops = 1;
-
-  // next-field: 2
 }
 
 message ToolRequestOptions {
@@ -80,33 +74,23 @@ message ProfileToolData {
 }
 
 message ProfileResponse {
-  reserved 1;  // was uint64 placeholder for returning something meaningful.
-  // Graphs of programs executed on devices during the profiling period.
-  repeated GraphDef computation_graph = 2;
-
-  // Performance profile that can be used to annotate HLO operations in the
-  // computation graph.
-  RunMetadata hlo_metadata = 5;
-
-  // Encoded Trace proto message that contains metadata about the trace captured
-  // during the profiling period. Describes the devices and resources that
-  // 'trace_events' refers to.
-  bytes encoded_trace = 3;
-
-  // Assembles a hierarchical performance profile based on HLOs in trace events.
-  // If the trace covers multiple programs, the longest-running one is analyzed.
-  // See op_profile.proto for the detailed semantics of the returned profile.
-  profiler.op_profile.Profile op_profile = 4;
-
   // Data payload for each required tools.
   repeated ProfileToolData tool_data = 6;
 
   // When we write profiling data directly to repository directory, we need a
-  // way to figure out whether the captured trace is empty (due to idle TPU).
+  // way to figure out whether the captured trace is empty.
   bool empty_trace = 7;
 
+  reserved 1, 2, 3, 4, 5;
   // next-field: 8
 }
+
+message TerminateRequest {
+  // Which session id to terminate.
+  string session_id = 1;
+}
+
+message TerminateResponse {}
 
 message MonitorRequest {
   // Duration for which to profile between each update.
@@ -130,17 +114,10 @@ message MonitorResponse {
   // Properly formatted string data that can be directly returned back to user.
   string data = 1;
 
-  reserved 2;  // was double device_idle_time_percent
-  reserved 3;  // was double matrix_unit_utilization_percent
-  reserved 4;  // was double step_time_ms_avg
-  reserved 5;  // was double step_time_ms_min
-  reserved 6;  // was double step_time_ms_max
-  reserved 7;  // was double infeed_percent_avg
-  reserved 8;  // was double infeed_percent_min
-  reserved 9;  // was double infeed_percent_max
-
   // A collection of monitoring results for each field show in data.
   ProfilerServiceMonitorResult monitor_result = 10;
+
+  reserved 2, 3, 4, 5, 6, 7, 8, 9;
 
   // next-field: 11
 }

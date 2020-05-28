@@ -24,9 +24,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import glob
 import multiprocessing
 import os
 import subprocess
+import sys
+import sysconfig
 
 from distutils.command.build_ext import build_ext
 import numpy
@@ -39,29 +42,33 @@ PACKAGE_NAME = 'tflite_runtime'
 PACKAGE_VERSION = os.environ['PACKAGE_VERSION']
 DOCLINES = __doc__.split('\n')
 TENSORFLOW_DIR = os.environ['TENSORFLOW_DIR']
-
-# Setup cross compiling
-TARGET = os.environ.get('TENSORFLOW_TARGET', None)
-if TARGET == 'rpi':
-  os.environ['CXX'] = 'arm-linux-gnueabihf-g++'
-  os.environ['CC'] = 'arm-linux-gnueabihf-gcc'
-elif TARGET == 'aarch64':
-  os.environ['CXX'] = 'aarch64-linux-gnu-g++'
-  os.environ['CC'] = 'aarch64-linux-gnu-gcc'
-MAKE_CROSS_OPTIONS = ['TARGET=%s' % TARGET]  if TARGET else []
-
 RELATIVE_MAKE_DIR = os.path.join('tensorflow', 'lite', 'tools', 'make')
 MAKE_DIR = os.path.join(TENSORFLOW_DIR, RELATIVE_MAKE_DIR)
 DOWNLOADS_DIR = os.path.join(MAKE_DIR, 'downloads')
 RELATIVE_MAKEFILE_PATH = os.path.join(RELATIVE_MAKE_DIR, 'Makefile')
 DOWNLOAD_SCRIPT_PATH = os.path.join(MAKE_DIR, 'download_dependencies.sh')
 
+# Setup cross compiling
+TARGET = os.environ.get('TENSORFLOW_TARGET')
+if TARGET == 'rpi':
+  os.environ['CXX'] = 'arm-linux-gnueabihf-g++'
+  os.environ['CC'] = 'arm-linux-gnueabihf-gcc'
+elif TARGET == 'aarch64':
+  os.environ['CXX'] = 'aarch64-linux-gnu-g++'
+  os.environ['CC'] = 'aarch64-linux-gnu-gcc'
+
+MAKE_CROSS_OPTIONS = []
+for name in ['TARGET', 'TARGET_ARCH', 'CC_PREFIX', 'EXTRA_CXXFLAGS']:
+  value = os.environ.get('TENSORFLOW_%s' % name)
+  if value:
+    MAKE_CROSS_OPTIONS.append('%s=%s' % (name, value))
+
 
 # Check physical memory and if we are on a reasonable non small SOC machine
-# with more than 4GB, use all the CPUs, otherwisxe only 1.
+# with more than 4GB, use all the CPUs, otherwise only 1.
 def get_build_cpus():
   physical_bytes = os.sysconf('SC_PAGESIZE') * os.sysconf('SC_PHYS_PAGES')
-  if physical_bytes < (1<<30) * 4:
+  if physical_bytes < (1 << 30) * 4:
     return 1
   else:
     return multiprocessing.cpu_count()
@@ -69,9 +76,9 @@ def get_build_cpus():
 
 def make_args(target='', quiet=True):
   """Construct make command line."""
-  args = (['make', 'SHELL=/bin/bash',
-           'BUILD_WITH_NNAPI=false', '-C', TENSORFLOW_DIR]
-          + MAKE_CROSS_OPTIONS +
+  args = ([
+      'make', 'SHELL=/bin/bash', 'BUILD_WITH_NNAPI=false', '-C', TENSORFLOW_DIR
+  ] + MAKE_CROSS_OPTIONS +
           ['-f', RELATIVE_MAKEFILE_PATH, '-j',
            str(get_build_cpus())])
   if quiet:
@@ -124,28 +131,55 @@ class CustomBuildPy(build_py, object):
     return super(CustomBuildPy, self).run()
 
 
+def get_pybind_include():
+  """pybind11 include directory is not correctly resolved.
+
+  This fixes include directory to /usr/local/pythonX.X
+
+  Returns:
+    include directories to find pybind11
+  """
+  if sys.version_info[0] == 3:
+    include_dirs = glob.glob('/usr/local/include/python3*')
+  else:
+    include_dirs = glob.glob('/usr/local/include/python2*')
+  include_dirs.append(sysconfig.get_path('include'))
+  tmp_include_dirs = []
+  pip_dir = os.path.join(TENSORFLOW_DIR, 'tensorflow', 'lite', 'tools',
+                         'pip_package', 'gen')
+  for include_dir in include_dirs:
+    tmp_include_dir = os.path.join(pip_dir, include_dir[1:])
+    tmp_include_dirs.append(tmp_include_dir)
+    try:
+      os.makedirs(tmp_include_dir)
+      os.symlink(include_dir, os.path.join(tmp_include_dir, 'include'))
+    except IOError:  # file already exists.
+      pass
+  return tmp_include_dirs
+
+
 LIB_TFLITE = 'tensorflow-lite'
 LIB_TFLITE_DIR = make_output('libdir')
 
 ext = Extension(
-    name='%s._interpreter_wrapper' % PACKAGE_NAME,
+    name='%s._pywrap_tensorflow_interpreter_wrapper' % PACKAGE_NAME,
     language='c++',
-    sources=['interpreter_wrapper/interpreter_wrapper.i',
-             'interpreter_wrapper/interpreter_wrapper.cc',
-             'interpreter_wrapper/numpy.cc',
-             'interpreter_wrapper/python_error_reporter.cc',
-             'interpreter_wrapper/python_utils.cc'],
-    swig_opts=['-c++',
-               '-I%s' % TENSORFLOW_DIR,
-               '-module', 'interpreter_wrapper',
-               '-outdir', PACKAGE_NAME],
-    extra_compile_args=['-std=c++11'],
-    include_dirs=[TENSORFLOW_DIR,
-                  os.path.join(TENSORFLOW_DIR, 'tensorflow', 'lite', 'tools',
-                               'pip_package'),
-                  numpy.get_include(),
-                  os.path.join(DOWNLOADS_DIR, 'flatbuffers', 'include'),
-                  os.path.join(DOWNLOADS_DIR, 'absl')],
+    sources=[
+        'interpreter_wrapper/interpreter_wrapper.cc',
+        'interpreter_wrapper/interpreter_wrapper_pybind11.cc',
+        'interpreter_wrapper/numpy.cc',
+        'interpreter_wrapper/python_error_reporter.cc',
+        'interpreter_wrapper/python_utils.cc'
+    ],
+    extra_compile_args=['--std=c++11'],
+    include_dirs=[
+        TENSORFLOW_DIR,
+        os.path.join(TENSORFLOW_DIR, 'tensorflow', 'lite', 'tools',
+                     'pip_package'),
+        numpy.get_include(),
+        os.path.join(DOWNLOADS_DIR, 'flatbuffers', 'include'),
+        os.path.join(DOWNLOADS_DIR, 'absl')
+    ] + get_pybind_include(),
     libraries=[LIB_TFLITE],
     library_dirs=[LIB_TFLITE_DIR])
 
@@ -181,10 +215,10 @@ setup(
     packages=find_packages(exclude=[]),
     ext_modules=[ext],
     install_requires=[
-        'numpy >= 1.12.1',
+        'numpy >= 1.16.0',
+        'pybind11 >= 2.4.3',
     ],
     cmdclass={
         'build_ext': CustomBuildExt,
         'build_py': CustomBuildPy,
-    }
-)
+    })

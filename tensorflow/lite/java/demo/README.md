@@ -41,8 +41,7 @@ code to merge.
 2. Build the app with Bazel. The demo needs C++11:
 
   ```shell
-  bazel build -c opt --cxxopt='--std=c++11' \
-    //tensorflow/lite/java/demo/app/src/main:TfLiteCameraDemo
+  bazel build -c opt //tensorflow/lite/java/demo/app/src/main:TfLiteCameraDemo
   ```
 
 3. Install the demo on a

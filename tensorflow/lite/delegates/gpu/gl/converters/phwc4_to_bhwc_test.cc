@@ -41,7 +41,7 @@ inline std::vector<float> GenerateFloats(float multiplier, int size) {
   return v;
 }
 
-Status RunTest(const BHWC& shape) {
+absl::Status RunTest(const BHWC& shape) {
   // Create random input and calculate expected output for it.
   std::vector<float> input =
       GenerateFloats(0.01, GetElementsSizeForPHWC4(shape));
@@ -72,9 +72,9 @@ Status RunTest(const BHWC& shape) {
   RETURN_IF_ERROR(output_buffer.Read(
       absl::MakeSpan(converted_output.data(), converted_output.size())));
   if (output != converted_output) {
-    return InternalError("Outputs don't match");
+    return absl::InternalError("Outputs don't match");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TEST(Phwc4ToHwc, Smoke) {

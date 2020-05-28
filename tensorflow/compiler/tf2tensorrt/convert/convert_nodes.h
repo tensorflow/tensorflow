@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_int8_calibrator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
@@ -92,7 +93,8 @@ struct EngineInfo {
       : engine_type(EngineType::TRTStatic),
         max_workspace_size_bytes(0),
         precision_mode(TrtPrecisionMode::FP32),
-        use_calibration(true) {}
+        use_calibration(true),
+        allow_build_at_runtime(true) {}
 
   string engine_name;
   string device;
@@ -109,6 +111,7 @@ struct EngineInfo {
   int maximum_cached_engines;
   TrtPrecisionMode precision_mode;
   bool use_calibration;
+  bool allow_build_at_runtime;
 };
 
 // Constructs a graphdef from the segment in the given graph. Adds _Arg
@@ -145,7 +148,8 @@ Status ConvertGraphDefToEngine(
     nvinfer1::ILogger* logger, nvinfer1::IGpuAllocator* allocator,
     TRTInt8Calibrator* calibrator,
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
-    const bool use_implicit_batch, bool* convert_successfully);
+    const bool use_implicit_batch, bool* convert_successfully,
+    TrtShapeOptimizationProfile* profiles);
 
 // Helper class for the segmenter to determine whether an output edge from the
 // TRT segment is valid.
@@ -289,6 +293,8 @@ class TRT_TensorOrWeights {
   }
 
   nvinfer1::Dims GetTrtDims() const;
+
+  Status GetTfType(DataType* tf_type) const;
 
   int batch_size() const { return batch_size_; }
 
@@ -465,7 +471,8 @@ class Converter {
   Status BuildCudaEngine(TrtUniquePtrType<nvinfer1::ICudaEngine>* engine,
                          int max_batch_size, size_t max_workspace_size_bytes,
                          nvinfer1::IGpuAllocator* allocator,
-                         TRTInt8Calibrator* calibrator);
+                         TRTInt8Calibrator* calibrator,
+                         TrtShapeOptimizationProfile* profiles);
 
   //////////////////////////////////////////////////////////////////////////////
   // Methods used by op converters to convert individual TF node and add layers
@@ -508,6 +515,7 @@ class Converter {
   // dimension which should always be 0.
   Status TransposeTensor(nvinfer1::ITensor* input_tensor,
                          const std::vector<int>& order_with_batch_dim,
+                         absl::string_view name,
                          nvinfer1::ITensor** output_tensor);
 
   // Converts 'input' into 'tensor' with shape specified by 'dims' (which
@@ -520,6 +528,13 @@ class Converter {
                                const nvinfer1::Dims& dims,
                                const bool validation_only,
                                nvinfer1::ITensor** tensor);
+
+  // Helper function to add a squeeze op to the network.
+  //
+  // The input_dims argument stores the TRT dimensions of the input tensor,
+  // where the dimensions to be squeezed are replaced by 0.
+  Status SqueezeTensor(nvinfer1::ITensor* input, std::vector<int>* input_dims,
+                       nvinfer1::ITensor** output);
 
   // Creates an IConstantLayer using 'weights' whose dimensions are specified by
   // 'dims', and returns the output ITensor.

@@ -47,7 +47,7 @@ class MockErrorReporter : public ErrorReporter {
 class MockDataAllocator : public BuiltinDataAllocator {
  public:
   MockDataAllocator() : is_allocated_(false) {}
-  void* Allocate(size_t size) override {
+  void* Allocate(size_t size, size_t alignment_hint) override {
     EXPECT_FALSE(is_allocated_);
     const int max_size = kBufferSize;
     EXPECT_LE(size, max_size);

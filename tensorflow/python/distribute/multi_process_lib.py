@@ -38,8 +38,9 @@ def get_user_data():
 
 
 @contextlib.contextmanager
-def context_manager():
+def context_manager(max_subprocess_count=20, barrier_parties=0):
   """No-op in OSS. This exists to maintain testing compatibility."""
+  del max_subprocess_count, barrier_parties
   yield
 
 

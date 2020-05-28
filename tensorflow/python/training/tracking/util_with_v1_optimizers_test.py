@@ -219,9 +219,10 @@ class CheckpointingTests(test.TestCase):
     on_create_model = MyModel()
     on_create_optimizer = adam.AdamOptimizer(
         0.001,
-        # Preserve beta1_power and beta2_power when appying gradients so we can
+        # Preserve beta1_power and beta2_power when applying gradients so we can
         # test that they've been restored correctly.
-        beta1=1.0, beta2=1.0)
+        beta1=1.0,
+        beta2=1.0)
     on_create_root = trackable_utils.Checkpoint(
         optimizer=on_create_optimizer, model=on_create_model)
     # Deferred restoration
@@ -288,16 +289,17 @@ class CheckpointingTests(test.TestCase):
           functools.partial(model, input_value),
           global_step=root.optimizer_step)
 
-    for training_continuation in range(3):
-      strategy = mirrored_strategy.MirroredStrategy()
-      with strategy.scope():
+    strategy = mirrored_strategy.MirroredStrategy()
+    with strategy.scope():
+      for training_continuation in range(3):
         model = MyModel()
         optimizer = adam.AdamOptimizer(0.001)
         root = trackable_utils.Checkpoint(
-            optimizer=optimizer, model=model,
+            optimizer=optimizer,
+            model=model,
             optimizer_step=training_util.get_or_create_global_step())
-        root.restore(checkpoint_management.latest_checkpoint(
-            checkpoint_directory))
+        root.restore(
+            checkpoint_management.latest_checkpoint(checkpoint_directory))
 
         for _ in range(num_training_steps):
           strategy.extended.call_for_each_replica(

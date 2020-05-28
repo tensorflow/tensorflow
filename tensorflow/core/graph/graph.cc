@@ -17,9 +17,10 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/node_properties.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/versions.pb.h"
@@ -37,81 +38,64 @@ namespace tensorflow {
 
 const int Graph::kControlSlot = -1;
 
-struct NodeProperties {
- public:
-  NodeProperties(const OpDef* op_def, NodeDef node_def,
-                 const DataTypeSlice inputs, const DataTypeSlice outputs)
-      : op_def(op_def),
-        node_def(std::move(node_def)),
-        input_types(inputs.begin(), inputs.end()),
-        output_types(outputs.begin(), outputs.end()) {}
-
-  const OpDef* op_def;  // not owned
-  NodeDef node_def;
-  const DataTypeVector input_types;
-  const DataTypeVector output_types;
-};
-
 // Node
-
+Node::NodeClass Node::GetNodeClassForOp(const string& ts) {
+  static const absl::flat_hash_map<string, Node::NodeClass>* kNodeClassTable =
 #define REF_CLASS(key, value) \
   {key, value}, { "Ref" key, value }
-
-const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
-    *new std::unordered_map<string, Node::NodeClass>({
-        // Keep in same order as NodeClass values
-        REF_CLASS("Switch", NC_SWITCH),
-        REF_CLASS("_SwitchN", NC_SWITCH),
-        REF_CLASS("Merge", NC_MERGE),
-        REF_CLASS("Enter", NC_ENTER),
-        REF_CLASS("Exit", NC_EXIT),
-        REF_CLASS("NextIteration", NC_NEXT_ITERATION),
-        {"LoopCond", NC_LOOP_COND},
-        {"ControlTrigger", NC_CONTROL_TRIGGER},
-        {"_Send", NC_SEND},
-        {"_HostSend", NC_HOST_SEND},
-        {"_Recv", NC_RECV},
-        {"_HostRecv", NC_HOST_RECV},
-        {"Const", NC_CONSTANT},
-        {"HostConst", NC_CONSTANT},
-        {"Variable", NC_VARIABLE},
-        {"VariableV2", NC_VARIABLE},
-        REF_CLASS("Identity", NC_IDENTITY),
-        {"GetSessionHandle", NC_GET_SESSION_HANDLE},
-        {"GetSessionHandleV2", NC_GET_SESSION_HANDLE},
-        {"GetSessionTensor", NC_GET_SESSION_TENSOR},
-        {"DeleteSessionTensor", NC_DELETE_SESSION_TENSOR},
-        {"Size", NC_METADATA},
-        {"Shape", NC_METADATA},
-        {"Rank", NC_METADATA},
-        {"_ScopedAllocator", NC_SCOPED_ALLOCATOR},
-        {"CollectiveReduce", NC_COLLECTIVE},
-        {"CollectiveBcastSend", NC_COLLECTIVE},
-        {"CollectiveBcastRecv", NC_COLLECTIVE},
-        {"CollectiveGather", NC_COLLECTIVE},
-        {"FakeParam", NC_FAKE_PARAM},
-        {"PartitionedCall", NC_PARTITIONED_CALL},
-        {"StatefulPartitionedCall", NC_PARTITIONED_CALL},
-        {"SymbolicGradient", NC_SYMBOLIC_GRADIENT},
-        {"If", NC_IF},
-        {"StatelessIf", NC_IF},
-        {"While", NC_WHILE},
-        {"StatelessWhile", NC_WHILE},
-        // Not using the constants defined in FunctionLibraryDefinition for the
-        // 4 ops below because android inference library does not link
-        // tf.function related files.
-        {"_Arg", NC_ARG},
-        {"_DeviceArg", NC_ARG},
-        {"_Retval", NC_RETVAL},
-        {"_DeviceRetval", NC_RETVAL},
-        {"_XlaMerge", NC_MERGE},
-    });
-
+      new absl::flat_hash_map<string, Node::NodeClass>({
+          // Keep in same order as NodeClass values
+          REF_CLASS("Switch", NC_SWITCH),
+          REF_CLASS("_SwitchN", NC_SWITCH),
+          REF_CLASS("Merge", NC_MERGE),
+          REF_CLASS("Enter", NC_ENTER),
+          REF_CLASS("Exit", NC_EXIT),
+          REF_CLASS("NextIteration", NC_NEXT_ITERATION),
+          {"LoopCond", NC_LOOP_COND},
+          {"ControlTrigger", NC_CONTROL_TRIGGER},
+          {"_Send", NC_SEND},
+          {"_HostSend", NC_HOST_SEND},
+          {"_Recv", NC_RECV},
+          {"_HostRecv", NC_HOST_RECV},
+          {"Const", NC_CONSTANT},
+          {"HostConst", NC_CONSTANT},
+          {"Variable", NC_VARIABLE},
+          {"VariableV2", NC_VARIABLE},
+          REF_CLASS("Identity", NC_IDENTITY),
+          {"GetSessionHandle", NC_GET_SESSION_HANDLE},
+          {"GetSessionHandleV2", NC_GET_SESSION_HANDLE},
+          {"GetSessionTensor", NC_GET_SESSION_TENSOR},
+          {"DeleteSessionTensor", NC_DELETE_SESSION_TENSOR},
+          {"Size", NC_METADATA},
+          {"Shape", NC_METADATA},
+          {"Rank", NC_METADATA},
+          {"_ScopedAllocator", NC_SCOPED_ALLOCATOR},
+          {"CollectiveReduce", NC_COLLECTIVE},
+          {"CollectiveBcastSend", NC_COLLECTIVE},
+          {"CollectiveBcastRecv", NC_COLLECTIVE},
+          {"CollectiveGather", NC_COLLECTIVE},
+          {"FakeParam", NC_FAKE_PARAM},
+          {"PartitionedCall", NC_PARTITIONED_CALL},
+          {"StatefulPartitionedCall", NC_PARTITIONED_CALL},
+          {"SymbolicGradient", NC_SYMBOLIC_GRADIENT},
+          {"If", NC_IF},
+          {"StatelessIf", NC_IF},
+          {"While", NC_WHILE},
+          {"StatelessWhile", NC_WHILE},
+          // Not using the constants defined in FunctionLibraryDefinition
+          // for the
+          // 4 ops below because android inference library does not link
+          // tf.function related files.
+          {"_Arg", NC_ARG},
+          {"_DeviceArg", NC_ARG},
+          {"_Retval", NC_RETVAL},
+          {"_DeviceRetval", NC_RETVAL},
+          {"_XlaMerge", NC_MERGE},
+      });
 #undef REF_CLASS
 
-Node::NodeClass Node::GetNodeClassForOp(const string& ts) {
-  auto it = kNodeClassTable.find(ts);
-  if (it != kNodeClassTable.end()) {
+  auto it = kNodeClassTable->find(ts);
+  if (it != kNodeClassTable->end()) {
     return it->second;
   } else {
     return NC_OTHER;
@@ -142,7 +126,7 @@ Node::Node()
 
 void Node::Initialize(int id, int cost_id,
                       std::shared_ptr<NodeProperties> props,
-                      bool is_function_op) {
+                      Node::NodeClass node_class) {
   DCHECK_EQ(id_, -1);
   DCHECK(in_edges_.empty());
   DCHECK(out_edges_.empty());
@@ -150,12 +134,7 @@ void Node::Initialize(int id, int cost_id,
   cost_id_ = cost_id;
 
   props_ = std::move(props);
-  // Initialize the class_ based on the type string
-  if (is_function_op) {
-    class_ = NC_FUNCTION_OP;
-  } else {
-    class_ = GetNodeClassForOp(props_->node_def.op());
-  }
+  class_ = node_class;
 }
 
 void Node::Clear() {
@@ -177,8 +156,17 @@ void Node::UpdateProperties() {
     LOG(ERROR) << "Failed at updating node: " << status;
     return;
   }
-  props_ = std::make_shared<NodeProperties>(props_->op_def, props_->node_def,
-                                            inputs, outputs);
+  if (props_->input_types != inputs || props_->output_types != outputs) {
+    if (TF_PREDICT_TRUE(props_.use_count() == 1)) {
+      props_->input_types = inputs;
+      props_->input_types_slice = props_->input_types;
+      props_->output_types = outputs;
+      props_->output_types_slice = props_->output_types;
+    } else {
+      props_ = std::make_shared<NodeProperties>(
+          props_->op_def, std::move(props_->node_def), inputs, outputs);
+    }
+  }
 }
 
 const string& Node::name() const { return props_->node_def.name(); }
@@ -438,18 +426,21 @@ Node* Graph::AddNode(NodeDef node_def, Status* status) {
     return nullptr;
   }
 
+  Node::NodeClass node_class = op_reg_data->is_function_op
+                                   ? Node::NC_FUNCTION_OP
+                                   : Node::GetNodeClassForOp(node_def.op());
+
   Node* node = AllocateNode(
       std::make_shared<NodeProperties>(&op_reg_data->op_def,
                                        std::move(node_def), inputs, outputs),
-      nullptr, op_reg_data->is_function_op);
+      nullptr, node_class);
   return node;
 }
 
 Node* Graph::CopyNode(const Node* node) {
   DCHECK(!node->IsSource());
   DCHECK(!node->IsSink());
-  Node* copy =
-      AllocateNode(node->props_, node, node->class_ == Node::NC_FUNCTION_OP);
+  Node* copy = AllocateNode(node->props_, node, node->class_);
   copy->set_assigned_device_name(node->assigned_device_name());
 
   // Since the OpDef of a function may be owned by the Graph that owns 'node',
@@ -774,7 +765,7 @@ Status Graph::IsValidInputTensor(const Node* node, int idx) const {
 }
 
 Node* Graph::AllocateNode(std::shared_ptr<NodeProperties> props,
-                          const Node* cost_node, bool is_function_op) {
+                          const Node* cost_node, Node::NodeClass node_class) {
   Node* node = nullptr;
   if (free_nodes_.empty()) {
     node = new (arena_.Alloc(sizeof(Node))) Node;  // placement new
@@ -785,7 +776,7 @@ Node* Graph::AllocateNode(std::shared_ptr<NodeProperties> props,
   node->graph_ = this;
   const int id = nodes_.size();
   int cost_id = cost_node ? cost_node->cost_id() : id;
-  node->Initialize(id, cost_id, std::move(props), is_function_op);
+  node->Initialize(id, cost_id, std::move(props), node_class);
   nodes_.push_back(node);
   ++num_nodes_;
   return node;

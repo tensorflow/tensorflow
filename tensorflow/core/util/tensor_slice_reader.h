@@ -61,7 +61,7 @@ class TensorSliceReader {
   };
   typedef std::function<Status(const string&, Table**)> OpenTableFunction;
 
-  static const int kLoadAllShards = -1;
+  static constexpr int kLoadAllShards = -1;
   TensorSliceReader(const string& filepattern);
   TensorSliceReader(const string& filepattern, OpenTableFunction open_function);
   TensorSliceReader(const string& filepattern, OpenTableFunction open_function,

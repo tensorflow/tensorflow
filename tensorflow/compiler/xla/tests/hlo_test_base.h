@@ -84,11 +84,11 @@ class HloTestBase : public ::testing::Test {
   // Like CreateNewUnverifiedModule, except the HloModule returned here runs the
   // HLO verifier on destruction.
   std::unique_ptr<VerifiedHloModule> CreateNewVerifiedModule(
-      const string& name = TestName());
+      const string& name = TestName(), int64 replica_count = 1);
 
   // Parses the given string and returns module as a VerifiedHloModule.
   StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
-      absl::string_view hlo_text);
+      absl::string_view hlo_text, int64 replica_count = 1);
   StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
       absl::string_view hlo_text, const HloModuleConfig& config);
 
@@ -99,6 +99,10 @@ class HloTestBase : public ::testing::Test {
                                    HloModule* module);
 
   static PrecisionConfig DefaultPrecisionConfig(int operands);
+
+  // Sets most fath math options to be enabled to model the fast math flags
+  // generally used for CPU:AOT compilation.
+  static void SetAotFastMathDebugOptions(DebugOptions* options);
 
  protected:
   // This uses the interpreter backend as the reference backend and
@@ -130,9 +134,10 @@ class HloTestBase : public ::testing::Test {
   virtual DebugOptions GetDebugOptionsForTest();
 
   // Gets an HloModuleConfig with options appropriate for tests.
-  HloModuleConfig GetModuleConfigForTest() {
+  HloModuleConfig GetModuleConfigForTest(int64 replica_count = 1) {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
+    config.set_replica_count(replica_count);
     return config;
   }
 
@@ -202,6 +207,11 @@ class HloTestBase : public ::testing::Test {
       std::unique_ptr<HloModule> module, const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
+
+  // Executes an hlo module with fake inputs and checks that the execution is
+  // successful.
+  ::testing::AssertionResult Run(std::unique_ptr<HloModule> module,
+                                 bool run_hlo_passes) TF_MUST_USE_RESULT;
 
   // Convenient wrappers for executing and comparing an hlo module with fake
   // input. Module can be passed in directly, or parsed from an hlo_string,

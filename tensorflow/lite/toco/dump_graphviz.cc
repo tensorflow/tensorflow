@@ -647,7 +647,7 @@ void DumpNode(const Model& model, string* output_file, const string& node_name,
 
   for (const auto& child : node.children) {
     if (!child.second->array_id.empty()) {
-      // Dump array if this node posesses one.
+      // Dump array if this node possesses one.
       DumpArray(model, output_file, child.second->array_id);
     }
     // Note that it is always possible to have children. Unlike a filesystem,

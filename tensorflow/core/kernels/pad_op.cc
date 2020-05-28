@@ -61,11 +61,8 @@ class PadOp : public OpKernel {
         TensorShapeUtils::IsMatrix(in1.shape()) && in1.dim_size(1) == 2,
         errors::InvalidArgument("paddings must be a matrix with 2 columns: ",
                                 in1.shape().DebugString()));
-    const int fixed_dims =
-        (allow_legacy_scalars() && dims == 0 && in1.dim_size(0) == 1) ? 1
-                                                                      : dims;
     OP_REQUIRES(
-        context, fixed_dims == in1.dim_size(0),
+        context, dims == in1.dim_size(0),
         errors::InvalidArgument(
             "The first dimension of paddings must be the rank of inputs",
             in1.shape().DebugString(), " ", in0.shape().DebugString()));
@@ -83,15 +80,14 @@ class PadOp : public OpKernel {
     // Compute the shape of the output tensor, and allocate it.
     TensorShape output_shape;
     typename TTypes<Tpadding>::ConstMatrix paddings = in1.matrix<Tpadding>();
-    for (int d = 0; d < fixed_dims; ++d) {
+    for (int d = 0; d < dims; ++d) {
       const Tpadding before_d =
           paddings(d, 0);                       // Pad before existing elements.
       const Tpadding after_d = paddings(d, 1);  // Pad after existing elements.
       OP_REQUIRES(context, before_d >= 0 && after_d >= 0,
                   errors::InvalidArgument("Paddings must be non-negative: ",
                                           before_d, " ", after_d));
-      const int64 size_d =
-          (allow_legacy_scalars() && d == in0.dims()) ? 1 : in0.dim_size(d);
+      const int64 size_d = in0.dim_size(d);
       output_shape.AddDim(before_d + size_d + after_d);
     }
 
@@ -107,10 +103,9 @@ class PadOp : public OpKernel {
     TensorShape collapsed_input_shape;
     TensorShape collapsed_output_shape;
     Tensor collapsed_paddings;
-    if (fixed_dims > 1 &&
-        CollapseAdjacentNonPaddedDimensions(
-            in0.shape(), in1, output_shape, &collapsed_input_shape,
-            &collapsed_paddings, &collapsed_output_shape)) {
+    if (dims > 1 && CollapseAdjacentNonPaddedDimensions(
+                        in0.shape(), in1, output_shape, &collapsed_input_shape,
+                        &collapsed_paddings, &collapsed_output_shape)) {
       Tensor collapsed_input;
       CHECK(collapsed_input.CopyFrom(in0, collapsed_input_shape));
       Tensor collapsed_output;
@@ -135,8 +130,7 @@ class PadOp : public OpKernel {
       Tensor* output = nullptr;
       OP_REQUIRES_OK(context,
                      context->allocate_output(0, output_shape, &output));
-      OperateWithVariableRank(context, fixed_dims, in0, paddings, pad_value,
-                              output);
+      OperateWithVariableRank(context, dims, in0, paddings, pad_value, output);
     }
   }
 

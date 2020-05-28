@@ -38,7 +38,8 @@ class PercentileSampler {
   static PercentileSampler* New(
       const MetricDef<MetricKind::kCumulative, Percentiles, NumLabels>&
           metric_def,
-      std::vector<double> percentiles, size_t max_samples);
+      std::vector<double> percentiles, size_t max_samples,
+      UnitOfMeasure unit_of_measure);
 
   template <typename... Labels>
   PercentileSamplerCell* GetCell(const Labels&... labels) {
@@ -57,7 +58,8 @@ template <int NumLabels>
 PercentileSampler<NumLabels>* PercentileSampler<NumLabels>::New(
     const MetricDef<MetricKind::kCumulative, Percentiles, NumLabels>&
     /* metric_def */,
-    std::vector<double> /* percentiles */, size_t /* max_samples */) {
+    std::vector<double> /* percentiles */, size_t /* max_samples */,
+    UnitOfMeasure /* unit_of_measure */) {
   return new PercentileSampler<NumLabels>();
 }
 

@@ -26,8 +26,8 @@ namespace xla {
 
 // Test that the xla_backend_extra_options flag is parsed correctly.
 TEST(DebugOptionsFlags, ParseXlaBackendExtraOptions) {
-  std::unordered_map<string, string> test_map;
-  string test_string = "aa=bb,cc,dd=,ee=ff=gg";
+  std::unordered_map<std::string, std::string> test_map;
+  std::string test_string = "aa=bb,cc,dd=,ee=ff=gg";
   parse_xla_backend_extra_options(&test_map, test_string);
   EXPECT_EQ(test_map.size(), 4);
   EXPECT_EQ(test_map.at("aa"), "bb");

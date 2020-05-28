@@ -34,7 +34,7 @@ namespace gpu {
 enum class MemorySpace { kHost, kDevice };
 
 // Returns a casual string, such as "host" for the provided memory space.
-string MemorySpaceString(MemorySpace memory_space);
+std::string MemorySpaceString(MemorySpace memory_space);
 
 class GpuContext;
 
@@ -149,7 +149,7 @@ class GpuDriver {
   // Given a device handle, returns the name reported by the driver for the
   // device.
   static port::Status GetDeviceName(GpuDeviceHandle device,
-                                    string* device_name);
+                                    std::string* device_name);
 
   // Given a device to create a context for, returns a context handle into the
   // context outparam, which must not be null.
@@ -469,7 +469,7 @@ class GpuDriver {
   // Returns a PCI bus id string for the device.
   // [domain]:[bus]:[device].[function]
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g85295e7d9745ab8f0aa80dd1e172acfc
-  static string GetPCIBusID(GpuDeviceHandle device);
+  static std::string GetPCIBusID(GpuDeviceHandle device);
 
   // -- Context- and device-independent calls.
 

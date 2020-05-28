@@ -558,6 +558,25 @@ TEST_F(HloVerifierTest, BitcastCanNotChangeElementType) {
               HasSubstr("Bitcast can not change the element type"));
 }
 
+TEST_F(HloVerifierTestLayoutSensitive, BitcastNeedsSameNumberOfElements) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY BitcastNeedsToBeNoOp {
+   constant.0 = f32[2] constant({0.0, 0.0})
+   ROOT bitcast = f32[3] bitcast(constant.0)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Bitcast cannot have different shape sizes of output "
+                        "(12) and operand (8)"));
+}
+
 TEST_F(HloVerifierTest, SelectMixedPrecisionNotAllowed) {
   const char* const hlo_string = R"(
   HloModule Module
@@ -622,7 +641,7 @@ TEST_F(HloVerifierTestLayoutSensitive, CopyStartAndCopyDone) {
 
   ENTRY CopyStartAndCopyDone {
     p0 = f32[2,3]{1,0:S(1)} parameter(0)
-    copy-start = (f32[2,3]{1,0:S(2)}, u32[]) copy-start(p0)
+    copy-start = (f32[2,3]{1,0:S(2)}, f32[2,3]{1,0:S(1)}, u32[]) copy-start(p0)
     ROOT copy-done = f32[2,3]{1,0:S(2)} copy-done(copy-start)
   }
   )";
@@ -639,7 +658,7 @@ TEST_F(HloVerifierTestLayoutSensitive, CopyStartAndCopyDoneWrongLayout) {
 
   ENTRY CopyStartAndCopyDone {
     p0 = f32[2,3]{1,0:S(1)} parameter(0)
-    copy-start = (f32[2,3]{0,1:S(2)}, u32[]) copy-start(p0)
+    copy-start = (f32[2,3]{0,1:S(2)}, f32[2,3]{1,0:S(1)}, u32[]) copy-start(p0)
     ROOT copy-done = f32[2,3]{1,0:S(2)} copy-done(copy-start)
   }
   )";
@@ -667,10 +686,9 @@ TEST_F(HloVerifierTest, CopyStartAndCopyDoneWrongType) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(
-      status.error_message(),
-      HasSubstr(
-          "Expected instruction to have shape equal to (f32[2,3], u32[])"));
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Expected instruction to have shape equal to "
+                        "(f32[2,3], f32[2,3], u32[])"));
 }
 
 TEST_F(HloVerifierTest, CopyStartMultipleCopyDone) {
@@ -679,7 +697,7 @@ TEST_F(HloVerifierTest, CopyStartMultipleCopyDone) {
 
   ENTRY CopyStartAndCopyDone {
     p0 = f32[2,3] parameter(0)
-    copy-start = (f32[2,3], u32[]) copy-start(p0)
+    copy-start = (f32[2,3], f32[2,3], u32[]) copy-start(p0)
     copy-done.1 = f32[2,3] copy-done(copy-start)
     copy-done.2 = f32[2,3] copy-done(copy-start)
     ROOT tuple = (f32[2,3], f32[2,3]) tuple(copy-done.1, copy-done.2)
@@ -692,7 +710,7 @@ TEST_F(HloVerifierTest, CopyStartMultipleCopyDone) {
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
       status.error_message(),
-      HasSubstr("CopyStart instruction requires one consumer, found 2"));
+      HasSubstr("copy-start instruction requires one consumer, found 2"));
 }
 
 TEST_F(HloVerifierTest, CopyDoneNoCopyStart) {
@@ -702,7 +720,7 @@ TEST_F(HloVerifierTest, CopyDoneNoCopyStart) {
   ENTRY CopyStartAndCopyDone {
     p0 = f32[2,3] parameter(0)
     p1 = u32[] parameter(1)
-    tuple = (f32[2,3], u32[]) tuple(p0, p1)
+    tuple = (f32[2,3], f32[2,3], u32[]) tuple(p0, p0, p1)
     ROOT copy-done = f32[2,3] copy-done(tuple)
   }
   )";
@@ -712,8 +730,8 @@ TEST_F(HloVerifierTest, CopyDoneNoCopyStart) {
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.error_message(),
-              HasSubstr("The operand of a CopyDone instruction needs to be "
-                        "CopyStart, found tuple"));
+              HasSubstr("The operand of a copy-done instruction needs to be "
+                        "copy-start, found tuple"));
 }
 
 TEST_F(HloVerifierTest, IotaNonArrayResult) {
@@ -841,8 +859,17 @@ string ReplicaGroupsStr(std::vector<std::vector<int64>> replica_groups) {
   return absl::StrFormat("{%s}", absl::StrJoin(replica_group_strs, ", "));
 }
 
+int64 ReplicaCount(const std::vector<std::vector<int64>>& replica_groups) {
+  int64 replica_count = 0;
+  for (auto group : replica_groups) {
+    replica_count += group.size();
+  }
+  return replica_count;
+}
+
 StatusOr<std::unique_ptr<HloModule>> MakeAllReduceComputation(
-    std::vector<std::vector<int64>> replica_groups) {
+    std::vector<std::vector<int64>> replica_groups,
+    absl::optional<int64> replica_count = absl::nullopt) {
   const char* kTemplate = R"(
   HloModule test
   add {
@@ -854,8 +881,17 @@ StatusOr<std::unique_ptr<HloModule>> MakeAllReduceComputation(
     p = f32[128]{0} parameter(0)
     crs = f32[128]{0} all-reduce(p), to_apply=add, replica_groups=REPLICA_GROUPS
   })";
-  return ParseAndReturnUnverifiedModule(absl::StrReplaceAll(
-      kTemplate, {{"REPLICA_GROUPS", ReplicaGroupsStr(replica_groups)}}));
+
+  HloModuleConfig config;
+  if (replica_count) {
+    config.set_replica_count(*replica_count);
+  } else {
+    config.set_replica_count(ReplicaCount(replica_groups));
+  }
+  return ParseAndReturnUnverifiedModule(
+      absl::StrReplaceAll(
+          kTemplate, {{"REPLICA_GROUPS", ReplicaGroupsStr(replica_groups)}}),
+      config);
 }
 
 TEST_F(HloVerifierTest, AllReduce_NoReplicaGroupsOK) {
@@ -889,22 +925,36 @@ TEST_F(HloVerifierTest, AllReduce_MissingReplicaId) {
               HasSubstr("Replica 4 is not named"));
 }
 
+TEST_F(HloVerifierTest, AllReduce_NotEnougReplicasInGroupConfig) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllReduceComputation({{0, 1}}, 8));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Replica count in HloModuleConfig is 8, but "
+                        "ReplicaGroup config contains 2 replicas"));
+}
+
+TEST_F(HloVerifierTest, AllReduce_TooManyReplicasInGroupConfig) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          MakeAllReduceComputation({{0, 1}, {2, 3}}, 2));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Replica count in HloModuleConfig is 2, but "
+                        "ReplicaGroup config contains 4 replicas"));
+}
+
 StatusOr<std::unique_ptr<HloModule>> MakeAllToAllComputation(
     std::vector<std::vector<int64>> replica_groups) {
   const char* kTemplate = R"(
   HloModule test
-  add {
-    x = f32[] parameter(0)
-    y = f32[] parameter(1)
-    ROOT add = f32[] add(x, y)
-  }
   ENTRY entry {
     p0 = f32[128]{0} parameter(0)
     p1 = f32[128]{0} parameter(1)
     a2a = (f32[128], f32[128]) all-to-all(p0, p1), replica_groups=REPLICA_GROUPS
   })";
-  return ParseAndReturnUnverifiedModule(absl::StrReplaceAll(
-      kTemplate, {{"REPLICA_GROUPS", ReplicaGroupsStr(replica_groups)}}));
+  HloModuleConfig config;
+  config.set_replica_count(ReplicaCount(replica_groups));
+  return ParseAndReturnUnverifiedModule(
+      absl::StrReplaceAll(
+          kTemplate, {{"REPLICA_GROUPS", ReplicaGroupsStr(replica_groups)}}),
+      config);
 }
 
 TEST_F(HloVerifierTest, AllToAll_NoReplicaGroupsOK) {
@@ -939,6 +989,24 @@ TEST_F(HloVerifierTest, AllToAll_WrongNumberOfReplicasInGroup) {
               HasSubstr("Replica group has size 1"));
 }
 
+TEST_F(HloVerifierTest, AllToAll_LayoutConstrained) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[128,4]{0,1} parameter(0)
+    p1 = f32[128,4]{1,0} parameter(1)
+    ROOT a2a = (f32[128,4]{0,1}, f32[128,4]{1,0}) all-to-all(p0, p1),
+      replica_groups={{0,1}}
+  }
+  )";
+  HloModuleConfig config;
+  config.set_replica_count(2);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("HLO all-to-all has operands with different shapes"));
+}
+
 TEST_F(HloVerifierTest, CollectivePermuteSameSourceTwice) {
   const char* const kModuleStr = R"(
   HloModule test
@@ -948,8 +1016,10 @@ TEST_F(HloVerifierTest, CollectivePermuteSameSourceTwice) {
       source_target_pairs={{0,1}, {0,2}, {1,0}}
   }
   )";
+  HloModuleConfig config;
+  config.set_replica_count(3);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+                          ParseAndReturnUnverifiedModule(kModuleStr, config));
   EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
               HasSubstr("Source 0 appears more than once"));
 }
@@ -1062,6 +1132,87 @@ TEST_F(HloVerifierTest, CollectiveChannelVerifier) {
                           ParseAndReturnUnverifiedModule(kModuleStr));
   EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
               HasSubstr("used for different types of channel instructions"));
+}
+
+TEST_F(HloVerifierTestLayoutSensitive, CollectivePermuteStartAndDone) {
+  const char* const kModuleStr = R"(
+  HloModule Module
+
+  ENTRY CollectivePermuteStartAndDone {
+    p0 = f32[2,3]{1,0:S(1)} parameter(0)
+    collective-permute-start.1 = (f32[2,3]{1,0:S(1)}, f32[2,3]{1,0:S(1)}, u32[], u32[]) collective-permute-start(p0), source_target_pairs={{0,1},{1,0}}, channel_id=1
+    ROOT collective-permute-done.1 = f32[2,3]{1,0:S(1)} collective-permute-done(collective-permute-start.1)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTest, CollectivePermuteStartAndDoneWrongType) {
+  const char* const kModuleStr = R"(
+  HloModule Module
+
+  ENTRY CollectivePermuteStartAndDoneWrongType {
+    p0 = f32[2,3]{1,0:S(1)} parameter(0)
+    collective-permute-start.1 = f32[2,3]{1,0:S(1)} collective-permute-start(p0), source_target_pairs={{0,1},{1,0}}, channel_id=1
+    ROOT collective-permute-done.1 = f32[2,3]{1,0:S(1)} collective-permute-done(collective-permute-start.1)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Expected instruction to have shape equal to "
+                        "(f32[2,3], f32[2,3], u32[], u32[])"));
+}
+
+TEST_F(HloVerifierTest, CollectivePermuteStartAndMultipleDone) {
+  const char* const kModuleStr = R"(
+  HloModule Module
+
+  ENTRY CollectivePermuteStartAndMultipleDone {
+    p0 = f32[2,3]{1,0:S(1)} parameter(0)
+    collective-permute-start.1 = (f32[2,3]{1,0:S(1)}, f32[2,3]{1,0:S(1)}, u32[], u32[]) collective-permute-start(p0), source_target_pairs={{0,1},{1,0}}, channel_id=1
+    collective-permute-done.1 = f32[2,3]{1,0:S(1)} collective-permute-done(collective-permute-start.1)
+    ROOT collective-permute-done.2 = f32[2,3]{1,0:S(1)} collective-permute-done(collective-permute-start.1)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.error_message(),
+      HasSubstr("collective-permute-start instruction requires one consumer, "
+                "found 2"));
+}
+
+TEST_F(HloVerifierTest, CollectivePermuteDoneNoCollectivePermuteStart) {
+  const char* const kModuleStr = R"(
+  HloModule Module
+
+  ENTRY CollectivePermuteDoneNoCollectivePermuteStart {
+    p0 = f32[2,3]{1,0:S(1)} parameter(0)
+    p1 = f32[2,3]{1,0:S(1)} parameter(1)
+    p2 = u32[] parameter(2)
+    tuple.1 = (f32[2,3], f32[2,3], u32[], u32[]) tuple(p0, p1, p2)
+    ROOT collective-permute-done.1 = f32[2,3]{1,0:S(1)} collective-permute-done(tuple.1)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("The operand of a collective-permute-done instruction "
+                        "needs to be collective-permute-start, found tuple"));
 }
 
 }  // namespace

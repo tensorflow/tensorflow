@@ -357,11 +357,11 @@ TEST_F(DebugIOUtilsTest, PublishTensorConcurrentlyToPartiallyOverlappingPaths) {
   const string dump_root_base = testing::TmpDir();
 
   mutex mu;
-  std::vector<string> dump_roots GUARDED_BY(mu);
-  std::vector<string> dump_file_paths GUARDED_BY(mu);
+  std::vector<string> dump_roots TF_GUARDED_BY(mu);
+  std::vector<string> dump_file_paths TF_GUARDED_BY(mu);
 
-  int dump_count GUARDED_BY(mu) = 0;
-  int done_count GUARDED_BY(mu) = 0;
+  int dump_count TF_GUARDED_BY(mu) = 0;
+  int done_count TF_GUARDED_BY(mu) = 0;
   Notification all_done;
 
   auto fn = [this, &dump_count, &done_count, &mu, &dump_root_base, &dump_roots,

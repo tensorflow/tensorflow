@@ -1,0 +1,59 @@
+op {
+  name: "NonMaxSuppressionV5"
+  input_arg {
+    name: "boxes"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "scores"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "max_output_size"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "iou_threshold"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "score_threshold"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "soft_nms_sigma"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "selected_indices"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "selected_scores"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "valid_outputs"
+    type: DT_INT32
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    name: "pad_to_max_output_size"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}

@@ -257,6 +257,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     case HloOpcode::kLog1p:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSqrt:
+    case HloOpcode::kCbrt:
     case HloOpcode::kTanh:
       if (!ShapeUtil::ElementIsFloating(shape) &&
           !ShapeUtil::ElementIsComplex(shape)) {
@@ -1998,6 +1999,17 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   return a;
 }
 
+/* static */ StatusOr<Shape> ShapeInference::InferAllGatherShape(
+    const Shape& operand_shape, int64 all_gather_dimension, int64 shard_count) {
+  TF_RET_CHECK(all_gather_dimension >= 0);
+  TF_RET_CHECK(all_gather_dimension < operand_shape.rank());
+  TF_RET_CHECK(shard_count > 0);
+  auto shape = operand_shape;
+  shape.set_dimensions(all_gather_dimension,
+                       shard_count * shape.dimensions(all_gather_dimension));
+  return shape;
+}
+
 /* static */ StatusOr<Shape> ShapeInference::InferAllReduceShape(
     absl::Span<const Shape* const> operand_shapes) {
   for (const Shape* operand_shape : operand_shapes) {
@@ -2047,7 +2059,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   // returns a tuple that contains N array shapes.
   TF_RET_CHECK(!operand_shapes.empty());
   for (int i = 0; i < operand_shapes.size(); i++) {
-    if (!ShapeUtil::Equal(*operand_shapes[0], *operand_shapes[i])) {
+    if (!Shape::Equal().IgnoreMemorySpaceInLayout()(*operand_shapes[0],
+                                                    *operand_shapes[i])) {
       return InvalidArgument(
           "HLO all-to-all has operands with different shapes: the 0th "
           "operand shape %s, but the %dth operand has shape %s.",
@@ -2595,7 +2608,18 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     VLOG(2) << StrFormat("update_sizes[%d] = %d", dim, update_dim_size);
   }
 
-  return operand_shape;
+  auto result_shape = operand_shape;
+
+  // If any of the operand shape and update shape is dynamic, update the result
+  // dimension to dynamic.
+  for (int64 i = 0; i < update_shape.rank(); ++i) {
+    if (update_shape.is_dynamic_dimension(i) ||
+        operand_shape.is_dynamic_dimension(i)) {
+      result_shape.set_dynamic_dimension(i, true);
+    }
+  }
+
+  return result_shape;
 }
 
 /*static */ StatusOr<Shape> ShapeInference::InferReverseShape(

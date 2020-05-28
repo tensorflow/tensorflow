@@ -28,6 +28,7 @@ import numpy as np
 
 import tensorflow.compat.v2 as tf
 
+from tensorflow.python.keras import preprocessing
 from tensorflow.tools.docs import tf_doctest_lib
 
 # We put doctest after absltest so that it picks up the unittest monkeypatch.
@@ -36,9 +37,14 @@ import doctest  # pylint: disable=g-bad-import-order
 
 tf.compat.v1.enable_v2_behavior()
 
+# Inject keras.preprocessing files into `tf.keras.preprocessing` namespace.
+tf.keras.preprocessing = preprocessing
+
 FLAGS = flags.FLAGS
 
-flags.DEFINE_string('module', None, 'A specific module to run doctest on.')
+flags.DEFINE_list('module', [], 'A list of specific module to run doctest on.')
+flags.DEFINE_list('module_prefix_skip', [],
+                  'A list of modules to ignore when resolving modules.')
 flags.DEFINE_boolean('list', None,
                      'List all the modules in the core package imported.')
 flags.DEFINE_string('file', None, 'A specific file to run doctest on.')
@@ -46,6 +52,7 @@ flags.DEFINE_string('file', None, 'A specific file to run doctest on.')
 flags.mark_flags_as_mutual_exclusive(['module', 'file'])
 flags.mark_flags_as_mutual_exclusive(['list', 'file'])
 
+# Both --module and --module_prefix_skip are relative to PACKAGE.
 PACKAGE = 'tensorflow.python.'
 
 
@@ -64,23 +71,24 @@ def find_modules():
   return tf_modules
 
 
-def filter_on_submodules(all_modules, submodule):
-  """Filters all the modules based on the module flag.
+def filter_on_submodules(all_modules, submodules):
+  """Filters all the modules based on the modules flag.
 
   The module flag has to be relative to the core package imported.
-  For example, if `submodule=keras.layers` then, this function will return
+  For example, if `module=keras.layers` then, this function will return
   all the modules in the submodule.
 
   Args:
     all_modules: All the modules in the core package.
-    submodule: Submodule to filter from all the modules.
+    submodules: Submodules to filter from all the modules.
 
   Returns:
     All the modules in the submodule.
   """
 
   filtered_modules = [
-      mod for mod in all_modules if PACKAGE + submodule in mod.__name__
+      mod for mod in all_modules
+      if any(PACKAGE + submodule in mod.__name__ for submodule in submodules)
   ]
   return filtered_modules
 
@@ -136,6 +144,9 @@ def load_tests(unused_loader, tests, unused_ignore):
     tf_modules = get_module_and_inject_docstring(FLAGS.file)
 
   for module in tf_modules:
+    if any(module.__name__.startswith(PACKAGE + prefix)
+           for prefix in FLAGS.module_prefix_skip):
+      continue
     testcase = TfTestCase()
     tests.addTests(
         doctest.DocTestSuite(

@@ -31,10 +31,12 @@ from tensorflow.python.ops.signal import fft_ops
 from tensorflow.python.ops.signal import reconstruction_ops
 from tensorflow.python.ops.signal import shape_ops
 from tensorflow.python.ops.signal import window_ops
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export('signal.stft')
+@dispatch.add_dispatch_support
 def stft(signals, frame_length, frame_step, fft_length=None,
          window_fn=window_ops.hann_window,
          pad_end=False, name=None):
@@ -95,6 +97,7 @@ def stft(signals, frame_length, frame_step, fft_length=None,
 
 
 @tf_export('signal.inverse_stft_window_fn')
+@dispatch.add_dispatch_support
 def inverse_stft_window_fn(frame_step,
                            forward_window_fn=window_ops.hann_window,
                            name=None):
@@ -156,6 +159,7 @@ def inverse_stft_window_fn(frame_step,
 
 
 @tf_export('signal.inverse_stft')
+@dispatch.add_dispatch_support
 def inverse_stft(stfts,
                  frame_length,
                  frame_step,
@@ -291,6 +295,7 @@ def _enclosing_power_of_two(value):
 
 
 @tf_export('signal.mdct')
+@dispatch.add_dispatch_support
 def mdct(signals, frame_length, window_fn=window_ops.vorbis_window,
          pad_end=False, norm=None, name=None):
   """Computes the [Modified Discrete Cosine Transform][mdct] of `signals`.
@@ -302,9 +307,15 @@ def mdct(signals, frame_length, window_fn=window_ops.vorbis_window,
       signals.
     frame_length: An integer scalar `Tensor`. The window length in samples
       which must be divisible by 4.
-    window_fn: A callable that takes a window length and a `dtype` keyword
-      argument and returns a `[window_length]` `Tensor` of samples in the
-      provided datatype. If set to `None`, no windowing is used.
+    window_fn: A callable that takes a frame_length and a `dtype` keyword
+      argument and returns a `[frame_length]` `Tensor` of samples in the
+      provided datatype. If set to `None`, a rectangular window with a scale of
+      1/sqrt(2) is used. For perfect reconstruction of a signal from `mdct`
+      followed by `inverse_mdct`, please use `tf.signal.vorbis_window`,
+      `tf.signal.kaiser_bessel_derived_window` or `None`. If using another
+      window function, make sure that w[n]^2 + w[n + frame_length // 2]^2 = 1
+      and w[n] = w[frame_length - n - 1] for n = 0,...,frame_length // 2 - 1 to
+      achieve perfect reconstruction.
     pad_end: Whether to pad the end of `signals` with zeros when the provided
       frame length and step produces a frame that lies partially past its end.
     norm: If it is None, unnormalized dct4 is used, if it is "ortho"
@@ -360,6 +371,7 @@ def mdct(signals, frame_length, window_fn=window_ops.vorbis_window,
 
 
 @tf_export('signal.inverse_mdct')
+@dispatch.add_dispatch_support
 def inverse_mdct(mdcts,
                  window_fn=window_ops.vorbis_window,
                  norm=None,
@@ -394,9 +406,15 @@ def inverse_mdct(mdcts,
     mdcts: A `float32`/`float64` `[..., frames, frame_length // 2]`
       `Tensor` of MDCT bins representing a batch of `frame_length // 2`-point
       MDCTs.
-    window_fn: A callable that takes a window length and a `dtype` keyword
-      argument and returns a `[window_length]` `Tensor` of samples in the
-      provided datatype. If set to `None`, no windowing is used.
+    window_fn: A callable that takes a frame_length and a `dtype` keyword
+      argument and returns a `[frame_length]` `Tensor` of samples in the
+      provided datatype. If set to `None`, a rectangular window with a scale of
+      1/sqrt(2) is used. For perfect reconstruction of a signal from `mdct`
+      followed by `inverse_mdct`, please use `tf.signal.vorbis_window`,
+      `tf.signal.kaiser_bessel_derived_window` or `None`. If using another
+      window function, make sure that w[n]^2 + w[n + frame_length // 2]^2 = 1
+      and w[n] = w[frame_length - n - 1] for n = 0,...,frame_length // 2 - 1 to
+      achieve perfect reconstruction.
     norm: If "ortho", orthonormal inverse DCT4 is performed, if it is None,
       a regular dct4 followed by scaling of `1/frame_length` is performed.
     name: An optional name for the operation.

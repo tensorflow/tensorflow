@@ -55,7 +55,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteRegistration* Register_ROUND() {
   static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr, round::Prepare, round::Eval};
+                                 /*free=*/nullptr,
+                                 /*prepare=*/round::Prepare,
+                                 /*invoke=*/round::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

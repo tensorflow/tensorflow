@@ -18,19 +18,40 @@ limitations under the License.
 
 #include "tensorflow/c/kernels.h"
 
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+
+#include <memory>
+#include <string>
+#include <utility>
+
+#include "absl/container/inlined_vector.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 
 struct MyCustomKernel {
   bool created;
@@ -134,14 +155,10 @@ TEST(TestKernel, TestRegisterKernelBuilder) {
 
 class DummyDevice : public DeviceBase {
  public:
-  DummyDevice(Env* env, bool save) : DeviceBase(env), save_(save) {}
-  bool RequiresRecordingAccessedTensors() const override { return save_; }
+  explicit DummyDevice(Env* env) : DeviceBase(env) {}
   Allocator* GetAllocator(AllocatorAttributes /*attr*/) override {
     return cpu_allocator();
   }
-
- private:
-  bool save_;
 };
 
 TEST(TestKernel, TestInputAndOutputCount) {
@@ -202,7 +219,7 @@ TEST(TestKernel, TestInputAndOutputCount) {
 
   {
     OpKernelContext::Params p;
-    DummyDevice dummy_device(nullptr, false);
+    DummyDevice dummy_device(nullptr);
     p.device = &dummy_device;
     p.step_id = 43;
 

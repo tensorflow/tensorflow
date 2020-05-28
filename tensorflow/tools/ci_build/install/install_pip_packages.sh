@@ -143,3 +143,12 @@ pip3 install tb-nightly --no-deps
 # Argparse
 pip2 install --upgrade argparse
 pip3 install --upgrade argparse
+
+# tree
+pip2 install dm-tree
+pip3 install dm-tree
+
+# tf.distribute multi worker tests require the following:
+# Those tests are Python3 only.
+pip3 install --upgrade dill
+pip3 install --upgrade tblib

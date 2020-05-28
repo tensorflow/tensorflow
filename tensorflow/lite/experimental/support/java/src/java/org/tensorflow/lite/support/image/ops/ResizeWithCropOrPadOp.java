@@ -18,6 +18,7 @@ package org.tensorflow.lite.support.image.ops;
 import android.graphics.Bitmap;
 import android.graphics.Bitmap.Config;
 import android.graphics.Canvas;
+import android.graphics.PointF;
 import android.graphics.Rect;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.tensorflow.lite.support.image.ImageOperator;
@@ -101,5 +102,24 @@ public class ResizeWithCropOrPadOp implements ImageOperator {
     new Canvas(output).drawBitmap(input, src, dst, null);
     image.load(output);
     return image;
+  }
+
+  @Override
+  public int getOutputImageHeight(int inputImageHeight, int inputImageWidth) {
+    return targetHeight;
+  }
+
+  @Override
+  public int getOutputImageWidth(int inputImageHeight, int inputImageWidth) {
+    return targetWidth;
+  }
+
+  @Override
+  public PointF inverseTransform(PointF point, int inputImageHeight, int inputImageWidth) {
+    return transformImpl(point, targetHeight, targetWidth, inputImageHeight, inputImageWidth);
+  }
+
+  private static PointF transformImpl(PointF point, int srcH, int srcW, int dstH, int dstW) {
+    return new PointF(point.x + (dstW - srcW) / 2, point.y + (dstH - srcH) / 2);
   }
 }

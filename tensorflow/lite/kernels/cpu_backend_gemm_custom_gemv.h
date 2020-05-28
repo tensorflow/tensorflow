@@ -35,7 +35,7 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
-#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
+#include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
@@ -593,10 +593,10 @@ struct CustomGemvImpl<LhsScalar, RhsScalar, std::int32_t, DstScalar,
 
 // We want to use fused multiply-add when it's available (that is, on A64
 // unconditionally and on A32 with VFPv4) because it's often faster, and
-// because non-fused seems not to be available in A64 so a conscentious compiler
-// might emit slow code (separate mul and add instructions) in order to
+// because non-fused seems not to be available in A64 so a conscientious
+// compiler might emit slow code (separate mul and add instructions) in order to
 // implement the vmlaq_f32 intrinsic with strict bit-for-bit exactness on A64.
-// (Compilers seems to be generating a fused fmla instruction at the moment,
+// (Compilers seem to be generating a fused fmla instruction at the moment,
 // but that could change).
 //
 // We still want to support building for A32 without VFPv4.

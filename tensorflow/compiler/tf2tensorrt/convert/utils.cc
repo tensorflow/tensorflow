@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -115,6 +116,127 @@ string DebugString(const nvinfer1::ITensor& tensor) {
                 ", name=", tensor.getName(),
                 ", dtype=", DebugString(tensor.getType()),
                 ", dims=", DebugString(tensor.getDimensions()), ")");
+}
+
+string DebugString(const std::vector<nvinfer1::Dims>& dimvec) {
+  return absl::StrCat("[",
+                      absl::StrJoin(dimvec, ",",
+                                    [](std::string* out, nvinfer1::Dims in) {
+                                      out->append(DebugString(in));
+                                    }),
+                      "]");
+}
+
+string DebugString(const std::vector<TensorShape>& shapes) {
+  return TensorShapeUtils::ShapeListString(shapes);
+}
+
+string DebugString(const std::vector<PartialTensorShape>& shapes) {
+  return PartialTensorShapeUtils::PartialShapeListString(shapes);
+}
+
+// Checks whether actual_shapes are compatible with cached_shapes. This should
+// only be used in implicit batch mode (in explicit batch mode one needs to
+// check the profile ranges). Therefore implicit batch mode is assumed.
+// It is also assumed that both actual_shapes and cached_shapes have been
+// verified by TRTEngineOp::VerifyInputShapes, which ensures that the batch size
+// for all tensors are the same.
+bool AreShapesCompatible(const std::vector<TensorShape>& actual_shapes,
+                         const std::vector<TensorShape>& cached_shapes) {
+  auto match_shape = [](const TensorShape& actual_shape,
+                        const TensorShape& cached_shape) {
+    // Match the rank.
+    if (actual_shape.dims() != cached_shape.dims()) return false;
+    // Match the batch size. In implicit batch mode cached_shape.dim_size(0) is
+    // the max batch size, which can be larger than the actual batch size.
+    if (actual_shape.dim_size(0) > cached_shape.dim_size(0)) return false;
+    // Match remaining dimensions.
+    for (int i = 1; i < actual_shape.dims(); ++i) {
+      if (actual_shape.dim_size(i) != cached_shape.dim_size(i)) return false;
+    }
+    return true;
+  };
+  for (int i = 0; i < actual_shapes.size(); ++i) {
+    if (!match_shape(actual_shapes[i], cached_shapes[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+Status TrtDimsToTensorShape(const std::vector<int>& trt_dims,
+                            bool use_implicit_batch, int batch_size,
+                            TensorShape& shape) {
+  TF_RETURN_IF_ERROR(
+      TensorShapeUtils::MakeShape(trt_dims.data(), trt_dims.size(), &shape));
+  if (use_implicit_batch) {
+    shape.InsertDim(0, batch_size);
+  }
+  return Status::OK();
+}
+
+Status TrtDimsToTensorShape(const nvinfer1::Dims trt_dims,
+                            bool use_implicit_batch, int batch_size,
+                            TensorShape& shape) {
+  TF_RETURN_IF_ERROR(
+      TensorShapeUtils::MakeShape(trt_dims.d, trt_dims.nbDims, &shape));
+  if (use_implicit_batch) {
+    shape.InsertDim(0, batch_size);
+  }
+  return Status::OK();
+}
+
+Status TfTypeToTrtType(DataType tf_type, nvinfer1::DataType* trt_type) {
+  switch (tf_type) {
+    case DT_FLOAT:
+      *trt_type = nvinfer1::DataType::kFLOAT;
+      break;
+    case DT_HALF:
+      *trt_type = nvinfer1::DataType::kHALF;
+      break;
+    case DT_INT32:
+      *trt_type = nvinfer1::DataType::kINT32;
+      break;
+    default:
+      return errors::Internal("Unsupported tensorflow type");
+  }
+  return Status::OK();
+}
+
+Status TrtTypeToTfType(nvinfer1::DataType trt_type, DataType* tf_type) {
+  switch (trt_type) {
+    case nvinfer1::DataType::kFLOAT:
+      *tf_type = DT_FLOAT;
+      break;
+    case nvinfer1::DataType::kHALF:
+      *tf_type = DT_HALF;
+      break;
+    case nvinfer1::DataType::kINT32:
+      *tf_type = DT_INT32;
+      break;
+    default:
+      return errors::Internal("Invalid TRT type");
+  }
+  return Status::OK();
+}
+
+int GetNumberOfEngineInputs(const nvinfer1::ICudaEngine* engine) {
+  int n_bindings = engine->getNbBindings();
+  int n_input = 0;
+  for (int i = 0; i < n_bindings; i++) {
+    if (engine->bindingIsInput(i)) n_input++;
+  }
+  // According to TensorRT 7 doc: "If the engine has been built for K profiles,
+  // the first getNbBindings() / K bindings are used by profile number 0, the
+  // following getNbBindings() / K bindings are used by profile number 1 etc."
+  // Therefore, to get the number of input tensors, we need to divide by the
+  // the number of profiles.
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  int n_profiles = engine->getNbOptimizationProfiles();
+#else
+  int n_profiles = 1;
+#endif
+  return n_input / n_profiles;
 }
 
 #endif

@@ -174,7 +174,14 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   /** Resizes dimensions of a specific input. */
   void resizeInput(int idx, int[] dims) {
-    if (resizeInput(interpreterHandle, errorHandle, idx, dims)) {
+    resizeInput(idx, dims, false);
+  }
+
+  /** Resizes dimensions of a specific input. */
+  void resizeInput(int idx, int[] dims, boolean strict) {
+    if (resizeInput(interpreterHandle, errorHandle, idx, dims, strict)) {
+      // Tensor allocation is deferred until either an explicit `allocateTensors()` call or
+      // `invoke()` avoiding redundant allocations if multiple tensors are simultaneosly resized.
       isMemoryAllocated = false;
       if (inputTensors[idx] != null) {
         inputTensors[idx].refreshShape();
@@ -183,7 +190,24 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   }
 
   private static native boolean resizeInput(
-      long interpreterHandle, long errorHandle, int inputIdx, int[] dims);
+      long interpreterHandle, long errorHandle, int inputIdx, int[] dims, boolean strict);
+
+  /** Triggers explicit allocation of tensors. */
+  void allocateTensors() {
+    if (isMemoryAllocated) {
+      return;
+    }
+
+    isMemoryAllocated = true;
+    allocateTensors(interpreterHandle, errorHandle);
+    for (int i = 0; i < outputTensors.length; ++i) {
+      if (outputTensors[i] != null) {
+        outputTensors[i].refreshShape();
+      }
+    }
+  }
+
+  private static native long allocateTensors(long interpreterHandle, long errorHandle);
 
   void setUseNNAPI(boolean useNNAPI) {
     useNNAPI(interpreterHandle, useNNAPI);
@@ -254,24 +278,6 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     return (inferenceDurationNanoseconds < 0) ? null : inferenceDurationNanoseconds;
   }
 
-  /**
-   * Gets the quantization zero point of an output.
-   *
-   * @throws IllegalArgumentException if the output index is invalid.
-   */
-  int getOutputQuantizationZeroPoint(int index) {
-    return getOutputQuantizationZeroPoint(interpreterHandle, index);
-  }
-
-  /**
-   * Gets the quantization scale of an output.
-   *
-   * @throws IllegalArgumentException if the output index is invalid.
-   */
-  float getOutputQuantizationScale(int index) {
-    return getOutputQuantizationScale(interpreterHandle, index);
-  }
-
   /** Gets the number of input tensors. */
   int getInputTensorCount() {
     return inputTensors.length;
@@ -316,6 +322,11 @@ final class NativeInterpreterWrapper implements AutoCloseable {
               Tensor.fromIndex(interpreterHandle, getOutputTensorIndex(interpreterHandle, index));
     }
     return outputTensor;
+  }
+
+  /** Gets the number of ops in the execution plan. */
+  int getExecutionPlanLength() {
+    return getExecutionPlanLength(interpreterHandle);
   }
 
   private void applyDelegates(Interpreter.Options options) {
@@ -374,10 +385,6 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   private static native int getOutputDataType(long interpreterHandle, int outputIdx);
 
-  private static native int getOutputQuantizationZeroPoint(long interpreterHandle, int outputIdx);
-
-  private static native float getOutputQuantizationScale(long interpreterHandle, int outputIdx);
-
   private static final int ERROR_BUFFER_SIZE = 512;
 
   private long errorHandle;
@@ -407,8 +414,6 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   // List of owned delegates that must be closed when the interpreter is closed.
   private final List<AutoCloseable> ownedDelegates = new ArrayList<>();
 
-  private static native long allocateTensors(long interpreterHandle, long errorHandle);
-
   private static native boolean hasUnresolvedFlexOp(long interpreterHandle);
 
   private static native int getInputTensorIndex(long interpreterHandle, int inputIdx);
@@ -418,6 +423,8 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   private static native int getInputCount(long interpreterHandle);
 
   private static native int getOutputCount(long interpreterHandle);
+
+  private static native int getExecutionPlanLength(long interpreterHandle);
 
   private static native String[] getInputNames(long interpreterHandle);
 

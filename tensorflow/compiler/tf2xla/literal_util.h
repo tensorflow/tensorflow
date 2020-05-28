@@ -30,6 +30,12 @@ namespace tensorflow {
 // 'host_tensor'.
 Status HostTensorToBorrowingLiteral(const Tensor& host_tensor,
                                     xla::BorrowingLiteral* literal);
+// Similar as above, except the literal shape is explicitly provided and used
+// instead of obtaining it from the 'host_tensor'. The provided literal shape
+// 'xla_shape' must be compatible with the shape of 'host_tensor'.
+Status HostTensorToBorrowingLiteral(const xla::Shape& xla_shape,
+                                    const Tensor& host_tensor,
+                                    xla::BorrowingLiteral* literal);
 
 // Returns a Literal with the contents of 'host_tensor', backed by its own
 // storage (i.e., not reusing 'host_tensor's buffers.)

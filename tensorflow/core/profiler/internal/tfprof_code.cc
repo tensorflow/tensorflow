@@ -138,7 +138,7 @@ class LocationTable {
   explicit LocationTable(FunctionTable* function_table)
       : function_table_(function_table) {}
 
-  // Returns the index of a function call localtion. If not found, adds a
+  // Returns the index of a function call location. If not found, adds a
   // location proto and returns the location index.
   uint64 GetIndex(const string& file_path, uint64 line_number,
                   const string& called_function_name,
@@ -189,7 +189,7 @@ class Samples {
     CHECK(!all_leaf.empty()) << node->name();
 
     for (const CodeNode* cn : all_leaf) {
-      for (auto gn_it : cn->node->graph_nodes()) {
+      for (const auto& gn_it : cn->node->graph_nodes()) {
         const TFGraphNode* gn = gn_it.second;
         string name = gn->name();
         // Generate a new trace name, in case the name is taken.
@@ -436,7 +436,7 @@ void TFCode::AddNode(TFGraphNode* node) {
 
 void TFCode::Build() {
   int64 unaccounted_nodes = 0;
-  for (auto it : grad_nodes_) {
+  for (const auto& it : grad_nodes_) {
     const string& forward_name = it.first;
     auto forward_it = forward_nodes_.find(forward_name);
     if (forward_it == forward_nodes_.end()) {

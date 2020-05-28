@@ -18,10 +18,9 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
-#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
-#include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -33,7 +32,7 @@ namespace tensorrt {
 namespace convert {
 
 struct ConversionParams {
-  const GraphDef* input_graph_def = nullptr;
+  const grappler::GrapplerItem* grappler_item = nullptr;
   const std::vector<string>* output_names = nullptr;
   string trt_logger_name;
   size_t max_batch_size = 1;
@@ -41,7 +40,6 @@ struct ConversionParams {
   GraphDef* output_graph_def = nullptr;
   TrtPrecisionMode precision_mode = TrtPrecisionMode::FP32;
   int minimum_segment_size = 3;
-  const grappler::GraphProperties* graph_properties = nullptr;
   const grappler::Cluster* cluster = nullptr;
   // Whether to create engine on conversion or execution time
   bool is_dyn_op = false;
@@ -49,6 +47,7 @@ struct ConversionParams {
   int max_cached_engines = 1;
   bool use_calibration = true;
   bool use_implicit_batch = true;
+  bool allow_build_at_runtime = true;
 };
 
 // Method to call from optimization pass

@@ -183,5 +183,8 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
     return math_ops.matmul(
         self._matrix, x, adjoint_a=adjoint, adjoint_b=adjoint_arg)
 
+  def _solve(self, rhs, adjoint=False, adjoint_arg=False):
+    return self._dense_solve(rhs, adjoint=adjoint, adjoint_arg=adjoint_arg)
+
   def _to_dense(self):
     return self._matrix

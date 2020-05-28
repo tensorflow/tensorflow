@@ -66,7 +66,7 @@ import functools
 import numpy as np
 
 from tensorflow.python.autograph.operators import py_builtins
-from tensorflow.python.autograph.operators import special_values
+from tensorflow.python.autograph.operators import variables
 from tensorflow.python.autograph.utils import ag_logging
 from tensorflow.python.autograph.utils import misc
 from tensorflow.python.autograph.utils import tensors
@@ -103,14 +103,13 @@ INEFFICIENT_UNROLL_MIN_OPS = 1
 
 def _disallow_undefs_into_loop(*values):
   """Ensures that all values in the state are defined when entering a loop."""
-  undefined = tuple(filter(special_values.is_undefined, values))
+  undefined = [v for v in values if isinstance(v, variables.Undefined)]
   if undefined:
     raise ValueError(
-        'TensorFlow requires that the following symbols must be defined'
-        ' before the loop: {}'.format(tuple(s.symbol_name for s in undefined)))
-
+        '{} must be defined before the loop.'.format(
+            ','.join(s.symbol_name for s in undefined)))
   for value in values:
-    if special_values.is_undefined_return(value):
+    if isinstance(value, variables.UndefinedReturnValue):
       # Assumption: the loop will only capture the variable which tracks the
       # return value if the loop contained a return statement.
       # TODO(mdan): This should be checked at the place where return occurs.
@@ -253,7 +252,7 @@ def _verify_tf_cond_vars(body_vars, orelse_vars, symbol_names):
   assert isinstance(composite_body_vars, tuple)
   assert isinstance(composite_orelse_vars, tuple)
 
-  # TODO(kkimlabs): Make this more consistent.
+  # TODO(kkb): Make this more consistent.
   # The basic outputs should always be a tuple.
   if not isinstance(basic_body_vars, tuple):
     basic_body_vars = (basic_body_vars,)
@@ -1130,7 +1129,7 @@ def _wrap_disallow_undefs_from_cond(func, branch_name):
       results_tuple = results
     else:
       results_tuple = results,
-    undefined = tuple(filter(special_values.is_undefined, results_tuple))
+    undefined = [v for v in results_tuple if isinstance(v, variables.Undefined)]
     if undefined:
       raise ValueError(
           'The following symbols must also be initialized in the {} branch: {}.'
@@ -1139,7 +1138,7 @@ def _wrap_disallow_undefs_from_cond(func, branch_name):
                                tuple(s.symbol_name for s in undefined)))
 
     for result in results_tuple:
-      if special_values.is_undefined_return(result):
+      if isinstance(result, variables.UndefinedReturnValue):
         raise ValueError(
             'A value must also be returned from the {} branch. If a value is '
             'returned from one branch of a conditional a value must be '

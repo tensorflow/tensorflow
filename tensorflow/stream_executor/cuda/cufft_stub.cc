@@ -47,4 +47,9 @@ T LoadSymbol(const char* symbol_name) {
 cufftResult GetSymbolNotFoundError() { return CUFFT_INTERNAL_ERROR; }
 }  // namespace
 
+#if CUFFT_VERSION < 10000
+#include "tensorflow/stream_executor/cuda/cufft_9_0.inc"
+#else
+// All CUDA-10+ implementations use the same API.
 #include "tensorflow/stream_executor/cuda/cufft_10_0.inc"
+#endif

@@ -13,19 +13,23 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=invalid-name
-"""ResNet models for Keras."""
+"""ResNet models for Keras.
+
+Reference:
+  - [Deep Residual Learning for Image Recognition](
+      https://arxiv.org/abs/1512.03385) (CVPR 2015)
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
 from tensorflow.python.keras import backend
-from tensorflow.python.keras import layers
 from tensorflow.python.keras.applications import imagenet_utils
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.layers import VersionAwareLayers
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -50,6 +54,8 @@ WEIGHTS_HASHES = {
         ('34fb605428fcc7aa4d62f44404c11509', '0f678c91647380debd923963594981b3')
 }
 
+layers = None
+
 
 def ResNet(stack_fn,
            preact,
@@ -61,12 +67,20 @@ def ResNet(stack_fn,
            input_shape=None,
            pooling=None,
            classes=1000,
+           classifier_activation='softmax',
            **kwargs):
   """Instantiates the ResNet, ResNetV2, and ResNeXt architecture.
+
+  Reference:
+  - [Deep Residual Learning for Image Recognition](
+      https://arxiv.org/abs/1512.03385) (CVPR 2015)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
+
+  Caution: Be sure to properly pre-process your inputs to the application.
+  Please see `applications.resnet.preprocess_input` for an example.
 
   Arguments:
     stack_fn: a function that returns output tensor for the
@@ -103,21 +117,27 @@ def ResNet(stack_fn,
     classes: optional number of classes to classify images
       into, only to be specified if `include_top` is True, and
       if no `weights` argument is specified.
+    classifier_activation: A `str` or callable. The activation function to use
+      on the "top" layer. Ignored unless `include_top=True`. Set
+      `classifier_activation=None` to return the logits of the "top" layer.
     **kwargs: For backwards compatibility only.
-
   Returns:
-    A Keras model instance.
+    A `keras.Model` instance.
 
   Raises:
     ValueError: in case of invalid argument for `weights`,
       or invalid input shape.
+    ValueError: if `classifier_activation` is not `softmax` or `None` when
+      using a pretrained top layer.
   """
+  global layers
   if 'layers' in kwargs:
-    global layers
     layers = kwargs.pop('layers')
+  else:
+    layers = VersionAwareLayers()
   if kwargs:
     raise ValueError('Unknown argument(s): %s' % (kwargs,))
-  if not (weights in {'imagenet', None} or os.path.exists(weights)):
+  if not (weights in {'imagenet', None} or file_io.file_exists(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '
@@ -147,14 +167,12 @@ def ResNet(stack_fn,
   bn_axis = 3 if backend.image_data_format() == 'channels_last' else 1
 
   x = layers.ZeroPadding2D(
-      padding=((3, 3), (3, 3)), name='conv1_pad')(
-          img_input)
+      padding=((3, 3), (3, 3)), name='conv1_pad')(img_input)
   x = layers.Conv2D(64, 7, strides=2, use_bias=use_bias, name='conv1_conv')(x)
 
   if not preact:
     x = layers.BatchNormalization(
-        axis=bn_axis, epsilon=1.001e-5, name='conv1_bn')(
-            x)
+        axis=bn_axis, epsilon=1.001e-5, name='conv1_bn')(x)
     x = layers.Activation('relu', name='conv1_relu')(x)
 
   x = layers.ZeroPadding2D(padding=((1, 1), (1, 1)), name='pool1_pad')(x)
@@ -164,13 +182,14 @@ def ResNet(stack_fn,
 
   if preact:
     x = layers.BatchNormalization(
-        axis=bn_axis, epsilon=1.001e-5, name='post_bn')(
-            x)
+        axis=bn_axis, epsilon=1.001e-5, name='post_bn')(x)
     x = layers.Activation('relu', name='post_relu')(x)
 
   if include_top:
     x = layers.GlobalAveragePooling2D(name='avg_pool')(x)
-    x = layers.Dense(classes, activation='softmax', name='probs')(x)
+    imagenet_utils.validate_activation(classifier_activation, weights)
+    x = layers.Dense(classes, activation=classifier_activation,
+                     name='predictions')(x)
   else:
     if pooling == 'avg':
       x = layers.GlobalAveragePooling2D(name='avg_pool')(x)
@@ -226,32 +245,26 @@ def block1(x, filters, kernel_size=3, stride=1, conv_shortcut=True, name=None):
 
   if conv_shortcut:
     shortcut = layers.Conv2D(
-        4 * filters, 1, strides=stride, name=name + '_0_conv')(
-            x)
+        4 * filters, 1, strides=stride, name=name + '_0_conv')(x)
     shortcut = layers.BatchNormalization(
-        axis=bn_axis, epsilon=1.001e-5, name=name + '_0_bn')(
-            shortcut)
+        axis=bn_axis, epsilon=1.001e-5, name=name + '_0_bn')(shortcut)
   else:
     shortcut = x
 
   x = layers.Conv2D(filters, 1, strides=stride, name=name + '_1_conv')(x)
   x = layers.BatchNormalization(
-      axis=bn_axis, epsilon=1.001e-5, name=name + '_1_bn')(
-          x)
+      axis=bn_axis, epsilon=1.001e-5, name=name + '_1_bn')(x)
   x = layers.Activation('relu', name=name + '_1_relu')(x)
 
   x = layers.Conv2D(
-      filters, kernel_size, padding='SAME', name=name + '_2_conv')(
-          x)
+      filters, kernel_size, padding='SAME', name=name + '_2_conv')(x)
   x = layers.BatchNormalization(
-      axis=bn_axis, epsilon=1.001e-5, name=name + '_2_bn')(
-          x)
+      axis=bn_axis, epsilon=1.001e-5, name=name + '_2_bn')(x)
   x = layers.Activation('relu', name=name + '_2_relu')(x)
 
   x = layers.Conv2D(4 * filters, 1, name=name + '_3_conv')(x)
   x = layers.BatchNormalization(
-      axis=bn_axis, epsilon=1.001e-5, name=name + '_3_bn')(
-          x)
+      axis=bn_axis, epsilon=1.001e-5, name=name + '_3_bn')(x)
 
   x = layers.Add(name=name + '_add')([shortcut, x])
   x = layers.Activation('relu', name=name + '_out')(x)
@@ -295,23 +308,19 @@ def block2(x, filters, kernel_size=3, stride=1, conv_shortcut=False, name=None):
   bn_axis = 3 if backend.image_data_format() == 'channels_last' else 1
 
   preact = layers.BatchNormalization(
-      axis=bn_axis, epsilon=1.001e-5, name=name + '_preact_bn')(
-          x)
+      axis=bn_axis, epsilon=1.001e-5, name=name + '_preact_bn')(x)
   preact = layers.Activation('relu', name=name + '_preact_relu')(preact)
 
   if conv_shortcut:
     shortcut = layers.Conv2D(
-        4 * filters, 1, strides=stride, name=name + '_0_conv')(
-            preact)
+        4 * filters, 1, strides=stride, name=name + '_0_conv')(preact)
   else:
     shortcut = layers.MaxPooling2D(1, strides=stride)(x) if stride > 1 else x
 
   x = layers.Conv2D(
-      filters, 1, strides=1, use_bias=False, name=name + '_1_conv')(
-          preact)
+      filters, 1, strides=1, use_bias=False, name=name + '_1_conv')(preact)
   x = layers.BatchNormalization(
-      axis=bn_axis, epsilon=1.001e-5, name=name + '_1_bn')(
-          x)
+      axis=bn_axis, epsilon=1.001e-5, name=name + '_1_bn')(x)
   x = layers.Activation('relu', name=name + '_1_relu')(x)
 
   x = layers.ZeroPadding2D(padding=((1, 1), (1, 1)), name=name + '_2_pad')(x)
@@ -320,11 +329,9 @@ def block2(x, filters, kernel_size=3, stride=1, conv_shortcut=False, name=None):
       kernel_size,
       strides=stride,
       use_bias=False,
-      name=name + '_2_conv')(
-          x)
+      name=name + '_2_conv')(x)
   x = layers.BatchNormalization(
-      axis=bn_axis, epsilon=1.001e-5, name=name + '_2_bn')(
-          x)
+      axis=bn_axis, epsilon=1.001e-5, name=name + '_2_bn')(x)
   x = layers.Activation('relu', name=name + '_2_relu')(x)
 
   x = layers.Conv2D(4 * filters, 1, name=name + '_3_conv')(x)
@@ -382,18 +389,15 @@ def block3(x,
         1,
         strides=stride,
         use_bias=False,
-        name=name + '_0_conv')(
-            x)
+        name=name + '_0_conv')(x)
     shortcut = layers.BatchNormalization(
-        axis=bn_axis, epsilon=1.001e-5, name=name + '_0_bn')(
-            shortcut)
+        axis=bn_axis, epsilon=1.001e-5, name=name + '_0_bn')(shortcut)
   else:
     shortcut = x
 
   x = layers.Conv2D(filters, 1, use_bias=False, name=name + '_1_conv')(x)
   x = layers.BatchNormalization(
-      axis=bn_axis, epsilon=1.001e-5, name=name + '_1_bn')(
-          x)
+      axis=bn_axis, epsilon=1.001e-5, name=name + '_1_bn')(x)
   x = layers.Activation('relu', name=name + '_1_relu')(x)
 
   c = filters // groups
@@ -403,29 +407,21 @@ def block3(x,
       strides=stride,
       depth_multiplier=c,
       use_bias=False,
-      name=name + '_2_conv')(
-          x)
+      name=name + '_2_conv')(x)
   x_shape = backend.int_shape(x)[1:-1]
   x = layers.Reshape(x_shape + (groups, c, c))(x)
-  output_shape = x_shape + (groups,
-                            c) if backend.backend() == 'theano' else None
   x = layers.Lambda(
       lambda x: sum(x[:, :, :, :, i] for i in range(c)),
-      output_shape=output_shape,
-      name=name + '_2_reduce')(
-          x)
+      name=name + '_2_reduce')(x)
   x = layers.Reshape(x_shape + (filters,))(x)
   x = layers.BatchNormalization(
-      axis=bn_axis, epsilon=1.001e-5, name=name + '_2_bn')(
-          x)
+      axis=bn_axis, epsilon=1.001e-5, name=name + '_2_bn')(x)
   x = layers.Activation('relu', name=name + '_2_relu')(x)
 
   x = layers.Conv2D(
-      (64 // groups) * filters, 1, use_bias=False, name=name + '_3_conv')(
-          x)
+      (64 // groups) * filters, 1, use_bias=False, name=name + '_3_conv')(x)
   x = layers.BatchNormalization(
-      axis=bn_axis, epsilon=1.001e-5, name=name + '_3_bn')(
-          x)
+      axis=bn_axis, epsilon=1.001e-5, name=name + '_3_bn')(x)
 
   x = layers.Add(name=name + '_add')([shortcut, x])
   x = layers.Activation('relu', name=name + '_out')(x)
@@ -534,12 +530,20 @@ def decode_predictions(preds, top=5):
   return imagenet_utils.decode_predictions(preds, top=top)
 
 
+preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
+    mode='', ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_CAFFE)
+decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__
+
 DOC = """
+
+  Reference paper:
+  - [Deep Residual Learning for Image Recognition]
+  (https://arxiv.org/abs/1512.03385) (CVPR 2015)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
-  
+
   Arguments:
     include_top: whether to include the fully-connected
       layer at the top of the network.

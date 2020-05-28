@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -30,7 +29,7 @@ COMPRESSION_SNAPPY = "SNAPPY"
 COMPRESSION_NONE = None
 
 
-class _SnapshotDataset(dataset_ops.UnaryUnchangedStructureDataset):
+class _LegacySnapshotDataset(dataset_ops.UnaryUnchangedStructureDataset):
   """A Dataset that captures a snapshot or reads from a snapshot."""
 
   def __init__(self,
@@ -78,60 +77,42 @@ class _SnapshotDataset(dataset_ops.UnaryUnchangedStructureDataset):
     self._input_dataset = input_dataset
     self._path = ops.convert_to_tensor(path, dtype=dtypes.string, name="path")
 
-    if compat.forward_compatible(2020, 1, 10) or mode or snapshot_name:
-      variant_tensor = ged_ops.snapshot_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          path=self._path,
-          compression=self._compression,
-          reader_path_prefix=self._reader_path_prefix,
-          writer_path_prefix=self._writer_path_prefix,
-          shard_size_bytes=self._shard_size_bytes,
-          pending_snapshot_expiry_seconds=self._pending_snapshot_expiry_seconds,
-          num_reader_threads=self._num_reader_threads,
-          reader_buffer_size=self._reader_buffer_size,
-          num_writer_threads=self._num_writer_threads,
-          writer_buffer_size=self._writer_buffer_size,
-          shuffle_on_read=self._shuffle_on_read,
-          seed=self._seed,
-          seed2=self._seed2,
-          mode=self._mode,
-          snapshot_name=self._snapshot_name,
-          **self._flat_structure)
-    else:
-      variant_tensor = ged_ops.snapshot_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          path=self._path,
-          compression=self._compression,
-          reader_path_prefix=self._reader_path_prefix,
-          writer_path_prefix=self._writer_path_prefix,
-          shard_size_bytes=self._shard_size_bytes,
-          pending_snapshot_expiry_seconds=self._pending_snapshot_expiry_seconds,
-          num_reader_threads=self._num_reader_threads,
-          reader_buffer_size=self._reader_buffer_size,
-          num_writer_threads=self._num_writer_threads,
-          writer_buffer_size=self._writer_buffer_size,
-          shuffle_on_read=self._shuffle_on_read,
-          seed=self._seed,
-          seed2=self._seed2,
-          **self._flat_structure)
+    variant_tensor = ged_ops.snapshot_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        path=self._path,
+        compression=self._compression,
+        reader_path_prefix=self._reader_path_prefix,
+        writer_path_prefix=self._writer_path_prefix,
+        shard_size_bytes=self._shard_size_bytes,
+        pending_snapshot_expiry_seconds=self._pending_snapshot_expiry_seconds,
+        num_reader_threads=self._num_reader_threads,
+        reader_buffer_size=self._reader_buffer_size,
+        num_writer_threads=self._num_writer_threads,
+        writer_buffer_size=self._writer_buffer_size,
+        shuffle_on_read=self._shuffle_on_read,
+        seed=self._seed,
+        seed2=self._seed2,
+        mode=self._mode,
+        snapshot_name=self._snapshot_name,
+        **self._flat_structure)
 
-    super(_SnapshotDataset, self).__init__(input_dataset, variant_tensor)
+    super(_LegacySnapshotDataset, self).__init__(input_dataset, variant_tensor)
 
 
-def snapshot(path,
-             compression=None,
-             reader_path_prefix=None,
-             writer_path_prefix=None,
-             shard_size_bytes=None,
-             pending_snapshot_expiry_seconds=None,
-             num_reader_threads=None,
-             reader_buffer_size=None,
-             num_writer_threads=None,
-             writer_buffer_size=None,
-             shuffle_on_read=None,
-             shuffle_seed=None,
-             mode=None,
-             snapshot_name=None):
+def legacy_snapshot(path,
+                    compression=None,
+                    reader_path_prefix=None,
+                    writer_path_prefix=None,
+                    shard_size_bytes=None,
+                    pending_snapshot_expiry_seconds=None,
+                    num_reader_threads=None,
+                    reader_buffer_size=None,
+                    num_writer_threads=None,
+                    writer_buffer_size=None,
+                    shuffle_on_read=None,
+                    shuffle_seed=None,
+                    mode=None,
+                    snapshot_name=None):
   """Writes to/reads from a snapshot of a dataset.
 
   This function attempts to determine whether a valid snapshot exists at the
@@ -187,7 +168,7 @@ def snapshot(path,
   """
 
   def _apply_fn(dataset):
-    return _SnapshotDataset(
+    return _LegacySnapshotDataset(
         input_dataset=dataset,
         path=path,
         compression=compression,

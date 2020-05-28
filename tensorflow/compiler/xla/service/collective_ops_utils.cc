@@ -30,13 +30,18 @@ absl::optional<ReductionKind> MatchReductionComputation(
                   .WithShape(m::Shape().IsEffectiveScalar()));
   };
 
+  // Match the operation to a reduction kind. We can represent and/or of pred as
+  // min/max. This works because pred is stored as an 8-bit int of value 0 or 1.
+  PrimitiveType type = computation->root_instruction()->shape().element_type();
   if (match_opcode(HloOpcode::kAdd)) {
     return ReductionKind::SUM;
   } else if (match_opcode(HloOpcode::kMultiply)) {
     return ReductionKind::PRODUCT;
-  } else if (match_opcode(HloOpcode::kMinimum)) {
+  } else if (match_opcode(HloOpcode::kMinimum) ||
+             (type == PRED && match_opcode(HloOpcode::kAnd))) {
     return ReductionKind::MIN;
-  } else if (match_opcode(HloOpcode::kMaximum)) {
+  } else if (match_opcode(HloOpcode::kMaximum) ||
+             (type == PRED && match_opcode(HloOpcode::kOr))) {
     return ReductionKind::MAX;
   } else {
     return absl::nullopt;
@@ -44,7 +49,7 @@ absl::optional<ReductionKind> MatchReductionComputation(
 }
 
 StatusOr<std::vector<int64>> GetParticipatingReplicas(
-    int64 device_ordinal, absl::Span<const ReplicaGroup> replica_groups,
+    GlobalDeviceId device_id, absl::Span<const ReplicaGroup> replica_groups,
     int64 total_replica_count, const DeviceAssignment& device_assn) {
   std::vector<int64> participating_replicas;
 
@@ -58,7 +63,7 @@ StatusOr<std::vector<int64>> GetParticipatingReplicas(
 
   // Use the DeviceAssignment to figure out our replica-id.
   TF_ASSIGN_OR_RETURN(int replica_id,
-                      device_assn.ReplicaIdForDeviceOrdinal(device_ordinal));
+                      device_assn.ReplicaIdForDeviceOrdinal(device_id.value()));
 
   // Figure out the other replicas that go together with this one.
   absl::optional<ReplicaGroup> replica_group;

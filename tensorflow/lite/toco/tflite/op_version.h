@@ -20,11 +20,6 @@ limitations under the License.
 namespace toco {
 namespace tflite {
 
-// Returns true if the first version string precedes the second.
-// For example, '1.14' should precede '1.9', also '1.14.1' should precede
-// '1.14'. If two version string is equal, then false will be returned.
-bool CompareVersion(const string&, const string&);
-
 // Get the minimum TF Lite runtime required to run a model. Each built-in
 // operator in the model will have its own minimum requirement of a runtime, and
 // the model's minimum requirement of runtime is defined as the maximum of all

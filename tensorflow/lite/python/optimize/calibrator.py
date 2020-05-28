@@ -26,7 +26,7 @@ from tensorflow.python.util.lazy_loader import LazyLoader
 _calibration_wrapper = LazyLoader(
     "_calibration_wrapper", globals(),
     "tensorflow.lite.python.optimize."
-    "tensorflow_lite_wrap_calibration_wrapper")
+    "_pywrap_tensorflow_lite_calibration_wrapper")
 
 
 class Calibrator(object):
@@ -47,16 +47,23 @@ class Calibrator(object):
     if not model_content:
       raise ValueError("`model_content` must be specified.")
     try:
-      self._calibrator = (_calibration_wrapper.CalibrationWrapper
-                          .CreateWrapperCPPFromBuffer(model_content))
+      self._calibrator = (
+          _calibration_wrapper.CalibrationWrapper(model_content))
     except Exception as e:
       raise ValueError("Failed to parse the model: %s." % e)
     if not self._calibrator:
       raise ValueError("Failed to parse the model.")
 
-  def calibrate_and_quantize(self, dataset_gen, input_type, output_type,
-                             allow_float, enable_mlir_quantizer=False):
+  def calibrate_and_quantize(self,
+                             dataset_gen,
+                             input_type,
+                             output_type,
+                             allow_float,
+                             resize_input=True):
     """Calibrates the model with specified generator and then quantizes it.
+
+    The input shapes of the calibrator are resized with the calibration data if
+    `resize_input` is set.
 
     Returns:
       A quantized model.
@@ -66,25 +73,36 @@ class Calibrator(object):
       input_type: A tf.dtype representing the desired real-value input type.
       output_type: A tf.dtype representing the desired real-value output type.
       allow_float: A boolean. False if the resulting model cannot perform float
-                   computation, useful when targeting an integer-only backend.
-                   If False, an error will be thrown if an operation cannot be
-                   quantized, otherwise the model will fallback to float ops.
-      enable_mlir_quantizer: A boolean. True if wants to use mlir quantizer to
-                             quantize the calibrated model.
+        computation, useful when targeting an integer-only backend. If False, an
+        error will be thrown if an operation cannot be quantized, otherwise the
+        model will fallback to float ops.
+      resize_input: A boolean. True if the shape of the sample data is different
+        from the input.
     """
-    self._calibrator.Prepare()
-    for calibration_sample in dataset_gen():
-      self._calibrator.FeedTensor(calibration_sample)
+    initialized = False
+    for sample in dataset_gen():
+      if not initialized:
+        initialized = True
+        if resize_input:
+          self._calibrator.Prepare([list(s.shape) for s in sample])
+        else:
+          self._calibrator.Prepare()
+      self._calibrator.FeedTensor(sample)
     return self._calibrator.QuantizeModel(
         np.dtype(input_type.as_numpy_dtype()).num,
-        np.dtype(output_type.as_numpy_dtype()).num, allow_float,
-        enable_mlir_quantizer)
+        np.dtype(output_type.as_numpy_dtype()).num, allow_float)
 
-  def calibrate_and_quantize_single(self, dataset_gen, input_type, output_type,
-                                    allow_float, op_output_name):
+  def calibrate_and_quantize_single(self,
+                                    dataset_gen,
+                                    input_type,
+                                    output_type,
+                                    allow_float,
+                                    op_output_name,
+                                    resize_input=True):
     """Calibrates the model with specified generator and then quantizes it.
 
     Only the single op with output op_output_name will be quantized.
+    The input shapes of the calibrator are resized with the calibration data.
 
     Returns:
       A quantized model.
@@ -98,10 +116,35 @@ class Calibrator(object):
         error will be thrown if an operation cannot be quantized, otherwise the
         model will fallback to float ops.
       op_output_name: A string, only this op will be quantized.
+      resize_input: A boolean. True if the shape of the sample data is different
+        from the input.
     """
-    self._calibrator.Prepare()
-    for calibration_sample in dataset_gen():
-      self._calibrator.FeedTensor(calibration_sample)
+    initialized = False
+    for sample in dataset_gen():
+      if not initialized:
+        initialized = True
+        if resize_input:
+          self._calibrator.Prepare([list(s.shape) for s in sample])
+        else:
+          self._calibrator.Prepare()
+      self._calibrator.FeedTensor(sample)
     return self._calibrator.QuantizeModel(
         np.dtype(input_type.as_numpy_dtype()).num,
         np.dtype(output_type.as_numpy_dtype()).num, allow_float, op_output_name)
+
+  def calibrate(self, dataset_gen):
+    """Calibrates the model with specified generator.
+
+    Returns:
+      A model with min and max calibration stats.
+
+    Args:
+      dataset_gen: A generator that generates calibration samples.
+    """
+    initialized = False
+    for sample in dataset_gen():
+      if not initialized:
+        initialized = True
+        self._calibrator.Prepare([list(s.shape) for s in sample])
+      self._calibrator.FeedTensor(sample)
+    return self._calibrator.Calibrate()

@@ -75,9 +75,8 @@ def _test_combinations():
       ("FromTensors2", lambda: dataset_ops.Dataset.from_tensors((0, 1)), 1),
       ("FromTensorSlices1",
        lambda: dataset_ops.Dataset.from_tensor_slices([0, 0, 0]), 3),
-      ("FromTensorSlices2",
-       lambda: dataset_ops.Dataset.from_tensor_slices(([0, 0, 0], [1, 1, 1])),
-       3),
+      ("FromTensorSlices2", lambda: dataset_ops.Dataset.from_tensor_slices(
+          ([0, 0, 0], [1, 1, 1])), 3),
       ("Interleave1", lambda: dataset_ops.Dataset.range(5).interleave(
           lambda _: dataset_ops.Dataset.from_tensors(0), cycle_length=1),
        cardinality.UNKNOWN),
@@ -134,6 +133,19 @@ def _test_combinations():
        lambda: dataset_ops.Dataset.range(5).filter(lambda _: True).take(2),
        cardinality.UNKNOWN),
       ("Take4", lambda: dataset_ops.Dataset.range(5).repeat().take(2), 2),
+      ("Unbatch1", lambda: dataset_ops.Dataset.range(5).batch(
+          2, drop_remainder=True).unbatch(), 4),
+      ("Unbatch2", lambda: dataset_ops.Dataset.range(5).batch(
+          2, drop_remainder=False).unbatch(), cardinality.UNKNOWN),
+      ("Unbatch3", lambda: dataset_ops.Dataset.range(5).batch(
+          2, drop_remainder=True).filter(lambda _: True).unbatch(),
+       cardinality.UNKNOWN),
+      ("Unbatch4", lambda: dataset_ops.Dataset.range(5).batch(
+          2, drop_remainder=True).repeat().unbatch(), cardinality.INFINITE),
+      ("Unbatch5", lambda: dataset_ops.Dataset.zip((
+          dataset_ops.Dataset.range(4).batch(2, drop_remainder=False),
+          dataset_ops.Dataset.range(5).batch(2, drop_remainder=True),
+      )).unbatch(), 4),
       ("Window1", lambda: dataset_ops.Dataset.range(5).window(
           size=2, shift=2, drop_remainder=True), 2),
       ("Window2", lambda: dataset_ops.Dataset.range(5).window(
@@ -144,12 +156,12 @@ def _test_combinations():
           (dataset_ops.Dataset.range(5), dataset_ops.Dataset.range(3))), 3),
       ("Zip3", lambda: dataset_ops.Dataset.zip((dataset_ops.Dataset.range(
           5), dataset_ops.Dataset.range(3).repeat())), 5),
-      ("Zip4", lambda: dataset_ops.Dataset.zip((dataset_ops.Dataset.range(
-          5).repeat(), dataset_ops.Dataset.range(3).repeat())),
-       cardinality.INFINITE),
-      ("Zip5", lambda: dataset_ops.Dataset.zip((dataset_ops.Dataset.range(
-          5), dataset_ops.Dataset.range(3).filter(lambda _: True))),
-       cardinality.UNKNOWN),
+      ("Zip4", lambda: dataset_ops.Dataset.zip(
+          (dataset_ops.Dataset.range(5).repeat(), dataset_ops.Dataset.range(3).
+           repeat())), cardinality.INFINITE),
+      ("Zip5", lambda: dataset_ops.Dataset.zip(
+          (dataset_ops.Dataset.range(5), dataset_ops.Dataset.range(3).filter(
+              lambda _: True))), cardinality.UNKNOWN),
   ]
 
   def reduce_fn(x, y):
@@ -168,9 +180,8 @@ class CardinalityTest(test_base.DatasetTestBase, parameterized.TestCase):
       combinations.times(test_base.default_test_combinations(),
                          _test_combinations()))
   def testCardinality(self, dataset_fn, expected_result):
-    with self.cached_session() as sess:
-      self.assertEqual(
-          sess.run(cardinality.cardinality(dataset_fn())), expected_result)
+    self.assertEqual(
+        self.evaluate(cardinality.cardinality(dataset_fn())), expected_result)
 
 
 if __name__ == "__main__":

@@ -46,13 +46,14 @@ TfLiteStatus GenerateSimpleFeatures(tflite::ErrorReporter* error_reporter,
                                     const int16_t* input, int input_size,
                                     int output_size, uint8_t* output) {
   if (input_size > kInputSize) {
-    error_reporter->Report("Input size %d larger than %d", input_size,
-                           kInputSize);
+    TF_LITE_REPORT_ERROR(error_reporter, "Input size %d larger than %d",
+                         input_size, kInputSize);
     return kTfLiteError;
   }
   if (output_size != kOutputSize) {
-    error_reporter->Report("Requested output size %d doesn't match %d",
-                           output_size, kOutputSize);
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Requested output size %d doesn't match %d",
+                         output_size, kOutputSize);
     return kTfLiteError;
   }
 

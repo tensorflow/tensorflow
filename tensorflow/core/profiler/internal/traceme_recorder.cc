@@ -16,22 +16,31 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <algorithm>
+#include <atomic>
+#include <new>
+#include <utility>
+#include <vector>
+
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace profiler {
-
 namespace internal {
-std::atomic<int> g_trace_level =
-    ATOMIC_VAR_INIT(TraceMeRecorder::kTracingDisabled);
-}  // namespace internal
 
-// Implementation of TraceMeRecorder::trace_level_ must be lock-free for faster
-// execution of the TraceMe() public API. This can be commented (if compilation
-// is failing) but execution might be slow (even when host tracing is disabled).
+std::atomic<int> g_trace_level(TraceMeRecorder::kTracingDisabled);
+
+// g_trace_level implementation must be lock-free for faster execution of the
+// TraceMe API. This can be commented (if compilation is failing) but execution
+// might be slow (even when tracing is disabled).
 static_assert(ATOMIC_INT_LOCK_FREE == 2, "Assumed atomic<int> was lock free");
+
+}  // namespace internal
 
 namespace {
 
@@ -197,12 +206,12 @@ class TraceMeRecorder::ThreadLocalRecorder {
   return singleton;
 }
 
-void TraceMeRecorder::RegisterThread(int32 tid, ThreadLocalRecorder* thread) {
+void TraceMeRecorder::RegisterThread(uint32 tid, ThreadLocalRecorder* thread) {
   mutex_lock lock(mutex_);
   threads_.emplace(tid, thread);
 }
 
-void TraceMeRecorder::UnregisterThread(int32 tid) {
+void TraceMeRecorder::UnregisterThread(uint32 tid) {
   mutex_lock lock(mutex_);
   auto it = threads_.find(tid);
   if (it != threads_.end()) {

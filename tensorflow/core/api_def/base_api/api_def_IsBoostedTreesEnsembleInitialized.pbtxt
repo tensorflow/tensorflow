@@ -4,7 +4,7 @@ op {
   in_arg {
     name: "tree_ensemble_handle"
     description: <<END
-Handle to the tree ensemble resouce.
+Handle to the tree ensemble resource.
 END
   }
   out_arg {

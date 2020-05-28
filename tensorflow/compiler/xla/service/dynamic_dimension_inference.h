@@ -36,7 +36,12 @@ namespace xla {
 // represent the runtime real size of those dynamic dimensions.
 class DynamicDimensionInference {
  public:
-  static StatusOr<DynamicDimensionInference> Run(HloModule* module);
+  using CustomCallInferenceHandler =
+      std::function<Status(HloInstruction*, DynamicDimensionInference*)>;
+
+  static StatusOr<DynamicDimensionInference> Run(
+      HloModule* module,
+      CustomCallInferenceHandler custom_call_handler = nullptr);
 
   string ToString() const;
 
@@ -46,15 +51,28 @@ class DynamicDimensionInference {
   HloInstruction* GetDynamicSize(HloInstruction* inst, const ShapeIndex& index,
                                  int64 dim) const;
 
+  // Returns if current instruction contains any dynamic dimension. Recursively
+  // go into tuples.
+  bool HasDynamicDimension(HloInstruction* inst) const;
+
   // Forward dynamic dimension size at `dim` and its constraint from `inst` to
   // `new_inst`.
   Status ForwardDynamicSize(HloInstruction* inst, HloInstruction* new_inst,
                             const ShapeIndex& index);
 
+  // Update the dynamic mapping so that we know dimension `dim` of instruction
+  // `inst` at `index` has a dynamic size, and its runtime size is represented
+  // by a scalar instruction `size`.
+  void SetDynamicSize(HloInstruction* inst, const ShapeIndex& index, int64 dim,
+                      HloInstruction* size) {
+    SetDynamicSize(inst, index, dim, size, DimensionConstraint(1, 1));
+  }
+
   friend class DynamicDimensionInferenceVisitor;
 
  private:
-  explicit DynamicDimensionInference(HloModule* module);
+  explicit DynamicDimensionInference(
+      HloModule* module, CustomCallInferenceHandler custom_call_handler);
 
   // DynamicDimension is used as a key in the dynamic key-value mapping. It
   // unambiguously represents a dynamic dimension of a instruction at a given
@@ -217,6 +235,9 @@ class DynamicDimensionInference {
       absl::flat_hash_map<HloInstruction*,
                           absl::flat_hash_set<DynamicDimension>>;
   PerHloDynamicDimensions per_hlo_dynamic_dimensions_;
+
+  // A handler for custom calls.
+  CustomCallInferenceHandler custom_call_handler_;
 };
 
 }  // namespace xla

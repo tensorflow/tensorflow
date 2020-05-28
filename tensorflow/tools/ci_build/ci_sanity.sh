@@ -328,7 +328,7 @@ do_external_licenses_check(){
   TMP_FILE="$(mktemp)_tmp.log"
 
   echo "Getting external dependencies for ${BUILD_TARGET}"
- bazel query "attr('licenses', 'notice', deps(${BUILD_TARGET}))" --keep_going > "${TMP_FILE}" 2>&1
+ bazel cquery "attr('licenses', 'notice', deps(${BUILD_TARGET}))" --keep_going > "${TMP_FILE}" 2>&1
  cat "${TMP_FILE}" \
   | grep -e "^\/\/" -e "^@" \
   | grep -E -v "^//tensorflow" \
@@ -339,7 +339,7 @@ do_external_licenses_check(){
 
   echo
   echo "Getting list of external licenses mentioned in ${LICENSES_TARGET}."
-  bazel query "deps(${LICENSES_TARGET})" --keep_going > "${TMP_FILE}" 2>&1
+  bazel cquery "deps(${LICENSES_TARGET})" --keep_going > "${TMP_FILE}" 2>&1
  cat "${TMP_FILE}" \
   | grep -e "^\/\/" -e "^@" \
   | grep -E -v "^//tensorflow" \
@@ -357,12 +357,35 @@ do_external_licenses_check(){
 
   # Blacklist
   echo ${MISSING_LICENSES_FILE}
-  grep -e "@bazel_tools//third_party/" -e "@bazel_tools//tools" -e "@local" -e "@com_google_absl//absl" -e "@org_tensorflow//" -e "@com_github_googlecloudplatform_google_cloud_cpp//google" -v ${MISSING_LICENSES_FILE} > temp.txt
+  grep \
+    -e "@bazel_tools//third_party/" \
+    -e "@bazel_tools//tools" \
+    -e "@local" \
+    -e "@com_google_absl//absl" \
+    -e "@org_tensorflow//" \
+    -e "@com_github_googlecloudplatform_google_cloud_cpp//google" \
+    -e "@com_github_grpc_grpc//src/compiler" \
+    -e "@platforms//os" \
+    -e "@ruy//" \
+    -v ${MISSING_LICENSES_FILE} > temp.txt
   mv temp.txt ${MISSING_LICENSES_FILE}
 
   # Whitelist
   echo ${EXTRA_LICENSE_FILE}
-  grep -e "//third_party/mkl_dnn" -e "@bazel_tools//src" -e "@bazel_tools//tools/" -e "@org_tensorflow//tensorflow" -e "@com_google_absl//" -e "//external" -e "@local" -e "@com_github_googlecloudplatform_google_cloud_cpp//" -e "@embedded_jdk//" -e "^//$" -v ${EXTRA_LICENSES_FILE} > temp.txt
+  grep \
+    -e "//third_party/mkl" \
+    -e "//third_party/mkl_dnn" \
+    -e "@bazel_tools//src" \
+    -e "@bazel_tools//tools/" \
+    -e "@org_tensorflow//tensorflow" \
+    -e "@com_google_absl//" \
+    -e "//external" \
+    -e "@local" \
+    -e "@com_github_googlecloudplatform_google_cloud_cpp//" \
+    -e "@embedded_jdk//" \
+    -e "^//$" \
+    -e "@ruy//" \
+    -v ${EXTRA_LICENSES_FILE} > temp.txt
   mv temp.txt ${EXTRA_LICENSES_FILE}
 
 
@@ -376,9 +399,10 @@ do_external_licenses_check(){
     if [[ -s ${MISSING_LICENSES_FILE} ]] ; then
       echo "Missing the licenses for the following external dependencies:"
       cat ${MISSING_LICENSES_FILE}
+      echo "Please add the license(s) to ${LICENSES_TARGET}."
     fi
     if [[ -s ${EXTRA_LICENSES_FILE} ]] ; then
-      echo "Please remove the licenses for the following external dependencies:"
+      echo "Please remove the licenses for the following external dependencies from target ${LICENSES_TARGET}."
       cat ${EXTRA_LICENSES_FILE}
     fi
     rm -rf ${EXTERNAL_DEPENDENCIES_FILE}
@@ -435,14 +459,9 @@ cmd_status(){
 }
 
 # Run bazel build --nobuild to test the validity of the BUILD files
-# TODO(mikecase): Remove TF Lite exclusion from this list. Exclusion is
-# necessary since the @androidsdk WORKSPACE dependency is commented
-# out by default in TF WORKSPACE file.
 do_bazel_nobuild() {
   BUILD_TARGET="//tensorflow/..."
-  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/delegates/gpu/..."
-  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/java/demo/app/..."
-  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/schema/..."
+  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/..."
   BUILD_CMD="bazel build --nobuild ${BAZEL_FLAGS} -- ${BUILD_TARGET}"
 
   ${BUILD_CMD}
@@ -683,22 +702,36 @@ done
 # Print summary of build results
 COUNTER=0
 echo "==== Summary of sanity check results ===="
+TESTCASE_XML=''
 while [[ ${COUNTER} -lt "${#SANITY_STEPS[@]}" ]]; do
   INDEX=COUNTER
   ((INDEX++))
 
   echo "${INDEX}. ${SANITY_STEPS[COUNTER]}: ${SANITY_STEPS_DESC[COUNTER]}"
+  TESTCASE_XML="${TESTCASE_XML} <testcase name=\"${SANITY_STEPS_DESC[COUNTER]}\" status=\"run\" classname=\"\" time=\"0\">"
+
   if [[ ${STEP_EXIT_CODES[COUNTER]} == "0" ]]; then
     printf "  ${COLOR_GREEN}PASS${COLOR_NC}\n"
   else
     printf "  ${COLOR_RED}FAIL${COLOR_NC}\n"
+    TESTCASE_XML="${TESTCASE_XML} <failure message=\"\" type=\"\"/>"
   fi
+
+  TESTCASE_XML="${TESTCASE_XML} </testcase>"
 
   ((COUNTER++))
 done
 
 echo
 echo "${FAIL_COUNTER} failed; ${PASS_COUNTER} passed."
+
+mkdir -p "${KOKORO_ARTIFACTS_DIR}/${KOKORO_JOB_NAME}/summary"
+echo '<?xml version="1.0" encoding="UTF-8"?>'\
+  '<testsuites name="1"  tests="1" failures="0" errors="0" time="0">'\
+  '<testsuite name="Kokoro Summary" tests="'"$((FAIL_COUNTER + PASS_COUNTER))"\
+  '" failures="'"${FAIL_COUNTER}"'" errors="0" time="0">'\
+  "${TESTCASE_XML}"'</testsuite></testsuites>'\
+  > "${KOKORO_ARTIFACTS_DIR}/${KOKORO_JOB_NAME}/summary/sponge_log.xml"
 
 echo
 if [[ ${FAIL_COUNTER} == "0" ]]; then

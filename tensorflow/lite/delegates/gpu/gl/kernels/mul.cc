@@ -29,115 +29,111 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace gl {
+
 namespace {
 
-class ApplyMask : public NodeShader {
- public:
-  static bool IsSupported(const GenerationContext& ctx) {
-    const auto inputs = ctx.graph->FindInputs(ctx.node->id);
-    if (inputs.size() != 2) return false;
-    const auto& shape0 = inputs[0]->tensor.shape;
-    const auto& shape1 = inputs[1]->tensor.shape;
+bool IsApplyMaskSupported(const NodeShader::GenerationContext& ctx) {
+  if (ctx.input_shapes.size() != 2) return false;
 
-    // [H, W, C] x [H, W, 0][0]
-    if (shape1.c == 1) return true;
-
-    if (shape0.c != shape1.c) return false;
-
-    // [H, W, C] x [H, W, C]
-    if (shape0.h == shape1.h && shape0.w == shape1.w) return true;
-
-    // [H, W, C] x [0, 0, C]
-    return shape1.h == 1 && shape1.w == 1;
+  // [H, W, C] x [H, W, 0][0]
+  if (ctx.input_shapes[0][1] == ctx.input_shapes[1][1] &&
+      ctx.input_shapes[0][2] == ctx.input_shapes[1][2] &&
+      ctx.input_shapes[1][3] == 1) {
+    return true;
   }
 
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
-    if (!IsSupported(ctx)) {
-      return InvalidArgumentError(
-          "This case is not supported by apply mask operation");
-    }
-    const auto inputs = ctx.graph->FindInputs(ctx.node->id);
-    const auto& shape0 = inputs[0]->tensor.shape;
-    const auto& shape1 = inputs[1]->tensor.shape;
+  // [H, W, C] x [H, W, C]
+  if (ctx.input_shapes[0] == ctx.input_shapes[1]) return true;
 
-    std::string source = "value_0 = $input_data_0[gid.x, gid.y, gid.z]$ * ";
-    if (shape1.c == 1) {
-      // [H, W, C] x [H, W, 0][0]
-      absl::StrAppend(&source, "$input_data_1[gid.x, gid.y, 0]$.x;");
-    } else if (shape0.h == shape1.h && shape0.w == shape1.w) {
-      // [H, W, C] x [H, W, C]
-      absl::StrAppend(&source, "$input_data_1[gid.x, gid.y, gid.z]$;");
-    } else {
-      // [H, W, C] x [0, 0, C]
-      absl::StrAppend(&source, "$input_data_1[0, 0, gid.z]$;");
-    }
+  // [H, W, C] x [0, 0, C]
+  return ctx.input_shapes[1][1] == 1 && ctx.input_shapes[1][2] == 1 &&
+         ctx.input_shapes[0][3] == ctx.input_shapes[1][3];
+}
 
+absl::Status GenerateApplyMaskCode(const NodeShader::GenerationContext& ctx,
+                                   GeneratedCode* generated_code) {
+  std::string source = "value_0 = $input_data_0[gid.x, gid.y, gid.z]$ * ";
+  if (ctx.input_shapes[1][3] == 1) {
+    // [H, W, C] x [H, W, 0][0]
+    absl::StrAppend(&source, "$input_data_1[gid.x, gid.y, 0]$.x;");
+  } else if (ctx.input_shapes[0][1] == ctx.input_shapes[1][1] &&
+             ctx.input_shapes[0][2] == ctx.input_shapes[1][2]) {
+    // [H, W, C] x [H, W, C]
+    absl::StrAppend(&source, "$input_data_1[gid.x, gid.y, gid.z]$;");
+  } else {
+    // [H, W, C] x [0, 0, C]
+    absl::StrAppend(&source, "$input_data_1[0, 0, gid.z]$;");
+  }
+
+  *generated_code = {
+      /*parameters=*/{},
+      /*objects=*/{},
+      /*shared_variables=*/{},
+      /*workload=*/uint3(),
+      /*workgroup=*/uint3(),
+      /*source_code=*/std::move(source),
+      /*input=*/IOStructure::ONLY_DEFINITIONS,
+      /*output=*/IOStructure::AUTO,
+  };
+  return absl::OkStatus();
+}
+
+absl::Status GenerateMultiplyScalarCode(
+    const NodeShader::GenerationContext& ctx, GeneratedCode* generated_code) {
+  const auto& attr = absl::any_cast<const MultiplyAttributes&>(ctx.op_attr);
+  auto muls = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param);
+  auto scalar = absl::get_if<float>(&attr.param);
+
+  if (scalar) {
     *generated_code = {
-        /*parameters=*/{},
+        /*parameters=*/{{"scalar", *scalar}},
         /*objects=*/{},
         /*shared_variables=*/{},
         /*workload=*/uint3(),
         /*workgroup=*/uint3(),
-        /*source_code=*/std::move(source),
-        /*input=*/IOStructure::ONLY_DEFINITIONS,
+        /*source_code=*/"value_0 *= $scalar$;",
+        /*input=*/IOStructure::AUTO,
         /*output=*/IOStructure::AUTO,
     };
-    return OkStatus();
-  }
-};
-
-class MultiplyScalar : public NodeShader {
- public:
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
-    auto attr = absl::any_cast<MultiplyScalarAttributes>(
-        ctx.node->operation.attributes);
-    auto muls = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param);
-    auto scalar = absl::get_if<float>(&attr.param);
-
-    if (scalar) {
-      *generated_code = {
-          /*parameters=*/{{"scalar", *scalar}},
-          /*objects=*/{},
-          /*shared_variables=*/{},
-          /*workload=*/uint3(),
-          /*workgroup=*/uint3(),
-          /*source_code=*/"value_0 *= $scalar$;",
-          /*input=*/IOStructure::AUTO,
-          /*output=*/IOStructure::AUTO,
-      };
-    } else {
-      if (!muls) {
-        return InvalidArgumentError("Empty parameters for Multiplication.");
-      }
-      auto shape = ctx.graph->FindInputs(ctx.node->id)[0]->tensor.shape;
-      *generated_code = {
-          /*parameters=*/{},
-          /*objects=*/{{"mul_buffer", MakeReadonlyObject(muls->data)}},
-          /*shared_variables=*/{},
-          // Declare workload explicitly because shader depends on gid.z.
-          /*workload=*/
-          uint3(shape.w, shape.h, IntegralDivideRoundUp(shape.c, 4)),
-          /*workgroup=*/uint3(),
-          /*source_code=*/"value_0 *= $mul_buffer[gid.z]$;",
-          /*input=*/IOStructure::AUTO,
-          /*output=*/IOStructure::AUTO,
-      };
+  } else {
+    if (!muls) {
+      return absl::InvalidArgumentError("Empty parameters for Multiplication.");
     }
+    *generated_code = {
+        /*parameters=*/{},
+        /*objects=*/{{"mul_buffer", MakeReadonlyObject(muls->data)}},
+        /*shared_variables=*/{},
+        // Declare workload explicitly because shader depends on gid.z.
+        /*workload=*/
+        uint3(static_cast<int>(ctx.input_shapes[0][2]),
+              static_cast<int>(ctx.input_shapes[0][1]),
+              DivideRoundUp(static_cast<int>(ctx.input_shapes[0][3]), 4)),
+        /*workgroup=*/uint3(),
+        /*source_code=*/"value_0 *= $mul_buffer[gid.z]$;",
+        /*input=*/IOStructure::AUTO,
+        /*output=*/IOStructure::AUTO,
+    };
+  }
 
-    return OkStatus();
+  return absl::OkStatus();
+}
+
+class Multiply : public NodeShader {
+ public:
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
+    if (IsApplyMaskSupported(ctx)) {
+      return GenerateApplyMaskCode(ctx, generated_code);
+    } else {
+      return GenerateMultiplyScalarCode(ctx, generated_code);
+    }
   }
 };
 
 }  // namespace
 
-std::unique_ptr<NodeShader> NewApplyMaskNodeShader() {
-  return absl::make_unique<ApplyMask>();
-}
-
-std::unique_ptr<NodeShader> NewMultiplyScalarNodeShader() {
-  return absl::make_unique<MultiplyScalar>();
+std::unique_ptr<NodeShader> NewMultiplyNodeShader() {
+  return absl::make_unique<Multiply>();
 }
 
 }  // namespace gl

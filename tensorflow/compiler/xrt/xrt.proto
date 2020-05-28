@@ -10,11 +10,12 @@ import "tensorflow/compiler/xla/xla_data.proto";
 message DeviceAssignment {
   message ComputationDevice {
     message DeviceMeshCoordinates {
-      // The mesh coordinates for the device. Usually (X, Y, Core), in the order
-      // in which they are returned in the TopologyProto.
+      // The mesh coordinates for the device. Usually (X, Y, Z, Core), in the
+      // order in which they are returned in the TopologyProto.
       //  X    = value(0)
       //  Y    = value(1)
-      //  Core = value(2)
+      //  Z    = value(2)
+      //  Core = value(3)
       repeated int32 value = 1;
     }
     // As many replicas as there are in the replicated computation.
@@ -110,6 +111,17 @@ message XLATupleNode {
   repeated XLATupleNode tuples = 3;
 }
 
+message CommonExecutionConfig {
+  // The replica index this execute is driving.
+  int32 replica_id = 1;
+  // Mapping local device ordinals to global replica IDs.
+  // local_replica_mapping[LOCAL_DEVICE_ORDINAL] = GLOBAL_REPLICA_ID
+  repeated int32 local_replica_mapping = 2;
+  // The execution run ID used to correlate different XRT execute operations
+  // happeining in parallel from different threads.
+  int64 run_id = 3;
+}
+
 // Options for an XLA execution.
 message XRTExecutionConfig {
   // Local device to run on. This is present because the execute Op
@@ -132,6 +144,9 @@ message XRTExecutionConfig {
   // a single tuple allocation the execution will return a vector of
   // allocations, one for each of the first-level elements of the result tuple.
   bool return_exploded_tuple = 7;
+  reserved 8;
+  // The common configuration for XRT execute operations.
+  CommonExecutionConfig common_config = 9;
 }
 
 message XRTChainedExecuteConfig {
@@ -142,6 +157,9 @@ message XRTChainedExecuteConfig {
   // Optional key to disambiguate between executions. This is only needed if
   // multiple host send/recvs may be outstanding concurrently with executions.
   string execution_instance_key = 3;
+  reserved 4;
+  // The common configuration for XRT execute operations.
+  CommonExecutionConfig common_config = 5;
 }
 
 // A single chained execute operation. An operation can either be a device data
@@ -190,4 +208,63 @@ message XRTChainedExecuteOp {
 message XRTChainedExecutePlan {
   // The post order with the XRT computations to be executed.
   repeated XRTChainedExecuteOp ops = 1;
+}
+
+// The message used to encode the options for the XRTMetricsCollect operation.
+message XRTMetricsCollect {
+  // A list of regular expressions to match the metric names. Empty means to
+  // return all the metrics reported by the collection registry.
+  repeated string metrics_regex = 1;
+}
+
+message Percentiles {
+  message Point {
+    // In the [0, 100] range.
+    double percentile = 1;
+    double value = 2;
+  }
+
+  // The time (in nanoseconds) of the first sample within the samples buffer.
+  uint64 start_nstime = 1;
+  // The time (in nanoseconds) of the last sample within the samples buffer.
+  uint64 end_nstime = 2;
+  // The minimum value of the samples within the samples buffer.
+  double min_value = 3;
+  // The maximum value of the samples within the samples buffer.
+  double max_value = 4;
+  // The mean value of the samples within the samples buffer.
+  double mean = 5;
+  // The stndard deviation of the samples within the samples buffer.
+  double stddev = 6;
+  // The number samples within the samples buffer.
+  uint64 num_samples = 7;
+  // The total number of times this metrics has been posted a value to.
+  uint64 total_samples = 8;
+  // The sum of all the posted values.
+  double accumulator = 9;
+  // The percentile points reported by the metric.
+  repeated Point points = 10;
+}
+
+message MetricValues {
+  enum UnitOfMeasure {
+    INVALID = 0;
+    NUMBER = 1;
+    TIME = 2;
+    BYTES = 3;
+  }
+
+  // The metric name.
+  string name = 1;
+
+  oneof values_oneof {
+    Percentiles percentiles_value = 2;
+    int64 int64_value = 3;
+  }
+
+  UnitOfMeasure unit_of_measure = 4;
+}
+
+message MetricsReport {
+  repeated MetricValues metrics = 1;
 }

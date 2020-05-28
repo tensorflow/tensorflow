@@ -44,7 +44,7 @@ class OneDeviceStrategy(distribute_lib.Strategy):
   Using this strategy will place any variables created in its scope on the
   specified device. Input distributed through this strategy will be
   prefetched to the specified device. Moreover, any functions called via
-  `strategy.experimental_run_v2` will also be placed on the specified device
+  `strategy.run` will also be placed on the specified device
   as well.
 
   Typical usage of this strategy could be testing your code with the
@@ -64,7 +64,7 @@ class OneDeviceStrategy(distribute_lib.Strategy):
 
   result = 0
   for i in range(10):
-    result += strategy.experimental_run_v2(step_fn, args=(i,))
+    result += strategy.run(step_fn, args=(i,))
   print(result)  # 90
   ```
   """
@@ -78,6 +78,8 @@ class OneDeviceStrategy(distribute_lib.Strategy):
         used. Examples: "/cpu:0", "/gpu:0", "/device:CPU:0", "/device:GPU:0"
     """
     super(OneDeviceStrategy, self).__init__(OneDeviceExtended(self, device))
+    distribute_lib.distribution_strategy_gauge.get_cell("V2").set(
+        "OneDeviceStrategy")
 
   def experimental_distribute_dataset(self, dataset):  # pylint: disable=useless-super-delegation
     """Distributes a tf.data.Dataset instance provided via dataset.
@@ -127,7 +129,7 @@ class OneDeviceStrategy(distribute_lib.Strategy):
     inputs = strategy.experimental_distribute_datasets_from_function(dataset_fn)
 
     for batch in inputs:
-      replica_results = strategy.experimental_run_v2(replica_fn, args=(batch,))
+      replica_results = strategy.run(replica_fn, args=(batch,))
     ```
 
     IMPORTANT: The `tf.data.Dataset` returned by `dataset_fn` should have a
@@ -154,7 +156,7 @@ class OneDeviceStrategy(distribute_lib.Strategy):
     value, so the result is just the value in a tuple.
 
     Args:
-      value: A value returned by `experimental_run()`, `experimental_run_v2()`,
+      value: A value returned by `experimental_run()`, `run()`,
         `extended.call_for_each_replica()`, or a variable created in `scope`.
 
     Returns:
@@ -163,7 +165,7 @@ class OneDeviceStrategy(distribute_lib.Strategy):
     """
     return super(OneDeviceStrategy, self).experimental_local_results(value)
 
-  def experimental_run_v2(self, fn, args=(), kwargs=None):  # pylint: disable=useless-super-delegation
+  def run(self, fn, args=(), kwargs=None, options=None):  # pylint: disable=useless-super-delegation
     """Run `fn` on each replica, with the given arguments.
 
     In `OneDeviceStrategy`, `fn` is simply called within a device scope for the
@@ -173,11 +175,13 @@ class OneDeviceStrategy(distribute_lib.Strategy):
       fn: The function to run. The output must be a `tf.nest` of `Tensor`s.
       args: (Optional) Positional arguments to `fn`.
       kwargs: (Optional) Keyword arguments to `fn`.
+      options: (Optional) An instance of `tf.distribute.RunOptions` specifying
+        the options to run `fn`.
 
     Returns:
       Return value from running `fn`.
     """
-    return super(OneDeviceStrategy, self).experimental_run_v2(fn, args, kwargs)
+    return super(OneDeviceStrategy, self).run(fn, args, kwargs, options)
 
   def reduce(self, reduce_op, value, axis):  # pylint: disable=useless-super-delegation
     """Reduce `value` across replicas.
@@ -200,7 +204,7 @@ class OneDeviceStrategy(distribute_lib.Strategy):
     Args:
       reduce_op: A `tf.distribute.ReduceOp` value specifying how values should
         be combined.
-      value: A "per replica" value, e.g. returned by `experimental_run_v2` to
+      value: A "per replica" value, e.g. returned by `run` to
         be combined into a single tensor.
       axis: Specifies the dimension to reduce along within each
         replica's tensor. Should typically be set to the batch dimension, or
@@ -238,6 +242,8 @@ class OneDeviceStrategyV1(distribute_lib.StrategyV1):
 
   def __init__(self, device):
     super(OneDeviceStrategyV1, self).__init__(OneDeviceExtended(self, device))
+    distribute_lib.distribution_strategy_gauge.get_cell("V1").set(
+        "OneDeviceStrategy")
   __init__.__doc__ = OneDeviceStrategy.__init__.__doc__
 
 
@@ -253,17 +259,17 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
     worker_device_pairs = [(self._input_device, [self._device])]
     self._input_workers = input_lib.InputWorkers(worker_device_pairs)
 
-  def _create_variable(self, next_creator, *args, **kwargs):
+  def _create_variable(self, next_creator, **kwargs):
     colocate_with = kwargs.pop("colocate_with", None)
     if colocate_with is None:
       with ops.device(self._device):
-        return next_creator(*args, **kwargs)
+        return next_creator(**kwargs)
     elif isinstance(colocate_with, numpy_dataset.SingleDevice):
       with ops.device(colocate_with.device):
-        return next_creator(*args, **kwargs)
+        return next_creator(**kwargs)
     else:
       with ops.colocate_with(colocate_with):
-        return next_creator(*args, **kwargs)
+        return next_creator(**kwargs)
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     values.validate_colocate(colocate_with_variable, self)
@@ -303,6 +309,12 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
         self._input_workers,
         [distribute_lib.InputContext()],
         self._container_strategy())
+
+  def _experimental_distribute_values_from_function(self, value_fn):
+    # TODO(b/137795644): This should return a PerReplica value but other
+    # methods like run in OneDeviceStrategy need to be modified
+    # to do the same.
+    return value_fn(distribute_lib.ValueContext())
 
   # TODO(priyag): Deal with OutOfRange errors  once b/111349762 is fixed.
   def _experimental_run_steps_on_iterator(self, fn, iterator, iterations,
@@ -353,8 +365,8 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
     with ops.device(self._device), _OneDeviceReplicaContext(strategy):
       return fn(*args, **kwargs)
 
-  def _reduce_to(self, reduce_op, value, destinations):
-    del reduce_op, destinations
+  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
+    del reduce_op, destinations, experimental_hints
     return value
 
   def _update(self, var, fn, args, kwargs, group):

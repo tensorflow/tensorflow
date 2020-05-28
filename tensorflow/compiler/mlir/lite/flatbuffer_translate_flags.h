@@ -27,7 +27,5 @@ extern bool emit_custom_ops;
 extern bool lower_tensor_list_ops;
 // The flag to control whether debug info gets stripped on export.
 extern bool strip_debug_info;
-// The flag to control the output array info of tflite graph.
-extern std::string output_arrays_string;
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_TRANSLATE_FLAGS_H_

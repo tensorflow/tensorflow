@@ -183,7 +183,7 @@ RUN_TEST(TestOutputRangeGiven);
 RUN_TEST(TestClamp);
 
 int main(int argc, char** argv) {
-  // On Linux, add: FLAGS_logtostderr = true;
+  // On Linux, add: absl::SetFlag(&FLAGS_logtostderr, true);
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

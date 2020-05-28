@@ -12,13 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATOR_H_
-#define TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATOR_H_
+#ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_CALIBRATOR_H_
+#define TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_CALIBRATOR_H_
 
 #include <unordered_map>
 
-#include "flatbuffers/flatbuffers.h"  // TF:flatbuffers
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_reader.h"
 
@@ -58,8 +59,14 @@ TfLiteStatus BuildLoggingInterpreter(
     std::unique_ptr<Interpreter>* interpreter,
     std::unique_ptr<CalibrationReader>* calibration_reader);
 
+// Same as above, except gets separate tflite::Model and ErrorReporter pointers.
+TfLiteStatus BuildLoggingInterpreter(
+    const tflite::Model* model, ErrorReporter* error_reporter,
+    const OpResolver& op_resolver, std::unique_ptr<Interpreter>* interpreter,
+    std::unique_ptr<CalibrationReader>* calibration_reader);
+
 }  // namespace calibration
 }  // namespace optimize
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATOR_H_
+#endif  // TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_CALIBRATOR_H_

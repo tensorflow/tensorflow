@@ -16,12 +16,23 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_EXAMPLES_PERSON_DETECTION_HIMAX_DRIVER_HM01B0_H_
 #define TENSORFLOW_LITE_MICRO_EXAMPLES_PERSON_DETECTION_HIMAX_DRIVER_HM01B0_H_
 
+#if defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+#define ARDUINO_EXCLUDE_CODE
+#endif  // defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#ifndef ARDUINO_EXCLUDE_CODE
 #include "am_bsp.h"         // NOLINT
 #include "am_mcu_apollo.h"  // NOLINT
 #include "am_util.h"        // NOLINT
+#endif                      // ARDUINO_EXCLUDE_CODE
+
+#if defined(ARDUINO)
+#include "tensorflow/lite/micro/examples/person_detection/arduino/HM01B0_platform.h"
+#endif  // defined(ARDUINO)
 
 #define HM01B0_DRV_VERSION (0)
 #define HM01B0_DRV_SUBVERSION (3)
@@ -265,7 +276,7 @@ uint32_t hm01b0_get_modelid(hm01b0_cfg_t *psCfg, uint16_t *pui16MID);
 //! @param ui32ScriptCmdNum     - No. of commands in HM01B0 initialization
 //! script.
 //!
-//! This function initilizes HM01B0 with a given script.
+//! This function initializes HM01B0 with a given script.
 //!
 //! @return Error code.
 //

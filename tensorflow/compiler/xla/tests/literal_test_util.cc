@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/literal_comparison.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
@@ -30,10 +31,7 @@ void WriteLiteralToTempFile(const LiteralSlice& literal, const string& name) {
   // TEST_UNDECLARED_OUTPUTS_DIR.  This plays well with tools that inspect test
   // results, especially when they're run on remote machines.
   string outdir;
-  const char* undeclared_outputs_dir = getenv("TEST_UNDECLARED_OUTPUTS_DIR");
-  if (undeclared_outputs_dir != nullptr) {
-    outdir = undeclared_outputs_dir;
-  } else {
+  if (!tensorflow::io::GetTestUndeclaredOutputsDir(&outdir)) {
     outdir = tensorflow::testing::TmpDir();
   }
 

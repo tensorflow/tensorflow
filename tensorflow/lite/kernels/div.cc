@@ -115,13 +115,13 @@ void EvalDiv(TfLiteContext* context, TfLiteNode* node, TfLiteDivParams* params,
   if (output->type == kTfLiteInt32) {
     if (kernel_type == kReference) {
       if (data->requires_broadcast) {
-        TF_LITE_DIV(reference_ops, BroadcastDiv4DSlow, int32_t);
+        TF_LITE_DIV(reference_ops, BroadcastDivSlow, int32_t);
       } else {
         TF_LITE_DIV(reference_ops, Div, int32_t);
       }
     } else {
       if (data->requires_broadcast) {
-        TF_LITE_DIV(optimized_ops, BroadcastDiv4DSlow, int32_t);
+        TF_LITE_DIV(optimized_ops, BroadcastDivSlow, int32_t);
       } else {
         TF_LITE_DIV(optimized_ops, Div, int32_t);
       }
@@ -129,13 +129,13 @@ void EvalDiv(TfLiteContext* context, TfLiteNode* node, TfLiteDivParams* params,
   } else if (output->type == kTfLiteFloat32) {
     if (kernel_type == kReference) {
       if (data->requires_broadcast) {
-        TF_LITE_DIV(reference_ops, BroadcastDiv4DSlow, float);
+        TF_LITE_DIV(reference_ops, BroadcastDivSlow, float);
       } else {
         TF_LITE_DIV(reference_ops, Div, float);
       }
     } else {
       if (data->requires_broadcast) {
-        TF_LITE_DIV(optimized_ops, BroadcastDiv4DSlow, float);
+        TF_LITE_DIV(optimized_ops, BroadcastDivSlow, float);
       } else {
         TF_LITE_DIV(optimized_ops, Div, float);
       }
@@ -168,13 +168,13 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                GetTensorData<dtype>(output))
     if (kernel_type == kReference) {
       if (need_broadcast) {
-        TF_LITE_DIV(reference_ops, BroadcastDiv4DSlow, uint8_t);
+        TF_LITE_DIV(reference_ops, BroadcastDivSlow, uint8_t);
       } else {
         TF_LITE_DIV(reference_ops, Div, uint8_t);
       }
     } else {
       if (need_broadcast) {
-        TF_LITE_DIV(optimized_ops, BroadcastDiv4DSlow, uint8_t);
+        TF_LITE_DIV(optimized_ops, BroadcastDivSlow, uint8_t);
       } else {
         TF_LITE_DIV(optimized_ops, Div, uint8_t);
       }

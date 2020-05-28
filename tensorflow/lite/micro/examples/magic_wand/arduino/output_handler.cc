@@ -13,6 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if defined(ARDUINO) && !defined(ARDUINO_ARDUINO_NANO33BLE)
+#define ARDUINO_EXCLUDE_CODE
+#endif  // defined(ARDUINO) && !defined(ARDUINO_ARDUINO_NANO33BLE)
+
+#ifndef ARDUINO_EXCLUDE_CODE
+
 #include "tensorflow/lite/micro/examples/magic_wand/output_handler.h"
 
 #include "Arduino.h"
@@ -24,28 +30,28 @@ void HandleOutput(tflite::ErrorReporter* error_reporter, int kind) {
     pinMode(LED_BUILTIN, OUTPUT);
     is_initialized = true;
   }
-  // Toggle the LED every time an inference is performed
-  static int count = 0;
-  ++count;
-  if (count & 1) {
-    digitalWrite(LED_BUILTIN, HIGH);
-  } else {
-    digitalWrite(LED_BUILTIN, LOW);
-  }
-  // Print some ASCII art for each gesture
+
+  // Print some ASCII art for each gesture and control the LED.
   if (kind == 0) {
-    error_reporter->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter,
         "WING:\n\r*         *         *\n\r *       * *       "
         "*\n\r  *     *   *     *\n\r   *   *     *   *\n\r    * *       "
         "* *\n\r     *         *\n\r");
   } else if (kind == 1) {
-    error_reporter->Report(
+    digitalWrite(LED_BUILTIN, HIGH);
+    TF_LITE_REPORT_ERROR(
+        error_reporter,
         "RING:\n\r          *\n\r       *     *\n\r     *         *\n\r "
         "   *           *\n\r     *         *\n\r       *     *\n\r      "
         "    *\n\r");
   } else if (kind == 2) {
-    error_reporter->Report(
+    digitalWrite(LED_BUILTIN, LOW);
+    TF_LITE_REPORT_ERROR(
+        error_reporter,
         "SLOPE:\n\r        *\n\r       *\n\r      *\n\r     *\n\r    "
         "*\n\r   *\n\r  *\n\r * * * * * * * *\n\r");
   }
 }
+
+#endif  // ARDUINO_EXCLUDE_CODE

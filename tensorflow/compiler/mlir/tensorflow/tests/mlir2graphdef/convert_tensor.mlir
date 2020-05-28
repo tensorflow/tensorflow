@@ -1,11 +1,14 @@
 // RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s
 
 func @main() -> (tensor<1x2xf16>, tensor<2xf16>) {
-  %0:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_HALF", value = dense<1.0> : tensor<1x2xf16>} : () -> (tensor<1x2xf16>, !_tf.control) loc("const1")
-  %1:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_HALF", value = dense<[1.0, 2.0]> : tensor<2xf16>} : () -> (tensor<2xf16>, !_tf.control) loc("const2")
-	%2:2 = "_tf.Const"() {device = "", dtype = bf16, value = dense<[4.900000e+01, 8.200000e+02]> : tensor<2xbf16>} : () -> (tensor<bf16>, !_tf.control) loc("const3")
-	%3:2 = "_tf.Const"() {device = "", dtype = bf16, value = dense<0.000000e+00> : tensor<bf16>} : () -> (tensor<bf16>, !_tf.control) loc("const4")
-  return %0#0, %1#0 : tensor<1x2xf16>, tensor<2xf16>
+  %graph:2 = tf_executor.graph {
+    %0:2 = tf_executor.island wraps "tf.Const"() {device = "", dtype = "tfdtype$DT_HALF", value = dense<1.0> : tensor<1x2xf16>} : () -> tensor<1x2xf16> loc("const1")
+    %1:2 = tf_executor.island wraps "tf.Const"() {device = "", dtype = "tfdtype$DT_HALF", value = dense<[1.0, 2.0]> : tensor<2xf16>} : () -> tensor<2xf16> loc("const2")
+    %2:2 = tf_executor.island wraps "tf.Const"() {device = "", dtype = bf16, value = dense<[4.900000e+01, 8.200000e+02]> : tensor<2xbf16>} : () -> tensor<bf16> loc("const3")
+    %3:2 = tf_executor.island wraps "tf.Const"() {device = "", dtype = bf16, value = dense<0.000000e+00> : tensor<bf16>} : () -> tensor<bf16> loc("const4")
+    tf_executor.fetch %0#0, %1#0 : tensor<1x2xf16>, tensor<2xf16>
+  }
+  return %graph#0, %graph#1 : tensor<1x2xf16>, tensor<2xf16>
 }
 
 // CHECK: node {

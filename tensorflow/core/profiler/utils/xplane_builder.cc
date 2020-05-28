@@ -14,13 +14,21 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
+#include <algorithm>
+#include <string>
+#include <utility>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/time_utils.h"
 
 namespace tensorflow {
 namespace profiler {
 
 XPlaneBuilder::XPlaneBuilder(XPlane* plane)
-    : XStatsBuilder<XPlane>(plane), plane_(plane) {
+    : XStatsBuilder<XPlane>(plane, this), plane_(plane) {
   for (auto& iter : *plane->mutable_event_metadata()) {
     last_event_metadata_id_ =
         std::max<int64>(last_event_metadata_id_, iter.second.id());
@@ -50,10 +58,16 @@ XEventMetadata* XPlaneBuilder::GetOrCreateEventMetadata(
     metadata =
         XPlaneBuilder::GetOrCreateEventMetadata(++last_event_metadata_id_);
     metadata->set_name(std::string(name));
-    std::string event_name = TfOpEventName(name);
-    if (event_name != name) {
-      metadata->set_display_name(std::move(event_name));
-    }
+  }
+  return metadata;
+}
+
+XEventMetadata* XPlaneBuilder::GetOrCreateEventMetadata(std::string&& name) {
+  XEventMetadata*& metadata = event_metadata_by_name_[name];
+  if (metadata == nullptr) {
+    metadata =
+        XPlaneBuilder::GetOrCreateEventMetadata(++last_event_metadata_id_);
+    metadata->set_name(std::move(name));
   }
   return metadata;
 }
@@ -86,13 +100,29 @@ XLine* XPlaneBuilder::AddLine(int64 line_id) {
 // Returns a builder for the line with the given id. Creates a new line if the
 // id was unused, otherwise the builder will add events to an existing line.
 XLineBuilder XPlaneBuilder::GetOrCreateLine(int64 line_id) {
-  return XLineBuilder(AddLine(line_id));
+  return XLineBuilder(AddLine(line_id), this);
 }
 
 XEventBuilder XLineBuilder::AddEvent(const XEventMetadata& metadata) {
   XEvent* event = line_->add_events();
   event->set_metadata_id(metadata.id());
-  return XEventBuilder(line_, event);
+  return XEventBuilder(line_, plane_, event);
+}
+
+XEventBuilder XLineBuilder::AddEvent(const XEvent& event) {
+  XEvent* new_event = line_->add_events();
+  *new_event = event;
+  return XEventBuilder(line_, plane_, new_event);
+}
+
+void XLineBuilder::SetTimestampNsAndAdjustEventOffsets(int64 timestamp_ns) {
+  int64 offset_ps = NanosToPicos(line_->timestamp_ns() - timestamp_ns);
+  line_->set_timestamp_ns(timestamp_ns);
+  if (offset_ps) {
+    for (auto& event : *line_->mutable_events()) {
+      event.set_offset_ps(event.offset_ps() + offset_ps);
+    }
+  }
 }
 
 }  // namespace profiler

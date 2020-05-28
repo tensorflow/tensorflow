@@ -517,9 +517,6 @@ class CSRSparseMatrixOpsTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testSparseMatrixMatMulConjugateOutput(self):
-    if test.is_built_with_rocm():
-      self.skipTest("complex type not supported on ROCm")
-
     for shapes in [[(5, 6), (6, 1)], [(5, 6), (6, 2)]]:
       a_indices = np.array([[0, 0], [2, 3]])
       a_values = np.array([1.0 + 1.j, 5.0 - 2.j]).astype(np.complex64)
@@ -542,17 +539,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testLargeBatchSparseMatrixMatMul(self):
-    dtypes_to_test = [np.float32]
-    if not test.is_built_with_rocm():
-      # complex types is not supported on the ROCm platform
-      dtypes_to_test += [np.complex64]
-
-    if test.is_built_with_rocm():
-      # TODO(rocm): fix this
-      # This test is currently failing on the ROCm platform
-      # Ren-enable it once the fix is available
-      self.skipTest("hipSPARSE all failure on the ROCm platform")
-
+    dtypes_to_test = [np.float32, np.complex64]
     sparsify = lambda m: m * (m > 0)
     for dtype in dtypes_to_test:
       for (transpose_a, transpose_b) in ((False, False), (False, True),

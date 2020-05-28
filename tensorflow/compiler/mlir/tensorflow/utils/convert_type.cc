@@ -17,9 +17,9 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/Support/DebugStringHelper.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -56,6 +56,18 @@ Status ConvertDataType(DataType dtype, Builder builder, Type* type) {
       return Status::OK();
     case DT_INT64:
       *type = builder.getIntegerType(64);
+      return Status::OK();
+    case DT_UINT8:
+      *type = builder.getIntegerType(8, /*isSigned=*/false);
+      return Status::OK();
+    case DT_UINT16:
+      *type = builder.getIntegerType(16, /*isSigned=*/false);
+      return Status::OK();
+    case DT_UINT32:
+      *type = builder.getIntegerType(32, /*isSigned=*/false);
+      return Status::OK();
+    case DT_UINT64:
+      *type = builder.getIntegerType(64, /*isSigned=*/false);
       return Status::OK();
     case DT_BFLOAT16:
       *type = builder.getBF16Type();
@@ -99,16 +111,16 @@ Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
           *dtype = DT_BOOL;
           return Status::OK();
         case 8:
-          *dtype = DT_INT8;
+          *dtype = itype.isUnsigned() ? DT_UINT8 : DT_INT8;
           return Status::OK();
         case 16:
-          *dtype = DT_INT16;
+          *dtype = itype.isUnsigned() ? DT_UINT16 : DT_INT16;
           return Status::OK();
         case 32:
-          *dtype = DT_INT32;
+          *dtype = itype.isUnsigned() ? DT_UINT32 : DT_INT32;
           return Status::OK();
         case 64:
-          *dtype = DT_INT64;
+          *dtype = itype.isUnsigned() ? DT_UINT64 : DT_INT64;
           return Status::OK();
         default:
           return errors::Unimplemented(

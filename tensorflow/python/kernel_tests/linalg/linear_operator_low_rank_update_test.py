@@ -270,7 +270,7 @@ class LinearOperatorLowRankUpdatetestWithDiagNotSquare(
   _use_v = True
 
 
-class LinearOpearatorLowRankUpdateBroadcastsShape(test.TestCase):
+class LinearOperatorLowRankUpdateBroadcastsShape(test.TestCase):
   """Test that the operator's shape is the broadcast of arguments."""
 
   def test_static_shape_broadcasts_up_from_operator_to_other_args(self):

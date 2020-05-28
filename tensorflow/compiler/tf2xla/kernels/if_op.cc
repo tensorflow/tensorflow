@@ -14,8 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/kernels/if_op.h"
-#include "tensorflow/compiler/tf2xla/kernels/if_while_utils.h"
 
+#include "tensorflow/compiler/tf2xla/const_analysis.h"
+#include "tensorflow/compiler/tf2xla/kernels/if_while_utils.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
@@ -44,29 +45,6 @@ XlaIfOp::XlaIfOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kPropagateCompileTimeConsts,
                                      &propagate_compile_time_consts_));
   }
-}
-
-Status ConvertCompileTimeConstArgumentsToConst(
-    XlaOpKernelContext* ctx, std::vector<XlaCompiler::Argument>* args) {
-  for (int i = 0; i < args->size(); i++) {
-    XlaCompiler::Argument& arg = (*args)[i];
-    const XlaExpression& expression = ctx->InputExpression(i + 1);
-    // If the input tensor is a compile time constant build a kConstant type
-    // argument.
-    if (arg.kind == XlaCompiler::Argument::kParameter) {
-      // NOTE: We can not simply check that this is Kind::kConstant because
-      // this could be the output of a MetadataOnly op e.g. Size.
-      xla::StatusOr<absl::optional<Tensor>> maybe_constant =
-          expression.ResolveConstant(ctx->compiler()->client());
-      if (maybe_constant.ok() && maybe_constant.ValueOrDie().has_value()) {
-        arg.kind = XlaCompiler::Argument::kConstant;
-        arg.type = expression.dtype();
-        arg.constant_value = std::move(maybe_constant.ValueOrDie().value());
-        arg.shape = expression.GetShape().ValueOrDie();
-      }
-    }
-  }
-  return Status::OK();
 }
 
 // TODO(b/35949885): There is duplication here with the handling of the
@@ -115,17 +93,33 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   }
 
   if (propagate_compile_time_consts_) {
+    std::vector<bool> then_branch_must_be_const_nodes;
+    const FunctionBody* then_body;
+    std::vector<bool> else_branch_must_be_const_nodes;
+    const FunctionBody* else_body;
+    OP_REQUIRES_OK(ctx, FindMustBeConstNodes(ctx, then_branch_,
+                                             &then_branch_must_be_const_nodes,
+                                             &then_body));
+    OP_REQUIRES_OK(ctx, FindMustBeConstNodes(ctx, then_branch_,
+                                             &else_branch_must_be_const_nodes,
+                                             &else_body));
+
+    auto should_resolve_const = [&](int arg_idx) {
+      XlaCompiler::Argument& arg = arguments[arg_idx];
+      return arg.kind == XlaCompiler::Argument::kParameter &&
+             (then_branch_must_be_const_nodes[then_body->arg_nodes[arg_idx]
+                                                  ->id()] ||
+              else_branch_must_be_const_nodes[else_body->arg_nodes[arg_idx]
+                                                  ->id()]);
+    };
+
     // Replaces `kParameter` type args in `arguments` with `kConstant` if
     // the op input corresponding to that arg is a compile-time const. This
     // is necessary to propagate compile time consts to ops in the branch
     // functions.
-    // Note: Propagating "all" compile-time constants may not be necessary. We
-    // should ideally only propagate consts which are required to be compile
-    // time constants in the branch functions. But that would require calling
-    // BackwardsConstAnalysis here which would be expensive. However, if we
-    // start hitting memory issues we should revisit this.
-    OP_REQUIRES_OK(ctx,
-                   ConvertCompileTimeConstArgumentsToConst(ctx, &arguments));
+    ConvertCompileTimeConstArgumentsToConst(ctx, &arguments,
+                                            /*xla_expression_offset=*/1,
+                                            should_resolve_const);
   }
 
   // Compile both branches of the conditional.

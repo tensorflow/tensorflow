@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -731,6 +732,24 @@ XLA_TEST_F(DynamicUpdateSliceTest, DISABLED_ON_GPU(R3ContiguousLargerBF16)) {
   RunR3Contiguous<bfloat16>(operand_shape, /*index=*/7, /*size=*/1);
 }
 
+// This test that buffer assignment does not alias constants with the output of
+// dynamic update slice.
+XLA_TEST_F(HloTestBase, AddOfDUS) {
+  const char* hlo_string = R"(
+  HloModule m
+  test {
+    o = s32[6] constant({2,3,4,5,6,7})
+    i = s32[] parameter(0)
+    u = s32[2] parameter(1)
+    dus = s32[6] dynamic-update-slice(o,u,i)
+    a = s32[6] add(dus, dus)
+    j = s32[] parameter(2)
+    ROOT ds = s32[2] dynamic-slice(a, j), dynamic_slice_sizes={2}
+  }
+  )";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
+}
+
 void BM_DynamicSlice(int num_iters) {
   tensorflow::testing::StopTiming();
 
@@ -779,9 +798,10 @@ void BM_DynamicSlice(int num_iters) {
   DynamicSlice(input, start_indices, {1, 1, 1, 1});
   auto computation = builder.Build().ConsumeValueOrDie();
 
-  std::unique_ptr<LocalExecutable> executable =
-      client->Compile(computation, host_shapes, ExecutableBuildOptions())
-          .ConsumeValueOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executables,
+      client->Compile(computation, host_shapes, ExecutableBuildOptions()));
+  auto executable = std::move(executables[0]);
 
   // Run some warm-up executions.
   ExecutableRunOptions options;

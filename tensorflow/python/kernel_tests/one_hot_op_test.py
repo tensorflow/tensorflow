@@ -33,16 +33,19 @@ class OneHotTest(test.TestCase):
                   use_gpu=False,
                   expected_err_re=None,
                   raises=None,
+                  dtype=None,
                   **inputs):
     with self.cached_session(use_gpu=use_gpu):
       if raises is not None:
         with self.assertRaises(raises):
-          array_ops.one_hot(**inputs)
+          array_ops.one_hot(dtype=dtype, **inputs)
       else:
-        ans = array_ops.one_hot(**inputs)
+        ans = array_ops.one_hot(dtype=dtype, **inputs)
         if expected_err_re is None:
           tf_ans = self.evaluate(ans)
           self.assertAllEqual(tf_ans, truth)
+          if dtype:
+            self.assertEqual(tf_ans.dtype, dtype)
           self.assertEqual(tf_ans.shape, ans.get_shape())
         else:
           with self.assertRaisesOpError(expected_err_re):
@@ -91,12 +94,15 @@ class OneHotTest(test.TestCase):
         dtype=dtype)
 
     # axis == -1
-    self._testBothOneHot(indices=indices, depth=depth, truth=truth)
+    self._testBothOneHot(indices=indices, depth=depth, dtype=dtype, truth=truth)
 
     # axis == 0
     self._testBothOneHot(
-        indices=indices, depth=depth, axis=0,
+        indices=indices, depth=depth, axis=0, dtype=dtype,
         truth=truth.T)  # Output is transpose version in this case
+
+  def testDefaultNoDtype(self):
+    self._testDefaultBasic(None)
 
   def testFloatBasic(self):
     self._testBasic(np.float32)
@@ -303,7 +309,6 @@ class OneHotTest(test.TestCase):
         depth=depth,
         on_value=on_value,
         off_value=off_value,
-        dtype=dtypes.string,
         truth=truth)
 
     on_value = constant_op.constant(b"1.0")
@@ -313,7 +318,6 @@ class OneHotTest(test.TestCase):
         depth=depth,
         on_value=on_value,
         off_value=off_value,
-        dtype=dtypes.string,
         truth=truth)
 
     on_value = b"1.0"
@@ -323,7 +327,6 @@ class OneHotTest(test.TestCase):
         depth=depth,
         on_value=on_value,
         off_value=off_value,
-        dtype=dtypes.string,
         truth=truth)
 
   def testIndicesTypes(self):
@@ -400,8 +403,8 @@ class OneHotTest(test.TestCase):
   def testDtypeMismatchTypeError(self):
     indices = [0, 1, 2]
     depth = 3
-    on_value = np.asarray(1.0, np.float32)
-    off_value = np.asarray(0.0, np.float32)
+    on_value = constant_op.constant(1.0, dtypes.float32)
+    off_value = constant_op.constant(0.0, dtypes.float32)
     dtype = np.int32
 
     self._testBothOneHot(
@@ -419,6 +422,37 @@ class OneHotTest(test.TestCase):
         dtype=dtype,
         truth=None,
         raises=TypeError)
+
+  def testConvertToTensorOfCorrectDtype(self):
+    indices = [0, 1, 2]
+    depth = 3
+    dtype = np.float16
+    truth = np.asarray([[1, 0, 0],
+                        [0, 1, 0],
+                        [0, 0, 1]])
+    self._testBothOneHot(
+        truth=truth,
+        indices=indices,
+        depth=depth,
+        on_value=1.0,
+        off_value=constant_op.constant(0.0, dtype),
+        dtype=dtype)
+
+    self._testBothOneHot(
+        truth=truth,
+        indices=indices,
+        depth=depth,
+        on_value=constant_op.constant(1.0, dtype),
+        off_value=0.,
+        dtype=dtype)
+
+    self._testBothOneHot(
+        truth=truth,
+        indices=indices,
+        depth=depth,
+        on_value=1.0,
+        off_value=0.,
+        dtype=dtype)
 
   def testOneHotUint8WithLargeArray(self):
     with self.cached_session(use_gpu=False) as sess:

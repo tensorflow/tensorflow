@@ -18,16 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
-from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_preprocessing_layer_v1
+from tensorflow.python.keras.layers.preprocessing import category_encoding_v1
+from tensorflow.python.keras.layers.preprocessing import string_lookup_v1
 from tensorflow.python.keras.layers.preprocessing import text_vectorization
-from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export(v1=['keras.layers.experimental.preprocessing.TextVectorization'])
+@keras_export(v1=["keras.layers.experimental.preprocessing.TextVectorization"])
 class TextVectorization(text_vectorization.TextVectorization,
                         base_preprocessing_layer_v1.CombinerPreprocessingLayer):
   """Text vectorization layer.
@@ -71,51 +69,15 @@ class TextVectorization(text_vectorization.TextVectorization,
           times the token at that index appeared in the batch item.
         TFIDF: As BINARY, but the TF-IDF algorithm is applied to find the value
           in each token slot.
-    output_sequence_length: Optional length for the output tensor. If set,
-      the output will be padded or truncated to this value in INT mode.
+    output_sequence_length: Optional length for the output tensor. If set, the
+      output will be padded or truncated to this value in INT mode.
     pad_to_max_tokens: If True, BINARY, COUNT, and TFIDF modes will have their
       outputs padded to max_tokens, even if the number of unique tokens in the
       vocabulary is less than max_tokens.
   """
 
-  def _get_table_data(self):
-    keys, values = self._table.export()
-    np_keys = K.get_session().run(keys)
-    np_values = K.get_session().run(values)
-    return (np_keys, np_values)
+  def _get_vectorization_class(self):
+    return category_encoding_v1.CategoryEncoding
 
-  def _get_table_size(self):
-    return K.get_session().run(self._table.size())
-
-  def _clear_table(self):
-    if (self._output_mode in [
-        text_vectorization.BINARY, text_vectorization.COUNT,
-        text_vectorization.TFIDF
-    ] and self._called and not self._pad_to_max):
-      raise RuntimeError(("When using TextVectorization in {mode} mode, the "
-                          "vocabulary cannot be changed after the layer is "
-                          "called.").format(mode=self._output_mode))
-    keys, _ = self._table.export()
-    K.get_session().run(self._table.remove(keys))
-    self._vocab_size = 0
-
-  def _insert_table_data(self, keys, values):
-    if (self._output_mode in [
-        text_vectorization.BINARY, text_vectorization.COUNT,
-        text_vectorization.TFIDF
-    ] and self._called and not self._pad_to_max):
-      raise RuntimeError(("When using TextVectorization in {mode} mode, the "
-                          "vocabulary cannot be changed after the layer is "
-                          "called.").format(mode=self._output_mode))
-    K.get_session().run(self._table.insert(keys, values))
-    self._vocab_size += len(keys)
-
-  def _to_numpy(self, data):
-    """Converts preprocessed inputs into numpy arrays."""
-    if isinstance(data, np.ndarray):
-      return data
-    session = K.get_session()
-    data = session.run(data)
-    if isinstance(data, ragged_tensor_value.RaggedTensorValue):
-      data = np.array(data.to_list())
-    return data
+  def _get_index_lookup_class(self):
+    return string_lookup_v1.StringLookup

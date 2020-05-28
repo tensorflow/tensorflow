@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 
+#include "absl/container/inlined_vector.h"
+
 namespace xla {
 
 namespace py = pybind11;
@@ -38,15 +40,26 @@ PythonRefManager::ManagedPyObjects::~ManagedPyObjects() {
 }
 
 std::shared_ptr<PythonRefManager::ManagedPyObjects>
+PythonRefManager::ManageReference(py::object object) {
+  return std::make_shared<ManagedPyObjects>(this,
+                                            absl::Span<py::object>(&object, 1));
+}
+
+std::shared_ptr<PythonRefManager::ManagedPyObjects>
 PythonRefManager::ManageReferences(absl::Span<py::object> objects) {
   return std::make_shared<ManagedPyObjects>(this, objects);
 }
 
 void PythonRefManager::CollectGarbage() {
-  // TODO(phawkins): ideally we would assert that the GIL is held, but there is
-  // no API to do this across all Python versions.
-  absl::MutexLock lock(&mu_);
-  python_garbage_.clear();
+  // TODO(phawkins): we should CHECK(PyGILState_Check());
+  std::deque<pybind11::object> garbage;
+  {
+    absl::MutexLock lock(&mu_);
+    garbage.swap(python_garbage_);
+  }
+  // We defer deleting garbage until the lock is released. It's possible that
+  // deleting garbage will lead to more Python garbage being added; if we held
+  // the lock we would deadlock because absl::Mutex is not reentrant.
 }
 
 PythonRefManager* GlobalPyRefManager() {

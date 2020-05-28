@@ -77,7 +77,7 @@ def convert_structure_to_signature(structure, arg_names=None):
 
   Returns:
     Identical structure that has TensorSpec objects instead of Tensors and
-    UknownArgument instead of any unsupported types.
+    UnknownArgument instead of any unsupported types.
   """
   def encode_arg(arg, path):
     """A representation for this argument, for converting into signatures."""
@@ -937,7 +937,7 @@ def func_graph_from_py_func(name,
           x = ops.convert_to_tensor_or_composite(x)
         except (ValueError, TypeError):
           raise TypeError(
-              "To be compatible with tf.contrib.eager.defun, Python functions "
+              "To be compatible with tf.eager.defun, Python functions "
               "must return zero or more Tensors; in compilation of %s, found "
               "return value of type %s, which is not a Tensor." %
               (str(python_func), type(x)))
@@ -1023,6 +1023,8 @@ def func_graph_from_py_func(name,
 
   if add_control_dependencies:
     func_graph.control_outputs.extend(deps_control_manager.ops_which_must_run)
+    func_graph.collective_manager_ids_used = (
+        deps_control_manager.collective_manager_ids_used)
 
   return func_graph
 
@@ -1188,16 +1190,9 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
     arg_value = nest.map_structure(_get_composite_tensor_spec, arg_value)
 
     flattened = nest.flatten(arg_value, expand_composites=True)
-    tensor_specs = [
-        arg for arg in flattened if isinstance(arg, tensor_spec.DenseSpec)
-    ]
-    specified_names = [arg.name for arg in tensor_specs if arg.name]
-    if specified_names and len(specified_names) < len(tensor_specs):
-      raise ValueError("If specifying TensorSpec names for nested structures, "
-                       "either zero or all names have to be specified.")
 
     for arg in flattened:
-      # We have a shape entry for each arg, regadless of whether it's a real
+      # We have a shape entry for each arg, regardless of whether it's a real
       # Tensor or not.  For non-tensor entries it should be None.
       shape = next(shapes_iter)
       if isinstance(arg, (ops.Tensor, tensor_spec.TensorSpec)):
@@ -1279,3 +1274,7 @@ def dismantle_func_graph(func_graph):
   """
   func_graph.clear_captures()
   ops.dismantle_graph(func_graph)
+
+
+def override_func_graph_name_scope(func_graph, name_scope):
+  func_graph._name_stack = name_scope  # pylint: disable=protected-access

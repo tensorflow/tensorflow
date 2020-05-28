@@ -24,8 +24,8 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 
 using tensorflow::ServerFactory;
 
@@ -108,7 +108,7 @@ class CServerFactory : public ServerFactory {
         delete_function_(delete_function),
         rendezvous_builder_(rendezvous_builder) {}
 
-  Status NewServer(const ServerDef& server_def,
+  Status NewServer(const ServerDef& server_def, const Options& options,
                    std::unique_ptr<ServerInterface>* out_server) override {
     TF_RETURN_IF_ERROR(CGrpcServer::Create(
         server_def, init_function_, start_function_, stop_function_,

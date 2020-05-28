@@ -84,7 +84,7 @@ void TestStrideSlide(std::initializer_list<int> input_shape,
                                                   "output_tensor"),
   };
   TfLiteContext context;
-  PopulateContext(tensors, tensors_size, &context);
+  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =

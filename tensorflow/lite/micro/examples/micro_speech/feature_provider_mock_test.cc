@@ -27,7 +27,7 @@ TF_LITE_MICRO_TEST(TestFeatureProviderMockYes) {
   tflite::MicroErrorReporter micro_error_reporter;
   tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
-  uint8_t feature_data[kFeatureElementCount];
+  int8_t feature_data[kFeatureElementCount];
   FeatureProvider feature_provider(kFeatureElementCount, feature_data);
 
   int how_many_new_slices = 0;
@@ -47,7 +47,7 @@ TF_LITE_MICRO_TEST(TestFeatureProviderMockNo) {
   tflite::MicroErrorReporter micro_error_reporter;
   tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
-  uint8_t feature_data[kFeatureElementCount];
+  int8_t feature_data[kFeatureElementCount];
   FeatureProvider feature_provider(kFeatureElementCount, feature_data);
 
   int how_many_new_slices = 0;

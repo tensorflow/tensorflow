@@ -14,8 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/internal/profiler_factory.h"
 
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/profiler_options.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -23,7 +29,7 @@ namespace {
 
 mutex mu(LINKER_INITIALIZED);
 
-std::vector<ProfilerFactory>* GetFactories() EXCLUSIVE_LOCKS_REQUIRED(mu) {
+std::vector<ProfilerFactory>* GetFactories() TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
   static auto factories = new std::vector<ProfilerFactory>();
   return factories;
 }
@@ -36,7 +42,7 @@ void RegisterProfilerFactory(ProfilerFactory factory) {
 }
 
 void CreateProfilers(
-    const profiler::ProfilerOptions& options,
+    const ProfileOptions& options,
     std::vector<std::unique_ptr<profiler::ProfilerInterface>>* result) {
   mutex_lock lock(mu);
   for (auto factory : *GetFactories()) {

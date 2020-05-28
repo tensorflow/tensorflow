@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// GrpcMasterService implements the RPC service MasterSerivce.
+// GrpcMasterService implements the RPC service MasterService.
 //
 // A GrpcMasterService maintains the state of live graph computation
 // sessions, each session orchestrates both local and remote devices
@@ -138,7 +138,7 @@ class GrpcMasterService : public AsyncServiceInterface {
   grpc::MasterService::AsyncService master_service_;
 
   mutex mu_;
-  bool is_shutdown_ GUARDED_BY(mu_);
+  bool is_shutdown_ TF_GUARDED_BY(mu_);
   const ConfigProto default_session_config_;
   ::grpc::Alarm* shutdown_alarm_ = nullptr;
 

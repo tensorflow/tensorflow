@@ -267,8 +267,8 @@ def update_confusion_matrix_variables(variables_to_update,
     y_true: A `Tensor` whose shape matches `y_pred`. Will be cast to `bool`.
     y_pred: A floating point `Tensor` of arbitrary shape and whose values are in
       the range `[0, 1]`.
-    thresholds: A float value or a python list or tuple of float thresholds in
-      `[0, 1]`, or NEG_INF (used when top_k is set).
+    thresholds: A float value, float tensor, python list, or tuple of float
+      thresholds in `[0, 1]`, or NEG_INF (used when top_k is set).
     top_k: Optional int, indicates that the positive labels should be limited to
       the top k predictions.
     class_id: Optional int, limits the prediction and labels to the class
@@ -301,9 +301,9 @@ def update_confusion_matrix_variables(variables_to_update,
     return
   y_true = math_ops.cast(y_true, dtype=dtypes.float32)
   y_pred = math_ops.cast(y_pred, dtype=dtypes.float32)
+  thresholds = ops.convert_to_tensor_v2(thresholds, dtype=dtypes.float32)
+  num_thresholds = thresholds.shape[0]
   if multi_label:
-    thresh_shape = array_ops.shape(thresholds)
-    num_thresholds = thresh_shape[0]
     one_thresh = math_ops.equal(
         math_ops.cast(1, dtype=dtypes.int32),
         array_ops.rank(thresholds),
@@ -312,7 +312,6 @@ def update_confusion_matrix_variables(variables_to_update,
     [y_pred,
      y_true], _ = ragged_assert_compatible_and_get_flat_values([y_pred, y_true],
                                                                sample_weight)
-    num_thresholds = len(to_list(thresholds))
     one_thresh = math_ops.cast(True, dtype=dtypes.bool)
 
   if not any(
@@ -388,9 +387,8 @@ def update_confusion_matrix_variables(variables_to_update,
     data_tiles = [num_thresholds, 1]
 
   thresh_tiled = array_ops.tile(
-      array_ops.reshape(
-          array_ops.constant(thresholds, dtype=dtypes.float32),
-          thresh_pretile_shape), array_ops.stack(thresh_tiles))
+      array_ops.reshape(thresholds, thresh_pretile_shape),
+      array_ops.stack(thresh_tiles))
 
   # Tile the predictions for every threshold.
   preds_tiled = array_ops.tile(predictions_extra_dim, data_tiles)
@@ -471,7 +469,7 @@ def _filter_top_k(x, k):
   """
   _, top_k_idx = nn_ops.top_k(x, k, sorted=False)
   top_k_mask = math_ops.reduce_sum(
-      array_ops.one_hot(top_k_idx, x.shape[-1], axis=-1), axis=-2)
+      array_ops.one_hot(top_k_idx, array_ops.shape(x)[-1], axis=-1), axis=-2)
   return x * top_k_mask + NEG_INF * (1 - top_k_mask)
 
 
@@ -507,7 +505,7 @@ def ragged_assert_compatible_and_get_flat_values(values, mask=None):
       values = [values]
       to_be_stripped = True
 
-    # NOTE: we leave the flat_values compatiblity to
+    # NOTE: we leave the flat_values compatibility to
     # tf.TensorShape `assert_is_compatible_with`
     # check if both dynamic dimensions are equal and then use the flat_values.
     nested_row_split_list = [rt.nested_row_splits for rt in values]

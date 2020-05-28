@@ -127,7 +127,7 @@ class LossScaleBenchmark(test.Benchmark):
           return opt.minimize(get_loss, var_list)
 
       if mode == 'graph':
-        run_op = strategy.experimental_run_v2(minimize_fn)
+        run_op = strategy.run(minimize_fn)
         init_op = variables.global_variables_initializer()
         with session_module.Session() as sess:
           sess.run(init_op)
@@ -136,7 +136,7 @@ class LossScaleBenchmark(test.Benchmark):
         return
 
       def run_fn():
-        strategy.experimental_run_v2(minimize_fn)
+        strategy.run(minimize_fn)
       if mode == 'tf_function':
         run_fn = def_function.function(run_fn)
 

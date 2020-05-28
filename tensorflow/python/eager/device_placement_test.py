@@ -18,21 +18,27 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 
 
-class SoftDevicePlacementTest(test.TestCase):
+class SoftDevicePlacementTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
-    context.context().soft_device_placement = True
+    super(SoftDevicePlacementTest, self).setUp()
+    context._reset_context()
+    config.set_soft_device_placement(enabled=True)
     context.context().log_device_placement = True
 
   @test_util.run_gpu_only
@@ -86,11 +92,60 @@ class SoftDevicePlacementTest(test.TestCase):
     # We don't support nested device placement right now.
     self.assertIn('GPU:0', c.device)
 
+  @parameterized.named_parameters(('float', 1.0, None),
+                                  ('int32', [1], dtypes.int32),
+                                  ('string', ['a'], None))
+  def testSoftPlacedCPUConstant(self, value, dtype):
+    with ops.device('GPU:0'):
+      a = constant_op.constant(value, dtype=dtype)
+    self.assertIn('CPU:0', a.device)
+    self.assertIn('CPU:0', a.backing_device)
+
+
+class HardDevicePlacementTest(test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    super(HardDevicePlacementTest, self).setUp()
+    context._reset_context()
+    config.set_soft_device_placement(enabled=False)
+    context.context().log_device_placement = True
+    self.assertEqual(config.get_soft_device_placement(), False)
+    self.assertEqual(context.context().soft_device_placement, False)
+
+  @test_util.run_gpu_only
+  def testIdentityCanCopy(self):
+    config.set_device_policy('explicit')
+    with ops.device('CPU:0'):
+      x = constant_op.constant(1.0)
+      self.assertIn('CPU:0', x.device)
+      self.assertIn('CPU:0', x.backing_device)
+    with ops.device('GPU:0'):
+      y = array_ops.identity(x)
+      self.assertIn('GPU:0', y.device)
+      self.assertIn('GPU:0', y.backing_device)
+
+  @parameterized.named_parameters(('float_cpu0', 'CPU:0', 1.0, None),
+                                  ('int32_cpu0', 'CPU:0', [1], dtypes.int32),
+                                  ('string_cpu0', 'CPU:0', ['a'], None),
+                                  ('float_gpu0', 'GPU:0', 1.0, None),
+                                  ('int32_gpu0', 'GPU:0', [1], dtypes.int32),
+                                  ('string_gpu0', 'GPU:0', ['a'], None),
+                                  ('float_gpu99', 'GPU:99', 1.0, None),
+                                  ('int32_gpu99', 'GPU:99', [1], dtypes.int32),
+                                  ('string_gpu99', 'GPU:99', ['a'], None))
+  def testHardPlacedCPUConstant(self, device, value, dtype):
+    with ops.device(device):
+      a = constant_op.constant(value, dtype=dtype)
+      self.assertIn('CPU:0', a.device)
+      self.assertIn('CPU:0', a.backing_device)
+
 
 class ClusterPlacementTest(test.TestCase):
 
   def setUp(self):
-    context.context().soft_device_placement = True
+    super(ClusterPlacementTest, self).setUp()
+    context._reset_context()
+    config.set_soft_device_placement(enabled=True)
     context.context().log_device_placement = True
     workers, _ = test_util.create_local_cluster(2, 0)
     remote.connect_to_remote_host([workers[0].target, workers[1].target])

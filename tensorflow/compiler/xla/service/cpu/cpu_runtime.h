@@ -46,6 +46,8 @@ namespace runtime {
 extern const char* const kEigenMatMulF16SymbolName;
 extern const char* const kEigenMatMulF32SymbolName;
 extern const char* const kEigenMatMulF64SymbolName;
+extern const char* const kEigenMatMulC64SymbolName;
+extern const char* const kEigenMatMulC128SymbolName;
 extern const char* const kEigenMatMulS32SymbolName;
 extern const char* const kMKLConvF32SymbolName;
 extern const char* const kMKLMatMulF32SymbolName;
@@ -59,6 +61,8 @@ extern const char* const kEigenSingleThreadedFftSymbolName;
 extern const char* const kEigenSingleThreadedMatMulF16SymbolName;
 extern const char* const kEigenSingleThreadedMatMulF32SymbolName;
 extern const char* const kEigenSingleThreadedMatMulF64SymbolName;
+extern const char* const kEigenSingleThreadedMatMulC64SymbolName;
+extern const char* const kEigenSingleThreadedMatMulC128SymbolName;
 extern const char* const kEigenSingleThreadedMatMulS32SymbolName;
 extern const char* const kEigenSingleThreadedConvF16SymbolName;
 extern const char* const kEigenSingleThreadedConvF32SymbolName;
@@ -69,6 +73,7 @@ extern const char* const kReleaseOutfeedBufferAfterPopulationSymbolName;
 extern const char* const kParallelForkJoinSymbolName;
 extern const char* const kKeyValueSortSymbolName;
 extern const char* const kAllReduceSymbolName;
+extern const char* const kCollectivePermuteSymbolName;
 extern const char* const kReplicaIdSymbolName;
 extern const char* const kTracingStartSymbolName;
 extern const char* const kTracingEndSymbolName;
@@ -167,8 +172,14 @@ extern void __xla_cpu_runtime_AllReduce(
     const xla::ExecutableRunOptions* run_options,
     const void* replica_groups_str, xla::int32 replica_groups_str_size,
     xla::int32 channel_id_present, xla::int64 op_id, xla::int32 reduction_kind,
-    const void* shape_ptr, xla::int32 shape_length, void* input_buffer,
-    void* output_buffer);
+    const void* shape_ptr, xla::int32 shape_length, xla::int32 num_buffers,
+    void** input_buffers, void** output_buffers);
+
+extern void __xla_cpu_runtime_CollectivePermute(
+    const xla::ExecutableRunOptions* run_options, xla::int32 channel_id_present,
+    xla::int64 op_id, xla::int32 byte_size, void* input_buffer,
+    void* output_buffer, const void* source_target_pairs,
+    xla::int32 source_target_pairs_size);
 
 // Write the replica ID into the output buffer.
 extern void __xla_cpu_runtime_ReplicaId(

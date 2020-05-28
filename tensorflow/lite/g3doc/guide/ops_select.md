@@ -116,8 +116,9 @@ Once you've added the dependency, the necessary delegate for handling
 the graph's TensorFlow ops should be automatically installed for
 graphs that require them.
 
-*Note*: The TensorFlow ops dependency is relatively large, so you'll
-probably want to filter out unnecessary x86 ABIs in your `.gradle` file by setting up your `abiFilters`.
+*Note*: The TensorFlow ops dependency is relatively large, so you'll probably
+want to filter out unnecessary x86 ABIs in your `.gradle` file by setting up
+your `abiFilters`.
 
 ```build
 android {
@@ -136,14 +137,38 @@ For more advanced cases, you can also build the library manually. Assuming a
 Android AAR with select TensorFlow ops as follows:
 
 ```sh
-bazel build --cxxopt='--std=c++11' -c opt   \
+bazel build --cxxopt='--std=c++14' -c opt   \
   --config=android_arm --config=monolithic  \
   //tensorflow/lite/java:tensorflow-lite-select-tf-ops
 ```
 
-This will generate an AAR file in `bazel-bin/tensorflow/lite/java/`. From
-there, you can import the AAR directly into your project (see also
-<a href="android.md">these instructions</a> on how to add an AAR directly to your project).
+This will generate an AAR file in `bazel-bin/tensorflow/lite/java/`. From there,
+you can either import the AAR directly into your project, or publish the custom
+AAR to your local Maven repository:
+
+```sh
+mvn install:install-file \
+  -Dfile=bazel-bin/tensorflow/lite/java/tensorflow-lite-select-tf-ops.aar \
+  -DgroupId=org.tensorflow \
+  -DartifactId=tensorflow-lite-select-tf-ops -Dversion=0.1.100 -Dpackaging=aar
+```
+
+Finally, in your app's `build.gradle`, ensure you have the `mavenLocal()`
+dependency and replace the standard TensorFlow Lite dependency with the one that
+has support for select TensorFlow ops:
+
+```
+allprojects {
+    repositories {
+        jcenter()
+        mavenLocal()
+    }
+}
+
+dependencies {
+    implementation 'org.tensorflow:tensorflow-lite-with-select-tf-ops:0.1.100'
+}
+```
 
 ### iOS
 

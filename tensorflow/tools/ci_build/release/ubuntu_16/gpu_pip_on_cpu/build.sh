@@ -20,7 +20,7 @@ source tensorflow/tools/ci_build/release/common.sh
 
 install_ubuntu_16_pip_deps pip3.6
 # Update Bazel to the desired version
-update_bazel_linux
+install_bazelisk
 
 # Run configure.
 export TF_NEED_GCP=1
@@ -45,12 +45,17 @@ bazel build --config=opt \
   --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain \
   tensorflow/tools/pip_package:build_pip_package
 
+# Set TF nightly flag so we get the proper version of estimator
+if [[ "$IS_NIGHTLY" == 1 ]]; then
+  NIGHTLY_FLAG="--nightly_flag"
+fi
+
 PIP_WHL_DIR=whl
 mkdir -p ${PIP_WHL_DIR}
 PIP_WHL_DIR=$(readlink -f ${PIP_WHL_DIR})  # Get absolute path
-bazel-bin/tensorflow/tools/pip_package/build_pip_package "${PIP_WHL_DIR}"
+bazel-bin/tensorflow/tools/pip_package/build_pip_package "${PIP_WHL_DIR}" "${NIGHTLY_FLAG}"
 WHL_PATH=$(ls "${PIP_WHL_DIR}"/*.whl)
 
 cp "${WHL_PATH}" "$(pwd)"/.
 chmod +x tensorflow/tools/ci_build/builds/docker_cpu_pip.sh
-docker run -e "BAZEL_VERSION=${BAZEL_VERSION}" -e "CI_BUILD_USER=$(id -u -n)" -e "CI_BUILD_UID=$(id -u)"  -e "CI_BUILD_GROUP=$(id -g -n)" -e "CI_BUILD_GID=$(id -g)"  -e "CI_BUILD_HOME=/bazel_pip" -v "$(pwd)":/bazel_pip tensorflow/tensorflow:devel-py3 "./bazel_pip/tensorflow/tools/ci_build/builds/with_the_same_user" "./bazel_pip/tensorflow/tools/ci_build/builds/docker_cpu_pip.sh"
+docker run -e "BAZEL_VERSION=${BAZEL_VERSION}" -e "CI_BUILD_USER=$(id -u -n)" -e "CI_BUILD_UID=$(id -u)"  -e "CI_BUILD_GROUP=$(id -g -n)" -e "CI_BUILD_GID=$(id -g)"  -e "CI_BUILD_HOME=/bazel_pip" -v "$(pwd)":/bazel_pip tensorflow/tensorflow:devel "./bazel_pip/tensorflow/tools/ci_build/builds/with_the_same_user" "./bazel_pip/tensorflow/tools/ci_build/builds/docker_cpu_pip.sh"

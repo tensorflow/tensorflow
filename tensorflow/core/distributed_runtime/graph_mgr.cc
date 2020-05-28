@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/metrics.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_partition.h"
 #include "tensorflow/core/graph/validate.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -55,7 +55,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-GraphMgr::GraphMgr(const WorkerEnv* worker_env, DeviceMgr* device_mgr)
+GraphMgr::GraphMgr(const WorkerEnv* worker_env, const DeviceMgr* device_mgr)
     : worker_env_(worker_env), device_mgr_(device_mgr), table_(5) {
   // The default value of sync_on_finish will be flipped soon and this
   // environment variable will be removed as well.
@@ -67,7 +67,7 @@ GraphMgr::GraphMgr(const WorkerEnv* worker_env, DeviceMgr* device_mgr)
 }
 
 GraphMgr::~GraphMgr() {
-  for (auto p : table_) p.second->Unref();
+  for (const auto& p : table_) p.second->Unref();
 }
 
 GraphMgr::Item::~Item() {
@@ -139,8 +139,20 @@ Status GraphMgr::InitItem(
   item->proc_flr.reset(new ProcessFunctionLibraryRuntime(
       device_mgr_, worker_env_->env, /*config=*/&config_proto,
       gdef.versions().producer(), item->lib_def.get(),
-      graph_options.optimizer_options(), worker_env_->compute_pool,
-      cluster_flr));
+      graph_options.optimizer_options(), worker_env_->compute_pool, cluster_flr,
+      /*custom_kernel_creator=*/nullptr, /*session_metadata=*/nullptr,
+      Rendezvous::Factory{
+          [this, session](const int64 step_id, const DeviceMgr*,
+                          Rendezvous** r) -> Status {
+            auto* remote_r = this->worker_env_->rendezvous_mgr->Find(step_id);
+            TF_RETURN_IF_ERROR(remote_r->Initialize(session));
+            *r = remote_r;
+            return Status::OK();
+          },
+          [this](const int64 step_id) {
+            this->worker_env_->rendezvous_mgr->Cleanup(step_id);
+            return Status::OK();
+          }}));
 
   // Constructs the graph out of "gdef".
   Graph graph(OpRegistry::Global());
@@ -233,35 +245,29 @@ Status GraphMgr::InitItem(
     // Construct the root executor for the subgraph.
     params.device = unit->device;
     params.function_library = lib;
-    params.create_kernel = [handle, lib, opseg](const NodeDef& ndef,
-                                                OpKernel** kernel) {
-      // NOTE(mrry): We must not share function kernels (implemented
-      // using `CallOp`) between subgraphs, because `CallOp::handle_`
-      // is tied to a particular subgraph. Even if the function itself
-      // is stateful, the `CallOp` that invokes it is not.
-      if (!OpSegment::ShouldOwnKernel(lib, ndef.op())) {
-        return lib->CreateKernel(ndef, kernel);
-      }
-      auto create_fn = [lib, &ndef](OpKernel** kernel) {
-        return lib->CreateKernel(ndef, kernel);
-      };
-      // Kernels created for subgraph nodes need to be cached.  On
-      // cache miss, create_fn() is invoked to create a kernel based
-      // on the function library here + global op registry.
-      return opseg->FindOrCreate(handle, ndef.name(), kernel, create_fn);
-    };
+    params.create_kernel =
+        [handle, lib, opseg](const std::shared_ptr<const NodeProperties>& props,
+                             OpKernel** kernel) {
+          // NOTE(mrry): We must not share function kernels (implemented
+          // using `CallOp`) between subgraphs, because `CallOp::handle_`
+          // is tied to a particular subgraph. Even if the function itself
+          // is stateful, the `CallOp` that invokes it is not.
+          if (!OpSegment::ShouldOwnKernel(lib, props->node_def.op())) {
+            return lib->CreateKernel(props, kernel);
+          }
+          auto create_fn = [lib, &props](OpKernel** kernel) {
+            return lib->CreateKernel(props, kernel);
+          };
+          // Kernels created for subgraph nodes need to be cached.  On
+          // cache miss, create_fn() is invoked to create a kernel based
+          // on the function library here + global op registry.
+          return opseg->FindOrCreate(handle, props->node_def.name(), kernel,
+                                     create_fn);
+        };
     params.delete_kernel = [lib](OpKernel* kernel) {
       if (kernel && !OpSegment::ShouldOwnKernel(lib, kernel->type_string())) {
         delete kernel;
       }
-    };
-    params.rendezvous_factory = [this, session](const int64 step_id,
-                                                const DeviceMgr*,
-                                                Rendezvous** r) -> Status {
-      auto* remote_r = this->worker_env_->rendezvous_mgr->Find(step_id);
-      TF_RETURN_IF_ERROR(remote_r->Initialize(session));
-      *r = remote_r;
-      return Status::OK();
     };
 
     optimizer.Optimize(lib, worker_env_->env, params.device, &subgraph,
@@ -302,7 +308,8 @@ Status GraphMgr::Register(
   // Inserts one item into table_.
   {
     mutex_lock l(mu_);
-    *graph_handle = strings::Printf("%016llx", ++next_id_);
+    *graph_handle =
+        strings::Printf("%016llx", static_cast<long long>(++next_id_));
     item->handle = *graph_handle;
     CHECK(table_.insert({*graph_handle, item}).second);
   }

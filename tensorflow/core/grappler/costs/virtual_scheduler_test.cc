@@ -264,7 +264,7 @@ TEST_F(ReadyNodeManagerTest, GetCurrNodeFirstReadyManager) {
   // should return it.
   EXPECT_EQ("Node6", manager.GetCurrNode()->name());
 
-  // Now insrets a few other nodes, but their time_ready's are even smaller than
+  // Now inserts a few other nodes, but their time_ready's are even smaller than
   // that of Node6. Before calling RemoveCurrNode(), GetCurrNode() should return
   // the same node, Node6, in this case.
   NodeDef node7;
@@ -415,7 +415,7 @@ TEST_F(ReadyNodeManagerTest, RemoveSingleNodeCompositeNodeManager) {
   EXPECT_TRUE(manager.Empty());
 }
 
-TEST_F(ReadyNodeManagerTest, GetAndRemoveMultipleComopsiteNodeManager) {
+TEST_F(ReadyNodeManagerTest, GetAndRemoveMultipleCompositeNodeManager) {
   CompositeNodeManager manager;
   TF_EXPECT_OK(manager.Init(&node_states_));
   manager.AddNode(&node1_);
@@ -445,7 +445,7 @@ TEST_F(ReadyNodeManagerTest, GetAndRemoveMultipleComopsiteNodeManager) {
   EXPECT_TRUE(manager.Empty());
 }
 
-TEST_F(ReadyNodeManagerTest, MultiDeviceSendRecvComopsiteNodeManager) {
+TEST_F(ReadyNodeManagerTest, MultiDeviceSendRecvCompositeNodeManager) {
   CompositeNodeManager manager;
   TF_EXPECT_OK(manager.Init(&node_states_));
   // Additional nodes on kCPU1.
@@ -2966,7 +2966,7 @@ TEST_F(VirtualSchedulerTest, GraphWihtOnlyRecv) {
 }
 
 TEST_F(VirtualSchedulerTest, AddMergeSwitch) {
-  // Override scheduler_ with CompositeNodeNamager.
+  // Override scheduler_ with CompositeNodeManager.
   scheduler_ = absl::make_unique<TestVirtualScheduler>(
       /*use_static_shapes=*/true,
       /*use_aggressive_shape_inference=*/true, &composite_node_manager_,

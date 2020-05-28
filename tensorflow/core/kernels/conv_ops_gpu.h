@@ -21,10 +21,12 @@ limitations under the License.
 #include <tuple>
 #include <unordered_map>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 
@@ -60,7 +62,10 @@ class DnnScratchAllocator : public se::ScratchAllocator {
                               "Requested negative byte size!"};
     }
     if (byte_size > memory_limit_) {
-      return se::port::StatusOr<se::DeviceMemory<uint8>>();
+      return se::port::Status{se::port::error::UNAVAILABLE,
+                              absl::StrCat("Requested memory size (", byte_size,
+                                           ") exceeds the max memory limit (",
+                                           memory_limit_, ").")};
     }
     AllocationAttributes allocation_attr;
     allocation_attr.no_retry_on_failure = true;
@@ -68,7 +73,10 @@ class DnnScratchAllocator : public se::ScratchAllocator {
         DT_UINT8, TensorShape({byte_size}), &temporary_memory,
         AllocatorAttributes(), allocation_attr));
     if (!allocation_status.ok()) {
-      return se::port::StatusOr<se::DeviceMemory<uint8>>();
+      return se::port::Status{
+          se::port::error::UNAVAILABLE,
+          absl::StrCat("Failed to allocate the requested memory size (",
+                       byte_size, ").")};
     }
     // Hold the reference of the allocated tensors until the end of the
     // allocator.

@@ -43,7 +43,7 @@ class DecodeRawOp : public OpKernel {
     int64 str_size = -1;
     auto flat_in = input.flat<tstring>();
     for (int64 i = 0; i < flat_in.size(); ++i) {
-      const string& in_str = flat_in(i);
+      const tstring& in_str = flat_in(i);
       if (str_size == -1) {
         str_size = in_str.size();
       } else {

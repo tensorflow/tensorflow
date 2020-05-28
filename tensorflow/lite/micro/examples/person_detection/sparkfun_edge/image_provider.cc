@@ -13,6 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if defined(ARDUINO)
+#include "tensorflow/lite/micro/examples/person_detection/arduino/HM01B0_platform.h"
+#endif  // defined(ARDUINO)
+
+#if defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+#define ARDUINO_EXCLUDE_CODE
+#endif  // defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+
+#ifndef ARDUINO_EXCLUDE_CODE
+
 #include "tensorflow/lite/micro/examples/person_detection/image_provider.h"
 
 #include "tensorflow/lite/micro/examples/person_detection/himax_driver/HM01B0.h"
@@ -87,32 +97,38 @@ void burst_mode_enable(tflite::ErrorReporter* error_reporter, bool bEnable) {
   if (AM_HAL_STATUS_SUCCESS ==
       am_hal_burst_mode_initialize(&eBurstModeAvailable)) {
     if (AM_HAL_BURST_AVAIL == eBurstModeAvailable) {
-      error_reporter->Report("Apollo3 Burst Mode is Available\n");
+      TF_LITE_REPORT_ERROR(error_reporter, "Apollo3 Burst Mode is Available\n");
     } else {
-      error_reporter->Report("Apollo3 Burst Mode is Not Available\n");
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "Apollo3 Burst Mode is Not Available\n");
       return;
     }
   } else {
-    error_reporter->Report("Failed to Initialize for Burst Mode operation\n");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Failed to Initialize for Burst Mode operation\n");
   }
 
   // Make sure we are in "Normal" mode.
   if (AM_HAL_STATUS_SUCCESS == am_hal_burst_mode_disable(&eBurstMode)) {
     if (AM_HAL_NORMAL_MODE == eBurstMode) {
-      error_reporter->Report("Apollo3 operating in Normal Mode (48MHz)\n");
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "Apollo3 operating in Normal Mode (48MHz)\n");
     }
   } else {
-    error_reporter->Report("Failed to Disable Burst Mode operation\n");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Failed to Disable Burst Mode operation\n");
   }
 
   // Put the MCU into "Burst" mode.
   if (bEnable) {
     if (AM_HAL_STATUS_SUCCESS == am_hal_burst_mode_enable(&eBurstMode)) {
       if (AM_HAL_BURST_MODE == eBurstMode) {
-        error_reporter->Report("Apollo3 operating in Burst Mode (96MHz)\n");
+        TF_LITE_REPORT_ERROR(error_reporter,
+                             "Apollo3 operating in Burst Mode (96MHz)\n");
       }
     } else {
-      error_reporter->Report("Failed to Enable Burst Mode operation\n");
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "Failed to Enable Burst Mode operation\n");
     }
   }
 }
@@ -120,7 +136,7 @@ void burst_mode_enable(tflite::ErrorReporter* error_reporter, bool bEnable) {
 }  // namespace
 
 TfLiteStatus InitCamera(tflite::ErrorReporter* error_reporter) {
-  error_reporter->Report("Initializing HM01B0...\n");
+  TF_LITE_REPORT_ERROR(error_reporter, "Initializing HM01B0...\n");
 
   am_hal_clkgen_control(AM_HAL_CLKGEN_CONTROL_SYSCLK_MAX, 0);
 
@@ -198,3 +214,5 @@ TfLiteStatus GetImage(tflite::ErrorReporter* error_reporter, int frame_width,
 
   return kTfLiteOk;
 }
+
+#endif  // ARDUINO_EXCLUDE_CODE

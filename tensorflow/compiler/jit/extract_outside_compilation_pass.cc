@@ -321,7 +321,7 @@ xla::StatusOr<NodeDef> BuildXlaHostComputeNodeDef(
                             host_compute_builder.node_name());
 
   // Copy all attributes.
-  for (auto attr : call_node->attrs()) {
+  for (const auto& attr : call_node->attrs()) {
     host_compute_builder.Attr(attr.first, attr.second);
   }
 
@@ -346,7 +346,7 @@ xla::StatusOr<NodeDef> BuildXlaHostComputeNodeDef(
   xla_token_input_nodes.emplace_back(kXlaTokenArgNodeName);
   auto cluster_deps_it = cluster_deps.find(original_oc_name);
   if (cluster_deps_it != cluster_deps.end()) {
-    for (auto dep : cluster_deps_it->second) {
+    for (const auto& dep : cluster_deps_it->second) {
       xla_token_input_nodes.emplace_back(host_compute_node_name(dep));
     }
   }
@@ -372,39 +372,6 @@ xla::StatusOr<NodeDef> BuildXlaHostComputeNodeDef(
   NodeDef new_def;
   TF_RETURN_IF_ERROR(host_compute_builder.Finalize(&new_def));
   return new_def;
-}
-
-TF_ATTRIBUTE_NOINLINE Status
-ValidateOutsideCompilationCallNode(Node* call_node) {
-  // DT_INT64 as input/output for outside compilation is not supported yet:
-  // b/120809951.
-  for (const Edge* e : call_node->in_edges()) {
-    if (e->IsControlEdge()) {
-      continue;
-    }
-    DataType dtype = e->src()->output_type(e->src_output());
-    if (dtype == DT_INT64) {
-      return errors::Unimplemented(
-          "int64 input for outside compilation is not supported yet: "
-          "b/120809951. Please cast output of node ",
-          e->src()->DebugString(),
-          " to int32 before feeding it into outside compilation.");
-    }
-  }
-  for (const Edge* e : call_node->out_edges()) {
-    if (e->IsControlEdge()) {
-      continue;
-    }
-    DataType dtype = e->dst()->input_type(e->dst_input());
-    if (dtype == DT_INT64) {
-      return errors::Unimplemented(
-          "int64 output for outside compilation is not supported yet: "
-          "b/120809951. Please cast input of node ",
-          e->dst()->DebugString(),
-          " to int32 before returning it from outside compilation.");
-    }
-  }
-  return Status::OK();
 }
 
 // Replace outside compilation function call node with XlaHostCompute node.
@@ -2384,7 +2351,6 @@ Status ExtractOutsideCompilationForFunction(
     }
     std::map<string, Node*> host_compute_nodes;
     for (Node* n : outside_compilation_nodes) {
-      TF_RETURN_IF_ERROR(ValidateOutsideCompilationCallNode(n));
       auto host_compute_node_or = ReplaceOutsideCompilationCallNode(
           graph_out.get(), n, host_compute_core, *cluster_deps);
       TF_RETURN_IF_ERROR(host_compute_node_or.status());
@@ -2393,7 +2359,7 @@ Status ExtractOutsideCompilationForFunction(
     }
     // For XlaHostCompute nodes with dependencies, add control edges between
     // them so XlaCompiler can handle them in correct order.
-    for (auto iter : host_compute_nodes) {
+    for (const auto& iter : host_compute_nodes) {
       Node* host_compute_node = iter.second;
       std::vector<string> token_input_node_names;
       TF_RETURN_IF_ERROR(GetNodeAttr(host_compute_node->def(),
@@ -2513,7 +2479,7 @@ Status ExtractOutsideCompilation(
 
       TF_RETURN_IF_ERROR(fld->RemoveFunction(host_graph_func_name));
 
-      for (auto shape_inference_graph_name : shape_inference_graphs) {
+      for (const auto& shape_inference_graph_name : shape_inference_graphs) {
         TF_RETURN_IF_ERROR(RewriteShapeInferenceGraph(
             shape_inference_graph_name, g, pivot_node, fld));
       }

@@ -44,7 +44,7 @@ class Scope(object):
 
   Scope objects are mutable during construction only, and must be frozen using
   `Scope.finalize()` before use. Furthermore, a scope is consistent only after
-  all its chiledren have been frozen. While analysing code blocks, scopes are
+  all its children have been frozen. While analysing code blocks, scopes are
   being gradually built, from the innermost scope outward. Freezing indicates
   that the analysis of a code block is complete. Once frozen, mutation is no
   longer allowed. `is_final` tracks whether the scope is frozen or not. Certain
@@ -57,6 +57,10 @@ class Scope(object):
       the terminology of the Python 3 reference documentation, True roughly
       represents an actual scope, whereas False represents an ordinary code
       block.
+    isolated_names: Set[qual_names.QN], identifiers that are isolated to this
+      scope (even if the scope is not isolated).
+    annotations: Set[qual_names.QN], identifiers used as type annotations
+      in this scope.
     read: Set[qual_names.QN], identifiers read in this scope.
     modified: Set[qual_names.QN], identifiers modified in this scope.
     deleted: Set[qual_names.QN], identifiers deleted in this scope.
@@ -65,6 +69,9 @@ class Scope(object):
       for a precise definition.
     globals: Set[qual_names.QN], names that are explicitly marked as global in
       this scope. Note that this doesn't include free read-only vars bound to
+      global symbols.
+    nonlocals: Set[qual_names.QN], names that are explicitly marked as nonlocal
+      in this scope. Note that this doesn't include free read-only vars bound to
       global symbols.
     free_vars: Set[qual_names.QN], the free variables in this scope. See
       https://docs.python.org/3/reference/executionmodel.html for a precise
@@ -99,12 +106,16 @@ class Scope(object):
     self.parent = parent
     self.isolated = isolated
 
+    self.isolated_names = set()
+
     self.read = set()
     self.modified = set()
     self.deleted = set()
 
     self.bound = set()
     self.globals = set()
+    self.nonlocals = set()
+    self.annotations = set()
 
     self.params = weakref.WeakValueDictionary()
 
@@ -136,10 +147,12 @@ class Scope(object):
     if self.parent is not None:
       assert other.parent is not None
       self.parent.copy_from(other.parent)
+    self.isolated_names = copy.copy(other.isolated_names)
     self.modified = copy.copy(other.modified)
     self.read = copy.copy(other.read)
     self.deleted = copy.copy(other.deleted)
     self.bound = copy.copy(other.bound)
+    self.annotations = copy.copy(other.annotations)
     self.params = copy.copy(other.params)
 
   @classmethod
@@ -154,13 +167,16 @@ class Scope(object):
     return new_copy
 
   def merge_from(self, other):
+    """Adds all activity from another scope to this scope."""
     assert not self.is_final
     if self.parent is not None:
       assert other.parent is not None
       self.parent.merge_from(other.parent)
+    self.isolated_names.update(other.isolated_names)
     self.read.update(other.read)
     self.modified.update(other.modified)
     self.bound.update(other.deleted)
+    self.annotations.update(other.annotations)
     self.params.update(other.params)
 
   def finalize(self):
@@ -170,13 +186,16 @@ class Scope(object):
     if self.parent is not None:
       assert not self.parent.is_final
       if not self.isolated:
-        self.parent.read.update(self.read)
-        self.parent.modified.update(self.modified)
-        self.parent.bound.update(self.bound)
+        self.parent.read.update(self.read - self.isolated_names)
+        self.parent.modified.update(self.modified - self.isolated_names)
+        self.parent.bound.update(self.bound - self.isolated_names)
         self.parent.globals.update(self.globals)
+        self.parent.nonlocals.update(self.nonlocals)
+        self.parent.annotations.update(self.annotations)
       else:
         # TODO(mdan): This is not accurate.
         self.parent.read.update(self.read - self.bound)
+        self.parent.annotations.update(self.annotations - self.bound)
     self.is_final = True
 
   def __repr__(self):
@@ -199,6 +218,12 @@ class _Comprehension(object):
     self.targets = set()
 
 
+class _FunctionOrClass(object):
+
+  def __init__(self):
+    self.node = None
+
+
 class ActivityAnalyzer(transformer.Base):
   """Annotates nodes with local scope information.
 
@@ -211,18 +236,24 @@ class ActivityAnalyzer(transformer.Base):
 
   def __init__(self, context, parent_scope=None):
     super(ActivityAnalyzer, self).__init__(context)
+    self.allow_skips = False
     self.scope = Scope(parent_scope, isolated=True)
 
     # Note: all these flags crucially rely on the respective nodes are
     # leaves in the AST, that is, they cannot contain other statements.
     self._in_aug_assign = False
+    self._in_annotation = False
+    self._track_annotations_only = False
 
   @property
   def _in_constructor(self):
-    if len(self.enclosing_entities) > 1:
-      innermost = self.enclosing_entities[-1]
-      parent = self.enclosing_entities[-2]
-      return isinstance(parent, gast.ClassDef) and innermost.name == '__init__'
+    context = self.state[_FunctionOrClass]
+    if context.level > 2:
+      innermost = context.stack[-1].node
+      parent = context.stack[-2].node
+      return (isinstance(parent, gast.ClassDef) and
+              (isinstance(innermost, gast.FunctionDef) and
+               innermost.name == '__init__'))
     return False
 
   def _node_sets_self_attribute(self, node):
@@ -234,6 +265,9 @@ class ActivityAnalyzer(transformer.Base):
     return False
 
   def _track_symbol(self, node, composite_writes_alter_parent=False):
+    if self._track_annotations_only and not self._in_annotation:
+      return
+
     # A QN may be missing when we have an attribute (or subscript) on a function
     # call. Example: a().b
     if not anno.hasanno(node, anno.Basic.QN):
@@ -267,10 +301,12 @@ class ActivityAnalyzer(transformer.Base):
 
     elif isinstance(node.ctx, gast.Load):
       self.scope.read.add(qn)
+      if self._in_annotation:
+        self.scope.annotations.add(qn)
 
     elif isinstance(node.ctx, gast.Param):
       self.scope.bound.add(qn)
-      self.scope.mark_param(qn, self.enclosing_entities[-1])
+      self.scope.mark_param(qn, self.state[_FunctionOrClass].node)
 
     elif isinstance(node.ctx, gast.Del):
       # The read matches the Python semantics - attempting to delete an
@@ -305,12 +341,41 @@ class ActivityAnalyzer(transformer.Base):
     self._exit_and_record_scope(node)
     return node
 
+  def _process_annotation(self, node):
+    self._in_annotation = True
+    node = self.visit(node)
+    self._in_annotation = False
+    return node
+
+  def visit_Import(self, node):
+    return self._process_statement(node)
+
+  def visit_ImportFrom(self, node):
+    return self._process_statement(node)
+
   def visit_Global(self, node):
+    self._enter_scope(False)
     for name in node.names:
-      self.scope.globals.add(qual_names.QN(name))
+      qn = qual_names.QN(name)
+      self.scope.read.add(qn)
+      self.scope.globals.add(qn)
+    self._exit_and_record_scope(node)
+    return node
+
+  def visit_Nonlocal(self, node):
+    self._enter_scope(False)
+    for name in node.names:
+      qn = qual_names.QN(name)
+      self.scope.read.add(qn)
+      self.scope.bound.add(qn)
+      self.scope.nonlocals.add(qn)
+    self._exit_and_record_scope(node)
     return node
 
   def visit_Expr(self, node):
+    return self._process_statement(node)
+
+  def visit_Raise(self, node):
     return self._process_statement(node)
 
   def visit_Return(self, node):
@@ -320,7 +385,13 @@ class ActivityAnalyzer(transformer.Base):
     return self._process_statement(node)
 
   def visit_AnnAssign(self, node):
-    return self._process_statement(node)
+    self._enter_scope(False)
+    node.target = self.visit(node.target)
+    node.value = self.visit(node.value)
+    if node.annotation:
+      node.annotation = self._process_annotation(node.annotation)
+    self._exit_and_record_scope(node)
+    return node
 
   def visit_AugAssign(self, node):
     # Special rules for AugAssign. Here, the AST only shows the target as
@@ -340,8 +411,22 @@ class ActivityAnalyzer(transformer.Base):
     return self._process_statement(node)
 
   def visit_Name(self, node):
-    node = self.generic_visit(node)
+    if node.annotation:
+      node.annotation = self._process_annotation(node.annotation)
     self._track_symbol(node)
+    return node
+
+  def visit_alias(self, node):
+    node = self.generic_visit(node)
+
+    if node.asname is None:
+      # Only the root name is a real symbol operation.
+      qn = qual_names.QN(node.name.split('.')[0])
+    else:
+      qn = qual_names.QN(node.asname)
+
+    self.scope.modified.add(qn)
+    self.scope.bound.add(qn)
     return node
 
   def visit_Attribute(self, node):
@@ -405,19 +490,18 @@ class ActivityAnalyzer(transformer.Base):
                              node,
                              is_list_comp=False,
                              is_dict_comp=False):
-    self.state[_Comprehension].enter()
-    self.state[_Comprehension].is_list_comp = is_list_comp
-    # Note: it's important to visit the generators first to properly account
-    # for the variables local to these generators. Example: `x` is local to the
-    # expression `z for x in y for z in x`.
-    node.generators = self.visit_block(node.generators)
-    if is_dict_comp:
-      node.key = self.visit(node.key)
-      node.value = self.visit(node.value)
-    else:
-      node.elt = self.visit(node.elt)
-    self.state[_Comprehension].exit()
-    return node
+    with self.state[_Comprehension] as comprehension_:
+      comprehension_.is_list_comp = is_list_comp
+      # Note: it's important to visit the generators first to properly account
+      # for the variables local to these generators. Example: `x` is local to
+      # the expression `z for x in y for z in x`.
+      node.generators = self.visit_block(node.generators)
+      if is_dict_comp:
+        node.key = self.visit(node.key)
+        node.value = self.visit(node.value)
+      else:
+        node.elt = self.visit(node.elt)
+      return node
 
   def visit_comprehension(self, node):
     # It is important to visit children in this order so that the reads to
@@ -438,55 +522,125 @@ class ActivityAnalyzer(transformer.Base):
   def visit_GeneratorExp(self, node):
     return self._process_comprehension(node)
 
-  def visit_arguments(self, node):
-    return self._process_statement(node)
-
   def visit_ClassDef(self, node):
-    # The ClassDef node itself has a Scope object that tracks the creation
-    # of its name, along with the usage of any decorator accompanying it.
-    self._enter_scope(False)
-    node.decorator_list = self.visit_block(node.decorator_list)
-    self.scope.modified.add(qual_names.QN(node.name))
-    self.scope.bound.add(qual_names.QN(node.name))
-    node.bases = self.visit_block(node.bases)
-    node.keywords = self.visit_block(node.keywords)
-    self._exit_and_record_scope(node)
+    with self.state[_FunctionOrClass] as fn:
+      fn.node = node
+      # The ClassDef node itself has a Scope object that tracks the creation
+      # of its name, along with the usage of any decorator accompanying it.
+      self._enter_scope(False)
+      node.decorator_list = self.visit_block(node.decorator_list)
+      self.scope.modified.add(qual_names.QN(node.name))
+      self.scope.bound.add(qual_names.QN(node.name))
+      node.bases = self.visit_block(node.bases)
+      node.keywords = self.visit_block(node.keywords)
+      self._exit_and_record_scope(node)
 
-    # A separate Scope tracks the actual class definition.
-    self._enter_scope(True)
-    node = self.generic_visit(node)
-    self._exit_scope()
+      # A separate Scope tracks the actual class definition.
+      self._enter_scope(True)
+      node = self.generic_visit(node)
+      self._exit_scope()
+      return node
+
+  def _visit_node_list(self, nodes):
+    return [(None if n is None else self.visit(n)) for n in nodes]
+
+  def _visit_arg_annotations(self, node):
+    node.args.kw_defaults = self._visit_node_list(node.args.kw_defaults)
+    node.args.defaults = self._visit_node_list(node.args.defaults)
+    self._track_annotations_only = True
+    node = self._visit_arg_declarations(node)
+    self._track_annotations_only = False
+    return node
+
+  def _visit_arg_declarations(self, node):
+    node.args.posonlyargs = self._visit_node_list(node.args.posonlyargs)
+    node.args.args = self._visit_node_list(node.args.args)
+    if node.args.vararg is not None:
+      node.args.vararg = self.visit(node.args.vararg)
+    node.args.kwonlyargs = self._visit_node_list(node.args.kwonlyargs)
+    if node.args.kwarg is not None:
+      node.args.kwarg = self.visit(node.args.kwarg)
     return node
 
   def visit_FunctionDef(self, node):
-    # The FunctionDef node itself has a Scope object that tracks the creation
-    # of its name, along with the usage of any decorator accompanying it.
-    self._enter_scope(False)
-    node.decorator_list = self.visit_block(node.decorator_list)
-    function_name = qual_names.QN(node.name)
-    self.scope.modified.add(function_name)
-    self.scope.bound.add(function_name)
-    self._exit_and_record_scope(node)
+    with self.state[_FunctionOrClass] as fn:
+      fn.node = node
+      # The FunctionDef node itself has a Scope object that tracks the creation
+      # of its name, along with the usage of any decorator accompanying it.
+      self._enter_scope(False)
+      node.decorator_list = self.visit_block(node.decorator_list)
+      if node.returns:
+        node.returns = self._process_annotation(node.returns)
+      # Argument annotartions (includeing defaults) affect the defining context.
+      node = self._visit_arg_annotations(node)
 
-    # A separate Scope tracks the actual function definition.
-    self._enter_scope(True)
-    node.args = self.visit(node.args)
+      function_name = qual_names.QN(node.name)
+      self.scope.modified.add(function_name)
+      self.scope.bound.add(function_name)
+      self._exit_and_record_scope(node)
 
-    # Track the body separately. This is for compatibility reasons, it may not
-    # be strictly needed.
-    self._enter_scope(False)
-    node.body = self.visit_block(node.body)
-    self._exit_and_record_scope(node, NodeAnno.BODY_SCOPE)
+      # A separate Scope tracks the actual function definition.
+      self._enter_scope(True)
 
-    self._exit_scope()
-    return node
+      # Keep a separate scope for the arguments node, which is used in the CFG.
+      self._enter_scope(False)
+
+      # Arg declarations only affect the function itself, and have no effect
+      # in the defining context whatsoever.
+      node = self._visit_arg_declarations(node)
+
+      self._exit_and_record_scope(node.args)
+
+      # Track the body separately. This is for compatibility reasons, it may not
+      # be strictly needed.
+      self._enter_scope(False)
+      node.body = self.visit_block(node.body)
+      self._exit_and_record_scope(node, NodeAnno.BODY_SCOPE)
+
+      self._exit_and_record_scope(node, NodeAnno.ARGS_AND_BODY_SCOPE)
+      return node
 
   def visit_Lambda(self, node):
     # Lambda nodes are treated in roughly the same way as FunctionDef nodes.
-    self._enter_scope(True)
-    node = self.generic_visit(node)
-    self._exit_and_record_scope(node)
-    return node
+    with self.state[_FunctionOrClass] as fn:
+      fn.node = node
+      # The Lambda node itself has a Scope object that tracks the creation
+      # of its name, along with the usage of any decorator accompanying it.
+      self._enter_scope(False)
+      node = self._visit_arg_annotations(node)
+      self._exit_and_record_scope(node)
+
+      # A separate Scope tracks the actual function definition.
+      self._enter_scope(True)
+
+      # Keep a separate scope for the arguments node, which is used in the CFG.
+      self._enter_scope(False)
+      node = self._visit_arg_declarations(node)
+      self._exit_and_record_scope(node.args)
+
+      # Track the body separately. This is for compatibility reasons, it may not
+      # be strictly needed.
+      # TODO(mdan): Do remove it, it's confusing.
+      self._enter_scope(False)
+      node.body = self.visit(node.body)
+
+      # The lambda body can contain nodes of types normally not found as
+      # statements, and may not have the SCOPE annotation needed by the CFG.
+      # So we attach one if necessary.
+      if not anno.hasanno(node.body, anno.Static.SCOPE):
+        anno.setanno(node.body, anno.Static.SCOPE, self.scope)
+
+      self._exit_and_record_scope(node, NodeAnno.BODY_SCOPE)
+
+      lambda_scope = self.scope
+      self._exit_and_record_scope(node, NodeAnno.ARGS_AND_BODY_SCOPE)
+
+      # Exception: lambdas are assumed to be used in the place where
+      # they are defined. Therefore, their activity is passed on to the
+      # calling statement.
+      self.scope.read.update(lambda_scope.read - lambda_scope.bound)
+
+      return node
 
   def visit_With(self, node):
     self._enter_scope(False)
@@ -516,6 +670,8 @@ class ActivityAnalyzer(transformer.Base):
 
     self._enter_scope(False)
     self.visit(node.target)
+    if anno.hasanno(node, anno.Basic.EXTRA_LOOP_TEST):
+      self._process_statement(anno.getanno(node, anno.Basic.EXTRA_LOOP_TEST))
     self._exit_and_record_scope(node, tag=NodeAnno.ITERATE_SCOPE)
 
     node = self._process_parallel_blocks(node,
@@ -532,6 +688,16 @@ class ActivityAnalyzer(transformer.Base):
     node = self._process_parallel_blocks(node,
                                          ((node.body, NodeAnno.BODY_SCOPE),
                                           (node.orelse, NodeAnno.ORELSE_SCOPE)))
+    return node
+
+  def visit_ExceptHandler(self, node):
+    self._enter_scope(False)
+    # try/except oddity: as expected, it leaks any names you defined inside the
+    # except block, but not the name of the exception variable.
+    if node.name is not None:
+      self.scope.isolated_names.add(anno.getanno(node.name, anno.Basic.QN))
+    node = self.generic_visit(node)
+    self._exit_scope()
     return node
 
 

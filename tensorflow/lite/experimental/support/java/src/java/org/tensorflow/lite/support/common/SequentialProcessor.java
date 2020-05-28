@@ -16,23 +16,33 @@ limitations under the License.
 package org.tensorflow.lite.support.common;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
 /**
  * A processor base class that chains a serial of {@link Operator<T>} and executes them.
  *
- * Typically, users could use its subclasses, e.g.
- * {@link org.tensorflow.lite.support.image.ImageProcessor} rather than directly use this one.
+ * <p>Typically, users could use its subclasses, e.g. {@link
+ * org.tensorflow.lite.support.image.ImageProcessor} rather than directly use this one.
  *
  * @param <T> The type that the Operator is handling.
  */
 public class SequentialProcessor<T> implements Processor<T> {
 
-  private final List<Operator<T>> operatorList;
+  /** List of operators added to this {@link SequentialProcessor}. */
+  protected final List<Operator<T>> operatorList;
+  /**
+   * The {@link Map} between the operator name and the corresponding op indexes in {@code
+   * operatorList}. An operator may be added multiple times into this {@link SequentialProcessor}.
+   */
+  protected final Map<String, List<Integer>> operatorIndex;
 
   protected SequentialProcessor(Builder<T> builder) {
     operatorList = builder.operatorList;
+    operatorIndex = Collections.unmodifiableMap(builder.operatorIndex);
   }
 
   @Override
@@ -43,19 +53,25 @@ public class SequentialProcessor<T> implements Processor<T> {
     return x;
   }
 
-  /**
-   * The inner builder class to build a Sequential Processor.
-   */
+  /** The inner builder class to build a Sequential Processor. */
   protected static class Builder<T> {
+
     private final List<Operator<T>> operatorList;
+    private final Map<String, List<Integer>> operatorIndex;
 
     protected Builder() {
       operatorList = new ArrayList<>();
+      operatorIndex = new HashMap<>();
     }
 
     public Builder<T> add(@NonNull Operator<T> op) {
       SupportPreconditions.checkNotNull(op, "Adding null Op is illegal.");
       operatorList.add(op);
+      String operatorName = op.getClass().getName();
+      if (!operatorIndex.containsKey(operatorName)) {
+        operatorIndex.put(operatorName, new ArrayList<Integer>());
+      }
+      operatorIndex.get(operatorName).add(operatorList.size() - 1);
       return this;
     }
 

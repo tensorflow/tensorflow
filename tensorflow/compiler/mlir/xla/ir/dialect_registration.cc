@@ -13,9 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/mlir/xla/ir/chlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 
 // Static initialization for XLA dialect registration.
 static mlir::DialectRegistration<mlir::xla_hlo::XlaHloDialect> xla_hlo_ops;
+static mlir::DialectRegistration<mlir::xla_chlo::XlaHloClientDialect>
+    xla_chlo_ops;
 static mlir::DialectRegistration<mlir::xla_lhlo::XlaLhloDialect> xla_lhlo_ops;

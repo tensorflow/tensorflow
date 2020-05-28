@@ -383,6 +383,22 @@ cudaStreamAttachMemAsync(cudaStream_t stream, void *devPtr,
   return func_ptr(stream, devPtr, length, flags);
 }
 
+extern __host__ cudaError_t CUDARTAPI
+cudaStreamBeginCapture(cudaStream_t stream) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(cudaStream_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaStreamBeginCapture");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(stream);
+}
+
+extern __host__ cudaError_t CUDARTAPI
+cudaStreamEndCapture(cudaStream_t stream, cudaGraph_t *pGraph) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(cudaStream_t, cudaGraph_t *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaStreamEndCapture");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(stream, pGraph);
+}
+
 extern __host__ cudaError_t CUDARTAPI cudaStreamIsCapturing(
     cudaStream_t stream, enum cudaStreamCaptureStatus *pCaptureStatus) {
   using FuncPtr =
@@ -1508,6 +1524,306 @@ cudaRuntimeGetVersion(int *runtimeVersion) {
   return func_ptr(runtimeVersion);
 }
 
+extern __host__ cudaError_t CUDARTAPI cudaGraphCreate(cudaGraph_t *pGraph,
+                                                      unsigned int flags) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(cudaGraph_t *, unsigned int);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphCreate");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(pGraph, flags);
+}
+
+extern __host__ cudaError_t CUDARTAPI
+cudaGraphAddKernelNode(cudaGraphNode_t *pGraphNode, cudaGraph_t graph,
+                       cudaGraphNode_t *pDependencies, size_t numDependencies,
+                       const struct cudaKernelNodeParams *pNodeParams) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(cudaGraphNode_t *, cudaGraph_t,
+                                           cudaGraphNode_t *, size_t,
+                                           const struct cudaKernelNodeParams *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphAddKernelNode");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(pGraphNode, graph, pDependencies, numDependencies,
+                  pNodeParams);
+}
+
+extern __host__ cudaError_t CUDARTAPI cudaGraphKernelNodeGetParams(
+    cudaGraphNode_t node, struct cudaKernelNodeParams *pNodeParams) {
+  using FuncPtr =
+      cudaError_t(CUDARTAPI *)(cudaGraphNode_t, struct cudaKernelNodeParams *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphKernelNodeGetParams");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(node, pNodeParams);
+}
+
+extern __host__ cudaError_t CUDARTAPI cudaGraphKernelNodeSetParams(
+    cudaGraphNode_t node, const struct cudaKernelNodeParams *pNodeParams) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(cudaGraphNode_t,
+                                           const struct cudaKernelNodeParams *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphKernelNodeSetParams");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(node, pNodeParams);
+}
+
+extern __host__ cudaError_t CUDARTAPI
+cudaGraphAddMemcpyNode(cudaGraphNode_t *pGraphNode, cudaGraph_t graph,
+                       cudaGraphNode_t *pDependencies, size_t numDependencies,
+                       const struct cudaMemcpy3DParms *pCopyParams) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(cudaGraphNode_t *, cudaGraph_t,
+                                           cudaGraphNode_t *, size_t,
+                                           const struct cudaMemcpy3DParms *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphAddMemcpyNode");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(pGraphNode, graph, pDependencies, numDependencies,
+                  pCopyParams);
+}
+
+extern __host__ cudaError_t CUDARTAPI cudaGraphMemcpyNodeGetParams(
+    cudaGraphNode_t node, struct cudaMemcpy3DParms *pNodeParams) {
+  using FuncPtr =
+      cudaError_t(CUDARTAPI *)(cudaGraphNode_t, struct cudaMemcpy3DParms *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphMemcpyNodeGetParams");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(node, pNodeParams);
+}
+
+extern __host__ cudaError_t CUDARTAPI cudaGraphMemcpyNodeSetParams(
+    cudaGraphNode_t node, const struct cudaMemcpy3DParms *pNodeParams) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(cudaGraphNode_t,
+                                           const struct cudaMemcpy3DParms *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphMemcpyNodeSetParams");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(node, pNodeParams);
+}
+
+extern __host__ cudaError_t CUDARTAPI
+cudaGraphAddMemsetNode(cudaGraphNode_t *pGraphNode, cudaGraph_t graph,
+                       cudaGraphNode_t *pDependencies, size_t numDependencies,
+                       const struct cudaMemsetParams *pMemsetParams) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(cudaGraphNode_t *, cudaGraph_t,
+                                           cudaGraphNode_t *, size_t,
+                                           const struct cudaMemsetParams *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphAddMemsetNode");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(pGraphNode, graph, pDependencies, numDependencies,
+                  pMemsetParams);
+}
+
+extern __host__ cudaError_t CUDARTAPI cudaGraphMemsetNodeGetParams(
+    cudaGraphNode_t node, struct cudaMemsetParams *pNodeParams) {
+  using FuncPtr =
+      cudaError_t(CUDARTAPI *)(cudaGraphNode_t, struct cudaMemsetParams *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphMemsetNodeGetParams");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(node, pNodeParams);
+}
+
+extern __host__ cudaError_t CUDARTAPI cudaGraphMemsetNodeSetParams(
+    cudaGraphNode_t node, const struct cudaMemsetParams *pNodeParams) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(cudaGraphNode_t,
+                                           const struct cudaMemsetParams *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphMemsetNodeSetParams");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(node, pNodeParams);
+}
+
+extern __host__ cudaError_t CUDARTAPI
+cudaGraphAddHostNode(cudaGraphNode_t *pGraphNode, cudaGraph_t graph,
+                     cudaGraphNode_t *pDependencies, size_t numDependencies,
+                     const struct cudaHostNodeParams *pNodeParams) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(cudaGraphNode_t *, cudaGraph_t,
+                                           cudaGraphNode_t *, size_t,
+                                           const struct cudaHostNodeParams *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphAddHostNode");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(pGraphNode, graph, pDependencies, numDependencies,
+                  pNodeParams);
+}
+
+extern __host__ cudaError_t CUDARTAPI cudaGraphHostNodeGetParams(
+    cudaGraphNode_t node, struct cudaHostNodeParams *pNodeParams) {
+  using FuncPtr =
+      cudaError_t(CUDARTAPI *)(cudaGraphNode_t, struct cudaHostNodeParams *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphHostNodeGetParams");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(node, pNodeParams);
+}
+
+extern __host__ cudaError_t CUDARTAPI cudaGraphHostNodeSetParams(
+    cudaGraphNode_t node, const struct cudaHostNodeParams *pNodeParams) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(cudaGraphNode_t,
+                                           const struct cudaHostNodeParams *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphHostNodeSetParams");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(node, pNodeParams);
+}
+
+extern __host__ cudaError_t CUDARTAPI
+cudaGraphAddChildGraphNode(cudaGraphNode_t *pGraphNode, cudaGraph_t graph,
+                           cudaGraphNode_t *pDependencies,
+                           size_t numDependencies, cudaGraph_t childGraph) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(
+      cudaGraphNode_t *, cudaGraph_t, cudaGraphNode_t *, size_t, cudaGraph_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphAddChildGraphNode");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(pGraphNode, graph, pDependencies, numDependencies,
+                  childGraph);
+}
+
+extern __host__ cudaError_t CUDARTAPI
+cudaGraphChildGraphNodeGetGraph(cudaGraphNode_t node, cudaGraph_t *pGraph) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(cudaGraphNode_t, cudaGraph_t *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphChildGraphNodeGetGraph");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(node, pGraph);
+}
+
+extern __host__ cudaError_t CUDARTAPI
+cudaGraphAddEmptyNode(cudaGraphNode_t *pGraphNode, cudaGraph_t graph,
+                      cudaGraphNode_t *pDependencies, size_t numDependencies) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(cudaGraphNode_t *, cudaGraph_t,
+                                           cudaGraphNode_t *, size_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphAddEmptyNode");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(pGraphNode, graph, pDependencies, numDependencies);
+}
+
+extern __host__ cudaError_t CUDARTAPI
+cudaGraphClone(cudaGraph_t *pGraphClone, cudaGraph_t originalGraph) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(cudaGraph_t *, cudaGraph_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphClone");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(pGraphClone, originalGraph);
+}
+
+extern __host__ cudaError_t CUDARTAPI
+cudaGraphNodeFindInClone(cudaGraphNode_t *pNode, cudaGraphNode_t originalNode,
+                         cudaGraph_t clonedGraph) {
+  using FuncPtr =
+      cudaError_t(CUDARTAPI *)(cudaGraphNode_t *, cudaGraphNode_t, cudaGraph_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphNodeFindInClone");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(pNode, originalNode, clonedGraph);
+}
+
+extern __host__ cudaError_t CUDARTAPI
+cudaGraphNodeGetType(cudaGraphNode_t node, enum cudaGraphNodeType *pType) {
+  using FuncPtr =
+      cudaError_t(CUDARTAPI *)(cudaGraphNode_t, enum cudaGraphNodeType *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphNodeGetType");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(node, pType);
+}
+
+extern __host__ cudaError_t CUDARTAPI cudaGraphGetNodes(cudaGraph_t graph,
+                                                        cudaGraphNode_t *nodes,
+                                                        size_t *numNodes) {
+  using FuncPtr =
+      cudaError_t(CUDARTAPI *)(cudaGraph_t, cudaGraphNode_t *, size_t *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphGetNodes");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(graph, nodes, numNodes);
+}
+
+extern __host__ cudaError_t CUDARTAPI cudaGraphGetRootNodes(
+    cudaGraph_t graph, cudaGraphNode_t *pRootNodes, size_t *pNumRootNodes) {
+  using FuncPtr =
+      cudaError_t(CUDARTAPI *)(cudaGraph_t, cudaGraphNode_t *, size_t *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphGetRootNodes");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(graph, pRootNodes, pNumRootNodes);
+}
+
+extern __host__ cudaError_t CUDARTAPI cudaGraphGetEdges(cudaGraph_t graph,
+                                                        cudaGraphNode_t *from,
+                                                        cudaGraphNode_t *to,
+                                                        size_t *numEdges) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(cudaGraph_t, cudaGraphNode_t *,
+                                           cudaGraphNode_t *, size_t *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphGetEdges");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(graph, from, to, numEdges);
+}
+
+extern __host__ cudaError_t CUDARTAPI cudaGraphNodeGetDependencies(
+    cudaGraphNode_t node, cudaGraphNode_t *pDependencies,
+    size_t *pNumDependencies) {
+  using FuncPtr =
+      cudaError_t(CUDARTAPI *)(cudaGraphNode_t, cudaGraphNode_t *, size_t *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphNodeGetDependencies");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(node, pDependencies, pNumDependencies);
+}
+
+extern __host__ cudaError_t CUDARTAPI cudaGraphNodeGetDependentNodes(
+    cudaGraphNode_t node, cudaGraphNode_t *pDependentNodes,
+    size_t *pNumDependentNodes) {
+  using FuncPtr =
+      cudaError_t(CUDARTAPI *)(cudaGraphNode_t, cudaGraphNode_t *, size_t *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphNodeGetDependentNodes");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(node, pDependentNodes, pNumDependentNodes);
+}
+
+extern __host__ cudaError_t CUDARTAPI
+cudaGraphAddDependencies(cudaGraph_t graph, cudaGraphNode_t *from,
+                         cudaGraphNode_t *to, size_t numDependencies) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(cudaGraph_t, cudaGraphNode_t *,
+                                           cudaGraphNode_t *, size_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphAddDependencies");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(graph, from, to, numDependencies);
+}
+
+extern __host__ cudaError_t CUDARTAPI
+cudaGraphRemoveDependencies(cudaGraph_t graph, cudaGraphNode_t *from,
+                            cudaGraphNode_t *to, size_t numDependencies) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(cudaGraph_t, cudaGraphNode_t *,
+                                           cudaGraphNode_t *, size_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphRemoveDependencies");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(graph, from, to, numDependencies);
+}
+
+extern __host__ cudaError_t CUDARTAPI
+cudaGraphDestroyNode(cudaGraphNode_t node) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(cudaGraphNode_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphDestroyNode");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(node);
+}
+
+extern __host__ cudaError_t CUDARTAPI cudaGraphInstantiate(
+    cudaGraphExec_t *pGraphExec, cudaGraph_t graph, cudaGraphNode_t *pErrorNode,
+    char *pLogBuffer, size_t bufferSize) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(cudaGraphExec_t *, cudaGraph_t,
+                                           cudaGraphNode_t *, char *, size_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphInstantiate");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(pGraphExec, graph, pErrorNode, pLogBuffer, bufferSize);
+}
+
+extern __host__ cudaError_t CUDARTAPI cudaGraphLaunch(cudaGraphExec_t graphExec,
+                                                      cudaStream_t stream) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(cudaGraphExec_t, cudaStream_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphLaunch");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(graphExec, stream);
+}
+
+extern __host__ cudaError_t CUDARTAPI
+cudaGraphExecDestroy(cudaGraphExec_t graphExec) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(cudaGraphExec_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphExecDestroy");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(graphExec);
+}
+
+extern __host__ cudaError_t CUDARTAPI cudaGraphDestroy(cudaGraph_t graph) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(cudaGraph_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphDestroy");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(graph);
+}
+
 extern __host__ cudaError_t CUDARTAPI cudaGetExportTable(
     const void **ppExportTable, const cudaUUID_t *pExportTableId) {
   using FuncPtr = cudaError_t(CUDARTAPI *)(const void **, const cudaUUID_t *);
@@ -1515,4 +1831,5 @@ extern __host__ cudaError_t CUDARTAPI cudaGetExportTable(
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(ppExportTable, pExportTableId);
 }
+
 }  // extern "C"

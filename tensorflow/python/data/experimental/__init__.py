@@ -45,6 +45,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@TensorStructure
 @@ThreadingOptions
 
+@@assert_cardinality
 @@bucket_by_sequence_length
 @@bytes_produced_stats
 @@cardinality
@@ -93,6 +94,7 @@ from tensorflow.python.data.experimental.ops.batching import dense_to_sparse_bat
 from tensorflow.python.data.experimental.ops.batching import map_and_batch
 from tensorflow.python.data.experimental.ops.batching import map_and_batch_with_legacy_function
 from tensorflow.python.data.experimental.ops.batching import unbatch
+from tensorflow.python.data.experimental.ops.cardinality import assert_cardinality
 from tensorflow.python.data.experimental.ops.cardinality import cardinality
 from tensorflow.python.data.experimental.ops.cardinality import INFINITE as INFINITE_CARDINALITY
 from tensorflow.python.data.experimental.ops.cardinality import UNKNOWN as UNKNOWN_CARDINALITY

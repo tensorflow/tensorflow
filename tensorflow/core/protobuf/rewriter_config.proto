@@ -2,15 +2,14 @@ syntax = "proto3";
 
 package tensorflow;
 
+import "tensorflow/core/framework/attr_value.proto";
+import "tensorflow/core/protobuf/verifier_config.proto";
+
 option cc_enable_arenas = true;
 option java_outer_classname = "RewriterConfigProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
-
-import "tensorflow/core/framework/attr_value.proto";
-import "tensorflow/core/protobuf/verifier_config.proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
 
 message AutoParallelOptions {
   bool enable = 1;
@@ -61,6 +60,9 @@ message RewriterConfig {
   // Remapping (default is ON)
   // Remap subgraphs onto more efficient implementations.
   Toggle remapping = 14;
+  // Common subgraph elimination (default is ON)
+  // e.g. Simplify arithmetic ops; merge ops with same value (like constants).
+  Toggle common_subgraph_elimination = 24;
   // Arithmetic optimizations (default is ON)
   // e.g. Simplify arithmetic ops; merge ops with same value (like constants).
   Toggle arithmetic_optimization = 7;
@@ -130,7 +132,7 @@ message RewriterConfig {
   // effect on manually requested memory optimization passes in the optimizers
   // field.
   MemOptType memory_optimization = 4;
-  // A node name scope for node names which are valid outputs of recompuations.
+  // A node name scope for node names which are valid outputs of recomputations.
   // Inputs to nodes that match this scope may be recomputed (subject either to
   // manual annotation of those input nodes or to manual annotation and
   // heuristics depending on memory_optimization), but the nodes themselves will

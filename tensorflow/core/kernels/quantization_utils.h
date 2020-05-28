@@ -718,8 +718,8 @@ inline void RequantizeManyInNewRangeUsingEigen<qint32, quint8>(
                        .unaryExpr(int64_right_shift_op<32>())) +
                   (input_offset_fp - output_offset_fp + rounding_delta);
   auto intermediate = fp_value.unaryExpr(int64_right_shift_op<fp_shift>());
-  auto input_requantized = intermediate.cwiseMax(0LL)
-                               .cwiseMin(255LL)
+  auto input_requantized = intermediate.cwiseMax(int64{0})
+                               .cwiseMin(int64{255})
                                .template cast<int32>()
                                .template cast<quint8>();
   output->flat<quint8>().device(device) = input_requantized;

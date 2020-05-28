@@ -63,10 +63,10 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
   for (int64 dimension_number : minor_to_major) {
     layout.add_minor_to_major(dimension_number);
   }
-  for (Tile tile : tiles) {
+  for (const Tile& tile : tiles) {
     for (int64 dim : tile.dimensions()) {
       if (dim < 0 && dim != Tile::kCombineDimension) {
-        LOG(FATAL) << "Tile dimension size needs to be mininum int64 value if "
+        LOG(FATAL) << "Tile dimension size needs to be minimum int64 value if "
                       "it's negative. Value is "
                    << dim;
       }
@@ -441,7 +441,7 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
   for (int64 minor_to_major : layout.minor_to_major()) {
     hash_value = Hash64Combine(hash_value, hash<int64>()(minor_to_major));
   }
-  for (Tile tile : layout.tiles()) {
+  for (const Tile& tile : layout.tiles()) {
     for (int64 tile_dim : tile.dimensions()) {
       hash_value = Hash64Combine(hash_value, hash<int64>()(tile_dim));
     }

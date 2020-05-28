@@ -17,24 +17,29 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_DEVICE_UTIL_H_
 
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
+
 // Collects all devices known to the system by name and adds them as a
-// `tf.devices` array attribute of string attributes to an op. Device names
-// added are in the following form:
+// `tf.devices` dictionary attribute with a full device name as a key, and
+// device metadata as a value.
+//
+// Device names added in full parsed device form:
 //   /job:<name>/replica:<replica>/task:<task>/device:<type>:<device_num>
+//
+// Supported device metadata types:
+// (1) GpuDeviceMetadata: GPU device compute capability.
 void AddDevicesToOp(mlir::Operation* op, const DeviceSet* device_set);
 
-// Collects devices as DeviceNameUtils::ParsedName from an op `tf.devices`
-// attribute. A failure will be returned if the attribute is not an
-// ArrayAttr<StringAttr> or the devices are invalid.
-mlir::LogicalResult GetDevicesFromOp(
-    mlir::Operation* op,
-    llvm::SmallVectorImpl<DeviceNameUtils::ParsedName>* devices);
+// Collects devices information from an op `tf.devices` attributes. Returns
+// failure if can't parse device metadata from the attribute.
+mlir::LogicalResult GetDevicesFromOp(mlir::Operation* op,
+                                     mlir::TF::RuntimeDevices* devices);
 
 }  // namespace tensorflow
 

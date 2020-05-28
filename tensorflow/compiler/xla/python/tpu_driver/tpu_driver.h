@@ -23,7 +23,6 @@
 #include <string>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/synchronization/mutex.h"

@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/examples/micro_speech/micro_features/no_feature_data_slice.h"
 
-const uint8_t g_no_feature_data_slice[g_no_feature_data_slice_size] = {
-    216, 195, 223, 211, 238, 223, 243, 215, 226, 204, 232, 211, 232, 213,
-    240, 218, 235, 214, 238, 205, 207, 173, 149, 201, 215, 200, 230, 213,
-    208, 195, 175, 151, 195, 175, 182, 163, 235, 217, 218, 190,
+const int8_t g_no_feature_data_slice[g_no_feature_data_slice_size] = {
+    89,  68, 96,  83, 111, 96, 115, 87, 99,  76, 105, 84, 105, 86,
+    113, 91, 108, 87, 110, 78, 80,  46, 22,  74, 88,  72, 103, 86,
+    80,  68, 48,  24, 68,  48, 55,  36, 108, 90, 90,  63,
 };

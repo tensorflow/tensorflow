@@ -48,8 +48,9 @@ class MergeConvolutionWithAdd : public SequenceTransformation {
     }
     AddAttributes add_attr =
         absl::any_cast<AddAttributes>(add_node.operation.attributes);
-    if (!absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&add_attr.param) &&
-        !absl::get_if<float>(&add_attr.param)) {
+    if (!absl::holds_alternative<Tensor<Linear, DataType::FLOAT32>>(
+            add_attr.param) &&
+        !absl::holds_alternative<float>(add_attr.param)) {
       return {TransformStatus::DECLINED,
               "This fuse applicable only for broadcast or scalar addition."};
     }
@@ -81,11 +82,11 @@ class MergeConvolutionWithAdd : public SequenceTransformation {
       return {TransformStatus::SKIPPED, ""};
     }
 
-    Status status = RemoveFollowingNode(graph, &add_node, &conv_node);
+    absl::Status status = RemoveFollowingNode(graph, &add_node, &conv_node);
     if (!status.ok()) {
       return {TransformStatus::INVALID,
               "Unable to remove add node after convolution: " +
-                  status.error_message()};
+                  std::string(status.message())};
     }
     return {TransformStatus::APPLIED, ""};
   }
@@ -104,8 +105,9 @@ class MergeAddWithConvolution : public SequenceTransformation {
     }
     AddAttributes add_attr =
         absl::any_cast<AddAttributes>(add_node.operation.attributes);
-    if (!absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&add_attr.param) &&
-        !absl::get_if<float>(&add_attr.param)) {
+    if (!absl::holds_alternative<Tensor<Linear, DataType::FLOAT32>>(
+            add_attr.param) &&
+        !absl::holds_alternative<float>(add_attr.param)) {
       return {TransformStatus::DECLINED,
               "This fuse applicable only for broadcast or scalar addition."};
     }
@@ -131,11 +133,11 @@ class MergeAddWithConvolution : public SequenceTransformation {
       return {TransformStatus::SKIPPED, ""};
     }
 
-    Status status = RemovePrecedingNode(graph, &add_node, &conv_node);
+    absl::Status status = RemovePrecedingNode(graph, &add_node, &conv_node);
     if (!status.ok()) {
       return {TransformStatus::INVALID,
               "Unable to remove add node after convolution: " +
-                  status.error_message()};
+                  std::string(status.message())};
     }
     return {TransformStatus::APPLIED, ""};
   }

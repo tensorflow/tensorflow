@@ -137,7 +137,7 @@ TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
 // placed in memory of different devices or remote address spaces.
 typedef struct TFE_TensorHandle TFE_TensorHandle;
 
-TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t,
+TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewTensorHandle(const TF_Tensor* t,
                                                             TF_Status* status);
 // Indicates that the caller will not be using `h` any more.
 TF_CAPI_EXPORT extern void TFE_DeleteTensorHandle(TFE_TensorHandle* h);
@@ -213,7 +213,7 @@ TF_CAPI_EXPORT extern void TFE_DeleteTensorDebugInfo(
     TFE_TensorDebugInfo* debug_info);
 
 // Returns the number of dimensions used to represent the tensor on its device.
-// The number of dimensions used to reprensent the tensor on device can be
+// The number of dimensions used to represent the tensor on device can be
 // different from the number returned by TFE_TensorHandleNumDims.
 // The return value was current at the time of TFE_TensorDebugInfo creation.
 TF_CAPI_EXPORT extern int TFE_TensorDebugInfoOnDeviceNumDims(

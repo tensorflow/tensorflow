@@ -43,8 +43,10 @@ limitations under the License.
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/resource_loader.h"
+#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
@@ -193,8 +195,9 @@ TEST(CAPI, LibraryLoadFunctions) {
   {
     // Load the library.
     TF_Status* status = TF_NewStatus();
-    TF_Library* lib =
-        TF_LoadLibrary("tensorflow/c/test_op1.so", status);
+    string lib_path = tensorflow::GetDataDependencyFilepath(
+        tensorflow::io::JoinPath("tensorflow", "c", "test_op1.so"));
+    TF_Library* lib = TF_LoadLibrary(lib_path.c_str(), status);
     TF_Code code = TF_GetCode(status);
     string status_msg(TF_Message(status));
     TF_DeleteStatus(status);
@@ -1350,9 +1353,9 @@ TEST_F(CApiColocationTest, ClearViaProto) {
 
 TEST(CAPI, SavedModel) {
   // Load the saved model.
-  const char kSavedModel[] = "cc/saved_model/testdata/half_plus_two/00000123";
-  const string saved_model_dir = tensorflow::io::JoinPath(
-      tensorflow::testing::TensorFlowSrcRoot(), kSavedModel);
+  const string saved_model_dir = tensorflow::GetDataDependencyFilepath(
+      tensorflow::io::JoinPath("tensorflow", "cc", "saved_model", "testdata",
+                               "half_plus_two", "00000123"));
   TF_SessionOptions* opt = TF_NewSessionOptions();
   TF_Buffer* run_options = TF_NewBufferFromString("", 0);
   TF_Buffer* metagraph = TF_NewBuffer();
@@ -1426,9 +1429,9 @@ TEST(CAPI, SavedModel) {
 }
 
 TEST(CAPI, SavedModelNullArgsAreValid) {
-  const char kSavedModel[] = "cc/saved_model/testdata/half_plus_two/00000123";
-  const string saved_model_dir = tensorflow::io::JoinPath(
-      tensorflow::testing::TensorFlowSrcRoot(), kSavedModel);
+  const string saved_model_dir = tensorflow::GetDataDependencyFilepath(
+      tensorflow::io::JoinPath("tensorflow", "cc", "saved_model", "testdata",
+                               "half_plus_two", "00000123"));
   TF_SessionOptions* opt = TF_NewSessionOptions();
   TF_Status* s = TF_NewStatus();
   const char* tags[] = {tensorflow::kSavedModelTagServe};

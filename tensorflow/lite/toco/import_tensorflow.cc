@@ -27,13 +27,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
-#include "tensorflow/lite/toco/model.h"
-#include "tensorflow/lite/toco/model_flags.pb.h"
-#include "tensorflow/lite/toco/tensorflow_graph_matching/resolve_cluster.h"
-#include "tensorflow/lite/toco/tensorflow_util.h"
-#include "tensorflow/lite/toco/tooling_util.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -42,12 +38,16 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/lite/toco/model.h"
+#include "tensorflow/lite/toco/model_flags.pb.h"
+#include "tensorflow/lite/toco/tensorflow_graph_matching/resolve_cluster.h"
+#include "tensorflow/lite/toco/tensorflow_util.h"
+#include "tensorflow/lite/toco/tooling_util.h"
 
 using tensorflow::AttrValue;
 using tensorflow::DT_BOOL;
@@ -533,7 +533,8 @@ string CreateConstArray(Model* model, string const& name,
   string array_name = toco::AvailableArrayName(*model, name);
   auto& array = model->GetOrCreateArray(array_name);
   array.data_type = T;
-  array.mutable_shape()->mutable_dims()->emplace_back(data.size());
+  array.mutable_shape()->mutable_dims()->emplace_back(
+      static_cast<int>(data.size()));
   array.GetMutableBuffer<T>().data = data;
   return array_name;
 }
@@ -1707,8 +1708,12 @@ tensorflow::Status ConvertResizeBilinearOperator(
   auto* op = new ResizeBilinearOperator;
 
   op->align_corners = false;
+  op->half_pixel_centers = false;
   if (HasAttr(node, "align_corners")) {
     op->align_corners = GetBoolAttr(node, "align_corners");
+  }
+  if (HasAttr(node, "half_pixel_centers")) {
+    op->half_pixel_centers = GetBoolAttr(node, "half_pixel_centers");
   }
 
   op->inputs.push_back(node.input(0));
@@ -1726,8 +1731,12 @@ tensorflow::Status ConvertResizeNearestNeighborOperator(
   auto* op = new ResizeNearestNeighborOperator;
 
   op->align_corners = false;
+  op->half_pixel_centers = false;
   if (HasAttr(node, "align_corners")) {
     op->align_corners = GetBoolAttr(node, "align_corners");
+  }
+  if (HasAttr(node, "half_pixel_centers")) {
+    op->half_pixel_centers = GetBoolAttr(node, "half_pixel_centers");
   }
 
   op->inputs.push_back(node.input(0));
@@ -2406,9 +2415,6 @@ tensorflow::Status ConvertUnidirectionalSequenceLstm(
   DCHECK_EQ(node.op(), "UnidirectionalSequenceLstm");
 
   const auto& indices = GetListAttr(node, "_tflite_input_indices");
-  if (indices.i_size() != node.input().size()) {
-    return tensorflow::errors::InvalidArgument("Input size does not match.");
-  }
 
   auto* op = new UnidirectionalSequenceLstmOperator();
 
@@ -2417,20 +2423,38 @@ tensorflow::Status ConvertUnidirectionalSequenceLstm(
   const int kInputsSize = 20;
 
   op->inputs.resize(kInputsSize);
-  std::vector<bool> done(kInputsSize);
-  int idx = 0;
-  for (const string& input : node.input()) {
-    int real_index = indices.i(idx);
-    op->inputs[real_index] = (input);
-    done[real_index] = true;
-    idx++;
-  }
 
-  for (int idx = 0; idx < done.size(); idx++) {
-    if (!done[idx]) {
-      string optional_name = node.name() + "_" + std::to_string(idx);
-      model->CreateOptionalArray(optional_name);
-      op->inputs[idx] = optional_name;
+  if (indices.i_size() != node.input().size()) {
+    // New version, the optional inputs are filled with constant nodes.
+    int count = 0;
+    for (int idx = 0; idx < kInputsSize; ++idx) {
+      if (count < indices.i_size() && indices.i(count) == idx) {
+        // Specified input.
+        op->inputs[idx] = node.input(idx);
+        count++;
+      } else {
+        // Optional input.
+        string optional_name = node.name() + "_" + std::to_string(idx);
+        model->CreateOptionalArray(optional_name);
+        op->inputs[idx] = optional_name;
+      }
+    }
+  } else {  // Legacy version.
+    std::vector<bool> done(kInputsSize);
+    int idx = 0;
+    for (const string& input : node.input()) {
+      int real_index = indices.i(idx);
+      op->inputs[real_index] = (input);
+      done[real_index] = true;
+      idx++;
+    }
+
+    for (int idx = 0; idx < done.size(); idx++) {
+      if (!done[idx]) {
+        string optional_name = node.name() + "_" + std::to_string(idx);
+        model->CreateOptionalArray(optional_name);
+        op->inputs[idx] = optional_name;
+      }
     }
   }
 
@@ -2608,6 +2632,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"ReverseV2", ConvertSimpleOperator<ReverseV2Operator, 2, 1>},
       {"Round", ConvertRoundOperator},
       {"Rsqrt", ConvertSimpleOperator<TensorFlowRsqrtOperator, 1, 1>},
+      {"ScatterNd", ConvertSimpleOperator<ScatterNdOperator, 3, 1>},
       {"SegmentSum", ConvertSimpleOperator<SegmentSumOperator, 2, 1>},
       {"Select", ConvertSimpleOperator<SelectOperator, 3, 1>},
       {"SelectV2", ConvertSimpleOperator<SelectOperator, 3, 1>},

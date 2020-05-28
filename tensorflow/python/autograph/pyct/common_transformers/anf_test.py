@@ -29,30 +29,8 @@ from tensorflow.python.autograph.pyct.common_transformers import anf
 from tensorflow.python.platform import test
 
 
-class DummyGensym(object):
-  """A dumb gensym that suffixes a stem by sequential numbers from 1000."""
-
-  def __init__(self, ctx):
-    del ctx
-    # A proper implementation needs to account for:
-    #   * ctx.info.namespace
-    #   * all the symbols defined in the AST
-    #   * the symbols generated so far
-    self._idx = 0
-
-  def new_name(self, stem='tmp'):
-    self._idx += 1
-    return stem + '_' + str(1000 + self._idx)
-
-
-# These two test functions have to be top-level, not nested, for compatibility
-# with some unknown version of Python 2.7 preceding 2.7.15.  Why?  Because
-# `exec` and nested function definitions _incomaptibly_ change the
-# representation of local variables, such that `exec` inside a nested function
-# definition is a syntax error in that version.  The tuple form of `exec` fixes
-# this problem, but apparently that was introduced in some unknown version of
-# Python that's more recent than at least one version that we wish to be
-# compatible with.
+# TODO(mdan): These two functions no longer need to be at the top level.
+# TODO(mdan): Don't use exec.
 def exec_test_function():
   # The point is to test A-normal form conversion of exec
   # pylint: disable=exec-used
@@ -72,8 +50,12 @@ class AnfTestBase(test.TestCase):
 
   def _simple_context(self):
     entity_info = transformer.EntityInfo(
-        source_code=None, source_file=None, future_features=(), namespace=None)
-    return transformer.Context(entity_info)
+        name='test_fn',
+        source_code=None,
+        source_file=None,
+        future_features=(),
+        namespace=None)
+    return transformer.Context(entity_info, None, None)
 
   def assert_same_ast(self, expected_node, node, msg=None):
     expected_source = parser.unparse(expected_node, indentation='  ')
@@ -88,9 +70,7 @@ class AnfTestBase(test.TestCase):
     # statements.
     exp_node, _ = parser.parse_entity(expected_fn, future_features=())
     node, _ = parser.parse_entity(test_fn, future_features=())
-    node = anf.transform(
-        node, self._simple_context(),
-        config=config, gensym_source=DummyGensym)
+    node = anf.transform(node, self._simple_context(), config=config)
     exp_name = exp_node.name
     # Ignoring the function names in the result because they can't be
     # the same (because both functions have to exist in the same scope
@@ -98,8 +78,7 @@ class AnfTestBase(test.TestCase):
     node.name = exp_name
     self.assert_same_ast(exp_node, node)
     # Check that ANF is idempotent
-    node_repeated = anf.transform(
-        node, self._simple_context(), gensym_source=DummyGensym)
+    node_repeated = anf.transform(node, self._simple_context())
     self.assert_same_ast(node_repeated, node)
 
 
@@ -465,10 +444,8 @@ class AnfNonTransformationTest(AnfTransformerTest):
     node, _ = parser.parse_entity(test_fn, future_features=())
     orig_source = parser.unparse(node, indentation='  ')
     orig_str = textwrap.dedent(orig_source).strip()
-    config = [(anf.ANY, anf.LEAVE)]  # Configuration to trasform nothing
-    node = anf.transform(
-        node, self._simple_context(),
-        config=config, gensym_source=DummyGensym)
+    config = [(anf.ANY, anf.LEAVE)]  # Configuration to transform nothing
+    node = anf.transform(node, self._simple_context(), config=config)
     new_source = parser.unparse(node, indentation='  ')
     new_str = textwrap.dedent(new_source).strip()
     self.assertEqual(orig_str, new_str)

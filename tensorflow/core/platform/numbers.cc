@@ -62,7 +62,7 @@ T locale_independent_strtonum(const char* str, const char** endptr) {
   string special_num_str;
   s >> special_num_str;
 
-  for (int i = 0; i < special_num_str.length(); ++i) {
+  for (size_t i = 0; i < special_num_str.length(); ++i) {
     special_num_str[i] =
         std::tolower(special_num_str[i], std::locale::classic());
   }
@@ -439,7 +439,7 @@ string HumanReadableNum(int64 value) {
     value = -value;
   }
   if (value < 1000) {
-    Appendf(&s, "%lld", value);
+    Appendf(&s, "%lld", static_cast<long long>(value));
   } else if (value >= static_cast<int64>(1e15)) {
     // Number bigger than 1E15; use that notation.
     Appendf(&s, "%0.3G", static_cast<double>(value));
@@ -472,7 +472,7 @@ string HumanReadableNumBytes(int64 num_bytes) {
     // No fractions for bytes.
     char buf[8];  // Longest possible string is '-XXXXB'
     snprintf(buf, sizeof(buf), "%s%lldB", neg_str,
-             static_cast<int64>(num_bytes));
+             static_cast<long long>(num_bytes));
     return string(buf);
   }
 

@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
+
 #if defined(_MSC_VER)
 #define __restrict__ __restrict
 #endif
@@ -24,30 +26,36 @@ limitations under the License.
 namespace tflite {
 namespace tensor_utils {
 
-#ifdef __SSE4_1__
+#ifdef __SSSE3__
 
 // Matrix multiplication for quantized values using symmetric quantization.
 void SseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
-    const int8_t* __restrict__ vectors, const float* scaling_factors,
-    int n_batch, float* __restrict__ result, int result_stride);
+    const int8_t* __restrict__ vectors,
+    const float* __restrict__ scaling_factors, int n_batch,
+    float* __restrict__ result);
 
 // Matrix multiplication for quantized values using asymmetric quantization.
 void SseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
-    const int8_t* __restrict__ vectors, const float* scaling_factors,
-    int n_batch, float* __restrict__ result, int result_stride,
-    const float* per_channel_scale, const int32_t* input_offset);
+    const int8_t* __restrict__ vectors,
+    const float* __restrict__ scaling_factors, int n_batch,
+    float* __restrict__ result, const float* per_channel_scale,
+    const int32_t* input_offset, int32_t* scratch, int32_t* row_sums,
+    bool* compute_row_sums, CpuBackendContext* context);
 
 // Matrix multiplication for quantized values using symmetric quantization.
 // Sparse version.
 void SseSparseMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* __restrict__ matrix, const uint8_t* ledger, const int m_rows,
-    const int m_cols, const int8_t* __restrict__ vectors,
-    const float* scaling_factors, int n_batch, float* __restrict__ result,
-    int result_stride);
+    const int8_t* __restrict__ matrix, const uint8_t* __restrict__ ledger,
+    const int m_rows, const int m_cols, const int8_t* __restrict__ vectors,
+    const float* __restrict__ scaling_factors, int n_batch,
+    float* __restrict__ result);
 
-#endif  // __SSE4_1__
+void SseReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
+                           const int output_size, const int reduction_size);
+
+#endif  // __SSSE3__
 
 }  // namespace tensor_utils
 }  // namespace tflite

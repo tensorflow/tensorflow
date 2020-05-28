@@ -25,6 +25,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util as util
+from tensorflow.python.ops import control_flow_v2_func_graphs
 from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_resource_variable_ops
@@ -366,7 +367,7 @@ class _GradLoopState(object):
             raise TypeError("value_ctxt is not a CondContext: %s" % value_ctxt)
           if dead_branch:
             # The special case for creating a zero tensor for a dead
-            # branch of a switch. See _ControlFlowState.ZerosLike().
+            # branch of a switch. See _ControlFlowState.ZerosLikeV1WhileLoop().
             value_ctxt.outer_context.Enter()
             push = gen_data_flow_ops.stack_push_v2(
                 enter_acc, value, swap_memory=swap_enabled)
@@ -643,7 +644,7 @@ class _ControlFlowState(object):
         result = array_ops.zeros_like(val, optimize=False)
     return result
 
-  def ZerosLike(self, op, index):
+  def ZerosLikeV1WhileLoop(self, op, index):
     """Create zeros_like for the specified output of an op.
 
     If op is in a while loop that is part of gradients(), this method
@@ -658,7 +659,7 @@ class _ControlFlowState(object):
     """
     if util.IsLoopSwitch(op):
       return None
-    if op.graph._building_function:  # pylint: disable=protected-access
+    if op.graph.building_function:
       # The optimization here is tricky to apply to functions
       return array_ops.zeros_like(op.outputs[index])
     dead_branch = util.IsSwitch(op)
@@ -666,7 +667,7 @@ class _ControlFlowState(object):
     grad_state = self._map.get(forward_ctxt)
     if grad_state is None:
       # op is not in a while loop that is part of gradients().
-      return ZerosLikeOutsideLoop(op, index)
+      return ZerosLike(op, index)
     op_ctxt = op._get_control_flow_context()
     val = ops.convert_to_tensor(op.outputs[index], name="tensor")
     shape = val.get_shape()
@@ -780,34 +781,59 @@ def MaybeCreateControlFlowState(between_op_list, between_ops,
   return loop_state
 
 
-def ZerosLikeOutsideLoop(op, index):
-  """Create zeros_like for the specified output of an op."""
+def _ZerosLikeV1(op, index):
+  """Branch of ZerosLike for TF1."""
   val = op.outputs[index]
-  if not util.IsSwitch(op):
+  op_ctxt = op._get_control_flow_context()  # pylint: disable=protected-access
+  if op_ctxt:
+    # We are in a cond context. Use a switch to create zeros only when needed.
+    pred = op_ctxt.pred
+    branch = op_ctxt.branch
+    switch_val = control_flow_ops.switch(op.inputs[0], pred)[1 - branch]
+    # A op is created along the branch taken as control dependencies are on
+    # the whole op and not on the tensor output.
+    pivot = array_ops.identity(switch_val)
     if val.dtype == dtypes.resource:
-      return array_ops.zeros(
-          gen_resource_variable_ops.variable_shape(val),
-          dtype=default_gradient.get_zeros_dtype(val))
-    return array_ops.zeros_like(val, optimize=False)
-  else:
-    op_ctxt = op._get_control_flow_context()
-    if op_ctxt:
-      # We are in a cond context. Use a switch to create zeros only when needed.
-      pred = op_ctxt.pred
-      branch = op_ctxt.branch
-      switch_val = control_flow_ops.switch(op.inputs[0], pred)[1 - branch]
-      # A op is created along the branch taken as control dependencies are on
-      # the whole op and not on the tensor output.
-      pivot = array_ops.identity(switch_val)
-      if val.dtype == dtypes.resource:
-        with ops.control_dependencies([pivot]):
-          return array_ops.zeros(
-              gen_resource_variable_ops.variable_shape(switch_val),
-              dtype=default_gradient.get_zeros_dtype(val))
-      zeros_shape = array_ops.shape_internal(switch_val, optimize=False)
-      # Ensure ops created within array_ops.zeros are dominated by switch in
-      # cond context.
       with ops.control_dependencies([pivot]):
-        return array_ops.zeros(zeros_shape, dtype=val.dtype)
+        return array_ops.zeros(
+            gen_resource_variable_ops.variable_shape(switch_val),
+            dtype=default_gradient.get_zeros_dtype(val))
+    zeros_shape = array_ops.shape_internal(switch_val, optimize=False)
+    # Ensure ops created within array_ops.zeros are dominated by switch in
+    # cond context.
+    with ops.control_dependencies([pivot]):
+      return array_ops.zeros(zeros_shape, dtype=val.dtype)
+  else:
+    return array_ops.zeros_like(val, optimize=False)
+
+
+def _ZerosLikeV2(op, index):
+  """Branch of ZerosLike for TF2."""
+  val = op.outputs[index]
+  if val.dtype == dtypes.resource:
+    return array_ops.zeros(
+        gen_resource_variable_ops.variable_shape(val),
+        dtype=default_gradient.get_zeros_dtype(val))
+  if (isinstance(val.op.graph, control_flow_v2_func_graphs.WhileBodyFuncGraph)
+      and val.dtype != dtypes.variant):
+    # In while_v2 we do not want to add a `ZerosLike` op because that will
+    # trigger accumulation of `val`. Normally `ZerosLike` is preferred because
+    # it helps avoid creating extra nodes(possibly Consts) for the shape.
+    # For variants, we must use ZerosLike.
+    if val.shape.is_fully_defined():
+      return constant_op.constant(0, shape=val.shape.dims, dtype=val.dtype)
     else:
-      return array_ops.zeros_like(val, optimize=False)
+      # Note: Even though we add `Shape` in the default graph, while_v2 is smart
+      # enough to place it in the forward graph i.e. `val.graph`.
+      zeros_shape = array_ops.shape_internal(val, optimize=False)
+      return array_ops.zeros(zeros_shape, val.dtype)
+  else:
+    return array_ops.zeros_like(val, optimize=False)
+
+
+def ZerosLike(op, index):
+  """Create zeros_like for the specified output of an op."""
+  if not util.IsSwitch(op):
+    return _ZerosLikeV2(op, index)
+  else:
+    return _ZerosLikeV1(op, index)

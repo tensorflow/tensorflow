@@ -16,38 +16,42 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_MULTI_OUTPUT_FUSION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_MULTI_OUTPUT_FUSION_H_
 
-#include "tensorflow/compiler/xla/service/multi_output_fusion.h"
+#include <queue>
+#include <vector>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/compiler/xla/service/hlo_reachability.h"
+#include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
 namespace gpu {
 
 // Multi-output fusion of sibling and producer-consumer instructions for the
 // GPU backend.
-class GpuMultiOutputFusion : public MultiOutputFusion {
+class GpuMultiOutputFusion : public HloModulePass {
  public:
-  GpuMultiOutputFusion();
+  GpuMultiOutputFusion() = default;
 
- protected:
-  // Test if instr1 and instr2 have the compatible shapes that can be legally
-  // fused.
-  bool ShapesCompatibleForFusion(HloInstruction* instr1,
-                                 HloInstruction* instr2) override;
+  absl::string_view name() const override { return "multi_output_fusion"; }
 
-  // We currently only consider reduce and reduce fusion nodes as candidates.
-  bool IsFusible(HloInstruction* instr) override;
+  StatusOr<bool> Run(HloModule* module) override;
 
-  // This function estimates the amount of memory reads saved by merging
-  // instr1 and instr2 into one multi-output fusion instruction. For a fusion
-  // instruction, all the operands need to be loaded from memory. If we merge
-  // instr1 and instr2, common operands will not be loaded twice. The profit is
-  // estimated as the size of the common operands b/w instr1 and instr2.
-  int64 GetProfit(HloInstruction* instr1, HloInstruction* instr2) override;
+ private:
+  bool FuseSiblings(HloInstruction* parent);
 
-  // Test if it's legal to fuse instr1 and instr2 into one fusion instruction.
-  bool LegalToFuse(HloInstruction* instr1, HloInstruction* instr2) override;
+  bool DoMultiOutputFusion();
 
-  // Fuse loop fusions into reduce fusions.
-  bool DoProducerConsumerMultiOutputFusion() override;
+  // Recompute reachability for the current computation.
+  void RecomputeReachability();
+
+  // Computation for the pass.
+  HloComputation* computation_;
+
+  // The reachability map of current computation.
+  std::unique_ptr<HloReachabilityMap> reachability_;
 };
 
 }  // namespace gpu

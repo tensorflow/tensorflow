@@ -14,14 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include <iostream>
 
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassManager.h"  // TF:llvm-project
-#include "mlir/Transforms/Passes.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -33,12 +33,12 @@ namespace {
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_optimize.inc"
 
 // Canonicalize operations in functions.
-struct TFOptimizePass : public FunctionPass<TFOptimizePass> {
+struct TFOptimizePass : public PassWrapper<TFOptimizePass, FunctionPass> {
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     auto func = getFunction();
     populateWithGenerated(&getContext(), &patterns);
-    applyPatternsGreedily(func, patterns);
+    applyPatternsAndFoldGreedily(func, patterns);
   }
 };
 
@@ -50,25 +50,28 @@ void CreateTFStandardPipeline(OpPassManager &pm,
   OpPassManager &func_pm = pm.nest<FuncOp>();
 
   // First operates on the executor dialect:
-  // - eliminate trivial switch/merge
+  // - eliminate trivial switch/merge.
+  // - remove dead islands.
   // - fuse islands as much as possible.
   // - materialize the eventual "pass-through" ops by inlining their content.
   func_pm.addPass(tf_executor::CreateSwitchFoldPass());
+  func_pm.addPass(tf_executor::CreateTFExecutorGraphPruningPass());
   func_pm.addPass(tf_executor::CreateTFExecutorIslandCoarseningPass());
   func_pm.addPass(CreateMaterializePassthroughOpPass());
 
   // Hopefully there is a single island left, or there wasn't any to begin with.
   // We now run the optimizer which operates mostly inside islands.
   func_pm.addPass(createCanonicalizerPass());
+  pm.addPass(CreateTFShapeInferencePass());
   if (options.enable_inliner) {
     pm.addPass(createInlinerPass());
   }
-  pm.addPass(CreateTFShapeInferencePass());
+  pm.addPass(createSymbolDCEPass());
   pm.addNestedPass<FuncOp>(CreateTFOptimizePass());
   pm.addNestedPass<FuncOp>(createCSEPass());
 }
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateTFOptimizePass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateTFOptimizePass() {
   return std::make_unique<TFOptimizePass>();
 }
 

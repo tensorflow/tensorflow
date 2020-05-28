@@ -1,9 +1,9 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-graph-as-function -o - | FileCheck %s --dump-input=fail
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-graph-as-function -o - | FileCheck %s --dump-input=fail
 
 # Verify arg devices are added as arg attributes.
 
 # CHECK-LABEL: func @main
-# CHECK-SAME:  (%[[ARG_0:[a-z0-9]+]]: tensor<*xf32> {tf.device = "/CPU:0"}, %[[ARG_1:[a-z0-9]+]]: tensor<2x4x6x8xi32>) -> (tensor<*xf32>, tensor<2x4x6x8xi32>)
+# CHECK-SAME:  (%[[ARG_0:[a-z0-9]+]]: tensor<*xf32> {tf.device = "/CPU:0"}, %[[ARG_1:[a-z0-9]+]]: tensor<2x4x6x8xi32>) -> (tensor<*xf32>, tensor<*xi32>)
 
 node {
   name: "args_0"

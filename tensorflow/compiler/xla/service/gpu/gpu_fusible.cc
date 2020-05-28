@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 
+#include <algorithm>
 #include <iterator>
 #include <stack>
 #include <vector>
@@ -29,6 +30,12 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
+
+// The amount of shared memory a CUDA kernel can use.
+//
+// Stay on the conservative side, this is smaller than full 64kB, but allows
+// some extra space for cache.
+int64 kSharedMemoryBudgetInBytes = 40000;
 
 void AppendParams(const HloInstruction& instr,
                   std::vector<HloInstruction*>* params) {
@@ -60,6 +67,25 @@ bool IfFusedReadsElementsMultipleTimes(const HloInstruction& instr) {
   return false;
 }
 
+std::vector<int64> ExtractRelativeOrderOfNontrivialDims(const Shape& shape) {
+  std::vector<int64> relative_order;
+  for (int64 dim : LayoutUtil::MinorToMajor(shape)) {
+    if (shape.dimensions(dim) > 1) {
+      relative_order.push_back(dim);
+    }
+  }
+  // Now normalize the dimensions to values between 0 and true rank - 1.
+  std::vector<int64> sorted_dims = relative_order;
+  std::sort(sorted_dims.begin(), sorted_dims.end());
+  for (int64& dim : relative_order) {
+    int64 sorted_index = std::distance(
+        sorted_dims.begin(),
+        std::lower_bound(sorted_dims.begin(), sorted_dims.end(), dim));
+    dim = sorted_index;
+  }
+  return relative_order;
+}
+
 }  // namespace
 
 bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
@@ -67,17 +93,20 @@ bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
   std::vector<HloInstruction*> params;
   AppendParams(producer, &params);
   AppendParams(reduce, &params);
-  int64 max_rank = -1;
-  const Layout* max_rank_layout;
+  int64 max_true_rank = -1;
+  std::vector<int64> max_rank_order;
   for (HloInstruction* param : params) {
-    if (param->shape().IsArray() && param->shape().rank() > max_rank) {
-      max_rank = param->shape().rank();
-      max_rank_layout = &param->shape().layout();
+    if (param->shape().IsArray() &&
+        ShapeUtil::TrueRank(param->shape()) > max_true_rank) {
+      max_true_rank = ShapeUtil::TrueRank(param->shape());
+      max_rank_order = ExtractRelativeOrderOfNontrivialDims(param->shape());
     }
   }
   return absl::c_all_of(params, [&](HloInstruction* param) {
-    return (!param->shape().IsArray()) || (param->shape().rank() < max_rank) ||
-           (LayoutUtil::Equal(param->shape().layout(), *max_rank_layout));
+    return !param->shape().IsArray() ||
+           ShapeUtil::TrueRank(param->shape()) < max_true_rank ||
+           ExtractRelativeOrderOfNontrivialDims(param->shape()) ==
+               max_rank_order;
   });
 }
 
@@ -233,13 +262,6 @@ bool IsProducerConsumerFusible(const HloInstruction& producer,
       !LayoutsAreReduceInputFusionFriendly(producer, consumer)) {
     return false;
   }
-  // We can't fuse library calls, so if a user of such an op could become a
-  // bitcast, leave it unfused. See `xla::InstructionFusion::ShouldFuse` for
-  // further rationale.
-  if (producer.CouldBeBitcast() &&
-      ImplementedAsLibraryCall(*producer.operand(0))) {
-    return false;
-  }
   // Fuse scalar constants into loop fusion nodes. This reduces the number of
   // parameters and makes matching scalar broadcasts easier.
   //
@@ -277,7 +299,37 @@ bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
   return true;
 }
 
-// This function limits the maximum number of operands to a fusion.
+// Returns shared memory usage for a given instruction in bytes.
+static int64 SharedMemoryUsage(const HloInstruction& instr) {
+  // For now we are only fusing reductions.
+  if (instr.opcode() == HloOpcode::kReduce &&
+      IsReductionFromOrToContiguousDimensions(instr)) {
+    ReductionDimensions reduction_info =
+        GetReductionKindAndContiguousComponents(instr);
+    int64 primitive_size =
+        ShapeUtil::ByteSizeOfPrimitiveType(instr.shape().element_type());
+    if (reduction_info.is_row_reduction) {
+      // __shared__[32] is used for row reduction.
+      return 32 * primitive_size;
+    } else {
+      // __shared__[2][32][33] cache is used for column reduction ("2" comes
+      // from potential x-tiling).
+      return 2 * 32 * 33 * primitive_size;
+    }
+  } else if (instr.opcode() == HloOpcode::kFusion) {
+    int64 sum = 0;
+    for (const HloInstruction* operand :
+         instr.fused_expression_root()->operands()) {
+      sum += SharedMemoryUsage(*operand);
+    }
+    return sum;
+  }
+  // Other fused expressions for now don't need the shared memory budget.
+  return 0;
+}
+
+// This function limits the maximum number of operands to a fusion, and the
+// amount of shared memory which can be consumed by the fusion.
 //
 // There's a cap on how many parameters we can pass to a CUDA kernel, but
 // exactly what that limit is hazy, as it depends on (among other things) how
@@ -297,6 +349,14 @@ bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
 // uses a lot of registers, thus limiting occupancy.
 bool FusionWouldBeTooLarge(const HloInstruction& instr1,
                            const HloInstruction& instr2) {
+  if (SharedMemoryUsage(instr1) + SharedMemoryUsage(instr2) >
+      kSharedMemoryBudgetInBytes) {
+    VLOG(5) << "Shared memory usage of fusion of " << instr1.ToString()
+            << " and " << instr2.ToString() << " would be over the budget of "
+            << kSharedMemoryBudgetInBytes << "B";
+    return true;
+  }
+
   // Compute the number of outputs of the (possibly multi-output) fusion node
   // we're considering creating.
   //
@@ -326,6 +386,14 @@ bool FusionWouldBeTooLarge(const HloInstruction& instr1,
           num_output_buffers <=
       kMaxOperandsAndOutputsPerFusion) {
     return false;
+  } else {
+    VLOG(5) << "Operand count of "
+            << "(" << instr1.ToString() << " ) = " << instr1.operand_count()
+            << " and ( " << instr2.ToString()
+            << " ) = " << instr2.operand_count()
+            << " and num_output_buffers = " << num_output_buffers
+            << " is bigger than the bound of "
+            << kMaxOperandsAndOutputsPerFusion;
   }
 
   // Compute the precise number of operands to the new fusion.

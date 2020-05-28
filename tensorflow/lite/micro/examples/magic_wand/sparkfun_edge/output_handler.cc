@@ -13,6 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+#define ARDUINO_EXCLUDE_CODE
+#endif  // defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+
+#ifndef ARDUINO_EXCLUDE_CODE
+
 #include "tensorflow/lite/micro/examples/magic_wand/output_handler.h"
 
 #include "am_bsp.h"         // NOLINT
@@ -36,7 +42,8 @@ void HandleOutput(tflite::ErrorReporter* error_reporter, int kind) {
 
   // Set the LED color and print a symbol (red: wing, blue: ring, green: slope)
   if (kind == 0) {
-    error_reporter->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter,
         "WING:\n\r*         *         *\n\r *       * *       "
         "*\n\r  *     *   *     *\n\r   *   *     *   *\n\r    * *       "
         "* *\n\r     *         *\n\r");
@@ -44,7 +51,8 @@ void HandleOutput(tflite::ErrorReporter* error_reporter, int kind) {
     am_devices_led_off(am_bsp_psLEDs, AM_BSP_LED_BLUE);
     am_devices_led_off(am_bsp_psLEDs, AM_BSP_LED_GREEN);
   } else if (kind == 1) {
-    error_reporter->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter,
         "RING:\n\r          *\n\r       *     *\n\r     *         *\n\r "
         "   *           *\n\r     *         *\n\r       *     *\n\r      "
         "    *\n\r");
@@ -52,7 +60,8 @@ void HandleOutput(tflite::ErrorReporter* error_reporter, int kind) {
     am_devices_led_on(am_bsp_psLEDs, AM_BSP_LED_BLUE);
     am_devices_led_off(am_bsp_psLEDs, AM_BSP_LED_GREEN);
   } else if (kind == 2) {
-    error_reporter->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter,
         "SLOPE:\n\r        *\n\r       *\n\r      *\n\r     *\n\r    "
         "*\n\r   *\n\r  *\n\r * * * * * * * *\n\r");
     am_devices_led_off(am_bsp_psLEDs, AM_BSP_LED_RED);
@@ -60,3 +69,5 @@ void HandleOutput(tflite::ErrorReporter* error_reporter, int kind) {
     am_devices_led_on(am_bsp_psLEDs, AM_BSP_LED_GREEN);
   }
 }
+
+#endif  // ARDUINO_EXCLUDE_CODE

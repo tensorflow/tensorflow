@@ -22,7 +22,7 @@ TfLiteStatus SetupAccelerometer(tflite::ErrorReporter* error_reporter) {
 }
 
 bool ReadAccelerometer(tflite::ErrorReporter* error_reporter, float* input,
-                       int length, bool reset_buffer) {
+                       int length) {
   begin_index += 3;
   // Reset begin_index to simulate behavior of loop buffer
   if (begin_index >= 600) begin_index = 0;
@@ -32,5 +32,7 @@ bool ReadAccelerometer(tflite::ErrorReporter* error_reporter, float* input,
   if (begin_index > 300) {
     for (int i = 0; i < length; ++i) input[i] = 0;
     return true;
-  } else { return false; }
+  } else {
+    return false;
+  }
 }

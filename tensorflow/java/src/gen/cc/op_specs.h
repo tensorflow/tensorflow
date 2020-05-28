@@ -36,7 +36,7 @@ class EndpointSpec {
   // package: package of this endpoint (from which also derives its package)
   // name: name of this endpoint class
   // javadoc: the endpoint class documentation
-  // TODO(annarev): hardcode depcreated to false until deprecated is possible
+  // TODO(annarev): hardcode deprecated to false until deprecated is possible
   EndpointSpec(const string& package, const string& name,
                const Javadoc& javadoc)
       : package_(package), name_(name), javadoc_(javadoc), deprecated_(false) {}

@@ -16,7 +16,7 @@ limitations under the License.
 // TFLite legalization patterns
 
 include "mlir/IR/OpBase.td"
-include "mlir/Dialect/StandardOps/Ops.td"
+include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
@@ -39,7 +39,7 @@ def Merge2AttrsToArray : NativeCodeCall<"$_builder.getArrayAttr({$0, $1})">;
 // Use the tensor type information from $0 and convert min $1, max $2 and
 // numBits $3 and narrowRange $4 to a QuantizedType.
 def ConvertToQuantTypeFromAttrs : NativeCodeCall<
-    "GetQuantizedTypeAttr($_builder, $0.getType(), $1, $2, -1, $3, $4, /*is_signed=*/false)">;
+    "quant::GetQuantizedTypeAttr($_builder, $0.getType(), $1, $2, -1, $3, $4, /*is_signed=*/false)">;
 
 // Converts an integer attribute $0 to 32-bit with builder.
 def convertIntAttrTo32Bit : NativeCodeCall<
@@ -49,10 +49,21 @@ def convertIntAttrTo32Bit : NativeCodeCall<
 def ExtractSingleElementAsInteger : NativeCodeCall<
     "ExtractSingleElementAsInteger($_self.cast<ElementsAttr>())">;
 
+// Extracts the single int32 element from $_self.
+def ExtractSingleElementAsInt32 : NativeCodeCall<
+    "$_builder.getI32IntegerAttr(ExtractSingleElementAsInteger($_self.cast<ElementsAttr>()).getInt())">;
+
 // Checks whether the given operation has static shapes and same shapes of all inputs.
 def HasSameStaticShapesPred : CPred<"HasSameStaticShapes($0.getDefiningOp())">;
 def HasSameStaticShapes : Constraint<HasSameStaticShapesPred, "op must have static same input shapes">;
 def HasNotSameStaticShapes : Constraint<Neg<HasSameStaticShapesPred>, "op must have not static same input shapes">;
+
+def CreateNoneValue : NativeCodeCall<
+  "$_builder.create<mlir::ConstantOp>($0.getLoc(), $_builder.getNoneType(), $_builder.getUnitAttr())">;
+
+// Checks if the value has only one user.
+// TODO(karimnosseir): Move to a common place?
+def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
 
 //===----------------------------------------------------------------------===//
 // Nullary ops patterns.
@@ -159,6 +170,7 @@ def : Pat<(TF_SigmoidOp $arg), (TFL_LogisticOp $arg)>;
 def : Pat<(TF_SinOp F32Tensor:$arg), (TFL_SinOp $arg)>;
 def : Pat<(TF_SliceOp $input, $begin, $size), (TFL_SliceOp $input, $begin, $size)>;
 def : Pat<(TF_SoftmaxOp $arg), (TFL_SoftmaxOp $arg, ConstF32Attr<"1.0">)>;
+def : Pat<(TF_SoftplusOp F32Tensor:$arg0), (TFL_LogOp (TFL_AddOp (TFL_ExpOp $arg0), (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">), TFL_AF_None))>;
 def : Pat<(TF_SqueezeOp $arg, $squeeze_dims), (TFL_SqueezeOp $arg, $squeeze_dims)>;
 def : Pat<(TF_TanhOp $arg), (TFL_TanhOp $arg)>;
 def : Pat<(TF_TransposeOp $arg, $perm), (TFL_TransposeOp $arg, $perm)>;
@@ -186,7 +198,7 @@ def : Pat<(TF_GatherV2Op $params, $indices,
                          (ConstantOp ElementsAttr:$axis),
                          ConstantAttr<I64Attr, "0">:$batch_dims),
           (TFL_GatherOp $params, $indices,
-                        ExtractSingleElementAsInteger:$axis)>;
+                        ExtractSingleElementAsInt32:$axis)>;
 
 def : Pat<(TF_FloorDivOp $l, $r), (TFL_FloorDivOp $l, $r)>;
 
@@ -197,28 +209,17 @@ def : Pat<(TF_LogicalAndOp $l, $r), (TFL_LogicalAndOp $l, $r)>;
 
 def : Pat<(TF_LogicalOrOp $l, $r), (TFL_LogicalOrOp $l, $r)>;
 
-// Multi-pattern consisting of matching stand-alone op or op followed by relu.
-multiclass FusedBinaryActivationFuncOpPat<dag FromOp, dag ToOp> {
-  def : Pat<(FromOp AnyTensor:$l, AnyTensor:$r),
-            (ToOp $l, $r, TFL_AF_None)>;
-  foreach actFnPair = [[TF_ReluOp, TFL_AF_Relu],
-                       [TF_Relu6Op, TFL_AF_Relu6]] in {
-    def : Pat<(actFnPair[0] (FromOp $lhs, $rhs)),
-              (ToOp $lhs, $rhs, actFnPair[1])>;
-    // TODO: Maybe move these below to general pass?
-    def : Pat<(actFnPair[0] (ToOp $lhs, $rhs, TFL_AF_None)),
-              (ToOp $lhs, $rhs, actFnPair[1])>;
-  }
-}
-
-// Instantiated FusedBinary patterns for the from-to pairs of ops.
-foreach fromToPair = [[TF_AddOp, TFL_AddOp],
-                      [TF_AddV2Op, TFL_AddOp],
-                      [TF_DivOp, TFL_DivOp],
-                      [TF_MulOp, TFL_MulOp],
-                      [TF_RealDivOp, TFL_DivOp],
-                      [TF_SubOp, TFL_SubOp]] in
-  defm : FusedBinaryActivationFuncOpPat<fromToPair[0], fromToPair[1]>;
+def : Pat<(TF_AddOp $lhs, $rhs), (TFL_AddOp $lhs, $rhs, TFL_AF_None)>;
+def : Pat<(TF_AddV2Op $lhs, $rhs), (TFL_AddOp $lhs, $rhs, TFL_AF_None)>;
+// When batch size is known, TF BatchMatMul gets unfolded to TFL FullyConnected
+// with additional ops. In the case of unknown batch size, the match will
+// fall through to here and convert to TF Lite BatchMatMul.
+def : Pat<(TF_BatchMatMulV2Op $lhs, $rhs, $adj_x, $adj_y), (TFL_BatchMatMulOp $lhs, $rhs, $adj_x, $adj_y)>;
+def : Pat<(TF_BatchMatMulOp $lhs, $rhs, $adj_x, $adj_y), (TFL_BatchMatMulOp $lhs, $rhs, $adj_x, $adj_y)>;
+def : Pat<(TF_SubOp $lhs, $rhs), (TFL_SubOp $lhs, $rhs, TFL_AF_None)>;
+def : Pat<(TF_MulOp $lhs, $rhs), (TFL_MulOp $lhs, $rhs, TFL_AF_None)>;
+def : Pat<(TF_RealDivOp $lhs, $rhs), (TFL_DivOp $lhs, $rhs, TFL_AF_None)>;
+def : Pat<(TF_DivOp $lhs, $rhs), (TFL_DivOp $lhs, $rhs, TFL_AF_None)>;
 
 def : Pat<(TF_BiasAddOp F32Tensor:$l, F32Tensor:$r,
                         IsDataFormatNHWC:$data_format),
@@ -300,8 +301,8 @@ def : Pat<(TF_SpaceToDepthOp $input, $block_size, IsDataFormatNHWC:$data_format)
 def : Pat<(TF_DepthToSpaceOp $input, $block_size, IsDataFormatNHWC:$data_format),
           (TFL_DepthToSpaceOp $input, (convertIntAttrTo32Bit $block_size))>;
 
-def : Pat<(TF_ResizeBilinearOp $images, $size, $align_corners, ConstBoolAttrFalse:$half_pixel_centers), (TFL_ResizeBilinearOp $images, $size, $align_corners)>;
-def : Pat<(TF_ResizeNearestNeighborOp $images, $size, $align_corners, ConstBoolAttrFalse:$half_pixel_centers), (TFL_ResizeNearestNeighborOp $images, $size, $align_corners)>;
+def : Pat<(TF_ResizeBilinearOp $images, $size, $align_corners, $half_pixel_centers), (TFL_ResizeBilinearOp $images, $size, $align_corners, $half_pixel_centers)>;
+def : Pat<(TF_ResizeNearestNeighborOp $images, $size, $align_corners, $half_pixel_centers), (TFL_ResizeNearestNeighborOp $images, $size, $align_corners, $half_pixel_centers)>;
 
 def : Pat<(TF_MirrorPadOp $arg0, $arg1, $cst), (TFL_MirrorPadOp $arg0, $arg1, $cst)>;
 
@@ -328,7 +329,7 @@ def : Pat<(TF_MatrixDiagOp $diagonal), (TFL_MatrixDiagOp $diagonal)>;
 class I32VectorElementsAttr<int len> : ElementsAttrBase<
   CPred<"$_self.isa<DenseIntElementsAttr>() &&"
       "$_self.cast<DenseIntElementsAttr>().getType()."
-      "getElementType().isInteger(32)">,
+      "getElementType().isSignlessInteger(32)">,
   "32-bit int elements attribute of shape [" # len # "]"> {
 
   let storageType = [{ DenseIntElementsAttr }];
@@ -350,6 +351,14 @@ def : Pat<
      (TF_TransposeOp $filter,
        (ConstantOp ConstantAttr<I32VectorElementsAttr<4>, "{2, 0, 1, 3}">)),
      $out_backprop,
+     /*bias=*/ (CreateNoneValue $input_sizes),
      /*padding=*/ $padding,
      /*stride_h=*/ ExtractI32At<1>:$strides,
      /*stride_w=*/ ExtractI32At<2>:$strides)>;
+
+def : Pat<
+  (TF_MatrixSetDiagOp $input, $diagonal),
+  (TFL_MatrixSetDiagOp $input, $diagonal)>;
+
+def : Pat<(TF_ScatterNdOp I32Tensor:$indices, $updates, $shape),
+          (TFL_ScatterNdOp I32Tensor:$indices, $updates, $shape)>;

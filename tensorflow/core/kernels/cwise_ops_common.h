@@ -331,7 +331,7 @@ class UnaryVariantOp : public OpKernel {
     const Variant& v = inp.scalar<Variant>()();
     Variant v_out;
     OP_REQUIRES_OK(ctx, UnaryOpVariant<Device>(ctx, OpEnum, v, &v_out));
-    int numa_node = DeviceNumaNode(ctx->device());
+    int numa_node = ctx->device()->NumaNode();
     Tensor out(cpu_allocator(numa_node), DT_VARIANT, TensorShape());
     out.scalar<Variant>()() = std::move(v_out);
     ctx->set_output(0, std::move(out));
@@ -346,7 +346,7 @@ void Assign(const D& d, Out out, Rhs rhs) {
 }
 
 // Partial specialization of BinaryFunctor<Device=CPUDevice, Functor, NDIMS>
-// for functors with with no error checking.
+// for functors with no error checking.
 template <typename Functor, int NDIMS>
 struct BinaryFunctor<CPUDevice, Functor, NDIMS, false> {
   void operator()(const CPUDevice& d, typename Functor::tout_type out,
@@ -405,7 +405,7 @@ struct BinaryFunctor<CPUDevice, Functor, NDIMS, false> {
 };
 
 // Partial specialization of BinaryFunctor<Device=CPUDevice, Functor, 2>
-// for functors with with no error checking.
+// for functors with no error checking.
 template <typename Functor>
 struct BinaryFunctor<CPUDevice, Functor, 2, false> {
   enum { NDIMS = 2 };
@@ -472,7 +472,7 @@ struct BinaryFunctor<CPUDevice, Functor, 2, false> {
     typename Functor::func func;
     if (Functor::use_bcast_optimization && use_bcast_optimization<T>::value) {
       // Optimize for speed by using Eigen::type2index and avoid
-      // .broadcast() when we know its a no-op.
+      // .broadcast() when we know it's a no-op.
       //
       // Here, we need to handle 6 cases depending on how many "1"
       // exist in in0 and in1's shapes (4 numbers in total). It's not

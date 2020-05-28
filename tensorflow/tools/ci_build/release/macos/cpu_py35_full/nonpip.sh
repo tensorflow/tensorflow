@@ -17,11 +17,7 @@ set -e
 set -x
 
 source tensorflow/tools/ci_build/release/common.sh
-# Install latest bazel
-update_bazel_macos
-which bazel
-bazel version
-set_bazel_outdir
+install_bazelisk
 
 # Pick a more recent version of xcode
 export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
@@ -45,9 +41,11 @@ tag_filters="-no_oss,-oss_serial,-nomac,-no_mac,-no_oss_py35,-v1only,-gpu,-tpu,-
 source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
 
 # Run tests
+set +e
 bazel test --test_output=errors --config=opt \
   --action_env=TF2_BEHAVIOR="${TF2_BEHAVIOR}" \
   --build_tag_filters="${tag_filters}" \
   --test_tag_filters="${tag_filters}" -- \
   ${DEFAULT_BAZEL_TARGETS} \
   -//tensorflow/lite/...
+test_xml_summary_exit

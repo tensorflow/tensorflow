@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_graph.h"
 
+#include <regex>  // NOLINT
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/cc/framework/ops.h"
@@ -160,12 +162,11 @@ class ConvertAfterShapesTest : public ::testing::Test {
     // Construct ConversionParams.
     const std::vector<string> output_names{"output"};
     ConversionParams params;
-    params.input_graph_def = &item.graph;
     params.output_names = &output_names;
     params.max_workspace_size_bytes = 8 << 20;
     params.output_graph_def = output_graph_def;
     params.minimum_segment_size = 1;
-    params.graph_properties = &graph_properties;
+    params.grappler_item = &item;
     params.use_calibration = false;
     params.trt_logger_name = "DefaultLogger";
 
@@ -203,15 +204,22 @@ TEST_F(ConvertAfterShapesTest, DirectlyConnectedEngines) {
   GraphDef output_graph_def;
   TF_EXPECT_OK(RunConvertAfterShape(s, &output_graph_def));
 
+  auto remove_graph_sequence_number = [](std::string node_name) {
+    const std::regex pattern("TRTEngineOp_[0-9]+_");
+    return std::regex_replace(node_name, pattern, "TRTEngineOp_");
+  };
   int num_trt_ops = 0;
   for (const NodeDef& node : output_graph_def.node()) {
-    if (node.name() == "TRTEngineOp_1") {
+    std::string node_name = node.name();
+    if (node.op() != "TRTEngineOp") continue;
+    node_name = remove_graph_sequence_number(node_name);
+    if (node_name == "TRTEngineOp_1") {
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("input", node.input(0));
       ++num_trt_ops;
-    } else if (node.name() == "TRTEngineOp_0") {
+    } else if (node_name == "TRTEngineOp_0") {
       EXPECT_EQ(2, node.input_size());
-      EXPECT_EQ("TRTEngineOp_1", node.input(0));
+      EXPECT_EQ("TRTEngineOp_1", remove_graph_sequence_number(node.input(0)));
       EXPECT_EQ("reshape2", node.input(1));
       ++num_trt_ops;
     }

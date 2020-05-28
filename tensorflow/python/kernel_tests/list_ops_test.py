@@ -26,6 +26,7 @@ from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -37,8 +38,10 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_list_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import test
 
@@ -1628,6 +1631,59 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           outer_l, element_dtype=dtypes.variant)
       t = list_ops.tensor_list_stack(inner_l, element_dtype=dtypes.float32)
       self.assertAllEqual(t, [1.0, 2.0, 3.0])
+
+  def testTensorListStrings(self):
+    @def_function.function
+    def f():
+      return map_fn.map_fn(string_ops.string_upper,
+                           constant_op.constant(["a", "b", "c"]))
+
+    self.assertAllEqual(f(), [b"A", b"B", b"C"])
+
+  def testTensorListStringsNoInline(self):
+    # Generator function output type is a variant with a host-only underlying
+    # data type. "ColocationGraph::AddHostOnlyDataTypesConstraints" needs to
+    # have "deep op inspection" to be able to correctly place the while loop
+    # generated from map_fn.
+    self.skipTest("b/150742232")
+
+    @function.defun_with_attributes(attributes={"_noinline": True})
+    def generator():
+      c = constant_op.constant(["a", "b", "c"])
+      return list_ops.tensor_list_from_tensor(c, element_shape=[])
+
+    @def_function.function
+    def f():
+      l = generator()
+
+      def upper(i):
+        e = list_ops.tensor_list_get_item(l, i, element_dtype=dtypes.string)
+        return string_ops.string_upper(e)
+
+      return map_fn.map_fn(
+          upper, constant_op.constant([0, 1, 2]), dtype=dtypes.string)
+
+    self.assertAllEqual(f(), [b"A", b"B", b"C"])
+
+  def testPopBackGrad(self):
+    # https://github.com/tensorflow/tensorflow/issues/37230
+
+    @def_function.function
+    def g(x):
+      x_prod = constant_op.constant([1.])
+      for unused_i in math_ops.range(3):
+        x_prod = x_prod * x
+      return x_prod
+
+    x = constant_op.constant(1.)
+    with backprop.GradientTape() as t:
+      t.watch(x)
+      with backprop.GradientTape() as tt:
+        tt.watch(x)
+        loss = g(x)
+      jac = tt.gradient(loss, x)
+    hess = t.gradient(jac, x)
+    self.assertAllEqual(hess, 6.)
 
 
 if __name__ == "__main__":

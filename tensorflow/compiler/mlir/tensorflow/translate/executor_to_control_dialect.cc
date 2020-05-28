@@ -21,13 +21,13 @@ limitations under the License.
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -39,7 +39,7 @@ namespace mlir {
 
 namespace {
 struct ExecutorToControlDialectConversion
-    : public FunctionPass<ExecutorToControlDialectConversion> {
+    : public PassWrapper<ExecutorToControlDialectConversion, FunctionPass> {
   void runOnFunction() override;
 };
 }  // end anonymous namespace
@@ -68,7 +68,7 @@ void ExecutorToControlDialectConversion::runOnFunction() {
 
   Block &body = getFunction().front();
   auto graph = cast<tf_executor::GraphOp>(body.front());
-  OpBuilder builder(&body);
+  OpBuilder builder = OpBuilder::atBlockEnd(&body);
   SmallString<64> new_op_name;
   for (auto &op : llvm::make_early_inc_range(llvm::reverse(graph.GetBody()))) {
     LLVM_DEBUG(llvm::dbgs() << "Process: " << op.getName() << "\n");
@@ -136,7 +136,7 @@ void ExecutorToControlDialectConversion::runOnFunction() {
 
         // Create the replacement operation.
         auto *replacement = builder.createOperation(state);
-        replacement->setAttrs(wrapped_op.getAttrList());
+        replacement->setAttrs(wrapped_op.getMutableAttrDict());
 
         for (auto ops_and_ret_vals :
              llvm::zip(wrapped_op.getResults(), replacement->getResults()))
@@ -208,7 +208,7 @@ void ExecutorToControlDialectConversion::runOnFunction() {
 
     // Create the replacement operation.
     auto *replacement = builder.createOperation(state);
-    replacement->setAttrs(op.getAttrList());
+    replacement->setAttrs(op.getMutableAttrDict());
 
     if (auto next_iteration =
             dyn_cast<tf_executor::NextIterationSourceOp>(op)) {
@@ -230,7 +230,7 @@ void ExecutorToControlDialectConversion::runOnFunction() {
   graph.erase();
 }
 
-std::unique_ptr<OpPassBase<FuncOp>>
+std::unique_ptr<OperationPass<FuncOp>>
 CreateTFExecutorToControlDialectConversion() {
   return std::make_unique<ExecutorToControlDialectConversion>();
 }

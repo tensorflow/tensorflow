@@ -158,7 +158,7 @@ def init_run_config(config, tf_config):
     return
 
   # Don't use distribute coordinator if it is local training or cluster has a
-  # MASTER job or `train_distribute` is not specifed.
+  # MASTER job or `train_distribute` is not specified.
   if (not cluster_spec or 'master' in cluster_spec.jobs or
       not config._train_distribute):
     config._distribute_coordinator_mode = None

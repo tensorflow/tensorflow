@@ -1,5 +1,9 @@
 path: "tensorflow.math"
 tf_module {
+  member {
+    name: "special"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "abs"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
@@ -78,7 +82,7 @@ tf_module {
   }
   member_method {
     name: "bincount"
-    argspec: "args=[\'arr\', \'weights\', \'minlength\', \'maxlength\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \"<dtype: \'int32\'>\", \'None\'], "
+    argspec: "args=[\'arr\', \'weights\', \'minlength\', \'maxlength\', \'dtype\', \'name\', \'axis\', \'binary_output\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \"<dtype: \'int32\'>\", \'None\', \'None\', \'False\'], "
   }
   member_method {
     name: "ceil"
@@ -422,7 +426,7 @@ tf_module {
   }
   member_method {
     name: "sobol_sample"
-    argspec: "args=[\'dim\', \'num_results\', \'skip\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\', \'None\'], "
+    argspec: "args=[\'dim\', \'num_results\', \'skip\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \"<dtype: \'float32\'>\", \'None\'], "
   }
   member_method {
     name: "softmax"

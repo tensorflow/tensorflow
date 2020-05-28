@@ -39,40 +39,6 @@ Status CreateHandle(OpKernelContext* ctx, T* resource,
   return Status::OK();
 }
 
-// A wrapper class that manages the lifetime of a resource handle from its
-// creation to its deletion from the resource manager.
-class OwnedResourceHandle {
- public:
-  template <typename T>
-  static Status Create(OpKernelContext* ctx, T* resource, const string& name,
-                       std::unique_ptr<OwnedResourceHandle>* result) {
-    ResourceHandle handle;
-    TF_RETURN_IF_ERROR(CreateHandle<T>(ctx, resource, name, &handle));
-    // We need to increase the refcount to match the decrease that occurs when
-    // the resource associate.
-    resource->Ref();
-    *result = absl::make_unique<OwnedResourceHandle>(ctx, std::move(handle));
-    return Status::OK();
-  }
-
-  OwnedResourceHandle(OpKernelContext* ctx, ResourceHandle&& handle)
-      : mgr_(ctx->resource_manager()), handle_(handle) {}
-
-  ~OwnedResourceHandle() {
-    Status s = mgr_->Delete(handle_);
-    if (!s.ok()) {
-      VLOG(2) << s.ToString();
-    }
-  }
-
-  // Returns the wrapped `ResourceHandle` object.
-  const ResourceHandle& handle() const { return handle_; }
-
- private:
-  ResourceMgr* mgr_;  // not owned
-  const ResourceHandle handle_;
-};
-
 template <typename T>
 class AnonymousResourceOp : public OpKernel {
  public:
@@ -97,7 +63,10 @@ class AnonymousResourceOp : public OpKernel {
 
     if (create_deleter_) {
       Tensor* deleter_t;
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(1, TensorShape({}), &deleter_t));
+      AllocatorAttributes attr;
+      attr.set_on_host(true);
+      OP_REQUIRES_OK(
+          ctx, ctx->allocate_output(1, TensorShape({}), &deleter_t, attr));
       deleter_t->scalar<Variant>()() =
           ResourceDeleter(handle, ctx->resource_manager());
     }
@@ -130,25 +99,13 @@ Status VerifyTypesMatch(const DataTypeVector& expected,
 Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
                               const std::vector<PartialTensorShape>& received);
 
-// Returns a stable hash of the given attribute key-value pair.
-//
-// NOTE: There is currently no guarantee that the hash of a function will stay
-// the same between TensorFlow builds.
-Status HashAttr(const FunctionDefLibrary& library, const std::string& attr_key,
-                const AttrValue& attr_value, uint64* hash);
-
-// Returns a stable hash of the given function.
-//
-// NOTE: There is currently no guarantee that the hash of a subgraph will stay
-// the same between TensorFlow builds.
-Status HashFunction(const FunctionDefLibrary& library, const FunctionDef& func,
-                    uint64* hash);
-
 // Returns a stable hash of the subgraph rooted at the given node.
 //
 // NOTE: There is currently no guarantee that the hash of a subgraph will stay
 // the same between TensorFlow builds.
 Status HashNode(const GraphDef& graph, const NodeDef& node, uint64* hash);
+Status HashNode(const GraphDef& graph, const NodeDef& node,
+                const FunctionLibraryDefinition& flib_def, uint64* hash);
 
 // Returns a stable hash of the given tensor.
 //
@@ -161,6 +118,53 @@ Status HashTensor(const Tensor& tensor, uint64* hash);
 // NOTE: There is currently no guarantee that the hash of a subgraph will stay
 // the same between TensorFlow builds.
 Status HashGraph(const GraphDef& graph, uint64* hash);
+
+// Dataset op level determinism policy.
+class DeterminismPolicy {
+ public:
+  enum class Type : int {
+    // The op must produce elements deterministically.
+    kDeterministic,
+    // The op may relax determinism to improve performance.
+    kNondeterministic,
+    // The determinism policy is not specified at the op level. In this case we
+    // use the experimental_deterministic dataset option to determine the
+    // determinism policy.
+    kDefault,
+  };
+  static constexpr const char* const kDeterministic = "true";
+  static constexpr const char* const kNondeterministic = "false";
+  static constexpr const char* const kDefault = "default";
+
+  DeterminismPolicy() : determinism_(Type::kDefault) {}
+  explicit DeterminismPolicy(Type determinism) : determinism_(determinism) {}
+  // Creates a DeterminismPolicy with Type kDeterministic or
+  // kNondeterministic, depending on the values of `is_deterministic`.
+  explicit DeterminismPolicy(bool is_deterministic);
+
+  static Status FromString(const std::string& s, DeterminismPolicy* out);
+
+  // Returns the string representing the determinism policy. This will be one of
+  // the string constants defined above.
+  std::string String() const;
+
+  /// Convenience methods for checking the DeterminismPolicy::Type.
+  bool IsDeterministic() const { return determinism_ == Type::kDeterministic; }
+  bool IsNondeterministic() const {
+    return determinism_ == Type::kNondeterministic;
+  }
+  bool IsDefault() const { return determinism_ == Type::kDefault; }
+
+ private:
+  Type determinism_;
+};
+
+// Resolves non-deterministic seeds if necessary, returning either the original
+// seeds or the resolved seeds.
+//
+// By TensorFlow convention, if both seeds are 0, they should be replaced with
+// non-deterministically chosen seeds.
+std::pair<int64, int64> MaybeOverrideSeeds(std::pair<int64, int64> seeds);
 
 // Helper class for reading data from a vector of VariantTensorData objects.
 class VariantTensorDataReader : public IteratorStateReader {
@@ -250,6 +254,28 @@ Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
 // Creates a runner that runs functions with limited parallelism.
 std::function<void(std::function<void()>)> RunnerWithMaxParallelism(
     std::function<void(std::function<void()>)> runner, int max_parallelism);
+
+// Op for creating a typed dummy resource.
+//
+// This op is used to provide a resource "placeholder" for ops such as
+// `CacheDatasetV2` or `ShuffleDatasetV2` that expects a resource input.
+// Originally, the lifetime of the resources passed into these ops was managed
+// externally. After the implementation changed to manage the lifetime of the
+// resources (including creation) by the ops themselves, the resource input is
+// only needed to pass a resource handle through graph rewrites. When they are
+// invoked from user code, the implementation passes in a dummy resource.
+template <typename ResourceType>
+class DummyResourceOp : public OpKernel {
+ public:
+  explicit DummyResourceOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    Tensor* tensor;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &tensor));
+    tensor->scalar<ResourceHandle>()() = MakeResourceHandle<ResourceType>(
+        ctx, /*container=*/"", /*name=*/"dummy_resource");
+  }
+};
 
 }  // namespace data
 }  // namespace tensorflow

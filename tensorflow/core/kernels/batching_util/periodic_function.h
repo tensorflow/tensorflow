@@ -111,7 +111,7 @@ class PeriodicFunction {
   void NotifyStop();
 
   // (Blocking.) Loops forever calling "function_" every "interval_micros_".
-  void RunLoop(int64 start) LOCKS_EXCLUDED(mutex_);
+  void RunLoop(int64 start) TF_LOCKS_EXCLUDED(mutex_);
 
   const std::function<void()> function_;  // Actual client function
   const int64 interval_micros_;           // Interval between calls.
@@ -123,7 +123,7 @@ class PeriodicFunction {
   Notification stop_thread_;
 
   // Thread for running "function_"
-  std::unique_ptr<Thread> thread_ GUARDED_BY(mutex_) = nullptr;
+  std::unique_ptr<Thread> thread_ TF_GUARDED_BY(mutex_) = nullptr;
 
   TF_DISALLOW_COPY_AND_ASSIGN(PeriodicFunction);
 };

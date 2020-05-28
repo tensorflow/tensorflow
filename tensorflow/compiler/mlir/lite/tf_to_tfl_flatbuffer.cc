@@ -15,13 +15,17 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/Parser.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/FileUtilities.h"  // TF:llvm-project
-#include "mlir/Transforms/Passes.h"  // TF:llvm-project
-#include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
+#include <string>
+#include <unordered_set>
+
+#include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/FileUtilities.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/decode_constant.h"
@@ -36,7 +40,7 @@ limitations under the License.
 
 namespace mlir {
 /// Create a pass to convert from the TFExecutor to the TF control dialect.
-std::unique_ptr<OpPassBase<FuncOp>>
+std::unique_ptr<OperationPass<FuncOp>>
 CreateTFExecutorToControlDialectConversion();
 }  // namespace mlir
 
@@ -88,13 +92,15 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
         file->getBuffer(), debug_info_file, input_arrays, input_dtypes,
         input_shapes, output_arrays, /*control_output_arrays=*/"",
         prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
-        /*graph_as_function=*/false, /*upgrade_legacy=*/true, context);
+        /*graph_as_function=*/false, /*upgrade_legacy=*/true,
+        /*enable_shape_inference=*/false, context);
   }
   return tensorflow::GraphdefToMlirTranslateFunction(
       file->getBuffer(), debug_info_file, input_arrays, input_dtypes,
       input_shapes, output_arrays, /*control_output_arrays=*/"",
       prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
-      /*graph_as_function=*/false, /*upgrade_legacy=*/true, context);
+      /*graph_as_function=*/false, /*upgrade_legacy=*/true,
+      /*enable_shape_inference=*/false, context);
 }
 
 Status ConvertTFExecutorToTFLOrFlatbuffer(
@@ -153,6 +159,31 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   }
 
   return Status::OK();
+}
+
+StatusOr<mlir::OwningModuleRef> ImportSavedModel(
+    const std::string& input_filename, const int saved_model_version,
+    const std::unordered_set<std::string>& tags,
+    absl::Span<std::string> exported_names, mlir::MLIRContext* context) {
+  if (saved_model_version == 2) {
+    auto module = tensorflow::SavedModelObjectGraphToMlirImport(
+        input_filename, tags, exported_names, context);
+    if (!module)
+      return tensorflow::errors::InvalidArgument("fail to open input file");
+
+    return module;
+  } else if (saved_model_version == 1) {
+    auto module = tensorflow::SavedModelSignatureDefsToMlirImport(
+        input_filename, tags, exported_names, context);
+
+    if (!module)
+      return tensorflow::errors::InvalidArgument("fail to open input file");
+
+    return module;
+  } else {
+    return tensorflow::errors::InvalidArgument(
+        "Should be either saved model v1 or v2");
+  }
 }
 
 }  // namespace tensorflow

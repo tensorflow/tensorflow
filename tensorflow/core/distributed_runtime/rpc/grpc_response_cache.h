@@ -87,7 +87,7 @@ class GrpcResponseCache {
   mutex mu_;
   // response_cache_ is expected to be small, as entries are cleared immediately
   // on ack from the receiver.
-  gtl::FlatMap<int64, ResponseCacheEntry> response_cache_ GUARDED_BY(mu_);
+  gtl::FlatMap<int64, ResponseCacheEntry> response_cache_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

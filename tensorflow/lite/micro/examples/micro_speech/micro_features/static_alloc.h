@@ -20,13 +20,14 @@ limitations under the License.
 // at least the number of bytes requested. This doesn't work with raw pointers
 // since sizeof() doesn't know their actual length, so only use this to check
 // statically-allocated arrays with known sizes.
-#define STATIC_ALLOC_ENSURE_ARRAY_SIZE(A, N)                                 \
-  do {                                                                       \
-    if (sizeof(A) < (N)) {                                                   \
-      error_reporter->Report(#A " too small (%d bytes, wanted %d) at %s:%d", \
-                             sizeof(A), (N), __FILE__, __LINE__);            \
-      return 0;                                                              \
-    }                                                                        \
+#define STATIC_ALLOC_ENSURE_ARRAY_SIZE(A, N)                               \
+  do {                                                                     \
+    if (sizeof(A) < (N)) {                                                 \
+      TF_LITE_REPORT_ERROR(error_reporter,                                 \
+                           #A " too small (%d bytes, wanted %d) at %s:%d", \
+                           sizeof(A), (N), __FILE__, __LINE__);            \
+      return 0;                                                            \
+    }                                                                      \
   } while (0)
 
 #endif  // TENSORFLOW_LITE_MICRO_EXAMPLES_MICRO_SPEECH_MICRO_FEATURES_STATIC_ALLOC_H_

@@ -22,15 +22,18 @@ import json
 import math
 import os
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import layers
 from tensorflow.python.keras import metrics
@@ -45,35 +48,36 @@ from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import util as trackable_utils
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class KerasSumTest(test.TestCase):
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
+class KerasSumTest(test.TestCase, parameterized.TestCase):
 
   def test_sum(self):
-    m = metrics.Sum(name='my_sum')
+    with self.test_session():
+      m = metrics.Sum(name='my_sum')
 
-    # check config
-    self.assertEqual(m.name, 'my_sum')
-    self.assertTrue(m.stateful)
-    self.assertEqual(m.dtype, dtypes.float32)
-    self.assertEqual(len(m.variables), 1)
-    self.evaluate(variables.variables_initializer(m.variables))
+      # check config
+      self.assertEqual(m.name, 'my_sum')
+      self.assertTrue(m.stateful)
+      self.assertEqual(m.dtype, dtypes.float32)
+      self.assertLen(m.variables, 1)
+      self.evaluate(variables.variables_initializer(m.variables))
 
-    # check initial state
-    self.assertEqual(self.evaluate(m.total), 0)
+      # check initial state
+      self.assertEqual(self.evaluate(m.total), 0)
 
-    # check __call__()
-    self.assertEqual(self.evaluate(m(100)), 100)
-    self.assertEqual(self.evaluate(m.total), 100)
+      # check __call__()
+      self.assertEqual(self.evaluate(m(100)), 100)
+      self.assertEqual(self.evaluate(m.total), 100)
 
-    # check update_state() and result() + state accumulation + tensor input
-    update_op = m.update_state(ops.convert_n_to_tensor([1, 5]))
-    self.evaluate(update_op)
-    self.assertAlmostEqual(self.evaluate(m.result()), 106)
-    self.assertEqual(self.evaluate(m.total), 106)  # 100 + 1 + 5
+      # check update_state() and result() + state accumulation + tensor input
+      update_op = m.update_state(ops.convert_n_to_tensor([1, 5]))
+      self.evaluate(update_op)
+      self.assertAlmostEqual(self.evaluate(m.result()), 106)
+      self.assertEqual(self.evaluate(m.total), 106)  # 100 + 1 + 5
 
-    # check reset_states()
-    m.reset_states()
-    self.assertEqual(self.evaluate(m.total), 0)
+      # check reset_states()
+      m.reset_states()
+      self.assertEqual(self.evaluate(m.total), 0)
 
   def test_sum_with_sample_weight(self):
     m = metrics.Sum(dtype=dtypes.float64)
@@ -114,7 +118,7 @@ class KerasSumTest(test.TestCase):
     self.assertAlmostEqual(self.evaluate(m.total), 63.75, 2)
 
   def test_sum_graph_with_placeholder(self):
-    with context.graph_mode(), self.cached_session() as sess:
+    with ops.get_default_graph().as_default(), self.cached_session() as sess:
       m = metrics.Sum()
       v = array_ops.placeholder(dtypes.float32)
       w = array_ops.placeholder(dtypes.float32)
@@ -132,40 +136,41 @@ class KerasSumTest(test.TestCase):
       self.assertAlmostEqual(self.evaluate(m.total), 52., 2)
 
   def test_save_restore(self):
-    checkpoint_directory = self.get_temp_dir()
-    checkpoint_prefix = os.path.join(checkpoint_directory, 'ckpt')
-    m = metrics.Sum()
-    checkpoint = trackable_utils.Checkpoint(sum=m)
-    self.evaluate(variables.variables_initializer(m.variables))
+    with self.test_session():
+      checkpoint_directory = self.get_temp_dir()
+      checkpoint_prefix = os.path.join(checkpoint_directory, 'ckpt')
+      m = metrics.Sum()
+      checkpoint = trackable_utils.Checkpoint(sum=m)
+      self.evaluate(variables.variables_initializer(m.variables))
 
-    # update state
-    self.evaluate(m(100.))
-    self.evaluate(m(200.))
+      # update state
+      self.evaluate(m(100.))
+      self.evaluate(m(200.))
 
-    # save checkpoint and then add an update
-    save_path = checkpoint.save(checkpoint_prefix)
-    self.evaluate(m(1000.))
+      # save checkpoint and then add an update
+      save_path = checkpoint.save(checkpoint_prefix)
+      self.evaluate(m(1000.))
 
-    # restore to the same checkpoint sum object (= 300)
-    checkpoint.restore(save_path).assert_consumed().run_restore_ops()
-    self.evaluate(m(300.))
-    self.assertEqual(600., self.evaluate(m.result()))
+      # restore to the same checkpoint sum object (= 300)
+      checkpoint.restore(save_path).assert_consumed().run_restore_ops()
+      self.evaluate(m(300.))
+      self.assertEqual(600., self.evaluate(m.result()))
 
-    # restore to a different checkpoint sum object
-    restore_sum = metrics.Sum()
-    restore_checkpoint = trackable_utils.Checkpoint(sum=restore_sum)
-    status = restore_checkpoint.restore(save_path)
-    restore_update = restore_sum(300.)
-    status.assert_consumed().run_restore_ops()
-    self.evaluate(restore_update)
-    self.assertEqual(600., self.evaluate(restore_sum.result()))
+      # restore to a different checkpoint sum object
+      restore_sum = metrics.Sum()
+      restore_checkpoint = trackable_utils.Checkpoint(sum=restore_sum)
+      status = restore_checkpoint.restore(save_path)
+      restore_update = restore_sum(300.)
+      status.assert_consumed().run_restore_ops()
+      self.evaluate(restore_update)
+      self.assertEqual(600., self.evaluate(restore_sum.result()))
 
 
-@keras_parameterized.run_all_keras_modes
-class KerasMeanTest(keras_parameterized.TestCase):
+class MeanTest(keras_parameterized.TestCase):
 
   # TODO(b/120949004): Re-enable garbage collection check
   # @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  @keras_parameterized.run_all_keras_modes
   def test_mean(self):
     m = metrics.Mean(name='my_mean')
 
@@ -204,6 +209,21 @@ class KerasMeanTest(keras_parameterized.TestCase):
     self.assertEqual(m2.dtype, dtypes.float32)
     self.assertEqual(len(m2.variables), 2)
 
+  @test_util.run_v2_only
+  def test_function_wrapped_reset_state(self):
+    m = metrics.Mean(name='my_mean')
+
+    # check reset_states in function.
+    @def_function.function
+    def reset_in_fn():
+      m.reset_states()
+      return m.update_state(100)
+
+    for _ in range(5):
+      self.evaluate(reset_in_fn())
+    self.assertEqual(self.evaluate(m.count), 1)
+
+  @keras_parameterized.run_all_keras_modes
   def test_mean_with_sample_weight(self):
     m = metrics.Mean(dtype=dtypes.float64)
     self.assertEqual(m.dtype, dtypes.float64)
@@ -247,8 +267,9 @@ class KerasMeanTest(keras_parameterized.TestCase):
     self.assertEqual(np.round(self.evaluate(m.total), decimals=2), 58.54)
     self.assertEqual(np.round(self.evaluate(m.count), decimals=2), 5.6)
 
+  @keras_parameterized.run_all_keras_modes
   def test_mean_graph_with_placeholder(self):
-    with context.graph_mode(), self.cached_session() as sess:
+    with ops.get_default_graph().as_default(), self.cached_session() as sess:
       m = metrics.Mean()
       v = array_ops.placeholder(dtypes.float32)
       w = array_ops.placeholder(dtypes.float32)
@@ -267,6 +288,7 @@ class KerasMeanTest(keras_parameterized.TestCase):
       self.assertAlmostEqual(self.evaluate(m.count), 1.7, 2)  # 0.5 + 1.2
       self.assertAlmostEqual(result, 52 / 1.7, 2)
 
+  @keras_parameterized.run_all_keras_modes
   def test_save_restore(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, 'ckpt')
@@ -297,6 +319,7 @@ class KerasMeanTest(keras_parameterized.TestCase):
     self.assertEqual(200., self.evaluate(restore_mean.result()))
     self.assertEqual(3, self.evaluate(restore_mean.count))
 
+  @keras_parameterized.run_all_keras_modes
   def test_multiple_instances(self):
     m = metrics.Mean()
     m2 = metrics.Mean()
@@ -335,7 +358,7 @@ class KerasMeanTest(keras_parameterized.TestCase):
     self.assertEqual(self.evaluate(m.count), 1)
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class KerasAccuracyTest(test.TestCase):
 
   def test_accuracy(self):
@@ -556,7 +579,7 @@ class KerasAccuracyTest(test.TestCase):
     self.assertAlmostEqual(result, 0.93, 2)  # 2.5/2.7
 
   def test_sparse_categorical_accuracy_mismatched_dims_dynamic(self):
-    with context.graph_mode(), self.cached_session() as sess:
+    with ops.get_default_graph().as_default(), self.cached_session() as sess:
       acc_obj = metrics.SparseCategoricalAccuracy(name='my_acc')
       self.evaluate(variables.variables_initializer(acc_obj.variables))
 
@@ -579,7 +602,7 @@ class KerasAccuracyTest(test.TestCase):
     self.assertEqual(acc_fn, metrics.accuracy)
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class CosineSimilarityTest(test.TestCase):
 
   def l2_norm(self, x, axis):
@@ -640,7 +663,7 @@ class CosineSimilarityTest(test.TestCase):
     self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class MeanAbsoluteErrorTest(test.TestCase):
 
   def test_config(self):
@@ -678,7 +701,7 @@ class MeanAbsoluteErrorTest(test.TestCase):
     self.assertAllClose(0.54285, self.evaluate(result), atol=1e-5)
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class MeanAbsolutePercentageErrorTest(test.TestCase):
 
   def test_config(self):
@@ -718,7 +741,7 @@ class MeanAbsolutePercentageErrorTest(test.TestCase):
     self.assertAllClose(40e7, self.evaluate(result), atol=1e-5)
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class MeanSquaredErrorTest(test.TestCase):
 
   def test_config(self):
@@ -756,7 +779,7 @@ class MeanSquaredErrorTest(test.TestCase):
     self.assertAllClose(0.54285, self.evaluate(result), atol=1e-5)
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class MeanSquaredLogarithmicErrorTest(test.TestCase):
 
   def test_config(self):
@@ -796,7 +819,7 @@ class MeanSquaredLogarithmicErrorTest(test.TestCase):
     self.assertAllClose(0.26082, self.evaluate(result), atol=1e-5)
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class HingeTest(test.TestCase):
 
   def test_config(self):
@@ -851,7 +874,7 @@ class HingeTest(test.TestCase):
     self.assertAllClose(0.493, self.evaluate(result), atol=1e-3)
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class SquaredHingeTest(test.TestCase):
 
   def test_config(self):
@@ -912,7 +935,7 @@ class SquaredHingeTest(test.TestCase):
     self.assertAllClose(0.347, self.evaluate(result), atol=1e-3)
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class CategoricalHingeTest(test.TestCase):
 
   def test_config(self):
@@ -952,7 +975,7 @@ class CategoricalHingeTest(test.TestCase):
     self.assertAllClose(0.5, self.evaluate(result), atol=1e-5)
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class RootMeanSquaredErrorTest(test.TestCase):
 
   def test_config(self):
@@ -986,7 +1009,7 @@ class RootMeanSquaredErrorTest(test.TestCase):
     self.assertAllClose(math.sqrt(13), self.evaluate(result), atol=1e-3)
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class TopKCategoricalAccuracyTest(test.TestCase):
 
   def test_config(self):
@@ -1033,7 +1056,7 @@ class TopKCategoricalAccuracyTest(test.TestCase):
     self.assertAllClose(1.0, self.evaluate(result), atol=1e-5)
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class SparseTopKCategoricalAccuracyTest(test.TestCase):
 
   def test_config(self):
@@ -1080,7 +1103,7 @@ class SparseTopKCategoricalAccuracyTest(test.TestCase):
     self.assertAllClose(1.0, self.evaluate(result), atol=1e-5)
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class LogCoshErrorTest(test.TestCase):
 
   def setup(self):
@@ -1123,7 +1146,7 @@ class LogCoshErrorTest(test.TestCase):
     self.assertAllClose(self.evaluate(result), expected_result, atol=1e-3)
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class PoissonTest(test.TestCase):
 
   def setup(self):
@@ -1169,7 +1192,7 @@ class PoissonTest(test.TestCase):
     self.assertAllClose(self.evaluate(result), expected_result, atol=1e-3)
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class KLDivergenceTest(test.TestCase):
 
   def setup(self):
@@ -1216,7 +1239,7 @@ class KLDivergenceTest(test.TestCase):
     self.assertAllClose(self.evaluate(result), expected_result, atol=1e-3)
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class MeanRelativeErrorTest(test.TestCase):
 
   def test_config(self):
@@ -1272,7 +1295,7 @@ class MeanRelativeErrorTest(test.TestCase):
     self.assertEqual(self.evaluate(result), 0)
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class MeanIoUTest(test.TestCase):
 
   def test_config(self):
@@ -1355,90 +1378,93 @@ class MeanIoUTest(test.TestCase):
     self.assertAllClose(self.evaluate(result), expected_result, atol=1e-3)
 
 
-class MeanTensorTest(test.TestCase):
+class MeanTensorTest(test.TestCase, parameterized.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_config(self):
-    m = metrics.MeanTensor(name='mean_by_element')
+    with self.test_session():
+      m = metrics.MeanTensor(name='mean_by_element')
 
-    # check config
-    self.assertEqual(m.name, 'mean_by_element')
-    self.assertTrue(m.stateful)
-    self.assertEqual(m.dtype, dtypes.float32)
-    self.assertEqual(len(m.variables), 0)
+      # check config
+      self.assertEqual(m.name, 'mean_by_element')
+      self.assertTrue(m.stateful)
+      self.assertEqual(m.dtype, dtypes.float32)
+      self.assertEmpty(m.variables)
 
-    with self.assertRaisesRegexp(ValueError, 'does not have any result yet'):
-      m.result()
+      with self.assertRaisesRegexp(ValueError, 'does not have any result yet'):
+        m.result()
 
-    self.evaluate(m([[3], [5], [3]]))
-    self.assertAllEqual(m._shape, [3, 1])
+      self.evaluate(m([[3], [5], [3]]))
+      self.assertAllEqual(m._shape, [3, 1])
 
-    m2 = metrics.MeanTensor.from_config(m.get_config())
-    self.assertEqual(m2.name, 'mean_by_element')
-    self.assertTrue(m2.stateful)
-    self.assertEqual(m2.dtype, dtypes.float32)
-    self.assertEqual(len(m2.variables), 0)
+      m2 = metrics.MeanTensor.from_config(m.get_config())
+      self.assertEqual(m2.name, 'mean_by_element')
+      self.assertTrue(m2.stateful)
+      self.assertEqual(m2.dtype, dtypes.float32)
+      self.assertEmpty(m2.variables)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_unweighted(self):
-    m = metrics.MeanTensor(dtype=dtypes.float64)
+    with self.test_session():
+      m = metrics.MeanTensor(dtype=dtypes.float64)
 
-    # check __call__()
-    self.assertAllClose(self.evaluate(m([100, 40])), [100, 40])
-    self.assertAllClose(self.evaluate(m.total), [100, 40])
-    self.assertAllClose(self.evaluate(m.count), [1, 1])
+      # check __call__()
+      self.assertAllClose(self.evaluate(m([100, 40])), [100, 40])
+      self.assertAllClose(self.evaluate(m.total), [100, 40])
+      self.assertAllClose(self.evaluate(m.count), [1, 1])
 
-    # check update_state() and result() + state accumulation + tensor input
-    update_op = m.update_state(ops.convert_n_to_tensor([1, 5]))
-    self.evaluate(update_op)
-    self.assertAllClose(self.evaluate(m.result()), [50.5, 22.5])
-    self.assertAllClose(self.evaluate(m.total), [101, 45])
-    self.assertAllClose(self.evaluate(m.count), [2, 2])
+      # check update_state() and result() + state accumulation + tensor input
+      update_op = m.update_state(ops.convert_n_to_tensor([1, 5]))
+      self.evaluate(update_op)
+      self.assertAllClose(self.evaluate(m.result()), [50.5, 22.5])
+      self.assertAllClose(self.evaluate(m.total), [101, 45])
+      self.assertAllClose(self.evaluate(m.count), [2, 2])
 
-    # check reset_states()
-    m.reset_states()
-    self.assertAllClose(self.evaluate(m.total), [0, 0])
-    self.assertAllClose(self.evaluate(m.count), [0, 0])
+      # check reset_states()
+      m.reset_states()
+      self.assertAllClose(self.evaluate(m.total), [0, 0])
+      self.assertAllClose(self.evaluate(m.count), [0, 0])
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_weighted(self):
-    m = metrics.MeanTensor(dtype=dtypes.float64)
-    self.assertEqual(m.dtype, dtypes.float64)
+    with self.test_session():
+      m = metrics.MeanTensor(dtype=dtypes.float64)
+      self.assertEqual(m.dtype, dtypes.float64)
 
-    # check scalar weight
-    result_t = m([100, 30], sample_weight=0.5)
-    self.assertAllClose(self.evaluate(result_t), [100, 30])
-    self.assertAllClose(self.evaluate(m.total), [50, 15])
-    self.assertAllClose(self.evaluate(m.count), [0.5, 0.5])
+      # check scalar weight
+      result_t = m([100, 30], sample_weight=0.5)
+      self.assertAllClose(self.evaluate(result_t), [100, 30])
+      self.assertAllClose(self.evaluate(m.total), [50, 15])
+      self.assertAllClose(self.evaluate(m.count), [0.5, 0.5])
 
-    # check weights not scalar and weights rank matches values rank
-    result_t = m([1, 5], sample_weight=[1, 0.2])
-    result = self.evaluate(result_t)
-    self.assertAllClose(result, [51 / 1.5, 16 / 0.7], 2)
-    self.assertAllClose(self.evaluate(m.total), [51, 16])
-    self.assertAllClose(self.evaluate(m.count), [1.5, 0.7])
+      # check weights not scalar and weights rank matches values rank
+      result_t = m([1, 5], sample_weight=[1, 0.2])
+      result = self.evaluate(result_t)
+      self.assertAllClose(result, [51 / 1.5, 16 / 0.7], 2)
+      self.assertAllClose(self.evaluate(m.total), [51, 16])
+      self.assertAllClose(self.evaluate(m.count), [1.5, 0.7])
 
-    # check weights broadcast
-    result_t = m([1, 2], sample_weight=0.5)
-    self.assertAllClose(self.evaluate(result_t), [51.5 / 2, 17 / 1.2])
-    self.assertAllClose(self.evaluate(m.total), [51.5, 17])
-    self.assertAllClose(self.evaluate(m.count), [2, 1.2])
+      # check weights broadcast
+      result_t = m([1, 2], sample_weight=0.5)
+      self.assertAllClose(self.evaluate(result_t), [51.5 / 2, 17 / 1.2])
+      self.assertAllClose(self.evaluate(m.total), [51.5, 17])
+      self.assertAllClose(self.evaluate(m.count), [2, 1.2])
 
-    # check weights squeeze
-    result_t = m([1, 5], sample_weight=[[1], [0.2]])
-    self.assertAllClose(self.evaluate(result_t), [52.5 / 3, 18 / 1.4])
-    self.assertAllClose(self.evaluate(m.total), [52.5, 18])
-    self.assertAllClose(self.evaluate(m.count), [3, 1.4])
+      # check weights squeeze
+      result_t = m([1, 5], sample_weight=[[1], [0.2]])
+      self.assertAllClose(self.evaluate(result_t), [52.5 / 3, 18 / 1.4])
+      self.assertAllClose(self.evaluate(m.total), [52.5, 18])
+      self.assertAllClose(self.evaluate(m.count), [3, 1.4])
 
-    # check weights expand
-    m = metrics.MeanTensor(dtype=dtypes.float64)
-    self.evaluate(variables.variables_initializer(m.variables))
-    result_t = m([[1], [5]], sample_weight=[1, 0.2])
-    self.assertAllClose(self.evaluate(result_t), [[1], [5]])
-    self.assertAllClose(self.evaluate(m.total), [[1], [1]])
-    self.assertAllClose(self.evaluate(m.count), [[1], [0.2]])
+      # check weights expand
+      m = metrics.MeanTensor(dtype=dtypes.float64)
+      self.evaluate(variables.variables_initializer(m.variables))
+      result_t = m([[1], [5]], sample_weight=[1, 0.2])
+      self.assertAllClose(self.evaluate(result_t), [[1], [5]])
+      self.assertAllClose(self.evaluate(m.total), [[1], [1]])
+      self.assertAllClose(self.evaluate(m.count), [[1], [0.2]])
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_invalid_value_shape(self):
     m = metrics.MeanTensor(dtype=dtypes.float64)
     m([1])
@@ -1446,7 +1472,7 @@ class MeanTensorTest(test.TestCase):
         ValueError, 'MeanTensor input values must always have the same shape'):
       m([1, 5])
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_build_in_tf_function(self):
     """Ensure that variables are created correctly in a tf function."""
     m = metrics.MeanTensor(dtype=dtypes.float64)
@@ -1455,10 +1481,11 @@ class MeanTensorTest(test.TestCase):
     def call_metric(x):
       return m(x)
 
-    self.assertAllClose(self.evaluate(call_metric([100, 40])), [100, 40])
-    self.assertAllClose(self.evaluate(m.total), [100, 40])
-    self.assertAllClose(self.evaluate(m.count), [1, 1])
-    self.assertAllClose(self.evaluate(call_metric([20, 2])), [60, 21])
+    with self.test_session():
+      self.assertAllClose(self.evaluate(call_metric([100, 40])), [100, 40])
+      self.assertAllClose(self.evaluate(m.total), [100, 40])
+      self.assertAllClose(self.evaluate(m.count), [1, 1])
+      self.assertAllClose(self.evaluate(call_metric([20, 2])), [60, 21])
 
   def test_in_keras_model(self):
     with context.eager_mode():
@@ -1503,7 +1530,7 @@ class MeanTensorTest(test.TestCase):
                           np.full((4, 3), 4))
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class BinaryCrossentropyTest(test.TestCase):
 
   def test_config(self):
@@ -1623,7 +1650,7 @@ class BinaryCrossentropyTest(test.TestCase):
     self.assertAllClose(expected_value, self.evaluate(result), atol=1e-3)
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class CategoricalCrossentropyTest(test.TestCase):
 
   def test_config(self):
@@ -1749,7 +1776,7 @@ class CategoricalCrossentropyTest(test.TestCase):
     self.assertAllClose(self.evaluate(loss), 3.667, atol=1e-3)
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class SparseCategoricalCrossentropyTest(test.TestCase):
 
   def test_config(self):
@@ -1924,7 +1951,31 @@ class BinaryTruePositives(metrics.Metric):
     return self.true_positives
 
 
-@test_util.run_all_in_graph_and_eager_modes
+class BinaryTruePositivesViaControlFlow(metrics.Metric):
+
+  def __init__(self, name='binary_true_positives', **kwargs):
+    super(BinaryTruePositivesViaControlFlow, self).__init__(name=name, **kwargs)
+    self.true_positives = self.add_weight(name='tp', initializer='zeros')
+
+  def update_state(self, y_true, y_pred, sample_weight=None):
+    y_true = math_ops.cast(y_true, dtypes.bool)
+    y_pred = math_ops.cast(y_pred, dtypes.bool)
+
+    for i in range(len(y_true)):
+      for j in range(len(y_true[i])):
+        if y_true[i][j] and y_pred[i][j]:
+          if sample_weight is None:
+            self.true_positives.assign_add(1)
+          else:
+            self.true_positives.assign_add(sample_weight[i][0])
+
+  def result(self):
+    if constant_op.constant(True):
+      return self.true_positives
+    return 0.0
+
+
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class CustomMetricsTest(test.TestCase):
 
   def test_config(self):
@@ -1961,6 +2012,55 @@ class CustomMetricsTest(test.TestCase):
     result = btp_obj(y_true, y_pred, sample_weight=sample_weight)
     self.assertEqual(12, self.evaluate(result))
 
+  def test_autograph(self):
+    metric = BinaryTruePositivesViaControlFlow()
+    self.evaluate(variables.variables_initializer(metric.variables))
+    y_true = constant_op.constant([[0, 0.9, 0, 1, 0], [0, 0, 1, 1, 1],
+                                   [1, 1, 1, 1, 0], [0, 0, 0, 0, 1.5]])
+    y_pred = constant_op.constant([[0, 0, 1, 5, 0], [1, 1, 1, 1, 1],
+                                   [0, 1, 0, 1, 0], [1, 10, 1, 1, 1]])
+    sample_weight = constant_op.constant([[1.], [1.5], [2.], [2.5]])
+
+    @def_function.function
+    def compute_metric(y_true, y_pred, sample_weight):
+      metric(y_true, y_pred, sample_weight)
+      return metric.result()
+
+    result = compute_metric(y_true, y_pred, sample_weight)
+    self.assertEqual(12, self.evaluate(result))
+
+  def test_metric_wrappers_autograph(self):
+    def metric_fn(y_true, y_pred):
+      x = constant_op.constant(0.0)
+      for i in range(len(y_true)):
+        for j in range(len(y_true[i])):
+          if math_ops.equal(y_true[i][j], y_pred[i][j]) and y_true[i][j] > 0:
+            x += 1.0
+      return x
+
+    mean_metric = metrics.MeanMetricWrapper(metric_fn)
+    sum_metric = metrics.SumOverBatchSizeMetricWrapper(metric_fn)
+    self.evaluate(variables.variables_initializer(mean_metric.variables))
+    self.evaluate(variables.variables_initializer(sum_metric.variables))
+
+    y_true = constant_op.constant([[0, 0, 0, 1, 0],
+                                   [0, 0, 1, 1, 1],
+                                   [1, 1, 1, 1, 0],
+                                   [1, 1, 1, 0, 1]])
+    y_pred = constant_op.constant([[0, 0, 1, 1, 0],
+                                   [1, 1, 1, 1, 1],
+                                   [0, 1, 0, 1, 0],
+                                   [1, 1, 1, 1, 1]])
+
+    @def_function.function
+    def tf_functioned_metric_fn(metric, y_true, y_pred):
+      return metric(y_true, y_pred)
+
+    metric_result = tf_functioned_metric_fn(mean_metric, y_true, y_pred)
+    self.assertAllClose(self.evaluate(metric_result), 10, 1e-2)
+    metric_result = tf_functioned_metric_fn(sum_metric, y_true, y_pred)
+    self.assertAllClose(self.evaluate(metric_result), 10, 1e-2)
+
 
 def _get_model(compile_metrics):
   model_layers = [
@@ -1972,8 +2072,7 @@ def _get_model(compile_metrics):
       loss='mae',
       metrics=compile_metrics,
       optimizer='rmsprop',
-      run_eagerly=testing_utils.should_run_eagerly(),
-      experimental_run_tf_function=testing_utils.should_run_tf_function())
+      run_eagerly=testing_utils.should_run_eagerly())
   return model
 
 
@@ -2062,6 +2161,36 @@ class ResetStatesTest(keras_parameterized.TestCase):
 
   def test_reset_states_specificity_at_sensitivity(self):
     s_obj = metrics.SpecificityAtSensitivity(0.5, num_thresholds=1)
+    model = _get_model([s_obj])
+    x = np.concatenate((np.ones((25, 4)), np.zeros((25, 4)), np.zeros((25, 4)),
+                        np.ones((25, 4))))
+    y = np.concatenate((np.ones((25, 1)), np.zeros((25, 1)), np.ones((25, 1)),
+                        np.zeros((25, 1))))
+
+    for _ in range(2):
+      model.evaluate(x, y)
+      self.assertEqual(self.evaluate(s_obj.true_positives), 25.)
+      self.assertEqual(self.evaluate(s_obj.false_positives), 25.)
+      self.assertEqual(self.evaluate(s_obj.false_negatives), 25.)
+      self.assertEqual(self.evaluate(s_obj.true_negatives), 25.)
+
+  def test_reset_states_precision_at_recall(self):
+    s_obj = metrics.PrecisionAtRecall(recall=0.5, num_thresholds=1)
+    model = _get_model([s_obj])
+    x = np.concatenate((np.ones((25, 4)), np.zeros((25, 4)), np.zeros((25, 4)),
+                        np.ones((25, 4))))
+    y = np.concatenate((np.ones((25, 1)), np.zeros((25, 1)), np.ones((25, 1)),
+                        np.zeros((25, 1))))
+
+    for _ in range(2):
+      model.evaluate(x, y)
+      self.assertEqual(self.evaluate(s_obj.true_positives), 25.)
+      self.assertEqual(self.evaluate(s_obj.false_positives), 25.)
+      self.assertEqual(self.evaluate(s_obj.false_negatives), 25.)
+      self.assertEqual(self.evaluate(s_obj.true_negatives), 25.)
+
+  def test_reset_states_recall_at_precision(self):
+    s_obj = metrics.RecallAtPrecision(precision=0.5, num_thresholds=1)
     model = _get_model([s_obj])
     x = np.concatenate((np.ones((25, 4)), np.zeros((25, 4)), np.zeros((25, 4)),
                         np.ones((25, 4))))

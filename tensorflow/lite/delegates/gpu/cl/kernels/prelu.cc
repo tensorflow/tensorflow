@@ -56,12 +56,12 @@ std::string PReLU::GetCoreCode(const LinkingContext& context) const {
     return absl::StrCat(context.var_name, " = max((FLT4)(0.0f), ",
                         context.var_name, ") + min((FLT4)(0.0f), ",
                         context.var_name, ") * ",
-                        alpha_.ReadLinearFLT4(context.z_coord), ";\n");
+                        alpha_.ReadLinearFLT4(context.s_coord), ";\n");
   } else {
     return absl::StrCat(context.var_name, " = clamp(", context.var_name,
                         ", (FLT4)(0.0f), (FLT4)(", clip_.GetName(),
                         ")) + min((FLT4)(0.0f), ", context.var_name, ") * ",
-                        alpha_.ReadLinearFLT4(context.z_coord), ";\n");
+                        alpha_.ReadLinearFLT4(context.s_coord), ";\n");
   }
 }
 
@@ -73,21 +73,21 @@ std::string PReLU::GetArgsDeclaration() const {
   return args;
 }
 
-Status PReLU::BindArguments(CLKernel* kernel) {
+absl::Status PReLU::BindArguments(CLKernel* kernel) {
   RETURN_IF_ERROR(kernel->SetMemoryAuto(alpha_.GetMemoryPtr()));
   if (clip_.Active()) {
     RETURN_IF_ERROR(kernel->SetBytesAuto(clip_));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status CreatePReLU(const CreationContext& creation_context,
-                   const OperationDef& definition, const PReLUAttributes& attr,
-                   PReLU* result) {
-  auto alpha = absl::get_if<::tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
-      &attr.alpha);
+absl::Status CreatePReLU(const CreationContext& creation_context,
+                         const OperationDef& definition,
+                         const PReLUAttributes& attr, PReLU* result) {
+  auto alpha =
+      absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(&attr.alpha);
   if (!alpha) {
-    return InvalidArgumentError("Alpha is missing");
+    return absl::InvalidArgumentError("Alpha is missing");
   }
   const auto scalar_precision = creation_context.device->IsPowerVR()
                                     ? CalculationsPrecision::F32
@@ -95,7 +95,7 @@ Status CreatePReLU(const CreationContext& creation_context,
   *result = PReLU(definition, attr, scalar_precision);
   RETURN_IF_ERROR(result->UploadParameters(*alpha, creation_context.context));
   result->SetLinkIndex(0);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace cl

@@ -18,11 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.signal import util_ops
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -53,6 +56,7 @@ def _infer_frame_shape(signal, frame_length, frame_step, pad_end, axis):
 
 
 @tf_export("signal.frame")
+@dispatch.add_dispatch_support
 def frame(signal, frame_length, frame_step, pad_end=False, pad_value=0, axis=-1,
           name=None):
   """Expands `signal`'s `axis` dimension into frames of `frame_length`.
@@ -117,14 +121,27 @@ def frame(signal, frame_length, frame_step, pad_end=False, pad_value=0, axis=-1,
     result_shape = _infer_frame_shape(signal, frame_length, frame_step, pad_end,
                                       axis)
 
-    # Axis can be negative. Convert it to positive.
-    signal_rank = array_ops.rank(signal)
-    axis = math_ops.range(signal_rank)[axis]
+    def maybe_constant(val):
+      val_static = tensor_util.constant_value(val)
+      return (val_static, True) if val_static is not None else (val, False)
 
-    signal_shape = array_ops.shape(signal)
-    outer_dimensions, length_samples, inner_dimensions = array_ops.split(
-        signal_shape, [axis, 1, signal_rank - 1 - axis])
-    length_samples = array_ops.reshape(length_samples, [])
+    signal_shape, signal_shape_is_static = maybe_constant(
+        array_ops.shape(signal))
+    axis, axis_is_static = maybe_constant(axis)
+
+    if signal_shape_is_static and axis_is_static:
+      # Axis can be negative. Convert it to positive.
+      axis = range(len(signal_shape))[axis]
+      outer_dimensions, length_samples, inner_dimensions = np.split(
+          signal_shape, indices_or_sections=[axis, axis + 1])
+      length_samples = length_samples.item()
+    else:
+      signal_rank = array_ops.rank(signal)
+      # Axis can be negative. Convert it to positive.
+      axis = math_ops.range(signal_rank)[axis]
+      outer_dimensions, length_samples, inner_dimensions = array_ops.split(
+          signal_shape, [axis, 1, signal_rank - 1 - axis])
+      length_samples = array_ops.reshape(length_samples, [])
     num_outer_dimensions = array_ops.size(outer_dimensions)
     num_inner_dimensions = array_ops.size(inner_dimensions)
 
@@ -155,7 +172,7 @@ def frame(signal, frame_length, frame_step, pad_end=False, pad_value=0, axis=-1,
       num_frames = math_ops.maximum(
           0, 1 + (length_samples - frame_length) // frame_step)
 
-    subframe_length = util_ops.gcd(frame_length, frame_step)
+    subframe_length, _ = maybe_constant(util_ops.gcd(frame_length, frame_step))
     subframes_per_frame = frame_length // subframe_length
     subframes_per_hop = frame_step // subframe_length
     num_subframes = length_samples // subframe_length

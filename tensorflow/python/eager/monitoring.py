@@ -19,10 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import functools
+import time
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python import pywrap_tfe
-from tensorflow.python.eager import eager_util as c_api_util
+from tensorflow.python.client import pywrap_tf_session
+from tensorflow.python.framework import c_api_util
 from tensorflow.python.util import compat
 
 _MetricMethod = collections.namedtuple('MetricMethod', 'create delete get_cell')
@@ -258,7 +261,7 @@ class StringGaugeCell(object):
     """Retrieves the current value."""
     with c_api_util.tf_buffer() as buffer_:
       pywrap_tfe.TFE_MonitoringStringGaugeCellValue(self._cell, buffer_)
-      value = pywrap_tfe.TF_GetBuffer(buffer_).decode('utf-8')
+      value = pywrap_tf_session.TF_GetBuffer(buffer_).decode('utf-8')
     return value
 
 
@@ -361,7 +364,7 @@ class SamplerCell(object):
     """
     with c_api_util.tf_buffer() as buffer_:
       pywrap_tfe.TFE_MonitoringSamplerCellValue(self._cell, buffer_)
-      proto_data = pywrap_tfe.TF_GetBuffer(buffer_)
+      proto_data = pywrap_tf_session.TF_GetBuffer(buffer_)
     histogram_proto = summary_pb2.HistogramProto()
     histogram_proto.ParseFromString(compat.as_bytes(proto_data))
     return histogram_proto
@@ -427,3 +430,46 @@ class Sampler(Metric):
   def get_cell(self, *labels):
     """Retrieves the cell."""
     return SamplerCell(super(Sampler, self).get_cell(*labels))
+
+
+class MonitoredTimer(object):
+  """A context manager to measure the walltime and increment a Counter cell."""
+
+  def __init__(self, cell):
+    """Creates a new MonitoredTimer.
+
+    Args:
+      cell: the cell associated with the time metric that will be inremented.
+    """
+    self.cell = cell
+
+  def __enter__(self):
+    self.t = time.time()
+    return self
+
+  def __exit__(self, exception_type, exception_value, traceback):
+    del exception_type, exception_value, traceback
+    micro_seconds = (time.time() - self.t) * 1000000
+    self.cell.increase_by(int(micro_seconds))
+
+
+def monitored_timer(cell):
+  """A function decorator for adding MonitoredTimer support.
+
+  Arguments:
+    cell: the cell associated with the time metric that will be inremented.
+  Returns:
+    A decorator that measure the function runtime and increment the specified
+    counter cell.
+  """
+
+  def actual_decorator(func):
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+      with MonitoredTimer(cell):
+        return func(*args, **kwargs)
+
+    return wrapper
+
+  return actual_decorator

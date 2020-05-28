@@ -20,6 +20,7 @@ limitations under the License.
 #define TF_EXECUTOR_DIALECT
 
 include "mlir/IR/OpBase.td"
+include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 
 //===----------------------------------------------------------------------===//
 // TensorFlow dialect definitions
@@ -128,7 +129,7 @@ def TfExecutor_GraphOp : TfExecutor_Op<"graph",
 def TfExecutor_FetchOp : TfExecutor_Op<"fetch",
     [Terminator, ControlOperandsAfterAllData, HasParent<"GraphOp">]> {
   let summary = [{
-    The `tf_executor.fetch` operation terminates the graph and returns values";
+    The `tf_executor.fetch` operation terminates the graph and returns values;
   }];
 
   let description = [{
@@ -141,7 +142,7 @@ def TfExecutor_FetchOp : TfExecutor_Op<"fetch",
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result",
+    "OpBuilder &builder, OperationState &result",
     [{
       build(builder, result, {});
     }]>
@@ -165,7 +166,7 @@ def TfExecutor_IslandOp : TfExecutor_Op<"island",
     The `tf_executor.island` operation has a single region with a single block
     attached (only functional control flow is allowed). The block is terminated
     by a `tf_executor.yield` operation. The operands of the terminator
-    correspond to the result values of the `tf_executor.graph` operation. An
+    correspond to the result values of the `tf_executor.island` operation. An
     extra result of type `!tf_executor.control` is always produced by every
     `tf_executor.island`.
     Within an island, execution semantics follow standard sequential behavior as
@@ -202,6 +203,7 @@ def TfExecutor_IslandOp : TfExecutor_Op<"island",
   let extraClassDeclaration = [{
     Block &GetBody() { return getOperation()->getRegion(0).front(); }
     YieldOp GetYield();
+    bool WrapsSingleOp();
   }];
 
   let hasCanonicalizer = 1;
@@ -221,7 +223,7 @@ def TfExecutor_YieldOp : TfExecutor_Op<"yield",
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result",
+    "OpBuilder &builder, OperationState &result",
     [{
       build(builder, result, {});
     }]>
@@ -231,11 +233,11 @@ def TfExecutor_YieldOp : TfExecutor_Op<"yield",
 }
 
 def TfExecutor_SwitchOp : TfExecutor_Op<"Switch",
-    [NoSideEffect, ControlOperandsAfterAllData, HasParent<"GraphOp">,
+    [ControlOperandsAfterAllData, HasParent<"GraphOp">,
      PredOpTrait<"data operand must be broadcastable to true result",
-                 TCOpIsBroadcastableToRes<0, 0>>,
+                 TF_OpIsBroadcastableToRes<0, 0>>,
      PredOpTrait<"data operand must be broadcastable to false result",
-                 TCOpIsBroadcastableToRes<0, 1>>]>{
+                 TF_OpIsBroadcastableToRes<0, 1>>]>{
   let summary = [{
     The "tf_executor.Switch" operation takes a data operand and a boolean
     predicate condition, and returns two values matching the type of the data
@@ -277,7 +279,7 @@ def TfExecutor_SwitchOp : TfExecutor_Op<"Switch",
 }
 
 def TfExecutor_SwitchNOp : TfExecutor_Op<"SwitchN",
-    [NoSideEffect, ControlOperandsAfterAllData, HasParent<"GraphOp">]> {
+    [ControlOperandsAfterAllData, HasParent<"GraphOp">]> {
   let summary = [{
     The "tf_executor.SwitchN" operation takes two inputs, `data` and `index` and
     an integer attribute `num_outs` indicating the number of outputs. The `data`
@@ -298,7 +300,7 @@ def TfExecutor_SwitchNOp : TfExecutor_Op<"SwitchN",
         .SetShapeFn(SwitchNShape);
 
     For example:
-      %2:6 = tf_executor.SwitchN %0, %1 by 5 : tensor<??xf32>
+      %2:6 = tf_executor.SwitchN %0, %1 of 5 : tensor<??xf32>
 
     Note: One additional result corresponds to the control output.
   }];
@@ -318,7 +320,7 @@ def TfExecutor_SwitchNOp : TfExecutor_Op<"SwitchN",
 }
 
 def TfExecutor_MergeOp : TfExecutor_Op<"Merge",
-    [NoSideEffect, ControlOperandsAfterAllData, HasParent<"GraphOp">]> {
+    [ControlOperandsAfterAllData, HasParent<"GraphOp">]> {
   let summary = [{
     The "tf_executor.Merge" operation takes a list of input operands and returns
     a value of the operand type along with the index of the first match encountered.
@@ -353,9 +355,9 @@ def TfExecutor_MergeOp : TfExecutor_Op<"Merge",
 }
 
 def TfExecutor_EnterOp : TfExecutor_Op<"Enter",
-    [NoSideEffect, ControlOperandsAfterAllData, HasParent<"GraphOp">,
+    [ControlOperandsAfterAllData, HasParent<"GraphOp">,
      PredOpTrait<"data operand must be broadcastable to result",
-                 TCOpIsBroadcastableToRes<0, 0>>]>{
+                 TF_OpIsBroadcastableToRes<0, 0>>]>{
   let summary = [{
     The "tf_executor.Enter" operation forwards its input to Tensorflow while
     loop.
@@ -403,7 +405,7 @@ def TfExecutor_EnterOp : TfExecutor_Op<"Enter",
 }
 
 def TfExecutor_NextIterationSourceOp : TfExecutor_Op<"NextIteration.Source",
-    [NoSideEffect, HasParent<"GraphOp">]> {
+    [HasParent<"GraphOp">]> {
   let summary = [{
     The "tf_executor.NextIteration.Source" is paired with a
     "tf_executor.NextIteration.sink" to represent NextIteration op in
@@ -448,11 +450,11 @@ def TfExecutor_NextIterationSourceOp : TfExecutor_Op<"NextIteration.Source",
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Type result_type, "
+    "OpBuilder &builder, OperationState &result, Type result_type, "
     "ArrayRef<NamedAttribute> attributes = {}",
     [{
-      Type token_type = TokenType::get(builder->getContext());
-      Type control_type = ControlType::get(builder->getContext());
+      Type token_type = TokenType::get(builder.getContext());
+      Type control_type = ControlType::get(builder.getContext());
       result.types = { result_type, token_type, control_type };
       result.attributes.append(attributes.begin(), attributes.end());
     }]>
@@ -514,7 +516,7 @@ def TfExecutor_NextIterationSinkOp : TfExecutor_Op<"NextIteration.Sink",
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value token, "
+    "OpBuilder &builder, OperationState &result, Value token, "
     "ArrayRef<Value> operands, ArrayRef<NamedAttribute> attributes = {}",
     [{
       assert(operands.size() >= 1 && "tf_executor.NextIteration.Sink builder "
@@ -528,9 +530,9 @@ def TfExecutor_NextIterationSinkOp : TfExecutor_Op<"NextIteration.Sink",
 }
 
 def TfExecutor_ExitOp : TfExecutor_Op<"Exit",
-    [NoSideEffect, HasParent<"GraphOp">,
+    [HasParent<"GraphOp">,
      PredOpTrait<"data operand must be broadcastable to result",
-                 TCOpIsBroadcastableToRes<0, 0>>]>{
+                 TF_OpIsBroadcastableToRes<0, 0>>]>{
 
   let summary = [{
     The "tf_executor.Exit" operation forwards a value from an while loop to its
@@ -569,7 +571,7 @@ def TfExecutor_ExitOp : TfExecutor_Op<"Exit",
 }
 
 def TfExecutor_ControlTriggerOp : TfExecutor_Op<"ControlTrigger",
-    [NoSideEffect, HasParent<"GraphOp">]> {
+    [HasParent<"GraphOp">]> {
   let summary = [{
     The `tf_executor.ControlTrigger` operation is similar to a no-op except that
     it always produces a valid output even when inputs are dead.
@@ -593,14 +595,14 @@ def TfExecutor_ControlTriggerOp : TfExecutor_Op<"ControlTrigger",
   let hasCanonicalizer = 1;
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, "
+    "OpBuilder &builder, OperationState &result, "
     "ArrayRef<Value> operands, ArrayRef<NamedAttribute> attributes = {}",
     [{
       assert(operands.size() >= 1 && "tf_executor.ControlTrigger builder "
              "expects at least one operand");
       result.operands.insert(result.operands.end(), operands.begin(),
                               operands.end());
-      Type control_type = ControlType::get(builder->getContext());
+      Type control_type = ControlType::get(builder.getContext());
       result.types = {control_type};
       result.attributes.append(attributes.begin(), attributes.end());
     }]>
@@ -608,7 +610,7 @@ def TfExecutor_ControlTriggerOp : TfExecutor_Op<"ControlTrigger",
 }
 
 def TfExecutor_LoopCondOp : TfExecutor_Op<"LoopCond",
-    [NoSideEffect, HasParent<"GraphOp">]> {
+    [HasParent<"GraphOp">]> {
   let summary = [{
     The "tf_executor.LoopCond" operation forwards a boolean value as loop
     condition of Tensorflow while loops.

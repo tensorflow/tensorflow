@@ -17,8 +17,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "include/pybind11/pybind11.h"
-#include "include/pybind11/stl.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/stl.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -42,50 +42,65 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
       py::gil_scoped_release release;
       status = tensorflow::Env::Default()->FileExists(filename);
     }
-    tensorflow::MaybeRaiseRegisteredFromStatus(status);
+    tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
   });
   m.def("DeleteFile", [](const std::string& filename) {
-    tensorflow::MaybeRaiseRegisteredFromStatus(
-        tensorflow::Env::Default()->DeleteFile(filename));
+    py::gil_scoped_release release;
+    tensorflow::Status status =
+        tensorflow::Env::Default()->DeleteFile(filename);
+    tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
   });
   m.def("ReadFileToString", [](const std::string& filename) {
     std::string data;
+    py::gil_scoped_release release;
     const auto status =
         ReadFileToString(tensorflow::Env::Default(), filename, &data);
+    pybind11::gil_scoped_acquire acquire;
     tensorflow::MaybeRaiseRegisteredFromStatus(status);
     return py::bytes(data);
   });
   m.def("WriteStringToFile",
         [](const std::string& filename, tensorflow::StringPiece data) {
-          return WriteStringToFile(tensorflow::Env::Default(), filename, data);
+          py::gil_scoped_release release;
+          const auto status =
+              WriteStringToFile(tensorflow::Env::Default(), filename, data);
+          tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
         });
   m.def("GetChildren", [](const std::string& dirname) {
     std::vector<std::string> results;
+    py::gil_scoped_release release;
     const auto status =
         tensorflow::Env::Default()->GetChildren(dirname, &results);
+    pybind11::gil_scoped_acquire acquire;
     tensorflow::MaybeRaiseRegisteredFromStatus(status);
     return results;
   });
   m.def("GetMatchingFiles", [](const std::string& pattern) {
     std::vector<std::string> results;
+    py::gil_scoped_release release;
     const auto status =
         tensorflow::Env::Default()->GetMatchingPaths(pattern, &results);
+    pybind11::gil_scoped_acquire acquire;
     tensorflow::MaybeRaiseRegisteredFromStatus(status);
     return results;
   });
   m.def("CreateDir", [](const std::string& dirname) {
+    py::gil_scoped_release release;
     const auto status = tensorflow::Env::Default()->CreateDir(dirname);
     if (tensorflow::errors::IsAlreadyExists(status)) {
       return;
     }
-    tensorflow::MaybeRaiseRegisteredFromStatus(status);
+    tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
   });
   m.def("RecursivelyCreateDir", [](const std::string& dirname) {
-    tensorflow::MaybeRaiseRegisteredFromStatus(
-        tensorflow::Env::Default()->RecursivelyCreateDir(dirname));
+    py::gil_scoped_release release;
+    const auto status =
+        tensorflow::Env::Default()->RecursivelyCreateDir(dirname);
+    tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
   });
   m.def("CopyFile",
         [](const std::string& src, const std::string& target, bool overwrite) {
+          py::gil_scoped_release release;
           auto* env = tensorflow::Env::Default();
           tensorflow::Status status;
           if (!overwrite && env->FileExists(target).ok()) {
@@ -93,10 +108,11 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
           } else {
             status = env->CopyFile(src, target);
           }
-          tensorflow::MaybeRaiseRegisteredFromStatus(status);
+          tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
         });
   m.def("RenameFile",
         [](const std::string& src, const std::string& target, bool overwrite) {
+          py::gil_scoped_release release;
           auto* env = tensorflow::Env::Default();
           tensorflow::Status status;
           if (!overwrite && env->FileExists(target).ok()) {
@@ -104,9 +120,10 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
           } else {
             status = env->RenameFile(src, target);
           }
-          tensorflow::MaybeRaiseRegisteredFromStatus(status);
+          tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
         });
   m.def("DeleteRecursively", [](const std::string& dirname) {
+    py::gil_scoped_release release;
     tensorflow::int64 undeleted_files;
     tensorflow::int64 undeleted_dirs;
     auto status = tensorflow::Env::Default()->DeleteRecursively(
@@ -115,17 +132,26 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
       status =
           tensorflow::errors::PermissionDenied("could not fully delete dir");
     }
-    tensorflow::MaybeRaiseRegisteredFromStatus(status);
+    tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
   });
   m.def("IsDirectory", [](const std::string& dirname) {
+    py::gil_scoped_release release;
     const auto status = tensorflow::Env::Default()->IsDirectory(dirname);
     // FAILED_PRECONDITION response means path exists but isn't a dir.
     if (tensorflow::errors::IsFailedPrecondition(status)) {
       return false;
     }
 
-    tensorflow::MaybeRaiseRegisteredFromStatus(status);
+    tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
     return true;
+  });
+  m.def("HasAtomicMove", [](const std::string& path) {
+    py::gil_scoped_release release;
+    bool has_atomic_move;
+    const auto status =
+        tensorflow::Env::Default()->HasAtomicMove(path, &has_atomic_move);
+    tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
+    return has_atomic_move;
   });
 
   py::class_<tensorflow::FileStatistics>(m, "FileStatistics")
@@ -134,9 +160,11 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
       .def_readonly("is_directory", &tensorflow::FileStatistics::is_directory);
 
   m.def("Stat", [](const std::string& filename) {
+    py::gil_scoped_release release;
     std::unique_ptr<tensorflow::FileStatistics> self(
         new tensorflow::FileStatistics);
     const auto status = tensorflow::Env::Default()->Stat(filename, self.get());
+    py::gil_scoped_acquire acquire;
     tensorflow::MaybeRaiseRegisteredFromStatus(status);
     return self.release();
   });
@@ -144,66 +172,83 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
   using tensorflow::WritableFile;
   py::class_<WritableFile>(m, "WritableFile")
       .def(py::init([](const std::string& filename, const std::string& mode) {
+        py::gil_scoped_release release;
         auto* env = tensorflow::Env::Default();
         std::unique_ptr<WritableFile> self;
         const auto status = mode.find("a") == std::string::npos
                                 ? env->NewWritableFile(filename, &self)
                                 : env->NewAppendableFile(filename, &self);
+        py::gil_scoped_acquire acquire;
         tensorflow::MaybeRaiseRegisteredFromStatus(status);
         return self.release();
       }))
       .def("append",
            [](WritableFile* self, tensorflow::StringPiece data) {
-             tensorflow::MaybeRaiseRegisteredFromStatus(self->Append(data));
+             const auto status = self->Append(data);
+             tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
            })
       // TODO(slebedev): Make WritableFile::Tell const and change self
       // to be a reference.
       .def("tell",
            [](WritableFile* self) {
              tensorflow::int64 pos = -1;
+             py::gil_scoped_release release;
              const auto status = self->Tell(&pos);
-             tensorflow::MaybeRaiseRegisteredFromStatus(status);
+             tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
              return pos;
            })
       .def("flush",
            [](WritableFile* self) {
-             tensorflow::MaybeRaiseRegisteredFromStatus(self->Flush());
+             py::gil_scoped_release release;
+             tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(self->Flush());
            })
       .def("close", [](WritableFile* self) {
-        tensorflow::MaybeRaiseRegisteredFromStatus(self->Close());
+        py::gil_scoped_release release;
+        tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(self->Close());
       });
 
   using tensorflow::io::BufferedInputStream;
   py::class_<BufferedInputStream>(m, "BufferedInputStream")
       .def(py::init([](const std::string& filename, size_t buffer_size) {
+        py::gil_scoped_release release;
         std::unique_ptr<tensorflow::RandomAccessFile> file;
         const auto status =
             tensorflow::Env::Default()->NewRandomAccessFile(filename, &file);
-        tensorflow::MaybeRaiseRegisteredFromStatus(status);
+        tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
         std::unique_ptr<tensorflow::io::RandomAccessInputStream> input_stream(
             new tensorflow::io::RandomAccessInputStream(file.release(),
                                                         /*owns_file=*/true));
+        py::gil_scoped_acquire acquire;
         return new BufferedInputStream(input_stream.release(), buffer_size,
                                        /*owns_input_stream=*/true);
       }))
       .def("read",
            [](BufferedInputStream* self, tensorflow::int64 bytes_to_read) {
+             py::gil_scoped_release release;
              tensorflow::tstring result;
              const auto status = self->ReadNBytes(bytes_to_read, &result);
              if (!status.ok() && !tensorflow::errors::IsOutOfRange(status)) {
                result.clear();
                tensorflow::MaybeRaiseRegisteredFromStatus(status);
              }
+             py::gil_scoped_acquire acquire;
              return py::bytes(result);
            })
       .def("readline",
            [](BufferedInputStream* self) {
-             return py::bytes(self->ReadLineAsString());
+             py::gil_scoped_release release;
+             auto output = self->ReadLineAsString();
+             py::gil_scoped_acquire acquire;
+             return py::bytes(output);
            })
       .def("seek",
            [](BufferedInputStream* self, tensorflow::int64 pos) {
-             tensorflow::MaybeRaiseRegisteredFromStatus(self->Seek(pos));
+             py::gil_scoped_release release;
+             tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(self->Seek(pos));
            })
-      .def("tell", [](BufferedInputStream* self) { return self->Tell(); });
+      .def("tell", [](BufferedInputStream* self) {
+        py::gil_scoped_release release;
+        return self->Tell();
+      });
 }
 }  // namespace

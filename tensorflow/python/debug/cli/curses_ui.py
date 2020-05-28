@@ -481,7 +481,7 @@ class CursesUI(base_ui.BaseUI):
       # Remove SIGINT handler.
       signal.signal(signal.SIGINT, signal.SIG_DFL)
     except ValueError:
-     # Can't catch signals unless you're the main thread.
+      # Can't catch signals unless you're the main thread.
       pass
 
   def run_ui(self,
@@ -1214,7 +1214,7 @@ class CursesUI(base_ui.BaseUI):
     """Pad the whitespace at the end of a line with the default color pair.
 
     Prevents spurious color pairs from appearing at the end of the lines in
-    certain text terimnals.
+    certain text terminals.
 
     Args:
       pad: The curses pad object to operate on.

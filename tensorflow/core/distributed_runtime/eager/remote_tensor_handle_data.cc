@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 
@@ -53,7 +54,7 @@ void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
   VLOG(3) << "Sending request to delete " << request->DebugString();
   std::unique_ptr<EagerNode> node(
       absl::make_unique<eager::DestroyTensorHandleNode>(
-          std::move(request), eager_client.get(), ready));
+          std::move(request), std::move(eager_client), ready));
   auto& executor = ctx->Executor();
   if (executor.Async()) {
     Status status = executor.AddOrExecute(std::move(node));
@@ -84,60 +85,106 @@ void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
 }  // namespace
 
 RemoteTensorHandleData::RemoteTensorHandleData(int64 op_id, int output_num,
-                                               const TensorShape& shape,
-                                               const string& remote_task,
-                                               uint64 context_id,
-                                               EagerContext* ctx)
-    : op_id_(op_id),
+                                               uint64 context_view_id)
+    : is_ready_(true),
+      op_id_(op_id),
       output_num_(output_num),
-      shape_(shape),
+      context_view_id_(context_view_id),
+      ctx_(nullptr) {
+  DCHECK(op_id_ >= 0 && output_num_ >= 0)
+      << "Op ID and output num should be >= 0. Op ID: " << op_id
+      << ", Output num: " << output_num;
+}
+
+RemoteTensorHandleData::RemoteTensorHandleData(int64 op_id, int output_num,
+                                               const string& remote_task,
+                                               EagerContext* ctx)
+    : is_ready_(false),
+      op_id_(op_id),
+      output_num_(output_num),
       remote_task_(remote_task),
-      context_id_(context_id),
+      context_id_(ctx->GetContextId()),
+      context_view_id_(ctx->GetContextViewId()),
       ctx_(ctx) {
   DCHECK(op_id_ >= 0 && output_num_ >= 0)
       << "Op ID and output num should be >= 0. Op ID: " << op_id
       << ", Output num: " << output_num;
-  ctx->Ref();
+  ctx_->Ref();
 }
 
 RemoteTensorHandleData::~RemoteTensorHandleData() {
-  DestroyRemoteTensorHandle(ctx_, remote_task_, context_id_, op_id_,
-                            output_num_, /*ready=*/true);
-  ctx_->Unref();
-}
-
-Status RemoteTensorHandleData::Tensor(const tensorflow::Tensor** t) const {
-  return errors::Unavailable(
-      "Unable to get a tensor for a remote device. Please copy the tensor "
-      "handle to a local device using TFE_TensorHandleCopyToDevice");
-}
-
-Status RemoteTensorHandleData::TensorValue(tensorflow::TensorValue* t) {
-  return errors::Unavailable(
-      "Unable to get a tensor for a remote device. Please copy the tensor "
-      "handle to a local device using TFE_TensorHandleCopyToDevice");
+  if (ctx_) {
+    DestroyRemoteTensorHandle(ctx_, remote_task_, context_id_, op_id_,
+                              output_num_, /*ready=*/true);
+    ctx_->Unref();
+  }
 }
 
 Status RemoteTensorHandleData::Shape(TensorShape* shape) const {
+  TF_RETURN_IF_ERROR(WaitReady("Shape"));
+
+  tf_shared_lock l(mu_);
   *shape = shape_;
 
   return Status::OK();
 }
 
 Status RemoteTensorHandleData::NumDims(int* num_dims) const {
+  TF_RETURN_IF_ERROR(WaitReady("NumDims"));
+
+  tf_shared_lock l(mu_);
   *num_dims = shape_.dims();
 
   return Status::OK();
 }
 
 Status RemoteTensorHandleData::Dim(int dim_index, int64* dim) const {
+  TF_RETURN_IF_ERROR(WaitReady("Dim"));
+
+  tf_shared_lock l(mu_);
   *dim = shape_.dim_size(dim_index);
 
   return Status::OK();
 }
 
 Status RemoteTensorHandleData::NumElements(int64* num_elements) const {
+  TF_RETURN_IF_ERROR(WaitReady("NumElements"));
+
+  tf_shared_lock l(mu_);
   *num_elements = shape_.num_elements();
+
+  return Status::OK();
+}
+
+bool RemoteTensorHandleData::IsReady() const {
+  tf_shared_lock l(mu_);
+  return is_ready_;
+}
+
+void RemoteTensorHandleData::Poison(Status status) {
+  mutex_lock l(mu_);
+  is_poisoned_ = status;
+  is_ready_ = true;
+}
+
+Status RemoteTensorHandleData::IsPoisoned() const {
+  tf_shared_lock l(mu_);
+  return is_poisoned_;
+}
+
+Status RemoteTensorHandleData::SetShape(const TensorShape& shape) {
+  // If `is_ready_` is set previously due to poisoning, return the original
+  // error that poisoned this tensor.
+  TF_RETURN_IF_ERROR(IsPoisoned());
+
+  mutex_lock l(mu_);
+  if (is_ready_) {
+    return errors::Internal("SetShape is only called on non-ready handles.");
+  }
+
+  shape_ = shape;
+  is_poisoned_ = Status::OK();
+  is_ready_ = true;
 
   return Status::OK();
 }
@@ -147,69 +194,29 @@ string RemoteTensorHandleData::DebugString() const {
                          " output_num: ", output_num_);
 }
 
-UnshapedRemoteTensorHandleData::UnshapedRemoteTensorHandleData(
-    int64 op_id, int32 output_num, const string& remote_task, uint64 context_id,
-    EagerContext* ctx)
-    : op_id_(op_id),
-      output_num_(output_num),
-      delete_remote_tensor_(true),
-      remote_task_(remote_task),
-      context_id_(context_id),
-      ctx_(ctx) {
-  DCHECK(op_id_ >= 0 && output_num_ >= 0)
-      << "Op ID and output num should be >= 0. Op ID: " << op_id
-      << ", Output num: " << output_num;
-  ctx->Ref();
-}
-
-UnshapedRemoteTensorHandleData::~UnshapedRemoteTensorHandleData() {
-  if (delete_remote_tensor_) {
-    DestroyRemoteTensorHandle(ctx_, remote_task_, context_id_, op_id_,
-                              output_num_, /*ready=*/false);
+Status RemoteTensorHandleData::OpIdAndOutputNum(const bool wait_util_ready,
+                                                int64* op_id,
+                                                int32* output_num) const {
+  if (wait_util_ready) {
+    TF_RETURN_IF_ERROR(WaitReady("OpIdAndOutputNumUntilReady"));
   }
-  ctx_->Unref();
+  *op_id = op_id_;
+  *output_num = output_num_;
+  return Status::OK();
 }
 
-Status UnshapedRemoteTensorHandleData::Tensor(
-    const tensorflow::Tensor** t) const {
-  return errors::Unavailable(
-      "Unable to get a tensor for a remote handle. Please copy the tensor "
-      "handle to a local device using TFE_TensorHandleCopyToDevice");
-}
-
-Status UnshapedRemoteTensorHandleData::TensorValue(tensorflow::TensorValue* t) {
-  return errors::Unavailable(
-      "Unable to get a tensor for a remote handle. Please copy the tensor "
-      "handle to a local device using TFE_TensorHandleCopyToDevice");
-}
-
-Status UnshapedRemoteTensorHandleData::Shape(TensorShape* shape) const {
-  return errors::Unavailable(
-      "Unable to get shape information for an async remote handle. Please wait "
-      "until it is ready");
-}
-
-Status UnshapedRemoteTensorHandleData::NumDims(int* num_dims) const {
-  return errors::Unavailable(
-      "Unable to get shape information for an async remote handle. Please wait "
-      "until it is ready");
-}
-
-Status UnshapedRemoteTensorHandleData::Dim(int dim_index, int64* dim) const {
-  return errors::Unavailable(
-      "Unable to get shape information for an async remote handle. Please wait "
-      "until it is ready");
-}
-
-Status UnshapedRemoteTensorHandleData::NumElements(int64* num_elements) const {
-  return errors::Unavailable(
-      "Unable to get shape information for an async remote handle. Please wait "
-      "until it is ready");
-}
-
-string UnshapedRemoteTensorHandleData::DebugString() const {
-  return strings::StrCat("UnshapedRemoteTensorHandleDat:", " op_id: ", op_id_,
-                         " output_num: ", output_num_);
+Status RemoteTensorHandleData::WaitReady(const char* caller) const {
+  tf_shared_lock l(mu_);
+  if (!is_ready_) {
+    profiler::TraceMe activity(
+        [caller] { return absl::StrCat(caller, " WaitReady"); },
+        profiler::TraceMeLevel::kInfo);
+    DVLOG(3) << "WaitReady: " << caller << " " << this;
+    // TODO(b/155493048): add a timeout here if it could cause any hanging
+    // issue.
+    mu_.Await(Condition(&is_ready_));
+  }
+  return is_poisoned_;
 }
 
 }  // namespace tensorflow

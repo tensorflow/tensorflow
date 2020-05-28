@@ -24,13 +24,13 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/dump_graph.h"
@@ -49,10 +49,12 @@ typedef std::unordered_map<string, Node*> NodeMap;
 // Each feed id identifies the positional output of some node, which may consist
 // of multiple edges. AddPlaceholdersForFeeds has already replaced each fed
 // tensor with a placeholder.  For each feed tensor, replaces all edges so they
-// point from a new _Arg node instead.
+// point from a new _Arg node instead. The newly created _Arg nodes are added to
+// `arg_nodes`.
 Status AddArgNodes(Graph* graph, const NodeMap& node_map,
                    const protobuf::RepeatedPtrField<tf2xla::Feed>& feeds,
-                   const std::unordered_map<string, string>& feed_remapping) {
+                   const std::unordered_map<string, string>& feed_remapping,
+                   std::unordered_set<const Node*>* arg_nodes) {
   for (int arg_index = 0; arg_index < feeds.size(); ++arg_index) {
     const tf2xla::Feed& feed = feeds[arg_index];
     // All feeds have been replaced by placeholders.
@@ -86,6 +88,7 @@ Status AddArgNodes(Graph* graph, const NodeMap& node_map,
             .Attr(kShapeAttr, TensorShape(feed.shape()))
             .Attr(kDebugNameAttr, feed.name())
             .Finalize(graph, &arg_node));
+    arg_nodes->insert(arg_node);
 
     // Collects out-edges from the feed node that have a matching edge index;
     // these will be replaced with edges from the arg node instead.
@@ -149,13 +152,13 @@ Status RewriteAndPruneGraph(
   for (Node* n : graph->nodes()) {
     node_map[n->name()] = n;
   }
+  std::unordered_set<const Node*> nodes_to_keep;
+  TF_RETURN_IF_ERROR(AddArgNodes(graph, node_map, config.feed(), feed_remapping,
+                                 &nodes_to_keep));
   TF_RETURN_IF_ERROR(
-      AddArgNodes(graph, node_map, config.feed(), feed_remapping));
-  std::unordered_set<const Node*> retval_nodes;
-  TF_RETURN_IF_ERROR(
-      AddRetvalNodes(graph, node_map, config.fetch(), &retval_nodes));
+      AddRetvalNodes(graph, node_map, config.fetch(), &nodes_to_keep));
   VLOG(2) << "Post rewrite: " << DumpGraphToFile("tf2xla_post_rewrite", *graph);
-  PruneForReverseReachability(graph, std::move(retval_nodes));
+  PruneForReverseReachability(graph, std::move(nodes_to_keep));
   FixupSourceAndSinkEdges(graph);
   VLOG(2) << "Post prune: " << DumpGraphToFile("tfcompile_post_prune", *graph);
   // Sanity-check, to make sure the feeds and fetches still exist post-pruning.
@@ -242,13 +245,10 @@ Status CreateXlaArgs(const Graph& graph,
   return Status::OK();
 }
 
-void PopulateXlaArgsAndXlaAlias(
-    const tf2xla::Config& config, std::vector<XlaCompiler::Argument>* xla_args,
-    std::vector<xla::XlaBuilder::InputOutputAlias>* xla_aliases) {
+void PopulateXlaArgs(const tf2xla::Config& config,
+                     std::vector<XlaCompiler::Argument>* xla_args) {
   // Populate arguments with resource variables from the config. The variables
   // get turned into inputs and outputs.
-  int64 input_num = xla_args->size();
-  int64 output_num = config.fetch_size();
   for (const tf2xla::Variable& variable : config.variable()) {
     XlaCompiler::Argument arg;
     arg.type = variable.type();
@@ -258,17 +258,9 @@ void PopulateXlaArgsAndXlaAlias(
     arg.resource_kind = XlaResource::kVariable;
     arg.initialized = true;
     xla_args->push_back(std::move(arg));
-
-    if (!variable.readonly()) {
-      // We want to alias the input and output of the variable, so the updates
-      // are carried out in-place.
-      xla_aliases->push_back({/*output_index=*/{output_num},
-                              /*param_number=*/input_num, /*param_index=*/{}});
-      ++output_num;
-    }
-    ++input_num;
   }
 }
+
 Status InitGraph(const GraphDef& graph_def, const tf2xla::Config& config,
                  std::unique_ptr<Graph>* graph) {
   TF_RETURN_IF_ERROR(ValidateConfig(config));
@@ -288,8 +280,16 @@ Status InitGraph(const GraphDef& graph_def, const tf2xla::Config& config,
   // Prune the GraphDef first so that unknown ops that we aren't compiling get
   // filtered out.
   GraphDef second_copy_def;
+  // Add the placeholder nodes as "fetches" in prune_config, such that they will
+  // be preserved in PruneGraphDefInto.
+  auto prune_config = config;
+  for (const auto& entry : feed_remapping) {
+    auto ph = prune_config.add_fetch();
+    *ph->mutable_id()->mutable_node_name() = entry.second;
+    ph->mutable_id()->set_output_index(0);
+  }
   TF_RETURN_IF_ERROR(
-      PruneGraphDefInto(config, first_copy_def, &second_copy_def));
+      PruneGraphDefInto(prune_config, first_copy_def, &second_copy_def));
 
   TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(
       &second_copy_def, *g->op_registry(), /*node_offset=*/0));

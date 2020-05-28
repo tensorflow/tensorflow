@@ -18,8 +18,8 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/c/checkpoint_reader.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -478,7 +478,7 @@ Status SparsifyGatherInternal(
     }
 
     // Add nodes with a reference count of 0 for deletion.
-    for (auto entry : refs) {
+    for (const auto& entry : refs) {
       if (entry.second == 0) {
         removed_node_names.push_back(entry.first);
       }

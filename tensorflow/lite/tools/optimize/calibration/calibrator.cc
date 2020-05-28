@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/optimize/calibration/builtin_logging_ops/lstm.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_common.h"
@@ -306,12 +307,23 @@ TfLiteStatus BuildLoggingInterpreter(
     const FlatBufferModel& model, const OpResolver& op_resolver,
     std::unique_ptr<Interpreter>* interpreter,
     std::unique_ptr<CalibrationReader>* calibration_reader) {
-  auto tflite_model = model.GetModel();
+  return BuildLoggingInterpreter(model.GetModel(), model.error_reporter(),
+                                 op_resolver, interpreter, calibration_reader);
+}
+
+TfLiteStatus BuildLoggingInterpreter(
+    const tflite::Model* tflite_model, ErrorReporter* error_reporter,
+    const OpResolver& op_resolver, std::unique_ptr<Interpreter>* interpreter,
+    std::unique_ptr<CalibrationReader>* calibration_reader) {
+  if (error_reporter == nullptr) {
+    // Make sure error_reporter is valid.
+    error_reporter = DefaultErrorReporter();
+  }
   auto subgraphs = tflite_model->subgraphs();
   auto tensor_buffers = tflite_model->buffers();
 
   if (subgraphs->size() != 1) {
-    model.error_reporter()->Report(
+    error_reporter->Report(
         "Only models with a single subgraph are supported, model had %d "
         "subgraphs",
         subgraphs->size());
@@ -368,10 +380,11 @@ TfLiteStatus BuildLoggingInterpreter(
   auto logging_op_resolver = absl::make_unique<LoggingOpResolver>(
       builtin_op_and_versions, custom_op_and_versions, op_resolver,
       LoggingEval);
-  tflite::InterpreterBuilder(model, *logging_op_resolver)(interpreter);
+  tflite::InterpreterBuilder(tflite_model, *logging_op_resolver,
+                             error_reporter)(interpreter);
 
   if (!(*interpreter)) {
-    model.error_reporter()->Report("Failed to construct interpreter");
+    error_reporter->Report("Failed to construct interpreter");
     return kTfLiteError;
   }
 
@@ -387,7 +400,7 @@ TfLiteStatus BuildLoggingInterpreter(
   // during invocations by the logging kernels.
   TF_LITE_ENSURE_STATUS(GetCalibratorRegistry()->CreateCalibrator(
       context, node_ptr_opinfo_map, std::move(logging_op_resolver), &calibrator,
-      model.error_reporter()));
+      error_reporter));
   *calibration_reader = std::unique_ptr<CalibrationReader>(
       new Reader(context, calibrator->GetLogger()));
 

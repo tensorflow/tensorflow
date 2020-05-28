@@ -24,6 +24,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.kernel_tests.random import util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import stateful_random_ops
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
@@ -79,6 +80,18 @@ class RandomBinomialTest(test.TestCase):
       sx = self._Sampler(1000, counts=10., probs=0.4, dtype=dt, seed=345)
       sy = self._Sampler(1000, counts=10., probs=0.4, dtype=dt, seed=345)
       self.assertAllEqual(self.evaluate(sx()), self.evaluate(sy()))
+
+  def testStateless(self):
+    for dt in dtypes.float16, dtypes.float32, dtypes.float64:
+      sx = stateless_random_ops.stateless_random_binomial(
+          shape=[1000], seed=[12, 34], counts=10., probs=0.4, output_dtype=dt)
+      sy = stateless_random_ops.stateless_random_binomial(
+          shape=[1000], seed=[12, 34], counts=10., probs=0.4, output_dtype=dt)
+      sx0, sx1 = self.evaluate(sx), self.evaluate(sx)
+      sy0, sy1 = self.evaluate(sy), self.evaluate(sy)
+      self.assertAllEqual(sx0, sx1)
+      self.assertAllEqual(sx0, sy0)
+      self.assertAllEqual(sy0, sy1)
 
   def testZeroShape(self):
     rnd = stateful_random_ops.Generator.from_seed(12345).binomial([0], [], [])

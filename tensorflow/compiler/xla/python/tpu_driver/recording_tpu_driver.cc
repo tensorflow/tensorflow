@@ -522,7 +522,7 @@ xla::StatusOr<std::unique_ptr<TpuDriver>> RegisterRecordingTpuDriver(
   std::string file;
   std::string worker;
 
-  for (auto config : configs) {
+  for (const auto& config : configs) {
     std::vector<std::string> kv =
         absl::StrSplit(config, absl::MaxSplits('=', 1));
     if (kv[0] == "file") {

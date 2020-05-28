@@ -93,7 +93,16 @@ typedef struct CUDA_EXTERNAL_SEMAPHORE_WAIT_PARAMS_st
     CUDA_EXTERNAL_SEMAPHORE_WAIT_PARAMS;
 typedef void(CUDA_CB* CUhostFn)(void* userData);
 
-// For now only one stub implementation is needed. If a function that is not
-// available in the given CUDA release, the corresponding wrapper returns
-// CUDA_ERROR_SHARED_OBJECT_INIT_FAILED.
+#if CUDA_VERSION < 10000
+#include "tensorflow/stream_executor/cuda/cuda_9_0.inc"
+#elif CUDA_VERSION == 10000
 #include "tensorflow/stream_executor/cuda/cuda_10_0.inc"
+#elif CUDA_VERSION <= 10010
+#include "tensorflow/stream_executor/cuda/cuda_10_1.inc"
+#elif CUDA_VERSION <= 10020
+#include "tensorflow/stream_executor/cuda/cuda_10_2.inc"
+#elif CUDA_VERSION <= 11000
+#include "tensorflow/stream_executor/cuda/cuda_11_0.inc"
+#else
+#error "We have no wrapper for this version."
+#endif

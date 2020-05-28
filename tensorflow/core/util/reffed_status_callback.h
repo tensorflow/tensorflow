@@ -52,7 +52,7 @@ class ReffedStatusCallback : public core::RefCounted {
  private:
   StatusCallback done_;
   mutex mu_;
-  StatusGroup status_group_ GUARDED_BY(mu_);
+  StatusGroup status_group_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

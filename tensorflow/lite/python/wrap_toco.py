@@ -18,7 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 # We need to import pywrap_tensorflow prior to the toco wrapper.
-# pylint: disable=invalud-import-order,g-bad-import-order
+# pylint: disable=invalid-import-order,g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python import _pywrap_toco_api
 
@@ -41,3 +41,16 @@ def wrapped_toco_convert(model_flags_str, toco_flags_str, input_data_str,
 def wrapped_get_potentially_supported_ops():
   """Wraps TocoGetPotentiallySupportedOps with lazy loader."""
   return _pywrap_toco_api.TocoGetPotentiallySupportedOps()
+
+
+def wrapped_experimental_mlir_quantize(input_data_str, disable_per_channel,
+                                       inference_type):
+  """Wraps experimental mlir quantize model."""
+  return _pywrap_toco_api.ExperimentalMlirQuantizeModel(input_data_str,
+                                                        disable_per_channel,
+                                                        inference_type)
+
+
+def wrapped_experimental_mlir_sparsify(input_data_str):
+  """Wraps experimental mlir sparsify model."""
+  return _pywrap_toco_api.ExperimentalMlirSparsifyModel(input_data_str)

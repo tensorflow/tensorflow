@@ -11,75 +11,23 @@ This binary evaluates the following parameters of TFLite models trained for the
 
 The binary takes the path to validation images and a ground truth proto file as
 inputs, along with the model and inference-specific parameters such as delegate
-and number of threads. It outputs the metrics as a text proto to a file, similar
-to the following:
+and number of threads. It outputs the metrics to std-out as follows:
 
 ```
-num_runs: 8059
-process_metrics {
-  object_detection_metrics {
-    pre_processing_latency {
-      last_us: 27197
-      max_us: 61372
-      min_us: 6166
-      sum_us: 189403170
-      avg_us: 23502.068494850479
-    }
-    inference_latency {
-      last_us: 386378
-      max_us: 412804
-      min_us: 378841
-      sum_us: 3122849071
-      avg_us: 387498.33366422635 # Average Inference Latency.
-    }
-    inference_metrics {
-      num_inferences: 8059 # Number of images evaluated.
-    }
-    average_precision_metrics {
-      individual_average_precisions {
-        iou_threshold: 0.5
-        average_precision: 0.26113987
-      }
-      individual_average_precisions {
-        iou_threshold: 0.55
-        average_precision: 0.2456704
-      }
-      individual_average_precisions {
-        iou_threshold: 0.6
-        average_precision: 0.22885525
-      }
-      individual_average_precisions {
-        iou_threshold: 0.65
-        average_precision: 0.20678344
-      }
-      individual_average_precisions {
-        iou_threshold: 0.7
-        average_precision: 0.18185228
-      }
-      individual_average_precisions {
-        iou_threshold: 0.75
-        average_precision: 0.14681709 # AP at IoU threshold of 0.75.
-      }
-      individual_average_precisions {
-        iou_threshold: 0.8
-        average_precision: 0.107850626
-      }
-      individual_average_precisions {
-        iou_threshold: 0.85
-        average_precision: 0.061735578
-      }
-      individual_average_precisions {
-        iou_threshold: 0.9
-        average_precision: 0.017980274
-      }
-      individual_average_precisions {
-        iou_threshold: 0.95
-        average_precision: 0.0010084915
-      }
-      overall_mean_average_precision: 0.14596924 # Overall mAP average.
-    }
-  }
-}
+Num evaluation runs: 8059
+Preprocessing latency: avg=16589.9(us), std_dev=0(us)
+Inference latency: avg=85169.7(us), std_dev=505(us)
+Average Precision [IOU Threshold=0.5]: 0.349581
+Average Precision [IOU Threshold=0.55]: 0.330213
+Average Precision [IOU Threshold=0.6]: 0.307694
+Average Precision [IOU Threshold=0.65]: 0.281025
+Average Precision [IOU Threshold=0.7]: 0.248507
+Average Precision [IOU Threshold=0.75]: 0.210295
+Average Precision [IOU Threshold=0.8]: 0.165011
+Average Precision [IOU Threshold=0.85]: 0.116215
+Average Precision [IOU Threshold=0.9]: 0.0507883
+Average Precision [IOU Threshold=0.95]: 0.0064338
+Overall mAP: 0.206576
 ```
 
 To run the binary, please follow the
@@ -127,17 +75,56 @@ The following optional parameters can be used to modify the inference runtime:
 
 *   `delegate`: `string` \
     If provided, tries to use the specified delegate for accuracy evaluation.
-    Valid values: "nnapi", "gpu".
+    Valid values: "nnapi", "gpu", "hexagon".
+
+    NOTE: Please refer to the
+    [Hexagon delegate documentation](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/performance/hexagon_delegate.md)
+    for instructions on how to set it up for the Hexagon delegate. The tool
+    assumes that `libhexagon_interface.so` and Qualcomm libraries lie in
+    `/data/local/tmp`.
+
+This script also supports runtime/delegate arguments introduced by the
+[delegate registrar](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/delegates).
+If there is any conflict (for example, `num_threads` vs
+`num_interpreter_threads` here), the parameters of this
+script are given precedence.
 
 ### Debug Mode
 
 The script also supports a debug mode with the following parameter:
 
 *   `debug_mode`: `boolean` \
-    Whether to enable debug mode. Per-image predictions are written to the
-    output file along with metrics. NOTE: Its not possible to parse the output
-    file as a proto in this mode, since it contains demarcations between
-    per-file outputs for readability.
+    Whether to enable debug mode. Per-image predictions are written to std-out
+    along with metrics.
+
+Image-wise predictions are output as follows:
+
+```
+======================================================
+
+Image: image_1.jpg
+
+Object [0]
+  Score: 0.585938
+  Class-ID: 5
+  Bounding Box:
+    Normalized Top: 0.23103
+    Normalized Bottom: 0.388524
+    Normalized Left: 0.559144
+    Normalized Right: 0.763928
+Object [1]
+  Score: 0.574219
+  Class-ID: 5
+  Bounding Box:
+    Normalized Top: 0.269571
+    Normalized Bottom: 0.373971
+    Normalized Left: 0.613175
+    Normalized Right: 0.760507
+======================================================
+
+Image: image_2.jpg
+...
+```
 
 This mode lets you debug the output of an object detection model that isn't
 necessarily trained on the COCO dataset (by leaving `ground_truth_proto` empty).
@@ -181,7 +168,7 @@ The script generates the following within the output folder:
 
 *   `images/`: the resulting subset of the 2014 COCO Validation images.
 
-*   `ground_truth.pbtxt`: a `.pbtxt` (text proto) file holding
+*   `ground_truth.pb`: a `.pb` (binary-format proto) file holding
     `tflite::evaluation::ObjectDetectionGroundTruth` corresponding to image
     subset.
 
@@ -242,7 +229,7 @@ adb push /path/to/output/folder /data/local/tmp/coco_validation
 adb shell /data/local/tmp/run_eval \
   --model_file=/data/local/tmp/ssd_mobilenet_v1_float.tflite \
   --ground_truth_images_path=/data/local/tmp/coco_validation/images \
-  --ground_truth_proto=/data/local/tmp/coco_validation/ground_truth.pbtxt \
+  --ground_truth_proto=/data/local/tmp/coco_validation/ground_truth.pb \
   --model_output_labels=/data/local/tmp/labelmap.txt \
   --output_file_path=/data/local/tmp/coco_output.txt
 ```
@@ -256,12 +243,11 @@ Optionally, you could also pass in the `--num_interpreter_threads` &
 
 ```
 bazel run -c opt \
-  --cxxopt='--std=c++11' \
   -- \
   //tensorflow/lite/tools/evaluation/tasks/coco_object_detection:run_eval \
   --model_file=/path/to/ssd_mobilenet_v1_float.tflite \
   --ground_truth_images_path=/path/to/images \
-  --ground_truth_proto=/path/to/ground_truth.pbtxt \
+  --ground_truth_proto=/path/to/ground_truth.pb \
   --model_output_labels=/path/to/labelmap.txt \
   --output_file_path=/path/to/coco_output.txt
 ```

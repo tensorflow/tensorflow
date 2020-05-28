@@ -26,6 +26,7 @@ import numpy as np
 from tensorflow.core.protobuf import debug_event_pb2
 from tensorflow.python.debug.lib import op_callbacks_common
 from tensorflow.python.debug.lib import source_utils
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -88,6 +89,10 @@ SAFE_OPS = (
 )
 
 _state = threading.local()
+
+_check_numerics_callback_create_counter = monitoring.Counter(
+    "/tensorflow/api/python/debugging/check_numerics_callback_create_counter",
+    "Counter for number of times the check_numerics op callback is created.")
 
 
 def limit_string_length(string, max_len=50):
@@ -225,6 +230,11 @@ class CheckNumericsCallback(object):
   def __init__(self, stack_height_limit, path_length_limit):
     self._stack_height_limit = stack_height_limit
     self._path_length_limit = path_length_limit
+    # A dict mapping Placeholder tensors to their instrumenting debug tensors.
+    # Used only under V1 graph mode, where we can't rely on auto control
+    # dependency to execute the debug tensors and hence need to attach the debug
+    # tensors as control dependencies of the ops that consume the Placeholder.
+    self._placeholder_to_debug_tensor = dict()
 
   def callback(self,
                op_type,
@@ -243,6 +253,11 @@ class CheckNumericsCallback(object):
     if graph:
       # Under graph mode. Insert check_numerics op.
       instrumented_outputs = []
+      if is_v1_graph_mode:
+        for input_tensor in inputs:
+          if input_tensor in self._placeholder_to_debug_tensor and outputs:
+            outputs[0].op._add_control_input(  # pylint: disable=protected-access
+                self._placeholder_to_debug_tensor[input_tensor].op)
       for slot, output in enumerate(outputs):
         if (output.dtype.is_floating and
             (op_type_bytes, slot) not in IGNORE_OP_OUTPUTS):
@@ -260,10 +275,12 @@ class CheckNumericsCallback(object):
                   output,
                   inputs,
                   graph=graph,
-                  traceback=output.op.traceback))
+                  traceback=output.op.traceback,
+                  stack_height_limit=self._stack_height_limit,
+                  path_length_limit=self._path_length_limit))
           _CHECK_NUMERICS_INPUT_LOOKUP[graph][checked_output.name] = output
-          instrumented_outputs.append(
-              checked_output if is_v1_graph_mode else output)
+          instrumented_outputs.append(self._get_output_tensor(
+              op_type_bytes, output, checked_output, is_v1_graph_mode))
         else:
           instrumented_outputs.append(output)
       return instrumented_outputs
@@ -282,6 +299,40 @@ class CheckNumericsCallback(object):
                   slot, len(outputs), op_type, output, inputs,
                   stack_height_limit=self._stack_height_limit,
                   path_length_limit=self._path_length_limit))
+
+  def _get_output_tensor(self,
+                         op_type,
+                         tensor,
+                         checked_tensor,
+                         is_v1_graph_mode):
+    """Determine what tensor to output from callback.
+
+    Args:
+      op_type: Type of the op that outputs the original symbolic tensor, as
+        `bytes`.
+      tensor: The original output symbolic tensor.
+      checked_tensor: The debugger-instrumented, numerics-checking tensor.
+      is_v1_graph_mode: Whether the debugged proggram is running under V1 graph
+        mode.
+
+    Returns:
+      A symbolic tensor to be returned by the dumping op_callback.
+    """
+    if is_v1_graph_mode:
+      # Placeholders need special treatment under V1 graph mode. The
+      # callback can't simply override the Placeholder tensor to the debug
+      # tensor, as that would cause the Placeholder op to lack a value.
+      # The debug tensor is remembered and will be attached as control
+      # inputs to ops that consumer the Placeholders later.
+      if op_type == b"Placeholder":
+        self._placeholder_to_debug_tensor[tensor] = checked_tensor
+        return tensor
+      else:
+        return checked_tensor
+    else:
+      # Under non-v1 graph mode, rely on auto control dependency to run the
+      # checked tensor.
+      return tensor
 
 
 @tf_export("debugging.enable_check_numerics")
@@ -333,13 +384,13 @@ def enable_check_numerics(stack_height_limit=30,
      x = -1.0
 
      # When the following line runs, a function graph will be compiled
-     # from the Python function `log_x_plus_1()`. Due to the
+     # from the Python function `square_log_x_plus_1()`. Due to the
      # `enable_check_numerics()` call above, the graph will contain
      # numerics checking ops that will run during the function graph's
      # execution. The function call generates an -infinity when the Log
      # (logarithm) op operates on the output tensor of the Add op.
      # The program errors out at this line, printing an error message.
-     y = log_x_plus_1(x)
+     y = square_log_x_plus_1(x)
      z = -y
     ```
 
@@ -361,6 +412,21 @@ def enable_check_numerics(stack_height_limit=30,
      z = tf.matmul(y, y)
      ```
 
+  NOTE: If your code is running on TPUs, be sure to call
+  `tf.config.set_soft_device_placement(True)` before calling
+  `tf.debugging.enable_check_numerics()` as this API uses automatic outside
+  compilation on TPUs. For example:
+
+  ```py
+  tf.config.set_soft_device_placement(True)
+  tf.debugging.enable_check_numerics()
+
+  resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
+  strategy = tf.distribute.experimental.TPUStrategy(resolver)
+  with strategy.scope():
+    # ...
+  ```
+
   Args:
     stack_height_limit: Limit to the height of the printed stack trace.
       Applicable only to ops in `tf.function`s (graphs).
@@ -375,6 +441,7 @@ def enable_check_numerics(stack_height_limit=30,
   logging.info(
       "Enabled check-numerics callback in thread %s",
       threading.current_thread().name)
+  _check_numerics_callback_create_counter.get_cell().increase_by(1)
 
 
 @tf_export("debugging.disable_check_numerics")
@@ -382,7 +449,7 @@ def disable_check_numerics():
   """Disable the eager/graph unified numerics checking mechanism.
 
   This method can be used after a call to `tf.debugging.enable_check_numerics()`
-  to disable the numerics-checking mechanism that catches inifnity and NaN
+  to disable the numerics-checking mechanism that catches infinity and NaN
   values output by ops executed eagerly or in tf.function-compiled graphs.
 
   This method is idempotent. Calling it multiple times has the same effect

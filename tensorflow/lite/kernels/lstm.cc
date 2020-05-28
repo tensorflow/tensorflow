@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -50,16 +50,18 @@ struct OpData {
   TfLiteLSTMKernelType kernel_type;
 
   // If the lstm is layer norm.
-  bool use_layer_norm_lstm;
+  bool use_layer_norm;
 
   // These fields are only used by full kernel.
   int scratch_tensor_index;
   lstm_eval::IntegerLstmParameter integer_lstm_param;
+  bool compute_row_sums;
 };
 
 namespace full {
 namespace {
-TfLiteStatus PopulateQuantizedLstmParams(
+
+TfLiteStatus PopulateQuantizedLstmParams8x8_16(
     TfLiteContext* context, TfLiteNode* node,
     lstm_eval::IntegerLstmParameter* integer_lstm_param) {
   // Calculate quantized clip for projection and cell.
@@ -92,7 +94,7 @@ TfLiteStatus PopulateQuantizedLstmParams(
 
   // Calculate effective scales.
   OpData* op_data = static_cast<OpData*>(node->user_data);
-  const bool use_layer_norm_lstm = op_data->use_layer_norm_lstm;
+  const bool use_layer_norm = op_data->use_layer_norm;
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
 
@@ -147,7 +149,7 @@ TfLiteStatus PopulateQuantizedLstmParams(
   std::vector<float> intermediate_scale;
   std::vector<int32> intermediate_zp;
   for (int i = 0; i < 4; ++i) {
-    if (use_layer_norm_lstm) {
+    if (use_layer_norm) {
       const TfLiteTensor* intermediate = GetIntermediates(context, node, i);
       auto* params = static_cast<TfLiteAffineQuantization*>(
           intermediate->quantization.params);
@@ -218,7 +220,7 @@ TfLiteStatus PopulateQuantizedLstmParams(
     cell_to_output_weight_scale = cell_to_output_weights->params.scale;
   }
 
-  if (use_layer_norm_lstm) {
+  if (use_layer_norm) {
     if (!use_cifg) {
       layer_norm_input_scale = input_layer_norm_coefficients->params.scale;
     }
@@ -353,16 +355,371 @@ TfLiteStatus PopulateQuantizedLstmParams(
 
   // 10000 is used to make sure the kernel logic does not overflow.
   if (!use_cifg) {
-    integer_lstm_param->inv_large_value[0] =
-        std::min(1, static_cast<int32_t>(10000 * layer_norm_input_scale));
+    integer_lstm_param->input_variance_guard =
+        std::max(1, static_cast<int32_t>(10000 * layer_norm_input_scale));
   }
-  integer_lstm_param->inv_large_value[1] =
-      std::min(1, static_cast<int32_t>(10000 * layer_norm_forget_scale));
-  integer_lstm_param->inv_large_value[2] =
-      std::min(1, static_cast<int32_t>(10000 * layer_norm_cell_scale));
-  integer_lstm_param->inv_large_value[3] =
-      std::min(1, static_cast<int32_t>(10000 * layer_norm_output_scale));
+  integer_lstm_param->forget_variance_guard =
+      std::max(1, static_cast<int32_t>(10000 * layer_norm_forget_scale));
+  integer_lstm_param->cell_variance_guard =
+      std::max(1, static_cast<int32_t>(10000 * layer_norm_cell_scale));
+  integer_lstm_param->output_variance_guard =
+      std::max(1, static_cast<int32_t>(10000 * layer_norm_output_scale));
 
+  return kTfLiteOk;
+}
+
+TfLiteStatus PopulateQuantizedLstmParams8x8_8(
+    TfLiteContext* context, TfLiteNode* node,
+    lstm_eval::IntegerLstmParameter* integer_lstm_param) {
+  // Get all tensors.
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input_to_input_weights =
+      GetOptionalInputTensor(context, node, kInputToInputWeightsTensor);
+  const TfLiteTensor* input_to_forget_weights =
+      GetInput(context, node, kInputToForgetWeightsTensor);
+  const TfLiteTensor* input_to_cell_weights =
+      GetInput(context, node, kInputToCellWeightsTensor);
+  const TfLiteTensor* input_to_output_weights =
+      GetInput(context, node, kInputToOutputWeightsTensor);
+
+  const TfLiteTensor* recurrent_to_input_weights =
+      GetOptionalInputTensor(context, node, kRecurrentToInputWeightsTensor);
+  const TfLiteTensor* recurrent_to_forget_weights =
+      GetInput(context, node, kRecurrentToForgetWeightsTensor);
+  const TfLiteTensor* recurrent_to_cell_weights =
+      GetInput(context, node, kRecurrentToCellWeightsTensor);
+  const TfLiteTensor* recurrent_to_output_weights =
+      GetInput(context, node, kRecurrentToOutputWeightsTensor);
+
+  const TfLiteTensor* cell_to_input_weights =
+      GetOptionalInputTensor(context, node, kCellToInputWeightsTensor);
+  const TfLiteTensor* cell_to_forget_weights =
+      GetOptionalInputTensor(context, node, kCellToForgetWeightsTensor);
+  const TfLiteTensor* cell_to_output_weights =
+      GetOptionalInputTensor(context, node, kCellToOutputWeightsTensor);
+
+  const TfLiteTensor* input_layer_norm_coefficients =
+      GetOptionalInputTensor(context, node, kInputLayerNormCoefficientsTensor);
+  const TfLiteTensor* forget_layer_norm_coefficients =
+      GetOptionalInputTensor(context, node, kForgetLayerNormCoefficientsTensor);
+  const TfLiteTensor* cell_layer_norm_coefficients =
+      GetOptionalInputTensor(context, node, kCellLayerNormCoefficientsTensor);
+  const TfLiteTensor* output_layer_norm_coefficients =
+      GetOptionalInputTensor(context, node, kOutputLayerNormCoefficientsTensor);
+
+  const TfLiteTensor* input_gate_bias =
+      GetOptionalInputTensor(context, node, kInputGateBiasTensor);
+  const TfLiteTensor* forget_gate_bias =
+      GetInput(context, node, kForgetGateBiasTensor);
+  const TfLiteTensor* cell_bias = GetInput(context, node, kCellGateBiasTensor);
+  const TfLiteTensor* output_gate_bias =
+      GetInput(context, node, kOutputGateBiasTensor);
+
+  const TfLiteTensor* projection_weights =
+      GetOptionalInputTensor(context, node, kProjectionWeightsTensor);
+  const TfLiteTensor* projection_bias =
+      GetOptionalInputTensor(context, node, kProjectionBiasTensor);
+
+  TfLiteTensor* activation_state =
+      GetVariableInput(context, node, kInputActivationStateTensor);
+  TF_LITE_ENSURE(context, activation_state != nullptr);
+  TfLiteTensor* cell_state =
+      GetVariableInput(context, node, kInputCellStateTensor);
+  TF_LITE_ENSURE(context, cell_state != nullptr);
+
+  // Since we have already checked that weights are all there or none, we can
+  // check the existence of only one to get the condition.
+  const bool use_cifg = (input_to_input_weights == nullptr);
+  const bool use_peephole = (cell_to_output_weights != nullptr);
+  const bool is_layer_norm_lstm = (forget_layer_norm_coefficients != nullptr);
+  const bool use_projection = (projection_weights != nullptr);
+
+  // Weights and states.
+  int8_t* input_to_input_weight_ptr = nullptr;
+  int8_t* recurrent_to_input_weight_ptr = nullptr;
+  int8_t* cell_to_input_weight_ptr = nullptr;
+  int8_t* input_to_forget_weight_ptr = nullptr;
+  int8_t* recurrent_to_forget_weight_ptr = nullptr;
+  int8_t* cell_to_forget_weight_ptr = nullptr;
+  int8_t* input_to_cell_weight_ptr = nullptr;
+  int8_t* recurrent_to_cell_weight_ptr = nullptr;
+  int8_t* input_to_output_weight_ptr = nullptr;
+  int8_t* recurrent_to_output_weight_ptr = nullptr;
+  int8_t* cell_to_output_weight_ptr = nullptr;
+  int8_t* proj_weight_ptr = nullptr;
+  int16_t* layer_norm_input_weight_ptr = nullptr;
+  int16_t* layer_norm_forget_weight_ptr = nullptr;
+  int16_t* layer_norm_cell_weight_ptr = nullptr;
+  int16_t* layer_norm_output_weight_ptr = nullptr;
+  int32_t* input_bias_ptr = nullptr;
+  int32_t* forget_bias_ptr = nullptr;
+  int32_t* cell_bias_ptr = nullptr;
+  int32_t* output_bias_ptr = nullptr;
+  int32_t* proj_bias_ptr = nullptr;
+  int16_t* cell_ptr = nullptr;
+  int8_t* activation_ptr = nullptr;
+
+  // Scales.
+  const float default_scale = 1.0;
+  float input_scale = default_scale;
+  float input_to_input_weight_scale = default_scale;
+  float recurrent_to_input_weight_scale = default_scale;
+  float cell_to_input_weight_scale = default_scale;
+  float input_to_forget_weight_scale = default_scale;
+  float recurrent_to_forget_weight_scale = default_scale;
+  float cell_to_forget_weight_scale = default_scale;
+  float input_to_cell_weight_scale = default_scale;
+  float recurrent_to_cell_weight_scale = default_scale;
+  float input_to_output_weight_scale = default_scale;
+  float recurrent_to_output_weight_scale = default_scale;
+  float cell_to_output_weight_scale = default_scale;
+  float proj_weight_scale = default_scale;
+  float layer_norm_input_scale = default_scale;
+  float layer_norm_forget_scale = default_scale;
+  float layer_norm_cell_scale = default_scale;
+  float layer_norm_output_scale = default_scale;
+  float activation_scale = default_scale;
+
+  // Effective scales.
+  float effective_input_to_input_scale = default_scale;
+  float effective_recurrent_to_input_scale = default_scale;
+  float effective_cell_to_input_scale = default_scale;
+  float effective_input_to_forget_scale = default_scale;
+  float effective_recurrent_to_forget_scale = default_scale;
+  float effective_cell_to_forget_scale = default_scale;
+  float effective_input_to_cell_scale = default_scale;
+  float effective_recurrent_to_cell_scale = default_scale;
+  float effective_input_to_output_scale = default_scale;
+  float effective_recurrent_to_output_scale = default_scale;
+  float effective_cell_to_output_scale = default_scale;
+  float effective_proj_scale = default_scale;
+
+  // Zero points
+  int input_zp = 0;
+  int activation_zp = 0;
+
+  // Populate all the values.
+  if (!use_cifg) {
+    input_to_input_weight_ptr = input_to_input_weights->data.int8;
+    recurrent_to_input_weight_ptr = recurrent_to_input_weights->data.int8;
+    input_bias_ptr = input_gate_bias->data.i32;
+    input_to_input_weight_scale = input_to_input_weights->params.scale;
+    recurrent_to_input_weight_scale = recurrent_to_input_weights->params.scale;
+  }
+
+  if (use_peephole) {
+    if (!use_cifg) {
+      cell_to_input_weight_ptr = cell_to_input_weights->data.int8;
+      cell_to_input_weight_scale = cell_to_input_weights->params.scale;
+    }
+    cell_to_forget_weight_ptr = cell_to_forget_weights->data.int8;
+    cell_to_output_weight_ptr = cell_to_output_weights->data.int8;
+    cell_to_forget_weight_scale = cell_to_forget_weights->params.scale;
+    cell_to_output_weight_scale = cell_to_output_weights->params.scale;
+  }
+
+  if (is_layer_norm_lstm) {
+    if (!use_cifg) {
+      layer_norm_input_weight_ptr = input_layer_norm_coefficients->data.i16;
+      layer_norm_input_scale = input_layer_norm_coefficients->params.scale;
+    }
+    layer_norm_forget_weight_ptr = forget_layer_norm_coefficients->data.i16;
+    layer_norm_forget_scale = forget_layer_norm_coefficients->params.scale;
+    layer_norm_cell_weight_ptr = cell_layer_norm_coefficients->data.i16;
+    layer_norm_cell_scale = cell_layer_norm_coefficients->params.scale;
+    layer_norm_output_weight_ptr = output_layer_norm_coefficients->data.i16;
+    layer_norm_output_scale = output_layer_norm_coefficients->params.scale;
+  }
+
+  if (use_projection) {
+    proj_weight_ptr = projection_weights->data.int8;
+    proj_weight_scale = projection_weights->params.scale;
+    if (projection_bias) {
+      proj_bias_ptr = projection_bias->data.i32;
+    }
+  }
+  activation_scale = activation_state->params.scale;
+
+  input_to_forget_weight_ptr = input_to_forget_weights->data.int8;
+  input_to_forget_weight_scale = input_to_forget_weights->params.scale;
+  input_to_cell_weight_ptr = input_to_cell_weights->data.int8;
+  input_to_cell_weight_scale = input_to_cell_weights->params.scale;
+  input_to_output_weight_ptr = input_to_output_weights->data.int8;
+  input_to_output_weight_scale = input_to_output_weights->params.scale;
+  recurrent_to_forget_weight_ptr = recurrent_to_forget_weights->data.int8;
+  recurrent_to_forget_weight_scale = recurrent_to_forget_weights->params.scale;
+  recurrent_to_cell_weight_ptr = recurrent_to_cell_weights->data.int8;
+  recurrent_to_cell_weight_scale = recurrent_to_cell_weights->params.scale;
+  recurrent_to_output_weight_ptr = recurrent_to_output_weights->data.int8;
+  recurrent_to_output_weight_scale = recurrent_to_output_weights->params.scale;
+  forget_bias_ptr = forget_gate_bias->data.i32;
+  cell_bias_ptr = cell_bias->data.i32;
+  output_bias_ptr = output_gate_bias->data.i32;
+  activation_ptr = activation_state->data.int8;
+  cell_ptr = cell_state->data.i16;
+  input_scale = input->params.scale;
+  input_zp = input->params.zero_point;
+  activation_zp = activation_state->params.zero_point;
+
+  std::vector<float> intermediate_scale;
+  for (int i = 0; i < 12; ++i) {
+    TfLiteTensor* intermediate =
+        &context->tensors[node->intermediates->data[i]];
+    auto* params = reinterpret_cast<TfLiteAffineQuantization*>(
+        intermediate->quantization.params);
+    intermediate_scale.push_back(params->scale->data[0]);
+    integer_lstm_param->intermediate_zp[i] = params->zero_point->data[0];
+  }
+
+  // Calculate effective scales.
+  if (!use_cifg) {
+    effective_input_to_input_scale =
+        input_to_input_weight_scale * input_scale / intermediate_scale[1];
+    effective_recurrent_to_input_scale = recurrent_to_input_weight_scale *
+                                         activation_scale /
+                                         intermediate_scale[2];
+  }
+  effective_input_to_forget_scale =
+      input_to_forget_weight_scale * input_scale / intermediate_scale[4];
+  effective_recurrent_to_forget_scale = recurrent_to_forget_weight_scale *
+                                        activation_scale /
+                                        intermediate_scale[5];
+
+  effective_input_to_cell_scale =
+      input_to_cell_weight_scale * input_scale / intermediate_scale[7];
+  effective_recurrent_to_cell_scale =
+      recurrent_to_cell_weight_scale * activation_scale / intermediate_scale[8];
+
+  effective_input_to_output_scale =
+      input_to_output_weight_scale * input_scale / intermediate_scale[10];
+  effective_recurrent_to_output_scale = recurrent_to_output_weight_scale *
+                                        activation_scale /
+                                        intermediate_scale[11];
+  effective_proj_scale =
+      proj_weight_scale * std::pow(2, -15) / activation_scale;
+
+  if (use_peephole) {
+    if (!use_cifg) {
+      effective_cell_to_input_scale =
+          std::pow(2, -15) * cell_to_input_weight_scale / intermediate_scale[0];
+    }
+    effective_cell_to_forget_scale =
+        std::pow(2, -15) * cell_to_forget_weight_scale / intermediate_scale[3];
+    effective_cell_to_output_scale =
+        std::pow(2, -15) * cell_to_output_weight_scale / intermediate_scale[9];
+  }
+
+  // Calculate effecgive scales.
+  QuantizeMultiplier(effective_input_to_input_scale,
+                     &integer_lstm_param->effective_input_to_input_scale_a,
+                     &integer_lstm_param->effective_input_to_input_scale_b);
+  QuantizeMultiplier(effective_recurrent_to_input_scale,
+                     &integer_lstm_param->effective_recurrent_to_input_scale_a,
+                     &integer_lstm_param->effective_recurrent_to_input_scale_b);
+  QuantizeMultiplier(effective_cell_to_input_scale,
+                     &integer_lstm_param->effective_cell_to_input_scale_a,
+                     &integer_lstm_param->effective_cell_to_input_scale_b);
+  QuantizeMultiplier(effective_input_to_forget_scale,
+                     &integer_lstm_param->effective_input_to_forget_scale_a,
+                     &integer_lstm_param->effective_input_to_forget_scale_b);
+  QuantizeMultiplier(
+      effective_recurrent_to_forget_scale,
+      &integer_lstm_param->effective_recurrent_to_forget_scale_a,
+      &integer_lstm_param->effective_recurrent_to_forget_scale_b);
+  QuantizeMultiplier(effective_cell_to_forget_scale,
+                     &integer_lstm_param->effective_cell_to_forget_scale_a,
+                     &integer_lstm_param->effective_cell_to_forget_scale_b);
+  QuantizeMultiplier(effective_input_to_cell_scale,
+                     &integer_lstm_param->effective_input_to_cell_scale_a,
+                     &integer_lstm_param->effective_input_to_cell_scale_b);
+  QuantizeMultiplier(effective_recurrent_to_cell_scale,
+                     &integer_lstm_param->effective_recurrent_to_cell_scale_a,
+                     &integer_lstm_param->effective_recurrent_to_cell_scale_b);
+  QuantizeMultiplier(effective_input_to_output_scale,
+                     &integer_lstm_param->effective_input_to_output_scale_a,
+                     &integer_lstm_param->effective_input_to_output_scale_b);
+  QuantizeMultiplier(
+      effective_recurrent_to_output_scale,
+      &integer_lstm_param->effective_recurrent_to_output_scale_a,
+      &integer_lstm_param->effective_recurrent_to_output_scale_b);
+  QuantizeMultiplier(effective_cell_to_output_scale,
+                     &integer_lstm_param->effective_cell_to_output_scale_a,
+                     &integer_lstm_param->effective_cell_to_output_scale_b);
+  QuantizeMultiplier(effective_proj_scale,
+                     &integer_lstm_param->effective_proj_scale_a,
+                     &integer_lstm_param->effective_proj_scale_b);
+  QuantizeMultiplier(layer_norm_input_scale,
+                     &integer_lstm_param->layer_norm_input_scale_a,
+                     &integer_lstm_param->layer_norm_input_scale_b);
+  QuantizeMultiplier(layer_norm_forget_scale,
+                     &integer_lstm_param->layer_norm_forget_scale_a,
+                     &integer_lstm_param->layer_norm_forget_scale_b);
+  QuantizeMultiplier(layer_norm_cell_scale,
+                     &integer_lstm_param->layer_norm_cell_scale_a,
+                     &integer_lstm_param->layer_norm_cell_scale_b);
+  QuantizeMultiplier(layer_norm_output_scale,
+                     &integer_lstm_param->layer_norm_output_scale_a,
+                     &integer_lstm_param->layer_norm_output_scale_b);
+
+  {
+    // Intermdiates in flatbuffer holds Wx, Wh and Wx+Wh.
+    // effective Wx, Wh is in effective_input/recurrent_to_<...>_scale
+    // So use intermediate_scale to hold scale from Wx and Wh to Wx+Wh
+    // 0: [1] -> [0]
+    // 1: [2] -> [0]
+    // and use intermdiate_zp as is.
+    const float s_1_0 = intermediate_scale[1] / intermediate_scale[0];
+    const float s_2_0 = intermediate_scale[2] / intermediate_scale[0];
+    const float s_4_3 = intermediate_scale[4] / intermediate_scale[3];
+    const float s_5_3 = intermediate_scale[5] / intermediate_scale[3];
+    const float s_7_6 = intermediate_scale[7] / intermediate_scale[6];
+    const float s_8_6 = intermediate_scale[8] / intermediate_scale[6];
+    const float s_10_9 = intermediate_scale[10] / intermediate_scale[9];
+    const float s_11_9 = intermediate_scale[11] / intermediate_scale[9];
+    QuantizeMultiplier(s_1_0, &integer_lstm_param->intermediate_scale_a[0],
+                       &integer_lstm_param->intermediate_scale_b[0]);
+    QuantizeMultiplier(s_2_0, &integer_lstm_param->intermediate_scale_a[1],
+                       &integer_lstm_param->intermediate_scale_b[1]);
+    QuantizeMultiplier(s_4_3, &integer_lstm_param->intermediate_scale_a[2],
+                       &integer_lstm_param->intermediate_scale_b[2]);
+    QuantizeMultiplier(s_5_3, &integer_lstm_param->intermediate_scale_a[3],
+                       &integer_lstm_param->intermediate_scale_b[3]);
+    QuantizeMultiplier(s_7_6, &integer_lstm_param->intermediate_scale_a[4],
+                       &integer_lstm_param->intermediate_scale_b[4]);
+    QuantizeMultiplier(s_8_6, &integer_lstm_param->intermediate_scale_a[5],
+                       &integer_lstm_param->intermediate_scale_b[5]);
+    QuantizeMultiplier(s_10_9, &integer_lstm_param->intermediate_scale_a[6],
+                       &integer_lstm_param->intermediate_scale_b[6]);
+    QuantizeMultiplier(s_11_9, &integer_lstm_param->intermediate_scale_a[7],
+                       &integer_lstm_param->intermediate_scale_b[7]);
+  }
+
+  // Calculate quantized clip for projection and cell.
+  const auto* params = reinterpret_cast<TfLiteLSTMParams*>(node->builtin_data);
+  const float cell_clip = params->cell_clip;
+  const float proj_clip = params->proj_clip;
+
+  const TfLiteTensor* cell_tensor =
+      GetInput(context, node, kInputCellStateTensor);
+  const TfLiteTensor* output_tensor = GetOutput(context, node, kOutputTensor);
+
+  auto* cell_params = reinterpret_cast<TfLiteAffineQuantization*>(
+      cell_tensor->quantization.params);
+  auto* proj_params = reinterpret_cast<TfLiteAffineQuantization*>(
+      output_tensor->quantization.params);
+  TF_LITE_ENSURE_EQ(context, cell_params->scale->data[0], 1.0 / 32768);
+  if (cell_clip > 0.0 && cell_clip < 1.0) {
+    integer_lstm_param->quantized_cell_clip =
+        static_cast<int>(cell_clip / cell_params->scale->data[0]);
+  } else {
+    integer_lstm_param->quantized_cell_clip = 0;
+  }
+  if (proj_clip > 0.0) {
+    integer_lstm_param->quantized_proj_clip =
+        proj_clip / proj_params->scale->data[0];
+  } else {
+    integer_lstm_param->quantized_proj_clip = 0;
+  }
   return kTfLiteOk;
 }
 
@@ -371,7 +728,7 @@ TfLiteStatus PopulateQuantizedLstmParams(
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   auto* op_data = new OpData();
   op_data->kernel_type = kTfLiteLSTMFullKernel;
-  context->AddTensors(context, /*tensors_to_add=*/7,
+  context->AddTensors(context, /*tensors_to_add=*/10,
                       &op_data->scratch_tensor_index);
   return op_data;
 }
@@ -381,8 +738,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
                                         TfLiteNode* node, int n_input,
                                         int n_output, int n_cell,
-                                        bool use_layer_norm_lstm,
-                                        bool is_integer) {
+                                        bool use_layer_norm, bool is_integer) {
   const auto* params = static_cast<TfLiteLSTMParams*>(node->builtin_data);
 
   // Making sure clipping parameters have valid values.
@@ -574,7 +930,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
       ((projection_weights != nullptr) || (projection_bias == nullptr));
   TF_LITE_ENSURE(context, projection_tensors_consistent == true);
 
-  if (use_layer_norm_lstm) {
+  if (use_layer_norm) {
     const TfLiteTensor* input_layer_norm_coefficients = GetOptionalInputTensor(
         context, node, kInputLayerNormCoefficientsTensor);
     if (use_cifg) {
@@ -714,7 +1070,7 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
   // When there is layer normalization, the gate bias does not apply to matmul
   // directly:
   //      y = ln(w * x + w * r + w * c) + b.
-  const bool is_layer_norm = op_data->use_layer_norm_lstm;
+  const bool is_layer_norm = op_data->use_layer_norm;
 
   // Forget gate.
   const TfLiteTensor* forget_gate_bias =
@@ -801,13 +1157,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     const TfLiteTensor* forget_layer_norm_coefficients = GetOptionalInputTensor(
         context, node, kForgetLayerNormCoefficientsTensor);
     if (forget_layer_norm_coefficients == nullptr) {
-      op_data->use_layer_norm_lstm = false;
+      op_data->use_layer_norm = false;
     } else {
-      op_data->use_layer_norm_lstm = true;
+      op_data->use_layer_norm = true;
     }
   } else if (node->inputs->size == 20) {
     // This is deprecated and is only kept here for backward compatibility.
-    op_data->use_layer_norm_lstm = false;
+    op_data->use_layer_norm = false;
   } else {
     context->ReportError(
         context, "The LSTM Full kernel expects 20 or 24 inputs. Got %d inputs",
@@ -815,7 +1171,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
 
-  const bool use_layer_norm_lstm = op_data->use_layer_norm_lstm;
+  const bool use_layer_norm = op_data->use_layer_norm;
 
   // Inferring batch size, number of outputs and number of cells from the
   // input tensors.
@@ -839,9 +1195,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const int n_output = recurrent_to_output_weights->dims->data[1];
 
   // Check that input tensor dimensions matches with each other.
-  TF_LITE_ENSURE_OK(context, CheckInputTensorDimensions(
-                                 context, node, n_input, n_output, n_cell,
-                                 use_layer_norm_lstm, is_integer));
+  TF_LITE_ENSURE_OK(
+      context, CheckInputTensorDimensions(context, node, n_input, n_output,
+                                          n_cell, use_layer_norm, is_integer));
 
   // Get the pointer to output, activation_state and cell_state tensors.
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
@@ -869,17 +1225,31 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // The weights are of consistent type, so it suffices to check one.
   const bool is_hybrid_op = IsHybridOp(input, input_to_output_weights);
 
+  // The type of Integer LSTM.
+  const int num_intermediate_tensors = node->intermediates->size;
+  if (is_integer) {
+    TF_LITE_ENSURE(context, num_intermediate_tensors == 5 ||
+                                num_intermediate_tensors == 12);
+  }
+  // We use number of intermediate tensors to distinguish the 8 bit matmul
+  // output and the 16 bit matmul output version.
+  const bool is_8x8_16 = num_intermediate_tensors == 5;
+
   TfLiteIntArrayFree(node->temporaries);
   if (is_hybrid_op) {
-    node->temporaries = TfLiteIntArrayCreate(7);
+    node->temporaries = TfLiteIntArrayCreate(10);
   } else if (is_integer) {
-    node->temporaries = TfLiteIntArrayCreate(6);
+    if (is_8x8_16) {
+      node->temporaries = TfLiteIntArrayCreate(6);
+    } else {
+      node->temporaries = TfLiteIntArrayCreate(8);
+    }
   } else {
     node->temporaries = TfLiteIntArrayCreate(1);
   }
 
   // Create a scratch buffer tensor for float case and hybrid case.
-  // TODO(jianlijianli): Create a is_float boolean and reorginze the temporary
+  // TODO(b/152066492): Create a is_float boolean and reorganize the temporary
   // buffer allocation logic.
   if (!is_integer) {
     node->temporaries->data[0] = op_data->scratch_tensor_index;
@@ -904,6 +1274,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
 
   if (is_hybrid_op) {
+    op_data->compute_row_sums = true;
     // Allocate temporary tensors to store quantized values of input,
     // activation_state and cell_state tensors.
     node->temporaries->data[1] = op_data->scratch_tensor_index + 1;
@@ -940,7 +1311,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                         context->ResizeTensor(context, cell_state_quantized,
                                               cell_state_quantized_size));
     }
-
     // Allocate temporary tensors to store scaling factors and product scaling
     // factors. The latter is a convenience storage which allows to quantize
     // a vector once (which produces the scaling factors) and multiply it with
@@ -987,45 +1357,131 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                         context->ResizeTensor(context, recovered_cell_weights,
                                               recovered_cell_weights_size));
     }
+    // Allocate a temporary tensor to store accumulate values for matrix
+    // multiplication before multiplication by scaling factor
+    node->temporaries->data[7] = op_data->scratch_tensor_index + 7;
+    TfLiteTensor* accum_scratch = GetTemporary(context, node, /*index=*/7);
+    accum_scratch->type = kTfLiteInt32;
+    accum_scratch->allocation_type = kTfLiteArenaRw;
+    int accum_scratch_dims[2] = {n_cell, n_batch};
+    if (!TfLiteIntArrayEqualsArray(accum_scratch->dims, 2,
+                                   accum_scratch_dims)) {
+      TfLiteIntArray* accum_size = TfLiteIntArrayCreate(2);
+      accum_size->data[0] = n_cell;
+      accum_size->data[1] = n_batch;
+      TF_LITE_ENSURE_OK(
+          context, context->ResizeTensor(context, accum_scratch, accum_size));
+    }
+
+    node->temporaries->data[8] = op_data->scratch_tensor_index + 8;
+    TfLiteTensor* zero_points = GetTemporary(context, node, /*index=*/8);
+    zero_points->type = kTfLiteFloat32;
+    zero_points->allocation_type = kTfLiteArenaRw;
+    int zero_points_dims[1] = {n_batch};
+    if (!TfLiteIntArrayEqualsArray(zero_points->dims, 1, zero_points_dims)) {
+      TfLiteIntArray* zero_points_size = TfLiteIntArrayCreate(1);
+      zero_points_size->data[0] = n_batch;
+      TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, zero_points,
+                                                       zero_points_size));
+    }
+
+    node->temporaries->data[9] = op_data->scratch_tensor_index + 9;
+    const TfLiteTensor* input_to_input_weights =
+        GetOptionalInputTensor(context, node, kInputToInputWeightsTensor);
+    const bool use_cifg = (input_to_input_weights == nullptr);
+    int row_sums_rows = use_cifg ? 6 : 8;
+    const TfLiteTensor* projection_weights =
+        GetOptionalInputTensor(context, node, kProjectionWeightsTensor);
+    if (projection_weights != nullptr) {
+      row_sums_rows += ceil(static_cast<float>(n_output) / n_cell);
+    }
+
+    TfLiteTensor* row_sums = GetTemporary(context, node, /*index=*/9);
+    row_sums->type = kTfLiteInt32;
+    row_sums->allocation_type = kTfLiteArenaRwPersistent;
+    const int row_sums_dims[2] = {row_sums_rows, n_cell};
+    if (!TfLiteIntArrayEqualsArray(row_sums->dims, 2, row_sums_dims)) {
+      TfLiteIntArray* row_sums_size = TfLiteIntArrayCreate(2);
+      row_sums_size->data[0] = row_sums_dims[0];
+      row_sums_size->data[1] = row_sums_dims[1];
+      TF_LITE_ENSURE_OK(
+          context, context->ResizeTensor(context, row_sums, row_sums_size));
+    }
   }
 
   if (is_integer) {
-    // Populate quantization parameters.
-    PopulateQuantizedLstmParams(context, node, &op_data->integer_lstm_param);
+    if (is_8x8_16) {
+      // Integer LSTM prepare function for 8x8->16.
+      // This code path needs 5 intermediate tensors per Op.
+      // Populate quantization parameters.
+      PopulateQuantizedLstmParams8x8_16(context, node,
+                                        &op_data->integer_lstm_param);
 
-    // Allocate scratch buffer. Need 6 16bit buffer with size n_batch * n_cell
-    // and 1 8bit buffer with size n_batch * n_cell. We also need 1 32 bit
-    // buffer with size n_batch * n_cell.
-    //
-    // TODO(jianlijianli): Handle cifg case as well, which might save one
-    // buffer.
-    for (int scratch_index = 0; scratch_index < 6; ++scratch_index) {
-      node->temporaries->data[scratch_index] =
-          op_data->scratch_tensor_index + scratch_index;
-      TfLiteTensor* scratch_tensor =
-          GetTemporary(context, node, /*index=*/scratch_index);
-      scratch_tensor->type = kTfLiteInt16;
-      if (scratch_index == 4) {
-        scratch_tensor->type = kTfLiteInt8;
-      } else if (scratch_index == 5) {
-        scratch_tensor->type = kTfLiteInt32;
+      // Allocate scratch buffer. Need 6 16bit buffer with size n_batch * n_cell
+      // and 1 8bit buffer with size n_batch * n_cell. We also need 1 32 bit
+      // buffer with size n_batch * n_cell.
+      //
+      // Handle cifg case as well, which might save one buffer.
+      for (int scratch_index = 0; scratch_index < 6; ++scratch_index) {
+        node->temporaries->data[scratch_index] =
+            op_data->scratch_tensor_index + scratch_index;
+        TfLiteTensor* scratch_tensor =
+            GetTemporary(context, node, /*index=*/scratch_index);
+        scratch_tensor->type = kTfLiteInt16;
+        if (scratch_index == 4) {
+          scratch_tensor->type = kTfLiteInt8;
+        } else if (scratch_index == 5) {
+          scratch_tensor->type = kTfLiteInt32;
+        }
+        scratch_tensor->allocation_type = kTfLiteArenaRw;
+        const int scratch_dimension[2] = {n_batch, n_cell};
+        if (!TfLiteIntArrayEqualsArray(scratch_tensor->dims, 2,
+                                       scratch_dimension)) {
+          TfLiteIntArray* scratch_buffer_size = TfLiteIntArrayCreate(2);
+          scratch_buffer_size->data[0] = n_batch;
+          scratch_buffer_size->data[1] = n_cell;
+          TF_LITE_ENSURE_OK(context,
+                            context->ResizeTensor(context, scratch_tensor,
+                                                  scratch_buffer_size));
+        }
       }
-      scratch_tensor->allocation_type = kTfLiteArenaRw;
-      const int scratch_dimension[2] = {n_batch, n_cell};
-      if (!TfLiteIntArrayEqualsArray(scratch_tensor->dims, 2,
-                                     scratch_dimension)) {
-        TfLiteIntArray* scratch_buffer_size = TfLiteIntArrayCreate(2);
-        scratch_buffer_size->data[0] = n_batch;
-        scratch_buffer_size->data[1] = n_cell;
-        TF_LITE_ENSURE_OK(context,
-                          context->ResizeTensor(context, scratch_tensor,
-                                                scratch_buffer_size));
+
+      // Populate precomputed zp * weight.
+      TF_LITE_ENSURE_OK(context, PopulatePrecomputedZPTimesWeightsWithBias(
+                                     context, op_data, node));
+    } else {
+      // Integer LSTM prepare function for 8x8->8.
+      // This code path needs 12 intermediate tensors per Op.
+      PopulateQuantizedLstmParams8x8_8(context, node,
+                                       &op_data->integer_lstm_param);
+
+      // Allocate scratch buffer. Need 6 16bit buffer with size n_batch * n_cell
+      // and 2 8bit buffer with size n_batch * n_cell.
+      //
+      // Handle cifg case as well, which might save one buffer.
+      for (int scratch_index = 0; scratch_index < 8; ++scratch_index) {
+        node->temporaries->data[scratch_index] =
+            op_data->scratch_tensor_index + scratch_index;
+        TfLiteTensor* scratch_tensor =
+            GetTemporary(context, node, /*index=*/scratch_index);
+        if (scratch_index == 0 || scratch_index == 1) {
+          scratch_tensor->type = kTfLiteInt8;
+        } else {
+          scratch_tensor->type = kTfLiteInt16;
+        }
+        scratch_tensor->allocation_type = kTfLiteArenaRw;
+        const int scratch_dimension[2] = {n_batch, n_cell};
+        if (!TfLiteIntArrayEqualsArray(scratch_tensor->dims, 2,
+                                       scratch_dimension)) {
+          TfLiteIntArray* scratch_buffer_size = TfLiteIntArrayCreate(2);
+          scratch_buffer_size->data[0] = n_batch;
+          scratch_buffer_size->data[1] = n_cell;
+          TF_LITE_ENSURE_OK(context,
+                            context->ResizeTensor(context, scratch_tensor,
+                                                  scratch_buffer_size));
+        }
       }
     }
-
-    // Populate precomputed zp * weight.
-    TF_LITE_ENSURE_OK(context, PopulatePrecomputedZPTimesWeightsWithBias(
-                                   context, op_data, node));
   }
   return kTfLiteOk;
 }
@@ -1135,6 +1591,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             GetTemporary(context, node, /*index=*/5);
         TfLiteTensor* recovered_cell_weights =
             GetTemporary(context, node, /*index=*/6);
+        TfLiteTensor* output_scratch_buffer =
+            GetTemporary(context, node, /*index=*/7);
+        TfLiteTensor* zero_points = GetTemporary(context, node, /*index=*/8);
+        TfLiteTensor* row_sums = GetTemporary(context, node, /*index=*/9);
+        const int row_sums_size = row_sums->dims->data[0];
         return lstm_eval::EvalHybrid(
             input, input_to_input_weights, input_to_forget_weights,
             input_to_cell_weights, input_to_output_weights,
@@ -1155,28 +1616,56 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             scaling_factors, prod_scaling_factors, recovered_cell_weights,
             input_quantized,
             /*aux_input_quantized=*/nullptr, activation_state_quantized,
-            cell_state_quantized, activation_state, cell_state, output);
-      } else {
-        TfLiteTensor* scratch0 = GetTemporary(context, node, /*index=*/0);
-        TfLiteTensor* scratch1 = GetTemporary(context, node, /*index=*/1);
-        TfLiteTensor* scratch2 = GetTemporary(context, node, /*index=*/2);
-        TfLiteTensor* scratch3 = GetTemporary(context, node, /*index=*/3);
-        TfLiteTensor* scratch4 = GetTemporary(context, node, /*index=*/4);
-        TfLiteTensor* scratch5 = GetTemporary(context, node, /*index=*/5);
-        return lstm_eval::EvalInteger(
-            input, input_to_input_weights, input_to_forget_weights,
-            input_to_cell_weights, input_to_output_weights,
-            recurrent_to_input_weights, recurrent_to_forget_weights,
-            recurrent_to_cell_weights, recurrent_to_output_weights,
-            cell_to_input_weights, cell_to_forget_weights,
-            cell_to_output_weights, input_layer_norm_coefficients,
-            forget_layer_norm_coefficients, cell_layer_norm_coefficients,
-            output_layer_norm_coefficients, input_gate_bias, forget_gate_bias,
-            cell_bias, output_gate_bias, projection_weights, projection_bias,
-            params, &op_data->integer_lstm_param, activation_state, cell_state,
-            output, scratch0, scratch1, scratch2, scratch3, scratch4, scratch5,
+            cell_state_quantized, activation_state, cell_state,
+            output_scratch_buffer, output, zero_points, row_sums, row_sums_size,
+            &op_data->compute_row_sums,
             CpuBackendContext::GetFromContext(context));
-        return kTfLiteOk;
+      } else {
+        const int num_intermediate_tensors = node->intermediates->size;
+        if (num_intermediate_tensors == 5) {
+          TfLiteTensor* scratch0 = GetTemporary(context, node, /*index=*/0);
+          TfLiteTensor* scratch1 = GetTemporary(context, node, /*index=*/1);
+          TfLiteTensor* scratch2 = GetTemporary(context, node, /*index=*/2);
+          TfLiteTensor* scratch3 = GetTemporary(context, node, /*index=*/3);
+          TfLiteTensor* scratch4 = GetTemporary(context, node, /*index=*/4);
+          TfLiteTensor* scratch5 = GetTemporary(context, node, /*index=*/5);
+          return lstm_eval::EvalInteger8x8_16(
+              input, input_to_input_weights, input_to_forget_weights,
+              input_to_cell_weights, input_to_output_weights,
+              recurrent_to_input_weights, recurrent_to_forget_weights,
+              recurrent_to_cell_weights, recurrent_to_output_weights,
+              cell_to_input_weights, cell_to_forget_weights,
+              cell_to_output_weights, input_layer_norm_coefficients,
+              forget_layer_norm_coefficients, cell_layer_norm_coefficients,
+              output_layer_norm_coefficients, input_gate_bias, forget_gate_bias,
+              cell_bias, output_gate_bias, projection_weights, projection_bias,
+              params, &op_data->integer_lstm_param, activation_state,
+              cell_state, output, scratch0, scratch1, scratch2, scratch3,
+              scratch4, scratch5, CpuBackendContext::GetFromContext(context));
+        } else {
+          TfLiteTensor* scratch0 = GetTemporary(context, node, /*index=*/0);
+          TfLiteTensor* scratch1 = GetTemporary(context, node, /*index=*/1);
+          TfLiteTensor* scratch2 = GetTemporary(context, node, /*index=*/2);
+          TfLiteTensor* scratch3 = GetTemporary(context, node, /*index=*/3);
+          TfLiteTensor* scratch4 = GetTemporary(context, node, /*index=*/4);
+          TfLiteTensor* scratch5 = GetTemporary(context, node, /*index=*/5);
+          TfLiteTensor* scratch6 = GetTemporary(context, node, /*index=*/6);
+          TfLiteTensor* scratch7 = GetTemporary(context, node, /*index=*/7);
+          return lstm_eval::EvalInteger8x8_8(
+              input, input_to_input_weights, input_to_forget_weights,
+              input_to_cell_weights, input_to_output_weights,
+              recurrent_to_input_weights, recurrent_to_forget_weights,
+              recurrent_to_cell_weights, recurrent_to_output_weights,
+              cell_to_input_weights, cell_to_forget_weights,
+              cell_to_output_weights, input_layer_norm_coefficients,
+              forget_layer_norm_coefficients, cell_layer_norm_coefficients,
+              output_layer_norm_coefficients, input_gate_bias, forget_gate_bias,
+              cell_bias, output_gate_bias, projection_weights, projection_bias,
+              params, activation_state, cell_state, output,
+              &op_data->integer_lstm_param, scratch0, scratch1, scratch2,
+              scratch3, scratch4, scratch5, scratch6, scratch7);
+          return kTfLiteOk;
+        }
       }
     }
     default:

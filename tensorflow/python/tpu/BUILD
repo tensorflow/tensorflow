@@ -32,6 +32,7 @@ py_test(
         "no_oss_py2",
         "no_oss_py35",
         "no_pip",
+        "no_rocm",
     ],
     deps = [
         "//tensorflow/python:client_testlib",
@@ -178,18 +179,9 @@ py_library(
         ":feature_column_v2",
         ":preempted_hook_py",
         ":tpu_embedding",
+        ":tpu_embedding_v2",
+        ":tpu_embedding_v2_utils",
         ":tpu_lib",
-    ],
-)
-
-py_library(
-    name = "topology",
-    srcs = [
-        "topology.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/core/protobuf/tpu:topology_proto_py",
     ],
 )
 
@@ -203,6 +195,7 @@ py_library(
         "tensor_tracer.py",
         "tensor_tracer_flags.py",
         "tensor_tracer_report.py",
+        "topology.py",
         "tpu.py",
         "tpu_feed.py",
         "tpu_function.py",
@@ -216,7 +209,6 @@ py_library(
     deps = [
         ":datasets",
         ":functional",
-        ":topology",
         ":tpu_py",
         "//tensorflow/compiler/xla/experimental/xla_sharding",
         "//tensorflow/compiler/xla/python_api:xla_shape",
@@ -224,6 +216,7 @@ py_library(
         "//tensorflow/core/protobuf/tpu:compilation_result_proto_py",
         "//tensorflow/core/protobuf/tpu:dynamic_padding_proto_py",
         "//tensorflow/core/protobuf/tpu:optimization_parameters_proto_py",
+        "//tensorflow/core/protobuf/tpu:topology_proto_py",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_py",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_output_layout_proto_py",
         "//tensorflow/python:array_ops",
@@ -441,6 +434,37 @@ tf_py_test(
         "//tensorflow/python/feature_column",
         "//tensorflow/python/feature_column:feature_column_py",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "tpu_embedding_v2_utils",
+    srcs = ["tpu_embedding_v2_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/distribute:device_util",
+        "//tensorflow/python/distribute:sharded_variable",
+        "//tensorflow/python/tpu:tpu_lib",
+        "//tensorflow/python/tpu:tpu_py",
+        "//tensorflow/python/training/saving:saveable_hook",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "tpu_embedding_v2",
+    srcs = ["tpu_embedding_v2.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":tpu_embedding_v2_utils",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/distribute:device_util",
+        "//tensorflow/python/distribute:sharded_variable",
+        "//tensorflow/python/tpu:tpu_lib",
+        "//tensorflow/python/tpu:tpu_py",
+        "//tensorflow/python/training/saving:saveable_hook",
+        "@six_archive//:six",
     ],
 )
 

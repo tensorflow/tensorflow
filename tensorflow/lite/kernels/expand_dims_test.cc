@@ -26,8 +26,8 @@ namespace {
 using ::testing::ElementsAreArray;
 
 enum class TestType {
-  CONST = 0,
-  DYNAMIC = 1,
+  kConst = 0,
+  kDynamic = 1,
 };
 
 template <typename InputType>
@@ -36,7 +36,7 @@ class ExpandDimsOpModel : public SingleOpModel {
   ExpandDimsOpModel(int axis, std::initializer_list<int> input_shape,
                     std::initializer_list<InputType> input_data,
                     TestType input_tensor_types) {
-    if (input_tensor_types == TestType::DYNAMIC) {
+    if (input_tensor_types == TestType::kDynamic) {
       input_ = AddInput(GetTensorType<InputType>());
       axis_ = AddInput(TensorType_INT32);
     } else {
@@ -50,7 +50,7 @@ class ExpandDimsOpModel : public SingleOpModel {
 
     BuildInterpreter({input_shape, {1}});
 
-    if (input_tensor_types == TestType::DYNAMIC) {
+    if (input_tensor_types == TestType::kDynamic) {
       PopulateTensor<InputType>(input_, input_data);
       PopulateTensor<int32_t>(axis_, {axis});
     }
@@ -66,37 +66,60 @@ class ExpandDimsOpModel : public SingleOpModel {
   int output_;
 };
 
-class ExpandDimsOpTest : public ::testing::TestWithParam<TestType> {};
+template <typename T>
+class ExpandDimsOpTest : public ::testing::Test {
+ public:
+  static std::vector<TestType> range_;
+};
 
-TEST_P(ExpandDimsOpTest, PositiveAxis) {
-  std::initializer_list<float> values = {-1.f, 1.f, -2.f, 2.f};
+template <>
+std::vector<TestType> ExpandDimsOpTest<TestType>::range_{TestType::kConst,
+                                                         TestType::kDynamic};
 
-  ExpandDimsOpModel<float> axis_0(0, {2, 2}, values, GetParam());
-  axis_0.Invoke();
-  EXPECT_THAT(axis_0.GetValues(), ElementsAreArray(values));
-  EXPECT_THAT(axis_0.GetOutputShape(), ElementsAreArray({1, 2, 2}));
+using DataTypes = ::testing::Types<float, int8_t, int16_t, int32_t>;
+TYPED_TEST_SUITE(ExpandDimsOpTest, DataTypes);
 
-  ExpandDimsOpModel<float> axis_1(1, {2, 2}, values, GetParam());
-  axis_1.Invoke();
-  EXPECT_THAT(axis_1.GetValues(), ElementsAreArray(values));
-  EXPECT_THAT(axis_1.GetOutputShape(), ElementsAreArray({2, 1, 2}));
+TYPED_TEST(ExpandDimsOpTest, PositiveAxis) {
+  for (TestType test_type : ExpandDimsOpTest<TestType>::range_) {
+    std::initializer_list<TypeParam> values = {-1, 1, -2, 2};
 
-  ExpandDimsOpModel<float> axis_2(2, {2, 2}, values, GetParam());
-  axis_2.Invoke();
-  EXPECT_THAT(axis_2.GetValues(), ElementsAreArray(values));
-  EXPECT_THAT(axis_2.GetOutputShape(), ElementsAreArray({2, 2, 1}));
+    ExpandDimsOpModel<TypeParam> axis_0(0, {2, 2}, values, test_type);
+    axis_0.Invoke();
+    EXPECT_THAT(axis_0.GetValues(), ElementsAreArray(values));
+    EXPECT_THAT(axis_0.GetOutputShape(), ElementsAreArray({1, 2, 2}));
+
+    ExpandDimsOpModel<TypeParam> axis_1(1, {2, 2}, values, test_type);
+    axis_1.Invoke();
+    EXPECT_THAT(axis_1.GetValues(), ElementsAreArray(values));
+    EXPECT_THAT(axis_1.GetOutputShape(), ElementsAreArray({2, 1, 2}));
+
+    ExpandDimsOpModel<TypeParam> axis_2(2, {2, 2}, values, test_type);
+    axis_2.Invoke();
+    EXPECT_THAT(axis_2.GetValues(), ElementsAreArray(values));
+    EXPECT_THAT(axis_2.GetOutputShape(), ElementsAreArray({2, 2, 1}));
+  }
 }
 
-TEST_P(ExpandDimsOpTest, NegativeAxis) {
-  std::initializer_list<float> values = {-1.f, 1.f, -2.f, 2.f};
+TYPED_TEST(ExpandDimsOpTest, NegativeAxis) {
+  for (TestType test_type : ExpandDimsOpTest<TestType>::range_) {
+    std::initializer_list<TypeParam> values = {-1, 1, -2, 2};
 
-  ExpandDimsOpModel<float> m(-1, {2, 2}, values, GetParam());
+    ExpandDimsOpModel<TypeParam> m(-1, {2, 2}, values, test_type);
+    m.Invoke();
+    EXPECT_THAT(m.GetValues(), ElementsAreArray(values));
+    EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 1}));
+  }
+}
+
+TEST(ExpandDimsOpTest, StrTensor) {
+  std::initializer_list<std::string> values = {"abc", "de", "fghi"};
+
+  // this test will fail on TestType::CONST
+  ExpandDimsOpModel<std::string> m(0, {3}, values, TestType::kDynamic);
   m.Invoke();
   EXPECT_THAT(m.GetValues(), ElementsAreArray(values));
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 1}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3}));
 }
 
-INSTANTIATE_TEST_SUITE_P(ExpandDimsOpTest, ExpandDimsOpTest,
-                         ::testing::Values(TestType::DYNAMIC, TestType::CONST));
 }  // namespace
 }  // namespace tflite

@@ -1,4 +1,4 @@
-# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""RMSprop for TensorFlow."""
+"""RMSprop optimizer implementation."""
+# pylint: disable=g-classes-have-attributes
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -34,31 +35,65 @@ from tensorflow.python.util.tf_export import keras_export
 class RMSprop(optimizer_v2.OptimizerV2):
   r"""Optimizer that implements the RMSprop algorithm.
 
-  A detailed description of rmsprop.
+  The gist of RMSprop is to:
 
-    - maintain a moving (discounted) average of the square of gradients
-    - divide gradient by the root of this average
-
-  $$mean_square_t = rho * mean_square{t-1} + (1-rho) * gradient ** 2$$
-  $$mom_t = momentum * mom_{t-1} + learning_rate * gradient / \sqrt{ /
-      mean_square_t + \epsilon}$$
-  $$variable_t := variable_{t-1} - mom_t$$
+  - Maintain a moving (discounted) average of the square of gradients
+  - Divide the gradient by the root of this average
 
   This implementation of RMSprop uses plain momentum, not Nesterov momentum.
 
   The centered version additionally maintains a moving average of the
-  gradients, and uses that average to estimate the variance:
+  gradients, and uses that average to estimate the variance.
 
-  $$mean_grad_t = rho * mean_grad_{t-1} + (1-rho) * gradient$$
-  $$mean_square_t = rho * mean_square_{t-1} + (1-rho) * gradient ** 2$$
-  $$mom_t = momentum * mom_{t-1} + learning_rate * gradient /
-      sqrt(mean_square_t - mean_grad_t**2 + epsilon)$$
-  $$variable_t := variable_{t-1} - mom_t$$
+  Args:
+    learning_rate: A `Tensor`, floating point value, or a schedule that is a
+      `tf.keras.optimizers.schedules.LearningRateSchedule`, or a callable
+      that takes no arguments and returns the actual value to use. The
+      learning rate. Defeaults to 0.001.
+    rho: Discounting factor for the history/coming gradient. Defaults to 0.9.
+    momentum: A scalar or a scalar `Tensor`. Defaults to 0.0.
+    epsilon: A small constant for numerical stability. This epsilon is
+      "epsilon hat" in the Kingma and Ba paper (in the formula just before
+      Section 2.1), not the epsilon in Algorithm 1 of the paper. Defaults to
+      1e-7.
+    centered: Boolean. If `True`, gradients are normalized by the estimated
+      variance of the gradient; if False, by the uncentered second moment.
+      Setting this to `True` may help with training, but is slightly more
+      expensive in terms of computation and memory. Defaults to `False`.
+    name: Optional name prefix for the operations created when applying
+      gradients. Defaults to `"RMSprop"`.
+    **kwargs: Keyword arguments. Allowed to be one of
+      `"clipnorm"` or `"clipvalue"`.
+      `"clipnorm"` (float) clips gradients by norm; `"clipvalue"` (float) clips
+      gradients by value.
 
-  References
-    See ([pdf]
-      http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf).
+  Note that in the dense implementation of this algorithm, variables and their
+  corresponding accumulators (momentum, gradient moving average, square
+  gradient moving average) will be updated even if the gradient is zero
+  (i.e. accumulators will decay, momentum will be applied). The sparse
+  implementation (used when the gradient is an `IndexedSlices` object,
+  typically because of `tf.gather` or an embedding lookup in the forward pass)
+  will not update variable slices or their accumulators unless those slices
+  were used in the forward pass (nor is there an "eventual" correction to
+  account for these omitted updates). This leads to more efficient updates for
+  large embedding lookup tables (where most of the slices are not accessed in
+  a particular graph execution), but differs from the published algorithm.
+
+  Usage:
+
+  >>> opt = tf.keras.optimizers.RMSprop(learning_rate=0.1)
+  >>> var1 = tf.Variable(10.0)
+  >>> loss = lambda: (var1 ** 2) / 2.0    # d(loss) / d(var1) = var1
+  >>> step_count = opt.minimize(loss, [var1]).numpy()
+  >>> var1.numpy()
+  9.683772
+
+  Reference:
+    - [Hinton, 2012](
+      http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf)
   """
+
+  _HAS_AGGREGATE_GRAD = True
 
   def __init__(self,
                learning_rate=0.001,
@@ -70,39 +105,35 @@ class RMSprop(optimizer_v2.OptimizerV2):
                **kwargs):
     """Construct a new RMSprop optimizer.
 
-    Note that in the dense implementation of this algorithm, variables and their
-    corresponding accumulators (momentum, gradient moving average, square
-    gradient moving average) will be updated even if the gradient is zero
-    (i.e. accumulators will decay, momentum will be applied). The sparse
-    implementation (used when the gradient is an `IndexedSlices` object,
-    typically because of `tf.gather` or an embedding lookup in the forward pass)
-    will not update variable slices or their accumulators unless those slices
-    were used in the forward pass (nor is there an "eventual" correction to
-    account for these omitted updates). This leads to more efficient updates for
-    large embedding lookup tables (where most of the slices are not accessed in
-    a particular graph execution), but differs from the published algorithm.
-
     Args:
       learning_rate: A `Tensor`, floating point value, or a schedule that is a
-        `tf.keras.optimizers.schedules.LearningRateSchedule`. The learning rate.
-      rho: Discounting factor for the history/coming gradient
-      momentum: A scalar tensor.
-      epsilon: Small value to avoid zero denominator.
-      centered: If True, gradients are normalized by the estimated variance of
-        the gradient; if False, by the uncentered second moment. Setting this to
-        True may help with training, but is slightly more expensive in terms of
-        computation and memory. Defaults to False.
+        `tf.keras.optimizers.schedules.LearningRateSchedule`, or a callable
+        that takes no arguments and returns the actual value to use. The
+        learning rate. Defeaults to 0.001.
+      rho: Discounting factor for the history/coming gradient. Defaults to 0.9.
+      momentum: A scalar or a scalar `Tensor`. Defaults to 0.0.
+      epsilon: A small constant for numerical stability. This epsilon is
+        "epsilon hat" in the Kingma and Ba paper (in the formula just before
+        Section 2.1), not the epsilon in Algorithm 1 of the paper. Defaults to
+        1e-7.
+      centered: Boolean. If `True`, gradients are normalized by the estimated
+        variance of the gradient; if False, by the uncentered second moment.
+        Setting this to `True` may help with training, but is slightly more
+        expensive in terms of computation and memory. Defaults to `False`.
       name: Optional name prefix for the operations created when applying
-        gradients. Defaults to "RMSprop".  @compatibility(eager) When eager
-        execution is enabled, `learning_rate`, `decay`, `momentum`, and
-        `epsilon` can each be a callable that takes no arguments and returns the
-        actual value to use. This can be useful for changing these values across
-        different invocations of optimizer functions. @end_compatibility
+        gradients. Defaults to "RMSprop".
       **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
         `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
         gradients by value, `decay` is included for backward compatibility to
         allow time inverse decay of learning rate. `lr` is included for backward
         compatibility, recommended to use `learning_rate` instead.
+
+    @compatibility(eager)
+    When eager execution is enabled, `learning_rate`, `decay`, `momentum`, and
+    `epsilon` can each be a callable that takes no arguments and returns the
+    actual value to use. This can be useful for changing these values across
+    different invocations of optimizer functions.
+    @end_compatibility
     """
     super(RMSprop, self).__init__(name, **kwargs)
     self._set_hyper("learning_rate", kwargs.get("lr", learning_rate))
@@ -133,13 +164,13 @@ class RMSprop(optimizer_v2.OptimizerV2):
     super(RMSprop, self)._prepare_local(var_device, var_dtype, apply_state)
 
     rho = array_ops.identity(self._get_hyper("rho", var_dtype))
-    apply_state[(var_device, var_dtype)].update(dict(
-        neg_lr_t=-apply_state[(var_device, var_dtype)]["lr_t"],
-        epsilon=ops.convert_to_tensor(self.epsilon, var_dtype),
-        rho=rho,
-        momentum=array_ops.identity(self._get_hyper("momentum", var_dtype)),
-        one_minus_rho=1. - rho
-    ))
+    apply_state[(var_device, var_dtype)].update(
+        dict(
+            neg_lr_t=-apply_state[(var_device, var_dtype)]["lr_t"],
+            epsilon=ops.convert_to_tensor_v2(self.epsilon, var_dtype),
+            rho=rho,
+            momentum=array_ops.identity(self._get_hyper("momentum", var_dtype)),
+            one_minus_rho=1. - rho))
 
   def _resource_apply_dense(self, grad, var, apply_state=None):
     var_device, var_dtype = var.device, var.dtype.base_dtype

@@ -37,30 +37,6 @@ Status ParseActivationMode(OpKernelConstruction* context,
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-// There is a behavior difference between cuDNN v4 and v5 with regard to the
-// scaling factor for function cudnnBatchNormalizationForwardInference.
-// This function corrects the scaling factor if cuDNN v4 is used, so that
-// this behavior inconsistency is hidden from TensorFlow users.
-// Details: in cuDNN v4, y = bnScale * (x - mean) * variance + bnBias;
-// in v5, y = bnScale * (x - mean) / sqrt(variance + epsilon) + bnBias
-// The template is instantiated with T as float in batch_norm_ops.cu.cc; for
-// other types, the instantiation needs to be added accordingly.
-template <class T>
-struct VarianceToInvVariance {
-  void operator()(const Eigen::GpuDevice& d, const T* variance, double epsilon,
-                  int channels, T* inv_variance);
-};
-
-// This function converts the inverted variance of the cuDNN forward training
-// output to variance for TensorFlow to calculate the running variance.
-// The template is instantiated with T as float in batch_norm_ops.cu.cc; for
-// other types, the instantiation needs to be added accordingly.
-template <class T>
-struct InvVarianceToVariance {
-  void operator()(const Eigen::GpuDevice& d, double epsilon, int sample_size,
-                  int channels, T* variance);
-};
-
 // This function sets a GPU tensor to NaNs.
 template <class T>
 struct SetNanFunctor {

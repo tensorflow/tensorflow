@@ -28,7 +28,7 @@ from tensorflow.python.platform import test
 class InTopKTest(test.TestCase):
 
   def _validateInTopK(self, predictions, target, k, expected):
-    np_ans = np.array(expected)
+    np_ans = np.array(expected, np.bool)
     with self.cached_session(use_gpu=True):
       precision = nn_ops.in_top_k(predictions, target, k)
       out = self.evaluate(precision)
@@ -65,6 +65,11 @@ class InTopKTest(test.TestCase):
     predictions = [[0.1, 0.3, 0.2, 0.2], [0.1, 0.3, 0.2, 0.2]]
     target = [2, 4]  # must return False for invalid target
     self._validateInTopK(predictions, target, 2, [True, False])
+
+  def testEmpty(self):
+    predictions = np.empty([0, 5])
+    target = np.empty([0], np.int32)
+    self._validateInTopK(predictions, target, 2, [])
 
   def testTensorK(self):
     predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]

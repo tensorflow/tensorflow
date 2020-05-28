@@ -29,6 +29,7 @@ class EnvTime {
   static constexpr uint64 kMicrosToNanos = 1000ULL;
   static constexpr uint64 kMillisToMicros = 1000ULL;
   static constexpr uint64 kMillisToNanos = 1000ULL * 1000ULL;
+  static constexpr uint64 kNanosToPicos = 1000ULL;
   static constexpr uint64 kSecondsToMillis = 1000ULL;
   static constexpr uint64 kSecondsToMicros = 1000ULL * 1000ULL;
   static constexpr uint64 kSecondsToNanos = 1000ULL * 1000ULL * 1000ULL;

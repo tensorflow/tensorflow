@@ -47,19 +47,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
 
     # List module renames. If changed, please update max_submodule_depth.
     self.import_renames = {
-        "tensorflow.google":
-            ast_edits.ImportRename(
-                "tensorflow.google.compat.v1",
-                excluded_prefixes=[
-                    "tensorflow.google.compat.v1",
-                    "tensorflow.google.compat.v2",
-                ],
-            ),
         "tensorflow":
             ast_edits.ImportRename(
                 "tensorflow.compat.v1",
                 excluded_prefixes=[
                     "tensorflow.contrib", "tensorflow.flags",
+                    "tensorflow.compat",
                     "tensorflow.compat.v1", "tensorflow.compat.v2",
                     "tensorflow.google"
                 ],

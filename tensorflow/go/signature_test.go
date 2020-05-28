@@ -20,16 +20,16 @@ import (
 	"fmt"
 	"testing"
 
-	tspb "github.com/tensorflow/tensorflow/tensorflow/go/genop/internal/proto/github.com/tensorflow/tensorflow/tensorflow/go/core/framework/tensor_shape_go_proto"
-	typb "github.com/tensorflow/tensorflow/tensorflow/go/genop/internal/proto/github.com/tensorflow/tensorflow/tensorflow/go/core/framework/types_go_proto"
-	tfpb "github.com/tensorflow/tensorflow/tensorflow/go/genop/internal/proto/github.com/tensorflow/tensorflow/tensorflow/go/core"
+	tspb "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/tensor_shape_go_proto"
+	typb "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/types_go_proto"
+	corepb "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto"
 )
 
 func TestSignatureFromProto(t *testing.T) {
-	got := signatureDefFromProto(&tfpb.SignatureDef{
-		Inputs: map[string]*tfpb.TensorInfo{
-			"input_1": &tfpb.TensorInfo{
-				Encoding: &tfpb.TensorInfo_Name{
+	got := signatureDefFromProto(&corepb.SignatureDef{
+		Inputs: map[string]*corepb.TensorInfo{
+			"input_1": &corepb.TensorInfo{
+				Encoding: &corepb.TensorInfo_Name{
 					Name: "tensor_1",
 				},
 				Dtype: typb.DataType_DT_INT8,
@@ -41,8 +41,8 @@ func TestSignatureFromProto(t *testing.T) {
 					},
 				},
 			},
-			"input_2": &tfpb.TensorInfo{
-				Encoding: &tfpb.TensorInfo_Name{
+			"input_2": &corepb.TensorInfo{
+				Encoding: &corepb.TensorInfo_Name{
 					Name: "tensor_2",
 				},
 				Dtype: typb.DataType_DT_FLOAT,
@@ -55,9 +55,9 @@ func TestSignatureFromProto(t *testing.T) {
 				},
 			},
 		},
-		Outputs: map[string]*tfpb.TensorInfo{
-			"output_1": &tfpb.TensorInfo{
-				Encoding: &tfpb.TensorInfo_Name{
+		Outputs: map[string]*corepb.TensorInfo{
+			"output_1": &corepb.TensorInfo{
+				Encoding: &corepb.TensorInfo_Name{
 					Name: "tensor_3",
 				},
 				Dtype: typb.DataType_DT_STRING,
@@ -69,8 +69,8 @@ func TestSignatureFromProto(t *testing.T) {
 					},
 				},
 			},
-			"output_2": &tfpb.TensorInfo{
-				Encoding: &tfpb.TensorInfo_Name{
+			"output_2": &corepb.TensorInfo{
+				Encoding: &corepb.TensorInfo_Name{
 					Name: "tensor_4",
 				},
 				Dtype: typb.DataType_DT_BOOL,
@@ -140,8 +140,8 @@ func TestSignatureFromProto(t *testing.T) {
 }
 
 func TestTensorInfoFromProto(t *testing.T) {
-	got := tensorInfoFromProto(&tfpb.TensorInfo{
-		Encoding: &tfpb.TensorInfo_Name{
+	got := tensorInfoFromProto(&corepb.TensorInfo{
+		Encoding: &corepb.TensorInfo_Name{
 			Name: "tensor",
 		},
 		Dtype: typb.DataType_DT_INT8,

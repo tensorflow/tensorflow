@@ -18,11 +18,12 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 
 namespace mlir {
+class BufferAssignmentPlacer;
 namespace xla_hlo {
 
 // Collection of rewrite patterns for lowering a general dot product.
@@ -38,8 +39,12 @@ void PopulateXlaToStdPatterns(OwningRewritePatternList *patterns,
                               MLIRContext *ctx);
 
 // Collection of rewrite patterns for lowering of HLO to LHLO dialect.
-void populateHLOToLHLOConversionPattern(MLIRContext *context,
-                                        OwningRewritePatternList *patterns);
+void populateHLOToLHLOConversionPattern(
+    MLIRContext *context, BufferAssignmentPlacer *bufferAssignment,
+    TypeConverter *converter, OwningRewritePatternList *patterns);
+// Collection of rewrite patterns for lowering of HLO to Linalg dialect.
+void populateHLOToLinalgConversionPattern(MLIRContext *context,
+                                          OwningRewritePatternList *patterns);
 
 // Sets up legality definitions for materializing broadcasts.
 void SetupMaterializeBroadcastsLegality(MLIRContext *context,
@@ -57,6 +62,16 @@ void PopulateUnfuseBatchNormPatterns(MLIRContext *context,
                                      OwningRewritePatternList *patterns);
 
 }  // namespace xla_hlo
+
+namespace xla_chlo {
+
+// Populates a collection of conversion patterns for legalizing client-HLO to
+// HLO.
+void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
+                                       OwningRewritePatternList *patterns);
+
+}  // namespace xla_chlo
+
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_REWRITERS_H_

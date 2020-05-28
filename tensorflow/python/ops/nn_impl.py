@@ -39,12 +39,14 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import util as losses_util
 from tensorflow.python.platform import device_context
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.deprecation import deprecated_argument_lookup
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("nn.log_poisson_loss")
+@dispatch.add_dispatch_support
 def log_poisson_loss(targets, log_input, compute_full_loss=False, name=None):
   """Computes log Poisson loss given `log_input`.
 
@@ -110,6 +112,7 @@ def log_poisson_loss(targets, log_input, compute_full_loss=False, name=None):
 
 
 @tf_export(v1=["nn.sigmoid_cross_entropy_with_logits"])
+@dispatch.add_dispatch_support
 def sigmoid_cross_entropy_with_logits(  # pylint: disable=invalid-name
     _sentinel=None,
     labels=None,
@@ -192,6 +195,7 @@ def sigmoid_cross_entropy_with_logits(  # pylint: disable=invalid-name
 # Note: intentionally calling this v2 to not allow existing code with indirect
 # imports to ignore the sentinel behavior.
 @tf_export("nn.sigmoid_cross_entropy_with_logits", v1=[])
+@dispatch.add_dispatch_support
 def sigmoid_cross_entropy_with_logits_v2(  # pylint: disable=invalid-name
     labels=None,
     logits=None,
@@ -242,6 +246,7 @@ def sigmoid_cross_entropy_with_logits_v2(  # pylint: disable=invalid-name
 
 
 @tf_export("nn.weighted_cross_entropy_with_logits", v1=[])
+@dispatch.add_dispatch_support
 def weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight,
                                           name=None):
   """Computes a weighted cross entropy.
@@ -320,6 +325,7 @@ def weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight,
 
 
 @tf_export(v1=["nn.weighted_cross_entropy_with_logits"])
+@dispatch.add_dispatch_support
 @deprecated_args(None, "targets is deprecated, use labels instead", "targets")
 def weighted_cross_entropy_with_logits(labels=None,
                                        logits=None,
@@ -384,6 +390,7 @@ def weighted_cross_entropy_with_logits(labels=None,
 
 
 @tf_export("nn.compute_average_loss")
+@dispatch.add_dispatch_support
 def compute_average_loss(per_example_loss,
                          sample_weight=None,
                          global_batch_size=None):
@@ -401,7 +408,7 @@ def compute_average_loss(per_example_loss,
           labels, predictions)
 
       # Compute loss that is scaled by sample_weight and by global batch size.
-      return tf.compute_average_loss(
+      return tf.nn.compute_average_loss(
           per_example_loss,
           sample_weight=sample_weight,
           global_batch_size=GLOBAL_BATCH_SIZE)
@@ -440,6 +447,7 @@ def compute_average_loss(per_example_loss,
 
 
 @tf_export("nn.scale_regularization_loss")
+@dispatch.add_dispatch_support
 def scale_regularization_loss(regularization_loss):
   """Scales the sum of the given regularization losses by number of replicas.
 
@@ -452,13 +460,13 @@ def scale_regularization_loss(regularization_loss):
           labels, predictions)
 
       # Compute loss that is scaled by sample_weight and by global batch size.
-      loss = tf.compute_average_loss(
+      loss = tf.nn.compute_average_loss(
           per_example_loss,
           sample_weight=sample_weight,
           global_batch_size=GLOBAL_BATCH_SIZE)
 
       # Add scaled regularization losses.
-      loss += tf.scale_regularization_loss(tf.nn.l2_loss(weights))
+      loss += tf.nn.scale_regularization_loss(tf.nn.l2_loss(weights))
       return loss
   ```
 
@@ -478,6 +486,7 @@ def scale_regularization_loss(regularization_loss):
 
 
 @tf_export(v1=["nn.relu_layer"])
+@dispatch.add_dispatch_support
 def relu_layer(x, weights, biases, name=None):
   """Computes Relu(x * weight + biases).
 
@@ -501,6 +510,7 @@ def relu_layer(x, weights, biases, name=None):
 
 
 @tf_export("nn.swish")
+@dispatch.add_dispatch_support
 @custom_gradient.custom_gradient
 def swish(features):
   # pylint: disable=g-doc-args
@@ -538,6 +548,7 @@ def swish(features):
 
 # pylint: disable=redefined-builtin
 @tf_export("linalg.normalize")
+@dispatch.add_dispatch_support
 def normalize(tensor, ord="euclidean", axis=None, name=None):
   """Normalizes `tensor` along dimension `axis` using specified norm.
 
@@ -590,6 +601,7 @@ def normalize(tensor, ord="euclidean", axis=None, name=None):
 
 
 @tf_export(v1=["math.l2_normalize", "linalg.l2_normalize", "nn.l2_normalize"])
+@dispatch.add_dispatch_support
 @deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def l2_normalize(x, axis=None, epsilon=1e-12, name=None, dim=None):
   """Normalizes along dimension `axis` using an L2 norm.
@@ -618,6 +630,7 @@ def l2_normalize(x, axis=None, epsilon=1e-12, name=None, dim=None):
 
 
 @tf_export("math.l2_normalize", "linalg.l2_normalize", "nn.l2_normalize", v1=[])
+@dispatch.add_dispatch_support
 def l2_normalize_v2(x, axis=None, epsilon=1e-12, name=None):
   """Normalizes along dimension `axis` using an L2 norm.
 
@@ -641,6 +654,15 @@ def l2_normalize_v2(x, axis=None, epsilon=1e-12, name=None):
   """
   with ops.name_scope(name, "l2_normalize", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
+    if x.dtype.is_complex:
+      square_real = math_ops.square(math_ops.real(x))
+      square_imag = math_ops.square(math_ops.imag(x))
+      square_sum = math_ops.real(
+          math_ops.reduce_sum(square_real + square_imag, axis, keepdims=True))
+      x_inv_norm = math_ops.rsqrt(math_ops.maximum(square_sum, epsilon))
+      norm_real = math_ops.multiply(math_ops.real(x), x_inv_norm)
+      norm_imag = math_ops.multiply(math_ops.imag(x), x_inv_norm)
+      return math_ops.complex(norm_real, norm_imag, name=name)
     square_sum = math_ops.reduce_sum(math_ops.square(x), axis, keepdims=True)
     x_inv_norm = math_ops.rsqrt(math_ops.maximum(square_sum, epsilon))
     return math_ops.multiply(x, x_inv_norm, name=name)
@@ -668,6 +690,7 @@ def _count_nonzero(input_tensor, dtype=dtypes.int64):
 
 
 @tf_export("math.zero_fraction", "nn.zero_fraction")
+@dispatch.add_dispatch_support
 def zero_fraction(value, name=None):
   """Returns the fraction of zeros in `value`.
 
@@ -710,6 +733,7 @@ def zero_fraction(value, name=None):
 
 # pylint: disable=redefined-builtin
 @tf_export(v1=["nn.depthwise_conv2d"])
+@dispatch.add_dispatch_support
 def depthwise_conv2d(input,
                      filter,
                      strides,
@@ -740,14 +764,51 @@ def depthwise_conv2d(input,
   convolution, in which case all values in the `strides` tensor must be equal
   to 1.
 
+  Usage Example:
+
+  >>> x = np.array([
+  ...     [1., 2.],
+  ...     [3., 4.],
+  ...     [5., 6.]
+  ... ], dtype=np.float32).reshape((1, 3, 2, 1))
+  >>> kernel = np.array([
+  ...     [1., 2.],
+  ...     [3., 4]
+  ... ], dtype=np.float32).reshape((2, 1, 1, 2))
+  >>> tf.compat.v1.nn.depthwise_conv2d(x, kernel, strides=[1, 1, 1, 1],
+  ...                                  padding='VALID').numpy()
+    array([[[[10., 14.],
+             [14., 20.]],
+            [[18., 26.],
+             [22., 32.]]]], dtype=float32)
+
+  >>> tf.compat.v1.nn.depthwise_conv2d(x, kernel, strides=[1, 1, 1, 1],
+  ...                                  padding=[[0, 0], [1, 0], [1, 0], [0, 0]]
+  ...                                 ).numpy()
+    array([[[[ 0.,  0.],
+             [ 3.,  4.],
+             [ 6.,  8.]],
+            [[ 0.,  0.],
+             [10., 14.],
+             [14., 20.]],
+            [[ 0.,  0.],
+             [18., 26.],
+             [22., 32.]]]], dtype=float32)
+
   Args:
     input: 4-D with shape according to `data_format`.
     filter: 4-D with shape
       `[filter_height, filter_width, in_channels, channel_multiplier]`.
     strides: 1-D of size 4.  The stride of the sliding window for each
       dimension of `input`.
-    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the "returns" section of `tf.nn.convolution` for details.
+    padding: Controls how to pad the image before applying the convolution. Can
+      be the string `"SAME"` or `"VALID"` indicating the type of padding
+      algorithm to use, or a list indicating the explicit paddings at the start
+      and end of each dimension. When explicit padding is used and data_format
+      is `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
+      [pad_left, pad_right], [0, 0]]`. When explicit padding used and
+      data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
+      [pad_top, pad_bottom], [pad_left, pad_right]]`.
     rate: 1-D of size 2. The dilation rate in which we sample input values
       across the `height` and `width` dimensions in atrous convolution. If it is
       greater than 1, then all values of strides must be 1.
@@ -801,6 +862,7 @@ def depthwise_conv2d(input,
 
 
 @tf_export("nn.depthwise_conv2d", v1=[])
+@dispatch.add_dispatch_support
 def depthwise_conv2d_v2(input,
                         filter,
                         strides,
@@ -830,14 +892,50 @@ def depthwise_conv2d_v2(input,
   convolution, in which case all values in the `strides` tensor must be equal
   to 1.
 
+  Usage Example:
+
+  >>> x = np.array([
+  ...     [1., 2.],
+  ...     [3., 4.],
+  ...     [5., 6.]
+  ... ], dtype=np.float32).reshape((1, 3, 2, 1))
+  >>> kernel = np.array([
+  ...     [1., 2.],
+  ...     [3., 4]
+  ... ], dtype=np.float32).reshape((2, 1, 1, 2))
+  >>> tf.nn.depthwise_conv2d(x, kernel, strides=[1, 1, 1, 1],
+  ...                        padding='VALID').numpy()
+    array([[[[10., 14.],
+             [14., 20.]],
+            [[18., 26.],
+             [22., 32.]]]], dtype=float32)
+
+  >>> tf.nn.depthwise_conv2d(x, kernel, strides=[1, 1, 1, 1],
+  ...                        padding=[[0, 0], [1, 0], [1, 0], [0, 0]]).numpy()
+    array([[[[ 0.,  0.],
+             [ 3.,  4.],
+             [ 6.,  8.]],
+            [[ 0.,  0.],
+             [10., 14.],
+             [14., 20.]],
+            [[ 0.,  0.],
+             [18., 26.],
+             [22., 32.]]]], dtype=float32)
+
   Args:
     input: 4-D with shape according to `data_format`.
     filter: 4-D with shape
       `[filter_height, filter_width, in_channels, channel_multiplier]`.
     strides: 1-D of size 4.  The stride of the sliding window for each
       dimension of `input`.
-    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the "returns" section of `tf.nn.convolution` for details.
+    padding: Controls how to pad the image before applying the convolution. Can
+      be the string `"SAME"` or `"VALID"` indicating the type of padding
+      algorithm to use, or a list indicating the explicit paddings at the start
+      and end of each dimension. When explicit padding is used and data_format
+      is `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
+      [pad_left, pad_right], [0, 0]]`. When explicit padding used and
+      data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
+      [pad_top, pad_bottom], [pad_left, pad_right]]`.
     data_format: The data format for input. Either "NHWC" (default) or "NCHW".
     dilations: 1-D of size 2. The dilation rate in which we sample input values
       across the `height` and `width` dimensions in atrous convolution. If it is
@@ -862,6 +960,7 @@ def depthwise_conv2d_v2(input,
 
 # pylint: disable=redefined-builtin,line-too-long
 @tf_export(v1=["nn.separable_conv2d"])
+@dispatch.add_dispatch_support
 def separable_conv2d(input,
                      depthwise_filter,
                      pointwise_filter,
@@ -903,8 +1002,14 @@ def separable_conv2d(input,
       filter to mix channels after `depthwise_filter` has convolved spatially.
     strides: 1-D of size 4.  The strides for the depthwise convolution for
       each dimension of `input`.
-    padding: A string, either `'VALID'` or `'SAME'`.  The padding algorithm.
-      See the "returns" section of `tf.nn.convolution` for details.
+    padding: Controls how to pad the image before applying the depthwise
+      convolution. Can be the string `"SAME"` or `"VALID"` indicating the type
+      of padding algorithm to use, or a Python list indicating the explicit
+      paddings at the start and end of each dimension. When explicit padding is
+      used and data_format is `"NHWC"`, this should be in the form `[[0, 0],
+      [pad_top, pad_bottom], [pad_left, pad_right], [0, 0]]`. When explicit
+      padding used and data_format is `"NCHW"`, this should be in the form
+      `[[0, 0], [0, 0], [pad_top, pad_bottom], [pad_left, pad_right]]`.
     rate: 1-D of size 2. The dilation rate in which we sample input values
       across the `height` and `width` dimensions in atrous convolution. If it is
       greater than 1, then all values of strides must be 1.
@@ -934,7 +1039,7 @@ def separable_conv2d(input,
       rate = [1, 1]
 
     # The layout of the ops in the graph are expected to be as follows:
-    # depthwise_conv2d  // Conv2D op corresponding to native deptwise conv.
+    # depthwise_conv2d  // Conv2D op corresponding to native depthwise conv.
     # separable_conv2d  // Conv2D op corresponding to the pointwise conv.
 
     def op(input_converted, _, padding):
@@ -963,6 +1068,7 @@ def separable_conv2d(input,
 
 
 @tf_export("nn.separable_conv2d", v1=[])
+@dispatch.add_dispatch_support
 def separable_conv2d_v2(
     input,
     depthwise_filter,
@@ -1005,8 +1111,14 @@ def separable_conv2d_v2(
       `depthwise_filter` has convolved spatially.
     strides: 1-D of size 4.  The strides for the depthwise convolution for each
       dimension of `input`.
-    padding: A string, either `'VALID'` or `'SAME'`.  The padding algorithm. See
-      the "returns" section of `tf.nn.convolution` for details.
+    padding: Controls how to pad the image before applying the depthwise
+      convolution. Can be the string `"SAME"` or `"VALID"` indicating the type
+      of padding algorithm to use, or a Python list indicating the explicit
+      paddings at the start and end of each dimension. When explicit padding is
+      used and data_format is `"NHWC"`, this should be in the form `[[0, 0],
+      [pad_top, pad_bottom], [pad_left, pad_right], [0, 0]]`. When explicit
+      padding used and data_format is `"NCHW"`, this should be in the form
+      `[[0, 0], [0, 0], [pad_top, pad_bottom], [pad_left, pad_right]]`.
     data_format: The data format for input. Either "NHWC" (default) or "NCHW".
     dilations: 1-D of size 2. The dilation rate in which we sample input values
       across the `height` and `width` dimensions in atrous convolution. If it is
@@ -1032,6 +1144,7 @@ def separable_conv2d_v2(
 
 
 @tf_export(v1=["nn.sufficient_statistics"])
+@dispatch.add_dispatch_support
 def sufficient_statistics(x, axes, shift=None, keep_dims=None, name=None,
                           keepdims=None):
   """Calculate the sufficient statistics for the mean and variance of `x`.
@@ -1089,6 +1202,7 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=None, name=None,
 
 
 @tf_export("nn.sufficient_statistics", v1=[])
+@dispatch.add_dispatch_support
 def sufficient_statistics_v2(x, axes, shift=None, keepdims=False, name=None):
   """Calculate the sufficient statistics for the mean and variance of `x`.
 
@@ -1118,6 +1232,7 @@ def sufficient_statistics_v2(x, axes, shift=None, keepdims=False, name=None):
 
 
 @tf_export("nn.normalize_moments")
+@dispatch.add_dispatch_support
 def normalize_moments(counts, mean_ss, variance_ss, shift, name=None):
   """Calculate the mean and variance of based on the sufficient statistics.
 
@@ -1150,6 +1265,7 @@ def normalize_moments(counts, mean_ss, variance_ss, shift, name=None):
 
 
 @tf_export(v1=["nn.moments"])
+@dispatch.add_dispatch_support
 def moments(
     x,
     axes,
@@ -1215,6 +1331,7 @@ def moments(
 
 
 @tf_export("nn.moments", v1=[])
+@dispatch.add_dispatch_support
 def moments_v2(
     x,
     axes,
@@ -1251,6 +1368,7 @@ def moments_v2(
 
 
 @tf_export(v1=["nn.weighted_moments"])
+@dispatch.add_dispatch_support
 def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=None,
                      keepdims=None):
   """Returns the frequency-weighted mean and variance of `x`.
@@ -1295,7 +1413,7 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=None,
     # The shape of the weights isn't necessarily the same as x's
     # shape, just broadcast-compatible with it -- so this expression
     # performs broadcasting to give a per-item weight, with the same
-    # shape as (freqency_weights * x). This avoids having to reason
+    # shape as (frequency_weights * x). This avoids having to reason
     # through all the broadcast logic to compute a correct
     # sum_of_weights.
     broadcasted_weights = frequency_weights + array_ops.zeros_like(x)
@@ -1329,6 +1447,7 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=None,
 
 
 @tf_export("nn.weighted_moments", v1=[])
+@dispatch.add_dispatch_support
 def weighted_moments_v2(x, axes, frequency_weights, keepdims=False, name=None):
   """Returns the frequency-weighted mean and variance of `x`.
 
@@ -1353,6 +1472,7 @@ def weighted_moments_v2(x, axes, frequency_weights, keepdims=False, name=None):
 
 
 @tf_export("nn.batch_normalization")
+@dispatch.add_dispatch_support
 def batch_normalization(x,
                         mean,
                         variance,
@@ -1423,6 +1543,7 @@ def batch_normalization(x,
 
 
 @tf_export(v1=["nn.fused_batch_norm"])
+@dispatch.add_dispatch_support
 def fused_batch_norm(
     x,
     scale,
@@ -1432,7 +1553,8 @@ def fused_batch_norm(
     epsilon=0.001,
     data_format="NHWC",
     is_training=True,
-    name=None):
+    name=None,
+    exponential_avg_factor=1.0):
   r"""Batch normalization.
 
 
@@ -1444,22 +1566,49 @@ def fused_batch_norm(
     x: Input `Tensor` of 4 dimensions.
     scale: A `Tensor` of 1 dimension for scaling.
     offset: A `Tensor` of 1 dimension for bias.
-    mean: A `Tensor` of 1 dimension for population mean used for inference.
-    variance: A `Tensor` of 1 dimension for population variance
-              used for inference.
+    mean: A `Tensor` of 1 dimension for population mean. The shape and meaning
+          of this argument depends on the value of is_training and
+          exponential_avg_factor as follows:
+          is_training==False (inference):
+            Mean must be a `Tensor` of the same shape as scale containing the
+            estimated population mean computed during training.
+          is_training==True and exponential_avg_factor == 1.0:
+            Mean must be None.
+          is_training==True and exponential_avg_factor != 1.0:
+            Mean must be a `Tensor` of the same shape as scale containing the
+            exponential running mean.
+    variance: A `Tensor` of 1 dimension for population variance. The shape and
+          meaning of this argument depends on the value of is_training and
+          exponential_avg_factor as follows:
+          is_training==False (inference):
+            Variance must be a `Tensor` of the same shape as scale containing
+            the estimated population variance computed during training.
+          is_training==True and exponential_avg_factor == 1.0:
+            Variance must be None.
+          is_training==True and exponential_avg_factor != 1.0:
+            Variance must be a `Tensor` of the same shape as scale containing
+            the exponential running variance.
     epsilon: A small float number added to the variance of x.
     data_format: The data format for x. Either "NHWC" (default) or "NCHW".
     is_training: A bool value to specify if the operation is used for
                  training or inference.
     name: A name for this operation (optional).
+    exponential_avg_factor: A float number (usually between 0 and 1) used
+                            for controlling the decay of the running
+                            population average of mean and variance.
+                            If set to 1.0, the current batch average is
+                            returned.
 
   Returns:
     y: A 4D Tensor for the normalized, scaled, offsetted x.
-    batch_mean: A 1D Tensor for the mean of x.
-    batch_var: A 1D Tensor for the variance of x.
-
-  Raises:
-    ValueError: If mean or variance is not None when is_training is True.
+    running_mean: A 1D Tensor for the exponential running mean of x.
+                  The output value is (1 - exponential_avg_factor) * mean +
+                  exponential_avg_factor * batch_mean), where batch_mean
+                  is the mean of the current batch in x.
+    running_var: A 1D Tensor for the exponential running variance
+                 The output value is (1 - exponential_avg_factor) * variance +
+                 exponential_avg_factor * batch_variance), where batch_variance
+                 is the variance of the current batch in x.
 
   References:
     Batch Normalization - Accelerating Deep Network Training by Reducing
@@ -1467,24 +1616,44 @@ def fused_batch_norm(
       [Ioffe et al., 2015](http://proceedings.mlr.press/v37/ioffe15.html)
       ([pdf](http://proceedings.mlr.press/v37/ioffe15.pdf))
   """
+  if is_training and exponential_avg_factor == 1.0:
+    if (mean is not None) or (variance is not None):
+      raise ValueError("Both 'mean' and 'variance' must be None when "
+                       "is_training is True and "
+                       "exponential_avg_factor == 1.0.")
+  else:
+    if (mean is None) or (variance is None):
+      raise ValueError("Both 'mean' and 'variance' must be a 1D tensor when "
+                       "is_training is False or "
+                       "exponential_avg_factor != 1.0.")
   x = ops.convert_to_tensor(x, name="input")
   scale = ops.convert_to_tensor(scale, name="scale")
   offset = ops.convert_to_tensor(offset, name="offset")
-  if is_training:
-    if (mean is not None) or (variance is not None):
-      raise ValueError("Both 'mean' and 'variance' must be None "
-                       "if is_training is True.")
   if mean is None:
     mean = constant_op.constant([])
   if variance is None:
     variance = constant_op.constant([])
+
   # Set a minimum epsilon to 1.001e-5, which is a requirement by CUDNN to
   # prevent exception (see cudnn.h).
   min_epsilon = 1.001e-5
   epsilon = epsilon if epsilon > min_epsilon else min_epsilon
 
-  if compat.forward_compatible(2019, 6, 6):
-    y, batch_mean, batch_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
+  if compat.forward_compatible(2020, 3, 6):
+    y, running_mean, running_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
+        x,
+        scale,
+        offset,
+        mean,
+        variance,
+        epsilon=epsilon,
+        exponential_avg_factor=exponential_avg_factor,
+        data_format=data_format,
+        is_training=is_training,
+        name=name)
+    return y, running_mean, running_var
+  else:
+    y, running_mean, running_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
         x,
         scale,
         offset,
@@ -1494,25 +1663,11 @@ def fused_batch_norm(
         data_format=data_format,
         is_training=is_training,
         name=name)
-    return y, batch_mean, batch_var
+    return y, running_mean, running_var
 
-  if x.dtype == dtypes.float16 or x.dtype == dtypes.bfloat16:
-    fused_batch_norm_func = gen_nn_ops.fused_batch_norm_v2
-  else:
-    fused_batch_norm_func = gen_nn_ops._fused_batch_norm  # pylint: disable=protected-access
-  y, batch_mean, batch_var, _, _ = fused_batch_norm_func(
-      x,
-      scale,
-      offset,
-      mean,
-      variance,
-      epsilon=epsilon,
-      data_format=data_format,
-      is_training=is_training,
-      name=name)
-  return y, batch_mean, batch_var
 
 @tf_export(v1=["nn.batch_norm_with_global_normalization"])
+@dispatch.add_dispatch_support
 def batch_norm_with_global_normalization(t=None,
                                          m=None,
                                          v=None,
@@ -1567,6 +1722,7 @@ def batch_norm_with_global_normalization(t=None,
 
 # pylint: disable=redefined-builtin,line-too-long
 @tf_export("nn.batch_norm_with_global_normalization", v1=[])
+@dispatch.add_dispatch_support
 def batch_norm_with_global_normalization_v2(input,
                                             mean,
                                             variance,
@@ -1816,6 +1972,7 @@ def _compute_sampled_logits(weights,
 
 
 @tf_export("nn.nce_loss", v1=[])
+@dispatch.add_dispatch_support
 def nce_loss_v2(weights,
                 biases,
                 labels,
@@ -1920,6 +2077,7 @@ def nce_loss_v2(weights,
 
 
 @tf_export(v1=["nn.nce_loss"])
+@dispatch.add_dispatch_support
 def nce_loss(weights,
              biases,
              labels,
@@ -2031,6 +2189,7 @@ def nce_loss(weights,
 
 
 @tf_export("nn.sampled_softmax_loss", v1=[])
+@dispatch.add_dispatch_support
 def sampled_softmax_loss_v2(weights,
                             biases,
                             labels,
@@ -2122,6 +2281,7 @@ def sampled_softmax_loss_v2(weights,
 
 
 @tf_export(v1=["nn.sampled_softmax_loss"])
+@dispatch.add_dispatch_support
 def sampled_softmax_loss(weights,
                          biases,
                          labels,

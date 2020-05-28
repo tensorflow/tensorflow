@@ -1,9 +1,9 @@
-# Experimental code for the new TF-Lite convertor, and MLIR dialects and utilities for TensorFlow Lite.
+# The new [MLIR](https://github.com/llvm/llvm-project/tree/master/mlir) based
+TensorFlow to TensorFlow Lite converter
 
 This directory contains:
 
-1. Experimental code for the new TF-Lite convertor.
-2. Code for the TF-lite dialect [MLIR](https://github.com/tensorflow/mlir).
+1.  MLIR dialects, transformation passes and utilities for TensorFlow Lite.
 
 ## API:
 
@@ -11,7 +11,8 @@ The API for converting TensorFlow models to TensorFlow Lite will be through
 `tf.lite.TFLiteConverter`. All the conversion code is open sourced, and
 the API will be integrated soon.
 
-### The conversion process from TensorFlow to TensorFlow Lite includes the following major passes:
+### The conversion process from TensorFlow to TensorFlow Lite includes the
+following major passes:
 
 - Import from GraphDef, in .pb or .pbtxt  format, into MLIR.
 - Raise to Control-flow-graph. Converts TF Control Flow dialect to TF dialect.
@@ -28,3 +29,6 @@ TensorFlow Lite models).
 - The Export pass writes out TensorFlow Lite FlatBuffer format. This pass
 operates on MLIR TensorFlow Lite dialect and is simple/direct translation.
 
+See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/lite/tf_tfl_passes.cc
+for the full list of MLIR passes for conversion from TensorFlow to
+TensorFlow Lite.

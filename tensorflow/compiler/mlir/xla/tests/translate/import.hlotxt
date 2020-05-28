@@ -1,4 +1,4 @@
-// RUN: tf-mlir-translate -hlo-text-to-mlir-hlo %s -o - | FileCheck %s
+// RUN: tf-mlir-translate -hlo-text-to-mlir-hlo %s -o - | FileCheck %s --dump-input-on-failure
 
 HloModule main
 
@@ -20,37 +20,36 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %dot.4 = f32[] dot(f32[4]{0} %add.3, f32[4]{0} %Arg_1.2), lhs_contracting_dims={0}, rhs_contracting_dims={0}
 }
 
-// This test is more thorough than those of the the other binary ops to test
-// their shared functionality.
-
-// CHECK-LABEL:  func @test_add
-%test_add (Arg_0.1: f32[4], Arg_1.2: f32[4], Arg_2.3: f32[], Arg_3.4: f32[]) -> f32[4] {
-  %Arg_0.1 = f32[4] parameter(0)
-  %Arg_1.2 = f32[4] parameter(1)
-  %Arg_2.3 = f32[] parameter(2)
-  %Arg_3.4 = f32[] parameter(3)
-
-  // Add two tensors
-  // CHECK-NEXT:  xla_hlo.add %arg0, %arg1 {name = "{{.*}}"}
-  %add.3 = f32[4] add(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
-
-  // Add two scalars
-  // CHECK-NEXT:  xla_hlo.add %arg2, %arg3
-  %add.4 = f32[] add(f32[] %Arg_2.3, f32[] %Arg_3.4)
-
-  // Add a tensor and scalar
-  // CHECK-NEXT:  "xla_hlo.add"(%0, %1)
-  ROOT %add.5 = f32[4] add(f32[4] %add.3, f32[] %add.4)
-}
-
 // CHECK-LABEL:  func @test_after_all
-// CHECK-SAME:    ([[VAL_0:%.*]]: !xla_hlo.token, [[VAL_1:%.*]]: !xla_hlo.token) -> !xla_hlo.token
+// CHECK-SAME:  ([[VAL_0:%.*]]: !xla_hlo.token, [[VAL_1:%.*]]: !xla_hlo.token) -> !xla_hlo.token
 %test_after_all (token0: token[], token1: token[] ) -> token[] {
   token0 = token[] parameter(0)
   token1 = token[] parameter(1)
   // CHECK-NEXT:  "xla_hlo.after_all"([[VAL_0]], [[VAL_1]]) {name = "{{.*}}"} : (!xla_hlo.token, !xla_hlo.token) -> !xla_hlo.token
   ROOT after-all = token[] after-all(token0, token1)
 }
+
+// Test all-reduce
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+// CHECK-LABEL:  func @test_all_reduce
+// CHECK-SAME:  ([[INPUT:%.*]]: tensor<8xf32>)
+%test_all_reduce {
+  input = f32[8] parameter(0)
+  // CHECK-NEXT:  "xla_hlo.all_reduce"([[INPUT]])
+  // CHECK:  ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
+  // CHECK:    [[ADD:%.*]] = xla_hlo.add [[ARG0]], [[ARG1]]
+  // CHECK:    "xla_hlo.return"([[ADD]]) : (tensor<f32>) -> ()
+  // CHECK:  }) {
+  // CHECK-SAME:  channel_handle = {handle = 1 : i64, type = 0 : i64}
+  // CHECK-SAME:  replica_groups = dense<{{\[\[}}0, 1, 2, 3], [5, 6, 7, 8]]> : tensor<2x4xi64>
+  ROOT result = f32[8] all-reduce(input), channel_id=1, replica_groups={{0,1,2,3}, {5,6,7,8}}, to_apply=add
+}
+
 
 // CHECK-LABEL:  func @test_and
 %test_and (Arg_0.1: pred[4], Arg_1.2: pred[4]) -> pred[4] {
@@ -80,6 +79,20 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
 
   // CHECK-NEXT:  "xla_hlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>, name = "{{.*}}"} : (tensor<1x2xf32>) -> tensor<3x1x2xf32>
   ROOT broadcast.4 = f32[3,1,2] broadcast(%Arg_0.1), dimensions={1, 2}
+}
+
+// CHECK-LABEL:  func @test_batch_norm_grad
+%test_batch_norm_grad (input: f32[2,2,2,2], scale: f32[2], mean: f32[2], variance: f32[2], grad_output: f32[2,2,2,2]) -> (f32[2,2,2,2], f32[2], f32[2]) {
+  %input = f32[2,2,2,2] parameter(0)
+  %scale = f32[2] parameter(1)
+  %mean = f32[2] parameter(2)
+  %variance = f32[2] parameter(3)
+  %grad_output = f32[2,2,2,2] parameter(4)
+
+  // CHECK:  "xla_hlo.batch_norm_grad"
+  // CHECK-SAME:  epsilon = 1.000000e-03 : f32
+  // CHECK-SAME:  feature_index = 1 : i64
+  ROOT %batch-norm-grad = (f32[2,2,2,2], f32[2], f32[2]) batch-norm-grad(f32[2,2,2,2] %input, f32[2] %scale, f32[2] %mean, f32[2] %variance, f32[2,2,2,2] %grad_output), epsilon=0.001, feature_index=1
 }
 
 // CHECK-LABEL:  func @call(%arg0: tensor<i64>) -> tensor<i64> {
@@ -123,11 +136,11 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
 }
 
 
-// CHECK-LABEL:  func @test_compare(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>, %arg2: tensor<1xf32>) -> tensor<3xi1> {
-%test_compare (Arg_0.1: f32[3], Arg_1.2: f32[3], Arg_2.3: f32[1]) -> pred[3] {
+// CHECK-LABEL:  func @test_compare(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>, %arg2: tensor<3xf32>) -> tensor<3xi1> {
+%test_compare (Arg_0.1: f32[3], Arg_1.2: f32[3], Arg_2.3: f32[3]) -> pred[3] {
   %Arg_0.1 = f32[3] parameter(0)
   %Arg_1.2 = f32[3] parameter(1)
-  %Arg_2.3 = f32[1] parameter(2)
+  %Arg_2.3 = f32[3] parameter(2)
 
   // CHECK-NEXT:  "xla_hlo.compare"(%arg0, %arg1) {comparison_direction = "EQ", name = "{{.*}}"} : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xi1>
   %compare.4 = pred[3] compare(Arg_0.1, Arg_1.2), direction=EQ
@@ -136,7 +149,7 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   %compare.5 = pred[3] compare(Arg_0.1, Arg_1.2), direction=LE
 
   // Requires broadcast of compatible tensors.
-  // CHECK-NEXT:  "xla_hlo.compare"(%arg0, %arg2) {comparison_direction = "GT", name = "{{.*}}"} : (tensor<3xf32>, tensor<1xf32>) -> tensor<3xi1>
+  // CHECK-NEXT:  "xla_hlo.compare"(%arg0, %arg2) {comparison_direction = "GT", name = "{{.*}}"} : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xi1>
   ROOT %compare.6 = pred[3] compare(Arg_0.1, Arg_2.3), direction=GT
 }
 
@@ -168,7 +181,22 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   // Note that double brackets "[[" have to be escaped as they denote variables
   // in FileCheck. The only way to do so is to drop into regex with "{{"
   // CHECK-NEXT:  constant  {name = "{{.*}}"} dense<{{\[\[\[\[}}1.000000e+00]], {{\[\[}}2.000000e+00]]], {{\[\[\[}}3.000000e+00]], {{\[\[}}4.000000e+00]]]]> : tensor<2x2x1x1xf32>
-  ROOT %constant.1 = f32[2,2,1,1]{3,2,1,0} constant({{{{1.0}},{{2.0}}},{{{3.0}},{{4.0}}}}), metadata={op_type="Conv2D" op_name="embedded_inference/conv_model/conv_0/Conv2D"}
+  %constant.1 = f32[2,2,1,1]{3,2,1,0} constant({{{{1.0}},{{2.0}}},{{{3.0}},{{4.0}}}}), metadata={op_type="Conv2D" op_name="embedded_inference/conv_model/conv_0/Conv2D"}
+
+  // CHECK: dense<[1, 2, 4, 8]> : tensor<4xui64>
+  %constant.2 = u64[4] constant({ 1, 2, 4, 8 })
+
+  // CHECK: dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xbf16>
+  %constant.3 = bf16[4] constant({1, 2, 3, 4})
+
+  // CHECK: dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f32>>
+  %constant.4 = c64[] constant((1, 0))
+
+  // CHECK: dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f64>>
+  %constant.5 = c128[] constant((1, 0))
+
+  // CHECK: dense<[1.000000e+00, -4.000000e+00, -6.550400e+04, 1.562500e-02]> : tensor<4xf16>
+  ROOT %constant.6 = f16[4] constant({1, -4, -65504, 0.015625})
 }
 
 // TODO(b/129422361) Potentially update when copy, reshape, and conv have actual
@@ -188,7 +216,7 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   // CHECK-NEXT:  %cst = constant  {name = "{{.*}}"} dense<{{\[\[\[\[}}5.000000e-01]], {{\[\[}}-6.000000e-01]]], {{\[\[\[}}3.000000e-01]], {{\[\[}}-1.000000e-01]]]]> : tensor<2x2x1x1xf32>
   %constant.3 = f32[2,2,1,1]{3,2,1,0} constant({{{{0.5}}, {{-0.6}}}, {{{0.3}}, {{-0.1}}}}), metadata={op_type="Conv2D" op_name="embedded_inference/conv_model/conv_0/Conv2D"}
 
-  // CHECK-NEXT:  %2 = "xla_hlo.conv"(%1, %cst) {
+  // CHECK-NEXT:  %2 = "xla_hlo.convolution"(%1, %cst) {
   // CHECK-SAME:     batch_group_count = 1 : i64
   // CHECK-SAME:     dimension_numbers = {
   // CHECK-SAME:       input_batch_dimension = 0 : i64
@@ -197,8 +225,8 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   // CHECK-SAME:       kernel_input_feature_dimension = 2 : i64
   // CHECK-SAME:       kernel_output_feature_dimension = 3 : i64
   // CHECK-SAME:       kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:       output_batch_dimension = 0 : i64
-  // CHECK-SAME:       output_feature_dimension = 3 : i64
+  // CHECK-SAME:       output_batch_dimension = 3 : i64
+  // CHECK-SAME:       output_feature_dimension = 0 : i64
   // CHECK-SAME:       output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>
   // CHECK-SAME:     }
   // CHECK-SAME:     feature_group_count = 1 : i64
@@ -208,11 +236,11 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   // CHECK-SAME:     rhs_dilations = dense<[2, 3]> : tensor<2xi64>
   // CHECK-SAME:     window_strides = dense<[4, 5]> : tensor<2xi64>
   // CHECK-SAME:   }
-  // CHECK-SAME:   (tensor<256x32x32x6xf32>, tensor<2x2x1x1xf32>) -> tensor<256x30x30x16xf32>
+  // CHECK-SAME:   (tensor<256x32x32x6xf32>, tensor<2x2x1x1xf32>) -> tensor<16x30x30x256xf32>
 
-  %convolution.4 = f32[256,30,30,16]{2,1,3,0} convolution(%reshape.2, %constant.3), window={size=3x3 stride=4x5 pad=44_45x60_60 rhs_dilate=2x3}, dim_labels=b01f_01io->b01f, metadata={op_type="Conv2D" op_name="embedded_inference/conv_model/conv_0/Conv2D"}
+  %convolution.4 = f32[16,30,30,256]{2,1,3,0} convolution(%reshape.2, %constant.3), window={size=3x3 stride=4x5 pad=44_45x60_60 rhs_dilate=2x3}, dim_labels=b01f_01io->f01b, metadata={op_type="Conv2D" op_name="embedded_inference/conv_model/conv_0/Conv2D"}
 
-  // CHECK-NEXT:  %3 = "xla_hlo.reshape"(%2) {name = "{{.*}}"} : (tensor<256x30x30x16xf32>) -> tensor<256x30x30x16xf32>
+  // CHECK-NEXT:  %3 = "xla_hlo.reshape"(%2) {name = "{{.*}}"} : (tensor<16x30x30x256xf32>) -> tensor<256x30x30x16xf32>
   %reshape.5 = f32[256,30,30,16]{3,2,1,0} reshape(%convolution.4), metadata={op_name="HLO_Retvals"}
 
   // CHECK-NEXT:  "xla_hlo.tuple"(%3) {name = "{{.*}}"} : (tensor<256x30x30x16xf32>) -> tuple<tensor<256x30x30x16xf32>>
@@ -224,31 +252,31 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
 %test_convolve1D_padding (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,5,1] {
   %input = f32[1,2,1] parameter(0)
   %filter = f32[1,1,1] parameter(1)
-  // CHECK:  "xla_hlo.conv"
+  // CHECK:  "xla_hlo.convolution"
   // CHECK-SAME:  padding = dense<{{\[\[}}1, 2]]> : tensor<1x2xi64>
   ROOT %convolution = f32[1,5,1] convolution(f32[1,2,1] %input, f32[1,1,1] %filter), feature_group_count=1, dim_labels=b0f_0io->b0f, window={pad=1_2 size=1}
 }
 
-// CHECK-LABEL:  func @test_convert(%arg0: tensor<4xf32>, %arg1: tensor<f32>) -> tensor<4xf64> {
-%test_convert (Arg_0.1: f32[4], Arg_1.2: f32[]) -> f64[4] {
+// CHECK-LABEL:  func @test_convert(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf64> {
+%test_convert (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f64[4] {
   %Arg_0.1 = f32[4] parameter(0)
-  %Arg_1.2 = f32[] parameter(1)
+  %Arg_1.2 = f32[4] parameter(1)
 
   // CHECK-NEXT:  %0 = "xla_hlo.convert"(%arg0) {name = "{{.*}}"} : (tensor<4xf32>) -> tensor<4xf64>
   %convert.3 = f64[4] convert(f32[4] %Arg_0.1)
 
-  // CHECK-NEXT:  %1 = "xla_hlo.convert"(%arg1) {name = "{{.*}}"} : (tensor<f32>) -> tensor<f64>
-  %convert.4 = f64[] convert(f32[] %Arg_1.2)
+  // CHECK-NEXT:  %1 = "xla_hlo.convert"(%arg1) {name = "{{.*}}"} : (tensor<4xf32>) -> tensor<4xf64>
+  %convert.4 = f64[4] convert(f32[4] %Arg_1.2)
 
-  // CHECK-NEXT:  "xla_hlo.add"(%0, %1)
-  ROOT %add.5 = f64[4] add(f64[4] %convert.3, f64[] %convert.4)
+  // CHECK-NEXT:  xla_hlo.add %0, %1
+  ROOT %add.5 = f64[4] add(f64[4] %convert.3, f64[4] %convert.4)
 }
 
 // CHECK-LABEL:  func @test_cosine(%arg0: tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32> {
 %test_cosine (arg0.1: f32[1,16,16,3]) -> f32[1,16,16,3] {
   %arg0.1 = f32[1,16,16,3]{3,2,1,0} parameter(0), metadata={op_name="HLO_Args"}
 
-  // CHECK-NEXT:  "xla_hlo.cos"(%arg0) {name = "{{.*}}"} : (tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>
+  // CHECK-NEXT:  "xla_hlo.cosine"(%arg0) {name = "{{.*}}"} : (tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>
   ROOT %cosine.3 = f32[1,16,16,3]{3,2,1,0} cosine(f32[1,16,16,3]{3,2,1,0} %arg0.1)
 }
 
@@ -266,7 +294,7 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   %Arg_0.1 = f32[4] parameter(0)
   %Arg_1.2 = f32[4] parameter(1)
 
-  // CHECK-NEXT:  xla_hlo.div %arg0, %arg1 {name = "{{.*}}"} : tensor<4xf32>
+  // CHECK-NEXT:  xla_hlo.divide %arg0, %arg1 {name = "{{.*}}"} : tensor<4xf32>
   ROOT %divide.3 = f32[4] divide(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
 }
 
@@ -310,24 +338,36 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %dot.6 = f32[] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={0}, rhs_contracting_dims={1}
 }
 
-// CHECK-LABEL:  func @test_dynamic_update_slice_1(%arg0: tensor<4x4xf32>, %arg1: tensor<1x4xf32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<4x4xf32> {
+// CHECK-LABEL:  func @test_dynamic_slice
+// CHECK-SAME:  [[OPERAND:%.*]]: tensor<2x2x258xi32>, [[START_IDX_1:%.*]]: tensor<i32>, [[START_IDX_2:%.*]]: tensor<i32>, [[START_IDX_3:%.*]]: tensor<i32>
+%test_dynamic_slice (operand: s32[2,2,258], start_indices: s32[3]) -> s32[1,1,32] {
+  %operand = s32[2,2,258] parameter(0)
+  %start_idx_1 = s32[] parameter(1)
+  %start_idx_2 = s32[] parameter(2)
+  %start_idx_3 = s32[] parameter(3)
+  // CHECK:  "xla_hlo.dynamic-slice"([[OPERAND]], [[START_IDX_1]], [[START_IDX_2]], [[START_IDX_3]])
+  // CHECK-SAME:  slice_sizes = dense<[1, 1, 32]> : tensor<3xi64>
+  ROOT %dynamic-slice = s32[1,1,32] dynamic-slice(s32[2,2,258] %operand, s32[] %start_idx_1, s32[] %start_idx_2, s32[] %start_idx_3), dynamic_slice_sizes={1,1,32}
+}
+
+// CHECK-LABEL:  func @test_dynamic_update_slice_1(%arg0: tensor<4x4xf32>, %arg1: tensor<1x4xf32>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<4x4xf32> {
 %test_dynamic_update_slice_1 (Arg_0.1: f32[4, 4], Arg_1.2: f32[1, 4], Arg_2.3: f32[], Arg_3.4: f32[]) -> f32[4, 4] {
   %Arg_0.1 = f32[4, 4] parameter(0)
   %Arg_1.2 = f32[1, 4] parameter(1)
-  %Arg_2.3 = f32[] parameter(2)
-  %Arg_3.4 = f32[] parameter(3)
+  %Arg_2.3 = s32[] parameter(2)
+  %Arg_3.4 = s32[] parameter(3)
 
-  // CHECK-NEXT:  "xla_hlo.dynamic-update-slice"(%arg0, %arg1, %arg2, %arg3) : (tensor<4x4xf32>, tensor<1x4xf32>, tensor<f32>, tensor<f32>) -> tensor<4x4xf32>
+  // CHECK-NEXT:  "xla_hlo.dynamic-update-slice"(%arg0, %arg1, %arg2, %arg3) : (tensor<4x4xf32>, tensor<1x4xf32>, tensor<i32>, tensor<i32>) -> tensor<4x4xf32>
   ROOT %dynamic-update-slice.5 = f32[4, 4] dynamic-update-slice(%Arg_0.1, %Arg_1.2, %Arg_2.3, %Arg_3.4)
 }
 
-// CHECK-LABEL:  func @test_dynamic_update_slice_2(%arg0: tensor<4xf32>, %arg1: tensor<2xf32>, %arg2: tensor<f32>) -> tensor<4xf32>
+// CHECK-LABEL:  func @test_dynamic_update_slice_2(%arg0: tensor<4xf32>, %arg1: tensor<2xf32>, %arg2: tensor<i32>) -> tensor<4xf32>
 %test_dynamic_update_slice_2 (Arg_0.1: f32[4], Arg_1.2: f32[2], Arg_2.3: f32[]) -> f32[4] {
   %Arg_0.1 = f32[4] parameter(0)
   %Arg_1.2 = f32[2] parameter(1)
-  %Arg_2.3 = f32[] parameter(2)
+  %Arg_2.3 = s32[] parameter(2)
 
-  // CHECK-NEXT:  "xla_hlo.dynamic-update-slice"(%arg0, %arg1, %arg2) : (tensor<4xf32>, tensor<2xf32>, tensor<f32>) -> tensor<4xf32>
+  // CHECK-NEXT:  "xla_hlo.dynamic-update-slice"(%arg0, %arg1, %arg2) : (tensor<4xf32>, tensor<2xf32>, tensor<i32>) -> tensor<4xf32>
   ROOT %dynamic-update-slice.5 = f32[4] dynamic-update-slice(%Arg_0.1, %Arg_1.2, %Arg_2.3)
 }
 
@@ -335,7 +375,7 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
 %test_exponential (arg0.1: f32[16]) -> f32[16] {
   %arg0.1 = f32[16] parameter(0)
 
-  // CHECK-NEXT:  "xla_hlo.exp"(%arg0) {name = "{{.*}}"} : (tensor<16xf32>) -> tensor<16xf32>
+  // CHECK-NEXT:  "xla_hlo.exponential"(%arg0) {name = "{{.*}}"} : (tensor<16xf32>) -> tensor<16xf32>
   ROOT %exp.2 = f32[16] exponential(f32[16] %arg0.1)
 }
 
@@ -466,7 +506,7 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   %Arg_0.1 = f32[4] parameter(0)
   %Arg_1.2 = f32[4] parameter(1)
 
-  // CHECK-NEXT:  xla_hlo.max %arg0, %arg1 {name = "{{.*}}"} : tensor<4xf32>
+  // CHECK-NEXT:  xla_hlo.maximum %arg0, %arg1 {name = "{{.*}}"} : tensor<4xf32>
   ROOT %maximum.3 = f32[4] maximum(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
 }
 
@@ -475,7 +515,7 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   %Arg_0.1 = f32[4] parameter(0)
   %Arg_1.2 = f32[4] parameter(1)
 
-  // CHECK-NEXT:  xla_hlo.min %arg0, %arg1 {name = "{{.*}}"} : tensor<4xf32>
+  // CHECK-NEXT:  xla_hlo.minimum %arg0, %arg1 {name = "{{.*}}"} : tensor<4xf32>
   ROOT %minimum.3 = f32[4] minimum(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
 }
 
@@ -484,7 +524,7 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   %Arg_0.1 = f32[4] parameter(0)
   %Arg_1.2 = f32[4] parameter(1)
 
-  // CHECK-NEXT:  %0 = xla_hlo.mul %arg0, %arg1 {name = "{{.*}}"} : tensor<4xf32>
+  // CHECK-NEXT:  %0 = xla_hlo.multiply %arg0, %arg1 {name = "{{.*}}"} : tensor<4xf32>
   ROOT %multiply.3 = f32[4] multiply(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
 }
 
@@ -492,7 +532,7 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
 %test_negate (arg0.1: f32[16]) -> f32[16] {
   %arg0.1 = f32[16] parameter(0)
 
-  // CHECK-NEXT:  "xla_hlo.neg"(%arg0) {name = "{{.*}}"} : (tensor<16xf32>) -> tensor<16xf32>
+  // CHECK-NEXT:  "xla_hlo.negate"(%arg0) {name = "{{.*}}"} : (tensor<16xf32>) -> tensor<16xf32>
   ROOT %negate.2 = f32[16] negate(f32[16] %arg0.1)
 }
 
@@ -563,7 +603,7 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   %Arg_0.1 = f32[4] parameter(0)
   %Arg_1.2 = f32[4] parameter(1)
 
-  // CHECK-NEXT:  xla_hlo.pow %arg0, %arg1 {name = "{{.*}}"} : tensor<4xf32>
+  // CHECK-NEXT:  xla_hlo.power %arg0, %arg1 {name = "{{.*}}"} : tensor<4xf32>
   ROOT %power.3 = f32[4] power(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
 }
 
@@ -646,10 +686,28 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   // CHECK:  {dimensions = dense<0> : tensor<1xi64>} : (tensor<4xf32>, tensor<f32>) -> tensor<f32>
   %reduce.4 = f32[] reduce(%reduce.2, %Arg_2.3), dimensions={0}, to_apply=%reduce_helper.3
 
-  // CHECK:  %4 = xla_hlo.sub [[VAL2]], [[VAL4]] {name = "{{.*}}"} : tensor<f32>
+  // CHECK:  %4 = xla_hlo.subtract [[VAL2]], [[VAL4]] {name = "{{.*}}"} : tensor<f32>
   %sub.5 = f32[] subtract(%reduce.3, %reduce.4)
 
   ROOT %tuple.6 = ((f32[], f32[]), f32[]) tuple(%reduce.1, %sub.5)
+}
+
+// CHECK-LABEL:  func @test_reduce_window
+// CHECK-SAME: ([[ARG0:%.*]]: tensor<2x17x31x7xf32>, [[ARG1:%.*]]: tensor<f32>)
+%test_reduce_window (Arg_0.1: f32[2,17,31,7], Arg_1.2: f32[]) -> f32[2,5,8,7] {
+  %Arg_0.1 = f32[2,17,31,7] parameter(0)
+  %Arg_1.2 = f32[] parameter(1)
+
+  // CHECK: "xla_hlo.reduce_window"([[ARG0]], [[ARG1]]) ( {
+  // CHECK:   xla_hlo.add {{.*}} : tensor<f32>
+  // CHECK: }) {
+  // CHECK-SAME:   base_dilations = dense<1> : tensor<4xi64>
+  // CHECK-SAME:   padding = dense<{{\[\[}}0, 0], [2, 0], [0, 2], [0, 0]]> : tensor<4x2xi64>
+  // CHECK-SAME:   window_dilations = dense<[1, 2, 2, 1]> : tensor<4xi64>
+  // CHECK-SAME:   window_dimensions = dense<[1, 2, 2, 1]> : tensor<4xi64>
+  // CHECK-SAME:   window_strides = dense<[1, 4, 4, 1]> : tensor<4xi64>
+  // CHECK_SAME: }
+  ROOT %reduce-window.1 = f32[2,5,8,7] reduce-window(f32[2,17,31,7] %Arg_0.1, f32[] %Arg_1.2), window={size=1x2x2x1 stride=1x4x4x1 pad=0_0x2_0x0_2x0_0 rhs_dilate=1x2x2x1}, to_apply=%reduce_helper.3
 }
 
 // CHECK-LABEL:  func @test_remainder
@@ -692,6 +750,37 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %Arg_0.1 = f32[] parameter(0)
 }
 
+// Test scatter
+%update_computation {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %sum = f32[] add(f32[] %lhs, f32[] %rhs)
+}
+
+%test_scatter {
+  %input_tensor = f32[200,100,300] parameter(0)
+  %scatter_indices = s64[10,2] parameter(1)
+  %updates = f32[10,300] parameter(2)
+  ROOT %scatter = f32[200,100,300] scatter(f32[200,100,300] %input_tensor, s64[10,2] %scatter_indices, f32[10,300] %updates), update_window_dims={1}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=1, to_apply=%update_computation
+}
+
+// CHECK-LABEL:  func @test_scatter
+// CHECK-SAME:   [[ARG_0:%.*]]: tensor<200x100x300xf32>, [[ARG_1:%.*]]: tensor<10x2xi64>, [[ARG_2:%.*]]: tensor<10x300xf32>) -> tensor<200x100x300xf32>
+// CHECK:  "xla_hlo.scatter"([[ARG_0]], [[ARG_1]], [[ARG_2]]) ( {
+// CHECK:    ^bb0([[LHS:%.*]]: tensor<f32>, [[RHS:%.*]]: tensor<f32>):
+// CHECK:      [[ADD:%.*]] = xla_hlo.add [[LHS]], [[RHS]]
+// CHECK:      "xla_hlo.return"([[ADD]]) : (tensor<f32>) -> ()
+// CHECK:    })
+// CHECK-SAME:  indices_are_sorted = false
+// CHECK-SAME:  scatter_dimension_numbers = {
+// CHECK-SAME:    index_vector_dim = 1 : i64
+// CHECK-SAME:    inserted_window_dims = dense<[0, 1]> : tensor<2xi64>
+// CHECK-SAME:    scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>
+// CHECK-SAME:    update_window_dims = dense<1> : tensor<1xi64>
+// CHECK-SAME:  }
+// CHECK-SAME:  unique_indices = false
+
+
 // CHECK-LABEL:  func @test_select(%arg0: tensor<2x3xi1>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xi32>) -> tensor<2x3xi32> {
 %test_select {
   %Arg_0.1 = pred[2,3] parameter(0)
@@ -701,6 +790,44 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   // CHECK:  "xla_hlo.select"(%arg0, %arg1, %arg2) {name = "{{.*}}"} : (tensor<2x3xi1>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
   ROOT %select.4 = s32[2,3] select(pred[2,3] %Arg_0.1, s32[2,3] %Arg_1.2, s32[2,3] %Arg_2.3)
 }
+
+// Test SelectAndScatter
+%ge_select (lhs: f32[], rhs: f32[]) -> pred[] {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %greater-than-or-equal-to = pred[] compare(f32[] %lhs, f32[] %rhs), direction=GE
+}
+
+%add_gather (lhs.1: f32[], rhs.1: f32[]) -> f32[] {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %lhs, f32[] %rhs)
+}
+
+// CHECK-LABEL:  func @test_select_and_scatter
+// CHECK-SAME:  [[INPUT:%.*]]: tensor<4x5xf32>, [[SOURCE:%.*]]: tensor<2x2xf32>, [[INIT_VAL:%.*]]: tensor<f32>
+%test_select_and_scatter {
+  %input = f32[4,5] parameter(0)
+  %source = f32[2,2] parameter(1)
+  %init_value = f32[] parameter(2)
+  ROOT %select-and-scatter = f32[4,5] select-and-scatter(f32[4,5] %input, f32[2,2] %source, f32[] %init_value), window={size=2x3 stride=2x3 pad=0_0x0_1}, select=%ge_select, scatter=%add_gather
+}
+
+// CHECK:  [[RESULT:%.*]] = "xla_hlo.select_and_scatter"([[INPUT]], [[SOURCE]], [[INIT_VAL]]) ( {
+// CHECK:  ^bb0([[LHS:%.*]]: tensor<f32>, [[RHS:%.*]]: tensor<f32>):
+// CHECK:    [[CMP:%.*]] = "xla_hlo.compare"([[LHS]], [[RHS]])
+// CHECK:    "xla_hlo.return"([[CMP]]) : (tensor<i1>) -> ()
+// CHECK:  },  {
+// CHECK:  ^bb0([[LHS:%.*]]: tensor<f32>, [[RHS:%.*]]: tensor<f32>):
+// CHECK:    [[ADD:%.*]] = xla_hlo.add [[LHS]], [[RHS]]
+// CHECK:    "xla_hlo.return"([[ADD]]) : (tensor<f32>) -> ()
+// CHECK:    }) {
+// CHECK-SAME:    padding = dense<{{\[\[}}0, 0], [0, 1]]> : tensor<2x2xi64>
+// CHECK-SAME:    window_dimensions = dense<[2, 3]> : tensor<2xi64>
+// CHECK-SAME:    window_strides = dense<[2, 3]> : tensor<2xi64>
+// CHECK-SAME:  }
+// CHECK:  return [[RESULT:%.*]] : tensor<4x5xf32>
+
 
 // CHECK-LABEL:  func @test_set_dimension_size
 // CHECK-SAME:  ([[ARG:%.*]]: tensor<4x4xf32>, [[SIZE:%.*]]: tensor<i32>)
@@ -715,16 +842,35 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
 %test_sine (arg0.1: f32[1,16,16,3]) -> f32[1,16,16,3] {
   %arg0.1 = f32[1,16,16,3]{3,2,1,0} parameter(0), metadata={op_name="HLO_Args"}
 
-  // CHECK-NEXT:  "xla_hlo.sin"(%arg0) {name = "{{.*}}"} : (tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>
+  // CHECK-NEXT:  "xla_hlo.sine"(%arg0) {name = "{{.*}}"} : (tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>
   ROOT %sine.3 = f32[1,16,16,3]{3,2,1,0} sine(f32[1,16,16,3]{3,2,1,0} %arg0.1)
 }
+
+// Test sort
+%compare {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+}
+
+%test_sort {
+  x = f32[1024]{0} parameter(0)
+  ROOT sorted = f32[1024]{0} sort(x), dimensions={0}, is_stable=true, to_apply=compare
+}
+// CHECK-LABEL:  func @test_sort
+// CHECK-SAME:  [[ARG:%.*]]: tensor<1024xf32>) -> tensor<1024xf32>
+// CHECK:  "xla_hlo.sort"([[ARG]]) ( {
+// CHECK:    ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
+// CHECK:      [[CMP:%.*]] = "xla_hlo.compare"([[ARG0]], [[ARG1]]) {comparison_direction = "LT", name = "lt"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+// CHECK:      "xla_hlo.return"([[CMP]]) : (tensor<i1>) -> ()
+// CHECK:    }) {dimension = 0 : i64, is_stable = true} : (tensor<1024xf32>) -> tensor<1024xf32>
 
 // CHECK-LABEL:  func @test_subtract
 %test_subtract (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f32[4] {
   %Arg_0.1 = f32[4] parameter(0)
   %Arg_1.2 = f32[4] parameter(1)
 
-  // CHECK-NEXT:  xla_hlo.sub %arg0, %arg1 {name = "{{.*}}"} : tensor<4xf32>
+  // CHECK-NEXT:  xla_hlo.subtract %arg0, %arg1 {name = "{{.*}}"} : tensor<4xf32>
   ROOT %subtract.3 = f32[4] subtract(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
 }
 
@@ -835,4 +981,26 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
 
   // CHECK:  xla_hlo.shift_right_logical [[VAL_0]], [[VAL_1]]
   ROOT %shiftright.logical = s32[4] shift-right-logical(s32[4] %Arg_0.1, s32[4] %Arg_1.2)
+}
+
+// CHECK-LABEL:  func @complex_type
+// CHECK-SAME:    (%[[ARG0:.*]]: tensor<2xcomplex<f32>>, %[[ARG1:.*]]: tensor<2xcomplex<f64>>) -> tuple<tensor<2xf32>, tensor<2xf64>>
+%complex_type (Arg_0.1: c64[2], Arg_1.2: c128[2]) -> (f32[2], f64[2]) {
+  %Arg_0.1 = c64[2] parameter(0)
+  %abs.3 = f32[2] abs(c64[2] %Arg_0.1)
+  %Arg_1.2 = c128[2] parameter(1)
+  %abs.4 = f64[2] abs(c128[2] %Arg_1.2)
+
+  // CHECK:  "xla_hlo.abs"(%[[ARG0]]) {name = "{{.*}}"} : (tensor<2xcomplex<f32>>) -> tensor<2xf32>
+  // CHECK:  "xla_hlo.abs"(%[[ARG1]]) {name = "{{.*}}"} : (tensor<2xcomplex<f64>>) -> tensor<2xf64>
+  ROOT %tuple.5 = (f32[2], f64[2]) tuple(f32[2] %abs.3, f64[2] %abs.4)
+}
+
+// CHECK-LABEL:  func @unsigned_int
+// CHECK-SAME:    (%[[ARG0:.*]]: tensor<4xui16>)
+%unsigned_int(Arg_0.1: u16[4]) -> u16[4] {
+  %Arg_0.1 = u16[4] parameter(0)
+
+  // CHECK: "xla_hlo.not"(%[[ARG0]]) {name = "{{.*}}"} : (tensor<4xui16>) -> tensor<4xui16>
+  ROOT %not.2 = u16[4] not(u16[4] %Arg_0.1)
 }

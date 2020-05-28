@@ -25,6 +25,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace profiler {
+
+// The name of OpMetrics to represent the idle time.
+ABSL_CONST_INIT extern const absl::string_view kIdle;
+
 // Helps build an op metrics database (borrowed).
 // Enables fast lookup of existing ops and prevents the creation of duplicate
 // ops. It is the user's responsibility to ensure an op metrics database
@@ -67,9 +71,14 @@ uint64 IdleTimePs(const OpMetricsDb& metrics_db);
 // must have been set.
 void AddIdleOp(OpMetricsDb* db);
 
-// Converts from Hlo-op metrics to Tf-op metrics.
-OpMetricsDb CreateTfMetricsDbFromHloMetricsDb(
-    const OpMetricsDb& hlo_metrics_db);
+// Returns true if the given metrics represents idle time.
+inline bool IsIdleOp(const OpMetrics& metrics) {
+  return metrics.name() == kIdle;
+}
+
+// Converts from the device op metrics to Tf-op metrics.
+OpMetricsDb CreateTfMetricsDbFromDeviceOpMetricsDb(
+    const OpMetricsDb& device_op_metrics_db, bool with_idle = true);
 }  // namespace profiler
 }  // namespace tensorflow
 

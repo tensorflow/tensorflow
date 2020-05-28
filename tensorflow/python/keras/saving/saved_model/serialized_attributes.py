@@ -34,6 +34,11 @@ base_layer = LazyLoader(
 training_lib = LazyLoader(
     "training_lib", globals(),
     "tensorflow.python.keras.engine.training")
+metrics = LazyLoader("metrics", globals(),
+                     "tensorflow.python.keras.metrics")
+recurrent = LazyLoader(
+    "recurrent", globals(),
+    "tensorflow.python.keras.layers.recurrent")
 # pylint:enable=g-inconsistent-quotes
 
 
@@ -114,7 +119,7 @@ class SerializedAttributes(object):
       checkpointable_objects: List of checkpointable objects to be serialized
         in the SavedModel.
       functions: List of functions to be serialized in the SavedModel.
-      copy_from: List of other SerializedAttributes subclasses. The returend
+      copy_from: List of other SerializedAttributes subclasses. The returned
         class will copy checkpoint objects/functions from each subclass.
 
     Returns:
@@ -136,8 +141,13 @@ class SerializedAttributes(object):
 
   @staticmethod
   def new(obj):
+    """Returns a new SerializedAttribute object."""
     if isinstance(obj, training_lib.Model):
       return ModelAttributes()
+    elif isinstance(obj, metrics.Metric):
+      return MetricAttributes()
+    elif isinstance(obj, recurrent.RNN):
+      return RNNAttributes()
     elif isinstance(obj, base_layer.Layer):
       return LayerAttributes()
     else:
@@ -203,7 +213,8 @@ class SerializedAttributes(object):
         self._object_dict[key] = object_dict[key]
         setattr(self._keras_trackable, key, object_dict[key])
       else:
-        raise ValueError('Object {} missing from serialized object dict.')
+        raise ValueError(
+            'Object {} missing from serialized object dict.'.format(key))
     return self.checkpointable_objects
 
 
@@ -219,8 +230,8 @@ class CommonEndpoints(SerializedAttributes.with_attributes(
     variables: List of all variables in the model and its sublayers.
     trainable_variables: List of all trainable variables in the model and its
       sublayers.
-    regulariation_losses: List of all unconditional losses (losses not dependent
-      on the inputs) in the model and its sublayers.
+    regularization_losses: List of all unconditional losses (losses not
+      dependent on the inputs) in the model and its sublayers.
     __call__: Function that takes inputs and returns the outputs of the model
       call function.
     call_and_return_all_conditional_losses: Function that returns a tuple of
@@ -233,7 +244,7 @@ class CommonEndpoints(SerializedAttributes.with_attributes(
 class LayerAttributes(SerializedAttributes.with_attributes(
     'LayerAttributes',
     checkpointable_objects=['non_trainable_variables', 'layers', 'metrics',
-                            'layer_regularization_losses'],
+                            'layer_regularization_losses', 'layer_metrics'],
     functions=['call_and_return_conditional_losses', 'activity_regularizer_fn'],
     copy_from=[CommonEndpoints]
     )):
@@ -252,6 +263,7 @@ class LayerAttributes(SerializedAttributes.with_attributes(
       activity regularizer.
     activity_regularizer_fn: Callable that returns the activity regularizer loss
     layer_regularization_losses: List of losses owned only by this layer.
+    layer_metrics: List of metrics owned by this layer.
   """
 
 
@@ -265,3 +277,30 @@ class ModelAttributes(SerializedAttributes.with_attributes(
   """
   # TODO(kathywu): Add attributes `compile_losses` and `compile_metrics`, which
   #  list all losses and metrics defined by `model.compile`.
+
+
+class MetricAttributes(
+    SerializedAttributes.with_attributes(
+        'MetricAttributes',
+        checkpointable_objects=['variables'],
+        functions=[],
+    )):
+  """Attributes that are added to Metric objects when saved to SavedModel.
+
+  List of all attributes:
+    variables: list of all variables
+  """
+  pass
+
+
+class RNNAttributes(SerializedAttributes.with_attributes(
+    'RNNAttributes',
+    checkpointable_objects=['states'],
+    copy_from=[LayerAttributes])):
+  """RNN checkpointable objects + functions that are saved to the SavedModel.
+
+  List of all attributes:
+    All attributes from LayerAttributes (including CommonEndpoints)
+    states: List of state variables
+  """
+

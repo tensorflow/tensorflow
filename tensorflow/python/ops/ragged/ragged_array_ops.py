@@ -20,9 +20,11 @@ from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import gen_ragged_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
@@ -30,8 +32,8 @@ from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.ops.ragged import segment_id_ops
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
-
 
 #===============================================================================
 # Masking
@@ -39,6 +41,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export('ragged.boolean_mask')
+@dispatch.add_dispatch_support
 def boolean_mask(data, mask, name=None):
   """Applies a boolean mask to `data` without flattening the mask dimensions.
 
@@ -107,7 +110,8 @@ def boolean_mask(data, mask, name=None):
     if ragged_tensor.is_ragged(mask):
       if not ragged_tensor.is_ragged(data):
         data = ragged_tensor.RaggedTensor.from_tensor(
-            data, ragged_rank=mask.ragged_rank,
+            data,
+            ragged_rank=mask.ragged_rank,
             row_splits_dtype=mask.row_splits.dtype)
       # Check that mask.nested_row_splits is a prefix of
       # data.nested_row_splits.
@@ -160,15 +164,15 @@ def boolean_mask(data, mask, name=None):
       segment_mask = array_ops.gather(mask, segment_ids)
       masked_values = boolean_mask(data.values, segment_mask)
 
-      return ragged_tensor.RaggedTensor.from_row_splits(masked_values,
-                                                        masked_splits,
-                                                        validate=False)
+      return ragged_tensor.RaggedTensor.from_row_splits(
+          masked_values, masked_splits, validate=False)
 
     # If mask is non-ragged and has rank>1, then convert it to be ragged,
     # with a ragged rank matching data.
     if ragged_tensor.is_ragged(data):
       mask = ragged_tensor.RaggedTensor.from_tensor(
-          mask, ragged_rank=min(data.ragged_rank, mask.shape.ndims - 1),
+          mask,
+          ragged_rank=min(data.ragged_rank, mask.shape.ndims - 1),
           row_splits_dtype=data.row_splits.dtype)
       return boolean_mask(data, mask)
 
@@ -182,8 +186,8 @@ def boolean_mask(data, mask, name=None):
         # number of values it contains.  Then flatten that to get a list of
         # cell lengths, and convert it to splits.  Finally, combine the splits
         # and values to get the innermost ragged tensor.
-        masked_lengths = math_ops.count_nonzero(mask, axis=-1,
-                                                dtype=row_splits_dtype)
+        masked_lengths = math_ops.count_nonzero(
+            mask, axis=-1, dtype=row_splits_dtype)
         flattened_masked_lengths = array_ops.reshape(masked_lengths, [-1])
         masked_values = ragged_tensor.RaggedTensor.from_row_lengths(
             masked_values, flattened_masked_lengths, validate=False)
@@ -340,8 +344,7 @@ def _tile_ragged_splits(rt_input, multiples, const_multiples=None):
   for src_axis in range(ragged_rank):
     for dst_axis in range(src_axis + 1, ragged_rank - 1):
       projected_splits[src_axis][dst_axis] = array_ops.gather(
-          nested_splits[dst_axis],
-          projected_splits[src_axis][dst_axis - 1])
+          nested_splits[dst_axis], projected_splits[src_axis][dst_axis - 1])
 
   # For each ragged dimension: nested_splits[axis] -> result_splits[axis].
   result_splits = []
@@ -384,15 +387,6 @@ def expand_dims(input, axis, name=None):  # pylint: disable=redefined-builtin
   Given a potentially ragged tenor `input`, this operation inserts a
   dimension with size 1 at the dimension `axis` of `input`'s shape.
 
-  * If `input` is a `Tensor`, then this is equivalent to
-    `tf.expand_dims`.
-  * If `input` is ragged, and `axis=0`, then the new dimension will be
-    uniform; but the previously outermost dimension will become ragged.
-  * If `input` is ragged, and `0 < axis < input.ragged_rank`, then the
-    new dimension will be ragged.
-  * If `input` is ragged, and axis >= input.ragged_rank`, then the new
-    dimension will be uniform.
-
   The following table gives some examples showing how `ragged.expand_dims`
   impacts the shapes of different input tensors.  Ragged dimensions are
   indicated by enclosing them in parentheses.
@@ -402,15 +396,14 @@ def expand_dims(input, axis, name=None):  # pylint: disable=redefined-builtin
   `[D1, D2]`              |  `0` | `[1, D1, D2]`
   `[D1, D2]`              |  `1` | `[D1, 1, D2]`
   `[D1, D2]`              |  `2` | `[D1, D2, 1]`
-  `[D1, (D2), (D3), D4]`  |  `0` | `[1, (D1), (D2), (D3), D4]`
-  `[D1, (D2), (D3), D4]`  |  `1` | `[D1, (1), (D2), (D3), D4]`
-  `[D1, (D2), (D3), D4]`  |  `2` | `[D1, (D2), (1), (D3), D4]`
+  `[D1, (D2), (D3), D4]`  |  `0` | `[1, D1, (D2), (D3), D4]`
+  `[D1, (D2), (D3), D4]`  |  `1` | `[D1, 1, (D2), (D3), D4]`
+  `[D1, (D2), (D3), D4]`  |  `2` | `[D1, (D2), 1, (D3), D4]`
   `[D1, (D2), (D3), D4]`  |  `3` | `[D1, (D2), (D3), 1, D4]`
   `[D1, (D2), (D3), D4]`  |  `4` | `[D1, (D2), (D3), D4, 1]`
 
   Args:
-    input: The potentially tensor that should be expanded with a new
-      dimension.
+    input: The potentially tensor that should be expanded with a new dimension.
     axis: An integer constant indicating where the new dimension should be
       inserted.
     name: A name for the operation (optional).
@@ -427,11 +420,11 @@ def expand_dims(input, axis, name=None):  # pylint: disable=redefined-builtin
 
   >>> expanded = tf.expand_dims(rt, axis=0)
   >>> print(expanded.shape, expanded)
-  (1, None, None) <tf.RaggedTensor [[[1, 2], [3]]]>
+  (1, 2, None) <tf.RaggedTensor [[[1, 2], [3]]]>
 
   >>> expanded = tf.expand_dims(rt, axis=1)
   >>> print(expanded.shape, expanded)
-  (2, None, None) <tf.RaggedTensor [[[1, 2]], [[3]]]>
+  (2, 1, None) <tf.RaggedTensor [[[1, 2]], [[3]]]>
 
   >>> expanded = tf.expand_dims(rt, axis=2)
   >>> print(expanded.shape, expanded)
@@ -445,19 +438,16 @@ def expand_dims(input, axis, name=None):  # pylint: disable=redefined-builtin
       return array_ops.expand_dims(input, axis)
 
     ndims = None if input.shape.ndims is None else input.shape.ndims + 1
-    axis = ragged_util.get_positive_axis(axis, ndims)
-    if axis == 0:
-      values = input
-      splits = array_ops.stack([0, input.nrows()])
-    elif axis == 1:
-      values = input
-      splits = math_ops.range(input.nrows() + 1)
-    else:
-      values = expand_dims(input.values, axis - 1)
-      splits = input.row_splits
+    axis = array_ops.get_positive_axis(axis, ndims, ndims_name='rank(input)')
 
-    return ragged_tensor.RaggedTensor.from_row_splits(values, splits,
-                                                      validate=False)
+    if axis == 0:
+      return ragged_tensor.RaggedTensor.from_uniform_row_length(
+          input, uniform_row_length=input.nrows(), nrows=1, validate=False)
+    elif axis == 1:
+      return ragged_tensor.RaggedTensor.from_uniform_row_length(
+          input, uniform_row_length=1, nrows=input.nrows(), validate=False)
+    else:
+      return input.with_values(expand_dims(input.values, axis - 1))
 
 
 #===============================================================================
@@ -529,13 +519,18 @@ def ragged_one_hot(indices,
                    dtype=None,
                    name=None):
   """Applies tf.one_hot along the values of a RaggedTensor."""
-  with ops.name_scope(name, 'RaggedOneHot', [indices]):
+  # Get the adjusted axis value for the call to array_ops.one_hot.
+  # Note: the only negative `axis` value supported by array_ops.one_hot is -1.
+  if isinstance(axis, int) and axis >= 0:
+    if axis <= indices.ragged_rank:
+      raise ValueError('axis (%d) must be greater than indices.ragged_rank '
+                       '(%d).' % (axis, indices.ragged_rank))
+    axis -= indices.ragged_rank
+
+  with ops.name_scope(name, 'RaggedOneHot',
+                      [indices, depth, on_value, off_value, axis]):
     indices = ragged_tensor.convert_to_tensor_or_ragged_tensor(
         indices, name='indices')
-    if axis is not None:
-      axis = ragged_util.get_positive_axis(axis, indices.shape.ndims)
-      if axis < indices.ragged_rank:
-        raise ValueError('axis may not be less than indices.ragged_rank.')
     return indices.with_flat_values(
         array_ops.one_hot(indices.flat_values, depth, on_value, off_value, axis,
                           dtype, name))
@@ -545,6 +540,7 @@ def ragged_one_hot(indices,
 # ragged.stack_dynamic_partitions
 #===============================================================================
 @tf_export('ragged.stack_dynamic_partitions')
+@dispatch.add_dispatch_support
 def stack_dynamic_partitions(data, partitions, num_partitions, name=None):
   """Stacks dynamic partitions of a Tensor or RaggedTensor.
 
@@ -567,10 +563,10 @@ def stack_dynamic_partitions(data, partitions, num_partitions, name=None):
   Args:
     data: A `Tensor` or `RaggedTensor` containing the values to stack.
     partitions: An `int32` or `int64` `Tensor` or `RaggedTensor` specifying the
-      partition that each slice of `data` should be added to.
-      `partitions.shape` must be a prefix of `data.shape`.  Values must be
-      greater than or equal to zero, and less than `num_partitions`.
-      `partitions` is not required to be sorted.
+      partition that each slice of `data` should be added to. `partitions.shape`
+      must be a prefix of `data.shape`.  Values must be greater than or equal to
+      zero, and less than `num_partitions`. `partitions` is not required to be
+      sorted.
     num_partitions: An `int32` or `int64` scalar specifying the number of
       partitions to output.  This determines the number of rows in `output`.
     name: A name prefix for the returned tensor (optional).
@@ -661,8 +657,8 @@ def reverse(tensor, axis, name=None):
 
   Args:
     tensor: A 'RaggedTensor' to reverse.
-    axis: A list or tuple of 'int' or a constant 1D 'tf.Tensor'. The indices
-      of the axes to reverse.
+    axis: A list or tuple of 'int' or a constant 1D 'tf.Tensor'. The indices of
+      the axes to reverse.
     name: A name prefix for the returned tensor (optional).
 
   Returns:
@@ -684,8 +680,11 @@ def reverse(tensor, axis, name=None):
         tensor, name='tensor')
 
     # Allow usage of negative values to specify innermost axes.
-    axis = [ragged_util.get_positive_axis(dim, tensor.shape.rank)
-            for dim in axis]
+    axis = [
+        array_ops.get_positive_axis(dim, tensor.shape.rank, 'axis[%d]' % i,
+                                    'rank(tensor)')
+        for i, dim in enumerate(axis)
+    ]
 
     # We only need to slice up to the max axis. If the axis list
     # is empty, it should be 0.
@@ -695,3 +694,144 @@ def reverse(tensor, axis, name=None):
       slices[dim] = slice(None, None, -1)
 
     return tensor[tuple(slices)]
+
+
+#===============================================================================
+# Cross
+#===============================================================================
+
+
+@tf_export('ragged.cross')
+@dispatch.add_dispatch_support
+def cross(inputs, name=None):
+  """Generates feature cross from a list of tensors.
+
+  The input tensors must have `rank=2`, and must all have the same number of
+  rows.  The result is a `RaggedTensor` with the same number of rows as the
+  inputs, where `result[row]` contains a list of all combinations of values
+  formed by taking a single value from each input's corresponding row
+  (`inputs[i][row]`).  Values are combined by joining their strings with '_X_'.
+  E.g.:
+
+  >>> tf.ragged.cross([tf.ragged.constant([['a'], ['b', 'c']]),
+  ...                  tf.ragged.constant([['d'], ['e']]),
+  ...                  tf.ragged.constant([['f'], ['g']])])
+  <tf.RaggedTensor [[b'a_X_d_X_f'], [b'b_X_e_X_g', b'c_X_e_X_g']]>
+
+  Args:
+    inputs: A list of `RaggedTensor` or `Tensor` or `SparseTensor`.
+    name: Optional name for the op.
+
+  Returns:
+    A 2D `RaggedTensor` of type `string`.
+  """
+  return _cross_internal(inputs=inputs, hashed_output=False, name=name)
+
+
+@tf_export('ragged.cross_hashed')
+@dispatch.add_dispatch_support
+def cross_hashed(inputs, num_buckets=0, hash_key=None, name=None):
+  """Generates hashed feature cross from a list of tensors.
+
+  The input tensors must have `rank=2`, and must all have the same number of
+  rows.  The result is a `RaggedTensor` with the same number of rows as the
+  inputs, where `result[row]` contains a list of all combinations of values
+  formed by taking a single value from each input's corresponding row
+  (`inputs[i][row]`).  Values are combined by hashing together their
+  fingerprints. E.g.:
+
+  >>> tf.ragged.cross_hashed([tf.ragged.constant([['a'], ['b', 'c']]),
+  ...                         tf.ragged.constant([['d'], ['e']]),
+  ...                         tf.ragged.constant([['f'], ['g']])],
+  ...                        num_buckets=100)
+  <tf.RaggedTensor [[78], [66, 74]]>
+
+  Args:
+    inputs: A list of `RaggedTensor` or `Tensor` or `SparseTensor`.
+    num_buckets: A non-negative `int` that used to bucket the hashed values. If
+      `num_buckets != 0`, then `output = hashed_value % num_buckets`.
+    hash_key: Integer hash_key that will be used by the `FingerprintCat64`
+      function. If not given, a default key is used.
+    name: Optional name for the op.
+
+  Returns:
+    A 2D `RaggedTensor` of type `int64`.
+  """
+  return _cross_internal(
+      inputs=inputs,
+      hashed_output=True,
+      num_buckets=num_buckets,
+      hash_key=hash_key,
+      name=name)
+
+
+_DEFAULT_CROSS_HASH_KEY = 0xDECAFCAFFE
+
+
+def _cross_internal(inputs,
+                    hashed_output=False,
+                    num_buckets=0,
+                    hash_key=None,
+                    name=None):
+  """Generates feature cross from a list of ragged and dense tensors."""
+  if not isinstance(inputs, (tuple, list)):
+    raise TypeError('Inputs must be a list')
+
+  if hash_key is None:
+    hash_key = _DEFAULT_CROSS_HASH_KEY
+
+  ragged_inputs = []
+  sparse_inputs = []
+  dense_inputs = []
+  input_order = []
+  with ops.name_scope(name, 'RaggedCross', inputs):
+    for i, t in enumerate(inputs):
+      if sparse_tensor.is_sparse(t):
+        t = sparse_tensor.SparseTensor.from_value(t)
+      else:
+        t = ragged_tensor.convert_to_tensor_or_ragged_tensor(t)
+      if t.dtype.is_integer:
+        t = math_ops.cast(t, dtypes.int64)
+      elif t.dtype != dtypes.string:
+        raise ValueError('Unexpected dtype for inputs[%d]: %s' % (i, t.dtype))
+      if isinstance(t, ragged_tensor.RaggedTensor):
+        if t.ragged_rank != 1:
+          raise ValueError('tf.ragged.cross only supports inputs with rank=2')
+        ragged_inputs.append(t)
+        input_order.append('R')
+      elif isinstance(t, sparse_tensor.SparseTensor):
+        sparse_inputs.append(t)
+        input_order.append('S')
+      else:
+        dense_inputs.append(t)
+        input_order.append('D')
+
+    out_values_type = dtypes.int64 if hashed_output else dtypes.string
+    if ragged_inputs and all(
+        t.row_splits.dtype == dtypes.int32 for t in ragged_inputs):
+      out_row_splits_type = dtypes.int32
+    else:
+      out_row_splits_type = dtypes.int64
+
+    # Convert hash_key from uint64 -> int64, since we need to pass it via
+    # an int64 attr.
+    if hash_key > 2**63:
+      hash_key -= 2**64
+
+    values_out, splits_out = gen_ragged_array_ops.ragged_cross(
+        ragged_values=[rt.values for rt in ragged_inputs],
+        ragged_row_splits=[rt.row_splits for rt in ragged_inputs],
+        sparse_indices=[st.indices for st in sparse_inputs],
+        sparse_values=[st.values for st in sparse_inputs],
+        sparse_shape=[st.dense_shape for st in sparse_inputs],
+        dense_inputs=dense_inputs,
+        input_order=''.join(input_order),
+        hashed_output=hashed_output,
+        num_buckets=num_buckets,
+        hash_key=hash_key,
+        out_values_type=out_values_type.as_datatype_enum,
+        out_row_splits_type=out_row_splits_type.as_datatype_enum,
+        name=name)
+
+    return ragged_tensor.RaggedTensor.from_row_splits(
+        values_out, splits_out, validate=False)

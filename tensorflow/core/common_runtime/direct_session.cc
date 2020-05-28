@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/metrics.h"
@@ -49,7 +50,6 @@ limitations under the License.
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_partition.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/graph/tensor_id.h"
@@ -236,8 +236,9 @@ class DirectSessionFactory : public SessionFactory {
   }
 
   mutex sessions_lock_;
-  std::vector<DirectSession*> sessions_ GUARDED_BY(sessions_lock_);
-  absl::flat_hash_set<string> session_metadata_keys_ GUARDED_BY(sessions_lock_);
+  std::vector<DirectSession*> sessions_ TF_GUARDED_BY(sessions_lock_);
+  absl::flat_hash_set<string> session_metadata_keys_
+      TF_GUARDED_BY(sessions_lock_);
 };
 
 class DirectSessionRegistrar {
@@ -348,12 +349,12 @@ DirectSession::DirectSession(const SessionOptions& options,
   int devices_added = 0;
   if (options.config.log_device_placement()) {
     const string mapping_str = device_mgr_->DeviceMappingString();
+    string msg;
     if (mapping_str.empty()) {
-      printf("Device mapping: no known devices.\n");
+      msg = "Device mapping: no known devices.";
     } else {
-      printf("Device mapping:\n%s", mapping_str.c_str());
+      msg = strings::StrCat("Device mapping:\n", mapping_str);
     }
-    string msg = strings::StrCat("Device mapping:\n", mapping_str);
     if (!logging::LogToListeners(msg)) {
       LOG(INFO) << msg;
     }
@@ -553,35 +554,35 @@ Status DirectSession::RunInternal(
   }
 #endif
 
+  thread::ThreadPool* pool;
   // Use std::unique_ptr to ensure garbage collection
   std::unique_ptr<thread::ThreadPool> threadpool_wrapper;
-  thread::ThreadPool* pool = nullptr;
 
-  if (run_options.inter_op_thread_pool() < -1 ||
-      run_options.inter_op_thread_pool() >=
-          static_cast<int32>(thread_pools_.size())) {
-    return errors::InvalidArgument("Invalid inter_op_thread_pool: ",
-                                   run_options.inter_op_thread_pool());
-  }
+  const bool inline_execution_requested =
+      run_in_caller_thread_ || run_options.inter_op_thread_pool() == -1;
 
-  if (run_in_caller_thread_) {
-    pool = nullptr;
-  } else if (threadpool_options.inter_op_threadpool != nullptr) {
-    threadpool_wrapper = absl::make_unique<thread::ThreadPool>(
-        threadpool_options.inter_op_threadpool);
-    pool = threadpool_wrapper.get();
-  } else if (run_options.inter_op_thread_pool() >= 0) {
-    pool = thread_pools_[run_options.inter_op_thread_pool()].first;
-  }
-
-  if (pool == nullptr) {
+  if (inline_execution_requested) {
     // We allow using the caller thread only when having a single executor
     // specified.
     if (executors_and_keys->items.size() > 1) {
       pool = thread_pools_[0].first;
     } else {
       VLOG(1) << "Executing Session::Run() synchronously!";
+      pool = nullptr;
     }
+  } else if (threadpool_options.inter_op_threadpool != nullptr) {
+    threadpool_wrapper = absl::make_unique<thread::ThreadPool>(
+        threadpool_options.inter_op_threadpool);
+    pool = threadpool_wrapper.get();
+  } else {
+    if (run_options.inter_op_thread_pool() < -1 ||
+        run_options.inter_op_thread_pool() >=
+            static_cast<int32>(thread_pools_.size())) {
+      return errors::InvalidArgument("Invalid inter_op_thread_pool: ",
+                                     run_options.inter_op_thread_pool());
+    }
+
+    pool = thread_pools_[run_options.inter_op_thread_pool()].first;
   }
 
   const int64 call_timeout = run_options.timeout_in_ms() > 0
@@ -592,7 +593,9 @@ Status DirectSession::RunInternal(
   if (ShouldUseRunHandlerPool(run_options) &&
       run_options.experimental().use_run_handler_pool()) {
     VLOG(1) << "Using RunHandler to scheduler inter-op closures.";
-    handler = GetOrCreateRunHandlerPool(options_)->Get(step_id, call_timeout);
+    handler = GetOrCreateRunHandlerPool(options_)->Get(
+        step_id, call_timeout,
+        run_options.experimental().run_handler_pool_options());
     if (!handler) {
       return errors::DeadlineExceeded(
           "Could not obtain RunHandler for request after waiting for ",
@@ -604,7 +607,7 @@ Status DirectSession::RunInternal(
   Executor::Args::Runner default_runner = nullptr;
 
   if (pool == nullptr) {
-    default_runner = [](Executor::Args::Closure c) { c(); };
+    default_runner = [](const Executor::Args::Closure& c) { c(); };
   } else if (handler_ptr != nullptr) {
     default_runner = [handler_ptr](Executor::Args::Closure c) {
       handler_ptr->ScheduleInterOpClosure(std::move(c));
@@ -616,7 +619,15 @@ Status DirectSession::RunInternal(
   }
 
   // Start parallel Executors.
-  const bool can_execute_synchronously = pool == nullptr && call_timeout == 0;
+
+  // We can execute this step synchronously on the calling thread whenever
+  // there is a single device and the timeout mechanism is not used.
+  //
+  // When timeouts are used, we must execute the graph(s) asynchronously, in
+  // order to invoke the cancellation manager on the calling thread if the
+  // timeout expires.
+  const bool can_execute_synchronously =
+      executors_and_keys->items.size() == 1 && call_timeout == 0;
 
   Executor::Args args;
   args.step_id = step_id;
@@ -630,6 +641,7 @@ Status DirectSession::RunInternal(
   args.step_container = &run_state.step_container;
   args.sync_on_finish = sync_on_finish_;
   args.user_intra_op_threadpool = threadpool_options.intra_op_threadpool;
+  args.run_all_kernels_inline = pool == nullptr;
 
   const bool do_trace = (run_options.trace_level() > RunOptions::NO_TRACE);
 
@@ -1324,7 +1336,12 @@ Status DirectSession::CreateExecutors(
   func_info->proc_flr.reset(new ProcessFunctionLibraryRuntime(
       device_mgr_.get(), options_.env, &options_.config, graph_def_version,
       func_info->flib_def.get(), optimizer_opts, thread_pools_[0].first,
-      nullptr, custom_kernel_creator, session_metadata));
+      /*parent=*/nullptr, custom_kernel_creator, session_metadata,
+      Rendezvous::Factory{
+          [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
+            *r = new IntraProcessRendezvous(device_mgr);
+            return Status::OK();
+          }}));
 
   GraphOptimizer optimizer(optimizer_opts);
   for (auto iter = graphs.begin(); iter != graphs.end(); ++iter) {
@@ -1347,32 +1364,28 @@ Status DirectSession::CreateExecutors(
     params.session_metadata = session_metadata;
     params.function_library = lib;
     auto opseg = device->op_segment();
-    params.create_kernel = [this, lib, opseg](const NodeDef& ndef,
-                                              OpKernel** kernel) {
-      // NOTE(mrry): We must not share function kernels (implemented
-      // using `CallOp`) between subgraphs, because `CallOp::handle_`
-      // is tied to a particular subgraph. Even if the function itself
-      // is stateful, the `CallOp` that invokes it is not.
-      if (!OpSegment::ShouldOwnKernel(lib, ndef.op())) {
-        return lib->CreateKernel(ndef, kernel);
-      }
-      auto create_fn = [lib, &ndef](OpKernel** kernel) {
-        return lib->CreateKernel(ndef, kernel);
-      };
-      // Kernels created for subgraph nodes need to be cached.  On
-      // cache miss, create_fn() is invoked to create a kernel based
-      // on the function library here + global op registry.
-      return opseg->FindOrCreate(session_handle_, ndef.name(), kernel,
-                                 create_fn);
-    };
+    params.create_kernel =
+        [this, lib, opseg](const std::shared_ptr<const NodeProperties>& props,
+                           OpKernel** kernel) {
+          // NOTE(mrry): We must not share function kernels (implemented
+          // using `CallOp`) between subgraphs, because `CallOp::handle_`
+          // is tied to a particular subgraph. Even if the function itself
+          // is stateful, the `CallOp` that invokes it is not.
+          if (!OpSegment::ShouldOwnKernel(lib, props->node_def.op())) {
+            return lib->CreateKernel(props, kernel);
+          }
+          auto create_fn = [lib, &props](OpKernel** kernel) {
+            return lib->CreateKernel(props, kernel);
+          };
+          // Kernels created for subgraph nodes need to be cached.  On
+          // cache miss, create_fn() is invoked to create a kernel based
+          // on the function library here + global op registry.
+          return opseg->FindOrCreate(session_handle_, props->node_def.name(),
+                                     kernel, create_fn);
+        };
     params.delete_kernel = [lib](OpKernel* kernel) {
       if (kernel && !OpSegment::ShouldOwnKernel(lib, kernel->type_string()))
         delete kernel;
-    };
-    params.rendezvous_factory = [](const int64, const DeviceMgr* device_mgr,
-                                   Rendezvous** r) {
-      *r = new IntraProcessRendezvous(device_mgr);
-      return Status::OK();
     };
 
     optimizer.Optimize(lib, options_.env, device, &partition_graph,
@@ -1611,7 +1624,7 @@ Status DirectSession::CreateGraphs(
   // Update our current state based on the execution_state's
   // placements.  If there are any mismatches for a node,
   // we should fail, as this should never happen.
-  for (auto placement_pair : current_stateful_placements) {
+  for (const auto& placement_pair : current_stateful_placements) {
     const string& node_name = placement_pair.first;
     const string& placement = placement_pair.second;
     auto iter = stateful_placements_.find(node_name);
@@ -1854,14 +1867,11 @@ class DirectSession::RunCallableCallFrame : public CallFrameInterface {
     return executors_and_keys_->output_types.size();
   }
 
-  Status GetArg(int index, Tensor* val) const override {
-    if (index > feed_tensors_->size()) {
+  Status GetArg(int index, const Tensor** val) override {
+    if (TF_PREDICT_FALSE(index > feed_tensors_->size())) {
       return errors::Internal("Args index out of bounds: ", index);
-    } else if (executors_and_keys_->input_types[index] == DT_RESOURCE) {
-      TF_RETURN_IF_ERROR(
-          session_->ResourceHandleToInputTensor((*feed_tensors_)[index], val));
     } else {
-      *val = (*feed_tensors_)[index];
+      *val = &(*feed_tensors_)[index];
     }
     return Status::OK();
   }
@@ -1934,16 +1944,37 @@ class DirectSession::RunCallableCallFrame : public CallFrameInterface {
   }
 
   size_t input_size = 0;
+  bool any_resource_feeds = false;
   for (auto& tensor : feed_tensors) {
     input_size += tensor.AllocatedBytes();
+    any_resource_feeds = any_resource_feeds || tensor.dtype() == DT_RESOURCE;
   }
   metrics::RecordGraphInputTensors(input_size);
 
+  std::unique_ptr<std::vector<Tensor>> converted_feed_tensors;
+  const std::vector<Tensor>* actual_feed_tensors;
+
+  if (TF_PREDICT_FALSE(any_resource_feeds)) {
+    converted_feed_tensors = absl::make_unique<std::vector<Tensor>>();
+    converted_feed_tensors->reserve(feed_tensors.size());
+    for (const Tensor& t : feed_tensors) {
+      if (t.dtype() == DT_RESOURCE) {
+        converted_feed_tensors->emplace_back();
+        Tensor* tensor_from_handle = &converted_feed_tensors->back();
+        TF_RETURN_IF_ERROR(ResourceHandleToInputTensor(t, tensor_from_handle));
+      } else {
+        converted_feed_tensors->emplace_back(t);
+      }
+    }
+    actual_feed_tensors = converted_feed_tensors.get();
+  } else {
+    actual_feed_tensors = &feed_tensors;
+  }
+
   // A specialized CallFrame implementation that takes advantage of the
   // optimized RunCallable interface.
-
-  RunCallableCallFrame call_frame(this, executors_and_keys.get(), &feed_tensors,
-                                  fetch_tensors);
+  RunCallableCallFrame call_frame(this, executors_and_keys.get(),
+                                  actual_feed_tensors, fetch_tensors);
 
   if (LogMemory::IsEnabled()) {
     LogMemory::RecordStep(step_id, run_state_args.handle);

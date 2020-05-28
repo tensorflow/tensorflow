@@ -19,8 +19,11 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/extract_image_patches_op.h"
+
 #include <vector>
+
 #include "tensorflow/core/framework/bounds_check.h"
+#include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -126,7 +129,7 @@ class ExtractImagePatchesOp : public UnaryOp<T> {
       Name("ExtractImagePatches").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       ExtractImagePatchesOp<CPUDevice, T>);
 
-TF_CALL_REAL_NUMBER_TYPES(REGISTER);
+TF_CALL_NUMBER_TYPES(REGISTER);
 
 #undef REGISTER
 
@@ -145,7 +148,7 @@ namespace functor {
       typename TTypes<T, 4>::Tensor output);                            \
   extern template struct ExtractImagePatchesForward<GPUDevice, T>;
 
-TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
+TF_CALL_GPU_ALL_TYPES(DECLARE_GPU_SPEC);
 
 #undef DECLARE_GPU_SPEC
 
@@ -157,7 +160,7 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
       Name("ExtractImagePatches").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
       ExtractImagePatchesOp<GPUDevice, T>);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER);
+TF_CALL_GPU_ALL_TYPES(REGISTER);
 
 #undef REGISTER
 

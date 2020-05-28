@@ -64,25 +64,66 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
       return this;
     }
 
+    /**
+     * Specifies the name of the target accelerator to be used by NNAPI. If this parameter is
+     * specified the {@link #setUseNnapiCpu(boolean)} method won't have any effect.
+     *
+     * <p>Only effective on Android 10 (API level 29) and above.
+     */
     public Options setAcceleratorName(String name) {
-      this.accelerator_name = name;
+      this.acceleratorName = name;
       return this;
     }
 
-    public Options setCacheDir(String name) {
-      this.cache_dir = name;
+    /**
+     * Configure the location to be used to store model compilation cache entries. If either
+     * {@code cacheDir} or {@code modelToken} parameters are unset NNAPI caching will be disabled.
+     *
+     * <p>Only effective on Android 10 (API level 29) and above.
+     */
+    public Options setCacheDir(String cacheDir) {
+      this.cacheDir = cacheDir;
       return this;
     }
 
-    public Options setModelToken(String name) {
-      this.model_token = name;
+    /**
+     * Sets the token to be used to identify this model in the model compilation cache. If either
+     * {@code cacheDir} or {@code modelToken} parameters are unset NNAPI caching will be disabled.
+     *
+     * <p>Only effective on Android 10 (API level 29) and above.
+     */
+    public Options setModelToken(String modelToken) {
+      this.modelToken = modelToken;
       return this;
     }
 
-    int executionPreference = EXECUTION_PREFERENCE_UNDEFINED;
-    String accelerator_name = null;
-    String cache_dir = null;
-    String model_token = null;
+    /**
+     * Sets the maximum number of graph partitions that the delegate will try to delegate. If more
+     * partitions could be delegated than the limit, the ones with the larger number of nodes will
+     * be chosen. If unset it will use the NNAPI default limit.
+     */
+    public Options setMaxNumberOfDelegatedPartitions(int limit) {
+      this.maxDelegatedPartitions = limit;
+      return this;
+    }
+
+    /**
+     * Enable or disable the NNAPI CPU Device "nnapi-reference". If unset it will use the NNAPI
+     * default settings.
+     *
+     * <p>Only effective on Android 10 (API level 29) and above.
+     */
+    public Options setUseNnapiCpu(boolean enable) {
+      this.useNnapiCpu = !enable;
+      return this;
+    }
+
+    private int executionPreference = EXECUTION_PREFERENCE_UNDEFINED;
+    private String acceleratorName = null;
+    private String cacheDir = null;
+    private String modelToken = null;
+    private Integer maxDelegatedPartitions = null;
+    private Boolean useNnapiCpu = null;
   }
 
   public NnApiDelegate(Options options) {
@@ -91,9 +132,14 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
     delegateHandle =
         createDelegate(
             options.executionPreference,
-            options.accelerator_name,
-            options.cache_dir,
-            options.model_token);
+            options.acceleratorName,
+            options.cacheDir,
+            options.modelToken,
+            options.maxDelegatedPartitions != null ? options.maxDelegatedPartitions : -1,
+            /*overrideDisallowCpu=*/ options.useNnapiCpu != null,
+            /*disallowCpuValue=*/ options.useNnapiCpu != null
+                ? !options.useNnapiCpu.booleanValue()
+                : false);
   }
 
   public NnApiDelegate() {
@@ -118,8 +164,49 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
     }
   }
 
+  /**
+   * Returns the latest error code returned by an NNAPI call or zero if NO calls to NNAPI failed.
+   * The error code is reset when the delegate is associated with an {@link
+   * #org.tensorflow.lite.Interpreter interpreter}).
+   *
+   * <p>For details on NNAPI error codes see <a
+   * href="https://developer.android.com/ndk/reference/group/neural-networks#resultcode">the NNAPI
+   * documentation</a>.
+   *
+   * @throws IllegalStateException if the method is called after {@link #close() close}.
+   */
+  public int getNnapiErrno() {
+    checkNotClosed();
+    return getNnapiErrno(delegateHandle);
+  }
+
+  /**
+   * Returns true if any NNAPI call failed since this delegate was associated with an {@link
+   * #org.tensorflow.lite.Interpreter interpreter}).
+   *
+   * @throws IllegalStateException if the method is called after {@link #close() close}.
+   */
+  public boolean hasErrors() {
+    return getNnapiErrno(delegateHandle) != 0 /*ANEURALNETWORKS_NO_ERROR*/;
+  }
+
+  private void checkNotClosed() {
+    if (delegateHandle == INVALID_DELEGATE_HANDLE) {
+      throw new IllegalStateException("Should not access delegate after it has been closed.");
+    }
+  }
+
+  //
   private static native long createDelegate(
-      int preference, String device_name, String cache_dir, String model_token);
+      int preference,
+      String deviceName,
+      String cacheDir,
+      String modelToken,
+      int maxDelegatedPartitions,
+      boolean overrideDisallowCpu,
+      boolean disallowCpuValue);
 
   private static native void deleteDelegate(long delegateHandle);
+
+  private static native int getNnapiErrno(long delegateHandle);
 }

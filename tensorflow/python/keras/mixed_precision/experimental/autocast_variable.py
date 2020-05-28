@@ -23,26 +23,29 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.types import core
 
 
-class AutoCastVariable(variables.Variable):
+class AutoCastVariable(variables.Variable, core.Tensor):
   """Variable that will cast itself to a different dtype in applicable contexts.
 
-  This class wraps a floating-point tf.Variable. It emulates the variable
+  This class wraps a floating-point `tf.Variable`. It emulates the variable
   interface and delegates to the wrapped variable, but it additionally will cast
-  the wrapped variable under a `Graph._enable_variable_auto_cast(dtype)` context
-  manager.
+  the wrapped variable under a `Graph._enable_auto_casting_variables(dtype)`
+  context manager.
 
   For example:
 
-  ```
-  v = tf.Variable(1.0, dtype=tf.float32)
-  v = AutoCastVariable(v)
-  print(tf.identity(v).dtype)  # tf.float32
-  with ops.get_default_graph()._enable_variable_auto_cast(tf.float16):
-    print(tf.identity(v).dtype)  # tf.float16, as v will cast itself to float16
-    print(v.dtype)  # tf.float16, as v.dtype also changes under the ctx manager.
-  ```
+  >>> v = tf.Variable(1.0, dtype=tf.float32)
+  >>> v = AutoCastVariable(v)
+  >>> tf.identity(v).dtype
+  tf.float32
+  >>> with ops.get_default_graph()._enable_auto_casting_variables(tf.float16):
+  ...   tf.identity(v).dtype
+  tf.float16
+  >>> with ops.get_default_graph()._enable_auto_casting_variables(tf.float16):
+  ...   v.dtype  # v.dtype also changes under the context manager
+  tf.float16
 
   The purpose of this class is to allow Keras layers to create variables in
   float32, and automatically cast them to float16 or bfloat16 when the layer is
@@ -120,8 +123,8 @@ class AutoCastVariable(variables.Variable):
       raise ValueError(
           'Incompatible type conversion requested to type {!r} for variable '
           'of type {!r}'.format(dtype.name, self.dtype.name))
-    val = ops.convert_to_tensor(
-        self._variable, self._variable.dtype, name, as_ref=False)
+    val = ops.convert_to_tensor_v2(
+        self._variable, dtype=self._variable.dtype, name=name)
     return math_ops.cast(val, self.dtype)
 
   def _should_act_as_resource_variable(self):
@@ -149,7 +152,7 @@ class AutoCastVariable(variables.Variable):
   # reasons:
   #   * 'count_up_to': This method only applies to int variables, which cannot
   #     be wrapped with an AutoCastVariable.
-  #   * 'experimental_ref': Instead we inherit the definition from Variable.
+  #   * 'ref': Instead we inherit the definition from Variable.
   #     If we defined and delegated to Variable, the ref of an AutoCastVariable
   #     would be the same as the ref of the underlying variable, which would be
   #     strange as they are different Python objects.
@@ -289,6 +292,30 @@ class AutoCastVariable(variables.Variable):
   def from_proto(self, variable_def, import_scope=None):
     return self._variable.from_proto(variable_def, import_scope)
 
+  # Delegate the private attributes _handle_name and _initializer_op to
+  # self._variable. SavedModel sets these attributes when loading a model. For
+  # example, it sets _handle_name here:
+  # https://github.com/tensorflow/tensorflow/blob/db26bd574fa95b5bdd53c08463dd19407cc0297e/tensorflow/python/keras/saving/saved_model/load.py#L211
+  # We need to expose these attributes on AutoCastVariable as well for
+  # SavedModel to work properly.
+  # TODO(reedwm/kathywu): Find a better way to support SavedModel. Exposing
+  # private attributes is hacky and difficult to maintain.
+  @property
+  def _handle_name(self):
+    return self._variable._handle_name  # pylint: disable=protected-access
+
+  @_handle_name.setter
+  def _handle_name(self, handle_name):
+    self._variable._handle_name = handle_name  # pylint: disable=protected-access
+
+  @property
+  def _initializer_op(self):
+    return self._variable._initializer_op  # pylint: disable=protected-access
+
+  @_initializer_op.setter
+  def _initializer_op(self, initializer_op):
+    self._variable._initializer_op = initializer_op  # pylint: disable=protected-access
+
   # Operator overloads:
   # Note we only overload operators that support floating-point types, as
   # non-float variables cannot be wrapped with an AutoCastVariable.
@@ -391,7 +418,6 @@ class AutoCastVariable(variables.Variable):
 
 ops.register_tensor_conversion_function(AutoCastVariable,
                                         AutoCastVariable._dense_var_to_tensor)  # pylint:disable=protected-access
-ops.register_dense_tensor_like_type(AutoCastVariable)
 
 
 def create_autocast_variable(variable):
@@ -410,13 +436,23 @@ def create_autocast_variable(variable):
   Returns:
     An AutoCastVariable that wraps the variable.
   """
-  if not isinstance(variable, distribute_values.DistributedVariable):
+  if not isinstance(variable, (distribute_values.DistributedVariable,
+                               distribute_values.AggregatingVariable)):
     return AutoCastVariable(variable)
 
   class AutoCastDistributedVariable(AutoCastVariable, variable.__class__):
-    """An AutoCastVariable that also subclasses from DistributedVariable."""
+    """An AutoCastVariable that also subclasses from variable.__class__.
+
+    variable.__class__ is either a DistributedVariable or an
+    AggregatingVariable.
+    """
 
     def __repr__(self):
+      if issubclass(distribute_values.AggregatingVariable, variable.__class__):
+        # AggregatingVariable's __repr__ simply calls super.__repr__. So we do
+        # the same here for consistency, which calls AutoCastVariable.__repr__.
+        return super(AutoCastDistributedVariable, self).__repr__()
+
       # pylint: disable=missing-format-attribute
       return ('<AutoCastDistributedVariable dtype={v.dtype.name} '
               'true_dtype={v.true_dtype.name} inner_variable={v._variable}>'

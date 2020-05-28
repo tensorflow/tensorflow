@@ -32,6 +32,24 @@ py_library(
 )
 
 tf_py_test(
+    name = "assert_cardinality_dataset_serialization_test",
+    size = "small",
+    srcs = ["assert_cardinality_dataset_serialization_test.py"],
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
+        ":dataset_serialization_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
     name = "auto_shard_dataset_serialization_test",
     size = "medium",
     srcs = ["auto_shard_dataset_serialization_test.py"],

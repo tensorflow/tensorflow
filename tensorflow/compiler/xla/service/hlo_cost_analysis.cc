@@ -102,7 +102,9 @@ Status HloCostAnalysis::HandleElementwiseOp(
   if (opcode == HloOpcode::kExp || opcode == HloOpcode::kLog ||
       opcode == HloOpcode::kPower || opcode == HloOpcode::kSqrt ||
       opcode == HloOpcode::kRsqrt || opcode == HloOpcode::kTanh ||
-      opcode == HloOpcode::kSin || opcode == HloOpcode::kCos) {
+      opcode == HloOpcode::kSin || opcode == HloOpcode::kCos ||
+      opcode == HloOpcode::kExpm1 || opcode == HloOpcode::kLog1p ||
+      opcode == HloOpcode::kAtan2) {
     current_properties_[kTranscendentalsKey] = computation_count;
   } else {
     // Note: transcendental operations are considered a separate category from
@@ -496,7 +498,10 @@ Status HloCostAnalysis::HandleBatchNormGrad(const HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleTranspose(const HloInstruction*) {
+Status HloCostAnalysis::HandleTranspose(const HloInstruction* transpose) {
+  if (transpose->IsEffectiveBitcast()) {
+    return HandleBitcast(transpose);
+  }
   return Status::OK();
 }
 
@@ -702,6 +707,10 @@ Status HloCostAnalysis::HandleCholesky(const HloInstruction* hlo) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleAllGather(const HloInstruction* hlo) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleAllReduce(const HloInstruction* crs) {
   // We assume 2 replicas, so that each output element is the sum of two input
   // elements.
@@ -727,6 +736,16 @@ Status HloCostAnalysis::HandleCollectivePermute(const HloInstruction* /*hlo*/) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleCollectivePermuteStart(
+    const HloInstruction* /*hlo*/) {
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleCollectivePermuteDone(
+    const HloInstruction* /*hlo*/) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandlePartitionId(const HloInstruction* /*hlo*/) {
   return Status::OK();
 }
@@ -741,6 +760,15 @@ Status HloCostAnalysis::HandleRng(const HloInstruction* random) {
   // the cost of each RNG is same as a transcendental operation.
   current_properties_[kTranscendentalsKey] =
       ShapeUtil::ElementsIn(random->shape());
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleRngBitGenerator(const HloInstruction* random) {
+  // TODO(b/26346211): Implement better estimates for the RNG cost, since the
+  // cost changes with the implementation and the distribution. For now, assume
+  // the cost of each RNG is same as a transcendental operation.
+  current_properties_[kTranscendentalsKey] =
+      ShapeUtil::ElementsInRecursive(random->shape());
   return Status::OK();
 }
 
@@ -1011,6 +1039,42 @@ int64 HloCostAnalysis::output_bytes_accessed(const HloInstruction& hlo,
 
 float HloCostAnalysis::optimal_seconds(const HloInstruction& hlo) const {
   return GetPropertyForHlo(hlo, kOptimalSecondsKey, hlo_properties_);
+}
+
+int64 HloCostAnalysis::GetBytesRead(const HloInstruction& hlo,
+                                    absl::optional<int64> memory_space) const {
+  int64 bytes_read = 0;
+  for (int operand_number = 0; operand_number < hlo.operand_count();
+       ++operand_number) {
+    for (const ShapeUtil::IndexedShape& indexed_shape :
+         ShapeUtil::GetLeafShapes(hlo.operand(operand_number)->shape())) {
+      absl::optional<int64> index_memory_space;
+      if (indexed_shape.shape.has_layout()) {
+        index_memory_space = indexed_shape.shape.layout().memory_space();
+      }
+      if (!memory_space || memory_space == index_memory_space) {
+        bytes_read +=
+            operand_bytes_accessed(hlo, operand_number, indexed_shape.index);
+      }
+    }
+  }
+  return bytes_read;
+}
+
+int64 HloCostAnalysis::GetBytesWritten(
+    const HloInstruction& hlo, absl::optional<int64> memory_space) const {
+  int64 bytes_written = 0;
+  for (const ShapeUtil::IndexedShape& indexed_shape :
+       ShapeUtil::GetLeafShapes(hlo.shape())) {
+    absl::optional<int64> index_memory_space;
+    if (indexed_shape.shape.has_layout()) {
+      index_memory_space = indexed_shape.shape.layout().memory_space();
+    }
+    if (!memory_space || memory_space == index_memory_space) {
+      bytes_written += output_bytes_accessed(hlo, indexed_shape.index);
+    }
+  }
+  return bytes_written;
 }
 
 StatusOr<HloCostAnalysis::Properties> HloCostAnalysis::ProcessSubcomputation(

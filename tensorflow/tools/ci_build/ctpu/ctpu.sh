@@ -46,7 +46,7 @@ function ctpu_up {
   local name="kokoro-tpu-${RANDOM}"
   local zone="us-central1-c"
   local size="v2-8"
-  local version="nightly-2.x"
+  local version="nightly"
   local project  # Project automatically detected from environment.
   local gcp_network  # Network needed only if project default is Legacy.
 
@@ -127,6 +127,7 @@ function ctpu_delete {
       --zone="${TPU_ZONE}" \
       --name="${TPU_NAME}" \
       --tpu-only \
-      -noconf && break || sleep 60
+      -noconf && return 0 || sleep 60
   done
+  return 1
 }

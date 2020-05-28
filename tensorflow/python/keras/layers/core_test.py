@@ -296,8 +296,7 @@ class TestStatefulLambda(keras_parameterized.TestCase):
     model.compile(
         keras.optimizer_v2.gradient_descent.SGD(0.1),
         'mae',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     x, y = np.ones((10, 10), 'float32'), 2 * np.ones((10, 10), 'float32')
     model.fit(x, y, batch_size=2, epochs=2, validation_data=(x, y))
     self.assertLen(model.trainable_weights, 1)
@@ -431,6 +430,12 @@ class CoreLayersTest(keras_parameterized.TestCase):
         kwargs={'target_shape': (-1, 1)},
         input_shape=(None, None, 2))
 
+  def test_reshape_set_static_shape(self):
+    input_layer = keras.Input(batch_shape=(1, None))
+    reshaped = keras.layers.Reshape((1, 100))(input_layer)
+    # Make sure the batch dim is not lost after array_ops.reshape.
+    self.assertEqual(reshaped.shape, [1, 1, 100])
+
   def test_permute(self):
     testing_utils.layer_test(
         keras.layers.Permute, kwargs={'dims': (2, 1)}, input_shape=(3, 2, 4))
@@ -492,14 +497,14 @@ class CoreLayersTest(keras_parameterized.TestCase):
         keras.layers.Dense, kwargs={'units': 3}, input_shape=(3, 4, 5, 2))
 
   def test_dense_dtype(self):
-    inputs = ops.convert_to_tensor(
+    inputs = ops.convert_to_tensor_v2(
         np.random.randint(low=0, high=7, size=(2, 2)))
     layer = keras.layers.Dense(5, dtype='float32')
     outputs = layer(inputs)
     self.assertEqual(outputs.dtype, 'float32')
 
   def test_dense_with_policy(self):
-    inputs = ops.convert_to_tensor(
+    inputs = ops.convert_to_tensor_v2(
         np.random.randint(low=0, high=7, size=(2, 2)))
     layer = keras.layers.Dense(5, dtype=policy.Policy('mixed_float16'))
     outputs = layer(inputs)

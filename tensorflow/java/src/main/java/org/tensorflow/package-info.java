@@ -36,7 +36,6 @@ limitations under the License.
  * </ul>
  *
  * <p>Additional examples can be found in the <a
- * href="https://github.com/tensorflow/models/tree/master/samples/languages/java">tensorflow/models</a>
- * GitHub repository.
+ * href="https://github.com/tensorflow/java">tensorflow/java</a> GitHub repository.
  */
 package org.tensorflow;

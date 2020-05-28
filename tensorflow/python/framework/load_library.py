@@ -26,7 +26,7 @@ import platform
 import sys
 
 from tensorflow.python import _pywrap_python_op_gen
-from tensorflow.python import pywrap_tensorflow as py_tf
+from tensorflow.python.client import pywrap_tf_session as py_tf
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export

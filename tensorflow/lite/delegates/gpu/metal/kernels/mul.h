@@ -26,10 +26,10 @@ namespace gpu {
 namespace metal {
 
 // Multiply operation, supports scalar and vector broadcast.
-std::vector<ComputeTaskDescriptorPtr> Multiply(
-    int id, ValueId input_id, ValueId output_id,
-    const MultiplyScalarAttributes& attr, const RuntimeOptions& options);
-
+std::vector<ComputeTaskDescriptorPtr> Multiply(int id, ValueId input_id,
+                                               ValueId output_id,
+                                               const MultiplyAttributes& attr,
+                                               const RuntimeOptions& options);
 }  // namespace metal
 }  // namespace gpu
 }  // namespace tflite

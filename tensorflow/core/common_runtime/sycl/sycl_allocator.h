@@ -64,8 +64,8 @@ class SYCLAllocator : public Allocator {
 
  private:
   mutable mutex mu_;
-  Eigen::SyclDevice* sycl_device_ GUARDED_BY(mu_);  // owned
-  AllocatorStats stats_ GUARDED_BY(mu_);
+  Eigen::SyclDevice* sycl_device_ TF_GUARDED_BY(mu_);  // owned
+  AllocatorStats stats_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(SYCLAllocator);
 };

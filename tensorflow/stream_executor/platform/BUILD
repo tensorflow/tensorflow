@@ -18,7 +18,6 @@ cc_library(
         "logging.h",
         "platform.h",
         "port.h",
-        "thread_annotations.h",
     ],
     deps = [
         "@com_google_absl//absl/strings",

@@ -39,6 +39,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings",
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite/profiling:time",
@@ -47,6 +48,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
+        "//tensorflow/lite/tools/evaluation/proto:preprocessing_steps_cc_proto",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:android_jpeg_internal",
@@ -109,6 +111,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/profiling:time",
+        "//tensorflow/lite/tools/evaluation:evaluation_delegate_provider",
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
         "//tensorflow/lite/tools/evaluation:utils",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
@@ -144,6 +147,7 @@ cc_library(
         ":tflite_inference_stage",
         ":topk_accuracy_eval_stage",
         "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/lite/tools/evaluation:evaluation_delegate_provider",
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
         "//tensorflow/lite/tools/evaluation:utils",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
@@ -160,6 +164,7 @@ cc_library(
         ":tflite_inference_stage",
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/core/util:stats_calculator_portable",
+        "//tensorflow/lite/tools/evaluation:evaluation_delegate_provider",
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
@@ -221,11 +226,11 @@ cc_library(
         ":tflite_inference_stage",
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/tools/evaluation:evaluation_delegate_provider",
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
         "//tensorflow/lite/tools/evaluation:utils",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_protobuf//:protobuf_headers",
     ],
 )

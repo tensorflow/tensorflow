@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -170,8 +172,9 @@ class XlaExecutableClosureStore {
 
  private:
   mutex mutex_;
-  int64 key_counter_ GUARDED_BY(mutex_);
-  absl::flat_hash_map<KeyT, XlaExecutableClosure> closures_ GUARDED_BY(mutex_);
+  int64 key_counter_ TF_GUARDED_BY(mutex_);
+  absl::flat_hash_map<KeyT, XlaExecutableClosure> closures_
+      TF_GUARDED_BY(mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaExecutableClosureStore);
 };
@@ -206,12 +209,14 @@ se::DeviceMemoryAllocator* GetAllocator(
 XlaLocalLaunchBase::XlaLocalLaunchBase(OpKernelConstruction* ctx,
                                        const std::vector<int>& constants,
                                        const std::vector<int>& resources,
-                                       const NameAttrList& function)
+                                       const NameAttrList& function,
+                                       bool has_ref_vars)
     : OpKernel(ctx),
       constants_(constants),
       resources_(resources),
       function_(function),
-      platform_info_(PlatformInfoFromContext(ctx)) {}
+      platform_info_(PlatformInfoFromContext(ctx)),
+      has_ref_vars_(has_ref_vars) {}
 
 static Status BuildCompilationCache(OpKernelContext* ctx,
                                     const XlaPlatformInfo& platform_info,
@@ -350,15 +355,9 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
 
   {
     Status s = CompileToLocalExecutable(
-        ctx, function_, /*has_ref_vars=*/true, platform_info_, resources_,
-        constants_, /*lazy=*/false, &client, &variables, &kernel, &executable);
-    if (!s.ok() && (platform_info_.device_type().type_string() == DEVICE_CPU ||
-                    platform_info_.device_type().type_string() == DEVICE_GPU)) {
-      // Suggest auto jit if the failure was with GPU or CPU.
-      errors::AppendToMessage(&s,
-                              xla::status_macros::kPossibleAutoJitAlternative);
-    }
-
+        ctx, function_, /*has_ref_vars=*/has_ref_vars_, platform_info_,
+        resources_, constants_, /*lazy=*/false, &client, &variables, &kernel,
+        &executable);
     OP_REQUIRES_OK(ctx, s);
   }
 
@@ -384,6 +383,18 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   run_options.set_allocator(allocator);
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
   run_options.set_rng_seed(GetXLARandomSeed());
+  xla::ThenExecuteFunction then_execute;
+  if (ctx->op_device_context()) {
+    then_execute = [&](se::Stream* stream, std::function<void()> fn) {
+      Status status = ctx->op_device_context()->ThenExecute(
+          down_cast<Device*>(ctx->device()), stream, std::move(fn));
+      if (!status.ok()) {
+        // This should never happen.
+        LOG(ERROR) << "ThenExecute failed " << status;
+      }
+    };
+    run_options.set_then_execute_function(&then_execute);
+  }
   Env* env = Env::Default();
   auto start_time = env->NowMicros();
 
@@ -462,7 +473,7 @@ bool HasRefVars(OpKernelConstruction* ctx) {
 
 XlaLocalLaunchOp::XlaLocalLaunchOp(OpKernelConstruction* ctx)
     : XlaLocalLaunchBase(ctx, ConstantsVector(ctx), ResourcesVector(ctx),
-                         FunctionAttr(ctx)) {}
+                         FunctionAttr(ctx), /*has_ref_vars=*/true) {}
 
 XlaLocalLaunchOp::~XlaLocalLaunchOp() {
   VLOG(1) << "XlaLocalLaunchOp destroyed";
@@ -592,6 +603,18 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
   run_options.set_allocator(allocator);
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
   run_options.set_rng_seed(GetXLARandomSeed());
+  xla::ThenExecuteFunction then_execute;
+  if (ctx->op_device_context()) {
+    then_execute = [&](se::Stream* stream, std::function<void()> fn) {
+      Status status = ctx->op_device_context()->ThenExecute(
+          down_cast<Device*>(ctx->device()), stream, std::move(fn));
+      if (!status.ok()) {
+        // This should never happen.
+        LOG(ERROR) << "ThenExecute failed " << status;
+      }
+    };
+    run_options.set_then_execute_function(&then_execute);
+  }
   Env* env = Env::Default();
   auto start_time = env->NowMicros();
 

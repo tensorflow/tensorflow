@@ -23,23 +23,52 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Matchers.h"  // TF:llvm-project
-#include "mlir/IR/OpImplementation.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
-#include "mlir/Transforms/InliningUtils.h"  // TF:llvm-project
+#include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/OpImplementation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
+#include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
+#include "tensorflow/compiler/mlir/lite/ir/tfl_structs.cc.inc"
 namespace TFL {
+
+// Returns true when the given two types have the same shape or broadcastable
+// shape within the given rank. If any given shapes are non-static, this method
+// returns true.
+bool IsBinaryOperandsHaveSameShapesOrBroadcastableShape(Type lhs, Type rhs,
+                                                        int max_bcast_rank) {
+  // Ignore shape checking on the non-static shapes for model compatibility.
+  auto lhs_shaped_type = lhs.dyn_cast<ShapedType>();
+  if (!lhs_shaped_type || !lhs_shaped_type.hasStaticShape()) return true;
+  auto rhs_shaped_type = rhs.dyn_cast<ShapedType>();
+  if (!rhs_shaped_type || !rhs_shaped_type.hasStaticShape()) return true;
+
+  if (lhs_shaped_type.getShape().equals(rhs_shaped_type.getShape()))
+    return true;
+
+  SmallVector<int64_t, 4> result_shape;
+  if (!OpTrait::util::getBroadcastedShape(lhs_shaped_type.getShape(),
+                                          rhs_shaped_type.getShape(),
+                                          result_shape)) {
+    return false;
+  }
+  return lhs_shaped_type.getRank() <= max_bcast_rank &&
+         rhs_shaped_type.getRank() <= max_bcast_rank;
+}
 
 //===----------------------------------------------------------------------===//
 // TensorFlowLiteDialect
@@ -52,10 +81,29 @@ struct TensorFlowLiteInlinerInterface : public DialectInlinerInterface {
   // Analysis Hooks
   //===--------------------------------------------------------------------===//
 
-  bool isLegalToInline(Operation *, Region *,
+  bool isLegalToInline(Operation *op, Region *dest,
                        BlockAndValueMapping &) const final {
     // No TFLite op restricts inlining today, revise as needed in the future.
     return true;
+  }
+  bool isLegalToInline(Region *dest, Region *src,
+                       BlockAndValueMapping &valueMapping) const final {
+    return isa<WhileOp>(dest->getParentOp());
+  }
+};
+
+struct TensorFlowLiteOpFolderDialectInterface
+    : public OpFolderDialectInterface {
+  using OpFolderDialectInterface::OpFolderDialectInterface;
+
+  // Registered hook to check if the given region, which is attached to an
+  // operation that is *not* isolated from above (i.e. no internal regions
+  // reference values defined in an enclosing region), should be used when
+  // materializing constants.
+  // In the TFLite dialect we materialize inside a while regions as slightly
+  // more efficient computationally.
+  bool shouldMaterializeInto(Region *region) const final {
+    return isa<WhileOp>(region->getParentOp());
   }
 };
 
@@ -65,7 +113,8 @@ TensorFlowLiteDialect::TensorFlowLiteDialect(mlir::MLIRContext *context)
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.cc.inc"
       >();
-  addInterfaces<TensorFlowLiteInlinerInterface>();
+  addInterfaces<TensorFlowLiteInlinerInterface,
+                TensorFlowLiteOpFolderDialectInterface>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -268,7 +317,7 @@ Attribute ConstFoldBinaryOp(
     return ConstFoldBinaryOp<FloatAttr>(result_type, operands[0], operands[1],
                                         float_calculate, is_commutative);
 
-  if (elemType.isa<IntegerType>())
+  if (elemType.isSignlessInteger())
     return ConstFoldBinaryOp<IntegerAttr>(result_type, operands[0], operands[1],
                                           int_calculate, is_commutative);
 
@@ -291,7 +340,7 @@ Attribute ConstFoldUnaryOp(Type result_type, Attribute operand,
     const int num_elements = result_shape_type.getNumElements();
     new_values.reserve(num_elements);
 
-    for (APFloat old_value : dense_elements.getValues<APFloat>()) {
+    for (const APFloat &old_value : dense_elements.getValues<APFloat>()) {
       new_values.push_back(calculate(old_value));
     }
 
@@ -608,7 +657,7 @@ LogicalResult Verify(FullyConnectedOp op) {
 // GatherOp
 //===----------------------------------------------------------------------===//
 
-static void BuildGatherOp(Builder *builder, OperationState &result,
+static void BuildGatherOp(OpBuilder *builder, OperationState &result,
                           Value params, Value indices, IntegerAttr axis) {
   auto params_type = params.getType().cast<TensorType>();
   auto indices_type = indices.getType().cast<TensorType>();
@@ -616,7 +665,7 @@ static void BuildGatherOp(Builder *builder, OperationState &result,
   // If params/indices is unranked, then output is unranked.
   if (!params_type.hasRank() || !indices_type.hasRank())
     return TFL::GatherOp::build(
-        builder, result, UnrankedTensorType::get(params_type.getElementType()),
+        *builder, result, UnrankedTensorType::get(params_type.getElementType()),
         params, indices, axis);
 
   int64_t params_rank = params_type.getRank();
@@ -661,9 +710,101 @@ static void BuildGatherOp(Builder *builder, OperationState &result,
   }
 
   TFL::GatherOp::build(
-      builder, result,
+      *builder, result,
       RankedTensorType::get(shape, params_type.getElementType()), params,
       indices, axis);
+}
+
+//===----------------------------------------------------------------------===//
+// ScatterNdOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(ScatterNdOp op) {
+  auto indices = op.indices();
+  auto updates = op.updates();
+  auto shape = op.shape();
+  auto output = op.output();
+
+  auto updates_type = updates.getType().cast<ShapedType>();
+  auto indices_type = indices.getType().cast<ShapedType>();
+
+  if (!indices_type.hasStaticShape() || !updates_type.hasStaticShape()) {
+    return success();
+  }
+
+  // Checks if the shape of `updates` is a tensor of shape
+  // `indices.shape[:-1] + shape[indices.shape[-1]:]`, as described in
+  // ScatterNd op description.
+
+  auto outer_dims = indices_type.getRank() - 1;
+  auto outermost_dim = indices_type.getDimSize(outer_dims);
+  // Checks whether the first `outer_dims` dimensions of `indices` and
+  // `updates` are equal.
+  for (auto i = 0; i < outer_dims; i++) {
+    if (indices_type.getDimSize(i) != updates_type.getDimSize(i)) {
+      return op.emitOpError()
+             << "indices.Dims(" << i << ") == " << indices_type.getDimSize(i)
+             << ", but updates.Dims(" << i
+             << ") == " << updates_type.getDimSize(i);
+    }
+  }
+
+  auto output_type = output.getType().cast<ShapedType>();
+  auto shape_type = shape.getType().cast<ShapedType>();
+  if (shape_type.hasStaticShape()) {
+    // Check the rank of `shape`.
+    auto output_rank = outermost_dim + updates_type.getRank() - outer_dims;
+    if (shape_type.getDimSize(0) != output_rank) {
+      return op.emitOpError()
+             << "shape must be a vector of length " << output_rank;
+    }
+    if (output_type.hasRank()) {
+      if (output_type.getRank() != output_rank) {
+        return op.emitOpError()
+               << "output must have the same rank with the length of shape = "
+               << output_rank;
+      }
+    }
+  }
+
+  DenseIntElementsAttr shape_value;
+  if (matchPattern(shape, m_Constant(&shape_value))) {
+    for (const auto shape_elem : shape_value) {
+      if (shape_elem.getSExtValue() <= 0) {
+        return op.emitOpError("all elements of shape must be > 0");
+      }
+    }
+
+    // Checks whether the last `(shape_type.getDimSize(0) - outermost_dim)`
+    // dimensions of `updates` and `shape` are equal.
+    for (auto shape_it : llvm::enumerate(shape_value)) {
+      auto i = shape_it.index();
+      auto value = shape_it.value().getSExtValue();
+      if (i >= outermost_dim) {
+        auto corresponding_dim = i - outermost_dim + outer_dims;
+        if (value != updates_type.getDimSize(corresponding_dim)) {
+          return op.emitOpError()
+                 << "updates.Dims(" << i
+                 << ") == " << updates_type.getDimSize(corresponding_dim)
+                 << ", but shape[" << i << "] == " << value;
+        }
+      }
+    }
+
+    // Checks if the output has the shape specified by `shape`.
+    if (output_type.hasStaticShape()) {
+      for (auto shape_it : llvm::enumerate(shape_value)) {
+        int i = shape_it.index();
+        auto value = shape_it.value().getSExtValue();
+        if (output_type.getDimSize(i) != value) {
+          return op.emitOpError()
+                 << "output shape [" << output_type.getShape()
+                 << "] must be equal to the value of shape " << shape_value;
+        }
+      }
+    }
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -716,12 +857,11 @@ static LogicalResult Verify(PackOp op) {
   }
 
   // Make sure all inputs have the same shape and element type.
-  // TODO(rahulsp): Simplify once b/135032064 is fixed.
-  for (Value operand : op.getOperands()) {
-    auto other_type = operand.getType().cast<ShapedType>();
-    if (input_type != other_type)
+  // TODO(b/135032063): Simplify once fixed.
+  for (Type operand_type : op.getOperandTypes()) {
+    if (failed(mlir::verifyCompatibleShape(input_type, operand_type)))
       return op.emitOpError("operands should be of the same type. got ")
-             << input_type << ", " << other_type;
+             << input_type << ", " << operand_type;
   }
 
   return success();
@@ -781,10 +921,10 @@ struct RemoveAdjacentReshape : public RewritePattern {
   RemoveAdjacentReshape(MLIRContext *context)
       : RewritePattern(ReshapeOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult match(Operation *op) const override {
+  LogicalResult match(Operation *op) const override {
     auto thisOp = cast<ReshapeOp>(op);
     auto prevOp = thisOp.getOperand(0).getDefiningOp();
-    return isa_and_nonnull<ReshapeOp>(prevOp) ? matchSuccess() : matchFailure();
+    return isa_and_nonnull<ReshapeOp>(prevOp) ? success() : failure();
   }
 
   void rewrite(Operation *op, PatternRewriter &rewriter) const override {
@@ -797,8 +937,7 @@ struct RemoveAdjacentReshape : public RewritePattern {
     // With
     //   %2 = "tfl.reshape"(%0, %shape1)
     rewriter.replaceOpWithNewOp<ReshapeOp>(
-        {prevOp.getResult()}, op, thisOp.getType(), prevOp.getOperand(0),
-        thisOp.getOperand(1));
+        op, thisOp.getType(), prevOp.getOperand(0), thisOp.getOperand(1));
   }
 };
 
@@ -821,7 +960,7 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
       if (!shape_elements) return nullptr;
 
       SmallVector<int64_t, 4> shape_data;
-      for (auto it : shape_elements.getValues<APInt>()) {
+      for (const auto &it : shape_elements.getValues<APInt>()) {
         shape_data.push_back(it.getSExtValue());
       }
       result_type =
@@ -862,28 +1001,27 @@ struct RemoveRedundantUnpackPack : public RewritePattern {
   explicit RemoveRedundantUnpackPack(MLIRContext *context)
       : RewritePattern(PackOp::getOperationName(), 2, context) {}
 
-  PatternMatchResult matchAndRewrite(Operation *op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
     TFL::PackOp pack_op = cast<TFL::PackOp>(op);
     Operation *first_input = pack_op.getOperand(0).getDefiningOp();
-    if (!first_input) return matchFailure();
+    if (!first_input) return failure();
     auto input_unpack_op = dyn_cast_or_null<TFL::UnpackOp>(first_input);
-    if (!input_unpack_op) return matchFailure();
+    if (!input_unpack_op) return failure();
 
     // The unpack & pack should have the same axis & num inputs/outputs.
     if (pack_op.axis() != input_unpack_op.axis() ||
         pack_op.values_count() != input_unpack_op.num())
-      return matchFailure();
+      return failure();
 
     const int total_pack_inputs = pack_op.getNumOperands();
-    if (total_pack_inputs != input_unpack_op.getNumResults())
-      return matchFailure();
+    if (total_pack_inputs != input_unpack_op.getNumResults()) return failure();
     for (auto input_output :
          llvm::zip(pack_op.getOperands(), input_unpack_op.getResults())) {
       Value pack_input = std::get<0>(input_output);
       Value unpack_output = std::get<1>(input_output);
       // Make sure the ordering is the same for the pack op & unpack op.
-      if (pack_input != unpack_output) return matchFailure();
+      if (pack_input != unpack_output) return failure();
     }
 
     // Replace the pack's output to the unpack's input.
@@ -891,7 +1029,7 @@ struct RemoveRedundantUnpackPack : public RewritePattern {
     // At this point, we don't manually remove the redundant pack op & unpack op
     // (we cannot actually), but trust the PatterRewriter to garbage collect
     // these two ops.
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -968,6 +1106,75 @@ static LogicalResult Verify(SliceOp op) {
   return success();
 }
 
+TFL::ConstOp NarrowDownInt64InputValuesForOp(Operation *input_op,
+                                             RankedTensorType value_type,
+                                             Location loc, OpBuilder *builder) {
+  if (input_op == nullptr) return nullptr;
+
+  mlir::DenseIntElementsAttr attr;
+  if (!matchPattern(input_op, m_Constant(&attr))) {
+    return nullptr;
+  }
+
+  auto value_shape_type = mlir::RankedTensorType::get(
+      value_type.getShape(), builder->getIntegerType(32));
+
+  SmallVector<int32_t, 4> value_i32;
+  value_i32.reserve(value_type.getRank());
+  for (const auto &size : attr) {
+    value_i32.push_back(static_cast<int32_t>(size.getSExtValue()));
+  }
+  auto new_value_i32_attr =
+      mlir::DenseIntElementsAttr::get(value_shape_type, value_i32);
+
+  return builder->create<TFL::ConstOp>(loc, new_value_i32_attr);
+}
+
+// This will cast donw int64 values for TFL slice op.
+// This will require the begin & size are constants.
+struct CastDonwInt64BeginEndToInt32 : public OpRewritePattern<TFL::SliceOp> {
+  using OpRewritePattern<TFL::SliceOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::SliceOp slice_op,
+                                PatternRewriter &rewriter) const override {
+    auto begin = slice_op.begin();
+    auto size = slice_op.size();
+    auto begin_type = begin.getType().dyn_cast_or_null<RankedTensorType>();
+    auto size_type = size.getType().dyn_cast_or_null<RankedTensorType>();
+    auto begin_op = begin.getDefiningOp();
+    auto size_op = size.getDefiningOp();
+
+    if (begin_op == nullptr && size_op == nullptr) return failure();
+
+    if (begin_type == nullptr && size_type == nullptr) return failure();
+
+    // Handle begin.
+    if (begin_op && begin_type && begin_type.getElementType().isInteger(64)) {
+      auto new_begin = NarrowDownInt64InputValuesForOp(
+          begin_op, begin_type, slice_op.getLoc(), &rewriter);
+      if (new_begin != nullptr) {
+        slice_op.setOperand(1, new_begin);
+      }
+    }
+
+    // Handle size.
+    if (size_op && size_type && size_type.getElementType().isInteger(64)) {
+      auto new_size = NarrowDownInt64InputValuesForOp(
+          size_op, size_type, slice_op.getLoc(), &rewriter);
+      if (new_size != nullptr) {
+        slice_op.setOperand(2, new_size);
+      }
+    }
+
+    return success();
+  }
+};
+
+void SliceOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                          MLIRContext *context) {
+  results.insert<CastDonwInt64BeginEndToInt32>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // SubOp
 //===----------------------------------------------------------------------===//
@@ -984,7 +1191,7 @@ OpFoldResult SubOp::fold(ArrayRef<Attribute> operands) {
 // TopKOp
 //===----------------------------------------------------------------------===//
 
-static void BuildTopKOp(Builder *builder, OperationState &result, Value input,
+static void BuildTopKOp(OpBuilder *builder, OperationState &result, Value input,
                         Value k) {
   // Output size is only known if k is constant value. A negative dimension is
   // considered dynamic so use -1 here if k is not a constant value.
@@ -999,14 +1206,14 @@ static void BuildTopKOp(Builder *builder, OperationState &result, Value input,
   // If value is unranked, then so is results.
   if (!val_type.hasRank())
     return TFL::TopKV2Op::build(
-        builder, result, UnrankedTensorType::get(val_type.getElementType()),
+        *builder, result, UnrankedTensorType::get(val_type.getElementType()),
         UnrankedTensorType::get(builder->getIntegerType(32)), input, k);
 
   // Resultant shape is value.shape[:-1] + [k]
   std::vector<int64_t> shape(val_type.getShape());
   shape[shape.size() - 1] = const_k;
   TFL::TopKV2Op::build(
-      builder, result, RankedTensorType::get(shape, val_type.getElementType()),
+      *builder, result, RankedTensorType::get(shape, val_type.getElementType()),
       RankedTensorType::get(shape, builder->getIntegerType(32)), input, k);
 }
 
@@ -1028,17 +1235,17 @@ struct DropFakeQuant : public RewritePattern {
   explicit DropFakeQuant(MLIRContext *context)
       : RewritePattern(FakeQuantOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult match(Operation *op) const override {
+  LogicalResult match(Operation *op) const override {
     // We only match the op with valid "minmax" attribute.
-    if (!HasValidMinMaxAttribute(op)) return matchFailure();
+    if (!HasValidMinMaxAttribute(op)) return failure();
 
     // If all the users of this op have valid "minmax" attributes, it is matched
     // and can be removed.
     auto fakeQuantOp = cast<FakeQuantOp>(op);
     for (auto *operand : fakeQuantOp.getResult().getUsers())
-      if (!HasValidMinMaxAttribute(operand)) return matchFailure();
+      if (!HasValidMinMaxAttribute(operand)) return failure();
 
-    return matchSuccess();
+    return success();
   }
 
   void rewrite(Operation *op, PatternRewriter &rewriter) const override {
@@ -1102,10 +1309,10 @@ static LogicalResult VerifySplitOpOutputTypes(
   for (int64_t i = 0; i < num_splits; ++i) {
     auto expected_output_type = get_expected_output_type(i);
     Value output = op->getResult(i);
-    auto output_type = output.getType().dyn_cast<RankedTensorType>();
-    if (!output_type || output_type != expected_output_type)
+    if (failed(verifyCompatibleShape(output.getType(), expected_output_type)))
       return op->emitOpError()
-             << "output #" << i << " should be " << expected_output_type;
+             << "output #" << i << " should be " << expected_output_type
+             << " instead got " << output.getType();
   }
   return success();
 }
@@ -1245,10 +1452,65 @@ static LogicalResult Verify(SplitVOp op) {
 
 static LogicalResult Verify(LSTMOp op) {
   auto operands = op.GetStatefulOperands();
-  if (operands.size() == 2 && operands[0] == 18 && operands[1] == 19) {
-    return success();
+  if (operands.size() != 2 || operands[0] != 18 || operands[1] != 19) {
+    return op.emitOpError("LSTMOp expected to have two stateful operands");
   }
-  return op.emitError("LSTMOp expected to have two stateful operands");
+
+  const auto input_type = op.input().getType().cast<ShapedType>();
+  // Since TFLite runtime generally supports dynamic shape/rank, if `input_type`
+  // doesn't have static shape, we skip the shape check below.
+  if (!input_type.hasStaticShape()) return success();
+  // The input should be at least 2D tensor since it will go through fully
+  // connected layer.
+  if (!input_type.hasRank() || input_type.getRank() < 2)
+    return op.emitOpError(
+        "the first input operand should have more than 2 dimensions.");
+
+  const auto activation_state =
+      op.input_activation_state().getType().cast<ShapedType>();
+  const auto cell_state = op.input_cell_state().getType().cast<ShapedType>();
+  const auto input_to_output_weights =
+      op.input_to_output_weights().getType().cast<ShapedType>();
+  const auto recurrent_to_output_weights =
+      op.recurrent_to_output_weights().getType().cast<ShapedType>();
+  if (activation_state.hasStaticShape() && cell_state.hasStaticShape() &&
+      input_to_output_weights.hasStaticShape() &&
+      recurrent_to_output_weights.hasStaticShape()) {
+    const int n_input = input_type.getDimSize(input_type.getRank() - 1);
+    const int n_cell = input_to_output_weights.getDimSize(0);
+    const int n_output = recurrent_to_output_weights.getDimSize(1);
+    const int output_state_size = activation_state.getNumElements();
+    const int n_batch = input_type.getRank() == 2 ? input_type.getDimSize(0)
+                                                  : input_type.getDimSize(1);
+    const int state_size = cell_state.getNumElements();
+
+    // Check if the dimension of the inputs matches.
+    if ((output_state_size != n_batch * n_output) ||
+        (state_size != n_batch * n_cell) ||
+        (input_to_output_weights.getDimSize(1) != n_input) ||
+        (recurrent_to_output_weights.getRank() != 2) ||
+        (recurrent_to_output_weights.getDimSize(0) != n_cell) ||
+        (input_to_output_weights.getRank() != 2)) {
+      return op.emitOpError("inputs don't match with the dimensions.");
+    }
+
+    const bool is_layer_norm_lstm =
+        !op.forget_layer_norm_coefficients().getType().isa<NoneType>();
+    if (is_layer_norm_lstm) {
+      const auto forget_layer_norm_coefficients =
+          op.forget_layer_norm_coefficients().getType().cast<ShapedType>();
+      // If this lstm has layer normalization, this input value,
+      // "forget_layer_norm_coefficients" should be a 1D tensor.
+      if (forget_layer_norm_coefficients.getRank() != 1 ||
+          forget_layer_norm_coefficients.getDimSize(0) != n_cell)
+        return op.emitOpError(
+            "coefficient inputs have more than 2 dimensions or "
+            "don't match the dimension with input operand "
+            "`input_to_output_weights`.");
+    }
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1262,6 +1524,20 @@ static LogicalResult Verify(UnidirectionalSequenceLSTMOp op) {
   }
   return op.emitError(
       "UnidirectionalSequenceLSTMOp expected to have two stateful operands");
+}
+
+//===----------------------------------------------------------------------===//
+// BidirectionalSequenceLSTMOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(BidirectionalSequenceLSTMOp op) {
+  auto operands = op.GetStatefulOperands();
+  if (operands.size() == 4 && operands[0] == 35 && operands[1] == 36 &&
+      operands[2] == 37 && operands[3] == 38) {
+    return success();
+  }
+  return op.emitError(
+      "BidirectionalSequenceLSTMOp expected to have four stateful operands");
 }
 
 //===----------------------------------------------------------------------===//
@@ -1299,6 +1575,19 @@ OpFoldResult AbsOp::fold(ArrayRef<Attribute> operands) {
   if (!IsF32ShapedType(result_type)) return nullptr;
 
   auto compute = [](APFloat value) -> APFloat { return llvm::abs(value); };
+  return ConstFoldUnaryOp(result_type, operands[0], compute);
+}
+
+//===----------------------------------------------------------------------===//
+// NegOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult NegOp::fold(ArrayRef<Attribute> operands) {
+  Type result_type = getType();
+  // Only constant fold for tensor of f32 is implemented.
+  if (!IsF32ShapedType(result_type)) return nullptr;
+
+  auto compute = [](APFloat value) -> APFloat { return llvm::neg(value); };
   return ConstFoldUnaryOp(result_type, operands[0], compute);
 }
 
@@ -1542,7 +1831,7 @@ OpFoldResult RangeOp::fold(ArrayRef<Attribute> operands) {
            limit_tensor.getType().getRank() == 0 &&
            delta_tensor.getType().getRank() == 0);
     Type elem_type = getType().cast<ShapedType>().getElementType();
-    if (elem_type.isa<IntegerType>()) {
+    if (elem_type.isSignlessInteger()) {
       auto start_attr = start_tensor.getValue<IntegerAttr>({});
       auto limit_attr = limit_tensor.getValue<IntegerAttr>({});
       auto delta_attr = delta_tensor.getValue<IntegerAttr>({});
@@ -1644,7 +1933,7 @@ OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
 
   // Do not try to fold elements attr of a quant type because
   // DenseElementsAttr does not support it.
-  if (!getType().cast<ShapedType>().getElementType().isIntOrFloat())
+  if (!getType().cast<ShapedType>().getElementType().isSignlessIntOrFloat())
     return nullptr;
 
   assert(perm_tensor.getType().getRank() == 1);
@@ -1694,7 +1983,7 @@ static LogicalResult Verify(TransposeOp op) {
 
   int index = 0;
   llvm::SmallVector<int64_t, 4> axes;
-  for (auto axis_int : perm.getValues<APInt>()) {
+  for (const auto &axis_int : perm.getValues<APInt>()) {
     const int64_t axis = axis_int.getSExtValue();
     if (axis < 0 || (input_type.hasRank() && axis >= input_type.getRank())) {
       return op.emitOpError(
@@ -1724,6 +2013,139 @@ static LogicalResult Verify(TransposeOp op) {
   return success();
 }
 
+LogicalResult Verify(WhileOp op) {
+  if (op.getNumOperands() != op.getNumResults())
+    return op.emitOpError(llvm::formatv(
+        "number of operands does not match number of results ({0} != {1})",
+        op.getNumOperands(), op.getNumResults()));
+  // TODO(jpienaar): Verify operand, result & block arguments types
+  return success();
+}
+
+static LogicalResult Verify(CustomOp op) {
+  OpaqueElementsAttr opaque_attr =
+      op.custom_option().cast<OpaqueElementsAttr>();
+  if (!opaque_attr.getType().hasStaticShape())
+    return op.emitOpError("custom_option should have a static shape.");
+  if (opaque_attr.getValue().size() !=
+      opaque_attr.getType().cast<ShapedType>().getDimSize(0))
+    return op.emitOpError(
+        "custom_option should have the same length of content with shape.");
+  return success();
+}
+
+namespace {
+// Canonicalize While op so that results and operands match and external values
+// are via implicit capture rather than via block args.
+struct WhileResultOperandsMatchAndImplicitCapture
+    : public OpRewritePattern<WhileOp> {
+  using OpRewritePattern<WhileOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(WhileOp while_op,
+                                PatternRewriter &rewriter) const override {
+    // Replace values simply passed through the body with extern values. The
+    // block arguments of body and while match and so the corresponding cond
+    // argument can be easily found.
+    bool unchanged = true;
+    auto &body_block = while_op.body().front();
+    auto &cond_block = while_op.cond().front();
+    auto &yield = *body_block.getTerminator();
+    for (auto ba : body_block.getArguments()) {
+      if (ba == yield.getOperand(ba.getArgNumber())) {
+        unchanged = false;
+        auto value = while_op.getOperand(ba.getArgNumber());
+        ba.replaceAllUsesWith(value);
+        cond_block.getArgument(ba.getArgNumber()).replaceAllUsesWith(value);
+      }
+    }
+
+    // The While ops operands and result types need to match
+    SmallVector<Value, 4> new_operands;
+    SmallVector<Value, 4> new_body_yield;
+    SmallVector<bool, 4> const_operand(while_op.getNumOperands(), false);
+    llvm::SmallVector<Type, 4> types;
+    new_operands.reserve(while_op.getNumOperands());
+    new_body_yield.reserve(while_op.getNumOperands());
+    types.reserve(while_op.getNumOperands());
+
+    // Remove block arguments not used in either cond or body. This leaves the
+    // block arguments of body and cond matching still.
+    int arg_index = 0;
+    for (int while_index = 0, e = while_op.getNumOperands(); while_index < e;
+         ++while_index) {
+      auto value = while_op.getOperand(while_index);
+      if (body_block.getArgument(arg_index).use_empty() &&
+          cond_block.getArgument(arg_index).use_empty() &&
+          // This could be relaxed and casts inserted.
+          while_op.getResult(while_index).getType() == value.getType()) {
+        unchanged = false;
+        body_block.eraseArgument(arg_index);
+        cond_block.eraseArgument(arg_index);
+
+        // Mark operand as constant and replace all uses with input to while.
+        while_op.getResult(while_index).replaceAllUsesWith(value);
+        const_operand[while_index] = true;
+      } else {
+        new_operands.push_back(value);
+        new_body_yield.push_back(yield.getOperand(while_index));
+        auto type = while_op.getResult(while_index).getType();
+        types.push_back(type);
+        ++arg_index;
+      }
+    }
+
+    // Done if no values removed from blocks and operands & results match.
+    if (unchanged) return failure();
+
+    // Replace with new While with matching operands and results.
+    Operation *op = while_op.getOperation();
+    Operation *new_op = rewriter.insert(
+        Operation::create(op->getLoc(), op->getName(), types, new_operands,
+                          op->getAttrs(), {}, /*numRegions=*/2));
+
+    for (int i = 0; i < 2; ++i) new_op->getRegion(i).takeBody(op->getRegion(i));
+    int new_index = 0;
+    for (int op_index = 0, e = op->getNumResults(); op_index < e; ++op_index) {
+      if (const_operand[op_index]) continue;
+      op->getResult(op_index).replaceAllUsesWith(new_op->getResult(new_index));
+      ++new_index;
+    }
+    rewriter.eraseOp(op);
+
+    Block &new_body_block = cast<WhileOp>(new_op).body().front();
+    rewriter.setInsertionPointToEnd(&new_body_block);
+    rewriter.replaceOpWithNewOp<YieldOp>(new_body_block.getTerminator(),
+                                         new_body_yield);
+
+    return success();
+  }
+};
+
+}  // namespace
+
+void WhileOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                          MLIRContext *context) {
+  results.insert<WhileResultOperandsMatchAndImplicitCapture>(context);
+}
+
+Region &WhileOp::getLoopBody() { return body(); }
+
+bool WhileOp::isDefinedOutsideOfLoop(Value value) {
+  // TODO(jpienaar): This is to overly conservative and disables anything other
+  // than constant hoisting initially.
+  return false;
+}
+
+LogicalResult WhileOp::moveOutOfLoop(llvm::ArrayRef<mlir::Operation *> ops) {
+  if (ops.empty()) return success();
+
+  // Move the hoisted value to just before the while.
+  Operation *while_op = this->getOperation();
+  for (auto op : ops) op->moveBefore(while_op);
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
@@ -1731,6 +2153,7 @@ static LogicalResult Verify(TransposeOp op) {
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_interface.cc.inc"
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.cc.inc"
+#include "tensorflow/compiler/mlir/lite/runtime_verifiers.inc"
 
 Operation *TensorFlowLiteDialect::materializeConstant(OpBuilder &builder,
                                                       Attribute value,

@@ -36,10 +36,12 @@ from tensorflow.python.ops.gen_random_ops import *
 # pylint: enable=wildcard-import
 
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("random.normal", v1=["random.normal", "random_normal"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("random_normal")
 def random_normal(shape,
                   mean=0.0,
@@ -55,7 +57,7 @@ def random_normal(shape,
   >>> tf.random.normal([4], 0, 1, tf.float32)
   <tf.Tensor: shape=(4,), dtype=float32, numpy=..., dtype=float32)>
 
-  Example that outputs a reproduceable result:
+  Example that outputs a reproducible result:
 
   >>> tf.random.set_seed(5);
   >>> tf.random.normal([2,2], 0, 1, tf.float32, seed=1)
@@ -64,7 +66,7 @@ def random_normal(shape,
         [-0.169515   ,  1.0824056 ]], dtype=float32)>
 
   In this case, we are setting both the global and operation-level seed to
-  ensure this result is reproduceable.  See `tf.random.set_seed` for more
+  ensure this result is reproducible.  See `tf.random.set_seed` for more
   information.
 
   Args:
@@ -155,6 +157,7 @@ def parameterized_truncated_normal(shape,
 
 @tf_export("random.truncated_normal",
            v1=["random.truncated_normal", "truncated_normal"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("truncated_normal")
 def truncated_normal(shape,
                      mean=0.0,
@@ -202,6 +205,7 @@ ops.NotDifferentiable("TruncatedNormal")
 
 
 @tf_export("random.uniform", v1=["random.uniform", "random_uniform"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("random_uniform")
 def random_uniform(shape,
                    minval=0,
@@ -253,10 +257,12 @@ def random_uniform(shape,
   Args:
     shape: A 1-D integer Tensor or Python array. The shape of the output tensor.
     minval: A Tensor or Python value of type `dtype`, broadcastable with
-      `maxval`. The lower bound on the range of random values to generate
+      `shape` (for integer types, broadcasting is not supported, so it needs to
+      be a scalar). The lower bound on the range of random values to generate
       (inclusive).  Defaults to 0.
     maxval: A Tensor or Python value of type `dtype`, broadcastable with
-      `minval`. The upper bound on the range of random values to generate
+      `shape` (for integer types, broadcasting is not supported, so it needs to
+      be a scalar). The upper bound on the range of random values to generate
       (exclusive). Defaults to 1 if `dtype` is floating point.
     dtype: The type of the output: `float16`, `float32`, `float64`, `int32`,
       or `int64`.
@@ -311,6 +317,7 @@ ops.NotDifferentiable("RandomUniform")
 
 
 @tf_export("random.shuffle", v1=["random.shuffle", "random_shuffle"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("random_shuffle")
 def random_shuffle(value, seed=None, name=None):
   """Randomly shuffles a tensor along its first dimension.
@@ -343,6 +350,7 @@ def random_shuffle(value, seed=None, name=None):
 
 
 @tf_export("image.random_crop", v1=["image.random_crop", "random_crop"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("random_crop")
 def random_crop(value, size, seed=None, name=None):
   """Randomly crops a tensor to a given size.
@@ -387,6 +395,7 @@ def random_crop(value, size, seed=None, name=None):
 
 
 @tf_export(v1=["random.multinomial", "multinomial"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated(
     date=None, instructions="Use `tf.random.categorical` instead.")
 def multinomial(logits, num_samples, seed=None, name=None, output_dtype=None):
@@ -466,6 +475,7 @@ def _maybe_set_static_shape_helper(tensor, shape, postfix_tensor):
 
 
 @tf_export("random.gamma", v1=["random.gamma", "random_gamma"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("random_gamma")
 def random_gamma(shape,
                  alpha,
@@ -559,6 +569,7 @@ def random_gamma(shape,
 
 
 @tf_export(v1=["random.poisson", "random_poisson"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("random_poisson")
 def random_poisson(lam, shape, dtype=dtypes.float32, seed=None, name=None):
   """Draws `shape` samples from each of the given Poisson distribution(s).
@@ -599,6 +610,7 @@ def random_poisson(lam, shape, dtype=dtypes.float32, seed=None, name=None):
 
 
 @tf_export("random.poisson", v1=[])
+@dispatch.add_dispatch_support
 def random_poisson_v2(shape, lam, dtype=dtypes.float32, seed=None, name=None):
   """Draws `shape` samples from each of the given Poisson distribution(s).
 

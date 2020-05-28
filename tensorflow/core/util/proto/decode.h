@@ -339,7 +339,6 @@ inline Status ReadPrimitive(CodedInputStream* input, int index, void* data) {
 inline Status ReadBytes(CodedInputStream* input, int index, void* datap) {
   tstring* data = reinterpret_cast<tstring*>(datap) + index;
 
-#ifdef USE_TSTRING
   uint32 length;
   if (!input->ReadVarint32(&length)) {
     return errors::DataLoss("Failed reading bytes");
@@ -350,11 +349,6 @@ inline Status ReadBytes(CodedInputStream* input, int index, void* datap) {
   if (!input->ReadRaw(data->data(), length)) {
     return errors::DataLoss("Failed reading bytes");
   }
-#else   // USE_TSTRING
-  if (!WireFormatLite::ReadBytes(input, data)) {
-    return errors::DataLoss("Failed reading bytes");
-  }
-#endif  // USE_TSTRING
   return Status::OK();
 }
 
@@ -369,7 +363,6 @@ inline Status ReadGroupBytes(CodedInputStream* input, int field_number,
   // on input->IsFlat() == true and using input->GetDirectBufferPointer()
   // with input->CurrentPosition().
   tstring* data = reinterpret_cast<tstring*>(datap) + index;
-#ifdef USE_TSTRING
   // TODO(dero): To mitigate the string to tstring copy, we can implement our
   // own scanner as described above.  We would first need to obtain the length
   // in an initial pass and resize/reserve the tstring. But, given that
@@ -378,9 +371,6 @@ inline Status ReadGroupBytes(CodedInputStream* input, int field_number,
   // TYPE_GROUP tag, we use std::string as a read buffer.
   string buf;
   StringOutputStream string_stream(&buf);
-#else   // USE_TSTRING
-  StringOutputStream string_stream(data);
-#endif  // USE_TSTRING
   {
     CodedOutputStream out(&string_stream);
     if (!WireFormatLite::SkipField(
@@ -391,9 +381,7 @@ inline Status ReadGroupBytes(CodedInputStream* input, int field_number,
       return errors::DataLoss("Failed reading group");
     }
   }
-#ifdef USE_TSTRING
   *data = buf;
-#endif  // USE_TSTRING
   return Status::OK();
 }
 

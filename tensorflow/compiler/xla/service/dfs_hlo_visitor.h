@@ -109,13 +109,19 @@ class DfsHloVisitorBase {
   virtual Status HandleRsqrt(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
+  virtual Status HandleCbrt(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
   virtual Status HandleConvolution(HloInstructionPtr hlo) = 0;
   virtual Status HandleFft(HloInstructionPtr fft) = 0;
   virtual Status HandleTriangularSolve(HloInstructionPtr hlo) = 0;
   virtual Status HandleCholesky(HloInstructionPtr hlo) = 0;
+  virtual Status HandleAllGather(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllReduce(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllToAll(HloInstructionPtr hlo) = 0;
   virtual Status HandleCollectivePermute(HloInstructionPtr hlo) = 0;
+  virtual Status HandleCollectivePermuteStart(HloInstructionPtr hlo) = 0;
+  virtual Status HandleCollectivePermuteDone(HloInstructionPtr hlo) = 0;
   virtual Status HandleReplicaId(HloInstructionPtr hlo) = 0;
   virtual Status HandlePartitionId(HloInstructionPtr hlo) = 0;
   virtual Status HandleGetDimensionSize(HloInstructionPtr hlo) = 0;
@@ -225,6 +231,7 @@ class DfsHloVisitorBase {
   virtual Status HandleInfeed(HloInstructionPtr hlo) = 0;
   virtual Status HandleOutfeed(HloInstructionPtr hlo) = 0;
   virtual Status HandleRng(HloInstructionPtr hlo) = 0;
+  virtual Status HandleRngBitGenerator(HloInstructionPtr hlo) = 0;
   virtual Status HandleRngGetAndUpdateState(HloInstructionPtr hlo) = 0;
   virtual Status HandleReverse(HloInstructionPtr hlo) = 0;
   virtual Status HandleSort(HloInstructionPtr hlo) = 0;

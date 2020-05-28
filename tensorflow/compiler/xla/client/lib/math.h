@@ -58,6 +58,20 @@ XlaOp Lgamma(XlaOp input);
 // Computes an approximation of the digamma function.
 XlaOp Digamma(XlaOp input);
 
+// Computes an approximation of the incomplete gamma function.
+XlaOp Igamma(XlaOp a, XlaOp x);
+
+// Computes an approximation of the derivative of the incomplete gamma function
+// with respect to a.
+XlaOp IgammaGradA(XlaOp a, XlaOp x);
+
+// Computes an approximation of the derivative of a sample `x` from a `Gamma(a,
+// 1)` distribution with respect to a.
+XlaOp RandomGammaGrad(XlaOp a, XlaOp x);
+
+// Computes an approximation of the complementary incomplete gamma function.
+XlaOp Igammac(XlaOp a, XlaOp x);
+
 // Rounds the given number to even when the number is equidistant between two
 // integers.
 XlaOp RoundToEven(XlaOp x);

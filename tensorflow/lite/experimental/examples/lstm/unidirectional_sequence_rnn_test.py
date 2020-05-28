@@ -20,22 +20,18 @@ import tempfile
 
 import numpy as np
 from six.moves import range
-import tensorflow as tf
-
-from tensorflow import flags
+import tensorflow.compat.v1 as tf
 
 from tensorflow.examples.tutorials.mnist import input_data
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
-FLAGS = flags.FLAGS
+FLAGS = tf.compat.v1.flags.FLAGS
 
 # Number of steps to train model.
 # Dial to 0 means no training at all, all the weights will be just using their
 # initial values. This can help make the test smaller.
 TRAIN_STEPS = 0
-
-CONFIG = tf.ConfigProto(device_count={"GPU": 0})
 
 
 class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
@@ -65,8 +61,10 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
 
   def buildRnnLayer(self):
     return tf.keras.layers.StackedRNNCells([
-        tf.lite.experimental.nn.TfLiteRNNCell(self.num_units, name="rnn1"),
-        tf.lite.experimental.nn.TfLiteRNNCell(self.num_units, name="rnn2")
+        tf.compat.v1.lite.experimental.nn.TfLiteRNNCell(
+            self.num_units, name="rnn1"),
+        tf.compat.v1.lite.experimental.nn.TfLiteRNNCell(
+            self.num_units, name="rnn2")
     ])
 
   def buildModel(self, rnn_layer, is_dynamic_rnn):
@@ -89,18 +87,19 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     out_bias = tf.Variable(tf.random.normal([self.n_classes]))
 
     # input image placeholder
-    x = tf.placeholder(
+    x = tf.compat.v1.placeholder(
         "float", [None, self.time_steps, self.n_input], name="INPUT_IMAGE")
 
     # x is shaped [batch_size,time_steps,num_inputs]
     if is_dynamic_rnn:
       rnn_input = tf.transpose(x, perm=[1, 0, 2])
-      outputs, _ = tf.lite.experimental.nn.dynamic_rnn(
+      outputs, _ = tf.compat.v1.lite.experimental.nn.dynamic_rnn(
           rnn_layer, rnn_input, dtype="float32")
       outputs = tf.unstack(outputs, axis=0)
     else:
       rnn_input = tf.unstack(x, self.time_steps, 1)
-      outputs, _ = tf.nn.static_rnn(rnn_layer, rnn_input, dtype="float32")
+      outputs, _ = tf.compat.v1.nn.static_rnn(
+          rnn_layer, rnn_input, dtype="float32")
 
     # Compute logits by multiplying outputs[-1] of shape [batch_size,num_units]
     # by the softmax layer's out_weight of shape [num_units,n_classes]
@@ -120,16 +119,16 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
       sess: The graph session.
     """
     # input label placeholder
-    y = tf.placeholder("float", [None, self.n_classes])
+    y = tf.compat.v1.placeholder("float", [None, self.n_classes])
     # Loss function
     loss = tf.reduce_mean(
         tf.nn.softmax_cross_entropy_with_logits(logits=prediction, labels=y))
     # Optimization
-    opt = tf.train.AdamOptimizer(
+    opt = tf.compat.v1.train.AdamOptimizer(
         learning_rate=self.learning_rate).minimize(loss)
 
     # Initialize variables
-    sess.run(tf.global_variables_initializer())
+    sess.run(tf.compat.v1.global_variables_initializer())
     for _ in range(TRAIN_STEPS):
       batch_x, batch_y = self.mnist.train.next_batch(
           batch_size=self.batch_size, fake_data=True)
@@ -165,8 +164,8 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     tf.reset_default_graph()
     x, prediction, output_class = self.buildModel(rnn_layer, is_dynamic_rnn)
 
-    new_sess = tf.compat.v1.Session(config=CONFIG)
-    saver = tf.train.Saver()
+    new_sess = tf.compat.v1.Session()
+    saver = tf.compat.v1.train.Saver()
     saver.restore(new_sess, model_dir)
     return x, prediction, output_class, new_sess
 
@@ -232,7 +231,7 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     return result
 
   def testStaticRnnMultiRnnCell(self):
-    sess = tf.compat.v1.Session(config=CONFIG)
+    sess = tf.compat.v1.Session()
 
     x, prediction, output_class = self.buildModel(
         self.buildRnnLayer(), is_dynamic_rnn=False)
@@ -249,15 +248,19 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     result = self.tfliteInvoke(new_sess, test_inputs, x, output_class, False)
     self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
 
+    # Test MLIR-converted model.
+    result = self.tfliteInvoke(new_sess, test_inputs, x, output_class, True)
+    self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
+
   @test_util.enable_control_flow_v2
   def testDynamicRnnMultiRnnCell(self):
-    sess = tf.compat.v1.Session(config=CONFIG)
+    sess = tf.compat.v1.Session()
 
     x, prediction, output_class = self.buildModel(
         self.buildRnnLayer(), is_dynamic_rnn=True)
     self.trainModel(x, prediction, output_class, sess)
 
-    saver = tf.train.Saver()
+    saver = tf.compat.v1.train.Saver()
 
     x, prediction, output_class, new_sess = self.saveAndRestoreModel(
         self.buildRnnLayer(), sess, saver, is_dynamic_rnn=True)
@@ -269,6 +272,11 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     result = self.tfliteInvoke(new_sess, test_inputs, x, output_class, False)
     self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
 
+    # Test MLIR-converted model.
+    result = self.tfliteInvoke(new_sess, test_inputs, x, output_class, True)
+    self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
+
 
 if __name__ == "__main__":
+  tf.disable_v2_behavior()
   test.main()

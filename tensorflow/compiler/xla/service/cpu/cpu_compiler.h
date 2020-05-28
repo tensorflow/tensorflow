@@ -54,6 +54,7 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
   CpuAotCompilationOptions(string triple, string cpu_name, string features,
                            string entry_point_name,
                            RelocationModel relocation_model);
+
   ~CpuAotCompilationOptions() override;
 
   se::Platform::Id PlatformId() const override;
@@ -133,6 +134,12 @@ class CpuCompiler : public LLVMCompiler {
 
   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
+      se::DeviceMemoryAllocator* device_allocator) override;
+
+  StatusOr<
+      std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
+  RunHloPassesAndBufferAssignement(
+      std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
       se::DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(

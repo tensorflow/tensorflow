@@ -184,7 +184,7 @@ class Service : public ServiceInterface {
   Backend* mutable_backend() { return execute_backend_.get(); }
 
   // Create a Hlo module config for the given program shape and arguments.
-  // execution_options is optional; if not given a default is used.
+  // aot_options is optional; if not given a default is used.
   StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
       const ProgramShape& program_shape,
       absl::Span<const Shape* const> argument_shapes,

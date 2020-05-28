@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/examples/micro_speech/micro_features/yes_feature_data_slice.h"
 
-const uint8_t g_yes_feature_data_slice[g_yes_feature_data_slice_size] = {
-    214, 215, 236, 202, 235, 203, 225, 191, 203, 188, 199, 194, 212, 127,
-    51,  0,   174, 188, 219, 196, 228, 221, 240, 207, 235, 220, 241, 219,
-    237, 207, 212, 142, 95,  0,   139, 78,  162, 177, 197, 183,
+const int8_t g_yes_feature_data_slice[g_yes_feature_data_slice_size] = {
+    86,  88,   108, 75, 108, 76,   98,  64,  75,  61, 71,  66, 85,  -1,
+    -77, -128, 46,  61, 92,  69,   100, 93,  113, 80, 108, 93, 113, 91,
+    110, 80,   85,  15, -33, -128, 12,  -50, 34,  50, 70,  55,
 };

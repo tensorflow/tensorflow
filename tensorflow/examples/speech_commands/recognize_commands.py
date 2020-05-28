@@ -26,7 +26,7 @@ class RecognizeResult(object):
   """Save recognition result temporarily.
 
   Attributes:
-    founded_command: A string indicating the word just founded. Defualt value
+    founded_command: A string indicating the word just founded. Default value
       is '_silence_'
     score: An float representing the confidence of founded word. Default
       value is zero.

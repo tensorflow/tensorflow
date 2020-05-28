@@ -17,28 +17,31 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassManager.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
+#include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"
-#include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace mlir {
 namespace lite {
 
-// TODO(fengliuai): check the result for `allow_float` flag.
+// TODO(fengliuai): check the result for `fully_quantize` flag.
 TfLiteStatus QuantizeModel(
     const tflite::ModelT& input_model, const tflite::TensorType& input_type,
     const tflite::TensorType& output_type,
-    const std::unordered_set<std::string>& operator_names, bool allow_float,
+    const tflite::TensorType& inference_type,
+    const std::unordered_set<std::string>& operator_names,
+    bool disable_per_channel, bool fully_quantize,
     flatbuffers::FlatBufferBuilder* builder,
     tflite::ErrorReporter* error_reporter) {
   // TODO(b/142502494): remove this restriction by improving the `emit_adaptor`
@@ -61,11 +64,9 @@ TfLiteStatus QuantizeModel(
   std::string serialized_model(
       reinterpret_cast<const char*>(input_builder.GetBufferPointer()),
       input_builder.GetSize());
-  std::vector<std::string> output_arrays_order;
 
-  OwningModuleRef module =
-      tflite::FlatBufferToMlir(serialized_model, &context,
-                               UnknownLoc::get(&context), output_arrays_order);
+  OwningModuleRef module = tflite::FlatBufferToMlir(serialized_model, &context,
+                                                    UnknownLoc::get(&context));
   if (!module) {
     error_reporter->Report("Couldn't import flatbuffer to MLIR.");
     return kTfLiteError;
@@ -74,15 +75,18 @@ TfLiteStatus QuantizeModel(
   // Apply quantization passes
   PassManager pm(module->getContext());
   TFL::QuantizationSpecs quant_specs;
-  quant_specs.inference_type = tensorflow::DT_QINT8;
+  quant_specs.inference_type = tflite::TflTypeToTfType(inference_type);
   quant_specs.post_training_quantization = true;
+  quant_specs.disable_per_channel = disable_per_channel;
 
   bool emit_adaptor = false;
   auto input_tf_type = tflite::TflTypeToTfType(input_type);
   if (input_tf_type == tensorflow::DT_FLOAT) {
     emit_adaptor = true;
-  } else if (input_tf_type == tensorflow::DT_UINT8) {
-    quant_specs.inference_type = tensorflow::DT_QUINT8;
+  } else if (input_tf_type == tensorflow::DT_UINT8 ||
+             input_tf_type == tensorflow::DT_INT8 ||
+             input_tf_type == tensorflow::DT_INT16) {
+    quant_specs.inference_type = input_tf_type;
   }
 
   pm.addPass(TFL::CreatePrepareQuantizePass(quant_specs));

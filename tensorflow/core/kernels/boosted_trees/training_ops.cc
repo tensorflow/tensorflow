@@ -189,10 +189,9 @@ class BoostedTreesUpdateEnsembleOp : public OpKernel {
         // Get current split candidate.
         const auto& node_id = node_ids(candidate_idx);
         const auto& gain = gains(candidate_idx);
-
-        auto best_split_it = best_split_per_node->find(node_id);
+        const auto& best_split_it = best_split_per_node->find(node_id);
         boosted_trees::SplitCandidate candidate;
-        candidate.feature_idx = feature_ids(feature_idx);
+        candidate.feature_id = feature_ids(feature_idx);
         candidate.candidate_idx = candidate_idx;
         candidate.gain = gain;
         candidate.dimension_id = 0;
@@ -207,8 +206,8 @@ class BoostedTreesUpdateEnsembleOp : public OpKernel {
         if (TF_PREDICT_FALSE(best_split_it != best_split_per_node->end() &&
                              GainsAreEqual(gain, best_split_it->second.gain))) {
           const auto best_candidate = (*best_split_per_node)[node_id];
-          const int32 best_feature_id = best_candidate.feature_idx;
-          const int32 feature_id = candidate.feature_idx;
+          const int32 best_feature_id = best_candidate.feature_id;
+          const int32 feature_id = candidate.feature_id;
           VLOG(2) << "Breaking ties on feature ids and buckets";
           // Breaking ties deterministically.
           if (feature_id < best_feature_id) {
@@ -235,8 +234,8 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
  public:
   explicit BoostedTreesUpdateEnsembleV2Op(OpKernelConstruction* const context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("num_features", &num_features_));
     OP_REQUIRES_OK(context, context->GetAttr("logits_dimension", &logits_dim_));
+    OP_REQUIRES_OK(context, context->GetAttr("num_groups", &num_groups_));
   }
 
   void Compute(OpKernelContext* const context) override {
@@ -272,8 +271,6 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
     OpInputList feature_ids_list;
     OP_REQUIRES_OK(context,
                    context->input_list("feature_ids", &feature_ids_list));
-    // TODO(crawles): Read groups of feature ids and find best splits among all.
-    const auto feature_ids = feature_ids_list[0].vec<int32>();
 
     const Tensor* max_depth_t;
     OP_REQUIRES_OK(context, context->input("max_depth", &max_depth_t));
@@ -292,7 +289,7 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
     FindBestSplitsPerNode(context, learning_rate, node_ids_list, gains_list,
                           thresholds_list, dimension_ids_list,
                           left_node_contribs_list, right_node_contribs_list,
-                          split_types_list, feature_ids, &best_splits);
+                          split_types_list, feature_ids_list, &best_splits);
 
     int32 current_tree =
         UpdateGlobalAttemptsAndRetrieveGrowableTree(ensemble_resource);
@@ -395,38 +392,36 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
       const OpInputList& thresholds_list, const OpInputList& dimension_ids_list,
       const OpInputList& left_node_contribs_list,
       const OpInputList& right_node_contribs_list,
-      const OpInputList& split_types_list,
-      const TTypes<const int32>::Vec& feature_ids,
+      const OpInputList& split_types_list, const OpInputList& feature_ids_list,
       std::map<int32, boosted_trees::SplitCandidate>* best_split_per_node) {
     // Find best split per node going through every feature candidate.
-    for (int64 feature_idx = 0; feature_idx < num_features_; ++feature_idx) {
-      const auto& node_ids = node_ids_list[feature_idx].vec<int32>();
-      const auto& gains = gains_list[feature_idx].vec<float>();
-      const auto& thresholds = thresholds_list[feature_idx].vec<int32>();
-      const auto& dimension_ids = dimension_ids_list[feature_idx].vec<int32>();
+    for (int64 group_idx = 0; group_idx < num_groups_; ++group_idx) {
+      const auto& node_ids = node_ids_list[group_idx].vec<int32>();
+      const auto& gains = gains_list[group_idx].vec<float>();
+      const auto& feature_ids = feature_ids_list[group_idx].vec<int32>();
+      const auto& thresholds = thresholds_list[group_idx].vec<int32>();
+      const auto& dimension_ids = dimension_ids_list[group_idx].vec<int32>();
       const auto& left_node_contribs =
-          left_node_contribs_list[feature_idx].matrix<float>();
+          left_node_contribs_list[group_idx].matrix<float>();
       const auto& right_node_contribs =
-          right_node_contribs_list[feature_idx].matrix<float>();
-      const auto& split_types = split_types_list[feature_idx].vec<tstring>();
+          right_node_contribs_list[group_idx].matrix<float>();
+      const auto& split_types = split_types_list[group_idx].vec<tstring>();
 
       for (size_t candidate_idx = 0; candidate_idx < node_ids.size();
            ++candidate_idx) {
         // Get current split candidate.
         const auto& node_id = node_ids(candidate_idx);
         const auto& gain = gains(candidate_idx);
-        const auto& threshold = thresholds(candidate_idx);
-        const auto& dimension_id = dimension_ids(candidate_idx);
-        const auto& split_type = split_types(candidate_idx);
+        const auto& feature_id = feature_ids(candidate_idx);
 
         auto best_split_it = best_split_per_node->find(node_id);
         boosted_trees::SplitCandidate candidate;
-        candidate.feature_idx = feature_ids(feature_idx);
         candidate.candidate_idx = candidate_idx;
         candidate.gain = gain;
-        candidate.threshold = threshold;
-        candidate.dimension_id = dimension_id;
-        candidate.split_type = split_type;
+        candidate.feature_id = feature_id;
+        candidate.threshold = thresholds(candidate_idx);
+        candidate.dimension_id = dimension_ids(candidate_idx);
+        candidate.split_type = split_types(candidate_idx);
         for (int i = 0; i < logits_dim_; ++i) {
           candidate.left_node_contribs.push_back(
               learning_rate * left_node_contribs(candidate_idx, i));
@@ -435,9 +430,9 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
         }
         if (TF_PREDICT_FALSE(best_split_it != best_split_per_node->end() &&
                              GainsAreEqual(gain, best_split_it->second.gain))) {
-          const auto best_candidate = (*best_split_per_node)[node_id];
-          const int32 best_feature_id = best_candidate.feature_idx;
-          const int32 feature_id = candidate.feature_idx;
+          const auto& best_candidate = (*best_split_per_node)[node_id];
+          const int32 best_feature_id = best_candidate.feature_id;
+          const int32 feature_id = candidate.feature_id;
           VLOG(2) << "Breaking ties on feature ids and buckets";
           // Breaking ties deterministically.
           if (feature_id < best_feature_id) {
@@ -452,8 +447,8 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
   }
 
  private:
-  int32 num_features_;
   int32 logits_dim_;
+  int32 num_groups_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("BoostedTreesUpdateEnsembleV2").Device(DEVICE_CPU),

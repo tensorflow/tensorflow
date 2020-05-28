@@ -22,6 +22,8 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_string_ops
@@ -63,6 +65,16 @@ class StringsToBytesOpTest(test_util.TensorFlowTestCase,
     expected = ragged_factory_ops.constant_value(expected, dtype=object)
     result = ragged_string_ops.string_bytes_split(source)
     self.assertAllEqual(expected, result)
+
+  def testUnknownInputRankError(self):
+    # Use a tf.function that erases shape information.
+    @def_function.function(input_signature=[tensor_spec.TensorSpec(None)])
+    def f(v):
+      return ragged_string_ops.string_bytes_split(v)
+
+    with self.assertRaisesRegexp(ValueError,
+                                 'input must have a statically-known rank'):
+      f(['foo'])
 
 
 if __name__ == '__main__':

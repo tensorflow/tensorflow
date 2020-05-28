@@ -49,7 +49,6 @@ class RemoteMgrTest : public ::testing::Test {
         DeviceFactory::NewDevice("CPU", {}, "/job:worker/replica:0/task:0"));
     remote_device_ = devices.back().get();
     auto device_mgr = absl::make_unique<StaticDeviceMgr>(std::move(devices));
-    context_id_ = random::New64();
     tensorflow::Rendezvous* rendezvous =
         new tensorflow::IntraProcessRendezvous(device_mgr.get());
     ctx_ = new tensorflow::EagerContext(
@@ -64,26 +63,26 @@ class RemoteMgrTest : public ::testing::Test {
 
   Device* local_device_;
   Device* remote_device_;
-  uint64 context_id_;
   EagerContext* ctx_;
 };
 
 TEST_F(RemoteMgrTest, SerializeLocalTensorHandleWithRemoteMirror) {
   RemoteMgr remote_mgr(false, ctx_);
-  Tensor t(DT_FLOAT, TensorShape({0}));
+  const TensorShape shape({0});
+  Tensor t(DT_FLOAT, shape);
 
-  TensorHandle* handle;
-  TF_ASSERT_OK(
-      TensorHandle::CreateLocalHandle(t, local_device_, ctx_, &handle));
+  TensorHandle* handle = TensorHandle::CreateLocalHandle(
+      std::move(t), local_device_, local_device_, ctx_);
   const uint64 op_id = 2;
   const int output_num = 3;
-  auto tensor_handle_data = absl::make_unique<RemoteTensorHandleData>(
-      op_id, output_num, t.shape(), /*remote_task=*/"", context_id_, ctx_);
+  TF_ASSERT_OK(handle->AddUnshapedRemoteMirror(remote_device_, op_id,
+                                               output_num, "", ctx_));
   TF_ASSERT_OK(
-      handle->AddRemoteMirror(std::move(tensor_handle_data), remote_device_));
+      handle->SetRemoteShape(shape, remote_device_, ctx_->GetContextViewId()));
   RemoteTensorHandle remote_handle;
   TF_ASSERT_OK(remote_mgr.SerializeRemoteTensorHandle(
-      handle, &remote_handle, remote_device_, remote_device_->name()));
+      handle, /*wait_until_ready=*/true, &remote_handle, remote_device_,
+      remote_device_->name()));
   EXPECT_EQ(op_id, remote_handle.op_id());
   EXPECT_EQ(output_num, remote_handle.output_num());
   EXPECT_EQ(remote_device_->name(), remote_handle.device());
@@ -92,21 +91,65 @@ TEST_F(RemoteMgrTest, SerializeLocalTensorHandleWithRemoteMirror) {
 
 TEST_F(RemoteMgrTest, SerializeRemoteTensorHandle) {
   RemoteMgr remote_mgr(false, ctx_);
-  Tensor t(DT_FLOAT, TensorShape({0}));
 
   const uint64 op_id = 3;
   const int output_num = 1;
-  TensorHandle* handle;
-  TF_ASSERT_OK(TensorHandle::CreateRemoteHandle(
-      op_id, output_num, t.shape(), /*remote_task=*/"", context_id_, DT_FLOAT,
-      remote_device_,
-      /*resource_device=*/nullptr, ctx_, &handle));
+  TensorHandle* handle = TensorHandle::CreateLazyRemoteHandle(
+      op_id, output_num, DT_FLOAT, remote_device_, ctx_);
   RemoteTensorHandle remote_handle;
   TF_ASSERT_OK(remote_mgr.SerializeRemoteTensorHandle(
-      handle, &remote_handle, remote_device_, remote_device_->name()));
+      handle, /*wait_until_ready=*/true, &remote_handle, remote_device_,
+      remote_device_->name()));
   EXPECT_EQ(op_id, remote_handle.op_id());
   EXPECT_EQ(output_num, remote_handle.output_num());
   EXPECT_EQ(remote_device_->name(), remote_handle.device());
+  handle->Unref();
+}
+
+TEST_F(RemoteMgrTest, InvalidateRemoteMirrorWithClusterUpdate) {
+  RemoteMgr remote_mgr(false, ctx_);
+  Tensor t(DT_FLOAT, TensorShape({0}));
+
+  TensorHandle* handle = TensorHandle::CreateLocalHandle(
+      std::move(t), local_device_, local_device_, ctx_);
+  const uint64 op_id = 2;
+  const int output_num = 3;
+  TF_ASSERT_OK(handle->AddUnshapedRemoteMirror(remote_device_, op_id,
+                                               output_num, "", ctx_));
+  EXPECT_TRUE(
+      handle->HasRemoteMirror(remote_device_, ctx_->GetContextViewId()));
+
+  // When updating cluster, remote mirror should be invalidated.
+  ctx_->IncrementContextViewId();
+  EXPECT_FALSE(
+      handle->HasRemoteMirror(remote_device_, ctx_->GetContextViewId()));
+  EXPECT_FALSE(handle
+                   ->SetRemoteShape(TensorShape({0}), remote_device_,
+                                    ctx_->GetContextViewId())
+                   .ok());
+  handle->Unref();
+}
+
+TEST_F(RemoteMgrTest, SetRemoteShapeWithClusterUpdate) {
+  RemoteMgr remote_mgr(false, ctx_);
+
+  const uint64 op_id = 3;
+  const int output_num = 1;
+  TensorHandle* handle = TensorHandle::CreateUnshapedRemoteHandle(
+      op_id, output_num,
+      /*remote_task=*/"", DT_FLOAT, remote_device_, ctx_);
+  TF_ASSERT_OK(handle->SetRemoteShape(TensorShape({0}), remote_device_,
+                                      ctx_->GetContextViewId()));
+  handle->Unref();
+
+  // Setting remote shape on primary (non-mirror) remote handle works after
+  // cluster being updated
+  handle = TensorHandle::CreateUnshapedRemoteHandle(
+      op_id, output_num,
+      /*remote_task=*/"", DT_FLOAT, remote_device_, ctx_);
+  ctx_->IncrementContextViewId();
+  TF_ASSERT_OK(handle->SetRemoteShape(TensorShape({0}), remote_device_,
+                                      ctx_->GetContextViewId()));
   handle->Unref();
 }
 

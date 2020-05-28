@@ -41,6 +41,7 @@ tflite_micro_cc_test(
         ":magic_wand_model_data",
         ":sample_feature_data",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/kernels:all_ops_resolver",
         "//tensorflow/lite/micro/kernels:micro_ops",
@@ -51,9 +52,6 @@ tflite_micro_cc_test(
 
 cc_library(
     name = "constants",
-    srcs = [
-        "constants.cc",
-    ],
     hdrs = [
         "constants.h",
     ],
@@ -69,7 +67,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_error_reporter",
     ],
 )
 
@@ -81,6 +79,7 @@ tflite_micro_cc_test(
     deps = [
         ":accelerometer_handler",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
@@ -122,7 +121,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_error_reporter",
     ],
 )
 
@@ -158,6 +157,7 @@ cc_binary(
         ":magic_wand_model_data",
         ":output_handler",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/kernels:micro_ops",
         "//tensorflow/lite/schema:schema_fbs",

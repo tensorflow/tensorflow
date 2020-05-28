@@ -24,6 +24,12 @@ limitations under the License.
 namespace tensorflow {
 namespace monitoring {
 
+enum class UnitOfMeasure {
+  kNumber,
+  kTime,
+  kBytes,
+};
+
 struct PercentilePoint {
   // In the [0, 100] range.
   double percentile = 0.0;
@@ -31,6 +37,7 @@ struct PercentilePoint {
 };
 
 struct Percentiles {
+  UnitOfMeasure unit_of_measure = UnitOfMeasure::kNumber;
   uint64 start_nstime = 0;
   uint64 end_nstime = 0;
   double min_value = NAN;

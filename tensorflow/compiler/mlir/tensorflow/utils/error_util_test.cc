@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
 #include "llvm/ADT/Twine.h"
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -58,7 +58,8 @@ TEST(ErrorUtilTest, StatusScopedDiagnosticHandler) {
       emitError(loc) << "Second diagnostic message reported";
       return tensorflow::errors::Internal("Passed in error");
     };
-    Status s = StatusScopedDiagnosticHandler(&context).Combine(function());
+    StatusScopedDiagnosticHandler ssdh(&context);
+    Status s = ssdh.Combine(function());
     ASSERT_TRUE(tensorflow::errors::IsInternal(s));
     EXPECT_THAT(s.error_message(), HasSubstr("Passed in error"));
     EXPECT_THAT(s.error_message(), HasSubstr("Diagnostic message reported"));

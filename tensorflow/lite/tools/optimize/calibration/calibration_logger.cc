@@ -30,7 +30,8 @@ TfLiteStatus MinMax::Update(const float* values, size_t tensor_size,
   // TODO(shashishekhar): Make it possible to use weighted/moving average.
   for (size_t i = 0; i < tensor_size; ++i) {
     if (std::isnan(values[i])) {
-      error_reporter->Report(
+      TF_LITE_REPORT_ERROR(
+          error_reporter,
           "Model resulted in Nan value during calibration. Please "
           "make sure model results in all real-values during "
           "inference with provided dataset.");

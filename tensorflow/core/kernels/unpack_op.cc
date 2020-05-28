@@ -107,6 +107,8 @@ class UnpackOp : public OpKernel {
         input.shaped<T, 2>({before_dim, axis_dim * after_dim});
 
     for (int i = 0; i < num; ++i) {
+      if (!context->output_required(i)) continue;
+
       Tensor* output;
       OP_REQUIRES_OK(context,
                      context->allocate_output(i, output_shape, &output));

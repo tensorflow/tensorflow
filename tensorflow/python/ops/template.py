@@ -215,7 +215,7 @@ def make_template_internal(name_,
   if context.executing_eagerly():
     if unique_name_ is not None:
       raise ValueError(
-          "unique_name_ cannot be used when eager exeuction is enabled.")
+          "unique_name_ cannot be used when eager execution is enabled.")
     return EagerTemplate(
         name_,
         func_,

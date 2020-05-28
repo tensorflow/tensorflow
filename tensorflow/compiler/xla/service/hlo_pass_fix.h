@@ -38,19 +38,18 @@ class HloPassFix : public Pass {
     bool changed = false;
     bool changed_this_iteration = true;
     int64 iteration_count = 0;
-    int64 limit =
-        std::max(static_cast<int64>(1000), module->instruction_count());
+    const int64 kLimit = 25;
     VLOG(3) << "Running HloPassFix on " << Pass::name();
     while (changed_this_iteration) {
       TF_ASSIGN_OR_RETURN(changed_this_iteration, Pass::Run(module));
       changed |= changed_this_iteration;
       VLOG(3) << "changed_this_iteration: " << changed_this_iteration;
       ++iteration_count;
-      if (iteration_count == limit) {
-        LOG(ERROR)
-            << "Unexpectedly high number of iterations in HLO passes ("
-            << iteration_count
-            << ")\nIf compilation hangs here, please file a bug with XLA.";
+      if (iteration_count == kLimit) {
+        VLOG(1) << "Unexpectedly high number of iterations in HLO passes, "
+                   "exiting fixed point loop.";
+        // Return false in case this is fixed point is nested.
+        return false;
       }
     }
     return changed;
@@ -60,10 +59,7 @@ class HloPassFix : public Pass {
     bool changed = false;
     bool changed_this_iteration = true;
     int64 iteration_count = 0;
-    int64 limit = 1000;
-    for (const HloModule* module : module_group->modules()) {
-      limit = std::max<int64>(limit, module->instruction_count());
-    }
+    const int64 kLimit = 25;
     VLOG(3) << "Running HloPassFix.";
     while (changed_this_iteration) {
       TF_ASSIGN_OR_RETURN(changed_this_iteration,
@@ -71,11 +67,11 @@ class HloPassFix : public Pass {
       changed |= changed_this_iteration;
       VLOG(3) << "changed_this_iteration: " << changed_this_iteration;
       ++iteration_count;
-      if (iteration_count == limit) {
-        LOG(ERROR)
-            << "Unexpectedly high number of iterations in HLO passes ("
-            << iteration_count
-            << ")\nIf compilation hangs here, please file a bug with XLA.";
+      if (iteration_count == kLimit) {
+        VLOG(1) << "Unexpectedly high number of iterations in HLO passes, "
+                   "exiting fixed point loop.";
+        // Return false in case this is fixed point is nested.
+        return false;
       }
     }
     return changed;

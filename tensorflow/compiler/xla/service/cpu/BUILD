@@ -30,6 +30,34 @@ filegroup(
     ]),
 )
 
+filegroup(
+    name = "single_threaded_runtime_srcs",
+    srcs = [
+        "runtime_fp16.cc",
+        "runtime_key_value_sort.cc",
+        "runtime_pow.cc",
+        "runtime_single_threaded_conv2d.cc",
+        "runtime_single_threaded_fft.cc",
+        "runtime_single_threaded_matmul.cc",
+    ],
+    visibility = [":friends"],
+)
+
+filegroup(
+    name = "single_threaded_runtime_hdrs",
+    srcs = [
+        "runtime_conv2d_impl.h",
+        "runtime_fft_impl.h",
+        "runtime_fp16.h",
+        "runtime_key_value_sort.h",
+        "runtime_pow.h",
+        "runtime_single_threaded_conv2d.h",
+        "runtime_single_threaded_fft.h",
+        "runtime_single_threaded_matmul.h",
+    ],
+    visibility = [":friends"],
+)
+
 cc_library(
     name = "cpu_transfer_manager",
     srcs = ["cpu_transfer_manager.cc"],
@@ -88,11 +116,16 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         ":target_machine_features",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:ExecutionEngineUtils",
+        "@llvm-project//mlir:LLVMDialect",
         "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service:map_inliner",
+        "//tensorflow/compiler/xla/service:rng_bit_generator_expander",
         "//tensorflow/compiler/xla/service:tree_reduction_rewriter",
         "//tensorflow/compiler/xla/service:hlo_get_dimension_size_rewriter",
         "//tensorflow/compiler/xla/service:conditional_to_select",
@@ -116,6 +149,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:conditional_simplifier",
         "//tensorflow/compiler/xla/service:convolution_group_converter",
         "//tensorflow/compiler/xla/service:dot_decomposer",
+        "//tensorflow/compiler/xla/service:dynamic_padder",
         "//tensorflow/compiler/xla/service:dynamic_index_splitter",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:flatten_call_graph",
@@ -176,6 +210,7 @@ cc_library(
         ":cpu_runtime",
         ":orc_jit_memory_mapper",
         ":runtime_fp16",
+        ":runtime_pow",
         ":runtime_conv2d",
         ":runtime_conv2d_mkl",
         ":runtime_fft",
@@ -217,7 +252,23 @@ cc_library(
     ],
     copts = runtime_copts(),
     deps = [
-        "//tensorflow/core:framework_lite",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:types",
+    ],
+)
+
+cc_library(
+    name = "runtime_pow",
+    srcs = [
+        "runtime_pow.cc",
+    ],
+    hdrs = [
+        "runtime_pow.h",
+    ],
+    copts = runtime_copts(),
+    deps = [
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:types",
     ],
 )
 
@@ -318,6 +369,7 @@ cc_library(
         "@llvm-project//llvm:core",
         "@llvm-project//llvm:support",
         "@llvm-project//llvm:target",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -328,6 +380,7 @@ cc_library(
     ],
     hdrs = ["target_machine_features.h"],
     deps = [
+        "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -407,6 +460,7 @@ cc_library(
         ":cpu_options",
         ":cpu_runtime",
         ":ir_emission_utils",
+        ":mlir_emitter",
         ":target_machine_features",
         ":tiled_dot_emitter",
         ":vector_support_library",
@@ -425,6 +479,10 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:core",
+        "@llvm-project//mlir:EDSC",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgOps",
+        "@llvm-project//mlir:StandardOps",
     ],
 )
 
@@ -543,8 +601,10 @@ cc_library(
     deps = [
         ":runtime_lightweight_check",
         "//tensorflow/compiler/xla:executable_run_options",
-        "//tensorflow/core:framework_lite",
-        "//tensorflow/core/kernels:eigen_helpers",
+        "//tensorflow/core/kernels:eigen_helpers_no_mkl",
+        "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:types",
         "//third_party/eigen3",
     ],
 )
@@ -561,7 +621,8 @@ cc_library(
         ":runtime_conv2d",
         ":runtime_single_threaded_conv2d",
         "//tensorflow/compiler/xla:executable_run_options",
-        "//tensorflow/core:framework_lite",
+        "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:types",
         "//tensorflow/core/kernels:eigen_helpers",
         "//third_party/eigen3",
     ] + mkl_deps(),
@@ -579,8 +640,10 @@ cc_library(
     deps = [
         ":runtime_lightweight_check",
         "//tensorflow/compiler/xla:executable_run_options",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/core:framework_lite",
+        "//tensorflow/core/framework:numeric_types",
+        "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:types",
         "//third_party/eigen3",
     ],
 )
@@ -594,8 +657,10 @@ cc_library(
     deps = [
         ":runtime_lightweight_check",
         "//tensorflow/compiler/xla:executable_run_options",
-        "//tensorflow/core:framework_lite",
         "//tensorflow/core/kernels:eigen_contraction_kernel",
+        "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:types",
         "//third_party/eigen3",
     ],
 )
@@ -608,7 +673,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla:executable_run_options",
-        "//tensorflow/core:framework_lite",
+        "//tensorflow/core/platform:types",
         "//third_party/eigen3",
     ] + mkl_deps(),
 )
@@ -624,8 +689,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":runtime_lightweight_check",
-        "//tensorflow/core:framework_lite",
         "//tensorflow/core/kernels:eigen_helpers",
+        "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:types",
         "//third_party/eigen3",
     ],
 )
@@ -641,7 +707,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/core:framework_lite",
+        "//tensorflow/core/framework:numeric_types",
+        "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:types",
         "//third_party/eigen3",
     ],
 )
@@ -653,8 +721,9 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:framework_lite",
         "//tensorflow/core/kernels:eigen_contraction_kernel",
+        "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:types",
         "//third_party/eigen3",
     ],
 )
@@ -666,7 +735,9 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:framework_lite",
+        "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:types",
         "//third_party/eigen3",
     ],
 )
@@ -679,8 +750,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla:executable_run_options",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:blocking_counter",
+        "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:types",
         "//third_party/eigen3",
     ],
 )
@@ -706,6 +779,23 @@ tf_cc_test(
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+tf_cc_test(
+    name = "runtime_fft_test",
+    srcs = [
+        "runtime_fft_impl.h",
+        "runtime_fft_test.cc",
+    ],
+    deps = [
+        ":runtime_single_threaded_fft",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core/framework:numeric_types",
+        "//third_party/eigen3",
     ],
 )
 
@@ -745,9 +835,11 @@ cc_library(
     hdrs = ["cpu_instruction_fusion.h"],
     deps = [
         ":ir_emission_utils",
+        "//tensorflow/compiler/xla/service:fusion_node_indexing_evaluation",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:instruction_fusion",
         "//tensorflow/compiler/xla/service/llvm_ir:fused_ir_emitter",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -985,5 +1077,26 @@ tf_cc_test(
         "@llvm-project//llvm:core",
         "@llvm-project//llvm:support",
         "@llvm-project//llvm:target",
+    ],
+)
+
+cc_library(
+    name = "mlir_emitter",
+    srcs = ["mlir_emitter.cc"],
+    hdrs = ["mlir_emitter.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/xla:hlo_utils",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:ipo",
+        "@llvm-project//llvm:linker",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMTransforms",
+        "@llvm-project//mlir:LinalgToLLVM",
+        "@llvm-project//mlir:LinalgTransforms",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:TargetLLVMIR",
+        "@llvm-project//mlir:VectorToLLVM",
     ],
 )

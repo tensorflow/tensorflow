@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 
@@ -61,11 +61,6 @@ class TEST_EventMgrHelper {
   size_t free_size() {
     mutex_lock l(em_->mu_);
     return em_->free_events_.size();
-  }
-
-  void QueueTensors(se::Stream* stream, TensorReferenceVector* tensors) {
-    mutex_lock l(em_->mu_);
-    em_->QueueTensors(stream, tensors);
   }
 
   void PollEvents() {
@@ -119,146 +114,6 @@ TEST(EventMgr, Empty) {
   TEST_EventMgrHelper th(&em);
   EXPECT_EQ(0, th.queue_size());
   EXPECT_EQ(0, th.free_size());
-}
-
-static void AddTensorReference(TensorReferenceVector* v, int64 size) {
-  TestTensorBuffer* buf = new TestTensorBuffer(size);
-  v->push_back(TensorReference(buf));
-  buf->Unref();
-}
-
-// Delaying polling until after several enqueings should grow the
-// total number of allocated events.  Once we have enough events for
-// the max simultaneously pending, we should not allocate any more.
-TEST(EventMgr, DelayedPolling) {
-  auto stream_exec = GPUMachineManager()->ExecutorForDevice(0).ValueOrDie();
-  TEST_EventMgr em(stream_exec, GPUOptions());
-  TEST_EventMgrHelper th(&em);
-  EXPECT_EQ(0, th.queue_size());
-  TensorReferenceVector* v = nullptr;
-  std::unique_ptr<se::Stream> stream(new se::Stream(stream_exec));
-  CHECK(stream);
-  stream->Init();
-  for (int i = 0; i < 5; ++i) {
-    v = new TensorReferenceVector;
-    AddTensorReference(v, 100 * 1048576);
-    th.QueueTensors(stream.get(), v);
-    EXPECT_EQ(i + 1, th.queue_size());
-    EXPECT_EQ(0, th.free_size());
-  }
-  th.PollEvents();
-  EXPECT_EQ(0, th.queue_size());
-  EXPECT_EQ(5, th.free_size());
-  for (int j = 0; j < 2; ++j) {
-    for (int i = 0; i < 5; ++i) {
-      v = new TensorReferenceVector;
-      AddTensorReference(v, 100 * 1048576);
-      th.QueueTensors(stream.get(), v);
-      EXPECT_EQ(i + 1, th.queue_size());
-      EXPECT_EQ(4 - i, th.free_size());
-    }
-    th.PollEvents();
-    EXPECT_EQ(0, th.queue_size());
-    EXPECT_EQ(5, th.free_size());
-  }
-}
-
-TEST(EventMgr, FlushLargeTensorImmediately) {
-  auto stream_exec = GPUMachineManager()->ExecutorForDevice(0).ValueOrDie();
-  TEST_EventMgr em(stream_exec, GPUOptions());
-  TEST_EventMgrHelper th(&em);
-  EXPECT_EQ(0, live_tensor_bytes);
-  std::unique_ptr<se::Stream> stream(new se::Stream(stream_exec));
-  CHECK(stream);
-  stream->Init();
-  for (int i = 0; i < 5; ++i) {
-    TensorReferenceVector v;
-    AddTensorReference(&v, 100 * 1048576);
-    em.ThenDeleteTensors(stream.get(), v);
-    th.PollEvents();  // Ensure things get registered to be freed by Poll
-    EXPECT_EQ(0, live_tensor_bytes);
-  }
-}
-
-TEST(EventMgr, ManySmallTensorsFlushedImmediately) {
-  auto stream_exec = GPUMachineManager()->ExecutorForDevice(0).ValueOrDie();
-  TEST_EventMgr em(stream_exec, GPUOptions());
-  TEST_EventMgrHelper th(&em);
-  EXPECT_EQ(0, live_tensor_bytes);
-  std::unique_ptr<se::Stream> stream(new se::Stream(stream_exec));
-  CHECK(stream);
-  stream->Init();
-  for (int i = 0; i < 5; ++i) {
-    TensorReferenceVector v;
-    for (int i = 0; i < 1000; i++) {
-      AddTensorReference(&v, 100 * 1024);
-    }
-    em.ThenDeleteTensors(stream.get(), v);
-    th.PollEvents();  // Harvest the tensors ready to be freed.
-    EXPECT_EQ(0, live_tensor_bytes);
-  }
-}
-
-TEST(EventMgr, StreamSwitchingFlushesImmediately) {
-  auto stream_exec = GPUMachineManager()->ExecutorForDevice(0).ValueOrDie();
-  TEST_EventMgr em(stream_exec, GPUOptions());
-  TEST_EventMgrHelper th(&em);
-  EXPECT_EQ(0, live_tensor_bytes);
-  std::unique_ptr<se::Stream> stream1(new se::Stream(stream_exec));
-  std::unique_ptr<se::Stream> stream2(new se::Stream(stream_exec));
-  stream1->Init();
-  stream2->Init();
-  TensorReferenceVector v1;
-  AddTensorReference(&v1, 1024);
-  em.ThenDeleteTensors(stream1.get(), v1);
-
-  TensorReferenceVector v2;
-  AddTensorReference(&v2, 1024);
-  int64 initial_live_bytes = live_tensor_bytes;
-  em.ThenDeleteTensors(stream2.get(), v2);
-  th.PollEvents();  // Ensure things get registered to be freed by Poll
-  // Different stream should cause first tensor to get deleted
-  EXPECT_GT(initial_live_bytes, live_tensor_bytes);
-}
-
-TEST(EventMgr, ManySmallTensorsSeparateCallsFlushed) {
-  auto stream_exec = GPUMachineManager()->ExecutorForDevice(0).ValueOrDie();
-  TEST_EventMgr em(stream_exec, GPUOptions());
-  TEST_EventMgrHelper th(&em);
-  EXPECT_EQ(0, live_tensor_bytes);
-  std::unique_ptr<se::Stream> stream(new se::Stream(stream_exec));
-  CHECK(stream);
-  stream->Init();
-  for (int i = 0; i < 5; ++i) {
-    for (int i = 0; i < 1000; i++) {
-      TensorReferenceVector v;
-      AddTensorReference(&v, 100 * 1024);
-      em.ThenDeleteTensors(stream.get(), v);
-    }
-    th.PollEvents();  // Ensure things get registered to be freed by Poll
-    // Some of the tensors at least should be flushed
-    EXPECT_GT(1000 * 100 * 1024, live_tensor_bytes);
-  }
-}
-
-// Deleting the EventMgr when events are still pending should shut
-// down gracefully.
-TEST(EventMgr, NonEmptyShutdown) {
-  auto stream_exec = GPUMachineManager()->ExecutorForDevice(0).ValueOrDie();
-  TEST_EventMgr em(stream_exec, GPUOptions());
-  TEST_EventMgrHelper th(&em);
-  EXPECT_EQ(0, th.queue_size());
-  EXPECT_EQ(0, th.free_size());
-  std::unique_ptr<se::Stream> stream(new se::Stream(stream_exec));
-  CHECK(stream);
-  stream->Init();
-  for (int i = 0; i < 5; ++i) {
-    TensorReferenceVector* v = new TensorReferenceVector;
-    AddTensorReference(v, 100 * 1048576);
-    th.QueueTensors(stream.get(), v);
-    EXPECT_EQ(1 + i, th.queue_size());
-    EXPECT_EQ(0, th.free_size());
-  }
 }
 
 // Tests that WarnIfInCallback() triggers correctly.
@@ -336,7 +191,7 @@ class EMBenchmarkHelper {
 
  public:
   // Length of tensors.  TODO(tucker): make this a variable parameter.
-  static const int kTDim = 1024;
+  static constexpr int kTDim = 1024;
 
   int num_ops() const { return add_kernels_.size(); }
   size_t tensor_size() const {
@@ -426,7 +281,6 @@ class EMBenchmarkHelper {
     params->step_id = 1;
     params->device = gpu_helper_->gpu();
     params->log_memory = false;
-    params->record_tensor_accesses = false;
     params->rendezvous = nullptr;
     params->collective_executor = nullptr;
     params->session_state = nullptr;  // ???
@@ -859,4 +713,4 @@ BENCHMARK(BM_chain_1M_100_true)->Arg(8);
 }  // namespace
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

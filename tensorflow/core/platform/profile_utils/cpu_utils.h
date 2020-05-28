@@ -160,7 +160,7 @@ class CpuUtils {
   };
 
   // Return cpu frequency.
-  // CAVEAT: as this method calls system call and parse the mssage,
+  // CAVEAT: as this method calls system call and parse the message,
   // this call may be slow. This is why this class caches the value by
   // StaticVariableInitializer.
   static int64 GetCycleCounterFrequencyImpl();

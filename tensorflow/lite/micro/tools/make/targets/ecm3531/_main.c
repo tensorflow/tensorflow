@@ -15,7 +15,7 @@ limitations under the License.
 
 /* This is file contains the entry point to the application and is called after
    startup.
-   The GPIOs, Uart and timer are intialized and Tensorflow is invoked with the
+   The GPIOs, Uart and timer are initialized and Tensorflow is invoked with the
    call to main().
    Tensorflow will print out if the tests have passed or failed and the
    execution time is also

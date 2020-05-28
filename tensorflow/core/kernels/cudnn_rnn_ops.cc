@@ -1565,7 +1565,7 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
 
   mutex mu_;
   bool is_training_;
-  RnnStateCache rnn_state_cache_ GUARDED_BY(mu_);
+  RnnStateCache rnn_state_cache_ TF_GUARDED_BY(mu_);
 };
 
 #define REGISTER_GPU(T)                                           \
@@ -1932,7 +1932,7 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
 
  private:
   mutex mu_;
-  RnnStateCache rnn_state_cache_ GUARDED_BY(mu_);
+  RnnStateCache rnn_state_cache_ TF_GUARDED_BY(mu_);
 
   Status ExtractBackwardInputs(
       OpKernelContext* context, const CudnnRnnModelShapes& model_shapes,

@@ -49,6 +49,7 @@ REGISTER_OP("_MklFusedConv2D")
     .Attr("is_filter_const: bool = false")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Attr("fused_ops: list(string) = []")
     // Attributes for the FusedBatchNorm ------------------------------------ //
@@ -60,6 +61,30 @@ REGISTER_OP("_MklFusedConv2D")
  is expected to create these operators.
 )doc");
 
+REGISTER_OP("_MklFusedDepthwiseConv2dNative")
+    .Input("input: T")
+    .Input("filter: T")
+    .Input("args: num_args * T")
+    .Input("mkl_input: uint8")
+    .Input("mkl_filter: uint8")
+    .Input("mkl_args: num_args * uint8")
+    .Output("output: T")
+    .Output("filter_output: T")
+    .Output("mkl_output: uint8")
+    .Output("mkl_filter_output: uint8")
+    .Attr("T: {bfloat16, float}")
+    .Attr("num_args: int >= 0")
+    .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = false")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("fused_ops: list(string) = []")
+    // Attributes for the FusedBatchNorm ------------------------------------ //
+    .Attr("epsilon: float = 0.0001")
+    // ---------------------------------------------------------------------- //
+    .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
+
 REGISTER_OP("_MklFusedMatMul")
     .Input("a: T")
     .Input("b: T")
@@ -69,9 +94,10 @@ REGISTER_OP("_MklFusedMatMul")
     .Input("mkl_args: num_args * uint8")
     .Output("product: T")
     .Output("mkl_product: uint8")
+    .Attr("is_filter_const: bool = false")
     .Attr("transpose_a: bool = false")
     .Attr("transpose_b: bool = false")
-    .Attr("T: {float}")
+    .Attr("T: {bfloat16, float}")
     .Attr("num_args: int >= 0")
     .Attr("fused_ops: list(string) = []")
     // Attributes for the FusedBatchNorm ----------- //
@@ -805,6 +831,7 @@ REGISTER_OP("_MklDepthwiseConv2dNativeBackpropInput")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
@@ -827,6 +854,7 @@ REGISTER_OP("_MklDepthwiseConv2dNativeBackpropFilter")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
@@ -883,7 +911,7 @@ REGISTER_OP("_MklQuantizedMatMulWithBias")
 REGISTER_OP("_MklQuantizedMatMulWithBiasAndRelu")
     .Input("a: T1")
     .Input("b: T2")
-    // TODO(intel-tf): Modify bias type as Tbias and add relevent attribute.
+    // TODO(intel-tf): Modify bias type as Tbias and add relevant attribute.
     .Input("bias: float")
     .Input("min_a: float")
     .Input("max_a: float")
@@ -971,6 +999,49 @@ REGISTER_OP("_MklQuantizedMatMulWithBiasAndReluAndRequantize")
 
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
+      return Status::OK();
+    });
+
+REGISTER_OP("_MklQuantizedMatMulWithBiasAndDequantize")
+    .Input("a: T1")
+    .Input("b: T2")
+    .Input("bias: Tbias")
+    .Input("min_a: float")
+    .Input("max_a: float")
+    .Input("min_b: float")
+    .Input("max_b: float")
+    .Input("min_freezed_output: float")
+    .Input("max_freezed_output: float")
+    .Input("mkl_a: uint8")                   // MKL second tensor
+    .Input("mkl_b: uint8")                   // MKL second tensor
+    .Input("mkl_bias: uint8")                // MKL second tensor
+    .Input("mkl_min_a: uint8")               // MKL second tensor
+    .Input("mkl_max_a: uint8")               // MKL second tensor
+    .Input("mkl_min_b: uint8")               // MKL second tensor
+    .Input("mkl_max_b: uint8")               // MKL second tensor
+    .Input("mkl_min_freezed_output: uint8")  // MKL second tensor
+    .Input("mkl_max_freezed_output: uint8")  // MKL second tensor
+    .Output("out: Toutput")
+    .Output("mkl_out: uint8")  // MKL second tensor
+    .Attr("T1: quantizedtype")
+    .Attr("T2: quantizedtype")
+    .Attr("Tbias: {float, qint32}")
+    .Attr("T: quantizedtype")  // Additional attr "T" for MklToTf conversion
+    .Attr("Toutput: {float}")
+    .Attr("transpose_a: bool = false")
+    .Attr("transpose_b: bool = false")
+    .Attr("input_quant_mode: {'MIN_FIRST', 'SCALED'} = 'MIN_FIRST'")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::MatMulShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
+
       return Status::OK();
     });
 
@@ -1258,6 +1329,7 @@ REGISTER_OP("_MklFusedBatchNormV3")
     .Attr("U: {float}")
     .Attr("epsilon: float = 0.0001")
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr("exponential_avg_factor: float = 1.0")
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormShape)
     .Doc(
@@ -1296,6 +1368,48 @@ REGISTER_OP("_MklFusedBatchNormGradV3")
     .Doc(
         R"doc(MKL-DNN implementation of FusedBatchNormGradV3: Do not invoke this operator directly in Python.
              Graph rewrite pass is expected to invoke this operator.)doc");
+
+REGISTER_OP("_MklFusedBatchNormEx")
+    .Input("x: T")
+    .Input("scale: U")
+    .Input("offset: U")
+    .Input("mean: U")
+    .Input("variance: U")
+    .Input("side_input: num_side_inputs * T")
+    .Input("mkl_x: uint8")
+    .Input("mkl_scale: uint8")
+    .Input("mkl_offset: uint8")
+    .Input("mkl_mean: uint8")
+    .Input("mkl_variance: uint8")
+    .Input("mkl_side_input: num_side_inputs * uint8")
+    .Output("y: T")
+    .Output("batch_mean: U")
+    .Output("batch_variance: U")
+    .Output("reserve_space_1: U")
+    .Output("reserve_space_2: U")
+    .Output("reserve_space_3: U")
+    .Output("mkl_y: uint8")
+    .Output("mkl_batch_mean: uint8")
+    .Output("mkl_batch_variance: uint8")
+    .Output("mkl_reserve_space_1: uint8")
+    .Output("mkl_reserve_space_2: uint8")
+    .Output("mkl_reserve_space_3: uint8")
+    .Attr("T: {bfloat16, float}")
+    .Attr("U: {float}")
+    .Attr("epsilon: float = 0.0001")
+    .Attr("exponential_avg_factor: float = 1.0")
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("num_side_inputs: int >= 0 = 0")
+    .Attr("activation_mode: string = \"Identity\"")
+    .Attr("is_training: bool = true")
+    .SetShapeFn(shape_inference::FusedBatchNormShape)
+    .Doc(R"doc(
+MKL version of FusedBatchNormEx operator. Uses MKL DNN APIs to perform fused
+batch normalization and relu.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
 
 }  // namespace tensorflow
 

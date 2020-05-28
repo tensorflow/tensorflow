@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
@@ -41,37 +42,34 @@ class Embedding(Layer):
 
   Example:
 
-  ```python
-  model = Sequential()
-  model.add(Embedding(1000, 64, input_length=10))
-  # the model will take as input an integer matrix of size (batch,
-  # input_length).
-  # the largest integer (i.e. word index) in the input should be no larger
-  # than 999 (vocabulary size).
-  # now model.output_shape == (None, 10, 64), where None is the batch
-  # dimension.
-
-  input_array = np.random.randint(1000, size=(32, 10))
-
-  model.compile('rmsprop', 'mse')
-  output_array = model.predict(input_array)
-  assert output_array.shape == (32, 10, 64)
-  ```
+  >>> model = tf.keras.Sequential()
+  >>> model.add(tf.keras.layers.Embedding(1000, 64, input_length=10))
+  >>> # The model will take as input an integer matrix of size (batch,
+  >>> # input_length), and the largest integer (i.e. word index) in the input
+  >>> # should be no larger than 999 (vocabulary size).
+  >>> # Now model.output_shape is (None, 10, 64), where `None` is the batch
+  >>> # dimension.
+  >>> input_array = np.random.randint(1000, size=(32, 10))
+  >>> model.compile('rmsprop', 'mse')
+  >>> output_array = model.predict(input_array)
+  >>> print(output_array.shape)
+  (32, 10, 64)
 
   Arguments:
-    input_dim: int > 0. Size of the vocabulary,
+    input_dim: Integer. Size of the vocabulary,
       i.e. maximum integer index + 1.
-    output_dim: int >= 0. Dimension of the dense embedding.
-    embeddings_initializer: Initializer for the `embeddings` matrix.
+    output_dim: Integer. Dimension of the dense embedding.
+    embeddings_initializer: Initializer for the `embeddings`
+      matrix (see `keras.initializers`).
     embeddings_regularizer: Regularizer function applied to
-      the `embeddings` matrix.
+      the `embeddings` matrix (see `keras.regularizers`).
     embeddings_constraint: Constraint function applied to
-      the `embeddings` matrix.
-    mask_zero: Whether or not the input value 0 is a special "padding"
+      the `embeddings` matrix (see `keras.constraints`).
+    mask_zero: Boolean, whether or not the input value 0 is a special "padding"
       value that should be masked out.
       This is useful when using recurrent layers
       which may take variable length input.
-      If this is `True` then all subsequent layers
+      If this is `True`, then all subsequent layers
       in the model need to support masking or an exception will be raised.
       If mask_zero is set to True, as a consequence, index 0 cannot be
       used in the vocabulary (input_dim should equal size of
@@ -103,6 +101,10 @@ class Embedding(Layer):
         kwargs['input_shape'] = (input_length,)
       else:
         kwargs['input_shape'] = (None,)
+    if input_dim <= 0 or output_dim <= 0:
+      raise ValueError('Both `input_dim` and `output_dim` should be positive, '
+                       'found input_dim {} and output_dim {}'.format(
+                           input_dim, output_dim))
     dtype = kwargs.pop('dtype', K.floatx())
     # We set autocast to False, as we do not want to cast floating- point inputs
     # to self.dtype. In call(), we cast to int32, and casting to self.dtype
@@ -120,7 +122,6 @@ class Embedding(Layer):
     self.mask_zero = mask_zero
     self.supports_masking = mask_zero
     self.input_length = input_length
-    self._supports_ragged_inputs = True
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
@@ -129,8 +130,10 @@ class Embedding(Layer):
     # since it knows all kernels using the variable only exist on CPU.
     # When eager execution is enabled, the placement decision has to be made
     # right now. Checking for the presence of GPUs to avoid complicating the
-    # TPU codepaths which can handle sparse optimizers.
-    if context.executing_eagerly() and context.context().num_gpus():
+    # TPU codepaths which can handle sparse optimizers. But if we are within
+    # a tf.function, we go back the graph mode logic and rely on the placer.
+    if (context.executing_eagerly() and context.context().num_gpus() and
+        not ops.inside_function()):
       with ops.device('cpu:0'):
         self.embeddings = self.add_weight(
             shape=(self.input_dim, self.output_dim),
@@ -181,7 +184,10 @@ class Embedding(Layer):
     dtype = K.dtype(inputs)
     if dtype != 'int32' and dtype != 'int64':
       inputs = math_ops.cast(inputs, 'int32')
-    out = embedding_ops.embedding_lookup(self.embeddings, inputs)
+    if isinstance(self.embeddings, sharded_variable.ShardedVariable):
+      out = embedding_ops.embedding_lookup_v2(self.embeddings.variables, inputs)
+    else:
+      out = embedding_ops.embedding_lookup_v2(self.embeddings, inputs)
     return out
 
   def get_config(self):

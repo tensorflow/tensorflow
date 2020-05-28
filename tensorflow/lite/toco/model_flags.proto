@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 syntax = "proto2";
-import "tensorflow/lite/toco/types.proto";
 
 package toco;
+
+import "tensorflow/lite/toco/types.proto";
 
 message InputArrayShape {
   repeated int32 dims = 2;
@@ -130,7 +131,7 @@ message ArraysExtraInfo {
 //   optional int32 input_dims = 11 [ default = 4];
 //   repeated int32 input_shape = 13;
 //
-// Next ID to USE: 20.
+// Next ID to USE: 24.
 message ModelFlags {
   // Information about the input arrays, i.e. the arrays from which input
   // activations will be read.
@@ -181,4 +182,22 @@ message ModelFlags {
   // When set to false, toco will not change the input ranges and the output
   // ranges of concat operator to the overlap of all input ranges.
   optional bool change_concat_input_ranges = 19 [default = true];
+
+  // Filepath of the saved model to be converted. This value will be non-empty
+  // only when the saved model import path will be used. Otherwise, the graph
+  // def-based conversion will be processed.
+  optional string saved_model_dir = 20;
+
+  // SavedModel file format version of The saved model file to be converted.
+  // This value will be set only when the SavedModel import path will be used.
+  optional int32 saved_model_version = 21;
+
+  // Set of string saved model tags, formatted in the comma-separated value.
+  // This value will be set only when the SavedModel import path will be used.
+  repeated string saved_model_tags = 22;
+
+  // Names to be exported (default: export all) when the saved model import path
+  // is on. This value will be set only when the SavedModel import path will be
+  // used.
+  repeated string saved_model_exported_names = 23;
 }

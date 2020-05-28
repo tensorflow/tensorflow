@@ -15,13 +15,25 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/step_events_to_steps_db.h"
 
 #include <sstream>
+#include <utility>
+#include <vector>
 
 #include "google/protobuf/any.pb.h"
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
+#include "tensorflow/core/profiler/utils/event_span.h"
+#include "tensorflow/core/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
+
+// Local core id should start from 1.
+const uint32 kDefaultGpuLocalCoreId = 1;
+
 namespace {
 
 // Converts from StepDetails to StepInfoResult.
@@ -32,8 +44,10 @@ StepInfoResult ConvertStepDetailsToStepInfo(bool has_device, int64 step_num,
   auto& type_ps = *(generic.mutable_type_ps());
   uint64 total_event_duration = 0;
   for (const auto& event : step_details.Events()) {
-    type_ps[event.type] += event.span.duration_ps();
-    total_event_duration += event.span.duration_ps();
+    // Ignore event duration outside the step marker.
+    uint64 event_duration = step_time.OverlappedDurationPs(event.span);
+    type_ps[event.type] += event_duration;
+    total_event_duration += event_duration;
   }
   if (total_event_duration < step_time.duration_ps()) {
     // Some time in the step is not associated with any event. Classify them as
@@ -41,7 +55,8 @@ StepInfoResult ConvertStepDetailsToStepInfo(bool has_device, int64 step_num,
     type_ps[UNKNOWN_TIME] += step_time.duration_ps() - total_event_duration;
   }
   // Determines if this particular step is a well-formed one.
-  bool well_formed_step = has_device ? type_ps.contains(DEVICE_COMPUTE)
+  bool well_formed_step = has_device ? (type_ps.contains(DEVICE_COMPUTE_16) ||
+                                        type_ps.contains(DEVICE_COMPUTE_32))
                                      : type_ps.contains(HOST_COMPUTE);
   StepInfoResult step_info;
   step_info.mutable_step_breakdown()->PackFrom(generic);
@@ -94,10 +109,8 @@ string DebugStepInfo(const StepInfoResult& step_info) {
 }  // namespace
 
 StepDatabaseResult ConvertStepEventsToStepDb(
-    bool has_device, const StepEvents& overlapped_step_events) {
+    bool has_device, const StepEvents& nonoverlapped_step_events) {
   StepDatabaseResult step_db;
-  StepEvents nonoverlapped_step_events =
-      ToNonOverlappedStepEvents(overlapped_step_events);
   // Gets sorted step numbers.
   std::vector<int64> step_numbers;
   step_numbers.reserve(nonoverlapped_step_events.size());
@@ -106,8 +119,10 @@ StepDatabaseResult ConvertStepEventsToStepDb(
   }
   absl::c_sort(step_numbers);
   for (const auto& step : step_numbers) {
-    StepInfoResult step_info = ConvertStepDetailsToStepInfo(
-        has_device, step, nonoverlapped_step_events[step]);
+    const auto* events = gtl::FindOrNull(nonoverlapped_step_events, step);
+    if (events == nullptr) continue;
+    StepInfoResult step_info =
+        ConvertStepDetailsToStepInfo(has_device, step, *events);
     if (step_info.duration_ps() == 0)
       continue;  // Do not include non-well-formed steps.
     PerCoreStepInfo per_core_step_info;
@@ -115,12 +130,13 @@ StepDatabaseResult ConvertStepEventsToStepDb(
     // When we generated StepEvents, we already put events from all device
     // cores and cpu threads on this host into a single event stream, therefore
     // we can't separate them anymore. Simply assigns all events to Core-0.
-    (*per_core_step_info.mutable_step_info_per_core())[0] =
+    (*per_core_step_info.mutable_step_info_per_core())[kDefaultGpuLocalCoreId] =
         std::move(step_info);
     VLOG(2) << std::endl
             << "step_id: " << step << ", step_info:" << std::endl
-            << DebugStepInfo(
-                   (*per_core_step_info.mutable_step_info_per_core())[0]);
+            << DebugStepInfo((
+                   *per_core_step_info
+                        .mutable_step_info_per_core())[kDefaultGpuLocalCoreId]);
     // The remaining fields in PerCoreStepInfo are not filled.
     *step_db.add_step_sequence() = per_core_step_info;
   }

@@ -23,6 +23,28 @@ namespace tflite {
 namespace delegates {
 namespace hexagon {
 
+// Builder for FullyConnected op in Hexagon with weights as const.
+class MatMulWithConstWeightsOpBuilder : public OpBuilder {
+ public:
+  explicit MatMulWithConstWeightsOpBuilder(GraphBuilder* graph_builder,
+                                           int op_type)
+      : OpBuilder(graph_builder, op_type) {}
+  TfLiteStatus PopulateSubGraph(const TfLiteIntArray* inputs,
+                                const TfLiteIntArray* outputs,
+                                TfLiteContext* context) override;
+
+  TfLiteStatus RegisterOutputs(const TfLiteIntArray* outputs,
+                               TfLiteContext* context) override;
+
+ private:
+  TensorID node_output_;
+  std::vector<int> weights_shape_, bias_shape_;
+  std::vector<float> transposed_weights_;
+  float data_min_, data_max_, weights_min_, weights_max_, bias_min_, bias_max_,
+      output_min_, output_max_;
+};
+
+// Builder for FullyConnected op in Hexagon with non const weights.
 class MatMulOpBuilder : public OpBuilder {
  public:
   explicit MatMulOpBuilder(GraphBuilder* graph_builder, int op_type)
@@ -34,9 +56,15 @@ class MatMulOpBuilder : public OpBuilder {
   TfLiteStatus RegisterOutputs(const TfLiteIntArray* outputs,
                                TfLiteContext* context) override;
 
-  ~MatMulOpBuilder() override;
-
  private:
+  // Adds Fully connected op related ops to the graph.
+  TfLiteStatus AddFullyConnected(const TfLiteIntArray* inputs,
+                                 const TfLiteIntArray* outputs,
+                                 const TensorID weights_id,
+                                 const TensorID weights_min_id,
+                                 const TensorID weights_max_id,
+                                 TfLiteContext* context, OpBuilder* matmul_op);
+
   TensorID node_output_;
   std::vector<int> weights_shape_, bias_shape_;
   std::vector<float> transposed_weights_;
