@@ -366,7 +366,7 @@ bool LogEveryNState::ShouldLog(int n) {
 
 bool LogFirstNState::ShouldLog(int n) {
   const uint32 counter_value = counter_.load(std::memory_order_relaxed);
-  if (counter_value < n) {
+  if (counter_value < (size_t)n) {
     counter_.store(counter_value + 1, std::memory_order_relaxed);
     return true;
   }
