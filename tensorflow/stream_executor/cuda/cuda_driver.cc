@@ -313,6 +313,7 @@ static port::Status InternalInit() {
   } else {
     LOG(ERROR) << "failed call to cuInit: " << ToString(res);
   }
+    
   Diagnostician::LogDiagnosticInformation();
   return port::Status(port::error::ABORTED,
                       absl::StrCat("failed call to cuInit: ", ToString(res)));
