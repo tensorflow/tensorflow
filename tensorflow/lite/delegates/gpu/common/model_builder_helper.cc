@@ -239,7 +239,7 @@ absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, Scalar* shape) {
   return absl::OkStatus();
 }
 
-absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, Linear* shape) {
+absl::Status CheckIfLinearConvertible(const TfLiteIntArray* dimensions) {
   if (dimensions->size <= 0) {
     return absl::InvalidArgumentError("Dimension is empty.");
   }
@@ -249,6 +249,11 @@ absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, Linear* shape) {
           GetDimensionString(dimensions), "  cannot be reduced to linear."));
     }
   }
+  return absl::OkStatus();
+}
+
+absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, Linear* shape) {
+  RETURN_IF_ERROR(CheckIfLinearConvertible(dimensions));
   shape->v = dimensions->data[dimensions->size - 1];
   return absl::OkStatus();
 }

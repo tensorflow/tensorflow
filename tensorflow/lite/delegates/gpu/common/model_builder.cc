@@ -402,6 +402,13 @@ class AddOperationParser : public TFLiteOperationParser {
       return absl::UnimplementedError("ADD requires two input tensors.");
     }
     // TODO(eignasheva): Add shapes check.
+    for (int i = 0; i < 2; i++) {
+      auto input = tflite::GetInput(context, tflite_node, i);
+      if (IsConstantTensor(input) && input->dims->size > 0) {
+        RETURN_IF_ERROR(CheckIfLinearConvertible(input->dims));
+      }
+    }
+
     TfLiteAddParams* tf_options = nullptr;
     return RetrieveBuiltinData(tflite_node, &tf_options);
   }
