@@ -101,9 +101,15 @@ class Subgraph {
     const std::unordered_set<int> inputs(
         &params->input_tensors->data[0],
         &params->input_tensors->data[params->input_tensors->size]);
-    const std::unordered_set<int> outputs(
-        &params->output_tensors->data[0],
-        &params->output_tensors->data[params->output_tensors->size]);
+    std::unordered_set<int> outputs;
+    for (int o = 0; o < params->output_tensors->size; o++) {
+      const int output_tensor_idx = params->output_tensors->data[o];
+      // Exclude quasi-static tensors which may have become subgraph outputs
+      // after partitioning.
+      if (delegate->static_unpacked_data_map_.count(output_tensor_idx) == 0) {
+        outputs.insert(output_tensor_idx);
+      }
+    }
     std::unordered_set<int> externals(outputs);
 
     TfLiteIntArray* execution_plan;
