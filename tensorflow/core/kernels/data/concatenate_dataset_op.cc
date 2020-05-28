@@ -221,7 +221,7 @@ void ConcatenateDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                   (DataTypeVectorString(input->output_dtypes()),
                    DataTypeVectorString(to_concatenate->output_dtypes()))));
   if (input->Cardinality() == kInfiniteCardinality) {
-    output = input;
+    *output = input;
     return;
   }
   *output = new Dataset(ctx, input, to_concatenate);
