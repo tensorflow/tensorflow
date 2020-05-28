@@ -983,7 +983,7 @@ def _slice_helper(tensor, slice_spec, var=None):
   with ops.name_scope(
       None,
       "strided_slice", [tensor] + begin + end + strides,
-      skip_on_eager=False) as name:
+      skip_on_eager=False):
     if begin:
       packed_begin, packed_end, packed_strides = (stack(begin), stack(end),
                                                   stack(strides))
@@ -1009,8 +1009,7 @@ def _slice_helper(tensor, slice_spec, var=None):
         shrink_axis_mask=shrink_axis_mask,
         new_axis_mask=new_axis_mask,
         ellipsis_mask=ellipsis_mask,
-        var=var,
-        name=name)
+        var=var)
 
 
 # pylint: disable=undefined-variable,protected-access,redefined-outer-name
@@ -1194,7 +1193,7 @@ def strided_slice(input_,
       if var is None:
         raise ValueError("Sliced assignment is only supported for variables")
       else:
-        if name is None:
+        if name is None and parent_name:
           name = parent_name + "_assign"
 
         return var._strided_slice_assign(
