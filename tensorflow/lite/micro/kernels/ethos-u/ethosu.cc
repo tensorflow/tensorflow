@@ -54,7 +54,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                      node->custom_initial_data_size);
     co_type = root.AsInt8();
     if (co_type != CO_TYPE_ETHOSU) {
-        context->ReportError(context, "CO_TYPE != ETHOSU");
+        TF_LITE_KERNEL_LOG(context, "CO_TYPE != ETHOSU");
         return kTfLiteError;
     }
 
