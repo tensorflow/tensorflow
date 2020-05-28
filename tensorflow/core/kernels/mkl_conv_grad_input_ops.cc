@@ -117,11 +117,11 @@ class MklConvBwdInputPrimitive : public MklPrimitive {
                const T* diff_dst_data,
                std::shared_ptr<stream> bwd_input_stream) {
     context_.diff_src_mem->set_data_handle(
-        static_cast<T*>(const_cast<T*>(diff_src_data)));
+        static_cast<T*>(const_cast<T*>(diff_src_data)), *bwd_input_stream);
     context_.filter_mem->set_data_handle(
-        static_cast<T*>(const_cast<T*>(filter_data)));
+        static_cast<T*>(const_cast<T*>(filter_data)), *bwd_input_stream);
     context_.diff_dst_mem->set_data_handle(
-        static_cast<T*>(const_cast<T*>(diff_dst_data)));
+        static_cast<T*>(const_cast<T*>(diff_dst_data)), *bwd_input_stream);
 
 #ifdef ENABLE_MKLDNN_V1
     execute_primitives(context_.bwd_input_primitives, bwd_input_stream,

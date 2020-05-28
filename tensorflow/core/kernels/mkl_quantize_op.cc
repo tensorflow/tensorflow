@@ -88,8 +88,8 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
 
   void Execute(void* src_data, void* dst_data,
                std::shared_ptr<stream> reorder_stream) {
-    context_.src_mem->set_data_handle(src_data);
-    context_.dst_mem->set_data_handle(dst_data);
+    context_.src_mem->set_data_handle(src_data, *reorder_stream);
+    context_.dst_mem->set_data_handle(dst_data, *reorder_stream);
 #ifndef ENABLE_MKLDNN_V1
     reorder_stream->submit(context_.net);
 #else

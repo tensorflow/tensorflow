@@ -128,13 +128,13 @@ void MklPoolingFwdPrimitive<T>::Execute(const T* src_data, T* dst_data,
                                         void* ws_data,
                                         std::shared_ptr<stream> fwd_stream) {
   context_.src_mem->set_data_handle(
-      static_cast<void*>(const_cast<T*>(src_data)));
-  context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
+      static_cast<void*>(const_cast<T*>(src_data)), *fwd_stream);
+  context_.dst_mem->set_data_handle(static_cast<void*>(dst_data), *fwd_stream);
   if (context_.alg_kind == ALGORITHM::pooling_max &&
       context_.prop_kind ==
           prop_kind::forward_training) {  // Max pooling must have workspace.
     DCHECK(ws_data != nullptr);
-    context_.ws_mem->set_data_handle(ws_data);
+    context_.ws_mem->set_data_handle(ws_data, *fwd_stream);
   }
 
 #ifdef ENABLE_MKLDNN_V1
@@ -270,11 +270,12 @@ void MklPoolingBwdPrimitive<T>::Execute(const T* diff_dst_data,
                                         T* diff_src_data, const void* ws_data,
                                         std::shared_ptr<stream> bwd_stream) {
   context_.diff_dst_mem->set_data_handle(
-      static_cast<void*>(const_cast<T*>(diff_dst_data)));
-  context_.diff_src_mem->set_data_handle(static_cast<void*>(diff_src_data));
+      static_cast<void*>(const_cast<T*>(diff_dst_data)), *bwd_stream);
+  context_.diff_src_mem->set_data_handle(static_cast<void*>(diff_src_data),
+                                         *bwd_stream);
   if (context_.alg_kind == ALGORITHM::pooling_max) {
     DCHECK(ws_data != nullptr);
-    context_.ws_mem->set_data_handle(const_cast<void*>(ws_data));
+    context_.ws_mem->set_data_handle(const_cast<void*>(ws_data), *bwd_stream);
   }
 
 #ifdef ENABLE_MKLDNN_V1

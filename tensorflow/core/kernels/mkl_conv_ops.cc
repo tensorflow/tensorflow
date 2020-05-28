@@ -111,15 +111,15 @@ class MklConvFwdPrimitive : public MklPrimitive {
                const Tbias* bias_data, const Toutput* dst_data,
                std::shared_ptr<stream> fwd_stream) {
     context_.src_mem->set_data_handle(
-        static_cast<void*>(const_cast<Tinput*>(src_data)));
+        static_cast<void*>(const_cast<Tinput*>(src_data)), *fwd_stream);
     context_.filter_mem->set_data_handle(
-        static_cast<void*>(const_cast<Tfilter*>(filter_data)));
+        static_cast<void*>(const_cast<Tfilter*>(filter_data)), *fwd_stream);
     if (bias_data != nullptr) {
       context_.bias_mem->set_data_handle(
-          static_cast<void*>(const_cast<Tbias*>(bias_data)));
+          static_cast<void*>(const_cast<Tbias*>(bias_data)), *fwd_stream);
     }
     context_.dst_mem->set_data_handle(
-        static_cast<void*>(const_cast<Toutput*>(dst_data)));
+        static_cast<void*>(const_cast<Toutput*>(dst_data)), *fwd_stream);
 #ifdef ENABLE_MKLDNN_V1
     DCHECK_EQ(context_.fwd_primitives.size(),
               context_.fwd_primitives_args.size());

@@ -115,15 +115,17 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
                const T* diff_bias_data, const T* diff_dst_data,
                std::shared_ptr<stream> bwd_filter_stream) {
     context_.src_mem->set_data_handle(
-        static_cast<void*>(const_cast<T*>(src_data)));
+        static_cast<void*>(const_cast<T*>(src_data)), *bwd_filter_stream);
     context_.diff_filter_mem->set_data_handle(
-        static_cast<void*>(const_cast<T*>(diff_filter_data)));
+        static_cast<void*>(const_cast<T*>(diff_filter_data)),
+        *bwd_filter_stream);
     if (diff_bias_data != nullptr) {
       context_.diff_bias_mem->set_data_handle(
-          static_cast<void*>(const_cast<T*>(diff_bias_data)));
+          static_cast<void*>(const_cast<T*>(diff_bias_data)),
+          *bwd_filter_stream);
     }
     context_.diff_dst_mem->set_data_handle(
-        static_cast<void*>(const_cast<T*>(diff_dst_data)));
+        static_cast<void*>(const_cast<T*>(diff_dst_data)), *bwd_filter_stream);
 
 #ifdef ENABLE_MKLDNN_V1
     execute_primitives(context_.bwd_filter_primitives, bwd_filter_stream,

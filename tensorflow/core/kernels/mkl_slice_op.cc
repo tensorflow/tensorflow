@@ -189,8 +189,10 @@ class MklSlicePrimitive : public MklPrimitive {
 
   void Execute(const MklSliceParams& sliceParams,
                std::shared_ptr<stream> slice_stream) {
-    context_.src_mem->set_data_handle(sliceParams.from->get_data_handle());
-    context_.dst_mem->set_data_handle(sliceParams.to->get_data_handle());
+    context_.src_mem->set_data_handle(sliceParams.from->get_data_handle(),
+                                      *slice_stream);
+    context_.dst_mem->set_data_handle(sliceParams.to->get_data_handle(),
+                                      *slice_stream);
 
 #ifdef ENABLE_MKLDNN_V1
     execute_primitives(context_.slice_primitives, slice_stream,

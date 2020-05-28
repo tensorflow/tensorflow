@@ -95,20 +95,23 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
                U* mean_data, U* variance_data,
                std::shared_ptr<stream> fwd_stream, U* workspace_data) {
     context_.src_mem->set_data_handle(
-        static_cast<void*>(const_cast<T*>(src_data)));
-    context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
+        static_cast<void*>(const_cast<T*>(src_data)), *fwd_stream);
+    context_.dst_mem->set_data_handle(static_cast<void*>(dst_data),
+                                      *fwd_stream);
 
     if (IS_SET(use_scale_shift))
       context_.weights_mem->set_data_handle(
-          static_cast<void*>(const_cast<U*>(weights_data)));
+          static_cast<void*>(const_cast<U*>(weights_data)), *fwd_stream);
 
     if ((context_.pkind == prop_kind::forward_training) ||
         (IS_SET(use_global_stats))) {
-      context_.mean_mem->set_data_handle(static_cast<void*>(mean_data));
-      context_.variance_mem->set_data_handle(static_cast<void*>(variance_data));
+      context_.mean_mem->set_data_handle(static_cast<void*>(mean_data),
+                                         *fwd_stream);
+      context_.variance_mem->set_data_handle(static_cast<void*>(variance_data),
+                                             *fwd_stream);
     }
     if (workspace_data != nullptr) {
-      context_.ws_mem->set_data_handle(workspace_data);
+      context_.ws_mem->set_data_handle(workspace_data, *fwd_stream);
     }
 #ifdef ENABLE_MKLDNN_V1
     // Execute batch-normalization forward primitives.
@@ -504,22 +507,23 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
                U* diff_weights_data, U* res_space_data,
                std::shared_ptr<stream> bwd_stream) {
     context_.src_mem->set_data_handle(
-        static_cast<void*>(const_cast<T*>(src_data)));
+        static_cast<void*>(const_cast<T*>(src_data)), *bwd_stream);
     context_.mean_mem->set_data_handle(
-        static_cast<void*>(const_cast<U*>(mean_data)));
+        static_cast<void*>(const_cast<U*>(mean_data)), *bwd_stream);
     context_.variance_mem->set_data_handle(
-        static_cast<void*>(const_cast<U*>(variance_data)));
+        static_cast<void*>(const_cast<U*>(variance_data)), *bwd_stream);
     context_.diff_dst_mem->set_data_handle(
-        static_cast<void*>(const_cast<T*>(diff_dst_data)));
+        static_cast<void*>(const_cast<T*>(diff_dst_data)), *bwd_stream);
 
     if (IS_SET(use_scale_shift)) {
       context_.weights_mem->set_data_handle(
-          static_cast<void*>(const_cast<U*>(weights_data)));
+          static_cast<void*>(const_cast<U*>(weights_data)), *bwd_stream);
       context_.diff_weights_mem->set_data_handle(
-          static_cast<void*>(diff_weights_data));
+          static_cast<void*>(diff_weights_data), *bwd_stream);
     }
 
-    context_.diff_src_mem->set_data_handle(static_cast<void*>(diff_src_data));
+    context_.diff_src_mem->set_data_handle(static_cast<void*>(diff_src_data),
+                                           *bwd_stream);
 
 #ifdef ENABLE_MKLDNN_V1
     // Execute backward batch-normalization primitives.
