@@ -34,6 +34,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.eager import wrap_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
@@ -90,7 +91,7 @@ class ResourceTest(test_util.TensorFlowTestCase):
                   resources.shared_resources()).eval()), 0)
 
 
-@test_util.disable_tfrt("Graph is not supported yet.")
+@test_util.disable_tfrt("Graph is not supported yet. b/156187905")
 class TensorAndShapeTest(test_util.TensorFlowTestCase):
 
   def testShape(self):
@@ -310,7 +311,8 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
     del x
     self.assertIsNotNone(x_ref.deref())
 
-@test_util.disable_tfrt("Graph mode is not supported yet.")
+
+@test_util.disable_tfrt("Graph is not supported yet. b/156187905")
 @test_util.run_all_in_graph_and_eager_modes
 class IndexedSlicesTest(test_util.TensorFlowTestCase):
 
@@ -355,7 +357,7 @@ class IndexedSlicesTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(x.indices, [0, 2])
 
 
-@test_util.disable_tfrt("Graph mode is not supported yet.")
+@test_util.disable_tfrt("Graph is not supported yet. b/156187905")
 @test_util.run_all_in_graph_and_eager_modes
 class IndexedSlicesSpecTest(test_util.TensorFlowTestCase,
                             parameterized.TestCase):
@@ -501,7 +503,7 @@ def _apply_op(g, *args, **kwargs):
     return op.outputs
 
 
-@test_util.disable_tfrt("Graph is not supported yet.")
+@test_util.disable_tfrt("Graph is not supported yet. b/156187905")
 class OperationTest(test_util.TensorFlowTestCase):
 
   @test_util.run_deprecated_v1
@@ -1444,7 +1446,7 @@ class NameTest(test_util.TensorFlowTestCase):
                        g.create_op("FloatOutput", [], [dtypes.float32]).name)
 
 
-@test_util.disable_tfrt("Device API are not supported yet.")
+@test_util.disable_tfrt("Device API are not supported yet. b/156188344")
 class DeviceTest(test_util.TensorFlowTestCase):
 
   def testNoDevice(self):
@@ -2025,7 +2027,7 @@ class CollectionTest(test_util.TensorFlowTestCase):
       # Collections are ordered.
       self.assertEqual([90, 100], ops.get_collection("key"))
 
-  @test_util.disable_tfrt("Functions are not supported yet.")
+  @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
   def test_defun(self):
     with context.eager_mode():
 
@@ -2132,7 +2134,7 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
     # e should be dominated by c.
     self.assertEqual(e.op.control_inputs, [])
 
-  @test_util.disable_tfrt("Graph is not supported yet.")
+  @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
   @test_util.run_in_graph_and_eager_modes
   def testEager(self):
     def future():
@@ -2453,7 +2455,7 @@ class OpScopeTest(test_util.TensorFlowTestCase):
     self._testGraphElements([a, variable, b])
 
 
-@test_util.disable_tfrt("Graphs are not supported yet.")
+@test_util.disable_tfrt("Graph is not supported yet. b/156187905")
 class InitScopeTest(test_util.TensorFlowTestCase):
 
   def testClearsControlDependencies(self):
@@ -2756,7 +2758,7 @@ class InitScopeTest(test_util.TensorFlowTestCase):
           self.assertFalse(self.evaluate(f()))
 
 
-@test_util.disable_tfrt("Graphs are not supported yet.")
+@test_util.disable_tfrt("Graph is not supported yet. b/156187905")
 class GraphTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -3234,7 +3236,7 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
       b = variables.Variable([3.0], name="b")
     self.assertEqual([b"loc:@a"], b.op.colocation_groups())
 
-  @test_util.disable_tfrt("Functions are not supported yet.")
+  @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
   def testColocateWithVariableInFunction(self):
     v = variables.Variable(1.)
 
@@ -3406,6 +3408,52 @@ class CustomConvertToCompositeTensorTest(test_util.TensorFlowTestCase):
       self.assertIsInstance(y_, ops.Tensor)
       self.assertTrue(tensor_util.is_tensor(y_))
       self.assertAllEqual(x_, tensor_util.constant_value(y_))
+
+
+@test_util.disable_tfrt("Packing EagerTensors is not supported yet.")
+class PackEagerTensorTest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    super(PackEagerTensorTest, self).setUp()
+    context._reset_context()
+    cpus = config.list_physical_devices("CPU")
+    # Set 2 virtual CPUs
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration(),
+    ])
+
+  def testPack(self):
+    with context.eager_mode():
+      with ops.device("CPU:0"):
+        var0 = resource_variable_ops.ResourceVariable(1.0)
+        c0 = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+      with ops.device("CPU:1"):
+        var1 = resource_variable_ops.ResourceVariable(2.0)
+        var2 = resource_variable_ops.ResourceVariable([3.0])
+        c1 = constant_op.constant([9.0])
+
+      packed_var0 = ops.pack_eager_tensors([var0.handle, var1.handle])
+      self.assertTrue(packed_var0.is_packed)
+      self.assertEqual(packed_var0.dtype, var0.handle.dtype)
+      self.assertEqual(packed_var0.shape, var0.handle.shape)
+      self.assertEqual(packed_var0._handle_data, var0.handle._handle_data)
+      self.assertIn("COMPOSITE:0", packed_var0.device)
+      self.assertIn("COMPOSITE:0", packed_var0.backing_device)
+      with self.assertRaises(errors.InvalidArgumentError):
+        packed_var0.numpy()
+
+      # Different dtypes
+      with self.assertRaises(ValueError):
+        ops.pack_eager_tensors([var0.handle, c1])
+
+      # Different shapes
+      with self.assertRaises(ValueError):
+        ops.pack_eager_tensors([c0, c1])
+
+      # Different handle data
+      with self.assertRaises(ValueError):
+        ops.pack_eager_tensors([var0.handle, var2.handle])
 
 
 if __name__ == "__main__":

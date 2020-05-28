@@ -162,12 +162,11 @@ class ConvertAfterShapesTest : public ::testing::Test {
     // Construct ConversionParams.
     const std::vector<string> output_names{"output"};
     ConversionParams params;
-    params.input_graph_def = &item.graph;
     params.output_names = &output_names;
     params.max_workspace_size_bytes = 8 << 20;
     params.output_graph_def = output_graph_def;
     params.minimum_segment_size = 1;
-    params.graph_properties = &graph_properties;
+    params.grappler_item = &item;
     params.use_calibration = false;
     params.trt_logger_name = "DefaultLogger";
 

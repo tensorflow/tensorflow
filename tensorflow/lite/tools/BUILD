@@ -17,7 +17,10 @@ py_binary(
     srcs = ["visualize.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow/lite/python:schema_py"],
+    deps = [
+        "//tensorflow/lite/python:schema_py",
+        "//third_party/py/numpy",
+    ],
 )
 
 py_test(

@@ -651,7 +651,10 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
       self.assertIsInstance(v.assign_add(delta), core.Tensor)
 
     # In cross replica context we return a PerReplica which is not Tensor like
-    # yet.
+    # all the time yet.
+    if (synchronization == variables_lib.VariableSynchronization.ON_READ and
+        aggregation != variables_lib.VariableAggregation.SUM):
+      assert_is_tensor_like(v)
 
     # In replica context.
     distribution.run(assert_is_tensor_like, args=(v,))
@@ -1610,10 +1613,16 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
         variables_lib.VariableAggregation.MEAN,
         variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
     ]
-    options = (  # VariableAggregation.SUM in cross-replica mode is tested below
-        [x for x in itertools.product(updates, aggregations, [True, False])
-         if not(x[1] == variables_lib.VariableAggregation.SUM and x[2])])
+    options = list(
+        x for x in itertools.product(updates, aggregations, [True, False]))
     for update, aggregation, cross_replica in options:
+      # VariableAggregation.SUM in cross-replica mode is tested below,
+      # VariableAggregation.NONE in cross-replica mode is not supported.
+      if cross_replica and aggregation in [
+          variables_lib.VariableAggregation.SUM,
+          variables_lib.VariableAggregation.NONE,
+      ]:
+        continue
       with distribution.scope():
         v = variable_scope.variable(
             0.,
@@ -1647,10 +1656,16 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
         variables_lib.VariableAggregation.MEAN,
         variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
     ]
-    options = (  # VariableAggregation.SUM in cross-replica mode is tested below
-        [x for x in itertools.product(updates, aggregations, [True, False])
-         if not(x[1] == variables_lib.VariableAggregation.SUM and x[2])])
+    options = list(
+        x for x in itertools.product(updates, aggregations, [True, False]))
     for update, aggregation, cross_replica in options:
+      # VariableAggregation.SUM in cross-replica mode is tested below,
+      # VariableAggregation.NONE in cross-replica mode is not supported.
+      if cross_replica and aggregation in [
+          variables_lib.VariableAggregation.SUM,
+          variables_lib.VariableAggregation.NONE,
+      ]:
+        continue
       with distribution.scope():
         v = variable_scope.variable(
             0.,
@@ -1722,8 +1737,8 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
                                          experimental_run_tf_function):
     aggregations = [
         variables_lib.VariableAggregation.SUM,
-        variables_lib.VariableAggregation.MEAN,
-        variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
+        # variables_lib.VariableAggregation.MEAN,
+        # variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
     ]
     for aggregation in aggregations:
       if isinstance(distribution, _TPU_STRATEGIES):

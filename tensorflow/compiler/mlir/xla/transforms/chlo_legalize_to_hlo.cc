@@ -163,8 +163,7 @@ struct HloBinaryElementwiseAdaptor {
                          Value broadcasted_lhs, Value broadcasted_rhs,
                          OpBuilder &builder) {
     return builder.create<ToOpTy>(from_op.getLoc(), result_type,
-                                  broadcasted_lhs, broadcasted_rhs,
-                                  /*broadcast_dimensions=*/nullptr);
+                                  broadcasted_lhs, broadcasted_rhs);
   }
 };
 
@@ -183,9 +182,9 @@ struct HloCompareAdaptor {
                                      Type result_type, Value broadcasted_lhs,
                                      Value broadcasted_rhs,
                                      OpBuilder &builder) {
-    return builder.create<xla_hlo::CompareOp>(
-        from_op.getLoc(), result_type, broadcasted_lhs, broadcasted_rhs,
-        /*broadcast_dimensions=*/nullptr, from_op.comparison_direction());
+    return builder.create<xla_hlo::CompareOp>(from_op.getLoc(), result_type,
+                                              broadcasted_lhs, broadcasted_rhs,
+                                              from_op.comparison_direction());
   }
 };
 

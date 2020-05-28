@@ -825,6 +825,7 @@ def aot_compile_cpu(args):
       variables_to_feed=variables_to_feed,
       output_prefix=args.output_prefix,
       target_triple=args.target_triple,
+      target_cpu=args.target_cpu,
       cpp_class=args.cpp_class,
       enable_multithreading=args.enable_multithreading)
 
@@ -1096,6 +1097,14 @@ def add_aot_compile_cpu_subparser(subparsers):
             'x86_64-none-darwin, x86_64-apple-ios, arm64-none-ios, '
             'armv7-none-android.  More examples are available in tfcompile.bzl '
             'in the tensorflow codebase.'))
+  parser_compile.add_argument(
+      '--target_cpu',
+      type=str,
+      default='',
+      help=('Target cpu name for LLVM during AOT compilation.  Examples: '
+            'x86_64, skylake, haswell, westmere, <empty> (unknown).  For '
+            'a complete list of options, run (for x86 targets): '
+            '`llc -march=x86 -mcpu=help`'))
   parser_compile.add_argument(
       '--checkpoint_path',
       type=str,

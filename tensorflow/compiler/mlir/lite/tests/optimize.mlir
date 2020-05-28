@@ -439,6 +439,19 @@ func @NotReorderReshapeAddIfNotTailingDim(%arg0: tensor<40x40x1xf32>) -> tensor<
   // CHECK: return %[[rs2]]
 }
 
+// CHECK-LABEL: @NotReorderReshapeAddIfHighDim
+func @NotReorderReshapeAddIfHighDim(%arg0: tensor<1x1x1x1x30x96xf32>) -> tensor<1x30x96xf32> {
+  %cst = constant dense<2.0> : tensor<f32>
+  %shape = constant dense<[1, 30, 96]> : tensor<3xi32>
+  %1 = "tfl.reshape"(%arg0, %shape) : (tensor<1x1x1x1x30x96xf32>, tensor<3xi32>) -> tensor<1x30x96xf32>
+  %2 = "tfl.add"(%1, %cst) {fused_activation_function = "NONE"} : (tensor<1x30x96xf32>, tensor<f32>) -> tensor<1x30x96xf32>
+  return %2 : tensor<1x30x96xf32>
+
+  // CHECK: %[[rs1:.*]] = "tfl.reshape"(%arg0
+  // CHECK: %[[rs2:.*]] = "tfl.add"(%[[rs1]]
+  // CHECK: return %[[rs2]]
+}
+
 // CHECK-LABEL: @ReorderElementwiseValueOpAndMoveOp
 func @ReorderElementwiseValueOpAndMoveOp(%arg0: tensor<40x40x1xf32>) -> tensor<40x40xf32> {
   %shape = constant dense<[40, 40]> : tensor<2xi32>

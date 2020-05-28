@@ -376,7 +376,9 @@ cc_test(
 cc_test(
     name = "interpreter_test",
     size = "small",
-    srcs = ["interpreter_test.cc"],
+    srcs = [
+        "interpreter_test.cc",
+    ],
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     tags = [
         "tflite_not_portable_ios",  # TODO(b/117786830)

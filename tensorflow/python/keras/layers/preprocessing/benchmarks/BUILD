@@ -1,4 +1,7 @@
 # Benchmarks for Keras preprocessing layers.
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
@@ -8,22 +11,32 @@ package(
 exports_files(["LICENSE"])
 
 tf_py_test(
-    name = "categorical_encoding_benchmark",
-    srcs = ["categorical_encoding_benchmark.py"],
+    name = "category_encoding_benchmark",
+    srcs = ["category_encoding_benchmark.py"],
     python_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python/keras/layers/preprocessing:categorical_encoding",
+        "//tensorflow/python/keras/layers/preprocessing:category_encoding",
     ],
 )
 
 tf_py_test(
-    name = "categorical_crossing_benchmark",
-    srcs = ["categorical_crossing_benchmark.py"],
+    name = "category_crossing_benchmark",
+    srcs = ["category_crossing_benchmark.py"],
     python_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python/keras/layers/preprocessing:categorical_crossing",
+        "//tensorflow/python/keras/layers/preprocessing:category_crossing",
+    ],
+)
+
+tf_py_test(
+    name = "hashing_benchmark",
+    srcs = ["hashing_benchmark.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/layers/preprocessing:hashing",
     ],
 )
 
@@ -44,5 +57,15 @@ tf_py_test(
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/keras/layers/preprocessing:normalization",
+    ],
+)
+
+cuda_py_test(
+    name = "image_preproc_benchmark",
+    srcs = ["image_preproc_benchmark.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/layers/preprocessing:image_preprocessing",
     ],
 )

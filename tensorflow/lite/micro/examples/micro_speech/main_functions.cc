@@ -43,8 +43,8 @@ int32_t previous_time = 0;
 // determined by experimentation.
 constexpr int kTensorArenaSize = 10 * 1024;
 uint8_t tensor_arena[kTensorArenaSize];
-uint8_t feature_buffer[kFeatureElementCount];
-uint8_t* model_input_buffer = nullptr;
+int8_t feature_buffer[kFeatureElementCount];
+int8_t* model_input_buffer = nullptr;
 }  // namespace
 
 // The name of this function is important for Arduino compatibility.
@@ -74,19 +74,28 @@ void setup() {
   //
   // tflite::ops::micro::AllOpsResolver resolver;
   // NOLINTNEXTLINE(runtime-global-variables)
-  static tflite::MicroOpResolver<3> micro_op_resolver(error_reporter);
+  static tflite::MicroOpResolver<4> micro_op_resolver(error_reporter);
   if (micro_op_resolver.AddBuiltin(
           tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
-          tflite::ops::micro::Register_DEPTHWISE_CONV_2D()) != kTfLiteOk) {
+          tflite::ops::micro::Register_DEPTHWISE_CONV_2D(),
+          tflite::MicroOpResolverAnyVersion()) != kTfLiteOk) {
     return;
   }
   if (micro_op_resolver.AddBuiltin(
           tflite::BuiltinOperator_FULLY_CONNECTED,
-          tflite::ops::micro::Register_FULLY_CONNECTED()) != kTfLiteOk) {
+          tflite::ops::micro::Register_FULLY_CONNECTED(),
+          tflite::MicroOpResolverAnyVersion()) != kTfLiteOk) {
     return;
   }
   if (micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
-                                   tflite::ops::micro::Register_SOFTMAX()) !=
+                                   tflite::ops::micro::Register_SOFTMAX(),
+                                   tflite::MicroOpResolverAnyVersion()) !=
+      kTfLiteOk) {
+    return;
+  }
+  if (micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_RESHAPE,
+                                   tflite::ops::micro::Register_RESHAPE(),
+                                   tflite::MicroOpResolverAnyVersion()) !=
       kTfLiteOk) {
     return;
   }
@@ -105,15 +114,15 @@ void setup() {
 
   // Get information about the memory area to use for the model's input.
   model_input = interpreter->input(0);
-  if ((model_input->dims->size != 4) || (model_input->dims->data[0] != 1) ||
-      (model_input->dims->data[1] != kFeatureSliceCount) ||
-      (model_input->dims->data[2] != kFeatureSliceSize) ||
-      (model_input->type != kTfLiteUInt8)) {
+  if ((model_input->dims->size != 2) || (model_input->dims->data[0] != 1) ||
+      (model_input->dims->data[1] !=
+       (kFeatureSliceCount * kFeatureSliceSize)) ||
+      (model_input->type != kTfLiteInt8)) {
     TF_LITE_REPORT_ERROR(error_reporter,
                          "Bad input tensor parameters in model");
     return;
   }
-  model_input_buffer = model_input->data.uint8;
+  model_input_buffer = model_input->data.int8;
 
   // Prepare to access the audio spectrograms from a microphone or other source
   // that will provide the inputs to the neural network.

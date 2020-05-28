@@ -197,7 +197,7 @@ class GraphBuilder {
   // Same as above but takes shape of the tensor that will holds the data.
   OpBuilder* AddConstNodeWithData(const int shape[], char* data, int data_size);
 
-  OpBuilder* CreateOpBuilderFromTfLiteOp(int op_type);
+  OpBuilder* CreateOpBuilderFromTfLiteOp(int op_type, TfLiteNode* node);
 
   // Construct Input node with 'input_tensors' as output.
   TfLiteStatus AddInputTensors(const TfLiteIntArray* input_tensors,

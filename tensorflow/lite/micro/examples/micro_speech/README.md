@@ -16,6 +16,7 @@ kilobytes of Flash.
 
 ## Table of contents
 
+-   [Deploy to ARC EM SDP](#deploy-to-arc-em-sdp)
 -   [Deploy to Arduino](#deploy-to-arduino)
 -   [Deploy to ESP32](#deploy-to-esp32)
 -   [Deploy to SparkFun Edge](#deploy-to-sparkfun-edge)
@@ -24,6 +25,95 @@ kilobytes of Flash.
 -   [Run on macOS](#run-on-macos)
 -   [Run the tests on a development machine](#run-the-tests-on-a-development-machine)
 -   [Train your own model](#train-your-own-model)
+
+## Deploy to ARC EM SDP
+
+The following instructions will help you to build and deploy this example to
+[ARC EM SDP](https://www.synopsys.com/dw/ipdir.php?ds=arc-em-software-development-platform)
+board. General information and instructions on using the board with TensorFlow
+Lite Micro can be found in the common
+[ARC targets description](/tensorflow/lite/micro/tools/make/targets/arc/README.md).
+
+This example is quantized with symmetric uint8 scheme. As noted in
+[kernels/arc_mli/README.md](/tensorflow/lite/micro/kernels/arc_mli/README.md),
+embARC MLI supports optimized kernels for int8 quantization only. Therefore,
+this example will only use TFLM reference kernels.
+
+The ARC EM SDP board contains the rich set of extension interfaces. You can
+choose any compatible microphone and modify
+[audio_provider.cc](/tensorflow/lite/micro/examples/micro_speech/audio_provider.cc)
+file accordingly to use input from your specific camera. By default, results of
+running this example are printed to the console. If you would like to instead
+implement some target-specific actions, you need to modify
+[command_responder.cc](/tensorflow/lite/micro/examples/micro_speech/command_responder.cc)
+accordingly.
+
+The reference implementations of these files are used by default on the EM SDP.
+
+### Initial setup
+
+Follow the instructions on the
+[ARC EM SDP Initial Setup](/tensorflow/lite/micro/tools/make/targets/arc/README.md#ARC-EM-Software-Development-Platform-ARC-EM-SDP)
+to get and install all required tools for work with ARC EM SDP.
+
+### Generate Example Project
+
+As default example doesn’t provide any output without real audio, it is
+recommended to get started with example for mock data. The project for ARC EM
+SDP platform can be generated with the following command:
+
+```
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=arc_emsdp TAGS=no_arc_mli generate_micro_speech_mock_make_project
+```
+
+### Build and Run Example
+
+For more detailed information on building and running examples see the
+appropriate sections of general descriptions of the
+[ARC EM SDP usage with TFLM](/tensorflow/lite/micro/tools/make/targets/arc/README.md#ARC-EM-Software-Development-Platform-ARC-EM-SDP).
+In the directory with generated project you can also find a
+*README_ARC_EMSDP.md* file with instructions and options on building and
+running. Here we only briefly mention main steps which are typically enough to
+get it started.
+
+1.  You need to
+    [connect the board](/tensorflow/lite/micro/tools/make/targets/arc/README.md#connect-the-board)
+    and open an serial connection.
+
+2.  Go to the generated example project director
+
+    ```
+    cd tensorflow/lite/micro/tools/make/gen/arc_emsdp_arc/prj/micro_speech_mock/make
+    ```
+
+3.  Build the example using
+
+    ```
+    make app
+    ```
+
+4.  To generate artefacts for self-boot of example from the board use
+
+    ```
+    make flash
+    ```
+
+5.  To run application from the board using microSD card:
+
+    *   Copy the content of the created /bin folder into the root of microSD
+        card. Note that the card must be formatted as FAT32 with default cluster
+        size (but less than 32 Kbytes)
+    *   Plug in the microSD card into the J11 connector.
+    *   Push the RST button. If a red LED is lit beside RST button, push the CFG
+        button.
+
+6.  If you have the MetaWare Debugger installed in your environment:
+
+    *   To run application from the console using it type `make run`.
+    *   To stop the execution type `Ctrl+C` in the console several times.
+
+In both cases (step 5 and 6) you will see the application output in the serial
+terminal.
 
 ## Deploy to Arduino
 

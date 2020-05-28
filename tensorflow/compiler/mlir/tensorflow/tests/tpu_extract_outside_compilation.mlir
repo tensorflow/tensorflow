@@ -141,4 +141,133 @@ func @multiple_tpu_return_single_outside_compilation(%arg0: tensor<?xi32>) -> te
   return %1 : tensor<?xf32>
 }
 
+// Tests extraction of a single outside compiled cluster with single device->host input.
+
+// CHECK-LABEL: func @single_outside_compiled_input_single_outside_compilation
+func @single_outside_compiled_input_single_outside_compilation(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+  %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+  // CHECK: %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
+    // CHECK: %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
+      // CHECK-NEXT: "tf_device.launch"
+        // CHECK: %[[STATUS_OUTPUT:[a-z_0-9]*]], %[[PROGRAM_OUTPUT:[a-z_0-9]*]] = "tf._TPUCompileMlir"
+        // CHECK: %[[RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHost"(%[[PROGRAM_OUTPUT]])
+        // CHECK-SAME: key = "host_compute_channel_cluster1"
+        // CHECK: "tf.B"(%[[RECV_OUTPUT]])
+      // CHECK: "tf_device.cluster"
+        // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"
+        // CHECK: "tf._HostComputeMlir"(%[[A_OUTPUT]])
+        // CHECK-SAME: key = "host_compute_channel_cluster1"
+  %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<?xi32>) {n = 2 : i32} {
+    %2 = "tf_device.cluster"() ( {
+      %3 = "tf.A"() : () -> (tensor<?xi32>)
+      "tf.B"(%3) {_xla_outside_compilation = "cluster1"} : (tensor<?xi32>) -> ()
+      %4 = "tf.C"() : () -> tensor<?xi32>
+      tf_device.return %4 : tensor<?xi32>
+    }) {cluster_attr = "cluster_attr"} : () -> tensor<?xi32>
+    tf_device.return %2 : tensor<?xi32>
+  }
+
+  return %1 : tensor<?xi32>
+}
+
+// Tests extraction of a single outside compiled cluster with arg input and single device->host input.
+
+// CHECK-LABEL: func @mixed_input_single_outside_compilation
+func @mixed_input_single_outside_compilation(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+  %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+  // CHECK: %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
+    // CHECK: %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
+      // CHECK-NEXT: "tf_device.launch"
+        // CHECK: %[[STATUS_OUTPUT:[a-z_0-9]*]], %[[PROGRAM_OUTPUT:[a-z_0-9]*]] = "tf._TPUCompileMlir"
+        // CHECK: %[[RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHost"(%[[PROGRAM_OUTPUT]])
+        // CHECK-SAME: key = "host_compute_channel_cluster1"
+        // CHECK: "tf.B"(%arg0, %[[RECV_OUTPUT]])
+      // CHECK: "tf_device.cluster"
+        // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"
+        // CHECK: "tf._HostComputeMlir"(%[[A_OUTPUT]])
+        // CHECK-SAME: key = "host_compute_channel_cluster1"
+  %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<?xi32>) {n = 2 : i32} {
+    %2 = "tf_device.cluster"() ( {
+      %3 = "tf.A"() : () -> (tensor<?xi32>)
+      "tf.B"(%arg0, %3) {_xla_outside_compilation = "cluster1"} : (tensor<?xi32>, tensor<?xi32>) -> ()
+      %4 = "tf.C"() : () -> tensor<?xi32>
+      tf_device.return %4 : tensor<?xi32>
+    }) {cluster_attr = "cluster_attr"} : () -> tensor<?xi32>
+    tf_device.return %2 : tensor<?xi32>
+  }
+
+  return %1 : tensor<?xi32>
+}
+
+// Tests extraction of a multiple outside compiled clusters with single device->host input.
+
+// CHECK-LABEL: func @single_outside_compiled_input_multiple_outside_compilation
+func @single_outside_compiled_input_multiple_outside_compilation(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+  %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+  // CHECK: %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
+  // CHECK: %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
+  // CHECK-NEXT: "tf_device.launch"
+  // CHECK:        %[[STATUS_OUTPUT_2:[a-z_0-9]*]], %[[PROGRAM_OUTPUT_2:[a-z_0-9]*]] = "tf._TPUCompileMlir"
+  // CHECK:        %[[RECV_OUTPUT_2:[0-9]*]] = "tf._XlaRecvAtHost"(%[[PROGRAM_OUTPUT_2]])
+  // CHECK-SAME: key = "host_compute_channel_cluster2"
+  // CHECK:        "tf.D"(%[[RECV_OUTPUT_2]])
+  // CHECK:       "tf_device.launch"
+  // CHECK:         %[[STATUS_OUTPUT_1:[a-z_0-9]*]], %[[PROGRAM_OUTPUT_1:[a-z_0-9]*]] = "tf._TPUCompileMlir"
+  // CHECK:         %[[RECV_OUTPUT_1:[0-9]*]] = "tf._XlaRecvAtHost"(%[[PROGRAM_OUTPUT_1]])
+  // CHECK-SAME: key = "host_compute_channel_cluster1"
+  // CHECK:         "tf.B"(%[[RECV_OUTPUT_1]])
+  // CHECK:       "tf_device.cluster"
+  // CHECK:         %[[A_OUTPUT:[0-9]*]] = "tf.A"
+  // CHECK:         "tf._HostComputeMlir"(%[[A_OUTPUT]])
+  // CHECK-SAME: key = "host_compute_channel_cluster1"
+  // CHECK:         %[[C_OUTPUT:[0-9]*]] = "tf.C"
+  // CHECK:         "tf._HostComputeMlir"(%[[C_OUTPUT]])
+  // CHECK-SAME: key = "host_compute_channel_cluster2"
+  %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<?xi32>) {n = 2 : i32} {
+    %2 = "tf_device.cluster"() ( {
+      %3 = "tf.A"() : () -> (tensor<?xi32>)
+      "tf.B"(%3) {_xla_outside_compilation = "cluster1"} : (tensor<?xi32>) -> ()
+      %4 = "tf.C"() : () -> tensor<?xi32>
+      "tf.D"(%4) {_xla_outside_compilation = "cluster2"} : (tensor<?xi32>) -> ()
+      tf_device.return %4 : tensor<?xi32>
+    }) {cluster_attr = "cluster_attr"} : () -> tensor<?xi32>
+    tf_device.return %2 : tensor<?xi32>
+  }
+
+  return %1 : tensor<?xi32>
+}
+
+// Tests extraction of a single outside compiled cluster with multiple device->host inputs.
+
+// CHECK-LABEL: func @multiple_outside_compiled_inputs_single_outside_compilation
+func @multiple_outside_compiled_inputs_single_outside_compilation(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+  %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+  // CHECK: %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
+    // CHECK: %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
+      // CHECK-NEXT: "tf_device.launch"
+        // CHECK: %[[STATUS_OUTPUT:[a-z_0-9]*]], %[[PROGRAM_OUTPUT:[a-z_0-9]*]] = "tf._TPUCompileMlir"
+        // CHECK: %[[RECV_OUTPUT:[0-9]*]]:2 = "tf._XlaRecvAtHost"(%[[PROGRAM_OUTPUT]])
+        // CHECK-SAME: key = "host_compute_channel_cluster1"
+        // CHECK: "tf.C"(%[[RECV_OUTPUT]]#0)
+        // CHECK: "tf.D"(%[[RECV_OUTPUT]]#1, %[[RECV_OUTPUT]]#0)
+      // CHECK: "tf_device.cluster"
+        // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"
+        // CHECK: %[[B_OUTPUT:[0-9]*]] = "tf.B"
+        // CHECK: "tf._HostComputeMlir"(%[[A_OUTPUT]], %[[B_OUTPUT]])
+        // CHECK-SAME: key = "host_compute_channel_cluster1"
+  %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<?xi32>) {n = 2 : i32} {
+    %2 = "tf_device.cluster"() ( {
+      %3 = "tf.A"() : () -> (tensor<?xi32>)
+      %4 = "tf.B"() : () -> (tensor<?xi32>)
+      "tf.C"(%3) {_xla_outside_compilation = "cluster1"} : (tensor<?xi32>) -> ()
+      "tf.D"(%4, %3) {_xla_outside_compilation = "cluster1"} : (tensor<?xi32>, tensor<?xi32>) -> ()
+      %5 = "tf.E"() : () -> tensor<?xi32>
+      tf_device.return %5 : tensor<?xi32>
+    }) {cluster_attr = "cluster_attr"} : () -> tensor<?xi32>
+    tf_device.return %2 : tensor<?xi32>
+  }
+
+  return %1 : tensor<?xi32>
+}
+
 // TODO(b/154363171): Add test cases for when output of outside compilation is returned by parallel_execute.

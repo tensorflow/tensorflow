@@ -496,7 +496,7 @@ TF_LITE_MICRO_TEST(SimpleAveragePoolTestInt8PaddingSameStride1ActNone) {
        F2QS(8.5, output_min, output_max), F2QS(7., output_min, output_max)},
       {4, 1, 2, 4, 1},         // Output shape
       output_min, output_max,  // output quantization range
-      kTfLitePaddingValid, kTfLiteActNone, output_data);
+      kTfLitePaddingSame, kTfLiteActNone, output_data);
 }
 
 TF_LITE_MICRO_TEST(SimpleMaxPoolTestFloat) {

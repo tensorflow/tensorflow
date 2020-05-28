@@ -62,7 +62,6 @@ tf_cc_test_gpu(
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [
         "nomac",
-        "notap",  # b/154510273
         "gpu_cupti",
     ],
     deps = [

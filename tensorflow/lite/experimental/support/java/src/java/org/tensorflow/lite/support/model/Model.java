@@ -22,6 +22,7 @@ import java.util.Map;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.tensorflow.lite.Interpreter;
+import org.tensorflow.lite.Tensor;
 import org.tensorflow.lite.support.common.FileUtil;
 import org.tensorflow.lite.support.common.SupportPreconditions;
 
@@ -216,6 +217,24 @@ public class Model {
   @NonNull
   public String getPath() {
     return modelPath;
+  }
+
+  /**
+   * Gets the Tensor associated with the provdied input index.
+   *
+   * @throws IllegalStateException if the interpreter is closed.
+   */
+  public Tensor getInputTensor(int inputIndex) {
+    return interpreter.getInputTensor(inputIndex);
+  }
+
+  /**
+   * Gets the Tensor associated with the provdied output index.
+   *
+   * @throws IllegalStateException if the interpreter is closed.
+   */
+  public Tensor getOutputTensor(int outputIndex) {
+    return interpreter.getOutputTensor(outputIndex);
   }
 
   /**

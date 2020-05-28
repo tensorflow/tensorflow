@@ -21,12 +21,8 @@ import static org.tensorflow.lite.support.metadata.Preconditions.checkNotNull;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import org.checkerframework.checker.nullness.qual.Nullable;
-import org.tensorflow.lite.DataType;
-import org.tensorflow.lite.Tensor.QuantizationParams;
 import org.tensorflow.lite.schema.Buffer;
 import org.tensorflow.lite.schema.Metadata;
 import org.tensorflow.lite.schema.Model;
@@ -34,6 +30,7 @@ import org.tensorflow.lite.schema.QuantizationParameters;
 import org.tensorflow.lite.schema.SubGraph;
 import org.tensorflow.lite.schema.Tensor;
 import org.tensorflow.lite.schema.TensorType;
+import org.tensorflow.lite.support.metadata.MetadataExtractor.QuantizationParams;
 
 /** Extracts model information out of TFLite model FLatBuffer. */
 final class ModelInfo {
@@ -48,9 +45,6 @@ final class ModelInfo {
 
   /** Identifier of the TFLite model metadata in the Metadata array. */
   static final String METADATA_FIELD_NAME = "TFLITE_METADATA";
-
-  /** Maps from TensorType in TFlite FlatBuffer to {@link DataType} in Java. */
-  private final Map<Byte, DataType> tensorTypeToDataTypeMap;
 
   /**
    * Creates a {@link ModelInfo} with the model FlatBuffer, {@code buffer}.
@@ -74,7 +68,6 @@ final class ModelInfo {
 
     inputTensors = getInputTensors(model);
     outputTensors = getOutputTensors(model);
-    tensorTypeToDataTypeMap = createTensorTypeToDataTypeMap();
   }
 
   /**
@@ -106,13 +99,12 @@ final class ModelInfo {
   }
 
   /**
-   * Gets {@link DataType} of the input tensor with {@code inputIndex}.
+   * Gets the {@link TensorType} in byte of the input tensor with {@code inputIndex}.
    *
    * @param inputIndex The index of the desired intput tensor.
    */
-  DataType getInputTensorType(int inputIndex) {
-    Tensor tensor = getInputTensor(inputIndex);
-    return getDataType(tensor.type());
+  byte getInputTensorType(int inputIndex) {
+    return getInputTensor(inputIndex).type();
   }
 
   /** Gets the metadata FlatBuffer from the model FlatBuffer. */
@@ -163,13 +155,12 @@ final class ModelInfo {
   }
 
   /**
-   * Gets {@link DataType} of the output tensor {@code outputIndex}.
+   * Gets the {@link TensorType} in byte of the output tensor {@code outputIndex}.
    *
    * @param outputIndex The index of the desired outtput tensor.
    */
-  DataType getOutputTensorType(int outputIndex) {
-    Tensor tensor = getOutputTensor(outputIndex);
-    return getDataType(tensor.type());
+  byte getOutputTensorType(int outputIndex) {
+    return getOutputTensor(outputIndex).type();
   }
 
   /**
@@ -231,29 +222,6 @@ final class ModelInfo {
         Model.ModelBufferHasIdentifier(buffer),
         "The identifier of the model is invalid. The buffer may not be a valid TFLite model"
             + " flatbuffer.");
-  }
-
-  private static Map<Byte, DataType> createTensorTypeToDataTypeMap() {
-    Map<Byte, DataType> map = new HashMap<>();
-    map.put(TensorType.FLOAT32, DataType.FLOAT32);
-    map.put(TensorType.INT32, DataType.INT32);
-    map.put(TensorType.UINT8, DataType.UINT8);
-    map.put(TensorType.INT64, DataType.INT64);
-    map.put(TensorType.STRING, DataType.STRING);
-    return Collections.unmodifiableMap(map);
-  }
-
-  /**
-   * Transforms from TensorType in TFlite FlatBuffer to {@link DataType} in Java.
-   *
-   * @param tensorType The tensor type to be converted.
-   * @throws IllegalArgumentException if the tensor type is not supported.
-   */
-  private DataType getDataType(byte tensorType) {
-    checkArgument(
-        tensorTypeToDataTypeMap.containsKey(tensorType),
-        String.format("Tensor type %d is not supported.", tensorType));
-    return tensorTypeToDataTypeMap.get(tensorType);
   }
 
   /**

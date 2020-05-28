@@ -187,6 +187,36 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
     with self.assertRaisesRegex(ValueError, ".*repeated term.*earth.*"):
       _ = get_layer_class()(vocabulary=vocab_path)
 
+  def test_inverse_layer(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([[1, 2, 3, 4], [4, 3, 1, 0]])
+    expected_output = np.array([["earth", "wind", "and", "fire"],
+                                ["fire", "and", "earth", ""]])
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int64)
+    layer = get_layer_class()(vocabulary=vocab_data, invert=True)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_forward_backward_layer(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", "michigan"]])
+    expected_output = np.array([["earth", "wind", "and", "fire"],
+                                ["fire", "and", "earth", "[OOV]"]])
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(vocabulary=vocab_data)
+    invert_layer = get_layer_class()(
+        vocabulary=layer.get_vocabulary(), invert=True)
+    int_data = layer(input_data)
+    out_data = invert_layer(int_data)
+    model = keras.Model(inputs=input_data, outputs=out_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
 
 @keras_parameterized.run_all_keras_modes(always_skip_eager=True)
 class StringLookupSaveableTest(keras_parameterized.TestCase,

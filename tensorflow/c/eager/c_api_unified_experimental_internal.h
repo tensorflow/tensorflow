@@ -58,7 +58,7 @@ T* dyncast(S source) {
 // GraphContext and vice-versa).
 class AbstractTensor {
  protected:
-  enum AbstractTensorKind { kGraphTensor, kEagerTensor, kMLIRTensor };
+  enum AbstractTensorKind { kMlirTensor, kGraphTensor, kEagerTensor };
   explicit AbstractTensor(AbstractTensorKind kind) : kind_(kind) {}
 
  public:
@@ -101,7 +101,7 @@ class AbstractFunction {
 // on a given context, with the same or different input tensors.
 class AbstractOp {
  protected:
-  enum AbstractOpKind { kGraphOp, kEagerOp };
+  enum AbstractOpKind { kMlirOp, kGraphOp, kEagerOp };
   explicit AbstractOp(AbstractOpKind kind) : kind_(kind) {}
 
  public:
@@ -129,7 +129,7 @@ class AbstractOp {
 // eager implementation or to a graph implementation.
 struct ExecutionContext {
  protected:
-  enum ExecutionContextKind { kGraphContext, kEagerContext };
+  enum ExecutionContextKind { kMlirContext, kGraphContext, kEagerContext };
   explicit ExecutionContext(ExecutionContextKind kind) : k(kind) {}
 
  public:

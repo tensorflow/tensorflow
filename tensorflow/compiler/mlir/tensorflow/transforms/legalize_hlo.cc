@@ -16,20 +16,60 @@ limitations under the License.
 // This file implements logic for legalizing HLO to TensorFlow.
 
 #include <memory>
+#include <vector>
 
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/xla/ir/chlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 
 namespace mlir {
 namespace TF {
 namespace {
+
+class ConvertSliceOp : public OpConversionPattern<xla_hlo::SliceOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      xla_hlo::SliceOp slice_op, ArrayRef<Value> args,
+      ConversionPatternRewriter &rewriter) const final {
+    DenseIntElementsAttr strides = slice_op.strides();
+    // Strides must be 1 otherwise we cannot legalize this `xla_hlo.slice` op.
+    if (!strides.isSplat() ||
+        strides.getSplatValue().cast<IntegerAttr>().getInt() != 1)
+      return failure();
+
+    rewriter.setInsertionPointAfter(slice_op);
+    auto start_indices = slice_op.start_indices();
+    auto limit_indices = slice_op.limit_indices();
+    std::vector<int64_t> size_values;
+    for (auto pair : llvm::zip(start_indices.getValues<APInt>(),
+                               limit_indices.getValues<APInt>())) {
+      size_values.emplace_back(std::get<1>(pair).getSExtValue() -
+                               std::get<0>(pair).getSExtValue());
+    }
+
+    RankedTensorType ty =
+        RankedTensorType::get({static_cast<int64_t>(size_values.size())},
+                              rewriter.getIntegerType(64));
+    auto start = rewriter.create<ConstOp>(slice_op.getLoc(), start_indices);
+    auto size = rewriter.create<ConstOp>(
+        slice_op.getLoc(), DenseIntElementsAttr::get(ty, size_values));
+    rewriter.replaceOpWithNewOp<SliceOp>(slice_op, slice_op.getType(),
+                                         slice_op.operand(), start, size);
+    return success();
+  };
+};
 
 class LegalizeHloToTf : public PassWrapper<LegalizeHloToTf, FunctionPass> {
  public:
@@ -63,6 +103,7 @@ void LegalizeHloToTf::runOnFunction() {
   // Add legalization patterns to the list.
   OwningRewritePatternList patterns;
   populateWithGenerated(&context, &patterns);
+  patterns.insert<ConvertSliceOp>(&context);
 
   ConversionTarget target(context);
   target.addLegalDialect<TensorFlowDialect>();

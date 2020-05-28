@@ -11417,6 +11417,32 @@ func DynamicStitch(scope *Scope, indices []tf.Output, data []tf.Output) (merged 
 	return op.Output(0)
 }
 
+// Uncompresses a compressed dataset element.
+func UncompressElement(scope *Scope, compressed tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (components []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "UncompressElement",
+		Input: []tf.Input{
+			compressed,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if components, idx, err = makeOutputList(op, idx, "components"); err != nil {
+		scope.UpdateErr("UncompressElement", err)
+		return
+	}
+	return components
+}
+
 // Records the bytes size of each element of `input_dataset` in a StatsAggregator.
 func BytesProducedStatsDataset(scope *Scope, input_dataset tf.Output, tag tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
 	if scope.Err() != nil {
@@ -11902,6 +11928,108 @@ func CropAndResizeGradBoxes(scope *Scope, grads tf.Output, image tf.Output, boxe
 		Type: "CropAndResizeGradBoxes",
 		Input: []tf.Input{
 			grads, image, boxes, box_ind,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// ExtractGlimpseV2Attr is an optional argument to ExtractGlimpseV2.
+type ExtractGlimpseV2Attr func(optionalAttr)
+
+// ExtractGlimpseV2Centered sets the optional centered attribute to value.
+//
+// value: indicates if the offset coordinates are centered relative to
+// the image, in which case the (0, 0) offset is relative to the center
+// of the input images. If false, the (0,0) offset corresponds to the
+// upper left corner of the input images.
+// If not specified, defaults to true
+func ExtractGlimpseV2Centered(value bool) ExtractGlimpseV2Attr {
+	return func(m optionalAttr) {
+		m["centered"] = value
+	}
+}
+
+// ExtractGlimpseV2Normalized sets the optional normalized attribute to value.
+//
+// value: indicates if the offset coordinates are normalized.
+// If not specified, defaults to true
+func ExtractGlimpseV2Normalized(value bool) ExtractGlimpseV2Attr {
+	return func(m optionalAttr) {
+		m["normalized"] = value
+	}
+}
+
+// ExtractGlimpseV2UniformNoise sets the optional uniform_noise attribute to value.
+//
+// value: indicates if the noise should be generated using a
+// uniform distribution or a Gaussian distribution.
+// If not specified, defaults to true
+func ExtractGlimpseV2UniformNoise(value bool) ExtractGlimpseV2Attr {
+	return func(m optionalAttr) {
+		m["uniform_noise"] = value
+	}
+}
+
+// ExtractGlimpseV2Noise sets the optional noise attribute to value.
+//
+// value: indicates if the noise should `uniform`, `gaussian`, or
+// `zero`. The default is `uniform` which means the the noise type
+// will be decided by `uniform_noise`.
+// If not specified, defaults to "uniform"
+func ExtractGlimpseV2Noise(value string) ExtractGlimpseV2Attr {
+	return func(m optionalAttr) {
+		m["noise"] = value
+	}
+}
+
+// Extracts a glimpse from the input tensor.
+//
+// Returns a set of windows called glimpses extracted at location
+// `offsets` from the input tensor. If the windows only partially
+// overlaps the inputs, the non overlapping areas will be filled with
+// random noise.
+//
+// The result is a 4-D tensor of shape `[batch_size, glimpse_height,
+// glimpse_width, channels]`. The channels and batch dimensions are the
+// same as that of the input tensor. The height and width of the output
+// windows are specified in the `size` parameter.
+//
+// The argument `normalized` and `centered` controls how the windows are built:
+//
+// * If the coordinates are normalized but not centered, 0.0 and 1.0
+//   correspond to the minimum and maximum of each height and width
+//   dimension.
+// * If the coordinates are both normalized and centered, they range from
+//   -1.0 to 1.0. The coordinates (-1.0, -1.0) correspond to the upper
+//   left corner, the lower right corner is located at (1.0, 1.0) and the
+//   center is at (0, 0).
+// * If the coordinates are not normalized they are interpreted as
+//   numbers of pixels.
+//
+// Arguments:
+//	input: A 4-D float tensor of shape `[batch_size, height, width, channels]`.
+//	size: A 1-D tensor of 2 elements containing the size of the glimpses
+// to extract.  The glimpse height must be specified first, following
+// by the glimpse width.
+//	offsets: A 2-D integer tensor of shape `[batch_size, 2]` containing
+// the y, x locations of the center of each window.
+//
+// Returns A tensor representing the glimpses `[batch_size,
+// glimpse_height, glimpse_width, channels]`.
+func ExtractGlimpseV2(scope *Scope, input tf.Output, size tf.Output, offsets tf.Output, optional ...ExtractGlimpseV2Attr) (glimpse tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ExtractGlimpseV2",
+		Input: []tf.Input{
+			input, size, offsets,
 		},
 		Attrs: attrs,
 	}
@@ -26103,6 +26231,173 @@ func FusedPadConv2D(scope *Scope, input tf.Output, paddings tf.Output, filter tf
 	return op.Output(0)
 }
 
+// Adjust the hue of one or more images.
+//
+// `images` is a tensor of at least 3 dimensions.  The last dimension is
+// interpreted as channels, and must be three.
+//
+// The input image is considered in the RGB colorspace. Conceptually, the RGB
+// colors are first mapped into HSV. A delta is then applied all the hue values,
+// and then remapped back to RGB colorspace.
+//
+// Arguments:
+//	images: Images to adjust.  At least 3-D.
+//	delta: A float delta to add to the hue.
+//
+// Returns The hue-adjusted image or images.
+func AdjustHue(scope *Scope, images tf.Output, delta tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "AdjustHue",
+		Input: []tf.Input{
+			images, delta,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// List of the given size with empty elements.
+//
+// element_shape: the shape of the future elements of the list
+// num_elements: the number of elements to reserve
+// handle: the output list
+// element_dtype: the desired type of elements in the list.
+func TensorListReserve(scope *Scope, element_shape tf.Output, num_elements tf.Output, element_dtype tf.DataType) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"element_dtype": element_dtype}
+	opspec := tf.OpSpec{
+		Type: "TensorListReserve",
+		Input: []tf.Input{
+			element_shape, num_elements,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Clips tensor values to a specified min and max.
+//
+// Given a tensor `t`, this operation returns a tensor of the same type and
+// shape as `t` with its values clipped to `clip_value_min` and `clip_value_max`.
+// Any values less than `clip_value_min` are set to `clip_value_min`. Any values
+// greater than `clip_value_max` are set to `clip_value_max`.
+//
+// Arguments:
+//	t: A `Tensor`.
+//	clip_value_min: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
+// as `t`. The minimum value to clip by.
+//	clip_value_max: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
+// as `t`. The maximum value to clip by.
+//
+// Returns A clipped `Tensor` with the same shape as input 't'.
+func ClipByValue(scope *Scope, t tf.Output, clip_value_min tf.Output, clip_value_max tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ClipByValue",
+		Input: []tf.Input{
+			t, clip_value_min, clip_value_max,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Conv2DBackpropFilterAttr is an optional argument to Conv2DBackpropFilter.
+type Conv2DBackpropFilterAttr func(optionalAttr)
+
+// Conv2DBackpropFilterUseCudnnOnGpu sets the optional use_cudnn_on_gpu attribute to value.
+// If not specified, defaults to true
+func Conv2DBackpropFilterUseCudnnOnGpu(value bool) Conv2DBackpropFilterAttr {
+	return func(m optionalAttr) {
+		m["use_cudnn_on_gpu"] = value
+	}
+}
+
+// Conv2DBackpropFilterExplicitPaddings sets the optional explicit_paddings attribute to value.
+//
+// value: If `padding` is `"EXPLICIT"`, the list of explicit padding amounts. For the ith
+// dimension, the amount of padding inserted before and after the dimension is
+// `explicit_paddings[2 * i]` and `explicit_paddings[2 * i + 1]`, respectively. If
+// `padding` is not `"EXPLICIT"`, `explicit_paddings` must be empty.
+// If not specified, defaults to <>
+func Conv2DBackpropFilterExplicitPaddings(value []int64) Conv2DBackpropFilterAttr {
+	return func(m optionalAttr) {
+		m["explicit_paddings"] = value
+	}
+}
+
+// Conv2DBackpropFilterDataFormat sets the optional data_format attribute to value.
+//
+// value: Specify the data format of the input and output data. With the
+// default format "NHWC", the data is stored in the order of:
+//     [batch, in_height, in_width, in_channels].
+// Alternatively, the format could be "NCHW", the data storage order of:
+//     [batch, in_channels, in_height, in_width].
+// If not specified, defaults to "NHWC"
+func Conv2DBackpropFilterDataFormat(value string) Conv2DBackpropFilterAttr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
+// Conv2DBackpropFilterDilations sets the optional dilations attribute to value.
+//
+// value: 1-D tensor of length 4.  The dilation factor for each dimension of
+// `input`. If set to k > 1, there will be k-1 skipped cells between each filter
+// element on that dimension. The dimension order is determined by the value of
+// `data_format`, see above for details. Dilations in the batch and depth
+// dimensions must be 1.
+// If not specified, defaults to <i:1 i:1 i:1 i:1 >
+func Conv2DBackpropFilterDilations(value []int64) Conv2DBackpropFilterAttr {
+	return func(m optionalAttr) {
+		m["dilations"] = value
+	}
+}
+
+// Computes the gradients of convolution with respect to the filter.
+//
+// Arguments:
+//	input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
+//	filter_sizes: An integer vector representing the tensor shape of `filter`,
+// where `filter` is a 4-D
+// `[filter_height, filter_width, in_channels, out_channels]` tensor.
+//	out_backprop: 4-D with shape `[batch, out_height, out_width, out_channels]`.
+// Gradients w.r.t. the output of the convolution.
+//	strides: The stride of the sliding window for each dimension of the input
+// of the convolution. Must be in the same order as the dimension specified with
+// format.
+//	padding: The type of padding algorithm to use.
+//
+// Returns 4-D with shape
+// `[filter_height, filter_width, in_channels, out_channels]`.  Gradient w.r.t.
+// the `filter` input of the convolution.
+func Conv2DBackpropFilter(scope *Scope, input tf.Output, filter_sizes tf.Output, out_backprop tf.Output, strides []int64, padding string, optional ...Conv2DBackpropFilterAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Conv2DBackpropFilter",
+		Input: []tf.Input{
+			input, filter_sizes, out_backprop,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // ConfigureDistributedTPUAttr is an optional argument to ConfigureDistributedTPU.
 type ConfigureDistributedTPUAttr func(optionalAttr)
 
@@ -30243,6 +30538,21 @@ func ResourceScatterMul(scope *Scope, resource tf.Output, indices tf.Output, upd
 	return scope.AddOperation(opspec)
 }
 
+// Compresses a dataset element.
+func CompressElement(scope *Scope, components []tf.Output) (compressed tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "CompressElement",
+		Input: []tf.Input{
+			tf.OutputList(components),
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // MatMulAttr is an optional argument to MatMul.
 type MatMulAttr func(optionalAttr)
 
@@ -30653,57 +30963,6 @@ func QuantizedAvgPool(scope *Scope, input tf.Output, min_input tf.Output, max_in
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
-}
-
-// Clips tensor values to a specified min and max.
-//
-// Given a tensor `t`, this operation returns a tensor of the same type and
-// shape as `t` with its values clipped to `clip_value_min` and `clip_value_max`.
-// Any values less than `clip_value_min` are set to `clip_value_min`. Any values
-// greater than `clip_value_max` are set to `clip_value_max`.
-//
-// Arguments:
-//	t: A `Tensor`.
-//	clip_value_min: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
-// as `t`. The minimum value to clip by.
-//	clip_value_max: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
-// as `t`. The maximum value to clip by.
-//
-// Returns A clipped `Tensor` with the same shape as input 't'.
-func ClipByValue(scope *Scope, t tf.Output, clip_value_min tf.Output, clip_value_max tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ClipByValue",
-		Input: []tf.Input{
-			t, clip_value_min, clip_value_max,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// List of the given size with empty elements.
-//
-// element_shape: the shape of the future elements of the list
-// num_elements: the number of elements to reserve
-// handle: the output list
-// element_dtype: the desired type of elements in the list.
-func TensorListReserve(scope *Scope, element_shape tf.Output, num_elements tf.Output, element_dtype tf.DataType) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"element_dtype": element_dtype}
-	opspec := tf.OpSpec{
-		Type: "TensorListReserve",
-		Input: []tf.Input{
-			element_shape, num_elements,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // VariableShapeAttr is an optional argument to VariableShape.
@@ -33006,6 +33265,14 @@ func TPUReplicatedInputIndex(value int64) TPUReplicatedInputAttr {
 	}
 }
 
+// TPUReplicatedInputIsPacked sets the optional is_packed attribute to value.
+// If not specified, defaults to false
+func TPUReplicatedInputIsPacked(value bool) TPUReplicatedInputAttr {
+	return func(m optionalAttr) {
+		m["is_packed"] = value
+	}
+}
+
 // Connects N inputs to an N-way replicated TPU computation.
 //
 // This operation holds a replicated input to a `tpu.replicate()` computation subgraph.
@@ -34196,6 +34463,74 @@ func SparseReduceMax(scope *Scope, input_indices tf.Output, input_values tf.Outp
 	return op.Output(0)
 }
 
+// Generates sparse cross from a list of sparse and dense tensors.
+//
+// The op takes two lists, one of 2D `SparseTensor` and one of 2D `Tensor`, each
+// representing features of one feature column. It outputs a 2D `SparseTensor` with
+// the batchwise crosses of these features.
+//
+// For example, if the inputs are
+//
+//     inputs[0]: SparseTensor with shape = [2, 2]
+//     [0, 0]: "a"
+//     [1, 0]: "b"
+//     [1, 1]: "c"
+//
+//     inputs[1]: SparseTensor with shape = [2, 1]
+//     [0, 0]: "d"
+//     [1, 0]: "e"
+//
+//     inputs[2]: Tensor [["f"], ["g"]]
+//
+// then the output will be
+//
+//     shape = [2, 2]
+//     [0, 0]: "a_X_d_X_f"
+//     [1, 0]: "b_X_e_X_g"
+//     [1, 1]: "c_X_e_X_g"
+//
+// if hashed_output=true then the output will be
+//
+//     shape = [2, 2]
+//     [0, 0]: FingerprintCat64(
+//                 Fingerprint64("f"), FingerprintCat64(
+//                     Fingerprint64("d"), Fingerprint64("a")))
+//     [1, 0]: FingerprintCat64(
+//                 Fingerprint64("g"), FingerprintCat64(
+//                     Fingerprint64("e"), Fingerprint64("b")))
+//     [1, 1]: FingerprintCat64(
+//                 Fingerprint64("g"), FingerprintCat64(
+//                     Fingerprint64("e"), Fingerprint64("c")))
+//
+// Arguments:
+//	indices: 2-D.  Indices of each input `SparseTensor`.
+//	values: 1-D.   values of each `SparseTensor`.
+//	shapes: 1-D.   Shapes of each `SparseTensor`.
+//	dense_inputs: 2-D.    Columns represented by dense `Tensor`.
+//	num_buckets: It is used if hashed_output is true.
+// output = hashed_value%num_buckets if num_buckets > 0 else hashed_value.
+//	strong_hash: boolean, if true, siphash with salt will be used instead of farmhash.
+//	salt: Specify the salt that will be used by the siphash function.
+//
+// Returns:
+//	output_indices: 2-D.  Indices of the concatenated `SparseTensor`.
+//	output_values: 1-D.  Non-empty values of the concatenated or hashed
+// `SparseTensor`.
+//	output_shape: 1-D.  Shape of the concatenated `SparseTensor`.
+func SparseCrossHashed(scope *Scope, indices []tf.Output, values []tf.Output, shapes []tf.Output, dense_inputs []tf.Output, num_buckets tf.Output, strong_hash tf.Output, salt tf.Output) (output_indices tf.Output, output_values tf.Output, output_shape tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseCrossHashed",
+		Input: []tf.Input{
+			tf.OutputList(indices), tf.OutputList(values), tf.OutputList(shapes), tf.OutputList(dense_inputs), num_buckets, strong_hash, salt,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
 // QuantizedInstanceNormAttr is an optional argument to QuantizedInstanceNorm.
 type QuantizedInstanceNormAttr func(optionalAttr)
 
@@ -34455,6 +34790,71 @@ func BiasAddV1(scope *Scope, value tf.Output, bias tf.Output) (output tf.Output)
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Generates sparse cross from a list of sparse and dense tensors.
+//
+// The op takes two lists, one of 2D `SparseTensor` and one of 2D `Tensor`, each
+// representing features of one feature column. It outputs a 2D `SparseTensor` with
+// the batchwise crosses of these features.
+//
+// For example, if the inputs are
+//
+//     inputs[0]: SparseTensor with shape = [2, 2]
+//     [0, 0]: "a"
+//     [1, 0]: "b"
+//     [1, 1]: "c"
+//
+//     inputs[1]: SparseTensor with shape = [2, 1]
+//     [0, 0]: "d"
+//     [1, 0]: "e"
+//
+//     inputs[2]: Tensor [["f"], ["g"]]
+//
+// then the output will be
+//
+//     shape = [2, 2]
+//     [0, 0]: "a_X_d_X_f"
+//     [1, 0]: "b_X_e_X_g"
+//     [1, 1]: "c_X_e_X_g"
+//
+// if hashed_output=true then the output will be
+//
+//     shape = [2, 2]
+//     [0, 0]: FingerprintCat64(
+//                 Fingerprint64("f"), FingerprintCat64(
+//                     Fingerprint64("d"), Fingerprint64("a")))
+//     [1, 0]: FingerprintCat64(
+//                 Fingerprint64("g"), FingerprintCat64(
+//                     Fingerprint64("e"), Fingerprint64("b")))
+//     [1, 1]: FingerprintCat64(
+//                 Fingerprint64("g"), FingerprintCat64(
+//                     Fingerprint64("e"), Fingerprint64("c")))
+//
+// Arguments:
+//	indices: 2-D.  Indices of each input `SparseTensor`.
+//	values: 1-D.   values of each `SparseTensor`.
+//	shapes: 1-D.   Shapes of each `SparseTensor`.
+//	dense_inputs: 2-D.    Columns represented by dense `Tensor`.
+//	sep: string used when joining a list of string inputs, can be used as separator later.
+//
+// Returns:
+//	output_indices: 2-D.  Indices of the concatenated `SparseTensor`.
+//	output_values: 1-D.  Non-empty values of the concatenated or hashed
+// `SparseTensor`.
+//	output_shape: 1-D.  Shape of the concatenated `SparseTensor`.
+func SparseCrossV2(scope *Scope, indices []tf.Output, values []tf.Output, shapes []tf.Output, dense_inputs []tf.Output, sep tf.Output) (output_indices tf.Output, output_values tf.Output, output_shape tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseCrossV2",
+		Input: []tf.Input{
+			tf.OutputList(indices), tf.OutputList(values), tf.OutputList(shapes), tf.OutputList(dense_inputs), sep,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
 }
 
 // Pads a tensor with mirrored values.
@@ -36885,34 +37285,6 @@ func QueueDequeueUpToV2(scope *Scope, handle tf.Output, n tf.Output, component_t
 		return
 	}
 	return components
-}
-
-// Adjust the hue of one or more images.
-//
-// `images` is a tensor of at least 3 dimensions.  The last dimension is
-// interpreted as channels, and must be three.
-//
-// The input image is considered in the RGB colorspace. Conceptually, the RGB
-// colors are first mapped into HSV. A delta is then applied all the hue values,
-// and then remapped back to RGB colorspace.
-//
-// Arguments:
-//	images: Images to adjust.  At least 3-D.
-//	delta: A float delta to add to the hue.
-//
-// Returns The hue-adjusted image or images.
-func AdjustHue(scope *Scope, images tf.Output, delta tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "AdjustHue",
-		Input: []tf.Input{
-			images, delta,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // Says whether the targets are in the top `K` predictions.
@@ -48487,94 +48859,6 @@ func RetrieveTPUEmbeddingFTRLParameters(scope *Scope, num_shards int64, shard_id
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
-}
-
-// Conv2DBackpropFilterAttr is an optional argument to Conv2DBackpropFilter.
-type Conv2DBackpropFilterAttr func(optionalAttr)
-
-// Conv2DBackpropFilterUseCudnnOnGpu sets the optional use_cudnn_on_gpu attribute to value.
-// If not specified, defaults to true
-func Conv2DBackpropFilterUseCudnnOnGpu(value bool) Conv2DBackpropFilterAttr {
-	return func(m optionalAttr) {
-		m["use_cudnn_on_gpu"] = value
-	}
-}
-
-// Conv2DBackpropFilterExplicitPaddings sets the optional explicit_paddings attribute to value.
-//
-// value: If `padding` is `"EXPLICIT"`, the list of explicit padding amounts. For the ith
-// dimension, the amount of padding inserted before and after the dimension is
-// `explicit_paddings[2 * i]` and `explicit_paddings[2 * i + 1]`, respectively. If
-// `padding` is not `"EXPLICIT"`, `explicit_paddings` must be empty.
-// If not specified, defaults to <>
-func Conv2DBackpropFilterExplicitPaddings(value []int64) Conv2DBackpropFilterAttr {
-	return func(m optionalAttr) {
-		m["explicit_paddings"] = value
-	}
-}
-
-// Conv2DBackpropFilterDataFormat sets the optional data_format attribute to value.
-//
-// value: Specify the data format of the input and output data. With the
-// default format "NHWC", the data is stored in the order of:
-//     [batch, in_height, in_width, in_channels].
-// Alternatively, the format could be "NCHW", the data storage order of:
-//     [batch, in_channels, in_height, in_width].
-// If not specified, defaults to "NHWC"
-func Conv2DBackpropFilterDataFormat(value string) Conv2DBackpropFilterAttr {
-	return func(m optionalAttr) {
-		m["data_format"] = value
-	}
-}
-
-// Conv2DBackpropFilterDilations sets the optional dilations attribute to value.
-//
-// value: 1-D tensor of length 4.  The dilation factor for each dimension of
-// `input`. If set to k > 1, there will be k-1 skipped cells between each filter
-// element on that dimension. The dimension order is determined by the value of
-// `data_format`, see above for details. Dilations in the batch and depth
-// dimensions must be 1.
-// If not specified, defaults to <i:1 i:1 i:1 i:1 >
-func Conv2DBackpropFilterDilations(value []int64) Conv2DBackpropFilterAttr {
-	return func(m optionalAttr) {
-		m["dilations"] = value
-	}
-}
-
-// Computes the gradients of convolution with respect to the filter.
-//
-// Arguments:
-//	input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
-//	filter_sizes: An integer vector representing the tensor shape of `filter`,
-// where `filter` is a 4-D
-// `[filter_height, filter_width, in_channels, out_channels]` tensor.
-//	out_backprop: 4-D with shape `[batch, out_height, out_width, out_channels]`.
-// Gradients w.r.t. the output of the convolution.
-//	strides: The stride of the sliding window for each dimension of the input
-// of the convolution. Must be in the same order as the dimension specified with
-// format.
-//	padding: The type of padding algorithm to use.
-//
-// Returns 4-D with shape
-// `[filter_height, filter_width, in_channels, out_channels]`.  Gradient w.r.t.
-// the `filter` input of the convolution.
-func Conv2DBackpropFilter(scope *Scope, input tf.Output, filter_sizes tf.Output, out_backprop tf.Output, strides []int64, padding string, optional ...Conv2DBackpropFilterAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"strides": strides, "padding": padding}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Conv2DBackpropFilter",
-		Input: []tf.Input{
-			input, filter_sizes, out_backprop,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // LRNGradAttr is an optional argument to LRNGrad.

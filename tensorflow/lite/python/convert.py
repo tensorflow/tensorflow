@@ -169,9 +169,10 @@ def toco_convert_protos(model_flags_str,
     RuntimeError: When conversion fails, an exception is raised with the error
       message embedded.
   """
-  # TODO(aselle): When toco does not use fatal errors for failure, we can
-  # switch this on.
-  if not _toco_from_proto_bin:
+  # Historically, TOCO conversion failures would trigger a crash, so we would
+  # attempt to run the converter out-of-process. The MLIR conversion pipeline
+  # surfaces errors instead, and can be safely run in-process.
+  if enable_mlir_converter or not _toco_from_proto_bin:
     try:
       model_str = wrap_toco.wrapped_toco_convert(model_flags_str,
                                                  toco_flags_str, input_data_str,

@@ -395,3 +395,15 @@ func @tanh_dyn(%arg0: tensor<?x?xf32>) {
   // CHECK: "xla_lhlo.tanh"(%arg0, %[[RESULT]]) : (memref<?x?xf32>, memref<?x?xf32>) -> ()
   return
 }
+
+// -----
+
+// CHECK-LABEL: func @dot
+func @dot(%arg0: tensor<1024x1024xf32>) -> tensor<1024x1024xf32> {
+// CHECK-SAME: (%[[ARG0:.*]]: [[TYPE:.*]],
+// CHECK-SAME:  %[[RESULT:.*]]: [[TYPE]])
+// CHECK: "xla_lhlo.dot"(%[[ARG0]], %[[ARG0]], %{{.*}}) : ([[TYPE]], [[TYPE]], [[TYPE]]) -> ()
+    %dot = "xla_hlo.dot"(%arg0, %arg0)
+      : (tensor<1024x1024xf32>, tensor<1024x1024xf32>) -> tensor<1024x1024xf32>
+    return %dot : tensor<1024x1024xf32>
+  }

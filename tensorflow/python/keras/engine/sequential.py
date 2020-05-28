@@ -397,7 +397,7 @@ class Sequential(functional.Functional):
         raise ValueError(SINGLE_LAYER_OUTPUT_ERROR_MSG)
       # `outputs` will be the inputs to the next layer.
       inputs = outputs
-      mask = outputs._keras_mask
+      mask = getattr(outputs, '_keras_mask', None)
     return outputs
 
   def compute_output_shape(self, input_shape):
@@ -411,7 +411,7 @@ class Sequential(functional.Functional):
     # by itself because it will duplicate any updates and losses in graph
     # mode by `call`ing the Layers again.
     outputs = self.call(inputs, mask=mask)
-    return outputs._keras_mask
+    return getattr(outputs, '_keras_mask', None)
 
   @deprecated('2021-01-01', 'Please use `model.predict()` instead.')
   def predict_proba(self, x, batch_size=32, verbose=0):

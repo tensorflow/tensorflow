@@ -39,6 +39,20 @@ cc_library(
 )
 
 cc_library(
+    name = "arguments",
+    srcs = ["arguments.cc"],
+    hdrs = ["arguments.h"],
+    deps = [
+        ":opencl_wrapper",
+        ":util",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "buffer",
     srcs = ["buffer.cc"],
     hdrs = ["buffer.h"],

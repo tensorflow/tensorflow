@@ -562,19 +562,16 @@ def shape_v2(input, out_type=dtypes.int32, name=None):
   
   See also `tf.size`, `tf.rank`.
 
-  This operation returns a 1-D integer tensor representing the shape of `input`.
-  This represents the minimal set of known information at definition time.
+  `tf.shape` returns a 1-D integer tensor representing the shape of `input`.
 
   For example:
 
   >>> t = tf.constant([[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]])
   >>> tf.shape(t)
   <tf.Tensor: shape=(3,), dtype=int32, numpy=array([2, 2, 3], dtype=int32)>
-  >>> tf.shape(t).numpy()
-  array([2, 2, 3], dtype=int32)
 
-  Note: When using symbolic tensors, such as when using the Keras functional
-  API, tf.shape() will return the shape of the symbolic tensor.
+  Note: When using symbolic tensors, such as when using the Keras API,
+  tf.shape() will return the shape of the symbolic tensor.
 
   >>> a = tf.keras.layers.Input((None, 10))
   >>> tf.shape(a)
@@ -584,10 +581,13 @@ def shape_v2(input, out_type=dtypes.int32, name=None):
 
   >>> a.shape
   TensorShape([None, None, 10])
+  
+  (The first `None` represents the as yet unknown batch size.)
 
   `tf.shape` and `Tensor.shape` should be identical in eager mode.  Within
   `tf.function` or within a `compat.v1` context, not all dimensions may be
-  known until execution time.
+  known until execution time. Hence when defining custom layers and models
+  for graph mode, prefer the dynamic `tf.shape(x)` over the static `x.shape`.
 
   Args:
     input: A `Tensor` or `SparseTensor`.
@@ -4473,8 +4473,8 @@ def reverse_sequence(input,
   dimension `seq_axis`.
 
   The elements of `seq_lengths` must obey `seq_lengths[i] <=
-  input.dims[seq_dim]`, and `seq_lengths` must be a vector of length
-  `input.dims[batch_dim]`.
+  input.dims[seq_axis]`, and `seq_lengths` must be a vector of length
+  `input.dims[batch_axis]`.
 
   The output slice `i` along dimension `batch_axis` is then given by
   input slice `i`, with the first `seq_lengths[i]` slices along
@@ -4496,8 +4496,8 @@ def reverse_sequence(input,
   Args:
     input: A `Tensor`. The input to reverse.
     seq_lengths: A `Tensor`. Must be one of the following types: `int32`,
-      `int64`. 1-D with length `input.dims(batch_dim)` and `max(seq_lengths) <=
-      input.dims(seq_dim)`
+      `int64`. 1-D with length `input.dims(batch_axis)` and `max(seq_lengths) <=
+      input.dims(seq_axis)`
     seq_axis: An `int`. The dimension which is partially reversed.
     batch_axis: An optional `int`. Defaults to `0`. The dimension along which
       reversal is performed.

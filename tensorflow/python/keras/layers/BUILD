@@ -213,12 +213,13 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:util",
+        "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras:base_layer",
         "//tensorflow/python/keras:constraints",
         "//tensorflow/python/keras:initializers",
         "//tensorflow/python/keras:regularizers",
+        "//tensorflow/python/keras/engine:base_layer",
         "//tensorflow/python/keras/utils:tf_utils",
     ],
 )
@@ -593,9 +594,15 @@ cuda_py_test(
     python_version = "PY3",
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:training_lib",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:backprop",
         "//tensorflow/python/keras",
         "//tensorflow/python/keras:combinations",
-        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python/keras:testing_utils",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
     ],
 )
 
