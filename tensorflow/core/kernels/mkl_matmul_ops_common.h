@@ -75,8 +75,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
  public:
   explicit MklDnnMatMulFwdPrimitive(
       const MklDnnMatMulFwdParams& matmulFwdParams)
-      : cpu_engine_(ENGINE_CPU, 0) {
-    context_.fwd_stream.reset(new CPU_STREAM(cpu_engine_));
+      : MklPrimitive(engine(ENGINE_CPU, 0)) {
     // Create matmul primitive
     if (context_.matmul_fwd == nullptr) {
       Setup(matmulFwdParams);
@@ -91,7 +90,8 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
   //  - bias_data: input data buffer of bias
   //  - dst_data: output data buffer of dst
   void Execute(const Tinput* src_data, const Tweight* weight_data,
-               const Tbias* bias_data, Toutput* dst_data) {
+               const Tbias* bias_data, Toutput* dst_data,
+               std::shared_ptr<stream> fwd_stream) {
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<Tinput*>(src_data)));
     context_.weight_mem->set_data_handle(
@@ -101,10 +101,9 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
 
 #ifdef ENABLE_MKLDNN_V1
-    execute_primitives(context_.fwd_primitives, context_.fwd_stream,
-                       context_.net_args);
+    execute_primitives(context_.fwd_primitives, fwd_stream, context_.net_args);
 #else
-    context_.fwd_stream->submit(context_.fwd_primitives);
+    fwd_stream->submit(context_.fwd_primitives);
 #endif  // ENABLE_MKLDNN_V1
 
     // After execution, set data handle back
@@ -153,7 +152,6 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
 
     // Inner-product primitive.
     std::shared_ptr<mkldnn::primitive> matmul_fwd;
-    std::shared_ptr<mkldnn::stream> fwd_stream;
     std::vector<mkldnn::primitive> fwd_primitives;
 
 #ifdef ENABLE_MKLDNN_V1
@@ -176,8 +174,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
           weight_md(nullptr),
           bias_md(nullptr),
           dst_md(nullptr),
-          matmul_fwd(nullptr),
-          fwd_stream(nullptr) {
+          matmul_fwd(nullptr) {
     }
   };
 
@@ -292,7 +289,6 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
   }
 
   struct MklDnnMatMulFwdContext context_;
-  engine cpu_engine_;
 };
 
 template <typename T, typename Tinput, typename Tweight, typename Tbias,
@@ -439,8 +435,10 @@ class MklDnnMatMulOpBase : public OpKernel {
 
     // reorder and cache the weight
     weight.SetUsrMem(weight_md, &weight_tensor);
-    weight.CheckReorderToOpMem(MEMORY_PD_WITHOUT_DATA(
-        matmul_fwd_pd.get()->PRIMITIVE_DESC_WEIGHTS, cpu_engine_));
+    weight.CheckReorderToOpMem(
+        MEMORY_PD_WITHOUT_DATA(matmul_fwd_pd.get()->PRIMITIVE_DESC_WEIGHTS,
+                               cpu_engine_),
+        context);
     weight_data = static_cast<Tweight*>(weight.GetOpMem().get_data_handle());
 
     Tensor* weight_tensor_ptr = nullptr;
@@ -520,7 +518,7 @@ namespace {
 
 void dnnl_gemm_exec(const memory::desc& a_md, const memory::desc& b_md,
                     const memory::desc& c_md, const void* a, const void* b,
-                    void* c, const primitive_attr& attr) {
+                    void* c, const primitive_attr& attr, OpKernelContext* ctx = nullptr) {
   // Create a MatMul primitive
   mkldnn::engine cpu_engine = mkldnn::engine(ENGINE_CPU, 0);
   mkldnn::matmul::desc matmul_desc(a_md, b_md, c_md);
@@ -536,12 +534,13 @@ void dnnl_gemm_exec(const memory::desc& a_md, const memory::desc& b_md,
   // in the primitive descriptor. Also, we are not allowed to change the
   // shapes of matrices A, B, and C -- they should exactly match
   // the memory descriptors passed to MatMul operation descriptor.
-  mkldnn::stream s(cpu_engine);
-  matmul_prim.execute(s, {{DNNL_ARG_SRC, a_memory},
-                          {DNNL_ARG_WEIGHTS, b_memory},
-                          { DNNL_ARG_DST,
-                            c_memory }});
-  s.wait();
+  stream* cpu_stream = CreateStream(ctx, cpu_engine);
+  matmul_prim.execute(*cpu_stream, {{DNNL_ARG_SRC, a_memory},
+                                    {DNNL_ARG_WEIGHTS, b_memory},
+                                    { DNNL_ARG_DST,
+                                      c_memory }});
+  cpu_stream->wait();
+  delete cpu_stream;
 }
 
 template <typename T>
@@ -550,8 +549,8 @@ void dnnl_gemm_batch(const std::vector<bool>& transa,
                      const std::vector<int>& n, const std::vector<int>& k,
                      const std::vector<float>& alpha, const T* a, const T* b,
                      const std::vector<float>& beta, T* c,
-                     const int group_count,
-                     const std::vector<int>& group_size) {
+                     const int group_count, const std::vector<int>& group_size,
+                     OpKernelContext* ctx = nullptr) {
   // Current BatchMatMul support in Tensorflow is narrower than the one offered
   // by MKL and MKL-DNN. Current BatchMatMul support in Tensorflow uses only 1
   // group of size equal to batch_size, and all MatMul parameters (m, n, k,
@@ -602,13 +601,14 @@ void dnnl_gemm_batch(const std::vector<bool>& transa,
     attr.set_post_ops(po);
   }
   dnnl_gemm_exec(a_md, b_md, c_md, static_cast<const void*>(a),
-                 static_cast<const void*>(b), static_cast<void*>(c), attr);
+                 static_cast<const void*>(b), static_cast<void*>(c), attr, ctx);
 }
 
 template <typename T>
 void dnnl_gemm(char transa, char transb, int64_t m, int64_t n, int64_t k,
                float alpha, const T* a, int64_t lda, const T* b, int64_t ldb,
-               float beta, float* c, int64_t ldc) {
+               float beta, float* c, int64_t ldc,
+               OpKernelContext* ctx = nullptr) {
   using dims = mkldnn::memory::dims;
   // Prepare strides based on the transa and transb flags: transposed
   // matrices have strides swapped
@@ -627,7 +627,7 @@ void dnnl_gemm(char transa, char transb, int64_t m, int64_t n, int64_t k,
     attr.set_post_ops(po);
   }
   dnnl_gemm_exec(a_md, b_md, c_md, static_cast<const void*>(a),
-                 static_cast<const void*>(b), static_cast<void*>(c), attr);
+                 static_cast<const void*>(b), static_cast<void*>(c), attr, ctx);
 }
 
 }  // anonymous namespace
