@@ -167,10 +167,15 @@ def InvokeNvcc(argv, log=False):
   # Provide a unique dir for each compiling action to avoid conflicts.
   tempdir = tempfile.mkdtemp(dir = NVCC_TEMP_DIR)
   nvccopts += ['--keep', '--keep-dir', tempdir]
-  cmd = [NVCC_PATH] + nvccopts
   if log:
-    Log(cmd)
-  proc = subprocess.Popen(cmd,
+    Log([NVCC_PATH] + nvccopts)
+
+  # Store command line options in a file to avoid hitting the character limit.
+  optsfile = tempfile.NamedTemporaryFile(mode='w', dir=tempdir, delete=False)
+  optsfile.write("\n".join(nvccopts))
+  optsfile.close()
+
+  proc = subprocess.Popen([NVCC_PATH, "--options-file", optsfile.name],
                           stdout=sys.stdout,
                           stderr=sys.stderr,
                           env=os.environ.copy(),
