@@ -4578,6 +4578,9 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
   [0. 0. 0.]
 
   """
+  target = ops.convert_to_tensor_v2(target)
+  output = ops.convert_to_tensor_v2(output)
+
   target.shape.assert_is_compatible_with(output.shape)
   if from_logits:
     return nn.softmax_cross_entropy_with_logits_v2(
@@ -4625,6 +4628,9 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
   Raises:
       ValueError: if `axis` is neither -1 nor one of the axes of `output`.
   """
+  target = ops.convert_to_tensor_v2(target)
+  output = ops.convert_to_tensor_v2(output)
+
   if not from_logits and not isinstance(
       output, (ops.EagerTensor, variables_module.Variable)):
     output = _backtrack_identity(output)
@@ -4700,6 +4706,9 @@ def binary_crossentropy(target, output, from_logits=False):
   Returns:
       A tensor.
   """
+  target = ops.convert_to_tensor_v2(target)
+  output = ops.convert_to_tensor_v2(output)
+
   if from_logits:
     return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
 
