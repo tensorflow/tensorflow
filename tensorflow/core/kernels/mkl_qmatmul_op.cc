@@ -345,7 +345,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
     const float max_weight = context->input(6).flat<float>()(0);
     MklQuantizationRangeForMultiplication<quint8, qint8, qint32>(
         min_input, max_input, min_weight, max_weight, min_output_value,
-        max_output_value);
+        max_output_value, context);
   }
 
   virtual void ExtendMklDnnMatMulFwdParams(OpKernelContext* context,
