@@ -477,7 +477,8 @@ TEST_P(UnifiedCAPI, TestExecutingGraphOpInEagerModeRaises) {
   TF_DeleteExecutionContext(eager_execution_ctx);
 }
 
-INSTANTIATE_TEST_SUITE_P(Tracing, UnifiedCAPI, ::testing::Values("graphdef"));
+INSTANTIATE_TEST_SUITE_P(Tracing, UnifiedCAPI,
+                         ::testing::Values("graphdef", "mlir"));
 
 }  // namespace
 }  // namespace tensorflow

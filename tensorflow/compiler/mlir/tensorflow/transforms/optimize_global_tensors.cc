@@ -278,6 +278,10 @@ void EraseUnusedBoundInputs(ModuleOp module) {
 
 void OptimizeGlobalTensorsPass::runOnOperation() {
   auto module = getOperation();
+  if (!tf_saved_model::HasTfSavedModelSemantics(module)) {
+    return;
+  }
+
   EraseUnusedBoundInputs(module);
 
   ResourceAnalyzer resource_analyzer(module);

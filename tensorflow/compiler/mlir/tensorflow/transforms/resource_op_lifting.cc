@@ -571,7 +571,7 @@ void AddLoadsStoresOutsideControlFlowOp(
 }
 
 // Lifts loads/stores from while loop's body and cond functions.
-LogicalResult HanldeWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
+LogicalResult HandleWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
   // Remove identity nodes to avoid aliasing.
   RemoveIdentity(&body.front());
   RemoveIdentity(&cond.front());
@@ -985,7 +985,7 @@ LogicalResult HoistForFunctionalControlFlow(
                                     lifted_partitioned_call_callees);
       HoistForFunctionalControlFlow(&cond.front(), module,
                                     lifted_partitioned_call_callees);
-      if (failed(HanldeWhileLoop(while_op, body, cond))) return failure();
+      if (failed(HandleWhileLoop(while_op, body, cond))) return failure();
     } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(&op)) {
       auto then_branch =
           llvm::cast<FuncOp>(module.lookupSymbol(if_op.then_branch()));

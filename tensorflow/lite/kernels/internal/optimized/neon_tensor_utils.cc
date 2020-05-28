@@ -1466,16 +1466,20 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
       int i = 0;
       int32_t* scratch_ptr = scratch;
       for (; i <= total_size - 8; i += 8, result += 8) {
-        float batch_scaling_factor0 = scaling_factors[i / m_rows];
-        float batch_scaling_factor1 = scaling_factors[(i + 4) / m_rows];
-        if (per_channel_scale) {
-          batch_scaling_factor0 *= per_channel_scale[i % m_rows];
-          batch_scaling_factor1 *= per_channel_scale[(i + 4) % m_rows];
-        }
+        const float batch_scaling_factor0 = scaling_factors[i / m_rows];
+        const float batch_scaling_factor1 = scaling_factors[(i + 4) / m_rows];
         const int batch_input_offset0 = -input_offset[i / m_rows];
         const int batch_input_offset1 = -input_offset[(i + 4) / m_rows];
-        const float32x4_t scaling_factor0 = vdupq_n_f32(batch_scaling_factor0);
-        const float32x4_t scaling_factor1 = vdupq_n_f32(batch_scaling_factor1);
+        float32x4_t scaling_factor0 = vdupq_n_f32(batch_scaling_factor0);
+        float32x4_t scaling_factor1 = vdupq_n_f32(batch_scaling_factor1);
+        if (per_channel_scale) {
+          const float32x4_t per_channel_scale0 =
+              vld1q_f32(&per_channel_scale[i % m_rows]);
+          const float32x4_t per_channel_scale1 =
+              vld1q_f32(&per_channel_scale[(i + 4) % m_rows]);
+          scaling_factor0 = vmulq_f32(scaling_factor0, per_channel_scale0);
+          scaling_factor1 = vmulq_f32(scaling_factor1, per_channel_scale1);
+        }
         const int32x4_t input_offset0 = vdupq_n_s32(batch_input_offset0);
         const int32x4_t input_offset1 = vdupq_n_s32(batch_input_offset1);
         const int32x4_t row_sum0 = vld1q_s32(row_sums + (i % m_rows));
@@ -1498,7 +1502,10 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
 
       scratch_ptr += i;
       for (; i < total_size; i++) {
-        const float batch_scaling_factor = scaling_factors[i / m_rows];
+        float batch_scaling_factor = scaling_factors[i / m_rows];
+        if (per_channel_scale) {
+          batch_scaling_factor *= per_channel_scale[i % m_rows];
+        }
         const int32_t zero_point = input_offset[i / m_rows];
         int32_t dotprod = *(scratch_ptr++);
         dotprod -= row_sums[i % m_rows] * zero_point;
@@ -1512,16 +1519,6 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
   NeonMatrixBatchVectorMultiplyAccumulateImpl(
       matrix, m_rows, m_cols, vectors, scaling_factors, n_batch, result,
       per_channel_scale, input_offset, row_sums);
-}
-
-void NeonMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
-    const int8_t* __restrict__ vectors, const float* scaling_factors,
-    int n_batch, float* __restrict__ result, const float* per_channel_scale,
-    const int32_t* input_offset) {
-  NeonMatrixBatchVectorMultiplyAccumulateImpl(
-      matrix, m_rows, m_cols, vectors, scaling_factors, n_batch, result,
-      per_channel_scale, input_offset, nullptr);
 }
 
 inline int64x2x2_t MulAdd(int32x4_t acc, int32x4_t lhs, int32x4_t rhs) {

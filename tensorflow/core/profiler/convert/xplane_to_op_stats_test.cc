@@ -185,6 +185,18 @@ TEST(ConcertXPlaneToOpStats, TfFunctionTest) {
   EXPECT_EQ(not_traced_mode.self_time_ps(), 20);
 }
 
+TEST(ConvertXPlaneToOpStats, PropagateAndDedupErrors) {
+  XSpace space;
+  static constexpr char kError[] = "host: error";
+  *space.add_errors() = kError;
+  *space.add_errors() = kError;
+
+  OpStats op_stats = ConvertXSpaceToOpStats(space);
+
+  EXPECT_EQ(1, op_stats.errors_size());
+  EXPECT_EQ(kError, op_stats.errors(/*index=*/0));
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tensorflow

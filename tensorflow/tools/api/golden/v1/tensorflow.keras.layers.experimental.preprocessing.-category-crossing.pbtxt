@@ -1,6 +1,6 @@
 path: "tensorflow.keras.layers.experimental.preprocessing.CategoryCrossing"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras.layers.preprocessing.categorical_crossing.CategoryCrossing\'>"
+  is_instance: "<class \'tensorflow.python.keras.layers.preprocessing.category_crossing.CategoryCrossing\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"
   is_instance: "<class \'tensorflow.python.training.tracking.tracking.AutoTrackable\'>"
@@ -113,7 +113,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'depth\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'self\', \'depth\', \'name\', \'separator\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "add_loss"

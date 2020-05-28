@@ -24,93 +24,208 @@ from tensorflow.python.data.service import _pywrap_server_lib
 
 
 class MasterServer(object):
-  """An in-process tf.data service master, for use in testing."""
+  """An in-process tf.data service master server.
 
-  def __init__(self, protocol):
-    """Creates and starts a new tf.data master server.
+  A `tf.data.experimental.service.MasterServer` coordinates a cluster of
+  `tf.data.experimental.service.WorkerServer`s. When the workers start, they
+  register themselves with the master.
 
-    The server will choose an available port. Use `target()` to get the string
-    for connecting to the server.
+  ```
+  master_server = tf.data.experimental.service.MasterServer(port=5050)
+  worker_server = tf.data.experimental.service.WorkerServer(
+      port=0, master_address="localhost:5050")
+  dataset = tf.data.Dataset.range(10)
+  dataset = dataset.apply(tf.data.experimental.service.distribute(
+      processing_mode="parallel_epochs", service="grpc://localhost:5050"))
+  ```
+
+  When starting a dedicated tf.data master process, use join() to block
+  indefinitely after starting up the server.
+
+  ```
+  master_server = tf.data.experimental.service.MasterServer(port=5050)
+  master_server.join()
+  ```
+  """
+
+  def __init__(self, port, protocol=None, start=True):
+    """Creates a new master server.
 
     Args:
-      protocol: A string representing the type of protocol to use when creating
-        channels. For no security, use "grpc". For local credentials, use
-        "grpc+local", and make sure your binary links in
-        `data/service:local_credentials`.
+      port: Specifies the port to bind to.
+      protocol: (Optional.) Specifies the protocol to be used by the server.
+        Acceptable values include `"grpc", "grpc+local"`. Defaults to `"grpc"`.
+      start: (Optional.) Boolean, indicating whether to start the server after
+        creating it. Defaults to `True`.
+
+    Raises:
+      tf.errors.OpError: Or one of its subclasses if an error occurs while
+        creating the TensorFlow server.
     """
+    if protocol is None:
+      protocol = "grpc"
     self._protocol = protocol
-    self._server = _pywrap_server_lib.TF_DATA_NewMasterServer(0, protocol)
-    self._running = True
+    self._server = _pywrap_server_lib.TF_DATA_NewMasterServer(port, protocol)
+    if start:
+      self._server.start()
 
-  @property
-  def target(self):
-    """Returns the target for connecting to this server.
+  def start(self):
+    """Starts this server.
 
-    The returned string will be in the form protocol://address:port, e.g.
-    "grpc://localhost:1000".
+    Raises:
+      tf.errors.OpError: Or one of its subclasses if an error occurs while
+        starting the server.
     """
-    port = _pywrap_server_lib.TF_DATA_MasterServerBoundPort(self._server)
-    return "{0}://localhost:{1}".format(self._protocol, port)
+    self._server.start()
 
-  def num_tasks(self):
-    """Returns the number of tasks on the master."""
-    return _pywrap_server_lib.TF_DATA_MasterServerNumTasks(self._server)
+  def join(self):
+    """Blocks until the server has shut down.
 
-  def stop(self):
-    """Shuts down and deletes the server.
+    This is useful when starting a dedicated master process.
 
-    This method will block until all outstanding rpcs have completed and the
-    server has been shut down.
+    ```
+    master_server = tf.data.experimental.service.MasterServer(port=5050)
+    master_server.join()
+    ```
+
+    Raises:
+      tf.errors.OpError: Or one of its subclasses if an error occurs while
+        joining the server.
     """
-    if self._running:
-      self._running = False
-      _pywrap_server_lib.TF_DATA_DeleteMasterServer(self._server)
+    self._server.join()
+
+  def _stop(self):
+    """Stops the server.
+
+    Raises:
+      tf.errors.OpError: Or one of its subclasses if an error occurs while
+        stopping the server.
+    """
+    self._server.stop()
 
   def __del__(self):
-    self.stop()
+    self._stop()
+
+  @property
+  def _address(self):
+    """Returns the address of the server.
+
+    The returned string will be in the form address:port, e.g. "localhost:1000".
+    """
+    return "localhost:{0}".format(self._server.bound_port())
+
+  def _num_workers(self):
+    """Returns the number of workers registered with the master."""
+    return self._server.num_workers()
 
 
 class WorkerServer(object):
-  """An in-process tf.data service worker, for use in testing."""
+  """An in-process tf.data service worker server.
 
-  def __init__(self, protocol, master_address, port=0):
-    """Creates and starts a new tf.data worker server.
+  A `tf.data.experimental.service.WorkerServer` performs `tf.data.Dataset`
+  processing for user-defined datasets, and provides the resulting elements over
+  RPC. A worker is associated with a single
+  `tf.data.experimental.service.MasterServer`.
 
-    The server will choose an available port. Use `target()` to get the string
-    for connecting to the server.
+  ```
+  master_server = tf.data.experimental.service.MasterServer(port=5050)
+  worker_server = tf.data.experimental.service.WorkerServer(
+      port=0, master_address="localhost:5050")
+  dataset = tf.data.Dataset.range(10)
+  dataset = dataset.apply(tf.data.experimental.service.distribute(
+      processing_mode="parallel_epochs", service="grpc://localhost:5050"))
+  ```
+
+  When starting a dedicated tf.data worker process, use join() to block
+  indefinitely after starting up the server.
+
+  ```
+  worker_server = tf.data.experimental.service.WorkerServer(
+      port=5050, master_address="grpc://localhost:5050")
+  worker_server.join()
+  ```
+  """
+
+  def __init__(self,
+               port,
+               master_address,
+               worker_address=None,
+               protocol=None,
+               start=True):
+    """Creates a new worker server.
 
     Args:
-      protocol: A string representing the type of protocol to use when creating
-        channels. For no security, use "grpc". For local credentials, use
-        "grpc+local", and make sure your binary links in
-        `data/service:local_credentials`.
-      master_address: The address of the tf.data master server to register with.
-      port: The port to bind to.
+      port: Specifies the port to bind to. A value of 0 indicates that the
+        worker can bind to any available port.
+      master_address: Specifies the address of the master server.
+      worker_address: (Optional.) Specifies the address of the worker server.
+        This address is passed to the master server so that the master can tell
+        clients how to connect to this worker. Defaults to `"localhost:%port%"`,
+          where `%port%` will be replaced with the port used by the worker.
+      protocol: (Optional.) Specifies the protocol to be used by the server.
+        Acceptable values include `"grpc", "grpc+local"`. Defaults to `"grpc"`.
+      start: (Optional.) Boolean, indicating whether to start the server after
+        creating it. Defaults to `True`.
+
+    Raises:
+      tf.errors.OpError: Or one of its subclasses if an error occurs while
+        creating the TensorFlow server.
     """
+    if worker_address is None:
+      worker_address = "localhost:%port%"
+    if protocol is None:
+      protocol = "grpc"
+
     self._protocol = protocol
     self._server = _pywrap_server_lib.TF_DATA_NewWorkerServer(
-        port, protocol, master_address, "localhost:%port%")
-    self._running = True
+        port, protocol, master_address, worker_address)
+    if start:
+      self._server.start()
 
-  @property
-  def target(self):
-    """Returns the target for connecting to this server.
+  def start(self):
+    """Starts this server.
 
-    The returned string will be in the form protocol://address:port, e.g.
-    "grpc://localhost:1000".
+    Raises:
+      tf.errors.OpError: Or one of its subclasses if an error occurs while
+        starting the server.
     """
-    port = _pywrap_server_lib.TF_DATA_WorkerServerBoundPort(self._server)
-    return "{0}://localhost:{1}".format(self._protocol, port)
+    self._server.start()
 
-  def stop(self):
-    """Shuts down and deletes the server.
+  def join(self):
+    """Blocks until the server has shut down.
 
-    This method will block until all outstanding rpcs have completed and the
-    server has been shut down.
+    This is useful when starting a dedicated worker process.
+
+    ```
+    worker_server = tf.data.experimental.service.WorkerServer(
+        port=5050, master_address="grpc://localhost:5050")
+    worker_server.join()
+    ```
+
+    This method currently blocks forever.
+
+    Raises:
+      tf.errors.OpError: Or one of its subclasses if an error occurs while
+        joining the server.
     """
-    if self._running:
-      self._running = False
-      _pywrap_server_lib.TF_DATA_DeleteWorkerServer(self._server)
+    self._server.join()
+
+  def _stop(self):
+    """Stops the server.
+
+    Raises:
+      tf.errors.OpError: Or one of its subclasses if an error occurs while
+        stopping the server.
+    """
+    self._server.stop()
 
   def __del__(self):
-    self.stop()
+    self._stop()
+
+  @property
+  def _address(self):
+    """Returns the address of the server.
+
+    The returned string will be in the form address:port, e.g. "localhost:1000".
+    """
+    return "localhost:{0}".format(self._server.bound_port())

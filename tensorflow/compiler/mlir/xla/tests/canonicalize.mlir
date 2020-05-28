@@ -387,8 +387,8 @@ func @dynamic_reshape_not_actually_dynamic(%arg0: tensor<4xf32>, %shape: tensor<
   return %0 : tensor<4x1xf32>
 }
 
-// CHECK-LABEL: do_not_dce_while
-func @do_not_dce_while(%arg0: tensor<i64>) -> tensor<i64> {
+// CHECK-LABEL: do_not_dce_while_with_outfeed
+func @do_not_dce_while_with_outfeed(%arg0: tensor<i64>) -> tensor<i64> {
   // CHECK: xla_hlo.while
   %0 = "xla_hlo.while"(%arg0) ( {
   ^bb0(%arg1: tensor<i64>):
@@ -399,6 +399,22 @@ func @do_not_dce_while(%arg0: tensor<i64>) -> tensor<i64> {
     %1 = "xla_hlo.create_token"() : () -> !xla_hlo.token
     // Side-effecting op outfeed present inside while.
     %2 = "xla_hlo.outfeed"(%arg1, %1) {outfeed_config = ""} : (tensor<i64>, !xla_hlo.token) -> !xla_hlo.token
+    "xla_hlo.return"(%arg1) : (tensor<i64>) -> ()
+  }) : (tensor<i64>) -> tensor<i64>
+
+  return %arg0 : tensor<i64>
+}
+
+// CHECK-LABEL: dce_while_without_side_effect
+func @dce_while_without_side_effect(%arg0: tensor<i64>) -> tensor<i64> {
+  // CHECK-NOT: xla_hlo.while
+  %0 = "xla_hlo.while"(%arg0) ( {
+  ^bb0(%arg1: tensor<i64>):
+    %1 = "xla_hlo.compare"(%arg1, %arg1) {comparison_direction = "LT"} : (tensor<i64>, tensor<i64>) -> tensor<i1>
+    "xla_hlo.return"(%1) : (tensor<i1>) -> ()
+  },  {
+  ^bb0(%arg1: tensor<i64>):
+    %1 = "xla_hlo.create_token"() : () -> !xla_hlo.token
     "xla_hlo.return"(%arg1) : (tensor<i64>) -> ()
   }) : (tensor<i64>) -> tensor<i64>
 

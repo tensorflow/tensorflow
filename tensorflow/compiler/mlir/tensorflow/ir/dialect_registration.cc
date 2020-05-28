@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -31,5 +32,6 @@ static DialectRegistration<tf_device::TensorFlowDeviceDialect>
     tf_device_dialect;
 static DialectRegistration<tf_saved_model::TensorFlowSavedModelDialect>
     tf_saved_model_dialect;
+static DialectRegistration<mlir::shape::ShapeDialect> shape_dialect;
 
 }  // namespace mlir

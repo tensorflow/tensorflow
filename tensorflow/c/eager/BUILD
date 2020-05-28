@@ -145,6 +145,24 @@ cc_library(
 )
 
 cc_library(
+    name = "c_api_unified_internal",
+    hdrs = [
+        "c_api_unified_experimental_internal.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        "//tensorflow/c:c_api_internal",
+        "//tensorflow/c:tf_status",
+        "//tensorflow/core/platform:casts",
+        "//tensorflow/core/platform:types",
+    ],
+)
+
+cc_library(
     name = "tensor_handle_interface",
     hdrs = ["tensor_handle_interface.h"],
     visibility = [
@@ -319,6 +337,7 @@ tf_cuda_cc_test(
     tags = [
         "noguitar",  # TODO(b/155445984): flaky
         #"guitar",
+        "notap",  # TODO(b/156981931): flaky
         "multi_gpu",
     ],
     deps = [
@@ -349,7 +368,10 @@ tf_cuda_cc_test(
     # TODO(b/136478427): Figure out how to correctly shut the server down
     args = ["--heap_check=local"],
     extra_copts = tfe_xla_copts(),
-    tags = ["noasan"],  # leaks gRPC server instances
+    tags = [
+        "noasan",  # leaks gRPC server instances
+        "notsan",  # b/157098283
+    ],
     deps = [
         ":c_api",
         ":c_api_experimental",
@@ -510,6 +532,7 @@ tf_cuda_cc_test(
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_test_util",
         "//tensorflow/cc/profiler",
+        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",

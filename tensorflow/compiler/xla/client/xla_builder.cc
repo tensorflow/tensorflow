@@ -3188,6 +3188,10 @@ XlaOp Compare(const XlaOp lhs, const XlaOp rhs,
                                  broadcast_dimensions, direction);
 }
 
+XlaOp Compare(const XlaOp lhs, const XlaOp rhs, ComparisonDirection direction) {
+  return Compare(lhs, rhs, {}, direction);
+}
+
 XlaOp Dot(const XlaOp lhs, const XlaOp rhs,
           const PrecisionConfig* precision_config) {
   return lhs.builder()->Dot(lhs, rhs, precision_config);

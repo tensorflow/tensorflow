@@ -28,6 +28,7 @@ import zipfile
 from flatbuffers.python import flatbuffers
 from tensorflow.lite.experimental.support.metadata import metadata_schema_py_generated as _metadata_fb
 from tensorflow.lite.experimental.support.metadata import schema_py_generated as _schema_fb
+from tensorflow.lite.experimental.support.metadata.cc.python import _pywrap_metadata_version
 from tensorflow.lite.experimental.support.metadata.flatbuffers_lib import _pywrap_flatbuffers
 from tensorflow.python.platform import resource_loader
 
@@ -55,7 +56,7 @@ class MetadataPopulator(object):
   classifer model using Flatbuffers API. Attach the label file onto the ouput
   tensor (the tensor of probabilities) in the metadata.
 
-  Then, pack the metadata and lable file into the model as follows.
+  Then, pack the metadata and label file into the model as follows.
 
     ```python
     # Populating a metadata file (or a metadta buffer) and associated files to
@@ -78,6 +79,9 @@ class MetadataPopulator(object):
     with open("updated_model.tflite", "wb") as f:
       f.write(updated_model_buf)
     ```
+
+  Note that existing metadata buffer (if applied) will be overridden by the new
+  metadata buffer.
   """
   # As Zip API is used to concatenate associated files after tflite model file,
   # the populating operation is developed based on a model file. For in-memory
@@ -218,12 +222,27 @@ class MetadataPopulator(object):
     Raises:
       ValueError: The metadata to be populated is empty.
       ValueError: The metadata does not have the expected flatbuffer identifer.
+      ValueError: Error occurs when getting the minimum metadata parser version.
     """
     if not metadata_buf:
       raise ValueError("The metadata to be populated is empty.")
 
     _assert_metadata_buffer_identifier(metadata_buf)
-    self._metadata_buf = metadata_buf
+
+    # Gets the minimum metadata parser version of the metadata_buf.
+    min_version = _pywrap_metadata_version.GetMinimumMetadataParserVersion(
+        bytes(metadata_buf))
+
+    # Inserts in the minimum metadata parser version into the metadata_buf.
+    metadata = _metadata_fb.ModelMetadataT.InitFromObj(
+        _metadata_fb.ModelMetadata.GetRootAsModelMetadata(metadata_buf, 0))
+    metadata.minParserVersion = min_version
+
+    b = flatbuffers.Builder(0)
+    b.Finish(metadata.Pack(b), self.METADATA_FILE_IDENTIFIER)
+    metadata_buf_with_version = b.Output()
+
+    self._metadata_buf = metadata_buf_with_version
 
   def load_metadata_file(self, metadata_file):
     """Loads the metadata file to be populated.
@@ -325,6 +344,9 @@ class MetadataPopulator(object):
     Inserts metadata_buf into the metadata field of schema.Model. If the
     MetadataPopulator object is created using the method,
     with_model_file(model_file), the model file will be updated.
+
+    Existing metadata buffer (if applied) will be overridden by the new metadata
+    buffer.
     """
 
     with open(self._model_file, "rb") as f:

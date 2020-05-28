@@ -1556,6 +1556,20 @@ ENTRY CollectivePermute {
 )",
 /*replica_count=*/4
 },
+// collective-permute-start and -done
+{
+"CollectivePermuteStartAndDone",
+R"(HloModule CollectivePermuteStartAndDone
+
+ENTRY CollectivePermuteStartAndDone {
+  input = f32[128,32]{0,1} parameter(0)
+  collective-permute-start.1 = (f32[128,32]{0,1}, f32[128,32]{0,1}, u32[], u32[]) collective-permute-start(input), source_target_pairs={{0,1},{1,2},{2,3}}
+  ROOT collective-permute-done.1 = f32[128,32]{0,1} collective-permute-done(collective-permute-start.1)
+}
+
+)",
+/*replica_count=*/4
+},
 // replica-id
 {
 "ReplicaId",
@@ -2000,9 +2014,7 @@ TEST_F(HloParserTest, ConstantUnsignedUnderflow) {
         ROOT %constant = u64[] constant(-1)
       })";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
-  ExpectHasSubstr(result.status().error_message(),
-                  "is out of range for literal's primitive type U64");
+  EXPECT_EQ(Status::OK(), result.status());
 }
 
 TEST_F(HloParserTest, ConstantUnsignedOverflow) {
@@ -2024,7 +2036,7 @@ TEST_F(HloParserTest, ConstantUnsignedInt64Overflow) {
         ROOT %constant = u64[] constant(9223372036854775808)
       })";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_EQ(Status::OK(), result.status());
 }
 
 TEST_F(HloParserTest, ConstantC64Overflow) {

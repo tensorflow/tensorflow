@@ -573,6 +573,34 @@ class ConstConverter : public OpConversionPattern<xla_lhlo::ConstOp> {
   }
 };
 
+// TODO(b/156787842): Support the lowering for dynamic shapes.
+template <typename OpTy, bool isLHLO = true>
+class ReverseConverter
+    : public DataMovementOpConverter<ReverseConverter<OpTy, isLHLO>, OpTy,
+                                     isLHLO> {
+ public:
+  using DataMovementOpConverter<ReverseConverter<OpTy, isLHLO>, OpTy,
+                                isLHLO>::DataMovementOpConverter;
+  static ArrayAttr getIndexingMapsAttr(OpTy op, Builder* b) {
+    auto resultType =
+        getXLAOpResultType<isLHLO>(op).template cast<ShapedType>();
+    auto nloops = resultType.getRank();
+    SmallVector<AffineExpr, 2> inputExprs;
+    inputExprs.reserve(nloops);
+    for (int i = 0; i < nloops; ++i)
+      inputExprs.push_back(b->getAffineDimExpr(i));
+    for (auto dim : op.dimensions()) {
+      int i = dim.getZExtValue();
+      if (resultType.isDynamicDim(i)) return {};
+      int n = resultType.getShape()[i];
+      inputExprs[i] = b->getAffineConstantExpr(n - 1) - inputExprs[i];
+    }
+    return b->getAffineMapArrayAttr(
+        {AffineMap::get(nloops, /*symbolCount=*/0, inputExprs, b->getContext()),
+         b->getMultiDimIdentityMap(nloops)});
+  }
+};
+
 class SliceConverter : public OpConversionPattern<xla_lhlo::SliceOp> {
  public:
   using OpConversionPattern<xla_lhlo::SliceOp>::OpConversionPattern;
@@ -642,6 +670,7 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<xla_lhlo::SubOp>,
                    PointwiseToLinalgConverter<xla_lhlo::TanhOp>,
                    ReshapeAddRemoveDimConverter<xla_lhlo::ReshapeOp>,
+                   ReverseConverter<xla_lhlo::ReverseOp>,
                    ScalarPointwiseToStandardConverter<xla_lhlo::AddOp>,
                    SliceConverter
                   >(context);
@@ -742,6 +771,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<xla_hlo::TanhOp, false>,
                    ReshapeAddRemoveDimConverter<xla_hlo::ReshapeOp, false>,
                    ReshapeOpConverter<xla_hlo::ReshapeOp, false>,
+                   ReverseConverter<xla_hlo::ReverseOp, false>,
                    TransposeConverter<xla_hlo::TransposeOp, false>>(context);
 }
 

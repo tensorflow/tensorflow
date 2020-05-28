@@ -160,7 +160,7 @@ devices using other libraries such as
 
 ### Using older Core ML version
 
-Although iOS 13 supprots Core ML 3, the model might work better when it is
+Although iOS 13 supports Core ML 3, the model might work better when it is
 converted with Core ML 2 model specification. The target conversion version is
 set to the latest version by default, but you can change this by setting
 `coreMLVersion` (in Swift, `coreml_version` in C API) in the delegate option to

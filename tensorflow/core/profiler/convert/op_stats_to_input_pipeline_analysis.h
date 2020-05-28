@@ -31,6 +31,17 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
+// If the percent of input-time spent on host-to-device transfer is greater than
+// kHostToDeviceTimePercentAsSignificant, we should advise the
+// user to optimize this transfer.
+constexpr double kHostToDeviceTimePercentAsSignificant = 10.0;
+
+// If the percent of input-time spent on host-to-device transfer is greater than
+// kHostToDeviceTimePercentAsDominant, we should ONLY advise the
+// user to optimize this transfer; we won't bother to suggest optimization for
+// tf.data.
+constexpr double kHostToDeviceTimePercentAsDominant = 90.0;
+
 // Computes the summary of step time in milliseconds.
 StepSummary ComputeStepTimeSummaryInMs(
     const ::tensorflow::protobuf::RepeatedPtrField<PerCoreStepInfo>&
@@ -61,6 +72,11 @@ void OutputAnalysis(double output_percent, std::string* output_classification,
 
 string GetSummaryNextStep(absl::string_view input_classification,
                           const InputTimeBreakdown& breakdown);
+
+// Returns the percentage of the input time that is spent on transferring the
+// data from host to device.
+double HostToDeviceTransferAsPercentOfInputTime(
+    const InputTimeBreakdown& breakdown);
 
 void AddErrorMessages(const OpStats& op_stats,
                       InputPipelineAnalysisResult* result);

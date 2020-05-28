@@ -49,6 +49,12 @@ def _get_layer_computation_test_cases():
       "expected": np.array([[-1.414214], [-.707107], [0]], np.float32),
       "testcase_name": "2d_single_element"
   }, {
+      "adapt_data": np.array([[1], [2], [3], [4], [5]], dtype=np.int32),
+      "axis": -1,
+      "test_data": np.array([[1], [2], [3]], np.int32),
+      "expected": np.array([[-1.414214], [-.707107], [0]], np.float32),
+      "testcase_name": "2d_int_data"
+  }, {
       "adapt_data": np.array([[1.], [2.], [3.], [4.], [5.]], dtype=np.float32),
       "axis": None,
       "test_data": np.array([[1.], [2.], [3.]], np.float32),
@@ -140,6 +146,7 @@ class NormalizationTest(keras_parameterized.TestCase,
     self.validate_accumulator_extract(combiner, data, expected)
     self.validate_accumulator_extract_and_restore(combiner, data,
                                                   expected)
+
   @parameterized.named_parameters(
       {
           "data": np.array([[1], [2], [3], [4], [5]]),

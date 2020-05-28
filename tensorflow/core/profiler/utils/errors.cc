@@ -33,5 +33,10 @@ const absl::string_view kErrorNoStepMarker =
     " than the step time. For (1), you need to add step instrumentation;"
     " for (2), you may try to profile longer.";
 
+const absl::string_view kNoDeviceTraceCollected =
+    "No device trace was collected. This might happen if your job hadn't been "
+    "run on the device when sampling was turned on. You could try the sampling"
+    " again later.";
+
 }  // namespace profiler
 }  // namespace tensorflow

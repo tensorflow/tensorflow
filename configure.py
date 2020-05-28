@@ -1368,8 +1368,13 @@ def main():
   # environment variables.
   environ_cp = dict(os.environ)
 
-  current_bazel_version = check_bazel_version(_TF_MIN_BAZEL_VERSION,
-                                              _TF_MAX_BAZEL_VERSION)
+  try:
+    current_bazel_version = check_bazel_version(_TF_MIN_BAZEL_VERSION,
+                                                _TF_MAX_BAZEL_VERSION)
+  except subprocess.CalledProcessError as e:
+    print("Error checking bazel version: ", e.output.decode('UTF-8').strip())
+    raise e
+
   _TF_CURRENT_BAZEL_VERSION = convert_version_to_int(current_bazel_version)
 
   reset_tf_configure_bazelrc()

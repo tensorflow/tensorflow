@@ -116,6 +116,7 @@ cc_library(
         ":status",
         ":tensor",
         "@com_google_absl//absl/strings",
+        "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite:context",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:util",

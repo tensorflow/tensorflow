@@ -178,3 +178,24 @@ func @fusion_memref(%input1: memref<10xf32>, %input2: memref<10xf32>, %input3: m
   } ) : () -> ()
   return
 }
+
+// -----
+
+// CHECK-LABEL: func @case_memref
+func @case_memref(%index: memref<i32>, %operand_1: memref<f32>, %operand_2: memref<f32>, %operand_3: memref<f32>, %out: memref<f32>) -> () {
+  "xla_lhlo.case"(%index, %operand_1, %operand_2, %operand_3, %out) ( {
+    ^bb0(%arg0: memref<f32>):
+      "xla_lhlo.negate"(%arg0, %out) : (memref<f32>, memref<f32>) -> ()
+      "xla_lhlo.terminator"() : () -> ()
+    },  {
+    ^bb0(%arg0: memref<f32>):
+      "xla_lhlo.copy"(%arg0, %out) : (memref<f32>, memref<f32>) -> ()
+      "xla_lhlo.terminator"() : () -> ()
+    },  {
+    ^bb0(%arg0: memref<f32>):
+      "xla_lhlo.add"(%arg0, %arg0, %out) : (memref<f32>, memref<f32>, memref<f32>) -> ()
+      "xla_lhlo.terminator"() : () -> ()
+    }
+  ) : (memref<i32>, memref<f32>, memref<f32>, memref<f32>, memref<f32>) -> ()
+  return
+}

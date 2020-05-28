@@ -209,7 +209,6 @@ StatusOr<XlaOp> MlirHloBuilder::Compare(const Shape& shape, XlaOp lhs,
                                          shape, builder_));
   auto op = builder_.create<mlir::xla_hlo::CompareOp>(
       loc_, ty, GetValue(lhs), GetValue(rhs),
-      /*broadcast_dimensions=*/mlir::DenseIntElementsAttr(),
       builder_.getStringAttr(ComparisonDirectionToString(direction)));
   return MakeXlaOp(op.getResult());
 }

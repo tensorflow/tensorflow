@@ -18,7 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gast
+
 from tensorflow.python.autograph.core import converter
+from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import templates
 
 
@@ -26,19 +29,20 @@ class ConditionalExpressionTransformer(converter.Base):
   """Converts conditional expressions to functional form."""
 
   def visit_IfExp(self, node):
-    return templates.replace_as_expression(
-        '''ag__.if_stmt(
+    template = '''
+        ag__.if_exp(
             test,
             lambda: true_expr,
             lambda: false_expr,
-            lambda: (),
-            lambda _: None,
-            ('<internal expr>',),
-            ())
-        ''',
+            expr_repr)
+    '''
+    expr_repr = parser.unparse(node.test, include_encoding_marker=False).strip()
+    return templates.replace_as_expression(
+        template,
         test=node.test,
         true_expr=node.body,
-        false_expr=node.orelse)
+        false_expr=node.orelse,
+        expr_repr=gast.Constant(expr_repr, kind=None))
 
 
 def transform(node, ctx):

@@ -556,6 +556,29 @@ class BASE_HLO_XorOp {
 }
 
 //===----------------------------------------------------------------------===//
+// XLA control flow related op definitions.
+//===----------------------------------------------------------------------===//
+
+class BASE_HLO_CaseOp {
+  string summary = "Switch-Case operator";
+
+  string description = [{
+    Returns the result of executing `branches[index]`. If
+    `index` is < 0 or >= N, then `branches[N-1] is executed as
+    the default branch.
+
+    Each branch `branches[b]` must take in a single argument of same type as
+    `branch_operands[b]` and will be invoked with `branch_operands[b]`. The type
+    of the returned value of each branch must be the same.
+
+    Note that only one of the branches will be executed depending on the value
+    of index.
+    See https://www.tensorflow.org/xla/operation_semantics#conditional.
+  }];
+
+}
+
+//===----------------------------------------------------------------------===//
 // XLA parallelism related op definitions.
 //===----------------------------------------------------------------------===//
 

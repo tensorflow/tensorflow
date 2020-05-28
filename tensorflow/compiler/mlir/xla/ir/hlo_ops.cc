@@ -1397,93 +1397,70 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// Case Op
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(CaseOp op) {
+  auto num_branches = op.branches().size();
+  if (op.branch_operands().size() != num_branches)
+    return op.emitOpError() << "expects number of branches " << num_branches
+                            << " to be same as number of branch operands "
+                            << op.branch_operands().size();
+
+  MutableArrayRef<Region> branches = op.branches();
+  OperandRange branch_operands = op.branch_operands();
+  for (unsigned i = 0; i < num_branches; ++i) {
+    mlir::Region& branch_region = branches[i];
+    if (branch_region.empty())
+      return op.emitOpError() << "cannot have empty regions";
+    mlir::Block& entry_block = branch_region.front();
+    if (entry_block.getNumArguments() != 1)
+      return op.emitOpError()
+             << "expects branch regions to have single argument, but found "
+             << entry_block.getNumArguments() << " for branch " << i;
+    auto operand = branch_operands[i];
+    if (entry_block.getArgument(0).getType() != operand.getType())
+      return op.emitOpError()
+             << "expects operand " << i + 1 << " to be of type "
+             << entry_block.getArgument(0).getType() << ", but found "
+             << operand.getType();
+    WalkResult walker = branch_region.walk([&](ReturnOp return_op) {
+      if (return_op.getOperands().getTypes() != op.getResultTypes())
+        return WalkResult::interrupt();
+      return WalkResult::advance();
+    });
+    if (walker.wasInterrupted())
+      return op.emitOpError()
+             << "branch " << i
+             << " returned values do not match op result types";
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // BinaryOps
 //===----------------------------------------------------------------------===//
 
 namespace {
-// Gets the resulting type from a broadcast between two types.
-static Type GetBroadcastType(Builder* builder, Type x, Type y,
-                             Type element_type,
-                             DenseIntElementsAttr broadcast_dimensions) {
+
+// Updates the element type of a (presumed) tensor type 'x', returning either
+// a permuted UnrankedTensorType or RankedTensorType.
+static Type UpdateResultElementType(Builder* builder, Type x,
+                                    Type element_type) {
   auto x_ranked = x.dyn_cast<RankedTensorType>();
-  auto y_ranked = y.dyn_cast<RankedTensorType>();
-  if (!x_ranked || !y_ranked) {
+  if (!x_ranked) {
     return UnrankedTensorType::get(element_type);
   }
 
   auto shape_x = x_ranked.getShape();
-  auto shape_y = y_ranked.getShape();
-
-  if (shape_x.size() == shape_y.size()) {
-    llvm::SmallVector<int64_t, 4> out_shape(shape_x.size());
-    for (int i = 0; i < shape_x.size(); i++) {
-      auto x_val = shape_x[i];
-      auto y_val = shape_y[i];
-      if (x_val == -1 || y_val == -1) {
-        out_shape[i] = -1;
-      } else {
-        out_shape[i] = std::max(x_val, y_val);
-      }
-    }
-    return RankedTensorType::get(out_shape, element_type);
-  }
-
-  // Return unranked tensor for invalid broadcast dimensions.
-  if (!broadcast_dimensions) return UnrankedTensorType::get(element_type);
-
-  auto shape_large = shape_x.size() > shape_y.size() ? shape_x : shape_y;
-  auto shape_small = shape_x.size() <= shape_y.size() ? shape_x : shape_y;
-
-  llvm::SmallVector<int64_t, 4> out_shape(shape_large.begin(),
-                                          shape_large.end());
-
-  // Update according to the broadcast dimensions.
-  for (auto index_pair : llvm::enumerate(broadcast_dimensions.getIntValues())) {
-    auto old_value = out_shape[index_pair.value().getSExtValue()];
-    auto new_value = shape_small[index_pair.index()];
-    if (old_value != -1 && (new_value == -1 || new_value > old_value)) {
-      out_shape[index_pair.value().getSExtValue()] = new_value;
-    }
-  }
-
-  return RankedTensorType::get(out_shape, element_type);
+  return RankedTensorType::get(shape_x, element_type);
 }
 }  // namespace
-
-#define BINARY_BUILDER(Op)                                                    \
-  void Op::build(OpBuilder& builder, OperationState& result, Value left,      \
-                 Value right, DenseIntElementsAttr broadcast_dimensions) {    \
-    auto type = GetBroadcastType(&builder, left.getType().cast<ShapedType>(), \
-                                 right.getType().cast<ShapedType>(),          \
-                                 getElementTypeOrSelf(right.getType()),       \
-                                 broadcast_dimensions);                       \
-    return Op::build(builder, result, type, left, right,                      \
-                     broadcast_dimensions);                                   \
-  }
-
-BINARY_BUILDER(AddOp);
-BINARY_BUILDER(AndOp);
-BINARY_BUILDER(Atan2Op);
-BINARY_BUILDER(DivOp);
-BINARY_BUILDER(MaxOp);
-BINARY_BUILDER(MinOp);
-BINARY_BUILDER(MulOp);
-BINARY_BUILDER(OrOp);
-BINARY_BUILDER(PowOp);
-BINARY_BUILDER(RemOp);
-BINARY_BUILDER(ShiftLeftOp);
-BINARY_BUILDER(ShiftRightArithmeticOp);
-BINARY_BUILDER(ShiftRightLogicalOp);
-BINARY_BUILDER(SubOp);
-BINARY_BUILDER(XorOp);
-
-#undef BINARY_BUILDER
 
 template <typename Op, typename ElementType = Type, typename ValType,
           typename Convert>
 static Attribute BinaryFolder(Op* op, ArrayRef<Attribute> attrs) {
   if (!attrs[0] || !attrs[1]) return {};
-  if (op->broadcast_dimensions().hasValue()) return {};
 
   DenseElementsAttr lhs = attrs[0].dyn_cast<DenseElementsAttr>();
   DenseElementsAttr rhs = attrs[1].dyn_cast<DenseElementsAttr>();
@@ -1893,12 +1870,10 @@ void UnaryEinsumOp::getCanonicalizationPatterns(
 //===----------------------------------------------------------------------===//
 
 void CompareOp::build(OpBuilder& builder, OperationState& result, Value lhs,
-                      Value rhs, DenseIntElementsAttr broadcast_dimensions,
-                      StringAttr comparison_direction) {
-  auto new_type = GetBroadcastType(&builder, lhs.getType(), rhs.getType(),
-                                   builder.getI1Type(), broadcast_dimensions);
-  build(builder, result, new_type, lhs, rhs, broadcast_dimensions,
-        comparison_direction);
+                      Value rhs, StringAttr comparison_direction) {
+  auto new_type =
+      UpdateResultElementType(&builder, lhs.getType(), builder.getI1Type());
+  build(builder, result, new_type, lhs, rhs, comparison_direction);
 }
 
 #define GET_OP_CLASSES

@@ -25,6 +25,7 @@ import numpy as np
 
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
@@ -42,6 +43,14 @@ from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_v2
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+
+
+def string_test(actual, expected):
+  np.testing.assert_array_equal(actual, expected)
+
+
+def numeric_test(actual, expected):
+  np.testing.assert_allclose(actual, expected, rtol=1e-3, atol=1e-6)
 
 
 def get_test_data(train_samples,
@@ -132,6 +141,11 @@ def layer_test(layer_cls,
   if expected_output_dtype is None:
     expected_output_dtype = input_dtype
 
+  if dtypes.as_dtype(expected_output_dtype) == dtypes.string:
+    assert_equal = string_test
+  else:
+    assert_equal = numeric_test
+
   # instantiation
   kwargs = kwargs or {}
   layer = layer_cls(**kwargs)
@@ -199,8 +213,7 @@ def layer_test(layer_cls,
         (layer_cls.__name__, x, actual_output.dtype,
          computed_output_signature.dtype, kwargs))
   if expected_output is not None:
-    np.testing.assert_allclose(actual_output, expected_output,
-                               rtol=1e-3, atol=1e-6)
+    assert_equal(actual_output, expected_output)
 
   # test serialization, weight setting at model level
   model_config = model.get_config()
@@ -209,7 +222,7 @@ def layer_test(layer_cls,
     weights = model.get_weights()
     recovered_model.set_weights(weights)
     output = recovered_model.predict(input_data)
-    np.testing.assert_allclose(output, actual_output, rtol=1e-3, atol=1e-6)
+    assert_equal(output, actual_output)
 
   # test training mode (e.g. useful for dropout tests)
   # Rebuild the model to avoid the graph being reused between predict() and
@@ -254,8 +267,7 @@ def layer_test(layer_cls,
              computed_output_shape,
              kwargs))
   if expected_output is not None:
-    np.testing.assert_allclose(actual_output, expected_output,
-                               rtol=1e-3, atol=1e-6)
+    assert_equal(actual_output, expected_output)
 
   # test serialization, weight setting at model level
   model_config = model.get_config()
@@ -264,7 +276,7 @@ def layer_test(layer_cls,
     weights = model.get_weights()
     recovered_model.set_weights(weights)
     output = recovered_model.predict(input_data)
-    np.testing.assert_allclose(output, actual_output, rtol=1e-3, atol=1e-6)
+    assert_equal(output, actual_output)
 
   # for further checks in the caller function
   return actual_output

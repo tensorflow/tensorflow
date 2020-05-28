@@ -31,7 +31,7 @@ namespace {
 
 // Convert a dot into a canonical form where non-contracting and contracting
 // dimensions are reshaped together and batch dimensions are the most major
-// dimensions. The requires transposing and reshapes the lhs and rhs and
+// dimensions. This requires transposing and reshapes of the lhs and rhs and
 // reshaping the output batch to the original shape.
 Status CanonicalizeDot(HloInstruction* original_dot) {
   auto computation = original_dot->parent();
@@ -80,7 +80,9 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
                                        lhs_shape),
           original_dot->mutable_operand(0), lhs_transpose));
   std::vector<int64> lhs_reshape_dims = batch_dim_sizes;
-  lhs_reshape_dims.push_back(lhs_non_contracting_size);
+  if (lhs_non_contracting_size > 1) {
+    lhs_reshape_dims.push_back(lhs_non_contracting_size);
+  }
   lhs_reshape_dims.push_back(lhs_contracting_size);
   // Reshape the contracting and non-contracting dimensions together.
   HloInstruction* reshaped_lhs =
@@ -126,7 +128,9 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
 
   std::vector<int64> rhs_reshape_dims = batch_dim_sizes;
   rhs_reshape_dims.push_back(rhs_contracting_size);
-  rhs_reshape_dims.push_back(rhs_non_contracting_size);
+  if (rhs_non_contracting_size > 1) {
+    rhs_reshape_dims.push_back(rhs_non_contracting_size);
+  }
   // Reshape the contracting and non-contracting dimensions together.
   HloInstruction* reshaped_rhs =
       computation->AddInstruction(HloInstruction::CreateReshape(
@@ -134,15 +138,20 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
           transposed_rhs));
 
   std::vector<int64> dot_dims = batch_dim_sizes;
-  dot_dims.push_back(lhs_non_contracting_size);
-  dot_dims.push_back(rhs_non_contracting_size);
+  if (lhs_non_contracting_size > 1) {
+    dot_dims.push_back(lhs_non_contracting_size);
+  }
+  if (rhs_non_contracting_size > 1) {
+    dot_dims.push_back(rhs_non_contracting_size);
+  }
 
   DotDimensionNumbers dot_dnums;
   for (int64 i = 0; i < num_batch_dims; ++i) {
     dot_dnums.add_lhs_batch_dimensions(i);
     dot_dnums.add_rhs_batch_dimensions(i);
   }
-  dot_dnums.add_lhs_contracting_dimensions(num_batch_dims + 1);
+  dot_dnums.add_lhs_contracting_dimensions(
+      num_batch_dims + (lhs_non_contracting_size > 1 ? 1 : 0));
   dot_dnums.add_rhs_contracting_dimensions(num_batch_dims);
 
   HloInstruction* dot = computation->AddInstruction(HloInstruction::CreateDot(
@@ -174,9 +183,9 @@ StatusOr<bool> DotDecomposer::Run(HloModule* module) {
       }
       // A dot is not canonical if it has more than one non-contracting
       // dimension.
-      if (dnums.lhs_batch_dimensions_size() + 2 !=
+      if (dnums.lhs_batch_dimensions_size() + 2 <
               instruction->operand(0)->shape().rank() ||
-          dnums.rhs_batch_dimensions_size() + 2 !=
+          dnums.rhs_batch_dimensions_size() + 2 <
               instruction->operand(1)->shape().rank()) {
         non_canonical_dots.push_back(instruction);
         continue;

@@ -128,7 +128,6 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
-        "notpu",  # TODO(b/155867206) flaky segfault
         "notsan",
     ],
     tpu_tags = [
@@ -431,10 +430,10 @@ py_test(
     python_version = "PY3",
     shard_count = 5,
     tags = [
-        "noasan",
-        "nomsan",
-        "notsan",
-    ],  # TODO(b/156029134)
+        "noasan",  # TODO(b/156029134)
+        "nomsan",  # TODO(b/156029134)
+        "notsan",  # TODO(b/156029134)
+    ],
     deps = [
         "//tensorflow/python:platform",
         "//tensorflow/python/data/ops:dataset_ops",

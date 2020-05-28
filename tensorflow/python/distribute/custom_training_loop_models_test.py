@@ -26,6 +26,7 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
@@ -447,6 +448,35 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
                                 outputs)
 
     train_step(input_iterator)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies, mode=["eager"]))
+  def test_reduce_loss(self, distribution):
+    inputs = np.zeros((10, 4), dtype=np.float32)
+    targets = np.zeros((10, 1), dtype=np.float32)
+    dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+    dataset = dataset.batch(10, drop_remainder=False)
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    with distribution.scope():
+      x = keras.layers.Input(shape=(4), name="input")
+      y = keras.layers.Dense(3, name="dense")(x)
+      model = keras.Model(x, y)
+
+    @def_function.function
+    def train_step(iterator):
+
+      def step_fn(inputs):
+        images, targets = inputs
+        outputs = model(images)
+        loss = keras.losses.sparse_categorical_crossentropy(targets, outputs)
+        return loss
+
+      return distribution.run(step_fn, args=(next(iterator),))
+
+    loss = train_step(input_iterator)
+    loss = distribution.reduce(reduce_util.ReduceOp.MEAN, loss, axis=0)
 
   @combinations.generate(
       combinations.combine(

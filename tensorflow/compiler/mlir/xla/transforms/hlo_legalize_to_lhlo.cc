@@ -43,8 +43,8 @@ constexpr StringRef kTempBufferAttr = "temp";
 template <typename T>
 using BaseOpConversion = BufferAssignmentOpConversionPattern<T>;
 using StdReturnOpConverter =
-    NonVoidToVoidReturnOpConverter<mlir::ReturnOp, xla_lhlo::TerminatorOp,
-                                   xla_lhlo::CopyOp>;
+    NoBufferOperandsReturnOpConverter<mlir::ReturnOp, xla_lhlo::TerminatorOp,
+                                      xla_lhlo::CopyOp>;
 
 Value InsertDynamicAllocAndDealloc(Location loc, Value result,
                                    Value shape_operand,
@@ -362,6 +362,7 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<xla_hlo::CopyOp>,
       HloToLhloOpConverter<xla_hlo::CosOp>,
       HloToLhloOpConverter<xla_hlo::DivOp>,
+      HloToLhloOpConverter<xla_hlo::DotOp>,
       HloToLhloOpConverter<xla_hlo::ExpOp>,
       HloToLhloOpConverter<xla_hlo::ImagOp>,
       HloToLhloOpConverter<xla_hlo::IotaOp>,

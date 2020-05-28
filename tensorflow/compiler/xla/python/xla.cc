@@ -24,17 +24,12 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "pybind11/attr.h"
 #include "pybind11/cast.h"
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/lib/comparators.h"
-#include "tensorflow/compiler/xla/client/lib/math.h"
-#include "tensorflow/compiler/xla/client/lib/qr.h"
-#include "tensorflow/compiler/xla/client/lib/self_adjoint_eig.h"
-#include "tensorflow/compiler/xla/client/lib/sorting.h"
-#include "tensorflow/compiler/xla/client/lib/svd.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -47,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/bfloat16.h"
 #include "tensorflow/compiler/xla/python/dlpack.h"
+#include "tensorflow/compiler/xla/python/ops.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
@@ -62,15 +58,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
+#include "tensorflow/python/profiler/internal/traceme_wrapper.h"
 #include "tensorflow/stream_executor/platform.h"
 
 namespace xla {
+namespace {
 
 namespace py = pybind11;
 
-namespace {
+using ::tensorflow::profiler::TraceMeWrapper;
 
 struct Uniquer {
   absl::Mutex mu;
@@ -304,358 +301,6 @@ StatusOr<py::dict> PjRtBufferCudaArrayInterface(const PjRtBuffer& buffer) {
   return result;
 }
 
-void BuildOpsSubmodule(py::module* m) {
-  // ops submodule, containing free functions that add operators to an
-  // XlaBuilder.
-  py::module ops = m->def_submodule("ops", "XLA operations");
-
-  py::enum_<TriangularSolveOptions::Transpose>(
-      ops, "TriangularSolveOptions_Transpose")
-      .value("TRANSPOSE_INVALID", TriangularSolveOptions::TRANSPOSE_INVALID)
-      .value("NO_TRANSPOSE", TriangularSolveOptions::NO_TRANSPOSE)
-      .value("TRANSPOSE", TriangularSolveOptions::TRANSPOSE)
-      .value("ADJOINT", TriangularSolveOptions::ADJOINT);
-
-  ops.def("AfterAll", &AfterAll, py::arg("builder"), py::arg("tokens"));
-  ops.def(
-      "AllReduce",
-      static_cast<XlaOp (*)(
-          XlaOp, const XlaComputation&, absl::Span<const ReplicaGroup>,
-          const absl::optional<ChannelHandle>&, const absl::optional<Shape>&)>(
-          &AllReduce),
-      py::arg("operand"), py::arg("computation"),
-      py::arg("replica_groups") = py::list(),
-      py::arg("channel_id") = absl::nullopt,
-      py::arg("shape_with_layout") = absl::nullopt);
-  ops.def("AllToAll", &AllToAll, py::arg("operand"), py::arg("split_dimension"),
-          py::arg("concat_dimension"), py::arg("split_count"),
-          py::arg("replica_groups") = py::list(),
-          py::arg("layout") = absl::nullopt);
-  ops.def("CollectivePermute", &CollectivePermute, py::arg("operand"),
-          py::arg("source_target_pairs"));
-  ops.def("CreateToken", &CreateToken, py::arg("builder"));
-  ops.def("CrossReplicaSum",
-          static_cast<XlaOp (*)(XlaOp, absl::Span<const ReplicaGroup>)>(
-              &CrossReplicaSum),
-          py::arg("operand"), py::arg("replica_groups") = py::list());
-  ops.def("BitcastConvertType", &BitcastConvertType, py::arg("operand"),
-          py::arg("new_element_type"));
-  ops.def("Broadcast", &Broadcast, py::arg("operand"), py::arg("sizes"));
-  ops.def("BroadcastInDim", &BroadcastInDim, py::arg("operand"),
-          py::arg("shape"), py::arg("broadcast_dimensions"));
-  ops.def("Call", &Call, py::arg("builder"), py::arg("computation"),
-          py::arg("operands"));
-  ops.def("Cholesky", &Cholesky, py::arg("a"), py::arg("lower") = true);
-  ops.def("Clamp", &Clamp, py::arg("min"), py::arg("operand"), py::arg("max"));
-  ops.def("Collapse", &Collapse, py::arg("operand"), py::arg("dimensions"));
-  ops.def("ConcatInDim", &ConcatInDim, py::arg("builder"), py::arg("operands"),
-          py::arg("dimension"));
-  ops.def("Conditional",
-          static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaComputation* const>,
-                                absl::Span<const XlaOp>)>(&Conditional),
-          py::arg("branch_index"), py::arg("branch_computations"),
-          py::arg("branch_operands"));
-  ops.def("Conditional",
-          static_cast<XlaOp (*)(XlaOp, XlaOp, const XlaComputation&, XlaOp,
-                                const XlaComputation&)>(&Conditional),
-          py::arg("predicate"), py::arg("true_operand"),
-          py::arg("true_computation"), py::arg("false_operand"),
-          py::arg("false_computation"));
-  ops.def("Constant", &ConstantLiteral, py::arg("builder"), py::arg("literal"));
-  ops.def("ConstantLiteral", &ConstantLiteral, py::arg("builder"),
-          py::arg("literal"));
-  ops.def("ConvGeneralDilated", &ConvGeneralDilated, py::arg("lhs"),
-          py::arg("rhs"), py::arg("window_strides"), py::arg("padding"),
-          py::arg("lhs_dilation"), py::arg("rhs_dilation"),
-          py::arg("dimension_numbers"), py::arg("feature_group_count") = 1,
-          py::arg("batch_group_count") = 1,
-          py::arg("precision_config") = nullptr);
-  ops.def("ConvertElementType", &ConvertElementType, py::arg("operand"),
-          py::arg("new_element_type"));
-  ops.def(
-      "CustomCall",
-      [](XlaBuilder* builder, const py::bytes& call_target_name,
-         absl::Span<const XlaOp> operands, const Shape& shape,
-         const py::bytes& opaque) -> XlaOp {
-        return CustomCall(builder, call_target_name, operands, shape, opaque);
-      },
-      py::arg("builder"), py::arg("call_target_name"), py::arg("operands"),
-      py::arg("shape"), py::arg("opaque") = py::bytes(""));
-  ops.def(
-      "CustomCallWithLayout",
-      [](XlaBuilder* builder, const py::bytes& call_target_name,
-         absl::Span<const XlaOp> operands, const Shape& shape_with_layout,
-         absl::Span<const Shape> operand_shapes_with_layout,
-         const py::bytes& opaque) -> XlaOp {
-        return CustomCallWithLayout(builder, call_target_name, operands,
-                                    shape_with_layout,
-                                    operand_shapes_with_layout, opaque);
-      },
-      py::arg("builder"), py::arg("call_target_name"), py::arg("operands"),
-      py::arg("shape_with_layout"), py::arg("operand_shapes_with_layout"),
-      py::arg("opaque") = py::bytes(""));
-  ops.def("Dot", &Dot, py::arg("lhs"), py::arg("rhs"),
-          py::arg("precision_config") = nullptr);
-  ops.def("DotGeneral", &DotGeneral, py::arg("lhs"), py::arg("rhs"),
-          py::arg("dimension_numbers"), py::arg("precision_config") = nullptr);
-  ops.def("DynamicSlice",
-          static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaOp>,
-                                absl::Span<const int64>)>(&DynamicSlice),
-          py::arg("operand"), py::arg("start_indices"), py::arg("slice_sizes"));
-  ops.def("DynamicUpdateSlice",
-          static_cast<XlaOp (*)(XlaOp, XlaOp, absl::Span<const XlaOp>)>(
-              &DynamicUpdateSlice),
-          py::arg("operand"), py::arg("update"), py::arg("start_indices"));
-
-  ops.def("Fft", &Fft, py::arg("operand"), py::arg("fft_type"),
-          py::arg("fft_length"));
-
-  ops.def("Gather", &Gather, py::arg("a"), py::arg("start_indices"),
-          py::arg("dimension_numbers"), py::arg("slice_sizes"),
-          py::arg("indices_are_sorted") = false);
-  ops.def("GetTupleElement", &GetTupleElement, py::arg("tuple_data"),
-          py::arg("index"));
-  ops.def("InfeedWithToken", &InfeedWithToken, py::arg("token"),
-          py::arg("shape"), py::arg("config") = "");
-  ops.def("Iota",
-          static_cast<XlaOp (*)(XlaBuilder*, const Shape&, int64)>(&Iota),
-          py::arg("builder"), py::arg("shape"), py::arg("iota_dimension"));
-  ops.def("Iota",
-          static_cast<XlaOp (*)(XlaBuilder*, PrimitiveType, int64)>(&Iota),
-          py::arg("builder"), py::arg("type"), py::arg("size"));
-  ops.def("Map", &Map, py::arg("builder"), py::arg("operands"),
-          py::arg("computation"), py::arg("dimensions"),
-          py::arg("static_operands") = py::list());
-  ops.def("NextAfter", &NextAfter, py::arg("from"), py::arg("to"));
-  ops.def("OutfeedWithToken", &OutfeedWithToken, py::arg("operand"),
-          py::arg("token"), py::arg("shape_with_layout"),
-          py::arg("outfeed_config") = "");
-  ops.def("Pad", &Pad, py::arg("operand"), py::arg("padding_value"),
-          py::arg("padding_config"));
-  ops.def("Parameter",
-          static_cast<XlaOp (*)(XlaBuilder*, int64, const Shape&,
-                                const std::string&, const std::vector<bool>&)>(
-              &Parameter),
-          py::arg("builder"), py::arg("parameter_number"), py::arg("shape"),
-          py::arg("name") = "",
-          py::arg("replicated_at_leaf_buffers") = std::vector<bool>());
-  ops.def(
-      "QR",
-      [](XlaOp a, bool full_matrices) -> StatusOr<std::pair<XlaOp, XlaOp>> {
-        TF_ASSIGN_OR_RETURN(auto qr, QRDecomposition(a, full_matrices));
-        return std::make_pair(qr.q, qr.r);
-      },
-      py::arg("operand"), py::arg("full_matrices"));
-  ops.def(
-      "Eigh",
-      [](XlaOp a, bool lower, int64 max_iter,
-         float epsilon) -> std::pair<XlaOp, XlaOp> {
-        auto eigh = SelfAdjointEig(a, lower, max_iter, epsilon);
-        return std::make_pair(eigh.v, eigh.w);
-      },
-      py::arg("a"), py::arg("lower") = true, py::arg("max_iter") = 100,
-      py::arg("epsilon") = 1e-6);
-  ops.def(
-      "SVD",
-      [](XlaOp a, int64 max_iter,
-         float epsilon) -> std::tuple<XlaOp, XlaOp, XlaOp> {
-        auto svd = SVD(a, max_iter, epsilon);
-        return std::make_tuple(svd.u, svd.d, svd.v);
-      },
-      py::arg("a"), py::arg("max_iter") = 100, py::arg("epsilon") = 1e-6);
-  ops.def("Reduce",
-          static_cast<XlaOp (*)(XlaBuilder*, absl::Span<const XlaOp>,
-                                absl::Span<const XlaOp>, const XlaComputation&,
-                                absl::Span<const int64>)>(&Reduce),
-          py::arg("builder"), py::arg("operands"), py::arg("init_values"),
-          py::arg("computation"), py::arg("dimensions_to_reduce"));
-  ops.def("ReducePrecision", &ReducePrecision, py::arg("operand"),
-          py::arg("exponent_bits"), py::arg("mantissa_bits"));
-  ops.def("ReduceWindowWithGeneralPadding", &ReduceWindowWithGeneralPadding,
-          py::arg("operand"), py::arg("init_value"), py::arg("computation"),
-          py::arg("window_dimensions"), py::arg("window_strides"),
-          py::arg("base_dilations"), py::arg("window_dilations"),
-          py::arg("padding"));
-  ops.def("ReplicaId", &ReplicaId, py::arg("builder"));
-  ops.def("Reshape",
-          static_cast<XlaOp (*)(XlaOp, absl::Span<const int64>,
-                                absl::Span<const int64>)>(&Reshape),
-          py::arg("operand"), py::arg("dimensions"), py::arg("new_sizes"));
-  ops.def("Reshape",
-          static_cast<XlaOp (*)(XlaOp, absl::Span<const int64>)>(&Reshape),
-          py::arg("operand"), py::arg("new_sizes"));
-  ops.def("Rev", &Rev, py::arg("operand"), py::arg("dimensions"));
-  ops.def("RngNormal", &RngNormal, py::arg("mu"), py::arg("sigma"),
-          py::arg("shape"));
-  ops.def("RngUniform", &RngUniform, py::arg("a"), py::arg("b"),
-          py::arg("shape"));
-  ops.def("Scatter", &Scatter, py::arg("input"), py::arg("scatter_indices"),
-          py::arg("updates"), py::arg("update_computation"),
-          py::arg("dimension_numbers"), py::arg("indices_are_sorted") = false,
-          py::arg("unique_indices") = false);
-  ops.def("Select", &Select, py::arg("pred"), py::arg("on_true"),
-          py::arg("on_false"));
-  ops.def("SelectAndScatterWithGeneralPadding",
-          &SelectAndScatterWithGeneralPadding, py::arg("operand"),
-          py::arg("select"), py::arg("window_dimensions"),
-          py::arg("window_strides"), py::arg("padding"), py::arg("source"),
-          py::arg("init_value"), py::arg("scatter"));
-  ops.def("Slice", &Slice, py::arg("operand"), py::arg("start_indices"),
-          py::arg("limit_indices"), py::arg("strides"));
-  ops.def("SliceInDim", &SliceInDim, py::arg("operand"), py::arg("start_index"),
-          py::arg("limit_index"), py::arg("stride"), py::arg("dimno"));
-  ops.def(
-      "Sort",
-      [](XlaBuilder* builder, absl::Span<const XlaOp> operands,
-         absl::optional<const XlaComputation*> comparator, int64 dimension,
-         bool is_stable) -> XlaOp {
-        return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-          std::vector<PrimitiveType> operand_types;
-          for (const auto& operand : operands) {
-            TF_ASSIGN_OR_RETURN(auto operand_shape, builder->GetShape(operand));
-            operand_types.push_back(operand_shape.element_type());
-          }
-
-          if (comparator) {
-            return Sort(operands, **comparator, dimension, is_stable);
-          } else {
-            return Sort(operands,
-                        CreateScalarLtComputation(operand_types, builder),
-                        dimension, is_stable);
-          }
-        });
-      },
-      py::arg("builder"), py::arg("operands"),
-      py::arg("comparator") = absl::nullopt, py::arg("dimension") = -1,
-      py::arg("is_stable") = false);
-  ops.def("TopK", &TopK, py::arg("input"), py::arg("k"));
-  ops.def("Transpose", &Transpose, py::arg("operand"), py::arg("permutation"));
-  ops.def("TriangularSolve", &TriangularSolve, py::arg("a"), py::arg("b"),
-          py::arg("left_side"), py::arg("lower"), py::arg("unit_diagonal"),
-          py::arg("transpose_a"));
-  ops.def("Tuple", &Tuple, py::arg("builder"), py::arg("elements"));
-  ops.def("While", &While, py::arg("condition"), py::arg("body"),
-          py::arg("init"));
-
-  ops.def("Igamma", &Igamma, py::arg("a"), py::arg("x"));
-  ops.def("Igammac", &Igammac, py::arg("a"), py::arg("x"));
-  ops.def("IgammaGradA", &IgammaGradA, py::arg("a"), py::arg("x"));
-  ops.def("RandomGammaGrad", &RandomGammaGrad, py::arg("a"), py::arg("x"));
-  ops.def("RegularizedIncompleteBeta", &RegularizedIncompleteBeta, py::arg("a"),
-          py::arg("b"), py::arg("x"));
-
-#define BINARY_OP(op)                                                 \
-  ops.def(                                                            \
-      #op,                                                            \
-      [](XlaOp a, XlaOp b, absl::optional<std::vector<int64>> dims) { \
-        return dims ? op(a, b, *dims) : op(a, b);                     \
-      },                                                              \
-      py::arg("lhs"), py::arg("rhs"),                                 \
-      py::arg("broadcast_dimensions") = absl::nullopt)
-  BINARY_OP(Eq);
-  BINARY_OP(Ne);
-  BINARY_OP(Ge);
-  BINARY_OP(Gt);
-  BINARY_OP(Lt);
-  BINARY_OP(Le);
-  BINARY_OP(Add);
-  BINARY_OP(Sub);
-  BINARY_OP(Mul);
-  BINARY_OP(Div);
-  BINARY_OP(Rem);
-  BINARY_OP(Max);
-  BINARY_OP(Min);
-  BINARY_OP(And);
-  BINARY_OP(Or);
-  BINARY_OP(Xor);
-  BINARY_OP(ShiftLeft);
-  BINARY_OP(ShiftRightArithmetic);
-  BINARY_OP(ShiftRightLogical);
-  BINARY_OP(Atan2);
-  BINARY_OP(Pow);
-  BINARY_OP(Complex);
-#undef BINARY_OP
-
-#define UNARY_OP(op) ops.def(#op, &op)
-  UNARY_OP(Not);
-  UNARY_OP(PopulationCount);
-  UNARY_OP(Clz);
-  UNARY_OP(Abs);
-  UNARY_OP(Exp);
-  UNARY_OP(Expm1);
-  UNARY_OP(Floor);
-  UNARY_OP(Ceil);
-  UNARY_OP(Round);
-  UNARY_OP(Log);
-  UNARY_OP(Log1p);
-  UNARY_OP(Sign);
-  UNARY_OP(Cos);
-  UNARY_OP(Sin);
-  UNARY_OP(Tanh);
-  UNARY_OP(IsFinite);
-  UNARY_OP(Neg);
-  UNARY_OP(Sqrt);
-  UNARY_OP(Rsqrt);
-  UNARY_OP(Square);
-  UNARY_OP(Reciprocal);
-  UNARY_OP(Erfc);
-  UNARY_OP(Erf);
-  UNARY_OP(ErfInv);
-  UNARY_OP(Lgamma);
-  UNARY_OP(Digamma);
-  UNARY_OP(BesselI0e);
-  UNARY_OP(BesselI1e);
-  UNARY_OP(Acos);
-  UNARY_OP(Asin);
-  UNARY_OP(Atan);
-  UNARY_OP(Tan);
-  UNARY_OP(Acosh);
-  UNARY_OP(Asinh);
-  UNARY_OP(Atanh);
-  UNARY_OP(Cosh);
-  UNARY_OP(Sinh);
-  UNARY_OP(Real);
-  UNARY_OP(Imag);
-  UNARY_OP(Conj);
-#undef UNARY_OP
-}
-
-// Helper to implement TraceMe as a context manager in Python.
-class TraceMeContextManager {
- public:
-  explicit TraceMeContextManager(py::str name, py::kwargs kwargs)
-      : name_(std::move(name)), kwargs_(std::move(kwargs)) {}
-
-  void Enter() {
-    if (IsEnabled()) {
-      std::string name(name_);
-      if (!kwargs_.empty()) {
-        absl::StrAppend(&name, "#");
-        bool first = true;
-        for (const auto entry : kwargs_) {
-          absl::StrAppend(&name, first ? "" : ",",
-                          std::string(py::str(entry.first)), "=",
-                          std::string(py::str(entry.second)));
-          first = false;
-        }
-        absl::StrAppend(&name, "#");
-      }
-      traceme_.emplace(std::move(name));
-    }
-  }
-  py::object Exit(const py::object& ex_type, const py::object& ex_value,
-                  const py::object& traceback) {
-    traceme_.reset();
-    return py::none();
-  }
-
-  static bool IsEnabled() { return tensorflow::profiler::TraceMe::Active(); }
-
- private:
-  py::str name_;
-  py::kwargs kwargs_;
-  absl::optional<tensorflow::profiler::TraceMe> traceme_;
-};
 
 void BuildProfilerSubmodule(py::module* m) {
   py::module profiler =
@@ -672,11 +317,19 @@ void BuildProfilerSubmodule(py::module* m) {
       },
       py::arg("port"));
 
-  py::class_<TraceMeContextManager> traceme_class(profiler, "TraceMe");
+  py::class_<TraceMeWrapper> traceme_class(profiler, "TraceMe",
+                                           py::module_local());
   traceme_class.def(py::init<py::str, py::kwargs>())
-      .def("__enter__", &TraceMeContextManager::Enter)
-      .def("__exit__", &TraceMeContextManager::Exit)
-      .def_static("is_enabled", &TraceMeContextManager::IsEnabled);
+      .def("__enter__", [](py::object self) -> py::object { return self; })
+      .def("__exit__",
+           [](py::object self, const py::object& ex_type,
+              const py::object& ex_value,
+              const py::object& traceback) -> py::object {
+             py::cast<TraceMeWrapper*>(self)->Stop();
+             return py::none();
+           })
+      .def("set_metadata", &TraceMeWrapper::SetMetadata)
+      .def_static("is_enabled", &TraceMeWrapper::IsEnabled);
 }
 
 }  // namespace
@@ -930,34 +583,6 @@ PYBIND11_MODULE(xla_extension, m) {
           "client",
           [](const ClientAndPtr<Device>& device) { return device.client; })
       .def("__str__", &Device::DebugString)
-      // TODO(phawkins): remove capitalized names after updating callers.
-      .def("TransferToInfeed",
-           [](const Device& device, const LiteralSlice& literal) {
-             GlobalPyRefManager()->CollectGarbage();
-             py::gil_scoped_release gil_release;
-             TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                                 device.GetLocalDeviceState());
-             return local_device->client()->TransferToInfeedLocal(
-                 literal, local_device->device_ordinal());
-           })
-      .def(
-          "TransferFromOutfeed",
-          [](const Device& device, const Shape& shape) -> StatusOr<py::object> {
-            GlobalPyRefManager()->CollectGarbage();
-            std::shared_ptr<Literal> literal_shared;
-            {
-              py::gil_scoped_release gil_release;
-              TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                                  device.GetLocalDeviceState());
-              TF_ASSIGN_OR_RETURN(
-                  Literal literal,
-                  local_device->client()->TransferFromOutfeedLocal(
-                      shape, local_device->device_ordinal()));
-
-              literal_shared = std::make_shared<Literal>(std::move(literal));
-            }
-            return LiteralToPython(std::move(literal_shared));
-          })
       .def("transfer_to_infeed",
            [](const Device& device, const LiteralSlice& literal) {
              GlobalPyRefManager()->CollectGarbage();
@@ -1244,28 +869,6 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("size_of_generated_code_in_bytes",
            &PjRtExecutable::SizeOfGeneratedCodeInBytes)
       .def("delete", &PjRtExecutable::Delete)
-      // TODO(phawkins): delete capitalized methods after updating callers.
-      .def("Delete", &PjRtExecutable::Delete)
-      .def(
-          "Execute",
-          [](const PjRtExecutable& executable,
-             absl::Span<PjRtBuffer* const> args)
-              -> StatusOr<std::vector<ClientAndUniquePtr<PjRtBuffer>>> {
-            py::gil_scoped_release gil_release;
-            ExecuteOptions options;
-            options.untuple_result = true;
-            TF_ASSIGN_OR_RETURN(
-                std::vector<std::unique_ptr<PjRtBuffer>> output_buffers,
-                executable.Execute(args, options));
-            std::vector<ClientAndUniquePtr<PjRtBuffer>> outputs;
-            outputs.reserve(output_buffers.size());
-            for (auto& buffer : output_buffers) {
-              outputs.push_back(WrapWithClient(
-                  executable.client()->shared_from_this(), std::move(buffer)));
-            }
-            return outputs;
-          },
-          py::arg("arguments"))
       .def(
           "execute",
           [](const PjRtExecutable& executable,
@@ -1282,33 +885,6 @@ PYBIND11_MODULE(xla_extension, m) {
             for (auto& buffer : output_buffers) {
               outputs.push_back(WrapWithClient(
                   executable.client()->shared_from_this(), std::move(buffer)));
-            }
-            return outputs;
-          },
-          py::arg("arguments"))
-      // TODO(phawkins): delete capitalized methods after updating callers.
-      .def(
-          "ExecuteOnLocalDevices",
-          [](const PjRtExecutable& executable,
-             absl::Span<const std::vector<PjRtBuffer*>> args)
-              -> StatusOr<
-                  std::vector<std::vector<ClientAndUniquePtr<PjRtBuffer>>>> {
-            py::gil_scoped_release gil_release;
-            ExecuteOptions options;
-            options.untuple_result = true;
-            TF_ASSIGN_OR_RETURN(
-                std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>
-                    output_buffers,
-                executable.ExecuteOnLocalDevices(args, options));
-            std::vector<std::vector<ClientAndUniquePtr<PjRtBuffer>>> outputs;
-            outputs.resize(output_buffers.size());
-            for (int computation = 0; computation < output_buffers.size();
-                 ++computation) {
-              for (auto& buffer : output_buffers[computation]) {
-                outputs[computation].push_back(
-                    WrapWithClient(executable.client()->shared_from_this(),
-                                   std::move(buffer)));
-              }
             }
             return outputs;
           },
@@ -1373,7 +949,19 @@ PYBIND11_MODULE(xla_extension, m) {
                     &DebugOptions::set_xla_cpu_fast_math_honor_functions)
       .def_property("xla_gpu_enable_fast_min_max",
                     &DebugOptions::xla_gpu_enable_fast_min_max,
-                    &DebugOptions::set_xla_gpu_enable_fast_min_max);
+                    &DebugOptions::set_xla_gpu_enable_fast_min_max)
+      .def_property("xla_backend_optimization_level",
+                    &DebugOptions::xla_backend_optimization_level,
+                    &DebugOptions::set_xla_backend_optimization_level)
+      .def_property("xla_cpu_enable_xprof_traceme",
+                    &DebugOptions::xla_cpu_enable_xprof_traceme,
+                    &DebugOptions::set_xla_cpu_enable_xprof_traceme)
+      .def_property("xla_llvm_disable_expensive_passes",
+                    &DebugOptions::xla_llvm_disable_expensive_passes,
+                    &DebugOptions::set_xla_llvm_disable_expensive_passes)
+      .def_property("xla_test_all_input_layouts",
+                    &DebugOptions::xla_test_all_input_layouts,
+                    &DebugOptions::set_xla_test_all_input_layouts);
 
   py::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")
       .def(py::init<>())
@@ -1414,12 +1002,6 @@ PYBIND11_MODULE(xla_extension, m) {
         proto.ParseFromString(serialized_hlo_module_proto);
         return absl::make_unique<XlaComputation>(proto);
       }))
-      // TODO(phawkins): delete capitalized names after updating callers.
-      .def("GetProgramShape", &XlaComputation::GetProgramShape)
-      .def("GetSerializedProto", &GetComputationSerializedProto)
-      .def("GetHloText", &GetComputationHloText)
-      .def("GetHloDotGraph", &GetComputationHloDotGraph)
-      .def("Hash", &HashComputation)
       .def("get_hlo_module", &GetHloModule)
       .def("program_shape", &XlaComputation::GetProgramShape)
       .def("as_serialized_hlo_module_proto", &GetComputationSerializedProto)
@@ -1512,28 +1094,7 @@ PYBIND11_MODULE(xla_extension, m) {
           },
           "Builds a computation from the contents of the builder.",
           py::arg("root") = absl::nullopt)
-      .def("ClearOpMetadata", &XlaBuilder::ClearOpMetadata)
       .def("GetShape", &XlaBuilder::GetShape)
-      .def(
-          "GetProgramShape",
-          [](const XlaBuilder& builder,
-             absl::optional<XlaOp> root) -> StatusOr<ProgramShape> {
-            return root ? builder.GetProgramShape(*root)
-                        : builder.GetProgramShape();
-          },
-          py::arg("root") = absl::nullopt)
-      .def("IsConstant", &XlaBuilder::IsConstant)
-      .def("SetOpMetadata", &XlaBuilder::SetOpMetadata)
-      .def("SetSharding", &XlaBuilder::SetSharding)
-      .def("ClearSharding", &XlaBuilder::ClearSharding)
-      .def("SetUpAlias",
-           [](XlaBuilder& builder, const std::vector<int64>& output_index,
-              int64 param_number, const std::vector<int64>& param_index) {
-             builder.SetUpAlias(
-                 ShapeIndex(output_index.begin(), output_index.end()),
-                 param_number,
-                 ShapeIndex(param_index.begin(), param_index.end()));
-           })
       .def(
           "build",
           [](XlaBuilder& builder, absl::optional<XlaOp> root) {
@@ -1564,17 +1125,7 @@ PYBIND11_MODULE(xla_extension, m) {
                  ShapeIndex(param_index.begin(), param_index.end()));
            });
 
-  // TODO(phawkins): delete capitalized names after updating callers
-  m.def("BufferToDLPackManagedTensor", BufferToDLPackManagedTensor);
   m.def("buffer_to_dlpack_managed_tensor", BufferToDLPackManagedTensor);
-  m.def("DLPackManagedTensorToBuffer",
-        [](const py::capsule& tensor, std::shared_ptr<PjRtClient> client)
-            -> StatusOr<ClientAndUniquePtr<PjRtBuffer>> {
-          TF_ASSIGN_OR_RETURN(
-              std::unique_ptr<PjRtBuffer> buffer,
-              DLPackManagedTensorToBuffer(tensor, client.get()));
-          return WrapWithClient(std::move(client), std::move(buffer));
-        });
   m.def("dlpack_managed_tensor_to_buffer",
         [](const py::capsule& tensor, std::shared_ptr<PjRtClient> client)
             -> StatusOr<ClientAndUniquePtr<PjRtBuffer>> {

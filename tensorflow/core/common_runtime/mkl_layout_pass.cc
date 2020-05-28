@@ -506,7 +506,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
          CopyAttrsAll, LrnGradRewrite, kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.matmul,
                       mkl_op_registry::GetMklOpName(csinfo_.matmul),
-                      CopyAttrsAll, AlwaysRewrite, kRewriteForOpNameChange});
+                      CopyAttrsAll, MatMulRewrite, kRewriteForOpNameChange});
     rinfo_.push_back(
         {csinfo_.leakyrelu, mkl_op_registry::GetMklOpName(csinfo_.leakyrelu),
          CopyAttrsAll, LeakyReluRewrite, kRewriteForLayoutPropagation});
@@ -1478,6 +1478,16 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
           return true;
         }
       }
+    }
+    return false;
+  }
+
+  static bool MatMulRewrite(const Node* n) {
+    DataType T;
+    GetNodeAttr(n->def(), "T", &T);
+    if ((T == DT_FLOAT) || (T == DT_BFLOAT16)) {
+      VLOG(2) << "Rewriting MatMul to _MklMatMul";
+      return true;
     }
     return false;
   }

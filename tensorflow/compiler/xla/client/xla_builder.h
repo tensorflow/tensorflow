@@ -889,6 +889,7 @@ class XlaBuilder {
   friend XlaOp Compare(XlaOp lhs, XlaOp rhs,
                        absl::Span<const int64> broadcast_dimensions,
                        ComparisonDirection direction);
+  friend XlaOp Compare(XlaOp lhs, XlaOp rhs, ComparisonDirection direction);
   friend XlaOp Dot(XlaOp lhs, XlaOp rhs,
                    const PrecisionConfig* precision_config);
   friend XlaOp DotGeneral(XlaOp lhs, XlaOp rhs,
@@ -1498,10 +1499,12 @@ XlaOp Lt(XlaOp lhs, XlaOp rhs,
 XlaOp Le(XlaOp lhs, XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions = {});
 
-// Enqueues a comparison instruction onto the computation.
+// Enqueues a comparison instruction onto the computation (optionally without
+// broadcast_dimensions for consistency with others).
 XlaOp Compare(XlaOp lhs, XlaOp rhs,
               absl::Span<const int64> broadcast_dimensions,
               ComparisonDirection direction);
+XlaOp Compare(XlaOp lhs, XlaOp rhs, ComparisonDirection direction);
 
 // Enqueues a dot instruction onto the computation.
 XlaOp Dot(XlaOp lhs, XlaOp rhs,

@@ -136,3 +136,9 @@ module attributes {tf_saved_model.semantics} {
   }
 
 }
+
+// -----
+
+// Test running the pass on a module that does not have
+// tf_saved_model.semantics.
+module {}
