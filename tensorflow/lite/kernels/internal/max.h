@@ -12,29 +12,24 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_CPPMATH_H_
-#define TENSORFLOW_LITE_KERNELS_INTERNAL_CPPMATH_H_
+#ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_MAX_H_
+#define TENSORFLOW_LITE_KERNELS_INTERNAL_MAX_H_
 
 #include <cmath>
 
 namespace tflite {
 
-#if defined(TF_LITE_USE_GLOBAL_CMATH_FUNCTIONS) ||                           \
-    (defined(__ANDROID__) && !defined(__NDK_MAJOR__)) || defined(ARDUINO) || \
-    defined(__ZEPHYR__)
-#define TF_LITE_GLOBAL_STD_PREFIX
+#if defined(TF_LITE_USE_GLOBAL_MAX) || defined(__ZEPHYR__)
+inline float TfLiteMax(const float& x, const float& y) {
+  return std::max(x, y);
+}
 #else
-#define TF_LITE_GLOBAL_STD_PREFIX std
+template <class T>
+inline T TfLiteMax(const T& x, const T& y) {
+  return std::fmax(x, y);
+}
 #endif
-
-#define DECLARE_STD_GLOBAL_SWITCH1(tf_name, std_name) \
-  template <class T>                                  \
-  inline T tf_name(const T x) {                       \
-    return TF_LITE_GLOBAL_STD_PREFIX::std_name(x);    \
-  }
-
-DECLARE_STD_GLOBAL_SWITCH1(TfLiteRound, round);
 
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_CPPMATH_H_
+#endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_MAX_H_
