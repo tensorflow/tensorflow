@@ -494,6 +494,13 @@ void QuantizationDriver::QuantizeValue(Value value, QuantParams params,
   auto quantize = builder_.create<quant::QuantizeCastOp>(loc, new_type, value);
   auto dequantize = builder_.create<quant::DequantizeCastOp>(
       loc, expressed_type, quantize.getResult());
+
+  // This attribute is set to distinguish the quantize ops being added by the
+  // quantization pass. These ops can be removed without losing original
+  // program accuracy.
+  // TODO(fengliuai): make the attribute being part of op definition.
+  quantize.setAttr(kVolatileOpAttrName, builder_.getUnitAttr());
+
   // `original_result` has a use to `quantize`, so this will replace that use
   // by the result of `dequantize`. Remember to reset that use afterwards
   value.replaceAllUsesWith(dequantize);
