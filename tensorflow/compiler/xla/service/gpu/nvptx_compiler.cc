@@ -385,6 +385,19 @@ std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
         } else {
           if (maybe_cubin.status().code() ==
               tensorflow::error::Code::NOT_FOUND) {
+            if (!hlo_module_config.debug_options()
+                     .xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found()) {
+              PrintCantFindCudaMessage(
+                  "Can't find ptxas binary in ${CUDA_DIR}/bin.  Custom ptxas "
+                  "location can be specified using $PATH.",
+                  hlo_module_config);
+              LOG(FATAL)
+                  << "Can't find ptxas binary.  You can pass the flag "
+                     "--xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found "
+                     "to use the GPU driver for compiling ptx instead. However "
+                     "this option is discouraged and can lead to increased "
+                     "memory concumptions and other subtle runtime issues.";
+            }
             // Missing ptxas is expected in some environments where CUDA SDK
             // binaries are not available. We don't want to spam logs with
             // identical warnings in this case.
@@ -402,14 +415,6 @@ std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
                   "using $PATH.",
                   hlo_module_config);
             }
-            CHECK(hlo_module_config.debug_options()
-                      .xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found())
-                << "There was an error when trying to compile ptx into sass "
-                   "code. If you want to try falling back to the GPU driver to "
-                   "jit compile ptx, you can use the flag "
-                   "--xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found."
-                   " Use at your own risk though, it has known drawbacks like "
-                   "increased memory consumption.";
           } else {
             LOG(FATAL) << "ptxas returned an error during compilation of ptx "
                           "to sass: '"
