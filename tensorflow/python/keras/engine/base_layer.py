@@ -316,6 +316,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # TODO(kathywu): Move this to Layer._set_save_spec once cl/290121460 is
     # submitted.
     self._build_input_shape = None
+    self._saved_model_inputs_spec = None
     # Provides information about which inputs are compatible with the layer.
     self._input_spec = None
     self.supports_masking = False
@@ -1002,7 +1003,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
             outputs = self.call(cast_inputs, *args, **kwargs)
           self._handle_activity_regularization(inputs, outputs)
           self._set_mask_metadata(inputs, outputs, input_masks, build_graph)
-          if hasattr(self, '_set_save_spec'):
+          if self._saved_model_inputs_spec is None:
             self._set_save_spec(cast_inputs)
 
     return outputs
@@ -2808,6 +2809,22 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     return inputs, args, kwargs
 
   # SavedModel properties. Please see keras/saving/saved_model for details.
+
+  @trackable.no_automatic_dependency_tracking
+  def _set_save_spec(self, inputs):
+    if self._saved_model_inputs_spec is not None:
+      return  # Already set.
+
+    self._saved_model_inputs_spec = nest.map_structure(tf_utils.get_tensor_spec,
+                                                       inputs)
+
+  def _get_save_spec(self, dynamic_batch=True):
+    if self._saved_model_inputs_spec is None:
+      return None
+
+    return nest.map_structure(
+        lambda t: tf_utils.get_tensor_spec(t, dynamic_batch=dynamic_batch),
+        self._saved_model_inputs_spec)
 
   @property
   def _trackable_saved_model_saver(self):
