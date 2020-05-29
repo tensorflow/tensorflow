@@ -281,6 +281,14 @@ func @complex_collapse_fold(%arg0: tensor<4xcomplex<f32>>) -> tensor<4xcomplex<f
   return %2 : tensor<4xcomplex<f32>>
 }
 
+// CHECK-LABEL: @dynamic_iota_is_static
+func @dynamic_iota_is_static(%arg0 : tensor<1xindex>) -> tensor<4xi32> {
+  // CHECK: [[RESULT:%.*]] = "xla_hlo.iota"
+  // CHECK: return [[RESULT]]
+  %0 = "xla_hlo.dynamic_iota"(%arg0) {iota_dimension = 0 : i64} : (tensor<1xindex>) -> tensor<4xi32>
+  return %0 : tensor<4xi32>
+}
+
 // CHECK-LABEL: @iota_not_lowered_to_constant
 func @iota_not_lowered_to_constant() -> tensor<4xi32> {
   // CHECK: [[RESULT:%.*]] = "xla_hlo.iota"

@@ -263,6 +263,34 @@ static LogicalResult Verify(IotaOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// DynamicIotaOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+struct DynamicIotaIsStatic : public OpRewritePattern<DynamicIotaOp> {
+  using OpRewritePattern<DynamicIotaOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(DynamicIotaOp iota,
+                                PatternRewriter& rewriter) const override {
+    auto result_ty = iota.getType().cast<ShapedType>();
+    if (!result_ty.hasStaticShape()) {
+      return failure();
+    }
+
+    rewriter.replaceOpWithNewOp<IotaOp>(iota, result_ty, iota.iota_dimension());
+    return success();
+  }
+};
+
+}  // namespace
+
+void DynamicIotaOp::getCanonicalizationPatterns(
+    OwningRewritePatternList& results, MLIRContext* context) {
+  results.insert<DynamicIotaIsStatic>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // AbsOp
 //===----------------------------------------------------------------------===//
 
