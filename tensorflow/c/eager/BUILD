@@ -370,8 +370,37 @@ tf_cuda_cc_test(
     extra_copts = tfe_xla_copts(),
     tags = [
         "noasan",  # leaks gRPC server instances
-        "notsan",  # b/157098283
     ],
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        ":c_api_internal",
+        ":c_api_test_util",
+        ":tfe_tensorhandle_internal",
+        "//tensorflow/c:c_test_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:function_optimization_registry",
+        "//tensorflow/core/common_runtime/eager:eager_operation",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "c_api_distributed_test",
+    size = "small",
+    srcs = [
+        "c_api_distributed_test.cc",
+    ],
+    # TODO(b/136478427): Figure out how to correctly shut the server down
+    args = ["--heap_check=local"],
+    extra_copts = tfe_xla_copts(),
+    tags = ["noasan"],  # leaks gRPC server instances
     deps = [
         ":c_api",
         ":c_api_experimental",
