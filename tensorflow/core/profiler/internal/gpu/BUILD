@@ -15,6 +15,10 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+load(
+    "//tensorflow/stream_executor:build_defs.bzl",
+    "tf_additional_cupti_deps",
+)
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -91,9 +95,7 @@ tf_cuda_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:platform_base",
-    ] + if_cuda_is_configured_compat([
-        "//tensorflow/stream_executor/cuda:cupti_stub",
-    ]),
+    ] + tf_additional_cupti_deps(),
 )
 
 tf_cuda_library(
@@ -104,9 +106,7 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cupti_interface",
-    ] + if_cuda_is_configured_compat([
-        "//tensorflow/stream_executor/cuda:cupti_stub",
-    ]),
+    ] + tf_additional_cupti_deps(),
 )
 
 tf_cuda_library(
