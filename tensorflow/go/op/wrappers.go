@@ -19606,6 +19606,14 @@ func CollectiveBcastSendCommunicationHint(value string) CollectiveBcastSendAttr 
 	}
 }
 
+// CollectiveBcastSendTimeoutSeconds sets the optional timeout_seconds attribute to value.
+// If not specified, defaults to 0
+func CollectiveBcastSendTimeoutSeconds(value float32) CollectiveBcastSendAttr {
+	return func(m optionalAttr) {
+		m["timeout_seconds"] = value
+	}
+}
+
 // Broadcasts a tensor value to one or more other devices.
 func CollectiveBcastSend(scope *Scope, input tf.Output, group_size int64, group_key int64, instance_key int64, shape tf.Shape, optional ...CollectiveBcastSendAttr) (data tf.Output) {
 	if scope.Err() != nil {
@@ -32032,6 +32040,14 @@ func CollectiveBcastRecvCommunicationHint(value string) CollectiveBcastRecvAttr 
 	}
 }
 
+// CollectiveBcastRecvTimeoutSeconds sets the optional timeout_seconds attribute to value.
+// If not specified, defaults to 0
+func CollectiveBcastRecvTimeoutSeconds(value float32) CollectiveBcastRecvAttr {
+	return func(m optionalAttr) {
+		m["timeout_seconds"] = value
+	}
+}
+
 // Receives a tensor value broadcast from another device.
 func CollectiveBcastRecv(scope *Scope, T tf.DataType, group_size int64, group_key int64, instance_key int64, shape tf.Shape, optional ...CollectiveBcastRecvAttr) (data tf.Output) {
 	if scope.Err() != nil {
@@ -38224,6 +38240,14 @@ func CollectiveGatherCommunicationHint(value string) CollectiveGatherAttr {
 	}
 }
 
+// CollectiveGatherTimeoutSeconds sets the optional timeout_seconds attribute to value.
+// If not specified, defaults to 0
+func CollectiveGatherTimeoutSeconds(value float32) CollectiveGatherAttr {
+	return func(m optionalAttr) {
+		m["timeout_seconds"] = value
+	}
+}
+
 // Mutually accumulates multiple tensors of identical type and shape.
 func CollectiveGather(scope *Scope, input tf.Output, group_size int64, group_key int64, instance_key int64, shape tf.Shape, optional ...CollectiveGatherAttr) (data tf.Output) {
 	if scope.Err() != nil {
@@ -42945,6 +42969,14 @@ func CollectiveReduceWaitFor(value []int64) CollectiveReduceAttr {
 func CollectiveReduceCommunicationHint(value string) CollectiveReduceAttr {
 	return func(m optionalAttr) {
 		m["communication_hint"] = value
+	}
+}
+
+// CollectiveReduceTimeoutSeconds sets the optional timeout_seconds attribute to value.
+// If not specified, defaults to 0
+func CollectiveReduceTimeoutSeconds(value float32) CollectiveReduceAttr {
+	return func(m optionalAttr) {
+		m["timeout_seconds"] = value
 	}
 }
 
