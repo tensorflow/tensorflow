@@ -28,6 +28,10 @@ load(
     "if_static",
     "tf_cuda_tests_tags",
 )
+load(
+    "//tensorflow/stream_executor:build_defs.bzl",
+    "if_gpu_is_configured",
+)
 
 package(
     default_visibility = [
@@ -151,6 +155,7 @@ tf_cuda_library(
         ":gpu_id_impl",
         ":gpu_init_impl",
         ":gpu_lib",
+        "//third_party/eigen3",
         "//tensorflow/core:core_cpu_impl",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
@@ -162,8 +167,9 @@ tf_cuda_library(
         "//tensorflow/core:stream_executor",
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:scoped_annotation",
-        "//third_party/eigen3",
-    ],
+    ] + if_gpu_is_configured([
+        "//tensorflow/stream_executor/cuda:cuda_platform",
+    ]),
     alwayslink = 1,
 )
 
