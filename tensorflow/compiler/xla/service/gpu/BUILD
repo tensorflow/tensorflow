@@ -819,6 +819,7 @@ cc_library(
     deps = [
         # LINT.IfChange
         "@local_config_cuda//cuda:cublas_headers",
+        "@local_config_cuda//cuda:cusolver_headers",
         # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
