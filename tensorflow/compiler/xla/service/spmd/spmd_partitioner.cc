@@ -308,7 +308,8 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(const HloSharding& target) {
   return PartitionedHlo(slice, base_shape_, state_);
 }
 
-PartitionedHlo PartitionedHlo::PadWithValue(HloInstruction* pad_value) const {
+PartitionedHlo PartitionedHlo::PadWithValue(
+    HloInstruction* pad_value, absl::Span<const int64> left_padded_dims) const {
   const HloSharding& sharding = hlo_->sharding();
   const Shape& shape = hlo_->shape();
   CHECK(!shape.IsTuple() && shape.element_type() != TOKEN);
@@ -327,13 +328,20 @@ PartitionedHlo PartitionedHlo::PadWithValue(HloInstruction* pad_value) const {
     auto index_in_full_shape =
         state_.b->AddInstruction(HloInstruction::CreateBinary(
             index_shape, HloOpcode::kAdd, iota, broadcast_start_index));
-    auto valid_size = state_.b->AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateR0<int32>(base_shape_.dimensions(dim))));
-    auto broadcast_valid_size = state_.b->AddInstruction(
-        HloInstruction::CreateBroadcast(index_shape, valid_size, {}));
+    ComparisonDirection direction = ComparisonDirection::kLt;
+    int64 index_limit = base_shape_.dimensions(dim);
+    if (absl::c_linear_search(left_padded_dims, dim)) {
+      direction = ComparisonDirection::kGe;
+      index_limit =
+          index_shape.dimensions(dim) * sharding.tile_assignment().dim(dim) -
+          index_limit;
+    }
+    auto limit = state_.b->AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::CreateR0<int32>(index_limit)));
+    auto broadcast_limit = state_.b->AddInstruction(
+        HloInstruction::CreateBroadcast(index_shape, limit, {}));
     return state_.b->AddInstruction(HloInstruction::CreateCompare(
-        mask_shape, index_in_full_shape, broadcast_valid_size,
-        ComparisonDirection::kLt));
+        mask_shape, index_in_full_shape, broadcast_limit, direction));
   };
 
   HloInstruction* mask = nullptr;
@@ -2328,39 +2336,14 @@ Status SpmdPartitioningVisitor::HandleReverse(HloInstruction* hlo) {
   auto operand = GetPartitionedHlo(reverse->operand(0))
                      .Reshard(hlo_sharding_util::ReverseSharding(
                          reverse->sharding(), reverse->dimensions()));
-  // Create a window config to halo exchange for unevenly partitioned reverse
-  // dimensions.
-  Window window;
-  for (int64 i = 0; i < hlo->shape().rank(); ++i) {
-    WindowDimension* dim = window.add_dimensions();
-    dim->set_size(1);
-    dim->set_stride(1);
-    dim->set_window_dilation(1);
-    dim->set_window_reversal(false);
-    int64 low_padding = 0;
-    if (absl::c_linear_search(reverse->dimensions(), i)) {
-      low_padding =
-          RoundUpToNearest(reverse->shape().dimensions(i),
-                           reverse->sharding().tile_assignment().dim(i)) -
-          reverse->shape().dimensions(i);
-    }
-    dim->set_padding_low(low_padding);
-    dim->set_padding_high(0);
-    dim->set_base_dilation(1);
-  }
-
-  auto reshard_operand = operand.ReshardAsWindowedInput(
-      window, operand.sharding(),
-      CreateZero(ShapeUtil::MakeShape(hlo->shape().element_type(), {}), &b_),
-      /*mask_invalid_region=*/false);
-  if (!reshard_operand.has_value()) {
+  auto left_padded_operand =
+      HaloExchangeToPadOnLeft(operand, reverse->dimensions());
+  if (!left_padded_operand) {
     return DefaultAction(hlo);
   }
-  TF_RET_CHECK(!reshard_operand->dynamic_slice_index_on_output.has_value());
   SetPartitionedHlo(hlo, [&] {
-    return b_.AddInstruction(
-        hlo->CloneWithNewOperands(reshard_operand->sharded_input->shape(),
-                                  {reshard_operand->sharded_input}));
+    return b_.AddInstruction(hlo->CloneWithNewOperands(
+        left_padded_operand->shape(), {left_padded_operand}));
   });
   return Status::OK();
 }
@@ -2772,10 +2755,31 @@ Status SpmdPartitioningVisitor::HandleConvolutionTiledLhsAndRhs(
   for (int64 i = 0; i < rhs_to_lhs_indices.size(); ++i) {
     lhs_to_rhs_indices[rhs_to_lhs_indices[i]] = i;
   }
-  auto aligned_rhs_sharding =
-      hlo_sharding_util::TransposeSharding(lhs.sharding(), rhs_to_lhs_indices);
-  auto aligned_lhs_sharding =
-      hlo_sharding_util::TransposeSharding(rhs.sharding(), lhs_to_rhs_indices);
+
+  Window window = hlo->window();
+  std::vector<int64> reversed_rhs_dims;
+  for (int64 i = 0; i < window.dimensions_size(); ++i) {
+    if (window.dimensions(i).window_reversal()) {
+      reversed_rhs_dims.push_back(dnums.kernel_spatial_dimensions(i));
+    }
+  }
+  if (!reversed_rhs_dims.empty()) {
+    // Make the reversed dims left-padded to prepare for window reversal.
+    auto left_padded_rhs = HaloExchangeToPadOnLeft(rhs, reversed_rhs_dims);
+    if (left_padded_rhs == nullptr) {
+      return DefaultAction(hlo);
+    }
+    left_padded_rhs->set_sharding(rhs.sharding());
+    rhs = PartitionedHlo(left_padded_rhs, rhs.base_shape(), rhs.state());
+  }
+  // Consider window reversal when resharding RHS or LHS. Note: this will not
+  // reverse the data in the shard. We use window reversal to do that.
+  auto aligned_rhs_sharding = hlo_sharding_util::ReverseSharding(
+      hlo_sharding_util::TransposeSharding(lhs.sharding(), rhs_to_lhs_indices),
+      reversed_rhs_dims);
+  auto aligned_lhs_sharding = hlo_sharding_util::TransposeSharding(
+      hlo_sharding_util::ReverseSharding(rhs.sharding(), reversed_rhs_dims),
+      lhs_to_rhs_indices);
 
   auto unsupported_sharding = [&](const HloSharding& lhs_sharding,
                                   const HloSharding& rhs_sharding) {
@@ -2792,13 +2796,14 @@ Status SpmdPartitioningVisitor::HandleConvolutionTiledLhsAndRhs(
       return DefaultAction(hlo);
     }
     lhs = lhs.Reshard(aligned_lhs_sharding).PadWithValue(zero);
-    rhs = rhs.PadWithValue(zero);
+    rhs = rhs.PadWithValue(zero, reversed_rhs_dims);
   } else {
     if (unsupported_sharding(lhs.sharding(), aligned_rhs_sharding)) {
       return DefaultAction(hlo);
     }
     lhs = lhs.PadWithValue(zero);
-    rhs = rhs.Reshard(aligned_rhs_sharding).PadWithValue(zero);
+    rhs =
+        rhs.Reshard(aligned_rhs_sharding).PadWithValue(zero, reversed_rhs_dims);
   }
 
   // Reshard LHS by exchanging halo such that each shard computes the partial
@@ -2817,8 +2822,6 @@ Status SpmdPartitioningVisitor::HandleConvolutionTiledLhsAndRhs(
   //              = (LHS - RHS) * i + low_padding
   // * right-halo: limit(i) - (i + 1) * LHS
   //   = [{(RHS - 1) * D + 1} - LHS] * (i + 1) + (WC - 1) * stride - low_padding
-
-  Window window = hlo->window();
   std::vector<int64> shard_counts(dnums.input_spatial_dimensions_size());
   std::vector<int64> lhs_shard_sizes(dnums.input_spatial_dimensions_size());
   std::vector<int64> rhs_shard_sizes(dnums.input_spatial_dimensions_size());
@@ -2827,7 +2830,7 @@ Status SpmdPartitioningVisitor::HandleConvolutionTiledLhsAndRhs(
     int64 rhs_dimension = dnums.kernel_spatial_dimensions(i);
     int64 shard_count = lhs.sharding().tile_assignment().dim(lhs_dimension);
     auto wd = window.dimensions(i);
-    if (wd.base_dilation() != 1 || wd.window_reversal()) {
+    if (wd.base_dilation() != 1) {
       return DefaultAction(hlo);
     }
 

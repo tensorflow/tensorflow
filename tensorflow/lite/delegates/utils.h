@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <functional>
 #include <limits>
+#include <memory>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -39,6 +40,9 @@ TfLiteStatus CreateNewTensorWithDifferentType(TfLiteContext* context,
                                               TfLiteType new_type,
                                               TfLiteTensor** new_tensor,
                                               int* new_tensor_index);
+
+std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> BuildTfLiteIntArray(
+    const std::vector<int>& data);
 
 using IsNodeSupportedFn =
     std::function<bool(TfLiteContext*, TfLiteNode*, TfLiteRegistration*,
@@ -134,7 +138,9 @@ class FP16GraphPartitionHelper : public GraphPartitionHelper {
   // returned. The partition is ranked according to the number of nodes.
   // TODO(b/156707497): Add this to superclass besides
   // GetFirstNLargestPartitions (one that returns partitions instead of nodes)
-  std::vector<int> GetNodesOfFirstNLargestPartitions(int n);
+  std::vector<int> GetNodesOfFirstNLargestPartitions(
+      int n, int min_nodes_per_partition = 0,
+      std::vector<TfLiteDelegateParams*>* partitions = nullptr);
 
  protected:
   bool IsNodeSupported(TfLiteContext* context, TfLiteNode* node,

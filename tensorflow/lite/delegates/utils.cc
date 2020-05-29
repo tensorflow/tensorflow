@@ -46,6 +46,14 @@ TfLiteStatus CreateNewTensorWithDifferentType(TfLiteContext* context,
   return kTfLiteOk;
 }
 
+std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> BuildTfLiteIntArray(
+    const std::vector<int>& data) {
+  std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> result(
+      TfLiteIntArrayCreate(data.size()));
+  std::copy(data.begin(), data.end(), result->data);
+  return result;
+}
+
 TfLiteStatus GraphPartitionHelper::Partition(
     std::set<std::string>* unsupported_nodes_info) {
   const auto prepare_status = PrepareSupportedNodes(unsupported_nodes_info);
@@ -148,12 +156,16 @@ TfLiteStatus FP16GraphPartitionHelper::Partition(
 }
 
 std::vector<int> FP16GraphPartitionHelper::GetNodesOfFirstNLargestPartitions(
-    int n) {
+    int n, int min_nodes_per_partition,
+    std::vector<TfLiteDelegateParams*>* partitions) {
   // We first get partitions to reduce the number of nodes to be checked in
   // deciding which dequant ops could actually be replaced. And then we
   // remap input-tensor to dequant nodes' inputs and remove those
   // to-be-reserved dequant nodes.
-  auto first_nps = GetFirstNLargestPartitions(n);
+  auto first_nps = GetFirstNLargestPartitions(n, min_nodes_per_partition);
+  if (partitions != nullptr) {
+    *partitions = first_nps;
+  }
   std::vector<int> ops_to_replace;
   for (const auto p : first_nps) {
     auto nodes = p->nodes_to_replace;

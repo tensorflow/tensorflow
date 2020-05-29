@@ -664,5 +664,43 @@ absl::optional<HloInstruction*> ExchangeHaloAndGetValidData(
   return valid_slice;
 }
 
+HloInstruction* HaloExchangeToPadOnLeft(PartitionedHlo& original,
+                                        absl::Span<const int64> dims) {
+  if (original.sharding().IsTileMaximal()) {
+    return original.hlo();
+  }
+  // Create a window config to halo exchange for unevenly partitioned reverse
+  // dimensions.
+  Window window;
+  for (int64 i = 0; i < original.base_shape().rank(); ++i) {
+    WindowDimension* dim = window.add_dimensions();
+    dim->set_size(1);
+    dim->set_stride(1);
+    dim->set_window_dilation(1);
+    dim->set_window_reversal(false);
+    int64 low_padding = 0;
+    if (absl::c_linear_search(dims, i)) {
+      low_padding =
+          RoundUpToNearest(original.base_shape().dimensions(i),
+                           original.sharding().tile_assignment().dim(i)) -
+          original.base_shape().dimensions(i);
+    }
+    dim->set_padding_low(low_padding);
+    dim->set_padding_high(0);
+    dim->set_base_dilation(1);
+  }
+
+  auto reshard_window = original.ReshardAsWindowedInput(
+      window, original.sharding(),
+      CreateZero(ShapeUtil::MakeShape(original.base_shape().element_type(), {}),
+                 original.state().b),
+      /*mask_invalid_region=*/false);
+  if (!reshard_window.has_value()) {
+    return nullptr;
+  }
+  CHECK(!reshard_window->dynamic_slice_index_on_output.has_value());
+  return reshard_window->sharded_input;
+}
+
 }  // namespace spmd
 }  // namespace xla

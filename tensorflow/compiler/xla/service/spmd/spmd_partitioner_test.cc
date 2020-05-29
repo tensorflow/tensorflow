@@ -1300,6 +1300,35 @@ ENTRY entry {
                           op::Shape("f32[1,1,64,256]")));
 }
 
+TEST_F(SpmdPartitioningTest, ConvolutionLhsTiledRhsTiledWindowReversal) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[5,128,64] parameter(0), sharding={devices=[2,1,1]0,1}
+  %rhs = f32[5,128,256] parameter(1), sharding={devices=[2,1,1]1,0}
+  ROOT %conv = f32[1,64,256] convolution(%lhs, %rhs),
+    window={size=5 rhs_reversal=1}, dim_labels=0fb_0io->0bf,
+    sharding={replicated}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  auto lhs_masked =
+      AllOf(op::Shape("f32[3,128,64]"), op::Select(_, op::Parameter(0), _));
+  auto rhs_left_padded = op::Slice(op::Concatenate(
+      op::CollectivePermute(op::Slice(op::Parameter(1))), op::Parameter(1)));
+  auto rhs_masked =
+      AllOf(op::Shape("f32[3,128,256]"), op::Select(_, rhs_left_padded, _));
+
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              AllOf(op::AllReduce(op::Convolution(lhs_masked, rhs_masked)),
+                    op::Shape("f32[1,64,256]")));
+}
+
 TEST_F(SpmdPartitioningTest, DotLhsTiledRhsTiledWithReshard) {
   const char* const hlo_string = R"(
 HloModule module

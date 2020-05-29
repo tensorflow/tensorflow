@@ -830,13 +830,14 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     in_call = call_context.in_call
     input_list = nest.flatten(inputs)
 
-    # We will attempt to trace in a graph if & only if inputs are symbolic.
-    # This is always the case when tracing a function. It can also be the case
-    # when running eagerly if any input can be traced back to `keras.Input()`
-    # (when building models using the functional API).
-    build_graph = tf_utils.are_all_symbolic_tensors(input_list) or (
-        any(map(tf_utils.is_symbolic_tensor, nest.flatten(
-            [input_list, args, kwargs]))) and context.executing_eagerly())
+    # We will attempt to build a TF graph if & only if all inputs are symbolic.
+    # This is always the case in graph mode. It can also be the case in eager
+    # mode when all inputs can be traced back to `keras.Input()` (when building
+    # models using the functional API).
+    # TODO(kaftan): make this not special case inputs. Instead
+    # build a functional api model if *any* *arg or **kwarg is symbolic,
+    # even if part of the data structure in that arg is not symbolic.
+    build_graph = tf_utils.are_all_symbolic_tensors(input_list)
 
     # Accept NumPy and scalar inputs by converting to Tensors.
     if any(isinstance(x, (np.ndarray, float, int)) for x in input_list):
@@ -889,14 +890,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
             'training', training_value, args, kwargs)
         training_arg_passed_by_framework = True
 
-    # Turn inputs into TF op layers if necessary.
-    # This process is fragile and prone to bad interactions with inputs
-    # when calling nested layers with tf.functions floating around,
-    # and with nonsymbolic tensors.
-    # So, we limit it to the
-    # case where *all* inputs in the first arg are symbolic.
-    if (tf_utils.are_all_symbolic_tensors(input_list)
-        and base_layer_utils.needs_keras_history(inputs)):
+    # Only create Keras history if at least one tensor originates from a
+    # `keras.Input`. Otherwise this Layer may be being used outside the Keras
+    # framework.
+    # TODO(kaftan): make this not special case inputs
+    if build_graph and base_layer_utils.needs_keras_history(inputs):
       base_layer_utils.create_keras_history(inputs)
 
     with call_context.enter(self, inputs, build_graph, training_value):
@@ -970,12 +968,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
             raise ValueError('A layer\'s `call` method should return a '
                              'Tensor or a list of Tensors, not None '
                              '(layer: ' + self.name + ').')
-          # We configure connectivity metadata if all inputs in the first
-          # arg have keras history, or if we're actively building the
-          # functional api outside of any outer keras model.
-          if base_layer_utils.have_all_keras_metadata(inputs) or (
-              context.executing_eagerly() and
-              base_layer_utils.have_any_keras_metadata(inputs, args, kwargs)):
+          # TODO(kaftan): This should be 'any' and check all args
+          if base_layer_utils.have_all_keras_metadata(inputs):
             if training_arg_passed_by_framework:
               args, kwargs = self._set_call_arg_value(
                   'training', None, args, kwargs, pop_kwarg_if_none=True)
