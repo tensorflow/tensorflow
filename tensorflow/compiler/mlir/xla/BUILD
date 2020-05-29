@@ -353,42 +353,6 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
-    name = "buffer_assignment",
-    srcs = ["transforms/buffer_assignment.cc"],
-    hdrs = ["transforms/buffer_assignment.h"],
-    deps = [
-        "@com_google_absl//absl/memory",
-        "@llvm-project//mlir:Analysis",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Transforms",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "buffer_assignment_test",
-    srcs = ["transforms/buffer_assignment_test.cc"],
-    hdrs = [
-        "transforms/buffer_assignment.h",
-        "transforms/passes.h",
-    ],
-    deps = [
-        "@com_google_absl//absl/memory",
-        "@llvm-project//llvm:support",
-        "@llvm-project//mlir:Analysis",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Transforms",
-    ],
-    alwayslink = 1,
-)
-
 gentbl(
     name = "xla_legalize_to_standard_inc_gen",
     tbl_outs = [
@@ -863,8 +827,6 @@ cc_library(
         "//tensorflow/compiler/mlir:__subpackages__",
     ],
     deps = [
-        ":buffer_assignment",
-        ":buffer_assignment_test",
         ":chlo_legalize_to_hlo",
         ":hlo",
         ":hlo_legalize_to_lhlo",
