@@ -3817,7 +3817,7 @@ def function(inputs, outputs, updates=None, name=None, **kwargs):
   """
   if ops.executing_eagerly_outside_functions():
     if kwargs:
-      raise ValueError('Session keyword arguments are not support during '
+      raise ValueError('Session keyword arguments are not supported during '
                        'eager execution. You passed: %s' % (kwargs,))
     if updates:
       raise ValueError('`updates` argument is not support during '
