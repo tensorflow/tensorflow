@@ -8,10 +8,9 @@ func @sqr_transform_result(%a: tensor<*xf32>) -> tensor<*xf32> {
   %shape = shape.shape_of %a : tensor<*xf32>
   %num_elements = shape.num_elements %shape
   %num_elements_as_index = shape.size_to_index %num_elements
-  %flat_shape = "xla_hlo.scalars_to_dimension_tensor"(%num_elements_as_index)
-      : (index) -> tensor<1xi64>
+  %flat_shape = tensor_from_elements(%num_elements_as_index) : tensor<1xindex>
   %flat_a = "xla_hlo.dynamic_reshape"(%a, %flat_shape)
-      : (tensor<*xf32>, tensor<1xi64>) -> tensor<?xf32>
+      : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
 
   // Apply operation.
   %flat_b = "xla_hlo.sqrt"(%flat_a) : (tensor<?xf32>) -> tensor<?xf32>
@@ -33,7 +32,7 @@ func @sqrt(%a: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK-NEXT: %[[SHAPE:.*]] = shape.shape_of %[[A]] : tensor<*xf32>
   // CHECK-NEXT: %[[NUM_ELEMENTS:.*]] = shape.num_elements %[[SHAPE]]
   // CHECK-NEXT: %[[NUM_ELEMENTS_AS_INDEX:.*]] = shape.size_to_index %[[NUM_ELEMENTS]]
-  // CHECK-NEXT: %[[FLAT_SHAPE:.*]] = "xla_hlo.scalars_to_dimension_tensor"(%[[NUM_ELEMENTS_AS_INDEX]]) : (index) -> tensor<1xindex>
+  // CHECK-NEXT: %[[FLAT_SHAPE:.*]] = tensor_from_elements(%[[NUM_ELEMENTS_AS_INDEX]]) : tensor<1xindex>
   // CHECK-NEXT: %[[FLAT_A:.*]] = "xla_hlo.dynamic_reshape"(%[[A]], %[[FLAT_SHAPE]]) : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
   // CHECK-NEXT: %[[FLAT_B:.*]] = "xla_hlo.sqrt"(%[[FLAT_A]]) : (tensor<?xf32>) -> tensor<?xf32>
   // CHECK-NEXT: %[[SHAPE_AS_EXTENT_TENSOR:.*]] = "shape.to_extent_tensor"(%[[SHAPE]]) : (!shape.shape) -> tensor<?xindex>

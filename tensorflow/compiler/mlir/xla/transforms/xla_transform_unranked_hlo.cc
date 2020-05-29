@@ -57,10 +57,8 @@ struct UnaryElementwiseOpConversion : public OpRewritePattern<OpTy> {
         loc, rewriter.getType<shape::SizeType>(), shape);
     Value numElementsAsIndex = rewriter.create<shape::SizeToIndexOp>(
         loc, rewriter.getIndexType(), numElements);
-    auto dimTensorTy = RankedTensorType::get({1}, rewriter.getIndexType());
     Value flatShapeAsDimTensor =
-        rewriter.create<xla_hlo::ScalarsToDimensionTensorOp>(
-            loc, dimTensorTy, numElementsAsIndex);
+        rewriter.create<TensorFromElementsOp>(loc, numElementsAsIndex);
     auto flatTensorTy = RankedTensorType::get({ShapedType::kDynamicSize},
                                               operandTy.getElementType());
     Value flatOperand = rewriter.create<xla_hlo::DynamicReshapeOp>(
