@@ -2214,6 +2214,21 @@ py_library(
     ],
 )
 
+py_test(
+    name = "ops/functional_ops_test",
+    srcs = ["ops/functional_ops_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":dtypes",
+        ":function",
+        ":functional_ops",
+        ":tensor_spec",
+        "//tensorflow/python/eager:def_function",
+    ],
+)
+
 cuda_py_test(
     name = "function_test",
     size = "medium",
