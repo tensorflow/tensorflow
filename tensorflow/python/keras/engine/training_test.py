@@ -1531,8 +1531,7 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
     output = sparse_ops.sparse_minimum(inputs, inputs)
     with self.assertRaisesRegexp(
         ValueError,
-        'Sparse ops are not supported with functional models with built-in '
-        'layer wrapping'
+        'not supported by Keras automatic op wrapping'
     ):
       training_module.Model([inputs], output)
 
