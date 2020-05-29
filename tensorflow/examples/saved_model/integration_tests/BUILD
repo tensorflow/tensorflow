@@ -60,6 +60,9 @@ distribute_py_test(
         "nomsan",  # forge input size exceeded
         "notsan",  # forge input size exceeded
     ],
+    tpu_tags = [
+        "no_oss",  # Test infra collision (b/157754990)
+    ],
     deps = [
         ":distribution_strategy_utils",
         ":integration_scripts",
