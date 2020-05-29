@@ -396,8 +396,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def __iter__(self):
     """Creates an `Iterator` for enumerating the elements of this dataset.
 
-    The returned iterator implements the Python iterator protocol and therefore
-    can only be used in eager mode.
+    The returned iterator implements the Python iterator protocol.
 
     Returns:
       An `Iterator` over the elements of this dataset.
