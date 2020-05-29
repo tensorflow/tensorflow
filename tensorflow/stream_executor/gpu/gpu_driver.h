@@ -71,8 +71,7 @@ class GpuDriver {
   // cuStreamCreate.
   // stream is an outparam owned by the caller, must not be null.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1ga581f0c5833e21ded8b5a56594e243f4
-  static bool CreateStream(GpuContext* context, GpuStreamHandle* stream,
-                           int priority = 0);
+  static bool CreateStream(GpuContext* context, GpuStreamHandle* stream);
 
   // Destroys a CUDA stream associated with the given context.
   // stream is owned by the caller, must not be null, and *stream is set to null
