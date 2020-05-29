@@ -65,11 +65,11 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
   >>> layer = tf.keras.layers.experimental.preprocessing.CategoryEncoding(
   ...           max_tokens=4)
   >>> layer([[0, 1], [0, 0], [1, 2], [3, 1]])
-  <tf.Tensor: shape=(4, 4), dtype=int64, numpy=
-    array([[1, 1, 0, 0],
-           [2, 0, 0, 0],
-           [0, 1, 1, 0],
-           [0, 1, 0, 1]])>
+  <tf.Tensor: shape=(4, 4), dtype=float32, numpy=
+    array([[1., 1., 0., 0.],
+           [2., 0., 0., 0.],
+           [0., 1., 1., 0.],
+           [0., 1., 0., 1.]], dtype=float32)>
 
 
   Examples with weighted inputs:
@@ -286,18 +286,19 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
 
     binary_output = (self._output_mode == BINARY)
     if self._sparse:
-      return bincount_ops.sparse_bincount(
+      result = bincount_ops.sparse_bincount(
           inputs,
           weights=count_weights,
           minlength=out_depth,
           axis=-1,
           binary_output=binary_output)
+      return math_ops.cast(result, K.floatx())
     else:
       result = bincount_ops.bincount(
           inputs,
           weights=count_weights,
           minlength=out_depth,
-          dtype=dtypes.int64,
+          dtype=K.floatx(),
           axis=-1,
           binary_output=binary_output)
       result.set_shape(tensor_shape.TensorShape((None, out_depth)))
