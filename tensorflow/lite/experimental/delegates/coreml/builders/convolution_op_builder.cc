@@ -184,7 +184,7 @@ void ConvolutionOpBuilder::TransposeKernelWeights() {
 
     optimized_ops::Transpose<uint16_t>(
         params, tfl_shape, reinterpret_cast<uint16_t*>(weights_->data.raw),
-        coreml_shape, reinterpret_cast<uint16_t*>(coreml_weights->data()));
+        coreml_shape, reinterpret_cast<uint16_t*>(&coreml_weights->front()));
   }
 }
 
