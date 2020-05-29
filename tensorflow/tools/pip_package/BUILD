@@ -214,8 +214,6 @@ filegroup(
         "@sobol_data//:LICENSE",
         "@termcolor_archive//:COPYING.txt",
         "@zlib//:zlib.h",
-        "@clog//:LICENSE",
-        "@cpuinfo//:LICENSE",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
