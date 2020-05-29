@@ -165,6 +165,10 @@ def have_all_keras_metadata(tensors):
   return all(hasattr(x, '_keras_history') for x in nest.flatten(tensors))
 
 
+def have_any_keras_metadata(*tensors):
+  return any(hasattr(x, '_keras_history') for x in nest.flatten(tensors))
+
+
 def generate_placeholders_from_shape(shape):
   return array_ops.placeholder(shape=shape, dtype=backend.floatx())
 
@@ -214,7 +218,10 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
   for tensor in tensor_list:
     if getattr(tensor, '_keras_history', None) is not None:
       continue
-    op = tensor.op  # The Op that created this Tensor.
+    try:
+      op = tensor.op  # The Op that created this Tensor.
+    except AttributeError:
+      continue
     if op not in processed_ops:
       if op.type.startswith('Sparse'):
         lambda_example = """
@@ -392,7 +399,10 @@ def mark_checked(tensors):
   """
 
   def _mark_checked(tensor):
-    tensor._keras_history_checked = True  # pylint: disable=protected-access
+    try:
+      tensor._keras_history_checked = True  # pylint: disable=protected-access
+    except AttributeError:
+      pass
 
   nest.map_structure(_mark_checked, tensors)
 
