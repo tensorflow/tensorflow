@@ -81,6 +81,7 @@ exports_files(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/common_runtime:__pkg__",
+        "//tensorflow/core/kernels:__pkg__",
     ],
 )
 
