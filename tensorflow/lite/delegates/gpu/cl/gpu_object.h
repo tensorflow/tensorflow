@@ -34,6 +34,21 @@ struct GPUImage2DDescriptor {
   cl_mem memory;
 };
 
+struct GPUImage3DDescriptor {
+  DataType data_type;
+  cl_mem memory;
+};
+
+struct GPUImage2DArrayDescriptor {
+  DataType data_type;
+  cl_mem memory;
+};
+
+struct GPUImageBufferDescriptor {
+  DataType data_type;
+  cl_mem memory;
+};
+
 struct GPUBufferDescriptor {
   DataType data_type;
   int element_size;
@@ -45,6 +60,9 @@ struct GPUResources {
   std::vector<std::string> floats;
   std::vector<std::pair<std::string, GPUBufferDescriptor>> buffers;
   std::vector<std::pair<std::string, GPUImage2DDescriptor>> images2d;
+  std::vector<std::pair<std::string, GPUImage2DArrayDescriptor>> image2d_arrays;
+  std::vector<std::pair<std::string, GPUImage3DDescriptor>> images3d;
+  std::vector<std::pair<std::string, GPUImageBufferDescriptor>> image_buffers;
 
   std::vector<std::string> GetNames() const {
     std::vector<std::string> names = ints;
@@ -53,6 +71,15 @@ struct GPUResources {
       names.push_back(obj.first);
     }
     for (const auto& obj : images2d) {
+      names.push_back(obj.first);
+    }
+    for (const auto& obj : image2d_arrays) {
+      names.push_back(obj.first);
+    }
+    for (const auto& obj : images3d) {
+      names.push_back(obj.first);
+    }
+    for (const auto& obj : image_buffers) {
       names.push_back(obj.first);
     }
     return names;
@@ -64,6 +91,9 @@ struct GPUResourcesWithValue {
   std::vector<std::pair<std::string, float>> floats;
   std::vector<std::pair<std::string, cl_mem>> buffers;
   std::vector<std::pair<std::string, cl_mem>> images2d;
+  std::vector<std::pair<std::string, cl_mem>> image2d_arrays;
+  std::vector<std::pair<std::string, cl_mem>> images3d;
+  std::vector<std::pair<std::string, cl_mem>> image_buffers;
 };
 
 class GPUObjectDescriptor {

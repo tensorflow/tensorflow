@@ -90,7 +90,7 @@ std::string GetWinograd4x4To36Code(
   c += GetArgsDeclaration(linked_operations);
   c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
   c += "    int4 src_size,                              \n";
-  c += "    int4 dst_size";
+  c += "    int4 dst_size,\n  ";
   c += "$0) {\n";
   c += "  int DST_X = get_global_id(0);\n";
   c += "  int DST_Y = get_global_id(1);\n";

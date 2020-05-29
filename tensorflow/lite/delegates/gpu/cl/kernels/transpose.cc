@@ -55,7 +55,7 @@ std::string GetTransposeCode(
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ);
   c += GetArgsDeclaration(linked_operations);
-  c += dst_tensor.GetDeclaration(AccessType::WRITE);
+  c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n  ";
   c += "$0) {\n";
   if (op_def.IsBatchSupported()) {
     c += "  int linear_id = get_global_id(0);\n";

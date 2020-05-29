@@ -87,6 +87,13 @@ void ReplaceAllWords(const std::string& old_word, const std::string& new_word,
   }
 }
 
+void AppendArgument(const std::string& arg, std::string* args) {
+  if (!args->empty()) {
+    absl::StrAppend(args, ",\n  ");
+  }
+  absl::StrAppend(args, arg);
+}
+
 }  // namespace
 
 Arguments::Arguments(Arguments&& args)
@@ -96,6 +103,9 @@ Arguments::Arguments(Arguments&& args)
       shared_float4s_data_(std::move(args.shared_float4s_data_)),
       buffers_(std::move(args.buffers_)),
       images2d_(std::move(args.images2d_)),
+      image2d_arrays_(std::move(args.image2d_arrays_)),
+      images3d_(std::move(args.images3d_)),
+      image_buffers_(std::move(args.image_buffers_)),
       object_refs_(std::move(args.object_refs_)),
       objects_(std::move(args.objects_)) {}
 Arguments& Arguments::operator=(Arguments&& args) {
@@ -106,6 +116,9 @@ Arguments& Arguments::operator=(Arguments&& args) {
     shared_float4s_data_ = std::move(args.shared_float4s_data_);
     buffers_ = std::move(args.buffers_);
     images2d_ = std::move(args.images2d_);
+    image2d_arrays_ = std::move(args.image2d_arrays_);
+    images3d_ = std::move(args.images3d_);
+    image_buffers_ = std::move(args.image_buffers_);
     object_refs_ = std::move(args.object_refs_);
     objects_ = std::move(args.objects_);
   }
@@ -125,6 +138,21 @@ void Arguments::AddBuffer(const std::string& name,
 void Arguments::AddImage2D(const std::string& name,
                            const GPUImage2DDescriptor& desc) {
   images2d_[name] = desc;
+}
+
+void Arguments::AddImage2DArray(const std::string& name,
+                                const GPUImage2DArrayDescriptor& desc) {
+  image2d_arrays_[name] = desc;
+}
+
+void Arguments::AddImage3D(const std::string& name,
+                           const GPUImage3DDescriptor& desc) {
+  images3d_[name] = desc;
+}
+
+void Arguments::AddImageBuffer(const std::string& name,
+                               const GPUImageBufferDescriptor& desc) {
+  image_buffers_[name] = desc;
 }
 
 void Arguments::AddObjectRef(const std::string& name,
@@ -149,6 +177,15 @@ void Arguments::AddGPUResources(const std::string& name,
   }
   for (const auto& r : resources.images2d) {
     AddImage2D(absl::StrCat(name, "_", r.first), r.second);
+  }
+  for (const auto& r : resources.image2d_arrays) {
+    AddImage2DArray(absl::StrCat(name, "_", r.first), r.second);
+  }
+  for (const auto& r : resources.images3d) {
+    AddImage3D(absl::StrCat(name, "_", r.first), r.second);
+  }
+  for (const auto& r : resources.image_buffers) {
+    AddImageBuffer(absl::StrCat(name, "_", r.first), r.second);
   }
 }
 
@@ -179,12 +216,12 @@ absl::Status Arguments::SetFloat(const std::string& name, float value) {
 }
 
 absl::Status Arguments::SetImage2D(const std::string& name, cl_mem memory) {
-  auto ti = images2d_.find(name);
-  if (ti == images2d_.end()) {
+  auto it = images2d_.find(name);
+  if (it == images2d_.end()) {
     return absl::NotFoundError(
         absl::StrCat("No image2D argument with name - ", name));
   }
-  ti->second.memory = memory;
+  it->second.memory = memory;
   return absl::OkStatus();
 }
 
@@ -196,6 +233,47 @@ absl::Status Arguments::SetBuffer(const std::string& name, cl_mem memory) {
   }
   it->second.memory = memory;
   return absl::OkStatus();
+}
+
+absl::Status Arguments::SetImage2DArray(const std::string& name,
+                                        cl_mem memory) {
+  auto it = image2d_arrays_.find(name);
+  if (it == image2d_arrays_.end()) {
+    return absl::NotFoundError(
+        absl::StrCat("No image2D array argument with name - ", name));
+  }
+  it->second.memory = memory;
+  return absl::OkStatus();
+}
+
+absl::Status Arguments::SetImage3D(const std::string& name, cl_mem memory) {
+  auto it = images3d_.find(name);
+  if (it == images3d_.end()) {
+    return absl::NotFoundError(
+        absl::StrCat("No image3D argument with name - ", name));
+  }
+  it->second.memory = memory;
+  return absl::OkStatus();
+}
+
+absl::Status Arguments::SetImageBuffer(const std::string& name, cl_mem memory) {
+  auto it = image_buffers_.find(name);
+  if (it == image_buffers_.end()) {
+    return absl::NotFoundError(
+        absl::StrCat("No image buffer argument with name - ", name));
+  }
+  it->second.memory = memory;
+  return absl::OkStatus();
+}
+
+absl::Status Arguments::SetObjectRef(const std::string& name,
+                                     const GPUObject* object) {
+  auto it = object_refs_.find(name);
+  if (it == object_refs_.end()) {
+    return absl::NotFoundError(
+        absl::StrCat("No object ref with name - ", name));
+  }
+  return SetGPUResources(name, object->GetGPUResources());
 }
 
 absl::Status Arguments::SetGPUResources(
@@ -212,6 +290,16 @@ absl::Status Arguments::SetGPUResources(
   for (const auto& r : resources.images2d) {
     RETURN_IF_ERROR(SetImage2D(absl::StrCat(name, "_", r.first), r.second));
   }
+  for (const auto& r : resources.image2d_arrays) {
+    RETURN_IF_ERROR(
+        SetImage2DArray(absl::StrCat(name, "_", r.first), r.second));
+  }
+  for (const auto& r : resources.images3d) {
+    RETURN_IF_ERROR(SetImage3D(absl::StrCat(name, "_", r.first), r.second));
+  }
+  for (const auto& r : resources.image_buffers) {
+    RETURN_IF_ERROR(SetImageBuffer(absl::StrCat(name, "_", r.first), r.second));
+  }
   return absl::OkStatus();
 }
 
@@ -227,17 +315,29 @@ std::string Arguments::GetListOfArgs() {
   for (auto& t : buffers_) {
     const std::string type_name =
         t.second.data_type == DataType::FLOAT32 ? "float" : "half";
-    absl::StrAppend(&result, ",\n  __global ", type_name, t.second.element_size,
-                    "* ", t.first);
+    AppendArgument(absl::StrCat("__global ", type_name, t.second.element_size,
+                                "* ", t.first),
+                   &result);
+  }
+  for (auto& t : image_buffers_) {
+    AppendArgument(absl::StrCat("__read_only image1d_buffer_t ", t.first),
+                   &result);
   }
   for (auto& t : images2d_) {
-    absl::StrAppend(&result, ",\n  __read_only image2d_t ", t.first);
+    AppendArgument(absl::StrCat("__read_only image2d_t ", t.first), &result);
+  }
+  for (auto& t : image2d_arrays_) {
+    AppendArgument(absl::StrCat("__read_only image2d_array_t ", t.first),
+                   &result);
+  }
+  for (auto& t : images3d_) {
+    AppendArgument(absl::StrCat("__read_only image3d_t ", t.first), &result);
   }
   for (int i = 0; i < shared_int4s_data_.size() / 4; ++i) {
-    absl::StrAppend(&result, ",\n  int4 shared_int4_", i);
+    AppendArgument(absl::StrCat("int4 shared_int4_", i), &result);
   }
   for (int i = 0; i < shared_float4s_data_.size() / 4; ++i) {
-    absl::StrAppend(&result, ",\n  float4 shared_float4_", i);
+    AppendArgument(absl::StrCat("float4 shared_float4_", i), &result);
   }
   return result;
 }
@@ -253,7 +353,37 @@ absl::Status Arguments::Bind(cl_kernel kernel, int offset) {
     }
     offset++;
   }
+  for (auto& t : image_buffers_) {
+    const int error_code =
+        clSetKernelArg(kernel, offset, sizeof(cl_mem), &t.second.memory);
+    if (error_code != CL_SUCCESS) {
+      return absl::UnknownError(absl::StrCat(
+          "Failed to set kernel arguments - ", CLErrorCodeToString(error_code),
+          "(at index - ", offset, ")"));
+    }
+    offset++;
+  }
   for (auto& t : images2d_) {
+    const int error_code =
+        clSetKernelArg(kernel, offset, sizeof(cl_mem), &t.second.memory);
+    if (error_code != CL_SUCCESS) {
+      return absl::UnknownError(absl::StrCat(
+          "Failed to set kernel arguments - ", CLErrorCodeToString(error_code),
+          "(at index - ", offset, ")"));
+    }
+    offset++;
+  }
+  for (auto& t : image2d_arrays_) {
+    const int error_code =
+        clSetKernelArg(kernel, offset, sizeof(cl_mem), &t.second.memory);
+    if (error_code != CL_SUCCESS) {
+      return absl::UnknownError(absl::StrCat(
+          "Failed to set kernel arguments - ", CLErrorCodeToString(error_code),
+          "(at index - ", offset, ")"));
+    }
+    offset++;
+  }
+  for (auto& t : images3d_) {
     const int error_code =
         clSetKernelArg(kernel, offset, sizeof(cl_mem), &t.second.memory);
     if (error_code != CL_SUCCESS) {
@@ -342,7 +472,7 @@ void Arguments::ResolveObjectNames(const std::string& object_name,
                                    const std::vector<std::string>& member_names,
                                    std::string* code) {
   for (const auto& member_name : member_names) {
-    const std::string new_name = "args." + object_name + "_" + member_name;
+    const std::string new_name = kArgsPrefix + object_name + "_" + member_name;
     ReplaceAllWords(member_name, new_name, code);
   }
 }
