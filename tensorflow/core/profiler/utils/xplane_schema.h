@@ -139,6 +139,8 @@ enum StatType {
   kRegionType,
   kDataType,
   kTensorShapes,
+  kKpiName,
+  kKpiValue,
   // XPlane semantics related.
   kProducerType,
   kConsumerType,

@@ -147,6 +147,8 @@ const StatTypeMap& GetStatTypeMap() {
       {"region_type", kRegionType},
       {"data_type", kDataType},
       {"shape", kTensorShapes},
+      {"kpi_name", kKpiName},
+      {"kpi_value", kKpiValue},
       // XPlane semantics related.
       {"$pt", kProducerType},
       {"$ct", kConsumerType},
