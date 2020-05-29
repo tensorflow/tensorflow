@@ -571,7 +571,7 @@ void AddLoadsStoresOutsideControlFlowOp(
 }
 
 // Lifts loads/stores from while loop's body and cond functions.
-LogicalResult HanldeWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
+LogicalResult HandleWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
   // Remove identity nodes to avoid aliasing.
   RemoveIdentity(&body.front());
   RemoveIdentity(&cond.front());
@@ -700,15 +700,10 @@ LogicalResult HandleIfOP(TF::IfOp if_op, FuncOp then_branch,
   // Erase the resource outputs from the branches.
   int64_t non_resource_results = 0;
   llvm::SmallVector<int64_t, 4> old_to_new_output_indices;
-  llvm::SmallVector<Attribute, 4> new_output_shapes;
   bool output_removed = false;
   for (auto result : if_op.getResults()) {
     if (!getElementTypeOrSelf(result.getType()).isa<TF::ResourceType>()) {
       old_to_new_output_indices.push_back(non_resource_results++);
-      if (!if_op.output_shapes().getValue().empty()) {
-        new_output_shapes.push_back(
-            if_op.output_shapes().getValue()[result.getResultNumber()]);
-      }
       continue;
     }
     old_to_new_output_indices.push_back(-1);
@@ -781,8 +776,7 @@ LogicalResult HandleIfOP(TF::IfOp if_op, FuncOp then_branch,
   auto new_if = builder.create<TF::IfOp>(if_op.getLoc(),
                                          then_branch.getType().getResults(),
                                          new_operands, if_op.getAttrs());
-  // Prepare for AddLoadsStoresOutsideControlFlowOp() and update
-  // new_output_shapes.
+  // Prepare for AddLoadsStoresOutsideControlFlowOp()
   llvm::SmallDenseMap<int64_t, std::pair<Type, int64_t>>
       arg_data_type_and_updated_output_index;
   for (const auto& entry : remaining_resource_data_types) {
@@ -792,14 +786,9 @@ LogicalResult HandleIfOP(TF::IfOp if_op, FuncOp then_branch,
                                : new_output_it->getSecond();
     arg_data_type_and_updated_output_index[entry.getFirst() + 1] = {
         entry.getSecond(), update_index};
-    if (!if_op.output_shapes().getValue().empty() && update_index >= 0) {
-      new_output_shapes.push_back(
-          tensorflow::ConvertTypeToTensorShapeAttr(entry.getSecond()));
-    }
   }
   AddLoadsStoresOutsideControlFlowOp(new_if,
                                      arg_data_type_and_updated_output_index);
-  new_if.setAttr("output_shapes", builder.getArrayAttr(new_output_shapes));
   // Replace uses.
   for (int64_t i = 0; i < old_to_new_output_indices.size(); ++i) {
     if (old_to_new_output_indices[i] >= 0) {
@@ -985,7 +974,7 @@ LogicalResult HoistForFunctionalControlFlow(
                                     lifted_partitioned_call_callees);
       HoistForFunctionalControlFlow(&cond.front(), module,
                                     lifted_partitioned_call_callees);
-      if (failed(HanldeWhileLoop(while_op, body, cond))) return failure();
+      if (failed(HandleWhileLoop(while_op, body, cond))) return failure();
     } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(&op)) {
       auto then_branch =
           llvm::cast<FuncOp>(module.lookupSymbol(if_op.then_branch()));

@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
 
 package(
     licenses = ["notice"],  # Apache 2.0
@@ -48,7 +48,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+distribute_py_test(
     name = "saved_model_test",
     srcs = [
         "saved_model_test.py",

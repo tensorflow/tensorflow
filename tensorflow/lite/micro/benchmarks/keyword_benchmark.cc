@@ -84,7 +84,7 @@ class KeywordRunner {
   const tflite::Model* keyword_spotting_model_;
   tflite::MicroErrorReporter micro_reporter_;
   tflite::ErrorReporter* reporter_;
-  tflite::MicroOpResolver<6> resolver_;
+  tflite::MicroMutableOpResolver<6> resolver_;
   tflite::MicroInterpreter interpreter_;
 };
 

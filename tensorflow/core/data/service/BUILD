@@ -98,7 +98,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/data:compression_utils",
+        "//tensorflow/core/data:dataset_proto_cc",
         "//tensorflow/core/data:standalone",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",

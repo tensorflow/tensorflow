@@ -28,6 +28,7 @@ from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import mirrored_run
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import numpy_dataset
+from tensorflow.python.distribute import ps_values
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
@@ -441,8 +442,8 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
 
         # Create and wrap the variable.
         v = next_creator(**kwargs)
-        wrapped = values.AggregatingVariable(
-            self._container_strategy(), v, aggregation)
+        wrapped = ps_values.AggregatingVariable(self._container_strategy(), v,
+                                                aggregation)
 
         # Add the wrapped variable to the requested collections.
         # The handling of eager mode and the global step matches
@@ -539,7 +540,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
     return nest.map_structure(_select_fn, structured)
 
   def _update(self, var, fn, args, kwargs, group):
-    if isinstance(var, values.AggregatingVariable):
+    if isinstance(var, ps_values.AggregatingVariable):
       var = var.get()
     if not resource_variable_ops.is_resource_variable(var):
       raise ValueError(
@@ -569,7 +570,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
 
   def value_container(self, val):
     if (hasattr(val, "_aggregating_container") and
-        not isinstance(val, values.AggregatingVariable)):
+        not isinstance(val, ps_values.AggregatingVariable)):
       wrapper = val._aggregating_container()  # pylint: disable=protected-access
       if wrapper is not None:
         return wrapper

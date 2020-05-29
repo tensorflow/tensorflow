@@ -460,7 +460,7 @@ class Reshape(Layer):
   >>> # also supports shape inference using `-1` as dimension
   >>> model.add(tf.keras.layers.Reshape((-1, 2, 2)))
   >>> model.output_shape
-  (None, None, 2, 2)
+  (None, 3, 2, 2)
   """
 
   def __init__(self, target_shape, **kwargs):
@@ -495,7 +495,9 @@ class Reshape(Layer):
       is specified.
     """
     output_shape = list(output_shape)
-    msg = 'total size of new array must be unchanged'
+    msg = ('total size of new array must be unchanged, '
+           'input_shape = {}, output_shape = {}'
+           .format(input_shape, output_shape))
 
     known, unknown = 1, None
     for index, dim in enumerate(output_shape):
@@ -529,8 +531,13 @@ class Reshape(Layer):
     return tensor_shape.TensorShape(output_shape)
 
   def call(self, inputs):
-    return array_ops.reshape(inputs,
-                             (array_ops.shape(inputs)[0],) + self.target_shape)
+    result = array_ops.reshape(
+        inputs, (array_ops.shape(inputs)[0],) + self.target_shape)
+    if not context.executing_eagerly():
+      # Set the static shape for the result since it might lost during array_ops
+      # reshape, eg, some `None` dim in the result could be inferred.
+      result.set_shape(self.compute_output_shape(inputs.shape))
+    return result
 
   def get_config(self):
     config = {'target_shape': self.target_shape}

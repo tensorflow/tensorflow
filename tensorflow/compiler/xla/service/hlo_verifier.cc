@@ -74,7 +74,6 @@ Status CheckParameterCount(const HloInstruction* calling_instruction,
   }
   return Status::OK();
 }
-
 }  // namespace
 
 Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
@@ -332,7 +331,9 @@ Status ShapeVerifier::HandleReplicaId(HloInstruction* hlo) {
   return CheckShape(hlo, ShapeUtil::MakeShape(U32, {}));
 }
 
-Status ShapeVerifier::HandleCollectivePermute(HloInstruction* hlo) {
+namespace {
+
+Status CheckDuplicatedSourceOrTarget(HloInstruction* hlo) {
   // A source or target cannot appear twice in the collective-permute's
   // source-target pairs.
   absl::flat_hash_set<int64> seen_sources;
@@ -351,8 +352,28 @@ Status ShapeVerifier::HandleCollectivePermute(HloInstruction* hlo) {
           p.second, hlo->ToString());
     }
   }
+  return Status::OK();
+}
+
+}  // namespace
+
+Status ShapeVerifier::HandleCollectivePermute(HloInstruction* hlo) {
+  TF_RETURN_IF_ERROR(CheckDuplicatedSourceOrTarget(hlo));
   return CheckShape(hlo, ShapeInference::InferCollectivePermuteShape(
                              hlo->operand(0)->shape()));
+}
+
+Status ShapeVerifier::HandleCollectivePermuteStart(HloInstruction* hlo) {
+  TF_RETURN_IF_ERROR(CheckDuplicatedSourceOrTarget(hlo));
+  return CheckShape(
+      hlo, ShapeUtil::MakeTupleShape(
+               {hlo->operand(0)->shape(), hlo->operand(0)->shape(),
+                ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})}));
+}
+
+Status ShapeVerifier::HandleCollectivePermuteDone(HloInstruction* hlo) {
+  return CheckShape(
+      hlo, ShapeUtil::GetTupleElementShape(hlo->operand(0)->shape(), 0));
 }
 
 Status ShapeVerifier::HandleReducePrecision(HloInstruction* reduce_precision) {
@@ -1375,32 +1396,60 @@ Status CheckSameIsHostTransfer(const HloInstruction* instr1,
   return Status::OK();
 }
 
-// Checks CopyStart and CopyDone nodes.
-Status VerifyAsynchronousCopies(const HloModule& module) {
+Status VerifySingleUser(const HloInstruction* instruction,
+                        HloOpcode expected_user) {
+  TF_RET_CHECK(instruction->users().size() == 1)
+      << "The " << HloOpcodeString(instruction->opcode())
+      << " instruction requires one consumer, found "
+      << instruction->users().size();
+
+  const HloInstruction* user = instruction->users().front();
+  TF_RET_CHECK(user->opcode() == expected_user)
+      << "The consumer of a " << HloOpcodeString(instruction->opcode())
+      << " instruction needs to be " << HloOpcodeString(expected_user)
+      << ", found " << HloOpcodeString(user->opcode());
+  return Status::OK();
+}
+
+Status VerifySingleOperand(const HloInstruction* instruction,
+                           HloOpcode expected_operand) {
+  TF_RET_CHECK(instruction->operands().size() == 1)
+      << "The " << HloOpcodeString(instruction->opcode())
+      << " instruction requires one consumer, found "
+      << instruction->users().size();
+
+  const HloInstruction* operand = instruction->operand(0);
+  TF_RET_CHECK(operand->opcode() == expected_operand)
+      << "The operand of a " << HloOpcodeString(instruction->opcode())
+      << " instruction needs to be " << HloOpcodeString(expected_operand)
+      << ", found " << HloOpcodeString(operand->opcode());
+  return Status::OK();
+}
+
+// Checks asynchronous instruction pairs.
+Status VerifyAsynchronousInstructionPairs(const HloModule& module) {
   // CopyStart must have a single CopyDone user.
   for (const HloComputation* computation : module.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       switch (instruction->opcode()) {
         case HloOpcode::kCopyStart: {
-          TF_RET_CHECK(instruction->users().size() == 1)
-              << "CopyStart instruction requires one consumer, found "
-              << instruction->users().size();
-          const HloInstruction* copy_done = instruction->users().front();
-          TF_RET_CHECK(copy_done->opcode() == HloOpcode::kCopyDone)
-              << "The consumer of a CopyStart instruction needs to be "
-                 "CopyDone, found "
-              << HloOpcodeString(copy_done->opcode());
+          TF_RETURN_IF_ERROR(
+              VerifySingleUser(instruction, HloOpcode::kCopyDone));
           break;
         }
         case HloOpcode::kCopyDone: {
-          TF_RET_CHECK(instruction->operands().size() == 1)
-              << "CopyDone instruction requires one operand, found "
-              << instruction->operands().size();
-          const HloInstruction* copy_start = instruction->operand(0);
-          TF_RET_CHECK(copy_start->opcode() == HloOpcode::kCopyStart)
-              << "The operand of a CopyDone instruction needs to be CopyStart, "
-                 "found "
-              << HloOpcodeString(copy_start->opcode());
+          TF_RETURN_IF_ERROR(
+              VerifySingleOperand(instruction, HloOpcode::kCopyStart));
+          break;
+        }
+        case HloOpcode::kCollectivePermuteStart: {
+          TF_RETURN_IF_ERROR(
+              VerifySingleUser(instruction, HloOpcode::kCollectivePermuteDone));
+          break;
+        }
+        case HloOpcode::kCollectivePermuteDone: {
+          TF_RETURN_IF_ERROR(VerifySingleOperand(
+              instruction, HloOpcode::kCollectivePermuteStart));
           break;
         }
         default:
@@ -1815,7 +1864,7 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
   }
 
   TF_RETURN_IF_ERROR(VerifyHloStructure(module));
-  TF_RETURN_IF_ERROR(VerifyAsynchronousCopies(*module));
+  TF_RETURN_IF_ERROR(VerifyAsynchronousInstructionPairs(*module));
   TF_RETURN_IF_ERROR(VerifyChannels(*module));
 
   std::unique_ptr<ShapeVerifier> shape_verifier =

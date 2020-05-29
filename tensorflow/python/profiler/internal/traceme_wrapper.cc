@@ -13,48 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <string>
-#include <utility>
+#include "tensorflow/python/profiler/internal/traceme_wrapper.h"
 
-#include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
+#include "pybind11/attr.h"
 #include "pybind11/pybind11.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 
-namespace py = pybind11;
+namespace py = ::pybind11;
 
-namespace {
-
-// Helper to implement TraceMe as a context manager in Python.
-class TraceMeWrapper {
- public:
-  explicit TraceMeWrapper(const std::string& name) : name_(name) {}
-
-  void Enter() { traceme_.emplace(std::move(name_)); }
-
-  void SetMetadata(const std::string& new_metadata) {
-    if (TF_PREDICT_TRUE(traceme_)) {
-      traceme_->AppendMetadata(absl::string_view(new_metadata));
-    }
-  }
-
-  void Exit() { traceme_.reset(); }
-
-  static bool IsEnabled() { return tensorflow::profiler::TraceMe::Active(); }
-
- private:
-  tensorflow::string name_;
-  absl::optional<tensorflow::profiler::TraceMe> traceme_;
-};
-
-}  // namespace
+using ::tensorflow::profiler::TraceMeWrapper;
 
 PYBIND11_MODULE(_pywrap_traceme, m) {
-  py::class_<TraceMeWrapper> traceme_class(m, "TraceMe");
-  traceme_class.def(py::init<const std::string&>())
-      .def("Enter", &TraceMeWrapper::Enter)
-      .def("Exit", &TraceMeWrapper::Exit)
+  py::class_<TraceMeWrapper>(m, "TraceMe", py::module_local())
+      .def(py::init<const py::str&, const py::kwargs&>())
       .def("SetMetadata", &TraceMeWrapper::SetMetadata)
       .def_static("IsEnabled", &TraceMeWrapper::IsEnabled);
 };

@@ -5,11 +5,11 @@ load("//third_party:repo.bzl", "third_party_http_archive")
 def repo():
     third_party_http_archive(
         name = "FP16",
-        strip_prefix = "FP16-3c54eacb74f6f5e39077300c5564156c424d77ba",
-        sha256 = "0d56bb92f649ec294dbccb13e04865e3c82933b6f6735d1d7145de45da700156",
+        strip_prefix = "FP16-4dfe081cf6bcd15db339cf2680b9281b8451eeb3",
+        sha256 = "d973501a40c55126b31accc2d9f08d931ec3cc190c0430309a5e341d3c0ce32a",
         urls = [
-            "https://mirror.bazel.build/github.com/Maratyszcza/FP16/archive/3c54eacb74f6f5e39077300c5564156c424d77ba.zip",
-            "https://github.com/Maratyszcza/FP16/archive/3c54eacb74f6f5e39077300c5564156c424d77ba.zip",
+            "https://mirror.bazel.build/github.com/Maratyszcza/FP16/archive/4dfe081cf6bcd15db339cf2680b9281b8451eeb3.zip",
+            "https://github.com/Maratyszcza/FP16/archive/4dfe081cf6bcd15db339cf2680b9281b8451eeb3.zip",
         ],
         build_file = "//third_party/FP16:BUILD.bazel",
     )

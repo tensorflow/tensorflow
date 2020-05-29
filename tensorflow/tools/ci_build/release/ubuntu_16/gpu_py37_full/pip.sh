@@ -59,7 +59,7 @@ export TF_TEST_FLAGS="--test_tag_filters=${TF_TEST_FILTER_TAGS} --build_tag_filt
 --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute "
 export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/... "
 export TF_PIP_TESTS="test_pip_virtualenv_non_clean test_pip_virtualenv_clean"
-export IS_NIGHTLY=0 # Not nightly
+#export IS_NIGHTLY=0 # Not nightly; uncomment if building from tf repo.
 export TF_PROJECT_NAME=${PROJECT_NAME}
 export TF_PIP_TEST_ROOT="pip_test"
 

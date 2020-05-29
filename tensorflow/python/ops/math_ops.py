@@ -167,6 +167,11 @@ def linspace_nd(start, stop, num, name=None, axis=0):
     num_int = array_ops.convert_to_int_tensor(num, name="num")
     num = cast(num_int, dtype=start.dtype)
 
+    broadcast_shape = array_ops.broadcast_dynamic_shape(
+        array_ops.shape(start), array_ops.shape(stop))
+    start = array_ops.broadcast_to(start, broadcast_shape)
+    stop = array_ops.broadcast_to(stop, broadcast_shape)
+
     expanded_start = array_ops.expand_dims(start, axis=axis)
     expanded_stop = array_ops.expand_dims(stop, axis=axis)
 
@@ -175,39 +180,38 @@ def linspace_nd(start, stop, num, name=None, axis=0):
 
     axis = array_ops.where_v2(axis >= 0, axis, ndims + axis)
 
-    # to avoid having negative values in the range or zero division
-    # The result is sliced in the end so a correct result is returned for
-    # num == 1.
-    n_steps = gen_math_ops.maximum(num - 1., 1.)
-    delta = (expanded_stop - expanded_start) / n_steps
+    # The purpose is to avoid having negative values when repeating.
+    num_fill = gen_math_ops.maximum(num_int - 2, 0)
+    # To avoid having negative values in the range or zero division
+    # the result is sliced in the end so a correct result is returned for
+    # num == 1, and num == 0.
+    n_steps = gen_math_ops.maximum(num_int - 1, 1)
+    delta = (expanded_stop - expanded_start) / cast(n_steps,
+                                                    expanded_stop.dtype)
+    # Re-cast tensors as delta.
+    expanded_start = cast(expanded_start, delta.dtype)
+    expanded_stop = cast(expanded_stop, delta.dtype)
     # If num < 0, we will throw exception in the range
     # otherwise use the same div for delta
-    range_end = array_ops.where_v2(num_int > 0, n_steps, -1)
-    num_range = range(1., range_end, dtype=start.dtype)
-    shape_range = range(ndims)
-    ones_like_shape_range = array_ops.ones_like(shape_range)
-    axis_tiled = ones_like_shape_range * axis
-    # the purpose is to avoid having negative values when repeating
-    num_fill = gen_math_ops.maximum(num_int - 2, 0)
-    num_tiled = array_ops.ones_like(shape_range) * num_fill
-    ones = array_ops.ones_like(num_tiled)
-    mask = gen_math_ops.equal(axis_tiled, shape_range)
-    # reshape_target is [1. 1. 1. ... 1. num 1. 1. ... 1.], where the index
-    # of num is equal to axis
-    reshape_target = array_ops.where_v2(mask, num_fill, shape)
-    delta_expanded = array_ops.reshape(delta, shape)
-    delta_repeated = array_ops.broadcast_to(delta_expanded, reshape_target)
-    start_repeated = array_ops.broadcast_to(expanded_start, reshape_target)
+    range_end = array_ops.where_v2(num_int >= 0, n_steps, -1)
+    # Even though range supports an output dtype, its limited
+    # (e.g. doesn't support half at the moment).
+    desired_range = cast(range(1, range_end, dtype=dtypes.int64), delta.dtype)
+    mask = gen_math_ops.equal(axis, range(ndims))
+    # desired_range_shape is [1. 1. 1. ... 1. num_fill 1. 1. ... 1.], where the
+    # index of num_fill is equal to axis.
+    desired_range_shape = array_ops.where_v2(mask, num_fill, 1)
+    desired_range = array_ops.reshape(desired_range, desired_range_shape)
 
-    expanded_shape = array_ops.where_v2(mask, num_fill, ones)
-    range_indices = array_ops.reshape(num_range, expanded_shape)
-    tiled_range_indices = array_ops.tile(range_indices, shape)
-    res = start_repeated + delta_repeated * tiled_range_indices
+    res = expanded_start + delta * desired_range
+
+    # Add the start and endpoints to the result, and slice out the desired
+    # portion.
     all_tensors = (expanded_start, res, expanded_stop)
     concatenated = array_ops.concat(all_tensors, axis=axis)
     begin = array_ops.zeros_like(shape)
-    num_slice = ones_like_shape_range * num_int
-    size = array_ops.where_v2(mask, num_slice, shape)
+    size = array_ops.where_v2(mask, num_int, shape)
+
     return array_ops.slice(concatenated, begin, size)
 
 
@@ -256,7 +260,7 @@ def argmax(input,
 def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
   """Returns the index with the largest value across axes of a tensor.
 
-  Note that in case of ties the identity of the return value is not guaranteed.
+  In case of identity returns the smallest index.
 
   For example:
 
@@ -269,6 +273,9 @@ def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
   <tf.Tensor: shape=(5,), dtype=int64, numpy=array([2, 2, 0, 2, 2])>
   >>> tf.math.argmax(B, 1)
   <tf.Tensor: shape=(3,), dtype=int64, numpy=array([2, 2, 1])>
+  >>> C = tf.constant([0, 0, 0, 0])
+  >>> tf.math.argmax(C) # Returns smallest index in case of ties
+  <tf.Tensor: shape=(), dtype=int64, numpy=0>
 
   Args:
     input: A `Tensor`.
@@ -307,7 +314,7 @@ def argmin(input,
 def argmin_v2(input, axis=None, output_type=dtypes.int64, name=None):
   """Returns the index with the smallest value across axes of a tensor.
 
-  Note that in case of ties the identity of the return value is not guaranteed.
+  Returns the smallest index in case of ties.
 
   Args:
     input: A `Tensor`. Must be one of the following types: `float32`, `float64`,
@@ -1107,21 +1114,26 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
 
   def binary_op_wrapper(x, y):
     with ops.name_scope(None, op_name, [x, y]) as name:
-      if isinstance(x, ops.Tensor) and isinstance(y, ops.Tensor):
+      try:
         return func(x, y, name=name)
-      elif not isinstance(y, sparse_tensor.SparseTensor):
-        try:
-          y = ops.convert_to_tensor_v2(
-              y, dtype_hint=x.dtype.base_dtype, name="y")
-        except TypeError:
-          # If the RHS is not a tensor, it might be a tensor aware object
-          # that can implement the operator with knowledge of itself
-          # and the tensor.
-          if hasattr(type(y), "__r%s__" % op_name):
-            return NotImplemented
-          else:
-            raise
-      return func(x, y, name=name)
+      except (TypeError, ValueError) as e:
+        # Even if dispatching the op failed, the RHS may be a tensor aware
+        # object that can implement the operator with knowledge of itself
+        # and the tensor.
+        # If the RHS is not tensor aware we still want to raise the
+        # original error from the LHS, because it may be more
+        # informative.
+        if hasattr(type(y), "__r%s__" % op_name):
+          try:
+            r_op = getattr(y, "__r%s__" % op_name)
+            out = r_op(x)
+            if out == NotImplemented:
+              raise
+            return out
+          except (TypeError, ValueError):
+            raise e
+        else:
+          raise
 
   def binary_op_wrapper_sparse(sp_x, y):
     with ops.name_scope(None, op_name, [sp_x, y]) as name:
@@ -1201,7 +1213,7 @@ def _sparse_dense_truediv(sp_indices, sp_values, sp_shape, y, name=None):
 def _truediv_python3(x, y, name=None):
   with ops.name_scope(name, "truediv", [x, y]) as name:
     x = ops.convert_to_tensor(x, name="x")
-    y = ops.convert_to_tensor(y, name="y")
+    y = ops.convert_to_tensor(y, dtype_hint=x.dtype.base_dtype, name="y")
     x_dtype = x.dtype.base_dtype
     y_dtype = y.dtype.base_dtype
     if x_dtype != y_dtype:
@@ -1399,6 +1411,9 @@ floormod = gen_math_ops.floor_mod
 
 def _add_dispatch(x, y, name=None):
   """Dispatches to add for strings and add_v2 for all other types."""
+  if not isinstance(y, ops.Tensor) and not isinstance(
+      y, sparse_tensor.SparseTensor):
+    y = ops.convert_to_tensor(y, dtype_hint=x.dtype.base_dtype, name="y")
   if x.dtype == dtypes.string:
     return gen_math_ops.add(x, y, name=name)
   else:
@@ -1407,14 +1422,12 @@ def _add_dispatch(x, y, name=None):
 
 def _mul_dispatch(x, y, name=None):
   """Dispatches cwise mul for "Dense*Dense" and "Dense*Sparse"."""
-  is_tensor_y = isinstance(y, ops.Tensor)
-  if is_tensor_y:
-    return gen_math_ops.mul(x, y, name=name)
-  else:
-    assert isinstance(y, sparse_tensor.SparseTensor)  # Case: Dense * Sparse.
+  if isinstance(y, sparse_tensor.SparseTensor):  # Case: Dense * Sparse.
     new_vals = gen_sparse_ops.sparse_dense_cwise_mul(y.indices, y.values,
                                                      y.dense_shape, x, name)
     return sparse_tensor.SparseTensor(y.indices, new_vals, y.dense_shape)
+  else:
+    return multiply(x, y, name=name)
 
 
 # NOTE(aselle): When integer division is added for sparse_dense_cwise,
@@ -1428,10 +1441,10 @@ _OverrideBinaryOperatorHelper(gen_sparse_ops.sparse_dense_cwise_mul, "mul",
                               sparse_tensor.SparseTensor)
 
 _OverrideBinaryOperatorHelper(_add_dispatch, "add")
-_OverrideBinaryOperatorHelper(gen_math_ops.sub, "sub")
+_OverrideBinaryOperatorHelper(subtract, "sub")
 _OverrideBinaryOperatorHelper(_mul_dispatch, "mul")
-_OverrideBinaryOperatorHelper(_div_python2, "div")
-_OverrideBinaryOperatorHelper(_truediv_python3, "truediv")
+_OverrideBinaryOperatorHelper(div, "div")
+_OverrideBinaryOperatorHelper(truediv, "truediv")
 _OverrideBinaryOperatorHelper(floordiv, "floordiv")
 _OverrideBinaryOperatorHelper(gen_math_ops.floor_mod, "mod")
 _OverrideBinaryOperatorHelper(pow, "pow")
@@ -1528,7 +1541,7 @@ def logical_and(x, y, name=None):
   return gen_math_ops.logical_and(x, y, name)
 
 
-_OverrideBinaryOperatorHelper(gen_math_ops.logical_and, "and")
+_OverrideBinaryOperatorHelper(logical_and, "and")
 _OverrideBinaryOperatorHelper(gen_math_ops.logical_or, "or")
 _OverrideBinaryOperatorHelper(logical_xor, "xor")
 
@@ -3085,10 +3098,10 @@ def matmul(a,
       if not isinstance(a, (ops.EagerTensor, _resource_variable_type)):
         a = ops.convert_to_tensor(a, name="a")
       if not isinstance(b, (ops.EagerTensor, _resource_variable_type)):
-        b = ops.convert_to_tensor(b, name="b")
+        b = ops.convert_to_tensor(b, dtype_hint=a.dtype.base_dtype, name="b")
     else:
       a = ops.convert_to_tensor(a, name="a")
-      b = ops.convert_to_tensor(b, name="b")
+      b = ops.convert_to_tensor(b, dtype_hint=a.dtype.base_dtype, name="b")
 
     # TODO(apassos) remove _shape_tuple here when it is not needed.
     a_shape = a._shape_tuple()  # pylint: disable=protected-access
@@ -3557,116 +3570,6 @@ def log_sigmoid(x, name=None):
   with ops.name_scope(name, "LogSigmoid", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
     return gen_math_ops.neg(gen_nn_ops.softplus(-x), name=name)
-
-
-@tf_export("math.bincount", v1=[])
-@dispatch.add_dispatch_support
-def bincount(arr,
-             weights=None,
-             minlength=None,
-             maxlength=None,
-             dtype=dtypes.int32,
-             name=None):
-  """Counts the number of occurrences of each value in an integer array.
-
-  If `minlength` and `maxlength` are not given, returns a vector with length
-  `tf.reduce_max(arr) + 1` if `arr` is non-empty, and length 0 otherwise.
-  If `weights` are non-None, then index `i` of the output stores the sum of the
-  value in `weights` at each index where the corresponding value in `arr` is
-  `i`.
-
-  ```python
-  values = tf.constant([1,1,2,3,2,4,4,5])
-  tf.math.bincount(values) #[0 2 2 1 2 1]
-  ```
-  Vector length = Maximum element in vector `values` is 5. Adding 1, which is 6
-                  will be the vector length.
-
-  Each bin value in the output indicates number of occurrences of the particular
-  index. Here, index 1 in output has a value 2. This indicates value 1 occurs
-  two times in `values`.
-
-  ```python
-  values = tf.constant([1,1,2,3,2,4,4,5])
-  weights = tf.constant([1,5,0,1,0,5,4,5])
-  tf.math.bincount(values, weights=weights) #[0 6 0 1 9 5]
-  ```
-  Bin will be incremented by the corresponding weight instead of 1.
-  Here, index 1 in output has a value 6. This is the summation of weights
-  corresponding to the value in `values`.
-
-  Args:
-    arr: An int32 tensor of non-negative values.
-    weights: If non-None, must be the same shape as arr. For each value in
-      `arr`, the bin will be incremented by the corresponding weight instead of
-      1.
-    minlength: If given, ensures the output has length at least `minlength`,
-      padding with zeros at the end if necessary.
-    maxlength: If given, skips values in `arr` that are equal or greater than
-      `maxlength`, ensuring that the output has length at most `maxlength`.
-    dtype: If `weights` is None, determines the type of the output bins.
-    name: A name scope for the associated operations (optional).
-
-  Returns:
-    A vector with the same dtype as `weights` or the given `dtype`. The bin
-    values.
-
-  Raises:
-    `InvalidArgumentError` if negative values are provided as an input.
-
-  """
-  name = "bincount" if name is None else name
-  with ops.name_scope(name):
-    arr = ops.convert_to_tensor(arr, name="arr", dtype=dtypes.int32)
-    array_is_nonempty = reduce_prod(array_ops.shape(arr)) > 0
-    output_size = cast(array_is_nonempty, dtypes.int32) * (reduce_max(arr) + 1)
-    if minlength is not None:
-      minlength = ops.convert_to_tensor(
-          minlength, name="minlength", dtype=dtypes.int32)
-      output_size = gen_math_ops.maximum(minlength, output_size)
-    if maxlength is not None:
-      maxlength = ops.convert_to_tensor(
-          maxlength, name="maxlength", dtype=dtypes.int32)
-      output_size = gen_math_ops.minimum(maxlength, output_size)
-    if weights is not None:
-      weights = ops.convert_to_tensor(weights, name="weights")
-      return gen_math_ops.unsorted_segment_sum(weights, arr, output_size)
-    weights = constant_op.constant([], dtype)
-    return gen_math_ops.bincount(arr, output_size, weights)
-
-
-@tf_export(v1=["math.bincount", "bincount"])
-@dispatch.add_dispatch_support
-@deprecation.deprecated_endpoints("bincount")
-def bincount_v1(arr,
-                weights=None,
-                minlength=None,
-                maxlength=None,
-                dtype=dtypes.int32):
-  """Counts the number of occurrences of each value in an integer array.
-
-  If `minlength` and `maxlength` are not given, returns a vector with length
-  `tf.reduce_max(arr) + 1` if `arr` is non-empty, and length 0 otherwise.
-  If `weights` are non-None, then index `i` of the output stores the sum of the
-  value in `weights` at each index where the corresponding value in `arr` is
-  `i`.
-
-  Args:
-    arr: An int32 tensor of non-negative values.
-    weights: If non-None, must be the same shape as arr. For each value in
-      `arr`, the bin will be incremented by the corresponding weight instead of
-      1.
-    minlength: If given, ensures the output has length at least `minlength`,
-      padding with zeros at the end if necessary.
-    maxlength: If given, skips values in `arr` that are equal or greater than
-      `maxlength`, ensuring that the output has length at most `maxlength`.
-    dtype: If `weights` is None, determines the type of the output bins.
-
-  Returns:
-    A vector with the same dtype as `weights` or the given `dtype`. The bin
-    values.
-  """
-  return bincount(arr, weights, minlength, maxlength, dtype)
 
 
 @tf_export("math.cumsum", "cumsum")
@@ -4553,9 +4456,9 @@ def polyval(coeffs, x, name=None):
 
      p(x) = coeffs[n-1] + x * (coeffs[n-2] + ... + x * (coeffs[1] +
             x * coeffs[0]))
-            
+
   Usage Example:
-  
+
   >>> coefficients = [1.0, 2.5, -4.2]
   >>> x = 5.0
   >>> y = tf.math.polyval(coefficients, x)

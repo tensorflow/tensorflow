@@ -2158,6 +2158,8 @@ def pywrap_tensorflow_macro(
 # 2. When --define=no_tensorflow_py_deps=false (by default), it's a normal py_test.
 def py_test(deps = [], data = [], kernels = [], **kwargs):
     # Python version placeholder
+    if kwargs.get("python_version", None) == "PY3":
+        kwargs["tags"] = kwargs.get("tags", []) + ["no_oss_py2"]
     native.py_test(
         # TODO(jlebar): Ideally we'd use tcmalloc here.,
         deps = select({
@@ -2866,7 +2868,7 @@ def if_mlir(if_true, if_false = []):
         "//conditions:default": if_false,
     })
 
-def tfcompile_extra_flags():
+def tfcompile_target_cpu():
     return ""
 
 def tf_external_workspace_visible(visibility):

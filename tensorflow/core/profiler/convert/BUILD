@@ -242,6 +242,7 @@ cc_library(
         "//tensorflow/core/profiler/utils:xplane_utils",
         "//tensorflow/core/profiler/utils:xplane_visitor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 

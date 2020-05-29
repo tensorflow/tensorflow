@@ -303,6 +303,20 @@ class L2NormalizeTest(test_lib.TestCase):
       print("L2Normalize gradient err = %g " % err)
       self.assertLess(err, 1e-4)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testL2NormalizeComplex(self):
+    x_shape = [20, 7, 3]
+    for dtype in [np.complex64, np.complex128]:
+      np.random.seed(1)
+      x_np = (
+          np.random.random_sample(x_shape).astype(dtype) +
+          np.random.random_sample(x_shape).astype(dtype) * 1j)
+      for dim in range(len(x_shape)):
+        y_np = self._l2Normalize(x_np, dim)
+        x_tf = constant_op.constant(x_np, name="x")
+        y_tf = nn_impl.l2_normalize_v2(x_tf, dim)
+        self.assertAllClose(y_np, self.evaluate(y_tf))
+
 
 class DropoutTest(test_lib.TestCase):
 
@@ -1199,6 +1213,32 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, [7, 3, 4, 9])
 
+  def testNHWCToNCHW_Size2(self):
+    x_val = [4, 9]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x)
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [4, 9])
+
+  @test_util.disable_xla("unsupported data format")
+  def testNHWCToWHCN(self):
+    x_val = [7, 4, 9, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x, src_format="NHWC", dst_format="WHCN")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [9, 4, 3, 7])
+
+  @test_util.disable_xla("unsupported data format")
+  def testNHWCToWHCN_Size2(self):
+    x_val = [4, 9]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x, src_format="NHWC", dst_format="WHCN")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [9, 4])
+
   def testNCHWToNHWC(self):
     x_val = [7, 4, 9, 3]
     x = constant_op.constant(x_val)
@@ -1206,6 +1246,14 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
     with test_util.use_gpu():
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, [7, 9, 3, 4])
+
+  def testNCHWToNHWC_Size2(self):
+    x_val = [9, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x)
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [9, 3])
 
   def testNHWCToHWNC(self):
     x_val = [7, 4, 9, 3]

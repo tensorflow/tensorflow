@@ -45,9 +45,16 @@ from tensorflow.python.keras.layers import recurrent
 from tensorflow.python.keras.layers import recurrent_v2
 from tensorflow.python.keras.layers import rnn_cell_wrapper_v2
 from tensorflow.python.keras.layers import wrappers
+from tensorflow.python.keras.layers.preprocessing import category_crossing
+from tensorflow.python.keras.layers.preprocessing import category_encoding
+from tensorflow.python.keras.layers.preprocessing import category_encoding_v1
+from tensorflow.python.keras.layers.preprocessing import discretization
+from tensorflow.python.keras.layers.preprocessing import hashing
 from tensorflow.python.keras.layers.preprocessing import image_preprocessing
 from tensorflow.python.keras.layers.preprocessing import normalization as preprocessing_normalization
 from tensorflow.python.keras.layers.preprocessing import normalization_v1 as preprocessing_normalization_v1
+from tensorflow.python.keras.layers.preprocessing import text_vectorization as preprocessing_text_vectorization
+from tensorflow.python.keras.layers.preprocessing import text_vectorization_v1 as preprocessing_text_vectorization_v1
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.util import tf_inspect as inspect
 from tensorflow.python.util.tf_export import keras_export
@@ -57,13 +64,11 @@ ALL_MODULES = (base_layer, input_layer, advanced_activations, convolutional,
                convolutional_recurrent, core, cudnn_recurrent, dense_attention,
                embeddings, einsum_dense, local, merge, noise, normalization,
                pooling, image_preprocessing, preprocessing_normalization_v1,
-               recurrent, wrappers)
-ALL_V2_MODULES = (
-    rnn_cell_wrapper_v2,
-    normalization_v2,
-    recurrent_v2,
-    preprocessing_normalization
-)
+               preprocessing_text_vectorization_v1, recurrent, wrappers,
+               hashing, category_crossing, category_encoding_v1, discretization)
+ALL_V2_MODULES = (rnn_cell_wrapper_v2, normalization_v2, recurrent_v2,
+                  preprocessing_normalization, preprocessing_text_vectorization,
+                  category_encoding)
 # ALL_OBJECTS is meant to be a global mutable. Hence we need to make it
 # thread-local to avoid concurrent mutations.
 LOCAL = threading.local()

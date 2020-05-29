@@ -42,7 +42,7 @@ root.v1 = tf.Variable(3.)
 root.v2 = tf.Variable(2.)
 root.f = tf.function(lambda x: root.v1 * root.v2 * x)
 
-# Save the model.
+# Save the model in SavedModel format.
 export_dir = "/tmp/test_saved_model"
 input_data = tf.constant(1., shape=[1, 1])
 to_save = root.f.get_concrete_function(input_data)
@@ -51,6 +51,10 @@ tf.saved_model.save(root, export_dir, to_save)
 # Convert the model.
 converter = tf.lite.TFLiteConverter.from_saved_model(export_dir)
 tflite_model = converter.convert()
+
+# Save the TF Lite model.
+with tf.gfile.GFile('model.tflite', 'wb') as f:
+  f.write(tflite_model)
 ```
 
 This API does not have the option of specifying the input shape of any input
@@ -87,6 +91,10 @@ model.fit(x, y, epochs=50)
 # Convert the model.
 converter = tf.lite.TFLiteConverter.from_keras_model(model)
 tflite_model = converter.convert()
+
+# Save the TF Lite model.
+with tf.gfile.GFile('model.tflite', 'wb') as f:
+  f.write(tflite_model)
 ```
 
 ### Converting a concrete function <a name="concrete_function"></a>
@@ -115,6 +123,10 @@ concrete_func = root.f.get_concrete_function(input_data)
 # functions is under development.
 converter = tf.lite.TFLiteConverter.from_concrete_functions([concrete_func])
 tflite_model = converter.convert()
+
+# Save the TF Lite model.
+with tf.gfile.GFile('model.tflite', 'wb') as f:
+  f.write(tflite_model)
 ```
 
 ### End-to-end MobileNet conversion <a name="mobilenet"></a>

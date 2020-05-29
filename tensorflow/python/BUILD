@@ -56,6 +56,7 @@ visibility = [
     "//third_party/py/tf_slim:__subpackages__",
     # TODO(aselle): to pass open source test.
     "//bazel_pip/tensorflow/lite/toco/python:__pkg__",
+    "//third_party/py/tensorflow_docs:__subpackages__",
 ]
 
 package(
@@ -137,7 +138,7 @@ py_library(
         ":_pywrap_utils",
         ":array_ops",
         ":audio_ops_gen",
-        ":bincount",
+        ":bincount_ops",
         ":bitwise_ops",
         ":boosted_trees_ops",
         ":check_ops",
@@ -3476,23 +3477,24 @@ py_library(
 )
 
 py_library(
-    name = "bincount",
-    srcs = ["ops/bincount.py"],
+    name = "bincount_ops",
+    srcs = ["ops/bincount_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":count_ops_gen",
         ":framework",
         ":framework_for_generated_wrappers",
+        "//tensorflow/python/compat",
     ],
 )
 
 tf_py_test(
-    name = "bincount_test",
+    name = "bincount_ops_test",
     size = "small",
-    srcs = ["ops/bincount_test.py"],
+    srcs = ["ops/bincount_ops_test.py"],
     python_version = "PY3",
     deps = [
-        ":bincount",
+        ":bincount_ops",
         ":platform_test",
     ],
 )
@@ -4179,6 +4181,7 @@ py_library(
         ":random_ops",
         ":tensor_shape",
         ":tensor_util",
+        ":variables",
         "//third_party/py/numpy",
     ],
 )
@@ -5119,8 +5122,6 @@ cuda_py_test(
     srcs = ["ops/nn_test.py"],
     python_version = "PY3",
     tags = ["no_windows"],
-    # TODO(b/130689556): Numerical differences due to fast math on CPU.
-    xla_enable_strict_auto_jit = False,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -5295,6 +5296,7 @@ py_library(
         ":variable_scope",
         ":variables",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/data/experimental/service:server_lib",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:distribute_coordinator_context",
         "//tensorflow/python/distribute:distribute_lib",

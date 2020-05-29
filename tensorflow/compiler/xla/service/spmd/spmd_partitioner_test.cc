@@ -41,13 +41,19 @@ class SpmdPartitioningTest : public HloTestBase {
     SpmdPartitionerOptions options;
     options.conv_halo_exchange_always_on_lhs = conv_halo_exchange_always_on_lhs;
     options.allow_module_signature_change = true;
+    auto collective_ops_creator =
+        GetDefaultCollectiveOpsCreator(num_devices, /*num_replicas=*/1);
+    // Do not use all-gather for pattern-matching purpose, as the partitioner
+    // might create reshape/transposes around it.
+    collective_ops_creator.create_cross_partition_all_gather = nullptr;
 
     TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(
                                          hlo_module, GetModuleConfigForTest()));
     HloPassPipeline pass("spmd-partitioning");
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
-    pass.AddPass<SpmdPartitioner>(num_devices, /*num_replicas=*/1, options);
+    pass.AddPass<SpmdPartitioner>(num_devices, /*num_replicas=*/1, options,
+                                  collective_ops_creator);
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
     TF_RETURN_IF_ERROR(pass.Run(module.get()).status());
@@ -640,6 +646,43 @@ ENTRY entry {
       op::Select(op::Compare(index_in_padded, op::Broadcast(op::Constant())),
                  pre_masking, op::Broadcast(op::Constant()));
   EXPECT_THAT(root, AllOf(op::Shape("f32[2,2]{1,0}"),
+                          op::ReduceWindow(masked, op::Constant())));
+}
+
+TEST_F(SpmdPartitioningTest, ReduceWindowTiledOneSideHaloBeyondNeighbor) {
+  const char* const hlo_string = R"(
+HloModule module
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add = f32[] add(a, b)
+}
+
+ENTRY entry {
+  param = f32[9,2] parameter(0), sharding={devices=[5,1]0,1,2,3,4}
+  constant.1 = f32[] constant(0), sharding={replicated}
+  ROOT reduce-window = f32[5,2]{1,0} reduce-window(param, constant.1),
+    window={size=4x1 stride=2x1 pad=3_0x0_0}, to_apply=sum,
+    sharding={devices=[5,1]0,1,2,3,4}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/5));
+  VLOG(1) << module->ToString();
+  auto halo0 = AllOf(op::Shape("f32[1,2]"),
+                     op::CollectivePermute(op::Slice(op::Parameter(0))));
+  auto halo1 =
+      AllOf(op::Shape("f32[2,2]"), op::CollectivePermute(op::Parameter(0)));
+  auto pre_mask =
+      AllOf(op::Shape("f32[4,2]"),
+            op::Slice(AllOf(op::Shape("f32[5,2]"),
+                            op::Concatenate(halo0, halo1, op::Parameter(0)))));
+  auto masked =
+      op::Select(op::Compare(op::Add(op::Iota(), op::Broadcast(op::Multiply())),
+                             op::Broadcast(op::Constant())),
+                 pre_mask, op::Broadcast(op::Constant()));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Shape("f32[1,2]{1,0}"),
                           op::ReduceWindow(masked, op::Constant())));
 }
 
@@ -3169,7 +3212,7 @@ ENTRY entry {
                     op::Shape("f32[9,9]")));
 }
 
-TEST_F(SpmdPartitioningTest, TiledReverse) {
+TEST_F(SpmdPartitioningTest, TiledReversePassthrough) {
   const char* const hlo_string = R"(
 HloModule module
 
@@ -3187,6 +3230,62 @@ ENTRY entry {
                           op::Reverse(op::DynamicSlice(
                               op::Pad(op::Constant(), op::Constant()),
                               op::Reshape(), op::Constant()))));
+}
+
+TEST_F(SpmdPartitioningTest, TiledReversePassthroughViaReversedSharding) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  param = f32[4] parameter(0), sharding={devices=[2]0,1}
+  ROOT reverse = f32[4] reverse(param), dimensions={0},
+    sharding={devices=[2]1,0}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Shape("f32[2]"), op::Reverse(op::Parameter(0))));
+}
+
+TEST_F(SpmdPartitioningTest, TiledReverseSwapShards) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  param = f32[4] parameter(0), sharding={devices=[2]0,1}
+  ROOT reverse = f32[4] reverse(param), dimensions={0},
+    sharding={devices=[2]0,1}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              AllOf(op::Shape("f32[2]"),
+                    op::Reverse(op::CollectivePermute(op::Parameter(0)))));
+}
+
+TEST_F(SpmdPartitioningTest, TiledReverseHaloExchange) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  param = f32[3] parameter(0), sharding={devices=[2]0,1}
+  ROOT reverse = f32[3] reverse(param), dimensions={0},
+    sharding={devices=[2]1,0}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  auto halo_exchange_concat =
+      op::Concatenate(AllOf(op::Shape("f32[1]"),
+                            op::CollectivePermute(op::Slice(op::Parameter(0)))),
+                      op::Parameter(0));
+  auto after_halo_exchange = op::Slice(halo_exchange_concat);
+  EXPECT_THAT(root,
+              AllOf(op::Shape("f32[2]"), op::Reverse(after_halo_exchange)));
 }
 
 TEST_F(SpmdPartitioningTest, MixWithManualPartitioning) {

@@ -11,7 +11,7 @@ cc_library(
     ],
     deps = [
         ":add",
-        "//tensorflow/lite:framework",
+        "//tensorflow/lite/delegates/gpu/common/testing/feature_parity:utils",
     ],
 )
 

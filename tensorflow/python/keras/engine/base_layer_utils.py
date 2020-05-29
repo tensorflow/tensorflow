@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import threading
 
 from tensorflow.python import tf2
@@ -121,7 +122,7 @@ def make_variable(name,
         initializer,
         (type(init_ops.Initializer), type(init_ops_v2.Initializer))):
       initializer = initializer()
-    init_val = lambda: initializer(shape, dtype=dtype)
+    init_val = functools.partial(initializer, shape, dtype=dtype)
     variable_dtype = dtype.base_dtype
   if use_resource is None:
     use_resource = True
@@ -162,6 +163,10 @@ def collect_previous_mask(input_tensors):
 
 def have_all_keras_metadata(tensors):
   return all(hasattr(x, '_keras_history') for x in nest.flatten(tensors))
+
+
+def have_any_keras_metadata(*tensors):
+  return any(hasattr(x, '_keras_history') for x in nest.flatten(tensors))
 
 
 def generate_placeholders_from_shape(shape):
@@ -213,7 +218,10 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
   for tensor in tensor_list:
     if getattr(tensor, '_keras_history', None) is not None:
       continue
-    op = tensor.op  # The Op that created this Tensor.
+    try:
+      op = tensor.op  # The Op that created this Tensor.
+    except AttributeError:
+      continue
     if op not in processed_ops:
       if op.type.startswith('Sparse'):
         lambda_example = """
@@ -247,7 +255,10 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
             constants[i] = op_input
           else:
             with ops.init_scope():
-              constants[i] = backend.function([], op_input)([])
+              if ops.executing_eagerly_outside_functions():
+                constants[i] = backend.eval_in_eager_or_function(op_input)
+              else:
+                constants[i] = backend.function([], op_input)([])
       layer_inputs = unnest_if_single_tensor(layer_inputs)
       processed_ops, created_layers = _create_keras_history_helper(
           layer_inputs, processed_ops, created_layers)
@@ -388,7 +399,10 @@ def mark_checked(tensors):
   """
 
   def _mark_checked(tensor):
-    tensor._keras_history_checked = True  # pylint: disable=protected-access
+    try:
+      tensor._keras_history_checked = True  # pylint: disable=protected-access
+    except AttributeError:
+      pass
 
   nest.map_structure(_mark_checked, tensors)
 
@@ -489,7 +503,7 @@ def autocast_context_manager(dtype):
   Returns:
     A context manager to automatically cast AutoCastVariables.
   """
-  if dtype and not dtypes.as_dtype(dtype).is_floating:
+  if dtype and not dtype.is_floating:
     dtype = None
   return ops.get_default_graph()._enable_auto_casting_variables(dtype)  # pylint: disable=protected-access
 

@@ -17,6 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import distutils
+import itertools
+
 import numpy as np
 
 from tensorflow.python.eager import backprop
@@ -682,6 +685,45 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
       a = array_ops.ones([1], dtype=dtypes.int32) + 1.0
       self.evaluate(a)
 
+  def testRHSDispatchingAndErrorRaising(self):
+    if context.executing_eagerly():
+      error = ValueError
+      error_message = (
+          r"Attempt to convert a value .* with an unsupported type")
+    else:
+      error = TypeError
+      error_message = (
+          r"Failed to convert object of type .* to Tensor")
+
+    class RHSReturnsTrue(object):
+
+      def __radd__(self, other):
+        return True
+    a = array_ops.ones([1], dtype=dtypes.int32) + RHSReturnsTrue()
+    self.assertEqual(a, True)
+
+    class RHSRaisesError(object):
+
+      def __radd__(self, other):
+        raise TypeError("RHS not implemented")
+    with self.assertRaisesRegexp(error, error_message):
+      a = array_ops.ones([1], dtype=dtypes.int32) + RHSRaisesError()
+      self.evaluate(a)
+
+    class RHSReturnsNotImplemented(object):
+
+      def __radd__(self, other):
+        return NotImplemented
+    with self.assertRaisesRegexp(error, error_message):
+      a = array_ops.ones([1], dtype=dtypes.int32) + RHSReturnsNotImplemented()
+      self.evaluate(a)
+
+    class RHSNotImplemented(object):
+      pass
+    with self.assertRaisesRegexp(error, error_message):
+      a = array_ops.ones([1], dtype=dtypes.int32) + RHSNotImplemented()
+      self.evaluate(a)
+
 
 class SignTest(test_util.TensorFlowTestCase):
 
@@ -744,6 +786,33 @@ class RangeTest(test_util.TensorFlowTestCase):
     tensor = ops.convert_to_tensor(values)
     self.assertAllEqual((5,), tensor.get_shape().as_list())
     self.assertAllEqual(values, self.evaluate(tensor))
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class LinspaceTest(test_util.TensorFlowTestCase):
+
+  def testLinspaceBroadcasts(self):
+    if distutils.version.LooseVersion(
+        np.version.version) < distutils.version.LooseVersion("1.16.0"):
+      self.skipTest("numpy doesn't support axes before version 1.16.0")
+
+    shapes = [(), (2,), (2, 2)]
+
+    types = [np.float64, np.int64]
+
+    for start_shape, stop_shape in itertools.product(shapes, repeat=2):
+      for num in [0, 1, 2, 20]:
+        ndims = max(len(start_shape), len(stop_shape))
+        for axis in range(-ndims, ndims):
+          for dtype in types:
+            start = np.ones(start_shape, dtype)
+            stop = 10 * np.ones(stop_shape, dtype)
+
+            np_ans = np.linspace(start, stop, num, axis=axis)
+            tf_ans = self.evaluate(
+                math_ops.linspace_nd(start, stop, num, axis=axis))
+
+            self.assertAllClose(np_ans, tf_ans)
 
 
 if __name__ == "__main__":

@@ -29,60 +29,66 @@ limitations under the License.
 namespace mlir {
 namespace xla {
 namespace {
+
+/// This dialect independent unary operation has been defined only for testing
+/// buffer assignment.
+class BufferAssignmentTestUnaryOp
+    : public Op<BufferAssignmentTestUnaryOp, OpTrait::OneResult,
+                OpTrait::OneOperand> {
+ public:
+  using Op::Op;
+  static StringRef getOperationName() { return "buffer_assignment_test.unary"; }
+  static void build(OpBuilder& b, OperationState& state, Value source) {
+    state.addOperands(source);
+  }
+};
+
+/// This dialect independent lowered unary operation has been defined only for
+/// testing buffer assignment.
+class BufferAssignmentTestUnaryLoweredOp
+    : public Op<BufferAssignmentTestUnaryLoweredOp, OpTrait::ZeroResult,
+                OpTrait::NOperands<2>::Impl> {
+ public:
+  using Op::Op;
+  static StringRef getOperationName() {
+    return "buffer_assignment_test.unary_lowered";
+  }
+  static void build(OpBuilder& b, OperationState& state, Value source,
+                    Value target) {
+    state.addOperands(source);
+    state.addOperands(target);
+  }
+};
+
+/// This dialect independent copy operation has been defined only for testing
+/// NonVoidToVoidReturnOpConverter
+class BufferAssignmentTestCopyOp
+    : public Op<BufferAssignmentTestCopyOp, OpTrait::ZeroResult,
+                OpTrait::NOperands<2>::Impl> {
+ public:
+  using Op::Op;
+  static StringRef getOperationName() { return "buffer_assignment_test.copy"; }
+  static void build(OpBuilder& b, OperationState& state, Value from, Value to) {
+    state.addOperands(from);
+    state.addOperands(to);
+  }
+};
+
+class BufferAssignmentTestDialect : public Dialect {
+ public:
+  explicit BufferAssignmentTestDialect(MLIRContext* context)
+      : Dialect(getDialectNamespace(), context) {
+    addOperations<BufferAssignmentTestCopyOp, BufferAssignmentTestUnaryOp,
+                  BufferAssignmentTestUnaryLoweredOp>();
+  }
+  static StringRef getDialectNamespace() { return "buffer_assignment_test"; }
+};
+
 /// This pass tests two provided operation converters,
 /// FunctionAndBlockSignatureConverter and NonVoidToVoidReturnOpConverter, for
 /// Buffer Assignment.
 struct BufferAssignmentPreparationTestPass
     : mlir::PassWrapper<BufferAssignmentPreparationTestPass, FunctionPass> {
-  /// This dialect independent unary operation has been defined only for testing
-  /// buffer assignment.
-  class BufferAssignmentTestUnaryOp
-      : public Op<BufferAssignmentTestUnaryOp, OpTrait::OneResult,
-                  OpTrait::OneOperand> {
-   public:
-    using Op::Op;
-    static StringRef getOperationName() {
-      return "buffer_assignment_test.unary";
-    }
-    static void build(OpBuilder& b, OperationState& state, Value source) {
-      state.addOperands(source);
-    }
-  };
-
-  /// This dialect independent lowered unary operation has been defined only for
-  /// testing buffer assignment.
-  class BufferAssignmentTestUnaryLoweredOp
-      : public Op<BufferAssignmentTestUnaryLoweredOp, OpTrait::ZeroResult,
-                  OpTrait::NOperands<2>::Impl> {
-   public:
-    using Op::Op;
-    static StringRef getOperationName() {
-      return "buffer_assignment_test.unary_lowered";
-    }
-    static void build(OpBuilder& b, OperationState& state, Value source,
-                      Value target) {
-      state.addOperands(source);
-      state.addOperands(target);
-    }
-  };
-
-  /// This dialect independent copy operation has been defined only for testing
-  /// NonVoidToVoidReturnOpConverter
-  class BufferAssignmentTestCopyOp
-      : public Op<BufferAssignmentTestCopyOp, OpTrait::ZeroResult,
-                  OpTrait::NOperands<2>::Impl> {
-   public:
-    using Op::Op;
-    static StringRef getOperationName() {
-      return "buffer_assignment_test.copy";
-    }
-    static void build(OpBuilder& b, OperationState& state, Value from,
-                      Value to) {
-      state.addOperands(from);
-      state.addOperands(to);
-    }
-  };
-
   /// A simple converter that legalizes a BufferAssignmentTestUnaryOp to a
   /// BufferAssignmentTestUnaryLoweredOp and creates buffer allocation for
   /// the result of the computation.
@@ -151,7 +157,11 @@ struct BufferAssignmentPreparationTestPass
     }
   };
 };
+
 }  // namespace
+
+static mlir::DialectRegistration<BufferAssignmentTestDialect>
+    buffer_assignment_test_ops;
 
 /// This pass tests helper methods such as computeAllocPosition,
 /// FunctionAndBlockSignatureConverter, NonVoidToVoidReturnOpConverter

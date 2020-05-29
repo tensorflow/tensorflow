@@ -39,6 +39,22 @@ cc_library(
 )
 
 cc_library(
+    name = "arguments",
+    srcs = ["arguments.cc"],
+    hdrs = ["arguments.h"],
+    deps = [
+        ":gpu_object",
+        ":opencl_wrapper",
+        ":util",
+        "//tensorflow/lite/delegates/gpu/common:access_type",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "buffer",
     srcs = ["buffer.cc"],
     hdrs = ["buffer.h"],
@@ -288,6 +304,16 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/transformations:general_transformations",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "gpu_object",
+    hdrs = ["gpu_object.h"],
+    deps = [
+        ":opencl_wrapper",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:status",
     ],
 )
 

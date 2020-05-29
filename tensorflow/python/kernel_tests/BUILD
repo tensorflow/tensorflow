@@ -178,9 +178,9 @@ cuda_py_test(
     srcs = ["bincount_op_test.py"],
     tags = ["no_windows_gpu"],
     deps = [
+        "//tensorflow/python:bincount_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
     ],
 )
 

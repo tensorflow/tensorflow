@@ -22,8 +22,15 @@ namespace gpu {
 namespace cl {
 
 absl::Status EglSync::NewFence(EGLDisplay display, EglSync* sync) {
+  static auto* egl_create_sync_khr =
+      reinterpret_cast<decltype(&eglCreateSyncKHR)>(
+          eglGetProcAddress("eglCreateSyncKHR"));
+  if (egl_create_sync_khr == nullptr) {
+    // Needs extension: EGL_KHR_fence_sync (EGL) / GL_OES_EGL_sync (OpenGL ES).
+    return absl::InternalError("Not supported: eglCreateSyncKHR.");
+  }
   EGLSyncKHR egl_sync;
-  RETURN_IF_ERROR(TFLITE_GPU_CALL_EGL(eglCreateSyncKHR, &egl_sync, display,
+  RETURN_IF_ERROR(TFLITE_GPU_CALL_EGL(*egl_create_sync_khr, &egl_sync, display,
                                       EGL_SYNC_FENCE_KHR, nullptr));
   if (egl_sync == EGL_NO_SYNC_KHR) {
     return absl::InternalError("Returned empty KHR EGL sync");
@@ -43,25 +50,46 @@ EglSync& EglSync::operator=(EglSync&& sync) {
 
 void EglSync::Invalidate() {
   if (sync_ != EGL_NO_SYNC_KHR) {
-    eglDestroySyncKHR(display_, sync_);
+    static auto* egl_destroy_sync_khr =
+        reinterpret_cast<decltype(&eglDestroySyncKHR)>(
+            eglGetProcAddress("eglDestroySyncKHR"));
+    // Needs extension: EGL_KHR_fence_sync (EGL) / GL_OES_EGL_sync (OpenGL ES).
+    if (egl_destroy_sync_khr) {
+      // Note: we're doing nothing when the function pointer is nullptr, or the
+      // call returns EGL_FALSE.
+      (*egl_destroy_sync_khr)(display_, sync_);
+    }
     sync_ = EGL_NO_SYNC_KHR;
   }
 }
 
 absl::Status EglSync::ServerWait() {
+  static auto* egl_wait_sync_khr = reinterpret_cast<decltype(&eglWaitSyncKHR)>(
+      eglGetProcAddress("eglWaitSyncKHR"));
+  if (egl_wait_sync_khr == nullptr) {
+    // Needs extension: EGL_KHR_wait_sync
+    return absl::InternalError("Not supported: eglWaitSyncKHR.");
+  }
   EGLint result;
   RETURN_IF_ERROR(
-      TFLITE_GPU_CALL_EGL(eglWaitSyncKHR, &result, display_, sync_, 0));
+      TFLITE_GPU_CALL_EGL(*egl_wait_sync_khr, &result, display_, sync_, 0));
   return result == EGL_TRUE ? absl::OkStatus()
                             : absl::InternalError("eglWaitSync failed");
 }
 
 absl::Status EglSync::ClientWait() {
+  static auto* egl_client_wait_sync_khr =
+      reinterpret_cast<decltype(&eglClientWaitSyncKHR)>(
+          eglGetProcAddress("eglClientWaitSyncKHR"));
+  if (egl_client_wait_sync_khr == nullptr) {
+    // Needs extension: EGL_KHR_fence_sync (EGL) / GL_OES_EGL_sync (OpenGL ES).
+    return absl::InternalError("Not supported: eglClientWaitSyncKHR.");
+  }
   EGLint result;
   // TODO(akulik): make it active wait for better performance
-  RETURN_IF_ERROR(TFLITE_GPU_CALL_EGL(eglClientWaitSyncKHR, &result, display_,
-                                      sync_, EGL_SYNC_FLUSH_COMMANDS_BIT_KHR,
-                                      EGL_FOREVER_KHR));
+  RETURN_IF_ERROR(
+      TFLITE_GPU_CALL_EGL(*egl_client_wait_sync_khr, &result, display_, sync_,
+                          EGL_SYNC_FLUSH_COMMANDS_BIT_KHR, EGL_FOREVER_KHR));
   return result == EGL_CONDITION_SATISFIED_KHR
              ? absl::OkStatus()
              : absl::InternalError("eglClientWaitSync failed");

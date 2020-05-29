@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,13 +19,10 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/micro/compatibility.h"
+#include "tensorflow/lite/micro/micro_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-
-#ifndef TFLITE_REGISTRATIONS_MAX
-#define TFLITE_REGISTRATIONS_MAX (128)
-#endif
 
 namespace tflite {
 
@@ -34,10 +31,10 @@ namespace tflite {
 
 inline int MicroOpResolverAnyVersion() { return 0; }
 
-template <unsigned int tOpCount = TFLITE_REGISTRATIONS_MAX>
-class MicroOpResolver : public OpResolver {
+template <unsigned int tOpCount>
+class MicroMutableOpResolver : public MicroOpResolver {
  public:
-  explicit MicroOpResolver(ErrorReporter* error_reporter = nullptr)
+  explicit MicroMutableOpResolver(ErrorReporter* error_reporter = nullptr)
       : error_reporter_(error_reporter) {}
 
   const TfLiteRegistration* FindOp(tflite::BuiltinOperator op,
@@ -68,8 +65,15 @@ class MicroOpResolver : public OpResolver {
     return nullptr;
   }
 
+  MicroOpResolver::BuiltinParseFunction GetOpDataParser(
+      tflite::BuiltinOperator) const override {
+    // TODO(b/149408647): Replace with the more selective builtin parser.
+    return ParseOpData;
+  }
+
   TfLiteStatus AddBuiltin(tflite::BuiltinOperator op,
-                          TfLiteRegistration* registration, int version = 1) {
+                          TfLiteRegistration* registration,
+                          int version = 1) override {
     if (registrations_len_ >= tOpCount) {
       if (error_reporter_) {
         TF_LITE_REPORT_ERROR(error_reporter_,
@@ -141,14 +145,6 @@ class MicroOpResolver : public OpResolver {
   unsigned int registrations_len_ = 0;
   ErrorReporter* error_reporter_;
 
-  TF_LITE_REMOVE_VIRTUAL_DELETE
-};
-
-// TODO(b/147854028): Consider switching all uses of MicroMutableOpResolver to
-// MicroOpResolver.
-class MicroMutableOpResolver
-    : public MicroOpResolver<TFLITE_REGISTRATIONS_MAX> {
- private:
   TF_LITE_REMOVE_VIRTUAL_DELETE
 };
 

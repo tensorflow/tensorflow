@@ -47,12 +47,10 @@ struct InterThreadConnectInfo {
 // pointers, a tree of EventNode is formed.
 class EventNode {
  public:
-  // REQUIRED: visitor and event should not be nullptr.
-  explicit EventNode(const XPlaneVisitor* visitor, XEvent* event)
-      : visitor_(visitor), event_(event) {
-    DCHECK(visitor);
-    DCHECK(event);
-  }
+  // REQUIRED: all inputs should not be nullptr.
+  EventNode(const XPlaneVisitor* plane, XLine* raw_line, XEvent* raw_event);
+
+  EventNode(const EventNode& event_node);
 
   EventNode* GetParent() const { return parent_; }
 
@@ -70,9 +68,9 @@ class EventNode {
   // Sets group_id for this node and its descendants.
   void PropagateGroupId(int64 group_id);
 
-  const XPlaneVisitor& GetPlaneVisitor() const { return *visitor_; }
+  const XPlaneVisitor& GetPlaneVisitor() const { return *plane_; }
 
-  const XEvent& GetEvent() const { return *event_; }
+  const XEventVisitor& GetEventVisitor() const { return visitor_; }
 
   const XStat* GetContextStat(int64 stat_type) const;
 
@@ -89,8 +87,10 @@ class EventNode {
   EventNode* FindParent(int64 event_type);
 
  private:
-  const XPlaneVisitor* visitor_;
-  XEvent* event_;
+  const XPlaneVisitor* plane_;
+  XEventVisitor visitor_;
+  XLine* raw_line_;
+  XEvent* raw_event_;
   EventNode* parent_ = nullptr;
   std::vector<EventNode*> children_;
   absl::optional<int64> group_id_;
@@ -99,8 +99,6 @@ class EventNode {
 using EventNodeMap =
     absl::flat_hash_map<int64 /*event_type*/,
                         std::vector<std::unique_ptr<EventNode>>>;
-
-using VirtualEventContainer = std::vector<std::unique_ptr<XEvent>>;
 
 using EventGroupNameMap = absl::flat_hash_map<int64 /*group_id*/, std::string>;
 
@@ -141,20 +139,19 @@ class EventForest {
   // Sets the is_eager stat to true for the eagerly executed CPU TF op events.
   void MarkEagerlyExecutedCpuTfOps();
 
-  // Create virtual events of HostEventType::kHostTrainingLoopIteration and
-  // event nodes for them. A virtual event is created for each iteration of the
-  // host training loop and connected to the
-  // HostEventType::kExecutorStateProcess event nodes of the iteration.
+  // Create virtual events of HostEventType::kHostTrainingLoopIteration. A
+  // virtual event is created for each iteration of the host training loop and
+  // connected to the HostEventType::kExecutorStateProcess events of the
+  // iteration.
   void CreateVirtualEventsForHostTrainingLoop();
 
-  // Create virutal events of HostEventType::kAsyncExecutorTraceContext and
-  // event nodes for them. A virtual event is created for every FunctionRun and
-  // the following eager ops (e.g., for Keras callback).
+  // Create virutal events of HostEventType::kAsyncExecutorTraceContext. A
+  // virtual event is created for every FunctionRun and the following eager ops
+  // (e.g., for Keras callback).
   void CreateVirtualEventsForAsyncExecutor();
 
   EventNodeMap event_node_map_;
   std::vector<XPlaneVisitor> visitors_;
-  VirtualEventContainer virtual_event_container_;
   EventGroupNameMap event_group_name_map_;
 };
 

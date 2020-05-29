@@ -47,43 +47,15 @@ limitations under the License.
 
 namespace mlir {
 namespace tf_executor {
-namespace {
-
-// If the given tensor has elements of type with subtypes, then returns a new
-// type after dropping subtypes info. Otherwise, returns the original type as
-// is.
-ShapedType DropTypeSubTypes(ShapedType ty) {
-  Type element_ty = ty.getElementType();
-  auto subtype_ty = element_ty.dyn_cast<TF::TensorFlowTypeWithSubtype>();
-  if (!subtype_ty) return ty;
-
-  Type default_ty = GetDefaultTypeOf(subtype_ty);
-  if (ty.hasRank()) return RankedTensorType::get(ty.getShape(), default_ty);
-
-  return UnrankedTensorType::get(default_ty);
-}
-
-// If the given tensor has elements of type ref, then returns a new type
-// of the shape, but corresponding non-ref type as element type. Otherwise,
-// returns the original type as is.
-ShapedType DropRefType(ShapedType ty) {
-  Type element_ty = ty.getElementType();
-  auto ref_ty = element_ty.dyn_cast<TF::TensorFlowRefType>();
-  if (!ref_ty) return ty;
-
-  Type default_ty = GetDefaultTypeOf(ref_ty);
-  if (ty.hasRank()) return RankedTensorType::get(ty.getShape(), default_ty);
-
-  return UnrankedTensorType::get(default_ty);
-}
-
-}  // namespace
 
 //===----------------------------------------------------------------------===//
 // TF Executor Dialect
 //===----------------------------------------------------------------------===//
 
 namespace {
+
+using TF::DropRefType;
+using TF::DropTypeSubTypes;
 
 struct TensorFlowExecutorInlinerInterface : public DialectInlinerInterface {
   using DialectInlinerInterface::DialectInlinerInterface;

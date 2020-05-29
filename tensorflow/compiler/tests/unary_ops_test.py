@@ -347,17 +347,15 @@ class UnaryOpsTest(xla_test.XLATestCase):
           expected=np.array(
               [1.55740772, -2.18503986, -0.14254654, 1.15782128], dtype=dtype))
 
-      # TODO(b/130689556): Turn this on for CPU when we start honoring NaNs.
-      if self.device != "XLA_CPU":
-        self._assertOpOutputMatchesExpected(
-            math_ops.tanh,
-            np.array([[1, 2, 3, 4], [np.inf, -np.inf, np.nan, 20],
-                      [19, -19, 22, -22]],
-                     dtype=dtype),
-            expected=np.array(
-                [[0.76159418, 0.96402758, 0.99505478, 0.99932933],
-                 [1.0, -1.0, np.nan, 1.0], [1.0, -1.0, 1.0, -1.0]],
-                dtype=dtype))
+      self._assertOpOutputMatchesExpected(
+          math_ops.tanh,
+          np.array([[1, 2, 3, 4], [np.inf, -np.inf, np.nan, 20],
+                    [19, -19, 22, -22]],
+                   dtype=dtype),
+          expected=np.array(
+              [[0.76159418, 0.96402758, 0.99505478, 0.99932933],
+               [1.0, -1.0, np.nan, 1.0], [1.0, -1.0, 1.0, -1.0]],
+              dtype=dtype))
 
       self._assertOpOutputMatchesExpected(
           nn_ops.log_softmax,
@@ -601,7 +599,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
           np.array([-1, -0.5, 0, 0.3], dtype=dtype),
           expected=np.array([-1., -0.5, 0., 0.296875], dtype=dtype))
 
-  @test_util.disable_mlir_bridge("TODO(b/156135423): Fix ConvertSigmoidOp")
   def testComplexOps(self):
     for dtype in self.complex_types:
 

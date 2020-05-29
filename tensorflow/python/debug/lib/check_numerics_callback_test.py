@@ -39,6 +39,7 @@ from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
+from tensorflow.python.platform import test
 
 
 class LimitStringLengthTest(test_util.TensorFlowTestCase):
@@ -104,6 +105,27 @@ class CheckNumericsCallbackTest(test_util.TensorFlowTestCase):
     self.assertLen(batches, 2)
     self.assertAllClose(batches[0], np.log([1.25, 2]))
     self.assertAllClose(batches[1], np.log([3.25, 5]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGraphModeUsesCorrectPathLengthAndStackHeightLimits(self):
+    check_numerics_callback.enable_check_numerics(
+        stack_height_limit=123, path_length_limit=1200)
+
+    @def_function.function
+    def add_fn(x, y):
+      return x + y
+
+    fake_get_check_numerics_error_message = test.mock.MagicMock(
+        return_value="dummy_message")
+    with test.mock.patch.object(check_numerics_callback,
+                                "get_check_numerics_error_message",
+                                fake_get_check_numerics_error_message):
+      x = constant_op.constant(2.0)
+      y = constant_op.constant(3.0)
+      self.assertAllClose(self.evaluate(add_fn(x, y)), 5.0)
+      (_, call_kwargs) = fake_get_check_numerics_error_message.call_args
+      self.assertEqual(call_kwargs["stack_height_limit"], 123)
+      self.assertEqual(call_kwargs["path_length_limit"], 1200)
 
 
 class CheckNumericsCallbackUnhealthyTest(test_util.TensorFlowTestCase):
@@ -371,6 +393,22 @@ class CheckNumericsCallbackUnhealthyTest(test_util.TensorFlowTestCase):
       self.assertTrue((re.search(r"graph op.*\"Reciprocal\"", message) or
                        re.search(r"graph op.*\"Xdivy\"", message)))
       self.assertTrue(re.search(r"dtype.*float32", message))
+
+  def testEagerModeUsesCorrectPathLengthAndStackHeightLimits(self):
+    check_numerics_callback.enable_check_numerics(
+        stack_height_limit=123, path_length_limit=1200)
+    fake_get_check_numerics_error_message = test.mock.MagicMock(
+        return_value="dummy_message")
+    with test.mock.patch.object(check_numerics_callback,
+                                "get_check_numerics_error_message",
+                                fake_get_check_numerics_error_message):
+      x = constant_op.constant(2.0)
+      y = constant_op.constant(0.0)
+      self._assertRaisesInvalidArgumentErrorAndGetMessage(
+          lambda: x / y)  # Expected to generate an inf.
+      (_, call_kwargs) = fake_get_check_numerics_error_message.call_args
+      self.assertEqual(call_kwargs["stack_height_limit"], 123)
+      self.assertEqual(call_kwargs["path_length_limit"], 1200)
 
   @test_util.run_in_graph_and_eager_modes
   def testExpectedNaNOpOutputs(self):

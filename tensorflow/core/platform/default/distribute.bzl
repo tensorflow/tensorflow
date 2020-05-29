@@ -42,6 +42,10 @@ def distribute_py_test(
         disable_v3: whether tests for TPU version 3 should be generated.
         **kwargs: extra keyword arguments to the non-tpu test.
     """
+
+    # Default to PY3 since multi worker tests require PY3.
+    kwargs.setdefault("python_version", "PY3")
+
     _ignore = (full_precision)
     tpu_tags = tags if (tpu_tags == None) else tpu_tags
     main = main if main else "%s.py" % name

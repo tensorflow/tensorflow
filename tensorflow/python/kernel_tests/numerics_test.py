@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -66,7 +64,7 @@ class VerifyTensorAllFiniteTest(test.TestCase):
         self.evaluate(t_verified)
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_v1_only("add_check_numerics_op() is meant to be a v1-only API")
 class NumericsTest(test.TestCase):
 
   def testInf(self):
@@ -133,8 +131,4 @@ class NumericsTest(test.TestCase):
 
 
 if __name__ == "__main__":
-  # TODO(b/130689556): XLA CPU does not honor inf/nan which causes problems
-  os.environ[
-      "XLA_FLAGS"] = "--xla_cpu_enable_fast_math=false " + os.environ.get(
-          "XLA_FLAGS", "")
   test.main()

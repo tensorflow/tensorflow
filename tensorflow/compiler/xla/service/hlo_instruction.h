@@ -681,12 +681,19 @@ class HloInstruction {
       const absl::optional<int64>& channel_id,
       const absl::optional<int64>& split_dimension = absl::nullopt);
 
-  // Creates a communication instructions that permutes data cross replicas.
+  // Creates a communication instruction that permutes data cross replicas.
   // Data is sent/received according to the (source_replica_id,
   // target_replica_id) pairs in `source_target_pairs`. If a replica id is not a
   // target_replica_id in any pair, the output on that replica is a tensor
   // consists of 0(s) in `shape`.
   static std::unique_ptr<HloInstruction> CreateCollectivePermute(
+      const Shape& shape, HloInstruction* operand,
+      const std::vector<std::pair<int64, int64>>& source_target_pairs,
+      const absl::optional<int64>& channel_id);
+
+  // Creates a communication instruction that initiates the start of
+  // CollectivePermute.
+  static std::unique_ptr<HloInstruction> CreateCollectivePermuteStart(
       const Shape& shape, HloInstruction* operand,
       const std::vector<std::pair<int64, int64>>& source_target_pairs,
       const absl::optional<int64>& channel_id);
@@ -1810,6 +1817,7 @@ class HloInstruction {
 
   // Delegates to HloPadInstruction::padding_config.
   const PaddingConfig& padding_config() const;
+  PaddingConfig* mutable_padding_config();
 
   // Delegates to HloDynamicSliceInstruction::slice_sizes.
   int64 slice_sizes(int64 dimension) const;

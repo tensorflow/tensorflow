@@ -703,10 +703,10 @@ bool HloAllToAllInstruction::IdenticalSlowPath(
 }
 
 HloCollectivePermuteInstruction::HloCollectivePermuteInstruction(
-    const Shape& shape, HloInstruction* operand,
+    HloOpcode opcode, const Shape& shape, HloInstruction* operand,
     const std::vector<std::pair<int64, int64>>& source_target_pairs,
     const absl::optional<int64>& channel_id)
-    : HloChannelInstruction(HloOpcode::kCollectivePermute, shape, channel_id),
+    : HloChannelInstruction(opcode, shape, channel_id),
       source_target_pairs_(source_target_pairs) {
   AppendOperand(operand);
 }
@@ -738,6 +738,9 @@ bool HloCollectivePermuteInstruction::IdenticalSlowPath(
     const HloInstruction& other,
     const std::function<bool(const HloComputation*, const HloComputation*)>&
         eq_computations) const {
+  if (opcode() != other.opcode()) {
+    return false;
+  }
   const auto& casted_other =
       static_cast<const HloCollectivePermuteInstruction&>(other);
   return HloChannelInstruction::IdenticalSlowPath(other, eq_computations) &&
@@ -752,7 +755,7 @@ HloCollectivePermuteInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* /*context*/) const {
   return absl::make_unique<HloCollectivePermuteInstruction>(
-      shape, new_operands[0], source_target_pairs(), channel_id());
+      opcode(), shape, new_operands[0], source_target_pairs(), channel_id());
 }
 
 HloReverseInstruction::HloReverseInstruction(const Shape& shape,
@@ -1864,8 +1867,14 @@ std::unique_ptr<HloInstruction>
 HloParameterInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
-  return absl::make_unique<HloParameterInstruction>(parameter_number_, shape,
-                                                    name());
+  auto clone = absl::make_unique<HloParameterInstruction>(parameter_number_,
+                                                          shape, name());
+  if (parameter_replicated_at_leaf_buffers_ &&
+      ShapeUtil::Equal(shape, this->shape())) {
+    clone->set_parameter_replicated_at_leaf_buffers(
+        *parameter_replicated_at_leaf_buffers_);
+  }
+  return clone;
 }
 
 HloGetTupleElementInstruction::HloGetTupleElementInstruction(

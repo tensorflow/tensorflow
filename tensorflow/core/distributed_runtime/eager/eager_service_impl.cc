@@ -238,7 +238,7 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   TF_RETURN_IF_ERROR(env_->session_mgr->WorkerSessionForSession(
       session_name, &worker_session));
 
-  tensorflow::DeviceMgr* device_mgr = worker_session->device_mgr();
+  const tensorflow::DeviceMgr* device_mgr = worker_session->device_mgr();
 
   // Initialize remote tensor communication based on worker session.
   TF_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
@@ -355,7 +355,7 @@ Status EagerServiceImpl::UpdateContext(const UpdateContextRequest* request,
   TF_RETURN_IF_ERROR(env_->session_mgr->WorkerSessionForSession(
       session_name, &worker_session));
 
-  tensorflow::DeviceMgr* device_mgr = worker_session->device_mgr();
+  const tensorflow::DeviceMgr* device_mgr = worker_session->device_mgr();
 
   std::vector<string> remote_workers;
   worker_session->worker_cache()->ListWorkers(&remote_workers);
