@@ -154,6 +154,8 @@ const StatTypeMap& GetStatTypeMap() {
       {"$ct", kConsumerType},
       {"$p", kProducerId},
       {"$c", kConsumerId},
+      {"$r", kIsRoot},
+      {"$a", kIsAsync},
       // Device trace arguments.
       {"device_id", kDeviceId},
       {"context_id", kContextId},

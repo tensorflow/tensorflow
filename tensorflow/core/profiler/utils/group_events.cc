@@ -108,6 +108,30 @@ void SetGroupId(const XPlaneVisitor& visitor, int64 group_id, XEvent* event) {
                      event);
 }
 
+void SetContextGroup(EventNode* event, ContextGroupMap* context_groups) {
+  auto producer = event->GetProducerContext();
+  if (producer.has_value()) {
+    ((*context_groups)[producer->type][producer->id]).producer = event;
+  }
+  auto consumer = event->GetConsumerContext();
+  if (consumer.has_value()) {
+    ((*context_groups)[consumer->type][consumer->id])
+        .consumers.push_back(event);
+  }
+}
+
+void ConnectContextGroups(const ContextGroupMap& context_groups) {
+  for (auto& type_id_group : context_groups) {
+    for (auto& id_group : type_id_group.second) {
+      const ContextGroup& group = id_group.second;
+      EventNode* parent = group.producer;
+      for (EventNode* child : group.consumers) {
+        parent->AddChild(child);
+      }
+    }
+  }
+}
+
 using VirtualEventNodeMap =
     absl::flat_hash_map<int64 /*step_id*/,
                         absl::flat_hash_map<int64 /*iter_num*/, EventNode*>>;
@@ -143,6 +167,15 @@ bool HasFunctionRun(EventNode* event_node) {
   return false;
 }
 
+void ProcessRootEvent(int64 group_id, EventNode* root_event,
+                      EventGroupNameMap* event_group_name_map) {
+  root_event->PropagateGroupId(group_id);
+  std::string group_name = root_event->GetGroupName();
+  // TODO(jihochoi): change event name instead.
+  root_event->AddStepName(group_name);
+  event_group_name_map->emplace(group_id, std::move(group_name));
+}
+
 }  // namespace
 
 EventNode::EventNode(const XPlaneVisitor* plane, XLine* raw_line,
@@ -150,13 +183,47 @@ EventNode::EventNode(const XPlaneVisitor* plane, XLine* raw_line,
     : plane_(plane),
       visitor_(plane, raw_line, raw_event),
       raw_line_(raw_line),
-      raw_event_(raw_event) {}
+      raw_event_(raw_event) {
+  absl::optional<int> producer_type;
+  absl::optional<uint64> producer_id;
+  absl::optional<int> consumer_type;
+  absl::optional<uint64> consumer_id;
+  visitor_.ForEachStat([&](const XStatVisitor& stat) {
+    if (!stat.Type().has_value()) return;
+    switch (*stat.Type()) {
+      case StatType::kProducerType:
+        producer_type = stat.IntValue();
+        break;
+      case StatType::kProducerId:
+        producer_id = stat.IntValue();
+        break;
+      case StatType::kConsumerType:
+        consumer_type = stat.IntValue();
+        break;
+      case StatType::kConsumerId:
+        consumer_id = stat.IntValue();
+        break;
+      case StatType::kIsRoot:
+        is_root_ = stat.IntValue();
+        break;
+      case StatType::kIsAsync:
+        is_async_ = stat.IntValue();
+        break;
+      default:
+        break;
+    }
+  });
+  if (producer_type.has_value() && producer_id.has_value()) {
+    producer_context_ = {*producer_type, *producer_id};
+  }
+  if (consumer_type.has_value() && consumer_id.has_value()) {
+    consumer_context_ = {*consumer_type, *consumer_id};
+  }
+}
 
 EventNode::EventNode(const EventNode& event_node)
-    : plane_(event_node.plane_),
-      visitor_(event_node.plane_, event_node.raw_line_, event_node.raw_event_),
-      raw_line_(event_node.raw_line_),
-      raw_event_(event_node.raw_event_) {}
+    : EventNode(event_node.plane_, event_node.raw_line_,
+                event_node.raw_event_) {}
 
 const XStat* EventNode::GetContextStat(int64 stat_type) const {
   if (const XStat* stat = visitor_.GetStats(stat_type)) {
@@ -226,11 +293,18 @@ EventNode* EventNode::FindParent(int64 event_type) {
 }
 
 void EventForest::ConnectIntraThread(const XPlaneVisitor& visitor,
-                                     XPlane* plane) {
+                                     XPlane* plane,
+                                     ContextGroupMap* context_groups) {
   for (auto& line : *plane->mutable_lines()) {
     std::vector<EventNode*> parent_nodes;
     for (auto& event : *line.mutable_events()) {
       auto cur_node = absl::make_unique<EventNode>(&visitor, &line, &event);
+      // Update `context_groups` for `ConnectInterThread`.
+      SetContextGroup(cur_node.get(), context_groups);
+      // Update `root_events_` for `CreateEventGroup`.
+      if (cur_node->IsRoot()) root_events_.push_back(cur_node.get());
+      // Async events are ignored when processing the nesting relationship.
+      if (cur_node->IsAsync()) continue;
       while (!parent_nodes.empty()) {
         EventNode* parent_node = parent_nodes.back();
         if (parent_node->GetEventVisitor().GetTimespan().Includes(
@@ -299,21 +373,19 @@ void EventForest::ConnectInterThread(
 void EventForest::CreateEventGroup(
     const std::vector<int64 /*EventType*/>& root_event_types) {
   int64 next_group_id = 0;
+  for (EventNode* root_event : root_events_) {
+    ProcessRootEvent(next_group_id++, root_event, &event_group_name_map_);
+  }
   for (int64 root_event_type : root_event_types) {
-    if (auto root_event_node_list =
-            gtl::FindOrNull(event_node_map_, root_event_type)) {
-      for (const auto& root_event_node : *root_event_node_list) {
+    if (auto root_events = gtl::FindOrNull(event_node_map_, root_event_type)) {
+      for (const auto& root_event : *root_events) {
         // Skip if it already belongs to a group.
-        if (root_event_node->GetGroupId()) continue;
-        int64 group_id = next_group_id++;
-        root_event_node->PropagateGroupId(group_id);
-        std::string group_name = root_event_node->GetGroupName();
-        // TODO(jihochoi): change event name instead.
-        root_event_node->AddStepName(group_name);
-        event_group_name_map_[group_id] = std::move(group_name);
+        if (root_event->GetGroupId()) continue;
+        ProcessRootEvent(next_group_id++, root_event.get(),
+                         &event_group_name_map_);
       }
       // Only use the first root event type found.
-      if (!root_event_node_list->empty()) break;
+      if (!root_events->empty()) break;
     }
   }
 }
@@ -392,13 +464,15 @@ EventForest::EventForest(
     const std::vector<int64>& root_event_types,
     const std::function<XPlaneVisitor(const XPlane*)> visitor_factory,
     XSpace* space) {
+  ContextGroupMap context_groups;
   visitors_.reserve(space->planes_size());
   for (auto& plane : *space->mutable_planes()) {
     CreateStatMetadata(&plane);
     visitors_.push_back(visitor_factory(&plane));
-    ConnectIntraThread(visitors_.back(), &plane);
+    ConnectIntraThread(visitors_.back(), &plane, &context_groups);
   }
   ConnectInterThread(connect_info_list);
+  ConnectContextGroups(context_groups);
   if (NeedsVirtualEventsForHostTrainingLoop(root_event_types)) {
     CreateVirtualEventsForHostTrainingLoop();
   }
