@@ -110,6 +110,26 @@ def tflite_jni_linkopts():
     """Defines linker flags to reduce size of TFLite binary with JNI."""
     return tflite_jni_linkopts_unstripped() + tflite_symbol_opts()
 
+def maybe_flex_deps(deps):
+    """Returns necessary flex deps when with_select_tf_ops build flag is used
+
+    Args:
+      deps: The source deps for the target (to avoid deps duplication).
+    Returns:
+       A list of additional flex deps required, based on the build flags used.
+       If with_select_tf_ops is not true, this will be an empty list.
+    """
+
+    # Filter redundant flex deps if already provided.
+    flex_dep = clean_dep("//tensorflow/lite/delegates/flex:delegate")
+    if type(deps) == type([]) and flex_dep in deps:
+        return []
+
+    return select({
+        clean_dep("//tensorflow/lite:with_select_tf_ops"): [flex_dep],
+        "//conditions:default": [],
+    })
+
 def tflite_jni_binary(
         name,
         copts = tflite_copts(),
@@ -139,7 +159,7 @@ def tflite_jni_binary(
         copts = copts,
         linkshared = linkshared,
         linkstatic = linkstatic,
-        deps = deps + [linkscript, exported_symbols],
+        deps = deps + [linkscript, exported_symbols] + maybe_flex_deps(deps),
         srcs = srcs,
         tags = tags,
         linkopts = linkopts,
@@ -149,6 +169,7 @@ def tflite_jni_binary(
 def tflite_cc_shared_object(
         name,
         copts = tflite_copts(),
+        deps = [],
         linkopts = [],
         linkstatic = 1,
         per_os_targets = False,
@@ -160,6 +181,7 @@ def tflite_cc_shared_object(
         linkstatic = linkstatic,
         linkopts = linkopts + tflite_jni_linkopts(),
         framework_so = [],
+        deps = deps + maybe_flex_deps(deps),
         per_os_targets = per_os_targets,
         **kwargs
     )

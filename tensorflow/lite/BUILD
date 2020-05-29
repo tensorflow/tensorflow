@@ -56,6 +56,15 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# Enables inclusion of select TensorFlow kernels via the TFLite Flex delegate
+# when building TFLite shared libraries.
+# WARNING: This build flag is experimental and subject to change.
+config_setting(
+    name = "with_select_tf_ops",
+    define_values = {"with_select_tf_ops": "true"},
+    visibility = ["//visibility:public"],
+)
+
 TFLITE_DEFAULT_COPTS = if_not_windows([
     "-Wall",
     "-Wno-comment",
