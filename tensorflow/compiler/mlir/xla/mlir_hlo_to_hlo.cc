@@ -602,12 +602,6 @@ LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
   return success();
 }
 
-LogicalResult ExportXlaOp(ScalarsToDimensionTensorOp op,
-                          OpLoweringContext ctx) {
-  // This op has no expression in the legacy export format.
-  return failure();
-}
-
 LogicalResult ExportXlaOp(DynamicBroadcastInDimOp op, OpLoweringContext ctx) {
   // This op has no expression in the legacy export format.
   return failure();

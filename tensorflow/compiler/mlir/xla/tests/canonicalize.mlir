@@ -297,16 +297,6 @@ func @unary_einsum(%arg0: tensor<2x3xf32>) -> tensor<2x2xf32> {
   return %0 : tensor<2x2xf32>
 }
 
-// CHECK-LABEL: @extract_scalars_to_tensor
-// CHECK-SAME: %[[ARG0:.*]]: i32, %[[ARG1:.*]]: i32
-func @extract_scalars_to_tensor(%arg0: i32, %arg1: i32) -> i32 {
-  %0 = "xla_hlo.scalars_to_dimension_tensor"(%arg0, %arg1) : (i32, i32) -> tensor<2xi32>
-  %1 = constant 0 : index
-  %2 = extract_element %0[%1] : tensor<2xi32>
-  // CHECK: return %[[ARG0]]
-  return %2 : i32
-}
-
 // CHECK-LABEL: func @fold_copy
 // CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
 func @fold_copy(%arg : tensor<1x4xf32>) -> tensor<1x4xf32> {

@@ -568,48 +568,6 @@ OpFoldResult BroadcastInDimOp::fold(ArrayRef<Attribute>) {
 }
 
 //===----------------------------------------------------------------------===//
-// ScalarsToDimensionTensorOp
-//===----------------------------------------------------------------------===//
-
-namespace {
-
-// Canonicalizes the pattern of the form
-//
-// %2 = "xla_hlo.scalars_to_dimension_tensor"(%0, %1)
-//          : (i32, i32) -> tensor<2xi32>
-// %3 = extract_element %2[%c0] : tensor<2xi32>
-//
-// to just %0.
-struct ExtractElementFromScalarsToDimensionTensor
-    : public OpRewritePattern<ExtractElementOp> {
-  using OpRewritePattern<ExtractElementOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(ExtractElementOp extract,
-                                PatternRewriter& rewriter) const override {
-    if (extract.indices().size() != 1) return failure();
-
-    if (auto scalars_to_tensor = dyn_cast_or_null<ScalarsToDimensionTensorOp>(
-            extract.aggregate().getDefiningOp())) {
-      APInt index;
-      if (!matchPattern(*extract.indices().begin(), m_ConstantInt(&index))) {
-        return failure();
-      }
-      rewriter.replaceOp(extract,
-                         scalars_to_tensor.getOperand(index.getZExtValue()));
-      return success();
-    }
-    return failure();
-  }
-};
-
-}  // namespace
-
-void ScalarsToDimensionTensorOp::getCanonicalizationPatterns(
-    OwningRewritePatternList& results, MLIRContext* context) {
-  results.insert<ExtractElementFromScalarsToDimensionTensor>(context);
-}
-
-//===----------------------------------------------------------------------===//
 // DynamicBroadcastInDimOp
 //===----------------------------------------------------------------------===//
 
@@ -1961,11 +1919,8 @@ LogicalResult deriveShapeFromFirstOperand(
           loc, builder->getI64IntegerAttr(element.value())));
     }
   }
-  *reifiedReturnShapes =
-      SmallVector<Value, 1>{builder->create<ScalarsToDimensionTensorOp>(
-          loc,
-          RankedTensorType::get({operand_type.getRank()}, shape_scalar_type),
-          shape_values)};
+  *reifiedReturnShapes = SmallVector<Value, 1>{
+      builder->create<TensorFromElementsOp>(loc, shape_values)};
   return success();
 }
 

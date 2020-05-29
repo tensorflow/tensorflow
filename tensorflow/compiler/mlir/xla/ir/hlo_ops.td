@@ -789,23 +789,6 @@ def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_ScalarsToDimensionTensorOp : HLO_Op<"scalars_to_dimension_tensor",
-    [SameOperandsElementType, NoSideEffect]> {
-  string summary = "Converts a sequence of scalars into a 1d tensor.";
-
-  string description = [{
-    This is a useful operation that is currently missing in Standard. Used to
-    compute shape arguments to dynamic operations.
-  }];
-
-  let arguments = (ins Variadic<HLO_DimensionValue>:$scalars);
-  let results = (outs HLO_DimensionTensor);
-
-  // Cannot be exported to legacy formats.
-  let hasCustomHLOConverter = 1;
-  let hasCanonicalizer = 1;
-}
-
 def HLO_DynamicBroadcastInDimOp : HLO_Op<"dynamic_broadcast_in_dim",
       [NoSideEffect]> {
   string summary = "Broadcast a tensor into the given dynamic shape by adding dimensions.";
