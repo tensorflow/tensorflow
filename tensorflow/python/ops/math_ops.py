@@ -2250,15 +2250,16 @@ def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
 
   For example:
 
-  ```python
-  x = tf.constant([[1., 2.], [3., 4.]])
-  tf.reduce_variance(x)  # 1.25
-  tf.reduce_variance(x, 0)  # [1., 1.]
-  tf.reduce_variance(x, 1)  # [0.25,  0.25]
-  ```
+  >>> x = tf.constant([[1., 2.], [3., 4.]])
+  >>> tf.math.reduce_variance(x)
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.25>
+  >>> tf.math.reduce_variance(x, 0)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([1., 1.], ...)>
+  >>> tf.math.reduce_variance(x, 1)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([0.25, 0.25], ...)>
 
   Args:
-    input_tensor: The tensor to reduce. Should have numeric type.
+    input_tensor: The tensor to reduce. Should have real or complex type.
     axis: The dimensions to reduce. If `None` (the default), reduces all
       dimensions. Must be in the range `[-rank(input_tensor),
       rank(input_tensor))`.
@@ -2266,21 +2267,32 @@ def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
     name: A name scope for the associated operations (optional).
 
   Returns:
-    The reduced tensor, of the same dtype as the input_tensor.
+    The reduced tensor, of the same dtype as the input_tensor. Note,  for
+    `complex64` or `complex128` input, the returned `Tensor` will be of type
+    `float32` or `float64`, respectively.
 
   @compatibility(numpy)
   Equivalent to np.var
 
-  Please note that `np.var` has a `dtype` parameter that could be used to
-  specify the output type. By default this is `dtype=float64`. On the other
-  hand, `tf.reduce_variance` has an aggressive type inference from
-  `input_tensor`,
+  Please note `np.var` has a `dtype` parameter that could be used to specify the
+  output type. By default this is `dtype=float64`. On the other hand,
+  `tf.math.reduce_variance` has aggressive type inference from `input_tensor`.
   @end_compatibility
   """
   name = name if name else "reduce_variance"
   with ops.name_scope(name):
     means = reduce_mean(input_tensor, axis=axis, keepdims=True)
-    squared_deviations = gen_math_ops.square(input_tensor - means)
+    if means.dtype.is_integer:
+      raise TypeError("Input must be either real or complex")
+    diff = input_tensor - means
+    if diff.dtype.is_complex:
+      # For complex values we need to take the absolute value before squaring.
+      # This is achieved by multiplying with the conjugate.
+      real_dtype = diff.dtype.real_dtype
+      squared_deviations = gen_math_ops.real(
+          gen_math_ops.mul(gen_math_ops.conj(diff), diff), Tout=real_dtype)
+    else:
+      squared_deviations = gen_math_ops.square(diff)
     return reduce_mean(squared_deviations, axis=axis, keepdims=keepdims)
 
 
@@ -2299,15 +2311,16 @@ def reduce_std(input_tensor, axis=None, keepdims=False, name=None):
 
   For example:
 
-  ```python
-  x = tf.constant([[1., 2.], [3., 4.]])
-  tf.reduce_std(x)  # 1.1180339887498949
-  tf.reduce_std(x, 0)  # [1., 1.]
-  tf.reduce_std(x, 1)  # [0.5,  0.5]
-  ```
+  >>> x = tf.constant([[1., 2.], [3., 4.]])
+  >>> tf.math.reduce_std(x)
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.118034>
+  >>> tf.math.reduce_std(x, 0)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([1., 1.], dtype=float32)>
+  >>> tf.math.reduce_std(x, 1)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([0.5, 0.5], dtype=float32)>
 
   Args:
-    input_tensor: The tensor to reduce. Should have numeric type.
+    input_tensor: The tensor to reduce. Should have real or complex type.
     axis: The dimensions to reduce. If `None` (the default), reduces all
       dimensions. Must be in the range `[-rank(input_tensor),
       rank(input_tensor))`.
@@ -2315,14 +2328,16 @@ def reduce_std(input_tensor, axis=None, keepdims=False, name=None):
     name: A name scope for the associated operations (optional).
 
   Returns:
-    The reduced tensor, of the same dtype as the input_tensor.
+    The reduced tensor, of the same dtype as the input_tensor. Note,  for
+    `complex64` or `complex128` input, the returned `Tensor` will be of type
+    `float32` or `float64`, respectively.
 
   @compatibility(numpy)
   Equivalent to np.std
 
-  Please note that `np.std` has a `dtype` parameter that could be used to
-  specify the output type. By default this is `dtype=float64`. On the other
-  hand, `tf.reduce_std` has an aggressive type inference from `input_tensor`,
+  Please note `np.std` has a `dtype` parameter that could be used to specify the
+  output type. By default this is `dtype=float64`. On the other hand,
+  `tf.math.reduce_std` has aggressive type inference from `input_tensor`.
   @end_compatibility
   """
   name = name if name else "reduce_std"

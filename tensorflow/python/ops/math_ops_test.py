@@ -75,8 +75,26 @@ class ReduceTest(test_util.TensorFlowTestCase):
     self.assertAllClose(
         self.evaluate(math_ops.reduce_variance(x, axis=0)), [0, 0, 0])
 
-    x = np.array([[0, 2, 1, 1], [1, 2, 0, 1]], "float32")
-    self.assertAllClose(self.evaluate(math_ops.reduce_variance(x)), 0.5)
+    x = [[1, 2, 1, 1], [1, 1, 0, 1]]
+    with self.assertRaisesRegexp(TypeError, "must be either real or complex"):
+      math_ops.reduce_variance(x)
+
+    x = [[1., 2., 1., 1.], [1., 1., 0., 1.]]
+    self.assertEqual(self.evaluate(math_ops.reduce_variance(x)), 0.25)
+    x_np = np.array(x)
+    self.assertEqual(np.var(x_np), 0.25)
+    self.assertEqual(self.evaluate(math_ops.reduce_variance(x_np)), 0.25)
+
+  def testReduceVarComplex(self):
+    # Ensure that complex values are handled to be consistent with numpy
+    complex_ys = [([0 - 1j, 0 + 1j], dtypes.float64),
+                  (np.array([0 - 1j, 0 + 1j], "complex64"), dtypes.float32),
+                  (np.array([0 - 1j, 0 + 1j], "complex128"), dtypes.float64)]
+    for y, dtype in complex_ys:
+      y_result = math_ops.reduce_variance(y)
+      self.assertEqual(np.var(y), 1.0)
+      self.assertEqual(self.evaluate(y_result), 1.0)
+      self.assertEqual(y_result.dtype, dtype)
 
   def testReduceStd(self):
     x = np.array([[0, 0, 0], [0, 0, 0]], "float32")
@@ -84,8 +102,26 @@ class ReduceTest(test_util.TensorFlowTestCase):
     self.assertAllClose(
         self.evaluate(math_ops.reduce_std(x, axis=0)), [0, 0, 0])
 
-    x = np.array([[1, 2, 1, 1], [1, 1, 0, 1]], "float32")
-    self.assertAllClose(self.evaluate(math_ops.reduce_std(x)), 0.5)
+    x = [[1, 2, 1, 1], [1, 1, 0, 1]]
+    with self.assertRaisesRegexp(TypeError, "must be either real or complex"):
+      math_ops.reduce_std(x)
+
+    x = [[1., 2., 1., 1.], [1., 1., 0., 1.]]
+    self.assertEqual(self.evaluate(math_ops.reduce_std(x)), 0.5)
+    x_np = np.array(x)
+    self.assertEqual(np.std(x_np), 0.5)
+    self.assertEqual(self.evaluate(math_ops.reduce_std(x_np)), 0.5)
+
+  def testReduceStdComplex(self):
+    # Ensure that complex values are handled to be consistent with numpy
+    complex_ys = [([0 - 1j, 0 + 1j], dtypes.float64),
+                  (np.array([0 - 1j, 0 + 1j], "complex64"), dtypes.float32),
+                  (np.array([0 - 1j, 0 + 1j], "complex128"), dtypes.float64)]
+    for y, dtype in complex_ys:
+      y_result = math_ops.reduce_std(y)
+      self.assertEqual(np.std(y), 1.0)
+      self.assertEqual(self.evaluate(y_result), 1.0)
+      self.assertEqual(y_result.dtype, dtype)
 
 
 @test_util.run_all_in_graph_and_eager_modes
