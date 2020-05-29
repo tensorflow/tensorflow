@@ -183,6 +183,8 @@ tensorflow/lite/kernels/internal/reference/logistic.h \
 tensorflow/lite/kernels/internal/reference/strided_slice.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/pooling.h \
 tensorflow/lite/kernels/internal/cppmath.h \
+tensorflow/lite/kernels/internal/max.h \
+tensorflow/lite/kernels/internal/min.h \
 tensorflow/lite/kernels/internal/strided_slice_logic.h \
 tensorflow/lite/kernels/internal/tensor.h \
 tensorflow/lite/kernels/internal/tensor_ctypes.h \
