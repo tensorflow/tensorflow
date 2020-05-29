@@ -155,3 +155,9 @@ foreach pair = [[TF_GreaterEqualOp, HLO_COMPARISON_DIRECTION_GE],
             [(AreBroadcastCompatible $l, $r)]>;
   def : Pat<(HLO_CompareOp $l, $r, pair[1]), (pair[0] $l, $r)>;
 }
+
+def ConvertDotOp : NativeCodeCall<"ConvertDotOp($_builder, "
+                                               "$0.getDefiningOp())">;
+def : Pat<(HLO_DotOp:$old_value AnyStaticShapeTensor:$lhs,
+               AnyStaticShapeTensor:$rhs, $precision_config),
+          (ConvertDotOp $old_value)>;
