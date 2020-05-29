@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_WINOGRAD_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_WINOGRAD_H_
 
+#include "tensorflow/lite/delegates/gpu/cl/arguments.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
@@ -59,9 +60,9 @@ class Winograd4x4To36 : public GPUOperation {
   absl::Status BindArguments();
   int3 GetGridSize() const;
 
-  LinearStorage bt_;
   Padding2D padding_;
 
+  Arguments args_;
   CLKernel kernel_;
   int3 work_group_size_ = int3(128, 1, 1);
 };

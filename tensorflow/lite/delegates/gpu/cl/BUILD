@@ -54,6 +54,23 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "arguments_test",
+    srcs = ["arguments_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":arguments",
+        ":gpu_object",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "buffer",
     srcs = ["buffer.cc"],
@@ -354,6 +371,7 @@ cc_library(
     hdrs = ["linear_storage.h"],
     deps = [
         ":buffer",
+        ":gpu_object",
         ":opencl_wrapper",
         ":tensor_type",
         ":texture2d",

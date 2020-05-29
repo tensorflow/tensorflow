@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_format.h"
+#include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
@@ -34,8 +35,9 @@ namespace cl {
 namespace {
 
 std::string GetWinograd4x4To36Code(
-    const OperationDef& op_def, const LinearStorage& bt_arr,
-    const std::vector<ElementwiseOperation*>& linked_operations) {
+    const OperationDef& op_def,
+    const std::vector<ElementwiseOperation*>& linked_operations,
+    Arguments* args) {
   TensorCodeGenerator src_tensor(
       "src_data",
       WHSBPoint{"src_size.x", "src_size.y", "src_size.z", "src_size.w"},
@@ -78,31 +80,31 @@ std::string GetWinograd4x4To36Code(
   }
   c += "};\n";
 
+  args->AddInt("padding_x");
+  args->AddInt("padding_y");
+  args->AddInt("tiles_total");
+  args->AddInt("tiles_x");
+
   c += "__kernel void main_function(\n";
-  c += src_tensor.GetDeclaration(AccessType::READ) + ",\n";
-  c += bt_arr.GetDeclaration();
+  c += src_tensor.GetDeclaration(AccessType::READ);
   c += GetArgsDeclaration(linked_operations);
   c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
   c += "    int4 src_size,                              \n";
-  c += "    int4 dst_size,                              \n";
-  c += "    int2 padding,                               \n";
-  c += "    int tiles_total,                            \n";
-  c += "    int tiles_x                                 \n";
-  c += ") {\n";
+  c += "    int4 dst_size";
+  c += "$0) {\n";
   c += "  int DST_X = get_global_id(0);\n";
   c += "  int DST_Y = get_global_id(1);\n";
   c += "  int DST_Z = get_global_id(2);\n";
-  c += "  if (DST_X >= tiles_total || DST_Y >= 6 || DST_Z >= dst_size.z) {\n";
+  c += "  if (DST_X >= args.tiles_total || DST_Y >= 6 || DST_Z >= dst_size.z) "
+       "{\n";
   c += "    return; \n";
   c += "  }\n";
-  c += "  int tile_x = (DST_X % tiles_x) * 4;\n";
-  c += "  int tile_y = (DST_X / tiles_x) * 4;\n";
+  c += "  int tile_x = (DST_X % args.tiles_x) * 4;\n";
+  c += "  int tile_y = (DST_X / args.tiles_x) * 4;\n";
   c += "  ACCUM_FLT4 I0, I1, I2, I3, I4, I5;\n";
   c += "  ACCUM_FLT bt_ar[6];\n";
-  c += "  ACCUM_FLT4 t0 = TO_ACCUM_TYPE(" +
-       bt_arr.ReadLinearFLT4("DST_Y * 2 + 0") + ");\n";
-  c += "  ACCUM_FLT4 t1 = TO_ACCUM_TYPE(" +
-       bt_arr.ReadLinearFLT4("DST_Y * 2 + 1") + ");\n";
+  c += "  ACCUM_FLT4 t0 = TO_ACCUM_TYPE(args.bt.Read(DST_Y * 2 + 0));\n";
+  c += "  ACCUM_FLT4 t1 = TO_ACCUM_TYPE(args.bt.Read(DST_Y * 2 + 1));\n";
   c += "  DST_Y *= 6;\n";
   c += "  bt_ar[0] = t0.x;\n";
   c += "  bt_ar[1] = t0.y;\n";
@@ -121,15 +123,16 @@ std::string GetWinograd4x4To36Code(
            " * m" + xs + "_x;\n";
     } else {
       c += "    ACCUM_FLT4 " + src + " = " +
-           src_tensor.ReadAsTypeWHSB(accum_type, "tile_x + padding.x + " + xs,
-                                     "yc", "DST_Z", batch_id) +
+           src_tensor.ReadAsTypeWHSB(accum_type,
+                                     "tile_x + args.padding_x + " + xs, "yc",
+                                     "DST_Z", batch_id) +
            ";\n";
     }
   };
   if (is_buffer || is_image_buffer) {
     for (int x = 0; x < 6; ++x) {
       const std::string xs = std::to_string(x);
-      c += "  int xc" + xs + " = tile_x + padding.x + " + xs + ";\n";
+      c += "  int xc" + xs + " = tile_x + args.padding_x + " + xs + ";\n";
       c += "  ACCUM_FLT m" + xs + "_x = (ACCUM_FLT)(xc" + xs + " >= 0 && xc" +
            xs + " < src_size.x);\n";
       c += "  bool inx" + xs + " = (xc" + xs + " >= 0 && xc" + xs +
@@ -144,7 +147,7 @@ std::string GetWinograd4x4To36Code(
     }
   }
   c += "  {\n";
-  c += "    int yc = tile_y + padding.y;\n";
+  c += "    int yc = tile_y + args.padding_y;\n";
   if (is_buffer || is_image_buffer) {
     c += "    bool iny = (yc >= 0 && yc < src_size.y);\n";
     c += "    int offset = select(0, yc * src_size.x, iny);\n";
@@ -162,7 +165,7 @@ std::string GetWinograd4x4To36Code(
   for (int y = 1; y < 6; ++y) {
     const std::string ys = std::to_string(y);
     c += "  {\n";
-    c += "    int yc = tile_y + padding.y + (" + ys + ");\n";
+    c += "    int yc = tile_y + args.padding_y + (" + ys + ");\n";
     if (is_buffer || is_image_buffer) {
       c += "    bool iny = (yc >= 0 && yc < src_size.y);\n";
       c += "    int offset = select(0, yc * src_size.x, iny);\n";
@@ -223,7 +226,6 @@ std::string GetWinograd4x4To36Code(
   c += "    DST_Y++;\n";
   c += "  }\n";
   c += "}\n";
-  // std::cout << c << std::endl;
   return c;
 }
 
@@ -366,15 +368,15 @@ std::string GetWinograd36To4x4Code(
 
 Winograd4x4To36::Winograd4x4To36(Winograd4x4To36&& operation)
     : GPUOperation(std::move(operation)),
-      bt_(std::move(operation.bt_)),
       padding_(operation.padding_),
+      args_(std::move(operation.args_)),
       kernel_(std::move(operation.kernel_)),
       work_group_size_(operation.work_group_size_) {}
 
 Winograd4x4To36& Winograd4x4To36::operator=(Winograd4x4To36&& operation) {
   if (this != &operation) {
-    bt_ = std::move(operation.bt_);
     std::swap(padding_, operation.padding_);
+    args_ = std::move(operation.args_);
     kernel_ = std::move(operation.kernel_);
     std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
@@ -392,8 +394,10 @@ absl::Status Winograd4x4To36::Compile(const CreationContext& creation_context) {
     options.push_back(CompilerOptions::POWERVR_FP16);
   }
   RETURN_IF_ERROR(UploadBt(creation_context.context));
-  const auto code =
-      GetWinograd4x4To36Code(definition_, bt_, linked_operations_);
+  std::string code =
+      GetWinograd4x4To36Code(definition_, linked_operations_, &args_);
+  RETURN_IF_ERROR(args_.TransformToCLCode(&code));
+  code = absl::Substitute(code, args_.GetListOfArgs());
   RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", options, *creation_context.context,
       *creation_context.device, &kernel_));
@@ -418,7 +422,11 @@ absl::Status Winograd4x4To36::UploadBt(CLContext* context) {
   create_info.storage_type = LinearStorageType::TEXTURE_2D;
   create_info.data_type = definition_.GetDataType();
   create_info.name = "bt_arr";
-  return CreateLinearStorage(create_info, bt_aligned, context, &bt_);
+
+  LinearStorage lt;
+  RETURN_IF_ERROR(CreateLinearStorage(create_info, bt_aligned, context, &lt));
+  args_.AddObject("bt", absl::make_unique<LinearStorage>(std::move(lt)));
+  return absl::OkStatus();
 }
 
 int3 Winograd4x4To36::SelectBestWorkGroup() {
@@ -429,22 +437,22 @@ int3 Winograd4x4To36::SelectBestWorkGroup() {
 }
 
 absl::Status Winograd4x4To36::BindArguments() {
-  kernel_.ResetBindingCounter();
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(bt_.GetMemoryPtr()));
-  RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHSB()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHSB()));
   const int tiles_x = DivideRoundUp(
       src_[0]->Width() + padding_.prepended.w + padding_.appended.w - 2, 4);
   const int tiles_y = DivideRoundUp(
       src_[0]->Height() + padding_.prepended.h + padding_.appended.h - 2, 4);
   const int tiles_total = tiles_x * tiles_y;
-  RETURN_IF_ERROR(
-      kernel_.SetBytesAuto(int2(-padding_.prepended.w, -padding_.prepended.h)));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(tiles_total));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(tiles_x));
+  RETURN_IF_ERROR(args_.SetInt("padding_x", -padding_.prepended.w));
+  RETURN_IF_ERROR(args_.SetInt("padding_y", -padding_.prepended.h));
+  RETURN_IF_ERROR(args_.SetInt("tiles_total", tiles_total));
+  RETURN_IF_ERROR(args_.SetInt("tiles_x", tiles_x));
+  kernel_.ResetBindingCounter();
+  RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
+  RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
+  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHSB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHSB()));
+  RETURN_IF_ERROR(args_.Bind(kernel_.kernel(), kernel_.GetBindingCounter()));
   return absl::OkStatus();
 }
 

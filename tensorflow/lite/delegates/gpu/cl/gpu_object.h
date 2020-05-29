@@ -99,6 +99,8 @@ class GPUObjectDescriptor {
   mutable std::map<std::string, std::string> state_vars_;
 };
 
+using GPUObjectDescriptorPtr = std::unique_ptr<GPUObjectDescriptor>;
+
 class GPUObject {
  public:
   GPUObject() = default;

@@ -40,6 +40,8 @@ class Arguments {
   void AddBuffer(const std::string& name, const GPUBufferDescriptor& desc);
   void AddImage2D(const std::string& name, const GPUImage2DDescriptor& desc);
 
+  void AddObjectRef(const std::string& name,
+                    GPUObjectDescriptorPtr&& descriptor_ptr);
   void AddObject(const std::string& name, GPUObjectPtr&& object);
 
   absl::Status SetInt(const std::string& name, int value);
@@ -69,6 +71,18 @@ class Arguments {
   absl::Status AddObjectArgs();
 
   void ResolveArgsPass(std::string* code);
+  absl::Status ResolveSelectorsPass(std::string* code);
+
+  absl::Status ResolveSelector(const std::string& object_name,
+                               const std::string& selector,
+                               const std::vector<std::string>& args,
+                               std::string* result);
+
+  void ResolveObjectNames(const std::string& object_name,
+                          const std::vector<std::string>& member_names,
+                          std::string* code);
+
+  static constexpr char kArgsPrefix[] = "args.";
 
   struct IntValue {
     int value;
@@ -98,6 +112,12 @@ class Arguments {
 
   std::map<std::string, GPUBufferDescriptor> buffers_;
   std::map<std::string, GPUImage2DDescriptor> images2d_;
+
+  struct ObjectRefArg {
+    AccessType access_type;
+    GPUObjectDescriptorPtr descriptor;
+  };
+  std::map<std::string, ObjectRefArg> object_refs_;
 
   struct ObjectArg {
     AccessType access_type;
