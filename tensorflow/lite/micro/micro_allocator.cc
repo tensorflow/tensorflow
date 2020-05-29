@@ -24,11 +24,14 @@ limitations under the License.
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/api/tensor_utils.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/micro/compatibility.h"
 #include "tensorflow/lite/micro/memory_helpers.h"
 #include "tensorflow/lite/micro/memory_planner/greedy_memory_planner.h"
 #include "tensorflow/lite/micro/memory_planner/memory_planner.h"
+#include "tensorflow/lite/micro/micro_op_resolver.h"
 #include "tensorflow/lite/micro/simple_memory_allocator.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 
@@ -431,7 +434,7 @@ MicroAllocator::MicroAllocator(TfLiteContext* context, const Model* model,
 }
 
 TfLiteStatus MicroAllocator::InitializeFromFlatbuffer(
-    const OpResolver& op_resolver,
+    const MicroOpResolver& op_resolver,
     NodeAndRegistration** node_and_registrations) {
   if (!active_) {
     return kTfLiteError;
@@ -649,7 +652,7 @@ TfLiteStatus MicroAllocator::AllocateNodeAndRegistrations(
 }
 
 TfLiteStatus MicroAllocator::PrepareNodeAndRegistrationDataFromFlatbuffer(
-    const OpResolver& op_resolver,
+    const MicroOpResolver& op_resolver,
     NodeAndRegistration* node_and_registrations) {
   TfLiteStatus status = kTfLiteOk;
   auto* opcodes = model_->operator_codes();
@@ -697,9 +700,12 @@ TfLiteStatus MicroAllocator::PrepareNodeAndRegistrationDataFromFlatbuffer(
       custom_data = reinterpret_cast<const char*>(op->custom_options()->data());
       custom_data_size = op->custom_options()->size();
     } else {
-      TF_LITE_ENSURE_STATUS(ParseOpData(op, op_type, error_reporter_,
-                                        &builtin_data_allocator,
-                                        (void**)(&builtin_data)));
+      MicroOpResolver::BuiltinParseFunction parser =
+          op_resolver.GetOpDataParser(op_type);
+      TFLITE_DCHECK(parser != nullptr);
+      TF_LITE_ENSURE_STATUS(parser(op, op_type, error_reporter_,
+                                   &builtin_data_allocator,
+                                   (void**)(&builtin_data)));
     }
 
     // Disregard const qualifier to workaround with existing API.

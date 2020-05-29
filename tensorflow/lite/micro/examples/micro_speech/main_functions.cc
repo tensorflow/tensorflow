@@ -74,7 +74,7 @@ void setup() {
   //
   // tflite::ops::micro::AllOpsResolver resolver;
   // NOLINTNEXTLINE(runtime-global-variables)
-  static tflite::MicroOpResolver<4> micro_op_resolver(error_reporter);
+  static tflite::MicroMutableOpResolver<4> micro_op_resolver(error_reporter);
   if (micro_op_resolver.AddBuiltin(
           tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
           tflite::ops::micro::Register_DEPTHWISE_CONV_2D(),

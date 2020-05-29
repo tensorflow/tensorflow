@@ -37,6 +37,7 @@ cc_library(
         "micro_allocator.h",
         "micro_interpreter.h",
         "micro_mutable_op_resolver.h",
+        "micro_op_resolver.h",
         "micro_optional_debug_tools.h",
         "simple_memory_allocator.h",
         "test_helpers.h",
@@ -159,6 +160,7 @@ tflite_micro_cc_test(
     deps = [
         ":micro_framework",
         ":micro_utils",
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
