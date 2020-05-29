@@ -1414,7 +1414,7 @@ def categorical_hinge(y_true, y_pred):
   y_true = math_ops.cast(y_true, y_pred.dtype)
   pos = math_ops.reduce_sum(y_true * y_pred, axis=-1)
   neg = math_ops.reduce_max((1. - y_true) * y_pred, axis=-1)
-  return math_ops.maximum(0., neg - pos + 1.)
+  return math_ops.maximum(neg - pos + 1., 0.)
 
 
 @keras_export('keras.losses.huber', v1=[])
