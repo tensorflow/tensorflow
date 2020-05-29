@@ -4188,8 +4188,7 @@ TfLiteStatus StatefulNnApiDelegate::GetNodesSupportedByAccelerator(
   auto* delegate_data = static_cast<Data*>(delegate->data_);
   // The first entry in the array is the element count
 
-  auto supported_nodes_int_array =
-      delegates::BuildTfLiteIntArray(supported_nodes);
+  auto supported_nodes_int_array = BuildTfLiteIntArray(supported_nodes);
   TF_LITE_ENSURE_STATUS(context->PreviewDelegatePartitioning(
       context, supported_nodes_int_array.get(), params_array, num_partitions));
   // For each partition check if which nodes are actually supported by the
@@ -4222,7 +4221,7 @@ TfLiteStatus StatefulNnApiDelegate::GetNodesSupportedByAccelerator(
     // We changed the set of nodes to delegate this will create a different
     // partitioning layout.
     auto device_sup_nodes_int_array =
-        delegates::BuildTfLiteIntArray(*device_supported_nodes);
+        BuildTfLiteIntArray(*device_supported_nodes);
     TF_LITE_ENSURE_STATUS(context->PreviewDelegatePartitioning(
         context, device_sup_nodes_int_array.get(), params_array,
         num_partitions));
@@ -4419,8 +4418,7 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
         &num_partitions, &params_array, nnapi_errno));
   } else {
     nodes_to_delegate = supported_nodes;
-    auto supported_nodes_int_array =
-        delegates::BuildTfLiteIntArray(supported_nodes);
+    auto supported_nodes_int_array = BuildTfLiteIntArray(supported_nodes);
     TF_LITE_ENSURE_STATUS(context->PreviewDelegatePartitioning(
         context, supported_nodes_int_array.get(), &params_array,
         &num_partitions));
@@ -4437,8 +4435,7 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
   } else {
     // Request TFLite to partition the graph and make kernels
     // for each independent node sub set a new nnapi_delegate_kernel.
-    auto nodes_to_delegate_int_array =
-        delegates::BuildTfLiteIntArray(nodes_to_delegate);
+    auto nodes_to_delegate_int_array = BuildTfLiteIntArray(nodes_to_delegate);
     return context->ReplaceNodeSubsetsWithDelegateKernels(
         context, nnapi_delegate_kernel, nodes_to_delegate_int_array.get(),
         delegate);

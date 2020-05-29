@@ -46,14 +46,6 @@ TfLiteStatus CreateNewTensorWithDifferentType(TfLiteContext* context,
   return kTfLiteOk;
 }
 
-std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> BuildTfLiteIntArray(
-    const std::vector<int>& data) {
-  std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> result(
-      TfLiteIntArrayCreate(data.size()));
-  std::copy(data.begin(), data.end(), result->data);
-  return result;
-}
-
 TfLiteStatus GraphPartitionHelper::Partition(
     std::set<std::string>* unsupported_nodes_info) {
   const auto prepare_status = PrepareSupportedNodes(unsupported_nodes_info);
@@ -101,6 +93,19 @@ GraphPartitionHelper::GetFirstNLargestPartitions(
     results.push_back(p);
   }
   return results;
+}
+
+std::vector<int> GraphPartitionHelper::GetNodesOfFirstNLargestPartitionsImpl(
+    int n, int min_nodes_per_partition) {
+  auto first_n_partitions =
+      GetFirstNLargestPartitions(n, min_nodes_per_partition);
+  std::vector<int> ops_to_replace;
+  for (const auto p : first_n_partitions) {
+    auto nodes = p->nodes_to_replace;
+    ops_to_replace.insert(ops_to_replace.end(), nodes->data,
+                          nodes->data + nodes->size);
+  }
+  return ops_to_replace;
 }
 
 TfLiteStatus GraphPartitionHelper::PrepareSupportedNodes(
@@ -155,23 +160,12 @@ TfLiteStatus FP16GraphPartitionHelper::Partition(
   return status;
 }
 
-std::vector<int> FP16GraphPartitionHelper::GetNodesOfFirstNLargestPartitions(
-    int n, int min_nodes_per_partition,
-    std::vector<TfLiteDelegateParams*>* partitions) {
-  // We first get partitions to reduce the number of nodes to be checked in
-  // deciding which dequant ops could actually be replaced. And then we
-  // remap input-tensor to dequant nodes' inputs and remove those
-  // to-be-reserved dequant nodes.
-  auto first_nps = GetFirstNLargestPartitions(n, min_nodes_per_partition);
-  if (partitions != nullptr) {
-    *partitions = first_nps;
-  }
-  std::vector<int> ops_to_replace;
-  for (const auto p : first_nps) {
-    auto nodes = p->nodes_to_replace;
-    ops_to_replace.insert(ops_to_replace.end(), nodes->data,
-                          nodes->data + nodes->size);
-  }
+std::vector<int>
+FP16GraphPartitionHelper::GetNodesOfFirstNLargestPartitionsImpl(
+    int n, int min_nodes_per_partition) {
+  std::vector<int> ops_to_replace =
+      GraphPartitionHelper::GetNodesOfFirstNLargestPartitionsImpl(
+          n, min_nodes_per_partition);
   RemapInputTensors(ops_to_replace);
   RemoveReservedDequantsFromNodes(&ops_to_replace);
   return ops_to_replace;

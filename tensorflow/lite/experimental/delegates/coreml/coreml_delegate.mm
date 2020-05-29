@@ -233,15 +233,15 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
   delegates::FP16GraphPartitionHelper partition_helper(context, node_supported_fn);
   TF_LITE_ENSURE_STATUS(partition_helper.Partition(nullptr));
 
-  std::vector<TfLiteDelegateParams*> partitions;
   std::vector<int> delegated_nodes = partition_helper.GetNodesOfFirstNLargestPartitions(
-      params->max_delegated_partitions, params->min_nodes_per_partition, &partitions);
+      params->max_delegated_partitions, params->min_nodes_per_partition);
   TFLITE_LOG_PROD(tflite::TFLITE_LOG_INFO,
                   "CoreML delegate: %d nodes delegated out of %d nodes, "
                   "with %d partitions.\n",
-                  delegated_nodes.size(), partition_helper.num_total_nodes(), partitions.size());
+                  delegated_nodes.size(), partition_helper.num_total_nodes(),
+                  partition_helper.num_partitions());
   return context->ReplaceNodeSubsetsWithDelegateKernels(
-      context, GetCoreMlKernelRegistration(), delegates::BuildTfLiteIntArray(delegated_nodes).get(),
+      context, GetCoreMlKernelRegistration(), BuildTfLiteIntArray(delegated_nodes).get(),
       delegate);
 }
 
