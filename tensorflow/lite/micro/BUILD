@@ -131,6 +131,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "recording_simple_memory_allocator",
+    srcs = [
+        "recording_simple_memory_allocator.cc",
+    ],
+    hdrs = [
+        "recording_simple_memory_allocator.h",
+    ],
+    build_for_embedded = True,
+    copts = micro_copts(),
+    deps = [
+        ":micro_compatibility",
+        ":micro_framework",
+    ],
+)
+
 tflite_micro_cc_test(
     name = "micro_error_reporter_test",
     srcs = [
@@ -173,6 +189,18 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":micro_framework",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "recording_simple_memory_allocator_test",
+    srcs = [
+        "recording_simple_memory_allocator_test.cc",
+    ],
+    deps = [
+        ":micro_framework",
+        ":recording_simple_memory_allocator",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )

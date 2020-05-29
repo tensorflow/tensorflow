@@ -417,7 +417,7 @@ MicroAllocator::MicroAllocator(TfLiteContext* context, const Model* model,
   // Creates a root memory allocator managing the arena. The allocator itself
   // also locates in the arena buffer. This allocator doesn't need to be
   // destructed as it's the root allocator.
-  memory_allocator_ = CreateInPlaceSimpleMemoryAllocator(
+  memory_allocator_ = SimpleMemoryAllocator::Create(
       error_reporter, aligned_arena, aligned_arena_size);
 
   TfLiteStatus status = InitGraphAndContextTensorData();
