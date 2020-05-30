@@ -1064,7 +1064,7 @@ class MatMulFusionTest(lite_v2_test_util.ModelTest):
     test_cases = [(func1, 1), (func2, 2), (func3, 2)]
 
     for case in test_cases:
-      func, expected_number_of_tensors = case
+      func, expected_number_of_ops = case
       root = tracking.AutoTrackable()
       root.f = func
       concrete_func = root.f.get_concrete_function(input_data)
@@ -1088,7 +1088,7 @@ class MatMulFusionTest(lite_v2_test_util.ModelTest):
       actual_value = self. \
         _evaluateTFLiteModel(hybrid_tflite_model, [input_data])
       interpreter = Interpreter(model_content=tflite_model)
-      assert len(interpreter._get_ops_details()) == expected_number_of_tensors
+      assert len(interpreter._get_ops_details()) == expected_number_of_ops
 
       np.testing.assert_almost_equal(expected_value.numpy(), actual_value[0])
 
