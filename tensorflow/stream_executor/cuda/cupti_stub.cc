@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 // IWYU pragma: no_include "perftools/gputools/executor/stream_executor.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/platform/dso_loader.h"
