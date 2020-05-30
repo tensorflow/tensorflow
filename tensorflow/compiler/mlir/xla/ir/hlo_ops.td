@@ -303,14 +303,17 @@ def HLO_ComplexOp: HLO_Op<"complex",
 
 def HLO_DivOp : HLO_BinaryElementwiseOp<"divide",
       [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_DivOp {
+  let hasFolder = 1;
 }
 
 def HLO_MaxOp : HLO_BinaryElementwiseOp<"maximum",
       [Commutative, NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_MaxOp {
+  let hasFolder = 1;
 }
 
 def HLO_MinOp : HLO_BinaryElementwiseOp<"minimum",
       [Commutative, NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_MinOp {
+  let hasFolder = 1;
 }
 
 def HLO_MulOp : HLO_BinaryElementwiseOp<"multiply",

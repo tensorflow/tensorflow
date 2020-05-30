@@ -45,6 +45,60 @@ func @multiply_scalar_fold() -> tensor<4xi64> {
   return %2 : tensor<4xi64>
 }
 
+// CHECK-LABEL: divide_scalar_fold
+func @divide_scalar_fold() -> tensor<4xi64> {
+  %0 = xla_hlo.constant dense<7> : tensor<4xi64>
+  %1 = xla_hlo.constant dense<5> : tensor<4xi64>
+  // CHECK: xla_hlo.constant dense<1>
+  %2 = "xla_hlo.divide"(%0, %1) : (tensor<4xi64>, tensor<4xi64>) -> (tensor<4xi64>)
+  return %2 : tensor<4xi64>
+}
+
+// CHECK-LABEL: divide_fold_float
+func @divide_fold_float() -> tensor<4xf64> {
+  %0 = xla_hlo.constant dense<[5.0, 66.0, 5.0, 1.0]> : tensor<4xf64>
+  %1 = xla_hlo.constant dense<[5.0, 3.0, 2.0, 4.0]> : tensor<4xf64>
+  // CHECK: xla_hlo.constant dense<[1.000000e+00, 2.200000e+01, 2.500000e+00, 2.500000e-01]>
+  %2 = "xla_hlo.divide"(%0, %1) : (tensor<4xf64>, tensor<4xf64>) -> (tensor<4xf64>)
+  return %2 : tensor<4xf64>
+}
+
+// CHECK-LABEL: max_scalar_fold
+func @max_scalar_fold() -> tensor<4xi64> {
+  %0 = xla_hlo.constant dense<7> : tensor<4xi64>
+  %1 = xla_hlo.constant dense<5> : tensor<4xi64>
+  // CHECK: xla_hlo.constant dense<7>
+  %2 = "xla_hlo.maximum"(%0, %1) : (tensor<4xi64>, tensor<4xi64>) -> (tensor<4xi64>)
+  return %2 : tensor<4xi64>
+}
+
+// CHECK-LABEL: max_fold_float
+func @max_fold_float() -> tensor<4xf64> {
+  %0 = xla_hlo.constant dense<[5.0, 66.0, 5.0, 1.0]> : tensor<4xf64>
+  %1 = xla_hlo.constant dense<[5.0, 3.0, 2.0, 4.0]> : tensor<4xf64>
+  // CHECK: xla_hlo.constant dense<[5.000000e+00, 6.600000e+01, 5.000000e+00, 4.000000e+00]>
+  %2 = "xla_hlo.maximum"(%0, %1) : (tensor<4xf64>, tensor<4xf64>) -> (tensor<4xf64>)
+  return %2 : tensor<4xf64>
+}
+
+// CHECK-LABEL: min_scalar_fold
+func @min_scalar_fold() -> tensor<4xi64> {
+  %0 = xla_hlo.constant dense<7> : tensor<4xi64>
+  %1 = xla_hlo.constant dense<-5> : tensor<4xi64>
+  // CHECK: xla_hlo.constant dense<-5>
+  %2 = "xla_hlo.minimum"(%0, %1) : (tensor<4xi64>, tensor<4xi64>) -> (tensor<4xi64>)
+  return %2 : tensor<4xi64>
+}
+
+// CHECK-LABEL: min_fold_float
+func @min_fold_float() -> tensor<4xf64> {
+  %0 = xla_hlo.constant dense<[5.0, 66.0, 5.0, 1.0]> : tensor<4xf64>
+  %1 = xla_hlo.constant dense<[5.0, 3.0, 2.0, 4.0]> : tensor<4xf64>
+  // CHECK: xla_hlo.constant dense<[5.000000e+00, 3.000000e+00, 2.000000e+00, 1.000000e+00]>
+  %2 = "xla_hlo.minimum"(%0, %1) : (tensor<4xf64>, tensor<4xf64>) -> (tensor<4xf64>)
+  return %2 : tensor<4xf64>
+}
+
 // CHECK-LABEL: concatenate_noop
 func @concatenate_noop(%arg0: tensor<4xi32>) -> tensor<4xi32> {
   // CHECK-SAME: [[ARG:%.+]]: tensor<4xi32>

@@ -1474,6 +1474,38 @@ static Attribute BinaryFolder(Op* op, ArrayRef<Attribute> attrs) {
   return DenseElementsAttr::get(type, values);
 }
 
+template <typename T>
+struct divide : std::divides<T> {};
+
+template <>
+struct divide<APInt> {
+  APInt operator()(const APInt& a, const APInt& b) const { return a.sdiv(b); }
+};
+
+template <typename T>
+struct max {
+  T operator()(const T& a, const T& b) const { return std::max<T>(a, b); }
+};
+
+template <>
+struct max<APInt> {
+  APInt operator()(const APInt& a, const APInt& b) const {
+    return llvm::APIntOps::smax(a, b);
+  }
+};
+
+template <typename T>
+struct min {
+  T operator()(const T& a, const T& b) const { return std::min<T>(a, b); }
+};
+
+template <>
+struct min<APInt> {
+  APInt operator()(const APInt& a, const APInt& b) const {
+    return llvm::APIntOps::smin(a, b);
+  }
+};
+
 #define BINARY_FOLDER(Op, Func)                                                \
   OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                           \
     if (getElementTypeOrSelf(getType()).isa<FloatType>())                      \
@@ -1483,9 +1515,16 @@ static Attribute BinaryFolder(Op* op, ArrayRef<Attribute> attrs) {
     return {};                                                                 \
   }
 
+// Addition, subtraction and multiplication use the std:: versions of the ops.
+// Due to the other ops behaving differently in signed vs unsigned integers,
+// APInts need a special implementation. Currently, it replicates signed int
+// op behavior.
 BINARY_FOLDER(AddOp, std::plus);
 BINARY_FOLDER(SubOp, std::minus);
 BINARY_FOLDER(MulOp, std::multiplies);
+BINARY_FOLDER(DivOp, divide);
+BINARY_FOLDER(MaxOp, max);
+BINARY_FOLDER(MinOp, min);
 
 #undef BINARY_FOLDER
 
