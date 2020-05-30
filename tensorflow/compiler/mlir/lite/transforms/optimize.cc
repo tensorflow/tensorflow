@@ -158,6 +158,13 @@ bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,
   return false;
 }
 
+bool CanFuseFullyConnectedThenMul(const ArrayRef<int64_t> elements_shape) {
+  for (auto i = 0; i < elements_shape.size() - 1; i++) {
+    if (elements_shape[i] != 1) return false;
+  }
+  return true;
+}
+
 // Expand Attribute 'a' to 4D with all 1s except 1 dimension.
 // Which dimension depends on 'is_depthwise' is true or false.
 ElementsAttr ExpandTo4DForConvImpl(Attribute a, bool is_depthwise) {
@@ -354,25 +361,25 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
       return failure();
     if (fc_op.fused_activation_function() != "NONE") return failure();
 
-    // Broadcast the constant operand of Mul if it isn't compatible to the
-    // filter input. We only support broadcasting the operand along the depth
-    // dimension, when the operand's depth is 1.
+    // Check if it is possible to fuse the constant mathematically
     Value new_const_val = constant_val;
-    if (!IsBroadcastableElementsAttrAndType(cst.getType(), filter.getType())) {
-      auto original_shape = cst.getType().getShape();
-      llvm::SmallVector<int64_t, 4> normalized_shape(original_shape.begin(),
-                                                     original_shape.end());
-      normalized_shape.push_back(1);
-      auto new_cst = cst.reshape(RankedTensorType::get(
-          normalized_shape, cst.getType().getElementType()));
-      Type new_type = new_cst.getType();
-      if (!IsBroadcastableElementsAttrAndType(new_type, filter.getType())) {
-        return failure();
-      }
-      auto new_op =
-          rewriter.create<ConstantOp>(mul_op.getLoc(), new_type, new_cst);
-      new_const_val = new_op.getResult();
+    auto original_shape = cst.getType().getShape();
+    if (!CanFuseFullyConnectedThenMul(original_shape)) return failure();
+
+    int64_t element_size = original_shape.size() > 0
+                               ? original_shape[original_shape.size() - 1]
+                               : 1;
+    int64_t normalized_shape[2] = {element_size, 1};
+    auto new_cst = cst.reshape(RankedTensorType::get(
+        normalized_shape, cst.getType().getElementType()));
+    Type new_type = new_cst.getType();
+    if (!IsBroadcastableElementsAttrAndType(new_type, filter.getType())) {
+      return failure();
     }
+
+    auto new_op =
+        rewriter.create<ConstantOp>(mul_op.getLoc(), new_type, new_cst);
+    new_const_val = new_op.getResult();
 
     // Rewrite. Since the folder of TFL::MulOp couldn't broadcast the operands,
     // TF::MulOp is used to fold the constant.

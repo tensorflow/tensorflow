@@ -1036,6 +1036,61 @@ class UnknownShapes(lite_v2_test_util.ModelTest):
         '\'in_tensor\' has invalid shape \'[1, None, 16, 3]\'.',
         str(error.exception))
 
+class MatMulFusionTest(lite_v2_test_util.ModelTest):
+
+  @test_util.run_v2_only
+  def testMatMulFusion(self):
+    # Test fusion of (x @ y) * z into fullyconnected
+    input_data = tf.constant([1., 2.], shape=[1, 2])
+
+    @tf.function
+    def func1(x):
+      y_const = tf.constant([3., 4., 5., 6.], shape=[2, 2])
+      z_const = tf.constant([7., 8.], shape=[1, 2])
+      return tf.matmul(x, y_const) * z_const
+
+    @tf.function
+    def func2(x):
+      y_const = tf.constant([3., 4., 5., 6.], shape=[2, 2])
+      z_const = tf.constant([7., 8., 9., 10.], shape=[2, 2])
+      return tf.matmul(x, y_const) * z_const
+
+    @tf.function
+    def func3(x):
+      y_const = tf.constant([3., 4., 5., 6.], shape=[2, 2])
+      z_const = tf.constant([7., 8.], shape=[2, 1])
+      return tf.matmul(x, y_const) * z_const
+
+    test_cases = [(func1, 1), (func2, 2), (func3, 2)]
+
+    for case in test_cases:
+      func, expected_number_of_tensors = case
+      root = tracking.AutoTrackable()
+      root.f = func
+      concrete_func = root.f.get_concrete_function(input_data)
+
+      # Convert model.
+      converter = lite.TFLiteConverterV2. \
+        from_concrete_functions([concrete_func])
+      tflite_model = converter.convert()
+
+      # Check values from converted model.
+      expected_value = root.f(input_data)
+      converter.experimental_new_converter = True
+
+      actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
+      np.testing.assert_almost_equal(expected_value.numpy(), actual_value[0])
+
+      # Enable hybrid quantization, same result
+      converter.experimental_new_converter = True
+      converter.optimizations = [lite.Optimize.DEFAULT]
+      hybrid_tflite_model = converter.convert()
+      actual_value = self. \
+        _evaluateTFLiteModel(hybrid_tflite_model, [input_data])
+      interpreter = Interpreter(model_content=tflite_model)
+      assert len(interpreter._get_ops_details()) == expected_number_of_tensors
+
+      np.testing.assert_almost_equal(expected_value.numpy(), actual_value[0])
 
 if __name__ == '__main__':
   test.main()
