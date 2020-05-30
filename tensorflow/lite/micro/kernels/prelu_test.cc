@@ -46,7 +46,7 @@ void TestPreluFloat(std::initializer_list<int> input_dims_data,
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_PRELU, 1);
+      resolver.FindOp(tflite::BuiltinOperator_PRELU);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   size_t init_data_size = 0;
@@ -113,7 +113,7 @@ void TestPreluQuantized(std::initializer_list<int> input_dims_data,
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_PRELU, 1);
+      resolver.FindOp(tflite::BuiltinOperator_PRELU);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   size_t init_data_size = 0;

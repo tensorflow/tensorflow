@@ -53,7 +53,7 @@ class KeywordRunner {
     resolver_.AddBuiltin(tflite::BuiltinOperator_QUANTIZE,
                          tflite::ops::micro::Register_QUANTIZE());
     resolver_.AddBuiltin(tflite::BuiltinOperator_DEQUANTIZE,
-                         tflite::ops::micro::Register_DEQUANTIZE(), 1, 2);
+                         tflite::ops::micro::Register_DEQUANTIZE());
     resolver_.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
                          tflite::ops::micro::Register_SOFTMAX());
     interpreter_.AllocateTensors();

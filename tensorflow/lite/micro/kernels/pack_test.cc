@@ -52,7 +52,7 @@ void TestPackTwoInputsFloat(std::initializer_list<int> input1_dims_data,
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
   tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_PACK, /* version= */ 1);
+      resolver.FindOp(tflite::BuiltinOperator_PACK);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLitePackParams builtin_data = {
@@ -129,7 +129,7 @@ void TestPackThreeInputsFloat(std::initializer_list<int> input1_dims_data,
 
   tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_PACK, /* version= */ 1);
+      resolver.FindOp(tflite::BuiltinOperator_PACK);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLitePackParams builtin_data = {
@@ -202,7 +202,7 @@ void TestPackTwoInputsQuantized(
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
   tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_PACK, /* version= */ 1);
+      resolver.FindOp(tflite::BuiltinOperator_PACK);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLitePackParams builtin_data = {
@@ -272,7 +272,7 @@ void TestPackTwoInputsQuantized32(
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
   tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_PACK, /* version= */ 1);
+      resolver.FindOp(tflite::BuiltinOperator_PACK);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLitePackParams builtin_data = {

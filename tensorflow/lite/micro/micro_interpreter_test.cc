@@ -151,11 +151,10 @@ class MockCustom {
 
 class MockOpResolver : public MicroOpResolver {
  public:
-  const TfLiteRegistration* FindOp(BuiltinOperator op,
-                                   int version) const override {
+  const TfLiteRegistration* FindOp(BuiltinOperator op) const override {
     return nullptr;
   }
-  const TfLiteRegistration* FindOp(const char* op, int version) const override {
+  const TfLiteRegistration* FindOp(const char* op) const override {
     if (strcmp(op, "mock_custom") == 0) {
       return MockCustom::getRegistration();
     } else if (strcmp(op, "simple_stateful_op") == 0) {

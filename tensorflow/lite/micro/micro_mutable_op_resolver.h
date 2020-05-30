@@ -26,9 +26,9 @@ limitations under the License.
 
 namespace tflite {
 
-// Op versions discussed in this file are enumerated here:
-// tensorflow/lite/tools/versioning/op_version.cc
-
+// TODO(b/151245712) TODO(b/149408647): remove any version once we no longer
+// support op versions in the API or we switch most users and AllOpsResolver to
+// the new selective registration API, whichever seems more appropriate.
 inline int MicroOpResolverAnyVersion() { return 0; }
 
 template <unsigned int tOpCount>
@@ -37,28 +37,23 @@ class MicroMutableOpResolver : public MicroOpResolver {
   explicit MicroMutableOpResolver(ErrorReporter* error_reporter = nullptr)
       : error_reporter_(error_reporter) {}
 
-  const TfLiteRegistration* FindOp(tflite::BuiltinOperator op,
-                                   int version) const override {
+  const TfLiteRegistration* FindOp(tflite::BuiltinOperator op) const override {
+    if (op == BuiltinOperator_CUSTOM) return nullptr;
+
     for (unsigned int i = 0; i < registrations_len_; ++i) {
       const TfLiteRegistration& registration = registrations_[i];
-      if ((registration.builtin_code == op) &&
-          (registration.version == MicroOpResolverAnyVersion() ||
-           version == MicroOpResolverAnyVersion() ||
-           registration.version == version)) {
+      if (registration.builtin_code == op) {
         return &registration;
       }
     }
     return nullptr;
   }
 
-  const TfLiteRegistration* FindOp(const char* op, int version) const override {
+  const TfLiteRegistration* FindOp(const char* op) const override {
     for (unsigned int i = 0; i < registrations_len_; ++i) {
       const TfLiteRegistration& registration = registrations_[i];
       if ((registration.builtin_code == BuiltinOperator_CUSTOM) &&
-          (strcmp(registration.custom_name, op) == 0) &&
-          (registration.version == MicroOpResolverAnyVersion() ||
-           version == MicroOpResolverAnyVersion() ||
-           registration.version == version)) {
+          (strcmp(registration.custom_name, op) == 0)) {
         return &registration;
       }
     }
@@ -83,6 +78,17 @@ class MicroMutableOpResolver : public MicroOpResolver {
       }
       return kTfLiteError;
     }
+
+    if (FindOp(op) != nullptr) {
+      if (error_reporter_ != nullptr) {
+        TF_LITE_REPORT_ERROR(error_reporter_,
+                             "Registering multiple versions of the same op is "
+                             "not supported (Op: #%d, version: %d).",
+                             op, version);
+      }
+      return kTfLiteError;
+    }
+
     TfLiteRegistration* new_registration = &registrations_[registrations_len_];
     registrations_len_ += 1;
 
@@ -93,20 +99,9 @@ class MicroMutableOpResolver : public MicroOpResolver {
     return kTfLiteOk;
   }
 
-  TfLiteStatus AddBuiltin(tflite::BuiltinOperator op,
-                          TfLiteRegistration* registration, int min_version,
-                          int max_version) {
-    for (int version = min_version; version <= max_version; ++version) {
-      TfLiteStatus add_status = AddBuiltin(op, registration, version);
-      if (add_status != kTfLiteOk) {
-        return add_status;
-      }
-    }
-    return kTfLiteOk;
-  }
-
   TfLiteStatus AddCustom(const char* name, TfLiteRegistration* registration,
                          int version = 1) {
+    printf("registrations_len_: %d\n", registrations_len_);
     if (registrations_len_ >= tOpCount) {
       if (error_reporter_) {
         TF_LITE_REPORT_ERROR(
@@ -116,6 +111,17 @@ class MicroMutableOpResolver : public MicroOpResolver {
       }
       return kTfLiteError;
     }
+
+    if (FindOp(name) != nullptr) {
+      if (error_reporter_ != nullptr) {
+        TF_LITE_REPORT_ERROR(error_reporter_,
+                             "Registering multiple versions of the same op is "
+                             "not supported (Op: %s, version: %d).",
+                             name, version);
+      }
+      return kTfLiteError;
+    }
+
     TfLiteRegistration* new_registration = &registrations_[registrations_len_];
     registrations_len_ += 1;
 
@@ -124,17 +130,6 @@ class MicroMutableOpResolver : public MicroOpResolver {
     new_registration->custom_name = name;
     new_registration->version = version;
 
-    return kTfLiteOk;
-  }
-
-  TfLiteStatus AddCustom(const char* name, TfLiteRegistration* registration,
-                         int min_version, int max_version) {
-    for (int version = min_version; version <= max_version; ++version) {
-      TfLiteStatus add_status = AddCustom(name, registration, version);
-      if (add_status != kTfLiteOk) {
-        return add_status;
-      }
-    }
     return kTfLiteOk;
   }
 
