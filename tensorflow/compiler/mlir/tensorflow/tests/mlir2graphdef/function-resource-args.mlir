@@ -8,14 +8,14 @@ func @main() -> tensor<*x!tf.resource> attributes {tf.entry_function = {inputs =
   }
   return %0 : tensor<*x!tf.resource>
 }
-func @test_func_name0(%arg0: tensor<*x!tf.resource> {tf.resource_arg_unique_id = 0 : i64}, %arg1: tensor<*x!tf.resource> {tf.resource_arg_unique_id = 0 : i64}) -> tensor<*x!tf.resource> attributes {tf._disable_call_shape_inference = true} {
+func @test_func_name0(%arg0: tensor<*x!tf.resource> {tf._resource_arg_unique_id = 0 : i64}, %arg1: tensor<*x!tf.resource> {tf._resource_arg_unique_id = 0 : i64}) -> tensor<*x!tf.resource> attributes {tf._disable_call_shape_inference = true} {
   %0 = tf_executor.graph {
     tf_executor.fetch %arg0 : tensor<*x!tf.resource>
   }
   return %0 : tensor<*x!tf.resource>
 }
 
-// Check that the `tf.resource_arg_unique_id` argument attributes of
+// Check that the `tf._resource_arg_unique_id` argument attributes of
 // test_func_name0 are propagated to the function's arg_attr and
 // resource_arg_unique_id.
 
