@@ -43,7 +43,7 @@ constexpr StringRef kTempBufferAttr = "temp";
 template <typename T>
 using BaseOpConversion = BufferAssignmentOpConversionPattern<T>;
 using StdReturnOpConverter =
-    NoBufferOperandsReturnOpConverter<mlir::ReturnOp, xla_lhlo::TerminatorOp,
+    BufferAssignmentReturnOpConverter<mlir::ReturnOp, xla_lhlo::TerminatorOp,
                                       xla_lhlo::CopyOp>;
 
 Value InsertDynamicAllocAndDealloc(Location loc, Value result,

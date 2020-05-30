@@ -312,6 +312,7 @@ cc_library(
         ":Transforms",
         ":VectorOps",
         ":VectorToLLVM",
+        ":VectorToSCF",
         "@llvm-project//llvm:core",
         "@llvm-project//llvm:support",
     ],
@@ -1257,6 +1258,7 @@ cc_library(
         ":Transforms",
         ":VectorOps",
         ":VectorToLLVM",
+        ":VectorToSCF",
         "@llvm-project//llvm:support",
     ],
 )
@@ -2589,6 +2591,7 @@ cc_library(
         ":TransformsPassIncGen",
         ":VectorOps",
         ":VectorToLLVM",
+        ":VectorToSCF",
     ],
 )
 
@@ -3393,7 +3396,7 @@ cc_library(
     srcs = glob([
         "lib/Conversion/VectorToSCF/*.cpp",
         "lib/Conversion/VectorToSCF/*.h",
-    ]),
+    ]) + ["lib/Conversion/PassDetail.h"],
     hdrs = glob([
         "include/mlir/Conversion/VectorToSCF/*.h",
     ]),
