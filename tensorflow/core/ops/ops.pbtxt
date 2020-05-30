@@ -7075,6 +7075,13 @@ op {
       s: "auto"
     }
   }
+  attr {
+    name: "timeout_seconds"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
   is_stateful: true
 }
 op {
@@ -7124,6 +7131,13 @@ op {
       s: "auto"
     }
   }
+  attr {
+    name: "timeout_seconds"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
   is_stateful: true
 }
 op {
@@ -7170,6 +7184,13 @@ op {
     type: "string"
     default_value {
       s: "auto"
+    }
+  }
+  attr {
+    name: "timeout_seconds"
+    type: "float"
+    default_value {
+      f: 0
     }
   }
   is_stateful: true
@@ -7288,6 +7309,13 @@ op {
     type: "string"
     default_value {
       s: "auto"
+    }
+  }
+  attr {
+    name: "timeout_seconds"
+    type: "float"
+    default_value {
+      f: 0
     }
   }
   is_stateful: true
