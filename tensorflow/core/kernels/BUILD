@@ -4726,6 +4726,7 @@ cc_library(
         ":depthwise_conv_grad_op",
         ":depthwise_conv_op",
         ":dilation_ops",
+        ":dropout_op",
         ":fused_batch_norm_op",
         ":in_topk_op",
         ":l2loss_op",
@@ -4786,6 +4787,15 @@ tf_kernel_library(
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocprim",
     ]),
+)
+
+tf_kernel_library(
+    name = "dropout_op",
+    prefix = "dropout_op",
+    deps = NN_DEPS + [
+        ":conv_ops",
+        ":random_op",
+    ],
 )
 
 tf_kernel_library(

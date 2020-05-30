@@ -137,6 +137,25 @@ Status CrossEntropyGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("CrossEntropy", CrossEntropyGrad);
 
+Status DropoutGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  *g = FDH::Define(
+      // Arg defs
+      {"dy: T", "rate: T", "noise_shape: int32"},
+      // Ret val defs
+      {"dx: T"},
+      // Attr defs
+      {"T: {half, float, double}", "seed: int"},
+      // Nodes
+      {
+        {{"dx"}, "DropoutGrad", {"dy", "rate", "noise_shape", "seed"},
+         /*Attrs=*/{{"T", "$T"}}}
+      });
+  // clang-format on
+  return Status::OK();
+}
+REGISTER_OP_GRADIENT("Dropout", DropoutGrad);
+
 Status Conv2DGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   *g = FDH::Define(

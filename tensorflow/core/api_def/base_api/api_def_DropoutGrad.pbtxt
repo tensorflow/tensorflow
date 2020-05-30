@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "DropoutGrad"
+  summary: "Computes gradients of the dropout function."
+  description: <<END
+END
+}

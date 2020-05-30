@@ -19,11 +19,15 @@ from __future__ import division
 from __future__ import print_function
 
 import math
-
+import os
+import sys
+import time
 from absl.testing import parameterized
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -32,6 +36,8 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_impl
@@ -43,7 +49,7 @@ import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops.nn_impl import _compute_sampled_logits
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test as test_lib
-
+from tensorflow.python.client import session
 
 class ZeroFractionTest(test_lib.TestCase):
 
@@ -306,31 +312,105 @@ class L2NormalizeTest(test_lib.TestCase):
 
 class DropoutTest(test_lib.TestCase):
 
-  def testDropout(self):
-    # Runs dropout with 0-1 tensor 10 times, sum the number of ones and validate
-    # that it is producing approximately the right number of ones over a large
-    # number of samples, based on the keep probability.
-    x_dim = 40
-    y_dim = 30
-    num_iter = 10
-    for keep_prob in [0.1, 0.5, 0.8]:
-      t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
-      dropout = nn_ops.dropout(t, rate=(1 - keep_prob))
-      final_count = 0
-      self.assertEqual([x_dim, y_dim], dropout.get_shape())
-      for _ in xrange(0, num_iter):
-        value = self.evaluate(dropout)
-        final_count += np.count_nonzero(value)
-        # Verifies that there are only two values: 0 and 1/keep_prob.
-        sorted_value = np.unique(np.sort(value))
-        self.assertEqual(0, sorted_value[0])
-        self.assertAllClose(1 / keep_prob, sorted_value[1])
+  def _test_correl(self, signs, stride):
+    signs = signs.flatten()
+    v = signs[stride:] + 2*signs[:-stride]
+    return np.bincount(v, minlength=4)
 
-      # Check that we are in the 15% error range
-      expected_count = x_dim * y_dim * keep_prob * num_iter
-      rel_error = math.fabs(final_count - expected_count) / expected_count
-      print(rel_error)
-      self.assertTrue(rel_error < 0.15)
+  @test_util.run_deprecated_v1
+  def testDropout(self):
+    # Run dropout with 0-1 tensor many times, sum the number of ones and 
+    # validate that it is producing approximately the right number of ones 
+    # over a large number of samples, based on the keep probability.
+    for gpu in (True,False):
+      for t, x_dim, y_dim in ((np.float16,40,30),(np.float16,41,31), (np.float32,40,30), (np.float64,40,30), (np.float32,1000,1000)):
+      #for t, x_dim, y_dim in ((np.float32,40,30),):
+      #for t, x_dim, y_dim in ((np.float32,40,30), (np.float64,40,30), (np.float32,1000,1000)):
+        num_iter = 100 if x_dim*y_dim<100000 else 1
+        for keep_prob in [0.1, 0.5, 0.8]:
+          print("****",gpu,t,x_dim,y_dim,keep_prob)
+          with self.session(use_gpu=gpu):
+            site_counts=np.zeros([x_dim, y_dim], dtype=np.int32)
+            arr = np.ones([x_dim, y_dim], dtype=t)
+            dropout = nn_ops.dropout(arr, rate=(1 - keep_prob))
+            final_count = 0
+            self.assertEqual([x_dim, y_dim], dropout.get_shape())
+            xc={x: np.array([0,0,0,0],dtype=np.int32) for x in [1,2,4]}
+            for _ in xrange(0, num_iter):
+              value = self.evaluate(dropout)
+              final_count += np.count_nonzero(value)
+              signs = np.where(value!=0,1,0)
+              site_counts+=signs
+              for stride in [1,2,4]:
+                xc[stride]+=self._test_correl(signs,stride)
+              # Verifies that there are only two values: 0 and 1/keep_prob.
+              sorted_value = np.unique(np.sort(value))
+              self.assertEqual(0, sorted_value[0])
+              self.assertEqual(2, len(sorted_value))
+              tol=0.02 if t==np.float16 else 0.001
+              self.assertAllClose(1 / keep_prob, sorted_value[1], rtol=tol, atol=tol)
+            # Check that we are in the error range
+            expected_count = x_dim * y_dim * keep_prob * num_iter
+            rel_error = math.fabs(final_count - expected_count) / expected_count
+            self.assertTrue(rel_error < 0.05)
+            # Also confirm that each individual location has the right statistics.
+            sigma = math.sqrt(keep_prob * (1-keep_prob) * num_iter)
+            for x in site_counts.flatten()[:min(len(site_counts),10000)]:
+              if math.fabs(x-num_iter*keep_prob) > 6*sigma:
+                print(x, num_iter*keep_prob, sigma, math.fabs(x-num_iter*keep_prob) / sigma)
+              self.assertTrue(math.fabs(x-num_iter*keep_prob) < 6*sigma)
+            # Finally, verify that there are no undue local correlations.
+            p00 = (1-keep_prob)*(1-keep_prob)
+            p01 = (1-keep_prob)*keep_prob
+            p11 = keep_prob*keep_prob
+            # We allow the underlying probability to deviate by up to 1/256
+            # (to permit the RNG to use float16 internally).
+            tol = 0.004
+            p00_tol = tol*2*(1.-keep_prob)
+            p01_tol = tol*math.fabs(1.-2*keep_prob)
+            p11_tol = tol*2*keep_prob
+            for stride in xc:
+              xc1 = xc[stride]
+              elem = np.sum(xc1)
+              xc1 = xc1.astype(float) / elem
+              # with N tests and expected probability p, we expect to see 
+              # Np +/- sqrt(Np(1-p)) occurrences.
+              delta_p00 = xc1[0] - p00
+              delta_p01 = xc1[1] - p01
+              delta_p10 = xc1[2] - p01
+              delta_p11 = xc1[3] - p11
+              space_p00 = 6.*math.sqrt(p00*(1.0-p00)/elem) + p00_tol
+              space_p01 = 6.*math.sqrt(p01*(1.0-p01)/elem) + p01_tol
+              space_p11 = 6.*math.sqrt(p11*(1.0-p11)/elem) + p11_tol
+              #print(delta_p00, space_p00, delta_p01, space_p01, delta_p10, space_p01, delta_p11, space_p11)
+              self.assertTrue(math.fabs(delta_p00)<space_p00)
+              self.assertTrue(math.fabs(delta_p01)<space_p01)
+              self.assertTrue(math.fabs(delta_p10)<space_p01)
+              self.assertTrue(math.fabs(delta_p11)<space_p11)
+
+
+
+  def testDropoutGrad(self):
+    if not test_lib.is_built_with_rocm():
+      self.skipTest("Dropout gradient kernels are enabled only in ROCm platform")
+    for t in (np.float16, np.float32, np.float64): 
+      print("Running test ", t)
+      x_dim = 40
+      y_dim = 30
+      shape = [x_dim, y_dim]
+      rate = 0.1
+      tol = 0.5 if t==np.float16 else (1e-2 if t==np.float32 else 1e-4)
+
+      @def_function.function
+      def test_func(x):
+        # force the seed to allow calculating gradients
+        return nn_ops.dropout(x, rate=0.1, seed=1337)
+      for gpu in (True,False):
+        with self.session(use_gpu=gpu):
+          x = np.ones(shape, dtype=t)
+          e1, e2 = gradient_checker_v2.compute_gradient(test_func, [x])
+          err = gradient_checker_v2.max_error(e1,e2)
+          self.assertLess(err, tol)
 
   def testShapedDropout(self):
     # Runs dropout with 0-1 tensor 10 times, sum the number of ones and validate
@@ -1650,6 +1730,60 @@ class RaggedEmbeddingTest(test_lib.TestCase):
           ragged_factory_ops.constant(expected, dtype=float, ragged_rank=1),
           actual)
 
+class BenchmarkDropout(test_lib.Benchmark):
+  def _grappler_all_off_config(self):
+    config = config_pb2.ConfigProto()
+    off = rewriter_config_pb2.RewriterConfig.OFF
+    config.graph_options.optimizer_options.opt_level = -1
+    config.graph_options.rewrite_options.disable_model_pruning = 1
+    config.graph_options.rewrite_options.constant_folding = off
+    config.graph_options.rewrite_options.layout_optimizer = off
+    config.graph_options.rewrite_options.arithmetic_optimization = off
+    config.graph_options.rewrite_options.dependency_optimization = off
+    return config
+  def _run(self, op, feed_dict=None, num_iters=100, name=None, **kwargs):
+    config = self._grappler_all_off_config()
+    with session.Session(config=config) as sess:
+      deltas = []
+      # Warm up the session
+      for _ in range(2):
+        sess.run(op, feed_dict=feed_dict)
+      for _ in range(num_iters):
+        start = time.time()
+        sess.run(op, feed_dict=feed_dict)
+        end = time.time()
+        deltas.append(end - start)
+      mean_time = np.median(deltas)
+      mean_us = mean_time * 1e6
+      # mean_us = (end - start) * 1e6 / num_iters
+      self.report_benchmark(
+          name=name,
+          wall_time=mean_us,
+          extras=kwargs,
+      )  
+  def _apply_n_times(self, op, n, x1, *args):
+    for _ in range(n):
+      x1=op(x1, *args)
+    return x1
+  #@test_util.run_deprecated_v1
+  def benchmarkDropout(self):
+    device = "/gpu:0"
+    n = 1001
+    @def_function.function
+    def test_func(x):
+      return nn_ops.dropout(x, rate=0.1, seed=0)
+    for old in [False]:
+          dt=dtypes.float32
+          m = int(os.environ['DROP_TEST_DIM'])
+          #for dt, m in [(dtypes.float32, 16000), (dtypes.float16, 16000), (dtypes.float16, 16001)]:
+          #for dt, m in [(dtypes.float32, 2000), (dtypes.float16, 2000), (dtypes.float16, 2001)]:
+          #for dt, m in [(dtypes.float16, 16001)]:
+          name="BenchmarkDropout"+("FP16" if dt==dtypes.float16 else "FP32")+"_"+str(m)+("_old" if old else "")
+          os.environ['TF_ROCM_OLD_DROPOUT']='1' if old else '0'
+          with ops.Graph().as_default():
+            with ops.device(device):
+              x = array_ops.ones([m,n], dtype=dt)
+              self._run(self._apply_n_times(test_func, 1600, x), name=name, num_iters=400)
 
 if __name__ == "__main__":
   test_lib.main()
