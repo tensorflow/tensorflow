@@ -1038,7 +1038,7 @@ def set_tf_cuda_compute_capabilities(environ_cp):
           print('Invalid compute capability: %s' % compute_capability)
           all_valid = False
         else:
-          ver = int(m.group(2))
+          ver = int(sm_compute_match.group(2))
           if ver < 30:
             print(
                 'ERROR: TensorFlow only supports small CUDA compute'
