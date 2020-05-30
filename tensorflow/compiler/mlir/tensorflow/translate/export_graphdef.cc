@@ -70,6 +70,7 @@ using llvm::isa;
 using mlir::BlockArgument;
 using mlir::Dialect;
 using mlir::Operation;
+using mlir::OperationState;
 using mlir::Value;
 using stream_executor::port::StatusOr;
 
@@ -77,9 +78,6 @@ namespace {
 
 constexpr char kInvalidExecutorGraphMsg[] =
     "Functions must be of a single Graph with single op Islands: ";
-
-constexpr char kDeviceAttr[] = "tf.device";
-constexpr char kResourceArgUniqueIdAttr[] = "tf._resource_arg_unique_id";
 
 bool IsLegalChar(char c, bool first_char) {
   if (isalpha(c)) return true;
@@ -269,14 +267,17 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
   (*node_def->mutable_attr())["index"] = index_attr;
 
   if (auto device_attr =
-          func.getArgAttrOfType<mlir::StringAttr>(index, kDeviceAttr))
+          func.getArgAttrOfType<mlir::StringAttr>(index, "tf.device")) {
     *node_def->mutable_device() = device_attr.getValue().str();
+  }
 
-  llvm::ArrayRef<mlir::NamedAttribute> func_arg_i_attrs =
-      func.getArgAttrs(index);
-  absl::flat_hash_set<absl::string_view> attrs_to_ignore = {kDeviceAttr};
-  TF_RETURN_IF_ERROR(ConvertAttributes(func_arg_i_attrs, attrs_to_ignore,
-                                       node_def->mutable_attr()));
+  if (auto resource_arg_unique_id_attr =
+          func.getArgAttrOfType<mlir::IntegerAttr>(
+              index, "tf.resource_arg_unique_id")) {
+    AttrValue unique_id_attr;
+    unique_id_attr.set_i(resource_arg_unique_id_attr.getInt());
+    (*node_def->mutable_attr())["_resource_arg_unique_id"] = unique_id_attr;
+  }
 
   return node_def;
 }
@@ -681,6 +682,14 @@ Status Exporter::ConvertLibFunction(const GraphExportConfig& configs,
   if (auto attr = function.getAttrOfType<mlir::UnitAttr>(stateful_string)) {
     func_def.mutable_signature()->set_is_stateful(true);
   }
+  for (int64 i = 0; i < function.getNumArguments(); ++i) {
+    if (auto resource_arg_unique_id_attr =
+            function.getArgAttrOfType<mlir::IntegerAttr>(
+                i, "tf.resource_arg_unique_id")) {
+      (*func_def.mutable_resource_arg_unique_id())[i] =
+          resource_arg_unique_id_attr.getInt();
+    }
+  }
 
   // Ignore the gradient and is_stateful attribute on the function as they have
   // been handled above.
@@ -690,28 +699,7 @@ Status Exporter::ConvertLibFunction(const GraphExportConfig& configs,
       function.getDialectAttrs());
   TF_RETURN_IF_ERROR(
       ConvertAttributes(funcAttrs, attrs_to_ignore, func_def.mutable_attr()));
-
-  for (int i = 0, e = function.getNumArguments(); i < e; ++i) {
-    if (auto resource_arg_unique_id_attr =
-            function.getArgAttrOfType<mlir::IntegerAttr>(
-                i, kResourceArgUniqueIdAttr)) {
-      (*func_def.mutable_resource_arg_unique_id())[i] =
-          resource_arg_unique_id_attr.getInt();
-    }
-
-    llvm::ArrayRef<mlir::NamedAttribute> func_arg_i_attrs =
-        function.getArgAttrs(i);
-    if (func_arg_i_attrs.empty()) continue;
-    absl::flat_hash_set<absl::string_view> attrs_to_ignore = {
-        kDeviceAttr, kResourceArgUniqueIdAttr};
-    FunctionDef::ArgAttrs func_def_arg_i_attrs;
-    TF_RETURN_IF_ERROR(ConvertAttributes(func_arg_i_attrs, attrs_to_ignore,
-                                         func_def_arg_i_attrs.mutable_attr()));
-    if (func_def_arg_i_attrs.attr().empty()) continue;
-    (*func_def.mutable_arg_attr())[i] = std::move(func_def_arg_i_attrs);
-  }
-
-  (*flib->add_function()) = std::move(func_def);
+  (*flib->add_function()) = func_def;
   return Status::OK();
 }
 

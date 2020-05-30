@@ -786,9 +786,9 @@ func @tf_registry_ops(
 // CHECK-LABEL: func @arguments_with_unique_ids
 func @arguments_with_unique_ids(
   // expected-remark@above {{ID: 9}}
-  %arg0: tensor<*x!tf.resource<tensor<32xf32>>> {tf._resource_arg_unique_id = 0 : i64},
-  %arg1: tensor<*x!tf.resource<tensor<32xf32>>> {tf._resource_arg_unique_id = 0 : i64},
-  %arg2: tensor<*x!tf.resource<tensor<32xf32>>> {tf._resource_arg_unique_id = 33 : i64}) {
+  %arg0: tensor<*x!tf.resource<tensor<32xf32>>> {tf.resource_arg_unique_id = 0 : i64},
+  %arg1: tensor<*x!tf.resource<tensor<32xf32>>> {tf.resource_arg_unique_id = 0 : i64},
+  %arg2: tensor<*x!tf.resource<tensor<32xf32>>> {tf.resource_arg_unique_id = 33 : i64}) {
   tf_executor.graph {
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Successors: {8}}}
