@@ -281,6 +281,14 @@ func @complex_collapse_fold(%arg0: tensor<4xcomplex<f32>>) -> tensor<4xcomplex<f
   return %2 : tensor<4xcomplex<f32>>
 }
 
+// CHECK-LABEL: @dynamic_iota_is_static
+func @dynamic_iota_is_static(%arg0 : tensor<1xindex>) -> tensor<4xi32> {
+  // CHECK: [[RESULT:%.*]] = "xla_hlo.iota"
+  // CHECK: return [[RESULT]]
+  %0 = "xla_hlo.dynamic_iota"(%arg0) {iota_dimension = 0 : i64} : (tensor<1xindex>) -> tensor<4xi32>
+  return %0 : tensor<4xi32>
+}
+
 // CHECK-LABEL: @iota_not_lowered_to_constant
 func @iota_not_lowered_to_constant() -> tensor<4xi32> {
   // CHECK: [[RESULT:%.*]] = "xla_hlo.iota"
@@ -295,16 +303,6 @@ func @unary_einsum(%arg0: tensor<2x3xf32>) -> tensor<2x2xf32> {
   // CHECK: "xla_hlo.einsum"(%[[ONE]], %arg0) {einsum_config = ",ab->aa"}
   %0 = "xla_hlo.unary_einsum"(%arg0) {einsum_config = "ab->aa"} : (tensor<2x3xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
-}
-
-// CHECK-LABEL: @extract_scalars_to_tensor
-// CHECK-SAME: %[[ARG0:.*]]: i32, %[[ARG1:.*]]: i32
-func @extract_scalars_to_tensor(%arg0: i32, %arg1: i32) -> i32 {
-  %0 = "xla_hlo.scalars_to_dimension_tensor"(%arg0, %arg1) : (i32, i32) -> tensor<2xi32>
-  %1 = constant 0 : index
-  %2 = extract_element %0[%1] : tensor<2xi32>
-  // CHECK: return %[[ARG0]]
-  return %2 : i32
 }
 
 // CHECK-LABEL: func @fold_copy

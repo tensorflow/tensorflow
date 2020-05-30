@@ -53,6 +53,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@copy_to_device
 @@dense_to_ragged_batch
 @@dense_to_sparse_batch
+@@distribute
 @@enumerate_dataset
 @@from_variant
 @@get_next_as_optional
@@ -89,6 +90,7 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import
+from tensorflow.python.data.experimental import service
 from tensorflow.python.data.experimental.ops.batching import dense_to_ragged_batch
 from tensorflow.python.data.experimental.ops.batching import dense_to_sparse_batch
 from tensorflow.python.data.experimental.ops.batching import map_and_batch
@@ -150,4 +152,9 @@ from tensorflow.python.framework.type_spec import TypeSpec as Structure
 # pylint: enable=unused-import
 
 from tensorflow.python.util.all_util import remove_undocumented
-remove_undocumented(__name__)
+
+_allowed_symbols = [
+    "service",
+]
+
+remove_undocumented(__name__, _allowed_symbols)

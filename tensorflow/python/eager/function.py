@@ -726,7 +726,7 @@ class _DelayedRewriteGradientFunctions(object):
     # pylint: enable=protected-access
 
     capture_mapping = dict(
-        zip([ops.tensor_id(t) for t in self._func_graph.outputs], op.outputs))
+        zip((ops.tensor_id(t) for t in self._func_graph.outputs), op.outputs))
     remapped_captures = [
         capture_mapping.get(ops.tensor_id(capture), capture)
         for capture in backwards_function.captured_inputs

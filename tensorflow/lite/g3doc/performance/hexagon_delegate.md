@@ -244,6 +244,10 @@ TfLiteHexagonTearDown();  // Needed once at end of app/DSP usage.
     *   ARM 32-bit: `app/src/main/jniLibs/armeabi-v7a`
 *   Put your .so in the directory that match the architecture.
 
+Note: If you're using App Bundle for publishing your Application, you might want
+to set android.bundle.enableUncompressedNativeLibs=false in the
+gradle.properties file.
+
 ## Feedback
 
 For issues, please create a
@@ -255,7 +259,8 @@ ro.board.platform`).
 ## FAQ
 
 *   Which ops are supported by the delegate?
-    *   See the current list of [supported ops and constraints](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/delegates/hexagon/README.md)
+    *   See the current list of
+        [supported ops and constraints](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/delegates/hexagon/README.md)
 *   How can I tell that the model is using the DSP when I enable the delegate?
     *   Two log messages will be printed when you enable the delegate - one to
         indicate if the delegate was created and another to indicate how many

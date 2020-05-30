@@ -48,6 +48,9 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats);
 OverviewPageRunEnvironment ComputeRunEnvironment(
     const RunEnvironment& run_environment);
 
+void SetOverviewPageErrorMessage(const OpStats& op_stats,
+                                 OverviewPage* overview_page);
+
 OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
                                           HardwareType hardware_type);
 

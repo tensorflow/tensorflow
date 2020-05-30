@@ -322,7 +322,7 @@ struct HloLegalizeToLhlo
     target.addIllegalOp<mlir::TensorLoadOp>();
     target.addIllegalOp<mlir::TensorStoreOp>();
     target.addLegalOp<ModuleTerminatorOp>();
-    target.addLegalOp<ScalarsToDimensionTensorOp>();
+    target.addLegalOp<TensorFromElementsOp>();
     target.addIllegalDialect<xla_hlo::XlaHloDialect>();
     target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
       auto inputs = op.getType().getInputs();

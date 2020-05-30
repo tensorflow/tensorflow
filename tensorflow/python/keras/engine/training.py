@@ -2366,14 +2366,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
     self._saved_model_inputs_spec = specs
 
-  def _get_save_spec(self, dynamic_batch=True):
-    if self._saved_model_inputs_spec is None:
-      return None
-
-    return nest.map_structure(
-        lambda t: tf_utils.get_tensor_spec(t, dynamic_batch=dynamic_batch),
-        self._saved_model_inputs_spec)
-
   def _assert_weights_created(self):
     """Asserts that all the weights for the model have been created.
 

@@ -21,9 +21,10 @@ limitations under the License.
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/micro/micro_allocator.h"
+#include "tensorflow/lite/micro/micro_op_resolver.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -71,7 +72,7 @@ void ContextHelper::ReportOpError(struct TfLiteContext* context,
 }  // namespace internal
 
 MicroInterpreter::MicroInterpreter(const Model* model,
-                                   const OpResolver& op_resolver,
+                                   const MicroOpResolver& op_resolver,
                                    uint8_t* tensor_arena,
                                    size_t tensor_arena_size,
                                    ErrorReporter* error_reporter)

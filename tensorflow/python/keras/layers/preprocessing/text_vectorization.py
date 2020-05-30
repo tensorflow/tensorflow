@@ -341,7 +341,7 @@ class TextVectorization(CombinerPreprocessingLayer):
 
   def compute_output_signature(self, input_spec):
     output_shape = self.compute_output_shape(input_spec.shape.as_list())
-    output_dtype = K.floatx() if self._output_mode == TFIDF else dtypes.int64
+    output_dtype = dtypes.int64 if self._output_mode == INT else K.floatx()
     return tensor_spec.TensorSpec(shape=output_shape, dtype=output_dtype)
 
   def adapt(self, data, reset_state=True):

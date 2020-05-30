@@ -53,6 +53,7 @@ limitations under the License.
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
 #include "tensorflow/lite/delegates/nnapi/quant_lstm_sup.h"
+#include "tensorflow/lite/delegates/utils.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
@@ -4177,17 +4178,6 @@ int StatefulNnApiDelegate::GetNnApiErrno() const {
 
 using ::tflite::delegate::nnapi::kMinSdkVersionForNNAPI;
 using ::tflite::delegate::nnapi::kMinSdkVersionForNNAPI12;
-
-namespace {
-
-std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> BuildTfLiteIntArray(
-    const std::vector<int>& data) {
-  std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> result(
-      TfLiteIntArrayCreate(data.size()));
-  std::copy(data.begin(), data.end(), result->data);
-  return result;
-}
-}  // namespace
 
 // static
 TfLiteStatus StatefulNnApiDelegate::GetNodesSupportedByAccelerator(

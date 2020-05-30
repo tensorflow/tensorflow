@@ -49,14 +49,15 @@ cc_library(
     ],
     hdrs = [
         "tfl_to_std.h",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_utils.h",
     ],
     deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
     ],
 )
 

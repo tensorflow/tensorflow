@@ -42,6 +42,11 @@ limitations under the License.
 namespace mlir {
 namespace quant {
 
+// A unit attribute can be attached to the quantize/dequantize ops which are
+// added by the quantization passes. These ops can be removed erased without
+// losing accuracy.
+constexpr char kVolatileOpAttrName[] = "volatile";
+
 using QuantParams = quant::QuantizedType;
 using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
 using QuantParamsForResults = llvm::SmallVector<QuantParams, 4>;

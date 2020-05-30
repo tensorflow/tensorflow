@@ -521,7 +521,8 @@ def layer_call_wrapper(call_collection, method):
     with base_layer_utils.call_context().enter(
         layer, inputs=inputs, build_graph=False, training=training,
         saving=True):
-      with base_layer_utils.autocast_context_manager(layer._compute_dtype):  # pylint: disable=protected-access
+      with base_layer_utils.autocast_context_manager(
+          layer._compute_dtype_object):  # pylint: disable=protected-access
         ret = method(*args, **kwargs)
     _restore_layer_losses(original_losses)
     return ret

@@ -317,8 +317,9 @@ def plot_model(model,
   # Return the image as a Jupyter Image object, to be displayed in-line.
   # Note that we cannot easily detect whether the code is running in a
   # notebook, and thus we always return the Image if Jupyter is available.
-  try:
-    from IPython import display
-    return display.Image(filename=to_file)
-  except ImportError:
-    pass
+  if extension != 'pdf':
+    try:
+      from IPython import display
+      return display.Image(filename=to_file)
+    except ImportError:
+      pass

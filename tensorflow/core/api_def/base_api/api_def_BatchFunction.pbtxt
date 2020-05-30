@@ -86,6 +86,13 @@ END
 the types of the output tensors.
 END
   }
+  attr {
+    name: "enable_large_batch_splitting"
+    description: <<END
+input with a large size (i.e., larger than the largest value of
+`allowed_batch_sizes`) will be splitted into multiple batches with batch size.
+END
+  }
   summary: "Batches all the inputs tensors to the computation done by the function."
   description: <<END
 So, for example, in the following code

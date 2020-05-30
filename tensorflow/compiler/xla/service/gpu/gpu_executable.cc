@@ -176,7 +176,6 @@ Status GpuExecutable::ExecuteThunks(
     // module, we won't get any data, but that's probably an OK trade-off.
     ScopedAnnotation annotation([&] { return thunk->profile_annotation(); });
 
-    TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
     int32 stream_no =
         thunk_schedule_->StreamNumberForHlo(*thunk->hlo_instruction());
     se::Stream* stream =
@@ -385,6 +384,10 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
         buffer_allocations,
         buffer_allocations_builder.Build(
             assignment_.get(), executor->device_ordinal(), memory_allocator));
+  }
+
+  for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
+    TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
   }
 
   TF_RETURN_IF_ERROR(ExecuteThunks(run_options, *buffer_allocations,

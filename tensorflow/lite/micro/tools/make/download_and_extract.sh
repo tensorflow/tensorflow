@@ -93,6 +93,17 @@ build_embarc_mli() {
   make -j 4 -C ${1}/lib/make TCF_FILE=${2}
 }
 
+setup_zephyr() {
+  command -v virtualenv >/dev/null 2>&1 || {
+    echo >&2 "The required 'virtualenv' tool isn't installed. Try 'pip install virtualenv'."; exit 1;
+  }
+  virtualenv -p python3 ${1}/venv-zephyr
+  . ${1}/venv-zephyr/bin/activate
+  python ${1}/venv-zephyr/bin/pip install -r ${1}/scripts/requirements.txt
+  west init -m https://github.com/zephyrproject-rtos/zephyr.git
+  deactivate
+}
+
 # Main function handling the download, verify, extract, and patch process.
 download_and_extract() {
   local usage="Usage: download_and_extract URL MD5 DIR [ACTION] [ACTION_PARAM]"
@@ -179,6 +190,8 @@ download_and_extract() {
     else
       build_embarc_mli ${dir} ${action_param1}
     fi
+  elif [[ ${action} == "setup_zephyr" ]]; then
+    setup_zephyr ${dir}
   elif [[ ${action} ]]; then
     echo "Unknown action '${action}'"
     exit 1

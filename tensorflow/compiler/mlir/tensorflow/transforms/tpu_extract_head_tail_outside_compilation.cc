@@ -66,6 +66,7 @@ Operation* GetOpOfValue(Value value) {
 // other ops in the TPU computation that cannot be extracted.
 llvm::SmallVector<Operation*, 4> FindOutsideCompiledOpsAtHead(
     tf_device::ClusterOp cluster) {
+  Region* cluster_region = &cluster.body();
   llvm::SmallSetVector<Operation*, 4> head_outside_compiled_ops;
 
   auto cluster_ops = cluster.GetBody().without_terminator();
@@ -73,20 +74,19 @@ llvm::SmallVector<Operation*, 4> FindOutsideCompiledOpsAtHead(
     if (!HasOutsideCompilationAttribute(&cluster_op)) continue;
     // An outside compiled op can be extracted if its operands are not from
     // other ops in the cluster that cannot be extracted.
-    auto result = cluster_op.walk([&](Operation* op) {
+    auto walk_result = cluster_op.walk([&](Operation* op) {
       for (Value operand : op->getOperands()) {
         Operation* operand_op = GetOpOfValue(operand);
-        if (operand_op->isProperAncestor(cluster) ||
-            cluster_op.isAncestor(operand_op) ||
-            head_outside_compiled_ops.count(operand_op))
-          continue;
+        if (head_outside_compiled_ops.count(operand_op)) continue;
 
-        return WalkResult::interrupt();
+        if (operand_op->getParentRegion() == cluster_region)
+          return WalkResult::interrupt();
       }
       return WalkResult::advance();
     });
 
-    if (!result.wasInterrupted()) head_outside_compiled_ops.insert(&cluster_op);
+    if (!walk_result.wasInterrupted())
+      head_outside_compiled_ops.insert(&cluster_op);
   }
 
   return head_outside_compiled_ops.takeVector();

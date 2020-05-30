@@ -395,12 +395,11 @@ static void ShowXlaDeviceDeprecationWarning(
   if (absl::StrContains(compilation_device_name, "CPU") ||
       absl::StrContains(compilation_device_name, "GPU")) {
     absl::call_once(once, [] {
-      LOG(WARNING)
-          << "XLA_GPU and XLA_CPU devices are deprecated and will be "
-             "removed in subsequent releases. Instead, use either "
-             "@tf.function(experimental_compile=True) for must-compile "
-             "semantics, or run with TF_XLA_FLAGS=--tf_xla_auto_jit=2 "
-             "for auto-clustering best-effort compilation.";
+      LOG(INFO) << "XLA_GPU and XLA_CPU devices are deprecated and will be "
+                   "removed in subsequent releases. Instead, use either "
+                   "@tf.function(experimental_compile=True) for must-compile "
+                   "semantics, or run with TF_XLA_FLAGS=--tf_xla_auto_jit=2 "
+                   "for auto-clustering best-effort compilation.";
     });
   }
 }

@@ -402,6 +402,13 @@ class AddOperationParser : public TFLiteOperationParser {
       return absl::UnimplementedError("ADD requires two input tensors.");
     }
     // TODO(eignasheva): Add shapes check.
+    for (int i = 0; i < 2; i++) {
+      auto input = tflite::GetInput(context, tflite_node, i);
+      if (IsConstantTensor(input) && input->dims->size > 0) {
+        RETURN_IF_ERROR(CheckIfLinearConvertible(input->dims));
+      }
+    }
+
     TfLiteAddParams* tf_options = nullptr;
     return RetrieveBuiltinData(tflite_node, &tf_options);
   }
@@ -1348,6 +1355,17 @@ class PadOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
                                        /*runtime_inputs=*/1, /*outputs=*/1));
     RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
+    auto pad_tensor = tflite::GetInput(context, tflite_node, 1);
+    if (pad_tensor->dims->size != 2) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Invalid paddings tensor dimension: expected 2 dim, got ",
+          pad_tensor->dims->size, " dim"));
+    }
+    if (pad_tensor->dims->data[0] != 4 || pad_tensor->dims->data[1] != 2) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Invalid paddings tensor shape: expected 4x2, got ",
+          pad_tensor->dims->data[0], "x", pad_tensor->dims->data[1]));
+    }
     return absl::OkStatus();
   }
 
@@ -1371,6 +1389,7 @@ class PadOperationParser : public TFLiteOperationParser {
 
     // 4x2 tensor with paddings.
     if (paddings.shape.h != 4 || paddings.shape.w != 2) {
+      // It shouldn't fail here since it's checked at IsSupported().
       return absl::InvalidArgumentError(
           "Paddings tensor has unexpected shape.");
     }
@@ -2441,15 +2460,15 @@ class TransformLandmarksV2OperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(reader->AddOutputs(node));
     std::string op_name = "transform_landmarks_v2";
     node->operation.type = op_name;
-    BHWC output_shape;
+
+    auto output_value = graph->FindOutputs(node->id)[0];
+    output_value->tensor.shape = graph->FindInputs(node->id)[0]->tensor.shape;
+    BHWC output_shape = output_value->tensor.shape;
     RETURN_IF_ERROR(
         ParseCustomAttributes(op_name, tflite_node->custom_initial_data,
                               tflite_node->custom_initial_data_size,
                               &(node->operation.attributes), &output_shape));
 
-    auto output_value = graph->FindOutputs(node->id)[0];
-
-    output_value->tensor.shape = graph->FindInputs(node->id)[0]->tensor.shape;
     return absl::OkStatus();
   }
 

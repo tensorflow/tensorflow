@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/delegates/utils.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -86,31 +87,19 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context,
   delegates::GraphPartitionHelper helper(context, node_supported_fn);
   TF_LITE_ENSURE_STATUS(helper.Partition(nullptr));
 
-  const auto delegate_partitions = helper.GetFirstNLargestPartitions();
-
-  // To avoid creating a new TfLiteIntArray and free it later, we reserve one
-  // element to represent TfLiteIntArray.size which is the 1st element of
-  // TfLiteIntArray C struct.
-  std::vector<int> supported_nodes(1);
-  for (const auto partition : delegate_partitions) {
-    auto* nodes = partition->nodes_to_replace;
-    supported_nodes.insert(supported_nodes.end(), nodes->data,
-                           nodes->data + nodes->size);
-  }
-  // Set first element to the number of nodes to replace.
-  supported_nodes[0] = supported_nodes.size() - 1;
+  std::vector<int> supported_nodes = helper.GetNodesOfFirstNLargestPartitions();
 
   TFLITE_LOG_PROD(tflite::TFLITE_LOG_INFO,
                   "%s delegate: %d nodes delegated out of %d nodes with "
                   "%d partitions.\n",
-                  delegate->name(), supported_nodes[0],
-                  helper.num_total_nodes(), delegate_partitions.size());
+                  delegate->name(), supported_nodes.size(),
+                  helper.num_total_nodes(), helper.num_partitions());
   TfLiteRegistration delegate_kernel_registration =
       GetDelegateKernelRegistration(delegate);
 
   return context->ReplaceNodeSubsetsWithDelegateKernels(
       context, delegate_kernel_registration,
-      reinterpret_cast<TfLiteIntArray*>(supported_nodes.data()), base_delegate);
+      BuildTfLiteIntArray(supported_nodes).get(), base_delegate);
 }
 }  // namespace
 

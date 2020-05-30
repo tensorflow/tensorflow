@@ -2180,6 +2180,18 @@ func @simple_strided_slice(%input: tensor<4x8xf32>) -> tensor<3x2xf32> {
   return %output : tensor<3x2xf32>
 }
 
+// CHECK-LABEL: dynamic_strided_slice
+func @dynamic_strided_slice(%input: tensor<?x8xf32>) -> tensor<?x2xf32> {
+  %begin = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %end = "tf.Const"() {value = dense<[3, 7]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %strides = "tf.Const"() {value = dense<[1, 3]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+
+  // CHECK: "tf.StridedSlice"
+  %output = "tf.StridedSlice"(%input, %begin, %end, %strides)
+      : (tensor<?x8xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<?x2xf32>
+  return %output : tensor<?x2xf32>
+}
+
 // CHECK-LABEL: strided_slice_negative_indices
 func @strided_slice_negative_indices(%input: tensor<4x8xf32>) -> tensor<3x2xf32> {
   %begin = "tf.Const"() {value = dense<[-1, -2]> : tensor<2xi32>} : () -> (tensor<2xi32>)
@@ -2197,6 +2209,18 @@ func @strided_slice_negative_indices(%input: tensor<4x8xf32>) -> tensor<3x2xf32>
   %output = "tf.StridedSlice"(%input, %begin, %end, %strides)
       : (tensor<4x8xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x2xf32>
   return %output : tensor<3x2xf32>
+}
+
+// CHECK-LABEL: dynamic_strided_slice_negative_indices
+func @dynamic_strided_slice_negative_indices(%input: tensor<?x8xf32>) -> tensor<?x2xf32> {
+  %begin = "tf.Const"() {value = dense<[-1, -2]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %end = "tf.Const"() {value = dense<[-4, -8]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %strides = "tf.Const"() {value = dense<[-1, -3]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+
+  // CHECK: tf.StridedSlice
+  %output = "tf.StridedSlice"(%input, %begin, %end, %strides)
+      : (tensor<?x8xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<?x2xf32>
+  return %output : tensor<?x2xf32>
 }
 
 // CHECK-LABEL: strided_slice_range_clamping

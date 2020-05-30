@@ -3553,6 +3553,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "enable_large_batch_splitting"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "BatchIFFT"
@@ -12215,6 +12222,17 @@ op {
   attr {
     name: "var_name"
     type: "string"
+  }
+}
+op {
+  name: "DeviceIndex"
+  output_arg {
+    name: "index"
+    type: DT_INT32
+  }
+  attr {
+    name: "device_names"
+    type: "list(string)"
   }
 }
 op {
@@ -46097,6 +46115,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -46215,6 +46234,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -46283,6 +46303,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -46401,6 +46422,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
