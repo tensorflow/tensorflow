@@ -46,7 +46,8 @@ struct TensorOpTensor {
 // Finds float tensors that are model inputs and is consumed by a quantize Op.
 // The returned TensorOpTensor should have reverse order.
 std::vector<TensorOpTensor> GetInputTensors(ModelT* model,
-                                            ErrorReporter* error_reporter) {
+                                            ErrorReporter* error_reporter,
+                                            const TensorType& input_type) {
   std::vector<TensorOpTensor> result;
   // Get all input tensors.
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
@@ -71,7 +72,7 @@ std::vector<TensorOpTensor> GetInputTensors(ModelT* model,
         continue;
       }
       if (op_code != BuiltinOperator_QUANTIZE) {
-        // Current only support INT8 quantized models.
+        // Currently only supports INT8 and INT16 quantized models.
         TF_LITE_REPORT_ERROR(
             error_reporter,
             "modify_model_interface called on a model without quant/dequant.");
@@ -85,10 +86,16 @@ std::vector<TensorOpTensor> GetInputTensors(ModelT* model,
       }
       const int model_input_index = input_tensors[input_tensor];
       TensorT* quant_output = subgraph->tensors[op->outputs[0]].get();
-      if (quant_output->type != TensorType_INT8) {
+      if (quant_output->type != TensorType_INT8 && quant_output->type != TensorType_INT16) {
         TF_LITE_REPORT_ERROR(error_reporter,
-                             "modify_model_interface currently only support "
-                             "int8 quantized models.");
+                             "modify_model_interface currently only supports "
+                             "int8 and int16 quantized models.");
+      }
+      if (quant_output->type != input_type) {
+        if (!(quant_output->type == TensorType_INT8 && input_type == TensorType_UINT8)) {
+          TF_LITE_REPORT_ERROR(error_reporter,
+                              "Model's type incompatible with output type argument.");
+        }
       }
       if (quant_output->quantization == nullptr) {
         continue;
@@ -103,7 +110,8 @@ std::vector<TensorOpTensor> GetInputTensors(ModelT* model,
 // Finds float tensors that are model output and is consumed by a dequantize Op.
 // The returned TensorOpTensor should have reverse order.
 std::vector<TensorOpTensor> GetOutputTensors(ModelT* model,
-                                             ErrorReporter* error_reporter) {
+                                             ErrorReporter* error_reporter,
+                                             const TensorType& output_type) {
   std::vector<TensorOpTensor> result;
   // Get all output tensors.
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
@@ -128,7 +136,7 @@ std::vector<TensorOpTensor> GetOutputTensors(ModelT* model,
         continue;
       }
       if (op_code != BuiltinOperator_DEQUANTIZE) {
-        // Current only support INT8 quantized models.
+        // Currently only supports INT8 and INT16 quantized models.
         TF_LITE_REPORT_ERROR(
             error_reporter,
             "modify_model_interface called on a model without quant/dequant.");
@@ -142,12 +150,18 @@ std::vector<TensorOpTensor> GetOutputTensors(ModelT* model,
       }
       const int model_output_index = output_tensors[output_tensor];
       TensorT* dequant_input = subgraph->tensors[op->inputs[0]].get();
-      if (dequant_input->type != TensorType_INT8) {
-        // Current only support INT8 quantized models.
+      if (dequant_input->type != TensorType_INT8 && dequant_input->type != TensorType_INT16) {
+        // Currently only supports INT8 and INT16 quantized models.
         TF_LITE_REPORT_ERROR(error_reporter,
-                             "modify_model_interface currently only support "
-                             "int8 quantized models.");
+                             "modify_model_interface currently only supports "
+                             "int8 and int16 quantized models.");
         return {};
+      }
+      if (dequant_input->type != output_type) {
+        if (!(dequant_input->type == TensorType_INT8 && output_type == TensorType_UINT8)) {
+          TF_LITE_REPORT_ERROR(error_reporter,
+                              "Model's type incompatible with output type argument.");
+        }
       }
       if (dequant_input->quantization == nullptr) {
         continue;
@@ -302,28 +316,36 @@ TfLiteStatus ModifyModelInterface(flatbuffers::FlatBufferBuilder* builder,
   tflite::StderrReporter error_reporter;
   const int original_number_tensors =
       GetOriginalNumberOfTensors(model, &error_reporter);
-  // Find float tensors that are model output and is consumed by a float to int8
+  // Finds float tensors that are model output and are consumed by a float to int8/int16
   // quantize Op.
   // Do output first since the tensors are added into input first.,
   std::vector<TensorOpTensor> outputs =
-      GetOutputTensors(model, &error_reporter);
-  if (output_type == TensorType_UINT8) {
-    SetOutputTypeToUINT8(model, outputs);
-  } else if (output_type == TensorType_INT8) {
-    RemoveOutputTensor(model, outputs, original_number_tensors);
-  } else {
-    return kTfLiteError;
+      GetOutputTensors(model, &error_reporter, output_type);
+  switch (output_type) {
+    case TensorType_UINT8:
+      SetOutputTypeToUINT8(model, outputs);
+      break;
+    case TensorType_INT8:
+    case TensorType_INT16:
+      RemoveOutputTensor(model, outputs);
+      break;
+    default:
+      return kTfLiteError;
   }
 
-  // Find float tensors that are model input and is consumed by a float to int8
+  // Find float tensors that are model input and is consumed by a float to int8/int16
   // quantize Op.
-  std::vector<TensorOpTensor> inputs = GetInputTensors(model, &error_reporter);
-  if (input_type == TensorType_UINT8) {
-    SetInputTypeToUINT8(model, inputs);
-  } else if (input_type == TensorType_INT8) {
-    RemoveInputTensor(model, inputs, original_number_tensors);
-  } else {
-    return kTfLiteError;
+  std::vector<TensorOpTensor> inputs = GetInputTensors(model, &error_reporter, input_type);
+  switch (input_type) {
+    case TensorType_UINT8:
+      SetInputTypeToUINT8(model, inputs);
+      break;
+    case TensorType_INT8:
+    case TensorType_INT16:
+      RemoveInputTensor(model, inputs);
+      break;
+    default:
+      return kTfLiteError;
   }
 
   // Write to builder.
@@ -340,11 +362,13 @@ TfLiteStatus ModifyModelInterface(const string& input_file,
                                   const TensorType& output_type) {
   // Sanity Check
   if (input_type != tflite::TensorType_INT8 &&
-      input_type != tflite::TensorType_UINT8) {
+      input_type != tflite::TensorType_UINT8 &&
+      input_type != tflite::TensorType_INT16) {
     return kTfLiteError;
   }
   if (output_type != tflite::TensorType_INT8 &&
-      output_type != tflite::TensorType_UINT8) {
+      output_type != tflite::TensorType_UINT8 &&
+      output_type != tflite::TensorType_INT16) {
     return kTfLiteError;
   }
 
@@ -357,13 +381,26 @@ TfLiteStatus ModifyModelInterface(const string& input_file,
       absl::make_unique<flatbuffers::FlatBufferBuilder>();
   flatbuffers::FlatBufferBuilder builder;
 
-  tflite::TensorType input_override_type = tflite::TensorType_INT8;
-  if (input_type == tflite::TensorType_UINT8) {
-    input_override_type = tflite::TensorType_UINT8;
+  tflite::TensorType input_override_type;
+  tflite::TensorType output_override_type;
+
+  switch (input_type) {
+    case tflite::TensorType_UINT8:
+    case tflite::TensorType_INT8:
+    case tflite::TensorType_INT16:
+      input_override_type = input_type;
+      break;
+    default:
+      return kTfLiteError;
   }
-  tflite::TensorType output_override_type = tflite::TensorType_INT8;
-  if (output_type == tflite::TensorType_UINT8) {
-    output_override_type = tflite::TensorType_UINT8;
+  switch (output_type) {
+    case tflite::TensorType_UINT8:
+    case tflite::TensorType_INT8:
+    case tflite::TensorType_INT16:
+      output_override_type = output_type;
+      break;
+    default:
+      return kTfLiteError;
   }
 
   auto status = ModifyModelInterface(&builder, tflite_model.get(),

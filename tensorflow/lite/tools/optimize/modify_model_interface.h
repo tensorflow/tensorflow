@@ -24,7 +24,7 @@ namespace optimize {
 // Changes the interface of a quantized model. This method allows the users to
 // replace float interface with other types.
 // This populates the builder with the new model.
-// Currently only int8 and unit8 are supported.
+// Currently only int8, int16 and unit8 are supported.
 //
 // Note: This is a private API, subject to change.
 TfLiteStatus ModifyModelInterface(flatbuffers::FlatBufferBuilder* builder,

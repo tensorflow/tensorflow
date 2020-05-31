@@ -25,24 +25,22 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  if (strcmp(argv[3], "uint8") && strcmp(argv[3], "int8")) {
-    printf("Only support uint8 and int8 for input interface");
-    return 1;
-  }
-
-  if (strcmp(argv[4], "uint8") && strcmp(argv[4], "int8")) {
-    printf("Only support uint8 and int8 for output interface");
-    return 1;
-  }
+  const std::unordered_map<std::string, tflite::TensorType> supported_types
+  {
+    { "uint8", tflite::TensorType_UINT8 },
+    { "int8",  tflite::TensorType_INT8 },
+    { "int16", tflite::TensorType_INT16 }
+  };
 
   tflite::TensorType input = tflite::TensorType_INT8;
   tflite::TensorType output = tflite::TensorType_INT8;
 
-  if (!strcmp(argv[3], "uint8")) {
-    input = tflite::TensorType_UINT8;
-  }
-  if (!strcmp(argv[4], "uint8")) {
-    output = tflite::TensorType_UINT8;
+  try {
+    input = supported_types.at(argv[3]);
+    output = supported_types.at(argv[4]);
+  } catch (const std::out_of_range&) {
+    printf("Only supports uint8, int8 and int16 for input and output interfaces");
+    return 1;
   }
 
   tflite::optimize::ModifyModelInterface(argv[1], argv[2], input, output);
