@@ -115,8 +115,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // if not const return error - unsupported
   if (!IsConstantTensor(op_context.axis) ||
       !IsConstantTensor(op_context.size_splits)) {
-    context->ReportError(
-        context, "Only const tensors are supported for size_splits and axis");
+	  TF_LITE_KERNEL_LOG(context, "Only const tensors are supported for size_splits and axis");
     return kTfLiteError;
   }
 
