@@ -230,8 +230,7 @@ void convex_hull(std::vector<std::vector<float>> &pts_vec,
 
     // If the points of the check_idx and stop_idx are same,
     // then no useful points are found during bottom half search.
-    // Limit the number of points
-    // for bottom right and left convex hull.
+    // Limit the number of points for bottom right and left convex hull.
     if (stop_idx >= 0) {
       int64 check_idx = l_cnt0 > 2
                             ? l_vec0[1]
