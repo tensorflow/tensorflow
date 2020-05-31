@@ -70,7 +70,7 @@ inline bool TFPaddingIsSameOrValid(Operation *op, StringAttr *padding) {
 /// Returns whether the given `a` and `b` have broadcast-compatible
 /// types.
 bool IsBroadcastableElementsAttrs(mlir::Attribute a, mlir::Attribute b);
-bool CanFuseAffineOpThenMul(mlir::Attribute val) ;
+bool CanFuseAffineOpThenMul(mlir::Attribute val);
 bool CanFuseAffineOpThenMul(const ArrayRef<int64_t> elements_shape);
 
 }  // end namespace TFL

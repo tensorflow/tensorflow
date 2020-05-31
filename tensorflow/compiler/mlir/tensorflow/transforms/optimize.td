@@ -20,7 +20,6 @@ def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "NHWC">;
 def CanFuseMulAndConv2D :
     Constraint<CPred<"TFL::IsBroadcastableElementsAttrs($0, $1) && TFL::CanFuseAffineOpThenMul($1)">>;
 
-  
 def F32ElementsAttr : ElementsAttrBase<
     CPred<"$_self.cast<ElementsAttr>().getType().getElementType().isF32()">, "float constant tensor">;
 def DefinedByConv2D : Constraint<CPred<"llvm::isa_and_nonnull<mlir::TF::Conv2DOp>($0.getDefiningOp())">>;
