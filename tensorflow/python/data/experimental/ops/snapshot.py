@@ -29,7 +29,7 @@ COMPRESSION_SNAPPY = "SNAPPY"
 COMPRESSION_NONE = None
 
 
-class _SnapshotDataset(dataset_ops.UnaryUnchangedStructureDataset):
+class _LegacySnapshotDataset(dataset_ops.UnaryUnchangedStructureDataset):
   """A Dataset that captures a snapshot or reads from a snapshot."""
 
   def __init__(self,
@@ -96,23 +96,23 @@ class _SnapshotDataset(dataset_ops.UnaryUnchangedStructureDataset):
         snapshot_name=self._snapshot_name,
         **self._flat_structure)
 
-    super(_SnapshotDataset, self).__init__(input_dataset, variant_tensor)
+    super(_LegacySnapshotDataset, self).__init__(input_dataset, variant_tensor)
 
 
-def snapshot(path,
-             compression=None,
-             reader_path_prefix=None,
-             writer_path_prefix=None,
-             shard_size_bytes=None,
-             pending_snapshot_expiry_seconds=None,
-             num_reader_threads=None,
-             reader_buffer_size=None,
-             num_writer_threads=None,
-             writer_buffer_size=None,
-             shuffle_on_read=None,
-             shuffle_seed=None,
-             mode=None,
-             snapshot_name=None):
+def legacy_snapshot(path,
+                    compression=None,
+                    reader_path_prefix=None,
+                    writer_path_prefix=None,
+                    shard_size_bytes=None,
+                    pending_snapshot_expiry_seconds=None,
+                    num_reader_threads=None,
+                    reader_buffer_size=None,
+                    num_writer_threads=None,
+                    writer_buffer_size=None,
+                    shuffle_on_read=None,
+                    shuffle_seed=None,
+                    mode=None,
+                    snapshot_name=None):
   """Writes to/reads from a snapshot of a dataset.
 
   This function attempts to determine whether a valid snapshot exists at the
@@ -168,7 +168,7 @@ def snapshot(path,
   """
 
   def _apply_fn(dataset):
-    return _SnapshotDataset(
+    return _LegacySnapshotDataset(
         input_dataset=dataset,
         path=path,
         compression=compression,

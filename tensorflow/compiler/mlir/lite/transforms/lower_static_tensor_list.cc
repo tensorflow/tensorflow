@@ -577,7 +577,6 @@ struct ConvertTensorListResize
         ArrayRef<Value>({input_handle, input_shape, size_diff, size}),
         /*then_branch=*/rewriter.getSymbolRefAttr(then_branch_op),
         /*else_branch=*/rewriter.getSymbolRefAttr(else_branch_op),
-        /*output_shapes=*/rewriter.getArrayAttr({}),
         /*is_stateless=*/rewriter.getBoolAttr(true));
     return success();
   }
@@ -838,7 +837,8 @@ LogicalResult LowerStaticTensorListPass::RewriteFunction(
   // TensorFlow operations that doesn't have operands and results of type
   // variant are legal. Here, we don't distinguish between variants encoding
   // TensorList or some other type as that information is not available here.
-  // This constraint should be relaxed to support other variant types in TFLite.
+  // Partial legalization is used below to still allow ops with variant types
+  // still.
   auto is_legal = [](Operation *op) {
     auto is_not_variant = [](Type ty) {
       return !ty.cast<ShapedType>().getElementType().isa<TF::VariantType>();
@@ -873,7 +873,7 @@ LogicalResult LowerStaticTensorListPass::RewriteFunction(
                   ConvertTensorListPushBack, ConvertTensorListReserve,
                   ConvertTensorListSetItem, ConvertTensorListStack,
                   ConvertTensorListResize, ConvertWhile>(context);
-  return applyFullConversion(func, target, patterns);
+  return applyPartialConversion(func, target, patterns);
 }
 
 void LowerStaticTensorListPass::runOnOperation() {

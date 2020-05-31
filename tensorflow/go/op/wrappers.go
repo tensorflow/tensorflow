@@ -11540,6 +11540,21 @@ func AssertNextDataset(scope *Scope, input_dataset tf.Output, transformations tf
 	return op.Output(0)
 }
 
+// Return the index of device the op runs.
+func DeviceIndex(scope *Scope, device_names []string) (index tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"device_names": device_names}
+	opspec := tf.OpSpec{
+		Type: "DeviceIndex",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // ShardDatasetAttr is an optional argument to ShardDataset.
 type ShardDatasetAttr func(optionalAttr)
 
@@ -19588,6 +19603,14 @@ type CollectiveBcastSendAttr func(optionalAttr)
 func CollectiveBcastSendCommunicationHint(value string) CollectiveBcastSendAttr {
 	return func(m optionalAttr) {
 		m["communication_hint"] = value
+	}
+}
+
+// CollectiveBcastSendTimeoutSeconds sets the optional timeout_seconds attribute to value.
+// If not specified, defaults to 0
+func CollectiveBcastSendTimeoutSeconds(value float32) CollectiveBcastSendAttr {
+	return func(m optionalAttr) {
+		m["timeout_seconds"] = value
 	}
 }
 
@@ -32017,6 +32040,14 @@ func CollectiveBcastRecvCommunicationHint(value string) CollectiveBcastRecvAttr 
 	}
 }
 
+// CollectiveBcastRecvTimeoutSeconds sets the optional timeout_seconds attribute to value.
+// If not specified, defaults to 0
+func CollectiveBcastRecvTimeoutSeconds(value float32) CollectiveBcastRecvAttr {
+	return func(m optionalAttr) {
+		m["timeout_seconds"] = value
+	}
+}
+
 // Receives a tensor value broadcast from another device.
 func CollectiveBcastRecv(scope *Scope, T tf.DataType, group_size int64, group_key int64, instance_key int64, shape tf.Shape, optional ...CollectiveBcastRecvAttr) (data tf.Output) {
 	if scope.Err() != nil {
@@ -33262,6 +33293,14 @@ func TPUReplicatedInputIsMirroredVariable(value bool) TPUReplicatedInputAttr {
 func TPUReplicatedInputIndex(value int64) TPUReplicatedInputAttr {
 	return func(m optionalAttr) {
 		m["index"] = value
+	}
+}
+
+// TPUReplicatedInputIsPacked sets the optional is_packed attribute to value.
+// If not specified, defaults to false
+func TPUReplicatedInputIsPacked(value bool) TPUReplicatedInputAttr {
+	return func(m optionalAttr) {
+		m["is_packed"] = value
 	}
 }
 
@@ -38201,6 +38240,14 @@ func CollectiveGatherCommunicationHint(value string) CollectiveGatherAttr {
 	}
 }
 
+// CollectiveGatherTimeoutSeconds sets the optional timeout_seconds attribute to value.
+// If not specified, defaults to 0
+func CollectiveGatherTimeoutSeconds(value float32) CollectiveGatherAttr {
+	return func(m optionalAttr) {
+		m["timeout_seconds"] = value
+	}
+}
+
 // Mutually accumulates multiple tensors of identical type and shape.
 func CollectiveGather(scope *Scope, input tf.Output, group_size int64, group_key int64, instance_key int64, shape tf.Shape, optional ...CollectiveGatherAttr) (data tf.Output) {
 	if scope.Err() != nil {
@@ -42922,6 +42969,14 @@ func CollectiveReduceWaitFor(value []int64) CollectiveReduceAttr {
 func CollectiveReduceCommunicationHint(value string) CollectiveReduceAttr {
 	return func(m optionalAttr) {
 		m["communication_hint"] = value
+	}
+}
+
+// CollectiveReduceTimeoutSeconds sets the optional timeout_seconds attribute to value.
+// If not specified, defaults to 0
+func CollectiveReduceTimeoutSeconds(value float32) CollectiveReduceAttr {
+	return func(m optionalAttr) {
+		m["timeout_seconds"] = value
 	}
 }
 

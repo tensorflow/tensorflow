@@ -20,8 +20,15 @@ from __future__ import print_function
 from tensorflow.python.ops import gen_collective_ops
 
 
-def all_reduce(t, group_size, group_key, instance_key, merge_op, final_op,
-               subdiv_offsets=(0,), communication_hint='auto'):
+def all_reduce(t,
+               group_size,
+               group_key,
+               instance_key,
+               merge_op,
+               final_op,
+               subdiv_offsets=(0,),
+               communication_hint='auto',
+               timeout=0):
   """Reduces tensors collectively, across devices.
 
   Args:
@@ -40,6 +47,9 @@ def all_reduce(t, group_size, group_key, instance_key, merge_op, final_op,
     communication_hint: preferred collective communication.  The implementation
       may fall back to another mechanism.  Options include `auto`, `ring`, and
       `nccl`.
+    timeout: If set to a non zero, set a completion timeout to detect staleness.
+      If the timer goes off, a DeadlineExceededError is raised.
+      The timeout value in seconds. This feature is experimental.
 
   Returns:
     An Op implementing the distributed reduction.
@@ -57,11 +67,16 @@ def all_reduce(t, group_size, group_key, instance_key, merge_op, final_op,
       merge_op=merge_op,
       final_op=final_op,
       subdiv_offsets=subdiv_offsets,
-      communication_hint=communication_hint.lower())
+      communication_hint=communication_hint.lower(),
+      timeout_seconds=timeout)
 
 
-def all_gather(t, group_size, group_key, instance_key,
-               communication_hint='auto'):
+def all_gather(t,
+               group_size,
+               group_key,
+               instance_key,
+               communication_hint='auto',
+               timeout=0):
   """Accumulates tensors collectively, across devices, along first dimension.
 
   Args:
@@ -73,6 +88,9 @@ def all_gather(t, group_size, group_key, instance_key,
     communication_hint: preferred collective communication.  The implementation
       may fall back to another mechanism.  Options include `auto`, `ring`, and
       `nccl`.
+    timeout: If set to a non zero, set a completion timeout to detect staleness.
+      If the timer goes off, a DeadlineExceededError is raised.
+      The timeout value in seconds. This feature is experimental.
 
   Returns:
     An Op implementing the distributed operation.
@@ -88,11 +106,18 @@ def all_gather(t, group_size, group_key, instance_key,
       group_size=group_size,
       group_key=group_key,
       instance_key=instance_key,
-      communication_hint=communication_hint.lower())
+      communication_hint=communication_hint.lower(),
+      timeout_seconds=timeout)
 
 
-def broadcast_send(t, shape, dtype, group_size, group_key, instance_key,
-                   communication_hint='auto'):
+def broadcast_send(t,
+                   shape,
+                   dtype,
+                   group_size,
+                   group_key,
+                   instance_key,
+                   communication_hint='auto',
+                   timeout=0):
   """Broadcasts one tensor to a group of others, across devices.
 
   Args:
@@ -107,6 +132,9 @@ def broadcast_send(t, shape, dtype, group_size, group_key, instance_key,
     communication_hint: preferred collective communication.  The implementation
       may fall back to another mechanism.  Options include `auto`, `ring`, and
       `nccl`.
+    timeout: If set to a non zero, set a completion timeout to detect staleness.
+      If the timer goes off, a DeadlineExceededError is raised.
+      The timeout value in seconds. This feature is experimental.
 
   Returns:
     An Op implementing the distributed broadcast send.
@@ -139,11 +167,17 @@ def broadcast_send(t, shape, dtype, group_size, group_key, instance_key,
       group_size=group_size,
       group_key=group_key,
       instance_key=instance_key,
-      communication_hint=communication_hint.lower())
+      communication_hint=communication_hint.lower(),
+      timeout_seconds=timeout)
 
 
-def broadcast_recv(shape, dtype, group_size, group_key, instance_key,
-                   communication_hint='auto'):
+def broadcast_recv(shape,
+                   dtype,
+                   group_size,
+                   group_key,
+                   instance_key,
+                   communication_hint='auto',
+                   timeout=0):
   """Receives a broadcasts tensor, across devices.
 
   Args:
@@ -157,6 +191,9 @@ def broadcast_recv(shape, dtype, group_size, group_key, instance_key,
     communication_hint: preferred collective communication.  The implementation
       may fall back to another mechanism.  Options include `auto`, `ring`, and
       `nccl`.
+    timeout: If set to a non zero, set a completion timeout to detect staleness.
+      If the timer goes off, a DeadlineExceededError is raised.
+      The timeout value in seconds. This feature is experimental.
 
   Returns:
     An Op implementing the broadcast receive.
@@ -173,4 +210,5 @@ def broadcast_recv(shape, dtype, group_size, group_key, instance_key,
       group_size=group_size,
       group_key=group_key,
       instance_key=instance_key,
-      communication_hint=communication_hint.lower())
+      communication_hint=communication_hint.lower(),
+      timeout_seconds=timeout)

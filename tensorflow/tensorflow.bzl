@@ -2158,6 +2158,8 @@ def pywrap_tensorflow_macro(
 # 2. When --define=no_tensorflow_py_deps=false (by default), it's a normal py_test.
 def py_test(deps = [], data = [], kernels = [], **kwargs):
     # Python version placeholder
+    if kwargs.get("python_version", None) == "PY3":
+        kwargs["tags"] = kwargs.get("tags", []) + ["no_oss_py2"]
     native.py_test(
         # TODO(jlebar): Ideally we'd use tcmalloc here.,
         deps = select({

@@ -1242,12 +1242,12 @@ class Convolution(object):
       spatial_dims = range(
           num_batch_dims + 1, num_spatial_dims + num_batch_dims + 1)
 
-    if not input_channels_dim.is_compatible_with(
-        filter_shape[num_spatial_dims]):
-      raise ValueError(
-          "Number of input channels does not match corresponding dimension of "
-          "filter, {} != {}".format(input_channels_dim,
-                                    filter_shape[num_spatial_dims]))
+    filter_dim = tensor_shape.dimension_at_index(filter_shape, num_spatial_dims)
+    if not (input_channels_dim % filter_dim).is_compatible_with(0):
+      raise ValueError("The number of input channels is not divisible by the "
+                       "corresponding number of output filters. Received: "
+                       "input channels={}, output filters={}".format(
+                           input_channels_dim, filter_dim))
 
     strides, dilation_rate = _get_strides_and_dilation_rate(
         num_spatial_dims, strides, dilation_rate)
@@ -2051,9 +2051,9 @@ def conv2d_v2(input,  # pylint: disable=redefined-builtin
 
   Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
   horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
-  
+
   Usage Example:
-  
+
   >>> x_in = np.array([[
   ...   [[2], [1], [2], [0], [1]],
   ...   [[1], [3], [2], [2], [3]],
@@ -3061,12 +3061,12 @@ def conv3d_transpose_v2(input,  # pylint: disable=redefined-builtin
   rather than an actual deconvolution.
 
   Args:
-    input: A 5-D `Tensor` of type `float` and shape `[batch, height, width,
-      in_channels]` for `NHWC` data format or `[batch, in_channels, height,
-      width]` for `NCHW` data format.
-    filters: A 5-D `Tensor` with the same type as `value` and shape `[height,
-      width, output_channels, in_channels]`.  `filter`'s `in_channels` dimension
-      must match that of `value`.
+    input: A 5-D `Tensor` of type `float` and shape `[batch, depth, height,
+      width, in_channels]` for `NDHWC` data format or `[batch, in_channels,
+      depth, height, width]` for `NCDHW` data format.
+    filters: A 5-D `Tensor` with the same type as `value` and shape `[depth,
+      height, width, output_channels, in_channels]`.  `filter`'s `in_channels`
+      dimension must match that of `value`.
     output_shape: A 1-D `Tensor` representing the output shape of the
       deconvolution op.
     strides: An int or list of `ints` that has length `1`, `3` or `5`.  The
@@ -3551,7 +3551,7 @@ def softmax(logits, axis=None, name=None, dim=None):
       Tensor.
     RuntimeError: If a registered conversion function returns an invalid
       value.
-      
+
   """
   axis = deprecation.deprecated_argument_lookup("axis", axis, "dim", dim)
   if axis is None:

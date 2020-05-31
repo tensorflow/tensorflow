@@ -21,6 +21,14 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/xla/ir/chlo_ops.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops.td"
 
+// Check that two values can be broadcasted together
+// TODO(jpienaar): Move somewhere more general
+def AreBroadcastCompatible : Constraint<CPred<"AreBroadcastCompatible($0, $1)">,
+    "types must be broadcastable">;
+
+// Return a constant op that carries the shape of the given value.
+def ShapeToConst : NativeCodeCall<"ShapeToConst($_builder, $0)">;
+
 def : Pat<(HLO_ConstOp $value), (TF_ConstOp $value)>;
 
 //===----------------------------------------------------------------------===//
@@ -29,11 +37,6 @@ def : Pat<(HLO_ConstOp $value), (TF_ConstOp $value)>;
 // semantically compatible with the corresponding TF ops. Depending on
 // context, getting to these ops may require some raising.
 //===----------------------------------------------------------------------===//
-
-// Check that two values can be broadcasted together
-// TODO(jpienaar): Move somewhere more general
-def AreBroadcastCompatible : Constraint<CPred<"AreBroadcastCompatible($0, $1)">,
-    "types must be broadcastable">;
 
 foreach fromToBinPair = [[HLO_AddOp, HLOClient_BroadcastAddOp, TF_AddV2Op],
                          [HLO_DivOp, HLOClient_BroadcastDivOp, TF_DivOp],
@@ -112,6 +115,8 @@ def : Pat<(HLO_BroadcastOp $arg, $shape),
 def : Pat<(HLO_TransposeOp $arg, $permutation),
           (TF_TransposeOp $arg, (TF_ConstOp $permutation))>;
 def : Pat<(HLO_ReverseOp $op, $dims), (TF_ReverseV2Op $op, (TF_ConstOp $dims))>;
+def : Pat<(HLO_ReshapeOp:$output $input),
+          (TF_ReshapeOp $input, (ShapeToConst $output))>;
 
 //===----------------------------------------------------------------------===//
 // Ternary op patterns.
@@ -150,3 +155,9 @@ foreach pair = [[TF_GreaterEqualOp, HLO_COMPARISON_DIRECTION_GE],
             [(AreBroadcastCompatible $l, $r)]>;
   def : Pat<(HLO_CompareOp $l, $r, pair[1]), (pair[0] $l, $r)>;
 }
+
+def ConvertDotOp : NativeCodeCall<"ConvertDotOp($_builder, "
+                                               "$0.getDefiningOp())">;
+def : Pat<(HLO_DotOp:$old_value AnyStaticShapeTensor:$lhs,
+               AnyStaticShapeTensor:$rhs, $precision_config),
+          (ConvertDotOp $old_value)>;

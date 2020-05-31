@@ -26,6 +26,7 @@ hexagon_op_tests(
     srcs = [
         "activations_test.cc",
         "arg_min_max_test.cc",
+        "arithmetic_test.cc",
         "concat_test.cc",
         "conv_test.cc",
         "l2_norm_test.cc",

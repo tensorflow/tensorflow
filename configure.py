@@ -484,8 +484,8 @@ def check_bazel_version(min_version, max_version):
 
   stderr = open(os.devnull, 'wb')
   curr_version = run_shell(['bazel', '--version'],
-                           allow_non_zero = True,
-                           stderr = stderr)
+                           allow_non_zero=True,
+                           stderr=stderr)
   if curr_version.startswith('bazel '):
     curr_version = curr_version.split('bazel ')[1]
 
@@ -1011,17 +1011,15 @@ def set_tf_cuda_compute_capabilities(environ_cp):
       default_cuda_compute_capabilities = native_cuda_compute_capabilities
 
     ask_cuda_compute_capabilities = (
-        'Please specify a list of comma-separated '
-        'CUDA compute capabilities you want to '
-        'build with.\nYou can find the compute '
-        'capability of your device at: '
-        'https://developer.nvidia.com/cuda-gpus.\nPlease'
-        ' note that each additional compute '
-        'capability significantly increases your '
-        'build time and binary size, and that '
-        'TensorFlow only supports compute '
-        'capabilities >= 3.5 [Default is: %s]: ' %
-        default_cuda_compute_capabilities)
+        'Please specify a list of comma-separated CUDA compute capabilities '
+        'you want to build with.\nYou can find the compute capability of your '
+        'device at: https://developer.nvidia.com/cuda-gpus. Each capability '
+        'can be specified as "x.y" or "compute_xy" to include both virtual and'
+        ' binary GPU code, or as "sm_xy" to only include the binary '
+        'code.\nPlease note that each additional compute capability '
+        'significantly increases your build time and binary size, and that '
+        'TensorFlow only supports compute capabilities >= 3.5 [Default is: '
+        '%s]: ' % default_cuda_compute_capabilities)
     tf_cuda_compute_capabilities = get_from_env_or_user_or_default(
         environ_cp, 'TF_CUDA_COMPUTE_CAPABILITIES',
         ask_cuda_compute_capabilities, default_cuda_compute_capabilities)
@@ -1033,8 +1031,23 @@ def set_tf_cuda_compute_capabilities(environ_cp):
     for compute_capability in tf_cuda_compute_capabilities.split(','):
       m = re.match('[0-9]+.[0-9]+', compute_capability)
       if not m:
-        print('Invalid compute capability: %s' % compute_capability)
-        all_valid = False
+        # We now support sm_35,sm_50,sm_60,compute_70.
+        sm_compute_match = re.match('(sm|compute)_?([0-9]+[0-9]+)',
+                                    compute_capability)
+        if not sm_compute_match:
+          print('Invalid compute capability: %s' % compute_capability)
+          all_valid = False
+        else:
+          ver = int(sm_compute_match.group(2))
+          if ver < 30:
+            print(
+                'ERROR: TensorFlow only supports small CUDA compute'
+                ' capabilities of sm_30 and higher. Please re-specify the list'
+                ' of compute capabilities excluding version %s.' % ver)
+            all_valid = False
+          if ver < 35:
+            print('WARNING: XLA does not support CUDA compute capabilities '
+                  'lower than sm_35. Disable XLA when running on older GPUs.')
       else:
         ver = float(m.group(0))
         if ver < 3.0:
@@ -1225,7 +1238,8 @@ def is_reduced_optimize_huge_functions_available(environ_cp):
   only, as of 2019-11-19). TensorFlow needs this flag to massively reduce
   compile times, but until 16.4 is officially released, we can't depend on it.
 
-  See also https://groups.google.com/a/tensorflow.org/d/topic/build/SsW98Eo7l3o/discussion
+  See also
+  https://groups.google.com/a/tensorflow.org/d/topic/build/SsW98Eo7l3o/discussion
 
   Because it's very annoying to check this manually (to check the MSVC installed
   versions, you need to use the registry, and it's not clear if Bazel will be
@@ -1372,7 +1386,7 @@ def main():
     current_bazel_version = check_bazel_version(_TF_MIN_BAZEL_VERSION,
                                                 _TF_MAX_BAZEL_VERSION)
   except subprocess.CalledProcessError as e:
-    print("Error checking bazel version: ", e.output.decode('UTF-8').strip())
+    print('Error checking bazel version: ', e.output.decode('UTF-8').strip())
     raise e
 
   _TF_CURRENT_BAZEL_VERSION = convert_version_to_int(current_bazel_version)

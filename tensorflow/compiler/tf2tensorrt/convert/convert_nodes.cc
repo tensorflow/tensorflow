@@ -404,6 +404,18 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
   // Compare broadcast feasibility
   if (check_feasibility) {
     for (int i = 0; i < broadcast_num_dims; ++i) {
+      if (!use_implicit_batch && (output_l[i] == -1 || output_r[i] == -1)) {
+        // If the condition is true then we are in explicit batch mode and (at
+        // least) one of the input dimensions are unknown. In other words we
+        // are in dynamic shape mode. During conversion time we only see -1 for
+        // the unknown shapes, therefore we cannot decide on the feasibility of
+        // broadcast over the unknown dimensions. Therefore we just continue for
+        // the next dimension. In dynamic shape mode TRT can only check the
+        // feasibility of the broadcast when the actual input dimensions are
+        // specified by SetTrtEngineInputs and the inference job is launched by
+        // TrtEnque.
+        continue;
+      }
       if ((output_l[i] != output_r[i]) && (output_l[i] != 1) &&
           (output_r[i] != 1)) {
         return errors::InvalidArgument("Infeasible broadcast scheme (",
@@ -2146,6 +2158,12 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
         "Stride must be 1 for batch and channel dimensions, at ",
         node_def.name());
   }
+  // Channel dim must be static for DepthwiseConv2dNative since we use that
+  // value for num_groups at build time.
+  if (!params->use_implicit_batch && tensor->getDimensions().d[c_index] == -1) {
+    return errors::InvalidArgument("Channel dimension must be static, at ",
+                                   node_def.name());
+  }
   const nvinfer1::DimsHW stride(tf_stride[h_index], tf_stride[w_index]);
   if (params->validation_only) return Status::OK();
 
@@ -2157,11 +2175,12 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
   }
   // Dimensions of transposed tensor.
   const auto tensor_dim = tensor->getDimensions();
+  const int c_dim_size = tensor_dim.d[params->use_implicit_batch ? 0 : 1];
 
   // group == 0 signifies that this is a depthwise convolution, so set
   // num_groups to size of input's channel dim. For a non-depthwise conv,
   // num_groups will be 1.
-  const int num_groups = (group == 0) ? tensor_dim.d[0] : group;
+  const int num_groups = (group == 0) ? c_dim_size : group;
 
   // For conv, TF weights are RSCK, and TRT expects KCRS.
   // For backprop, TF weights are RSKC, and TRT expects CKRS.
@@ -3888,11 +3907,26 @@ Status ConvertBiasAdd(OpConverterParams* params) {
 
   nvinfer1::Dims input_shape = inputs.at(0).GetTrtDims();
   nvinfer1::Dims bias_shape = inputs.at(1).GetTrtDims();
-  // If the input is NCHW, then we need to unsqueeze the bias such that its last
-  // dimensions are 1s (and the first dimension is C).
+  // The bias input arg is a 1-D tensor with length C. If the input is NCHW,
+  // then we need to unsqueeze the bias such that its shape is [1, C, 1, 1].
   if (data_format == "NCHW") {
-    bias_shape.nbDims = input_shape.nbDims;
-    std::fill(bias_shape.d + 1, bias_shape.d + bias_shape.nbDims, 1);
+    if (params->use_implicit_batch) {
+      // The batch dim is not included in implicit batch mode, so the shape of
+      // the bias tensor is [C, 1, 1].
+      bias_shape.nbDims = input_shape.nbDims;
+      std::fill(bias_shape.d + 1, bias_shape.d + bias_shape.nbDims, 1);
+    } else {
+      // In explicit batch mode we create a tensor with shape [1, C, 1, 1].
+      std::vector<int> bias_shape_vec(bias_shape.d,
+                                      bias_shape.d + bias_shape.nbDims);
+      // Insert 1 before for batch dim
+      bias_shape_vec.insert(bias_shape_vec.begin(), 1);
+      // Trail with 1s to match input_shape size
+      bias_shape_vec.insert(bias_shape_vec.end(),
+                            input_shape.nbDims - bias_shape_vec.size(), 1);
+      TF_RETURN_IF_ERROR(
+          TensorShapeArrayToTrtDims(bias_shape_vec, &bias_shape));
+    }
   } else {
     // Next, broadcast the bias across the input.
     TF_RETURN_IF_ERROR(GetTrtBroadcastShape(inputs.at(0), inputs.at(1),
@@ -4649,7 +4683,9 @@ Status ConvertCast(OpConverterParams* params) {
   }
 
   DataType output_type;
-  TF_RETURN_IF_ERROR(GetOutputTfType(*params, &output_type));
+  TF_RETURN_IF_ERROR(GetNodeDefTfType(params->node_def, &output_type,
+                                      kCastOutputTypeAttrName));
+
   if (output_type != DataType::DT_FLOAT) {
     return unsupport_cast_error();
   }

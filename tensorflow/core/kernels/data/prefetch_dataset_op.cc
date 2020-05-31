@@ -100,9 +100,13 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(b->AddScalar(buffer_size_, &buffer_size));
     AttrValue slack_period_attr;
     b->BuildAttrValue(slack_period_, &slack_period_attr);
-    TF_RETURN_IF_ERROR(b->AddDataset(
-        this, {input_graph_node, buffer_size},
-        {std::make_pair(kSlackPeriod, slack_period_attr)}, output));
+    AttrValue legacy_autotune_attr;
+    b->BuildAttrValue(legacy_autotune_, &legacy_autotune_attr);
+    TF_RETURN_IF_ERROR(
+        b->AddDataset(this, {input_graph_node, buffer_size},
+                      {std::make_pair(kSlackPeriod, slack_period_attr),
+                       std::make_pair(kLegacyAutotune, legacy_autotune_attr)},
+                      output));
     return Status::OK();
   }
 

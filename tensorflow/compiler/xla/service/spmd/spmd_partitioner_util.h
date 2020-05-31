@@ -57,6 +57,10 @@ bool EvenlyPartitions(const Shape& shape, const HloSharding& sharding);
 // target sharding.
 Shape MakePartitionedShape(const Shape& shape, const HloSharding& sharding);
 
+// Similar to ShapeUtil::ByteSizeOf(), but does not check it has dense layout
+// since this can be before layout assignment.
+int64 ShapeSizeInBytes(const Shape& shape);
+
 // Returns the shard shape for a partition without padding due to uneven
 // sharding.
 Shape MakeNonPaddedShapeForGivenPartition(const Shape& shape,
@@ -222,6 +226,13 @@ absl::optional<HloInstruction*> ExchangeHaloAndGetValidData(
     HloInstruction* partition_ordinal,
     const SPMDCollectiveOpsCreator& collective_ops_creator,
     int64* next_channel_id, SpmdBuilder* b, bool mask_invalid_region = true);
+
+// Uses halo exchange to change from right-padding to left-padding for uneven
+// tiled sharding on the given dimensions. Tiled sharding always pads uneven
+// partitioned data on the right, but we need to swap it to the left for
+// kReverse or kConvolution with window reversal.
+HloInstruction* HaloExchangeToPadOnLeft(PartitionedHlo& original,
+                                        absl::Span<const int64> dims);
 
 }  // namespace spmd
 }  // namespace xla

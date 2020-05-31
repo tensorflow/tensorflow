@@ -1823,11 +1823,15 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
   def test_ragged(self, cycles):
 
-    @def_function.function(input_signature=[
-        ragged_tensor.RaggedTensorSpec(shape=[None, None], dtype=dtypes.int32)
-    ])
-    def f(x):
-      return x + 1
+    @def_function.function
+    def f(x, c=1):
+      """Returns Tensor x incremented by Python constant c."""
+      return math_ops.add(x, c)
+
+    for c in (1, 2, 3):
+      _ = f.get_concrete_function(
+          ragged_tensor.RaggedTensorSpec([None, None], dtype=dtypes.int32),
+          c)
 
     obj = tracking.AutoTrackable()
     obj.f = f
@@ -1835,10 +1839,14 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     imported1 = cycle(obj, cycles, signatures={})
     rt = ragged_factory_ops.constant([[1, 2], [3]])
     self.assertAllEqual(imported1.f(rt), [[2, 3], [4]])
+    self.assertAllEqual(imported1.f(rt, 2), [[3, 4], [5]])
+    self.assertAllEqual(imported1.f(rt, 3), [[4, 5], [6]])
 
     imported2 = cycle(obj, cycles)
     rt = ragged_factory_ops.constant([[1, 2], [3]])
-    self.assertAllEqual(imported2.f(rt), [[2, 3], [4]])
+    self.assertAllEqual(imported2.f(rt, 1), [[2, 3], [4]])
+    self.assertAllEqual(imported2.f(rt, 2), [[3, 4], [5]])
+    self.assertAllEqual(imported2.f(rt, 3), [[4, 5], [6]])
 
 
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)

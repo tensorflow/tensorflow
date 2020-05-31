@@ -32,6 +32,17 @@ Status CopyElementToSlice(Tensor element, Tensor* parent, int64 index);
 // Copies the index^th slice of parent (in the 0th dimension) into element.
 Status CopySliceToElement(const Tensor& parent, Tensor* element, int64 index);
 
+// Copies 'num_slices' contiguous slices from 'src' tensor starting from index
+// 'src_offset' into target tensor 'dst', and places them into slices
+// starting from 'dst_offset'.
+//
+// This function requires 'src' and 'dst' to have compatible shapes. That is it
+// requires cum_prod(src.shape[1:] == cum_prod(dst->shape[1:]). For example if
+// source is of shape [x, 2, 1] and dst is a tensor of shape [y, 1, 2], this
+// function can still proceed successfully.
+Status CopyContiguousSlices(const Tensor& src, int64 src_offset,
+                            int64 dst_offset, int64 num_slices, Tensor* dst);
+
 // Copies the index^th slice of parent (in the 0th dimension) into element.
 //
 // NOTE(mrry): The implementation may be able to optimize the copy to a move.

@@ -1,0 +1,5 @@
+op {
+  graph_op_name: "DeviceIndex"
+  visibility: HIDDEN
+  summary: "Return the index of device the op runs."
+}

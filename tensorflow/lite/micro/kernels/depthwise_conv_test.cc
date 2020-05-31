@@ -48,7 +48,7 @@ TfLiteStatus ValidateDepthwiseConvGoldens(const T* expected_output_data,
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_DEPTHWISE_CONV_2D, 1);
+      resolver.FindOp(tflite::BuiltinOperator_DEPTHWISE_CONV_2D);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   int input_depth = tensors[0].dims->data[3];

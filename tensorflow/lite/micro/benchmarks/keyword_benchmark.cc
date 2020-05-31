@@ -53,7 +53,7 @@ class KeywordRunner {
     resolver_.AddBuiltin(tflite::BuiltinOperator_QUANTIZE,
                          tflite::ops::micro::Register_QUANTIZE());
     resolver_.AddBuiltin(tflite::BuiltinOperator_DEQUANTIZE,
-                         tflite::ops::micro::Register_DEQUANTIZE(), 1, 2);
+                         tflite::ops::micro::Register_DEQUANTIZE());
     resolver_.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
                          tflite::ops::micro::Register_SOFTMAX());
     interpreter_.AllocateTensors();
@@ -84,7 +84,7 @@ class KeywordRunner {
   const tflite::Model* keyword_spotting_model_;
   tflite::MicroErrorReporter micro_reporter_;
   tflite::ErrorReporter* reporter_;
-  tflite::MicroOpResolver<6> resolver_;
+  tflite::MicroMutableOpResolver<6> resolver_;
   tflite::MicroInterpreter interpreter_;
 };
 

@@ -35,6 +35,10 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
+namespace {
+constexpr const char kProtocol[] = "grpc+local";
+}
+
 TEST(DataService, ParseParallelEpochsProcessingMode) {
   ProcessingMode mode;
   TF_ASSERT_OK(ParseProcessingMode("parallel_epochs", &mode));
@@ -57,6 +61,15 @@ TEST(DataService, ProcessingModeToString) {
   EXPECT_EQ("parallel_epochs",
             ProcessingModeToString(ProcessingMode::PARALLEL_EPOCHS));
   EXPECT_EQ("one_epoch", ProcessingModeToString(ProcessingMode::ONE_EPOCH));
+}
+
+TEST(DataService, GetWorkers) {
+  TestCluster cluster(1);
+  TF_ASSERT_OK(cluster.Initialize());
+  DataServiceMasterClient master(cluster.MasterAddress(), kProtocol);
+  std::vector<WorkerInfo> workers;
+  TF_EXPECT_OK(master.GetWorkers(&workers));
+  EXPECT_EQ(1, workers.size());
 }
 
 }  // namespace data

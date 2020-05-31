@@ -55,6 +55,15 @@ void SetupMaterializeBroadcastsLegality(MLIRContext *context,
 void PopulateMaterializeBroadcastsPatterns(MLIRContext *context,
                                            OwningRewritePatternList *patterns);
 
+// Sets up legality definitions for element-wise operations on ranked tensors.
+void SetupTransformUnrankedHloLegality(MLIRContext *context,
+                                       ConversionTarget *conversionTarget);
+
+// Populates a collection of rewrite patterns to realize element-wise operations
+// on ranked tensors where possible.
+void PopulateTransformUnrankedHloPatterns(MLIRContext *context,
+                                          OwningRewritePatternList *patterns);
+
 // Populate a collection of conversion patterns for un-fusing
 // batch_norm_inference and batch_norm_training into constituent HLO ops.
 // TODO(laurenzo): Implement un-fusing of batch_norm_training.

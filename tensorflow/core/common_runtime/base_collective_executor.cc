@@ -221,22 +221,41 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
                                           const CollectiveParams& col_params,
                                           const string& exec_key,
                                           StatusCallback done) {
+  const auto is_callback_called = std::make_shared<std::atomic<bool>>(false);
+
   // On any individual collective Op failure we need to abort the
   // BufRendezvous so that other Ops in the instance don't hang
   // waiting for transmissions that will never happen.  Do so after a
   // delay so that the original error status is more likely to
   // propagate up, and peers are unlikely to re-create the purged
   // BufRendezvous by late-arriving requests.
-  StatusCallback done_safe = [this, done](const Status& s) {
-    if (!s.ok()) {
-      Ref();  // Ensure this lasts until the closure executes.
-      SchedNonBlockingClosureAfter(1000000, [this, s] {
-        remote_access_->buf_rendezvous()->StartAbort(s);
-        Unref();
-      });
+  StatusCallback done_safe = [this, done, is_callback_called](const Status& s) {
+    auto should_call_callback = !is_callback_called->exchange(true);
+    if (should_call_callback) {
+      if (!s.ok()) {
+        Ref();  // Ensure this lasts until the closure executes.
+        SchedNonBlockingClosureAfter(1000000, [this, s] {
+          remote_access_->buf_rendezvous()->StartAbort(s);
+          Unref();
+        });
+      }
+      done(s);
     }
-    done(s);
   };
+
+  auto timeout_microseconds = static_cast<int64>(
+      col_params.instance.impl_details.timeout_seconds * 1'000'000);
+  if (timeout_microseconds > 0) {
+    // TODO(xldrx): Share the timeout watchdog thread among collectives.
+    SchedNonBlockingClosureAfter(
+        timeout_microseconds, [is_callback_called, done_safe] {
+          if (!is_callback_called->load()) {
+            auto status = Status(error::DEADLINE_EXCEEDED,
+                                 "Collective has timed out during execution.");
+            done_safe(status);
+          }
+        });
+  }
 
   Tensor* output = ctx->mutable_output(0);
   const Tensor* input = (col_params.instance.type == REDUCTION_COLLECTIVE ||
@@ -284,7 +303,30 @@ void BaseCollectiveExecutor::CompleteParamsAsync(
     const string& device, CollectiveParams* cp, CancellationManager* cancel_mgr,
     StatusCallback done) {
   cp->instance.gpu_ring_order = *gpu_ring_order_;
-  cem_->GetParamResolver()->CompleteParamsAsync(device, cp, cancel_mgr, done);
+  const auto is_callback_called = std::make_shared<std::atomic<bool>>(false);
+  auto done_with_timeout = done;
+  auto timeout_microseconds =
+      static_cast<int64>(cp->instance.impl_details.timeout_seconds * 1'000'000);
+  if (timeout_microseconds > 0) {
+    // TODO(xldrx): Share the timeout watchdog thread among collectives.
+    SchedNonBlockingClosureAfter(
+        timeout_microseconds, [is_callback_called, done] {
+          if (!is_callback_called->load()) {
+            auto status =
+                Status(error::DEADLINE_EXCEEDED,
+                       "Collective has timed out waiting for other workers.");
+            done(status);
+          }
+        });
+    done_with_timeout = [is_callback_called, done](const Status& s) {
+      auto should_call_callback = !is_callback_called->exchange(true);
+      if (should_call_callback) {
+        done(s);
+      }
+    };
+  }
+  cem_->GetParamResolver()->CompleteParamsAsync(device, cp, cancel_mgr,
+                                                done_with_timeout);
 }
 
 Status BaseCollectiveExecutor::CreateCollective(

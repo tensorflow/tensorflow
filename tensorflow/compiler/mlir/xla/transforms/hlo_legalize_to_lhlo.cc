@@ -43,7 +43,7 @@ constexpr StringRef kTempBufferAttr = "temp";
 template <typename T>
 using BaseOpConversion = BufferAssignmentOpConversionPattern<T>;
 using StdReturnOpConverter =
-    NoBufferOperandsReturnOpConverter<mlir::ReturnOp, xla_lhlo::TerminatorOp,
+    BufferAssignmentReturnOpConverter<mlir::ReturnOp, xla_lhlo::TerminatorOp,
                                       xla_lhlo::CopyOp>;
 
 Value InsertDynamicAllocAndDealloc(Location loc, Value result,
@@ -322,7 +322,7 @@ struct HloLegalizeToLhlo
     target.addIllegalOp<mlir::TensorLoadOp>();
     target.addIllegalOp<mlir::TensorStoreOp>();
     target.addLegalOp<ModuleTerminatorOp>();
-    target.addLegalOp<ScalarsToDimensionTensorOp>();
+    target.addLegalOp<TensorFromElementsOp>();
     target.addIllegalDialect<xla_hlo::XlaHloDialect>();
     target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
       auto inputs = op.getType().getInputs();

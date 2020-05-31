@@ -420,7 +420,7 @@ func @cluster_with_if(%arg0: tensor<i1>) -> tensor<4xf32> {
   %2 = "tf_device.cluster"() ( {
     // CHECK: %[[IF:.*]]:2 = "tf.If"(%[[ARG0]], %[[READ0]], %[[READ1]])
     %3:2 = "tf.If"(%arg0, %0, %1) {then_branch = @if_then, else_branch = @if_else,
-        output_shapes = [#tf.shape<>, #tf.shape<4>], is_stateless = false}
+        is_stateless = false}
       : (tensor<i1>, tensor<*x!tf.resource<tensor<4xf32>>>, tensor<*x!tf.resource<tensor<4xf32>>>)
       -> (tensor<*x!tf.resource<tensor<4xf32>>>, tensor<4xf32>)
     // CHECK-NEXT: %[[ADD:.*]] = "tf.AddV2"(%[[IF]]#1, %[[IF]]#0)
@@ -468,7 +468,7 @@ func @cluster_with_nested_if(%arg0: tensor<i1>) -> tensor<f32> {
   %2 = "tf_device.cluster"() ( {
     // CHECK: %[[IF:.*]] = "tf.If"(%[[ARG0]], %[[READ0]])
     %3 = "tf.If"(%arg0, %0, %1) {then_branch = @if_then, else_branch = @if_else,
-        output_shapes = [], is_stateless = false}
+        is_stateless = false}
       : (tensor<i1>, tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>)
       -> (tensor<*x!tf.resource<tensor<f32>>>)
     // CHECK-NEXT: %[[ADD:.*]] = "tf.AddV2"(%[[IF]], %[[IF]])
@@ -488,7 +488,7 @@ func @if_then(%arg0: tensor<*x!tf.resource<tensor<f32>>>, %arg1: tensor<*x!tf.re
   // CHECK-NEXT: %[[IIF:.*]] = "tf.If"(%[[TARG0]], %[[TARG0]])
   %read = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32>
   %3 = "tf.If"(%read, %arg0) {then_branch = @inner_if_then, else_branch = @inner_if_else,
-      output_shapes = [], is_stateless = false}
+      is_stateless = false}
     : (tensor<f32>, tensor<*x!tf.resource<tensor<f32>>>)
     -> (tensor<*x!tf.resource<tensor<f32>>>)
   // CHECK-NEXT: return %[[IIF]]
@@ -526,7 +526,7 @@ func @cluster_with_if(%arg0: tensor<i1>) -> tensor<4xf32> {
   %2 = "tf_device.cluster"() ( {
     // expected-error @+1 {{unsupported tf.IfOp output: resource does not alias a single input.}}
     %3 = "tf.If"(%arg0, %0, %1) {then_branch = @if_then, else_branch = @if_else,
-        output_shapes = [#tf.shape<>], is_stateless = false}
+        is_stateless = false}
       : (tensor<i1>, tensor<*x!tf.resource<tensor<4xf32>>>, tensor<*x!tf.resource<tensor<4xf32>>>)
       -> (tensor<*x!tf.resource<tensor<4xf32>>>)
     %4 = "tf.ReadVariableOp"(%3) : (tensor<*x!tf.resource<tensor<4xf32>>>) -> tensor<4xf32>
