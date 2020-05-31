@@ -245,7 +245,7 @@ def global_norm(t_list, name=None):
   global norm of the elements in all tensors in `t_list`. The global norm is
   computed as:
 
-  `global_norm = sqrt(sum([l2norm(t)**2 for t in t_list]))`
+  `global_norm = sqrt(sum([l2norm(t)*2 for t in t_list]))`
 
   Any entries in `t_list` that are of type None are ignored.
 
@@ -303,7 +303,7 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
 
   where:
 
-      global_norm = sqrt(sum([l2norm(t)**2 for t in t_list]))
+      global_norm = sqrt(sum([l2norm(t)*2 for t in t_list]))
 
   If `clip_norm > global_norm` then the entries in `t_list` remain as they are,
   otherwise they're all shrunk by the global ratio.
