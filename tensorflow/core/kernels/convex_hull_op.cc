@@ -90,7 +90,7 @@ namespace {
 //   inc_y      `true` if convex hull points will have strictly increasing `y`
 //              coordinates. `false` for strictly decreasing `y` coordinates.
 //   clockwise  Traversal direction. `true` if clockwise, `false` if
-//   counterclockwise.
+//              counterclockwise.
 int64 sklansky(const std::vector<std::vector<float>> &pts_vec,
                std::vector<int64> &idx_vec, const int64 start, int64 end,
                const bool inc_y, const bool clockwise) {
