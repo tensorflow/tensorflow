@@ -77,9 +77,9 @@ try:
     sys.setdlopenflags(_default_dlopen_flags)
 except ImportError:
   msg = """%s\n\nFailed to load the native TensorFlow runtime.\n
-See https://www.tensorflow.org/install/errors\n
-for some common reasons and solutions.  Include the entire stack trace
-above this error message when asking for help.""" % traceback.format_exc()
+           See https://www.tensorflow.org/install/errors\n
+           for some common reasons and solutions.  Include the entire stack trace
+           above this error message when asking for help.""" % traceback.format_exc()
   raise ImportError(msg)
 
 # pylint: enable=wildcard-import,g-import-not-at-top,unused-import,line-too-long
