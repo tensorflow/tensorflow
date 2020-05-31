@@ -1039,7 +1039,7 @@ class UnknownShapes(lite_v2_test_util.ModelTest):
 class AffineOpThenMulFusionTest(lite_v2_test_util.ModelTest):
 
   @test_util.run_v2_only
-  def testAffineOpThenFussion(self):
+  def testAffineOpThenFusion(self):
     # Test fusion of (x @ y) * z into fullyconnected
     input_data1 = tf.constant([1., 2.], shape=[1, 2])
 
@@ -1062,7 +1062,7 @@ class AffineOpThenMulFusionTest(lite_v2_test_util.ModelTest):
       return tf.matmul(x, y_const) * z_const
 
     # Test fusion of (x ∗ y) * z into conv2d
-    input_data2 = tf.constant([1., 2.], shape=[1, 1, 2 ,1])
+    input_data2 = tf.constant([1., 2.], shape=[1, 1, 2 , 1])
 
     @tf.function
     def func4(x):

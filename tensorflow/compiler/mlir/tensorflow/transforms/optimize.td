@@ -17,7 +17,7 @@ include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
 def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "NHWC">;
-def CanFuseFuseMulAndConv2D :
+def CanFuseMulAndConv2D :
     Constraint<CPred<"TFL::IsBroadcastableElementsAttrs($0, $1) && TFL::CanFuseAffineOpThenMul($1)">>;
 
   
@@ -42,7 +42,7 @@ def FuseMulAndConv2D :
                     (location $mul)),
           $strides, $use_cudnn, $padding, $explicit_padding, $data_format,
           $dilations, (location $conv)),
-      [(CanFuseFuseMulAndConv2D $filter_value, $mul_value), (HasOneUse $conv)]>;
+      [(CanFuseMulAndConv2D $filter_value, $mul_value), (HasOneUse $conv)]>;
 
 // This rule does the following pattern match and rewrite:
 //
