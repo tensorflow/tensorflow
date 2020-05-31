@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
+#include <vector>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
@@ -147,8 +147,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     }
     default:
-      context->ReportError(context, "Type %s currently not supported.",
-                           TfLiteTypeGetName(op_context.input->type));
+   	  TF_LITE_KERNEL_LOG(context, "Input type %s is not currently supported",
+		  TfLiteTypeGetName(op_context.input->type));
       return kTfLiteError;
   }
 
