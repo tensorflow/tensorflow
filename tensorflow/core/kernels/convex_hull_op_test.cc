@@ -77,7 +77,7 @@ TEST_F(ConvexHullOpTest, TwoPoints) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-// If three points not on the same line, return the input points (with differnt
+// If three points not on the same line, return the input points (with different
 // order)
 TEST_F(ConvexHullOpTest, ThreePoints) {
   MakeOp(DT_FLOAT, true);
