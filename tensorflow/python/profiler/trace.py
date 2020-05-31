@@ -73,13 +73,13 @@ class Trace(object):
       training step being traced.
     """
     if _pywrap_traceme.TraceMe.IsEnabled():
+      # Creating _pywrap_traceme.TraceMe starts the clock.
       self._traceme = _pywrap_traceme.TraceMe(name, **kwargs)
     else:
       self._traceme = None
 
   def __enter__(self):
-    if self._traceme:
-      self._traceme.Enter()
+    # Starting the TraceMe clock here would require an extra Python->C++ call.
     return self
 
   def set_metadata(self, **kwargs):
@@ -117,5 +117,5 @@ class Trace(object):
       self._traceme.SetMetadata(**kwargs)
 
   def __exit__(self, exc_type, exc_val, exc_tb):
-    if self._traceme:
-      self._traceme.Exit()
+    # Deallocating _pywrap_traceme.TraceMe stops the clock.
+    self._traceme = None

@@ -20,8 +20,10 @@ from __future__ import print_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras.layers.preprocessing import index_lookup
 from tensorflow.python.keras.layers.preprocessing import table_utils
+from tensorflow.python.util.tf_export import keras_export
 
 
+@keras_export("keras.layers.experimental.preprocessing.IntegerLookup", v1=[])
 class IntegerLookup(index_lookup.IndexLookup):
   """Maps integers from a vocabulary to integer indices.
 
@@ -39,18 +41,18 @@ class IntegerLookup(index_lookup.IndexLookup):
   Attributes:
     max_values: The maximum size of the vocabulary for this layer. If None,
       there is no cap on the size of the vocabulary. Note that this vocabulary
-      includes the OOV and mask tokens, so the effective number of tokens is
-      (max_tokens - num_oov_tokens - (1 if mask_token else 0))
+      includes the OOV and mask values, so the effective number of values is
+      (max_values - num_oov_values - (1 if mask_token else 0))
     num_oov_indices: The number of out-of-vocabulary values to use; defaults to
-      1. If this value is more than 1, OOV inputs are hashed to determine their
-      OOV value; if this value is 0, passing an OOV input will result in a '-1'
-      being returned for that value in the output tensor. (Note that, because
-      the value is -1 and not 0, this will allow you to effectively drop OOV
-      values from categorical encodings.)
+      1. If this value is more than 1, OOV inputs are modulated to determine
+      their OOV value; if this value is 0, passing an OOV input will result in
+      a '-1' being returned for that value in the output tensor. (Note that,
+      because the value is -1 and not 0, this will allow you to effectively drop
+      OOV values from categorical encodings.)
     mask_value: A value that represents masked inputs, and which is mapped to
       index 0. Defaults to 0. If set to None, no mask term will be added and the
-      OOV tokens, if any, will be indexed from (0...num_oov_tokens) instead of
-      (1...num_oov_tokens+1).
+      OOV values, if any, will be indexed from (0...num_oov_values) instead of
+      (1...num_oov_values+1).
     oov_value: The value representing an out-of-vocabulary value. Defaults to
       -1.
     vocabulary: An optional list of values, or a path to a text file containing
@@ -87,7 +89,7 @@ class IntegerLookup(index_lookup.IndexLookup):
   [0, -1, 42, 1138, 1000, 36, 12]
 
   Note how the mask value 0 and the OOV value -1 have been added to the
-  vocabulary. The remaining tokens are sorted by frequency (1138, which has
+  vocabulary. The remaining values are sorted by frequency (1138, which has
   2 occurrences, is first) then by inverse sort order.
 
   >>> data = tf.constant([[12, 1138, 42], [42, 1000, 36]])
@@ -97,6 +99,27 @@ class IntegerLookup(index_lookup.IndexLookup):
   <tf.Tensor: shape=(2, 3), dtype=int64, numpy=
   array([[6, 3, 2],
          [2, 4, 5]])>
+
+
+  Lookups with multiple OOV tokens.
+
+  This example demonstrates how to use a lookup layer with multiple OOV tokens.
+  When a layer is created with more than one OOV token, any OOV values are
+  hashed into the number of OOV buckets, distributing OOV values in a
+  deterministic fashion across the set.
+
+  >>> vocab = [12, 36, 1138, 42]
+  >>> data = tf.constant([[12, 1138, 42], [37, 1000, 36]])
+  >>> layer = IntegerLookup(vocabulary=vocab, num_oov_indices=2)
+  >>> layer(data)
+  <tf.Tensor: shape=(2, 3), dtype=int64, numpy=
+  array([[3, 5, 6],
+         [2, 1, 4]])>
+
+  Note that the output for OOV value 37 is 2, while the output for OOV value
+  1000 is 1. The in-vocab terms have their output index increased by 1 from
+  earlier examples (12 maps to 3, etc) in order to make space for the extra OOV
+  value.
 
 
   Inverse lookup

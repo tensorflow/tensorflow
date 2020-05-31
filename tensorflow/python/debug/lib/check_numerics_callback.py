@@ -275,7 +275,9 @@ class CheckNumericsCallback(object):
                   output,
                   inputs,
                   graph=graph,
-                  traceback=output.op.traceback))
+                  traceback=output.op.traceback,
+                  stack_height_limit=self._stack_height_limit,
+                  path_length_limit=self._path_length_limit))
           _CHECK_NUMERICS_INPUT_LOOKUP[graph][checked_output.name] = output
           instrumented_outputs.append(self._get_output_tensor(
               op_type_bytes, output, checked_output, is_v1_graph_mode))

@@ -81,7 +81,6 @@ void Detuple(Value tuple, Operation::result_range replace, OpBuilder* builder) {
 // results of the if operation are tupled together.
 void ImportXlaRegion(mlir::FuncOp func, Region* dest_region, Location loc,
                      bool tuple_return = true) {
-  BlockAndValueMapping mapper;
   OpBuilder builder(dest_region);
 
   auto entry_block = builder.createBlock(dest_region);
@@ -111,11 +110,9 @@ void LowerIf(TF::IfOp op, ModuleOp module) {
   // XLA prefers tuple arguments for control flow due to XLA not supporting
   // multiple return values.
   SmallVector<Value, 3> inputs(op.input());
-  builder.setInsertionPoint(op);
   auto tuple_input = builder.create<xla_hlo::TupleOp>(loc, inputs);
 
   // Create the new if op with tuple inputs.
-  SmallVector<Value, 3> operands(op.getOperands());
   auto result_type = builder.getTupleType(op.getResultTypes());
   auto if_op = builder.create<xla_hlo::IfOp>(loc, result_type, op.cond(),
                                              tuple_input, tuple_input);
@@ -123,15 +120,42 @@ void LowerIf(TF::IfOp op, ModuleOp module) {
   // Import the regions for both the true and false cases. These regions
   // must be updated to tuple the return results together and use the xla hlo
   // return op.
-  BlockAndValueMapping mapper;
   auto then_branch = module.lookupSymbol<mlir::FuncOp>(op.then_branch());
   auto else_branch = module.lookupSymbol<mlir::FuncOp>(op.else_branch());
   ImportXlaRegion(then_branch, &if_op.true_branch(), loc);
   ImportXlaRegion(else_branch, &if_op.false_branch(), loc);
 
   // De-tuple the results of the xla hlo if result.
-  builder.setInsertionPointAfter(op);
   Detuple(if_op.getResult(), op.getResults(), &builder);
+  op.erase();
+}
+
+void LowerCase(TF::CaseOp op, ModuleOp module) {
+  Location loc = op.getLoc();
+  OpBuilder builder(op);
+
+  // XLA requires one argument per branch so we create a tuple of inputs to pass
+  // to each branch.
+  SmallVector<Value, 4> inputs(op.input());
+  auto tuple_input = builder.create<xla_hlo::TupleOp>(loc, inputs);
+
+  // Create replica of input tuple for each branch
+  SmallVector<Value, 4> n_tuple_inputs(op.branches().size(), tuple_input);
+
+  // Create the new case op with tuple inputs.
+  auto case_op = builder.create<xla_hlo::CaseOp>(
+      loc, op.getResultTypes(), op.branch_index(), n_tuple_inputs,
+      op.branches().size());
+
+  // Import the regions for all branches.
+  for (unsigned i = 0; i < op.branches().size(); ++i) {
+    mlir::FuncOp branch_func = module.lookupSymbol<mlir::FuncOp>(
+        op.branches()[i].cast<SymbolRefAttr>());
+    ImportXlaRegion(branch_func, &case_op.branches()[i], loc,
+                    /*tuple_return=*/false);
+  }
+
+  op.replaceAllUsesWith(case_op.getResults());
   op.erase();
 }
 
@@ -146,7 +170,6 @@ void LowerWhile(TF::WhileOp op, ModuleOp module) {
   Value tuple_input = builder.create<xla_hlo::TupleOp>(loc, inputs);
 
   // Create the new while op with tuple inputs.
-  SmallVector<Value, 3> operands(op.getOperands());
   auto while_op = builder.create<xla_hlo::WhileOp>(
       loc, builder.getTupleType(op.getResultTypes()), tuple_input);
 
@@ -159,7 +182,6 @@ void LowerWhile(TF::WhileOp op, ModuleOp module) {
   ImportXlaRegion(cond_branch, &while_op.cond(), loc, /*tuple_return=*/false);
 
   // De-tuple the results of the xla hlo while.
-  builder.setInsertionPointAfter(op);
   Detuple(while_op.getResult(), op.getResults(), &builder);
   op.erase();
 }
@@ -168,8 +190,20 @@ void LowerWhile(TF::WhileOp op, ModuleOp module) {
 void LegalizeTFControlFlow::runOnOperation() {
   auto module = getOperation();
 
-  module.walk([&](TF::WhileOp op) -> void { LowerWhile(op, module); });
-  module.walk([&](TF::IfOp op) -> void { LowerIf(op, module); });
+  module.walk([&](Operation* op) {
+    if (auto while_op = dyn_cast<TF::WhileOp>(op)) {
+      LowerWhile(while_op, module);
+      return;
+    }
+    if (auto if_op = dyn_cast<TF::IfOp>(op)) {
+      LowerIf(if_op, module);
+      return;
+    }
+    if (auto case_op = dyn_cast<TF::CaseOp>(op)) {
+      LowerCase(case_op, module);
+      return;
+    }
+  });
 }
 }  // namespace xla_hlo
 }  // namespace mlir

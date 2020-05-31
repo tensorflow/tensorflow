@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include <fp16.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -107,56 +108,110 @@ void DepthwiseConv2DTester::Test(TfLiteDelegate* delegate) const {
 }
 
 std::vector<char> DepthwiseConv2DTester::CreateTfLiteModel() const {
-  flatbuffers::FlatBufferBuilder builder;
-  flatbuffers::Offset<OperatorCode> operator_code =
-      CreateOperatorCode(builder, BuiltinOperator_DEPTHWISE_CONV_2D);
-
-  flatbuffers::Offset<DepthwiseConv2DOptions> depthwise_conv2d_options =
-      CreateDepthwiseConv2DOptions(
-          builder, Padding(), StrideWidth(), StrideHeight(), DepthMultiplier(),
-          Activation(), DilationWidth(), DilationHeight());
-
-  std::vector<float> filter_data(KernelHeight() * KernelWidth() *
-                                 OutputChannels());
-  std::vector<float> bias_data(OutputChannels());
-
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto range_rng = std::bind(
       std::uniform_real_distribution<float>(-25.0f, 25.0f), std::ref(rng));
-  for (int32_t ic = 0; ic < InputChannels(); ic++) {
-    // Use the same range of all-positive or all-negative values to generate
-    // all pixels within the same batch index & channel, but different ranges
-    // for different channels or batches. This ensures that no catastrophic
-    // cancellation occur, but test covers both positive and negative inputs.
-    const float range = range_rng();
-    auto value_rng =
-        std::bind(std::uniform_real_distribution<float>(std::min(range, 0.0f),
-                                                        std::max(range, 0.0f)),
-                  std::ref(rng));
-    for (int32_t m = 0; m < DepthMultiplier(); m++) {
-      const int32_t oc = ic * DepthMultiplier() + m;
-      bias_data[oc] = value_rng();
-      for (int32_t y = 0; y < KernelHeight(); y++) {
-        for (int32_t x = 0; x < KernelWidth(); x++) {
-          const int32_t index = (y * KernelWidth() + x) * OutputChannels() + oc;
-          filter_data[index] = value_rng();
+
+  flatbuffers::FlatBufferBuilder builder;
+  std::vector<flatbuffers::Offset<OperatorCode>> operator_codes{
+      {CreateOperatorCode(builder, BuiltinOperator_DEPTHWISE_CONV_2D)}};
+  std::vector<flatbuffers::Offset<tflite::Operator>> operators;
+  std::vector<flatbuffers::Offset<tflite::Buffer>> buffers{
+      {CreateBuffer(builder, builder.CreateVector({}))}};
+
+  if (FP16Weights()) {
+    operator_codes.emplace_back(
+        CreateOperatorCode(builder, BuiltinOperator_DEQUANTIZE));
+
+    std::vector<uint16_t> filter_data(KernelHeight() * KernelWidth() *
+                                      OutputChannels());
+    std::vector<uint16_t> bias_data(OutputChannels());
+    for (int32_t ic = 0; ic < InputChannels(); ic++) {
+      // Use the same range of all-positive or all-negative values to generate
+      // all pixels within the same batch index & channel, but different ranges
+      // for different channels or batches. This ensures that no catastrophic
+      // cancellation occur, but test covers both positive and negative inputs.
+      const float range = range_rng();
+      auto value_rng =
+          std::bind(fp16_ieee_from_fp32_value,
+                    std::bind(std::uniform_real_distribution<float>(
+                                  std::min(range, 0.0f), std::max(range, 0.0f)),
+                              std::ref(rng)));
+      for (int32_t m = 0; m < DepthMultiplier(); m++) {
+        const int32_t oc = ic * DepthMultiplier() + m;
+        bias_data[oc] = value_rng();
+        for (int32_t y = 0; y < KernelHeight(); y++) {
+          for (int32_t x = 0; x < KernelWidth(); x++) {
+            const int32_t index =
+                (y * KernelWidth() + x) * OutputChannels() + oc;
+            filter_data[index] = value_rng();
+          }
         }
       }
     }
-  }
 
-  const std::array<flatbuffers::Offset<tflite::Buffer>, 3> buffers{{
-      CreateBuffer(builder, builder.CreateVector({})),
-      CreateBuffer(builder,
-                   builder.CreateVector(
-                       reinterpret_cast<const uint8_t*>(filter_data.data()),
-                       sizeof(float) * filter_data.size())),
-      CreateBuffer(builder,
-                   builder.CreateVector(
-                       reinterpret_cast<const uint8_t*>(bias_data.data()),
-                       sizeof(float) * bias_data.size())),
-  }};
+    buffers.emplace_back(CreateBuffer(
+        builder, builder.CreateVector(
+                     reinterpret_cast<const uint8_t*>(filter_data.data()),
+                     sizeof(uint16_t) * filter_data.size())));
+    buffers.emplace_back(CreateBuffer(
+        builder,
+        builder.CreateVector(reinterpret_cast<const uint8_t*>(bias_data.data()),
+                             sizeof(uint16_t) * bias_data.size())));
+
+    const std::array<int32_t, 1> dequantize_filter_inputs{{0}};
+    const std::array<int32_t, 1> dequantize_filter_outputs{{3}};
+    operators.emplace_back(CreateOperator(
+        builder, /*opcode_index=*/1,
+        builder.CreateVector<int32_t>(dequantize_filter_inputs.data(),
+                                      dequantize_filter_inputs.size()),
+        builder.CreateVector<int32_t>(dequantize_filter_outputs.data(),
+                                      dequantize_filter_outputs.size())));
+    const std::array<int32_t, 1> dequantize_bias_inputs{{1}};
+    const std::array<int32_t, 1> dequantize_bias_outputs{{4}};
+    operators.emplace_back(CreateOperator(
+        builder, /*opcode_index=*/1,
+        builder.CreateVector<int32_t>(dequantize_bias_inputs.data(),
+                                      dequantize_bias_inputs.size()),
+        builder.CreateVector<int32_t>(dequantize_bias_outputs.data(),
+                                      dequantize_bias_outputs.size())));
+  } else {
+    std::vector<float> filter_data(KernelHeight() * KernelWidth() *
+                                   OutputChannels());
+    std::vector<float> bias_data(OutputChannels());
+    for (int32_t ic = 0; ic < InputChannels(); ic++) {
+      // Use the same range of all-positive or all-negative values to generate
+      // all pixels within the same batch index & channel, but different ranges
+      // for different channels or batches. This ensures that no catastrophic
+      // cancellation occur, but test covers both positive and negative inputs.
+      const float range = range_rng();
+      auto value_rng =
+          std::bind(std::uniform_real_distribution<float>(
+                        std::min(range, 0.0f), std::max(range, 0.0f)),
+                    std::ref(rng));
+      for (int32_t m = 0; m < DepthMultiplier(); m++) {
+        const int32_t oc = ic * DepthMultiplier() + m;
+        bias_data[oc] = value_rng();
+        for (int32_t y = 0; y < KernelHeight(); y++) {
+          for (int32_t x = 0; x < KernelWidth(); x++) {
+            const int32_t index =
+                (y * KernelWidth() + x) * OutputChannels() + oc;
+            filter_data[index] = value_rng();
+          }
+        }
+      }
+    }
+
+    buffers.emplace_back(CreateBuffer(
+        builder, builder.CreateVector(
+                     reinterpret_cast<const uint8_t*>(filter_data.data()),
+                     sizeof(float) * filter_data.size())));
+    buffers.emplace_back(CreateBuffer(
+        builder,
+        builder.CreateVector(reinterpret_cast<const uint8_t*>(bias_data.data()),
+                             sizeof(float) * bias_data.size())));
+  }
 
   const std::array<int32_t, 4> input_shape{
       {BatchSize(), InputHeight(), InputWidth(), InputChannels()}};
@@ -166,49 +221,69 @@ std::vector<char> DepthwiseConv2DTester::CreateTfLiteModel() const {
       {1, KernelHeight(), KernelWidth(), OutputChannels()}};
   const std::array<int32_t, 1> bias_shape{{OutputChannels()}};
 
-  const std::array<flatbuffers::Offset<tflite::Tensor>, 4> tensors{{
-      CreateTensor(
-          builder,
-          builder.CreateVector<int32_t>(input_shape.data(), input_shape.size()),
-          TensorType_FLOAT32),
-      CreateTensor(builder,
-                   builder.CreateVector<int32_t>(filter_shape.data(),
-                                                 filter_shape.size()),
-                   TensorType_FLOAT32, /*buffer=*/1),
-      CreateTensor(
-          builder,
-          builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),
-          TensorType_FLOAT32, /*buffer=*/2),
-      CreateTensor(builder,
-                   builder.CreateVector<int32_t>(output_shape.data(),
-                                                 output_shape.size()),
-                   TensorType_FLOAT32),
-  }};
+  std::vector<flatbuffers::Offset<tflite::Tensor>> tensors;
+  if (FP16Weights()) {
+    tensors.emplace_back(CreateTensor(
+        builder,
+        builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
+        TensorType_FLOAT16, /*buffer=*/1));
+    tensors.emplace_back(CreateTensor(
+        builder,
+        builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),
+        TensorType_FLOAT16, /*buffer=*/2));
+  }
+  tensors.emplace_back(CreateTensor(
+      builder,
+      builder.CreateVector<int32_t>(input_shape.data(), input_shape.size()),
+      TensorType_FLOAT32));
+  tensors.emplace_back(CreateTensor(
+      builder,
+      builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
+      TensorType_FLOAT32, /*buffer=*/FP16Weights() ? 0 : 1));
+  tensors.emplace_back(CreateTensor(
+      builder,
+      builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),
+      TensorType_FLOAT32, /*buffer=*/FP16Weights() ? 0 : 2));
+  tensors.emplace_back(CreateTensor(
+      builder,
+      builder.CreateVector<int32_t>(output_shape.data(), output_shape.size()),
+      TensorType_FLOAT32));
 
-  const std::array<int32_t, 3> op_inputs{{0, 1, 2}};
-  const std::array<int32_t, 1> op_outputs{{3}};
+  const std::array<int32_t, 3> op_inputs{
+      {static_cast<int>(tensors.size()) - 4,
+       static_cast<int>(tensors.size()) - 3,
+       static_cast<int>(tensors.size()) - 2}};
+  const std::array<int32_t, 1> op_outputs{
+      {static_cast<int>(tensors.size()) - 1}};
 
-  flatbuffers::Offset<tflite::Operator> op = CreateOperator(
+  flatbuffers::Offset<DepthwiseConv2DOptions> depthwise_conv2d_options =
+      CreateDepthwiseConv2DOptions(
+          builder, Padding(), StrideWidth(), StrideHeight(), DepthMultiplier(),
+          Activation(), DilationWidth(), DilationHeight());
+  operators.emplace_back(CreateOperator(
       builder, /*opcode_index=*/0,
       builder.CreateVector<int32_t>(op_inputs.data(), op_inputs.size()),
       builder.CreateVector<int32_t>(op_outputs.data(), op_outputs.size()),
-      BuiltinOptions_DepthwiseConv2DOptions, depthwise_conv2d_options.Union());
+      BuiltinOptions_DepthwiseConv2DOptions, depthwise_conv2d_options.Union()));
 
-  const std::array<int32_t, 1> subgraph_inputs{{0}};
-  const std::array<int32_t, 1> subgraph_outputs{{3}};
+  const std::array<int32_t, 1> subgraph_inputs{
+      {static_cast<int>(tensors.size()) - 4}};
+  const std::array<int32_t, 1> subgraph_outputs{
+      {static_cast<int>(tensors.size()) - 1}};
   flatbuffers::Offset<SubGraph> subgraph = CreateSubGraph(
       builder, builder.CreateVector(tensors.data(), tensors.size()),
       builder.CreateVector<int32_t>(subgraph_inputs.data(),
                                     subgraph_inputs.size()),
       builder.CreateVector<int32_t>(subgraph_outputs.data(),
                                     subgraph_outputs.size()),
-      builder.CreateVector(&op, 1));
+      builder.CreateVector(operators.data(), operators.size()));
 
   flatbuffers::Offset<flatbuffers::String> description =
       builder.CreateString("DepthwiseConv2D model");
 
   flatbuffers::Offset<Model> model_buffer = CreateModel(
-      builder, TFLITE_SCHEMA_VERSION, builder.CreateVector(&operator_code, 1),
+      builder, TFLITE_SCHEMA_VERSION,
+      builder.CreateVector(operator_codes.data(), operator_codes.size()),
       builder.CreateVector(&subgraph, 1), description,
       builder.CreateVector(buffers.data(), buffers.size()));
 

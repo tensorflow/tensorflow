@@ -2,7 +2,7 @@
 
 load("//tensorflow/lite:special_rules.bzl", "ios_visibility_whitelist", "tflite_ios_lab_runner")
 load("//tensorflow/lite/experimental/ios:ios.bzl", "TFL_DEFAULT_TAGS", "TFL_DISABLED_SANITIZER_TAGS", "TFL_MINIMUM_OS_VERSION")
-load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application", "ios_unit_test")
+load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application", "ios_static_framework", "ios_unit_test")
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
 
 package(
@@ -34,8 +34,22 @@ swift_library(
     tags = TFL_DEFAULT_TAGS,
     visibility = ios_visibility_whitelist(),
     deps = [
+        "//tensorflow/lite/delegates/gpu:metal_delegate",
         "//tensorflow/lite/experimental/delegates/coreml:coreml_delegate",
         "//tensorflow/lite/experimental/ios:tensorflow_lite_c",
+    ],
+)
+
+# bazel build -c opt --config=ios_fat //tensorflow/lite/experimental/swift:TensorFlowLite_framework
+ios_static_framework(
+    name = "TensorFlowLite_framework",
+    avoid_deps = [
+        "//tensorflow/lite/experimental/ios:tensorflow_lite_c",
+    ],
+    bundle_name = "TensorFlowLite",
+    minimum_os_version = TFL_MINIMUM_OS_VERSION,
+    deps = [
+        ":TensorFlowLite",
     ],
 )
 

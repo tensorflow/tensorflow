@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_UTILS_H_
 #define TENSORFLOW_LITE_DELEGATES_UTILS_H_
 
+// Utility functions and classes for implementing delegates.
+
 #include <functional>
 #include <limits>
 #include <set>
@@ -70,9 +72,20 @@ class GraphPartitionHelper {
   // Note that partitions are ranked according to the number of nodes that
   // a partition has, and the returned TfLiteDelegateParams objects are *owned*
   // by the TfLite runtime.
+  // TODO(b/156707497): remove this and use GetNodesOfFirstNLargestPartitions
   std::vector<TfLiteDelegateParams*> GetFirstNLargestPartitions(
       int n = std::numeric_limits<int>::max(),
       int min_nodes_per_partition = 0) const;
+
+  // Returns a list of node indices of all nodes from the first n largest
+  // partitions. If there are fewer paritions than n, all nodes will be
+  // returned. The partition is ranked according to the number of nodes.
+  std::vector<int> GetNodesOfFirstNLargestPartitions(
+      int n = std::numeric_limits<int>::max(),
+      int min_nodes_per_partition = 0) {
+    // Separated implementation that can be overrided, to preserve default value
+    return GetNodesOfFirstNLargestPartitionsImpl(n, min_nodes_per_partition);
+  }
 
   int num_total_nodes() const { return num_total_nodes_; }
   int num_partitions() const { return partitions_.size(); }
@@ -84,6 +97,8 @@ class GraphPartitionHelper {
     return is_node_supported_fn_(context, node, registration,
                                  unsupported_details);
   }
+  virtual std::vector<int> GetNodesOfFirstNLargestPartitionsImpl(
+      int n, int min_nodes_per_partition);
 
   TfLiteContext* const context_ = nullptr;
 
@@ -115,9 +130,6 @@ class GraphPartitionHelper {
 // While partitioning the graph, this claims DEQUANTIZE nodes (FP16->FP32) in
 // addition to supported nodes for the delegate, when the DEQUANTIZE node's
 // output is an input to the kernel that supports FP16 input.
-// Noth that you have to use `GetNodesOfFirstNLargestPartitions` instead of
-// superclass' `GetFirstNLargestPartitions` to do actual remapping of FP16
-// inputs.
 class FP16GraphPartitionHelper : public GraphPartitionHelper {
  public:
   FP16GraphPartitionHelper(TfLiteContext* context,
@@ -127,17 +139,14 @@ class FP16GraphPartitionHelper : public GraphPartitionHelper {
   TfLiteStatus Partition(
       std::set<std::string>* unsupported_nodes_info) override;
 
-  // Returns a list of node indices of all nodes from the first n largest
-  // partitions. If there are fewer paritions than n, all nodes will be
-  // returned. The partition is ranked according to the number of nodes.
-  // TODO(b/156707497): Add this to superclass besides
-  // GetFirstNLargestPartitions (one that returns partitions instead of nodes)
-  std::vector<int> GetNodesOfFirstNLargestPartitions(int n);
-
  protected:
   bool IsNodeSupported(TfLiteContext* context, TfLiteNode* node,
                        TfLiteRegistration* registration, int node_id,
                        std::string* unsupported_details) override;
+
+  // This will remap input tensors by removing FP16 to FP32 dequantized tensors.
+  std::vector<int> GetNodesOfFirstNLargestPartitionsImpl(
+      int n, int min_nodes_per_partition) override;
 
  private:
   // Record 'node' if it is a dequant op (i.e. a fp16 one here) and return true.

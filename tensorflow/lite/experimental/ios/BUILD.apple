@@ -78,15 +78,32 @@ ios_static_framework(
     ],
 )
 
+# This target builds the Metal delegate as a separate static framework, which
+# does not include the TensorFlow Lite runtime. As this target does not contain
+# TensorFlow Lite runtime, it is intended to be linked along with the
+# TensorFlowLiteC framework above in a composable way.
+#
+# bazel build -c opt --config=ios_fat //tensorflow/lite/experimental/ios:TensorFlowLiteCMetal_framework
+ios_static_framework(
+    name = "TensorFlowLiteCMetal_framework",
+    hdrs = [
+        "//tensorflow/lite/delegates/gpu:metal_delegate.h",
+    ],
+    avoid_deps = [
+        ":tensorflow_lite_c",
+    ],
+    bundle_name = "TensorFlowLiteCMetal",
+    minimum_os_version = TFL_MINIMUM_OS_VERSION,
+    deps = [
+        "//tensorflow/lite/delegates/gpu:metal_delegate",
+    ],
+)
+
 cc_library(
     name = "tensorflow_lite_c",
     hdrs = [
         "//tensorflow/lite/c:c_api.h",
         "//tensorflow/lite/c:common.h",
-        "//tensorflow/lite/delegates/gpu:metal_delegate.h",
-    ],
-    linkopts = [
-        "-Wl,-weak_framework,Metal",
     ],
     tags = [
         "nobuilder",
@@ -94,7 +111,6 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/c:c_api",
-        "//tensorflow/lite/delegates/gpu:metal_delegate",
     ],
 )
 

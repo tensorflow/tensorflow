@@ -300,6 +300,19 @@ TfLiteStatus HexagonDelegateKernel::BuildGraph(
   for (int node_index : nodes_) {
     TF_LITE_ENSURE_STATUS(
         context->GetNodeAndRegistration(context, node_index, &node, &reg));
+    // Const inputs needs to be added to the hexagon graph as const nodes.
+    // Adding them earlier here to the graph
+    // - Simplifies separate builders
+    // - Simplifies int8 vs uint8 cases, builders don't need to handle them.
+    for (int i = 0; i < node->inputs->size; ++i) {
+      const int tensor_id = node->inputs->data[i];
+      if (tensor_id == -1) continue;
+      const auto& input_tensor = context->tensors[tensor_id];
+      if (input_tensor.allocation_type == kTfLiteMmapRo) {
+        builder_->AddConstNodeWithData(tensor_id, input_tensor,
+                                       /*int8_to_uint8*/ true);
+      }
+    }
     auto* op_builder =
         builder_->AddNodeFromTfLiteOp(reg->builtin_code, node, node_index);
     TF_LITE_ENSURE_STATUS(

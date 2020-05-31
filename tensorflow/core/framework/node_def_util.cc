@@ -100,7 +100,7 @@ string AttrSlice::DebugString() const {
   return absl::StrJoin(attr_key_vals, ", ");
 }
 
-string SummarizeNodeDef(const NodeDef& node_def) {
+string SummarizeNodeDef(const NodeDef& node_def, int max_inputs_in_summary) {
   string ret = strings::StrCat(errors::FormatNodeNameForError(node_def.name()),
                                " = ", node_def.op(), "[");
   strings::StrAppend(&ret, SummarizeAttrsHelper(node_def, node_def.device()));
@@ -111,6 +111,10 @@ string SummarizeNodeDef(const NodeDef& node_def) {
   for (const string& input : node_def.input()) {
     if (!first) strings::StrAppend(&ret, ", ");
     first = false;
+    if (max_inputs_in_summary-- == 0) {
+      strings::StrAppend(&ret, "...");
+      break;
+    }
     strings::StrAppend(&ret, input);
   }
   strings::StrAppend(&ret, ")");

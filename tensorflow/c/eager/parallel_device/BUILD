@@ -39,9 +39,11 @@ cc_library(
     ],
 )
 
-tf_cc_test(
-    name = "parallel_device_test",
-    srcs = ["parallel_device_test.cc"],
+cc_library(
+    name = "parallel_device_testlib",
+    testonly = 1,
+    srcs = ["parallel_device_testlib.cc"],
+    hdrs = ["parallel_device_testlib.h"],
     deps = [
         ":parallel_device",
         ":parallel_device_ops",
@@ -49,9 +51,46 @@ tf_cc_test(
         "//tensorflow/c:c_api_experimental",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "parallel_device_test",
+    srcs = ["parallel_device_test.cc"],
+    deps = [
+        ":parallel_device",
+        ":parallel_device_ops",
+        ":parallel_device_testlib",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:c_api_experimental",
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "parallel_device_remote_test",
+    srcs = ["parallel_device_remote_test.cc"],
+    # TODO(b/136478427): Enable global heap checking when servers shut down
+    # cleanly.
+    args = ["--heap_check=local"],
+    deps = [
+        ":parallel_device",
+        ":parallel_device_ops",
+        ":parallel_device_testlib",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:c_api_experimental",
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
     ],
 )
 

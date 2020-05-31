@@ -1459,7 +1459,7 @@ void EagerLocalExecuteAsync(EagerOperation* op, TensorHandle** retvals,
   EagerKernelExecuteAsync(
       &ctx, op->Inputs(), op->remote_func_params(), std::move(kernel),
       graph_collector, op->GetCancellationManager(), retvals, num_outputs,
-      [op, num_outputs, &retvals, done = std::move(done)](const Status& s) {
+      [op, num_outputs, retvals, done = std::move(done)](const Status& s) {
         op->Clear();
         // Since the operation failed, we need to Unref any outputs if they were
         // allocated.

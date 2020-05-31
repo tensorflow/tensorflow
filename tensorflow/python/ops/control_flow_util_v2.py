@@ -92,7 +92,7 @@ def unique_grad_fn_name(forward_name):
   return "%s_grad_%s" % (forward_name, ops.uid())
 
 
-def maybe_set_lowering_attr(op):
+def maybe_set_lowering_attr(op, lower_using_switch_merge=None):
   """Sets the flag to enable lowering on `op` if necessary.
 
   Lowering allows cond_v2 and while_v2 to avoid some of the limitations of
@@ -108,14 +108,21 @@ def maybe_set_lowering_attr(op):
     - When the eager execution context specifies the executor of functions to
       be the single threaded executor (see context.function_executor_type()).
       Because the single threaded executor does not support v1 control flow ops.
+    - When 'lower_using_switch_merge' is explicitly set to False.
 
   Args:
     op: An `If` or `While` Operation.
+    lower_using_switch_merge: Explicit value to lower or not (optional).
   """
-  if (not _DISABLE_LOWER_USING_SWITCH_MERGE and
-      not control_flow_util.GraphOrParentsInXlaContext(op.graph) and
-      context.context().function_call_options.executor_type !=
-      "SINGLE_THREADED_EXECUTOR"):
+  if lower_using_switch_merge is not None:
+    # pylint: disable=protected-access
+    op._set_attr("_lower_using_switch_merge",
+                 attr_value_pb2.AttrValue(b=lower_using_switch_merge))
+    # pylint: enable=protected-access
+  elif (not _DISABLE_LOWER_USING_SWITCH_MERGE and
+        not control_flow_util.GraphOrParentsInXlaContext(op.graph) and
+        context.context().function_call_options.executor_type !=
+        "SINGLE_THREADED_EXECUTOR"):
     # pylint: disable=protected-access
     op._set_attr("_lower_using_switch_merge", attr_value_pb2.AttrValue(b=True))
     # pylint: enable=protected-access

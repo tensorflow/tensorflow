@@ -3553,6 +3553,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "enable_large_batch_splitting"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "BatchIFFT"
@@ -7068,6 +7075,13 @@ op {
       s: "auto"
     }
   }
+  attr {
+    name: "timeout_seconds"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
   is_stateful: true
 }
 op {
@@ -7117,6 +7131,13 @@ op {
       s: "auto"
     }
   }
+  attr {
+    name: "timeout_seconds"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
   is_stateful: true
 }
 op {
@@ -7163,6 +7184,13 @@ op {
     type: "string"
     default_value {
       s: "auto"
+    }
+  }
+  attr {
+    name: "timeout_seconds"
+    type: "float"
+    default_value {
+      f: 0
     }
   }
   is_stateful: true
@@ -7281,6 +7309,13 @@ op {
     type: "string"
     default_value {
       s: "auto"
+    }
+  }
+  attr {
+    name: "timeout_seconds"
+    type: "float"
+    default_value {
+      f: 0
     }
   }
   is_stateful: true
@@ -12215,6 +12250,17 @@ op {
   attr {
     name: "var_name"
     type: "string"
+  }
+}
+op {
+  name: "DeviceIndex"
+  output_arg {
+    name: "index"
+    type: DT_INT32
+  }
+  attr {
+    name: "device_names"
+    type: "list(string)"
   }
 }
 op {
@@ -49931,6 +49977,13 @@ op {
     type: "int"
     default_value {
       i: -1
+    }
+  }
+  attr {
+    name: "is_packed"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
 }

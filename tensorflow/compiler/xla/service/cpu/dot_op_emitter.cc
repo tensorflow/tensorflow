@@ -657,6 +657,8 @@ Status DotOpEmitter::EmitCallToRuntime() {
   bool multi_threaded = ShouldUseMultiThreadedEigen(hlo_module_config_);
   bool use_mkl_dnn = hlo_module_config_.debug_options().xla_cpu_use_mkl_dnn();
   PrimitiveType type = target_array_.GetShape().element_type();
+  llvm::Function* function = b_->GetInsertBlock()->getParent();
+  llvm::Module* module = function->getParent();
   llvm::Type* float_type;
   const char* fn_name;
   switch (type) {
@@ -684,6 +686,18 @@ Status DotOpEmitter::EmitCallToRuntime() {
                            : runtime::kEigenSingleThreadedMatMulF64SymbolName);
       float_type = b_->getDoubleTy();
       break;
+    case C64:
+      fn_name = multi_threaded
+                    ? runtime::kEigenMatMulC64SymbolName
+                    : runtime::kEigenSingleThreadedMatMulC64SymbolName;
+      float_type = llvm_ir::PrimitiveTypeToIrType(C64, module);
+      break;
+    case C128:
+      fn_name = multi_threaded
+                    ? runtime::kEigenMatMulC128SymbolName
+                    : runtime::kEigenSingleThreadedMatMulC128SymbolName;
+      float_type = llvm_ir::PrimitiveTypeToIrType(C128, module);
+      break;
     case S32:
       fn_name = multi_threaded
                     ? runtime::kEigenMatMulS32SymbolName
@@ -704,9 +718,6 @@ Status DotOpEmitter::EmitCallToRuntime() {
       {int8_ptr_type, float_ptr_type, float_ptr_type, float_ptr_type,
        int64_type, int64_type, int64_type, int32_type, int32_type},
       /*isVarArg=*/false);
-
-  llvm::Function* function = b_->GetInsertBlock()->getParent();
-  llvm::Module* module = function->getParent();
 
   llvm::FunctionCallee matmul_func =
       module->getOrInsertFunction(fn_name, matmul_type);
@@ -853,9 +864,11 @@ bool AreGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
       << output_shape.DebugString();
 
   switch (output_shape.element_type()) {
-    case F64:
-    case F32:
     case F16:
+    case F32:
+    case F64:
+    case C64:
+    case C128:
     case S32:
       return IsRank2(lhs_shape) && IsRank2(rhs_shape) && IsRank2(output_shape);
     default:
@@ -904,7 +917,9 @@ bool CanEmitTiledLlvmIrGemm(
     return false;
   }
 
-  if (dot_info.result_shape.element_type() == F16) {
+  if (dot_info.result_shape.element_type() == F16 ||
+      dot_info.result_shape.element_type() == C64 ||
+      dot_info.result_shape.element_type() == C128) {
     // TODO(sanjoy): This is probably easy to fix, but I want to keep the CL
     // adding this comment NFC.
     return false;

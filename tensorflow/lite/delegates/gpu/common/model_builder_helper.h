@@ -108,6 +108,8 @@ absl::Status CreateVectorCopyData<float>(const TfLiteTensor& tensor,
 
 absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, Scalar* shape);
 
+absl::Status CheckIfLinearConvertible(const TfLiteIntArray* dimensions);
+
 absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, Linear* shape);
 
 absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, HWC* shape);

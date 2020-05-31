@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <fp16.h>
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context.h"
@@ -220,50 +221,70 @@ absl::Status CreateVectorCopyData<float>(const TfLiteTensor& tensor,
   return absl::OkStatus();
 }
 
+const std::string GetDimensionString(const TfLiteIntArray* dimensions) {
+  return absl::StrJoin(TfLiteIntArrayView(dimensions), "x");
+}
+
 absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, Scalar* shape) {
   if (dimensions->size < 0) {
     return absl::InvalidArgumentError("Invalid Scalar dimensions");
   }
   for (int i = 0; i < dimensions->size; ++i) {
     if (dimensions->data[i] != 1) {
-      return absl::InvalidArgumentError(
-          "Dimension can not be reduced to scalar.");
+      return absl::InvalidArgumentError(absl::StrCat(
+          GetDimensionString(dimensions), "  cannot be reduced to scalar."));
     }
   }
   shape->v = 1;
   return absl::OkStatus();
 }
 
-absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, Linear* shape) {
+absl::Status CheckIfLinearConvertible(const TfLiteIntArray* dimensions) {
   if (dimensions->size <= 0) {
     return absl::InvalidArgumentError("Dimension is empty.");
   }
   for (int i = 0; i < dimensions->size - 1; ++i) {
     if (dimensions->data[i] != 1) {
-      return absl::InvalidArgumentError(
-          "Dimension can not be reduced to linear.");
+      return absl::InvalidArgumentError(absl::StrCat(
+          GetDimensionString(dimensions), "  cannot be reduced to linear."));
     }
   }
+  return absl::OkStatus();
+}
+
+absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, Linear* shape) {
+  RETURN_IF_ERROR(CheckIfLinearConvertible(dimensions));
   shape->v = dimensions->data[dimensions->size - 1];
   return absl::OkStatus();
 }
 
 absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, HWC* shape) {
-  if (dimensions->size != 4) {
-    return absl::InvalidArgumentError("Dimensions are not HWC");
+  if (dimensions->size == 3) {
+    shape->h = dimensions->data[0];
+    shape->w = dimensions->data[1];
+    shape->c = dimensions->data[2];
+    return absl::OkStatus();
   }
-  if (dimensions->data[0] != 1) {
-    return absl::UnimplementedError("Batch size is not equal to 1.");
+  if (dimensions->size == 4) {
+    if (dimensions->data[0] != 1) {
+      return absl::UnimplementedError("Batch size is not equal to 1.");
+    }
+    shape->h = dimensions->data[1];
+    shape->w = dimensions->data[2];
+    shape->c = dimensions->data[3];
+    return absl::OkStatus();
   }
-  shape->h = dimensions->data[1];
-  shape->w = dimensions->data[2];
-  shape->c = dimensions->data[3];
-  return absl::OkStatus();
+  return absl::InvalidArgumentError(
+      absl::StrCat("Expected a 3D tensor of shape HxWxC or a 4D tensor of "
+                   "shape 1xHxWxC but got ",
+                   GetDimensionString(dimensions)));
 }
 
 absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, HW* shape) {
   if (dimensions->size != 2) {
-    return absl::InvalidArgumentError("Dimensions are not HW");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected a 2D tensor of shape HxW but got ",
+                     GetDimensionString(dimensions)));
   }
   shape->h = dimensions->data[0];
   shape->w = dimensions->data[1];
@@ -273,7 +294,8 @@ absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, HW* shape) {
 absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, OHWI* shape) {
   if (dimensions->size != 4) {
     return absl::InvalidArgumentError(
-        absl::StrCat("Dimensions are not OHWI: ", dimensions->size));
+        absl::StrCat("Expected a 4D tensor of shape OxHxWxI but got ",
+                     GetDimensionString(dimensions)));
   }
   shape->o = dimensions->data[0];
   shape->h = dimensions->data[1];
@@ -284,7 +306,9 @@ absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, OHWI* shape) {
 
 absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, BHWC* shape) {
   if (dimensions->size != 4) {
-    return absl::InvalidArgumentError("Dimensions are not BHWC");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected a 4D tensor of shape BxHxWxC but got ",
+                     GetDimensionString(dimensions)));
   }
   shape->b = dimensions->data[0];
   shape->h = dimensions->data[1];

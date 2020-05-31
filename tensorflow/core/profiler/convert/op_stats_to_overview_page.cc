@@ -98,6 +98,9 @@ void ComputeFaqTips(OverviewPageRecommendation* re) {
 
 void ComputeDocumentationTips(OverviewPageRecommendation* re) {
   *re->add_documentation_tips() = MakeOverviewPageTipDocLink(
+      "https://www.tensorflow.org/guide/data_performance_analysis",
+      "Analyze tf.data performance with the TF Profiler");
+  *re->add_documentation_tips() = MakeOverviewPageTipDocLink(
       "https://www.tensorflow.org/guide/"
       "data_performance",
       "Better performance with the tf.data API");
@@ -294,6 +297,7 @@ OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
       bottleneck.input_classification(), bottleneck.input_statement(), "",
       hardware_type, TfFunctionRecommendationHtml(op_stats.tf_function_db()),
       overview_page.mutable_recommendation());
+  SetOverviewPageErrorMessage(op_stats, &overview_page);
   return overview_page;
 }
 
@@ -307,6 +311,19 @@ void SetRemarks(const OpStats& op_stats, OverviewPageAnalysis* analysis) {
   } else {
     analysis->set_remark_text("");
     analysis->set_remark_color("black");
+  }
+}
+
+void SetOverviewPageErrorMessage(const OpStats& op_stats,
+                                 OverviewPage* overview_page) {
+  *overview_page->mutable_errors() = op_stats.errors();
+  absl::c_sort(*overview_page->mutable_errors());
+  if (overview_page->errors().empty()) {
+    // Shows run-environment error only if there is no other existing error.
+    if (op_stats.run_environment().device_type() != "CPU" &&
+        op_stats.run_environment().device_core_count() <= 0) {
+      *overview_page->add_errors() = std::string(kNoDeviceTraceCollected);
+    }
   }
 }
 

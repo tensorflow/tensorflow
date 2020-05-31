@@ -319,6 +319,11 @@ absl::optional<std::vector<MaybeParallelTensorOwned>> ParallelDevice::Execute(
     std::vector<MaybeParallelTensorOwned> outputs;
     outputs.reserve(t->num_tensors());
     for (int i = 0; i < t->num_tensors(); ++i) {
+      // TODO(b/157523095): Syncing the executor here shouldn't be
+      // necessary. Currently async+remote is missing cross-executor
+      // coordination.
+      TFE_ExecutorWaitForAllPendingNodes(executors_[i].get(), status);
+      if (TF_GetCode(status) != TF_OK) return result;
       TensorHandlePtr this_output(
           TFE_TensorHandleCopySharingTensor(t->tensor(i), status));
       outputs.emplace_back(std::move(this_output));

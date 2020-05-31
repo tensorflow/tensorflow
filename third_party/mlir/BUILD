@@ -312,6 +312,7 @@ cc_library(
         ":Transforms",
         ":VectorOps",
         ":VectorToLLVM",
+        ":VectorToSCF",
         "@llvm-project//llvm:core",
         "@llvm-project//llvm:support",
     ],
@@ -1176,28 +1177,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "GPURuntimeTransforms",
-    srcs = [
-        "lib/Conversion/GPUCommon/ConvertLaunchFuncToRuntimeCalls.cpp",
-        "lib/Conversion/PassDetail.h",
-    ],
-    hdrs = [
-        "include/mlir/Conversion/GPUCommon/GPUCommonPass.h",
-    ],
-    includes = ["include"],
-    deps = [
-        ":ConversionPassIncGen",
-        ":GPUDialect",
-        ":IR",
-        ":LLVMDialect",
-        ":Pass",
-        ":Support",
-        "@llvm-project//llvm:core",
-        "@llvm-project//llvm:support",
-    ],
-)
-
 gentbl(
     name = "GPUToNVVMGen",
     strip_include_prefix = "lib/Conversion/GPUToNVVM",
@@ -1279,6 +1258,7 @@ cc_library(
         ":Transforms",
         ":VectorOps",
         ":VectorToLLVM",
+        ":VectorToSCF",
         "@llvm-project//llvm:support",
     ],
 )
@@ -1307,12 +1287,13 @@ cc_library(
 )
 
 cc_library(
-    name = "GPUToCUDATransforms",
+    name = "GPUToGPURuntimeTransforms",
     srcs = [
-        "lib/Conversion/GPUToCUDA/ConvertKernelFuncToCubin.cpp",
+        "lib/Conversion/GPUCommon/ConvertKernelFuncToBlob.cpp",
+        "lib/Conversion/GPUCommon/ConvertLaunchFuncToRuntimeCalls.cpp",
         "lib/Conversion/PassDetail.h",
     ],
-    hdrs = ["include/mlir/Conversion/GPUToCUDA/GPUToCUDAPass.h"],
+    hdrs = ["include/mlir/Conversion/GPUCommon/GPUCommonPass.h"],
     includes = ["include"],
     deps = [
         ":ConversionPassIncGen",
@@ -2490,7 +2471,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":Analysis",
-        ":GPURuntimeTransforms",
+        ":GPUToGPURuntimeTransforms",
         ":GPUToNVVMTransforms",
         ":GPUToROCDLTransforms",
         ":GPUToSPIRVTransforms",
@@ -2570,8 +2551,7 @@ cc_library(
         ":ConversionPassIncGen",
         ":GPUDialect",
         ":GPUPassIncGen",
-        ":GPURuntimeTransforms",
-        ":GPUToCUDATransforms",
+        ":GPUToGPURuntimeTransforms",
         ":GPUToNVVMTransforms",
         ":GPUToROCDLTransforms",
         ":GPUToSPIRVTransforms",
@@ -2611,6 +2591,7 @@ cc_library(
         ":TransformsPassIncGen",
         ":VectorOps",
         ":VectorToLLVM",
+        ":VectorToSCF",
     ],
 )
 
@@ -2776,7 +2757,7 @@ cc_binary(
         ":AllPassesAndDialectsNoRegistration",
         ":ExecutionEngineUtils",
         ":GPUDialect",
-        ":GPURuntimeTransforms",
+        ":GPUToGPURuntimeTransforms",
         ":GPUToNVVMTransforms",
         ":GPUToROCDLTransforms",
         ":GPUTransforms",
@@ -2786,6 +2767,7 @@ cc_binary(
         ":MlirJitRunner",
         ":NVVMDialect",
         ":Pass",
+        ":TargetNVVMIR",
         ":Transforms",
         "//devtools/build/runtime:get_runfiles_dir",
         "//third_party/gpus/cuda:cuda_headers",
@@ -2896,6 +2878,14 @@ gentbl(
             "include/mlir/Dialect/OpenMP/OpenMPOps.cpp.inc",
         ),
         (
+            "-gen-enum-decls",
+            "include/mlir/Dialect/OpenMP/OpenMPOpsEnums.h.inc",
+        ),
+        (
+            "-gen-enum-defs",
+            "include/mlir/Dialect/OpenMP/OpenMPOpsEnums.cpp.inc",
+        ),
+        (
             "-gen-dialect-decls",
             "include/mlir/Dialect/OpenMP/OpenMPOpsDialect.h.inc",
         ),
@@ -2926,6 +2916,7 @@ cc_library(
     deps = [
         ":IR",
         ":OpenMPOpsIncGen",
+        ":StandardOps",
         "@llvm-project//llvm:support",
     ],
 )
@@ -3405,7 +3396,7 @@ cc_library(
     srcs = glob([
         "lib/Conversion/VectorToSCF/*.cpp",
         "lib/Conversion/VectorToSCF/*.h",
-    ]),
+    ]) + ["lib/Conversion/PassDetail.h"],
     hdrs = glob([
         "include/mlir/Conversion/VectorToSCF/*.h",
     ]),

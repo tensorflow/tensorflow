@@ -717,6 +717,15 @@ bool InferShardingFromOperands(HloInstruction* instruction,
       }
       return false;
     }
+    case HloOpcode::kReverse: {
+      if (!IsSpatiallyPartitioned(instruction->operand(0))) {
+        return false;
+      }
+      return MaybeImproveInstructionSharding(
+          hlo_sharding_util::ReverseSharding(
+              instruction->operand(0)->sharding(), instruction->dimensions()),
+          instruction);
+    }
     case HloOpcode::kDot: {
       auto& dot_dim_numbs = instruction->dot_dimension_numbers();
       // Batch dimensions are the same for lhs and rhs on dot operations.
@@ -1187,6 +1196,10 @@ absl::optional<HloSharding> GetShardingFromUser(
       } else {
         return user.sharding();
       }
+    }
+    case HloOpcode::kReverse: {
+      return hlo_sharding_util::ReverseSharding(user.sharding(),
+                                                user.dimensions());
     }
     default: {
       // If the user output shape is compatible with the current instruction

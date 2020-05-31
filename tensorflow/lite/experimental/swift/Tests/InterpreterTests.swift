@@ -50,26 +50,6 @@ class InterpreterTests: XCTestCase {
     XCTAssertNil(interpreter.delegates)
   }
 
-  func testInitWithDelegate() throws {
-    let metalDelegate = MetalDelegate()
-    let interpreter = try Interpreter(modelPath: AddQuantizedModel.path, delegates: [metalDelegate])
-    XCTAssertEqual(interpreter.delegates?.count, 1)
-    XCTAssertNil(interpreter.options)
-  }
-
-  func testInitWithOptionsAndDelegate() throws {
-    var options = Interpreter.Options()
-    options.threadCount = 1
-    let metalDelegate = MetalDelegate()
-    let interpreter = try Interpreter(
-      modelPath: AddQuantizedModel.path,
-      options: options,
-      delegates: [metalDelegate]
-    )
-    XCTAssertNotNil(interpreter.options)
-    XCTAssertEqual(interpreter.delegates?.count, 1)
-  }
-
   func testInputTensorCount() {
     XCTAssertEqual(interpreter.inputTensorCount, AddModel.inputTensorCount)
   }
@@ -268,7 +248,7 @@ class InterpreterOptionsTests: XCTestCase {
 // MARK: - Constants
 
 /// Values for the `add.bin` model.
-private enum AddModel {
+enum AddModel {
   static let info = (name: "add", extension: "bin")
   static let inputTensorCount = 1
   static let outputTensorCount = 1
@@ -301,7 +281,7 @@ private enum AddModel {
 }
 
 /// Values for the `add_quantized.bin` model.
-private enum AddQuantizedModel {
+enum AddQuantizedModel {
   static let info = (name: "add_quantized", extension: "bin")
   static let inputOutputIndex = 0
   static let shape: Tensor.Shape = [2]

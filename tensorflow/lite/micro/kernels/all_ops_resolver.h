@@ -19,7 +19,12 @@ namespace tflite {
 namespace ops {
 namespace micro {
 
-class AllOpsResolver : public MicroMutableOpResolver {
+// The magic number in the template parameter is the maximum number of ops that
+// can be added to AllOpsResolver. It can be increased if needed. And most
+// applications that care about the memory footprint will want to directly use
+// MicroMutableOpResolver and have an application specific template parameter.
+// The examples directory has sample code for this.
+class AllOpsResolver : public MicroMutableOpResolver<128> {
  public:
   AllOpsResolver();
 

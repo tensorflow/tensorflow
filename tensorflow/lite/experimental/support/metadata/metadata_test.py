@@ -43,6 +43,8 @@ class MetadataTest(test_util.TensorFlowTestCase):
       f.write(self._empty_model_buf)
     self._model_file = self._create_model_file_with_metadata_and_buf_fields()
     self._metadata_file = self._create_metadata_file()
+    self._metadata_file_with_version = self._create_metadata_file_with_version(
+        self._metadata_file, "1.0.0")
     self._file1 = self.create_tempfile("file1").full_path
     self._file2 = self.create_tempfile("file2").full_path
     self._file3 = self.create_tempfile("file3").full_path
@@ -134,6 +136,25 @@ class MetadataTest(test_util.TensorFlowTestCase):
     b = flatbuffers.Builder(0)
     b.Finish(model.Pack(b), identifier)
     return b.Output()
+
+  def _create_metadata_file_with_version(self, metadata_file, min_version):
+    # Creates a new metadata file with the specified min_version for testing
+    # purposes.
+    with open(metadata_file, "rb") as f:
+      metadata_buf = bytearray(f.read())
+
+    metadata = _metadata_fb.ModelMetadataT.InitFromObj(
+        _metadata_fb.ModelMetadata.GetRootAsModelMetadata(metadata_buf, 0))
+    metadata.minParserVersion = min_version
+
+    b = flatbuffers.Builder(0)
+    b.Finish(
+        metadata.Pack(b), _metadata.MetadataPopulator.METADATA_FILE_IDENTIFIER)
+
+    metadata_file_with_version = self.create_tempfile().full_path
+    with open(metadata_file_with_version, "wb") as f:
+      f.write(b.Output())
+    return metadata_file_with_version
 
 
 class MetadataPopulatorTest(MetadataTest):
@@ -245,7 +266,7 @@ class MetadataPopulatorTest(MetadataTest):
     buffer_data = model.Buffers(buffer_index)
     metadata_buf_np = buffer_data.DataAsNumpy()
     metadata_buf = metadata_buf_np.tobytes()
-    with open(self._metadata_file, "rb") as f:
+    with open(self._metadata_file_with_version, "rb") as f:
       expected_metadata_buf = bytearray(f.read())
     self.assertEqual(metadata_buf, expected_metadata_buf)
 
@@ -293,7 +314,7 @@ class MetadataPopulatorTest(MetadataTest):
     buffer_data = model.Buffers(buffer_index)
     metadata_buf_np = buffer_data.DataAsNumpy()
     metadata_buf = metadata_buf_np.tobytes()
-    with open(self._metadata_file, "rb") as f:
+    with open(self._metadata_file_with_version, "rb") as f:
       expected_metadata_buf = bytearray(f.read())
     self.assertEqual(metadata_buf, expected_metadata_buf)
 

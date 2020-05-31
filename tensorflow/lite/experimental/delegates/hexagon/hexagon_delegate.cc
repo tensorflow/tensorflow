@@ -157,23 +157,12 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
 
   TfLiteHexagonDelegateOptions* params =
       static_cast<TfLiteHexagonDelegateOptions*>(delegate->data_);
-  const auto delegate_partitions = helper.GetFirstNLargestPartitions(
+  std::vector<int> supported_nodes = helper.GetNodesOfFirstNLargestPartitions(
       params->max_delegated_partitions, params->min_nodes_per_partition);
 
-  // To avoid creating a new TfLiteIntArray and free it later, we reserve one
-  // element to represent TfLiteIntArray.size which is the 1st element of
-  // TfLiteIntArray C struct.
-  std::vector<int> supported_nodes(1);
-  for (const auto partition : delegate_partitions) {
-    auto* nodes = partition->nodes_to_replace;
-    supported_nodes.insert(supported_nodes.end(), nodes->data,
-                           nodes->data + nodes->size);
-  }
-  // Set first element to the number of nodes to replace.
-  supported_nodes[0] = supported_nodes.size() - 1;
   auto* hexagon_delegate = static_cast<HexagonDelegate*>(delegate);
   // Make sure dynamic batch is requested on fully delegated graph only.
-  if (supported_nodes[0] != helper.num_total_nodes() &&
+  if (supported_nodes.size() != helper.num_total_nodes() &&
       hexagon_delegate != nullptr &&
       hexagon_delegate->params()->enable_dynamic_batch_size) {
     TF_LITE_KERNEL_LOG(
@@ -183,12 +172,12 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
   TFLITE_LOG_PROD(tflite::TFLITE_LOG_INFO,
                   "Hexagon delegate: %d nodes delegated out of %d nodes with "
                   "%d partitions.\n",
-                  supported_nodes[0], helper.num_total_nodes(),
-                  delegate_partitions.size());
+                  supported_nodes.size(), helper.num_total_nodes(),
+                  helper.num_partitions());
 
   return context->ReplaceNodeSubsetsWithDelegateKernels(
       context, GetHexagonKernelRegistration(),
-      reinterpret_cast<TfLiteIntArray*>(supported_nodes.data()), delegate);
+      BuildTfLiteIntArray(supported_nodes).get(), delegate);
 }
 
 TfLiteDelegate* CreateDelegate(const TfLiteHexagonDelegateOptions* params) {

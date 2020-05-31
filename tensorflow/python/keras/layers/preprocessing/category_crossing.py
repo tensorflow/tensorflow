@@ -140,9 +140,9 @@ class CategoryCrossing(Layer):
   def call(self, inputs):
     depth_tuple = self._depth_tuple if self.depth else (len(inputs),)
     ragged_out = sparse_out = False
-    if any([ragged_tensor.is_ragged(inp) for inp in inputs]):
+    if any(ragged_tensor.is_ragged(inp) for inp in inputs):
       ragged_out = True
-    elif any([isinstance(inp, sparse_tensor.SparseTensor) for inp in inputs]):
+    elif any(isinstance(inp, sparse_tensor.SparseTensor) for inp in inputs):
       sparse_out = True
 
     outputs = []

@@ -76,7 +76,7 @@ def save_model(model,
 
   Note that the model weights may have different scoped names after being
   loaded. Scoped names include the model/layer names, such as
-  "dense_1/kernel:0"`. It is recommended that you use the layer properties to
+  `"dense_1/kernel:0"`. It is recommended that you use the layer properties to
   access specific variables, e.g. `model.get_layer("dense_1").kernel`.
 
   _SavedModel serialization_

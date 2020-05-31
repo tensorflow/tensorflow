@@ -198,32 +198,26 @@ ENTRY main {
   c1_1 = f32[40,40] parameter(3)
   p = pred[] parameter(4)
   t = (f32[20,40], f32[40,40], f32[20,40], f32[40,40]) tuple(c0_0, c0_1, c1_0, c1_1)
-  ROOT result = (f32[20, 40]) conditional(p,t,t), false_computation=on_false, true_computation=on_true
+  call = (f32[20,40]) call(t), to_apply=on_true
+  ROOT result = (f32[20,40]) conditional(p,t,t), false_computation=on_false, true_computation=on_true
 }
 )";
   auto status = ParseAndReturnVerifiedModule(hlo_string);
   TF_ASSERT_OK(status.status());
+  std::unique_ptr<HloModule> module = status.ConsumeValueOrDie();
   HloVerifier v(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false);
-  TF_ASSERT_OK(v.Run(status.ValueOrDie().get()).status());
-  EXPECT_TRUE(
-      ConditionalSimplifier().Run(status.ValueOrDie().get()).ValueOrDie());
-  TF_ASSERT_OK(v.Run(status.ValueOrDie().get()).status());
-  EXPECT_EQ(status.ValueOrDie()
-                ->entry_computation()
-                ->root_instruction()
-                ->operand(1)
-                ->shape()
-                .tuple_shapes()
-                .size(),
-            2);
-  EXPECT_EQ(status.ValueOrDie()
-                ->entry_computation()
-                ->root_instruction()
-                ->operand(2)
-                ->shape()
-                .tuple_shapes()
-                .size(),
-            2);
+  TF_ASSERT_OK(v.Run(module.get()).status());
+  EXPECT_TRUE(ConditionalSimplifier().Run(module.get()).ValueOrDie());
+  TF_ASSERT_OK(v.Run(module.get()).status());
+  HloInstruction* conditional = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(conditional != nullptr);
+  EXPECT_EQ(conditional->operand(1)->shape().tuple_shapes().size(), 2);
+  EXPECT_EQ(conditional->operand(2)->shape().tuple_shapes().size(), 2);
+  // For the call operation, nothing should have changed.
+  HloInstruction* call = FindInstruction(module.get(), "call");
+  EXPECT_EQ(
+      call->to_apply()->parameter_instruction(0)->shape().tuple_shapes().size(),
+      4);
 }
 
 TEST_F(ConditionalSimplifierTest,

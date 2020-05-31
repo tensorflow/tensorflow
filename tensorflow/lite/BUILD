@@ -252,6 +252,7 @@ cc_library(
         ":version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/delegates:status",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -376,7 +377,9 @@ cc_test(
 cc_test(
     name = "interpreter_test",
     size = "small",
-    srcs = ["interpreter_test.cc"],
+    srcs = [
+        "interpreter_test.cc",
+    ],
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     tags = [
         "tflite_not_portable_ios",  # TODO(b/117786830)

@@ -132,6 +132,22 @@ Status DataServiceMasterClient::GetTasks(int64 job_id,
   return Status::OK();
 }
 
+Status DataServiceMasterClient::GetWorkers(std::vector<WorkerInfo>* workers) {
+  TF_RETURN_IF_ERROR(EnsureInitialized());
+  GetWorkersRequest req;
+  GetWorkersResponse resp;
+  grpc_impl::ClientContext ctx;
+  grpc::Status s = stub_->GetWorkers(&ctx, req, &resp);
+  if (!s.ok()) {
+    return grpc_util::WrapError("Failed to get workers", s);
+  }
+  workers->clear();
+  for (auto& worker : resp.workers()) {
+    workers->push_back(worker);
+  }
+  return Status::OK();
+}
+
 Status DataServiceMasterClient::EnsureInitialized() {
   std::shared_ptr<grpc::ChannelCredentials> credentials;
   TF_RETURN_IF_ERROR(

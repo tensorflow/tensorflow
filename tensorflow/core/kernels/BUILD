@@ -1338,6 +1338,8 @@ tf_kernel_library(
         "tile_functor_cpu_int64.cc",
         "tile_functor_cpu_int8.cc",
         "tile_functor_cpu_tstring.cc",
+        "tile_functor_cpu_uint32.cc",
+        "tile_functor_cpu_uint64.cc",
         "tile_functor_cpu_uint8.cc",
         "tile_functor_cpu_variant.cc",
         "tile_functor_sycl.cc",
@@ -6645,6 +6647,8 @@ filegroup(
         "avgpooling_op.h",
         "batch_matmul_op_impl.h",
         "batch_norm_op.h",
+        "broadcast_to_op.h",
+        "bucketize_op.h",
         "control_flow_ops.h",
         "conv_2d.h",
         "conv_3d.h",
@@ -6709,6 +6713,8 @@ filegroup(
         "transpose_op.h",
         "where_op.h",
         "xent_op.h",
+    ] + [
+        "//tensorflow/core/kernels/boosted_trees/quantiles:weighted_quantiles_hdrs",
     ],
 )
 
@@ -6734,6 +6740,7 @@ filegroup(
         "conv_ops_fused_float.cc",
         "conv_ops_fused_half.cc",
         "conv_ops_fused_impl.h",
+        "conv_ops_fused_image_transform.cc",
         "conv_ops_using_gemm.cc",
         "crop_and_resize_op.cc",
         "crop_and_resize_op.h",
@@ -6743,6 +6750,7 @@ filegroup(
         "cwise_op_bitwise_and.cc",
         "cwise_op_bitwise_or.cc",
         "cwise_op_bitwise_xor.cc",
+        "cwise_op_ceil.cc",
         "cwise_op_conj.cc",
         "cwise_op_cos.cc",
         "cwise_op_cosh.cc",
@@ -6835,6 +6843,8 @@ filegroup(
     name = "android_extended_ops_group2",
     srcs = [
         "batchtospace_op.cc",
+        "broadcast_to_op.cc",
+        "bucketize_op.cc",
         "ctc_decoder_ops.cc",
         "decode_bmp_op.cc",
         "depthtospace_op.cc",
@@ -6911,6 +6921,7 @@ filegroup(
         "spacetobatch_functor.cc",
         "spacetobatch_op.cc",
         "spacetodepth_op.cc",
+        "sparse_cross_op.cc",
         "sparse_fill_empty_rows_op.cc",
         "sparse_reshape_op.cc",
         "sparse_to_dense_op.cc",
@@ -6938,6 +6949,8 @@ filegroup(
         "tile_functor_cpu_int64.cc",
         "tile_functor_cpu_int8.cc",
         "tile_functor_cpu_tstring.cc",
+        "tile_functor_cpu_uint32.cc",
+        "tile_functor_cpu_uint64.cc",
         "tile_functor_cpu_uint8.cc",
         "tile_functor_cpu_variant.cc",
         "tile_ops.cc",
@@ -6957,6 +6970,8 @@ filegroup(
         "where_op.cc",
         "xent_op.cc",
         ":android_extended_ops_headers",
+    ] + [
+        "//tensorflow/core/kernels/boosted_trees:quantile_ops.cc",
     ],
 )
 
@@ -7119,6 +7134,7 @@ cc_library(
     deps = [
         "//tensorflow/core:portable_tensorflow_lib_lite",
         "//tensorflow/core:protos_all_cc_impl",
+        "//tensorflow/core/platform:strong_hash",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
         "@com_google_absl//absl/base",
