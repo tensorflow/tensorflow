@@ -158,13 +158,6 @@ bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,
   return false;
 }
 
-bool CanFuseFullyConnectedThenMul(const ArrayRef<int64_t> elements_shape) {
-  for (auto i = 0; i < elements_shape.size() - 1; i++) {
-    if (elements_shape[i] != 1) return false;
-  }
-  return true;
-}
-
 // Expand Attribute 'a' to 4D with all 1s except 1 dimension.
 // Which dimension depends on 'is_depthwise' is true or false.
 ElementsAttr ExpandTo4DForConvImpl(Attribute a, bool is_depthwise) {
@@ -364,7 +357,7 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
     // Check if it is possible to fuse the constant mathematically
     Value new_const_val = constant_val;
     auto original_shape = cst.getType().getShape();
-    if (!CanFuseFullyConnectedThenMul(original_shape)) return failure();
+    if (!CanFuseAffineOpThenMul(original_shape)) return failure();
 
     int64_t element_size = original_shape.size() > 0
                                ? original_shape[original_shape.size() - 1]

@@ -78,5 +78,19 @@ bool IsBroadcastableElementsAttrs(mlir::Attribute a, mlir::Attribute b) {
   return OpTrait::util::getBroadcastedType(a.getType(), b.getType()) != Type();
 }
 
+bool CanFuseAffineOpThenMul(const ArrayRef<int64_t> elements_shape) {
+  for (auto i = 0; i < elements_shape.size() - 1; i++) {
+    if (elements_shape[i] != 1) return false;
+  }
+  return true;
+}
+
+bool CanFuseAffineOpThenMul(Attribute val) {
+  if (const auto elements = val.dyn_cast<DenseElementsAttr>()) {
+      return CanFuseAffineOpThenMul(elements.getType().getShape());
+  }
+  return false;
+}
+
 }  // namespace TFL
 }  // namespace mlir

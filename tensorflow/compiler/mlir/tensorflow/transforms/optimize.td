@@ -17,8 +17,10 @@ include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
 def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "NHWC">;
-def BroadcastableElements :
-    Constraint<CPred<"TFL::IsBroadcastableElementsAttrs($0, $1)">>;
+def CanFuseFuseMulAndConv2D :
+    Constraint<CPred<"TFL::IsBroadcastableElementsAttrs($0, $1) && TFL::CanFuseAffineOpThenMul($1)">>;
+
+  
 def F32ElementsAttr : ElementsAttrBase<
     CPred<"$_self.cast<ElementsAttr>().getType().getElementType().isF32()">, "float constant tensor">;
 def DefinedByConv2D : Constraint<CPred<"llvm::isa_and_nonnull<mlir::TF::Conv2DOp>($0.getDefiningOp())">>;
@@ -40,7 +42,7 @@ def FuseMulAndConv2D :
                     (location $mul)),
           $strides, $use_cudnn, $padding, $explicit_padding, $data_format,
           $dilations, (location $conv)),
-      [(BroadcastableElements $filter_value, $mul_value), (HasOneUse $conv)]>;
+      [(CanFuseFuseMulAndConv2D $filter_value, $mul_value), (HasOneUse $conv)]>;
 
 // This rule does the following pattern match and rewrite:
 //
