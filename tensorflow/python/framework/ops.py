@@ -79,6 +79,8 @@ from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import kwarg_only
 from tensorflow.python.util.tf_export import tf_export
 
+from typing import Generic, TypeVar
+
 ag_ctx = LazyLoader(
     "ag_ctx", globals(),
     "tensorflow.python.autograph.core.ag_ctx")
@@ -253,9 +255,17 @@ def disable_tensor_equality():
   Tensor._USE_EQUALITY = False  # pylint: disable=protected-access
 
 
+DataType = TypeVar("DataType",
+          dtypes.Float16, dtypes.Float32, dtypes.Float64, dtypes.Bfloat16,
+          dtypes.Complex64, dtypes.Complex128, dtypes.Int8, dtypes.Uint8,
+          dtypes.Uint16, dtypes.Uint32, dtypes.Uint64, dtypes.Int16,
+          dtypes.Int32, dtypes.Int64, dtypes.Bool, dtypes.String,
+          dtypes.Qint8, dtypes.Quint8, dtypes.Qint16, dtypes.Quint16,
+          dtypes.Qint32, dtypes.Resource, dtypes.Variant)
+
 # TODO(mdan): This object should subclass Symbol, not just Tensor.
 @tf_export("Tensor")
-class Tensor(internal.NativeObject, core_tf_types.Tensor):
+class Tensor(internal.NativeObject, core_tf_types.Tensor, Generic[DataType]):
   """A tensor is a multidimensional array of elements represented by a
 
   `tf.Tensor` object.  All elements are of a single known data type.
@@ -356,7 +366,7 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
   # Whether to allow hashing or numpy-style equality
   _USE_EQUALITY = tf2.enabled()
 
-  def __init__(self, op, value_index, dtype):
+  def __init__(self, op, value_index, dtype: DataType):
     """Creates a new `Tensor`.
 
     Args:
@@ -372,7 +382,7 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
       raise TypeError("op needs to be an Operation: %s" % op)
     self._op = op
     self._value_index = value_index
-    self._dtype = dtypes.as_dtype(dtype)
+    self._dtype = dtypes.as_dtype(dtype) # type: DataType
     # This will be set by self._as_tf_output().
     self._tf_output = None
     # This will be set by self.shape().
