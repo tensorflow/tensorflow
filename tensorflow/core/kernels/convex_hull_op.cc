@@ -167,7 +167,7 @@ int64 sklansky(const std::vector<std::vector<float>> &pts_vec,
 //   pts_vec    Input points.
 //   idx_vec    Output convex hull points.
 //   clockwise  Traversal direction. `true` if clockwise, `false` if
-//   counterclockwise. 
+//              counterclockwise. 
 //   pts_num    Number of input points.
 void convex_hull(std::vector<std::vector<float>> &pts_vec,
                  std::vector<std::vector<float>> &out_vec, const bool clockwise,
