@@ -63,7 +63,7 @@ TEST_F(ConvexHullOpTest, OnePoint) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-// If two points, return the input points (with differnt order)
+// If two points, return the input points
 TEST_F(ConvexHullOpTest, TwoPoints) {
   MakeOp(DT_INT32, false);
 
@@ -93,8 +93,9 @@ TEST_F(ConvexHullOpTest, ThreePoints) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-// If three points on the same line, return the start and end points (with
-// the end point padded to the end of the output array)
+// If three points on the same line,
+// return the start and end points (with the end point padded
+// to the end of the output array)
 TEST_F(ConvexHullOpTest, ThreePoints_SameLine) {
   MakeOp(DT_INT32, false);
 
@@ -110,8 +111,7 @@ TEST_F(ConvexHullOpTest, ThreePoints_SameLine) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-// If more than three points,
-// return the convex hull (with the end point padded
+// If more than three points, return the convex hull (with the end point padded
 // to the end of the output array)
 TEST_F(ConvexHullOpTest, MorePoints) {
   MakeOp(DT_FLOAT, true);
@@ -153,4 +153,5 @@ TEST_F(ConvexHullOpTest, Error_InputDimMustBe2) {
 }
 
 }  // namespace
+
 }  // namespace tensorflow

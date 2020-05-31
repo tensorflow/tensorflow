@@ -316,4 +316,5 @@ struct ConvexHull<CPUDevice, T> {
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNEL);
 
 #undef REGISTER_KERNEL
+
 }  // namespace tensorflow
