@@ -406,6 +406,61 @@ func @while_cond(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32> {
 
 // -----
 
+// CHECK: func @cluster_with_case(%[[ARG0:.*]]: tensor<i32>) -> tensor<4xf32>
+func @cluster_with_case(%arg0: tensor<i32>) -> tensor<4xf32> {
+  // CHECK: %[[VH0:.*]] = "tf.VarHandleOp"()
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<4xf32>>>
+  // CHECK: %[[VH1:.*]] = "tf.VarHandleOp"()
+  %1 = "tf.VarHandleOp"() {container = "c", shared_name = "v2"} : () -> tensor<*x!tf.resource<tensor<4xf32>>>
+  // CHECK-DAG: %[[READ0:.*]] = "tf.ReadVariableOp"(%[[VH0]])
+  // CHECK-DAG: %[[READ1:.*]] = "tf.ReadVariableOp"(%[[VH1]])
+  // CHECK: %[[CLUSTER:.*]]:2 = "tf_device.cluster"()
+  %2 = "tf_device.cluster"() ( {
+    // CHECK: %[[CASE:.*]]:2 = "tf.Case"(%[[ARG0]], %[[READ0]], %[[READ1]])
+    %3:2 = "tf.Case"(%arg0, %0, %1) {branches = [@branch_0, @branch_1, @branch_2]}
+      : (tensor<i32>, tensor<*x!tf.resource<tensor<4xf32>>>, tensor<*x!tf.resource<tensor<4xf32>>>)
+      -> (tensor<*x!tf.resource<tensor<4xf32>>>, tensor<4xf32>)
+    // CHECK-NEXT: %[[ADD:.*]] = "tf.AddV2"(%[[CASE]]#1, %[[CASE]]#0)
+    %4 = "tf.ReadVariableOp"(%3#0) : (tensor<*x!tf.resource<tensor<4xf32>>>) -> tensor<4xf32>
+    %5 = "tf.AddV2"(%4, %3#1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+    // CHECK-NEXT: tf_device.return %[[ADD]], %[[CASE]]#1
+    tf_device.return %5 : tensor<4xf32>
+  // CHECK: {cluster_attr = "cluster_attr"} : () -> (tensor<4xf32>, tensor<4xf32>)
+  }) {cluster_attr = "cluster_attr"} : () -> tensor<4xf32>
+  // CHECK: "tf.AssignVariableOp"(%[[VH0]], %[[CLUSTER]]#1)
+  // CHECK: return %[[CLUSTER]]#0
+  return %2 : tensor<4xf32>
+}
+// CHECK: func @branch_0(%[[TARG0:.*]]: tensor<4xf32>, %[[TARG1:.*]]: tensor<4xf32>)
+func @branch_0(%arg0: tensor<*x!tf.resource<tensor<4xf32>>>, %arg1: tensor<*x!tf.resource<tensor<4xf32>>>)
+    -> (tensor<*x!tf.resource<tensor<4xf32>>>, tensor<4xf32>) {
+  // CHECK-NEXT: %[[CONST:.*]] = "tf.Const"()
+  %constant = "tf.Const"() {value = dense<0.0> : tensor<4xf32>} : () -> tensor<4xf32>
+  "tf.AssignVariableOp"(%arg0, %constant) : (tensor<*x!tf.resource<tensor<4xf32>>>, tensor<4xf32>) -> ()
+  // CHECK-NEXT: return %[[CONST]], %[[CONST]]
+  return %arg0, %constant : tensor<*x!tf.resource<tensor<4xf32>>>, tensor<4xf32>
+}
+// CHECK: func @branch_1(%[[EARG0:.*]]: tensor<4xf32>, %[[EARG1:.*]]: tensor<4xf32>)
+func @branch_1(%arg0: tensor<*x!tf.resource<tensor<4xf32>>>, %arg1: tensor<*x!tf.resource<tensor<4xf32>>>)
+    -> (tensor<*x!tf.resource<tensor<4xf32>>>, tensor<4xf32>) {
+  %id = "tf.Identity"(%arg1) : (tensor<*x!tf.resource<tensor<4xf32>>>) -> tensor<*x!tf.resource<tensor<4xf32>>>
+  %read = "tf.ReadVariableOp"(%id) : (tensor<*x!tf.resource<tensor<4xf32>>>) -> tensor<4xf32>
+  "tf.AssignVariableOp"(%arg0, %read) : (tensor<*x!tf.resource<tensor<4xf32>>>, tensor<4xf32>) -> ()
+  // CHECK-NEXT: return %[[EARG1]], %[[EARG1]]
+  return %arg0, %read : tensor<*x!tf.resource<tensor<4xf32>>>, tensor<4xf32>
+}
+// CHECK: func @branch_2(%[[EARG0:.*]]: tensor<4xf32>, %[[EARG1:.*]]: tensor<4xf32>)
+func @branch_2(%arg0: tensor<*x!tf.resource<tensor<4xf32>>>, %arg1: tensor<*x!tf.resource<tensor<4xf32>>>)
+    -> (tensor<*x!tf.resource<tensor<4xf32>>>, tensor<4xf32>) {
+  %id = "tf.Identity"(%arg1) : (tensor<*x!tf.resource<tensor<4xf32>>>) -> tensor<*x!tf.resource<tensor<4xf32>>>
+  %read = "tf.ReadVariableOp"(%id) : (tensor<*x!tf.resource<tensor<4xf32>>>) -> tensor<4xf32>
+  "tf.AssignVariableOp"(%arg0, %read) : (tensor<*x!tf.resource<tensor<4xf32>>>, tensor<4xf32>) -> ()
+  // CHECK-NEXT: return %[[EARG1]], %[[EARG1]]
+  return %arg0, %read : tensor<*x!tf.resource<tensor<4xf32>>>, tensor<4xf32>
+}
+
+// -----
+
 // Tests that pass lifts resource reads from if branches.
 
 // CHECK: func @cluster_with_if(%[[ARG0:.*]]: tensor<i1>) -> tensor<4xf32>
@@ -524,7 +579,7 @@ func @cluster_with_if(%arg0: tensor<i1>) -> tensor<4xf32> {
   %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<4xf32>>>
   %1 = "tf.VarHandleOp"() {container = "c", shared_name = "v2"} : () -> tensor<*x!tf.resource<tensor<4xf32>>>
   %2 = "tf_device.cluster"() ( {
-    // expected-error @+1 {{unsupported tf.IfOp output: resource does not alias a single input.}}
+    // expected-error @+1 {{unsupported output: resource does not alias a single input}}
     %3 = "tf.If"(%arg0, %0, %1) {then_branch = @if_then, else_branch = @if_else,
         is_stateless = false}
       : (tensor<i1>, tensor<*x!tf.resource<tensor<4xf32>>>, tensor<*x!tf.resource<tensor<4xf32>>>)
