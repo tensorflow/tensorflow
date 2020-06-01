@@ -72,7 +72,7 @@ bool SerializeToBufferDeterministic(const protobuf::MessageLite& msg,
   protobuf::io::CodedOutputStream output_stream(&array_stream);
   output_stream.SetSerializationDeterministic(true);
   msg.SerializeWithCachedSizes(&output_stream);
-  return !output_stream.HadError() && size == (size_t)(output_stream.ByteCount());
+  return !output_stream.HadError() && size == static_cast<size_t>(output_stream.ByteCount());
 }
 
 bool AreSerializedProtosEqual(const protobuf::MessageLite& x,
