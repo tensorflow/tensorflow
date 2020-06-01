@@ -57,6 +57,26 @@ public final class NnApiDelegateTest {
   }
 
   @Test
+  public void testInterpreterWithNnApiAllowFp16() throws Exception {
+    Interpreter.Options options = new Interpreter.Options();
+    NnApiDelegate.Options nnApiOptions = new NnApiDelegate.Options();
+    nnApiOptions.setAllowFp16(true);
+
+    try (NnApiDelegate delegate = new NnApiDelegate(nnApiOptions);
+        Interpreter interpreter = new Interpreter(MODEL_BUFFER, options.addDelegate(delegate))) {
+      float[] oneD = {1.23f, 6.54f, 7.81f};
+      float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+      float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+      float[][][][] fourD = {threeD, threeD};
+      float[][][][] parsedOutputs = new float[2][8][8][3];
+      interpreter.run(fourD, parsedOutputs);
+      float[] outputOneD = parsedOutputs[0][0][0];
+      float[] expected = {3.69f, 19.62f, 23.43f};
+      assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
+    }
+  }
+
+  @Test
   public void testGetNnApiErrnoReturnsZeroIfNoNnapiCallFailed() throws Exception {
     Interpreter.Options options = new Interpreter.Options();
     try (NnApiDelegate delegate = new NnApiDelegate();
