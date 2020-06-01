@@ -356,7 +356,7 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
 
     // Check if it is possible to fuse the constant mathematically
     // output[..., b, j] = (sum_i input[..., b, i] * filter[j, i]) * m[..., b, j]
-    // m[..., b, j] must be indepdenat of ..., b in order to fuse into filter
+    // m[..., b, j] must be independent of ..., b in order to fuse into filter
     Value new_const_val = constant_val;
     auto original_shape = cst.getType().getShape();
     if (!IsDimensionsDegenerateExceptLastOne(original_shape)) return failure();

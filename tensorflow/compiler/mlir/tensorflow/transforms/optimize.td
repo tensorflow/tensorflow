@@ -21,7 +21,7 @@ def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "NHWC">;
 //output[b, i, j, k] =
 //    (sum_{di, dj, q} input[b, strides[1] * i + di, strides[2] * j + dj, q] *
 //                   filter[di, dj, q, k]) * m[b, i, j, k]
-//m[b, i, j, k] must be independant of b, i, j in order to fuse into filter.
+//m[b, i, j, k] must be independent of b, i, j in order to fuse into filter.
 def CanFuseMulAndConv2D :
     Constraint<CPred<"TFL::IsBroadcastableElementsAttrs($0, $1) && TFL::IsDimensionsDegenerateExceptLastOne($1)">>;
 
