@@ -40,12 +40,12 @@ cc_library(
     deps = [
         ":exact_uniform_int",
         ":philox_random",
+        "//tensorflow/core:framework",
         "//tensorflow/core/lib/bfloat16",
         "//tensorflow/core/lib/gtl:array_slice",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:types",
-        "//tensorflow/core:framework",
         "//third_party/eigen3",
     ],
     alwayslink = 1,

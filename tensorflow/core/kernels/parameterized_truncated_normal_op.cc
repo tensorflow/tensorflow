@@ -87,9 +87,10 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
       Normal normal_dist;
 
       // Vectorized intermediate calculations for uniform rejection sampling.
-      // We always generate at most 4 samples.
-      Eigen::array<T, 4> z;
-      Eigen::array<T, 4> g;
+      const int length =
+          std::max(Uniform::kResultElementCount, Normal::kResultElementCount);
+      Eigen::array<T, length> z;
+      Eigen::array<T, length> g;
 
       for (int64 b = start_batch; b < limit_batch; ++b) {
         // We are passed a flat array for each of the parameter tensors.
