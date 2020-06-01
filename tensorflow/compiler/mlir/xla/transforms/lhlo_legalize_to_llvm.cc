@@ -76,11 +76,60 @@ struct StaticMemRefCastOpConverter
   }
 };
 
+struct DynamicMemRefCastOpConverter
+    : public ConvertOpToLLVMPattern<DynamicMemRefCastOp> {
+  using ConvertOpToLLVMPattern<DynamicMemRefCastOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult matchAndRewrite(
+      Operation *op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    auto loc = op->getLoc();
+    auto cast_op = cast<DynamicMemRefCastOp>(op);
+
+    DynamicMemRefCastOpOperandAdaptor operands_adaptor(operands);
+    MemRefDescriptor sourceMemRef(operands_adaptor.operand());
+
+    MemRefType targetMemRefType =
+        cast_op.getResult().getType().cast<MemRefType>();
+    auto llvmTargetDescriptorTy = typeConverter.convertType(targetMemRefType)
+                                      .dyn_cast_or_null<LLVM::LLVMType>();
+    if (!llvmTargetDescriptorTy || !llvmTargetDescriptorTy.isStructTy())
+      return failure();
+    // Create descriptor.
+    auto desc = MemRefDescriptor::undef(rewriter, loc, llvmTargetDescriptorTy);
+    Type llvmTargetElementTy = desc.getElementType();
+    // Set allocated ptr.
+    Value allocated = sourceMemRef.allocatedPtr(rewriter, loc);
+    allocated =
+        rewriter.create<LLVM::BitcastOp>(loc, llvmTargetElementTy, allocated);
+    desc.setAllocatedPtr(rewriter, loc, allocated);
+    // Set aligned ptr.
+    Value ptr = sourceMemRef.alignedPtr(rewriter, loc);
+    ptr = rewriter.create<LLVM::BitcastOp>(loc, llvmTargetElementTy, ptr);
+    desc.setAlignedPtr(rewriter, loc, ptr);
+    // Copy offset of `sourceMemRef`.
+    desc.setOffset(rewriter, loc, sourceMemRef.offset(rewriter, loc));
+
+    // Fill size and stride descriptors in memref.
+    if (!cast_op.sizes().empty()) {
+      auto sizes = operands_adaptor.sizes();
+      auto strides = operands_adaptor.strides();
+      for (int i = 0, e = targetMemRefType.getRank(); i < e; ++i) {
+        desc.setSize(rewriter, loc, i, sizes[i]);
+        desc.setStride(rewriter, loc, i, strides[i]);
+      }
+    }
+    rewriter.replaceOp(op, {desc});
+    return success();
+  }
+};
+
 }  // namespace
 
 void PopulateLhloToLLVMConversionPatterns(LLVMTypeConverter *converter,
                                           OwningRewritePatternList *patterns) {
-  patterns->insert<StaticMemRefCastOpConverter>(*converter);
+  patterns->insert<DynamicMemRefCastOpConverter, StaticMemRefCastOpConverter>(
+      *converter);
 }
 
 }  // namespace xla_lhlo

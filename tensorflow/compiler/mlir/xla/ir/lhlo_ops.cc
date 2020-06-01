@@ -69,6 +69,22 @@ static LogicalResult Verify(StaticMemRefCastOp op) {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// DynamicMemRefCastOp
+//===----------------------------------------------------------------------===//
+
+Value DynamicMemRefCastOp::getViewSource() {
+  return *getODSOperands(0).begin();
+}
+
+static LogicalResult Verify(DynamicMemRefCastOp op) {
+  // Check if `sizes` and `strides` args are compatible with the result type.
+  if (op.sizes().size() != op.getType().getRank())
+    return op.emitOpError(
+        "`sizes` args count must be equal to the rank of the output memref");
+  return success();
+}
+
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.cc.inc"
 

@@ -305,6 +305,55 @@ def HLO_StaticMemRefCastOp: Op<LHLO_Dialect, "static_memref_cast",
 }
 
 //===----------------------------------------------------------------------===//
+// DynamicMemRefCastOp
+//===----------------------------------------------------------------------===//
+
+def HLO_DynamicMemRefCastOp: Op<LHLO_Dialect, "dynamic_memref_cast",
+    [SameVariadicOperandSize, NoSideEffect,
+     DeclareOpInterfaceMethods<ViewLikeOpInterface>]> {
+  let summary = "dynamic memref cast operation";
+  let description = [{
+    Change sizes and strides of a memref using the values computed in runtime.
+
+    Example:
+    ```mlir
+    %buf_transformed =
+        xla_lhlo.dynamic_memref_cast %buf(%size_X, %size_Y)[%step_X, %step_Y]
+        : memref<?x?xf32> -> memref<?x?xf32, offset: 0, strides: [?, ?]>
+    // The result of the op is a type-erased memref with `[%size_X, %size_Y]`
+    // shape and `[%step_X, %step_Y]` strides. The offset will be inherited
+    // from the input.
+    ```
+  }];
+
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", []>:$operand,
+    Variadic<Index>:$sizes,
+    Variadic<Index>:$strides
+  );
+  let results = (outs Res<LHLO_Buffer, "", []>:$result);
+
+  let builders = [OpBuilder<
+    "OpBuilder &builder, OperationState &result, MemRefType resultType, " #
+    "Value operand, ValueRange sizes, ValueRange strides", [{
+       result.addOperands(operand);
+       result.addOperands(sizes);
+       result.addOperands(strides);
+       result.types.push_back(resultType);
+     }]>];
+
+  let extraClassDeclaration = [{
+    MemRefType getType() { return getResult().getType().cast<MemRefType>(); }
+  }];
+
+  let verifier = [{ return Verify(*this); }];
+  let assemblyFormat = [{
+    $operand `(` $sizes `)` `[` $strides `]` attr-dict `:` type($operand) `->`
+    type($result)
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // XLA Other op definitions.
 //===----------------------------------------------------------------------===//
 
