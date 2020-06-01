@@ -82,7 +82,7 @@ inline void DequantizeConstantTensor(const TfLiteTensor& tensor,
                                      const T* source_data,
                                      float* dequantized_data) {
   TfLiteAffineQuantization* quant_params =
-      reinterpret_cast<TfLiteAffineQuantization*>(tensor.quantization.params);
+      static_cast<TfLiteAffineQuantization*>(tensor.quantization.params);
   if (quant_params->scale->size > 1) {
     // Tensor is per-channel quantized.
     PerChannelDequantizationParams op_params;
@@ -234,8 +234,7 @@ absl::Status GetFullyConnectedAttributes(int weights_tensor_id,
 template <typename ParamsT>
 absl::Status RetrieveBuiltinData(const TfLiteNode* tflite_node,
                                  ParamsT** tf_options) {
-  const auto* params =
-      reinterpret_cast<const ParamsT*>(tflite_node->builtin_data);
+  const auto* params = static_cast<const ParamsT*>(tflite_node->builtin_data);
   if (!params) {
     return absl::InternalError("Unable to retrieve builtin_data.");
   }
@@ -247,7 +246,7 @@ template <typename ParamsType>
 absl::Status RetrieveCustomInitialData(const TfLiteNode* tflite_node,
                                        ParamsType** tf_options) {
   const auto* params =
-      reinterpret_cast<const ParamsType*>(tflite_node->custom_initial_data);
+      static_cast<const ParamsType*>(tflite_node->custom_initial_data);
   if (!params) {
     return absl::InternalError("Unable to retrieve custom_initial_data.");
   }
@@ -427,7 +426,7 @@ class AddOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(ParseInputsWithConstTensor(node, reader, &attr.param));
     node->operation.attributes = std::move(attr);
     const auto* tf_options =
-        reinterpret_cast<const TfLiteAddParams*>(tflite_node->builtin_data);
+        static_cast<const TfLiteAddParams*>(tflite_node->builtin_data);
     if (!tf_options) {
       return absl::InternalError("Missing tflite params");
     }
@@ -503,7 +502,7 @@ class ConcatenationOperationParser : public TFLiteOperationParser {
         break;
       }
     }
-    const auto* tf_options = reinterpret_cast<const TfLiteConcatenationParams*>(
+    const auto* tf_options = static_cast<const TfLiteConcatenationParams*>(
         tflite_node->builtin_data);
     if (!tf_options) {
       return absl::InternalError("Missing tflite params");
@@ -606,7 +605,7 @@ class Conv2DOperationParser : public TFLiteOperationParser {
     reader->ReadTensor(2, &attr.bias).IgnoreError();  // bias is optional
 
     const auto* tf_options =
-        reinterpret_cast<const TfLiteConvParams*>(tflite_node->builtin_data);
+        static_cast<const TfLiteConvParams*>(tflite_node->builtin_data);
     if (!tf_options) {
       return absl::InternalError("Missing tflite params");
     }
@@ -643,7 +642,7 @@ class Convolution2DTransposeBiasParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(reader->AddInput(node, 0));
     RETURN_IF_ERROR(reader->AddOutputs(node));
 
-    const auto* params = reinterpret_cast<const TfLiteTransposeConvParams*>(
+    const auto* params = static_cast<const TfLiteTransposeConvParams*>(
         tflite_node->custom_initial_data);
     ConvolutionTransposedAttributes attr;
     attr.stride =
@@ -878,16 +877,16 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
       TfLiteFusedActivation activation = kTfLiteActNone;
       switch (operation_type_) {
         case OperationType::SUB: {
-          const auto* tf_options = reinterpret_cast<const TfLiteSubParams*>(
-              tflite_node->builtin_data);
+          const auto* tf_options =
+              static_cast<const TfLiteSubParams*>(tflite_node->builtin_data);
           if (tf_options != nullptr) {
             activation = tf_options->activation;
           }
           break;
         }
         case OperationType::DIV: {
-          const auto* tf_options = reinterpret_cast<const TfLiteDivParams*>(
-              tflite_node->builtin_data);
+          const auto* tf_options =
+              static_cast<const TfLiteDivParams*>(tflite_node->builtin_data);
           if (tf_options != nullptr) {
             activation = tf_options->activation;
           }
@@ -1006,9 +1005,8 @@ class FullyConnectedOperationParser : public TFLiteOperationParser {
     Node* node = graph->NewNode();
     RETURN_IF_ERROR(reader->AddInput(node, 0));
 
-    const auto* tf_options =
-        reinterpret_cast<const TfLiteFullyConnectedParams*>(
-            tflite_node->builtin_data);
+    const auto* tf_options = static_cast<const TfLiteFullyConnectedParams*>(
+        tflite_node->builtin_data);
     if (tf_options->weights_format !=
         kTfLiteFullyConnectedWeightsFormatDefault) {
       return absl::UnimplementedError(
@@ -1118,7 +1116,7 @@ class LSTMOperationParser : public TFLiteOperationParser {
     }
 
     const auto* params =
-        reinterpret_cast<const TfLiteLSTMParams*>(tflite_node->builtin_data);
+        static_cast<const TfLiteLSTMParams*>(tflite_node->builtin_data);
     if (!params) {
       return absl::InternalError("Missing tflite params");
     }
@@ -1257,7 +1255,7 @@ class MulOperationParser : public TFLiteOperationParser {
     }
 
     const auto* tf_options =
-        reinterpret_cast<const TfLiteMulParams*>(tflite_node->builtin_data);
+        static_cast<const TfLiteMulParams*>(tflite_node->builtin_data);
     if (!tf_options) {
       return absl::InternalError("Missing TfLiteMulParams");
     }
@@ -1343,7 +1341,7 @@ class PadOperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     if (mirror_pad_) {
-      auto* tf_options = reinterpret_cast<const TfLiteMirrorPaddingParams*>(
+      auto* tf_options = static_cast<const TfLiteMirrorPaddingParams*>(
           tflite_node->builtin_data);
       if (tf_options->mode !=
           TfLiteMirrorPaddingMode::kTfLiteMirrorPaddingReflect) {
@@ -1449,11 +1447,11 @@ class Pooling2DOperationParser : public TFLiteOperationParser {
     // is MaxPoolingWithArgmax2D. There is no way to read
     // tflite_node->builtin_code, so, simply check whether custom data is
     // available.
-    auto* tf_options = reinterpret_cast<const TfLitePoolParams*>(
-        tflite_node->custom_initial_data);
+    auto* tf_options =
+        static_cast<const TfLitePoolParams*>(tflite_node->custom_initial_data);
     if (!tf_options) {
       tf_options =
-          reinterpret_cast<const TfLitePoolParams*>(tflite_node->builtin_data);
+          static_cast<const TfLitePoolParams*>(tflite_node->builtin_data);
     }
     if (!tf_options) {
       return absl::InternalError("Missing tflite params");
@@ -1642,8 +1640,7 @@ class Resize2DOperationParser : public TFLiteOperationParser {
   template <class T>
   absl::Status GetAlignCornersValueForType(const TfLiteNode* tflite_node,
                                            bool* align_corners) {
-    const auto* tf_options =
-        reinterpret_cast<const T*>(tflite_node->builtin_data);
+    const auto* tf_options = static_cast<const T*>(tflite_node->builtin_data);
     if (!tf_options) {
       return absl::InternalError("Missing tflite params");
     }
@@ -1654,8 +1651,8 @@ class Resize2DOperationParser : public TFLiteOperationParser {
   absl::Status GetHalfPixelCentersValue(const TfLiteNode* tflite_node,
                                         bool* half_pixel_centers) {
     if (sampling_type_ == SamplingType::BILINEAR) {
-      const auto* tf_options = reinterpret_cast<TfLiteResizeBilinearParams*>(
-          tflite_node->builtin_data);
+      const auto* tf_options =
+          static_cast<TfLiteResizeBilinearParams*>(tflite_node->builtin_data);
       if (!tf_options) {
         return absl::InternalError(
             "Missing tflite params for ResizeBilinear op");
@@ -1816,7 +1813,7 @@ class SoftmaxOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(reader->AddOutputs(node));
 
     const auto* tf_options =
-        reinterpret_cast<const TfLiteSoftmaxParams*>(tflite_node->builtin_data);
+        static_cast<const TfLiteSoftmaxParams*>(tflite_node->builtin_data);
     if (!tf_options) {
       return absl::InternalError("Missing tflite params");
     }
@@ -1863,8 +1860,8 @@ class SpaceToDepthOperationParser : public TFLiteOperationParser {
     node->operation.type = ToString(OperationType::SPACE_TO_DEPTH);
     RETURN_IF_ERROR(reader->AddInput(node, 0));
     RETURN_IF_ERROR(reader->AddOutputs(node));
-    const auto* tf_options = reinterpret_cast<const TfLiteSpaceToDepthParams*>(
-        tflite_node->builtin_data);
+    const auto* tf_options =
+        static_cast<const TfLiteSpaceToDepthParams*>(tflite_node->builtin_data);
     SpaceToDepthAttributes attr;
     attr.block_size = tf_options->block_size;
     node->operation.attributes = attr;
@@ -1904,8 +1901,8 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
           "Slicing is supported for 3 or 4 dimensional tensors only.");
     }
 
-    const auto* tf_options = reinterpret_cast<const TfLiteStridedSliceParams*>(
-        tflite_node->builtin_data);
+    const auto* tf_options =
+        static_cast<const TfLiteStridedSliceParams*>(tflite_node->builtin_data);
     auto out_shape = graph->FindOutputs(node->id)[0]->tensor.shape;
     if (!tf_options) {
       return absl::InternalError("Missing tflite params");
@@ -2080,7 +2077,7 @@ class TransposeConvOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(graph->AddConsumer(node->id, input->id));
     RETURN_IF_ERROR(reader->AddOutputs(node));
 
-    const auto* tf_options = reinterpret_cast<const TfLiteTransposeConvParams*>(
+    const auto* tf_options = static_cast<const TfLiteTransposeConvParams*>(
         tflite_node->builtin_data);
     if (!tf_options) {
       return absl::InternalError("Missing tflite options.");
@@ -2163,8 +2160,8 @@ class Unpooling2DOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(reader->AddOutputs(node));
     auto input_shape = graph->FindInputs(node->id)[0]->tensor.shape;
     MaxUnpooling2DAttributes attr;
-    const auto* tf_options = reinterpret_cast<const TfLitePoolParams*>(
-        tflite_node->custom_initial_data);
+    const auto* tf_options =
+        static_cast<const TfLitePoolParams*>(tflite_node->custom_initial_data);
     if (!tf_options) {
       return absl::InternalError("Missing tflite params");
     }
