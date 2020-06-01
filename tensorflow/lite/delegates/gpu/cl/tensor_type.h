@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <string>
 
+#include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 
@@ -36,10 +37,24 @@ enum class TensorStorageType {
   SINGLE_TEXTURE_2D
 };
 
-struct TensorDescriptor {
+struct TensorDescriptor : public GPUObjectDescriptor {
   TensorDescriptor() = default;
   TensorDescriptor(DataType dt, TensorStorageType st, Layout l)
       : data_type(dt), storage_type(st), layout(l) {}
+  TensorDescriptor(const TensorDescriptor& desc)
+      : GPUObjectDescriptor(desc),
+        data_type(desc.data_type),
+        storage_type(desc.storage_type),
+        layout(desc.layout) {}
+  TensorDescriptor& operator=(const TensorDescriptor& desc) {
+    if (this != &desc) {
+      data_type = desc.data_type;
+      storage_type = desc.storage_type;
+      layout = desc.layout;
+      GPUObjectDescriptor::operator=(desc);
+    }
+    return *this;
+  }
 
   bool operator==(const TensorDescriptor& d) const {
     return data_type == d.data_type && storage_type == d.storage_type &&
@@ -48,12 +63,30 @@ struct TensorDescriptor {
 
   bool operator!=(const TensorDescriptor& d) const { return !(*this == d); }
 
+  absl::Status PerformSelector(const std::string& selector,
+                               const std::vector<std::string>& args,
+                               std::string* result) const override;
+
+  GPUResources GetGPUResources() const override;
+
+  bool HasAxis(Axis axis) const;
+
   DataType data_type = DataType::UNKNOWN;
   TensorStorageType storage_type = TensorStorageType::UNKNOWN;
   // This field describes logical layout, actual(physical) GPU layout can be
   // totally different.
   Layout layout =
       Layout::UNKNOWN;  // Supported layouts is HWC, BHWC, HWDC, BHWDC
+
+ private:
+  absl::Status PerformReadSelector(const std::vector<std::string>& args,
+                                   std::string* result) const;
+
+  std::string Read(const std::string& global_address) const;
+
+  bool ParseCoordsFromArgs(const std::vector<std::string>& args, int offset,
+                           std::string* xc, std::string* yc, std::string* zc,
+                           std::string* sc, std::string* bc) const;
 };
 
 std::string ToString(TensorStorageType type);

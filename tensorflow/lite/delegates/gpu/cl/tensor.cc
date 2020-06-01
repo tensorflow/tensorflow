@@ -142,6 +142,41 @@ void Tensor::Release() {
   }
 }
 
+GPUResourcesWithValue Tensor::GetGPUResources() const {
+  GPUResourcesWithValue resources;
+  if (descriptor_.HasAxis(Axis::WIDTH)) {
+    resources.ints.push_back({"width", Width()});
+  }
+  if (descriptor_.HasAxis(Axis::HEIGHT)) {
+    resources.ints.push_back({"height", Height()});
+  }
+  if (descriptor_.HasAxis(Axis::CHANNELS)) {
+    resources.ints.push_back({"slices", Slices()});
+    resources.ints.push_back({"channels", Channels()});
+  }
+  if (descriptor_.HasAxis(Axis::BATCH)) {
+    resources.ints.push_back({"batch", Batch()});
+  }
+  if (descriptor_.HasAxis(Axis::DEPTH)) {
+    resources.ints.push_back({"depth", Depth()});
+  }
+
+  if (descriptor_.storage_type == TensorStorageType::BUFFER) {
+    resources.buffers.push_back({"buffer", memory_});
+  } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_2D ||
+             descriptor_.storage_type == TensorStorageType::SINGLE_TEXTURE_2D) {
+    resources.images2d.push_back({"image2d", memory_});
+  } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_ARRAY) {
+    resources.image2d_arrays.push_back({"image2d_array", memory_});
+  } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_3D) {
+    resources.images3d.push_back({"image3d", memory_});
+  } else if (descriptor_.storage_type == TensorStorageType::IMAGE_BUFFER) {
+    resources.image_buffers.push_back({"image_buffer", image_buffer_memory_});
+  }
+
+  return resources;
+}
+
 int3 Tensor::GetFullTensorRegion() const {
   switch (descriptor_.storage_type) {
     case TensorStorageType::BUFFER:

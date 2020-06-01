@@ -31,19 +31,13 @@ std::string GetTransposeCode(
     const OperationDef& op_def, const TransposeAttributes& attr,
     const std::vector<ElementwiseOperation*>& linked_operations,
     Arguments* args) {
-  TensorCodeGenerator src_tensor("src_data",
-                                 WHSBPoint{"args.src_width", "args.src_height",
-                                           "args.src_slices", "args.src_batch"},
-                                 op_def.src_tensors[0]);
   TensorCodeGenerator dst_tensor("dst_data",
                                  WHSBPoint{"args.dst_width", "args.dst_height",
                                            "args.dst_slices", "args.dst_batch"},
                                  op_def.dst_tensors[0]);
 
-  args->AddInt("src_width");
-  args->AddInt("src_height");
-  args->AddInt("src_slices");
-  args->AddInt("src_batch");
+  args->AddObjectRef(
+      "src_tensor", absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]));
   args->AddInt("dst_width");
   args->AddInt("dst_height");
   args->AddInt("dst_slices");
@@ -53,9 +47,8 @@ std::string GetTransposeCode(
   const std::string batch_id = op_def.IsBatchSupported() ? "B" : "";
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
-  c += src_tensor.GetDeclaration(AccessType::READ);
+  c += dst_tensor.GetDeclaration(AccessType::WRITE);
   c += GetArgsDeclaration(linked_operations);
-  c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n  ";
   c += "$0) {\n";
   if (op_def.IsBatchSupported()) {
     c += "  int linear_id = get_global_id(0);\n";
@@ -82,10 +75,12 @@ std::string GetTransposeCode(
   remap[attr.perm.c] = 3;
   if (attr.perm.c == 3) {  // optimized reading when no channels permutation
     const std::string bhw[] = {"B", "Y", "X"};
-    std::string src_b = op_def.IsBatchSupported() ? bhw[remap[0]] : "";
+    if (op_def.src_tensors[0].HasAxis(Axis::BATCH)) {
+      c += "  args.src_tensor.SetBatchRef(" + bhw[remap[0]] + ");\n";
+    }
     c += "  int s_y = " + bhw[remap[1]] + ";\n";
     c += "  int s_x = " + bhw[remap[2]] + ";\n";
-    c += "  FLT4 t =" + src_tensor.ReadWHSB("s_x", "s_y", "Z", src_b) + ";\n";
+    c += "  FLT4 t = args.src_tensor.Read(s_x, s_y, Z);\n";
     c += "  temps[0] = t.x;\n";
     c += "  temps[1] = t.y;\n";
     c += "  temps[2] = t.z;\n";
@@ -93,16 +88,17 @@ std::string GetTransposeCode(
   } else {
     c += "  for (int i = 0; i < 4; ++i) {\n";
     c += "    int dst_channel = Z * 4 + i;\n";
-    c += "    if (dst_channel < args.dst_channels) {;\n";
+    c += "    if (dst_channel < args.dst_channels) {\n";
     const std::string bhwc[] = {"B", "Y", "X", "dst_channel"};
-    std::string src_b = op_def.IsBatchSupported() ? bhwc[remap[0]] : "";
+    if (op_def.src_tensors[0].HasAxis(Axis::BATCH)) {
+      c += "      args.src_tensor.SetBatchRef(" + bhwc[remap[0]] + ");\n";
+    }
     c += "      int s_y = " + bhwc[remap[1]] + ";\n";
     c += "      int s_x = " + bhwc[remap[2]] + ";\n";
     c += "      int s_c = " + bhwc[remap[3]] + ";\n";
     c += "      int s_z = s_c / 4;\n";
     c += "      int src_sub_ch = s_c % 4;\n";
-    c += "      FLT4 t =" + src_tensor.ReadWHSB("s_x", "s_y", "s_z", src_b) +
-         ";\n";
+    c += "      FLT4 t = args.src_tensor.Read(s_x, s_y, s_z);\n";
     c += "      FLT t_ar[4] = {t.x, t.y, t.z, t.w};\n";
     c += "      temps[i] = t_ar[src_sub_ch];\n";
     c += "    }\n";
@@ -148,19 +144,15 @@ absl::Status Transpose::Compile(const CreationContext& creation_context) {
 }
 
 absl::Status Transpose::BindArguments() {
-  RETURN_IF_ERROR(args_.SetInt("src_width", src_[0]->Width()));
-  RETURN_IF_ERROR(args_.SetInt("src_height", src_[0]->Height()));
-  RETURN_IF_ERROR(args_.SetInt("src_slices", src_[0]->Slices()));
-  RETURN_IF_ERROR(args_.SetInt("src_batch", src_[0]->Batch()));
+  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
   RETURN_IF_ERROR(args_.SetInt("dst_width", dst_[0]->Width()));
   RETURN_IF_ERROR(args_.SetInt("dst_height", dst_[0]->Height()));
   RETURN_IF_ERROR(args_.SetInt("dst_slices", dst_[0]->Slices()));
   RETURN_IF_ERROR(args_.SetInt("dst_batch", dst_[0]->Batch()));
   RETURN_IF_ERROR(args_.SetInt("dst_channels", dst_[0]->Channels()));
   kernel_.ResetBindingCounter();
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
-  RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
+  RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(args_.Bind(kernel_.kernel(), kernel_.GetBindingCounter()));
   return absl::OkStatus();
 }

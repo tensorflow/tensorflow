@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_memory.h"
+#include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -36,7 +37,7 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class Tensor {
+class Tensor : public GPUObject {
  public:
   Tensor()
       : memory_(nullptr), image_buffer_memory_(nullptr), memory_owner_(true) {}
@@ -56,6 +57,11 @@ class Tensor {
   Tensor& operator=(const Tensor&) = delete;
 
   virtual ~Tensor() { Release(); }
+
+  const GPUObjectDescriptor* GetGPUDescriptor() const override {
+    return &descriptor_;
+  }
+  GPUResourcesWithValue GetGPUResources() const override;
 
   int Width() const { return shape_.w; }
   int Height() const { return shape_.h; }
