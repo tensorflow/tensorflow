@@ -1149,6 +1149,35 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     }
     quantized_converter.convert()
 
+  def testTrainingTimeAndPostTrainingCalibrateAndQuantize(self):
+    with ops.Graph().as_default():
+      inp, output, calibration_gen = self._getCalibrationQuantizeModel()
+      sess = session.Session()
+
+    # Convert float model.
+    float_converter = lite.TFLiteConverter.from_session(sess, [inp], [output])
+    float_tflite = float_converter.convert()
+    self.assertTrue(float_tflite)
+
+    converter = lite.TFLiteConverter.from_session(sess, [inp], [output])
+
+    # extra flags to trigger training time quantization conversion
+    converter.inference_type = lite_constants.INT8
+    converter.inference_input_type = lite_constants.FLOAT
+    converter.inference_output_type = lite_constants.FLOAT
+    input_arrays = converter.get_input_arrays()
+    converter.quantized_input_stats = {
+        input_arrays[0]: (0., 1.)
+    }
+    # trigger post-training quantization
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    converter.representative_dataset = calibration_gen
+    converter._experimental_new_quantizer = True
+    quantized_tflite = converter.convert()
+    self.assertTrue(quantized_tflite)
+
+    self.assertLess(len(quantized_tflite), len(float_tflite))
+
   def testFloatTocoConverter(self):
     """Tests deprecated test TocoConverter."""
     with ops.Graph().as_default():
