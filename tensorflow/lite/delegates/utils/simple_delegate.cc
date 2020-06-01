@@ -32,6 +32,7 @@ TfLiteRegistration GetDelegateKernelRegistration(
   kernel_registration.profiling_string = nullptr;
   kernel_registration.builtin_code = kTfLiteBuiltinDelegate;
   kernel_registration.custom_name = delegate->name();
+  kernel_registration.version = 1;
   kernel_registration.free = [](TfLiteContext* context, void* buffer) -> void {
     delete reinterpret_cast<SimpleDelegateKernelInterface*>(buffer);
   };
@@ -77,6 +78,7 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context,
                              TfLiteDelegate* base_delegate) {
   auto* delegate =
       reinterpret_cast<SimpleDelegateInterface*>(base_delegate->data_);
+  TF_LITE_ENSURE_STATUS(delegate->Initialize(context));
   delegates::IsNodeSupportedFn node_supported_fn =
       [=](TfLiteContext* context, TfLiteNode* node,
           TfLiteRegistration* registration,
@@ -125,5 +127,4 @@ void TfLiteDelegateFactory::DeleteSimpleDelegate(TfLiteDelegate* delegate) {
   delete simple_delegate;
   delete delegate;
 }
-
 }  // namespace tflite

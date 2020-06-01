@@ -744,8 +744,9 @@ typedef struct TfLiteDelegate {
                           struct TfLiteDelegate* delegate);
 
   // Copy the data from delegate buffer handle into raw memory of the given
-  // 'tensor'. This cannot be null. The delegate is allowed to allocate the raw
-  // bytes as long as it follows the rules for kTfLiteDynamic tensors.
+  // 'tensor'. Note that the delegate is allowed to allocate the raw bytes as
+  // long as it follows the rules for kTfLiteDynamic tensors, in which case this
+  // cannot be null.
   TfLiteStatus (*CopyFromBufferHandle)(TfLiteContext* context,
                                        struct TfLiteDelegate* delegate,
                                        TfLiteBufferHandle buffer_handle,

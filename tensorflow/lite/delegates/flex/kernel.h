@@ -15,18 +15,28 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_FLEX_KERNEL_H_
 #define TENSORFLOW_LITE_DELEGATES_FLEX_KERNEL_H_
 
+#include <memory>
+
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/delegates/utils/simple_delegate.h"
 
 namespace tflite {
 namespace flex {
 
-// Return the registration object used to initialize and execute ops that will
-// be delegated to TensorFlow's Eager runtime. This TF Lite op is created by
-// the flex delegate to handle execution of a supported subgraph. The usual
-// flow is that the delegate informs the interpreter of supported nodes in a
-// graph, and each supported subgraph is replaced with one instance of this
-// kernel.
-TfLiteRegistration GetKernel();
+struct OpData;
+class DelegateKernel : public SimpleDelegateKernelInterface {
+ public:
+  DelegateKernel();
+  ~DelegateKernel() override;
+
+  TfLiteStatus Init(TfLiteContext* context,
+                    const TfLiteDelegateParams* params) override;
+  TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) override;
+  TfLiteStatus Invoke(TfLiteContext* context, TfLiteNode* node) override;
+
+ private:
+  std::unique_ptr<OpData> op_data_;
+};
 
 }  // namespace flex
 }  // namespace tflite

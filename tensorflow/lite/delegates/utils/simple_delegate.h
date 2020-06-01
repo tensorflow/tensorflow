@@ -20,8 +20,12 @@ limitations under the License.
 // this interface to build/prepare/invoke the delegated subgraph.
 // - SimpleDelegateInterface:
 // This class wraps TFLiteDelegate and users need to implement the interface and
-// then Call GetFinalizedDelegate() to get TfLiteDelegate* that can be passed to
-// ModifyGraphWithDelegate.
+// then call TfLiteDelegateFactory::CreateSimpleDelegate(...) to get
+// TfLiteDelegate* that can be passed to ModifyGraphWithDelegate and free it via
+// TfLiteDelegateFactory::DeleteSimpleDelegate(...).
+// or call TfLiteDelegateFactory::Create(...) to get a std::unique_ptr
+// TfLiteDelegate that can also be passed to ModifyGraphWithDelegate, in which
+// case TfLite interpereter takes the memory ownership of the delegate.
 #ifndef TENSORFLOW_LITE_DELEGATES_UTILS_SIMPLE_DELEGATE_H_
 #define TENSORFLOW_LITE_DELEGATES_UTILS_SIMPLE_DELEGATE_H_
 
@@ -30,6 +34,9 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 
 namespace tflite {
+
+using TfLiteDelegateUniquePtr =
+    std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>;
 
 // Users should inherit from this class and implement the interface below.
 // Each instance represents a single part of the graph (subgraph).
@@ -49,6 +56,7 @@ class SimpleDelegateKernelInterface {
 
   // Actual subgraph inference should happen on this call.
   // Returns status, and signalling any errors.
+  // TODO(b/157882025): change this to Eval to be consistent w/ a TFLite kernel.
   virtual TfLiteStatus Invoke(TfLiteContext* context, TfLiteNode* node) = 0;
 };
 
@@ -58,6 +66,7 @@ class SimpleDelegateKernelInterface {
 //
 // Clients should implement the following methods:
 // - IsNodeSupportedByDelegate
+// - Initialize
 // - name
 // - CreateDelegateKernelInterface
 class SimpleDelegateInterface {
@@ -71,8 +80,14 @@ class SimpleDelegateInterface {
                                          const TfLiteNode* node,
                                          TfLiteContext* context) const = 0;
 
+  // Initialize the delegate before finding and replacing TfLite nodes with
+  // delegate kernels, for example, retrieving some TFLite settings from
+  // 'context'.
+  virtual TfLiteStatus Initialize(TfLiteContext* context) = 0;
+
   // Returns a name that identifies the delegate.
   // This name is used for debugging/logging/profiling.
+  // TODO(b/157882025): change this to Name()
   virtual const char* name() const = 0;
 
   // Returns instance of an object that implements the interface
@@ -84,13 +99,8 @@ class SimpleDelegateInterface {
   CreateDelegateKernelInterface() = 0;
 };
 
-// Factory class that provides two static methods
-// CreateSimpleDelegate
-// DeleteSimpleDelegate
-// Which should be used to construct TfLiteDelegate from
-// Simple Delegate and delete TfLiteDelegate and SimpleDelegate give
-// tfLiteDelegate* created from 'CreateSimpleDelegate' method.
-// Users should use these methods to Create and Destroy the delegate.
+// Factory class that provides static methods to deal with SimpleDelegate
+// creation and deletion.
 class TfLiteDelegateFactory {
  public:
   // Creates TfLiteDelegate from the provided SimpleDelegateInterface.
@@ -99,9 +109,17 @@ class TfLiteDelegateFactory {
       std::unique_ptr<SimpleDelegateInterface> simple_delegate);
 
   // Deletes 'delegate' the passed pointer must be the one returned
-  // from GetFinalizedDelegate.
+  // from CreateSimpleDelegate.
   // This function will destruct the SimpleDelegate object too.
   static void DeleteSimpleDelegate(TfLiteDelegate* delegate);
+
+  // A convenient function wrapping the above two functions and returning a
+  // std::unique_ptr type for auto memory management.
+  inline static TfLiteDelegateUniquePtr Create(
+      std::unique_ptr<SimpleDelegateInterface> simple_delegate) {
+    return TfLiteDelegateUniquePtr(
+        CreateSimpleDelegate(std::move(simple_delegate)), DeleteSimpleDelegate);
+  }
 };
 
 }  // namespace tflite
