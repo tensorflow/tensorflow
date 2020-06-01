@@ -197,7 +197,7 @@ TfLiteStatus ArenaPlanner::ExecuteAllocations(int first_node, int last_node) {
   dealloc_node_.resize(graph_info_->num_tensors(), kNodeNotAssigned);
   allocs_.resize(graph_info_->num_tensors());
   // Set allocation and deallocation for temporary tensors.
-  for (size_t i = first_node; i <= (size_t)last_node && i < graph_info_->num_nodes();
+  for (size_t i = first_node; i <= static_cast<size_t>(last_node) && i < graph_info_->num_nodes();
        ++i) {
     const TfLiteNode& node = graph_info_->node(i);
     TfLiteIntArray* node_temporaries = node.temporaries;
