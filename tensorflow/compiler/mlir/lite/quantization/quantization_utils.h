@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
@@ -385,7 +386,8 @@ struct FoldTrivalRequantizeOp : public OpRewritePattern<RQ> {
 
     Operation* def = pre_quantized.getDefiningOp();
     if (!def) return failure();
-    if (def->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>() ||
+    if (llvm::isa<FixedOutputRangeInterface>(def) ||
+        def->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>() ||
         def->hasTrait<OpTrait::quant::NoQuantizableResult>()) {
       return failure();
     }

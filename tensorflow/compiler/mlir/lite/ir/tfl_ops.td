@@ -1726,6 +1726,7 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
     // scale = 1. / (max_value + 1)
     FixedResultScale<Int8UniformQuantizedType<-128, 390625, -8>>,
     FixedResultScale<UInt8UniformQuantizedType<0, 390625, -8>>,
+    FixedOutputRangeInterface,
     TFL_GpuTargetOp]> {
   let summary = "Logistic operator";
 
@@ -1736,6 +1737,36 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
   let arguments = (ins TFL_TensorOf<[F32, QI8, QUI8, QI16, TFL_Quint8]>:$x);
 
   let results = (outs TFL_TensorOf<[F32, QI8, QUI8, QI16, TFL_Quint8]>:$y);
+
+  let extraClassDeclaration = [{
+  // FixedOutputRangeInterface:
+  quant::UniformQuantizedType GetFixedOutputRange(
+      bool is_signed, int bit_width) {
+    auto result_type = y().getType().cast<ShapedType>();
+    if (!result_type.getElementType().isa<FloatType>()) return {};
+    Builder builder(result_type.getContext());
+
+    // Only support 8-bits
+    if (bit_width != 8) return {};
+    IntegerType storage_type = builder.getIntegerType(bit_width);
+
+    double scale = 1.0 / 256;
+    int64_t zero_point, storage_min, storage_max;
+    if (is_signed) {
+      zero_point = -128;
+      storage_min = -128;
+      storage_max = 127;
+    } else {
+      zero_point = 0;
+      storage_min = 0;
+      storage_max = 255;
+    }
+
+    return quant::UniformQuantizedType::getChecked(
+        is_signed, storage_type, result_type.getElementType(), scale,
+        zero_point, storage_min, storage_max, builder.getUnknownLoc());
+  }
+  }];
 }
 
 def TFL_LogOp: TFL_Op<"log", [
