@@ -20,6 +20,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/Interfaces/ViewLikeInterface.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops_base.td"
 
 def LHLO_Dialect : Dialect {
@@ -260,6 +261,47 @@ def HLO_DynamicUpdateSliceOp: LHLO_Op<"dynamic-update-slice", []> {
     Arg<LHLO_Buffer, "", [MemWrite]>:$output,
     Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$start_indices
   );
+}
+
+//===----------------------------------------------------------------------===//
+// StaticMemRefCastOp
+//===----------------------------------------------------------------------===//
+
+def HLO_StaticMemRefCastOp: Op<LHLO_Dialect, "static_memref_cast",
+    [NoSideEffect, DeclareOpInterfaceMethods<ViewLikeOpInterface>]> {
+  let summary = "static memref cast operation";
+  let description = [{
+    Allows to modify the offset, sizes and strides of a statically shaped memref.
+
+    Example:
+    ```mlir
+    %buf_transformed =
+        xla_lhlo.static_memref_cast %buf
+        : memref<1x5xf32> -> memref<5xf32, offset: 2, strides: [1]>
+
+    // The result of the op is a rank-1 memref with `[5]` shape, stride 1 and
+    // offset 2.
+    ```
+  }];
+
+  let arguments = (ins Arg<LHLO_Buffer, "", []>:$operand);
+  let results = (outs Res<LHLO_Buffer, "", []>:$result);
+
+  let builders = [OpBuilder<
+    "OpBuilder &builder, OperationState &result, MemRefType resultType, " #
+    "Value operand", [{
+       result.addOperands(operand);
+       result.types.push_back(resultType);
+     }]>];
+
+  let extraClassDeclaration = [{
+    MemRefType getType() { return getResult().getType().cast<MemRefType>(); }
+  }];
+
+  let verifier = [{ return Verify(*this); }];
+  let assemblyFormat = [{
+    $operand attr-dict `:` type($operand) `->` type($result)
+  }];
 }
 
 //===----------------------------------------------------------------------===//
