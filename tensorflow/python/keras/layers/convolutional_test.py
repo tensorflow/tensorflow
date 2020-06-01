@@ -26,11 +26,11 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
-from tensorflow.python.keras import keras_parameterized
-from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
 
 
@@ -359,6 +359,7 @@ class Conv3DTest(keras_parameterized.TestCase):
             input_data=input_data)
 
 
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class GroupedConvTest(keras_parameterized.TestCase):
 
   @parameterized.named_parameters(
