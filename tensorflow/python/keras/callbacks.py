@@ -1287,7 +1287,7 @@ class ModelCheckpoint(Callback):
         self._maybe_remove_file()
       except IOError as e:
         # `e.errno` appears to be `None` so checking the content of `e.args[0]`.
-        if 'is a directory' in six.ensure_str(e.args[0]):
+        if 'is a directory' in six.ensure_str(e.args[0]).lower():
           raise IOError('Please specify a non-directory filepath for '
                         'ModelCheckpoint. Filepath used is an existing '
                         'directory: {}'.format(filepath))
