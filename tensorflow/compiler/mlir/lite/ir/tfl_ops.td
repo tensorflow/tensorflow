@@ -228,10 +228,14 @@ class TFL_OperandHasAtleastRank<int n, int m> :
 
 class TFL_OperandRankEquals1DimOfOperand<int x, int y> :
   PredOpTrait<"operand " # x # "'s rank equals operand " # y # "'s size",
-    CPred<"$_op.getOperand(" # x #
-      ").getType().cast<ShapedType>().getRank() == "
-      "$_op.getOperand(" # y #
-      ").getType().cast<ShapedType>().getShape()[0]">>;
+    Or<[TFL_OperandIsUnrankedPred<x>,
+        TFL_OperandIsUnrankedPred<y>,
+        CPred<"!$_op.getOperand(" # y #
+          ").getType().cast<ShapedType>().hasStaticShape()">,
+        CPred<"$_op.getOperand(" # x #
+          ").getType().cast<ShapedType>().getRank() == "
+          "$_op.getOperand(" # y #
+          ").getType().cast<ShapedType>().getShape()[0]">]>>;
 
 class TFL_Operand0DOr1ElementTensor<int x> :
   PredOpTrait<"operand #" # x # " is an 0-d tensor or 1-d tensor w/ 1 element",
