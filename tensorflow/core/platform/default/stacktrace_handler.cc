@@ -99,8 +99,9 @@ static void StacktraceHandler(int sig, siginfo_t *si, void *v) {
 
 void InstallStacktraceHandler() {
   int handled_signals[] = {SIGSEGV, SIGABRT, SIGBUS, SIGILL, SIGFPE};
-
-  for (int i = 0; i < sizeof(handled_signals) / sizeof(int); i++) {
+  
+  size_t array_limit = sizeof(handled_signals) / sizeof(int);
+  for (size_t i = 0; i < array_limit; i++) {
     int sig = handled_signals[i];
     struct sigaction sa;
     struct sigaction osa;
