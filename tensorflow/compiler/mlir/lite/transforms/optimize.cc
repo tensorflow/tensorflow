@@ -355,9 +355,11 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
     if (fc_op.fused_activation_function() != "NONE") return failure();
 
     // Check if it is possible to fuse the constant mathematically
+    // output[..., b, j] = (sum_i input[..., b, i] * filter[j, i]) * m[..., b, j]
+    // m[..., b, j] must be indepdenat of ..., b in order to fuse into filter
     Value new_const_val = constant_val;
     auto original_shape = cst.getType().getShape();
-    if (!CanFuseAffineOpThenMul(original_shape)) return failure();
+    if (!IsDimensionsDegenerateExceptLastOne(original_shape)) return failure();
 
     int64_t element_size = original_shape.size() > 0
                                ? original_shape[original_shape.size() - 1]

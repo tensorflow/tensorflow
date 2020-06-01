@@ -17,8 +17,13 @@ include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
 def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "NHWC">;
+
+//output[b, i, j, k] =
+//    (sum_{di, dj, q} input[b, strides[1] * i + di, strides[2] * j + dj, q] *
+//                   filter[di, dj, q, k]) * m[b, i, j, k]
+//m[b, i, j, k] must be independant of b, i, j in order to fuse into filter.
 def CanFuseMulAndConv2D :
-    Constraint<CPred<"TFL::IsBroadcastableElementsAttrs($0, $1) && TFL::CanFuseAffineOpThenMul($1)">>;
+    Constraint<CPred<"TFL::IsBroadcastableElementsAttrs($0, $1) && TFL::IsDimensionsDegenerateExceptLastOne($1)">>;
 
 def F32ElementsAttr : ElementsAttrBase<
     CPred<"$_self.cast<ElementsAttr>().getType().getElementType().isF32()">, "float constant tensor">;
