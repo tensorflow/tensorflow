@@ -21,7 +21,7 @@ limitations under the License.
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/micro/micro_op_resolver.h"
 #include "tensorflow/lite/micro/simple_memory_allocator.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -92,7 +92,7 @@ class MicroAllocator {
   // needs to be called before FinishTensorAllocation method. This method also
   // allocates any internal Op data that is required from the flatbuffer.
   TfLiteStatus InitializeFromFlatbuffer(
-      const OpResolver& op_resolver,
+      const MicroOpResolver& op_resolver,
       NodeAndRegistration** node_and_registrations);
 
   // Runs through the model and allocates all necessary input, output and
@@ -145,7 +145,7 @@ class MicroAllocator {
   // instance). Persistent data (e.g. operator data) is allocated from the
   // arena.
   TfLiteStatus PrepareNodeAndRegistrationDataFromFlatbuffer(
-      const OpResolver& op_resolver,
+      const MicroOpResolver& op_resolver,
       NodeAndRegistration* node_and_registrations);
 
  private:

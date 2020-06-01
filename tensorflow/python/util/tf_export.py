@@ -94,6 +94,12 @@ class InvalidSymbolNameError(Exception):
   """Raised when trying to export symbol as an invalid or unallowed name."""
   pass
 
+_NAME_TO_SYMBOL_MAPPING = dict()
+
+
+def get_symbol_from_name(name):
+  return _NAME_TO_SYMBOL_MAPPING.get(name)
+
 
 def get_canonical_name_for_symbol(
     symbol, api_name=TENSORFLOW_API_NAME,
@@ -333,6 +339,11 @@ class api_export(object):  # pylint: disable=invalid-name
     _, undecorated_func = tf_decorator.unwrap(func)
     self.set_attr(undecorated_func, api_names_attr, self._names)
     self.set_attr(undecorated_func, api_names_attr_v1, self._names_v1)
+
+    for name in self._names:
+      _NAME_TO_SYMBOL_MAPPING[name] = func
+    for name_v1 in self._names_v1:
+      _NAME_TO_SYMBOL_MAPPING['compat.v1.%s' % name_v1] = func
     return func
 
   def set_attr(self, func, api_names_attr, names):

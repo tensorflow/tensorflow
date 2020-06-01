@@ -54,7 +54,7 @@ TfLiteStatus ValidateReduceGoldens(TfLiteTensor* tensors, int tensors_size,
   ::tflite::ops::micro::AllOpsResolver resolver;
 
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_MEAN, 1);
+      resolver.FindOp(tflite::BuiltinOperator_MEAN);
 
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 

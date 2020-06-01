@@ -540,7 +540,7 @@ class Interpreter {
                                  TfLiteExternalContext* ctx);
 
   // Sets the profiler to all subgraphs.
-  void SetSubgraphProfiler(Profiler* profiler);
+  void SetSubgraphProfiler();
 
   // Remove delegates (for fallback behaviour). The interpreter is invokable
   // afterwards.
@@ -559,10 +559,10 @@ class Interpreter {
   // interface. To avoid copying tensor metadata, this is also the definitive
   // structure to store tensors.
   // This is the primary subgraph context.
-  TfLiteContext* context_;
+  TfLiteContext* context_ = nullptr;
 
   // The error reporter delegate that tflite will forward queries errors to.
-  ErrorReporter* error_reporter_;
+  ErrorReporter* error_reporter_ = nullptr;
 
   // List of delegates that have been installed and are owned by this
   // interpreter instance. Useful if client delegate ownership is burdensome.
@@ -573,6 +573,9 @@ class Interpreter {
   // Profiler that has been installed and is owned by this interpreter instance.
   // Useful if client profiler ownership is burdensome.
   std::unique_ptr<Profiler> owned_profiler_;
+
+  // Points to the installed Profiler instance.
+  Profiler* installed_profiler_ = nullptr;
 
   bool allow_buffer_handle_output_ = false;
 

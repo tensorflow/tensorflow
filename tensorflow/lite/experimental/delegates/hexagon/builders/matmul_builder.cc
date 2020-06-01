@@ -91,10 +91,7 @@ TfLiteStatus AddFullyConnectedHelper(const TfLiteIntArray* inputs,
                       matmul_and_bias_out_max = matmul_out_max;
   if (bias_tensor_id != -1) {
     const auto& bias_tensor = context->tensors[bias_tensor_id];
-    auto* const_bias_node =
-        graph_builder->AddConstNodeWithData(bias_tensor_id, bias_tensor);
     float bias_min, bias_max;
-    graph_builder->AddTensorWithID(bias_tensor_id, const_bias_node->GetID(), 0);
     OpBuilder::ComputeMinAndMaxQuantValues(bias_tensor, &bias_min, &bias_max);
     auto* bias_min_const = graph_builder->AddConstNodeWithData(
         scalar_shape, reinterpret_cast<char*>(&bias_min), sizeof(bias_min));
@@ -202,7 +199,7 @@ TfLiteStatus MatMulWithConstWeightsOpBuilder::PopulateSubGraph(
       weights_shape_.data(), reinterpret_cast<char*>(nhcw.data()),
       weights_tensor.bytes);
   graph_builder_->AddTensorWithID(weights_tensor_id,
-                                  const_weights_node->GetID(), 0);
+                                  const_weights_node->GetID(), 0, true);
   ComputeMinAndMaxQuantValues(weights_tensor, &weights_min_, &weights_max_);
   auto* weights_min_const = graph_builder_->AddConstNodeWithData(
       quant_bound_shape, reinterpret_cast<char*>(&weights_min_),

@@ -45,7 +45,7 @@ void TestSoftmaxFloat(std::initializer_list<int> input_dims_data,
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_SOFTMAX, 1);
+      resolver.FindOp(tflite::BuiltinOperator_SOFTMAX);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteSoftmaxParams builtin_data = {1.0f};
@@ -111,7 +111,7 @@ void TestSoftmaxQuantized(std::initializer_list<int> input_dims_data,
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_SOFTMAX, 1);
+      resolver.FindOp(tflite::BuiltinOperator_SOFTMAX);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteSoftmaxParams builtin_data = {1.0f};
@@ -177,7 +177,7 @@ void TestSoftmaxQuantizedSigned(
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_SOFTMAX, 1);
+      resolver.FindOp(tflite::BuiltinOperator_SOFTMAX);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteSoftmaxParams builtin_data = {1.0f};

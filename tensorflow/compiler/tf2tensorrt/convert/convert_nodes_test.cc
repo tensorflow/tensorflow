@@ -1862,6 +1862,13 @@ INSTANTIATE_TEST_CASE_P(
                        ::testing::Values(DT_FLOAT),
                        ::testing::Values(TrtPrecisionMode::FP32)));
 
+// Base class for tests that need to be tested for both FP32 and FP16.
+class OpConverterTest2 : public ParameterizedOpConverterTestBase {};
+INSTANTIATE_TEST_CASE_P(
+    OpConvTestInstantiation, OpConverterTest2,
+    ::testing::Combine(::testing::ValuesIn(ValidTrtModes),
+                       ::testing::Values(DT_FLOAT, DT_HALF),
+                       ::testing::Values(TrtPrecisionMode::FP32)));
 template <typename T>
 void CopyTensorElements(const Tensor& tensor, protobuf::RepeatedField<T>* out) {
   out->Clear();
@@ -2396,89 +2403,68 @@ TEST_F(OpConverterTest, ConvertBatchMatMul) {
   TestMatMulHelper(this, get_batch_matmul_nodedef, "BatchMatMul");
 }
 
-template <DataType dtype>
-void TestConvertBiasAdd(OpConverterTest* test) {
+TEST_P(OpConverterTest2, ConvertBiasAdd) {
+  // Note that kINT32 is not supported by IScaleLayer, so we don't test
+  // DT_INT32 type here. DT_FLOAT and DT_HALF are tested.
   // Get the NodeDef for BiasAdd.
-  auto get_biasadd_nodedef = [](const string& data_format) -> NodeDef {
+  auto get_biasadd_nodedef = [](const string& data_format,
+                                DataType tf_dtype) -> NodeDef {
     Scope s = Scope::NewRootScope();
-    auto input = ops::Placeholder(s.WithOpName("input"), dtype);
-    auto weights = ops::Placeholder(s.WithOpName("weights"), dtype);
+    auto input = ops::Placeholder(s.WithOpName("input"), tf_dtype);
+    auto weights = ops::Placeholder(s.WithOpName("weights"), tf_dtype);
     const auto biasadd_attrs = ops::BiasAdd::DataFormat(data_format);
     auto biasadd =
         ops::BiasAdd(s.WithOpName("my_biasadd"), input, weights, biasadd_attrs);
     return biasadd.operation.node()->def();
   };
 
-  typedef typename EnumToDataType<dtype>::Type CType;
   for (const string& data_format : {"NHWC", "NCHW"}) {
     for (const int trt_input_rank : {1, 2, 3, 4}) {
-      test->Reset();
-      NodeDef node_def = get_biasadd_nodedef(data_format);
+      Reset();
+      NodeDef node_def = get_biasadd_nodedef(data_format, tf_dtype);
 
       // Add input, dims_array will be like {2, 1, ..., 1, 3}
-      std::vector<int32> dims_array(trt_input_rank, 1);
+      std::vector<int32> dims_array(trt_input_rank + 1, 1);
       if (trt_input_rank == 1) {
-        dims_array[0] = (data_format == "NHWC" ? 3 : 2);
+        dims_array[1] = (data_format == "NHWC" ? 3 : 2);
       } else {
-        dims_array[0] = 2;
-        dims_array[trt_input_rank - 1] = 3;
+        dims_array[1] = 2;
+        dims_array[trt_input_rank] = 3;
       }
-      test->AddTestTensor("input", dims_array, /*batch_size=*/1,
-                          TfDataTypeToTrt(dtype));
-
-      // Add bias weights.
-      const int channel_size = (data_format == "NHWC" ? 3 : 2);
-      std::vector<CType> bias(channel_size);
-      for (int i = 0; i < channel_size; ++i) {
-        bias[i] = CType(i + 1);  // bias will be {1, 2, 3, ...}
-      }
-      test->AddTestWeights<CType>("weights", {channel_size}, bias);
-
-      // Run the conversion.
-      test->RunValidationAndConversion(node_def);
-      TRT_TensorOrWeights output;
-      TF_EXPECT_OK(test->GetTensorOrWeights("my_biasadd", &output));
-      ASSERT_TRUE(output.is_tensor());
-      ExpectTrtDimsEqualsArray(dims_array, output.tensor()->getDimensions());
-
-      // Build and run the engine.
       const int num_input = TrtTensorDimsNumElements(GetTestDims(dims_array));
       ASSERT_EQ(trt_input_rank > 1 ? 6 : (data_format == "NHWC" ? 3 : 2),
                 num_input);
+      std::vector<float> input_data(num_input, 0);
 
-      const DataVec input_data{
-          {"input", test->ConstructTensor<CType>(num_input, CType(0))}};
-      DataVec output_data{
-          {"my_biasadd", test->ConstructTensor<CType>(num_input)}};
-      TF_EXPECT_OK(test->BuildAndRun(input_data, &output_data));
+      AddTestTensor("input", dims_array, input_data);
+
+      const int channel_size = (data_format == "NHWC" ? 3 : 2);
+      std::vector<float> bias(channel_size);
+      for (int i = 0; i < channel_size; ++i) {
+        bias[i] = i + 1;  // bias will be {1, 2, 3, ...}
+      }
+      AddTestWeights("weights", {channel_size}, bias, tf_dtype);
+
+      // Build and run the engine.
+      std::vector<float> output_data;
+
       if (trt_input_rank == 1) {
         if (data_format == "NHWC") {
-          EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                      ElementsAre(CType(1), CType(2), CType(3)));
+          output_data = {1, 2, 3};
         } else {
-          EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                      ElementsAre(CType(1), CType(2)));
+          output_data = {1, 2};
         }
       } else {
         if (data_format == "NHWC") {
-          EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                      ElementsAre(CType(1), CType(2), CType(3), CType(1),
-                                  CType(2), CType(3)));
+          output_data = {1, 2, 3, 1, 2, 3};
         } else {
-          EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                      ElementsAre(CType(1), CType(1), CType(1), CType(2),
-                                  CType(2), CType(2)));
+          output_data = {1, 1, 1, 2, 2, 2};
         }
       }
+      TestOpConverter("my_biasadd", node_def, dims_array, Status::OK(),
+                      Status::OK(), ElementsAreArray(output_data));
     }
   }
-}
-
-TEST_F(OpConverterTest, ConvertBiasAdd) {
-  // OK. Note that kINT32 is not supported by IScaleLayer, so we don't test
-  // DT_INT32 type here.
-  TestConvertBiasAdd<DT_FLOAT>(this);
-  TestConvertBiasAdd<DT_HALF>(this);
 }
 
 template <typename OpType>

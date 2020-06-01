@@ -51,7 +51,7 @@ void TestAveragePoolingFloat(std::initializer_list<int> input_dims_data,
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_AVERAGE_POOL_2D, 1);
+      resolver.FindOp(tflite::BuiltinOperator_AVERAGE_POOL_2D);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLitePoolParams builtin_data = {padding,      stride_width,  stride_height,
@@ -125,7 +125,7 @@ void TestAveragePoolingQuantized(
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_AVERAGE_POOL_2D, 1);
+      resolver.FindOp(tflite::BuiltinOperator_AVERAGE_POOL_2D);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLitePoolParams builtin_data = {padding,      stride_width,  stride_height,
@@ -192,7 +192,7 @@ void TestMaxPoolFloat(std::initializer_list<int> input_dims_data,
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_MAX_POOL_2D, 1);
+      resolver.FindOp(tflite::BuiltinOperator_MAX_POOL_2D);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLitePoolParams builtin_data = {
@@ -268,7 +268,7 @@ void TestMaxPoolQuantized(std::initializer_list<int> input_dims_data,
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_MAX_POOL_2D, 1);
+      resolver.FindOp(tflite::BuiltinOperator_MAX_POOL_2D);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLitePoolParams builtin_data = {

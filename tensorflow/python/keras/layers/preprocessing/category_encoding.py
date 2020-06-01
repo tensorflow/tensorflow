@@ -65,11 +65,25 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
   >>> layer = tf.keras.layers.experimental.preprocessing.CategoryEncoding(
   ...           max_tokens=4)
   >>> layer([[0, 1], [0, 0], [1, 2], [3, 1]])
-  <tf.Tensor: shape=(4, 4), dtype=int64, numpy=
-    array([[1, 1, 0, 0],
-           [2, 0, 0, 0],
-           [0, 1, 1, 0],
-           [0, 1, 0, 1]])>
+  <tf.Tensor: shape=(4, 4), dtype=float32, numpy=
+    array([[1., 1., 0., 0.],
+           [2., 0., 0., 0.],
+           [0., 1., 1., 0.],
+           [0., 1., 0., 1.]], dtype=float32)>
+
+
+  Examples with weighted inputs:
+
+  >>> layer = tf.keras.layers.experimental.preprocessing.CategoryEncoding(
+  ...           max_tokens=4)
+  >>> count_weights = np.array([[.1, .2], [.1, .1], [.2, .3], [.4, .2]])
+  >>> layer([[0, 1], [0, 0], [1, 2], [3, 1]], count_weights=count_weights)
+  <tf.Tensor: shape=(4, 4), dtype=float64, numpy=
+    array([[0.1, 0.2, 0. , 0. ],
+           [0.2, 0. , 0. , 0. ],
+           [0. , 0.2, 0.3, 0. ],
+           [0. , 0.2, 0. , 0.4]])>
+
 
   Attributes:
     max_tokens: The maximum size of the vocabulary for this layer. If None,
@@ -85,6 +99,12 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
           value in each token slot.
     sparse: Boolean. If true, returns a `SparseTensor` instead of a dense
       `Tensor`. Defaults to `False`.
+
+  Call arguments:
+    inputs: A 2D tensor `(samples, timesteps)`.
+    count_weights: A 2D tensor in the same shape as `inputs` indicating the
+      weight for each sample value when summing up in `count` mode. Not used in
+      `binary` or `tfidf` mode.
   """
 
   def __init__(self,
@@ -242,7 +262,10 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
         tfidf_data = np.resize(tfidf_data, (self._max_tokens,))
     K.set_value(self.tf_idf_weights, tfidf_data)
 
-  def call(self, inputs):
+  def call(self, inputs, count_weights=None):
+    if count_weights is not None and self._output_mode != COUNT:
+      raise ValueError("count_weights is not used in `output_mode='tf-idf'`, "
+                       "or `output_mode='binary'`. Please pass a single input.")
     self._called = True
     if self._max_tokens is None:
       out_depth = K.get_value(self.num_elements)
@@ -263,13 +286,19 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
 
     binary_output = (self._output_mode == BINARY)
     if self._sparse:
-      return bincount_ops.sparse_bincount(
-          inputs, minlength=out_depth, axis=-1, binary_output=binary_output)
+      result = bincount_ops.sparse_bincount(
+          inputs,
+          weights=count_weights,
+          minlength=out_depth,
+          axis=-1,
+          binary_output=binary_output)
+      return math_ops.cast(result, K.floatx())
     else:
       result = bincount_ops.bincount(
           inputs,
+          weights=count_weights,
           minlength=out_depth,
-          dtype=dtypes.int64,
+          dtype=K.floatx(),
           axis=-1,
           binary_output=binary_output)
       result.set_shape(tensor_shape.TensorShape((None, out_depth)))

@@ -269,10 +269,10 @@ class TextVectorizationLayerTest(keras_parameterized.TestCase,
   def test_layer_end_to_end_with_adapt(self, vocab_data, input_data, kwargs,
                                        use_dataset, expected_output):
     cls = get_layer_class()
-    if kwargs.get("output_mode") == text_vectorization.TFIDF:
-      expected_output_dtype = dtypes.float32
-    else:
+    if kwargs.get("output_mode") == text_vectorization.INT:
       expected_output_dtype = dtypes.int64
+    else:
+      expected_output_dtype = dtypes.float32
     input_shape = input_data.shape
 
     if use_dataset:

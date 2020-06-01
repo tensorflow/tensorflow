@@ -177,14 +177,13 @@ Status RegisterAllCustomOps(const toco::TocoFlags& toco_flags) {
   return RegisterCustomBuiltinOps(extra_tf_opdefs);
 }
 
-Status PopulateQuantizationSpecs(const toco::ModelFlags& model_flags,
-                                 const toco::TocoFlags& toco_flags,
-                                 mlir::TFL::QuantizationSpecs* quant_specs,
-                                 std::vector<string>* node_names,
-                                 std::vector<string>* node_dtypes,
-                                 std::vector<std::vector<int>>* node_shapes,
-                                 std::vector<double>* node_mins,
-                                 std::vector<double>* node_maxs) {
+Status PopulateQuantizationSpecs(
+    const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
+    mlir::TFL::QuantizationSpecs* quant_specs, std::vector<string>* node_names,
+    std::vector<string>* node_dtypes,
+    std::vector<std::vector<int>>* node_shapes,
+    std::vector<llvm::Optional<double>>* node_mins,
+    std::vector<llvm::Optional<double>>* node_maxs) {
   quant_specs->inference_input_type =
       ConvertIODataTypeToDataType(toco_flags.inference_input_type());
   tensorflow::DataType inference_type =
@@ -211,11 +210,16 @@ Status PopulateQuantizationSpecs(const toco::ModelFlags& model_flags,
                                             flag.shape().dims().end()));
     // Currently, only UINT8 and INT8 require inputs stats
     if (inference_type == DT_QINT8 || inference_type == DT_QUINT8) {
-      TF_ASSIGN_OR_RETURN(
-          auto min_max, InputStatsToMinMax(flag.mean_value(), flag.std_value(),
-                                           inference_type));
-      node_mins->push_back(min_max.first);
-      node_maxs->push_back(min_max.second);
+      if (flag.has_mean_value() && flag.has_std_value()) {
+        TF_ASSIGN_OR_RETURN(
+            auto min_max, InputStatsToMinMax(flag.mean_value(),
+                                             flag.std_value(), inference_type));
+        node_mins->push_back(min_max.first);
+        node_maxs->push_back(min_max.second);
+      } else {
+        node_mins->push_back(llvm::None);
+        node_maxs->push_back(llvm::None);
+      }
     }
   }
 

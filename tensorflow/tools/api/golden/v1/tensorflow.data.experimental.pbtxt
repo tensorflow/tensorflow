@@ -80,6 +80,10 @@ tf_module {
     name: "UNKNOWN_CARDINALITY"
     mtype: "<type \'int\'>"
   }
+  member {
+    name: "service"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "Counter"
     argspec: "args=[\'start\', \'step\', \'dtype\'], varargs=None, keywords=None, defaults=[\'0\', \'1\', \"<dtype: \'int64\'>\"], "

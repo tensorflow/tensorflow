@@ -49,7 +49,7 @@ void TestMaxMinFloat(tflite::BuiltinOperator op,
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
   ::tflite::ops::micro::AllOpsResolver resolver;
-  const TfLiteRegistration* registration = resolver.FindOp(op, 1);
+  const TfLiteRegistration* registration = resolver.FindOp(op);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteIntArray* inputs_array = IntArrayFromInitializer({2, 0, 1});
@@ -108,7 +108,7 @@ void TestMaxMinQuantized(
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
   ::tflite::ops::micro::AllOpsResolver resolver;
-  const TfLiteRegistration* registration = resolver.FindOp(op, 1);
+  const TfLiteRegistration* registration = resolver.FindOp(op);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteIntArray* inputs_array = IntArrayFromInitializer({2, 0, 1});
@@ -165,7 +165,7 @@ void TestMaxMinQuantizedInt32(
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
   ::tflite::ops::micro::AllOpsResolver resolver;
-  const TfLiteRegistration* registration = resolver.FindOp(op, 1);
+  const TfLiteRegistration* registration = resolver.FindOp(op);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteIntArray* inputs_array = IntArrayFromInitializer({2, 0, 1});

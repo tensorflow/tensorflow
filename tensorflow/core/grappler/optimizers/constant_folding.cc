@@ -2031,6 +2031,7 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
       PartialConcatConstFolding(optimized_graph, properties, node));
   SET_AND_RETURN_IF_MODIFIED(
       ConstantPushDownBiasAdd(properties, optimized_graph, node));
+  SET_AND_RETURN_IF_MODIFIED(SimplifyCase(optimized_graph, node));
 
   graph_modified_ = graph_modified_cached;
   return Status::OK();
@@ -2375,6 +2376,32 @@ bool ConstantFolding::SimplifyPack(GraphDef* optimized_graph, NodeDef* node) {
   if (node->input_size() > 2) {
     node->mutable_input()->SwapElements(1, node->input_size() - 1);
   }
+  return true;
+}
+
+bool ConstantFolding::SimplifyCase(GraphDef* optimized_graph, NodeDef* node) {
+  if (node->op() != "Case") return false;
+  const NodeDef* output_idx_node = node_map_->GetNode(node->input(0));
+  if (output_idx_node == nullptr ||
+      !CheckAttrExists(*output_idx_node, "value").ok())
+    return false;
+  Tensor output_idx_t;
+  if (!output_idx_t.FromProto(output_idx_node->attr().at("value").tensor()))
+    return false;
+  int output_idx = output_idx_t.scalar<int>()();
+  const auto& func_list = node->attr().at("branches").list();
+  if (output_idx < 0 || output_idx >= func_list.func_size()) return false;
+  NodeDef call_node = *node;
+  call_node.set_op("PartitionedCall");
+  call_node.clear_input();
+  for (int i = 1; i < node->input_size(); ++i) {
+    call_node.add_input(node->input(i));
+  }
+  auto* new_func = (*call_node.mutable_attr())["f"].mutable_func();
+  *new_func = func_list.func(output_idx);
+  call_node.mutable_attr()->erase("branches");
+  call_node.mutable_attr()->erase("output_shapes");
+  *node = std::move(call_node);
   return true;
 }
 

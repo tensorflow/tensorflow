@@ -88,7 +88,7 @@ void TestStrideSlide(std::initializer_list<int> input_shape,
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_STRIDED_SLICE, 1);
+      resolver.FindOp(tflite::BuiltinOperator_STRIDED_SLICE);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
   TfLiteStridedSliceParams builtin_data = {begin_mask, end_mask, ellipsis_mask,
                                            new_axis_mask, shrink_axis_mask};

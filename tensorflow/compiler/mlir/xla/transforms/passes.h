@@ -66,6 +66,9 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass();
 // Lowers from HLO dialect to Linalg dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass();
 
+// Transforms unranked HLO operations to ranked ones where possible.
+std::unique_ptr<OperationPass<FuncOp>> createTransformUnrankedHloPass();
+
 // Sinks constants implicitly captured in control flow regions. This is
 // necessary to export to XLA.
 std::unique_ptr<OperationPass<FuncOp>> createSinkConstantsToControlFlowPass();

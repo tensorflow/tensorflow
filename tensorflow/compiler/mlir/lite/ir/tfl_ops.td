@@ -228,10 +228,14 @@ class TFL_OperandHasAtleastRank<int n, int m> :
 
 class TFL_OperandRankEquals1DimOfOperand<int x, int y> :
   PredOpTrait<"operand " # x # "'s rank equals operand " # y # "'s size",
-    CPred<"$_op.getOperand(" # x #
-      ").getType().cast<ShapedType>().getRank() == "
-      "$_op.getOperand(" # y #
-      ").getType().cast<ShapedType>().getShape()[0]">>;
+    Or<[TFL_OperandIsUnrankedPred<x>,
+        TFL_OperandIsUnrankedPred<y>,
+        CPred<"!$_op.getOperand(" # y #
+          ").getType().cast<ShapedType>().hasStaticShape()">,
+        CPred<"$_op.getOperand(" # x #
+          ").getType().cast<ShapedType>().getRank() == "
+          "$_op.getOperand(" # y #
+          ").getType().cast<ShapedType>().getShape()[0]">]>>;
 
 class TFL_Operand0DOr1ElementTensor<int x> :
   PredOpTrait<"operand #" # x # " is an 0-d tensor or 1-d tensor w/ 1 element",
@@ -2297,26 +2301,17 @@ def TFL_PReluOp : TFL_Op<"prelu", [
     NoSideEffect,
     ResultsBroadcastableShape,
     TFL_GpuTargetOp,
-    TFL_OperandHasRankAtMost<0, 4>,
-    TFL_OperandHasRankAtMost<1, 4>,
+    TFL_BinaryOperandsHaveSameShapesOrBroadcastableShape<0, 1, 4>,
     BinaryOpSameElementTypeConstraint,
     PredOpTrait<"input and output must have the same element type",
-      TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    PredOpTrait<"'alpha' should have one less rank than 'input'.",
-      Or<[TFL_OperandIsUnrankedPred<0>,
-          TFL_OperandIsUnrankedPred<1>,
-          CPred<"$_op.getOperand(0).getType().cast<ShapedType>().getRank() == "
-                "$_op.getOperand(1).getType().cast<ShapedType>().getRank() "
-                "+ 1">]>>]> {
+      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
   let summary = "Parameterized Relu operator";
 
   let description = [{
     Parameterized Relu operator
       x -> x >= 0 ? x : (alpha * x)
     where alpha is a trainable tensor.
-    alpha should have one less rank than the input as it doesn't have the batch
-    dimension, and the other dimensions either should be the same size as input
-    or size 1, where it is broadcasted in the second case.
+    input and alpha should be the same size as input or be broadcastable.
   }];
 
   let arguments = (

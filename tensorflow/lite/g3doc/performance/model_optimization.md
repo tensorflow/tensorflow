@@ -79,10 +79,9 @@ with TensorFlow Lite.
 
 ### Quantization
 
-[Quantization](https://www.tensorflow.org/model_optimization/guide/quantization)
-works by reducing the precision of the numbers used to represent a model's
-parameters, which by default are 32-bit floating point numbers. This results in
-a smaller model size and faster computation.
+Quantization works by reducing the precision of the numbers used to represent a
+model's parameters, which by default are 32-bit floating point numbers. This
+results in a smaller model size and faster computation.
 
 The following types of quantization are available in TensorFlow Lite:
 

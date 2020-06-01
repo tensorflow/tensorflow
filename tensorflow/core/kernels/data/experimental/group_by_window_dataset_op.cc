@@ -200,8 +200,15 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
             // We are currently processing a group, so try to get the
             // next element.
             bool end_of_group;
+            // TODO(b/154341936): Explicitly stopping and starting this iterator
+            // should not be necessary, but the `::Reduce` added to the prefix
+            // passed to `current_group_iterator_` when it was created prevents
+            // the model from identifying this iterator as the output of
+            // `current_group_iterator_`.
+            RecordStop(ctx);
             TF_RETURN_IF_ERROR(current_group_iterator_->GetNext(
                 ctx, out_tensors, &end_of_group));
+            RecordStart(ctx);
             if (!end_of_group) {
               // Produce the subelement as output.
               *end_of_sequence = false;

@@ -1937,6 +1937,10 @@ static LogicalResult Verify(IfRegionOp op) {
     return failure();
   if (failed(VerifyRegionResults(op, op.else_branch(), "else")))
     return failure();
+  if (op.then_branch().front().getNumArguments() != 0)
+    return op.emitOpError() << "then region cannot have any arguments";
+  if (op.else_branch().front().getNumArguments() != 0)
+    return op.emitOpError() << "else region cannot have any arguments";
   return success();
 }
 

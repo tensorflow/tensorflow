@@ -577,7 +577,6 @@ struct ConvertTensorListResize
         ArrayRef<Value>({input_handle, input_shape, size_diff, size}),
         /*then_branch=*/rewriter.getSymbolRefAttr(then_branch_op),
         /*else_branch=*/rewriter.getSymbolRefAttr(else_branch_op),
-        /*output_shapes=*/rewriter.getArrayAttr({}),
         /*is_stateless=*/rewriter.getBoolAttr(true));
     return success();
   }

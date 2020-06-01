@@ -821,6 +821,13 @@ cc_library(
     srcs = if_cuda_is_configured(["cusolver_context.cc"]),
     hdrs = ["cusolver_context.h"],
     deps = [
+<<<<<<< HEAD
+=======
+        # LINT.IfChange
+        "@local_config_cuda//cuda:cublas_headers",
+        "@local_config_cuda//cuda:cusolver_headers",
+        # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
+>>>>>>> upstream/master
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",

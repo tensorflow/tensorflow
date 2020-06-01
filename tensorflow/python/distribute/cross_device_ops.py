@@ -19,15 +19,16 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import enum
 import threading
 
-import enum
 import six
 
 from tensorflow.python.client import device_lib
 from tensorflow.python.distribute import collective_util
 from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import ps_values
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute import values as value_lib
@@ -64,7 +65,7 @@ def validate_destinations(destinations):
   """Validates the `destination` is one of expected types."""
   if not isinstance(
       destinations,
-      (value_lib.DistributedValues, ops.Tensor, value_lib.AggregatingVariable,
+      (value_lib.DistributedValues, ops.Tensor, ps_values.AggregatingVariable,
        six.string_types, tpu_values.TPUMirroredVariable
       )) and not resource_variable_ops.is_resource_variable(destinations):
     raise ValueError("destinations must be one of a `DistributedValues` object,"

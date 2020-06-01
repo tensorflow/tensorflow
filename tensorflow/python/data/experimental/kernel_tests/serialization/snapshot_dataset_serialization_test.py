@@ -46,7 +46,7 @@ class SnapshotDatasetSerializationTest(
         os.mkdir(self.snapshot_dir)
       dataset = dataset_ops.Dataset.range(1000)
       dataset = dataset.apply(
-          snapshot.snapshot(
+          snapshot.legacy_snapshot(
               self.snapshot_dir,
               num_writer_threads=num_threads,
               writer_buffer_size=2 * num_threads,
