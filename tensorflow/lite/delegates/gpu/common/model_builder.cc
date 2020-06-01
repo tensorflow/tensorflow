@@ -233,24 +233,21 @@ absl::Status GetFullyConnectedAttributes(int weights_tensor_id,
 
 template <typename ParamsT>
 absl::Status RetrieveBuiltinData(const TfLiteNode* tflite_node,
-                                 ParamsT** tf_options) {
-  const auto* params = static_cast<const ParamsT*>(tflite_node->builtin_data);
-  if (!params) {
+                                 const ParamsT** tf_options) {
+  *tf_options = static_cast<const ParamsT*>(tflite_node->builtin_data);
+  if (!*tf_options) {
     return absl::InternalError("Unable to retrieve builtin_data.");
   }
-  *tf_options = const_cast<ParamsT*>(params);
   return absl::OkStatus();
 }
 
-template <typename ParamsType>
+template <typename ParamsT>
 absl::Status RetrieveCustomInitialData(const TfLiteNode* tflite_node,
-                                       ParamsType** tf_options) {
-  const auto* params =
-      static_cast<const ParamsType*>(tflite_node->custom_initial_data);
-  if (!params) {
+                                       const ParamsT** tf_options) {
+  *tf_options = static_cast<const ParamsT*>(tflite_node->custom_initial_data);
+  if (!*tf_options) {
     return absl::InternalError("Unable to retrieve custom_initial_data.");
   }
-  *tf_options = const_cast<ParamsType*>(params);
   return absl::OkStatus();
 }
 
@@ -408,7 +405,7 @@ class AddOperationParser : public TFLiteOperationParser {
       }
     }
 
-    TfLiteAddParams* tf_options = nullptr;
+    const TfLiteAddParams* tf_options;
     return RetrieveBuiltinData(tflite_node, &tf_options);
   }
 
@@ -447,7 +444,7 @@ class ConcatenationOperationParser : public TFLiteOperationParser {
     //   RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, idx));
     // }
     // TODO(eignasheva): add axis checking.
-    TfLiteConcatenationParams* tf_options = nullptr;
+    const TfLiteConcatenationParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     return absl::OkStatus();
   }
@@ -579,7 +576,7 @@ class Conv2DOperationParser : public TFLiteOperationParser {
     if (runtime_inputs == 1) {
       RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
     }
-    TfLiteConvParams* tf_options = nullptr;
+    const TfLiteConvParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     RETURN_IF_ERROR(CheckStridesAndDilation(
         tf_options->stride_height, tf_options->stride_width,
@@ -627,7 +624,7 @@ class Convolution2DTransposeBiasParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
-    TfLiteTransposeConvParams* tf_options = nullptr;
+    const TfLiteTransposeConvParams* tf_options;
     RETURN_IF_ERROR(RetrieveCustomInitialData(tflite_node, &tf_options));
     RETURN_IF_ERROR(
         CheckStrides(tf_options->stride_height, tf_options->stride_width));
@@ -668,7 +665,7 @@ class DepthwiseConvolutionOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
                                        /*runtime_inputs=*/1, /*outputs=*/1));
     RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
-    TfLiteDepthwiseConvParams* tf_options;
+    const TfLiteDepthwiseConvParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     RETURN_IF_ERROR(CheckStridesAndDilation(
         tf_options->stride_height, tf_options->stride_width,
@@ -723,7 +720,7 @@ class DepthwiseConvolutionOperationParser : public TFLiteOperationParser {
     DepthwiseConvolution2DAttributes attr;
     RETURN_IF_ERROR(reader->ReadTensor(1, &attr.weights));
     reader->ReadTensor(2, &attr.bias).IgnoreError();  // bias is optional
-    TfLiteDepthwiseConvParams* tf_options;
+    const TfLiteDepthwiseConvParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     attr.strides = ToHW(tf_options->stride_height, tf_options->stride_width);
     attr.dilations = HW(std::max(1, tf_options->dilation_height_factor),
@@ -920,15 +917,15 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
   absl::Status GetActivation(const TfLiteNode* tflite_node,
                              TfLiteFusedActivation* activation) const {
     if (operation_type_ == OperationType::DIV) {
-      TfLiteDivParams* tf_options;
-      RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
-      *activation = tf_options ? tf_options->activation : kTfLiteActNone;
+      const TfLiteDivParams* tf_options;
+      auto status = RetrieveBuiltinData(tflite_node, &tf_options);
+      *activation = status.ok() ? tf_options->activation : kTfLiteActNone;
       return absl::OkStatus();
     }
     if (operation_type_ == OperationType::SUB) {
-      TfLiteSubParams* tf_options;
-      RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
-      *activation = tf_options ? tf_options->activation : kTfLiteActNone;
+      const TfLiteSubParams* tf_options;
+      auto status = RetrieveBuiltinData(tflite_node, &tf_options);
+      *activation = status.ok() ? tf_options->activation : kTfLiteActNone;
       return absl::OkStatus();
     }
 
@@ -988,7 +985,7 @@ class FullyConnectedOperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 4));
-    TfLiteFullyConnectedParams* tf_options = nullptr;
+    const TfLiteFullyConnectedParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     if (tf_options->weights_format !=
         kTfLiteFullyConnectedWeightsFormatDefault) {
@@ -1099,7 +1096,7 @@ class LSTMOperationParser : public TFLiteOperationParser {
     // RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
     // /*runtime_inputs=*/5,
     //                                    /*outputs=*/4));
-    TfLiteLSTMParams* tf_options = nullptr;
+    const TfLiteLSTMParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     RETURN_IF_ERROR(CheckParameters(tf_options));
     return absl::OkStatus();
@@ -1193,7 +1190,7 @@ class MulOperationParser : public TFLiteOperationParser {
     if (tflite_node->inputs->size != 2) {
       return absl::UnimplementedError("MUL requires two input tensors.");
     }
-    TfLiteMulParams* tf_options;
+    const TfLiteMulParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     return IsActivationSupported(tf_options->activation);
   }
@@ -1409,7 +1406,7 @@ class Pooling2DOperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
-    TfLitePoolParams* tf_options = nullptr;
+    const TfLitePoolParams* tf_options;
     auto status = RetrieveCustomInitialData(tflite_node, &tf_options);
     if (status.ok()) {  // custom case with indices as a second output
       RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
@@ -1537,9 +1534,9 @@ class ReLUOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(reader->AddInput(node, 0));
 
     ReLUAttributes attr;
-    TfLiteLeakyReluParams* tf_options = nullptr;
-    RetrieveBuiltinData(tflite_node, &tf_options).IgnoreError();
-    attr.alpha = tf_options ? tf_options->alpha : 0;
+    const TfLiteLeakyReluParams* tf_options;
+    auto status = RetrieveBuiltinData(tflite_node, &tf_options);
+    attr.alpha = status.ok() ? tf_options->alpha : 0;
     attr.clip = clip_;
     node->operation.attributes = attr;
     return reader->AddOutputs(node);
@@ -1795,7 +1792,7 @@ class SoftmaxOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
     RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
                                        /*runtime_inputs=*/1, /*outputs=*/1));
-    TfLiteSoftmaxParams* tf_options = nullptr;
+    const TfLiteSoftmaxParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     if (tf_options->beta != 1) {
       // TODO(eignasheva): figure out, what's wrong with softmax.
@@ -1840,7 +1837,7 @@ class SpaceToDepthOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
                                        /*runtime_inputs=*/1, /*outputs=*/1));
     // TODO(impjdi): Dims check.
-    TfLiteSpaceToDepthParams* s2d_params = nullptr;
+    const TfLiteSpaceToDepthParams* s2d_params;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &s2d_params));
     if (s2d_params->block_size == 1) {
       return absl::InvalidArgumentError(
@@ -1875,7 +1872,7 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
-    TfLiteStridedSliceParams* tf_options = nullptr;
+    const TfLiteStridedSliceParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     RETURN_IF_ERROR(CheckOptionsSupport(tf_options));
     return absl::OkStatus();
@@ -2057,7 +2054,7 @@ class TransposeConvOperationParser : public TFLiteOperationParser {
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
     RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
-    TfLiteTransposeConvParams* tf_options = nullptr;
+    const TfLiteTransposeConvParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     RETURN_IF_ERROR(
         CheckStrides(tf_options->stride_height, tf_options->stride_width));
@@ -2140,9 +2137,9 @@ class Unpooling2DOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    TfLitePoolParams* tf_options = nullptr;
     RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
                                        /*runtime_inputs=*/2, /*outputs=*/1));
+    const TfLitePoolParams* tf_options;
     RETURN_IF_ERROR(RetrieveCustomInitialData(tflite_node, &tf_options));
     RETURN_IF_ERROR(CheckKernelsAndStrides(
         tf_options->filter_height, tf_options->filter_width,
