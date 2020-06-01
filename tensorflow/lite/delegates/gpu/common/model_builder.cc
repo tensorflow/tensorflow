@@ -257,18 +257,7 @@ absl::Status CheckMaxSupportedOpVersion(const TfLiteRegistration* registration,
   if (op_version > max_version) {
     return absl::UnimplementedError(
         absl::StrCat("Max version supported: ", max_version,
-                     ". Requested version ", op_version));
-  }
-  return absl::OkStatus();
-}
-
-absl::Status CheckExactSupportedOpVersion(
-    const TfLiteRegistration* registration, int expected_version) {
-  int op_version = registration->version;
-  if (op_version != expected_version) {
-    return absl::UnimplementedError(
-        absl::StrCat("Only version ", expected_version,
-                     " is supported. Requested version ", op_version));
+                     ". Requested version ", op_version, "."));
   }
   return absl::OkStatus();
 }
@@ -1082,7 +1071,7 @@ class LSTMOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckExactSupportedOpVersion(registration, 2));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
     // TODO(eignasheva): Fix bad check.
     // RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
     // /*runtime_inputs=*/5,
