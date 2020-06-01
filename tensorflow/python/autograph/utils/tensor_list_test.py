@@ -34,7 +34,6 @@ class TensorListTest(test.TestCase):
   def _shape(self, shape_tuple):
     return constant(shape_tuple, dtypes.int32)
 
-  @test_util.run_v1_only("b/117943489")
   def test_dynamic_list_append(self):
     l = []
     l = tl.dynamic_list_append(l, 1)

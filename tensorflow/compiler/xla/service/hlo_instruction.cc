@@ -388,6 +388,24 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                   proto.outfeed_config());
       break;
     }
+    case HloOpcode::kAllGather: {
+      absl::optional<int64> channel_id;
+      if (proto.channel_id() > 0) {
+        channel_id = proto.channel_id();
+      }
+
+      TF_RET_CHECK(proto.dimensions_size() == 1)
+          << "AllGather cannot have more than 1 all-gather dimensions";
+      TF_RET_CHECK(all_operands().size() == 1)
+          << "AllGather must have a single operand";
+      int64 all_gather_dimension = proto.dimensions(0);
+      instruction = CreateAllGather(
+          shape, operands(0), all_gather_dimension,
+          std::vector<ReplicaGroup>(proto.replica_groups().begin(),
+                                    proto.replica_groups().end()),
+          proto.constrain_layout(), channel_id, proto.use_global_device_ids());
+      break;
+    }
     case HloOpcode::kAllReduce: {
       TF_RET_CHECK(proto.called_computation_ids_size() == 1)
           << "AllReduce should have 1 called computation but sees "
@@ -434,7 +452,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           /*channel_id=*/channel_id, split_dimension);
       break;
     }
-    case HloOpcode::kCollectivePermute: {
+    case HloOpcode::kCollectivePermute:
+    case HloOpcode::kCollectivePermuteStart: {
       std::vector<std::pair<int64, int64>> source_target_pairs(
           proto.source_target_pairs_size());
       absl::optional<int64> channel_id;
@@ -445,8 +464,17 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         source_target_pairs[i].first = proto.source_target_pairs(i).source();
         source_target_pairs[i].second = proto.source_target_pairs(i).target();
       }
-      instruction = CreateCollectivePermute(shape, operands(0),
-                                            source_target_pairs, channel_id);
+
+      if (opcode == HloOpcode::kCollectivePermute) {
+        instruction = CreateCollectivePermute(shape, operands(0),
+                                              source_target_pairs, channel_id);
+      } else if (opcode == HloOpcode::kCollectivePermuteStart) {
+        instruction = CreateCollectivePermuteStart(
+            shape, operands(0), source_target_pairs, channel_id);
+      } else {
+        LOG(FATAL) << "Expect CollectivePermute or CollectivePermuteStart, "
+                   << "but got " << HloOpcodeString(opcode);
+      }
       break;
     }
     case HloOpcode::kReplicaId: {
@@ -787,6 +815,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
+    case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kCopy:
     case HloOpcode::kCopyStart:
     case HloOpcode::kCopyDone:
@@ -807,6 +836,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
+    case HloOpcode::kCbrt:
     case HloOpcode::kTanh:
       break;
     default:
@@ -928,6 +958,15 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
       shape, operand, exponent_bits, mantissa_bits);
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllGather(
+    const Shape& shape, HloInstruction* operand, int64 all_gather_dimension,
+    const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
+    const absl::optional<int64>& channel_id, bool use_global_device_ids) {
+  return absl::make_unique<HloAllGatherInstruction>(
+      shape, operand, all_gather_dimension, replica_groups, constrain_layout,
+      channel_id, use_global_device_ids);
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllReduce(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
@@ -954,7 +993,18 @@ HloInstruction::CreateCollectivePermute(
     const std::vector<std::pair<int64, int64>>& source_target_pairs,
     const absl::optional<int64>& channel_id) {
   return absl::make_unique<HloCollectivePermuteInstruction>(
-      shape, operand, source_target_pairs, channel_id);
+      HloOpcode::kCollectivePermute, shape, operand, source_target_pairs,
+      channel_id);
+}
+
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateCollectivePermuteStart(
+    const Shape& shape, HloInstruction* operand,
+    const std::vector<std::pair<int64, int64>>& source_target_pairs,
+    const absl::optional<int64>& channel_id) {
+  return absl::make_unique<HloCollectivePermuteInstruction>(
+      HloOpcode::kCollectivePermuteStart, shape, operand, source_target_pairs,
+      channel_id);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReplicaId() {
@@ -1517,9 +1567,11 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kParameter:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kReducePrecision:
+    case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
+    case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kConvolution:
@@ -1546,6 +1598,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
     case HloOpcode::kClz:
+    case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kCopy:
     case HloOpcode::kCopyStart:
     case HloOpcode::kCopyDone:
@@ -1565,6 +1618,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
+    case HloOpcode::kCbrt:
     case HloOpcode::kTanh:
       CHECK_EQ(new_operands.size(), 1);
       clone = CreateUnary(shape, opcode_, new_operands[0]);
@@ -1898,6 +1952,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
     case HloOpcode::kClz:
+    case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kComplex:
     case HloOpcode::kConvert:
     case HloOpcode::kCopy:
@@ -1937,6 +1992,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
+    case HloOpcode::kCbrt:
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
     case HloOpcode::kTuple:
@@ -1994,9 +2050,11 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kReducePrecision:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
+    case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
+    case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kConvolution:
     case HloOpcode::kCustomCall:
     case HloOpcode::kReduceWindow:
@@ -2381,6 +2439,7 @@ bool HloInstruction::IsElementwiseImpl(
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
+    case HloOpcode::kCbrt:
     case HloOpcode::kTanh:
       CHECK_EQ(1, operand_count());
       return true;
@@ -2847,12 +2906,18 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleConvolution(this);
     case HloOpcode::kFft:
       return visitor->HandleFft(this);
+    case HloOpcode::kAllGather:
+      return visitor->HandleAllGather(this);
     case HloOpcode::kAllReduce:
       return visitor->HandleAllReduce(this);
     case HloOpcode::kAllToAll:
       return visitor->HandleAllToAll(this);
     case HloOpcode::kCollectivePermute:
       return visitor->HandleCollectivePermute(this);
+    case HloOpcode::kCollectivePermuteStart:
+      return visitor->HandleCollectivePermuteStart(this);
+    case HloOpcode::kCollectivePermuteDone:
+      return visitor->HandleCollectivePermuteDone(this);
     case HloOpcode::kReplicaId:
       return visitor->HandleReplicaId(this);
     case HloOpcode::kPartitionId:
@@ -2893,6 +2958,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleSin(this);
     case HloOpcode::kSqrt:
       return visitor->HandleSqrt(this);
+    case HloOpcode::kCbrt:
+      return visitor->HandleCbrt(this);
     case HloOpcode::kRsqrt:
       return visitor->HandleRsqrt(this);
     case HloOpcode::kReal:
@@ -3926,6 +3993,10 @@ const string& HloInstruction::custom_call_target() const {
 
 const PaddingConfig& HloInstruction::padding_config() const {
   return Cast<HloPadInstruction>(this)->padding_config();
+}
+
+PaddingConfig* HloInstruction::mutable_padding_config() {
+  return Cast<HloPadInstruction>(this)->mutable_padding_config();
 }
 
 int64 HloInstruction::slice_sizes(int64 dimension) const {

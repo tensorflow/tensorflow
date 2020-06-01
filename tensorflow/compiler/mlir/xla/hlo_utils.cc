@@ -139,6 +139,10 @@ StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
       return CreateDenseAttrFromLiteral<uint32>(type, literal);
     case PrimitiveType::U64:
       return CreateDenseAttrFromLiteral<uint64>(type, literal);
+    case PrimitiveType::C64:
+      return CreateDenseAttrFromLiteral<complex64>(type, literal);
+    case PrimitiveType::C128:
+      return CreateDenseAttrFromLiteral<complex128>(type, literal);
     default:
       return tensorflow::errors::Internal(
           absl::StrCat("Unsupported type: ", PrimitiveType_Name(element_type)));

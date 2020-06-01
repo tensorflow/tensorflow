@@ -99,7 +99,8 @@ LEGACY_RANDOM_OPS = [
 _ORDER_INSENSITIVE_STATEFUL_OPS = [
     "CudnnRNNV2", "CudnnRNNV3", "CudnnRNNBackpropV2", "CudnnRNNBackpropV3",
     "EnqueueTPUEmbeddingSparseBatch", "EnqueueTPUEmbeddingIntegerBatch",
-    "EnqueueTPUEmbeddingSparseTensorBatch"
+    "EnqueueTPUEmbeddingSparseTensorBatch",
+    "EnqueueTPUEmbeddingRaggedTensorBatch"
 ]
 # LINT.ThenChange(//tensorflow/core/grappler/optimizers/function_optimizer.cc)
 
@@ -534,8 +535,10 @@ def _get_resource_inputs(op):
 
   # Note: A resource handle that is not written to is treated as read-only. We
   # don't have a special way of denoting an unused resource.
-  return ([(t, ResourceType.READ_ONLY) for t in reads] +
-          [(t, ResourceType.READ_WRITE) for t in writes])
+  for t in reads:
+    yield (t, ResourceType.READ_ONLY)
+  for t in writes:
+    yield (t, ResourceType.READ_WRITE)
 
 
 def automatic_control_dependencies(f):

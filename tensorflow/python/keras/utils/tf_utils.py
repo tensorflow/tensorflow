@@ -328,7 +328,7 @@ def shape_type_conversion(fn):
 
 
 def are_all_symbolic_tensors(tensors):
-  return all(is_symbolic_tensor(tensor) for tensor in tensors)
+  return all(map(is_symbolic_tensor, tensors))
 
 
 _user_convertible_tensor_types = set()
@@ -346,9 +346,12 @@ def is_symbolic_tensor(tensor):
   Returns:
     True for symbolic tensors, False for eager tensors.
   """
-  if isinstance(tensor, tuple(_user_convertible_tensor_types)):
-    tensor = ops.convert_to_tensor_or_composite(tensor)
-  if isinstance(tensor, variables.Variable):
+  if isinstance(tensor, ops.Tensor):
+    return hasattr(tensor, 'graph')
+  elif isinstance(tensor, composite_tensor.CompositeTensor):
+    component_tensors = nest.flatten(tensor, expand_composites=True)
+    return any(hasattr(t, 'graph') for t in component_tensors)
+  elif isinstance(tensor, variables.Variable):
     # Variables that are output of a Keras Layer in Functional API mode
     # should be considered symbolic.
     # TODO(omalleyt): We need a better way to check this in order to
@@ -356,12 +359,11 @@ def is_symbolic_tensor(tensor):
     # return Variables as outputs.
     return (getattr(tensor, '_keras_history', False) or
             not context.executing_eagerly())
-  if isinstance(tensor, composite_tensor.CompositeTensor):
-    component_tensors = nest.flatten(tensor, expand_composites=True)
-    return any(hasattr(t, 'graph') for t in component_tensors)
-  if isinstance(tensor, ops.Tensor):
-    return hasattr(tensor, 'graph')
-  return False
+  elif isinstance(tensor, tuple(_user_convertible_tensor_types)):
+    tensor = ops.convert_to_tensor_or_composite(tensor)
+    return is_symbolic_tensor(tensor)
+  else:
+    return False
 
 
 def register_symbolic_tensor_type(cls):
@@ -479,11 +481,15 @@ def dataset_is_infinite(dataset):
 
 def get_tensor_spec(t, dynamic_batch=False, name=None):
   """Returns a `TensorSpec` given a single `Tensor` or `TensorSpec`."""
+  # pylint: disable=protected-access
   if isinstance(t, type_spec.TypeSpec):
     spec = t
   elif isinstance(t, composite_tensor.CompositeTensor):
     # TODO(b/148821952): Should these specs have a name attr?
-    spec = t._type_spec  # pylint: disable=protected-access
+    spec = t._type_spec
+  elif (hasattr(t, '_keras_history') and
+        hasattr(t._keras_history[0], '_type_spec')):
+    return t._keras_history[0]._type_spec
   elif hasattr(t, 'shape') and hasattr(t, 'dtype'):
     spec = tensor_spec.TensorSpec(shape=t.shape, dtype=t.dtype, name=name)
   else:
@@ -494,11 +500,12 @@ def get_tensor_spec(t, dynamic_batch=False, name=None):
 
   dynamic_batch_spec = copy.deepcopy(spec)
   # RaggedTensorSpec only has a private _shape.
-  shape = dynamic_batch_spec._shape.as_list()  # pylint: disable=protected-access
+  shape = dynamic_batch_spec._shape.as_list()
   if shape:
     shape[0] = None
-    dynamic_batch_spec._shape = tensor_shape.TensorShape(shape)  # pylint: disable=protected-access
+    dynamic_batch_spec._shape = tensor_shape.TensorShape(shape)
   return dynamic_batch_spec
+  # pylint: enable=protected-access
 
 
 def to_numpy_or_python_type(tensors):
@@ -526,4 +533,3 @@ def to_numpy_or_python_type(tensors):
     return t  # Don't turn ragged or sparse tensors to NumPy.
 
   return nest.map_structure(_to_single_numpy_or_python_type, tensors)
-

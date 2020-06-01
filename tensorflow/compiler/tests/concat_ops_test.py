@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradients_impl
@@ -293,6 +294,7 @@ class ConcatTest(xla_test.XLATestCase):
 
   # The purpose of this is to ensure that XLA on GPU will not run out of memory
   # with too many arguments.
+  @test_util.disable_mlir_bridge("TODO(b/153895138): Debug.")
   def testConcatLargeNumberOfTensors(self):
     if "CPU" in self.device:
       self.skipTest("This test can time out on CPU, so we will just allow "

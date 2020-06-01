@@ -42,10 +42,6 @@ tf_class {
     argspec: "args=[\'self\', \'filename\'], varargs=None, keywords=None, defaults=[\'\'], "
   }
   member_method {
-    name: "cardinality"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "concatenate"
     argspec: "args=[\'self\', \'dataset\'], varargs=None, keywords=None, defaults=None"
   }

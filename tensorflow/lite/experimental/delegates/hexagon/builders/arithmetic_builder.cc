@@ -47,12 +47,6 @@ TfLiteStatus ArithmeticOpBuilder::PopulateSubGraph(
   // Second input data tensor.
   tensor_id = inputs->data[1];
   const auto& input2_tensor = context->tensors[tensor_id];
-  // TODO(karimnosseir): Have this as util to generalize to all ops.
-  if (input2_tensor.allocation_type == kTfLiteMmapRo) {
-    auto* const_input_node =
-        graph_builder_->AddConstNodeWithData(tensor_id, input2_tensor);
-    graph_builder_->AddTensorWithID(tensor_id, const_input_node->GetID(), 0);
-  }
   AddInput(graph_builder_->GetHexagonTensorId(tensor_id));
   TF_LITE_ENSURE_STATUS(
       ComputeMinAndMaxQuantValues(input2_tensor, &input2_min_, &input2_max_));

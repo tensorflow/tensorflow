@@ -30,7 +30,6 @@ GrpcWorkerImpl::GrpcWorkerImpl(ServerBuilder* server_builder,
                                const std::string& protocol)
     : impl_(master_address, protocol) {
   server_builder->RegisterService(this);
-  LOG(INFO) << "GrpcWorkerImpl: master address is " << master_address;
   VLOG(1) << "Registered data service worker";
 }
 

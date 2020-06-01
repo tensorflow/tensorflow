@@ -1235,7 +1235,8 @@ Status FunctionLibraryRuntimeImpl::PrepareRunSync(
     run_opts->create_rendezvous = false;
   }
 
-  LocalHandle local_handle = parent_->GetHandleOnDevice(device_name_, handle);
+  LocalHandle local_handle = parent_->GetHandleOnDevice(
+      device_name_, handle, /*include_multi_device=*/true);
   if (local_handle == kInvalidLocalHandle) {
     *out_item = nullptr;
     return Status::OK();

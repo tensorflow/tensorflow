@@ -3,31 +3,12 @@ syntax = "proto3";
 package tensorflow.data;
 
 import "tensorflow/core/framework/graph.proto";
-import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
 
 message DatasetDef {
   // We represent datasets as tensorflow GraphDefs which define the operations
   // needed to create a tf.data dataset.
   GraphDef graph = 1;
-}
-
-message ComponentMetadata {
-  // The dtype of the component tensor.
-  .tensorflow.DataType dtype = 1;
-  // The shape of the component tensor.
-  .tensorflow.TensorShapeProto tensor_shape = 2;
-  // Size of the uncompressed tensor bytes. For tensors serialized as
-  // TensorProtos, this is TensorProto::BytesAllocatedLong(). For raw Tensors,
-  // this is the size of the buffer underlying the Tensor.
-  int64 tensor_size_bytes = 3;
-}
-
-message CompressedElement {
-  // Compressed tensor bytes for all components of the element.
-  bytes data = 1;
-  // Metadata for the components of the element.
-  repeated ComponentMetadata component_metadata = 2;
 }
 
 message TaskDef {

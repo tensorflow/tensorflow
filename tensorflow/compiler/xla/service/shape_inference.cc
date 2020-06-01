@@ -257,6 +257,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     case HloOpcode::kLog1p:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSqrt:
+    case HloOpcode::kCbrt:
     case HloOpcode::kTanh:
       if (!ShapeUtil::ElementIsFloating(shape) &&
           !ShapeUtil::ElementIsComplex(shape)) {
@@ -1996,6 +1997,17 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         a.ToString());
   }
   return a;
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferAllGatherShape(
+    const Shape& operand_shape, int64 all_gather_dimension, int64 shard_count) {
+  TF_RET_CHECK(all_gather_dimension >= 0);
+  TF_RET_CHECK(all_gather_dimension < operand_shape.rank());
+  TF_RET_CHECK(shard_count > 0);
+  auto shape = operand_shape;
+  shape.set_dimensions(all_gather_dimension,
+                       shard_count * shape.dimensions(all_gather_dimension));
+  return shape;
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferAllReduceShape(

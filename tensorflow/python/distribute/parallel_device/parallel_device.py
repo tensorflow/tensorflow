@@ -22,10 +22,16 @@ import contextlib
 import threading
 
 from tensorflow.python import _pywrap_parallel_device
+from tensorflow.python.distribute.parallel_device import gen_parallel_device_ops
 from tensorflow.python.distribute.parallel_device import saving
 from tensorflow.python.eager import context
+from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
+from tensorflow.python.platform import resource_loader
 from tensorflow.python.tpu.ops import tpu_ops
+
+load_library.load_op_library(
+    resource_loader.get_path_to_datafile("_parallel_device_ops.so"))
 
 _next_device_number = 0
 _next_device_number_lock = threading.Lock()
@@ -58,6 +64,8 @@ class ParallelDevice(object):
     device, device_info = _pywrap_parallel_device.GetParallelDeviceCapsules(
         self.name, self.components)
     context.register_custom_device(device, self.name, device_info)
+    with ops.device(self.name):
+      self._device_ids = gen_parallel_device_ops.device_id()
 
   def pack(self, tensors):
     """Create a tensor on the parallel device from a sequence of tensors.
@@ -83,6 +91,18 @@ class ParallelDevice(object):
     with ops.device(self.name):
       return tpu_ops.tpu_replicated_output(
           parallel_tensor, num_replicas=len(self.components))
+
+  @property
+  def device_ids(self):
+    """A parallel tensor with scalar integers numbering component devices.
+
+    Each device ID is placed on its corresponding device, in the same order as
+    the `components` constructor argument.
+
+    Returns:
+      A parallel tensor containing 0 on the first device, 1 on the second, etc.
+    """
+    return self._device_ids
 
   # TODO(allenl): Fixing saving in Python is a bit odd. One alternative would be
   # to provide a hook for the custom device to create save specs/etc., then call

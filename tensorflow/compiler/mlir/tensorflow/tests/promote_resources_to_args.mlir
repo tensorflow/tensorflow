@@ -1,11 +1,11 @@
 // RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-promote-resources-to-args | FileCheck %s -dump-input-on-failure
 
 // One resource, one read. The initial value of the resource is read.
-// CHECK-LABEL: func @main(%arg0: tensor<f32> {tf.resource_name = "x"}) -> tensor<2xf32>
-func @main() -> tensor<2xf32> {
+// CHECK-LABEL: func @main(%arg0: tensor<i1>, %arg1: tensor<f32> {tf.resource_name = "x"}) -> tensor<2xf32>
+func @main(%arg0: tensor<i1>) -> tensor<2xf32> {
   // CHECK-NOT: "tf.VarHandleOp"
   // CHECK-NOT: "tf.ReadVariableOp"
-  // CHECK: %[[ADD:[0-9]*]] = "tf.AddV2"(%arg0, %[[CONST:[0-9]*]])
+  // CHECK: %[[ADD:[0-9]*]] = "tf.AddV2"(%arg1, %[[CONST:[0-9]*]])
   // CHECK: %[[PACK:[0-9]*]] = "tf.Pack"(%[[CONST]], %[[ADD]])
   // CHECK: return %[[PACK]]
   %0 = "tf.Const"() {value = dense<4.200000e+01> : tensor<f32>} : () -> tensor<f32>
@@ -19,8 +19,8 @@ func @main() -> tensor<2xf32> {
 // -----
 
 // One resource, one write. The initial value of the resource is not read.
-// CHECK-LABEL: func @main() -> (tensor<f32> {tf.resource_name = "x"})
-func @main() {
+// CHECK-LABEL: func @main(%arg0: tensor<i1>) -> (tensor<f32> {tf.resource_name = "x"})
+func @main(%arg0: tensor<i1>) {
   // CHECK-NOT: "tf.VarHandleOp"
   // CHECK-NOT: "tf.AssignVariableOp"
   // CHECK: return %[[CONST]]
@@ -33,12 +33,12 @@ func @main() {
 // -----
 
 // One resource, two reads using different resource handles.
-// CHECK-LABEL: func @main(%arg0: tensor<f32> {tf.resource_name = "x"}) -> tensor<2xf32>
-func @main() -> tensor<2xf32> {
+// CHECK-LABEL: func @main(%arg0: tensor<i1>, %arg1: tensor<f32> {tf.resource_name = "x"}) -> tensor<2xf32>
+func @main(%arg0: tensor<i1>) -> tensor<2xf32> {
   // CHECK-NOT: "tf.VarHandleOp"
   // CHECK-NOT: "tf.ReadVariableOp"
-  // CHECK: %[[ADD1:[0-9]*]] = "tf.AddV2"(%arg0, %[[CONST:[0-9]*]])
-  // CHECK: %[[ADD2:[0-9]*]] = "tf.AddV2"(%[[ADD1]], %arg0)
+  // CHECK: %[[ADD1:[0-9]*]] = "tf.AddV2"(%arg1, %[[CONST:[0-9]*]])
+  // CHECK: %[[ADD2:[0-9]*]] = "tf.AddV2"(%[[ADD1]], %arg1)
   // CHECK: %[[PACK:[0-9]*]] = "tf.Pack"(%[[CONST]], %[[ADD2]])
   // CHECK: return %[[PACK]]
 
@@ -56,12 +56,12 @@ func @main() -> tensor<2xf32> {
 // -----
 
 // Two resources, two reads using different resources.
-// CHECK-LABEL: func @main(%arg0: tensor<f32> {tf.resource_name = "x"}, %arg1: tensor<f32> {tf.resource_name = "y"}) -> tensor<2xf32>
-func @main() -> tensor<2xf32> {
+// CHECK-LABEL: func @main(%arg0: tensor<i1>, %arg1: tensor<f32> {tf.resource_name = "x"}, %arg2: tensor<f32> {tf.resource_name = "y"}) -> tensor<2xf32>
+func @main(%arg0: tensor<i1>) -> tensor<2xf32> {
   // CHECK-NOT: "tf.VarHandleOp"
   // CHECK-NOT: "tf.ReadVariableOp"
-  // CHECK: %[[ADD1:[0-9]*]] = "tf.AddV2"(%arg0, %[[CONST:[0-9]*]])
-  // CHECK: %[[ADD2:[0-9]*]] = "tf.AddV2"(%[[ADD1]], %arg1)
+  // CHECK: %[[ADD1:[0-9]*]] = "tf.AddV2"(%arg1, %[[CONST:[0-9]*]])
+  // CHECK: %[[ADD2:[0-9]*]] = "tf.AddV2"(%[[ADD1]], %arg2)
   // CHECK: %[[PACK:[0-9]*]] = "tf.Pack"(%[[CONST]], %[[ADD2]])
   // CHECK: return %[[PACK]]
 
@@ -79,12 +79,12 @@ func @main() -> tensor<2xf32> {
 // -----
 
 // One resource with read and write. The initial value of the resource is read.
-// CHECK-LABEL: func @main(%arg0: tensor<f32> {tf.aliasing_output = 1 : i64, tf.resource_name = "x"}) -> (tensor<2xf32>, tensor<f32>)
-func @main() -> tensor<2xf32> {
+// CHECK-LABEL: func @main(%arg0: tensor<i1>, %arg1: tensor<f32> {tf.aliasing_output = 1 : i64, tf.resource_name = "x"}) -> (tensor<2xf32>, tensor<f32>)
+func @main(%arg0: tensor<i1>) -> tensor<2xf32> {
   // CHECK-NOT: "tf.AssignVariableOp"
-  // CHECK: %[[ADD1:[0-9]*]] = "tf.AddV2"(%arg0, %{{[0-9]*}})
+  // CHECK: %[[ADD1:[0-9]*]] = "tf.AddV2"(%arg1, %{{[0-9]*}})
   // CHECK: %[[ADD2:[0-9]*]] = "tf.AddV2"(%[[ADD1]], %[[ADD1]])
-  // CHECK: %[[PACK:[0-9]*]] = "tf.Pack"(%arg0, %[[ADD2]])
+  // CHECK: %[[PACK:[0-9]*]] = "tf.Pack"(%arg1, %[[ADD2]])
   // CHECK: return %[[PACK]], %[[ADD1]]
 
   %0 = "tf.Const"() {value = dense<4.200000e+01> : tensor<f32>} : () -> tensor<f32>
@@ -102,8 +102,8 @@ func @main() -> tensor<2xf32> {
 // -----
 
 // One resource with read and write. The initial value of the resource is not read.
-// CHECK-LABEL: func @main() -> (tensor<2xf32>, tensor<f32> {tf.resource_name = "x"})
-func @main() -> tensor<2xf32> {
+// CHECK-LABEL: func @main(%arg0: tensor<i1>) -> (tensor<2xf32>, tensor<f32> {tf.resource_name = "x"})
+func @main(%arg0: tensor<i1>) -> tensor<2xf32> {
   // CHECK-NOT: "tf.AssignVariableOp"
   // CHECK: %[[CONST:[a-z0-9]+]] = "tf.Const"() {value = dense<4.200000e+01> : tensor<f32>}
   // CHECK: %[[ADD1:[0-9]*]] = "tf.AddV2"(%[[CONST]], %[[CONST]])
@@ -138,15 +138,15 @@ func @cond_true(%arg0: tensor<!tf.resource<tensor<f32>>>, %arg1: tensor<f32>) ->
   return %2 : tensor<f32>
 }
 
-// CHECK-LABEL: func @main(%arg0: tensor<f32> {tf.resource_name = "x"}) -> tensor<2xf32>
-func @main() -> tensor<2xf32> attributes {tf.entry_function = {inputs = "", outputs = "result"}} {
+// CHECK-LABEL: func @main(%arg0: tensor<i1>, %arg1: tensor<f32> {tf.resource_name = "x"}) -> tensor<2xf32>
+func @main(%arg0: tensor<i1>) -> tensor<2xf32> attributes {tf.entry_function = {inputs = "", outputs = "result"}} {
   %0 = "tf.Const"() {value = dense<1.050000e+03> : tensor<f32>} : () -> tensor<f32>
   %1 = "tf.VarHandleOp"() {container = "", shape = "tfshape$", shared_name = "x"} : () -> tensor<!tf.resource<tensor<f32>>>
   %2 = "tf.ReadVariableOp"(%1) : (tensor<!tf.resource<tensor<f32>>>) -> tensor<f32>
   %3 = "tf.Less"(%2, %0) : (tensor<f32>, tensor<f32>) -> tensor<i1>
   %4 = "tf.If"(%3, %1, %2) {Tcond = i1, Tin = ["tfdtype$DT_RESOURCE", "tfdtype$DT_FLOAT"], Tout = ["tfdtype$DT_FLOAT"],
-       else_branch = @cond_false, is_stateless = false, output_shapes = [#tf.shape<>],
-       then_branch = @cond_true} : (tensor<i1>, tensor<!tf.resource<tensor<f32>>>, tensor<f32>) -> tensor<f32>
+       else_branch = @cond_false, is_stateless = false,then_branch = @cond_true} :
+       (tensor<i1>, tensor<!tf.resource<tensor<f32>>>, tensor<f32>) -> tensor<f32>
   %5 = "tf.Identity"(%4) : (tensor<f32>) -> tensor<f32>
   %6 = "tf.Pack"(%2, %5) {N = 2 : i64, T = f32, axis = 0 : i64, device = ""} : (tensor<f32>, tensor<f32>) -> tensor<2xf32>
   return %6 : tensor<2xf32>
@@ -157,10 +157,11 @@ func @main() -> tensor<2xf32> attributes {tf.entry_function = {inputs = "", outp
 // Tests resource passed in as an argument is not modified and not returned.
 
 // CHECK-LABEL: func @main
-// CHECK-SAME: %[[ARG_0:[a-z0-9]+]]: tensor<f32>
-func @main(%arg0: tensor<!tf.resource<tensor<f32>>>) {
-  %0 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf.resource<tensor<f32>>>) -> tensor<f32>
-  // CHECK-NEXT: "tf.AddV2"(%[[ARG_0]], %[[ARG_0]])
+// CHECK-SAME: %arg0: tensor<i1>
+// CHECK-SAME: %[[ARG_1:[a-z0-9]+]]: tensor<f32>
+func @main(%arg0: tensor<i1>, %arg1: tensor<!tf.resource<tensor<f32>>>) {
+  %0 = "tf.ReadVariableOp"(%arg1) : (tensor<!tf.resource<tensor<f32>>>) -> tensor<f32>
+  // CHECK-NEXT: "tf.AddV2"(%[[ARG_1]], %[[ARG_1]])
   %1 = "tf.AddV2"(%0, %0) : (tensor<f32>, tensor<f32>) -> tensor<f32>
   // CHECK-NEXT: return
   return
@@ -171,9 +172,10 @@ func @main(%arg0: tensor<!tf.resource<tensor<f32>>>) {
 // Tests resource passed in as an argument is modified but not returned.
 
 // CHECK-LABEL: func @main
-// CHECK-SAME: %[[ARG_0:[a-z0-9]+]]: tensor<f32> {tf.aliasing_output = 0 : i64}
+// CHECK-SAME: %{{[a-z0-9]+}}: tensor<f32> {tf.aliasing_output = 0 : i64}
+// CHECK-SAME: %arg1: tensor<i1>
 // CHECK-SAME: -> tensor<f32>
-func @main(%arg0: tensor<!tf.resource<tensor<f32>>>) {
+func @main(%arg0: tensor<!tf.resource<tensor<f32>>>, %arg1: tensor<i1>) {
   // CHECK-NEXT: %[[CONST:[a-z0-9]+]] = "tf.Const"
   %0 = "tf.Const"() {value = dense<4.200000e+01> : tensor<f32>} : () -> tensor<f32>
   "tf.AssignVariableOp"(%arg0, %0) : (tensor<!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
@@ -186,9 +188,10 @@ func @main(%arg0: tensor<!tf.resource<tensor<f32>>>) {
 // Tests last resource assign is returned as a result.
 
 // CHECK-LABEL: func @main
-// CHECK-SAME: %[[ARG_0:[a-z0-9]+]]: tensor<f32> {tf.aliasing_output = 0 : i64}
+// CHECK-SAME: %{{[a-z0-9]+}}: tensor<f32> {tf.aliasing_output = 0 : i64}
+// CHECK-SAME: %arg1: tensor<i1>
 // CHECK-SAME: -> tensor<f32>
-func @main(%arg0: tensor<!tf.resource<tensor<f32>>>) {
+func @main(%arg0: tensor<!tf.resource<tensor<f32>>>, %arg1: tensor<i1>) {
   %0 = "tf.Const"() {value = dense<4.200000e+01> : tensor<f32>} : () -> tensor<f32>
   "tf.AssignVariableOp"(%arg0, %0) : (tensor<!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
   // CHECK: %[[CONST:[a-z0-9]+]] = "tf.Const"() {value = dense<1.050000e+03> : tensor<f32>}
@@ -204,9 +207,10 @@ func @main(%arg0: tensor<!tf.resource<tensor<f32>>>) {
 // returns the same value prior.
 
 // CHECK-LABEL: func @main
-// CHECK-SAME: %[[ARG_0:[a-z0-9]+]]: tensor<f32> {tf.aliasing_output = 1 : i64}
+// CHECK-SAME: %{{[a-z0-9]+}}: tensor<f32> {tf.aliasing_output = 1 : i64}
+// CHECK-SAME: %arg1: tensor<i1>
 // CHECK-SAME: -> (tensor<f32>, tensor<f32>)
-func @main(%arg0: tensor<!tf.resource<tensor<f32>>>) -> tensor<f32> {
+func @main(%arg0: tensor<!tf.resource<tensor<f32>>>, %arg1: tensor<i1>) -> tensor<f32> {
   %0 = "tf.Const"() {value = dense<4.200000e+01> : tensor<f32>} : () -> tensor<f32>
   "tf.AssignVariableOp"(%arg0, %0) : (tensor<!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
   // CHECK: %[[CONST:[a-z0-9]+]] = "tf.Const"() {value = dense<1.050000e+03> : tensor<f32>}
@@ -221,9 +225,10 @@ func @main(%arg0: tensor<!tf.resource<tensor<f32>>>) -> tensor<f32> {
 // Tests read interleaved between writes.
 
 // CHECK-LABEL: func @main
-// CHECK-SAME: %[[ARG_0:[a-z0-9]+]]: tensor<f32> {tf.aliasing_output = 1 : i64}
+// CHECK-SAME: %{{[a-z0-9]+}}: tensor<f32> {tf.aliasing_output = 1 : i64}
+// CHECK-SAME: %arg1: tensor<i1>
 // CHECK-SAME: -> (tensor<f32>, tensor<f32>)
-func @main(%arg0: tensor<!tf.resource<tensor<f32>>>) -> tensor<f32> {
+func @main(%arg0: tensor<!tf.resource<tensor<f32>>>, %arg1: tensor<i1>) -> tensor<f32> {
   // CHECK-NEXT: %[[CONST_0:[a-z0-9]+]] = "tf.Const"() {value = dense<4.200000e+01> : tensor<f32>}
   %0 = "tf.Const"() {value = dense<4.200000e+01> : tensor<f32>} : () -> tensor<f32>
   "tf.AssignVariableOp"(%arg0, %0) : (tensor<!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
@@ -271,7 +276,7 @@ func @main(%arg0: tensor<!tf.resource<tensor<f32>>>, %arg1: tensor<!tf.resource<
 
 // Tests main function with multiple blocks.
 
-// expected-error@+1 {{expects 'main' function to have 1 block, got 2}}
+// expected-error@+1 {{expects function 'main' to have 1 block, got 2}}
 func @main() {
   br ^bb1
 ^bb1:
@@ -282,7 +287,7 @@ func @main() {
 
 // Tests main function is terminated with a non MLIR ReturnOp.
 
-// expected-error@+1 {{expects 'main' function to have a MLIR ReturnOp}}
+// expected-error@+1 {{expects function 'main' to have a MLIR ReturnOp}}
 func @main() {
 ^bb0:
   tf_device.return
@@ -312,9 +317,10 @@ func @main() {
 // Tests resource argument has users that are not ReadVariableOp or
 // AssignVariableOp.
 
-// expected-error@+1 {{expects users of resource argument 0 to be 'tf.ReadVariableOp' or 'tf.AssignVariableOp'}}
+// expected-error@+1 {{expects users of resource argument 0 to be 'tf.ReadVariableOp' or 'tf.AssignVariableOp', got [tf.UnknownOp, tf.VarIsInitializedOp]}}
 func @main(%arg0: tensor<!tf.resource<tensor<f32>>>) -> tensor<i1> {
   %0 = "tf.VarIsInitializedOp"(%arg0) : (tensor<!tf.resource<tensor<f32>>>) -> tensor<i1>
+  %1 = "tf.UnknownOp"(%arg0) : (tensor<!tf.resource<tensor<f32>>>) -> tensor<i1>
   return %0 : tensor<i1>
 }
 
@@ -323,7 +329,7 @@ func @main(%arg0: tensor<!tf.resource<tensor<f32>>>) -> tensor<i1> {
 // Tests VarHandleOp has users that are not removed.
 
 func @main() -> tensor<i1> {
-  // expected-error@+1 {{expects no uses but used by operations: tf.UnknownOp, tf.VarIsInitializedOp}}
+  // expected-error@+1 {{expects users to be 'tf.ReadVariableOp' or 'tf.AssignVariableOp', got [tf.UnknownOp, tf.VarIsInitializedOp]}}
   %0 = "tf.VarHandleOp"() {container = "", shape = "tfshape$", shared_name = "x"} : () -> tensor<!tf.resource<tensor<f32>>>
   %1 = "tf.VarIsInitializedOp"(%0) : (tensor<!tf.resource<tensor<f32>>>) -> tensor<i1>
   %2 = "tf.UnknownOp"(%0) : (tensor<!tf.resource<tensor<f32>>>) -> tensor<i1>

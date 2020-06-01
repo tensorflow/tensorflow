@@ -852,6 +852,8 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
                               TFE_CancellationManager* cancellation_manager,
                               TFE_OutputTensorHandles* outputs,
                               TF_Status* out_status) {
+  tensorflow::profiler::TraceMe activity(
+      "TFE_Py_ExecuteCancelable", tensorflow::profiler::TraceMeLevel::kInfo);
   TFE_Op* op = GetOp(ctx, op_name, device_name, out_status);
   auto cleaner = tensorflow::gtl::MakeCleanup([ctx, op] { ReturnOp(ctx, op); });
   if (!out_status->status.ok()) return;
@@ -3223,6 +3225,9 @@ bool ReadVariableOp(const FastPathOpExecInfo& parent_op_exec_info,
   auto cleaner = tensorflow::gtl::MakeCleanup([op] { TFE_DeleteOp(op); });
   if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) return false;
 
+  TFE_OpSetDevice(op, parent_op_exec_info.device_name, status);
+  if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) return false;
+
   // Set dtype
   DCHECK(PyObject_HasAttrString(input, "_dtype"));
   tensorflow::Safe_PyObjectPtr dtype(PyObject_GetAttrString(input, "_dtype"));
@@ -3231,9 +3236,6 @@ bool ReadVariableOp(const FastPathOpExecInfo& parent_op_exec_info,
     return false;
   }
   TFE_OpSetAttrType(op, "dtype", static_cast<TF_DataType>(value));
-
-  TFE_OpSetDevice(op, parent_op_exec_info.device_name, status);
-  if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) return false;
 
   // Get handle
   tensorflow::Safe_PyObjectPtr handle(PyObject_GetAttrString(input, "_handle"));

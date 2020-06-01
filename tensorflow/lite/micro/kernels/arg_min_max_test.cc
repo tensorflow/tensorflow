@@ -31,9 +31,9 @@ void ValidateArgMinMaxGoldens(TfLiteTensor* tensors, int tensors_size,
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration;
   if (using_min) {
-    registration = resolver.FindOp(tflite::BuiltinOperator_ARG_MIN, 1);
+    registration = resolver.FindOp(tflite::BuiltinOperator_ARG_MIN);
   } else {
-    registration = resolver.FindOp(tflite::BuiltinOperator_ARG_MAX, 1);
+    registration = resolver.FindOp(tflite::BuiltinOperator_ARG_MAX);
   }
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 

@@ -56,7 +56,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  tflite::MicroOpResolver<4> micro_op_resolver;
+  tflite::MicroMutableOpResolver<4> micro_op_resolver;
 
   micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_CONV_2D,
                                tflite::ops::micro::Register_CONV_2D());
@@ -67,7 +67,7 @@ int main(int argc, char** argv) {
   micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
                                tflite::ops::micro::Register_SOFTMAX());
 
-  constexpr int tensor_arena_size = 45 * 1024;
+  constexpr int tensor_arena_size = 50 * 1024;
   uint8_t tensor_arena[tensor_arena_size];
   tflite::MicroInterpreter interpreter(model, resolver, tensor_arena,
                                        tensor_arena_size, error_reporter);

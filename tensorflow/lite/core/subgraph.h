@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_SUBGRAPH_H_
 #define TENSORFLOW_LITE_CORE_SUBGRAPH_H_
 
+#include <cstdint>
 #include <cstdlib>
 #include <map>
 #include <utility>
@@ -338,21 +339,16 @@ class Subgraph {
   class SubgraphAwareProfiler : public Profiler {
    public:
     // Constructor should be called with the non-nullptr profiler argument.
-    SubgraphAwareProfiler(Profiler* profiler, uint32_t subgraph_index)
+    SubgraphAwareProfiler(Profiler* profiler, int64_t subgraph_index)
         : profiler_(profiler), subgraph_index_(subgraph_index) {}
     ~SubgraphAwareProfiler() override {}
 
     uint32_t BeginEvent(const char* tag, EventType event_type,
-                        uint32_t event_metadata,
-                        uint32_t subgraph_index) override {
+                        int64_t event_metadata1,
+                        int64_t event_metadata2) override {
       if (!profiler_) return 0;
-      return profiler_->BeginEvent(tag, event_type, event_metadata,
-                                   subgraph_index);
-    }
-
-    uint32_t BeginEvent(const char* tag, EventType event_type,
-                        uint32_t event_metadata) override {
-      return BeginEvent(tag, event_type, event_metadata, subgraph_index_);
+      return profiler_->BeginEvent(tag, event_type, event_metadata1,
+                                   subgraph_index_);
     }
 
     void EndEvent(uint32_t event_handle) override {
@@ -360,17 +356,24 @@ class Subgraph {
       profiler_->EndEvent(event_handle);
     }
 
-    void AddEvent(const char* tag, EventType event_type,
-                  uint32_t event_metadata, uint64_t start,
-                  uint64_t end) override {
+    void EndEvent(uint32_t event_handle, int64_t event_metadata1,
+                  int64_t event_metadata2) override {
       if (!profiler_) return;
-      profiler_->AddEvent(tag, event_type, event_metadata, start, end);
+      profiler_->EndEvent(event_handle, event_metadata1, event_metadata2);
+    }
+
+    void AddEvent(const char* tag, EventType event_type, uint64_t start,
+                  uint64_t end, int64_t event_metadata1,
+                  int64_t event_metadata2) override {
+      if (!profiler_) return;
+      profiler_->AddEvent(tag, event_type, start, end, event_metadata1,
+                          subgraph_index_);
     }
 
    private:
     // Not own the memory.
     Profiler* const profiler_;
-    const uint32_t subgraph_index_;
+    const int64_t subgraph_index_;
   };
 
   // Prevent 'context_' from accessing functions that are only available to
@@ -553,6 +556,9 @@ class Subgraph {
   // afterwards.
   TfLiteStatus RemoveAllDelegates();
 
+  // Returns true if the subgraph has delegates applied.
+  bool HasDelegates();
+
   // Cleanups up data reserved for the given node. Does not remove the {node,
   // registration} pair from nodes_and_registrations_.
   void CleanupNode(int node_index);
@@ -577,6 +583,9 @@ class Subgraph {
 
   // Ensures the memory required is planned and allocated.
   TfLiteStatus EnsureMemoryAllocations();
+
+  // Returns true if cancellation function returns true.
+  bool IsCancelled();
 
   // The state of the Interpreter.
   enum State {

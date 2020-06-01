@@ -43,7 +43,7 @@ void TestReluFloat(const int* input_dims_data, const float* input_data,
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_RELU, 1);
+      resolver.FindOp(tflite::BuiltinOperator_RELU);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   const char* init_data = nullptr;
@@ -99,7 +99,7 @@ void TestRelu6Float(const int* input_dims_data, const float* input_data,
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_RELU6, 1);
+      resolver.FindOp(tflite::BuiltinOperator_RELU6);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   const char* init_data = nullptr;
@@ -160,7 +160,7 @@ void TestReluUint8(const int* input_dims_data, const float* input_data,
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_RELU, 1);
+      resolver.FindOp(tflite::BuiltinOperator_RELU);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   const char* init_data = nullptr;
@@ -225,7 +225,7 @@ void TestRelu6Uint8(const int* input_dims_data, const float* input_data,
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_RELU6, 1);
+      resolver.FindOp(tflite::BuiltinOperator_RELU6);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   const char* init_data = nullptr;
@@ -289,7 +289,7 @@ void TestReluInt8(const int* input_dims_data, const float* input_data,
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_RELU, 1);
+      resolver.FindOp(tflite::BuiltinOperator_RELU);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   const char* init_data = nullptr;
@@ -355,7 +355,7 @@ void TestRelu6Int8(const int* input_dims_data, const float* input_data,
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_RELU6, 1);
+      resolver.FindOp(tflite::BuiltinOperator_RELU6);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   const char* init_data = nullptr;

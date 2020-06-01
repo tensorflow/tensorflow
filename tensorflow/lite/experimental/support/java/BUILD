@@ -9,7 +9,24 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+# TODO(b/156482505): The NOGPU target is a temporary target. Internally, people
+# may already depend on "tensorflow-lite-support" so we shouldn't remove GPU
+# from its dependency. We will have CLs to help users migrate. After migration
+# is done, the "NOGPU" target will be removed.
+android_library(
+    name = "tensorflow-lite-support-nogpu",
+    srcs = glob(["src/java/org/tensorflow/lite/support/**/*.java"]),
+    javacopts = JAVACOPTS,
+    manifest = "AndroidManifest.xml",
+    deps = [
+        "//tensorflow/lite/java:tensorflowlite",
+        "@org_checkerframework_qual",
+    ],
+)
+
 # TODO(138904786): Split Java part and Android part to make the support library usable by pure Java.
+# For new users: Please use "tensorflow-lite-support-nogpu" if possible, and
+# additionally depends on "tensorflowlite_gpu" if needed.
 android_library(
     name = "tensorflow-lite-support",
     srcs = glob(["src/java/org/tensorflow/lite/support/**/*.java"]),
@@ -17,7 +34,7 @@ android_library(
     manifest = "AndroidManifest.xml",
     deps = [
         "//tensorflow/lite/java:tensorflowlite",
-        "//tensorflow/lite/java:tensorflowlite_gpu",
+        "//tensorflow/lite/java:tensorflowlite_gpu",  # unuseddeps: keep
         "@org_checkerframework_qual",
     ],
 )

@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors
@@ -29,7 +28,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
-from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
@@ -761,7 +759,7 @@ class BinaryOpTest(test.TestCase):
             ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
 
   @test_util.run_deprecated_v1
-  def testZeroBasePowGrad(self):
+  def testZeroPowGrad(self):
     with self.cached_session():
       for dtype in (np.float16, np.float32, np.float64, np.complex64,
                     np.complex128):
@@ -770,43 +768,6 @@ class BinaryOpTest(test.TestCase):
         z = math_ops.pow(x, y)
         error = gradient_checker.compute_gradient_error(y, [], z, [])
         self.assertEqual(error, 0)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testZeroPowerPowGrad(self):
-    # Tests for 0. ** 0.'s gradient with respect to the base for real dtypes
-    # only. For complex types 0. ** 0. itself isn't well defined, so we'd get a
-    # non-deterministic smattering of NaNs in the test.
-
-    # pylint: disable=cell-var-from-loop
-    for dtype in (np.float16, np.float32, np.float64):
-      sym_jac, num_jac = gradient_checker_v2.compute_gradient(
-          lambda x: math_ops.pow(x, 0.),
-          [constant_op.constant([-1., 0., 1.], dtype=dtype)])
-      self.assertAllClose(sym_jac, num_jac)
-      power = constant_op.constant([0., 0., 0.], dtype=dtype)
-      sym_jac, num_jac = gradient_checker_v2.compute_gradient(
-          lambda x: math_ops.pow(x, power),
-          [constant_op.constant([-1., 0., 1.], dtype=dtype)])
-      self.assertAllClose(sym_jac, num_jac)
-      with backprop.GradientTape() as tape:
-        x = constant_op.constant(float("NaN"), dtype=dtype)
-        tape.watch(x)
-        y = x ** 0.
-      self.assertAllClose(0., tape.gradient(y, x))
-    # pylint: enable=cell-var-from-loop
-
-    x = constant_op.constant(0.)
-    with backprop.GradientTape(persistent=True) as tape:
-      tape.watch(x)
-      y = math_ops.pow(x, 2.)
-      x_g = tape.gradient(y, x)
-      self.assertAllClose(2. * 0. ** 1., x_g)
-      x_gg = tape.gradient(x_g, x)
-      self.assertAllClose(2. * 0. ** 0., x_gg)
-      x_ggg = tape.gradient(x_gg, x)
-      self.assertAllClose(0., x_ggg)
-      # Note that higher-order gradients currently return NaN since backprop
-      # isn't very smart.
 
   @test_util.run_deprecated_v1
   def testComplexPowGrad(self):

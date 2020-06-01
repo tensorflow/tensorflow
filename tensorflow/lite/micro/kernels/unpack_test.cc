@@ -67,7 +67,7 @@ void TestUnpackThreeOutputsFloat(
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
   tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_UNPACK, /* version= */ 1);
+      resolver.FindOp(tflite::BuiltinOperator_UNPACK);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteUnpackParams builtin_data = {
@@ -144,7 +144,7 @@ void TestUnpackOneOutputFloat(std::initializer_list<int> input_dims_data,
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
   tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_UNPACK, /* version= */ 1);
+      resolver.FindOp(tflite::BuiltinOperator_UNPACK);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteUnpackParams builtin_data = {
@@ -236,7 +236,7 @@ void TestUnpackThreeOutputsQuantized(
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
   tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_UNPACK, /* version= */ 1);
+      resolver.FindOp(tflite::BuiltinOperator_UNPACK);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteUnpackParams builtin_data = {
@@ -332,7 +332,7 @@ void TestUnpackThreeOutputsQuantized32(
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
   tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_UNPACK, /* version= */ 1);
+      resolver.FindOp(tflite::BuiltinOperator_UNPACK);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteUnpackParams builtin_data = {

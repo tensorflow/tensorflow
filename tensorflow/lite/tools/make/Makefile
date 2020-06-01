@@ -58,7 +58,7 @@ LIBS := \
 # There are no rules for compiling objects for the host system (since we don't
 # generate things like the protobuf compiler that require that), so all of
 # these settings are for the target compiler.
-CFLAGS := -O3 -DNDEBUG -fPIC
+CFLAGS := -O3 -DNDEBUG -fPIC $(EXTRA_CFLAGS)
 CXXFLAGS := $(CFLAGS) --std=c++11 $(EXTRA_CXXFLAGS)
 LDOPTS := -L/usr/local/lib
 ARFLAGS := -r
@@ -246,7 +246,7 @@ BENCHMARK_LIB_SRCS := $(filter-out \
 	$(BENCHMARK_ALL_SRCS))
 
 # These target-specific makefiles should modify or replace options like
-# CXXFLAGS or LIBS to work for a specific targetted architecture. All logic
+# CXXFLAGS or LIBS to work for a specific targeted architecture. All logic
 # based on platforms or architectures should happen within these files, to
 # keep this main makefile focused on the sources and dependencies.
 include $(wildcard $(MAKEFILE_DIR)/targets/*_makefile.inc)
@@ -339,11 +339,18 @@ $(BENCHMARK_LIB) : $(LIB_PATH) $(BENCHMARK_LIB_OBJS)
 
 benchmark_lib: $(BENCHMARK_LIB)
 
+BENCHMARK_LINKOPTS :=
+ifeq ($(HOST_OS),osx)
+	BENCHMARK_LINKOPTS += $(LIBFLAGS) -Wl,-force_load $(BENCHMARK_LIB) $(LIBS) $(LDFLAGS) -framework CoreFoundation
+else
+	BENCHMARK_LINKOPTS += $(LIBFLAGS) -Wl,--whole-archive $(BENCHMARK_LIB) -Wl,--no-whole-archive $(LDFLAGS) $(LIBS)
+endif
+
 $(BENCHMARK_BINARY) : $(BENCHMARK_MAIN_OBJ) $(BENCHMARK_LIB)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) \
 	-o $(BENCHMARK_BINARY) $(BENCHMARK_MAIN_OBJ) \
-	$(LIBFLAGS) -Wl,--whole-archive $(BENCHMARK_LIB) -Wl,--no-whole-archive $(LDFLAGS) $(LIBS)
+	$(LIBFLAGS) $(BENCHMARK_LINKOPTS)
 
 $(BENCHMARK_PERF_OPTIONS_BINARY) : $(BENCHMARK_PERF_OPTIONS_OBJ) $(BENCHMARK_LIB)
 	@mkdir -p $(dir $@)

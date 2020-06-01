@@ -51,7 +51,7 @@ void TestAveragePoolingFloat(std::initializer_list<int> input_dims_data,
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_AVERAGE_POOL_2D, 1);
+      resolver.FindOp(tflite::BuiltinOperator_AVERAGE_POOL_2D);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLitePoolParams builtin_data = {padding,      stride_width,  stride_height,
@@ -125,7 +125,7 @@ void TestAveragePoolingQuantized(
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_AVERAGE_POOL_2D, 1);
+      resolver.FindOp(tflite::BuiltinOperator_AVERAGE_POOL_2D);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLitePoolParams builtin_data = {padding,      stride_width,  stride_height,
@@ -192,7 +192,7 @@ void TestMaxPoolFloat(std::initializer_list<int> input_dims_data,
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_MAX_POOL_2D, 1);
+      resolver.FindOp(tflite::BuiltinOperator_MAX_POOL_2D);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLitePoolParams builtin_data = {
@@ -268,7 +268,7 @@ void TestMaxPoolQuantized(std::initializer_list<int> input_dims_data,
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_MAX_POOL_2D, 1);
+      resolver.FindOp(tflite::BuiltinOperator_MAX_POOL_2D);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLitePoolParams builtin_data = {
@@ -496,7 +496,7 @@ TF_LITE_MICRO_TEST(SimpleAveragePoolTestInt8PaddingSameStride1ActNone) {
        F2QS(8.5, output_min, output_max), F2QS(7., output_min, output_max)},
       {4, 1, 2, 4, 1},         // Output shape
       output_min, output_max,  // output quantization range
-      kTfLitePaddingValid, kTfLiteActNone, output_data);
+      kTfLitePaddingSame, kTfLiteActNone, output_data);
 }
 
 TF_LITE_MICRO_TEST(SimpleMaxPoolTestFloat) {

@@ -731,42 +731,19 @@ REGISTER_OP("OneShotIterator")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape);
 
-namespace {
-
-Status IteratorGetNextShapeFn(shape_inference::InferenceContext* c) {
-  shape_inference::ShapeHandle unused;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
-  std::vector<PartialTensorShape> output_shapes;
-  TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
-  if (output_shapes.size() != c->num_outputs()) {
-    return errors::InvalidArgument(
-        "`output_shapes` must be the same length as `output_types` (",
-        output_shapes.size(), " vs. ", c->num_outputs());
-  }
-  for (size_t i = 0; i < output_shapes.size(); ++i) {
-    shape_inference::ShapeHandle output_shape_handle;
-    TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(
-        output_shapes[i], &output_shape_handle));
-    c->set_output(static_cast<int>(i), output_shape_handle);
-  }
-  return Status::OK();
-}
-
-}  // namespace
-
 REGISTER_OP("IteratorGetNext")
     .Input("iterator: resource")
     .Output("components: output_types")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetShapeFn(IteratorGetNextShapeFn);
+    .SetShapeFn(shape_inference::DatasetIteratorShape);
 
 REGISTER_OP("IteratorGetNextSync")
     .Input("iterator: resource")
     .Output("components: output_types")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetShapeFn(IteratorGetNextShapeFn);
+    .SetShapeFn(shape_inference::DatasetIteratorShape);
 
 // TODO(b/124308596): Instead of conservatively marking this op as stateful,
 // implement a mechanism to determine whether `dataset` has a side-effect
@@ -778,7 +755,7 @@ REGISTER_OP("DatasetToSingleElement")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetIsStateful()
-    .SetShapeFn(IteratorGetNextShapeFn);
+    .SetShapeFn(shape_inference::DatasetIteratorShape);
 
 // TODO(b/124308596): Instead of conservatively marking this op as stateful,
 // implement a mechanism to determine whether `dataset` has a side-effect
@@ -796,7 +773,7 @@ REGISTER_OP("ReduceDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("use_inter_op_parallelism: bool = true")
     .SetIsStateful()
-    .SetShapeFn(IteratorGetNextShapeFn);
+    .SetShapeFn(shape_inference::DatasetIteratorShape);
 
 REGISTER_OP("IteratorToStringHandle")
     .Input("resource_handle: resource")
@@ -875,7 +852,7 @@ REGISTER_OP("OptionalGetValue")
     .Output("components: output_types")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetShapeFn(IteratorGetNextShapeFn);
+    .SetShapeFn(shape_inference::DatasetIteratorShape);
 
 REGISTER_OP("IteratorGetNextAsOptional")
     .Input("iterator: resource")
@@ -992,7 +969,7 @@ REGISTER_OP("MultiDeviceIteratorGetNextFromShard")
     .Output("components: output_types")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetShapeFn(IteratorGetNextShapeFn);
+    .SetShapeFn(shape_inference::DatasetIteratorShape);
 
 REGISTER_OP("MultiDeviceIteratorToStringHandle")
     .Input("multi_device_iterator: resource")

@@ -1393,7 +1393,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     const TfLiteTensor* projection_weights =
         GetOptionalInputTensor(context, node, kProjectionWeightsTensor);
     if (projection_weights != nullptr) {
-      row_sums_rows += ceil(n_output / n_cell);
+      row_sums_rows += ceil(static_cast<float>(n_output) / n_cell);
     }
 
     TfLiteTensor* row_sums = GetTemporary(context, node, /*index=*/9);

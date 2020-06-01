@@ -66,10 +66,11 @@ class CholeskySolveTest(test.TestCase):
                _RandomPDMatrix(n, self.rng)]).astype(np_type)
           chol = linalg_ops.cholesky(array)
           for k in range(1, 3):
-            rhs = self.rng.randn(2, n, k).astype(np_type)
-            x = linalg_ops.cholesky_solve(chol, rhs)
-            self.assertAllClose(
-                rhs, math_ops.matmul(array, x).eval(), atol=atol)
+            with self.subTest(n=n, np_type=np_type, atol=atol, k=k):
+              rhs = self.rng.randn(2, n, k).astype(np_type)
+              x = linalg_ops.cholesky_solve(chol, rhs)
+              self.assertAllClose(
+                  rhs, math_ops.matmul(array, x).eval(), atol=atol)
 
 
 class LogdetTest(test.TestCase):
@@ -82,24 +83,26 @@ class LogdetTest(test.TestCase):
     for n in range(1, 6):
       for np_dtype, atol in [(np.float32, 0.05), (np.float64, 1e-5),
                              (np.complex64, 0.05), (np.complex128, 1e-5)]:
-        matrix = _RandomPDMatrix(n, self.rng, np_dtype)
-        _, logdet_np = np.linalg.slogdet(matrix)
-        with self.session(use_gpu=True):
-          # Create 2 x n x n matrix
-          # matrix = np.array(
-          #     [_RandomPDMatrix(n, self.rng, np_dtype),
-          #      _RandomPDMatrix(n, self.rng, np_dtype)]).astype(np_dtype)
-          logdet_tf = linalg.logdet(matrix)
-          self.assertAllClose(logdet_np, self.evaluate(logdet_tf), atol=atol)
+        with self.subTest(n=n, np_dtype=np_dtype, atol=atol):
+          matrix = _RandomPDMatrix(n, self.rng, np_dtype)
+          _, logdet_np = np.linalg.slogdet(matrix)
+          with self.session(use_gpu=True):
+            # Create 2 x n x n matrix
+            # matrix = np.array(
+            #     [_RandomPDMatrix(n, self.rng, np_dtype),
+            #      _RandomPDMatrix(n, self.rng, np_dtype)]).astype(np_dtype)
+            logdet_tf = linalg.logdet(matrix)
+            self.assertAllClose(logdet_np, self.evaluate(logdet_tf), atol=atol)
 
   def test_works_with_underflow_case(self):
     for np_dtype, atol in [(np.float32, 0.05), (np.float64, 1e-5),
                            (np.complex64, 0.05), (np.complex128, 1e-5)]:
-      matrix = (np.eye(20) * 1e-6).astype(np_dtype)
-      _, logdet_np = np.linalg.slogdet(matrix)
-      with self.session(use_gpu=True):
-        logdet_tf = linalg.logdet(matrix)
-        self.assertAllClose(logdet_np, self.evaluate(logdet_tf), atol=atol)
+      with self.subTest(np_dtype=np_dtype, atol=atol):
+        matrix = (np.eye(20) * 1e-6).astype(np_dtype)
+        _, logdet_np = np.linalg.slogdet(matrix)
+        with self.session(use_gpu=True):
+          logdet_tf = linalg.logdet(matrix)
+          self.assertAllClose(logdet_np, self.evaluate(logdet_tf), atol=atol)
 
 
 class SlogdetTest(test.TestCase):
@@ -112,7 +115,20 @@ class SlogdetTest(test.TestCase):
     for n in range(1, 6):
       for np_dtype, atol in [(np.float32, 0.05), (np.float64, 1e-5),
                              (np.complex64, 0.05), (np.complex128, 1e-5)]:
-        matrix = _RandomPDMatrix(n, self.rng, np_dtype)
+        with self.subTest(n=n, np_dtype=np_dtype, atol=atol):
+          matrix = _RandomPDMatrix(n, self.rng, np_dtype)
+          sign_np, log_abs_det_np = np.linalg.slogdet(matrix)
+          with self.session(use_gpu=True):
+            sign_tf, log_abs_det_tf = linalg.slogdet(matrix)
+            self.assertAllClose(
+                log_abs_det_np, self.evaluate(log_abs_det_tf), atol=atol)
+            self.assertAllClose(sign_np, self.evaluate(sign_tf), atol=atol)
+
+  def test_works_with_underflow_case(self):
+    for np_dtype, atol in [(np.float32, 0.05), (np.float64, 1e-5),
+                           (np.complex64, 0.05), (np.complex128, 1e-5)]:
+      with self.subTest(np_dtype=np_dtype, atol=atol):
+        matrix = (np.eye(20) * 1e-6).astype(np_dtype)
         sign_np, log_abs_det_np = np.linalg.slogdet(matrix)
         with self.session(use_gpu=True):
           sign_tf, log_abs_det_tf = linalg.slogdet(matrix)
@@ -120,30 +136,20 @@ class SlogdetTest(test.TestCase):
               log_abs_det_np, self.evaluate(log_abs_det_tf), atol=atol)
           self.assertAllClose(sign_np, self.evaluate(sign_tf), atol=atol)
 
-  def test_works_with_underflow_case(self):
-    for np_dtype, atol in [(np.float32, 0.05), (np.float64, 1e-5),
-                           (np.complex64, 0.05), (np.complex128, 1e-5)]:
-      matrix = (np.eye(20) * 1e-6).astype(np_dtype)
-      sign_np, log_abs_det_np = np.linalg.slogdet(matrix)
-      with self.session(use_gpu=True):
-        sign_tf, log_abs_det_tf = linalg.slogdet(matrix)
-        self.assertAllClose(
-            log_abs_det_np, self.evaluate(log_abs_det_tf), atol=atol)
-        self.assertAllClose(sign_np, self.evaluate(sign_tf), atol=atol)
-
 
 class AdjointTest(test.TestCase):
 
   def test_compare_to_numpy(self):
     for dtype in np.float64, np.float64, np.complex64, np.complex128:
-      matrix_np = np.array([[1 + 1j, 2 + 2j, 3 + 3j], [4 + 4j, 5 + 5j,
-                                                       6 + 6j]]).astype(dtype)
-      expected_transposed = np.conj(matrix_np.T)
-      with self.session():
-        matrix = ops.convert_to_tensor(matrix_np)
-        transposed = linalg.adjoint(matrix)
-        self.assertEqual((3, 2), transposed.get_shape())
-        self.assertAllEqual(expected_transposed, self.evaluate(transposed))
+      with self.subTest(dtype=dtype):
+        matrix_np = np.array([[1 + 1j, 2 + 2j, 3 + 3j], [4 + 4j, 5 + 5j,
+                                                         6 + 6j]]).astype(dtype)
+        expected_transposed = np.conj(matrix_np.T)
+        with self.session():
+          matrix = ops.convert_to_tensor(matrix_np)
+          transposed = linalg.adjoint(matrix)
+          self.assertEqual((3, 2), transposed.get_shape())
+          self.assertAllEqual(expected_transposed, self.evaluate(transposed))
 
 
 class EyeTest(parameterized.TestCase, test.TestCase):

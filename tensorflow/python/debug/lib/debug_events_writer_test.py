@@ -660,6 +660,43 @@ class DataObjectsTest(test_util.TensorFlowTestCase):
     self.assertIsNone(json["output_tensor_ids"])
     self.assertIsNone(json["debug_tensor_values"])
 
+  def testDebuggedDeviceToJons(self):
+    debugged_device = debug_events_reader.DebuggedDevice("/TPU:3", 4)
+    self.assertEqual(debugged_device.to_json(), {
+        "device_name": "/TPU:3",
+        "device_id": 4,
+    })
+
+  def testDebuggedGraphToJonsWitouthNameInnerOuterGraphIds(self):
+    debugged_graph = debug_events_reader.DebuggedGraph(
+        None,
+        "b1c2",
+        outer_graph_id=None,
+    )
+    self.assertEqual(
+        debugged_graph.to_json(), {
+            "name": None,
+            "graph_id": "b1c2",
+            "outer_graph_id": None,
+            "inner_graph_ids": [],
+        })
+
+  def testDebuggedGraphToJonsWithNameAndInnerOuterGraphIds(self):
+    debugged_graph = debug_events_reader.DebuggedGraph(
+        "loss_function",
+        "b1c2",
+        outer_graph_id="a0b1",
+    )
+    debugged_graph.add_inner_graph_id("c2d3")
+    debugged_graph.add_inner_graph_id("c2d3e4")
+    self.assertEqual(
+        debugged_graph.to_json(), {
+            "name": "loss_function",
+            "graph_id": "b1c2",
+            "outer_graph_id": "a0b1",
+            "inner_graph_ids": ["c2d3", "c2d3e4"],
+        })
+
   def testGraphOpCreationDigestNoInputNoDeviceNameToJson(self):
     op_creation_digest = debug_events_reader.GraphOpCreationDigest(
         1234,

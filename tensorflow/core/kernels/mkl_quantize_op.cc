@@ -77,7 +77,7 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
  public:
   explicit MklReorderWithScalePrimitive(
       const MklReorderWithScaleFwdParams& fwdParams)
-      : cpu_engine_(ENGINE_CPU, 0) {
+      : MklPrimitive(engine(ENGINE_CPU, 0)) {
     // Create reorder primitive
     Setup(fwdParams);
   }
@@ -86,14 +86,14 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
 
   std::shared_ptr<primitive> GetPrimitive() { return context_.reorder_prim; }
 
-  void Execute(void* src_data, void* dst_data) {
+  void Execute(void* src_data, void* dst_data,
+               std::shared_ptr<stream> reorder_stream) {
     context_.src_mem->set_data_handle(src_data);
     context_.dst_mem->set_data_handle(dst_data);
 #ifndef ENABLE_MKLDNN_V1
-    context_.reorder_stream->submit(context_.net);
+    reorder_stream->submit(context_.net);
 #else
-    context_.reorder_prim->execute(*context_.reorder_stream,
-                                   context_.prim_args);
+    context_.reorder_prim->execute(*reorder_stream, context_.prim_args);
 #endif  // !ENABLE_MKLDNN_V1
     // After execution, set data handle back.
     context_.src_mem->set_data_handle(DummyData);
@@ -124,11 +124,8 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
         : src_mem(nullptr),
           dst_mem(nullptr),
           reorder_pd(nullptr),
-          reorder_prim(nullptr),
-          reorder_stream(nullptr) {}
+          reorder_prim(nullptr) {}
   } context_;
-
-  engine cpu_engine_;
 
   // Reorder primitive setup
   void Setup(const MklReorderWithScaleFwdParams& fwdParams) {
@@ -163,7 +160,6 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
     context_.prim_args.insert({MKLDNN_ARG_FROM, *context_.src_mem});
     context_.prim_args.insert({MKLDNN_ARG_TO, *context_.dst_mem});
 #endif  // !ENABLE_MKLDNN_V1
-    context_.reorder_stream.reset(new CPU_STREAM(cpu_engine_));
   }
 };
 
@@ -491,7 +487,10 @@ class MklQuantizeV2Op : public OpKernel {
     MklReorderWithScalePrimitive* reorder_prim =
         MklReorderWithScalePrimitiveFactory<T>::Get(src.GetUsrMem(),
                                                     dst.GetUsrMem(), fwdParams);
-    reorder_prim->Execute(src.GetUsrMemDataHandle(), dst.GetUsrMemDataHandle());
+    std::shared_ptr<stream> cpu_stream;
+    cpu_stream.reset(CreateStream(ctx, reorder_prim->GetEngine()));
+    reorder_prim->Execute(src.GetUsrMemDataHandle(), dst.GetUsrMemDataHandle(),
+                          cpu_stream);
 
     output_min_tensor->flat<float>()(0) = min_range;
     output_max_tensor->flat<float>()(0) = max_range;

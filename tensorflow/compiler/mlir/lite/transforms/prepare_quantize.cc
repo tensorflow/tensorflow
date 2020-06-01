@@ -70,6 +70,7 @@ class PrepareQuantizePass
     : public PassWrapper<PrepareQuantizePass, FunctionPass> {
  public:
   // Constructor used by the PassRegistration and enforce uint8 quantization.
+  // This is only used by test.
   explicit PrepareQuantizePass() {
     if (quantize_signed)
       quant_specs_.inference_type = tensorflow::DT_QINT8;
@@ -108,8 +109,8 @@ class PrepareQuantizePass
   // Get the min and max values from the quantization specification for the
   // current function function and argument index. Uses default values if
   // the function is specified in the `quantize_whitelist`.
-  std::pair<double, double> GetMinMaxValuesForArgument(
-      llvm::StringRef func_name, int index) {
+  std::pair<llvm::Optional<double>, llvm::Optional<double>>
+  GetMinMaxValuesForArgument(llvm::StringRef func_name, int index) {
     if (func_name == quant_specs_.target_func) {
       return quant_specs_.input_ranges[index];
     } else {
@@ -159,10 +160,14 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
         }
 
         auto min_max = GetMinMaxValuesForArgument(func_name, i);
+        // The input min/max or mean/std are not specified, then skip.
+        if (!min_max.first.hasValue() || !min_max.second.hasValue()) return;
+
         TypeAttr params = quant::GetQuantizedTypeAttr(
-            builder, input_type, builder.getF64FloatAttr(min_max.first),
-            builder.getF64FloatAttr(min_max.second), /*quant_dim=*/-1, num_bits,
-            narrow_range, is_signed);
+            builder, input_type,
+            builder.getF64FloatAttr(min_max.first.getValue()),
+            builder.getF64FloatAttr(min_max.second.getValue()),
+            /*quant_dim=*/-1, num_bits, narrow_range, is_signed);
         builder.setInsertionPoint(block, insertion_point);
         auto q_op =
             builder.create<quant::QuantizeCastOp>(loc, params.getValue(), arg);
@@ -257,15 +262,16 @@ void PrepareQuantizePass::runOnFunction() {
   // convert all of them to signed.
   OwningRewritePatternList patterns;
   bool is_signed = quant_specs_.IsSignedInferenceType();
+  int bit_width = quant_specs_.GetQuantizationTypeWidth();
   if (is_signed) {
     patterns.insert<quant::ConvertUnsignedToSigned<quant::QuantizeCastOp>>(ctx);
     // Convert quant stats to int8 quantization parameters.
     // Currently, only activation stats are imported, so narrow_range = false.
-    patterns.insert<PrepareQuantStats>(8, false, true, ctx);
+    patterns.insert<PrepareQuantStats>(bit_width, false, true, ctx);
   } else {
     // Convert quant stats to uint8 quantization parameters.
     // Currently, only activation stats are imported, so narrow_range = false.
-    patterns.insert<PrepareQuantStats>(8, false, false, ctx);
+    patterns.insert<PrepareQuantStats>(bit_width, false, false, ctx);
   }
   applyPatternsAndFoldGreedily(func, patterns);
 
@@ -273,8 +279,9 @@ void PrepareQuantizePass::runOnFunction() {
 
   // Finally, the quantization parameters can be propagated to the rest of the
   // values (tensors).
-  ApplyQuantizationParamsPropagation(func, is_signed, disable_per_channel,
-                                     GetOpQuantSpec);
+  ApplyQuantizationParamsPropagation(
+      func, is_signed, disable_per_channel || quant_specs_.disable_per_channel,
+      GetOpQuantSpec);
 
   ConvertMlirQuantOpsToTFLQuantOps(func);
 }

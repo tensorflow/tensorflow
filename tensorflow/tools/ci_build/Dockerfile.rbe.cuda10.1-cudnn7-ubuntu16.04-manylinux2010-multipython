@@ -55,13 +55,17 @@ RUN /install/install_bootstrap_deb_packages.sh
 COPY install/install_deb_packages.sh /install/
 RUN /install/install_deb_packages.sh
 
-# Install additional dependencies to build Python from source.
+# Install additional packages needed for this image:
+# - dependencies to build Python from source
+# - patchelf, as it is required by auditwheel
 RUN apt-get update && apt-get install -y \
-    libncurses5-dev \
+    libbz2-dev \
+    libffi-dev \
     libgdbm-dev \
+    libncurses5-dev \
     libnss3-dev \
     libreadline-dev \
-    libffi-dev \
+    patchelf \
       && \
     rm -rf /var/lib/apt/lists/*
 

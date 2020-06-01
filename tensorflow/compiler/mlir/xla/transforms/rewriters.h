@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 
 namespace mlir {
+class BufferAssignmentPlacer;
 namespace xla_hlo {
 
 // Collection of rewrite patterns for lowering a general dot product.
@@ -38,9 +39,9 @@ void PopulateXlaToStdPatterns(OwningRewritePatternList *patterns,
                               MLIRContext *ctx);
 
 // Collection of rewrite patterns for lowering of HLO to LHLO dialect.
-void populateHLOToLHLOConversionPattern(MLIRContext *context,
-                                        OwningRewritePatternList *patterns);
-
+void populateHLOToLHLOConversionPattern(
+    MLIRContext *context, BufferAssignmentPlacer *bufferAssignment,
+    TypeConverter *converter, OwningRewritePatternList *patterns);
 // Collection of rewrite patterns for lowering of HLO to Linalg dialect.
 void populateHLOToLinalgConversionPattern(MLIRContext *context,
                                           OwningRewritePatternList *patterns);
@@ -53,6 +54,15 @@ void SetupMaterializeBroadcastsLegality(MLIRContext *context,
 // attributes to equivalent sequences of ops.
 void PopulateMaterializeBroadcastsPatterns(MLIRContext *context,
                                            OwningRewritePatternList *patterns);
+
+// Sets up legality definitions for element-wise operations on ranked tensors.
+void SetupTransformUnrankedHloLegality(MLIRContext *context,
+                                       ConversionTarget *conversionTarget);
+
+// Populates a collection of rewrite patterns to realize element-wise operations
+// on ranked tensors where possible.
+void PopulateTransformUnrankedHloPatterns(MLIRContext *context,
+                                          OwningRewritePatternList *patterns);
 
 // Populate a collection of conversion patterns for un-fusing
 // batch_norm_inference and batch_norm_training into constituent HLO ops.

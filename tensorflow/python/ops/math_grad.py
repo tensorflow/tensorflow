@@ -1338,28 +1338,7 @@ def _PowGrad(op, grad):
         y):
       x = math_ops.conj(x)
       y = math_ops.conj(y)
-      if x.dtype.is_complex:
-        dx = gen_math_ops.mul(math_ops.pow(x, y - 1), y)
-      else:
-        # Define x ** 0 to have a derivative of zero with respect to x for real
-        # dtypes. mul_no_nan replaces its outputs with 0 where `y` is 0. It is a
-        # more efficient equivalent of this subgraph:
-        #
-        #   raw_derivative = y * tf.pow(x, y - 1)
-        #   dx = tf.where(tf.broadcast_to(tf.not_equal(y, 0),
-        #                                 tf.shape(raw_derivative)),
-        #                 raw_derivative,
-        #                 tf.zeros_like(raw_derivative))
-        #
-        # It does not suppress all NaNs. mul_no_nan only differs from regular
-        # multiplication when `y = 0`, in which case `tf.pow(x, y - 1)` would
-        # ordinarily be NaN if `x = 0` (leading to a NaN gradient). Small
-        # perturbations to `x` would not affect the result of `x ** 0`, meaning
-        # the correct gradient is 0 whenever `y = 0`. This special-casing also
-        # defines a gradient for `x` when `x = NaN` and `y = 0`; this follows
-        # from the convention that `NaN ** 0 = 1`.
-        dx = gen_math_ops.mul_no_nan(math_ops.pow(x, y - 1), y)
-      return grad * dx, None
+      return grad * y * math_ops.pow(x, y - 1), None
 
   except AttributeError:
     # No gradient skipping, so do the full gradient computation
@@ -1371,13 +1350,7 @@ def _PowGrad(op, grad):
   y = math_ops.conj(y)
 
   if skip_input_indices is None or 0 not in skip_input_indices:
-    if x.dtype.is_complex:
-      dx = gen_math_ops.mul(math_ops.pow(x, y - 1), y)
-    else:
-      # Define x ** 0 to have a derivative of zero with respect to x for real
-      # dtypes. mul_no_nan replaces its outputs with 0 where `y` is 0.
-      dx = gen_math_ops.mul_no_nan(math_ops.pow(x, y - 1), y)
-    gx = grad * dx
+    gx = grad * y * math_ops.pow(x, y - 1)
     if must_reduce_x:
       gx = array_ops.reshape(math_ops.reduce_sum(gx, rx), sx)
   else:

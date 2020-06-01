@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import threading
 
 from tensorflow.python import tf2
@@ -24,6 +25,7 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
@@ -121,7 +123,7 @@ def make_variable(name,
         initializer,
         (type(init_ops.Initializer), type(init_ops_v2.Initializer))):
       initializer = initializer()
-    init_val = lambda: initializer(shape, dtype=dtype)
+    init_val = functools.partial(initializer, shape, dtype=dtype)
     variable_dtype = dtype.base_dtype
   if use_resource is None:
     use_resource = True
@@ -213,18 +215,17 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
   for tensor in tensor_list:
     if getattr(tensor, '_keras_history', None) is not None:
       continue
+    if sparse_tensor.is_sparse(tensor) or ragged_tensor.is_ragged(tensor):
+      example = """
+      weights_mult = lambda x: tf.sparse.sparse_dense_matmul(x, weights)
+      output = tf.keras.layers.Lambda(weights_mult)(input)
+      """
+      raise ValueError('Tensorflow ops that generate ragged or sparse tensor '
+                       'outputs are currently not supported by Keras automatic '
+                       'op wrapping. Please wrap these ops in a Lambda layer: '
+                       '\n\n```\n{example}\n```\n'.format(example=example))
     op = tensor.op  # The Op that created this Tensor.
     if op not in processed_ops:
-      if op.type.startswith('Sparse'):
-        lambda_example = """
-        weights_mult = lambda x: tf.sparse.sparse_dense_matmul(x, weights)
-        output = tf.keras.layers.Lambda(weights_mult)(input)
-        """
-        raise ValueError(
-            'Sparse ops are not supported with functional models with built-in '
-            'layer wrapping. Please wrap the sparse ops in a Lambda layer like'
-            ': \n{lambda_example}\n'.format(lambda_example=lambda_example))
-
       # Recursively set `_keras_history`.
       op_inputs = list(op.inputs)
       constants = {}
@@ -247,7 +248,10 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
             constants[i] = op_input
           else:
             with ops.init_scope():
-              constants[i] = backend.function([], op_input)([])
+              if ops.executing_eagerly_outside_functions():
+                constants[i] = backend.eval_in_eager_or_function(op_input)
+              else:
+                constants[i] = backend.function([], op_input)([])
       layer_inputs = unnest_if_single_tensor(layer_inputs)
       processed_ops, created_layers = _create_keras_history_helper(
           layer_inputs, processed_ops, created_layers)
@@ -489,7 +493,7 @@ def autocast_context_manager(dtype):
   Returns:
     A context manager to automatically cast AutoCastVariables.
   """
-  if dtype and not dtypes.as_dtype(dtype).is_floating:
+  if dtype and not dtype.is_floating:
     dtype = None
   return ops.get_default_graph()._enable_auto_casting_variables(dtype)  # pylint: disable=protected-access
 
@@ -676,15 +680,7 @@ def enable_v2_dtype_behavior():
   float32) instead of None. In addition, layers will automatically cast
   floating-point inputs to the layer's dtype.
 
-  >>> tf.compat.v1.keras.layers.disable_v2_dtype_behavior()
   >>> x = tf.ones((4, 4, 4, 4), dtype='float64')
-  >>> layer = tf.keras.layers.Conv2D(filters=4, kernel_size=2)
-  >>> print(layer.dtype)  # None since V2 behavior is disabled
-  None
-  >>> y = layer(x)  # Doesn't cast inputs since V2 dtype behavior is disabled
-  >>> print(y.dtype.name)
-  float64
-  >>> tf.compat.v1.keras.layers.enable_v2_dtype_behavior()
   >>> layer = tf.keras.layers.Conv2D(filters=4, kernel_size=2)
   >>> print(layer.dtype)  # float32 since V2 dtype behavior is enabled
   float32

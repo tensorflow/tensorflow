@@ -533,14 +533,14 @@ Status MakeIteratorOp::DoCompute(OpKernelContext* ctx) {
   return iterator_resource->SetIteratorFromDataset(ctx, dataset);
 }
 
-void DeleteIteratorOp::Compute(OpKernelContext* ctx) {
+Status DeleteIteratorOp::DoCompute(OpKernelContext* ctx) {
   tensorflow::ResourceTagger tag(kTFDataResourceTag,
                                  ctx->op_kernel().type_string());
-  ResourceHandle handle = ctx->input(0).flat<ResourceHandle>()(0);
+  const ResourceHandle& handle = ctx->input(0).flat<ResourceHandle>()(0);
   // The iterator resource is guaranteed to exist because the variant tensor
   // wrapping the deleter is provided as an unused input to this op, which
   // guarantees that it has not run yet.
-  OP_REQUIRES_OK(ctx, ctx->resource_manager()->Delete(handle));
+  return ctx->resource_manager()->Delete(handle);
 }
 
 namespace {
@@ -925,6 +925,13 @@ Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
 }
 
 Status IteratorGetNextAsOptionalOp::DoCompute(OpKernelContext* ctx) {
+  profiler::TraceMe traceme(
+      [&] {
+        return strings::StrCat(
+            "IteratorGetNextAsOptionalOp::DoCompute#id=", ctx->step_id(),
+            ",iter_num=", ctx->frame_iter().iter_id, "#");
+      },
+      profiler::kInfo);
   tensorflow::ResourceTagger tag(kTFDataResourceTag,
                                  ctx->op_kernel().type_string());
   IteratorResource* iterator;
@@ -1095,9 +1102,8 @@ REGISTER_KERNEL_BUILDER(
     MakeIteratorOp);
 REGISTER_KERNEL_BUILDER(Name("DeleteIterator").Device(DEVICE_CPU).Priority(2),
                         DeleteIteratorOp);
-REGISTER_KERNEL_BUILDER(
-    Name("DeleteIterator").Device(DEVICE_GPU).HostMemory("deleter").Priority(1),
-    DeleteIteratorOp);
+REGISTER_KERNEL_BUILDER(Name("DeleteIterator").Device(DEVICE_GPU).Priority(1),
+                        DeleteIteratorOp);
 REGISTER_KERNEL_BUILDER(
     Name("AnonymousIterator").Device(DEVICE_CPU).Priority(2),
     AnonymousIteratorHandleOp);
@@ -1109,7 +1115,6 @@ REGISTER_KERNEL_BUILDER(
     AnonymousIteratorHandleOp);
 REGISTER_KERNEL_BUILDER(Name("AnonymousIteratorV2")
                             .Device(DEVICE_GPU)
-                            .HostMemory("deleter")
                             .Priority(1),
                         AnonymousIteratorHandleOp);
 REGISTER_KERNEL_BUILDER(Name("DatasetToSingleElement").Device(DEVICE_CPU),

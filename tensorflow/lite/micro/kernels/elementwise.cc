@@ -106,6 +106,7 @@ TfLiteStatus LogicalNotEval(TfLiteContext* context, TfLiteNode* node) {
   return EvalLogical(context, node, [](bool v) { return !v; });
 }
 
+
 }  // namespace
 }  // namespace elementwise
 

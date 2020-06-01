@@ -15,7 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_DERIVED_TIMELINE_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_DERIVED_TIMELINE_H_
 
+#include <functional>
+#include <vector>
+
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/group_events.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"

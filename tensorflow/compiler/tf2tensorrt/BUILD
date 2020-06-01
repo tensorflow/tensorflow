@@ -403,6 +403,7 @@ tf_cuda_library(
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//tensorflow/stream_executor/lib",
+        "//tensorflow/tools/graph_transforms:transform_utils",
     ] + if_tensorrt([":tensorrt_lib"]) + tf_custom_op_library_additional_deps(),
     alwayslink = 1,
 )
@@ -496,6 +497,7 @@ cc_library(
         "//tensorflow/core/grappler/costs:graph_properties",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
         "@com_google_protobuf//:protobuf_headers",
     ],
 )

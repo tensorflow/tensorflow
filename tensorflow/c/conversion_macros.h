@@ -16,15 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_C_CONVERSION_MACROS_H_
 #define TENSORFLOW_C_CONVERSION_MACROS_H_
 
-#define DEFINE_CONVERSION_FUNCTIONS(cpp_impl, wrapper) \
-  inline cpp_impl *unwrap(wrapper *w) {                \
-    return reinterpret_cast<cpp_impl *>(w);            \
-  }                                                    \
-                                                       \
-  inline const cpp_impl *unwrap(const wrapper *w) {    \
-    return reinterpret_cast<const cpp_impl *>(w);      \
-  }                                                    \
-                                                       \
-  inline wrapper *wrap(cpp_impl *i) { return reinterpret_cast<wrapper *>(i); }
+#define DEFINE_CONVERSION_FUNCTIONS(cpp_impl, wrapper)                         \
+  inline cpp_impl *unwrap(wrapper *w) {                                        \
+    return reinterpret_cast<cpp_impl *>(w);                                    \
+  }                                                                            \
+                                                                               \
+  inline const cpp_impl *unwrap(const wrapper *w) {                            \
+    return reinterpret_cast<const cpp_impl *>(w);                              \
+  }                                                                            \
+                                                                               \
+  inline wrapper *wrap(cpp_impl *i) { return reinterpret_cast<wrapper *>(i); } \
+  inline const wrapper *wrap(const cpp_impl *i) {                              \
+    return reinterpret_cast<const wrapper *>(i);                               \
+  }
 
 #endif  // TENSORFLOW_C_CONVERSION_MACROS_H_

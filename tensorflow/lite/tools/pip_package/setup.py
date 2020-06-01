@@ -58,7 +58,9 @@ elif TARGET == 'aarch64':
   os.environ['CC'] = 'aarch64-linux-gnu-gcc'
 
 MAKE_CROSS_OPTIONS = []
-for name in ['TARGET', 'TARGET_ARCH', 'CC_PREFIX', 'EXTRA_CXXFLAGS']:
+for name in [
+    'TARGET', 'TARGET_ARCH', 'CC_PREFIX', 'EXTRA_CXXFLAGS', 'EXTRA_CFLAGS'
+]:
   value = os.environ.get('TENSORFLOW_%s' % name)
   if value:
     MAKE_CROSS_OPTIONS.append('%s=%s' % (name, value))

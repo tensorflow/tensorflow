@@ -18,9 +18,17 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
+
+auto* mlir_bridge_gauge_v1 = monitoring::Gauge<bool, 0>::New(
+    "/tensorflow/config/experimental/enable_mlir_bridge_gauge_v1",
+    "Tracks usage of the MLIR-based TF2XLA bridge among TF1 models");
+auto* mlir_bridge_gauge_v2 = monitoring::Gauge<bool, 0>::New(
+    "/tensorflow/config/experimental/enable_mlir_bridge_gauge_v2",
+    "Tracks usage of the MLIR-based TF2XLA bridge among TF2 models");
 
 // This runs the first phase of the "bridge", transforming the graph in a form
 // that can be executed with delegation of some computations to an accelerator.
@@ -32,10 +40,12 @@ Status MlirBridgePass::Run(const ConfigProto& config_proto,
                            mlir::ModuleOp module) {
   if (!config_proto.experimental().enable_mlir_bridge()) {
     VLOG(0) << "Skipping MLIR TPU Bridge, session flag not enabled";
+    mlir_bridge_gauge_v2->GetCell()->Set(false);
     return Status::OK();
   }
 
   VLOG(0) << "Running MLIR TPU Bridge";
+  mlir_bridge_gauge_v2->GetCell()->Set(true);
   TF_RETURN_IF_ERROR(
       mlir::TFTPU::TPUBridge(module, /*enable_logging=*/VLOG_IS_ON(1)));
 
@@ -48,10 +58,12 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
 
   if (!options.session_options->config.experimental().enable_mlir_bridge()) {
     VLOG(0) << "Skipping MLIR TPU Bridge V1 Compat, session flag not enabled";
+    mlir_bridge_gauge_v1->GetCell()->Set(false);
     return Status::OK();
   }
 
   VLOG(0) << "Running MLIR TPU Bridge V1 Compat";
+  mlir_bridge_gauge_v1->GetCell()->Set(true);
   TF_RETURN_IF_ERROR(
       mlir::TFTPU::TPUBridgeV1Compat(module, /*enable_logging=*/VLOG_IS_ON(1)));
 

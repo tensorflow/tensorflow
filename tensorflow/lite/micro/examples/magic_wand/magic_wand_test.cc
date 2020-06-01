@@ -46,7 +46,7 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   // An easier approach is to just use the AllOpsResolver, but this will
   // incur some penalty in code space for op implementations that are not
   // needed by this graph.
-  static tflite::MicroOpResolver<5> micro_op_resolver;  // NOLINT
+  static tflite::MicroMutableOpResolver<5> micro_op_resolver;  // NOLINT
   micro_op_resolver.AddBuiltin(
       tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
       tflite::ops::micro::Register_DEPTHWISE_CONV_2D());

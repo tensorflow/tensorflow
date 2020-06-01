@@ -1123,6 +1123,22 @@ class Context(object):
     pywrap_tfe.TFE_Py_RegisterCustomDevice(self._handle, device_capsule,
                                            device_name, device_info_capsule)
 
+  def pack_eager_tensors(self, tensors):
+    """Pack multiple `EagerTensor`s of the same dtype and shape.
+
+    Args:
+      tensors: a list of EagerTensors to pack.
+
+    Returns:
+      A packed EagerTensor.
+    """
+    self.ensure_initialized()
+    if self._lazy_remote_inputs_copy is not None and (
+        not self._lazy_remote_inputs_copy):
+      raise ValueError("Packing eager tensors is not supported when "
+                       "lazy_remote_inputs_copy is disabled.")
+    return pywrap_tfe.TFE_Py_PackEagerTensors(self._handle, tensors)
+
   def remove_function(self, name):
     """Remove a function from the context.
 
@@ -1509,9 +1525,11 @@ class Context(object):
     return self.config.allow_soft_placement
 
   @soft_device_placement.setter
-  def soft_device_placement(self, enabled):
-    self._soft_device_placement = enabled
+  def soft_device_placement(self, enable):
+    if self._context_handle is not None:
+      pywrap_tfe.TFE_ContextSetSoftDevicePlacement(self._handle, enable)
 
+    self._soft_device_placement = enable
     self._thread_local_data.function_call_options = None
 
   @property
@@ -1519,15 +1537,11 @@ class Context(object):
     return self.config.log_device_placement
 
   @log_device_placement.setter
-  def log_device_placement(self, enabled):
-    if self._log_device_placement == enabled:
-      return
-
+  def log_device_placement(self, enable):
     if self._context_handle is not None:
-      raise RuntimeError(
-          "Device placement logging must be set at program startup")
+      pywrap_tfe.TFE_ContextSetLogDevicePlacement(self._handle, enable)
 
-    self._log_device_placement = enabled
+    self._log_device_placement = enable
     self._thread_local_data.function_call_options = None
 
   @property

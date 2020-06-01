@@ -75,9 +75,7 @@ class QNTest(test.TestCase):
     b_sub_c = QN(b, subscript=c)
     a_sub_b_sub_c = QN(a, subscript=b_sub_c)
     self.assertEqual(a_sub_b_sub_c.qn, (a, b_sub_c))
-    self.assertTrue(a_sub_b.is_composite())
     self.assertTrue(a_sub_b_sub_c.is_composite())
-    self.assertTrue(a_sub_b.has_subscript())
     self.assertTrue(a_sub_b_sub_c.has_subscript())
     self.assertEqual(b_sub_c.qn, (b, c))
     self.assertEqual(str(a_sub_b_sub_c), 'a[b[c]]')
@@ -154,14 +152,17 @@ class QNTest(test.TestCase):
 
   def test_literals(self):
     a = QN('a')
-    a_sub_str_b = QN(a, subscript=QN(qual_names.StringLiteral('b')))
+    a_sub_str_b = QN(a, subscript=QN(qual_names.Literal('b')))
     a_sub_b = QN(a, subscript=QN('b'))
 
     self.assertNotEqual(a_sub_str_b, a_sub_b)
     self.assertNotEqual(hash(a_sub_str_b), hash(a_sub_b))
+    self.assertEqual(a_sub_str_b.ast().slice.value.value, 'b')
+    self.assertEqual(str(a_sub_str_b), "a['b']")
 
-    a_sub_three = QN(a, subscript=QN(qual_names.NumberLiteral(3)))
+    a_sub_three = QN(a, subscript=QN(qual_names.Literal(3)))
     self.assertEqual(a_sub_three.ast().slice.value.value, 3)
+    self.assertEqual(str(a_sub_three), "a[3]")
 
   def test_support_set(self):
     a = QN('a')

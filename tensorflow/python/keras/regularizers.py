@@ -14,13 +14,14 @@
 # ==============================================================================
 """Built-in regularizers.
 """
+# pylint: disable=invalid-name
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import six
 
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import math_ops
@@ -60,8 +61,8 @@ class Regularizer(object):
   >>> layer = tf.keras.layers.Dense(
   ...     5, input_dim=5,
   ...     kernel_initializer='ones',
-  ...     kernel_regularizer=tf.keras.regularizers.l1(0.01),
-  ...     activity_regularizer=tf.keras.regularizers.l2(0.01))
+  ...     kernel_regularizer=tf.keras.regularizers.L1(0.01),
+  ...     activity_regularizer=tf.keras.regularizers.L2(0.01))
   >>> tensor = tf.ones(shape=(5, 5)) * 2.0
   >>> out = layer(tensor)
 
@@ -73,9 +74,9 @@ class Regularizer(object):
   ## Available penalties
 
   ```python
-  tf.keras.regularizers.l1(0.3)  # L1 Regularization Penalty
-  tf.keras.regularizers.l2(0.1)  # L2 Regularization Penalty
-  tf.keras.regularizers.l1_l2(l1=0.01, l2=0.01)  # L1 + L2 penalties
+  tf.keras.regularizers.L1(0.3)  # L1 Regularization Penalty
+  tf.keras.regularizers.L2(0.1)  # L2 Regularization Penalty
+  tf.keras.regularizers.L1L2(l1=0.01, l2=0.01)  # L1 + L2 penalties
   ```
 
   ## Directly calling a regularizer
@@ -84,7 +85,7 @@ class Regularizer(object):
   as if it is a one-argument function.
 
   E.g.
-  >>> regularizer = tf.keras.regularizers.l2(2.)
+  >>> regularizer = tf.keras.regularizers.L2(2.)
   >>> tensor = tf.ones(shape=(5, 5))
   >>> regularizer(tensor)
   <tf.Tensor: shape=(), dtype=float32, numpy=50.0>
@@ -194,13 +195,19 @@ class Regularizer(object):
 
 @keras_export('keras.regularizers.L1L2')
 class L1L2(Regularizer):
-  r"""A regularizer that applies both L1 and L2 regularization penalties.
+  """A regularizer that applies both L1 and L2 regularization penalties.
 
   The L1 regularization penalty is computed as:
-  $$\ell_1\,\,penalty =\ell_1\sum_{i=0}^n|x_i|$$
+  `loss = l1 * reduce_sum(abs(x))`
 
   The L2 regularization penalty is computed as
-  $$\ell_2\,\,penalty =\ell_2\sum_{i=0}^nx_i^2$$
+  `loss = l2 * reduce_sum(square(x))`
+
+  L1L2 may be passed to a layer as a string identifier:
+
+  >>> dense = tf.keras.layers.Dense(3, kernel_regularizer='l1_l2')
+
+  In this case, the default values used are `l1=0.01` and `l2=0.01`.
 
   Attributes:
       l1: Float; L1 regularization factor.
@@ -208,13 +215,11 @@ class L1L2(Regularizer):
   """
 
   def __init__(self, l1=0., l2=0.):  # pylint: disable=redefined-outer-name
-    self.l1 = K.cast_to_floatx(l1)
-    self.l2 = K.cast_to_floatx(l2)
+    self.l1 = backend.cast_to_floatx(l1)
+    self.l2 = backend.cast_to_floatx(l2)
 
   def __call__(self, x):
-    if not self.l1 and not self.l2:
-      return K.constant(0.)
-    regularization = 0.
+    regularization = backend.constant(0., dtype=x.dtype)
     if self.l1:
       regularization += self.l1 * math_ops.reduce_sum(math_ops.abs(x))
     if self.l2:
@@ -225,39 +230,64 @@ class L1L2(Regularizer):
     return {'l1': float(self.l1), 'l2': float(self.l2)}
 
 
-# Aliases.
-
-
-@keras_export('keras.regularizers.l1')
-def l1(l=0.01):
-  r"""Create a regularizer that applies an L1 regularization penalty.
+@keras_export('keras.regularizers.L1', 'keras.regularizers.l1')
+class L1(Regularizer):
+  """A regularizer that applies a L1 regularization penalty.
 
   The L1 regularization penalty is computed as:
-  $$\ell_1\,\,penalty =\ell_1\sum_{i=0}^n|x_i|$$
+  `loss = l1 * reduce_sum(abs(x))`
 
-  Arguments:
-      l: Float; L1 regularization factor.
+  L1 may be passed to a layer as a string identifier:
 
-  Returns:
-    An L1 Regularizer with the given regularization factor.
+  >>> dense = tf.keras.layers.Dense(3, kernel_regularizer='l1')
+
+  In this case, the default value used is `l1=0.01`.
+
+  Attributes:
+      l1: Float; L1 regularization factor.
   """
-  return L1L2(l1=l)
+
+  def __init__(self, l1=0.01, **kwargs):  # pylint: disable=redefined-outer-name
+    l1 = kwargs.pop('l', l1)  # Backwards compatibility
+    if kwargs:
+      raise TypeError('Argument(s) not recognized: %s' % (kwargs,))
+    self.l1 = backend.cast_to_floatx(l1)
+
+  def __call__(self, x):
+    return self.l1 * math_ops.reduce_sum(math_ops.abs(x))
+
+  def get_config(self):
+    return {'l1': float(self.l1)}
 
 
-@keras_export('keras.regularizers.l2')
-def l2(l=0.01):
-  r"""Create a regularizer that applies an L2 regularization penalty.
+@keras_export('keras.regularizers.L2', 'keras.regularizers.l2')
+class L2(Regularizer):
+  """A regularizer that applies a L2 regularization penalty.
 
   The L2 regularization penalty is computed as:
-  $$\ell_2\,\,penalty =\ell_2\sum_{i=0}^nx_i^2$$
+  `loss = l2 * reduce_sum(square(x))`
 
-  Arguments:
-      l: Float; L2 regularization factor.
+  L2 may be passed to a layer as a string identifier:
 
-  Returns:
-    An L2 Regularizer with the given regularization factor.
+  >>> dense = tf.keras.layers.Dense(3, kernel_regularizer='l2')
+
+  In this case, the default value used is `l2=0.01`.
+
+  Attributes:
+      l2: Float; L2 regularization factor.
   """
-  return L1L2(l2=l)
+
+  def __init__(self, l2=0.01, **kwargs):  # pylint: disable=redefined-outer-name
+    l2 = kwargs.pop('l', l2)  # Backwards compatibility
+    if kwargs:
+      raise TypeError('Argument(s) not recognized: %s' % (kwargs,))
+    self.l2 = backend.cast_to_floatx(l2)
+
+  def __call__(self, x):
+    return self.l2 * math_ops.reduce_sum(math_ops.square(x))
+
+  def get_config(self):
+    return {'l2': float(self.l2)}
 
 
 @keras_export('keras.regularizers.l1_l2')
@@ -265,10 +295,10 @@ def l1_l2(l1=0.01, l2=0.01):  # pylint: disable=redefined-outer-name
   r"""Create a regularizer that applies both L1 and L2 penalties.
 
   The L1 regularization penalty is computed as:
-  $$\ell_1\,\,penalty =\ell_1\sum_{i=0}^n|x_i|$$
+  `loss = l1 * reduce_sum(abs(x))`
 
   The L2 regularization penalty is computed as:
-  $$\ell_2\,\,penalty =\ell_2\sum_{i=0}^nx_i^2$$
+  `loss = l2 * reduce_sum(square(x))`
 
   Arguments:
       l1: Float; L1 regularization factor.
@@ -280,6 +310,11 @@ def l1_l2(l1=0.01, l2=0.01):  # pylint: disable=redefined-outer-name
   return L1L2(l1=l1, l2=l2)
 
 
+# Deserialization aliases.
+l1 = L1
+l2 = L2
+
+
 @keras_export('keras.regularizers.serialize')
 def serialize(regularizer):
   return serialize_keras_object(regularizer)
@@ -287,6 +322,10 @@ def serialize(regularizer):
 
 @keras_export('keras.regularizers.deserialize')
 def deserialize(config, custom_objects=None):
+  if config == 'l1_l2':
+    # Special case necessary since the defaults used for "l1_l2" (string)
+    # differ from those of the L1L2 class.
+    return L1L2(l1=0.01, l2=0.01)
   return deserialize_keras_object(
       config,
       module_objects=globals(),
@@ -296,20 +335,15 @@ def deserialize(config, custom_objects=None):
 
 @keras_export('keras.regularizers.get')
 def get(identifier):
+  """Retrieve a regularizer instance from a config or identifier."""
   if identifier is None:
     return None
   if isinstance(identifier, dict):
     return deserialize(identifier)
   elif isinstance(identifier, six.string_types):
-    identifier = str(identifier)
-    # We have to special-case functions that return classes.
-    # TODO(omalleyt): Turn these into classes or class aliases.
-    special_cases = ['l1', 'l2', 'l1_l2']
-    if identifier in special_cases:
-      # Treat like a class.
-      return deserialize({'class_name': identifier, 'config': {}})
     return deserialize(str(identifier))
   elif callable(identifier):
     return identifier
   else:
-    raise ValueError('Could not interpret regularizer identifier:', identifier)
+    raise ValueError(
+        'Could not interpret regularizer identifier: {}'.format(identifier))

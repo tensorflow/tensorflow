@@ -82,15 +82,30 @@ class MemorySpaceAssignmentCostAnalysis {
       const HloCostAnalysis& cost_analysis,
       float async_copy_bandwidth_bytes_per_second,
       float alternate_mem_bandwidth_bytes_per_second,
-      const HloLiveRange& hlo_live_range)
+      const HloLiveRange& hlo_live_range, const CallGraph& call_graph)
       : cost_analysis_(cost_analysis),
         async_copy_bandwidth_bytes_per_second_(
             async_copy_bandwidth_bytes_per_second),
         alternate_mem_bandwidth_bytes_per_second_(
             alternate_mem_bandwidth_bytes_per_second),
-        hlo_live_range_(hlo_live_range) {}
+        hlo_live_range_(hlo_live_range),
+        call_graph_(call_graph) {}
 
   const HloCostAnalysis& cost_analysis() const { return cost_analysis_; }
+
+  // Returns a heuristic value that captures how much putting this tensor to the
+  // alternate memory would help if the op is memory bound, or otherwise how far
+  // off is the op to memory boundedness. The larger this number, the higher
+  // priority it will be placed in the alternate memory.
+  float GetAlternateMemoryBenefit(
+      const HloInstruction& instruction,
+      float elapsed_time_due_to_alternate_mem) const;
+
+  // Returns a heuristic value of memory boundedness for the given
+  // BufferInterval.  The larger this number, the higher priority it will be
+  // placed in the alternate memory.
+  float GetMemoryBoundedness(
+      const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval) const;
 
   // Returns the elapsed time in seconds due to compute only.
   float GetInstructionElapsedDueToCompute(
@@ -127,6 +142,10 @@ class MemorySpaceAssignmentCostAnalysis {
 
   int64 GetScheduleEndTime() const;
 
+  // Returns the number of nested while loop levels this instruction resides in.
+  // 0 means it is not in a while loop.
+  int CalculateWhileLoopNestLevel(const HloInstruction* instruction) const;
+
   const HloLiveRange& hlo_live_range() const { return hlo_live_range_; }
 
  private:
@@ -134,6 +153,7 @@ class MemorySpaceAssignmentCostAnalysis {
   float async_copy_bandwidth_bytes_per_second_;
   float alternate_mem_bandwidth_bytes_per_second_;
   const HloLiveRange& hlo_live_range_;
+  const CallGraph& call_graph_;
 };
 
 // Abstract base class that memory space assignment uses to pick prefetch
@@ -262,10 +282,10 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   // corresponds to the instruction schedule.
   float GetLogicalIntervalElapsed(int64 start_time, int64 end_time) const;
 
-  // For performance reasons, we calculate the prefix sum of the elapsed time so
-  // that it's efficient to find the elapsed time in seconds in any logical
-  // interval.
-  std::vector<float> elapsed_time_cumsum_;
+  // For each instruction in the flattened schedule, maintain their elapsed time
+  // and while nesting level.
+  std::vector<float> elapsed_time_;
+  std::vector<int> while_nest_level_;
 
   const MemorySpaceAssignmentCostAnalysis& cost_analysis_;
   float min_async_copy_to_overlap_ratio_;
@@ -323,9 +343,10 @@ class MemorySpaceAssignment {
     // the opcode) to be placed on the alternate memory.
     IsAllowedInAlternateMemoryFunction is_allowed_in_alternate_mem_fn;
 
-    // Specifies the upper bound for number of outstanding asynchronous copies,
-    // -1 for unlimited.
-    int64 max_outstanding_async_copies = -1;
+    // Specifies the upper bound for number of outstanding prefetches and
+    // evictions, -1 for unlimited.
+    int64 max_outstanding_prefetches = -1;
+    int64 max_outstanding_evictions = -1;
 
     // If true, tries allocating buffers across (e.g., before and inside a while
     // loop body) sequential calls (kWhile, kCall, and kConditional).
@@ -604,6 +625,15 @@ class MemorySpaceAssignment {
     AllocationSequence allocation_sequence_;
   };
 
+  // Statistics of asynchronous copies.
+  struct AsyncCopyStats {
+    int64 max_outstanding_async_copies;
+    int64 num_prefetches;
+    int64 prefetch_bytes;
+    int64 num_evictions;
+    int64 eviction_bytes;
+  };
+
   virtual ~MemorySpaceAssignment() = default;
 
   // Runs the MemorySpaceAssignment pass.
@@ -611,9 +641,8 @@ class MemorySpaceAssignment {
       HloModule* module, const HloLiveRange& hlo_live_range,
       const HloAliasAnalysis& alias_analysis, const Options& options);
 
-  // Returns the maximum number of outstanding asynchronous copies in the
-  // module.
-  static int64 CountMaximumOutstandingAsyncCopies(const HloModule& module);
+  // Calculates asynchronous copy statistics.
+  StatusOr<AsyncCopyStats> CalculateAsyncCopyStats() const;
 
   static BufferIntervalCompare GetMemoryBoundednessBufferIntervalCompare(
       const MemorySpaceAssignmentCostAnalysis& cost_analysis);
@@ -808,11 +837,16 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // use_times is a sorted sequence of the times of all uses.
   // latest_prefetch_time is the latest time we can schedule the CopyDone for a
   // prefetch.
+  // If allow_no_copy_alternate_mem_allocation is false, an eviction is forced.
+  // If earliest_prefetch_time is set, prefetches cannot start before this
+  // value.
   struct AllocationRequest {
     int64 start_time;
     int64 end_time;
     int64 latest_prefetch_time;
     int64 size;
+    bool allow_no_copy_alternate_mem_allocation;
+    absl::optional<int64> earliest_prefetch_time;
     absl::optional<int64> preferred_offset;
     HloUse use;
     MemorySpaceAssignment::AllocationValue* allocation_value;
@@ -833,7 +867,8 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   bool IsIntervalAllowedInAlternateMemory(const BufferInterval& interval) const;
 
   // Returns true if the use is allowed in the alternate memory.
-  bool IsUseAllowedInAlternateMemory(const HloUse& use) const;
+  bool IsUseAllowedInAlternateMemory(const AllocationValue& value,
+                                     const HloUse& use) const;
 
   // Given an HloValue, creates AllocationValue objects and corresponding
   // AllocationSequences and appends them into allocation_sequence_list_.
@@ -887,6 +922,16 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
       const HloInstruction* instruction, ShapeIndex index,
       const MemorySpaceAssignment::Allocation* aliased_allocation);
 
+  // This sets a required assignment. CHECK fails if there is a conflicting
+  // required assignment at the same time.
+  void AddRequiredAssignment(const HloValue* value,
+                             const HloInstruction* instruction,
+                             MemorySpace memory_space, int64 time,
+                             absl::optional<Chunk> chunk = absl::nullopt);
+  void AddRequiredAssignment(const HloInstruction* instruction,
+                             ShapeIndex index, MemorySpace memory_space,
+                             absl::optional<Chunk> chunk = absl::nullopt);
+
   // Adds input and outputs as required assignments.
   void AddInputAndOutputRequiredAssignments();
 
@@ -909,8 +954,8 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
 
   // Returns true if the addition of an asynchronous copy in the given time
   // interval would violate the maximum number of asynchronous copies.
-  bool ViolatesMaximumOutstandingAsyncCopies(int64 start_time,
-                                             int64 end_time) const;
+  bool ViolatesMaximumOutstandingAsyncCopies(int64 start_time, int64 end_time,
+                                             bool is_prefetch) const;
 
   // Return true if the asynchronous copy would violate the pipelining order.
   bool ViolatesAsyncCopyOrdering(int64 start_time, int64 end_time) const;
@@ -953,8 +998,9 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   const HloAliasAnalysis& alias_analysis_;
   const HloLiveRange& hlo_live_range_;
   // We use a interval tree to keep track of the number of outstanding
-  // asynchronous copies.
-  BufferIntervalTree async_copy_interval_tree_;
+  // prefetches and evictions.
+  BufferIntervalTree prefetch_interval_tree_;
+  BufferIntervalTree eviction_interval_tree_;
   AsynchronousCopyOrdering async_copy_ordering_;
   std::vector<std::pair<BufferInterval, ChunkCandidate>> pending_chunks_;
   std::vector<AsynchronousCopy> pending_async_copies_;
@@ -964,7 +1010,6 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
       required_assignments_;
   // Number of bytes reserved in alternate memory space.
   int64 reserved_in_bytes_ = 0;
-  int64 global_max_time_;
 };
 
 }  // namespace xla

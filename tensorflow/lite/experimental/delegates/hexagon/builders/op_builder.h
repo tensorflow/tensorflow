@@ -112,20 +112,8 @@ class OpBuilder {
     return kTfLiteOk;
   }
 
- protected:
-  // Helper method to fetch dimensions.
-  // TODO(karimnosseir): Move to a shared place.
-  void GetDims(int* batch_size, int* height_size, int* width_size,
-               int* depth_size, const TfLiteIntArray* dims) {
-    int* dim[] = {batch_size, height_size, width_size, depth_size};
-    for (int i = 0; i < 4; ++i) *(dim[i]) = 1;
-    for (int i = 4 - dims->size; i < 4; ++i) {
-      *dim[i] = dims->data[i - (4 - dims->size)];
-    }
-  }
-
-  TfLiteStatus ComputeMinAndMaxQuantValues(const TfLiteTensor& tensor,
-                                           float* min, float* max) {
+  static TfLiteStatus ComputeMinAndMaxQuantValues(const TfLiteTensor& tensor,
+                                                  float* min, float* max) {
     if (tensor.type == kTfLiteUInt8) {
       return ComputeMinAndMaxQuantValues(tensor, min, max,
                                          std::numeric_limits<uint8_t>::min(),
@@ -142,10 +130,22 @@ class OpBuilder {
     return kTfLiteError;
   }
 
+ protected:
+  // Helper method to fetch dimensions.
+  // TODO(karimnosseir): Move to a shared place.
+  void GetDims(int* batch_size, int* height_size, int* width_size,
+               int* depth_size, const TfLiteIntArray* dims) {
+    int* dim[] = {batch_size, height_size, width_size, depth_size};
+    for (int i = 0; i < 4; ++i) *(dim[i]) = 1;
+    for (int i = 4 - dims->size; i < 4; ++i) {
+      *dim[i] = dims->data[i - (4 - dims->size)];
+    }
+  }
+
   template <typename T>
-  TfLiteStatus ComputeMinAndMaxQuantValues(const TfLiteTensor& tensor,
-                                           float* min, float* max, T min_value,
-                                           T max_value) {
+  static TfLiteStatus ComputeMinAndMaxQuantValues(const TfLiteTensor& tensor,
+                                                  float* min, float* max,
+                                                  T min_value, T max_value) {
     *min = 0;
     *max = 0;
     const TfLiteQuantization& quant = tensor.quantization;
@@ -189,23 +189,26 @@ class GraphBuilder {
   // Add node to the graph. The caller responsible for setting correct
   // data in the Op.
   // 'tflite_node_index' is the node index in TFLite that creates this op.
-  OpBuilder* AddNode(int tflite_node_index);
+  OpBuilder* AddNode(int tflite_node_index = -1);
 
   // Add const node that provides the data held by 'tensor'.
-  OpBuilder* AddConstNodeWithData(int tensor_id, const TfLiteTensor& tensor);
+  // If `int8_to_uint8` is true, then the data will be casted to uint8 from
+  // int8.
+  OpBuilder* AddConstNodeWithData(int tensor_id, const TfLiteTensor& tensor,
+                                  bool int8_to_uint8 = false);
 
   // Same as above but takes shape of the tensor that will holds the data.
   OpBuilder* AddConstNodeWithData(const int shape[], char* data, int data_size);
 
-  OpBuilder* CreateOpBuilderFromTfLiteOp(int op_type);
+  OpBuilder* CreateOpBuilderFromTfLiteOp(int op_type, TfLiteNode* node);
 
   // Construct Input node with 'input_tensors' as output.
-  void AddInputTensors(const TfLiteIntArray* input_tensors,
-                       TfLiteContext* context);
+  TfLiteStatus AddInputTensors(const TfLiteIntArray* input_tensors,
+                               TfLiteContext* context);
 
   // Construct Output node with 'output_tensors' as input.
-  void AddOutputTensors(const TfLiteIntArray* output_tensors,
-                        TfLiteContext* context);
+  TfLiteStatus AddOutputTensors(const TfLiteIntArray* output_tensors,
+                                TfLiteContext* context);
 
   // Adds BatchSeqConfig node to the graph. This is configuration
   // for a dynamic batch size for the graph.
@@ -217,7 +220,6 @@ class GraphBuilder {
   // Returns tensor id inside Hexagon graph.
   OpBuilder::TensorID GetHexagonTensorId(int tflite_tensor_index) {
     if (!HasTensor(tflite_tensor_index)) {
-      printf("Could not find tensor id: %d\n", tflite_tensor_index);
       // Return invalid ID.
       return OpBuilder::TensorID(-1, -1);
     }
@@ -264,8 +266,8 @@ class GraphBuilder {
 
   // Add new tensor mapping to the tensor list.
   bool AddTensorWithID(int tflite_tensor_id, int hexagon_node_id,
-                       int hexagon_node_output_id) {
-    if (HasTensor(tflite_tensor_id)) {
+                       int hexagon_node_output_id, bool overwrite = false) {
+    if (!overwrite && HasTensor(tflite_tensor_id)) {
       return false;
     }
     if (tensors_.size() <= tflite_tensor_id) {
@@ -308,6 +310,9 @@ class GraphBuilder {
       *dim[i] = dims->data[i - (4 - dims->size)];
     }
   }
+
+  // Adds a Cast op to convert a tensor from int8 to uint8 (or vice versa).
+  TfLiteStatus AddCastOp(TfLiteContext* context, int op_type, int tensor_id);
 
   const HexagonNN* hexagon_nn_ = nullptr;
   TfLiteContext* context_ = nullptr;

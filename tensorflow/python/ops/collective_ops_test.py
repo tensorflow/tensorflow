@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
+
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.eager import context
@@ -40,11 +42,21 @@ from tensorflow.python.platform import tf_logging as logging
 
 class CollectiveOpTest(test.TestCase):
 
-  def _testCollectiveReduce(self, inputs, expected, set_graph_key,
-                            communication_hint='auto', fp16=False,
-                            instance_key=1, merge_op='Add', final_op='Div'):
+  def _testCollectiveReduce(self,
+                            inputs,
+                            expected,
+                            set_graph_key,
+                            communication_hint='auto',
+                            fp16=False,
+                            instance_key=1,
+                            merge_op='Add',
+                            final_op='Div',
+                            timeout=0,
+                            reported_group_size=None):
     group_key = 1
     group_size = len(inputs)
+    if reported_group_size is None:
+      reported_group_size = group_size
     device_type = 'CPU'
     config = config_pb2.ConfigProto(device_count={device_type: group_size})
     devices = ['/{}:{}'.format(device_type, i) for i in range(group_size)]
@@ -55,9 +67,16 @@ class CollectiveOpTest(test.TestCase):
         with ops.device(devices[i]):
           tensor = constant_op.constant(inputs[i], dtype=(
               dtypes.float16 if fp16 else dtypes.float32))
-          colred.append(collective_ops.all_reduce(
-              tensor, group_size, group_key, instance_key, merge_op, final_op,
-              communication_hint=communication_hint))
+          colred.append(
+              collective_ops.all_reduce(
+                  tensor,
+                  reported_group_size,
+                  group_key,
+                  instance_key,
+                  merge_op,
+                  final_op,
+                  communication_hint=communication_hint,
+                  timeout=timeout))
       run_options = config_pb2.RunOptions()
       if set_graph_key:
         run_options.experimental.collective_graph_key = 1
@@ -116,6 +135,69 @@ class CollectiveOpTest(test.TestCase):
         [0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
         [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3],
         [0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2])
+
+  @test_util.run_deprecated_v1
+  def testCollectiveTimeoutV1(self):
+    timeout = 4.5
+    kwargs = dict(
+        inputs=[[i + j + 0.1 for i in range(8)] for j in range(3)],
+        expected=[1 + i + 0.1 for i in range(8)],
+        set_graph_key=True,
+        timeout=timeout)
+
+    self._testCollectiveReduce(**kwargs)
+
+    start_time = time.time()
+    with self.assertRaisesRegex(
+        errors.DeadlineExceededError,
+        'Collective has timed out waiting for other workers'):
+      self._testCollectiveReduce(
+          reported_group_size=len(kwargs['inputs']) + 1, **kwargs)
+    elapsed = time.time() - start_time
+    self.assertAllGreaterEqual(elapsed, timeout)
+
+  @test_util.run_v2_only
+  def testCollectiveTimeoutV2(self):
+    context._reset_context()
+    timeout = 4.5
+    cpus = config.list_physical_devices('CPU')
+    self.assertEqual(len(cpus), 1)
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
+    ])
+    context.ensure_initialized()
+
+    @def_function.function
+    def run_all_reduce(group_size, reported_group_size=None):
+      group_key = 20
+      instance_key = 30
+      tensor = [1, 2, 3, 4]
+      results = []
+      if reported_group_size is None:
+        reported_group_size = group_size
+      for i in range(group_size):
+        with ops.device('/CPU:{}'.format(i)):
+          input_data = constant_op.constant(tensor)
+          collective_op = collective_ops.all_reduce(
+              input_data,
+              group_size=reported_group_size,
+              group_key=group_key,
+              instance_key=instance_key,
+              merge_op='Add',
+              final_op='Id',
+              timeout=timeout)
+          results.append(collective_op)
+      return results
+
+    run_all_reduce(2, 2)
+
+    start_time = time.time()
+    with self.assertRaisesRegex(errors.DeadlineExceededError,
+                                'Collective has timed out during execution'):
+      run_all_reduce(1, 2)
+    elapsed = time.time() - start_time
+    self.assertAllGreaterEqual(elapsed, timeout)
 
   @test_util.run_deprecated_v1
   def testNcclHintFallbackToRingReduce(self):

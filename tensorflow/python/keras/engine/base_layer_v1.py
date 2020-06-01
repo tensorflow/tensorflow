@@ -768,7 +768,7 @@ class Layer(base_layer.Layer):
           if not self.dynamic:
             try:
               with base_layer_utils.autocast_context_manager(
-                  self._compute_dtype):
+                  self._compute_dtype_object):
                 outputs = call_fn(cast_inputs, *args, **kwargs)
 
             except errors.OperatorNotAllowedInGraphError as e:
@@ -813,7 +813,7 @@ class Layer(base_layer.Layer):
           self._maybe_build(inputs)
           cast_inputs = self._maybe_cast_inputs(inputs)
           with base_layer_utils.autocast_context_manager(
-              self._compute_dtype):
+              self._compute_dtype_object):
             outputs = self.call(cast_inputs, *args, **kwargs)
           self._handle_activity_regularization(inputs, outputs)
           self._set_mask_metadata(inputs, outputs, input_masks)
@@ -833,13 +833,15 @@ class Layer(base_layer.Layer):
   def dynamic(self):
     # NOTE(taylorrobie): Currently self._dynamic is read-only. If that changes
     #                    then this cache logic must be updated.
-    return self._dynamic
+    return self._dynamic or any(layer.dynamic
+                                for layer in self._unique_sublayers())
 
   @property
   @doc_controls.do_not_generate_docs
   @trackable_layer_utils.cache_recursive_attribute('stateful')
   def stateful(self):
-    return self._stateful
+    return self._stateful or any(
+        getattr(layer, 'stateful', False) for layer in self._unique_sublayers())
 
   @stateful.setter
   @trackable_layer_utils.invalidate_recursive_cache('stateful')
@@ -1747,6 +1749,14 @@ class Layer(base_layer.Layer):
     self._dtype_defaulted_to_floatx = (not dtype and
                                        policy.policy_defaults_to_floatx())
 
+    # Performance optimization: cache the compute dtype as a Dtype object or
+    # None, so that str to Dtype conversion doesn't happen in Layer.__call__.
+    if self._dtype_policy.compute_dtype:
+      self._compute_dtype_object = dtypes.as_dtype(
+          self._dtype_policy.compute_dtype)
+    else:
+      self._compute_dtype_object = None
+
   # TODO(reedwm): Expose this property?
   @property
   def _compute_dtype(self):
@@ -2220,6 +2230,12 @@ class Layer(base_layer.Layer):
       self.__delattr__(name)
     except AttributeError:
       pass
+
+    # Keep track of metric instance created in subclassed layer.
+    from tensorflow.python.keras import metrics as metrics_module  # pylint: disable=g-import-not-at-top
+    for val in nest.flatten(value):
+      if isinstance(val, metrics_module.Metric) and hasattr(self, '_metrics'):
+        self._metrics.append(val)
 
     # TODO(scottzhu): Need to track Module object as well for weight tracking.
     # Be careful about metric if it becomes a Module in future.

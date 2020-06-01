@@ -672,6 +672,12 @@ __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicAdd(T* ptr, U value) {
   return atomicAdd(ptr, value);
 }
 
+__device__ inline int64 GpuAtomicAdd(int64* ptr, int64 value) {
+  // This cast should be safe since module-2 addition should work fine. However,
+  // signed overflow is not handled correctly since it's undefined behavior.
+  return atomicAdd(reinterpret_cast<uint64*>(ptr), static_cast<uint64>(value));
+}
+
 __device__ inline Eigen::half GpuAtomicAdd(Eigen::half* ptr,
                                            Eigen::half value) {
   return detail::GpuAtomicCasHelper(
@@ -725,9 +731,14 @@ __device__ inline double GpuAtomicSub(double* ptr, double value) {
   return GpuAtomicAdd(ptr, -value);
 }
 
+__device__ inline tensorflow::int64 GpuAtomicSub(tensorflow::int64* ptr,
+                                                 tensorflow::int64 value) {
+  return GpuAtomicAdd(ptr, -value);
+}
+
 __device__ inline tensorflow::uint64 GpuAtomicSub(tensorflow::uint64* ptr,
                                                   tensorflow::uint64 value) {
-  return GpuAtomicAdd(ptr, -value);
+  return GpuAtomicAdd(ptr, -static_cast<tensorflow::int64>(value));
 }
 
 __device__ inline Eigen::half GpuAtomicSub(Eigen::half* ptr,

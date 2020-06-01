@@ -17,6 +17,7 @@ package org.tensorflow.lite.support.label;
 
 import android.content.Context;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -150,21 +151,54 @@ public class TensorLabel {
    * than 1, and the axis should be effectively the last axis (which means every sub tensor
    * specified by this axis should have a flat size of 1).
    *
-   * @throws IllegalArgumentException if size of a sub tensor on each label is not 1.
+   * <p>{@link TensorLabel#getCategoryList()} is an alternative API to get the result.
+   *
+   * @throws IllegalStateException if size of a sub tensor on each label is not 1.
    */
   @NonNull
   public Map<String, Float> getMapWithFloatValue() {
     int labeledAxis = getFirstAxisWithSizeGreaterThanOne(tensorBuffer);
-    SupportPreconditions.checkArgument(
+    SupportPreconditions.checkState(
         labeledAxis == shape.length - 1,
         "get a <String, Scalar> map is only valid when the only labeled axis is the last one.");
     List<String> labels = axisLabels.get(labeledAxis);
     float[] data = tensorBuffer.getFloatArray();
-    SupportPreconditions.checkArgument(labels.size() == data.length);
+    SupportPreconditions.checkState(labels.size() == data.length);
     Map<String, Float> result = new LinkedHashMap<>();
     int i = 0;
     for (String label : labels) {
       result.put(label, data[i]);
+      i += 1;
+    }
+    return result;
+  }
+
+  /**
+   * Gets a list of {@link Category} from the {@link TensorLabel} object.
+   *
+   * <p>The axis of label should be effectively the last axis (which means every sub tensor
+   * specified by this axis should have a flat size of 1), so that each labelled sub tensor could be
+   * converted into a float value score. Example: A {@link TensorLabel} with shape {@code {2, 5, 3}}
+   * and axis 2 is valid. If axis is 1 or 0, it cannot be converted into a {@link Category}.
+   *
+   * <p>{@link TensorLabel#getMapWithFloatValue()} is an alternative but returns a {@link Map} as
+   * the result.
+   *
+   * @throws IllegalStateException if size of a sub tensor on each label is not 1.
+   */
+  @NonNull
+  public List<Category> getCategoryList() {
+    int labeledAxis = getFirstAxisWithSizeGreaterThanOne(tensorBuffer);
+    SupportPreconditions.checkState(
+        labeledAxis == shape.length - 1,
+        "get a Category list is only valid when the only labeled axis is the last one.");
+    List<String> labels = axisLabels.get(labeledAxis);
+    float[] data = tensorBuffer.getFloatArray();
+    SupportPreconditions.checkState(labels.size() == data.length);
+    List<Category> result = new ArrayList<>();
+    int i = 0;
+    for (String label : labels) {
+      result.add(new Category(label, data[i]));
       i += 1;
     }
     return result;

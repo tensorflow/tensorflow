@@ -26,6 +26,8 @@ import types
 import numpy as np
 import six
 
+from tensorflow.python.autograph.core import ag_ctx
+from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -67,6 +69,7 @@ from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
@@ -138,7 +141,7 @@ class Metric(base_layer.Layer):
       values = tf.cast(values, self.dtype)
       if sample_weight is not None:
         sample_weight = tf.cast(sample_weight, self.dtype)
-        sample_weight = tf.broadcast_weights(sample_weight, values)
+        sample_weight = tf.broadcast_to(sample_weight, values.shape)
         values = tf.multiply(values, sample_weight)
       self.true_positives.assign_add(tf.reduce_sum(values))
 
@@ -165,7 +168,12 @@ class Metric(base_layer.Layer):
     # return ops.
     if (base_layer_utils.is_in_eager_or_tf_function() or
         is_built_in(cls)):
-      update_state_fn = obj.update_state
+      obj_update_state = obj.update_state
+
+      def update_state_fn(*args, **kwargs):
+        control_status = ag_ctx.control_status_ctx()
+        ag_update_state = autograph.tf_convert(obj_update_state, control_status)
+        return ag_update_state(*args, **kwargs)
     else:
       if isinstance(obj.update_state, def_function.Function):
         update_state_fn = obj.update_state
@@ -174,7 +182,16 @@ class Metric(base_layer.Layer):
 
     obj.update_state = types.MethodType(
         metrics_utils.update_state_wrapper(update_state_fn), obj)
-    obj.result = types.MethodType(metrics_utils.result_wrapper(obj.result), obj)
+
+    obj_result = obj.result
+
+    def result_fn(*args, **kwargs):
+      control_status = ag_ctx.control_status_ctx()
+      ag_result = autograph.tf_convert(obj_result, control_status)
+      return ag_result(*args, **kwargs)
+
+    obj.result = types.MethodType(metrics_utils.result_wrapper(result_fn), obj)
+
     return obj
 
   def __call__(self, *args, **kwargs):
@@ -591,7 +608,8 @@ class MeanMetricWrapper(Mean):
     y_pred, y_true = tf_losses_utils.squeeze_or_expand_dimensions(
         y_pred, y_true)
 
-    matches = self._fn(y_true, y_pred, **self._fn_kwargs)
+    ag_fn = autograph.tf_convert(self._fn, ag_ctx.control_status_ctx())
+    matches = ag_fn(y_true, y_pred, **self._fn_kwargs)
     return super(MeanMetricWrapper, self).update_state(
         matches, sample_weight=sample_weight)
 
@@ -3171,7 +3189,8 @@ class SumOverBatchSizeMetricWrapper(SumOverBatchSize):
     y_pred, y_true = tf_losses_utils.squeeze_or_expand_dimensions(
         y_pred, y_true)
 
-    matches = self._fn(y_true, y_pred, **self._fn_kwargs)
+    ag_fn = autograph.tf_convert(self._fn, ag_ctx.control_status_ctx())
+    matches = ag_fn(y_true, y_pred, **self._fn_kwargs)
     return super(SumOverBatchSizeMetricWrapper, self).update_state(
         matches, sample_weight=sample_weight)
 
@@ -3194,6 +3213,7 @@ def accuracy(y_true, y_pred):
 
 
 @keras_export('keras.metrics.binary_accuracy')
+@dispatch.add_dispatch_support
 def binary_accuracy(y_true, y_pred, threshold=0.5):
   """Calculates how often predictions matches binary labels.
 
@@ -3221,6 +3241,7 @@ def binary_accuracy(y_true, y_pred, threshold=0.5):
 
 
 @keras_export('keras.metrics.categorical_accuracy')
+@dispatch.add_dispatch_support
 def categorical_accuracy(y_true, y_pred):
   """Calculates how often predictions matches one-hot labels.
 
@@ -3249,6 +3270,7 @@ def categorical_accuracy(y_true, y_pred):
 
 
 @keras_export('keras.metrics.sparse_categorical_accuracy')
+@dispatch.add_dispatch_support
 def sparse_categorical_accuracy(y_true, y_pred):
   """Calculates how often predictions matches integer labels.
 
@@ -3289,6 +3311,7 @@ def sparse_categorical_accuracy(y_true, y_pred):
 
 
 @keras_export('keras.metrics.top_k_categorical_accuracy')
+@dispatch.add_dispatch_support
 def top_k_categorical_accuracy(y_true, y_pred, k=5):
   """Computes how often targets are in the top `K` predictions.
 
@@ -3314,6 +3337,7 @@ def top_k_categorical_accuracy(y_true, y_pred, k=5):
 
 
 @keras_export('keras.metrics.sparse_top_k_categorical_accuracy')
+@dispatch.add_dispatch_support
 def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
   """Computes how often integer targets are in the top `K` predictions.
 
@@ -3461,9 +3485,8 @@ def get(identifier):
   elif callable(identifier):
     return identifier
   else:
-    error_msg = 'Could not interpret metric function identifier: {}'.format(
-        identifier)
-    raise ValueError(error_msg)
+    raise ValueError(
+        'Could not interpret metric function identifier: {}'.format(identifier))
 
 
 def is_built_in(cls):

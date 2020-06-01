@@ -236,6 +236,20 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "gpu_copy_alone_test",
+    srcs = [
+        "gpu_copy_alone_test.cc",
+    ],
+    tags = tf_cuda_tests_tags() + ["no_rocm"],
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
     name = "gpu_ftz_test",
     srcs = ["gpu_ftz_test.cc"],
     tags = tf_cuda_tests_tags(),

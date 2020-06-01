@@ -43,7 +43,7 @@ namespace TFTPU {
 constexpr char kPaddingMapAttr[] = "padding_map";
 
 // This pass remaps and assigns padding maps to an encapsulated function's
-// arguments from a `tf_device.launch_func` `padding_map` attribute. Remapping
+// arguments from a `tf_device.cluster_func` `padding_map` attribute. Remapping
 // is from replicated input index to encapsulated function's operand index
 // (user).
 
@@ -54,13 +54,13 @@ struct TPUDynamicPaddingMapper
 };
 
 // Creates a mapping from replicated input index (in `tf_device.replicate` op)
-// to `tf_device.launch_func` operand index.
+// to `tf_device.cluster_func` operand index.
 llvm::SmallDenseMap<int32_t, int32_t> GetRemappedReplicatedInputIndices(
-    tf_device::LaunchFuncOp launch_func, tf_device::ReplicateOp replicate) {
+    tf_device::ClusterFuncOp cluster_func, tf_device::ReplicateOp replicate) {
   Block* replicate_block = &replicate.GetBody();
 
   llvm::SmallDenseMap<int32_t, int32_t> remapped_indices;
-  for (auto operand_and_idx : llvm::enumerate(launch_func.getOperands()))
+  for (auto operand_and_idx : llvm::enumerate(cluster_func.getOperands()))
     if (auto block_arg = operand_and_idx.value().dyn_cast<BlockArgument>())
       if (block_arg.getOwner() == replicate_block)
         remapped_indices[block_arg.getArgNumber()] = operand_and_idx.index();
@@ -68,11 +68,12 @@ llvm::SmallDenseMap<int32_t, int32_t> GetRemappedReplicatedInputIndices(
   return remapped_indices;
 }
 
-// Extracts `padding_map` from `tf_device.launch_func` and remaps the associated
-// replicated input indices to the encapsulated function operand indices. An
-// error will be returned if an index is not found or parsing failed.
+// Extracts `padding_map` from `tf_device.cluster_func` and remaps the
+// associated replicated input indices to the encapsulated function operand
+// indices. An error will be returned if an index is not found or parsing
+// failed.
 LogicalResult GetRemappedPaddings(
-    tf_device::LaunchFuncOp launch_func, int num_replicated_args,
+    tf_device::ClusterFuncOp cluster_func, int num_replicated_args,
     const llvm::SmallDenseMap<int32_t, int32_t>& remapped_indices,
     llvm::SmallVectorImpl<tensorflow::tpu::PaddingMap>* remapped_paddings) {
   auto bad_index_msg = [num_replicated_args](int32_t index,
@@ -85,12 +86,12 @@ LogicalResult GetRemappedPaddings(
         .str();
   };
 
-  Attribute padding_map_attr = launch_func.getAttr(kPaddingMapAttr);
+  Attribute padding_map_attr = cluster_func.getAttr(kPaddingMapAttr);
   if (!padding_map_attr) return success();
 
   auto padding_map = padding_map_attr.dyn_cast<ArrayAttr>();
   if (!padding_map)
-    return launch_func.emitOpError()
+    return cluster_func.emitOpError()
            << "requires '" << kPaddingMapAttr << "' array attribute";
 
   for (auto padding_attr_and_idx : llvm::enumerate(padding_map)) {
@@ -98,25 +99,25 @@ LogicalResult GetRemappedPaddings(
     auto& padding_attr = padding_attr_and_idx.value();
     auto padding = padding_attr.dyn_cast<StringAttr>();
     if (!padding)
-      return launch_func.emitOpError(
+      return cluster_func.emitOpError(
           llvm::formatv("bad '{0}' attribute at index {1}, not a string",
                         kPaddingMapAttr, padding_attr_and_idx.index()));
 
     tensorflow::tpu::PaddingMap padding_proto;
     if (!padding_proto.ParseFromString(padding.getValue().str()))
-      return launch_func.emitOpError(llvm::formatv(
+      return cluster_func.emitOpError(llvm::formatv(
           "bad '{0}' attribute at index {1}, failed to parse '{2}' as "
           "tensorflow::tpu::PaddingMap",
           kPaddingMapAttr, idx, padding.getValue()));
 
     const int32_t arg_index = padding_proto.arg_index();
     if (arg_index >= num_replicated_args || arg_index < 0)
-      return launch_func.emitOpError()
+      return cluster_func.emitOpError()
              << bad_index_msg(idx, "arg_index", arg_index);
 
     const int32_t padding_arg_index = padding_proto.padding_arg_index();
     if (padding_arg_index >= num_replicated_args || padding_arg_index < 0)
-      return launch_func.emitOpError()
+      return cluster_func.emitOpError()
              << bad_index_msg(idx, "padding_arg_index", padding_arg_index);
 
     auto arg_index_it = remapped_indices.find(arg_index);
@@ -125,7 +126,7 @@ LogicalResult GetRemappedPaddings(
 
     auto padding_arg_index_it = remapped_indices.find(padding_arg_index);
     if (padding_arg_index_it == remapped_indices.end()) {
-      launch_func.emitWarning(llvm::formatv(
+      cluster_func.emitWarning(llvm::formatv(
           "bad '{0}' attribute at index {1}, unused padding_arg_index {2}",
           kPaddingMapAttr, idx, padding_arg_index));
       continue;
@@ -169,22 +170,21 @@ void AnnotateFunctionArgumentsWithPaddings(
   }
 }
 
-LogicalResult RemapAndAssignPaddingMaps(tf_device::LaunchFuncOp launch_func,
+LogicalResult RemapAndAssignPaddingMaps(tf_device::ClusterFuncOp cluster_func,
                                         SymbolTable* symbol_table) {
-  auto replicate =
-      llvm::dyn_cast_or_null<tf_device::ReplicateOp>(launch_func.getParentOp());
+  auto replicate = cluster_func.getParentOfType<tf_device::ReplicateOp>();
   // LaunchFunc is not replicated, there will be no padding.
   if (!replicate) return success();
   const int num_replicated_args = replicate.GetBody().getNumArguments();
 
-  auto func = symbol_table->lookup<FuncOp>(launch_func.func());
+  auto func = symbol_table->lookup<FuncOp>(cluster_func.func());
   if (!func) return success();
 
   llvm::SmallDenseMap<int32_t, int32_t> remapped_indices =
-      GetRemappedReplicatedInputIndices(launch_func, replicate);
+      GetRemappedReplicatedInputIndices(cluster_func, replicate);
 
   llvm::SmallVector<tensorflow::tpu::PaddingMap, 4> remapped_paddings;
-  if (failed(GetRemappedPaddings(launch_func, num_replicated_args,
+  if (failed(GetRemappedPaddings(cluster_func, num_replicated_args,
                                  remapped_indices, &remapped_paddings)))
     return failure();
 
@@ -196,8 +196,8 @@ LogicalResult RemapAndAssignPaddingMaps(tf_device::LaunchFuncOp launch_func,
 void TPUDynamicPaddingMapper::runOnOperation() {
   ModuleOp module = getOperation();
   SymbolTable symbol_table(module);
-  module.walk([&](tf_device::LaunchFuncOp launch_func) {
-    RemapAndAssignPaddingMaps(launch_func, &symbol_table);
+  module.walk([&](tf_device::ClusterFuncOp cluster_func) {
+    RemapAndAssignPaddingMaps(cluster_func, &symbol_table);
   });
 }
 }  // anonymous namespace

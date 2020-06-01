@@ -125,11 +125,14 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:ps_values",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/types",
     ],
 )
 
@@ -251,6 +254,7 @@ py_test(
     srcs = ["layer_correctness_test.py"],
     python_version = "PY3",
     shard_count = 10,
+    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/compat:v2_compat",

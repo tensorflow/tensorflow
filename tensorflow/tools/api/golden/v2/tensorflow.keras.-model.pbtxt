@@ -1,7 +1,6 @@
 path: "tensorflow.keras.Model"
 tf_class {
   is_instance: "<class \'tensorflow.python.keras.engine.training.Model\'>"
-  is_instance: "<class \'tensorflow.python.keras.engine.network.Network\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"
   is_instance: "<class \'tensorflow.python.training.tracking.tracking.AutoTrackable\'>"
@@ -175,7 +174,7 @@ tf_class {
   }
   member_method {
     name: "compute_mask"
-    argspec: "args=[\'self\', \'inputs\', \'mask\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'inputs\', \'mask\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "compute_output_shape"

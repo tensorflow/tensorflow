@@ -362,7 +362,7 @@ def _concat_flatbuffer_py_srcs_impl(ctx):
             "sed 's/from flatbuffers." +
             "/from flatbuffers.python.flatbuffers./' |" +
             "sed '1s/^/from flatbuffers.python " +
-            "import flatbuffers\\n/' > %s"
+            "import flatbuffers\\'$'\\n/' > %s"
         ) % (
             ctx.attr.deps[0].files.to_list()[0].path,
             ctx.outputs.out.path,
@@ -472,6 +472,7 @@ def flatbuffer_java_library(
     native.java_library(
         name = name,
         srcs = [out_srcjar],
+        javacopts = ["-source 7 -target 7"],
         deps = [
             "@flatbuffers//:runtime_java",
         ],
@@ -562,7 +563,6 @@ def flatbuffer_android_library(
         srcs,
         custom_package = "",
         package_prefix = "",
-        javacopts = None,
         include_paths = DEFAULT_INCLUDE_PATHS,
         flatc_args = DEFAULT_FLATC_ARGS,
         visibility = None):
@@ -575,7 +575,6 @@ def flatbuffer_android_library(
           namespace in the schema files will be used. (optional)
       package_prefix: like custom_package, but prefixes to the existing
           namespace. (optional)
-      javacopts: List of options to pass to javac.
       include_paths: List of paths that includes files can be found in. (optional)
       flatc_args: List of additional arguments to pass to flatc. (optional)
       visibility: Visibility setting for the android_library rule. (optional)
@@ -604,6 +603,7 @@ def flatbuffer_android_library(
     android_library(
         name = name,
         srcs = [out_srcjar],
+        javacopts = ["-source 7 -target 7"],
         visibility = visibility,
         deps = [
             "@flatbuffers//:runtime_android",

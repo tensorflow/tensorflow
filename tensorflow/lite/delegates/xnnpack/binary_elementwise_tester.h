@@ -17,17 +17,11 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_BINARY_ELEMENTWISE_TESTER_H_
 
 #include <cstdint>
-#include <functional>
-#include <random>
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/version.h"
 
 namespace tflite {
 namespace xnnpack {
@@ -80,6 +74,13 @@ class BinaryElementwiseTester {
 
   inline bool Input2Static() const { return input2_static_; }
 
+  inline BinaryElementwiseTester& FP16Weights() {
+    fp16_weights_ = true;
+    return *this;
+  }
+
+  inline bool FP16Weights() const { return fp16_weights_; }
+
   inline BinaryElementwiseTester& ReluActivation() {
     activation_ = ::tflite::ActivationFunctionType_RELU;
     return *this;
@@ -120,6 +121,7 @@ class BinaryElementwiseTester {
   std::vector<int32_t> input2_shape_;
   bool input1_static_ = false;
   bool input2_static_ = false;
+  bool fp16_weights_ = false;
   ::tflite::ActivationFunctionType activation_ =
       ::tflite::ActivationFunctionType_NONE;
 };

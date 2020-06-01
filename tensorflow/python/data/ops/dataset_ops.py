@@ -396,8 +396,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def __iter__(self):
     """Creates an `Iterator` for enumerating the elements of this dataset.
 
-    The returned iterator implements the Python iterator protocol and therefore
-    can only be used in eager mode.
+    The returned iterator implements the Python iterator protocol.
 
     Returns:
       An `Iterator` over the elements of this dataset.
@@ -1461,6 +1460,16 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     >>> list(dataset.as_numpy_iterator())
     [(array([[ 1,  2,  3, -1], [ 4,  5, -1, -1]], dtype=int32),
       array([[ 10, 100], [ 11,  12]], dtype=int32))]
+    >>> # Pad with a single value and multiple components.
+    >>> E = tf.data.Dataset.zip((A, A)).padded_batch(2, padding_values=-1)
+    >>> for element in E.as_numpy_iterator():
+    ...   print(element)
+    (array([[ 1, -1],
+           [ 2,  2]], dtype=int32), array([[ 1, -1],
+           [ 2,  2]], dtype=int32))
+    (array([[ 3,  3,  3, -1],
+           [ 4,  4,  4,  4]], dtype=int32), array([[ 3,  3,  3, -1],
+           [ 4,  4,  4,  4]], dtype=int32))
 
     See also `tf.data.experimental.dense_to_sparse_batch`, which combines
     elements that may have different shapes into a `tf.sparse.SparseTensor`.
@@ -1479,7 +1488,12 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
         `tf.Tensor`, representing the padding values to use for the respective
         components. None represents that the nested structure should be padded
         with default values.  Defaults are `0` for numeric types and the empty
-        string for string types.
+        string for string types. The `padding_values` should have the
+        same structure as the input dataset. If `padding_values` is a single
+        element and the input dataset has multiple components, then the same
+        `padding_values` will be used to pad every component of the dataset.
+        If `padding_values` is a scalar, then its value will be broadcasted
+        to match the shape of each component.
       drop_remainder: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
         whether the last batch should be dropped in the case it has fewer than
         `batch_size` elements; the default behavior is not to drop the smaller
@@ -1657,7 +1671,8 @@ name=None))
     stays the same. For example, to flatten a dataset of batches into a
     dataset of their elements:
 
-    >>> dataset = Dataset.from_tensor_slices([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    >>> dataset = tf.data.Dataset.from_tensor_slices(
+    ...                [[1, 2, 3], [4, 5, 6], [7, 8, 9]])
     >>> dataset = dataset.flat_map(lambda x: Dataset.from_tensor_slices(x))
     >>> list(dataset.as_numpy_iterator())
     [1, 2, 3, 4, 5, 6, 7, 8, 9]
@@ -2079,36 +2094,6 @@ name=None))
       ValueError: when an option is set more than once to a non-default value
     """
     return _OptionsDataset(self, options)
-
-  def cardinality(self):
-    """Returns the (statically known) cardinality of the dataset.
-
-    The returned cardinality may be infinite or unknown. the latter will be
-    returned if static analysis fails to determine the number of elements in
-    `dataset` (e.g. when the dataset source is a file).
-
-    Note: To provide an idiomatic representation for infinite and unknown
-    cardinality, this method returns a 64-bit floating point number. As a
-    consequence, the returned cardinality will be approximate for datasets
-    whose integer cardinality cannot be accurately represented by 64-bit
-    floating point number (i.e. cardinalities greater than 2^53).
-
-    >>> dataset = tf.data.Dataset.range(42)
-    >>> print(dataset.cardinality().numpy())
-    42.0
-    >>> dataset = dataset.repeat()
-    >>> print(dataset.cardinality().numpy() == np.inf)
-    True
-    >>> dataset = dataset.filter(lambda x: True)
-    >>> print(np.isnan(dataset.cardinality().numpy()))
-    True
-
-    Returns:
-      A scalar `tf.float64` `Tensor` representing the cardinality of the
-      dataset. If the cardinality is infinite or unknown, the operation returns
-      IEEE 754 representation of infinity and NaN respectively.
-    """
-    return ged_ops.dataset_cardinality_v2(self._variant_tensor)
 
 
 @tf_export(v1=["data.Dataset"])
@@ -4027,6 +4012,12 @@ class PaddedBatchDataset(UnaryDataset):
     self._padded_shapes = nest.pack_sequence_as(input_shapes,
                                                 flat_padded_shapes_as_tensors)
 
+    # If padding_values is a single element and input_shapes is a structure,
+    # "broadcast" padding_values to the same structure as input_shapes.
+    if nest.is_sequence(input_shapes) and not nest.is_sequence(padding_values):
+      padding_values = nest.map_structure(lambda _: padding_values,
+                                          input_shapes)
+
     self._padding_values = nest.map_structure_up_to(
         input_shapes, _padding_value_to_tensor, padding_values,
         get_legacy_output_types(input_dataset))
@@ -4356,14 +4347,18 @@ class PrefetchDataset(UnaryUnchangedStructureDataset):
     """
     self._input_dataset = input_dataset
     if buffer_size is None:
-      buffer_size = -1  # This is the sentinel for auto-tuning.
+      buffer_size = AUTOTUNE
     self._buffer_size = ops.convert_to_tensor(
         buffer_size, dtype=dtypes.int64, name="buffer_size")
-    variant_tensor = gen_dataset_ops.prefetch_dataset(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        buffer_size=self._buffer_size,
-        slack_period=slack_period,
-        **self._flat_structure)
+    # pylint: disable=protected-access
+    # We colocate the prefetch dataset with its input as this collocation only
+    # happens automatically in graph mode.
+    with ops.device(input_dataset._variant_tensor.device):
+      variant_tensor = gen_dataset_ops.prefetch_dataset(
+          input_dataset._variant_tensor,
+          buffer_size=self._buffer_size,
+          slack_period=slack_period,
+          **self._flat_structure)
     super(PrefetchDataset, self).__init__(input_dataset, variant_tensor)
 
 

@@ -185,9 +185,6 @@ inline void Conv1x32Input32x32Filter(
     ae_q56s acc_56 = AE_ZEROQ56();
     const int8_t* input_vals_ptr = input_data - 2;
     for (int i = 0; i < kFilterDepth; i += 2) {
-      // Find current input index, minus 2 for Xtensa load
-      // alignments:
-
       // Load signed 2x 8bit values and right shift into 24bit
       // alignment:
       ae_p24x2s input_vals_24x2;
@@ -244,7 +241,6 @@ constexpr int kInputTensor = 0;
 constexpr int kFilterTensor = 1;
 constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
-constexpr int kMaxChannels = 32;
 
 // Conv is quantized along dimension 0:
 // https://www.tensorflow.org/lite/performance/quantization_spec
@@ -258,21 +254,14 @@ struct OpData {
   int output_shift;
 
   // Per channel output multiplier and shift.
-  // TODO(b/141139247): Allocate these dynamically when possible.
-  int32_t per_channel_output_multiplier[kMaxChannels];
-  int32_t per_channel_output_shift[kMaxChannels];
+  int32_t* per_channel_output_multiplier;
+  int32_t* per_channel_output_shift;
 
   // The range of the fused activation layer. For example for kNone and
   // uint8_t these would be 0 and 255.
   int32_t output_activation_min;
   int32_t output_activation_max;
 };
-
-// These constants represent constants specific to the music detect model.
-// They exist until (b/132070898) is fixed.
-static const int kMaxOpDataSize = 6;
-static int op_data_counter = 0;
-static OpData kStaticOpData[kMaxOpDataSize];
 
 TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
                              TfLiteConvParams* params, int width, int height,
@@ -301,30 +290,37 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
     TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
     int output_channels = filter->dims->data[kConvQuantizedDimension];
 
-    TF_LITE_ENSURE_STATUS(tflite::PopulateConvolutionQuantizationParams(
+    return tflite::PopulateConvolutionQuantizationParams(
         context, input, filter, bias, output, params->activation,
         &data->output_multiplier, &data->output_shift,
         &data->output_activation_min, &data->output_activation_max,
         data->per_channel_output_multiplier,
         reinterpret_cast<int*>(data->per_channel_output_shift),
-        output_channels));
+        output_channels);
   }
   return kTfLiteOk;
 }
 
-void Free(TfLiteContext* context, void* buffer) { op_data_counter = 0; }
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
+  void* data = nullptr;
+  if (context->AllocatePersistentBuffer(context, sizeof(OpData), &data) ==
+      kTfLiteError) {
+    return nullptr;
+  }
+  return data;
+}
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  TFLITE_DCHECK(node->user_data != nullptr);
+  TFLITE_DCHECK(node->builtin_data != nullptr);
   auto* params = reinterpret_cast<TfLiteConvParams*>(node->builtin_data);
 
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
 
-  // TODO(b/132070898): Use statically slotted OpData structures until a
-  // scratch memory API is ready.
-  OpData* op_data = &kStaticOpData[op_data_counter++];
-  node->user_data = op_data;
+  auto* op_data = reinterpret_cast<OpData*>(node->user_data);
 
   int input_width = input->dims->data[2];
   int input_height = input->dims->data[1];
@@ -332,6 +328,17 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   int filter_height = filter->dims->data[1];
   int output_width = output->dims->data[2];
   int output_height = output->dims->data[1];
+
+  // Per channel quantization is only needed for int8 inference. For other
+  // quantized types, only a single scale and zero point is needed.
+  const int num_channels = filter->dims->data[kConvQuantizedDimension];
+  // Dynimically allocate per-channel quantization parameters.
+  TF_LITE_ENSURE_STATUS(context->AllocatePersistentBuffer(
+      context, num_channels * sizeof(int32_t),
+      reinterpret_cast<void**>(&op_data->per_channel_output_multiplier)));
+  TF_LITE_ENSURE_STATUS(context->AllocatePersistentBuffer(
+      context, num_channels * sizeof(int32_t),
+      reinterpret_cast<void**>(&op_data->per_channel_output_shift)));
 
   // All per-channel quantized tensors need valid zero point and scale arrays.
   if (input->type == kTfLiteInt8) {
@@ -353,11 +360,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                       affine_quantization->zero_point->size);
   }
 
-  TF_LITE_ENSURE_STATUS(CalculateOpData(
-      context, node, params, input_width, input_height, filter_width,
-      filter_height, output_width, output_height, input->type, op_data));
-
-  return kTfLiteOk;
+  return CalculateOpData(context, node, params, input_width, input_height,
+                         filter_width, filter_height, output_width,
+                         output_height, input->type, op_data);
 }
 
 void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
@@ -366,6 +371,7 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
                              const TfLiteTensor* filter,
                              const TfLiteTensor* bias, TfLiteTensor* output,
                              TfLiteTensor* im2col) {
+  // TODO(b/154032858): Investigate removing extra copies.
   ConvParams op_params;
   op_params.input_offset = -input->params.zero_point;
   op_params.output_offset = output->params.zero_point;
@@ -388,6 +394,8 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+  TFLITE_DCHECK(node->user_data != nullptr);
+  TFLITE_DCHECK(node->builtin_data != nullptr);
   auto* params = reinterpret_cast<TfLiteConvParams*>(node->builtin_data);
   auto* op_data = reinterpret_cast<OpData*>(node->user_data);
 
@@ -429,8 +437,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace conv
 
 TfLiteRegistration* Register_CONV_2D() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/conv::Free,
+  static TfLiteRegistration r = {/*init=*/conv::Init,
+                                 /*free=*/nullptr,
                                  /*prepare=*/conv::Prepare,
                                  /*invoke=*/conv::Eval,
                                  /*profiling_string=*/nullptr,

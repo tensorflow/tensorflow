@@ -178,6 +178,7 @@ TF_CALL_int32(REGISTER_DIAGOP);
 TF_CALL_int64(REGISTER_DIAGOP);
 TF_CALL_complex64(REGISTER_DIAGOP);
 TF_CALL_complex128(REGISTER_DIAGOP);
+TF_CALL_half(REGISTER_DIAGOP);
 #undef REGISTER_DIAGOP
 
 #define REGISTER_DIAGPARTOP(T)                                    \
@@ -191,6 +192,7 @@ TF_CALL_int32(REGISTER_DIAGPARTOP);
 TF_CALL_int64(REGISTER_DIAGPARTOP);
 TF_CALL_complex64(REGISTER_DIAGPARTOP);
 TF_CALL_complex128(REGISTER_DIAGPARTOP);
+TF_CALL_half(REGISTER_DIAGPARTOP);
 #undef REGISTER_DIAGPARTOP
 
 // Register the GPU kernels.
@@ -217,6 +219,7 @@ TF_CALL_int32(REGISTER_DIAGOP_GPU);
 TF_CALL_int64(REGISTER_DIAGOP_GPU);
 TF_CALL_complex64(REGISTER_DIAGOP_GPU);
 TF_CALL_complex128(REGISTER_DIAGOP_GPU);
+TF_CALL_half(REGISTER_DIAGOP_GPU);
 #undef REGISTER_DIAGOP_GPU
 
 // Forward declarations of the functor specializations for GPU.
@@ -227,6 +230,7 @@ extern template struct DiagPartFunctor<GPUDevice, int32>;
 extern template struct DiagPartFunctor<GPUDevice, int64>;
 extern template struct DiagPartFunctor<GPUDevice, complex64>;
 extern template struct DiagPartFunctor<GPUDevice, complex128>;
+extern template struct DiagPartFunctor<GPUDevice, Eigen::half>;
 }  // namespace functor
 
 #define REGISTER_DIAGPARTOP_GPU(T)                                \
@@ -240,6 +244,7 @@ TF_CALL_int32(REGISTER_DIAGPARTOP_GPU);
 TF_CALL_int64(REGISTER_DIAGPARTOP_GPU);
 TF_CALL_complex64(REGISTER_DIAGPARTOP_GPU);
 TF_CALL_complex128(REGISTER_DIAGPARTOP_GPU);
+TF_CALL_half(REGISTER_DIAGPARTOP_GPU);
 #undef REGISTER_DIAGPARTOP_GPU
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

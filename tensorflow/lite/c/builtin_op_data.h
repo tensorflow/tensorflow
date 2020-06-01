@@ -297,6 +297,7 @@ typedef struct {
 
 typedef struct {
   bool align_corners;
+  bool half_pixel_centers;
 } TfLiteResizeNearestNeighborParams;
 
 typedef struct {

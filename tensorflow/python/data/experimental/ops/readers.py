@@ -183,24 +183,30 @@ def _get_sorted_col_indices(select_columns, column_names):
   """Transforms select_columns argument into sorted column indices."""
   names_to_indices = {n: i for i, n in enumerate(column_names)}
   num_cols = len(column_names)
-  for i, v in enumerate(select_columns):
+
+  results = []
+  for v in select_columns:
+    # If value is already an int, check if it's valid.
     if isinstance(v, int):
       if v < 0 or v >= num_cols:
         raise ValueError(
             "Column index %d specified in select_columns out of valid range." %
             v)
-      continue
-    if v not in names_to_indices:
+      results.append(v)
+    # Otherwise, check that it's a valid column name and convert to the
+    # the relevant column index.
+    elif v not in names_to_indices:
       raise ValueError(
           "Value '%s' specified in select_columns not a valid column index or "
           "name." % v)
-    select_columns[i] = names_to_indices[v]
+    else:
+      results.append(names_to_indices[v])
 
   # Sort and ensure there are no duplicates
-  result = sorted(set(select_columns))
-  if len(result) != len(select_columns):
+  results = sorted(set(results))
+  if len(results) != len(select_columns):
     raise ValueError("select_columns contains duplicate columns")
-  return result
+  return results
 
 
 def _maybe_shuffle_and_repeat(

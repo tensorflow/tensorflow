@@ -950,9 +950,6 @@ class ParseSingleSequenceExampleOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->output_list("feature_list_dense_values",
                                          &feature_list_dense_values));
 
-#ifdef TENSORFLOW_LITE_PROTOS
-    SequenceExample ex;
-#else
     // Allocate the SequenceExample on an arena. Provides better memory locality
     // and greatly speeds up destruction.
     protobuf::ArenaOptions options;
@@ -965,7 +962,7 @@ class ParseSingleSequenceExampleOp : public OpKernel {
     options.max_block_size = std::max(options.max_block_size, block_size);
     protobuf::Arena arena(options);
     auto& ex = *protobuf::Arena::CreateMessage<SequenceExample>(&arena);
-#endif
+
     OP_REQUIRES(
         ctx, ParseProtoUnlimited(&ex, serialized_t()),
         errors::InvalidArgument("Could not parse example input, value: '",

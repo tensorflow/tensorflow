@@ -71,7 +71,7 @@ void ValidateSubGoldens(TfLiteTensor* tensors, int tensors_size,
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(::tflite::BuiltinOperator_SUB, 1);
+      resolver.FindOp(::tflite::BuiltinOperator_SUB);
 
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 

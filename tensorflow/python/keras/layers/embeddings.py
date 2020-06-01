@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
@@ -129,8 +130,10 @@ class Embedding(Layer):
     # since it knows all kernels using the variable only exist on CPU.
     # When eager execution is enabled, the placement decision has to be made
     # right now. Checking for the presence of GPUs to avoid complicating the
-    # TPU codepaths which can handle sparse optimizers.
-    if context.executing_eagerly() and context.context().num_gpus():
+    # TPU codepaths which can handle sparse optimizers. But if we are within
+    # a tf.function, we go back the graph mode logic and rely on the placer.
+    if (context.executing_eagerly() and context.context().num_gpus() and
+        not ops.inside_function()):
       with ops.device('cpu:0'):
         self.embeddings = self.add_weight(
             shape=(self.input_dim, self.output_dim),
@@ -181,7 +184,10 @@ class Embedding(Layer):
     dtype = K.dtype(inputs)
     if dtype != 'int32' and dtype != 'int64':
       inputs = math_ops.cast(inputs, 'int32')
-    out = embedding_ops.embedding_lookup(self.embeddings, inputs)
+    if isinstance(self.embeddings, sharded_variable.ShardedVariable):
+      out = embedding_ops.embedding_lookup_v2(self.embeddings.variables, inputs)
+    else:
+      out = embedding_ops.embedding_lookup_v2(self.embeddings, inputs)
     return out
 
   def get_config(self):

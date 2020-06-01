@@ -60,7 +60,7 @@ TfLiteStatus ValidateConvGoldens(TfLiteTensor* tensors, int tensors_size,
   ::tflite::ops::micro::AllOpsResolver resolver;
 
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_CONV_2D, 1);
+      resolver.FindOp(tflite::BuiltinOperator_CONV_2D);
 
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
@@ -409,8 +409,9 @@ TF_LITE_MICRO_TEST(Kernel1x1QuantizedPerChannel) {
 
 TF_LITE_MICRO_TEST(Kernel1x1QuantizedPerChannelRelu6) {
   // conv params:
-  // padding, stride_<width,height>, dilation_<width, height>, activation
-  TfLiteConvParams conv_params = {kTfLitePaddingValid, 1, 1, kTfLiteActRelu6};
+  // padding, stride_<width,height>, activation, dilation_<width, height>
+  TfLiteConvParams conv_params = {kTfLitePaddingValid, 1, 1,
+                                  kTfLiteActRelu6,     1, 1};
   const int kInputShape[] = {4, 1, 2, 2, 4};  // [len,N,H,W,C]
   const int kInputElements =
       kInputShape[1] * kInputShape[2] * kInputShape[3] * kInputShape[4];

@@ -455,8 +455,12 @@ TEST(CompileGraphToXlaHlo, Basic) {
   test::graph::Retval(&graph, 0, arg);
 
   XlaCompiler::CompilationResult result;
+  XlaCompiler::Argument compiler_arg;
+  compiler_arg.kind = XlaCompiler::Argument::kParameter;
+  compiler_arg.shape = TensorShape();
+
   TF_ASSERT_OK(
-      CompileGraphToXlaHlo(graph, /*arg_shapes=*/{TensorShape()}, "XLA_CPU_JIT",
+      CompileGraphToXlaHlo(graph, /*args=*/{compiler_arg}, "XLA_CPU_JIT",
                            /*use_tuple_args=*/false, flib_def, GraphDebugInfo(),
                            /*shape_representation_fn=*/nullptr, &result));
 

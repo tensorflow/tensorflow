@@ -186,6 +186,43 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegexp(AttributeError, 'no attribute'):
       add(c)
 
+  def testPackedVariable(self):
+    with ops.device('/cpu:0'):
+      v0_0 = resource_variable_ops.ResourceVariable(1.0)
+    with ops.device('/cpu:1'):
+      v0_1 = resource_variable_ops.ResourceVariable(2.0)
+      v1_0 = resource_variable_ops.ResourceVariable(3.0)
+    with ops.device('/cpu:2'):
+      v1_1 = resource_variable_ops.ResourceVariable(4.0)
+
+    packed_var_0 = ops.pack_eager_tensors([v0_0.handle, v0_1.handle])
+    packed_var_1 = ops.pack_eager_tensors([v1_0.handle, v1_1.handle])
+
+    # TODO(b/145922293): use ResourceVariable.assign_add and
+    # ResourceVariable.read_value directly once we support packing multiple
+    # ResourceVariable into one ResourceVariable.
+    @def_function.function
+    def read_var():
+      resource_variable_ops.assign_add_variable_op(
+          packed_var_0, constant_op.constant(5.0))
+      resource_variable_ops.assign_add_variable_op(
+          packed_var_1, constant_op.constant(6.0))
+      with ops.device('/cpu:0'):
+        read0 = resource_variable_ops.read_variable_op(
+            packed_var_0, dtype=dtypes.float32)
+      with ops.device('/cpu:1'):
+        read1 = resource_variable_ops.read_variable_op(
+            packed_var_0, dtype=dtypes.float32)
+        read2 = resource_variable_ops.read_variable_op(
+            packed_var_1, dtype=dtypes.float32)
+      with ops.device('/cpu:2'):
+        read3 = resource_variable_ops.read_variable_op(
+            packed_var_1, dtype=dtypes.float32)
+
+      return read0, read1, read2, read3
+
+    self.assertAllEqual(read_var(), (1 + 5, 2 + 5, 3 + 6, 4 + 6))
+
   def testImplementsAttributeBasic(self):
     v = def_function.function(
         experimental_implements='func')(lambda x, y: x + y)
@@ -3743,8 +3780,12 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
                   r'      <1>: int32 Tensor, shape=\(\)\n'
                   r'      <2>: RaggedTensorSpec\(.*\)\n'
                   r'      <3>: RaggedTensorSpec\(.*\)')
-    self.assertRegexpMatches(c3.pretty_printed_signature(),
-                             c3_summary + '\n' + c3_details)
+
+    # python 3.5 does not gurantee deterministic iteration of dict contents
+    # which can lead mismatch on pretty_printed_signature output for "Args"
+    if sys.version_info >= (3, 6):
+      self.assertRegexpMatches(c3.pretty_printed_signature(),
+                               c3_summary + '\n' + c3_details)
 
     # pylint: disable=keyword-arg-before-vararg
     @def_function.function

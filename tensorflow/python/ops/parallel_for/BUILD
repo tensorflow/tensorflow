@@ -132,6 +132,7 @@ cuda_py_test(
         # XLA is not enabled by default on Mac or Windows.
         "no_mac",
         "no_windows",
+        "nogpu",  # TODO(b/155761551): Flaky on GPU on TAP
     ],
     xla_enabled = True,
     deps = [

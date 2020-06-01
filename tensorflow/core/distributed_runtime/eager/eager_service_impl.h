@@ -96,7 +96,8 @@ class EagerServiceImpl {
   Status WaitQueueDone(const WaitQueueDoneRequest* request,
                        WaitQueueDoneResponse* response);
 
-  void RunComponentFunction(const RunComponentFunctionRequest* request,
+  void RunComponentFunction(CallOptions* call_opts,
+                            const RunComponentFunctionRequest* request,
                             RunComponentFunctionResponse* response,
                             StatusCallback done);
 
@@ -212,6 +213,8 @@ class EagerServiceImpl {
                    QueueResponse* queue_response);
   Status SendTensor(const SendTensorOp& send_tensor,
                     EagerContext* eager_context);
+  Status SendPackedHandle(const SendPackedHandleOp& send_packed_handle,
+                          EagerContext* eager_context);
   Status RegisterFunction(const RegisterFunctionOp& register_function,
                           EagerContext* eager_context);
   Status CleanupFunction(const CleanupFunctionOp& cleanup_function);

@@ -1,4 +1,4 @@
-# TensorFlow Lite 2019 Roadmap
+# TensorFlow Lite Roadmap
 
 **Updated: April 18, 2020**
 

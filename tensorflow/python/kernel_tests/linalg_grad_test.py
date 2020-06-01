@@ -23,7 +23,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
@@ -61,35 +61,32 @@ class MatrixUnaryFunctorGradientTest(test_lib.TestCase):
 
 def _GetMatrixUnaryFunctorGradientTest(functor_, dtype_, shape_, **kwargs_):
 
-  @test_util.run_v1_only('b/120545219')
+  @test_util.enable_control_flow_v2
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def Test(self):
-    with self.session(use_gpu=True):
+
+    def RandomInput():
       np.random.seed(1)
-      a_np = np.random.uniform(
+      return np.random.uniform(
           low=-1.0, high=1.0,
           size=np.prod(shape_)).reshape(shape_).astype(dtype_)
-      a = constant_op.constant(a_np)
-      if functor_.__name__ == 'matrix_square_root':
-        # Square the input matrix to ensure that its matrix square root exists
-        a = math_ops.matmul(a, a)
-        a_np = self.evaluate(a)
-      b = functor_(a, **kwargs_)
 
-      # Optimal stepsize for central difference is O(epsilon^{1/3}).
-      epsilon = np.finfo(dtype_).eps
-      delta = epsilon**(1.0 / 3.0)
-      # tolerance obtained by looking at actual differences using
-      # np.linalg.norm(theoretical-numerical, np.inf) on -mavx build
-      tol = 1e-6 if dtype_ == np.float64 else 0.05
+    if functor_.__name__ == 'matrix_square_root':
+      # Square the input matrix to ensure that its matrix square root exists
+      f = lambda x: functor_(math_ops.matmul(x, x), **kwargs_)
+    else:
+      f = functor_
 
-      theoretical, numerical = gradient_checker.compute_gradient(
-          a,
-          a.get_shape().as_list(),
-          b,
-          b.get_shape().as_list(),
-          x_init_value=a_np,
-          delta=delta)
-      self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
+    # Optimal stepsize for central difference is O(epsilon^{1/3}).
+    epsilon = np.finfo(dtype_).eps
+    delta = epsilon**(1.0 / 3.0)
+    # tolerance obtained by looking at actual differences using
+    # np.linalg.norm(theoretical-numerical, np.inf) on -mavx build
+    tol = 1e-6 if dtype_ == np.float64 else 0.05
+
+    theoretical, numerical = gradient_checker_v2.compute_gradient(
+        f, [RandomInput()], delta=delta)
+    self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
 
   return Test
 
@@ -104,42 +101,33 @@ def _GetMatrixBinaryFunctorGradientTest(functor_,
                                         float32_tol_fudge=1.0,
                                         **kwargs_):
 
-  @test_util.run_v1_only('b/120545219')
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def Test(self):
-    # TODO(rmlarsen): Debug illegal address bug on CUDA and re-enable
-    # GPU test for matrix_solve.
-    use_gpu = False if functor_ == linalg_ops.matrix_solve else True
 
-    with self.session(use_gpu=use_gpu):
+    def RandomInput():
       np.random.seed(1)
-      a_np = np.random.uniform(
+      return np.random.uniform(
           low=-1.0, high=1.0,
           size=np.prod(shape_)).reshape(shape_).astype(dtype_)
-      a = constant_op.constant(a_np)
 
-      b_np = np.random.uniform(
-          low=-1.0, high=1.0,
-          size=np.prod(shape_)).reshape(shape_).astype(dtype_)
-      b = constant_op.constant(b_np)
-      c = functor_(a, b, **kwargs_)
+    fixed = RandomInput()
 
-      # Optimal stepsize for central difference is O(epsilon^{1/3}).
-      epsilon = np.finfo(dtype_).eps
-      delta = epsilon**(1.0 / 3.0)
-      # tolerance obtained by looking at actual differences using
-      # np.linalg.norm(theoretical-numerical, np.inf) on -mavx build
-      tol = 1e-6 if dtype_ == np.float64 else float32_tol_fudge * 0.05
-      # The gradients for a and b may be of very different magnitudes,
-      # so to not get spurious failures we test them separately.
-      for factor, factor_init in [a, a_np], [b, b_np]:
-        theoretical, numerical = gradient_checker.compute_gradient(
-            factor,
-            factor.get_shape().as_list(),
-            c,
-            c.get_shape().as_list(),
-            x_init_value=factor_init,
-            delta=delta)
-        self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
+    # Optimal stepsize for central difference is O(epsilon^{1/3}).
+    epsilon = np.finfo(dtype_).eps
+    delta = epsilon**(1.0 / 3.0)
+    # tolerance obtained by looking at actual differences using
+    # np.linalg.norm(theoretical-numerical, np.inf) on -mavx build
+    tol = 1e-6 if dtype_ == np.float64 else float32_tol_fudge * 0.05
+
+    # check gradient w.r.t. left argument.
+    theoretical, numerical = gradient_checker_v2.compute_gradient(
+        lambda x: functor_(x, fixed, **kwargs_), [RandomInput()], delta=delta)
+    self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
+
+    # check gradient w.r.t. right argument.
+    theoretical, numerical = gradient_checker_v2.compute_gradient(
+        lambda y: functor_(fixed, y, **kwargs_), [RandomInput()], delta=delta)
+    self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
 
   return Test
 

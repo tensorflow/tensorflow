@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/cc/experimental/base/public/status.h"
 
 namespace tensorflow {
+namespace experimental {
 namespace cc {
 
 // RuntimeBuilder is a builder used to construct a tensorflow::cc::Runtime.
@@ -79,6 +80,7 @@ inline std::unique_ptr<Runtime> RuntimeBuilder::Build(Status* status) {
 }
 
 }  // namespace cc
+}  // namespace experimental
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CC_EXPERIMENTAL_BASE_PUBLIC_RUNTIME_BUILDER_H_

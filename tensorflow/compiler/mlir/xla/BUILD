@@ -23,7 +23,6 @@ package_group(
         "//tensorflow/compiler/xla/...",
         "//third_party/iree/...",
         "//third_party/mlir_edge/...",
-        "//third_party/tf_runtime/tools/tf_kernel_gen/...",
     ],
 )
 
@@ -39,7 +38,7 @@ filegroup(
         "ir/lhlo_ops.td",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/SideEffects.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
     ],
 )
 
@@ -51,9 +50,7 @@ gentbl(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/chlo_ops.td",
-    td_srcs = [
-        ":hlo_ops_td_files",
-    ],
+    td_srcs = [":hlo_ops_td_files"],
 )
 
 gentbl(
@@ -113,16 +110,11 @@ gentbl(
 gentbl(
     name = "xla_canonicalize_inc_gen",
     tbl_outs = [
-        (
-            "-gen-rewriters",
-            "transforms/generated_canonicalize.inc",
-        ),
+        ("-gen-rewriters", "transforms/generated_canonicalize.inc"),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/canonicalize.td",
-    td_srcs = [
-        ":hlo_ops_td_files",
-    ],
+    td_srcs = [":hlo_ops_td_files"],
 )
 
 cc_library(
@@ -133,6 +125,7 @@ cc_library(
         "transforms/legalize_tf_control_flow.cc",
     ],
     deps = [
+        ":chlo_legalize_to_hlo",
         ":convert_op_folder",
         ":hlo",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -157,9 +150,7 @@ cc_library(
 
 cc_library(
     name = "xla_legalize_tf_with_tf2xla",
-    srcs = [
-        "transforms/legalize_tf_with_tf2xla.cc",
-    ],
+    srcs = ["transforms/legalize_tf_with_tf2xla.cc"],
     deps = [
         ":hlo",
         ":mlir_hlo_builder",
@@ -187,7 +178,24 @@ cc_library(
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "xla_sink_constants_to_control_flow",
+    srcs = ["transforms/sink_constants_to_control_flow.cc"],
+    deps = [
+        ":hlo",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,
 )
@@ -240,8 +248,8 @@ cc_library(
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgOps",
-        "@llvm-project//mlir:LoopOps",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
     ],
@@ -267,6 +275,21 @@ cc_library(
 )
 
 cc_library(
+    name = "xla_transform_unranked_hlo",
+    srcs = ["transforms/xla_transform_unranked_hlo.cc"],
+    deps = [
+        ":hlo",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "lhlo_legalize_to_gpu",
     srcs = ["transforms/lhlo_legalize_to_gpu.cc"],
     deps = [
@@ -278,8 +301,8 @@ cc_library(
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgOps",
-        "@llvm-project//mlir:LoopOps",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
     ],
@@ -330,42 +353,6 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
-    name = "buffer_assignment",
-    srcs = ["transforms/buffer_assignment.cc"],
-    hdrs = ["transforms/buffer_assignment.h"],
-    deps = [
-        "@com_google_absl//absl/memory",
-        "@llvm-project//mlir:Analysis",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Transforms",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "buffer_assignment_test",
-    srcs = ["transforms/buffer_assignment_test.cc"],
-    hdrs = [
-        "transforms/buffer_assignment.h",
-        "transforms/passes.h",
-    ],
-    deps = [
-        "@com_google_absl//absl/memory",
-        "@llvm-project//llvm:support",
-        "@llvm-project//mlir:Analysis",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Transforms",
-    ],
-    alwayslink = 1,
-)
-
 gentbl(
     name = "xla_legalize_to_standard_inc_gen",
     tbl_outs = [
@@ -381,9 +368,7 @@ gentbl(
 
 cc_library(
     name = "xla_legalize_control_flow",
-    srcs = [
-        "transforms/legalize_control_flow.cc",
-    ],
+    srcs = ["transforms/legalize_control_flow.cc"],
     deps = [
         ":hlo",
         "@llvm-project//llvm:support",
@@ -398,9 +383,8 @@ cc_library(
 
 cc_library(
     name = "xla_hlo_to_lhlo_with_xla",
-    srcs = [
-        "transforms/xla_hlo_to_lhlo_with_xla.cc",
-    ],
+    srcs = ["transforms/xla_hlo_to_lhlo_with_xla.cc"],
+    hdrs = ["transforms/xla_hlo_to_lhlo_with_xla.h"],
     deps = [
         ":hlo",
         ":hlo_utils",
@@ -471,9 +455,7 @@ cc_library(
 
 cc_library(
     name = "xla_materialize_broadcasts",
-    srcs = [
-        "transforms/materialize_broadcasts.cc",
-    ],
+    srcs = ["transforms/materialize_broadcasts.cc"],
     deps = [
         ":hlo",
         "@llvm-project//mlir:IR",
@@ -484,9 +466,7 @@ cc_library(
 
 cc_library(
     name = "xla_unfuse_batch_norm",
-    srcs = [
-        "transforms/unfuse_batch_norm.cc",
-    ],
+    srcs = ["transforms/unfuse_batch_norm.cc"],
     deps = [
         ":hlo",
         "@llvm-project//llvm:support",
@@ -498,9 +478,7 @@ cc_library(
 
 cc_library(
     name = "chlo_legalize_to_hlo",
-    srcs = [
-        "transforms/chlo_legalize_to_hlo.cc",
-    ],
+    srcs = ["transforms/chlo_legalize_to_hlo.cc"],
     deps = [
         ":hlo",
         "@llvm-project//mlir:IR",
@@ -575,12 +553,8 @@ cc_library(
 
 cc_library(
     name = "mlir_hlo_builder",
-    srcs = [
-        "ir/mlir_hlo_builder.cc",
-    ],
-    hdrs = [
-        "ir/mlir_hlo_builder.h",
-    ],
+    srcs = ["ir/mlir_hlo_builder.cc"],
+    hdrs = ["ir/mlir_hlo_builder.h"],
     deps = [
         ":attribute_importer",
         ":hlo",
@@ -589,6 +563,7 @@ cc_library(
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:shape_inference",
@@ -718,6 +693,7 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:slicing",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/stream_executor/lib",
         "@llvm-project//llvm:support",
@@ -821,7 +797,7 @@ genrule(
     name = "operator_writer_inc",
     srcs = [
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/SideEffects.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
         ":ir/hlo_ops.td",
         ":ir/hlo_ops_base.td",
@@ -851,8 +827,6 @@ cc_library(
         "//tensorflow/compiler/mlir:__subpackages__",
     ],
     deps = [
-        ":buffer_assignment",
-        ":buffer_assignment_test",
         ":chlo_legalize_to_hlo",
         ":hlo",
         ":hlo_legalize_to_lhlo",
@@ -870,8 +844,9 @@ cc_library(
         ":xla_legalize_to_linalg",
         ":xla_legalize_to_standard",
         ":xla_lower",
-        ":xla_materialize_broadcasts",
+        ":xla_sink_constants_to_control_flow",
         ":xla_test_passes",
+        ":xla_transform_unranked_hlo",
     ],
 )
 

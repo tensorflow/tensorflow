@@ -145,6 +145,19 @@ absl::Status CreatePersistentBuffer(size_t size,
   return absl::OkStatus();
 }
 
+namespace gl_buffer_internal {
+
+BufferMapper::BufferMapper(GLenum target, size_t offset, size_t bytes,
+                           GLbitfield access)
+    : target_(target),
+      data_(glMapBufferRange(target_, offset, bytes, access)) {}
+
+BufferMapper::~BufferMapper() {
+  TFLITE_GPU_CALL_GL(glUnmapBuffer, target_).IgnoreError();
+}
+
+};  // namespace gl_buffer_internal
+
 }  // namespace gl
 }  // namespace gpu
 }  // namespace tflite

@@ -93,6 +93,9 @@ class Static(NoValue):
   ORIG_DEFINITIONS = (
       'The value of DEFINITIONS that applied to the original code before any'
       ' conversion.')
+  DEFINED_FNS_IN = (
+      'Local function definitions that may exist when exiting the node. See'
+      ' reaching_fndefs.py')
   DEFINED_VARS_IN = (
       'Symbols defined when entering the node. See reaching_definitions.py.')
   LIVE_VARS_OUT = ('Symbols live when exiting the node. See liveness.py.')
