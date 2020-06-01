@@ -64,6 +64,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/platform/random.h"
 
 namespace xla {
 namespace gpu {
@@ -634,16 +635,17 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
 
   // Prepare filenames for all stages of compilation:
   // IR, binary ISA, and HSACO.
-  std::string ir_filename = absl::StrCat(module->getModuleIdentifier(), ".ll");
+  std::string random_number = std::to_string(tensorflow::random::New64());
+  std::string ir_filename = absl::StrCat(module->getModuleIdentifier(), random_number + ".ll");
   std::string ir_path = tensorflow::io::JoinPath(tempdir_name, ir_filename);
 
   std::string isabin_filename =
-      absl::StrCat(module->getModuleIdentifier(), ".o");
+      absl::StrCat(module->getModuleIdentifier(), random_number + ".o");
   std::string isabin_path =
       tensorflow::io::JoinPath(tempdir_name, isabin_filename);
 
   std::string hsaco_filename =
-      absl::StrCat(module->getModuleIdentifier(), ".hsaco");
+      absl::StrCat(module->getModuleIdentifier(), random_number + ".hsaco");
   std::string hsaco_path =
       tensorflow::io::JoinPath(tempdir_name, hsaco_filename);
 
@@ -661,7 +663,7 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
   std::string module_id = module->getModuleIdentifier();
   IrDumpingPassManager codegen_passes(
       ReplaceFilenameExtension(tensorflow::io::Basename(module_id),
-                               "-amdgpu.dummy"),
+                               random_number + "-amdgpu.dummy"),
       "", false);
   codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
       llvm::Triple(module->getTargetTriple())));
@@ -700,9 +702,8 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
   int lld_result =
       llvm::sys::ExecuteAndWait(*lld_program, llvm_ir::AsArrayRef(lld_args),
                                 llvm::None, {}, 0, 0, &error_message);
-
   if (lld_result) {
-    return xla::InternalError("ld.lld execute fail: %s", error_message);
+    return xla::InternalError("ld.lld execute fail: %s, error code %d", error_message, lld_result);
   }
 
   // Read HSACO.
