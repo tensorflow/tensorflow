@@ -1913,6 +1913,8 @@ bool LooksLikeAnActivation(const HloInstruction* inst) {
           }
         }
         break;
+      case HloOpcode::kBitcast:
+        return LooksLikeAnActivation(user);
       default:
         return true;
     }
@@ -1929,10 +1931,20 @@ bool IsCrossProgramPrefetchCandidate(
          !value.uses().empty() &&
          options.size_fn(value) <= options.max_size_in_bytes &&
          absl::c_all_of(value.uses(), [&](const HloUse& use) {
-           const HloInstruction* gte =
+           const HloInstruction* inst =
                use.instruction->operand(use.operand_number);
-           return gte->opcode() == HloOpcode::kGetTupleElement &&
-                  !LooksLikeAnActivation(gte);
+
+           // Skip the LooksLikeAnActivation test since we're testing the
+           // parent GTE and its children below.
+           if (inst->opcode() == HloOpcode::kBitcast &&
+               inst->operand(0)->opcode() == HloOpcode::kGetTupleElement &&
+               inst->operand(0)->operand(0)->opcode() ==
+                   HloOpcode::kParameter) {
+             return true;
+           }
+
+           return inst->opcode() == HloOpcode::kGetTupleElement &&
+                  !LooksLikeAnActivation(inst);
          });
 }
 
