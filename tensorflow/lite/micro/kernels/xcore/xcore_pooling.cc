@@ -1,9 +1,8 @@
+#include "lib_ops/api/pooling.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_custom_options.h"
-
-#include "lib_ops/api/pooling.h"
 
 namespace tflite {
 namespace ops {
@@ -29,13 +28,16 @@ namespace maxpool {
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   ::xcore::pooling::PoolingParams pooling_params;
-  if (buffer) parse_custom_options(buffer, length, pooling_params);
+  ::xcore::ExecutionPlan execution_plan;
+
+  if (buffer)
+    parse_custom_options(buffer, length, pooling_params, &execution_plan);
 
   void* data = nullptr;
   context->AllocatePersistentBuffer(context, sizeof(::xcore::pooling::MaxPool),
                                     &data);
   ::xcore::pooling::MaxPool* op =
-      new (data)::xcore::pooling::MaxPool(pooling_params);
+      new (data)::xcore::pooling::MaxPool(pooling_params, execution_plan);
 
   return op;
 }
@@ -83,13 +85,16 @@ namespace avgpool {
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   ::xcore::pooling::PoolingParams pooling_params;
-  if (buffer) parse_custom_options(buffer, length, pooling_params);
+  ::xcore::ExecutionPlan execution_plan;
+
+  if (buffer)
+    parse_custom_options(buffer, length, pooling_params, &execution_plan);
 
   void* data = nullptr;
   context->AllocatePersistentBuffer(context, sizeof(::xcore::pooling::AvgPool),
                                     &data);
   ::xcore::pooling::AvgPool* op =
-      new (data)::xcore::pooling::AvgPool(pooling_params);
+      new (data)::xcore::pooling::AvgPool(pooling_params, execution_plan);
 
   return op;
 }
@@ -136,11 +141,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 namespace avgpool_global {
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  ::xcore::ExecutionPlan execution_plan;
+
+  if (buffer) parse_custom_options(buffer, length, &execution_plan);
+
   void* data = nullptr;
   context->AllocatePersistentBuffer(
       context, sizeof(::xcore::pooling::AvgPool_Global), &data);
   ::xcore::pooling::AvgPool_Global* op =
-      new (data)::xcore::pooling::AvgPool_Global();
+      new (data)::xcore::pooling::AvgPool_Global(execution_plan);
 
   return op;
 }

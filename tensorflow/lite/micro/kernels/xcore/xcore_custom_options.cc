@@ -8,16 +8,28 @@ namespace micro {
 namespace xcore {
 
 //*****************************
+// ExecutionPlan only
+//*****************************
+void parse_custom_options(const char *buffer, size_t length,
+                          ::xcore::ExecutionPlan *plan) {
+  parse_custom_options(buffer, length, nullptr, nullptr, nullptr, nullptr,
+                       nullptr, nullptr,
+                       plan  // ExecutionPlan
+  );
+}
+
+//*****************************
 // PoolingParams
 //*****************************
 void parse_custom_options(const char *buffer, size_t length,
-                          ::xcore::pooling::PoolingParams &pooling_params) {
+                          ::xcore::pooling::PoolingParams &pooling_params,
+                          ::xcore::ExecutionPlan *plan) {
   parse_custom_options(buffer, length, &pooling_params.stride_h,
                        &pooling_params.stride_w, &pooling_params.pool_h,
                        &pooling_params.pool_w,
                        nullptr,  // K_w
                        nullptr,  // pad
-                       nullptr   // par_regions
+                       plan      // ExecutionPlan
   );
 }
 
@@ -26,12 +38,12 @@ void parse_custom_options(const char *buffer, size_t length,
 //*****************************
 void parse_custom_options(const char *buffer, size_t length,
                           ::xcore::conv::Conv2DParams &conv2d_params,
-                          ::xcore::ParRegionArray *par_regions) {
+                          ::xcore::ExecutionPlan *plan) {
   parse_custom_options(buffer, length, &conv2d_params.stride_h,
                        &conv2d_params.stride_w,
                        nullptr,  // pool_h
                        nullptr,  // pool_w
-                       &conv2d_params.K_w, &conv2d_params.pad, par_regions);
+                       &conv2d_params.K_w, &conv2d_params.pad, plan);
 }
 
 //*****************************
@@ -40,7 +52,7 @@ void parse_custom_options(const char *buffer, size_t length,
 void parse_custom_options(const char *buffer, size_t length, int32_t *stride_h,
                           int32_t *stride_w, int32_t *pool_h, int32_t *pool_w,
                           int32_t *K_w, ::xcore::conv::Conv2DPadding *pad,
-                          ::xcore::ParRegionArray *par_regions) {
+                          ::xcore::ExecutionPlan *plan) {
   const uint8_t *buffer_t = reinterpret_cast<const uint8_t *>(buffer);
   // std::cout << flexbuffers::GetRoot(buffer_t, length).ToString() <<
   // std::endl;
@@ -75,15 +87,28 @@ void parse_custom_options(const char *buffer, size_t length, int32_t *stride_h,
         pad->left = vec[1].AsInt32();
         pad->zero_point = vec[2].AsInt32();
       }
-    } else if (key.compare("par_plan") == 0) {
-      if (par_regions) {
-        const auto &jobs = values[i].AsVector();
-        par_regions->clear();
-        for (int i = 0; i < jobs.size(); i++) {
-          auto region =
-              jobs[i].AsVector();  // values represent [top, left, rows, cols]
-          par_regions->append({region[0].AsInt32(), region[1].AsInt32(),
-                               region[2].AsInt32(), region[3].AsInt32()});
+    } else if (key.compare("plan") == 0) {
+      if (plan) {
+        const auto &plan_map = values[i].AsMap();
+        auto plan_keys = plan_map.Keys();
+        auto plan_values = plan_map.Values();
+        for (int j = 0; j < plan_map.size(); ++j) {
+          const std::string &plan_key = plan_keys[j].AsString().str();
+          if (plan_key.compare("tp") == 0) {
+            plan->type = (::xcore::ExecutionPlanType)plan_values[j].AsInt32();
+          } else if (plan_key.compare("th") == 0) {
+            plan->threads = plan_values[j].AsInt32();
+          } else if (plan_key.compare("rc") == 0) {
+            const auto &regions = plan_values[j].AsVector();
+            plan->regions.clear();
+            for (int k = 0; k < regions.size(); k++) {
+              auto region =
+                  regions[k]
+                      .AsVector();  // values represent [top, left, rows, cols]
+              plan->regions.append({region[0].AsInt32(), region[1].AsInt32(),
+                                    region[2].AsInt32(), region[3].AsInt32()});
+            }
+          }
         }
       }
     }
