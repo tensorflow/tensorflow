@@ -239,6 +239,21 @@ py_library(
     ],
 )
 
+# This target should only be used for API generation.
+py_library(
+    name = "modules_with_exports",
+    srcs = ["modules_with_exports.py"],
+    srcs_version = "PY2AND3",
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow/python/tools/api/generator:__pkg__",
+        "//third_party/py/tensorflow_core:__subpackages__",
+    ],
+    deps = [
+        ":no_contrib",
+    ],
+)
+
 # TODO(gunan): Investigate making this action hermetic so we do not need
 # to run it locally.
 tf_py_build_info_genrule(
