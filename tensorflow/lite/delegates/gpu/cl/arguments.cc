@@ -94,6 +94,17 @@ void AppendArgument(const std::string& arg, std::string* args) {
   absl::StrAppend(args, arg);
 }
 
+std::string GetImageModifier(AccessType access) {
+  switch (access) {
+    case AccessType::READ:
+      return "__read_only";
+    case AccessType::WRITE:
+      return "__write_only";
+    case AccessType::READ_WRITE:
+      return "__read_write";
+  }
+}
+
 }  // namespace
 
 Arguments::Arguments(Arguments&& args)
@@ -155,13 +166,14 @@ void Arguments::AddImageBuffer(const std::string& name,
   image_buffers_[name] = desc;
 }
 
-void Arguments::AddObjectRef(const std::string& name,
+void Arguments::AddObjectRef(const std::string& name, AccessType access_type,
                              GPUObjectDescriptorPtr&& descriptor_ptr) {
-  object_refs_[name] = {AccessType::READ, std::move(descriptor_ptr)};
+  object_refs_[name] = {access_type, std::move(descriptor_ptr)};
 }
 
-void Arguments::AddObject(const std::string& name, GPUObjectPtr&& object) {
-  objects_[name] = {AccessType::READ, std::move(object)};
+void Arguments::AddObject(const std::string& name, AccessType access_type,
+                          GPUObjectPtr&& object) {
+  objects_[name] = {access_type, std::move(object)};
 }
 
 void Arguments::AddGPUResources(const std::string& name,
@@ -273,7 +285,7 @@ absl::Status Arguments::SetObjectRef(const std::string& name,
     return absl::NotFoundError(
         absl::StrCat("No object ref with name - ", name));
   }
-  return SetGPUResources(name, object->GetGPUResources());
+  return SetGPUResources(name, object->GetGPUResources(it->second.access_type));
 }
 
 absl::Status Arguments::SetGPUResources(
@@ -320,18 +332,24 @@ std::string Arguments::GetListOfArgs() {
                    &result);
   }
   for (auto& t : image_buffers_) {
-    AppendArgument(absl::StrCat("__read_only image1d_buffer_t ", t.first),
+    AppendArgument(absl::StrCat(GetImageModifier(t.second.access_type),
+                                " image1d_buffer_t ", t.first),
                    &result);
   }
   for (auto& t : images2d_) {
-    AppendArgument(absl::StrCat("__read_only image2d_t ", t.first), &result);
+    AppendArgument(absl::StrCat(GetImageModifier(t.second.access_type),
+                                " image2d_t ", t.first),
+                   &result);
   }
   for (auto& t : image2d_arrays_) {
-    AppendArgument(absl::StrCat("__read_only image2d_array_t ", t.first),
+    AppendArgument(absl::StrCat(GetImageModifier(t.second.access_type),
+                                " image2d_array_t ", t.first),
                    &result);
   }
   for (auto& t : images3d_) {
-    AppendArgument(absl::StrCat("__read_only image3d_t ", t.first), &result);
+    AppendArgument(absl::StrCat(GetImageModifier(t.second.access_type),
+                                " image3d_t ", t.first),
+                   &result);
   }
   for (int i = 0; i < shared_int4s_data_.size() / 4; ++i) {
     AppendArgument(absl::StrCat("int4 shared_int4_", i), &result);
@@ -494,7 +512,7 @@ absl::Status Arguments::ResolveSelector(const std::string& object_name,
         absl::StrCat("No object with name - ", object_name));
   }
   RETURN_IF_ERROR(desc_ptr->PerformSelector(selector, args, result));
-  auto names = desc_ptr->GetGPUResources().GetNames();
+  auto names = desc_ptr->GetGPUResources(access_type).GetNames();
   ResolveObjectNames(object_name, names, result);
   return absl::OkStatus();
 }
@@ -551,12 +569,14 @@ absl::Status Arguments::ResolveSelectorsPass(std::string* code) {
 absl::Status Arguments::AddObjectArgs() {
   for (auto& t : objects_) {
     AddGPUResources(t.first,
-                    t.second.obj_ptr->GetGPUDescriptor()->GetGPUResources());
-    RETURN_IF_ERROR(
-        SetGPUResources(t.first, t.second.obj_ptr->GetGPUResources()));
+                    t.second.obj_ptr->GetGPUDescriptor()->GetGPUResources(
+                        t.second.access_type));
+    RETURN_IF_ERROR(SetGPUResources(
+        t.first, t.second.obj_ptr->GetGPUResources(t.second.access_type)));
   }
   for (auto& t : object_refs_) {
-    AddGPUResources(t.first, t.second.descriptor->GetGPUResources());
+    AddGPUResources(t.first,
+                    t.second.descriptor->GetGPUResources(t.second.access_type));
   }
   return absl::OkStatus();
 }

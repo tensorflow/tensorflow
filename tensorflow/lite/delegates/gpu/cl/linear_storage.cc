@@ -23,17 +23,20 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-GPUResources TensorLinearDescriptor::GetGPUResources() const {
+GPUResources TensorLinearDescriptor::GetGPUResources(
+    AccessType access_type) const {
   GPUResources resources;
   resources.ints.push_back("length");
   if (storage_type == LinearStorageType::BUFFER) {
     GPUBufferDescriptor desc;
     desc.data_type = element_type;
+    desc.access_type = access_type;
     desc.element_size = 4;
     resources.buffers.push_back({"buffer", desc});
   } else {
     GPUImage2DDescriptor desc;
     desc.data_type = element_type;
+    desc.access_type = access_type;
     resources.images2d.push_back({"tex2d", desc});
   }
   return resources;
@@ -123,7 +126,8 @@ std::string LinearStorage::GetDeclaration() const {
   }
 }
 
-GPUResourcesWithValue LinearStorage::GetGPUResources() const {
+GPUResourcesWithValue LinearStorage::GetGPUResources(
+    AccessType access_type) const {
   GPUResourcesWithValue resources;
   resources.ints.push_back({"length", depth_});
 

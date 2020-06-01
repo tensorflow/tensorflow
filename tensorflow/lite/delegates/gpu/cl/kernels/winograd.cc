@@ -425,7 +425,8 @@ absl::Status Winograd4x4To36::UploadBt(CLContext* context) {
 
   LinearStorage lt;
   RETURN_IF_ERROR(CreateLinearStorage(create_info, bt_aligned, context, &lt));
-  args_.AddObject("bt", absl::make_unique<LinearStorage>(std::move(lt)));
+  args_.AddObject("bt", AccessType::READ,
+                  absl::make_unique<LinearStorage>(std::move(lt)));
   return absl::OkStatus();
 }
 

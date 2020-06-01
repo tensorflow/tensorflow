@@ -157,7 +157,7 @@ std::string ToString(TensorStorageType type) {
   }
 }
 
-GPUResources TensorDescriptor::GetGPUResources() const {
+GPUResources TensorDescriptor::GetGPUResources(AccessType access_type) const {
   GPUResources resources;
   if (HasAxis(Axis::WIDTH)) {
     resources.ints.push_back("width");
@@ -178,25 +178,38 @@ GPUResources TensorDescriptor::GetGPUResources() const {
   if (storage_type == TensorStorageType::BUFFER) {
     GPUBufferDescriptor desc;
     desc.data_type = data_type;
+    desc.access_type = access_type;
     desc.element_size = 4;
     resources.buffers.push_back({"buffer", desc});
   } else if (storage_type == TensorStorageType::SINGLE_TEXTURE_2D ||
              storage_type == TensorStorageType::TEXTURE_2D) {
     GPUImage2DDescriptor desc;
     desc.data_type = data_type;
+    desc.access_type = access_type;
     resources.images2d.push_back({"image2d", desc});
   } else if (storage_type == TensorStorageType::TEXTURE_ARRAY) {
     GPUImage2DArrayDescriptor desc;
     desc.data_type = data_type;
+    desc.access_type = access_type;
     resources.image2d_arrays.push_back({"image2d_array", desc});
   } else if (storage_type == TensorStorageType::TEXTURE_3D) {
     GPUImage3DDescriptor desc;
     desc.data_type = data_type;
+    desc.access_type = access_type;
     resources.images3d.push_back({"image3d", desc});
   } else if (storage_type == TensorStorageType::IMAGE_BUFFER) {
-    GPUImageBufferDescriptor desc;
-    desc.data_type = data_type;
-    resources.image_buffers.push_back({"image_buffer", desc});
+    if (access_type == AccessType::READ) {
+      GPUImageBufferDescriptor desc;
+      desc.data_type = data_type;
+      desc.access_type = access_type;
+      resources.image_buffers.push_back({"image_buffer", desc});
+    } else {
+      GPUBufferDescriptor desc;
+      desc.data_type = data_type;
+      desc.access_type = access_type;
+      desc.element_size = 4;
+      resources.buffers.push_back({"buffer", desc});
+    }
   }
   return resources;
 }

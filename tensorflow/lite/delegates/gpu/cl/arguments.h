@@ -45,9 +45,10 @@ class Arguments {
   void AddImageBuffer(const std::string& name,
                       const GPUImageBufferDescriptor& desc);
 
-  void AddObjectRef(const std::string& name,
+  void AddObjectRef(const std::string& name, AccessType access_type,
                     GPUObjectDescriptorPtr&& descriptor_ptr);
-  void AddObject(const std::string& name, GPUObjectPtr&& object);
+  void AddObject(const std::string& name, AccessType access_type,
+                 GPUObjectPtr&& object);
 
   absl::Status SetInt(const std::string& name, int value);
   absl::Status SetFloat(const std::string& name, float value);

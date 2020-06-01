@@ -67,7 +67,7 @@ struct TensorDescriptor : public GPUObjectDescriptor {
                                const std::vector<std::string>& args,
                                std::string* result) const override;
 
-  GPUResources GetGPUResources() const override;
+  GPUResources GetGPUResources(AccessType access_type) const override;
 
   bool HasAxis(Axis axis) const;
 

@@ -144,7 +144,7 @@ void Tensor::Release() {
   }
 }
 
-GPUResourcesWithValue Tensor::GetGPUResources() const {
+GPUResourcesWithValue Tensor::GetGPUResources(AccessType access_type) const {
   GPUResourcesWithValue resources;
   if (descriptor_.HasAxis(Axis::WIDTH)) {
     resources.ints.push_back({"width", Width()});
@@ -173,7 +173,11 @@ GPUResourcesWithValue Tensor::GetGPUResources() const {
   } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_3D) {
     resources.images3d.push_back({"image3d", memory_});
   } else if (descriptor_.storage_type == TensorStorageType::IMAGE_BUFFER) {
-    resources.image_buffers.push_back({"image_buffer", image_buffer_memory_});
+    if (access_type == AccessType::READ) {
+      resources.image_buffers.push_back({"image_buffer", image_buffer_memory_});
+    } else {
+      resources.buffers.push_back({"buffer", memory_});
+    }
   }
 
   return resources;

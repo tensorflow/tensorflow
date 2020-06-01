@@ -37,7 +37,8 @@ std::string GetTransposeCode(
                                  op_def.dst_tensors[0]);
 
   args->AddObjectRef(
-      "src_tensor", absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]));
+      "src_tensor", AccessType::READ,
+      absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]));
   args->AddInt("dst_width");
   args->AddInt("dst_height");
   args->AddInt("dst_slices");

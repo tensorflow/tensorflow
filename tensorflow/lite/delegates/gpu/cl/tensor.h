@@ -61,7 +61,7 @@ class Tensor : public GPUObject {
   const GPUObjectDescriptor* GetGPUDescriptor() const override {
     return &descriptor_;
   }
-  GPUResourcesWithValue GetGPUResources() const override;
+  GPUResourcesWithValue GetGPUResources(AccessType access_type) const override;
 
   int Width() const { return shape_.w; }
   int Height() const { return shape_.h; }
