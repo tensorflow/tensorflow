@@ -244,6 +244,7 @@ cc_library(
     name = "server_lib",
     srcs = ["server_lib.cc"],
     hdrs = ["server_lib.h"],
+    linkstatic = True,
     visibility = [
         "//visibility:public",
     ],
@@ -257,6 +258,7 @@ cc_library(
         "//tensorflow/core:tensorflow",
         tf_grpc_cc_dependency(),
     ],
+    alwayslink = 1,
 )
 
 cc_library(
