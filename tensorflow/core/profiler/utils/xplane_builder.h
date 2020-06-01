@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
@@ -55,25 +56,19 @@ class XStatsBuilder {
   void AddStatValue(const XStatMetadata& metadata, double value) {
     AddStat(metadata)->set_double_value(value);
   }
-  void AddStatValue(const XStatMetadata& metadata, absl::string_view value,
-                    bool is_bytes = false) {
-    if (is_bytes) {
-      AddStat(metadata)->set_bytes_value(std::string(value));
-    } else {
-      AddStat(metadata)->set_str_value(std::string(value));
-    }
+  void AddStatValue(const XStatMetadata& metadata, absl::string_view value) {
+    AddStat(metadata)->set_str_value(std::string(value));
   }
-  void AddStatValue(const XStatMetadata& metadata, std::string&& value,
-                    bool is_bytes = false) {
-    if (is_bytes) {
-      AddStat(metadata)->set_bytes_value(std::move(value));
-    } else {
-      AddStat(metadata)->set_str_value(std::move(value));
-    }
+  void AddStatValue(const XStatMetadata& metadata, std::string&& value) {
+    AddStat(metadata)->set_str_value(std::move(value));
   }
-
   void AddStatValue(const XStatMetadata& key, const XStatMetadata& value) {
     AddStat(key)->set_ref_value(value.id());
+  }
+  void AddStatValue(const XStatMetadata& metadata,
+                    const protobuf::MessageLite& proto) {
+    auto* bytes = AddStat(metadata)->mutable_bytes_value();
+    proto.SerializeToString(bytes);
   }
 
   void AddStat(const XStatMetadata& key, const XStat& stat, const XPlane& src);
