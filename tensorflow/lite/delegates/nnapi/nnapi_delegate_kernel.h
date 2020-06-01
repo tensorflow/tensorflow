@@ -341,9 +341,11 @@ class NNAPIDelegateKernel {
 
   std::vector<int> nnapi_to_tflite_op_mapping_;
 
-  void AddDequantizeOperatorsWhereNeeded(
-      const TfLiteContext* context, int builtin_code, const TfLiteNode* node,
-      int tflite_node_index, NNAPIOpBuilder* builder, int* nnapi_errno);
+  void AddDequantizeOperatorsWhereNeeded(const TfLiteContext* context,
+                                         int builtin_code,
+                                         const TfLiteNode* node,
+                                         NNAPIOpBuilder* builder,
+                                         int* nnapi_errno);
 
   TfLiteStatus AddOpsAndTensors(TfLiteContext* context, int* nnapi_errno);
 

@@ -784,36 +784,19 @@ class NNAPIOpBuilder {
     return kTfLiteOk;
   }
 
-  // Adds the operation to the model and maps the operation to the originating
-  // TFLite one.
-  TfLiteStatus AddOperationToModel(ANeuralNetworksOperationType type,
-                                   uint32_t input_count, const uint32_t* inputs,
-                                   uint32_t output_count,
-                                   const uint32_t* outputs,
-                                   int lite_node_index) {
-    RETURN_TFLITE_ERROR_IF_NN_ERROR(
-        context_,
-        nnapi_->ANeuralNetworksModel_addOperation(
-            nn_model_, type, input_count, inputs, output_count, outputs),
-        "adding operation", nnapi_errno_);
-    nnapi_to_tflite_op_mapping_->push_back(lite_node_index);
-    return kTfLiteOk;
-  }
-
   // Adds a Dequantize operator and replaces the input tensor index with the
   // dequantized version. If the dequantized version of the operator already
   // exists then it is not added again.
-  TfLiteStatus AddDequantize(int nn_input_index, int lite_tensor_index,
-                             TfLiteType dequantized_type, int lite_node_index) {
-    const int ann_index =
-        operand_mapping_->lite_index_to_ann(lite_tensor_index);
+  TfLiteStatus AddDequantize(int nn_input_index, int lite_index,
+                             TfLiteType dequantized_type) {
+    const int ann_index = operand_mapping_->lite_index_to_ann(lite_index);
     int dequantized_ann_index =
         dequantize_mapping_->DequantizedAnnIndex(ann_index, dequantized_type);
 
     if (dequantized_ann_index == -1) {
       // The dequantized version does not exist yet, it has to be added: a new
       // Dequantize operation is added, yielding a new tensor.
-      const TfLiteTensor& tensor = context_->tensors[lite_tensor_index];
+      const TfLiteTensor& tensor = context_->tensors[lite_index];
       ANeuralNetworksOperandType operand_type{
           ANEURALNETWORKS_TENSOR_FLOAT32,
           static_cast<uint32_t>(tensor.dims->size),
@@ -828,11 +811,12 @@ class NNAPIOpBuilder {
       const uint32_t dequantize_input[1] = {static_cast<uint32_t>(ann_index)};
       const uint32_t dequantize_output[1] = {
           static_cast<uint32_t>(dequantized_ann_index)};
-      TF_LITE_ENSURE_OK(
-          context_, AddOperationToModel(ANEURALNETWORKS_DEQUANTIZE,
-                                        /*input_count=*/1, dequantize_input,
-                                        /*output_count=*/1, dequantize_output,
-                                        lite_node_index));
+      RETURN_TFLITE_ERROR_IF_NN_ERROR(
+          context_,
+          nnapi_->ANeuralNetworksModel_addOperation(
+              nn_model_, ANEURALNETWORKS_DEQUANTIZE, 1, dequantize_input, 1,
+              dequantize_output),
+          "adding operation", nnapi_errno_);
       dequantize_mapping_->Add(ann_index, dequantized_type,
                                dequantized_ann_index);
     }
@@ -848,12 +832,15 @@ class NNAPIOpBuilder {
   TfLiteStatus FinalizeAddOperation(ANeuralNetworksOperationType type,
                                     int lite_node_index) {
     // Actually add a NN API operation
-    TF_LITE_ENSURE_OK(context_,
-                      AddOperationToModel(
-                          type, static_cast<uint32_t>(augmented_inputs_.size()),
-                          augmented_inputs_.data(),
-                          static_cast<uint32_t>(augmented_outputs_.size()),
-                          augmented_outputs_.data(), lite_node_index));
+    RETURN_TFLITE_ERROR_IF_NN_ERROR(
+        context_,
+        nnapi_->ANeuralNetworksModel_addOperation(
+            nn_model_, type, static_cast<uint32_t>(augmented_inputs_.size()),
+            augmented_inputs_.data(),
+            static_cast<uint32_t>(augmented_outputs_.size()),
+            augmented_outputs_.data()),
+        "adding operation", nnapi_errno_);
+    nnapi_to_tflite_op_mapping_->push_back(lite_node_index);
     augmented_inputs_.clear();
     augmented_outputs_.clear();
     return kTfLiteOk;
@@ -3576,7 +3563,7 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
 
 void NNAPIDelegateKernel::AddDequantizeOperatorsWhereNeeded(
     const TfLiteContext* context, int builtin_code, const TfLiteNode* node,
-    int tflite_node_index, NNAPIOpBuilder* builder, int* nnapi_errno) {
+    NNAPIOpBuilder* builder, int* nnapi_errno) {
   // Depending on the operator and the input data format, Dequantize
   // operators may need to be added. For example when the input is
   // floating-point but weights are quantized then the weights will first be
@@ -3624,7 +3611,7 @@ void NNAPIDelegateKernel::AddDequantizeOperatorsWhereNeeded(
 
     // Insert Dequantize operator if it hasn't been done already and change
     // the node's input accordingly.
-    builder->AddDequantize(i, node->inputs->data[i], type, tflite_node_index);
+    builder->AddDequantize(i, node->inputs->data[i], type);
   }
 }
 
@@ -3938,7 +3925,7 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(TfLiteContext* context,
     // Dequantize operators may have to be added in case inputs are to be
     // floating-point.
     AddDequantizeOperatorsWhereNeeded(context, reg->builtin_code, node,
-                                      node_index, &builder, nnapi_errno);
+                                      &builder, nnapi_errno);
 
     builder.FinalizeAddOperation(nn_op_type, node_index);
   }
