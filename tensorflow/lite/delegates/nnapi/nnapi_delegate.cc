@@ -2343,6 +2343,50 @@ bool NNAPIDelegateKernel::Validate(
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI13,
                                  &val_ctx);
     } break;
+    case kTfLiteBuiltinFill: {
+      ExpectOpVersion(version, 1, &val_ctx);
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI13,
+                                 &val_ctx);
+      const auto& dims_tensor = context->tensors[node->inputs->data[0]];
+      Expect(IsConstantTensor(&dims_tensor),
+             NNAPIValidationFailureType::kUnsupportedInputType,
+             "NNAPI doesn't support dynamic dimensions tensor.", &val_ctx);
+      EXPECT_INPUT_TYPE_IN(dims_tensor.type, kTfLiteInt32, kTfLiteInt64);
+      if (IsConstantTensor(&dims_tensor)) {
+        Expect(dims_tensor.dims->data[0] != 0,
+               NNAPIValidationFailureType::kUnsupportedOperandValue,
+               "NNAPI doesn't support generating scalars from FILL", &val_ctx);
+        if (dims_tensor.type == kTfLiteInt64) {
+          bool fit_in_int32 =
+              std::all_of(dims_tensor.data.i64,
+                          dims_tensor.data.i64 + dims_tensor.dims->data[0],
+                          [](int64_t dim) {
+                            return std::numeric_limits<int32_t>::min() <= dim &&
+                                   dim <= std::numeric_limits<int32_t>::max();
+                          });
+          Expect(fit_in_int32,
+                 NNAPIValidationFailureType::kUnsupportedOperandValue,
+                 "NNAPI only supports int32 dimensions tensor. If the "
+                 "dimensions type is int64 and they are constant we can "
+                 "convert them to int32 if the value isn't too large.",
+                 &val_ctx);
+        }
+      }
+      const auto& value_tensor = context->tensors[node->inputs->data[1]];
+      EXPECT_INPUT_TYPE_IN(value_tensor.type, kTfLiteFloat32, kTfLiteInt32,
+                           kTfLiteInt64);
+      if (value_tensor.type == kTfLiteInt64) {
+        Expect(
+            IsConstantTensor(&value_tensor) &&
+                *value_tensor.data.i64 <= std::numeric_limits<int32_t>::max() &&
+                *value_tensor.data.i64 >= std::numeric_limits<int32_t>::min(),
+            NNAPIValidationFailureType::kUnsupportedInputType,
+            "NNAPI only supports int32 input. If the input type is int64 and "
+            "constant we can convert it to int32 if the value isn't too "
+            "large.",
+            &val_ctx);
+      }
+    } break;
     default:
       // All other operators are not mapped.
       AddValidationFailure(NNAPIValidationFailureType::kUnsupportedOperator,
@@ -3127,6 +3171,9 @@ TfLiteStatus NNAPIDelegateKernel::Map(
       mapping_args.builder->AddScalarFloat32Operand(1.0);
       *nn_op_type = ANEURALNETWORKS_ELU;
     } break;
+    case kTfLiteBuiltinFill: {
+      *nn_op_type = ANEURALNETWORKS_FILL;
+    } break;
     default:
       // All other operators are not mapped.
       return kTfLiteError;
@@ -3881,6 +3928,52 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(TfLiteContext* context,
         } else {
           TF_LITE_ENSURE_STATUS(builder.AddTensorInput(input_index, hybrid_op,
                                                        input_tensor_flags));
+        }
+      } else if (reg->builtin_code == kTfLiteBuiltinFill) {
+        if (input_pos == 0) {
+          const int dims_id = node->inputs->data[0];
+          const TfLiteTensor& dims_tensor = context->tensors[dims_id];
+          switch (dims_tensor.type) {
+            case kTfLiteInt32:
+              TF_LITE_ENSURE_STATUS(
+                  builder.AddTensorInput(input_index, hybrid_op));
+              break;
+            case kTfLiteInt64: {
+              // We made sure that dimensions are constant and fit into int32 in
+              // Map(), so we can safely create a new tensor with casted values.
+              const int dims_size = dims_tensor.dims->data[0];
+              std::vector<int32_t> dims_int32(dims_size);
+              std::copy(dims_tensor.data.i64, dims_tensor.data.i64 + dims_size,
+                        dims_int32.begin());
+              int new_tensor_index = -1;
+              builder.AddNewInputConstantTensor(
+                  ANEURALNETWORKS_TENSOR_INT32, kTfLiteInt32, dims_tensor.dims,
+                  dims_int32, dims_tensor.params, &new_tensor_index);
+            } break;
+            default:
+              return kTfLiteError;
+          }
+        } else {
+          const int value_id = node->inputs->data[1];
+          const TfLiteTensor& value_tensor = context->tensors[value_id];
+          switch (value_tensor.type) {
+            case kTfLiteFloat32:
+              TF_LITE_ENSURE_STATUS(
+                  builder.AddScalarFloat32Operand(*value_tensor.data.f));
+              break;
+            case kTfLiteInt32:
+              TF_LITE_ENSURE_STATUS(
+                  builder.AddScalarInt32Operand(*value_tensor.data.i32));
+              break;
+            case kTfLiteInt64:
+              // Map() function already makes sure int64 input is constant and
+              // fits into int32.
+              TF_LITE_ENSURE_STATUS(builder.AddScalarInt32Operand(
+                  static_cast<int32_t>(*value_tensor.data.i64)));
+              break;
+            default:
+              return kTfLiteError;
+          }
         }
       } else {
         TF_LITE_ENSURE_STATUS(
