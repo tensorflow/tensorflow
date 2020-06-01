@@ -81,6 +81,7 @@ class Tensor : public GPUObject {
   int4 GetWHSB() const { return int4(shape_.w, shape_.h, Slices(), shape_.b); }
   int4 GetWHDS() const { return int4(shape_.w, shape_.h, shape_.d, Slices()); }
 
+  TensorDescriptor GetDescriptor() const { return descriptor_; }
   DataType GetDataType() const { return descriptor_.data_type; }
   TensorStorageType GetStorageType() const { return descriptor_.storage_type; }
 
@@ -94,6 +95,12 @@ class Tensor : public GPUObject {
   cl_mem GetMemoryPtrForWriting() const;
 
   absl::Status WriteData(CLCommandQueue* queue, const TensorFloat32& src);
+  absl::Status WriteData(
+      CLCommandQueue* queue,
+      const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src);
+  absl::Status WriteData(
+      CLCommandQueue* queue,
+      const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src);
   absl::Status WriteData(CLCommandQueue* queue, const Tensor5DFloat32& src);
   absl::Status ReadData(CLCommandQueue* queue, TensorFloat32* dst) const;
   absl::Status ReadData(CLCommandQueue* queue, Tensor5DFloat32* dst) const;

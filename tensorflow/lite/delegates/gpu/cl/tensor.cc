@@ -117,6 +117,7 @@ Tensor::Tensor(Tensor&& tensor)
       shape_(tensor.shape_),
       descriptor_(tensor.descriptor_) {
   tensor.memory_ = nullptr;
+  tensor.image_buffer_memory_ = nullptr;
 }
 
 Tensor& Tensor::operator=(Tensor&& tensor) {
@@ -132,9 +133,10 @@ Tensor& Tensor::operator=(Tensor&& tensor) {
 }
 
 void Tensor::Release() {
+  // image_buffer_memory_ always owned by object
   if (image_buffer_memory_) {
     clReleaseMemObject(image_buffer_memory_);
-    memory_ = nullptr;
+    image_buffer_memory_ = nullptr;
   }
   if (memory_owner_ && memory_) {
     clReleaseMemObject(memory_);
@@ -316,6 +318,18 @@ absl::Status Tensor::WriteDataBHWDC(absl::Span<const float> in,
 absl::Status Tensor::WriteData(CLCommandQueue* queue,
                                const TensorFloat32& src) {
   RETURN_IF_ERROR(IsValid(src.shape));
+  return WriteDataBHWDC(absl::MakeConstSpan(src.data), queue);
+}
+
+absl::Status Tensor::WriteData(
+    CLCommandQueue* queue,
+    const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src) {
+  return WriteDataBHWDC(absl::MakeConstSpan(src.data), queue);
+}
+
+absl::Status Tensor::WriteData(
+    CLCommandQueue* queue,
+    const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src) {
   return WriteDataBHWDC(absl::MakeConstSpan(src.data), queue);
 }
 
