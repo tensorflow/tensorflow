@@ -829,22 +829,15 @@ class Layer(base_layer.Layer):
     return self._name
 
   @property
-  @trackable_layer_utils.cache_recursive_attribute('dynamic')
   def dynamic(self):
-    # NOTE(taylorrobie): Currently self._dynamic is read-only. If that changes
-    #                    then this cache logic must be updated.
-    return self._dynamic or any(layer.dynamic
-                                for layer in self._unique_sublayers())
+    return any(layer._dynamic for layer in self._flatten_layers())
 
   @property
   @doc_controls.do_not_generate_docs
-  @trackable_layer_utils.cache_recursive_attribute('stateful')
   def stateful(self):
-    return self._stateful or any(
-        getattr(layer, 'stateful', False) for layer in self._unique_sublayers())
+    return any(layer._stateful for layer in self._flatten_layers())
 
   @stateful.setter
-  @trackable_layer_utils.invalidate_recursive_cache('stateful')
   def stateful(self, value):
     self._stateful = value
 
@@ -916,7 +909,7 @@ class Layer(base_layer.Layer):
   @property
   def updates(self):
     collected_updates = []
-    all_layers = self._gather_unique_layers()
+    all_layers = self._flatten_layers()
     with backend.get_graph().as_default():
       for layer in all_layers:
         if not layer.trainable and not layer.stateful:
@@ -945,7 +938,7 @@ class Layer(base_layer.Layer):
       A list of tensors.
     """
     collected_losses = []
-    all_layers = self._gather_unique_layers()
+    all_layers = self._flatten_layers()
     for layer in all_layers:
       # If any eager losses are present, we assume the model to be part of an
       # eager training loop (either a custom one or the one used when
@@ -1075,8 +1068,7 @@ class Layer(base_layer.Layer):
   @property
   def metrics(self):
     collected_metrics = []
-    all_layers = self._gather_unique_layers()
-    for layer in all_layers:
+    for layer in self._flatten_layers():
       collected_metrics.extend(layer._metrics)
     return collected_metrics
 
@@ -2187,7 +2179,6 @@ class Layer(base_layer.Layer):
       super(tracking.AutoTrackable, self).__setattr__(
           '_layers',
           [l for l in self._layers if l is not existing_value])
-      self._attribute_sentinel.invalidate_all()
     if isinstance(existing_value, tf_variables.Variable):
       super(tracking.AutoTrackable, self).__setattr__(
           '_trainable_weights',
@@ -2195,13 +2186,6 @@ class Layer(base_layer.Layer):
       super(tracking.AutoTrackable, self).__setattr__(
           '_non_trainable_weights',
           [w for w in self._non_trainable_weights if w is not existing_value])
-
-    # Any time we change `_layers` (either by deleting the attribute or by
-    # reassigning it which will call __delattr__ from __setattr__) the topology
-    # of the subgraph of Layers may change. In that case we will need to
-    # recompute any attribute which depends on that subgraph.
-    if name == '_layers':
-      self._attribute_sentinel.invalidate_all()
 
   def __setattr__(self, name, value):
     if (name == '_self_setattr_tracking' or
@@ -2247,8 +2231,6 @@ class Layer(base_layer.Layer):
       # container types which compare equal.
       if not any((layer is value for layer in self._layers)):
         self._layers.append(value)
-        if hasattr(value, '_attribute_sentinel'):
-          value._attribute_sentinel.add_parent(self._attribute_sentinel)
         if hasattr(value, '_use_resource_variables'):
           # Legacy layers (V1 tf.layers) must always use
           # resource variables.
@@ -2295,35 +2277,6 @@ class Layer(base_layer.Layer):
           itertools.chain.from_iterable(
               getattr(layer, attribute) for layer in nested_layers))
     return []
-
-  def _gather_unique_layers(self):
-    """Returns the current layer and all its children depth first deduped.
-
-    We are deduping after getting the layers to maintain the order.
-    """
-    all_layers = self._gather_layers()
-    unique_layers, seen_layers = [], object_identity.ObjectIdentitySet()
-    for layer in all_layers:
-      if layer not in seen_layers:
-        unique_layers.append(layer)
-        # Track the Variable's identity to avoid __eq__ issues.
-        seen_layers.add(layer)
-    return unique_layers
-
-  def _gather_layers(self):
-    """Returns the current layer and all its children depth first."""
-    all_layers = [self]
-    if hasattr(self, '_layers'):
-      child_layers = trackable_layer_utils.filter_empty_layer_containers(
-          self._layers)
-      for child_layer in child_layers:
-        all_layers.extend(child_layer._gather_layers())
-    return all_layers
-
-  @property
-  @tracking.cached_per_instance
-  def _attribute_sentinel(self):
-    return trackable_layer_utils.AttributeSentinel()
 
   # This is a hack so that the is_layer (within
   # training/trackable/layer_utils.py) check doesn't get the weights attr.

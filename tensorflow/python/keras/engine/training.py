@@ -628,8 +628,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       if self.compiled_metrics is not None:
         metrics += self.compiled_metrics.metrics
 
-    all_layers = self._gather_unique_layers()
-    for l in all_layers:
+    for l in self._flatten_layers():
       metrics.extend(l._metrics)  # pylint: disable=protected-access
     return metrics
 
@@ -2310,7 +2309,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
   @property
   def layers(self):
-    return self._unique_sublayers()
+    return list(self._flatten_layers(include_self=False, recursive=False))
 
   def get_layer(self, name=None, index=None):
     """Retrieves a layer based on either its name (unique) or index.
