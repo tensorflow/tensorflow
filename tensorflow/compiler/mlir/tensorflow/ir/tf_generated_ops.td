@@ -6474,7 +6474,7 @@ operation.
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$resource
+    Arg<TF_ResourceTensor, "", [TF_VariableRead]>:$resource
   );
 
   let results = (outs

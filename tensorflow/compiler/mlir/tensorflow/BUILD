@@ -269,6 +269,7 @@ cc_library(
         "ir/tf_executor.h",
         "ir/tf_ops.h",
         "ir/tf_saved_model.h",
+        "ir/tf_side_effects.h",
         "ir/tf_structs.h",
         "ir/tf_traits.h",
         "ir/tf_verifiers.h",
