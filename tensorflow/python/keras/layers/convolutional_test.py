@@ -171,6 +171,21 @@ class Conv2DTest(keras_parameterized.TestCase):
           input_shape=(num_samples, num_row, num_col, stack_size),
           expected_output_shape=expected_output_shape)
 
+  def _run_test_extra_batch_dim(self, kwargs, expected_output_shape):
+    batch_shape = (2, 11)
+    stack_size = 3
+    num_row = 7
+    num_col = 6
+
+    with self.cached_session(use_gpu=True):
+      if expected_output_shape is not None:
+        expected_output_shape = (None,) + expected_output_shape
+      testing_utils.layer_test(
+          keras.layers.Conv2D,
+          kwargs=kwargs,
+          input_shape=batch_shape + (num_row, num_col, stack_size),
+          expected_output_shape=expected_output_shape)
+
   @parameterized.named_parameters(
       ('padding_valid', {
           'padding': 'valid'
@@ -205,6 +220,7 @@ class Conv2DTest(keras_parameterized.TestCase):
     kwargs['kernel_size'] = (3, 3)
     if not requires_gpu or test.is_gpu_available(cuda_only=True):
       self._run_test(kwargs, expected_output_shape)
+      self._run_test_extra_batch_dim(kwargs, expected_output_shape)
 
   def test_conv2d_regularizers(self):
     kwargs = {
