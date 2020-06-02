@@ -1096,18 +1096,30 @@ class DropoutRNNCellMixin(object):
   """
 
   def __init__(self, *args, **kwargs):
-    # Note that the following two masks will be used in "graph function" mode,
-    # e.g. these masks are symbolic tensors. In eager mode, the `eager_*_mask`
-    # tensors will be generated differently than in the "graph function" case,
-    # and they will be cached.
-    # Also note that in graph mode, we still cache those masks only because the
-    # RNN could be created with `unroll=True`. In that case, the `cell.call()`
-    # function will be invoked multiple times, and we want to ensure same mask
-    # is used every time.
+    self._create_non_trackable_mask_cache()
+    super(DropoutRNNCellMixin, self).__init__(*args, **kwargs)
+
+  @trackable.no_automatic_dependency_tracking
+  def _create_non_trackable_mask_cache(self):
+    """Create the cache for dropout and recurrent dropout mask.
+
+    Note that the following two masks will be used in "graph function" mode,
+    e.g. these masks are symbolic tensors. In eager mode, the `eager_*_mask`
+    tensors will be generated differently than in the "graph function" case,
+    and they will be cached.
+
+    Also note that in graph mode, we still cache those masks only because the
+    RNN could be created with `unroll=True`. In that case, the `cell.call()`
+    function will be invoked multiple times, and we want to ensure same mask
+    is used every time.
+
+    Also the caches are created without tracking. Since they are not picklable
+    by python when deepcopy, we don't want layer._obj_reference_counts_dict
+    to track it by default.
+    """
     self._dropout_mask_cache = K.ContextValueCache(self._create_dropout_mask)
     self._recurrent_dropout_mask_cache = K.ContextValueCache(
         self._create_recurrent_dropout_mask)
-    super(DropoutRNNCellMixin, self).__init__(*args, **kwargs)
 
   def reset_dropout_mask(self):
     """Reset the cached dropout masks if any.
@@ -1186,6 +1198,21 @@ class DropoutRNNCellMixin(object):
       return None
     init_kwargs = dict(inputs=inputs, training=training, count=count)
     return self._recurrent_dropout_mask_cache.setdefault(kwargs=init_kwargs)
+
+  def __getstate__(self):
+    # Used for deepcopy. The caching can't be pickled by python, since it will
+    # contain tensor and graph.
+    state = super(DropoutRNNCellMixin, self).__getstate__()
+    state.pop('_dropout_mask_cache', None)
+    state.pop('_recurrent_dropout_mask_cache', None)
+    return state
+
+  def __setstate__(self, state):
+    state['_dropout_mask_cache'] = K.ContextValueCache(
+        self._create_dropout_mask)
+    state['_recurrent_dropout_mask_cache'] = K.ContextValueCache(
+        self._create_recurrent_dropout_mask)
+    super(DropoutRNNCellMixin, self).__setstate__(state)
 
 
 @keras_export('keras.layers.SimpleRNNCell')
