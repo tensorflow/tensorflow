@@ -209,7 +209,7 @@ class Regularizer(object):
         (
           "Value: {} is not a valid regularization penalty number, "
           "a positive/negative infinity or NaN is not a property value"
-        )
+        ).format(x)
       )
 
 
