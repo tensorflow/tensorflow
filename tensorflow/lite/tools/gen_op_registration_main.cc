@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/strip.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/gen_op_registration.h"
+#include "tensorflow/lite/util.h"
 
 const char kInputModelFlag[] = "input_models";
 const char kNamespace[] = "namespace";
@@ -84,6 +85,8 @@ void GenerateFileContent(const std::string& tflite_path,
     fout << "namespace custom {\n";
     fout << "// Forward-declarations for the custom ops.\n";
     for (const auto& op : custom_ops) {
+      // Skips Tensorflow ops, only TFLite custom ops can be registered here.
+      if (tflite::IsFlexOp(op.first.c_str())) continue;
       fout << "TfLiteRegistration* Register_"
            << ::tflite::NormalizeCustomOpName(op.first) << "();\n";
     }
@@ -115,6 +118,8 @@ void GenerateFileContent(const std::string& tflite_path,
     fout << ");\n";
   }
   for (const auto& op : custom_ops) {
+    // Skips Tensorflow ops, only TFLite custom ops can be registered here.
+    if (tflite::IsFlexOp(op.first.c_str())) continue;
     fout << "  resolver->AddCustom(\"" << op.first
          << "\", ::tflite::ops::custom::Register_"
          << ::tflite::NormalizeCustomOpName(op.first) << "()";
