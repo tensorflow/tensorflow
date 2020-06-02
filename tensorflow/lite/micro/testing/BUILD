@@ -48,3 +48,26 @@ cc_library(
         "//tensorflow/lite/micro:micro_time",
     ],
 )
+
+cc_library(
+    name = "test_conv_model",
+    srcs = [
+        "test_conv_model.cc",
+    ],
+    hdrs = [
+        "test_conv_model.h",
+    ],
+)
+
+py_binary(
+    name = "generate_test_models",
+    srcs = ["generate_test_models.py"],
+    python_version = "PY3",
+    srcs_version = "PY3ONLY",
+    tags = ["noubsan"],  # TODO(b/144512025): Fix raw_to_bitmap_test to fix ubsan failure.
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+        "@absl_py//absl:app",
+    ],
+)
