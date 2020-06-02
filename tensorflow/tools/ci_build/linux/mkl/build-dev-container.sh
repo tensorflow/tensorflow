@@ -64,6 +64,9 @@ ENABLE_SECURE_BUILD=${ENABLE_SECURE_BUILD:-no}
 BAZEL_VERSION=${BAZEL_VERSION}
 BUILD_PY2_CONTAINERS=${BUILD_PY2_CONTAINERS:-no}
 ENABLE_DNNL1=${ENABLE_DNNL1:-no}
+ENABLE_HOROVOD=${ENABLE_HOROVOD:-no}
+OPENMPI_VERSION=${OPENMPI_VERSION}
+OPENMPI_DOWNLOAD_URL=${OPENMPI_DOWNLOAD_URL}
 
 debug "ROOT_CONTAINER=${ROOT_CONTAINER}"
 debug "TF_ROOT_CONTAINER_TAG=${TF_ROOT_CONTAINER_TAG}"
@@ -82,6 +85,9 @@ debug "TMP_DIR=${TMP_DIR}"
 debug "BAZEL_VERSION=${BAZEL_VERSION}"
 debug "BUILD_PY2_CONTAINERS=${BUILD_PY2_CONTAINERS}"
 debug "ENABLE_DNNL1=${ENABLE_DNNL1}"
+debug "ENABLE_HOROVOD=${ENABLE_HOROVOD}"
+debug "OPENMPI_VERSION=${OPENMPI_VERSION}"
+debug "OPENMPI_DOWNLOAD_URL=${OPENMPI_DOWNLOAD_URL}"
 
 function build_container()
 {
@@ -129,6 +135,13 @@ function build_container()
   # BAZEL Version
   if [[ ${BAZEL_VERSION} != "" ]]; then
     TF_DOCKER_BUILD_ARGS+=("--build-arg BAZEL_VERSION=${BAZEL_VERSION}")
+  fi
+
+  # Add build arg for installing OpenMPI/Horovod
+  if [[ ${ENABLE_HOROVOD} == "yes" ]]; then
+    TF_DOCKER_BUILD_ARGS+=("--build-arg ENABLE_HOROVOD=${ENABLE_HOROVOD}")
+    TF_DOCKER_BUILD_ARGS+=("--build-arg OPENMPI_VERSION=${OPENMPI_VERSION}")
+    TF_DOCKER_BUILD_ARGS+=("--build-arg OPENMPI_DOWNLOAD_URL=${OPENMPI_DOWNLOAD_URL}")
   fi
 
   # Perform docker build
@@ -187,6 +200,19 @@ function test_container()
   else
       die "FAIL: MKL enabled test in ${TEMP_IMAGE_NAME}"
   fi
+
+  # Test to check if horovod is installed successfully
+  debug "Test horovod in the container..."
+  if [[ ${ENABLE_HOROVOD} == "yes" ]]; then
+      HOROVOD_TEST_CMD=$(${DOCKER_BINARY} exec ${CONTAINER_ID} bash -c "${PYTHON} -c 'import horovod.tensorflow as hvd;'")  
+      ${HOROVOD_TEST_CMD}
+      if [[ $? == "0" ]]; then
+          echo "PASS: HOROVOD installation test in ${TEMP_IMAGE_NAME}"
+      else
+          die "FAIL: HOROVOD installation test in ${TEMP_IMAGE_NAME}"
+      fi
+  fi
+  
 
   # Stop the running docker container
   sleep 1

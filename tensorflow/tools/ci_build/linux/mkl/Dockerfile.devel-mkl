@@ -15,6 +15,11 @@ ARG CONFIG_BFLOAT16_BUILD=""
 ARG ENABLE_SECURE_BUILD
 ARG BAZEL_VERSION=""
 ARG ENABLE_DNNL1=""
+ARG ENABLE_HOROVOD=""
+ARG OPENMPI_VERSION=""
+ARG OPENMPI_DOWNLOAD_URL=""
+
+ENV DEBIAN_FRONTEND=noninteractive
 
 # Upgrade Bazel version if argument is passed
 RUN if [ "${BAZEL_VERSION}" != "" ]; then \
@@ -45,15 +50,20 @@ RUN ${PYTHON} set-build-env.py -p ${TARGET_PLATFORM} -f /root/.mkl.bazelrc \
 # Pull the compiler flags we just wrote into root user's .bazelrc file
 RUN echo "import /root/.mkl.bazelrc" >>/root/.bazelrc
 
-# Install futures>=0.17.1 for Python2.7 compatibility mode
-RUN ${PIP} install future>=0.17.1
-
 RUN bazel --bazelrc=/root/.bazelrc build -c opt \
     tensorflow/tools/pip_package:build_pip_package && \
     bazel-bin/tensorflow/tools/pip_package/build_pip_package "${WHL_DIR}" && \
     ${PIP} --no-cache-dir install --upgrade "${WHL_DIR}"/tensorflow-*.whl && \
     rm -rf /root/.cache
     # Clean up Bazel cache when done.
+
+#Install OpenMPI/Horovod
+COPY install_openmpi_horovod.sh .
+RUN if [ "${ENABLE_HOROVOD}" = "yes" ]; then \
+        chmod +x install_openmpi_horovod.sh && \
+        ${OPENMPI_VERSION} ${OPENMPI_DOWNLOAD_URL} install_openmpi_horovod.sh && \
+        rm -rf install_openmpi_horovod.sh; \
+    fi
 
 # TensorBoard
 EXPOSE 6006
