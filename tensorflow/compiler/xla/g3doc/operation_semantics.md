@@ -811,15 +811,15 @@ Here is pseudo-code for a 2d convolution with padding and striding:
 
 ```
 for (b, oz, oy, ox) {  // output coordinates
-value = 0;
-for (iz, ky, kx) {  // kernel coordinates and input z
-iy = oy*stride_y + ky - pad_low_y;
-ix = ox*stride_x + kx - pad_low_x;
-if ((iy, ix) inside the base area considered without padding) {
-value += input(b, iz, iy, ix) * kernel(oz, iz, ky, kx);
-}
-}
-output(b, oz, oy, ox) = value;
+  value = 0;
+  for (iz, ky, kx) {  // kernel coordinates and input z
+    iy = oy*stride_y + ky - pad_low_y;
+    ix = ox*stride_x + kx - pad_low_x;
+    if ((iy, ix) inside the base area considered without padding) {
+      value += input(b, iz, iy, ix) * kernel(oz, iz, ky, kx);
+    }
+  }
+  output(b, oz, oy, ox) = value;
 }
 ```
 
@@ -899,19 +899,19 @@ Here is an example of an implementation of `myfunc`:
 
 ```
 extern "C" void myfunc(void* out, void** in) {
-float (&x)[2] = *static_cast<float(*)[2]>(in[0]);
-float (&y)[2][3] = *static_cast<float(*)[2][3]>(in[1]);
-EXPECT_EQ(1, x[0]);
-EXPECT_EQ(2, x[1]);
-EXPECT_EQ(10, y[0][0]);
-EXPECT_EQ(20, y[0][1]);
-EXPECT_EQ(30, y[0][2]);
-EXPECT_EQ(40, y[1][0]);
-EXPECT_EQ(50, y[1][1]);
-EXPECT_EQ(60, y[1][2]);
-float (&z)[3][3] = *static_cast<float(*)[3][3]>(out);
-z[0][0] = x[1] + y[1][0];
-// ...
+  float (&x)[2] = *static_cast<float(*)[2]>(in[0]);
+  float (&y)[2][3] = *static_cast<float(*)[2][3]>(in[1]);
+  EXPECT_EQ(1, x[0]);
+  EXPECT_EQ(2, x[1]);
+  EXPECT_EQ(10, y[0][0]);
+  EXPECT_EQ(20, y[0][1]);
+  EXPECT_EQ(30, y[0][2]);
+  EXPECT_EQ(40, y[1][0]);
+  EXPECT_EQ(50, y[1][1]);
+  EXPECT_EQ(60, y[1][2]);
+  float (&z)[3][3] = *static_cast<float(*)[3][3]>(out);
+  z[0][0] = x[1] + y[1][0];
+  // ...
 }
 ```
 
@@ -1694,11 +1694,11 @@ dependency between the while loops.
 
 ```
 result1 = while (condition, init = init_value) {
-Infeed(shape)
+  Infeed(shape)
 }
 
 result2 = while (condition, init = result1) {
-Infeed(shape)
+  Infeed(shape)
 }
 ```
 
