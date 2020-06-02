@@ -35,12 +35,17 @@ import itertools
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
+from typing import Any, Callable, TypeVar
+
 # Private function attribute used to store a list of dispatchers.
 DISPATCH_ATTR = "_tf_dispatchers"
 
 
 # OpDispatchers which should be used for all operations.
 _GLOBAL_DISPATCHERS = []
+
+
+F = TypeVar('F', bound=Callable[..., Any])
 
 
 class OpDispatcher(object):
@@ -193,7 +198,7 @@ def add_dispatch_list(target):
   return target
 
 
-def add_dispatch_support(target):
+def add_dispatch_support(target: F) -> F:
   """Decorator that adds a dispatch handling wrapper to an op."""
   def wrapper(*args, **kwargs):
     """Call target, and fall back on dispatchers if there is a TypeError."""
