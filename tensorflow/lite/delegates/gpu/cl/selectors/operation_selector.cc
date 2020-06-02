@@ -143,6 +143,9 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
       const auto* linear_tensor =
           absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
               &attr.param);
+      const auto* hwc_tensor =
+          absl::get_if<tflite::gpu::Tensor<HWC, DataType::FLOAT32>>(
+              &attr.param);
       if (scalar) {
         ElementwiseOneRuntimeOneScalar operation =
             CreateElementwiseOneRuntimeOneScalar(creation_context, op_def,
@@ -154,6 +157,12 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
         ElementwiseTwoInput operation;
         RETURN_IF_ERROR(CreateElementwiseTwoInput(
             creation_context, op_def, op_type, *linear_tensor, &operation));
+        *gpu_op = absl::make_unique<ElementwiseTwoInput>(std::move(operation));
+        return absl::OkStatus();
+      } else if (hwc_tensor) {
+        ElementwiseTwoInput operation;
+        RETURN_IF_ERROR(CreateElementwiseTwoInput(
+            creation_context, op_def, op_type, *hwc_tensor, &operation));
         *gpu_op = absl::make_unique<ElementwiseTwoInput>(std::move(operation));
         return absl::OkStatus();
       } else {
@@ -276,6 +285,9 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
       const auto* linear_tensor =
           absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
               &attr.param);
+      const auto* hwc_tensor =
+          absl::get_if<tflite::gpu::Tensor<HWC, DataType::FLOAT32>>(
+              &attr.param);
       if (scalar) {
         ElementwiseOneRuntimeOneScalar operation =
             CreateElementwiseOneRuntimeOneScalar(creation_context, op_def,
@@ -287,6 +299,12 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
         ElementwiseTwoInput operation;
         RETURN_IF_ERROR(CreateElementwiseTwoInput(
             creation_context, op_def, op_type, *linear_tensor, &operation));
+        *gpu_op = absl::make_unique<ElementwiseTwoInput>(std::move(operation));
+        return absl::OkStatus();
+      } else if (hwc_tensor) {
+        ElementwiseTwoInput operation;
+        RETURN_IF_ERROR(CreateElementwiseTwoInput(
+            creation_context, op_def, op_type, *hwc_tensor, &operation));
         *gpu_op = absl::make_unique<ElementwiseTwoInput>(std::move(operation));
         return absl::OkStatus();
       } else {
@@ -387,6 +405,9 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
       const auto* linear_tensor =
           absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
               &attr.param);
+      const auto* hwc_tensor =
+          absl::get_if<tflite::gpu::Tensor<HWC, DataType::FLOAT32>>(
+              &attr.param);
       if (scalar) {
         ElementwiseOneRuntimeOneScalar operation =
             CreateElementwiseOneRuntimeOneScalar(creation_context, op_def,
@@ -398,6 +419,12 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
         ElementwiseTwoInput operation;
         RETURN_IF_ERROR(CreateElementwiseTwoInput(
             creation_context, op_def, op_type, *linear_tensor, &operation));
+        *gpu_op = absl::make_unique<ElementwiseTwoInput>(std::move(operation));
+        return absl::OkStatus();
+      } else if (hwc_tensor) {
+        ElementwiseTwoInput operation;
+        RETURN_IF_ERROR(CreateElementwiseTwoInput(
+            creation_context, op_def, op_type, *hwc_tensor, &operation));
         *gpu_op = absl::make_unique<ElementwiseTwoInput>(std::move(operation));
         return absl::OkStatus();
       } else {
