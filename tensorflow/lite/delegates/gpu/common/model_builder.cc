@@ -77,30 +77,6 @@ absl::Status NewPassthroughNode(GraphFloat32* graph, Node* node,
   return absl::OkStatus();
 }
 
-template <typename T>
-inline void DequantizeConstantTensor(const TfLiteTensor& tensor,
-                                     const T* source_data,
-                                     float* dequantized_data) {
-  TfLiteAffineQuantization* quant_params =
-      static_cast<TfLiteAffineQuantization*>(tensor.quantization.params);
-  if (quant_params->scale->size > 1) {
-    // Tensor is per-channel quantized.
-    PerChannelDequantizationParams op_params;
-    op_params.zero_point = quant_params->zero_point->data;
-    op_params.scale = quant_params->scale->data;
-    op_params.quantized_dimension = quant_params->quantized_dimension;
-    reference_ops::PerChannelDequantize(op_params, GetTensorShape(&tensor),
-                                        source_data, GetTensorShape(&tensor),
-                                        dequantized_data);
-  } else {
-    DequantizationParams op_params;
-    op_params.zero_point = tensor.params.zero_point;
-    op_params.scale = tensor.params.scale;
-    reference_ops::Dequantize(op_params, GetTensorShape(&tensor), source_data,
-                              GetTensorShape(&tensor), dequantized_data);
-  }
-}
-
 absl::Status CheckTensorIsAvailable(const TfLiteContext* context,
                                     const TfLiteNode* tflite_node, int idx) {
   // If tensor id is in range, it's guaranteed that it'll be available.
