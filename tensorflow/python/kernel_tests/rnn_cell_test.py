@@ -35,6 +35,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -1015,7 +1016,8 @@ class LSTMTest(test.TestCase):
             })
 
       comparison_fn = self.assertAllEqual
-      if test_util.is_xla_enabled():
+      if (test_util.is_xla_enabled() and
+          control_flow_v2_toggles.control_flow_v2_enabled()):
         comparison_fn = self.assertAllClose
       if in_graph_mode:
         comparison_fn(outputs_static, outputs_dynamic)
@@ -1105,7 +1107,8 @@ class LSTMTest(test.TestCase):
             })
 
       comparison_fn = self.assertAllEqual
-      if test_util.is_xla_enabled():
+      if (test_util.is_xla_enabled() and
+          control_flow_v2_toggles.control_flow_v2_enabled()):
         comparison_fn = self.assertAllClose
       if in_graph_mode:
         comparison_fn(outputs_static, outputs_dynamic)
