@@ -767,8 +767,7 @@ class Layer(base_layer.Layer):
 
           if not self.dynamic:
             try:
-              with base_layer_utils.autocast_context_manager(
-                  self._compute_dtype_object):
+              with ops.enable_auto_cast_variables(self._compute_dtype_object):
                 outputs = call_fn(cast_inputs, *args, **kwargs)
 
             except errors.OperatorNotAllowedInGraphError as e:
@@ -812,8 +811,7 @@ class Layer(base_layer.Layer):
         with backend.name_scope(self._name_scope()):
           self._maybe_build(inputs)
           cast_inputs = self._maybe_cast_inputs(inputs)
-          with base_layer_utils.autocast_context_manager(
-              self._compute_dtype_object):
+          with ops.enable_auto_cast_variables(self._compute_dtype_object):
             outputs = self.call(cast_inputs, *args, **kwargs)
           self._handle_activity_regularization(inputs, outputs)
           self._set_mask_metadata(inputs, outputs, input_masks)
@@ -1023,7 +1021,7 @@ class Layer(base_layer.Layer):
       if callable(loss):
         # We run the loss without autocasting, as regularizers are often
         # numerically unstable in float16.
-        with base_layer_utils.autocast_context_manager(None):
+        with ops.enable_auto_cast_variables(None):
           loss = loss()
       if loss is None:
         return None  # Will be filtered out when computing the .losses property

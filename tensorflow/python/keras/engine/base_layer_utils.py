@@ -481,23 +481,6 @@ def training_arg_passed_to_call(argspec, args, kwargs):
   return 'training' in full_args and full_args['training'] is not None
 
 
-def autocast_context_manager(dtype):
-  """Returns a context manager to autocast AutoCastVariables.
-
-  Under this context manager, AutoCastVariables will be casted to `dtype` if
-  `dtype` is floating-point. Otherwise, AutoCastVariables will not be casted.
-
-  Args:
-    dtype: The dtype to cast AutoCastVariables to, or None.
-
-  Returns:
-    A context manager to automatically cast AutoCastVariables.
-  """
-  if dtype and not dtype.is_floating:
-    dtype = None
-  return ops.get_default_graph()._enable_auto_casting_variables(dtype)  # pylint: disable=protected-access
-
-
 def is_subclassed(layer):
   """Returns True if the object is a subclassed layer or subclassed model."""
   return (layer.__module__.find('keras.engine') == -1 and
