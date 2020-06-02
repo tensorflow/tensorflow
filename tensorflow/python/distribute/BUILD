@@ -1695,14 +1695,11 @@ cuda_py_test(
 py_library(
     name = "multi_process_runner",
     srcs = ["multi_process_runner.py"],
-    srcs_version = "PY3",
     deps = [
         ":multi_process_lib",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:tf2",
         "//tensorflow/python/compat:v2_compat",
-        "//tensorflow/python/eager:context",
-        "@absl_py//absl/logging",
         "@six_archive//:six",
     ],
 )
@@ -1710,19 +1707,18 @@ py_library(
 py_library(
     name = "multi_process_lib",
     srcs = ["multi_process_lib.py"],
-    deps = ["//tensorflow/python:client_testlib"],
+    deps = ["@six_archive//:six"],
 )
 
 py_test(
     name = "multi_process_runner_test",
     srcs = ["multi_process_runner_test.py"],
     python_version = "PY3",
+    shard_count = 12,
     deps = [
         ":multi_process_runner",
         ":multi_worker_test_base",
         "//tensorflow/python/eager:test",
-        "@absl_py//absl/logging",
-        "@six_archive//:six",
     ],
 )
 
@@ -1730,7 +1726,6 @@ py_test(
     name = "multi_process_runner_no_init_test",
     srcs = ["multi_process_runner_no_init_test.py"],
     python_version = "PY3",
-    tags = ["no_oss"],
     deps = [
         ":multi_process_runner",
         ":multi_worker_test_base",
