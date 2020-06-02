@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import math
+
 import six
 
 from tensorflow.python.keras import backend
@@ -192,6 +194,24 @@ class Regularizer(object):
     """
     raise NotImplementedError(str(self) + ' does not implement get_config()')
 
+  def _check_penalty_number(self, x):
+    """check penalty number availability, raise ValueError if failed"""
+    if not isinstance(x, (float, int)):
+      raise ValueError(
+        (
+          "Value: {} is not a valid regularization penalty number, "
+          "expected an int or float value"
+        ).format(x)
+      )
+
+    if math.isinf(x) or math.isnan(x):
+      raise ValueError(
+        (
+          "Value: {} is not a valid regularization penalty number, "
+          "a positive/negative infinity or NaN is not a property value"
+        )
+      )
+
 
 @keras_export('keras.regularizers.L1L2')
 class L1L2(Regularizer):
@@ -215,6 +235,9 @@ class L1L2(Regularizer):
   """
 
   def __init__(self, l1=0., l2=0.):  # pylint: disable=redefined-outer-name
+    self._check_penalty_number(l1)
+    self._check_penalty_number(l2)
+
     self.l1 = backend.cast_to_floatx(l1)
     self.l2 = backend.cast_to_floatx(l2)
 
@@ -251,6 +274,9 @@ class L1(Regularizer):
     l1 = kwargs.pop('l', l1)  # Backwards compatibility
     if kwargs:
       raise TypeError('Argument(s) not recognized: %s' % (kwargs,))
+
+    self._check_penalty_number(l1)
+
     self.l1 = backend.cast_to_floatx(l1)
 
   def __call__(self, x):
@@ -281,6 +307,9 @@ class L2(Regularizer):
     l2 = kwargs.pop('l', l2)  # Backwards compatibility
     if kwargs:
       raise TypeError('Argument(s) not recognized: %s' % (kwargs,))
+
+    self._check_penalty_number(l2)
+
     self.l2 = backend.cast_to_floatx(l2)
 
   def __call__(self, x):
