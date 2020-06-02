@@ -1055,29 +1055,8 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
     local_cm = std::make_shared<CancellationManager>();
     cm = local_cm.get();
   }
-  auto token = cm->get_cancellation_token();
-  const auto cancelled_error = errors::Cancelled(
-      "ProcessFunctionLibraryRuntime::RunMultiDevice was cancelled.");
-  const bool already_cancelled = !cm->RegisterCallback(
-      token,
-      [rendez = opts.rendezvous, n_func = data->glue_.size(), cancelled_error] {
-        // Abort rendezvous only if there are more than one component functions
-        // to avoid reporting cancellation error directly to PartitionedCallOps
-        // that launch a single component function.
-        if (rendez && n_func > 1) {
-          rendez->StartAbort(cancelled_error);
-        }
-      });
-  if (already_cancelled) {
-    done(cancelled_error);
-    return;
-  }
 
-  auto* refcounted_done = new ReffedStatusCallback(
-      [cm, token, local_cm, done = std::move(done)](const Status& s) {
-        cm->TryDeregisterCallback(token);
-        done(s);
-      });
+  auto* refcounted_done = new ReffedStatusCallback(std::move(done));
   for (int i = 0; i < data->glue_.size(); ++i) {
     refcounted_done->Ref();
   }

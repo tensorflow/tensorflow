@@ -129,6 +129,7 @@ cc_library(
     name = "delegate_data",
     srcs = ["delegate_data.cc"],
     hdrs = ["delegate_data.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":buffer_map",
         "@com_google_absl//absl/memory",

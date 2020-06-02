@@ -65,7 +65,7 @@ void TestSplitTwoOutputsFloat(
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
   tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_SPLIT, /* version= */ 1);
+      resolver.FindOp(tflite::BuiltinOperator_SPLIT);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteSplitParams builtin_data = {
@@ -168,7 +168,7 @@ void TestSplitFourOutputsFloat(
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
   tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_SPLIT, /* version= */ 1);
+      resolver.FindOp(tflite::BuiltinOperator_SPLIT);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteSplitParams builtin_data = {
@@ -266,7 +266,7 @@ void TestSplitTwoOutputsQuantized(
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
   tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_SPLIT, /* version= */ 1);
+      resolver.FindOp(tflite::BuiltinOperator_SPLIT);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteSplitParams builtin_data = {
@@ -355,7 +355,7 @@ void TestSplitTwoOutputsQuantized32(
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
   tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_SPLIT, /* version= */ 1);
+      resolver.FindOp(tflite::BuiltinOperator_SPLIT);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteSplitParams builtin_data = {

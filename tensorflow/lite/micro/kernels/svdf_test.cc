@@ -175,7 +175,7 @@ void ValidateSVDFGoldens(const int batch_size, const int num_units,
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_SVDF, 1);
+      resolver.FindOp(tflite::BuiltinOperator_SVDF);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteSVDFParams params;
@@ -250,7 +250,7 @@ void ValidateIntegerSVDFGoldens(const int batch_size, const int num_units,
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_SVDF, 1);
+      resolver.FindOp(tflite::BuiltinOperator_SVDF);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteSVDFParams params;

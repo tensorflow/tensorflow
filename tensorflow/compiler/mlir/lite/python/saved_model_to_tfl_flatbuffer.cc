@@ -125,8 +125,8 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
   std::vector<string> node_names;
   std::vector<string> node_dtypes;
   std::vector<std::vector<int>> node_shapes;
-  std::vector<double> node_mins;
-  std::vector<double> node_maxs;
+  std::vector<llvm::Optional<double>> node_mins;
+  std::vector<llvm::Optional<double>> node_maxs;
 
   // Populate quantization specs.
   TF_RETURN_IF_ERROR(internal::PopulateQuantizationSpecs(

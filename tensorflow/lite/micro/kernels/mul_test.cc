@@ -49,7 +49,7 @@ void TestMulFloat(std::initializer_list<int> input1_dims_data,
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_MUL, 1);
+      resolver.FindOp(tflite::BuiltinOperator_MUL);
 
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
@@ -124,7 +124,7 @@ void TestMulQuantized(std::initializer_list<int> input1_dims_data,
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_MUL, 1);
+      resolver.FindOp(tflite::BuiltinOperator_MUL);
 
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 

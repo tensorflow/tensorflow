@@ -44,7 +44,6 @@ py_library(
         "//tensorflow/python/keras:losses",
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras:regularizers",
-        "//tensorflow/python/keras/distribute:multi_worker_training_state",
         "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
         "//tensorflow/python/keras/mixed_precision/experimental:policy",
         "//tensorflow/python/keras/saving",
@@ -56,23 +55,21 @@ py_library(
 )
 
 py_library(
-    name = "multi_worker_training_state",
+    name = "worker_training_state",
     srcs = [
-        "multi_worker_training_state.py",
+        "worker_training_state.py",
     ],
     srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python/distribute:multi_worker_util",
-    ],
 )
 
 cuda_py_test(
-    name = "multi_worker_training_state_test",
-    srcs = ["multi_worker_training_state_test.py"],
+    name = "worker_training_state_test",
+    srcs = ["worker_training_state_test.py"],
+    python_version = "PY3",
     shard_count = 4,
     deps = [
         ":multi_worker_testing_utils",
-        ":multi_worker_training_state",
+        ":worker_training_state",
         "//tensorflow/python:platform",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:multi_worker_test_base",
@@ -316,6 +313,7 @@ py_library(
 cuda_py_test(
     name = "keras_optimizer_v2_test",
     srcs = ["keras_optimizer_v2_test.py"],
+    python_version = "PY3",
     shard_count = 4,
     tags = [
         "multi_and_single_gpu",
@@ -329,6 +327,7 @@ cuda_py_test(
 cuda_py_test(
     name = "multi_worker_test",
     srcs = ["multi_worker_test.py"],
+    python_version = "PY3",
     shard_count = 32,
     tags = [
         "multi_and_single_gpu",
@@ -372,27 +371,6 @@ py_test(
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/keras/distribute:multi_worker_testing_utils",
-    ],
-)
-
-cuda_py_test(
-    name = "multi_worker_fault_tolerance_test",
-    srcs = ["multi_worker_fault_tolerance_test.py"],
-    shard_count = 14,
-    # TODO(b/132384649): Enable once fixed.
-    tags = [
-        "no_oss",
-    ],
-    deps = [
-        ":distribute",
-        ":multi_worker_testing_utils",
-        "//tensorflow/python:platform",
-        "//tensorflow/python/distribute:collective_all_reduce_strategy",
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:distribute_config",
-        "//tensorflow/python/distribute:distribute_coordinator",
-        "//tensorflow/python/distribute:multi_worker_test_base",
-        "//tensorflow/python/keras",
     ],
 )
 

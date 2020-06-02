@@ -2,6 +2,8 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 load(
@@ -27,6 +29,10 @@ cc_library(
         "pywrap_tensor.h",
         "pywrap_tensor_conversion.h",
         "pywrap_tfe.h",
+    ],
+    copts = ["-fexceptions"],
+    features = [
+        "-use_header_modules",  # Required for pybind11
     ],
     visibility = [
         "//learning/deepmind/courier:__subpackages__",
@@ -54,6 +60,7 @@ cc_library(
         "//tensorflow/python:ndarray_tensor",
         "//tensorflow/python:ndarray_tensor_bridge",
         "//tensorflow/python:numpy_lib",
+        "//tensorflow/python:py_exception_registry",
         "//tensorflow/python:py_seq_tensor",
         "//tensorflow/python:safe_ptr",
         "//third_party/py/numpy:headers",
@@ -63,6 +70,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:variant",
+        "@pybind11",
     ],
 )
 

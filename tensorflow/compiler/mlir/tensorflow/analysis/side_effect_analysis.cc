@@ -49,7 +49,7 @@ namespace TF {
 namespace {
 
 constexpr int64_t kUnknownResourceId = -1;
-constexpr char kResourceArgUniqueIdAttr[] = "tf.resource_arg_unique_id";
+constexpr char kResourceArgUniqueIdAttr[] = "tf._resource_arg_unique_id";
 
 // Returns if a VarHandleOp is anonymous, which means it always creates a new
 // variable.

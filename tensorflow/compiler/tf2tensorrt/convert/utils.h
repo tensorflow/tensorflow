@@ -29,6 +29,8 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
+static constexpr char kCastOutputTypeAttrName[] = "DstT";
+
 class IONamePrefixes {
  public:
   static constexpr const char* const kInputPHName = "TensorRTInputPH_";

@@ -1,7 +1,7 @@
 # Tests of TensorFlow kernels written using the Python API.
 
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")  # buildifier: disable=same-origin-load
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -92,8 +92,8 @@ tf_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python/data",
         "//tensorflow/python/data/experimental/ops:testing",
+        "//tensorflow/python/data/experimental/service:server_lib",
         "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/service:server_lib",
     ],
 )
 

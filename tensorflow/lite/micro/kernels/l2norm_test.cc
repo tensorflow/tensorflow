@@ -106,7 +106,7 @@ void TestL2Normalization(const int* input_dims_data,
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_L2_NORMALIZATION, 1);
+      resolver.FindOp(tflite::BuiltinOperator_L2_NORMALIZATION);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteL2NormParams builtin_data = {

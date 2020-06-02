@@ -301,7 +301,7 @@ void RunInference(Settings* s) {
     profiler->StopProfiling();
     auto profile_events = profiler->GetProfileEvents();
     for (int i = 0; i < profile_events.size(); i++) {
-      auto subgraph_index = profile_events[i]->event_subgraph_index;
+      auto subgraph_index = profile_events[i]->extra_event_metadata;
       auto op_index = profile_events[i]->event_metadata;
       const auto subgraph = interpreter->subgraph(subgraph_index);
       const auto node_and_registration =

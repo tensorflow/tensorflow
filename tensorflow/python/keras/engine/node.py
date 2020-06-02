@@ -32,6 +32,8 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import serialization
 
+_CONSTANT_VALUE = '_CONSTANT_VALUE'
+
 
 class Node(object):
   """A `Node` describes the connectivity between two layers.
@@ -181,11 +183,18 @@ class Node(object):
     # `kwargs` is added to each Tensor in the first arg. This should be
     # changed in a future version of the serialization format.
     def serialize_first_arg_tensor(t):
-      kh = t._keras_history
-      node_index = kh.node_index
-      node_key = make_node_key(kh.layer.name, node_index)
-      new_node_index = node_conversion_map.get(node_key, 0)
-      data = [kh.layer.name, new_node_index, kh.tensor_index, kwargs]
+      if is_keras_tensor(t):
+        kh = t._keras_history
+        node_index = kh.node_index
+        node_key = make_node_key(kh.layer.name, node_index)
+        new_node_index = node_conversion_map.get(node_key, 0)
+        data = [kh.layer.name, new_node_index, kh.tensor_index, kwargs]
+      else:
+        # If an element in the first call argument did not originate as a
+        # keras tensor and is a constant value, we save it using the format
+        # ['_CONSTANT_VALUE', -1, serializaed_tensor_or_python_constant]
+        # (potentially including serialized kwargs in an optional 4th argument
+        data = [_CONSTANT_VALUE, -1, _serialize_keras_tensor(t), kwargs]
       return tf_utils.ListWrapper(data)
 
     data = nest.map_structure(serialize_first_arg_tensor, inputs)

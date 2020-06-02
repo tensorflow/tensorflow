@@ -69,10 +69,14 @@ class DeviceOpMetricsDbBuilder : public OpMetricsDbBuilder {
   //                      picoseconds.
   //   flops = the number of floating-point operations computed.
   //   bytes_accessed = the sum of bytes read and bytes written by this OP.
+  //   memory_accessed_breakdown = the breakdown of memory accessed by operation
+  //                               type and memory space.
   void EnterOp(uint64 program_id, absl::string_view name,
                absl::string_view category, absl::string_view provenance,
                bool is_eager, uint64 occurrences, uint64 time_ps,
-               uint64 children_time_ps, int64 flops, int64 bytes_accessed);
+               uint64 children_time_ps, int64 flops, int64 bytes_accessed,
+               const std::vector<OpMetrics::MemoryAccessed>&
+                   memory_accessed_breakdown = {});
 
  protected:
   // Peak performance of a TensorCore or a GPU in TFLOP/s.

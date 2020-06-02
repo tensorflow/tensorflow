@@ -4578,6 +4578,9 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
   [0. 0. 0.]
 
   """
+  target = ops.convert_to_tensor_v2(target)
+  output = ops.convert_to_tensor_v2(output)
+
   target.shape.assert_is_compatible_with(output.shape)
   if from_logits:
     return nn.softmax_cross_entropy_with_logits_v2(
@@ -4625,6 +4628,9 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
   Raises:
       ValueError: if `axis` is neither -1 nor one of the axes of `output`.
   """
+  target = ops.convert_to_tensor_v2(target)
+  output = ops.convert_to_tensor_v2(output)
+
   if not from_logits and not isinstance(
       output, (ops.EagerTensor, variables_module.Variable)):
     output = _backtrack_identity(output)
@@ -4700,6 +4706,9 @@ def binary_crossentropy(target, output, from_logits=False):
   Returns:
       A tensor.
   """
+  target = ops.convert_to_tensor_v2(target)
+  output = ops.convert_to_tensor_v2(output)
+
   if from_logits:
     return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
 
@@ -5939,10 +5948,13 @@ def ctc_decode(y_pred, input_length, greedy=True, beam_width=100, top_paths=1):
               contains the decoded sequence.
               If `false`, returns the `top_paths` most probable
               decoded sequences.
+              Each decoded sequence has shape (samples, time_steps).
               Important: blank labels are returned as `-1`.
           Tensor `(top_paths, )` that contains
               the log probability of each decoded sequence.
   """
+  input_shape = shape(y_pred)
+  samples, steps = input_shape[0], input_shape[1]
   y_pred = math_ops.log(array_ops.transpose(y_pred, perm=[1, 0, 2]) + epsilon())
   input_length = math_ops.cast(input_length, dtypes_module.int32)
 
@@ -5957,7 +5969,7 @@ def ctc_decode(y_pred, input_length, greedy=True, beam_width=100, top_paths=1):
         top_paths=top_paths)
   decoded_dense = [
       sparse_ops.sparse_to_dense(
-          st.indices, st.dense_shape, st.values, default_value=-1)
+          st.indices, (samples, steps), st.values, default_value=-1)
       for st in decoded
   ]
   return (decoded_dense, log_prob)

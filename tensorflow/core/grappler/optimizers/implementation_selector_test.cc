@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -56,6 +57,167 @@ TEST_F(ImplementationSelectorTest, NoUpdate) {
 
   // This is a trivial graph so there is nothing to update.
   EXPECT_EQ(item.graph.node_size(), output.node_size());
+}
+
+TEST_F(ImplementationSelectorTest, SelectDeviceIndex) {
+  using test::function::NDef;
+  ImplementationSelector optimizer;
+  GraphDef output;
+  GrapplerItem item;
+  AttrValue device_names;
+  device_names.mutable_list()->add_s("CPU");
+  device_names.mutable_list()->add_s("GPU");
+  item.graph = test::function::GDef(
+      {NDef("x", "DeviceIndex", {}, {{"device_names", device_names}},
+            CpuDevice),
+       NDef("case", "Case", {"x"}, {{"T", DT_FLOAT}}, GpuDevice)});
+
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "x") {
+      // Rewrite DeviceIndex op to a Const op with value of GPU index 1.
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.attr().at("value").tensor().int_val(0));
+    }
+  }
+}
+
+TEST_F(ImplementationSelectorTest, SelectDeviceIndexMultiOps) {
+  using test::function::NDef;
+  ImplementationSelector optimizer;
+  GraphDef output;
+  GrapplerItem item;
+  AttrValue device_names;
+  device_names.mutable_list()->add_s("CPU");
+  device_names.mutable_list()->add_s("TPU_REPLICATED_CORE");
+  device_names.mutable_list()->add_s("GPU");
+  item.graph = test::function::GDef(
+      {NDef("x", "DeviceIndex", {}, {{"device_names", device_names}},
+            CpuDevice),
+       NDef("case", "Case", {"x"}, {{"T", DT_FLOAT}}, GpuDevice),
+       NDef("y", "DeviceIndex", {}, {{"device_names", device_names}},
+            GpuDevice),
+       NDef("case_y", "Case", {"y"}, {{"T", DT_FLOAT}}, TpuDevice)});
+
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "x") {
+      // Rewrite DeviceIndex op to a Const op with value of GPU index 1.
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(2, node.attr().at("value").tensor().int_val(0));
+    }
+    if (node.name() == "y") {
+      // Rewrite DeviceIndex op to a Const op with value of CPU index 0.
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.attr().at("value").tensor().int_val(0));
+    }
+  }
+}
+
+TEST_F(ImplementationSelectorTest, SelectDeviceIndexNotFound) {
+  using test::function::NDef;
+  ImplementationSelector optimizer;
+  GraphDef output;
+  GrapplerItem item;
+  AttrValue device_names;
+  device_names.mutable_list()->add_s("CPU");
+  device_names.mutable_list()->add_s("GPU");
+  item.graph = test::function::GDef(
+      {NDef("x", "DeviceIndex", {}, {{"device_names", device_names}},
+            CpuDevice),
+       NDef("case", "Case", {"x"}, {{"T", DT_FLOAT}}, TpuDevice)});
+
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "x") {
+      // Rewrite DeviceIndex op to a Const op with value of device names length.
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(2, node.attr().at("value").tensor().int_val(0));
+    }
+  }
+}
+
+TEST_F(ImplementationSelectorTest, SelectDeviceIndexError) {
+  using test::function::NDef;
+  ImplementationSelector optimizer;
+  GraphDef output;
+  GrapplerItem item;
+  AttrValue device_names;
+  device_names.mutable_list()->add_s("CPU");
+  device_names.mutable_list()->add_s("GPU");
+  item.graph = test::function::GDef(
+      {NDef("x", "DeviceIndex", {}, {{"device_names", device_names}},
+            CpuDevice),
+       NDef("case", "Case", {"x"}, {{"T", DT_FLOAT}}, "")});
+
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "x") {
+      // Device parse has error, do not rewrite the DeviceIndexNode.
+      EXPECT_EQ("DeviceIndex", node.op());
+    }
+  }
+}
+
+TEST_F(ImplementationSelectorTest, TwoTypesOfSwapImplementation) {
+  using test::function::NDef;
+  ImplementationSelector optimizer;
+  GraphDef output;
+  GrapplerItem item;
+  // DeviceIndex op based implementation selector.
+  AttrValue device_names;
+  device_names.mutable_list()->add_s("CPU");
+  device_names.mutable_list()->add_s("TPU_REPLICATED_CORE");
+  device_names.mutable_list()->add_s("GPU");
+
+  // Function swap based implementation selector.
+  auto cpu_def = test::function::XTimesTwo();
+  auto* func_attr = cpu_def.mutable_attr();
+  (*func_attr)["api_implements"].set_s("times_two");
+  (*func_attr)["api_preferred_device"].set_s("CPU");
+
+  auto gpu_def = test::function::XAddX();
+  auto* func2_attr = gpu_def.mutable_attr();
+  (*func2_attr)["api_implements"].set_s("times_two");
+  (*func2_attr)["api_preferred_device"].set_s("GPU");
+
+  item.graph = test::function::GDef(
+      {NDef("x", "DeviceIndex", {}, {{"device_names", device_names}},
+            CpuDevice),
+       NDef("case", "Case", {"x"}, {{"T", DT_FLOAT}}, GpuDevice),
+       NDef("y", "DeviceIndex", {}, {{"device_names", device_names}},
+            GpuDevice),
+       NDef("case_y", "Case", {"y"}, {{"T", DT_FLOAT}}, TpuDevice),
+       NDef("y1", "XTimesTwo", {"x"}, {{"T", DT_FLOAT}}, GpuDevice),
+       NDef("z1", "Identity", {"y1"}, {{"T", DT_FLOAT}}, GpuDevice),
+       NDef("y2", "XTimesTwo", {"x"}, {{"T", DT_FLOAT}}, CpuDevice),
+       NDef("z2", "Identity", {"y2"}, {{"T", DT_FLOAT}}, CpuDevice)},
+      // FunctionLib
+      {cpu_def, gpu_def});
+
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "x") {
+      // Rewrite DeviceIndex op to a Const op with value of GPU index 1.
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(2, node.attr().at("value").tensor().int_val(0));
+    }
+    if (node.name() == "y") {
+      // Rewrite DeviceIndex op to a Const op with value of CPU index 0.
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.attr().at("value").tensor().int_val(0));
+    }
+    if (node.name() == "y1") {
+      // Make sure the implementation has been swapped to use the GPU version.
+      EXPECT_EQ("XAddX", node.op());
+    } else if (node.name() == "y2") {
+      // Make sure the implementation is not changed.
+      EXPECT_EQ("XTimesTwo", node.op());
+    }
+  }
 }
 
 TEST_F(ImplementationSelectorTest, SwapImplementation) {

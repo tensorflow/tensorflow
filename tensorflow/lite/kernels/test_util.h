@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cmath>
 #include <complex>
+#include <type_traits>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -812,6 +813,7 @@ TensorType GetTensorType() {
   if (std::is_same<T, int64_t>::value) return TensorType_INT64;
   if (std::is_same<T, uint8_t>::value) return TensorType_UINT8;
   if (std::is_same<T, string>::value) return TensorType_STRING;
+  if (std::is_same<T, bool>::value) return TensorType_BOOL;
   return TensorType_MIN;  // default value
 }
 

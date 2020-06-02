@@ -18,12 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import weakref
 
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import composite_tensor
@@ -41,72 +41,6 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.types import core
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
-
-
-# Utility functions used by the different classes below.
-def _get_current_replica_id_as_int():
-  """Returns the current replica ID as an integer, or `None`."""
-  replica_context = ds_context.get_replica_context()
-  if replica_context:
-    replica_id = replica_context.replica_id_in_sync_group
-    if not isinstance(replica_id, int):
-      replica_id = tensor_util.constant_value(replica_id)
-  else:
-    replica_id = distribute_lib.get_update_replica_id()
-  return replica_id
-
-
-def _assign_on_device(device, variable, tensor):
-  with ops.device(device):
-    return variable.assign(tensor)
-
-
-def _assign_add_on_device(device, variable, tensor):
-  with ops.device(device):
-    return variable.assign_add(tensor)
-
-
-def _assign_sub_on_device(device, variable, tensor):
-  with ops.device(device):
-    return variable.assign_sub(tensor)
-
-
-def _assert_replica_context(strategy):
-  replica_context = ds_context.get_replica_context()
-  if not replica_context:
-    raise RuntimeError(
-        "Replica-local variables may only be assigned in a replica context.")
-  if replica_context.strategy is not strategy:
-    raise RuntimeError(
-        "Replica-local variables may only be assigned in a replica context.")
-
-
-def _apply_aggregation(strategy, value, aggregation, destinations):
-  if aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
-    return strategy.extended.broadcast_to(
-        strategy.experimental_local_results(value)[0],
-        destinations=destinations)
-  reduce_op = reduce_util.ReduceOp.from_variable_aggregation(aggregation)
-  return strategy.extended.reduce_to(reduce_op, value, destinations)
-
-
-_aggregation_error_msg = (
-    "You must specify an aggregation method to update a "
-    "{variable_type} in Replica Context. You can do so by passing "
-    "an explicit value for argument `aggregation` to tf.Variable(..)."
-    "e.g. `tf.Variable(..., aggregation=tf.VariableAggregation.SUM)`"
-    "`tf.VariableAggregation` lists the possible aggregation methods."
-    "This is required because {variable_type} should always be "
-    "kept in sync. When updating them or assigning to them in a "
-    "replica context, we automatically try to aggregate the values "
-    "before updating the variable. For this aggregation, we need to "
-    "know the aggregation method. "
-    "Another alternative is to not try to update such "
-    "{variable_type} in replica context, but in cross replica "
-    "context. You can enter cross replica context by calling "
-    "`tf.distribute.get_replica_context().merge_call(merge_fn, ..)`."
-    "Inside `merge_fn`, you can then update the {variable_type} "
-    "using `tf.distribute.StrategyExtended.update()`.")
 
 
 @tf_export("distribute.DistributedValues", v1=[])
@@ -182,7 +116,7 @@ class DistributedValues(object):
 
   def _get(self):
     """Returns the value for the current device or raises a ValueError."""
-    replica_id = _get_current_replica_id_as_int()
+    replica_id = values_util.get_current_replica_id_as_int()
     if replica_id is None:
       return self._get_cross_replica()
     else:
@@ -195,7 +129,7 @@ class DistributedValues(object):
 
   def _get_on_device_or_primary(self):
     """Returns value in same replica or device if possible, else the _primary."""
-    replica_id = _get_current_replica_id_as_int()
+    replica_id = values_util.get_current_replica_id_as_int()
     if replica_id is None:
       # Try to find a value on the current device.
       current_device = device_util.canonicalize(device_util.current())
@@ -568,7 +502,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
 
   @property
   def handle(self):
-    replica_id = _get_current_replica_id_as_int()
+    replica_id = values_util.get_current_replica_id_as_int()
     if replica_id is None:
       raise ValueError("`handle` is not available outside the replica context"
                        " or a `tf.distribute.Strategy.update()` call.")
@@ -774,7 +708,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
           return update_fn(self._values[update_replica_id], value, **kwargs)
         return self._update_cross_replica(update_fn, value, **kwargs)
       else:
-        _assert_replica_context(self.distribute_strategy)
+        values_util.assert_replica_context(self.distribute_strategy)
         return self._update_replica(update_fn, value, **kwargs)
 
   def _should_act_as_resource_variable(self):
@@ -794,7 +728,7 @@ class _MirroredSaveable(saveable_object_util.ResourceVariableSaveable):
     tensor, = restored_tensors
     return control_flow_ops.group(
         tuple(
-            _assign_on_device(v.device, v, tensor)
+            values_util.assign_on_device(v.device, v, tensor)
             for v in self._mirrored_variable.values))
 
 
@@ -804,7 +738,8 @@ class MirroredVariable(DistributedVariable, Mirrored):
   def _update_replica(self, update_fn, value, **kwargs):
     if self.aggregation == vs.VariableAggregation.NONE:
       raise ValueError(
-          _aggregation_error_msg.format(variable_type="MirroredVariable"))
+          values_util.aggregation_error_msg.format(
+              variable_type="MirroredVariable"))
 
     def merge_fn(strategy, value, **kwargs):
       """Aggregate values and update all variables in cross replica context."""
@@ -824,7 +759,7 @@ class MirroredVariable(DistributedVariable, Mirrored):
             "cross-replica context.")
 
       assert strategy == self.distribute_strategy
-      v = _apply_aggregation(strategy, value, self.aggregation, self)
+      v = values_util.apply_aggregation(strategy, value, self.aggregation, self)
       return self._update_cross_replica(update_fn, v, **kwargs)
 
     return ds_context.get_replica_context().merge_call(
@@ -930,7 +865,7 @@ class _SyncOnReadSaveable(saveable_object.SaveableObject):
                              self._sync_on_read_variable.dtype)
     return control_flow_ops.group(
         tuple(
-            _assign_on_device(v.device, v, tensor)
+            values_util.assign_on_device(v.device, v, tensor)
             for v in self._sync_on_read_variable.values))
 
 
@@ -960,8 +895,8 @@ class SyncOnReadVariable(DistributedVariable):
               "SyncOnReadVariable does not support `assign_sub` in "
               "cross-replica context when aggregation is set to "
               "`tf.VariableAggregation.SUM`.")
-        return self._assign_on_each_device(_assign_sub_on_device, value,
-                                           read_value)
+        return self._assign_on_each_device(values_util.assign_sub_on_device,
+                                           value, read_value)
       else:
         return super(SyncOnReadVariable,
                      self).assign_sub(value, use_locking, name, read_value)
@@ -974,8 +909,8 @@ class SyncOnReadVariable(DistributedVariable):
               "SyncOnReadVariable does not support `assign_add` in "
               "cross-replica context when aggregation is set to "
               "`tf.VariableAggregation.SUM`.")
-        return self._assign_on_each_device(_assign_add_on_device, value,
-                                           read_value)
+        return self._assign_on_each_device(values_util.assign_add_on_device,
+                                           value, read_value)
       else:
         return super(SyncOnReadVariable,
                      self).assign_add(value, use_locking, name, read_value)
@@ -988,7 +923,7 @@ class SyncOnReadVariable(DistributedVariable):
         # when saving.
         if self._aggregation == vs.VariableAggregation.SUM:
           value = math_ops.cast(value / len(self._values), self.dtype)
-        return self._assign_on_each_device(_assign_on_device, value,
+        return self._assign_on_each_device(values_util.assign_on_device, value,
                                            read_value)
       else:
         return super(SyncOnReadVariable,
@@ -1388,275 +1323,3 @@ def validate_colocate(v, extended):
         "`colocate_vars_with` must only be passed a variable created in this "
         "tf.distribute.Strategy.scope(), not: %r" % (v,))
   _validate_colocate_extended(v, extended)
-
-
-# Variable used in PSStrategy TF 1 and CentralStorageStrategy.
-class AggregatingVariable(variables_lib.Variable, core.Tensor):
-  """A wrapper around a variable that aggregates updates across replicas."""
-
-  def __init__(self, strategy, v, aggregation):
-    self._distribute_strategy = strategy
-    self._v = v
-    # NOTE: We don't use "_distributed_container" here because we don't want
-    # to trigger that code path in regroup().
-    v._aggregating_container = weakref.ref(self)  # pylint: disable=protected-access
-    self._aggregation = aggregation
-
-  def get(self):
-    return self._v
-
-  @property
-  def distribute_strategy(self):
-    return self._distribute_strategy
-
-  def __getattr__(self, name):
-    return getattr(self._v, name)
-
-  def _assign_func(self, *args, **kwargs):
-    with ds_context.enter_or_assert_strategy(self._distribute_strategy):
-      f = kwargs.pop("f")
-      if ds_context.in_cross_replica_context():
-        if distribute_lib.get_update_replica_id() is not None:
-          # We are calling an assign function in an update context.
-          return f(self._v, *args, **kwargs)
-
-        # We are calling an assign function in cross replica context, wrap it in
-        # an update call.
-        return self._distribute_strategy.extended.update(
-            self, f, args=args, kwargs=kwargs)
-      else:
-        replica_context = ds_context.get_replica_context()
-        assert replica_context
-        # We are calling an assign function in replica context.
-        # We reduce the value we want to assign/add/sub. More details about how
-        # we handle the different use cases can be found in the _reduce method.
-        # We call the function with the reduced value.
-        if self._aggregation == vs.VariableAggregation.NONE:
-          raise ValueError(
-              _aggregation_error_msg.format(
-                  variable_type="AggregatingVariable"))
-
-        def merge_fn(strategy,
-                     value,
-                     use_locking=False,
-                     name=None,
-                     read_value=True):
-          v = _apply_aggregation(strategy, value, self._aggregation, self)
-          if name and isinstance(name, PerReplica):
-            name = name.values[0]
-          return strategy.extended.update(
-              self,
-              f,
-              args=(v,),
-              kwargs={
-                  "use_locking": use_locking,
-                  "name": name,
-                  "read_value": read_value
-              })
-        return replica_context.merge_call(merge_fn, args=args, kwargs=kwargs)
-
-  def assign_sub(self, *args, **kwargs):
-    assign_sub_fn = lambda var, *a, **kw: var.assign_sub(*a, **kw)
-    return self._assign_func(f=assign_sub_fn, *args, **kwargs)
-
-  def assign_add(self, *args, **kwargs):
-    assign_add_fn = lambda var, *a, **kw: var.assign_add(*a, **kw)
-    return self._assign_func(f=assign_add_fn, *args, **kwargs)
-
-  def assign(self, *args, **kwargs):
-    assign_fn = lambda var, *a, **kw: var.assign(*a, **kw)
-    return self._assign_func(f=assign_fn, *args, **kwargs)
-
-  @property
-  def initializer(self):
-    return self._v.initializer
-
-  def initialized_value(self):
-    return self._v.initialized_value()
-
-  @property
-  def initial_value(self):
-    return self._v.initial_value
-
-  @property
-  def op(self):
-    return self._v.op
-
-  def read_value(self):
-    return self._v.read_value()
-
-  def eval(self, session=None):
-    return self._v.eval(session)
-
-  @property
-  def graph(self):
-    return self._v.graph
-
-  @property
-  def device(self):
-    return self._v.device
-
-  @property
-  def shape(self):
-    return self._v.shape
-
-  @property
-  def aggregation(self):
-    return self._aggregation
-
-  @property
-  def synchronization(self):
-    return self._v.synchronization
-
-  @property
-  def name(self):
-    return self._v.name
-
-  @property
-  def trainable(self):
-    return self._v.trainable
-
-  @property
-  def dtype(self):
-    return self._v.dtype
-
-  # TODO(josh11b): Test saving & restoring.
-  def _gather_saveables_for_checkpoint(self):
-    return {trackable.VARIABLE_VALUE_KEY: self._v}
-
-  # pylint: disable=multiple-statements
-  def __add__(self, o):
-    return self._v + o
-
-  def __radd__(self, o):
-    return o + self._v
-
-  def __sub__(self, o):
-    return self._v - o
-
-  def __rsub__(self, o):
-    return o - self._v
-
-  def __mul__(self, o):
-    return self._v * o
-
-  def __rmul__(self, o):
-    return o * self._v
-
-  def __truediv__(self, o):
-    return self._v / o
-
-  def __rtruediv__(self, o):
-    return o / self._v
-
-  def __floordiv__(self, o):
-    return self._v // o
-
-  def __rfloordiv__(self, o):
-    return o // self._v
-
-  def __mod__(self, o):
-    return self._v % o
-
-  def __rmod__(self, o):
-    return o % self._v
-
-  def __lt__(self, o):
-    return self._v < o
-
-  def __le__(self, o):
-    return self._v <= o
-
-  def __gt__(self, o):
-    return self._v > o
-
-  def __ge__(self, o):
-    return self._v >= o
-
-  def __and__(self, o):
-    return self._v & o
-
-  def __rand__(self, o):
-    return o & self._v
-
-  def __or__(self, o):
-    return self._v | o
-
-  def __ror__(self, o):
-    return o | self._v
-
-  def __xor__(self, o):
-    return self._v ^ o
-
-  def __rxor__(self, o):
-    return o ^ self._v
-
-  def __getitem__(self, o):
-    return self._v[o]
-
-  def __pow__(self, o, modulo=None):
-    return pow(self._v, o, modulo)
-
-  def __rpow__(self, o):
-    return pow(o, self._v)
-
-  def __invert__(self):
-    return ~self._v
-
-  def __neg__(self):
-    return -self._v
-
-  def __abs__(self):
-    return abs(self._v)
-
-  def __div__(self, o):
-    try:
-      return self._v.__div__(o)
-    except AttributeError:
-      # See https://docs.python.org/3/library/constants.html#NotImplemented
-      return NotImplemented
-
-  def __rdiv__(self, o):
-    try:
-      return self._v.__rdiv__(o)
-    except AttributeError:
-      # See https://docs.python.org/3/library/constants.html#NotImplemented
-      return NotImplemented
-
-  def __matmul__(self, o):
-    try:
-      return self._v.__matmul__(o)
-    except AttributeError:
-      # See https://docs.python.org/3/library/constants.html#NotImplemented
-      return NotImplemented
-
-  def __rmatmul__(self, o):
-    try:
-      return self._v.__rmatmul__(o)
-    except AttributeError:
-      # See https://docs.python.org/3/library/constants.html#NotImplemented
-      return NotImplemented
-
-  def __str__(self):
-    return str(self._v)
-
-  def __repr__(self):
-    return repr(self._v)
-
-  def _should_act_as_resource_variable(self):
-    """Pass resource_variable_ops.is_resource_variable check."""
-    pass
-
-  def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
-    return ops.convert_to_tensor(self.get(), dtype=dtype, name=name,
-                                 as_ref=as_ref)
-
-
-# Register a conversion function which reads the value of the variable,
-# allowing instances of the class to be used as tensors.
-def _tensor_conversion_aggregate(var, dtype=None, name=None, as_ref=False):
-  return var._dense_var_to_tensor(dtype, name, as_ref)  # pylint: disable=protected-access
-
-
-ops.register_tensor_conversion_function(AggregatingVariable,
-                                        _tensor_conversion_aggregate)

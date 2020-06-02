@@ -217,7 +217,7 @@ func @error_on_conflict_multiple_callers(
       // expected-error@above {{Conflicting device assignment for resource}}
           then_branch = @if_then_and_else,
           else_branch = @if_then_and_else,
-          output_shapes = [], is_stateless = false}
+          is_stateless = false}
         : (tensor<i1>, tensor<*x!tf.resource<tensor<32xf32>>>,
            tensor<*x!tf.resource<tensor<32xf32>>>) -> ()
       tf_executor.yield

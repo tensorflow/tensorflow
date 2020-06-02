@@ -37,7 +37,7 @@ void TestComparison(tflite::BuiltinOperator op, TfLiteTensor* tensors,
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
   ::tflite::ops::micro::AllOpsResolver resolver;
-  const TfLiteRegistration* registration = resolver.FindOp(op, 1);
+  const TfLiteRegistration* registration = resolver.FindOp(op);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   const int inputs_array_data[] = {2, 0, 1};

@@ -15,10 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/eager/eager_service_impl.h"
 
-#include <string.h>
-
-#include <memory>
-
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
 #include "tensorflow/c/c_api_internal.h"
@@ -39,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/eager_service.pb.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
@@ -94,7 +91,7 @@ class FakeEagerClient : public EagerClient {
                                  const RunComponentFunctionRequest* request,
                                  RunComponentFunctionResponse* response,
                                  StatusCallback done) override {
-    impl_->RunComponentFunction(request, response, std::move(done));
+    impl_->RunComponentFunction(call_opts, request, response, std::move(done));
   }
 
   void StreamingEnqueueAsync(const EnqueueRequest* request,
@@ -177,14 +174,11 @@ void SetTensorProto(TensorProto* tensor_proto) {
   TF_DeleteTensor(t);
 }
 
-void AddOperationToEnqueueRequest(
-    int64 id, const string& name,
+void BuildOperation(
+    Operation* operation, int64 id, const string& name,
     const std::vector<absl::variant<TensorProto, std::pair<int64, int32>>>&
         inputs,
-    const std::unordered_map<string, AttrValue>& attrs, const string& device,
-    EnqueueRequest* request) {
-  auto* operation = request->add_queue()->mutable_operation();
-
+    const std::unordered_map<string, AttrValue>& attrs, const string& device) {
   operation->set_id(id);
   operation->set_name(name);
   operation->set_device(device);
@@ -207,6 +201,28 @@ void AddOperationToEnqueueRequest(
   for (const auto& attr_entry : attrs) {
     (*operation->mutable_attrs())[attr_entry.first] = attr_entry.second;
   }
+}
+
+void AddOperationToEnqueueRequest(
+    int64 id, const string& name,
+    const std::vector<absl::variant<TensorProto, std::pair<int64, int32>>>&
+        inputs,
+    const std::unordered_map<string, AttrValue>& attrs, const string& device,
+    EnqueueRequest* request) {
+  auto* operation = request->add_queue()->mutable_operation();
+  BuildOperation(operation, id, name, inputs, attrs, device);
+}
+
+void AddOperationToRunComponentFunctionRequest(
+    int64 id, const string& name,
+    const std::vector<absl::variant<TensorProto, std::pair<int64, int32>>>&
+        inputs,
+    const std::unordered_map<string, AttrValue>& attrs, const string& device,
+    RunComponentFunctionRequest* request) {
+  auto* operation = request->mutable_operation();
+  operation->set_is_function(true);
+  operation->set_is_component_function(true);
+  BuildOperation(operation, id, name, inputs, attrs, device);
 }
 
 tensorflow::NodeDef MatMulFunctionNodeDef() {
@@ -294,6 +310,69 @@ tensorflow::FunctionDef MatMulNestedFunction() {
       "    ret {"
       "      key: 'matmul_nested'"
       "      value: 'matmul_nested:m:0'"
+      "    }",
+      &def));
+  return def;
+}
+
+tensorflow::FunctionDef SingleRecvNodeFunction() {
+  tensorflow::FunctionDef def;
+  CHECK(tensorflow::protobuf::TextFormat::ParseFromString(
+      "    signature {"
+      "      name: 'SingleRecvNodeFunction'"
+      "      input_arg {"
+      "        name: 'a'"
+      "        type: DT_FLOAT"
+      "      }"
+      "      output_arg {"
+      "        name: 'recv_tensor'"
+      "        type: DT_FLOAT"
+      "      }"
+      "    }"
+      "    node_def {"
+      "      name: 'recv_node'"
+      "      op: '_Recv'"
+      "      device: '/job:localhost/replica:0/task:0/device:CPU:0'"
+      "      attr {"
+      "        key: 'client_terminated'"
+      "        value {"
+      "          b: true"
+      "        }"
+      "      }"
+      "      attr {"
+      "        key: 'recv_device'"
+      "        value {"
+      "          s: '/job:localhost/replica:0/task:0/device:CPU:0'"
+      "        }"
+      "      }"
+      "      attr {"
+      "        key: 'send_device'"
+      "        value {"
+      "          s: '/job:localhost/replica:0/task:0/device:CPU:0'"
+      "        }"
+      "      }"
+      "      attr {"
+      "        key: 'send_device_incarnation'"
+      "        value {"
+      "          i: 1"
+      "        }"
+      "      }"
+      "      attr {"
+      "        key: 'tensor_name'"
+      "        value {"
+      "          s: 't0'"
+      "        }"
+      "      }"
+      "      attr {"
+      "        key: 'tensor_type'"
+      "        value {"
+      "          type: DT_FLOAT"
+      "        }"
+      "      }"
+      "    }"
+      "    ret {"
+      "      key: 'recv_tensor'"
+      "      value: 'recv_node:tensor:0'"
       "    }",
       &def));
   return def;
@@ -462,6 +541,97 @@ class EagerServiceImplFunctionTest : public EagerServiceImplTest {
     TF_ASSERT_OK(eager_service_impl.CloseContext(&close_context_request,
                                                  &close_context_response));
   }
+
+  // Creates a context and attempts to execute a component function.
+  void TestComponentFunction(const RegisterFunctionOp& register_op,
+                             const string& function_name,
+                             const bool test_cancel) {
+    TestEagerServiceImpl eager_service_impl(&worker_env_);
+    uint64 context_id = random::New64();
+
+    // Create context.
+    CreateContextRequest request;
+    request.mutable_server_def()->set_job_name("localhost");
+    request.mutable_server_def()->set_task_index(0);
+    request.set_context_id(context_id);
+    CreateContextResponse response;
+    TF_ASSERT_OK(eager_service_impl.CreateContext(&request, &response));
+
+    // Register function.
+    EnqueueRequest enqueue_request;
+    enqueue_request.set_context_id(context_id);
+    *enqueue_request.add_queue()->mutable_register_function() = register_op;
+    EnqueueResponse enqueue_response;
+    TF_ASSERT_OK(
+        eager_service_impl.Enqueue(&enqueue_request, &enqueue_response));
+
+    // First run an op to generate input for function.
+    EnqueueRequest remote_enqueue_request;
+    remote_enqueue_request.set_context_id(context_id);
+    EnqueueResponse remote_enqueue_response;
+
+    std::unordered_map<string, AttrValue> const_attrs;
+    AttrValue val;
+    val.set_type(tensorflow::DataType::DT_FLOAT);
+    const_attrs.insert({"dtype", val});
+    val.Clear();
+    SetTensorProto(val.mutable_tensor());
+    const_attrs.insert({"value", val});
+    AddOperationToEnqueueRequest(1, "Const", {}, const_attrs,
+                                 "/job:localhost/replica:0/task:0/device:CPU:0",
+                                 &remote_enqueue_request);
+    TF_ASSERT_OK(eager_service_impl.Enqueue(&remote_enqueue_request,
+                                            &remote_enqueue_response));
+
+    // Run function with input from the previous op.
+    RunComponentFunctionRequest run_comp_func_request;
+    run_comp_func_request.set_context_id(context_id);
+    RunComponentFunctionResponse run_comp_func_response;
+    AddOperationToRunComponentFunctionRequest(
+        2, function_name, {std::make_pair(1, 0)},
+        std::unordered_map<string, AttrValue>(),
+        "/job:localhost/replica:0/task:0/device:CPU:0", &run_comp_func_request);
+
+    CallOptions call_opts;
+    Notification n;
+    Status status;
+    eager_service_impl.RunComponentFunction(&call_opts, &run_comp_func_request,
+                                            &run_comp_func_response,
+                                            [&status, &n](const Status& s) {
+                                              status.Update(s);
+                                              n.Notify();
+                                            });
+    if (test_cancel) {
+      call_opts.StartCancel();
+    }
+    n.WaitForNotification();
+    if (test_cancel) {
+      EXPECT_TRUE(errors::IsCancelled(status)) << status.error_message();
+    } else {
+      TF_ASSERT_OK(status);
+      // Retrieve the output.
+      const tensorflow::Tensor* t = nullptr;
+      tensorflow::TensorHandle* tensor_handle;
+      TF_ASSERT_OK(eager_service_impl.GetTensorHandle(
+          context_id, RemoteTensorHandleInternal(2, 0), &tensor_handle));
+      TF_ASSERT_OK(tensor_handle->Tensor(&t));
+
+      auto actual = t->flat<float>();
+      EXPECT_EQ(4, actual.size());
+
+      EXPECT_EQ(7, actual(0));
+      EXPECT_EQ(10, actual(1));
+      EXPECT_EQ(15, actual(2));
+      EXPECT_EQ(22, actual(3));
+    }
+
+    CloseContextRequest close_context_request;
+    close_context_request.set_context_id(context_id);
+    close_context_request.set_context_view_id(0);
+    CloseContextResponse close_context_response;
+    TF_ASSERT_OK(eager_service_impl.CloseContext(&close_context_request,
+                                                 &close_context_response));
+  }
 };
 
 TEST_F(EagerServiceImplFunctionTest, BasicFunctionTest) {
@@ -481,6 +651,18 @@ TEST_F(EagerServiceImplFunctionTest, NestedFunctionTest) {
   *register_op.mutable_function_def() = MatMulNestedFunction();
   *register_op.mutable_library()->add_function() = MatMulFunction();
   TestFunction(register_op, "MatMulNestedFunction");
+}
+
+TEST_F(EagerServiceImplFunctionTest, ComponentFunctionTest) {
+  RegisterFunctionOp register_op;
+  *register_op.mutable_function_def() = MatMulFunction();
+  TestComponentFunction(register_op, "MatMulFunction", false);
+}
+
+TEST_F(EagerServiceImplFunctionTest, ComponentFunctionCancellationTest) {
+  RegisterFunctionOp register_op;
+  *register_op.mutable_function_def() = SingleRecvNodeFunction();
+  TestComponentFunction(register_op, "SingleRecvNodeFunction", true);
 }
 
 class FunctionWithRemoteInputsTest : public EagerServiceImplTest {

@@ -57,16 +57,19 @@ class ATraceProfiler : public tflite::Profiler {
   }
 
   uint32_t BeginEvent(const char* tag, EventType event_type,
-                      uint32_t event_metadata,
-                      uint32_t event_subgraph_index) override {
+                      int64_t event_metadata1,
+                      int64_t event_metadata2) override {
     if (handle_ && atrace_is_enabled_()) {
       // Note: When recording an OPERATOR_INVOKE_EVENT, we have recorded the op
-      // name as tag and node index as event_metadata. See the macro
-      // TFLITE_SCOPED_TAGGED_OPERATOR_PROFILE defined in
-      // tensorflow/lite/core/api/profiler.h for details.
-      // op_name@node_index/subgraph_index
+      // name
+      // as tag, node index as event_metadata1 and subgraph index as
+      // event_metadata2. See the macro TFLITE_SCOPED_TAGGED_OPERATOR_PROFILE
+      // defined in tensorflow/lite/core/api/profiler.h for details.
+      // Regardless the 'event_type', we encode the perfetto event name as
+      // tag@event_metadata1/event_metadata2. In case of OPERATOR_INVOKE_EVENT,
+      // the perfetto event name will be op_name@node_index/subgraph_index
       std::string trace_event_tag =
-          absl::StrCat(tag, "@", event_metadata, "/", event_subgraph_index);
+          absl::StrCat(tag, "@", event_metadata1, "/", event_metadata2);
       atrace_begin_section_(trace_event_tag.c_str());
     }
     return 0;

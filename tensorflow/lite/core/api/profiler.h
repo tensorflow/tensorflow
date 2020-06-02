@@ -22,34 +22,56 @@ namespace tflite {
 // A simple utility for enabling profiled event tracing in TensorFlow Lite.
 class Profiler {
  public:
+  // As certain Profiler instance might be only interested in certain event
+  // types, we define each event type value to allow a Profiler to use
+  // bitmasking bitwise operations to determine whether an event should be
+  // recorded or not.
   enum class EventType {
     // Default event type, the metadata field has no special significance.
-    DEFAULT = 0,
+    DEFAULT = 1,
 
     // The event is an operator invocation and the event_metadata field is the
     // index of operator node.
-    OPERATOR_INVOKE_EVENT = 1,
+    OPERATOR_INVOKE_EVENT = 2,
 
     // The event is an invocation for an internal operator of a TFLite delegate.
     // The event_metadata field is the index of operator node that's specific to
     // the delegate.
-    DELEGATE_OPERATOR_INVOKE_EVENT = 2
+    DELEGATE_OPERATOR_INVOKE_EVENT = 4,
+
+    // The event is a recording of runtime instrumentation such as the overall
+    // TFLite runtime status, the TFLite delegate status (if a delegate
+    // is applied), and the overall model inference latency etc.
+    // Note, the delegate status and overall status are stored as separate
+    // event_metadata fields. In particular, the delegate status is encoded
+    // as DelegateStatus::full_status().
+    GENERAL_RUNTIME_INSTRUMENTATION_EVENT = 8,
   };
 
   virtual ~Profiler() {}
 
-  // Signals the beginning of an event from a subgraph indexed at
-  // 'event_subgraph_index', returning a handle to the profile event.
+  // Signals the beginning of an event and returns a handle to the profile
+  // event. The `event_metadata1` and `event_metadata2` have different
+  // interpretations based on the actual Profiler instance and the `event_type`.
+  // For example, as for the 'SubgraphAwareProfiler' defined in
+  // lite/core/subgraph.h, when the event_type is OPERATOR_INVOKE_EVENT,
+  // `event_metadata1` represents the index of a TFLite node, and
+  // `event_metadata2` represents the index of the subgraph that this event
+  // comes from.
   virtual uint32_t BeginEvent(const char* tag, EventType event_type,
-                              uint32_t event_metadata,
-                              uint32_t event_subgraph_index) = 0;
-  // Similar w/ the above, but the event comes from the primary subgraph that's
-  // indexed at 0.
-  virtual uint32_t BeginEvent(const char* tag, EventType event_type,
-                              uint32_t event_metadata) {
-    return BeginEvent(tag, event_type, event_metadata, /*primary subgraph*/ 0);
+                              int64_t event_metadata1,
+                              int64_t event_metadata2) = 0;
+  // Similar w/ the above, but `event_metadata2` defaults to 0.
+  uint32_t BeginEvent(const char* tag, EventType event_type,
+                      int64_t event_metadata) {
+    return BeginEvent(tag, event_type, event_metadata, /*event_metadata2*/ 0);
   }
 
+  // Signals an end to the specified profile event with 'event_metadata's, This
+  // is useful when 'event_metadata's are not available when the event begins
+  // or when one wants to overwrite the 'event_metadata's set at the beginning.
+  virtual void EndEvent(uint32_t event_handle, int64_t event_metadata1,
+                        int64_t event_metadata2) {}
   // Signals an end to the specified profile event.
   virtual void EndEvent(uint32_t event_handle) = 0;
 
@@ -60,15 +82,18 @@ class Profiler {
   // they assume the value is in "usec", if in any case subclasses
   // didn't put usec, then the values are not meaningful.
   // TODO karimnosseir: Revisit and make the function more clear.
-  virtual void AddEvent(const char* tag, EventType event_type,
-                        uint32_t event_metadata, uint64_t start, uint64_t end) {
-    AddEvent(tag, event_type, event_metadata, start, end,
-             /*event_subgraph_index*/ 0);
+  void AddEvent(const char* tag, EventType event_type, uint64_t start,
+                uint64_t end, int64_t event_metadata) {
+    AddEvent(tag, event_type, start, end, event_metadata,
+             /*event_metadata2*/ 0);
   }
 
-  virtual void AddEvent(const char* tag, EventType event_type,
-                        uint32_t event_metadata, uint64_t start, uint64_t end,
-                        uint32_t event_subgraph_index) {}
+  virtual void AddEvent(const char* tag, EventType event_type, uint64_t start,
+                        uint64_t end, int64_t event_metadata1,
+                        int64_t event_metadata2) {}
+
+ protected:
+  friend class ScopedProfile;
 };
 
 // Adds a profile event to `profiler` that begins with the construction
@@ -79,7 +104,7 @@ class ScopedProfile {
  public:
   ScopedProfile(Profiler* profiler, const char* tag,
                 Profiler::EventType event_type = Profiler::EventType::DEFAULT,
-                uint32_t event_metadata = 0)
+                int64_t event_metadata = 0)
       : profiler_(profiler), event_handle_(0) {
     if (profiler) {
       event_handle_ = profiler_->BeginEvent(tag, event_type, event_metadata);
@@ -92,8 +117,8 @@ class ScopedProfile {
     }
   }
 
- private:
-  Profiler* const profiler_;
+ protected:
+  Profiler* profiler_;
   uint32_t event_handle_;
 };
 
@@ -113,6 +138,31 @@ class ScopedDelegateOperatorProfile : public ScopedProfile {
                       static_cast<uint32_t>(node_index)) {}
 };
 
+class ScopedRuntimeInstrumentationProfile : public ScopedProfile {
+ public:
+  ScopedRuntimeInstrumentationProfile(Profiler* profiler, const char* tag)
+      : ScopedProfile(
+            profiler, tag,
+            Profiler::EventType::GENERAL_RUNTIME_INSTRUMENTATION_EVENT, -1) {}
+
+  void set_runtime_status(int64_t delegate_status, int64_t interpreter_status) {
+    if (profiler_) {
+      delegate_status_ = delegate_status;
+      interpreter_status_ = interpreter_status;
+    }
+  }
+
+  ~ScopedRuntimeInstrumentationProfile() {
+    if (profiler_) {
+      profiler_->EndEvent(event_handle_, delegate_status_, interpreter_status_);
+    }
+  }
+
+ private:
+  int64_t delegate_status_;
+  int64_t interpreter_status_;
+};
+
 }  // namespace tflite
 
 #define TFLITE_VARNAME_UNIQ_IMPL(name, ctr) name##ctr
@@ -129,5 +179,16 @@ class ScopedDelegateOperatorProfile : public ScopedProfile {
 #define TFLITE_SCOPED_DELEGATE_OPERATOR_PROFILE(profiler, tag, node_index) \
   tflite::ScopedDelegateOperatorProfile TFLITE_VARNAME_UNIQ(               \
       _profile_, __COUNTER__)((profiler), (tag), (node_index))
+
+#define TFLITE_ADD_RUNTIME_INSTRUMENTATION_EVENT(                          \
+    profiler, tag, delegate_status, interpreter_status)                    \
+  do {                                                                     \
+    if (!profiler) {                                                       \
+      const auto handle = profiler->BeginEvent(                            \
+          tag, Profiler::EventType::GENERAL_RUNTIME_INSTRUMENTATION_EVENT, \
+          delegate_status, interpreter_status);                            \
+      profiler->EndEvent(handle);                                          \
+    }                                                                      \
+  } while (false);
 
 #endif  // TENSORFLOW_LITE_CORE_API_PROFILER_H_

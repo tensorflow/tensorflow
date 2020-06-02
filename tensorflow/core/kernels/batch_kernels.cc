@@ -272,6 +272,7 @@ class BatchResource : public ResourceBase {
                        int32 batch_timeout_micros, int32 max_enqueued_batches,
                        const std::vector<int32>& allowed_batch_sizes,
                        FunctionLibraryRuntime::Handle fhandle,
+                       bool enable_large_batch_splitting,
                        std::unique_ptr<BatchResource>* resource) {
     std::unique_ptr<BatchResource> new_resource(new BatchResource);
 
@@ -285,6 +286,10 @@ class BatchResource : public ResourceBase {
         max_enqueued_batches;
     new_resource->batcher_queue_options_.batch_timeout_micros =
         batch_timeout_micros;
+
+    // Support for splitting large batch is still in progress.
+    new_resource->batcher_queue_options_.enable_large_batch_splitting =
+        enable_large_batch_splitting;
 
     new_resource->allowed_batch_sizes_ = allowed_batch_sizes;
 
@@ -786,6 +791,13 @@ class BatchFunctionKernel : public AsyncOpKernel {
     OP_REQUIRES_OK(c, c->GetAttr("f", &func));
     OP_REQUIRES_OK(
         c, lib->Instantiate(func.name(), AttrSlice(&func.attr()), &fhandle_));
+
+    if (c->HasAttr("enable_large_batch_splitting")) {
+      OP_REQUIRES_OK(c, c->GetAttr("enable_large_batch_splitting",
+                                   &enable_large_batch_splitting_));
+    } else {
+      enable_large_batch_splitting_ = false;
+    }
   }
 
   bool IsExpensive() override { return false; }
@@ -794,10 +806,10 @@ class BatchFunctionKernel : public AsyncOpKernel {
     BatchResource* br;
     std::function<Status(BatchResource**)> creator = [this](BatchResource** r) {
       std::unique_ptr<BatchResource> new_resource;
-      TF_RETURN_IF_ERROR(
-          BatchResource::Create(num_batch_threads_, max_batch_size_,
-                                batch_timeout_micros_, max_enqueued_batches_,
-                                allowed_batch_sizes_, fhandle_, &new_resource));
+      TF_RETURN_IF_ERROR(BatchResource::Create(
+          num_batch_threads_, max_batch_size_, batch_timeout_micros_,
+          max_enqueued_batches_, allowed_batch_sizes_, fhandle_,
+          enable_large_batch_splitting_, &new_resource));
       *r = new_resource.release();
       return Status::OK();
     };
@@ -844,6 +856,7 @@ class BatchFunctionKernel : public AsyncOpKernel {
   int32 max_enqueued_batches_;
   std::vector<int32> allowed_batch_sizes_;
   FunctionLibraryRuntime::Handle fhandle_;
+  bool enable_large_batch_splitting_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("BatchFunction").Device(DEVICE_CPU),
@@ -876,7 +889,7 @@ class BatchKernel : public AsyncOpKernel {
       std::unique_ptr<BatchResource> new_resource;
       TF_RETURN_IF_ERROR(BatchResource::Create(
           num_batch_threads_, max_batch_size_, batch_timeout_micros_,
-          max_enqueued_batches_, allowed_batch_sizes_, kInvalidHandle,
+          max_enqueued_batches_, allowed_batch_sizes_, kInvalidHandle, false,
           &new_resource));
       *r = new_resource.release();
       return Status::OK();

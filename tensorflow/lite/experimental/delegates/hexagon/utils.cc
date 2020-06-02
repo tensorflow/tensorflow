@@ -142,7 +142,7 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
         return false;
       const TfLiteAddParams* add_params =
           reinterpret_cast<const TfLiteAddParams*>(node->builtin_data);
-      return IsActivationReluOrNone(add_params->activation);
+      return add_params->activation == kTfLiteActNone;
     }
     case kTfLiteBuiltinMul: {
       if (!InputsWithCorrectTypes(
@@ -161,7 +161,7 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
         return false;
       const TfLiteSubParams* sub_params =
           reinterpret_cast<const TfLiteSubParams*>(node->builtin_data);
-      return IsActivationReluOrNone(sub_params->activation);
+      return sub_params->activation == kTfLiteActNone;
     }
     case kTfLiteBuiltinSum:
       // TODO(b/139277813): Enable these when they pass unit tests. These seem

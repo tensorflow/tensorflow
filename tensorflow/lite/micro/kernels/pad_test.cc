@@ -32,7 +32,7 @@ TfLiteStatus ValidatePadGoldens(TfLiteTensor* tensors, int tensors_size,
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_PAD, 1);
+      resolver.FindOp(tflite::BuiltinOperator_PAD);
   TF_LITE_ENSURE(&context, registration != nullptr);
 
   int inputs_array_data[] = {2, 0, 1};
@@ -69,7 +69,7 @@ TfLiteStatus ValidatePadV2Goldens(TfLiteTensor* tensors, int tensors_size,
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_PADV2, 1);
+      resolver.FindOp(tflite::BuiltinOperator_PADV2);
   TF_LITE_ENSURE(&context, registration != nullptr);
 
   int inputs_array_data[] = {3, 0, 1, 2};

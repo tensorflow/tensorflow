@@ -23,6 +23,7 @@ package_group(
 exports_files([
     "quantization_traits.h",
     "quantization_config.h",
+    "quantization_utils.h",
 ])
 
 filegroup(

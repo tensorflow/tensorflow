@@ -139,7 +139,7 @@ TfLiteStatus ValidateConvGoldens(TfLiteTensor* tensors, int tensors_size,
   ::tflite::ops::micro::AllOpsResolver resolver;
 
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_CONV_2D, 1);
+      resolver.FindOp(tflite::BuiltinOperator_CONV_2D);
 
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 

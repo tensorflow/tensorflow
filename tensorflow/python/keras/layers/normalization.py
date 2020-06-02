@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.compat import compat
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -513,7 +512,6 @@ class BatchNormalizationBase(Layer):
     # after fixing graph pattern matching and enabling fused_batch_norm to
     # take exponential_avg_factor as a tensor input.
     use_fused_avg_updates = (
-        compat.forward_compatible(2020, 3, 6) and
         ops.executing_eagerly_outside_functions() and
         isinstance(self.momentum, (float, int)) and
         device_context.enclosing_tpu_context() is None)
