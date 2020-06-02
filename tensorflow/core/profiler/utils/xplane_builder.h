@@ -155,10 +155,13 @@ class XLineBuilder {
   explicit XLineBuilder(XLine* line, XPlaneBuilder* plane)
       : line_(line), plane_(plane) {}
 
-  int64 Id() { return line_->id(); }
+  // Returns the owner plane.
+  XPlaneBuilder* Plane() const { return plane_; }
+
+  int64 Id() const { return line_->id(); }
   void SetId(int64 id) { line_->set_id(id); }
 
-  int64 NumEvents() { return line_->events_size(); }
+  int64 NumEvents() const { return line_->events_size(); }
 
   void SetName(absl::string_view name) { line_->set_name(std::string(name)); }
 
@@ -166,7 +169,7 @@ class XLineBuilder {
     if (line_->name().empty()) SetName(name);
   }
 
-  int64 TimestampNs() { return line_->timestamp_ns(); }
+  int64 TimestampNs() const { return line_->timestamp_ns(); }
   // This will set the line start timestamp.
   // WARNING: The offset_ps of existing events will not be altered.
   void SetTimestampNs(int64 timestamp_ns) {
@@ -218,21 +221,43 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
     }
   }
 
+  // Returns a builder for the line with the given id. Creates a new line if the
+  // id was unused, otherwise the builder will add events to an existing line.
   XLineBuilder GetOrCreateLine(int64 line_id);
 
+  // Returns event metadata with the given id. Creates a new metadata if the id
+  // was unused.
+  // WARNING: If calling this function, don't call the string overloads below
+  // on the same instance.
   XEventMetadata* GetOrCreateEventMetadata(int64 metadata_id);
+
+  // Returns event metadata with the given name. The id is internally assigned.
+  // Creates a new metadata if the name was unused.
+  // Using these overloads guarantees names are unique.
+  // WARNING: If calling any of these overloads, do not call the integer one
+  // above on the same instance.
   XEventMetadata* GetOrCreateEventMetadata(absl::string_view name);
   XEventMetadata* GetOrCreateEventMetadata(std::string&& name);
-  inline XEventMetadata* GetOrCreateEventMetadata(const char* name) {
+  XEventMetadata* GetOrCreateEventMetadata(const char* name) {
     return GetOrCreateEventMetadata(absl::string_view(name));
   }
 
+  // Returns stat metadata with the given id. Creates a new metadata if the id
+  // was unused.
+  // WARNING: If calling this function, don't call the string overloads below
+  // on the same instance.
   XStatMetadata* GetOrCreateStatMetadata(int64 metadata_id);
-  XStatMetadata* GetOrCreateStatMetadata(absl::string_view name);
 
- protected:
-  XPlane* RawPlane() const { return plane_; }
-  XLine* AddLine(int64 line_id);
+  // Returns stat metadata with the given name. The id is internally assigned.
+  // Creates a new metadata if the name was unused.
+  // Using these overloads guarantees names are unique.
+  // WARNING: If calling any of these overloads, do not call the integer one
+  // above on the same instance.
+  XStatMetadata* GetOrCreateStatMetadata(absl::string_view name);
+  XStatMetadata* GetOrCreateStatMetadata(std::string&& name);
+  XStatMetadata* GetOrCreateStatMetadata(const char* name) {
+    return GetOrCreateStatMetadata(absl::string_view(name));
+  }
 
  private:
   XPlane* plane_;
