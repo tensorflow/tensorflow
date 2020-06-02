@@ -2150,8 +2150,15 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       return inputs
 
   def _should_cast_single_input(self, x):
-    return (isinstance(x, _AUTOCAST_TYPES) and x.dtype.is_floating and
-            x.dtype.base_dtype.name != self._compute_dtype)
+    try:
+      dtype = x.dtype
+    except AttributeError:
+      return False
+
+    # Performance: check dtypes are unequal before any other checks.
+    # In the common case, dtypes will be equal.
+    return (dtype != self._compute_dtype_object and dtype.is_floating and
+            isinstance(x, _AUTOCAST_TYPES))
 
   def _cast_single_input(self, x):
     """Cast a single Tensor or TensorSpec to the compute dtype."""
