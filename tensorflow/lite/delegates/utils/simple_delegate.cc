@@ -31,7 +31,7 @@ TfLiteRegistration GetDelegateKernelRegistration(
   TfLiteRegistration kernel_registration;
   kernel_registration.profiling_string = nullptr;
   kernel_registration.builtin_code = kTfLiteBuiltinDelegate;
-  kernel_registration.custom_name = delegate->name();
+  kernel_registration.custom_name = delegate->Name();
   kernel_registration.version = 1;
   kernel_registration.free = [](TfLiteContext* context, void* buffer) -> void {
     delete reinterpret_cast<SimpleDelegateKernelInterface*>(buffer);
@@ -68,7 +68,7 @@ TfLiteRegistration GetDelegateKernelRegistration(
     SimpleDelegateKernelInterface* delegate_kernel =
         reinterpret_cast<SimpleDelegateKernelInterface*>(node->user_data);
     TFLITE_DCHECK(delegate_kernel != nullptr);
-    return delegate_kernel->Invoke(context, node);
+    return delegate_kernel->Eval(context, node);
   };
 
   return kernel_registration;
@@ -94,7 +94,7 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context,
   TFLITE_LOG_PROD(tflite::TFLITE_LOG_INFO,
                   "%s delegate: %d nodes delegated out of %d nodes with "
                   "%d partitions.\n",
-                  delegate->name(), supported_nodes.size(),
+                  delegate->Name(), supported_nodes.size(),
                   helper.num_total_nodes(), helper.num_partitions());
   TfLiteRegistration delegate_kernel_registration =
       GetDelegateKernelRegistration(delegate);

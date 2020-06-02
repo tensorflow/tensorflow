@@ -72,7 +72,7 @@ TfLiteStatus FlexDelegate::Initialize(TfLiteContext* context) {
   return kTfLiteOk;
 }
 
-const char* FlexDelegate::name() const {
+const char* FlexDelegate::Name() const {
   static constexpr char kName[] = "TfLiteFlexDelegate";
   return kName;
 }
