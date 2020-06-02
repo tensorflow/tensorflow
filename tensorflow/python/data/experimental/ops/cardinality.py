@@ -32,6 +32,7 @@ tf_export("data.experimental.UNKNOWN_CARDINALITY").export_constant(
     __name__, "UNKNOWN")
 
 
+# TODO(b/157691652): Deprecate this method after migrating users to the new API.
 @tf_export("data.experimental.cardinality")
 def cardinality(dataset):
   """Returns the cardinality of `dataset`, if known.
