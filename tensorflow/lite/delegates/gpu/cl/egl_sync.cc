@@ -21,13 +21,33 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
+namespace {
+
+bool HasExtension(EGLDisplay display, const char* extension) {
+  const char* extensions = eglQueryString(display, EGL_EXTENSIONS);
+  return extensions && std::strstr(extensions, extension);
+}
+
+bool IsEglFenceSyncSupported(EGLDisplay display) {
+  static bool supported = HasExtension(display, "EGL_KHR_fence_sync");
+  return supported;
+}
+
+bool IsEglWaitSyncSupported(EGLDisplay display) {
+  static bool supported = HasExtension(display, "EGL_KHR_wait_sync");
+  return supported;
+}
+
+}  // anonymous namespace
+
 absl::Status EglSync::NewFence(EGLDisplay display, EglSync* sync) {
   static auto* egl_create_sync_khr =
       reinterpret_cast<decltype(&eglCreateSyncKHR)>(
           eglGetProcAddress("eglCreateSyncKHR"));
-  if (egl_create_sync_khr == nullptr) {
+  if (!IsEglFenceSyncSupported(display) || egl_create_sync_khr == nullptr) {
     // Needs extension: EGL_KHR_fence_sync (EGL) / GL_OES_EGL_sync (OpenGL ES).
-    return absl::InternalError("Not supported: eglCreateSyncKHR.");
+    return absl::InternalError(
+        "Not supported / bad EGL implementation: eglCreateSyncKHR.");
   }
   EGLSyncKHR egl_sync;
   RETURN_IF_ERROR(TFLITE_GPU_CALL_EGL(*egl_create_sync_khr, &egl_sync, display,
@@ -54,7 +74,7 @@ void EglSync::Invalidate() {
         reinterpret_cast<decltype(&eglDestroySyncKHR)>(
             eglGetProcAddress("eglDestroySyncKHR"));
     // Needs extension: EGL_KHR_fence_sync (EGL) / GL_OES_EGL_sync (OpenGL ES).
-    if (egl_destroy_sync_khr) {
+    if (IsEglFenceSyncSupported(display_) && egl_destroy_sync_khr) {
       // Note: we're doing nothing when the function pointer is nullptr, or the
       // call returns EGL_FALSE.
       (*egl_destroy_sync_khr)(display_, sync_);
@@ -66,7 +86,7 @@ void EglSync::Invalidate() {
 absl::Status EglSync::ServerWait() {
   static auto* egl_wait_sync_khr = reinterpret_cast<decltype(&eglWaitSyncKHR)>(
       eglGetProcAddress("eglWaitSyncKHR"));
-  if (egl_wait_sync_khr == nullptr) {
+  if (!IsEglWaitSyncSupported(display_) || egl_wait_sync_khr == nullptr) {
     // Needs extension: EGL_KHR_wait_sync
     return absl::InternalError("Not supported: eglWaitSyncKHR.");
   }
@@ -81,7 +101,8 @@ absl::Status EglSync::ClientWait() {
   static auto* egl_client_wait_sync_khr =
       reinterpret_cast<decltype(&eglClientWaitSyncKHR)>(
           eglGetProcAddress("eglClientWaitSyncKHR"));
-  if (egl_client_wait_sync_khr == nullptr) {
+  if (!IsEglFenceSyncSupported(display_) ||
+      egl_client_wait_sync_khr == nullptr) {
     // Needs extension: EGL_KHR_fence_sync (EGL) / GL_OES_EGL_sync (OpenGL ES).
     return absl::InternalError("Not supported: eglClientWaitSyncKHR.");
   }
