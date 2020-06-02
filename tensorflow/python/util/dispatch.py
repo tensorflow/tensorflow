@@ -45,7 +45,8 @@ DISPATCH_ATTR = "_tf_dispatchers"
 _GLOBAL_DISPATCHERS = []
 
 
-F = TypeVar('F', bound=Callable[..., Any])
+# Define type variables
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 class OpDispatcher(object):
