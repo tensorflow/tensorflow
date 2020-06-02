@@ -45,8 +45,12 @@ DISPATCH_ATTR = "_tf_dispatchers"
 _GLOBAL_DISPATCHERS = []
 
 
+<<<<<<< HEAD
 # Define type variables
 F = TypeVar("F", bound=Callable[..., Any])
+=======
+F = TypeVar('F', bound=Callable[..., Any])
+>>>>>>> 23ebb34578... apply type variable upper bound to add_dispatch_support decorator
 
 
 class OpDispatcher(object):
