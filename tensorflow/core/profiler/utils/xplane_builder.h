@@ -202,7 +202,7 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
  public:
   explicit XPlaneBuilder(XPlane* plane);
 
-  int64 Id() { return plane_->id(); }
+  int64 Id() const { return plane_->id(); }
   void SetId(int64 id) { plane_->set_id(id); }
 
   void SetName(absl::string_view name) { plane_->set_name(std::string(name)); }
