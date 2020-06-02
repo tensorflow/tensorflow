@@ -308,6 +308,85 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
       # Reset to default state for other tests.
       summary_ops.set_step(None)
 
+  def testWrite_usingDefaultStep_fromAsDefault(self):
+    logdir = self.get_temp_dir()
+    try:
+      with context.eager_mode():
+        writer = summary_ops.create_file_writer(logdir)
+        with writer.as_default(step=1):
+          summary_ops.write('tag', 1.0)
+          with writer.as_default():
+            summary_ops.write('tag', 1.0)
+            with writer.as_default(step=2):
+              summary_ops.write('tag', 1.0)
+            summary_ops.write('tag', 1.0)
+            summary_ops.set_step(3)
+          summary_ops.write('tag', 1.0)
+      events = events_from_logdir(logdir)
+      self.assertListEqual([1, 1, 2, 1, 3], [event.step for event in events[1:]])
+    finally:
+      # Reset to default state for other tests.
+      summary_ops.set_step(None)
+
+  def testWrite_usingDefaultStepVariable_fromAsDefault(self):
+    logdir = self.get_temp_dir()
+    try:
+      with context.eager_mode():
+        writer = summary_ops.create_file_writer(logdir)
+        mystep = variables.Variable(1, dtype=dtypes.int64)
+        with writer.as_default(step=mystep):
+          summary_ops.write('tag', 1.0)
+          with writer.as_default():
+            mystep.assign(2)
+            summary_ops.write('tag', 1.0)
+            with writer.as_default(step=3):
+              summary_ops.write('tag', 1.0)
+            summary_ops.write('tag', 1.0)
+            mystep.assign(4)
+          summary_ops.write('tag', 1.0)
+      events = events_from_logdir(logdir)
+      self.assertListEqual([1, 2, 3, 2, 4], [event.step for event in events[1:]])
+    finally:
+      # Reset to default state for other tests.
+      summary_ops.set_step(None)
+
+  def testWrite_usingDefaultStep_fromSetAsDefault(self):
+    logdir = self.get_temp_dir()
+    try:
+      with context.eager_mode():
+        writer = summary_ops.create_file_writer(logdir)
+        mystep = variables.Variable(1, dtype=dtypes.int64)
+        writer.set_as_default(step=mystep)
+        summary_ops.write('tag', 1.0)
+        mystep.assign(2)
+        summary_ops.write('tag', 1.0)
+        writer.set_as_default(step=3)
+        summary_ops.write('tag', 1.0)
+        writer.flush()
+      events = events_from_logdir(logdir)
+      self.assertListEqual([1, 2, 3], [event.step for event in events[1:]])
+    finally:
+      # Reset to default state for other tests.
+      summary_ops.set_step(None)
+
+  def testWrite_usingDefaultStepVariable_fromSetAsDefault(self):
+    logdir = self.get_temp_dir()
+    try:
+      with context.eager_mode():
+        writer = summary_ops.create_file_writer(logdir)
+        writer.set_as_default(step=1)
+        summary_ops.write('tag', 1.0)
+        writer.set_as_default(step=2)
+        summary_ops.write('tag', 1.0)
+        writer.set_as_default()
+        summary_ops.write('tag', 1.0)
+        writer.flush()
+      events = events_from_logdir(logdir)
+      self.assertListEqual([1, 2, 2], [event.step for event in events[1:]])
+    finally:
+      # Reset to default state for other tests.
+      summary_ops.set_step(None)
+
   def testWrite_recordIf_constant(self):
     logdir = self.get_temp_dir()
     with context.eager_mode():
