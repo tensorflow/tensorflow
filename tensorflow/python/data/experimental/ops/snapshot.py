@@ -284,7 +284,7 @@ def snapshot(path, compression="AUTO", reader_func=None, shard_func=None):
   ```python
   dataset = ...
   dataset = dataset.enumerate()
-  dataset = dataset.apply(tf.data.experimental.snapshot(
+  dataset = dataset.apply(tf.data.experimental.snapshot("/path/to/snapshot/dir",
       shard_func=lambda x, y: x % NUM_SHARDS, ...))
   dataset = dataset.map(lambda x, y: y)
   ```
@@ -308,7 +308,7 @@ def snapshot(path, compression="AUTO", reader_func=None, shard_func=None):
     # read datasets in parallel and interleave their elements
     return datasets.interleave(lambda x: x, num_parallel_calls=AUTOTUNE)
 
-  dataset = dataset.apply(tf.data.experimental.snapshot(
+  dataset = dataset.apply(tf.data.experimental.snapshot("/path/to/snapshot/dir",
       reader_func=user_reader_func))
   ```
 
