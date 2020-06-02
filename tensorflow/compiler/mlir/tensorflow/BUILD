@@ -452,6 +452,7 @@ cc_library(
         "transforms/tpu_merge_variables_with_execute.cc",
         "transforms/tpu_rewrite_pass.cc",
         "transforms/tpu_sharding_identification_pass.cc",
+        "transforms/tpu_space_to_depth_pass.cc",
         "transforms/tpu_variable_runtime_reformatting.cc",
         "translate/breakup-islands.cc",
         "translate/control_to_executor_dialect.cc",
