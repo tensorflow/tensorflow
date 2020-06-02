@@ -293,12 +293,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # are only applicable to input layers: do not pass these keywords
     # to non-input layers.
     allowed_kwargs = {
-        'input_shape',
-        'batch_input_shape',
-        'batch_size',
-        'weights',
-        'activity_regularizer',
-        'autocast'
+        'input_dim', 'input_shape', 'batch_input_shape', 'batch_size',
+        'weights', 'activity_regularizer', 'autocast'
     }
     # Validate optional keyword arguments.
     generic_utils.validate_kwargs(kwargs, allowed_kwargs)
@@ -323,7 +319,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     self.supports_masking = False
 
     self._init_set_name(name)
-    self._activity_regularizer = kwargs.pop('activity_regularizer', None)
+    self._activity_regularizer = regularizers.get(
+        kwargs.pop('activity_regularizer', None))
     self._maybe_create_attribute('_trainable_weights', [])
     self._maybe_create_attribute('_non_trainable_weights', [])
     self._updates = []
@@ -370,6 +367,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     self._dynamic = dynamic
 
     # Manage input shape information if passed.
+    if 'input_dim' in kwargs and 'input_shape' not in kwargs:
+      # Backwards compatibility: alias 'input_dim' to 'input_shape'.
+      kwargs['input_shape'] = (kwargs['input_dim'],)
     if 'input_shape' in kwargs or 'batch_input_shape' in kwargs:
       # In this case we will later create an input layer
       # to insert before the current layer
@@ -530,7 +530,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     dtype = dtypes.as_dtype(dtype)
     if self._dtype_policy.variable_dtype is None:
       # The policy is "_infer", so we infer the policy from the variable dtype.
-      self._dtype_policy = policy.Policy(dtype.base_dtype.name)
+      self._set_dtype_policy(policy.Policy(dtype.base_dtype.name))
     initializer = initializers.get(initializer)
     regularizer = regularizers.get(regularizer)
     constraint = constraints.get(constraint)
@@ -2202,7 +2202,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   @_dtype.setter
   def _dtype(self, value):
     value = dtypes.as_dtype(value).name
-    self._dtype_policy = policy.Policy(value)
+    self._set_dtype_policy(policy.Policy(value))
 
   def _name_scope(self):
     if not tf2.enabled():
@@ -2436,7 +2436,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         except AttributeError:
           pass
         else:
-          self._dtype_policy = policy.Policy(dtype)
+          self._set_dtype_policy(policy.Policy(dtype))
       input_shapes = None
       # Converts Tensors / CompositeTensors to TensorShapes.
       if all(hasattr(x, 'shape') for x in input_list):

@@ -141,6 +141,7 @@ py_library(
         "//tensorflow/python/keras:initializers",
         "//tensorflow/python/keras:regularizers",
         "//tensorflow/python/keras/engine:input_spec",
+        "//tensorflow/python/keras/layers/ops:core",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:generic_utils",
         "//tensorflow/python/keras/utils:tf_utils",
