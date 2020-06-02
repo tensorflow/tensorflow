@@ -17,19 +17,72 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"   // from @llvm-project
+#include "mlir/IR/Attributes.h"                // from @llvm-project
+#include "mlir/IR/Location.h"                  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"               // from @llvm-project
+#include "mlir/IR/PatternMatch.h"              // from @llvm-project
+#include "mlir/IR/StandardTypes.h"             // from @llvm-project
+#include "mlir/Pass/Pass.h"                    // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/map_xla_to_scalar_op.h"
 
 namespace mlir {
 namespace xla_lhlo {
 namespace {
+
+struct DotOpConverter : public OpRewritePattern<DotOp> {
+  using OpRewritePattern<DotOp>::OpRewritePattern;
+
+  // Supports only rank-2 tensors for LHS and RHS.
+  LogicalResult matchAndRewrite(DotOp op,
+                                PatternRewriter& rewriter) const override {
+    Value lhs = op.lhs();
+    Value rhs = op.rhs();
+    MemRefType lhs_type = lhs.getType().cast<MemRefType>();
+    MemRefType rhs_type = rhs.getType().cast<MemRefType>();
+    Type element_type = lhs_type.getElementType();
+    ArrayRef<int64_t> shape_lhs = lhs_type.getShape();
+    ArrayRef<int64_t> shape_rhs = rhs_type.getShape();
+
+    if ((lhs_type.getRank() != 2) || (rhs_type.getRank() != 2)) {
+      return failure();
+    }
+    SmallVector<Value, 4> lhs_indices, rhs_indices, result_indices;
+    const auto& loc = op.getLoc();
+
+    // Create the canonical ijk form of matmul.
+    auto forOp = rewriter.create<AffineForOp>(loc, 0, shape_lhs[0]);
+    lhs_indices.push_back(forOp.getInductionVar());
+    result_indices.push_back(forOp.getInductionVar());
+
+    rewriter.setInsertionPointToStart(forOp.getBody());
+    forOp = rewriter.create<AffineForOp>(loc, 0, shape_rhs.back());
+    result_indices.push_back(forOp.getInductionVar());
+    rhs_indices.resize(2);
+    rhs_indices[1] = forOp.getInductionVar();
+
+    rewriter.setInsertionPointToStart(forOp.getBody());
+    forOp = rewriter.create<AffineForOp>(loc, 0, shape_rhs.front());
+    lhs_indices.push_back(forOp.getInductionVar());
+    rhs_indices[0] = forOp.getInductionVar();
+
+    // Construct the innermost loop body.
+    rewriter.setInsertionPointToStart(forOp.getBody());
+    auto l = rewriter.create<AffineLoadOp>(loc, lhs, lhs_indices);
+    auto r = rewriter.create<AffineLoadOp>(loc, rhs, rhs_indices);
+    auto result =
+        rewriter.create<AffineLoadOp>(loc, op.output(), result_indices);
+    Value op_result = xla_lhlo::XlaOpToStdScalarOp::map<DotOp>(
+        op, element_type, {l, r, result}, &rewriter);
+    if (op_result == nullptr) {
+      return failure();
+    }
+    rewriter.create<AffineStoreOp>(loc, op_result, op.output(), result_indices);
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
 
 template <typename LhloOpTy>
 struct BinaryOpConverter : public OpRewritePattern<LhloOpTy> {
@@ -77,7 +130,8 @@ void populateLHLOToAffineConversionPattern(MLIRContext* context,
       BinaryOpConverter<xla_lhlo::MaxOp>,
       BinaryOpConverter<xla_lhlo::MinOp>,
       BinaryOpConverter<xla_lhlo::MulOp>,
-      BinaryOpConverter<xla_lhlo::SubOp>>(context);
+      BinaryOpConverter<xla_lhlo::SubOp>,
+      DotOpConverter>(context);
   // clang-format on
 }
 
