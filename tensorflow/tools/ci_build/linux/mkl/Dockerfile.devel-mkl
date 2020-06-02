@@ -61,7 +61,7 @@ RUN bazel --bazelrc=/root/.bazelrc build -c opt \
 COPY install_openmpi_horovod.sh .
 RUN if [ "${ENABLE_HOROVOD}" = "yes" ]; then \
         chmod +x install_openmpi_horovod.sh && \
-        ${OPENMPI_VERSION} ${OPENMPI_DOWNLOAD_URL} install_openmpi_horovod.sh && \
+        ./install_openmpi_horovod.sh ${OPENMPI_VERSION} ${OPENMPI_DOWNLOAD_URL} && \
         rm -rf install_openmpi_horovod.sh; \
     fi
 

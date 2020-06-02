@@ -5,9 +5,16 @@ set -e
 
 apt-get clean && apt-get update -y
 
+# Set default
+if [[ $# -gt 1 ]]; then
+  OPENMPI_VERSION="${1}"
+  OPENMPI_DOWNLOAD_URL="${2}"
+else
+  OPENMPI_VERSION=openmpi-2.1.1
+  OPENMPI_DOWNLOAD_URL=https://www.open-mpi.org/software/ompi/v2.1/downloads/${OPENMPI_VERSION}.tar.gz  
+fi
+
 # Install Open MPI
-OPENMPI_VERSION=${OPENMPI_VERSION:-openmpi-2.1.1}
-OPENMPI_DOWNLOAD_URL=${OPENMPI_DOWNLOAD_URL:-https://www.open-mpi.org/software/ompi/v2.1/downloads/${OPENMPI_VERSION}.tar.gz}
 echo "Installing OpenMPI version ${OPENMPI_VERSION}..."
 echo "OpenMPI Download url ${OPENMPI_DOWNLOAD_URL}..."
 
