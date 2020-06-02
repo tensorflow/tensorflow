@@ -208,6 +208,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
               callbacks.BackupAndRestore(backup_dir=bar_dir),
               AssertCallback()
           ])
+      multi_process_runner.barrier()
       test_obj.assertFalse(file_io.file_exists(backup_filepath))
       test_obj.assertTrue(file_io.file_exists(saving_filepath))
 
@@ -343,4 +344,4 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
 
 
 if __name__ == '__main__':
-  multi_process_runner.test_main(barrier_parties=2)
+  multi_process_runner.test_main()
