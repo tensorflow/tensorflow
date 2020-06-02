@@ -663,8 +663,8 @@ struct ConvertTrivialTransposeOpToReshapeOp
 
   LogicalResult matchAndRewrite(TFL::TransposeOp transpose_op,
                                 PatternRewriter &rewriter) const override {
-    auto input_type = transpose_op.x().getType().cast<ShapedType>();
-    auto output_type = transpose_op.y().getType().cast<ShapedType>();
+    auto input_type = transpose_op.input().getType().cast<ShapedType>();
+    auto output_type = transpose_op.output().getType().cast<ShapedType>();
     // It's possible to know if the transformation is safe only if the input
     // & output shapes are fully known and permutation is a constant.
     if (!input_type.hasStaticShape() || !output_type.hasStaticShape())
@@ -713,7 +713,8 @@ struct ConvertTrivialTransposeOpToReshapeOp
     auto new_shape = rewriter.create<TF::ConstOp>(loc, new_shape_attr);
 
     rewriter.replaceOpWithNewOp<TFL::ReshapeOp>(
-        transpose_op, transpose_op.y().getType(), transpose_op.x(), new_shape);
+        transpose_op, transpose_op.output().getType(), transpose_op.input(),
+        new_shape);
 
     return success();
   }
