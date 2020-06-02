@@ -3138,41 +3138,6 @@ func BoostedTreesBucketize(scope *Scope, float_values []tf.Output, bucket_bounda
 	return buckets
 }
 
-// Generate the bucket boundaries for each feature based on accumulated summaries.
-//
-// An op that returns a list of float tensors for a quantile stream resource. Each
-// tensor is Rank 1 containing bucket boundaries for a single feature.
-//
-// Arguments:
-//	quantile_stream_resource_handle: resource handle referring to a QuantileStreamResource.
-//	num_features: inferred int; number of features to get bucket boundaries for.
-//
-// Returns float; List of Rank 1 Tensors each containing the bucket boundaries for a feature.
-func BoostedTreesQuantileStreamResourceGetBucketBoundaries(scope *Scope, quantile_stream_resource_handle tf.Output, num_features int64) (bucket_boundaries []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"num_features": num_features}
-	opspec := tf.OpSpec{
-		Type: "BoostedTreesQuantileStreamResourceGetBucketBoundaries",
-		Input: []tf.Input{
-			quantile_stream_resource_handle,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if bucket_boundaries, idx, err = makeOutputList(op, idx, "bucket_boundaries"); err != nil {
-		scope.UpdateErr("BoostedTreesQuantileStreamResourceGetBucketBoundaries", err)
-		return
-	}
-	return bucket_boundaries
-}
-
 // Returns immutable tensor from memory region.
 //
 // The current implementation memmaps the tensor from a file.
@@ -10229,6 +10194,41 @@ func ExperimentalSqlDataset(scope *Scope, driver_name tf.Output, data_source_nam
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Generate the bucket boundaries for each feature based on accumulated summaries.
+//
+// An op that returns a list of float tensors for a quantile stream resource. Each
+// tensor is Rank 1 containing bucket boundaries for a single feature.
+//
+// Arguments:
+//	quantile_stream_resource_handle: resource handle referring to a QuantileStreamResource.
+//	num_features: inferred int; number of features to get bucket boundaries for.
+//
+// Returns float; List of Rank 1 Tensors each containing the bucket boundaries for a feature.
+func BoostedTreesQuantileStreamResourceGetBucketBoundaries(scope *Scope, quantile_stream_resource_handle tf.Output, num_features int64) (bucket_boundaries []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_features": num_features}
+	opspec := tf.OpSpec{
+		Type: "BoostedTreesQuantileStreamResourceGetBucketBoundaries",
+		Input: []tf.Input{
+			quantile_stream_resource_handle,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if bucket_boundaries, idx, err = makeOutputList(op, idx, "bucket_boundaries"); err != nil {
+		scope.UpdateErr("BoostedTreesQuantileStreamResourceGetBucketBoundaries", err)
+		return
+	}
+	return bucket_boundaries
 }
 
 // Creates a dataset that passes a sliding window over `input_dataset`.
