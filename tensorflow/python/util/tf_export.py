@@ -87,7 +87,8 @@ API_ATTRS_V1 = {
 }
 
 
-F = TypeVar('F', bound=Callable[..., Any])
+# Define type variables
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 class SymbolAlreadyExposedError(Exception):
