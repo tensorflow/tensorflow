@@ -521,6 +521,20 @@ bool AlternateMemoryBestFitHeap::IsIntervalAllowedInAlternateMemory(
         return false;
       }
     }
+
+    if ((position.instruction->opcode() == HloOpcode::kCollectivePermuteStart ||
+         position.instruction->opcode() == HloOpcode::kCollectivePermuteDone)) {
+      // Disable memory space allocation for these for now.
+      if (position.index == ShapeIndex({0})) {
+        VLOG(4) << "Keeping value " << interval.buffer->ToShortString()
+                << " in default mem because it is a collective-permute buffer.";
+        return false;
+      } else if (position.index == ShapeIndex({1})) {
+        VLOG(4) << "Keeping value " << interval.buffer->ToShortString()
+                << " in default mem because it is a collective-permute buffer.";
+        return false;
+      }
+    }
   }
 
   return true;
