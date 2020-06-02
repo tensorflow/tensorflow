@@ -544,6 +544,7 @@ cc_library(
 tf_kernel_library(
     name = "snapshot_dataset_op",
     srcs = ["snapshot_dataset_op.cc"],
+    hdrs = ["snapshot_dataset_op.h"],
     deps = [
         ":snapshot_util",
         "//tensorflow/core:core_cpu_internal",
@@ -552,10 +553,16 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/framework:op_requires",
         "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/kernels/data:captured_function",
         "//tensorflow/core/kernels/data:dataset_utils",
+        "//tensorflow/core/kernels/data:name_utils",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
     ],
 )
