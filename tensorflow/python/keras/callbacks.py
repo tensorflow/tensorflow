@@ -1627,6 +1627,7 @@ class EarlyStopping(Callback):
       self.best = self.baseline
     else:
       self.best = np.Inf if self.monitor_op == np.less else -np.Inf
+    self.best_weights = None
 
   def on_epoch_end(self, epoch, logs=None):
     current = self.get_monitor_value(logs)
