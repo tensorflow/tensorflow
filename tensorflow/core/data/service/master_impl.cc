@@ -169,7 +169,11 @@ Status DataServiceMasterImpl::GetOrCreateJob(
   if (job != nullptr) {
     TF_RETURN_IF_ERROR(ValidateMatchingJob(**job, requested_processing_mode,
                                            request->dataset_id()));
-    response->set_job_id((*job)->job_id());
+    int64 job_id = (*job)->job_id();
+    response->set_job_id(job_id);
+    VLOG(3) << "Found existing job for name=" << request->job_name()
+            << ", index=" << request->job_name_index()
+            << ". job_id: " << job_id;
     return Status::OK();
   }
   int64 job_id;
@@ -177,6 +181,8 @@ Status DataServiceMasterImpl::GetOrCreateJob(
                                request->job_name(), &job_id));
   named_jobs_[key] = jobs_[job_id];
   response->set_job_id(job_id);
+  VLOG(3) << "Created job " << job_id << " for dataset "
+          << request->dataset_id() << " and name " << request->job_name();
   return Status::OK();
 }
 
@@ -306,6 +312,20 @@ Status DataServiceMasterImpl::GetTasks(const GetTasksRequest* request,
   response->set_job_finished(job->finished());
   VLOG(3) << "Found " << response->task_info_size() << " tasks for job id "
           << request->job_id();
+  return Status::OK();
+}
+
+Status DataServiceMasterImpl::GetWorkers(const GetWorkersRequest* request,
+                                         GetWorkersResponse* response) {
+  mutex_lock l(mu_);
+  VLOG(3) << "Enter GetWorkers";
+  for (auto& worker : workers_) {
+    WorkerInfo* info = response->add_workers();
+    info->set_address(worker.address());
+    info->set_id(worker.worker_id());
+  }
+  VLOG(3) << "Returning list of " << workers_.size()
+          << " workers from GetWorkers";
   return Status::OK();
 }
 

@@ -24,6 +24,7 @@ from __future__ import print_function
 from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
+from tensorflow.python.keras.feature_column import base_feature_layer as kfc
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.util.tf_export import keras_export
@@ -32,7 +33,7 @@ from tensorflow.python.util.tf_export import keras_export
 
 
 @keras_export('keras.experimental.SequenceFeatures')
-class SequenceFeatures(fc._BaseFeaturesLayer):
+class SequenceFeatures(kfc._BaseFeaturesLayer):
   """A layer for sequence input.
 
     All `feature_columns` must be sequence dense columns with the same

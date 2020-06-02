@@ -37,18 +37,15 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
-from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
+from tensorflow.python.keras.layers.ops import core as core_ops
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
-from tensorflow.python.ops import sparse_ops
-from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training.tracking import base as trackable
@@ -460,7 +457,7 @@ class Reshape(Layer):
   >>> # also supports shape inference using `-1` as dimension
   >>> model.add(tf.keras.layers.Reshape((-1, 2, 2)))
   >>> model.output_shape
-  (None, None, 2, 2)
+  (None, 3, 2, 2)
   """
 
   def __init__(self, target_shape, **kwargs):
@@ -495,7 +492,9 @@ class Reshape(Layer):
       is specified.
     """
     output_shape = list(output_shape)
-    msg = 'total size of new array must be unchanged'
+    msg = ('total size of new array must be unchanged, '
+           'input_shape = {}, output_shape = {}'
+           .format(input_shape, output_shape))
 
     known, unknown = 1, None
     for index, dim in enumerate(output_shape):
@@ -529,8 +528,13 @@ class Reshape(Layer):
     return tensor_shape.TensorShape(output_shape)
 
   def call(self, inputs):
-    return array_ops.reshape(inputs,
-                             (array_ops.shape(inputs)[0],) + self.target_shape)
+    result = array_ops.reshape(
+        inputs, (array_ops.shape(inputs)[0],) + self.target_shape)
+    if not context.executing_eagerly():
+      # Set the static shape for the result since it might lost during array_ops
+      # reshape, eg, some `None` dim in the result could be inferred.
+      result.set_shape(self.compute_output_shape(inputs.shape))
+    return result
 
   def get_config(self):
     config = {'target_shape': self.target_shape}
@@ -1125,11 +1129,8 @@ class Dense(Layer):
                kernel_constraint=None,
                bias_constraint=None,
                **kwargs):
-    if 'input_shape' not in kwargs and 'input_dim' in kwargs:
-      kwargs['input_shape'] = (kwargs.pop('input_dim'),)
-
     super(Dense, self).__init__(
-        activity_regularizer=regularizers.get(activity_regularizer), **kwargs)
+        activity_regularizer=activity_regularizer, **kwargs)
 
     self.units = int(units) if not isinstance(units, int) else units
     self.activation = activations.get(activation)
@@ -1141,19 +1142,20 @@ class Dense(Layer):
     self.kernel_constraint = constraints.get(kernel_constraint)
     self.bias_constraint = constraints.get(bias_constraint)
 
-    self.supports_masking = True
     self.input_spec = InputSpec(min_ndim=2)
+    self.supports_masking = True
 
   def build(self, input_shape):
     dtype = dtypes.as_dtype(self.dtype or K.floatx())
     if not (dtype.is_floating or dtype.is_complex):
       raise TypeError('Unable to build `Dense` layer with non-floating point '
                       'dtype %s' % (dtype,))
+
     input_shape = tensor_shape.TensorShape(input_shape)
-    if tensor_shape.dimension_value(input_shape[-1]) is None:
+    last_dim = tensor_shape.dimension_value(input_shape[-1])
+    if last_dim is None:
       raise ValueError('The last dimension of the inputs to `Dense` '
                        'should be defined. Found `None`.')
-    last_dim = tensor_shape.dimension_value(input_shape[-1])
     self.input_spec = InputSpec(min_ndim=2, axes={-1: last_dim})
     self.kernel = self.add_weight(
         'kernel',
@@ -1177,27 +1179,12 @@ class Dense(Layer):
     self.built = True
 
   def call(self, inputs):
-    base_layer_utils.no_ragged_support(inputs, self.name)
-    rank = inputs.shape.rank
-    if rank is not None and rank > 2:
-      # Broadcasting is required for the inputs.
-      outputs = standard_ops.tensordot(inputs, self.kernel, [[rank - 1], [0]])
-      # Reshape the output back to the original ndim of the input.
-      if not context.executing_eagerly():
-        shape = inputs.shape.as_list()
-        output_shape = shape[:-1] + [self.units]
-        outputs.set_shape(output_shape)
-    else:
-      inputs = math_ops.cast(inputs, self._compute_dtype)
-      if K.is_sparse(inputs):
-        outputs = sparse_ops.sparse_tensor_dense_matmul(inputs, self.kernel)
-      else:
-        outputs = gen_math_ops.mat_mul(inputs, self.kernel)
-    if self.use_bias:
-      outputs = nn.bias_add(outputs, self.bias)
-    if self.activation is not None:
-      return self.activation(outputs)  # pylint: disable=not-callable
-    return outputs
+    return core_ops.dense(
+        inputs,
+        self.kernel,
+        self.bias,
+        self.activation,
+        dtype=self._compute_dtype_object)
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
@@ -1209,21 +1196,30 @@ class Dense(Layer):
     return input_shape[:-1].concatenate(self.units)
 
   def get_config(self):
-    config = {
-        'units': self.units,
-        'activation': activations.serialize(self.activation),
-        'use_bias': self.use_bias,
-        'kernel_initializer': initializers.serialize(self.kernel_initializer),
-        'bias_initializer': initializers.serialize(self.bias_initializer),
-        'kernel_regularizer': regularizers.serialize(self.kernel_regularizer),
-        'bias_regularizer': regularizers.serialize(self.bias_regularizer),
+    config = super(Dense, self).get_config()
+    config.update({
+        'units':
+            self.units,
+        'activation':
+            activations.serialize(self.activation),
+        'use_bias':
+            self.use_bias,
+        'kernel_initializer':
+            initializers.serialize(self.kernel_initializer),
+        'bias_initializer':
+            initializers.serialize(self.bias_initializer),
+        'kernel_regularizer':
+            regularizers.serialize(self.kernel_regularizer),
+        'bias_regularizer':
+            regularizers.serialize(self.bias_regularizer),
         'activity_regularizer':
             regularizers.serialize(self.activity_regularizer),
-        'kernel_constraint': constraints.serialize(self.kernel_constraint),
-        'bias_constraint': constraints.serialize(self.bias_constraint)
-    }
-    base_config = super(Dense, self).get_config()
-    return dict(list(base_config.items()) + list(config.items()))
+        'kernel_constraint':
+            constraints.serialize(self.kernel_constraint),
+        'bias_constraint':
+            constraints.serialize(self.bias_constraint)
+    })
+    return config
 
 
 @keras_export('keras.layers.ActivityRegularization')

@@ -60,24 +60,24 @@ class StructuredTensor(composite_tensor.CompositeTensor):
 
   ### Examples
 
-  ```python
   >>> # A scalar StructuredTensor describing a single person.
-  >>> s1 = tf.structured.constant({"age": 82, "nicknames": ["Bob", "Bobby"]})
-  >>> print s1.shape
-  ()
-  >>> print s1["age"]
-  tf.Tensor(82, shape=(), dtype=int32)
+  >>> s1 = StructuredTensor.from_pyval(
+  ...     {"age": 82, "nicknames": ["Bob", "Bobby"]})
+  >>> s1.shape
+  TensorShape([])
+  >>> s1["age"]
+  <tf.Tensor: shape=(), dtype=int32, numpy=82>
 
   >>> # A vector StructuredTensor describing three people.
-  >>> s2 = stf.struct.constant([
+  >>> s2 = StructuredTensor.from_pyval([
   ...     {"age": 12, "nicknames": ["Josaphine"]},
   ...     {"age": 82, "nicknames": ["Bob", "Bobby"]},
-  ...     {"age": 82, "nicknames": ["Elmo"]}])
-  >>> print s2.shape
-  (3,)
-  >>> print s2[0]["age"]
-  tf.Tensor(12, shape=(), dtype=int32)
-  ```
+  ...     {"age": 42, "nicknames": ["Elmo"]}])
+  >>> s2.shape
+  TensorShape([3])
+  >>> s2[0]["age"]
+  <tf.Tensor: shape=(), dtype=int32, numpy=12>
+
 
   ### Field Paths
 
@@ -155,12 +155,19 @@ class StructuredTensor(composite_tensor.CompositeTensor):
     Examples:
 
       >>> StructuredTensor.from_fields({'x': 1, 'y': [1, 2, 3]})
-      (FILL THIS IN)
+      <StructuredTensor(
+        fields={
+          "x": tf.Tensor(1, shape=(), dtype=int32),
+          "y": tf.Tensor([1 2 3], shape=(3,), dtype=int32)},
+        shape=())>
 
       >>> StructuredTensor.from_fields({'foo': [1, 2], 'bar': [3, 4]},
       ...                              shape=[2])
-      (FILL THIS IN)
-
+      <StructuredTensor(
+        fields={
+          "bar": tf.Tensor([3 4], shape=(2,), dtype=int32),
+          "foo": tf.Tensor([1 2], shape=(2,), dtype=int32)},
+        shape=(2,))>
     """
     shape = tensor_shape.as_shape(shape)
     rank = shape.rank
@@ -312,7 +319,7 @@ class StructuredTensor(composite_tensor.CompositeTensor):
     If `field_name` is a `string`, then it names a field directly owned by this
     `StructuredTensor`.  If this `StructuredTensor` has shape `[D1...DN]`, then
     the returned tensor will have shape `[D1...DN, V1...VM]`, where the slice
-    `result[d1...dN]`contains the field value for the structure at
+    `result[d1...dN]` contains the field value for the structure at
     `self[d1...dN]`.
 
     If `field_name` is a `tuple` of `string`, then it specifies a path to a
@@ -430,8 +437,15 @@ class StructuredTensor(composite_tensor.CompositeTensor):
       return self._fields[key[rank]].__getitem__(key[:rank] + key[rank + 1:])
 
   def __repr__(self):
-    return '<StructuredTensor(fields={%s}, shape=%s)>' % (', '.join(
-        '%r' % k for k in sorted(self._fields)), self._shape)
+    fields = sorted(self._fields.items())
+    fields = ((k, str(v).replace('\n', '\n            ')) for k, v in fields)
+    fields = ('"{}": {}'.format(k, v) for k, v in fields)
+    dict_repr = ',\n        '.join(fields)
+    return (
+        '<StructuredTensor(\n'
+        '    fields={\n'
+        '        %s},\n'
+        '    shape=%s)>' % (dict_repr, self._shape))
 
   #=============================================================================
   # Conversion
@@ -458,9 +472,9 @@ class StructuredTensor(composite_tensor.CompositeTensor):
 
     Requires that all fields are Eager tensors.
 
-    >>> print(StructuredTensor.from_fields(
-    ...     {'a': [1, 2, 3]}, [3]).to_pyval())
-    [{b'a': 1}, {b'a': 2}, {b'a': 3}]
+    >>> StructuredTensor.from_fields(
+    ...     {'a': [1, 2, 3]}, [3]).to_pyval()
+    [{'a': 1}, {'a': 2}, {'a': 3}]
 
     Note that `StructuredTensor.from_pyval(pyval).to_pyval() == pyval`.
 
@@ -496,9 +510,13 @@ class StructuredTensor(composite_tensor.CompositeTensor):
   def from_pyval(cls, pyval, typespec=None):
     """Constructs a StructuredTensor from a nested Python structure.
 
-    >>> print StructuredTensor.from_pyval(
+    >>> StructuredTensor.from_pyval(
     ...     {'a': [1, 2, 3], 'b': [[4, 5], [6, 7]]})
-    <StructuredTensor {'a': [1, 2, 3], 'b': [[4, 5], [6, 7]]}>
+    <StructuredTensor(
+        fields={
+          "a": tf.Tensor([1 2 3], shape=(3,), dtype=int32),
+          "b": <tf.RaggedTensor [[4, 5], [6, 7]]>},
+        shape=())>
 
     Note that `StructuredTensor.from_pyval(pyval).to_pyval() == pyval`.
 
@@ -628,7 +646,10 @@ class StructuredTensor(composite_tensor.CompositeTensor):
     ...     [{'foo': 12}, {'foo': 33}, {'foo': 99}])
     >>> partition = RowPartition.from_row_lengths([2, 0, 1])
     >>> st.partition_outer_dimension(partition)
-    <StructuredTensor [[{'foo': 12}, {'foo': 33}], [], [{'foo': 99}]]>
+    <StructuredTensor(
+      fields={
+        "foo": <tf.RaggedTensor [[12, 33], [], [99]]>},
+      shape=(3, None))>
 
     Args:
       row_partition: A `RowPartition`.
@@ -651,7 +672,10 @@ class StructuredTensor(composite_tensor.CompositeTensor):
     >>> st = StructuredTensor.from_pyval(
     ...     [[{'foo': 12}, {'foo': 33}], [], [{'foo': 99}]])
     >>> st.merge_dims(0, 1)
-    <StructuredTensor [{'foo': 12}, {'foo': 33}, {'foo': 99}]>
+    <StructuredTensor(
+      fields={
+        "foo": tf.Tensor([12 33 99], shape=(3,), dtype=int32)},
+      shape=(3,))>
 
     Args:
       outer_axis: `int`: The first dimension in the range of dimensions to
@@ -1056,14 +1080,17 @@ def _partition_outer_dimension(value, row_partition):
 
   Examples:
 
-    >>> partition = row_partition.RowPartition.from_row_lengths([2, 0, 1])
+    >>> partition = RowPartition.from_row_lengths([2, 0, 1])
     >>> _partition_outer_dimension(tf.constant([1, 2, 3]), partition)
-    [[1, 2], [], [3]]
+    <tf.RaggedTensor [[1, 2], [], [3]]>
 
     >>> struct_value = StructuredTensor.from_pyval(
     ...     [{'x': 1}, {'x': 2}, {'x': 3}])
     >>> _partition_outer_dimension(struct_value, partition)
-    [[{'x': 1}, {'x': 2}], [], [{'x': 3}]])
+    <StructuredTensor(
+      fields={
+        "x": <tf.RaggedTensor [[1, 2], [], [3]]>},
+      shape=(3, None))>
 
   Args:
     value: Tensor, RaggedTensor, or StructuredTensor

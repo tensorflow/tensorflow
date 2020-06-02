@@ -517,17 +517,28 @@ package_group(
         "//perftools/accelerators/xprof/api/...",
         "//third_party/py/autograph/...",
         "//third_party/swift/tensorflow/x10/...",
+        "//third_party/swift/tensorflow_apis/...",
         "//tensorflow/...",
         "//tensorflow_estimator/python/estimator/...",
         "//tensorflow_models/official/...",
     ],
 )
 
-package_group(name = "ndarray_tensor_allow_list")
+package_group(
+    name = "ndarray_tensor_allow_list",
+    packages = ["//learning/pathways/..."],
+)
 
 # Packages that use composite tensors or dispatch.
 # TODO(b/154762408) Remove this package group once it's no longer needed.
 package_group(name = "composite_tensor_whitelist")
+
+# Packages that use private types symbols, until they are exported.
+# TODO(b/154650521) Remove.
+package_group(
+    name = "types_whitelist",
+    packages = ["//learning/deepmind/tensorflow/replicator/..."],
+)
 
 filegroup(
     name = "intel_binary_blob",

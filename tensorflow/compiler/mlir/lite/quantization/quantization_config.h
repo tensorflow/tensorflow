@@ -69,7 +69,8 @@ struct QuantizationSpecs {
   // arguments. They are only used when `weight_quantization` is set to false,
   // and the model is required to have quantization parameters, either from
   // quantization aware training or calibration, for the remaining tensors.
-  std::vector<std::pair<double, double>> input_ranges;
+  std::vector<std::pair<llvm::Optional<double>, llvm::Optional<double>>>
+      input_ranges;
 
   // The default ranges can be used when a tensor doesn't have quantization
   // parameters and couldn't be quantized. Used only for latency tests.
@@ -90,7 +91,7 @@ struct QuantizationSpecs {
   bool RunWeightQuantization() const { return weight_quantization; }
 
   // Whether this inference type represents a signed storage type.
-  bool IsSignedInferenceType() {
+  bool IsSignedInferenceType() const {
     switch (inference_type) {
       case tensorflow::DT_QUINT8:
       case tensorflow::DT_QUINT16:
@@ -102,7 +103,7 @@ struct QuantizationSpecs {
 
   // Gets the width of this quantization type. Returns 0 if it isn't a
   // quantization type.
-  int64_t GetQuantizationTypeWidth() {
+  int64_t GetQuantizationTypeWidth() const {
     switch (inference_type) {
       case tensorflow::DT_QINT8:
       case tensorflow::DT_QUINT8:
@@ -130,11 +131,11 @@ bool ParseInputNodeQuantSpecs(absl::string_view node_names,
 // Gets the quantization specification for input arrays. The array names are not
 // stored in the spec, and will be matched by position. The min/max will be
 // ignored if the inference_type isn't a quantized type. Returns true if failed.
-bool GetInputNodeQuantSpecs(const std::vector<std::string>& node_names,
-                            const std::vector<double>& node_mins,
-                            const std::vector<double>& node_maxs,
-                            tensorflow::DataType inference_type,
-                            QuantizationSpecs* quant_specs);
+bool GetInputNodeQuantSpecs(
+    const std::vector<std::string>& node_names,
+    const std::vector<llvm::Optional<double>>& node_mins,
+    const std::vector<llvm::Optional<double>>& node_maxs,
+    tensorflow::DataType inference_type, QuantizationSpecs* quant_specs);
 
 }  // namespace TFL
 }  // namespace mlir

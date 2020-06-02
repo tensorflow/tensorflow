@@ -1210,7 +1210,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
   def test_incompatible_checkpoint(self):
     save_path = trackable.Checkpoint().save(
         os.path.join(self.get_temp_dir(), 'ckpt'))
-    m = keras.Model()
+    m = DummySubclassModel()
     with self.assertRaisesRegexp(AssertionError, 'Nothing to load'):
       m.load_weights(save_path)
     m.dense = keras.layers.Dense(2)
@@ -1222,7 +1222,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_directory_passed(self):
     with self.cached_session():
-      m = keras.Model()
+      m = DummySubclassModel()
       v = m.add_weight(name='v', shape=[])
       self.evaluate(v.assign(42.))
       prefix = os.path.join(self.get_temp_dir(),
@@ -1235,7 +1235,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_relative_path(self):
     with self.cached_session():
-      m = keras.Model()
+      m = DummySubclassModel()
       v = m.add_weight(name='v', shape=[])
       os.chdir(self.get_temp_dir())
 
@@ -1266,7 +1266,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_nonexistent_prefix_directory(self):
     with self.cached_session():
-      m = keras.Model()
+      m = DummySubclassModel()
       v = m.add_weight(name='v', shape=[])
       self.evaluate(v.assign(42.))
       prefix = os.path.join(self.get_temp_dir(),
@@ -1275,6 +1275,11 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
       self.evaluate(v.assign(2.))
       m.load_weights(prefix)
       self.assertEqual(42., self.evaluate(v))
+
+
+class DummySubclassModel(training.Model):
+  pass
+
 
 if __name__ == '__main__':
   test.main()

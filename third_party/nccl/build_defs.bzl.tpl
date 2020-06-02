@@ -1,6 +1,6 @@
 """Repository rule for NCCL."""
 
-load("@local_config_cuda//cuda:build_defs.bzl", "cuda_default_copts")
+load("@local_config_cuda//cuda:build_defs.bzl", "cuda_default_copts", "cuda_gpu_architectures")
 load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
 
 def _gen_device_srcs_impl(ctx):
@@ -84,6 +84,7 @@ def _device_link_impl(ctx):
     cubins = []
     images = []
     for arch in ctx.attr.gpu_archs:
+        arch = arch.replace("compute_", "sm_")  # PTX is JIT-linked at runtime.
         cubin = ctx.actions.declare_file("%s_%s.cubin" % (name, arch))
         register_h = ctx.actions.declare_file("%s_register_%s.h" % (name, arch))
         ctx.actions.run(
@@ -285,7 +286,7 @@ def cuda_rdc_library(name, hdrs = None, copts = None, linkstatic = True, **kwarg
         name = dlink_hdrs,
         deps = [lib],
         out = dlink_cc,
-        gpu_archs = %{gpu_architectures},
+        gpu_archs = cuda_gpu_architectures(),
         nvlink_args = select({
             "@org_tensorflow//tensorflow:linux_x86_64": ["--cpu-arch=X86_64"],
             "@org_tensorflow//tensorflow:linux_ppc64le": ["--cpu-arch=PPC64LE"],

@@ -528,6 +528,17 @@ class AssertAllCloseTest(test.TestCase):
       x = check_ops.assert_near(t1, t2)
       assert x is None
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_doesnt_raise_complex(self):
+    x = constant_op.constant(1. + 0.1j, name="x")
+    y = constant_op.constant(1.1 + 0.1j, name="y")
+    with ops.control_dependencies([
+        check_ops.assert_near(
+            x, y, atol=0., rtol=0.5, message="failure message")
+    ]):
+      out = array_ops.identity(x)
+      self.evaluate(out)
+
 
 class AssertLessTest(test.TestCase):
 
@@ -1688,8 +1699,6 @@ class AssertShapesTest(test.TestCase):
         rank_three_shapes, array_ops.constant(1), correct_rank=3, actual_rank=0)
 
   def test_raises_dynamic_incorrect_rank(self):
-    self.skipTest("b/134600611")
-
     x_value = 5
     rank_two_shapes = [(1, 1), (1, 3), ("a", "b"), (None, None)]
     with ops.Graph().as_default():

@@ -49,6 +49,9 @@ message TfFunction {
   int64 total_tracing_count = 2;
   // Compiler used to compile this function.
   TfFunctionCompiler compiler = 3;
+  // Percentage of time spent in the expensive calls to this function in the
+  // profiled period.
+  double expensive_call_percent = 4;
 }
 
 // Statistics for all tf-functions.

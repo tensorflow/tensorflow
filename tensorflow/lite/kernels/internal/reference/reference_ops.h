@@ -59,6 +59,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/strided_slice.h"
 #include "tensorflow/lite/kernels/internal/reference/sub.h"
+#include "tensorflow/lite/kernels/internal/reference/tanh.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -1343,59 +1344,6 @@ inline void LogSoftmax(const SoftmaxParams& params,
   }
 }
 
-inline void Tanh(const RuntimeShape& input_shape, const float* input_data,
-                 const RuntimeShape& output_shape, float* output_data) {
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  for (int i = 0; i < flat_size; i++) {
-    float val = input_data[i];
-    float result = std::tanh(val);
-    output_data[i] = result;
-  }
-}
-
-// Convenience version that allows, for example, generated-code calls to be
-// uniform between data types.
-inline void Tanh(const TanhParams&, const RuntimeShape& input_shape,
-                 const float* input_data, const RuntimeShape& output_shape,
-                 float* output_data) {
-  // Drop params: not needed.
-  Tanh(input_shape, input_data, output_shape, output_data);
-}
-
-inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
-                 const int16* input_data, const RuntimeShape& output_shape,
-                 int16* output_data) {
-  const int input_left_shift = params.input_left_shift;
-  // Support for shifts is limited until we have a parameterized version of
-  // SaturatingRoundingMultiplyByPOT().
-  TFLITE_DCHECK_GE(input_left_shift, 0);
-  TFLITE_DCHECK_LE(input_left_shift, 1);
-
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  // F0 uses 0 integer bits, range [-1, 1].
-  // This is the return type of math functions such as tanh, logistic,
-  // whose range is in [-1, 1].
-  using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
-  // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
-  using F3 = gemmlowp::FixedPoint<std::int16_t, 3>;
-
-  if (input_left_shift == 0) {
-    for (int i = 0; i < flat_size; i++) {
-      F3 input = F3::FromRaw(input_data[i]);
-      F0 output = gemmlowp::tanh(input);
-      output_data[i] = output.raw();
-    }
-  } else {
-    for (int i = 0; i < flat_size; i++) {
-      F3 input = F3::FromRaw(
-          gemmlowp::SaturatingRoundingMultiplyByPOT<1>(input_data[i]));
-      F0 output = gemmlowp::tanh(input);
-      output_data[i] = output.raw();
-    }
-  }
-}
 
 inline void Dequantize(const RuntimeShape& input_shape,
                        const Eigen::half* input_data,
@@ -2597,7 +2545,7 @@ inline void HardSwish(const HardSwishParams& params,
     // significant bits in the high bits of our 16-bit fixedpoint values, so
     // that fixed-point approximate computations below are as accurate as
     // possible.
-    const int16_t input_value_on_hires_input_scale = input_value << 7;
+    const int16_t input_value_on_hires_input_scale = input_value * (1 << 7);
     // Compute the input value on essentially the output scale, just not
     // right-shifted yet. This is the value that we'll use in the (x >= +3)
     // case, and that in the general case we'll multiply against the "relu-ish"

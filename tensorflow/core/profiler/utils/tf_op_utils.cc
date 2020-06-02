@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 
+#include <string>
+#include <vector>
+
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
-#include "absl/strings/strip.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/regexp.h"
 
 namespace tensorflow {

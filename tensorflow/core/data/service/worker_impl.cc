@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/core/data/service/compression_utils.h"
+#include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/master.grpc.pb.h"
@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -84,6 +85,7 @@ Status DataServiceWorkerImpl::ProcessTask(const ProcessTaskRequest* request,
 
 Status DataServiceWorkerImpl::ProcessTaskInternal(const TaskDef& task_def)
     EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  VLOG(3) << "Received request to process task " << task_def.task_id();
   standalone::Dataset::Params params;
   std::unique_ptr<standalone::Dataset> dataset;
   TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
@@ -100,6 +102,7 @@ Status DataServiceWorkerImpl::ProcessTaskInternal(const TaskDef& task_def)
   task.id = task_def.task_id();
   task.dataset = std::move(dataset);
   task.iterator = std::move(iterator);
+  VLOG(3) << "Began processing for task " << task_def.task_id();
   return Status::OK();
 }
 
@@ -133,8 +136,33 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
 
   if (!end_of_sequence) {
     VLOG(3) << "Producing an element for task " << request->task_id();
-    TF_RETURN_IF_ERROR(service_util::Compress(
-        outputs, response->mutable_compressed_element()));
+    if (outputs.size() != 1) {
+      return errors::FailedPrecondition(
+          "Expected dataset to produce a single scalar variant tensor, but the "
+          "dataset produced ",
+          outputs.size(), " outputs");
+    }
+    if (outputs[0].dtype() != DT_VARIANT) {
+      return errors::FailedPrecondition(
+          "Expected dataset to produce a single scalar variant tensor, but "
+          "the dataset produced a tensor with type ",
+          DataTypeString(outputs[0].dtype()));
+    }
+    if (!TensorShapeUtils::IsScalar(outputs[0].shape())) {
+      return errors::FailedPrecondition(
+          "Expected dataset to produce a single scalar variant tensor, but "
+          "the dataset produced a tensor with shape ",
+          outputs[0].shape());
+    }
+    Variant& variant = outputs[0].scalar<Variant>()();
+    CompressedElement* compressed = variant.get<CompressedElement>();
+    if (compressed == nullptr) {
+      return errors::FailedPrecondition(
+          "Expected dataset to produce a CompressedElement variant tensor, but "
+          "it produced ",
+          variant.TypeName());
+    }
+    compressed->Swap(response->mutable_compressed_element());
   }
   response->set_end_of_sequence(end_of_sequence);
 

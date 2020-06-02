@@ -1,9 +1,11 @@
 """Rules for generating unit-tests using hexagon delegates."""
 
+load("//tensorflow/lite:special_rules.bzl", "tflite_hexagon_mobile_test")
+
 def hexagon_op_tests(
         srcs = [],
         deps = []):
-    """Create separate unit test targets for each test file in 'srcs'.
+    """Create both monolithic and individual unit test targets for each test file in 'srcs'.
 
     Args:
         srcs: list of test files, separate target will be created for each item in the list.
@@ -23,3 +25,17 @@ def hexagon_op_tests(
                 "notap",
             ],
         )
+
+    all_ops_test_name = "hexagon_op_tests_all"
+    native.cc_test(
+        name = all_ops_test_name,
+        srcs = srcs,
+        deps = deps,
+        linkstatic = 1,
+        tags = [
+            "no_oss",
+            "nobuilder",
+            "notap",
+        ],
+    )
+    tflite_hexagon_mobile_test(all_ops_test_name)

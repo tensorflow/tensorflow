@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
 namespace gpu {
@@ -48,23 +49,71 @@ class ElementwiseOneInput : public ElementwiseOperation {
 ElementwiseOneInput CreateElementwiseOneInput(const OperationDef& definition,
                                               const OperationType& op_type);
 
+// Class for simple two input (first input is runtime tensor and second input is
+// scalar argument) operations without any parameters, for example sub, div and
+// etc.
+class ElementwiseOneRuntimeOneScalar : public ElementwiseOperation {
+ public:
+  ElementwiseOneRuntimeOneScalar(const OperationDef& definition,
+                                 const OperationType& op_type,
+                                 FLT scalar_parameter)
+      : ElementwiseOperation(definition),
+        op_type_(op_type),
+        scalar_parameter_(scalar_parameter) {}
+
+  // Move only
+  ElementwiseOneRuntimeOneScalar(ElementwiseOneRuntimeOneScalar&& operation);
+  ElementwiseOneRuntimeOneScalar& operator=(
+      ElementwiseOneRuntimeOneScalar&& operation);
+  ElementwiseOneRuntimeOneScalar(const ElementwiseOneRuntimeOneScalar&) =
+      delete;
+  ElementwiseOneRuntimeOneScalar& operator=(
+      const ElementwiseOneRuntimeOneScalar&) = delete;
+
+  void SetLinkIndex(int index) override;
+  std::string GetCoreCode(const LinkingContext& context) const override;
+  std::string GetArgsDeclaration() const override;
+  absl::Status BindArguments(CLKernel* kernel) override;
+
+ private:
+  int link_index_;
+  OperationType op_type_;
+  FLT scalar_parameter_;
+};
+
+ElementwiseOneRuntimeOneScalar CreateElementwiseOneRuntimeOneScalar(
+    const CreationContext& creation_context, const OperationDef& definition,
+    const OperationType& op_type, float scalar_parameter);
+
 struct BroadcastSettings {
   bool width;
   bool height;
   bool channels;
 };
 
-// Class for simple two input operations without any parameters, for example
+// Class for simple two input(first input is runtime tensor and second input is
+// runtime or constant tensor) operations without any parameters, for example
 // sub, div and etc.
 class ElementwiseTwoInput : public ElementwiseOperation {
  public:
-  explicit ElementwiseTwoInput(const OperationDef& definition,
-                               const OperationType& op_type,
-                               const BroadcastSettings& broadcast)
+  ElementwiseTwoInput() = default;
+  ElementwiseTwoInput(const OperationDef& definition,
+                      const OperationType& op_type,
+                      const BroadcastSettings& broadcast)
       : ElementwiseOperation(definition),
         op_type_(op_type),
         broadcast_(broadcast),
-        use_scalar_para_(false) {}
+        use_constant_tensor_(false) {}
+
+  ElementwiseTwoInput(const OperationDef& definition,
+                      const OperationType& op_type,
+                      const BroadcastSettings& broadcast,
+                      Tensor&& constant_tensor)
+      : ElementwiseOperation(definition),
+        op_type_(op_type),
+        broadcast_(broadcast),
+        use_constant_tensor_(true),
+        constant_tensor_(std::move(constant_tensor)) {}
 
   // Move only
   ElementwiseTwoInput(ElementwiseTwoInput&& operation);
@@ -76,30 +125,30 @@ class ElementwiseTwoInput : public ElementwiseOperation {
   std::string GetCoreCode(const LinkingContext& context) const override;
   std::string GetArgsDeclaration() const override;
   absl::Status BindArguments(CLKernel* kernel) override;
-  inline void SetScalarPara(FLT scalar) {
-    scalar_para_ = scalar;
-    use_scalar_para_ = true;
-  }
 
  private:
   int link_index_;
   OperationType op_type_;
   BroadcastSettings broadcast_;
-  FLT scalar_para_;
-  bool use_scalar_para_;
+  bool use_constant_tensor_;
+  Tensor constant_tensor_;
 };
 
-ElementwiseTwoInput CreateElementwiseTwoInput(
+absl::Status CreateElementwiseTwoInput(
     const CreationContext& creation_context, const OperationDef& definition,
-    const OperationType& op_type, const BroadcastSettings& broadcast,
-    const ElementwiseAttributes* attr);
+    const OperationType& op_type,
+    const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& constant_tensor,
+    ElementwiseTwoInput* result);
 
-ElementwiseTwoInput CreateElementwiseTwoInput(
-    const OperationDef& definition, const OperationType& op_type,
-    const BroadcastSettings& broadcast);
+absl::Status CreateElementwiseTwoInput(
+    const CreationContext& creation_context, const OperationDef& definition,
+    const OperationType& op_type,
+    const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& constant_tensor,
+    ElementwiseTwoInput* result);
 
 ElementwiseTwoInput CreateElementwiseTwoInput(const OperationDef& definition,
-                                              const OperationType& op_type);
+                                              const OperationType& op_type,
+                                              const BHWC& shape);
 
 }  // namespace cl
 }  // namespace gpu

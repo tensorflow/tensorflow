@@ -53,13 +53,6 @@ NVCC_PATH = '%{nvcc_path}'
 PREFIX_DIR = os.path.dirname(GCC_HOST_COMPILER_PATH)
 NVCC_VERSION = '%{cuda_version}'
 
-
-# TODO(amitpatankar): Benchmark enabling all capabilities by default.
-# Environment variable for supported TF CUDA Compute Capabilities
-# eg. export TF_CUDA_COMPUTE_CAPABILITIES=3.5,3.7,5.2,6.0,6.1,7.0
-CUDA_COMPUTE_ENV_VAR = 'TF_CUDA_COMPUTE_CAPABILITIES'
-DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,6.0'
-
 def Log(s):
   print('gpus/crosstool: {0}'.format(s))
 
@@ -78,7 +71,8 @@ def GetOptionValue(argv, option):
   """
 
   parser = ArgumentParser()
-  parser.add_argument('-' + option, nargs='*', action='append')
+  parser.add_argument(option, nargs='*', action='append')
+  option = option.lstrip('-').replace('-', '_')
   args, _ = parser.parse_known_args(argv)
   if not args or not vars(args)[option]:
     return []
@@ -180,17 +174,17 @@ def InvokeNvcc(argv, log=False):
 
   host_compiler_options = GetHostCompilerOptions(argv)
   nvcc_compiler_options = GetNvccOptions(argv)
-  opt_option = GetOptionValue(argv, 'O')
-  m_options = GetOptionValue(argv, 'm')
+  opt_option = GetOptionValue(argv, '-O')
+  m_options = GetOptionValue(argv, '-m')
   m_options = ''.join([' -m' + m for m in m_options if m in ['32', '64']])
-  include_options = GetOptionValue(argv, 'I')
-  out_file = GetOptionValue(argv, 'o')
-  depfiles = GetOptionValue(argv, 'MF')
-  defines = GetOptionValue(argv, 'D')
+  include_options = GetOptionValue(argv, '-I')
+  out_file = GetOptionValue(argv, '-o')
+  depfiles = GetOptionValue(argv, '-MF')
+  defines = GetOptionValue(argv, '-D')
   defines = ''.join([' -D' + define for define in defines])
-  undefines = GetOptionValue(argv, 'U')
+  undefines = GetOptionValue(argv, '-U')
   undefines = ''.join([' -U' + define for define in undefines])
-  std_options = GetOptionValue(argv, 'std')
+  std_options = GetOptionValue(argv, '-std')
   # Supported -std flags as of CUDA 9.0. Only keep last to mimic gcc/clang.
   nvcc_allowed_std_options = ["c++03", "c++11", "c++14"]
   std_options = ''.join([' -std=' + define
@@ -198,7 +192,7 @@ def InvokeNvcc(argv, log=False):
 
   # The list of source files get passed after the -c option. I don't know of
   # any other reliable way to just get the list of source files to be compiled.
-  src_files = GetOptionValue(argv, 'c')
+  src_files = GetOptionValue(argv, '-c')
 
   # Pass -w through from host to nvcc, but don't do anything fancier with
   # warnings-related flags, since they're not necessarily the same across
@@ -224,13 +218,16 @@ def InvokeNvcc(argv, log=False):
   srcs = ' '.join(src_files)
   out = ' -o ' + out_file[0]
 
-  supported_cuda_compute_capabilities = [ %{cuda_compute_capabilities} ]
   nvccopts = '-D_FORCE_INLINES '
-  for capability in supported_cuda_compute_capabilities:
-    capability = capability.replace('.', '')
-    nvccopts += r'-gencode=arch=compute_%s,\"code=sm_%s,compute_%s\" ' % (
-        capability, capability, capability)
-  nvccopts += ' ' + nvcc_compiler_options
+  for capability in GetOptionValue(argv, "--cuda-gpu-arch"):
+    capability = capability[len('sm_'):]
+    nvccopts += r'-gencode=arch=compute_%s,\"code=sm_%s\" ' % (capability,
+                                                               capability)
+  for capability in GetOptionValue(argv, '--cuda-include-ptx'):
+    capability = capability[len('sm_'):]
+    nvccopts += r'-gencode=arch=compute_%s,\"code=compute_%s\" ' % (capability,
+                                                                    capability)
+  nvccopts += nvcc_compiler_options
   nvccopts += undefines
   nvccopts += defines
   nvccopts += std_options
@@ -272,6 +269,7 @@ def main():
   if args.x and args.x[0] == 'cuda':
     if args.cuda_log: Log('-x cuda')
     leftover = [pipes.quote(s) for s in leftover]
+    args.cuda_log = True
     if args.cuda_log: Log('using nvcc')
     return InvokeNvcc(leftover, log=args.cuda_log)
 

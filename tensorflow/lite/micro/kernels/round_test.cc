@@ -39,7 +39,7 @@ void TestRound(const int* input_dims_data, const float* input_data,
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_ROUND, 1);
+      resolver.FindOp(tflite::BuiltinOperator_ROUND);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   int inputs_array_data[] = {1, 0};

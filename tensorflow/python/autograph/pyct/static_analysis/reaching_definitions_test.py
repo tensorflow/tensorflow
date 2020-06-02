@@ -255,6 +255,9 @@ class ReachingDefinitionsAnalyzerTest(ReachingDefinitionsAnalyzerTestBase):
 
     inner_fn_body = fn_body[1].body[1].body
     def_of_a_in_foo = inner_fn_body[0].value
+    # Even though `a` is visible in the inner functio above, the late binding
+    # makes it impossible to assume that the same value will be visible at
+    # call time.
     self.assertHasDefs(def_of_a_in_foo, 0)
 
   def test_nested_functions_isolation(self):
@@ -388,6 +391,46 @@ class ReachingDefinitionsAnalyzerTest(ReachingDefinitionsAnalyzerTestBase):
     def test_fn():
       def a():
         pass
+      if a:  # pylint:disable=using-constant-test
+        a = None
+      return a
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasDefs(fn_body[1].test, 1)
+    self.assertHasDefs(fn_body[1].body[0].targets[0], 1)
+    self.assertHasDefs(fn_body[2].value, 2)
+
+    self.assertHasDefinedIn(fn_body[1], ('a',))
+
+  def test_definitions_in_except_block(self):
+
+    def test_fn():
+      try:
+        pass
+      except ValueError:
+        a = None
+      if a:  # pylint:disable=using-constant-test
+        a = None
+      return a
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasDefs(fn_body[1].test, 1)
+    self.assertHasDefs(fn_body[1].body[0].targets[0], 1)
+    self.assertHasDefs(fn_body[2].value, 2)
+
+    self.assertHasDefinedIn(fn_body[1], ('a',))
+
+  def test_definitions_in_except_block_of_raising_try(self):
+
+    def test_fn():
+      try:
+        raise ValueError()
+      except ValueError:
+        a = None
       if a:  # pylint:disable=using-constant-test
         a = None
       return a

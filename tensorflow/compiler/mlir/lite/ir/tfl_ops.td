@@ -20,7 +20,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
-include "mlir/Interfaces/SideEffects.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
 include "tensorflow/compiler/mlir/lite/quantization/quantization.td"
 
@@ -161,7 +161,6 @@ class TFL_VariadicTensorOf<list<Type> allowedRuntimeTypes,
   Variadic<TensorOf<allowedOpTypes>>,
   TFL_RuntimeType<Variadic<TensorOf<allowedRuntimeTypes>>>;
 
-def TFL_Uint8 : UI<8>;
 def TFL_Int32Or64 : SignlessIntOfWidths<[32, 64]>;
 
 def TFL_BoolTensor : TFL_TensorOf<[I1]>;
@@ -228,10 +227,14 @@ class TFL_OperandHasAtleastRank<int n, int m> :
 
 class TFL_OperandRankEquals1DimOfOperand<int x, int y> :
   PredOpTrait<"operand " # x # "'s rank equals operand " # y # "'s size",
-    CPred<"$_op.getOperand(" # x #
-      ").getType().cast<ShapedType>().getRank() == "
-      "$_op.getOperand(" # y #
-      ").getType().cast<ShapedType>().getShape()[0]">>;
+    Or<[TFL_OperandIsUnrankedPred<x>,
+        TFL_OperandIsUnrankedPred<y>,
+        CPred<"!$_op.getOperand(" # y #
+          ").getType().cast<ShapedType>().hasStaticShape()">,
+        CPred<"$_op.getOperand(" # x #
+          ").getType().cast<ShapedType>().getRank() == "
+          "$_op.getOperand(" # y #
+          ").getType().cast<ShapedType>().getShape()[0]">]>>;
 
 class TFL_Operand0DOr1ElementTensor<int x> :
   PredOpTrait<"operand #" # x # " is an 0-d tensor or 1-d tensor w/ 1 element",
@@ -247,7 +250,22 @@ class TFL_TFTypesWithSameBits<int i, int j, int num> :
     Or<[CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isa<mlir::TF::Quint" # num # "Type>()">,
         CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isUnsignedInteger(" # num # ")">]>]>;
 
-class TFL_OperandIsNoneOrHasRankLessThanOrEqualTo<int n, int m> :
+class TFL_TFOperandTypesWithSameBits<int i, int j, int num> :
+  And<[
+    Or<[CPred<"getElementTypeOrSelf($_op.getOperand(" # i # ")).isa<mlir::TF::Quint" # num # "Type>()">,
+        CPred<"getElementTypeOrSelf($_op.getOperand(" # i # ")).isUnsignedInteger(" # num # ")">]>,
+    Or<[CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isa<mlir::TF::Quint" # num # "Type>()">,
+        CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isUnsignedInteger(" # num # ")">]>]>;
+
+class TFL_OperandIsNoneOrHasRank<int n, int m> :
+  PredOpTrait<"operand " # n # " is " # m # "-D",
+    Or<[
+      CPred<"$_op.getOperand(" # n # ").getType().isa<NoneType>()">,
+      TFL_OperandIsUnrankedPred<n>,
+      CPred<"$_op.getOperand(" # n #
+      ").getType().cast<ShapedType>().getRank() == " # m>]>>;
+
+class TFL_OperandIsNoneOrHasRankAtMost<int n, int m> :
   PredOpTrait<"operand " # n # " is at most " # m # "-D",
     Or<[
       CPred<"$_op.getOperand(" # n # ").getType().isa<NoneType>()">,
@@ -255,13 +273,13 @@ class TFL_OperandIsNoneOrHasRankLessThanOrEqualTo<int n, int m> :
       CPred<"$_op.getOperand(" # n #
       ").getType().cast<ShapedType>().getRank() <= " # m>]>>;
 
-class TFL_OperandHasRankLessThanOrEqualTo<int n, int m> :
+class TFL_OperandHasRankAtMost<int n, int m> :
   PredOpTrait<"operand " # n # " is at most " # m # "-D",
     Or<[TFL_OperandIsUnrankedPred<n>,
       CPred<"$_op.getOperand(" # n #
       ").getType().cast<ShapedType>().getRank() <= " # m>]>>;
 
-class TFL_OperandHasRankGreaterThanOrEqualTo<int n, int m> :
+class TFL_OperandHasRankAtLeast<int n, int m> :
   PredOpTrait<"operand " # n # " is at least " # m # "-D",
     Or<[TFL_OperandIsUnrankedPred<n>,
       CPred<"$_op.getOperand(" # n #
@@ -275,16 +293,32 @@ class TFL_OperandHasRankRange<int n, int x, int y> :
       "getRank() <= " # y>]>>;
 
 def TFL_FloatNonNegative : AttrConstraint<
-    CPred<"!$_self.cast<FloatAttr>().getValue().isNegative()">,
+    CPred<"$_self.isa<FloatAttr>() && "
+            "!$_self.cast<FloatAttr>().getValue().isNegative()">,
     "whose value is non-negative">;
 
-def TFL_BoolTrue: AttrConstraint<
-    CPred<"$_self.cast<BoolAttr>().getValue()">,
+def TFL_BoolTrue : AttrConstraint<
+    CPred<"$_self.isa<BoolAttr>() && $_self.cast<BoolAttr>().getValue()">,
     "whose value is true">;
 
-def TFL_BoolFalse: AttrConstraint<
-    CPred<"!$_self.cast<BoolAttr>().getValue()">,
+def TFL_BoolFalse : AttrConstraint<
+    CPred<"$_self.isa<BoolAttr>() && !$_self.cast<BoolAttr>().getValue()">,
     "whose value is false">;
+
+class TFL_StringEqualsTo<string value> : AttrConstraint<
+    CPred<"$_self.cast<StringAttr>().getValue() == \"" # value # "\"">,
+    "whose value equals to '" # value # "'">;
+
+// Ensures the array attribute's size is within the given maximum size.
+class TFL_ArrayMaxCount<int n> : AttrConstraint<
+    CPred<"$_self.isa<ArrayAttr>() && $_self.cast<ArrayAttr>().size() <= " # n>,
+    "whose size is at most " # n>;
+
+// Ensures the given integer attribute has the given value.
+class TFL_IntEqualsTo<int n> : AttrConstraint<
+    CPred<"$_self.isa<IntegerAttr>() && "
+            "$_self.cast<IntegerAttr>().getInt() == " # n>,
+    "whose value is " # n>;
 
 // This is a quantization-aware version of TCresVTEtIsSameAsOp
 class TFL_TCresVTEtIsSameAsOp<int i, int j> : And<[
@@ -299,6 +333,18 @@ class TFL_TCresVTEtIsSameAsOp<int i, int j> : And<[
                 "getElementTypeOrSelf($_op.getResult(" # i # "))) == "
             "quant::QuantizedType::castToStorageType("
                 "getElementTypeOrSelf($_op.getOperand(" # j # ")))">]>]>]>;
+
+// This is a quantization-aware version of TCresVTEtIsSameAsOp
+class TFL_TCopVTEtAreSameAt<int i, int j> : Or<[
+  TCopVTEtAreSameAt<[i, j]>,
+  TFL_TFOperandTypesWithSameBits<i, j, 8>,
+  And<[
+    SubstLeaves<"$_self", "getElementTypeOrSelf($_op.getOperand(" # j # "))",
+      quant_QuantizedType.predicate>,
+    CPred<"quant::QuantizedType::castToStorageType("
+              "getElementTypeOrSelf($_op.getOperand(" # i # "))) == "
+          "quant::QuantizedType::castToStorageType("
+              "getElementTypeOrSelf($_op.getOperand(" # j # ")))">]>]>;
 
 //===----------------------------------------------------------------------===//
 // TFL op common constraints.
@@ -395,9 +441,9 @@ class TFL_ConvOp<string mnemonic, string opSummary, int index> :
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, QI8, QUI8]>:$input,
+    ins TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$input,
     TFL_TensorOf<[F32, QI8, QUI8]>:$filter,
-    TFL_TensorOfOrNone<[F32, I32]>:$bias,
+    TFL_TensorOfOrNone<[F32, I32, I64]>:$bias,
     I32Attr:$dilation_h_factor,
     I32Attr:$dilation_w_factor,
     TFL_AFAttr:$fused_activation_function,
@@ -406,7 +452,7 @@ class TFL_ConvOp<string mnemonic, string opSummary, int index> :
     I32Attr:$stride_w
   );
 
-  let results = (outs TFL_TensorOf<[F32, QI8, QUI8]>:$output);
+  let results = (outs TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$output);
 
   let hasOptions = 0b1;
 }
@@ -437,7 +483,10 @@ an output element, this operation computes \\(y = |x|\\).
 
 def TFL_AddOp : TFL_Op<"add", [
     TFL_BinaryOperandsHaveSameShapesOrBroadcastableShape<0, 1, 5>,
-    ResultsBroadcastableShape, NoSideEffect, Commutative, TFL_GpuTargetOp]> {
+    ResultsBroadcastableShape,
+    NoSideEffect,
+    Commutative,
+    TFL_GpuTargetOp]> {
   let summary = "Addition operator";
 
   let description = [{
@@ -505,8 +554,14 @@ retained with length 1.
   let customOption = "ReducerOptions";
 }
 
-def TFL_TransposeConvOp:
-    TFL_Op<"transpose_conv", [NoSideEffect, TFL_GpuTargetOp]> {
+def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
+    NoSideEffect,
+    TFL_OperandHasRank<0, 1>,
+    TFL_OperandHasRank<1, 4>,
+    TFL_OperandHasRank<2, 4>,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 2>>,
+    TFL_GpuTargetOp]> {
   let summary = "Transpose convolution operator";
 
   let description = [{
@@ -514,16 +569,16 @@ def TFL_TransposeConvOp:
   }];
 
   let arguments = (ins
-    TFL_1DTensorOf<[I32]>:$output_shape,
-    TFL_TensorOf<[F32, TFL_Uint8, QI8, QUI8]>:$weights,
-    TFL_TensorOf<[F32, TFL_Uint8, QI8, QUI8]>:$input,
-    TFL_TensorOfOrNone<[F32, QI32, QUI32]>:$bias,
+    TFL_I32Tensor:$output_shape,
+    TFL_TensorOf<[F32, QI8, QUI8]>:$weights,
+    TFL_TensorOf<[F32, QI8, QUI8]>:$input,
+    TFL_TensorOfOrNone<[F32, QI32]>:$bias,
     TFL_PaddingAttr:$padding,
-    I32Attr:$stride_h,
-    I32Attr:$stride_w
+    Confined<I32Attr, [IntPositive]>:$stride_h,
+    Confined<I32Attr, [IntPositive]>:$stride_w
   );
 
-  let results = (outs AnyTensor:$output);
+  let results = (outs TFL_TensorOf<[F32, QI8, QUI8]>:$output);
 
   let hasOptions = 1;
 
@@ -565,7 +620,7 @@ def TFL_ArgMaxOp : TFL_Op<"arg_max", [NoSideEffect]> {
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I32, I8, TFL_Uint8, QI8, QUI8]>:$input,
+    ins TFL_TensorOf<[F32, I32, I8, UI8, QI8, QUI8]>:$input,
     TFL_I32OrI64Tensor:$dim
   );
 
@@ -595,7 +650,7 @@ def TFL_ArgMinOp : TFL_Op<"arg_min", [NoSideEffect]> {
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I32, I8, TFL_Uint8, QI8, QUI8]>:$input,
+    ins TFL_TensorOf<[F32, I32, I8, UI8, QI8, QUI8]>:$input,
     TFL_I32OrI64Tensor:$dim
   );
 
@@ -642,14 +697,14 @@ def TFL_ConcatenationOp : TFL_Op<"concatenation",
 
   let arguments = (
     ins TFL_VariadicTensorOf<
-      [F32, I64, I32, I16, I8, QI8, QUI8, TFL_Uint8]>:$values,
+      [F32, I64, I32, I16, I8, QI8, QUI8, UI8]>:$values,
     I32Attr:$axis,
     TFL_AFAttr:$fused_activation_function
   );
 
   let results = (outs
     TFL_TensorOf<
-      [F32, I64, I32, I16, I8, QI8, QUI8, TFL_Uint8]>:$output
+      [F32, I64, I32, I16, I8, QI8, QUI8, UI8]>:$output
   );
 
   let hasOptions = 1;
@@ -713,7 +768,8 @@ def SparsityParameterAttr : StructAttr<"SparsityParameterAttr", TFL_Dialect, [
   let storageType = [{ TFL::SparsityParameterAttr }];
 }
 
-def TFL_SparseConstOp : Op<TFL_Dialect, "pseudo_sparse_const", [NoSideEffect,
+def TFL_SparseConstOp : Op<TFL_Dialect, "pseudo_sparse_const", [
+    NoSideEffect,
     FirstAttrDerivedResultType]> {
   let summary = "Sparse constant pseudo op.";
 
@@ -924,12 +980,12 @@ def TFL_GatherNdOp : TFL_Op<"gather_nd", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I8, I64, I32, TFL_Uint8, TFL_Str]>:$params,
+    TFL_TensorOf<[F32, I8, I64, I32, UI8, TFL_Str]>:$params,
     TFL_I32OrI64Tensor:$indices
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I8, I64, I32, TFL_Uint8, TFL_Str]>:$output
+    TFL_TensorOf<[F32, I8, I64, I32, UI8, TFL_Str]>:$output
   );
 }
 
@@ -948,12 +1004,12 @@ def TFL_ScatterNdOp : TFL_Op<"scatter_nd", [
 
   let arguments = (ins
     TFL_TensorOf<[I32]>:$indices,
-    TFL_TensorOf<[F32, I8, I64, I32, TFL_Uint8]>:$updates,
+    TFL_TensorOf<[F32, I8, I64, I32, UI8]>:$updates,
     TFL_1DTensorOf<[I32]>:$shape
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I8, I64, I32, TFL_Uint8]>:$output
+    TFL_TensorOf<[F32, I8, I64, I32, UI8]>:$output
   );
 
   let verifier = [{ return Verify(*this); }];
@@ -963,7 +1019,11 @@ def TFL_ScatterNdOp : TFL_Op<"scatter_nd", [
 
 // Same type check of lhs and rhs is handled by the ResultsBroadcastableShape trait.
 def TFL_LessEqualOp : TFL_Op<"less_equal", [
-    ResultsBroadcastableShape, NoSideEffect, NoQuantizableResult]> {
+    ResultsBroadcastableShape,
+    BinaryOpSameElementTypeConstraint,
+    TFL_BinaryOperandsHaveSameShapesOrBroadcastableShape<0, 1, 4>,
+    NoSideEffect,
+    NoQuantizableResult]> {
   let summary = "Less_equal operator";
 
   let description = [{
@@ -971,8 +1031,8 @@ def TFL_LessEqualOp : TFL_Op<"less_equal", [
   }];
 
   let arguments = (
-      ins TFL_TensorOf<[F32, I32, I64, I8, QI8, QUI8, TFL_Uint8]>:$lhs,
-      TFL_TensorOf<[F32, I32, I64, I8, QI8, QUI8, TFL_Uint8]>:$rhs);
+      ins TFL_TensorOf<[F32, I32, I64, QI8, QUI8]>:$lhs,
+      TFL_TensorOf<[F32, I32, I64, QI8, QUI8]>:$rhs);
 
   let results = (outs TFL_BoolTensor:$output);
 
@@ -985,9 +1045,12 @@ def TFL_LessEqualOp : TFL_Op<"less_equal", [
   let hasOptions = 0;
 }
 
-def TFL_LocalResponseNormalizationOp : TFL_Op<"local_response_normalization",
-                                             [NoSideEffect]> {
-    let summary = "Local Response Normalization.";
+def TFL_LocalResponseNormalizationOp : TFL_Op<"local_response_normalization", [
+    TFL_OperandHasRank<0, 4>,
+    SameOperandsAndResultShape,
+    SameOperandsAndResultType,
+    NoSideEffect]> {
+  let summary = "Local Response Normalization.";
 
   let description = [{
 The 4-D `input` tensor is treated as a 3-D array of 1-D vectors (along the last
@@ -1004,7 +1067,7 @@ convolutional neural networks (NIPS 2012)](http://papers.nips.cc/paper/4824-imag
   }];
 
   let arguments = (ins
-      TFL_TensorOf<[F32, QI8, QUI8]>:$input,
+      TFL_FpTensor:$input,
       I32Attr:$radius,
       F32Attr:$bias,
       F32Attr:$alpha,
@@ -1012,7 +1075,7 @@ convolutional neural networks (NIPS 2012)](http://papers.nips.cc/paper/4824-imag
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, QI8, QUI8]>:$output
+    TFL_FpTensor:$output
   );
 
   let hasOptions = 1;
@@ -1048,7 +1111,7 @@ def TFL_MatrixDiagOp : TFL_Op<"matrix_diag", [
   NoSideEffect,
   TFL_OperandHasAtleastRank<0, 1>,
   PredOpTrait<"operand and result must have the same element type",
-    TCresVTEtIsSameAsOp<0, 0>>]> {
+    TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
   let summary = [{
     Returns a tensor with the provided diagonal and everything else padded with zeros.
   }];
@@ -1061,17 +1124,21 @@ def TFL_MatrixDiagOp : TFL_Op<"matrix_diag", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I8, I64, I32, TFL_Uint8]>:$diagonal
+    TFL_TensorOf<[F32, I8, I16, I32, I64, UI8, QUI8, QI8, TFL_Quint8]>:$diagonal
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I8, I64, I32, TFL_Uint8]>:$output
+    TFL_TensorOf<[F32, I8, I16, I32, I64, UI8, QUI8, QI8, TFL_Quint8]>:$output
   );
 
   let hasOptions = 0;
 }
 
-def TFL_MatrixSetDiagOp : TFL_Op<"matrix_set_diag", [NoSideEffect]> {
+def TFL_MatrixSetDiagOp : TFL_Op<"matrix_set_diag", [
+    TFL_OperandHasAtleastRank<0, 2>,
+    PredOpTrait<"input and result must have the same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    NoSideEffect]> {
   let summary = [{
     Returns a batched matrix tensor with new batched diagonal values.
   }];
@@ -1083,12 +1150,12 @@ innermost matrices.  These will be overwritten by the values in `diagonal`.
   }];
 
   let arguments = (ins
-    TensorOf<[F32, I32, I64, I8, QI8, QI16, QUI8, TFL_Uint8, TFL_Quint8]>:$input,
-    TensorOf<[F32, I32, I64, I8, QI8, QI16, QUI8, TFL_Uint8, TFL_Quint8]>:$diagonal
+    TensorOf<[F32, I8, I16, I32, I64, UI8, QI8, QI16, QUI8, TFL_Quint8]>:$input,
+    TensorOf<[F32, I8, I16, I32, I64, UI8, QI8, QI16, QUI8, TFL_Quint8]>:$diagonal
   );
 
   let results = (outs
-    TensorOf<[F32, I32, I64, I8, QI8, QI16, QUI8, TFL_Uint8, TFL_Quint8]>:$output
+    TensorOf<[F32, I8, I16, I32, I64, UI8, QI8, QI16, QUI8, TFL_Quint8]>:$result
   );
 
   let hasOptions = 0;
@@ -1206,7 +1273,12 @@ larger than 0.
 }
 
 def TFL_NotEqualOp : TFL_Op<"not_equal", [
-    ResultsBroadcastableShape, Commutative, NoSideEffect, NoQuantizableResult]> {
+    TFL_BinaryOperandsHaveSameShapesOrBroadcastableShape<0, 1, 4>,
+    BinaryOpSameElementTypeConstraint,
+    ResultsBroadcastableShape,
+    Commutative,
+    NoSideEffect,
+    NoQuantizableResult]> {
   let summary = "Not_equal operator";
 
   let description = [{
@@ -1214,8 +1286,8 @@ def TFL_NotEqualOp : TFL_Op<"not_equal", [
   }];
 
   let arguments = (
-      ins AnyTensor:$lhs,
-      AnyTensor:$rhs);
+      ins TFL_TensorOf<[I1, F32, I32, I64, QUI8, QI8, TFL_Quint8, TFL_Str]>:$lhs,
+      TFL_TensorOf<[I1, F32, I32, I64, QUI8, QI8, TFL_Quint8, TFL_Str]>:$rhs);
 
   let results = (outs TFL_BoolTensor:$output);
 
@@ -1234,8 +1306,10 @@ def TFL_NotEqualOp : TFL_Op<"not_equal", [
 }
 
 def TFL_DivOp : TFL_Op<"div", [
-  // TODO(fengliuai): NoQuantizableResult is only correct for int8
-  // quantization. update to handle Uint8 quantization.
+    // TODO(fengliuai): NoQuantizableResult is only correct for int8
+    // quantization. update to handle Uint8 quantization.
+    BinaryOpSameElementTypeConstraint,
+    TFL_BinaryOperandsHaveSameShapesOrBroadcastableShape<0, 1, 5>,
     ResultsBroadcastableShape,
     NoSideEffect,
     NoQuantizableResult,
@@ -1248,10 +1322,10 @@ def TFL_DivOp : TFL_Op<"div", [
 
   let arguments = (
       ins TFL_TensorOf<[F32, I32, QUI8]>:$lhs,
-      TFL_TensorOf<[F32, I32, TFL_Uint8]>:$rhs,
+      TFL_TensorOf<[F32, I32, QUI8]>:$rhs,
       TFL_AFAttr:$fused_activation_function);
 
-  let results = (outs TFL_TensorOf<[F32, I32, TFL_Uint8]>:$output);
+  let results = (outs TFL_TensorOf<[F32, I32, QUI8]>:$output);
 
   let builders = [TFL_FusedBroadcastableBinaryBuilder];
 
@@ -1284,7 +1358,7 @@ def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
      PredOpTrait<"value and output must have same element type",
        TFL_TCresVTEtIsSameAsOp<0, 1>>,
      TFL_OperandHasRank<0, 1>,
-     TFL_OperandHasRankGreaterThanOrEqualTo<1, 2>
+     TFL_OperandHasRankAtLeast<1, 2>
     ]> {
   let summary = "Embedding lookup operator";
 
@@ -1294,10 +1368,10 @@ def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
 
   let arguments = (ins
     TFL_TensorOf<[I32]>:$lookup,
-    TFL_TensorOf<[F32, I8, TFL_Uint8]>:$value
+    TFL_TensorOf<[F32, I8, UI8]>:$value
    );
 
-  let results = (outs TFL_TensorOf<[F32, I8, TFL_Uint8]>:$output);
+  let results = (outs TFL_TensorOf<[F32, I8, UI8]>:$output);
 }
 
 def TFL_EqualOp: TFL_Op<"equal", [Commutative, ResultsBroadcastableShape,
@@ -1313,8 +1387,8 @@ def TFL_EqualOp: TFL_Op<"equal", [Commutative, ResultsBroadcastableShape,
 
   let arguments = (
     ins
-    TFL_TensorOf<[I1, F32, I32, I64, QI8, QUI8, TFL_Uint8, TFL_Str]>:$x,
-    TFL_TensorOf<[I1, F32, I32, I64, QI8, QUI8, TFL_Uint8, TFL_Str]>:$y
+    TFL_TensorOf<[I1, F32, I32, I64, QI8, QUI8, UI8, TFL_Str]>:$x,
+    TFL_TensorOf<[I1, F32, I32, I64, QI8, QUI8, UI8, TFL_Str]>:$y
   );
 
   let results = (outs TFL_BoolTensor:$output);
@@ -1394,7 +1468,7 @@ def TFL_SqueezeOp: TFL_Op<"squeeze", [NoSideEffect,
 Given a tensor `input`, this operation returns a tensor of the same type with
 all dimensions of size 1 removed. If you don't want to remove all size 1
 dimensions, you can remove specific size 1 dimensions by specifying
-`axis`.
+`squeeze_dims`.
 
 For example:
 
@@ -1413,7 +1487,7 @@ shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
 
   let arguments = (ins
     AnyTensor:$input,
-    DefaultValuedAttr<I64ArrayAttr, "{}">:$squeeze_dims
+    Confined<DefaultValuedAttr<I64ArrayAttr, "{}">, [TFL_ArrayMaxCount<8>]>:$squeeze_dims
   );
 
   let results = (outs
@@ -1502,7 +1576,11 @@ def TFL_FloorModOp : TFL_Op<"floor_mod", [
 }
 
 def TFL_GreaterOp : TFL_Op<"greater", [
-    ResultsBroadcastableShape, NoSideEffect, NoQuantizableResult]> {
+    ResultsBroadcastableShape,
+    BinaryOpSameElementTypeConstraint,
+    TFL_BinaryOperandsHaveSameShapesOrBroadcastableShape<0, 1, 4>,
+    NoSideEffect,
+    NoQuantizableResult]> {
   let summary = "Greater operator";
 
   let description = [{
@@ -1510,10 +1588,10 @@ def TFL_GreaterOp : TFL_Op<"greater", [
   }];
 
   let arguments = (
-    ins AnyTensor:$lhs,
-    AnyTensor:$rhs);
+    ins TFL_TensorOf<[F32, I32, I64, QUI8, QI8, TFL_Quint8]>:$lhs,
+    TFL_TensorOf<[F32, I32, I64, QUI8, QI8, TFL_Quint8]>:$rhs);
 
-  let results = (outs AnyTensor:$output);
+  let results = (outs TFL_BoolTensor:$output);
 
   let builders = [TFL_ComparisonBinaryBuilder];
 
@@ -1522,9 +1600,12 @@ def TFL_GreaterOp : TFL_Op<"greater", [
   let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 }
 
-def TFL_HardSwishOp: TFL_Op<"hard_swish", [NoSideEffect,
-                                          SameOperandsAndResultShape,
-                                          TFL_GpuTargetOp]> {
+def TFL_HardSwishOp: TFL_Op<"hard_swish", [
+    NoSideEffect,
+    SameOperandsAndResultShape,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    TFL_GpuTargetOp]> {
   let summary = "Hardswish activation function.";
   let description = [{
     Computes hard-swish activation function
@@ -1534,7 +1615,7 @@ def TFL_HardSwishOp: TFL_Op<"hard_swish", [NoSideEffect,
 
   let arguments = (ins TFL_TensorOf<[F32, QUI8, QI8]>:$input);
 
-  let results = (outs TFL_TensorOf<[F32, QUI8, QI8]>:$out);
+  let results = (outs TFL_TensorOf<[F32, QUI8, QI8]>:$output);
 
   let hasOptions = 0;
 }
@@ -1563,29 +1644,35 @@ def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [NoSideEffect,
   let customOption = "L2NormOptions";
 }
 
-def TFL_LeakyReluOp: TFL_Op<"leaky_relu", [NoSideEffect, SameOperandsAndResultType]> {
+def TFL_LeakyReluOp: TFL_Op<"leaky_relu", [
+    SameOperandsAndResultShape,
+    NoSideEffect,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
   let summary = "Leaky Relu operator";
 
-  // TODO(jpienaar): Add type restriction. This op is only defined for
-  // restricted (floating point) types.
   let description = [{
     Element-wise Leaky ReLU operator
       x -> x >= 0 ? x : (alpha * x)
   }];
 
   let arguments = (
-    ins AnyTensor:$input,
+    ins TFL_TensorOf<[F32, QUI8, QI8, TFL_Quint8]>:$input,
     // Slope of the activation function at x < 0.
     F32Attr:$alpha
   );
 
-  let results = (outs AnyTensor:$output);
+  let results = (outs TFL_TensorOf<[F32, QUI8, QI8, TFL_Quint8]>:$output);
 
   let hasOptions = 0b1;
 }
 
 def TFL_LessOp : TFL_Op<"less", [
-    ResultsBroadcastableShape, NoSideEffect, NoQuantizableResult]> {
+    ResultsBroadcastableShape,
+    BinaryOpSameElementTypeConstraint,
+    TFL_BinaryOperandsHaveSameShapesOrBroadcastableShape<0, 1, 4>,
+    NoSideEffect,
+    NoQuantizableResult]> {
   let summary = "Less operator";
 
   let description = [{
@@ -1593,8 +1680,8 @@ def TFL_LessOp : TFL_Op<"less", [
   }];
 
   let arguments = (
-    ins AnyTensor:$lhs,
-    AnyTensor:$rhs);
+    ins TFL_TensorOf<[F32, I32, I64, QUI8, QI8, TFL_Quint8]>:$lhs,
+    TFL_TensorOf<[F32, I32, I64, QUI8, QI8, TFL_Quint8]>:$rhs);
 
   let results = (outs TFL_BoolTensor:$output);
 
@@ -1655,11 +1742,14 @@ def TFL_LogicalOrOp : TFL_Op<"logical_or", [NoSideEffect]> {
 
 def TFL_LogisticOp: TFL_Op<"logistic", [
     NoSideEffect,
+    PredOpTrait<"x and y must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
     SameOperandsAndResultShape,
     // zero_point = 0
     // scale = 1. / (max_value + 1)
     FixedResultScale<Int8UniformQuantizedType<-128, 390625, -8>>,
     FixedResultScale<UInt8UniformQuantizedType<0, 390625, -8>>,
+    FixedOutputRangeInterface,
     TFL_GpuTargetOp]> {
   let summary = "Logistic operator";
 
@@ -1667,9 +1757,39 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
     Computes element-wise Sigmoid of input
   }];
 
-  let arguments = (ins TFL_TensorOf<[F32, QI8, QUI8, QI16, QUI16]>:$x);
+  let arguments = (ins TFL_TensorOf<[F32, QI8, QUI8, QI16, TFL_Quint8]>:$x);
 
-  let results = (outs TFL_TensorOf<[F32, QI8, QUI8, QI16, QUI16]>:$y);
+  let results = (outs TFL_TensorOf<[F32, QI8, QUI8, QI16, TFL_Quint8]>:$y);
+
+  let extraClassDeclaration = [{
+  // FixedOutputRangeInterface:
+  quant::UniformQuantizedType GetFixedOutputRange(
+      bool is_signed, int bit_width) {
+    auto result_type = y().getType().cast<ShapedType>();
+    if (!result_type.getElementType().isa<FloatType>()) return {};
+    Builder builder(result_type.getContext());
+
+    // Only support 8-bits
+    if (bit_width != 8) return {};
+    IntegerType storage_type = builder.getIntegerType(bit_width);
+
+    double scale = 1.0 / 256;
+    int64_t zero_point, storage_min, storage_max;
+    if (is_signed) {
+      zero_point = -128;
+      storage_min = -128;
+      storage_max = 127;
+    } else {
+      zero_point = 0;
+      storage_min = 0;
+      storage_max = 255;
+    }
+
+    return quant::UniformQuantizedType::getChecked(
+        is_signed, storage_type, result_type.getElementType(), scale,
+        zero_point, storage_min, storage_max, builder.getUnknownLoc());
+  }
+  }];
 }
 
 def TFL_LogOp: TFL_Op<"log", [
@@ -1690,10 +1810,11 @@ def TFL_LogOp: TFL_Op<"log", [
   let hasFolder = 1;
 }
 
-// TODO(b/130643170): Adds some constraint for the input/output element types.
 def TFL_LogSoftmaxOp : TFL_Op<"log_softmax", [
     NoSideEffect,
     SameOperandsAndResultShape,
+    PredOpTrait<"x and y must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
     // zero_point = max_value
     // scale = -log_softmax_output_min / (max_value + 1)
     FixedResultScale<Int8UniformQuantizedType<127, 625, -4>>,
@@ -1706,9 +1827,9 @@ def TFL_LogSoftmaxOp : TFL_Op<"log_softmax", [
       input - log(reduce_sum(exp(input), dim))
   }];
 
-  let arguments = (ins AnyTensor:$input);
+  let arguments = (ins TFL_TensorOf<[F32, QUI8, QI8, TFL_Quint8]>:$input);
 
-  let results = (outs AnyTensor:$output);
+  let results = (outs TFL_TensorOf<[F32, QUI8, QI8, TFL_Quint8]>:$output);
 
   let hasOptions = 1;
 }
@@ -1727,6 +1848,9 @@ def MaxPoolOperandAndResultConstraints : PredOpTrait<"MaxPool2D operand and "
     TFL_TCresVTEtIsSameAsOp<0, 0>]>>;
 
 def TFL_MaxPool2DOp : TFL_Op<"max_pool_2d", [
+    TFL_OperandHasRank<0, 4>,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
     NoSideEffect,
     MaxPoolOperandAndResultConstraints,
     SameOperandsAndResultsScale,
@@ -1741,7 +1865,7 @@ def TFL_MaxPool2DOp : TFL_Op<"max_pool_2d", [
   }];
 
   let arguments = (
-    ins AnyTensor:$input,
+    ins TFL_TensorOf<[F32, QUI8, QI8, QI16, TFL_Quint8]>:$input,
     TFL_PaddingAttr:$padding,
     I32Attr:$stride_w,
     I32Attr:$stride_h,
@@ -1750,7 +1874,7 @@ def TFL_MaxPool2DOp : TFL_Op<"max_pool_2d", [
     TFL_AFAttr:$fused_activation_function
   );
 
-  let results = (outs AnyTensor:$output);
+  let results = (outs TFL_TensorOf<[F32, QUI8, QI8, QI16, TFL_Quint8]>:$output);
 
   let hasOptions = 1;
 
@@ -1782,7 +1906,11 @@ def TFL_MaximumOp : TFL_Op<"maximum", [
   let hasOptions = 0;
 }
 
-def TFL_MeanOp : TFL_Op<"mean", [NoSideEffect, TFL_GpuTargetOp]> {
+def TFL_MeanOp : TFL_Op<"mean", [
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    NoSideEffect,
+    TFL_GpuTargetOp]> {
   let summary = "Mean operator";
 
   let description = [{
@@ -1794,13 +1922,13 @@ def TFL_MeanOp : TFL_Op<"mean", [NoSideEffect, TFL_GpuTargetOp]> {
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I8, I32, I64, QI8, QUI8, TFL_Uint8]>:$input,
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, UI8]>:$input,
     TFL_TensorOf<[I32, I64]>:$axis,
     BoolAttr:$keep_dims
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I32, I64, I8, QI8, QUI8, TFL_Uint8]>:$output);
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, UI8]>:$output);
 
   let hasOptions = 1;
   let customOption = "ReducerOptions";
@@ -1821,20 +1949,23 @@ def TFL_OneHotOp : TFL_Op<"one_hot", [NoSideEffect]> {
   let arguments = (ins
     TFL_TensorOf<[I32, I64]>:$indices,
     TFL_I32Tensor:$depth,
-    TFL_TensorOf<[F32, I32, I64, I1]>:$on_value,
-    TFL_TensorOf<[F32, I32, I64, I1]>:$off_value,
+    TFL_TensorOf<[F32, I32, I64, I1, I8, UI8]>:$on_value,
+    TFL_TensorOf<[F32, I32, I64, I1, I8, UI8]>:$off_value,
 
     I32Attr:$axis
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I32, I64, I1]>:$output
+    TFL_TensorOf<[F32, I32, I64, I1, I8, UI8]>:$output
   );
 
   let hasOptions = 1;
 }
 
-def TFL_RoundOp: TFL_Op<"round", [NoSideEffect, SameOperandsAndResultType]> {
+def TFL_RoundOp: TFL_Op<"round", [
+    NoSideEffect,
+    SameOperandsAndResultShape,
+    SameOperandsAndResultType]> {
   let summary = "Round operator";
 
   let description = [{
@@ -1842,16 +1973,23 @@ Rounds the values of a tensor to the nearest integer, element-wise.
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32]>:$x
+    TFL_FpTensor:$x
   );
 
   let results = (outs
-    TFL_TensorOf<[F32]>:$y
+    TFL_FpTensor:$y
   );
 }
 
 def TFL_SliceOp : TFL_Op<"slice", [
-    NoSideEffect, SameOperandsAndResultsScale, TFL_GpuTargetOp]> {
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    NoSideEffect,
+    SameOperandsAndResultsScale,
+    TFL_OperandHasRankAtMost<0, 4>,
+    TFL_OperandHasRankAtMost<1, 1>,
+    TFL_OperandHasRankAtMost<2, 1>,
+    TFL_GpuTargetOp]> {
   let summary = "Return a slice from 'input'.";
 
   let description = [{
@@ -1869,13 +2007,13 @@ equivalent to setting:
   }];
 
   let arguments = (ins
-    AnyTensor:$input,
+    TFL_TensorOf<[F32, I32, I64, I8, UI8, I1, TFL_Str, QI8, QUI8, TFL_Quint8]>:$input,
     TFL_I32OrI64Tensor:$begin,
     TFL_I32OrI64Tensor:$size
   );
 
   let results = (outs
-    AnyTensor:$output
+    TFL_TensorOf<[F32, I32, I64, I8, UI8, I1, TFL_Str, QI8, QUI8, TFL_Quint8]>:$output
   );
 
   let verifier = [{ return Verify(*this); }];
@@ -1883,7 +2021,11 @@ equivalent to setting:
   let hasCanonicalizer = 1;
 }
 
-def TFL_SumOp: TFL_Op<"sum", [NoSideEffect]> {
+def TFL_SumOp: TFL_Op<"sum", [
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    NoSideEffect]> {
+
   let summary = "Sum operator";
 
   let description = [{
@@ -1891,19 +2033,22 @@ def TFL_SumOp: TFL_Op<"sum", [NoSideEffect]> {
   }];
 
   let arguments = (ins
-    AnyTensor:$input,
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$input,
     TFL_I32Tensor:$axes,
     BoolAttr:$keep_dims
   );
 
-  let results = (outs AnyTensor);
+  let results = (outs TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$output);
 
   let hasOptions = 1;
   let customOption = "ReducerOptions";
 }
 
 def TFL_ReduceMinOp: TFL_Op<"reduce_min", [
-    NoSideEffect, SameOperandsAndResultsScale]> {
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    NoSideEffect,
+    SameOperandsAndResultsScale]> {
   let summary = "Min-reduction operator";
 
   let description = [{
@@ -1911,19 +2056,23 @@ def TFL_ReduceMinOp: TFL_Op<"reduce_min", [
   }];
 
   let arguments = (ins
-    AnyTensor:$input,
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$input,
     TFL_I32Tensor:$axes,
     BoolAttr:$keep_dims
   );
 
-  let results = (outs AnyTensor);
+  let results = (outs
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$output);
 
   let hasOptions = 1;
   let customOption = "ReducerOptions";
 }
 
 def TFL_ReduceMaxOp: TFL_Op<"reduce_max", [
-    NoSideEffect, SameOperandsAndResultsScale]> {
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    NoSideEffect,
+    SameOperandsAndResultsScale]> {
   let summary = "Max-reduction operator";
 
   let description = [{
@@ -1931,18 +2080,22 @@ def TFL_ReduceMaxOp: TFL_Op<"reduce_max", [
   }];
 
   let arguments = (ins
-    AnyTensor:$input,
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$input,
     TFL_I32Tensor:$axes,
     BoolAttr:$keep_dims
   );
 
-  let results = (outs AnyTensor);
+  let results = (outs
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$output);
 
   let hasOptions = 1;
   let customOption = "ReducerOptions";
 }
 
-def TFL_ReduceProdOp: TFL_Op<"reduce_prod", [NoSideEffect]> {
+def TFL_ReduceProdOp: TFL_Op<"reduce_prod", [
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    NoSideEffect]> {
   let summary = "Prod-reduction operator";
 
   let description = [{
@@ -1950,12 +2103,13 @@ def TFL_ReduceProdOp: TFL_Op<"reduce_prod", [NoSideEffect]> {
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I8, I32, I64]>:$input,
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$input,
     TFL_I32Tensor:$axes,
     BoolAttr:$keep_dims
   );
 
-  let results = (outs AnyTensor);
+  let results = (outs
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$output);
 
   let hasOptions = 1;
   let customOption = "ReducerOptions";
@@ -1986,12 +2140,13 @@ def TFL_MinimumOp : TFL_Op<"minimum", [
   let hasOptions = 0;
 }
 
-def TFL_MulOp : TFL_Op<"mul", [ResultsBroadcastableShape,
-                               NoSideEffect,
-                               Commutative,
-                               BinaryOpSameElementTypeConstraint,
-                               TFL_BinaryOperandsHaveSameShapesOrBroadcastableShape<0, 1, 5>,
-                               TFL_GpuTargetOp]> {
+def TFL_MulOp : TFL_Op<"mul", [
+    ResultsBroadcastableShape,
+    NoSideEffect,
+    Commutative,
+    BinaryOpSameElementTypeConstraint,
+    TFL_BinaryOperandsHaveSameShapesOrBroadcastableShape<0, 1, 5>,
+    TFL_GpuTargetOp]> {
   let summary = "Multiplication operator";
 
   let description = [{
@@ -2032,7 +2187,11 @@ def TFL_NegOp: TFL_Op<"neg", [NoSideEffect, SameOperandsAndResultType]> {
   let hasFolder = 1;
 }
 
-def TFL_PackOp : TFL_Op<"pack", [NoSideEffect, SameOperandsAndResultsScale]> {
+def TFL_PackOp : TFL_Op<"pack", [
+    PredOpTrait<"values and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    NoSideEffect,
+    SameOperandsAndResultsScale]> {
   let summary = "Packs a list of tensors along a dimension into one tensor";
 
   let description = [{
@@ -2063,14 +2222,14 @@ def TFL_PackOp : TFL_Op<"pack", [NoSideEffect, SameOperandsAndResultsScale]> {
   }];
 
   let arguments = (ins
-    TFL_VariadicTensorOf<[F32, I8, I16, I32, I64, QI8, QUI8, QI16]>:$values,
+    TFL_VariadicTensorOf<[F32, I8, I16, I32, I64, UI8, QI8, QUI8, QI16, TFL_Quint8]>:$values,
 
-    I32Attr:$values_count,
+    Confined<I32Attr, [IntPositive]>:$values_count,
     I32Attr:$axis
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I8, I16, I32, I64, QI8, QUI8, QI16]>:$output
+    TFL_TensorOf<[F32, I8, I16, I32, I64, UI8, QI8, QUI8, QI16, TFL_Quint8]>:$output
   );
 
   let verifier = [{ return Verify(*this); }];
@@ -2081,8 +2240,11 @@ def TFL_PackOp : TFL_Op<"pack", [NoSideEffect, SameOperandsAndResultsScale]> {
 }
 
 def TFL_PadOp : TFL_Op<"pad", [
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
     NoSideEffect,
     SameOperandsAndResultsScale,
+    TFL_OperandHasRankAtMost<0, 4>,
     TFL_OperandHasRank<1, 2>,
     TFL_OperandRankEquals1DimOfOperand<0, 1>,
     TFL_GpuTargetOp]> {
@@ -2113,22 +2275,25 @@ def TFL_PadOp : TFL_Op<"pad", [
     ```
   }];
 
-  let arguments = (ins TFL_TensorOf<[F32, I8, I32, I64, QI8, QUI8]>:$input,
+  let arguments = (ins TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$input,
     TFL_I32OrI64Tensor:$padding);
 
-  let results = (outs TFL_TensorOf<[F32, I8, I32, I64, QI8, QUI8]>:$output);
+  let results = (outs TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$output);
 
   let hasOptions = 1;
 }
 
 def TFL_PadV2Op : TFL_Op<"padv2", [
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
     NoSideEffect,
     SameOperandsAndResultsScale,
+    TFL_OperandHasRankAtMost<0, 4>,
     TFL_OperandHasRank<1, 2>,
     TFL_OperandHasRank<2, 0>,
     TFL_OperandRankEquals1DimOfOperand<0, 1>,
     PredOpTrait<"input and constant value operands must have same element type",
-      TCopVTEtAreSameAt<[0, 2]>>]> {
+      TFL_TCopVTEtAreSameAt<0, 2>>]> {
   let summary = "Padding operator v2";
 
   let description = [{
@@ -2159,11 +2324,11 @@ def TFL_PadV2Op : TFL_Op<"padv2", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I8, I32, I64, QI8, QUI8]>:$input,
+    ins TFL_TensorOf<[F32, I32, I64, UI8, QI8, QUI8, TFL_Quint8]>:$input,
     TFL_I32OrI64Tensor:$padding,
-    TFL_TensorOf<[F32, I8, I32, I64]>:$constant_values);
+    TFL_TensorOf<[F32, I32, I64, UI8, QI8, QUI8, TFL_Quint8]>:$constant_values);
 
-  let results = (outs TFL_TensorOf<[F32, I8, I32, I64, QI8, QUI8]>:$output);
+  let results = (outs TFL_TensorOf<[F32, I32, I64, UI8, QI8, QUI8, TFL_Quint8]>:$output);
 
   let hasOptions = 1;
 }
@@ -2191,26 +2356,29 @@ def TFL_PowOp : TFL_Op<"pow", [ResultsBroadcastableShape,
   let builders = [TFL_BroadcastableBinaryBuilder];
 }
 
-def TFL_PReluOp : TFL_Op<"prelu", [NoSideEffect,
-                                   TFL_GpuTargetOp,
-                                   SameOperandsAndResultsScale]> {
+def TFL_PReluOp : TFL_Op<"prelu", [
+    NoSideEffect,
+    ResultsBroadcastableShape,
+    TFL_GpuTargetOp,
+    TFL_BinaryOperandsHaveSameShapesOrBroadcastableShape<0, 1, 4>,
+    BinaryOpSameElementTypeConstraint,
+    PredOpTrait<"input and output must have the same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
   let summary = "Parameterized Relu operator";
 
   let description = [{
     Parameterized Relu operator
       x -> x >= 0 ? x : (alpha * x)
     where alpha is a trainable tensor.
-    alpha should have one less rank than the input as it doesn't have the batch
-    dimension, and the other dimensions either should be the same size as input
-    or size 1, where it is broadcasted in the second case.
+    input and alpha should be the same size as input or be broadcastable.
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, QUI8]>:$input,
-    TFL_TensorOf<[F32, QUI8]>:$alpha
+    ins TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8]>:$input,
+    TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8]>:$alpha
   );
 
-  let results = (outs TFL_TensorOf<[F32, QUI8]>:$output);
+  let results = (outs TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8]>:$output);
 
   let verifier = [{ return Verify(*this); }];
 }
@@ -2228,10 +2396,13 @@ def TFL_RankOp: TFL_Op<"rank", [NoSideEffect]> {
   let hasFolder = 1;
 }
 
-def TFL_ReluOp: TFL_Op<"relu", [NoSideEffect,
-                                SameOperandsAndResultShape,
-                                SameOperandsAndResultsScale,
-                                TFL_GpuTargetOp]> {
+def TFL_ReluOp: TFL_Op<"relu", [
+    PredOpTrait<"x and y must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    NoSideEffect,
+    SameOperandsAndResultShape,
+    SameOperandsAndResultsScale,
+    TFL_GpuTargetOp]> {
   let summary = "Relu operator";
 
   let description = [{
@@ -2239,9 +2410,9 @@ def TFL_ReluOp: TFL_Op<"relu", [NoSideEffect,
       x -> max(0, x)
   }];
 
-  let arguments = (ins TFL_TensorOf<[F32, QUI8, I8]>:$x);
+  let arguments = (ins TFL_TensorOf<[F32, QUI8, QI8]>:$x);
 
-  let results = (outs TFL_TensorOf<[F32, QUI8, I8]>:$y);
+  let results = (outs TFL_TensorOf<[F32, QUI8, QI8]>:$y);
 
   // This builder doesn't work with quantized type, so it can only be used by
   // non-quantization tablegen patterns. Currently, it is used by the
@@ -2255,10 +2426,13 @@ def TFL_ReluOp: TFL_Op<"relu", [NoSideEffect,
   ];
 }
 
-def TFL_Relu6Op: TFL_Op<"relu6", [NoSideEffect,
-                                  SameOperandsAndResultShape,
-                                  SameOperandsAndResultsScale,
-                                  TFL_GpuTargetOp]> {
+def TFL_Relu6Op: TFL_Op<"relu6", [
+    PredOpTrait<"x and y must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    NoSideEffect,
+    SameOperandsAndResultShape,
+    SameOperandsAndResultsScale,
+    TFL_GpuTargetOp]> {
   let summary = "Relu6 operator";
 
   let description = [{
@@ -2266,9 +2440,9 @@ def TFL_Relu6Op: TFL_Op<"relu6", [NoSideEffect,
       x -> max(0, min(6, x))
   }];
 
-  let arguments = (ins TFL_TensorOf<[F32, QUI8, I8]>:$x);
+  let arguments = (ins TFL_TensorOf<[F32, QUI8, QI8]>:$x);
 
-  let results = (outs TFL_TensorOf<[F32, QUI8, I8]>:$y);
+  let results = (outs TFL_TensorOf<[F32, QUI8, QI8]>:$y);
 
   // This builder doesn't work with quantized type, so it can only be used by
   // non-quantization tablegen patterns. Currently, it is used by the
@@ -2282,9 +2456,12 @@ def TFL_Relu6Op: TFL_Op<"relu6", [NoSideEffect,
   ];
 }
 
-def TFL_Relu1Op: TFL_Op<"relu_n1_to_1", [NoSideEffect,
-                                  SameOperandsAndResultShape,
-                                  SameOperandsAndResultsScale]> {
+def TFL_Relu1Op: TFL_Op<"relu_n1_to_1", [
+    PredOpTrait<"x and y must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    NoSideEffect,
+    SameOperandsAndResultShape,
+    SameOperandsAndResultsScale]> {
   let summary = "Relu1 operator";
 
   let description = [{
@@ -2292,9 +2469,9 @@ def TFL_Relu1Op: TFL_Op<"relu_n1_to_1", [NoSideEffect,
       x -> max(-1, min(1, x))
   }];
 
-  let arguments = (ins TFL_TensorOf<[F32, QUI8, I8]>:$x);
+  let arguments = (ins TFL_TensorOf<[F32, QUI8, QI8]>:$x);
 
-  let results = (outs TFL_TensorOf<[F32, QUI8, I8]>:$y);
+  let results = (outs TFL_TensorOf<[F32, QUI8, QI8]>:$y);
 
   // This builder doesn't work with quantized type, so it can only be used by
   // non-quantization tablegen patterns. Currently, it is used by the
@@ -2326,7 +2503,11 @@ def TFL_ReshapeOp: TFL_Op<"reshape", [
   let hasFolder = 1;
 }
 
-def TFL_ReverseSequenceOp : TFL_Op<"reverse_sequence", [NoSideEffect]> {
+def TFL_ReverseSequenceOp : TFL_Op<"reverse_sequence", [
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    NoSideEffect,
+    TFL_OperandHasRank<1, 1>]> {
   let summary = "Reverses variable length slices.";
 
   let description = [{
@@ -2343,15 +2524,15 @@ slice `i`, with the first `seq_lengths[i]` slices along dimension
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I16, I32, I64, TFL_Uint8]>:$input,
+    TFL_TensorOf<[F32, I32, I64, QI16, QUI8, TFL_Quint8]>:$input,
     TFL_I32OrI64Tensor:$seq_lengths,
 
-    I32Attr:$seq_dim,
-    I32Attr:$batch_dim
+    Confined<I32Attr, [IntNonNegative]>:$seq_dim,
+    Confined<I32Attr, [IntNonNegative]>:$batch_dim
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I16, I32, I64, TFL_Uint8]>:$output
+    TFL_TensorOf<[F32, I32, I64, QI16, QUI8, TFL_Quint8]>:$output
   );
 
   let hasOptions = 1;
@@ -2359,6 +2540,7 @@ slice `i`, with the first `seq_lengths[i]` slices along dimension
 
 def TFL_RsqrtOp: TFL_Op<"rsqrt", [NoSideEffect,
                                   SameOperandsAndResultType,
+                                  SameOperandsAndResultShape,
                                   NoQuantizableResult,
                                   TFL_GpuTargetOp]> {
   let summary = "Reciprocal of square root operator";
@@ -2367,9 +2549,9 @@ def TFL_RsqrtOp: TFL_Op<"rsqrt", [NoSideEffect,
     Computes element-wise reverse square root of input
   }];
 
-  let arguments = (ins AnyTensor:$x);
+  let arguments = (ins TFL_FpTensor:$x);
 
-  let results = (outs AnyTensor:$y);
+  let results = (outs TFL_FpTensor:$y);
 
   let hasFolder = 1;
 }
@@ -2383,7 +2565,7 @@ def TFL_ShapeOp: TFL_Op<"shape", [NoSideEffect]> {
 
   let arguments = (ins AnyTensor:$input);
 
-  let results = (outs AnyTensor:$output);
+  let results = (outs TFL_TensorOf<[I32, I64]>:$output);
 
   DerivedTypeAttr out_type = DerivedTypeAttr<[{
     return getResult().getType().cast<TensorType>().getElementType();
@@ -2392,9 +2574,11 @@ def TFL_ShapeOp: TFL_Op<"shape", [NoSideEffect]> {
   let hasOptions = 1;
 }
 
-// TODO(jpienaar): Flesh this out.
-def TFL_RangeOp: TFL_Op<"range", [NoSideEffect, TFL_OperandHasRank<0, 0>,
-    TFL_OperandHasRank<1, 0>, TFL_OperandHasRank<2, 0>,
+def TFL_RangeOp: TFL_Op<"range", [
+    NoSideEffect,
+    TFL_OperandHasRank<0, 0>,
+    TFL_OperandHasRank<1, 0>,
+    TFL_OperandHasRank<2, 0>,
     PredOpTrait<"operands and output must have same element type",
       And<[TCresVTEtIsSameAsOp<0, 0>, TCresVTEtIsSameAsOp<0, 1>,
            TCresVTEtIsSameAsOp<0, 2>]>>]> {
@@ -2406,17 +2590,20 @@ def TFL_RangeOp: TFL_Op<"range", [NoSideEffect, TFL_OperandHasRank<0, 0>,
   }];
 
   let arguments = (ins
-    AnyTensor:$start,
-    AnyTensor:$limit,
-    AnyTensor:$delta);
+    TFL_TensorOf<[I32, F32]>:$start,
+    TFL_TensorOf<[I32, F32]>:$limit,
+    TFL_TensorOf<[I32, F32]>:$delta);
 
-  let results = (outs AnyTensor:$result);
+  let results = (outs TFL_TensorOf<[I32, F32]>:$result);
 
   let hasFolder = 1;
 }
 
-def TFL_ReverseV2Op: TFL_Op<"reverse_v2",
-                            [NoSideEffect, TFL_OperandHasRank<1,1>]> {
+def TFL_ReverseV2Op: TFL_Op<"reverse_v2", [
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    NoSideEffect,
+    TFL_OperandHasRank<1, 1>]> {
   let summary = "ReverseV2 Operator";
 
   let description = [{
@@ -2438,21 +2625,21 @@ def TFL_ReverseV2Op: TFL_Op<"reverse_v2",
 
   let arguments = (
     ins
-    TFL_TensorOf<[F32, I16, I32, I64, TFL_Uint8, I1]>:$input,
-    TFL_TensorOf<[I32, I64]>:$axis
+    TFL_TensorOf<[F32, UI8, I16, I32, I64, QI16, QUI8, TFL_Quint8, I1]>:$input,
+    TFL_I32Tensor:$axis
   );
 
   let results = (outs
-  TFL_TensorOf<[F32, I16, I32, I64, TFL_Uint8, I1]>:$output
-  );
+    TFL_TensorOf<[F32, UI8, I16, I32, I64, QI16, QUI8, TFL_Quint8, I1]>:$output);
 }
 
 // Select has many instances in TF models where one or more of its operands
 // are unranked. Therefore, we skip adding shape constraints here.
-def TFL_SelectOp : TFL_Op<"select", [NoSideEffect,
+def TFL_SelectOp : TFL_Op<"select", [
+  NoSideEffect,
   PredOpTrait<"operands have same element type", TCopVTEtIsSameAs<1, 2>>,
   PredOpTrait<"operands and result have same element type",
-    TCresVTEtIsSameAsOp<0, 1>>]> {
+    TFL_TCresVTEtIsSameAsOp<0, 1>>]> {
   let summary = "Select operator";
 
   let description = [{
@@ -2465,9 +2652,11 @@ def TFL_SelectOp : TFL_Op<"select", [NoSideEffect,
 
   let arguments = (ins
     TFL_BoolTensor:$condition,
-    TFL_TensorOf<[F32, I1, I8, I16, I32, I64, TFL_Uint8]>:$x,
-    TFL_TensorOf<[F32, I1, I8, I16, I32, I64, TFL_Uint8]>:$y);
-  let results = (outs AnyTensor:$output);
+    TFL_TensorOf<[F32, I1, I8, I16, I32, I64, QI8, QUI8, QI16, TFL_Quint8]>:$x,
+    TFL_TensorOf<[F32, I1, I8, I16, I32, I64, QI8, QUI8, QI16, TFL_Quint8]>:$y);
+
+  let results = (outs
+    TFL_TensorOf<[F32, I1, I8, I16, I32, I64, QI8, QUI8, QI16, TFL_Quint8]>:$output);
 
   // TODO(jpienaar): autogenerate this.
   let builders = [OpBuilder<"OpBuilder &builder, OperationState &result, "
@@ -2481,7 +2670,12 @@ def TFL_SelectOp : TFL_Op<"select", [NoSideEffect,
   let hasOptions = 1;
 }
 
-def TFL_SelectV2Op : TFL_Op<"select_v2", [NoSideEffect]> {
+def TFL_SelectV2Op : TFL_Op<"select_v2", [
+    NoSideEffect,
+    TFL_BinaryOperandsHaveSameShapesOrBroadcastableShape<1, 2, 4>,
+    PredOpTrait<"operands have same element type", TCopVTEtIsSameAs<1, 2>>,
+    PredOpTrait<"operands and result have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 1>>]> {
   let summary = "SelectV2 operator";
 
   let description = [{
@@ -2494,9 +2688,11 @@ def TFL_SelectV2Op : TFL_Op<"select_v2", [NoSideEffect]> {
 
   let arguments = (ins
     TFL_BoolTensor:$condition,
-    TFL_TensorOf<[F32, I1, I8, I16, I32, I64, TFL_Uint8]>:$x,
-    TFL_TensorOf<[F32, I1, I8, I16, I32, I64, TFL_Uint8]>:$y);
-  let results = (outs AnyTensor:$output);
+    TFL_TensorOf<[F32, I1, I8, I16, I32, I64, QI8, QUI8, QI16, TFL_Quint8]>:$x,
+    TFL_TensorOf<[F32, I1, I8, I16, I32, I64, QI8, QUI8, QI16, TFL_Quint8]>:$y);
+
+  let results = (outs
+    TFL_TensorOf<[F32, I1, I8, I16, I32, I64, QI8, QUI8, QI16, TFL_Quint8]>:$output);
 
   let builders = [OpBuilder<"OpBuilder &builder, OperationState &result, "
                             "Value cond, Value x, Value y",
@@ -2525,9 +2721,11 @@ def TFL_SinOp: TFL_Op<"sin", [
   let hasFolder = 1;
 }
 
-// TODO(b/130643170): Adds some constraint for the input/output element types.
 def TFL_SoftmaxOp : TFL_Op<"softmax", [
     NoSideEffect,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    TFL_OperandHasRankRange<0, 1, 4>,
     SameOperandsAndResultShape,
     // zero_point = 0
     // scale = 1. / (max_value + 1)
@@ -2543,11 +2741,11 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
   }];
 
   let arguments = (
-    ins AnyTensor:$input,
+    ins TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8]>:$input,
     F32Attr:$beta
   );
 
-  let results = (outs AnyTensor:$output);
+  let results = (outs TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8]>:$output);
 
   let hasOptions = 1;
 }
@@ -2590,7 +2788,11 @@ def TFL_SquareOp: TFL_Op<"square", [
   let hasFolder = 1;
 }
 
-def TFL_SubOp : TFL_Op<"sub", [ResultsBroadcastableShape, NoSideEffect]> {
+def TFL_SubOp : TFL_Op<"sub", [
+    ResultsBroadcastableShape,
+    BinaryOpSameElementTypeConstraint,
+    TFL_BinaryOperandsHaveSameShapesOrBroadcastableShape<0, 1, 5>,
+    NoSideEffect]> {
   let summary = "Subtraction operator";
 
   let description = [{
@@ -2598,11 +2800,11 @@ def TFL_SubOp : TFL_Op<"sub", [ResultsBroadcastableShape, NoSideEffect]> {
   }];
 
   let arguments = (
-    ins AnyTensor:$lhs,
-    AnyTensor:$rhs,
+    ins TFL_TensorOf<[F32, I32, QI8, QUI8, QI16]>:$lhs,
+    TFL_TensorOf<[F32, I32, QI8, QUI8, QI16]>:$rhs,
     TFL_AFAttr:$fused_activation_function);
 
-  let results = (outs AnyTensor:$output);
+  let results = (outs TFL_TensorOf<[F32, I32, QI8, QUI8, QI16]>:$output);
 
   let hasFolder = 1;
 
@@ -2618,6 +2820,8 @@ def TFL_SubOp : TFL_Op<"sub", [ResultsBroadcastableShape, NoSideEffect]> {
 // TODO(jpienaar): Expand the kernel implementation to support all types besides
 // I32 and F32.
 def TFL_SquaredDifferenceOp : TFL_Op<"squared_difference", [
+    TFL_BinaryOperandsHaveSameShapesOrBroadcastableShape<0, 1, 4>,
+    SameOperandsAndResultElementType,
     ResultsBroadcastableShape,
     NoSideEffect,
     NoQuantizableResult,
@@ -2629,10 +2833,10 @@ def TFL_SquaredDifferenceOp : TFL_Op<"squared_difference", [
   }];
 
   let arguments = (
-    ins AnyTensor:$lhs,
-    AnyTensor:$rhs);
+    ins TFL_TensorOf<[F32, I32]>:$lhs,
+    TFL_TensorOf<[F32, I32]>:$rhs);
 
-  let results = (outs AnyTensor:$output);
+  let results = (outs TFL_TensorOf<[F32, I32]>:$output);
 
   let builders = [TFL_BroadcastableBinaryBuilder];
 
@@ -2644,6 +2848,8 @@ def TFL_SquaredDifferenceOp : TFL_Op<"squared_difference", [
 def TFL_TanhOp: TFL_Op<"tanh", [
     NoSideEffect,
     SameOperandsAndResultShape,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
     // central_value = min_value / 2 + (max_value - 1) / 2 + 1
     // zero_point = central_value
     // scale = 1. / (central_value - min_value)
@@ -2656,9 +2862,9 @@ def TFL_TanhOp: TFL_Op<"tanh", [
     Computes element-wise Hyperbolic tangent of input
   }];
 
-  let arguments = (ins TFL_TensorOf<[F32, I16, I8, QI8, QUI8, QI16, QUI16, TFL_Uint8]>:$x);
+  let arguments = (ins TFL_TensorOf<[F32, QI8, QUI8, QI16, TFL_Quint8]>:$input);
 
-  let results = (outs TFL_TensorOf<[F32, I16, I8, QI8, QUI8, QI16, QUI16, TFL_Uint8]>:$y);
+  let results = (outs TFL_TensorOf<[F32, QI8, QUI8, QI16, TFL_Quint8]>:$output);
 
   // This builder doesn't work with quantized type, so it can only be used by
   // non-quantization tablegen patterns. Currently, it is used by the
@@ -2672,9 +2878,11 @@ def TFL_TanhOp: TFL_Op<"tanh", [
   ];
 }
 
-def TFL_TileOp: TFL_Op<"tile", [NoSideEffect, SameOperandsAndResultsScale,
-  PredOpTrait<"resultant element type needs to match first operand type",
-              TFL_TCresVTEtIsSameAsOp<0,0>>]> {
+def TFL_TileOp: TFL_Op<"tile", [
+    NoSideEffect,
+    SameOperandsAndResultsScale,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
   let summary = "Tile operator.";
   let description = [{
     Constructs a tensor by tiling a given tensor.
@@ -2687,11 +2895,11 @@ def TFL_TileOp: TFL_Op<"tile", [NoSideEffect, SameOperandsAndResultsScale,
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I1, I32, I64, TFL_Uint8, QUI8, TFL_Str]>:$input,
+    TFL_TensorOf<[F32, I1, I32, I64, UI8, QUI8, TFL_Str]>:$input,
     TFL_I32OrI64Tensor:$multiples);
 
   let results = (outs
-    TFL_TensorOf<[F32, I1, I32, I64, TFL_Uint8, QUI8, TFL_Str]>:$output);
+    TFL_TensorOf<[F32, I1, I32, I64, UI8, QUI8, TFL_Str]>:$output);
 
   let hasOptions = 0;
 }
@@ -2699,9 +2907,13 @@ def TFL_TileOp: TFL_Op<"tile", [NoSideEffect, SameOperandsAndResultsScale,
 // TODO(jpienaar): Maybe make it accept any single element tensor as `k`.
 // TODO(jpienaar): Check that input has one or more dimensions.
 // TODO(jpienaar): Check that k is less or equal the internal dimension
-def TFL_TopKV2Op: TFL_Op<"topk_v2", [NoSideEffect, TFL_OperandHasRank<1,0>,
+def TFL_TopKV2Op: TFL_Op<"topk_v2", [
+    NoSideEffect,
+    TFL_OperandHasRankAtLeast<0, 1>,
+    TFL_OperandHasRank<1, 0>,
     PredOpTrait<"result and input element type match",
-                TCresVTEtIsSameAsOp<0,0>>, SameOperandsAndResultsScale]> {
+      TFL_TCresVTEtIsSameAsOp<0,0>>,
+    SameOperandsAndResultsScale]> {
   let summary = "TopK operator";
 
   let description = [{
@@ -2711,11 +2923,11 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [NoSideEffect, TFL_OperandHasRank<1,0>,
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I8, I32, I64, TFL_Uint8, QI8, QUI8]>:$input,
+    TFL_TensorOf<[F32, I8, I32, I64, UI8, QI8, QUI8]>:$input,
     TFL_I32Tensor:$k);
 
   let results = (outs
-    TFL_TensorOf<[F32, I8, I32, I64, TFL_Uint8, QI8, QUI8]>:$values,
+    TFL_TensorOf<[F32, I8, I32, I64, UI8, QI8, QUI8]>:$values,
     TFL_I32Tensor:$indices);
 
   let builders = [OpBuilder<"OpBuilder &builder, OperationState &result, "
@@ -2725,29 +2937,27 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [NoSideEffect, TFL_OperandHasRank<1,0>,
   let hasOptions = 1;
 }
 
-def TFL_TransposeOp : TFL_Op<"transpose",
-  [NoSideEffect,
-   TFL_OperandHasRank<1,1>,
-   // TODO(jpienaar): these are only true dynamically, change so that it works
-   // with unknowns.
-   // TFL_OperandRankEquals1DimOfOperand<0, 1>,
-   PredOpTrait<"input and output must have same element type",
-   TCresVTEtIsSameAsOp<0, 0>>,
-   SameOperandsAndResultsScale,
-   TFL_GpuTargetOp]> {
+def TFL_TransposeOp : TFL_Op<"transpose", [
+    NoSideEffect,
+    TFL_OperandHasRankAtMost<0, 5>,
+    TFL_OperandHasRank<1, 1>,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    SameOperandsAndResultsScale,
+    TFL_GpuTargetOp]> {
   let summary = "Transpose operator";
 
   let description = [{
     Returns the Transpose of x
   }];
 
-  let arguments = (
-    ins AnyTensor:$x,
+  let arguments = (ins
+    TFL_TensorOf<[I32, F32, I8, UI8, QI8, QUI8, TFL_Quint8, I1, I64]>:$input,
     TFL_TensorOf<[I32]>:$perm
   );
 
   let results = (outs
-    AnyTensor:$y
+    TFL_TensorOf<[I32, F32, I8, UI8, QI8, QUI8, TFL_Quint8, I1, I64]>:$output
   );
 
   let verifier = [{ return Verify(*this); }];
@@ -2755,7 +2965,10 @@ def TFL_TransposeOp : TFL_Op<"transpose",
   let hasFolder = 1;
 }
 
-def TFL_UnpackOp : TFL_Op<"unpack", [NoSideEffect, SameOperandsAndResultsScale]> {
+def TFL_UnpackOp : TFL_Op<"unpack", [
+    NoSideEffect,
+    SameOperandsAndResultElementType,
+    SameOperandsAndResultsScale]> {
   let summary = "Unpacks a tensor along a dimension into multiple tensors";
 
   let description = [{
@@ -2776,14 +2989,14 @@ def TFL_UnpackOp : TFL_Op<"unpack", [NoSideEffect, SameOperandsAndResultsScale]>
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I1, I8, I32, QI8, QUI8]>:$input,
+    TFL_TensorOf<[F32, I1, I8, UI8, I32, QI8, QUI8, I16, QI16]>:$input,
 
     I32Attr:$num,
     I32Attr:$axis
   );
 
   let results = (outs
-    TFL_VariadicTensorOf<[F32, I1, I8, I32, QI8, QUI8]>:$outputs
+    TFL_VariadicTensorOf<[F32, I1, I8, UI8, I32, QI8, QUI8, I16, QI16]>:$outputs
   );
 
   let verifier = [{ return Verify(*this); }];
@@ -2791,16 +3004,19 @@ def TFL_UnpackOp : TFL_Op<"unpack", [NoSideEffect, SameOperandsAndResultsScale]>
   let hasOptions = 1;
 }
 
-def TFL_ZerosLikeOp: TFL_Op<"zeros_like", [NoSideEffect]> {
+def TFL_ZerosLikeOp: TFL_Op<"zeros_like", [
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    NoSideEffect]> {
   let summary = "ZerosLike operator";
 
   let description = [{
     Returns a tensor of zeros with the same shape and type as the input tensor.
   }];
 
-  let arguments = (ins AnyTensor:$input);
+  let arguments = (ins TFL_TensorOf<[I64, I32, F32]>:$input);
 
-  let results = (outs AnyTensor:$output);
+  let results = (outs TFL_TensorOf<[I64, I32, F32]>:$output);
 
   let hasOptions = 1;
 }
@@ -2834,8 +3050,9 @@ def TFL_BatchToSpaceNdOp: TFL_Op<"batch_to_space_nd", [
 def TFL_SpaceToBatchNdOp: TFL_Op<"space_to_batch_nd", [
     NoSideEffect,
     SameOperandsAndResultsScale,
+    TFL_OperandHasRankRange<0, 3, 4>,
     PredOpTrait<"input and output must have same element type",
-      TCresVTEtIsSameAsOp<0, 0>>
+      TFL_TCresVTEtIsSameAsOp<0, 0>>
   ]> {
   let summary = "SpaceToBatchNd operator";
 
@@ -2844,13 +3061,13 @@ def TFL_SpaceToBatchNdOp: TFL_Op<"space_to_batch_nd", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I8, I32, I64, QI8, QUI8]>:$input,
-    TFL_TensorOf<[I32]>:$block_shape,
-    TFL_TensorOf<[I32]>:$paddings
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$input,
+    TFL_I32Tensor:$block_shape,
+    TFL_I32Tensor:$paddings
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I16, I32, I64, QI8, QUI8]>:$output
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$output
   );
 }
 
@@ -2858,7 +3075,8 @@ def TFL_SpaceToDepthOp: TFL_Op<"space_to_depth", [
     NoSideEffect,
     SameOperandsAndResultsScale,
     PredOpTrait<"input and output must have same element type",
-      TCresVTEtIsSameAsOp<0, 0>>,
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    TFL_OperandHasRankAtMost<0, 4>,
     TFL_GpuTargetOp
   ]> {
   let summary = "SpaceToDepth operator";
@@ -2871,12 +3089,12 @@ def TFL_SpaceToDepthOp: TFL_Op<"space_to_depth", [
    }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I8, I32, I64, TFL_Uint8, QUI8]>:$input,
-    I32Attr:$block_size
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$input,
+    Confined<I32Attr, [IntPositive]>:$block_size
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I8, I32, I64, TFL_Uint8, QUI8]>:$output
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$output
   );
 
   let hasOptions = 1;
@@ -2887,7 +3105,7 @@ def TFL_DepthToSpaceOp: TFL_Op<"depth_to_space", [
     SameOperandsAndResultsScale,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    TFL_OperandHasRankLessThanOrEqualTo<0, 4>
+    TFL_OperandHasRankAtMost<0, 4>
   ]> {
   let summary = "DepthToSpace operator";
 
@@ -2901,12 +3119,12 @@ def TFL_DepthToSpaceOp: TFL_Op<"depth_to_space", [
    }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I8, I32, I64, TFL_Quint8, TFL_Uint8, UI8, QI8, QUI8]>:$input,
+    TFL_TensorOf<[F32, I8, I32, I64, TFL_Quint8, UI8, QI8, QUI8]>:$input,
     Confined<I32Attr, [IntPositive]>:$block_size
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I8, I32, I64, TFL_Quint8, TFL_Uint8, UI8, QI8, QUI8]>:$output
+    TFL_TensorOf<[F32, I8, I32, I64, TFL_Quint8, UI8, QI8, QUI8]>:$output
   );
 
   let hasOptions = 1;
@@ -2926,12 +3144,12 @@ def TFL_SplitOp : TFL_Op<"split", [
 
   let arguments = (ins
     TFL_TensorOf<[I32]>:$split_dim,
-    TFL_TensorOf<[F32, I16, I32, I64, QI8, QUI8, QI16]>:$value,
+    TFL_TensorOf<[F32, I16, I32, I64, I8, UI8, QI8, QUI8, QI16]>:$value,
     Confined<I32Attr, [IntPositive]>:$num_splits
   );
 
   let results = (outs
-    TFL_VariadicTensorOf<[F32, I16, I32, I64, QI8, QUI8, QI16]>:$outputs
+    TFL_VariadicTensorOf<[F32, I16, I32, I64, I8, UI8, QI8, QUI8, QI16]>:$outputs
   );
 
   let verifier = [{ return Verify(*this); }];
@@ -2949,14 +3167,14 @@ def TFL_SplitVOp : TFL_Op<"split_v", [NoSideEffect, SameOperandsAndResultsScale]
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I16, I32, I64, QI8, QUI8, QI16]>:$value,
+    TFL_TensorOf<[F32, I16, I32, I64, I8, UI8, QI8, QUI8, QI16]>:$value,
     TFL_1DTensorOf<[I32], [I32]>:$size_splits,
     TFL_0DTensorOf<[I32], [I32]>:$split_dim,
     Confined<I32Attr, [IntPositive]>:$num_splits
   );
 
   let results = (outs
-    TFL_VariadicTensorOf<[F32, I16, I32, I64, QI8, QUI8, QI16]>:$outputs
+    TFL_VariadicTensorOf<[F32, I16, I32, I64, I8, UI8, QI8, QUI8, QI16]>:$outputs
   );
 
   let verifier = [{ return Verify(*this); }];
@@ -2965,7 +3183,12 @@ def TFL_SplitVOp : TFL_Op<"split_v", [NoSideEffect, SameOperandsAndResultsScale]
 }
 
 def TFL_ResizeBilinearOp: TFL_Op<"resize_bilinear", [
-    NoSideEffect, SameOperandsAndResultsScale]> {
+    NoSideEffect,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    TFL_OperandHasRank<0, 4>,
+    TFL_OperandHasRank<1, 1>,
+    SameOperandsAndResultsScale]> {
   let summary = "ResizeBilinear Op";
 
   let description = [{
@@ -2973,23 +3196,26 @@ def TFL_ResizeBilinearOp: TFL_Op<"resize_bilinear", [
   }];
 
   let arguments = (ins
-    // TODO(ycling): Support quantized types.
-    TFL_TensorOf<[F32, I32, QI8, QUI8]>:$input,
-    TFL_TensorOf<[I32]>:$size,
+    TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8]>:$input,
+    TFL_I32Tensor:$size,
     BoolAttr:$align_corners,
     DefaultValuedAttr<BoolAttr, "false">:$half_pixel_centers
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, QI8, QUI8]>:$output
+    TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8]>:$output
   );
 
   let hasOptions = 1;
 }
 
-def TFL_ResizeNearestNeighborOp : TFL_Op<"resize_nearest_neighbor",
-                                [NoSideEffect,
-                                 SameOperandsAndResultsScale]> {
+def TFL_ResizeNearestNeighborOp : TFL_Op<"resize_nearest_neighbor", [
+    NoSideEffect,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    TFL_OperandHasRank<0, 4>,
+    TFL_OperandHasRank<1, 1>,
+    SameOperandsAndResultsScale]> {
   let summary = "ResizeNearestNeighbor Op";
 
   let description = [{
@@ -2997,20 +3223,28 @@ def TFL_ResizeNearestNeighborOp : TFL_Op<"resize_nearest_neighbor",
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I8, TFL_Uint8, QUI8, QI8]>:$input,
-    TFL_TensorOf<[I32]>:$size,
+    TFL_TensorOf<[F32, TFL_Quint8, QUI8, QI8]>:$input,
+    TFL_I32Tensor:$size,
     BoolAttr:$align_corners,
     DefaultValuedAttr<BoolAttr, "false">:$half_pixel_centers
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I8, TFL_Uint8, QUI8, QI8]>:$output
+    TFL_TensorOf<[F32, TFL_Quint8, QUI8, QI8]>:$output
   );
 
   let hasOptions = 1;
 }
 
-def TFL_SparseToDenseOp : TFL_Op<"sparse_to_dense", [NoSideEffect]> {
+def TFL_SparseToDenseOp : TFL_Op<"sparse_to_dense", [
+    NoSideEffect,
+    PredOpTrait<"sparse_values and dense must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 2>>,
+    PredOpTrait<"default_value and dense must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 3>>,
+    TFL_OperandHasRankAtMost<0, 2>,
+    TFL_OperandHasRankAtMost<1, 1>,
+    TFL_OperandHasRankAtMost<2, 1>]> {
   let summary = "Converts a sparse representation into a dense tensor.";
 
   let description = [{
@@ -3038,21 +3272,24 @@ are checked during execution.
   let arguments = (ins
     TFL_I32OrI64Tensor:$sparse_indices,
     TFL_I32OrI64Tensor:$output_shape,
-    TFL_TensorOf<[I32, I64, I8, TFL_Uint8, F32]>:$sparse_values,
-    TFL_TensorOf<[I32, I64, I8, TFL_Uint8, F32]>:$default_value
+    TFL_TensorOf<[I32, I64, I8, QI8, UI8, QUI8, TFL_Quint8, F32]>:$sparse_values,
+    TFL_TensorOf<[I32, I64, I8, QI8, UI8, QUI8, TFL_Quint8, F32]>:$default_value
   );
 
   let results = (outs
-    TFL_TensorOf<[I32, I64, I8, TFL_Uint8, F32]>:$dense
+    TFL_TensorOf<[I32, I64, I8, QI8, UI8, QUI8, TFL_Quint8, F32]>:$dense
   );
 }
 
-def TFL_StridedSliceOp: TFL_Op<"strided_slice",
-  [
+def TFL_StridedSliceOp: TFL_Op<"strided_slice", [
     NoSideEffect,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     SameOperandsAndResultsScale,
+    TFL_OperandHasRankAtMost<0, 5>,
+    TFL_OperandHasRank<1, 1>,
+    TFL_OperandHasRank<2, 1>,
+    TFL_OperandHasRank<3, 1>,
     TFL_GpuTargetOp
   ]> {
   let summary = "StridedSlice Op";
@@ -3062,20 +3299,20 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice",
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I32, I64, I8, QI8, QUI8, I1, TFL_Quint8, TFL_Uint8]>:$input,
-    TFL_TensorOf<[I32]>:$begin,
-    TFL_TensorOf<[I32]>:$end,
-    TFL_TensorOf<[I32]>:$strides,
+    TFL_TensorOf<[F32, I32, I64, I8, UI8, QI8, QUI8, I1, I16, QI16, TFL_Quint8]>:$input,
+    TFL_I32Tensor:$begin,
+    TFL_I32Tensor:$end,
+    TFL_I32Tensor:$strides,
 
     I32Attr:$begin_mask,
     I32Attr:$end_mask,
-    I32Attr:$ellipsis_mask,
-    I32Attr:$new_axis_mask,
+    Confined<I32Attr, [TFL_IntEqualsTo<0>]>:$ellipsis_mask,
+    Confined<I32Attr, [TFL_IntEqualsTo<0>]>:$new_axis_mask,
     I32Attr:$shrink_axis_mask
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I32, I64, I8, QI8, QUI8, I1, TFL_Quint8, TFL_Uint8]>:$output
+    TFL_TensorOf<[F32, I32, I64, I8, UI8, QI8, QUI8, I1, I16, QI16, TFL_Quint8]>:$output
   );
 
   let hasOptions = 1;
@@ -3090,16 +3327,15 @@ def TFL_CastOp : TFL_Op<"cast", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I1, I32, I64, TFL_Quint8, TFL_Uint8, Complex<F<32>>]>:$input
+    TFL_TensorOf<[F32, I1, I32, I64, TFL_Quint8, UI8, Complex<F<32>>]>:$input
   );
 
-  let results = (outs TFL_TensorOf<[F32, I1, I32, I64, TFL_Quint8, TFL_Uint8, Complex<F<32>>]>:$output);
+  let results = (outs TFL_TensorOf<[F32, I1, I32, I64, TFL_Quint8, UI8, Complex<F<32>>]>:$output);
 
   // TFLite's cast op does not utilize CastOptions, instead derives types
   // from the TfLiteTensors.
   let hasOptions = 0;
 }
-
 
 def TFL_MirrorPadOp: TFL_Op<"mirror_pad", [
                      NoSideEffect, TFL_OperandHasRank<1, 2>, TFL_GpuTargetOp]> {
@@ -3136,24 +3372,25 @@ def TFL_MirrorPadOp: TFL_Op<"mirror_pad", [
   let hasOptions = 1;
 }
 
-def TFL_UniqueOp: TFL_Op<"unique", [NoSideEffect]> {
+def TFL_UniqueOp: TFL_Op<"unique", [
+    TFL_OperandHasRank<0, 1>,
+    NoSideEffect]> {
   let summary = "Unique Op.";
 
   let description = [{
-  This operation returns a tensor `y` containing all of the unique elements of `x`
-sorted in the same order that they occur in `x`. This operation also returns a
-tensor `idx` the same size as `x` that contains the index of each value of `x`
-in the unique output `y`. In other words:
+  This operation returns a tensor `output` containing all of the unique elements
+of `input` sorted in the same order that they occur in `input`. This operation
+also returns a tensor `idx` the same size as `x` that contains the index of each
+value of `input` in the unique output `output`. In other words:
   }];
 
   let arguments = (ins
-    // TODO: add uint8 support after quantize support.
-    TFL_TensorOf<[I8, I16, I32, I64, F32]>:$input
+    TFL_TensorOf<[I8, QI8, UI8, QUI8, I16, QI16, I32, I64, F32]>:$input
   );
 
   let results = (outs
-    TFL_TensorOf<[I8, I16, I32, I64, F32]>:$output,
-    TFL_TensorOf<[I32, I64]>:$idx
+    TFL_TensorOf<[I8, QI8, UI8, QUI8, I16, QI16, I32, I64, F32]>:$output,
+    TFL_I32OrI64Tensor:$idx
   );
 
   DerivedTFLiteTypeAttr idx_out_type = DerivedTFLiteTypeAttr<[{
@@ -3224,7 +3461,7 @@ def TFL_QConstOp : Op<TFL_Dialect, "pseudo_qconst", [
     ElementsAttr:$value
   );
 
-  let results = (outs AnyTensor:$output);
+  let results = (outs TFL_TensorOf<[QUI8, QI8, QI16, QUI16, TFL_Quint8]>:$output);
 
   let builders = [OpBuilder<
     "OpBuilder &, OperationState &state, TypeAttr qtype, Attribute value",
@@ -3253,7 +3490,7 @@ def TFL_SparseQConstOp : Op<TFL_Dialect, "pseudo_sparse_qconst", [
     ElementsAttr:$compressed_data
   );
 
-  let results = (outs AnyTensor:$output);
+  let results = (outs TFL_TensorOf<[QUI8, QI8, QI16, QUI16, TFL_Quint8]>:$output);
 
   let builders = [OpBuilder<
     "OpBuilder &, OperationState &state, TypeAttr qtype, "
@@ -3269,7 +3506,9 @@ def TFL_SparseQConstOp : Op<TFL_Dialect, "pseudo_sparse_qconst", [
 }
 
 def TFL_QuantizeOp: TFL_Op<"quantize", [
-    FirstAttrDerivedResultType, NoQuantizableResult]> {
+    FirstAttrDerivedResultType,
+    SameOperandsAndResultShape,
+    NoQuantizableResult]> {
   let summary = "Quantize operator";
 
   let description = [{
@@ -3278,16 +3517,18 @@ def TFL_QuantizeOp: TFL_Op<"quantize", [
   }];
 
   let arguments = (
-    ins AnyTensor:$input,
+    ins TFL_TensorOf<[F32, QI8, QUI8, QI16, TFL_Quint8]>:$input,
     TensorTypeAttr:$qtype
   );
 
-  let results = (outs AnyTensor:$output);
+  let results = (outs TFL_TensorOf<[QI8, QUI8, QI16, TFL_Quint8]>:$output);
 }
 
-def TFL_DensifyOp: TFL_Op<"densify", [NoSideEffect,
-                                      SameOperandsAndResultType,
-                                      NoQuantizableResult]> {
+def TFL_DensifyOp: TFL_Op<"densify", [
+    NoSideEffect,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    NoQuantizableResult]> {
   let summary = "Densify operator";
 
   let description = [{
@@ -3390,6 +3631,19 @@ def TFL_LSTMOp :
            LstmOptionalPeepholeWeightConstraint,
            LstmProjectionWeightBiasConstraint,
            LstmResultConstraint,
+           TFL_OperandHasRank<2, 2>,           // input_to_forget_weights
+           TFL_OperandHasRank<3, 2>,           // input_to_cell_weights
+           TFL_OperandIsNoneOrHasRank<5, 2>,   // recurrent_to_input_weights
+           TFL_OperandHasRank<6, 2>,           // recurrent_to_forget_weights
+           TFL_OperandHasRank<7, 2>,           // recurrent_to_cell_weights
+           TFL_OperandIsNoneOrHasRank<9, 1>,   // cell_to_input_weights
+           TFL_OperandIsNoneOrHasRank<10, 1>,  // cell_to_forget_weights
+           TFL_OperandIsNoneOrHasRank<11, 1>,  // cell_to_output_weights
+           TFL_OperandHasRank<13, 1>,          // forget_gate_bias
+           TFL_OperandHasRank<14, 1>,          // cell_gate_bias
+           TFL_OperandHasRank<15, 1>,          // output_gate_bias
+           TFL_OperandIsNoneOrHasRank<16, 2>,  // projection_weights
+           TFL_OperandIsNoneOrHasRank<17, 1>,  // projection_bias
            TFL_StatefulOp]> {
   let summary = "The full lstm operator";
 
@@ -3416,23 +3670,23 @@ Ba et al. 'Layer Normalization'
     ins TFL_TensorOf<[F32, QI8]>:$input,
 
     // Weights
-    TFL_TensorOfOrNone<[F32, I8, QI8]>:$input_to_input_weights,
-    TFL_TensorOf<[F32, I8, QI8]>:$input_to_forget_weights,
-    TFL_TensorOf<[F32, I8, QI8]>:$input_to_cell_weights,
-    TFL_TensorOf<[F32, I8, QI8]>:$input_to_output_weights,
+    TFL_TensorOfOrNone<[F32, QI8]>:$input_to_input_weights,
+    TFL_TensorOf<[F32, QI8]>:$input_to_forget_weights,
+    TFL_TensorOf<[F32, QI8]>:$input_to_cell_weights,
+    TFL_TensorOf<[F32, QI8]>:$input_to_output_weights,
 
     // Recurrent weights
-    TFL_TensorOfOrNone<[F32, I8, QI8]>:$recurrent_to_input_weights,
-    TFL_TensorOf<[F32, I8, QI8]>:$recurrent_to_forget_weights,
-    TFL_TensorOf<[F32, I8, QI8]>:$recurrent_to_cell_weights,
-    TFL_TensorOf<[F32, I8, QI8]>:$recurrent_to_output_weights,
+    TFL_TensorOfOrNone<[F32, QI8]>:$recurrent_to_input_weights,
+    TFL_TensorOf<[F32, QI8]>:$recurrent_to_forget_weights,
+    TFL_TensorOf<[F32, QI8]>:$recurrent_to_cell_weights,
+    TFL_TensorOf<[F32, QI8]>:$recurrent_to_output_weights,
 
     // Cell weights
-    TFL_TensorOfOrNone<[F32, I8, QI16]>:$cell_to_input_weights,
+    TFL_TensorOfOrNone<[F32, QI8, QI16]>:$cell_to_input_weights,
     // Optional input
-    TFL_TensorOfOrNone<[F32, I8, QI16]>:$cell_to_forget_weights,
+    TFL_TensorOfOrNone<[F32, QI8, QI16]>:$cell_to_forget_weights,
     // Optional input
-    TFL_TensorOfOrNone<[F32, I8, QI16]>:$cell_to_output_weights,
+    TFL_TensorOfOrNone<[F32, QI8, QI16]>:$cell_to_output_weights,
 
     // Bias
     TFL_TensorOfOrNone<[F32, QI32]>:$input_gate_bias,
@@ -3441,7 +3695,7 @@ Ba et al. 'Layer Normalization'
     TFL_TensorOf<[F32, QI32]>:$output_gate_bias,
 
     // Projection weight and bias
-    TFL_TensorOfOrNone<[F32, I8, QI8]>:$projection_weights,
+    TFL_TensorOfOrNone<[F32, QI8]>:$projection_weights,
     // Optional input
     TFL_TensorOfOrNone<[F32, QI32]>:$projection_bias,
 
@@ -3457,8 +3711,8 @@ Ba et al. 'Layer Normalization'
 
     // Attributes
     TFL_AFAttr:$fused_activation_function,
-    DefaultValuedAttr<F32Attr, "0.0f">:$cell_clip,
-    DefaultValuedAttr<F32Attr, "0.0f">:$proj_clip,
+    Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
+    Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     // Since this op is the FULL kernel only, constrain it.
     Confined<
       DefaultValuedAttr<TFL_LSTMKernelTypeAttr, "FULL">,
@@ -3498,6 +3752,24 @@ def TFL_UnidirectionalSequenceLSTMOp :
            LstmOptionalPeepholeWeightConstraint,
            LstmProjectionWeightBiasConstraint,
            LstmResultConstraint,
+           TFL_OperandHasRankAtLeast<0, 2>,    // input
+           TFL_OperandIsNoneOrHasRank<1, 2>,   // input_to_input_weights
+           TFL_OperandHasRank<2, 2>,           // input_to_forget_weights
+           TFL_OperandHasRank<3, 2>,           // input_to_cell_weights
+           TFL_OperandHasRank<4, 2>,           // input_to_output_weights
+           TFL_OperandIsNoneOrHasRank<5, 2>,   // recurrent_to_input_weights
+           TFL_OperandHasRank<6, 2>,           // recurrent_to_forget_weights
+           TFL_OperandHasRank<7, 2>,           // recurrent_to_cell_weights
+           TFL_OperandHasRank<8, 2>,           // recurrent_to_output_weights
+           TFL_OperandIsNoneOrHasRank<9, 1>,   // cell_to_input_weights
+           TFL_OperandIsNoneOrHasRank<10, 1>,  // cell_to_forget_weights
+           TFL_OperandIsNoneOrHasRank<11, 1>,  // cell_to_output_weights
+           TFL_OperandIsNoneOrHasRank<12, 1>,  // input_gate_bias
+           TFL_OperandHasRank<13, 1>,          // forget_gate_bias
+           TFL_OperandHasRank<14, 1>,          // cell_gate_bias
+           TFL_OperandHasRank<15, 1>,          // output_gate_bias
+           TFL_OperandIsNoneOrHasRank<16, 2>,  // projection_weights
+           TFL_OperandIsNoneOrHasRank<17, 2>,  // projection_bias
            TFL_StatefulOp]> {
   let summary = "Unidirectional sequence lstm operator";
 
@@ -3513,35 +3785,35 @@ def TFL_UnidirectionalSequenceLSTMOp :
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I8]>:$input,
+    ins TFL_FpTensor:$input,
 
     // Weights
-    TFL_TensorOfOrNone<[F32, I8]>:$input_to_input_weights,
-    TFL_TensorOf<[F32, I8]>:$input_to_forget_weights,
-    TFL_TensorOf<[F32, I8]>:$input_to_cell_weights,
-    TFL_TensorOf<[F32, I8]>:$input_to_output_weights,
+    TFL_TensorOfOrNone<[F32, QI8]>:$input_to_input_weights,
+    TFL_TensorOf<[F32, QI8]>:$input_to_forget_weights,
+    TFL_TensorOf<[F32, QI8]>:$input_to_cell_weights,
+    TFL_TensorOf<[F32, QI8]>:$input_to_output_weights,
 
     // Recurrent weights
-    TFL_TensorOfOrNone<[F32, I8]>:$recurrent_to_input_weights,
-    TFL_TensorOf<[F32, I8]>:$recurrent_to_forget_weights,
-    TFL_TensorOf<[F32, I8]>:$recurrent_to_cell_weights,
-    TFL_TensorOf<[F32, I8]>:$recurrent_to_output_weights,
+    TFL_TensorOfOrNone<[F32, QI8]>:$recurrent_to_input_weights,
+    TFL_TensorOf<[F32, QI8]>:$recurrent_to_forget_weights,
+    TFL_TensorOf<[F32, QI8]>:$recurrent_to_cell_weights,
+    TFL_TensorOf<[F32, QI8]>:$recurrent_to_output_weights,
 
     // Cell weights
-    TFL_TensorOfOrNone<[F32, I8]>:$cell_to_input_weights,
+    TFL_TensorOfOrNone<[F32, QI8]>:$cell_to_input_weights,
     // Optional input
-    TFL_TensorOfOrNone<[F32, I8]>:$cell_to_forget_weights,
+    TFL_TensorOfOrNone<[F32, QI8]>:$cell_to_forget_weights,
     // Optional input
-    TFL_TensorOfOrNone<[F32, I8]>:$cell_to_output_weights,
+    TFL_TensorOfOrNone<[F32, QI8]>:$cell_to_output_weights,
 
     // Bias
     TFL_TensorOfOrNone<[F32]>:$input_gate_bias,
-    TFL_TensorOf<[F32]>:$forget_gate_bias,
-    TFL_TensorOf<[F32]>:$cell_bias,
-    TFL_TensorOf<[F32]>:$output_gate_bias,
+    TFL_FpTensor:$forget_gate_bias,
+    TFL_FpTensor:$cell_bias,
+    TFL_FpTensor:$output_gate_bias,
 
     // Projection weight and bias
-    TFL_TensorOfOrNone<[F32, I8]>:$projection_weights,
+    TFL_TensorOfOrNone<[F32, QI8]>:$projection_weights,
     // Optional input
     TFL_TensorOfOrNone<[F32]>:$projection_bias,
 
@@ -3550,19 +3822,19 @@ def TFL_UnidirectionalSequenceLSTMOp :
     TFL_StatefulTensor:$input_cell_state,
 
     // Layer norm coefficients
-    TFL_TensorOfOrNone<[F32, I8]>:$input_layer_norm_coefficients,
-    TFL_TensorOfOrNone<[F32, I8]>:$forget_layer_norm_coefficients,
-    TFL_TensorOfOrNone<[F32, I8]>:$cell_layer_norm_coefficients,
-    TFL_TensorOfOrNone<[F32, I8]>:$output_layer_norm_coefficients,
+    TFL_TensorOfOrNone<[F32, QI8]>:$input_layer_norm_coefficients,
+    TFL_TensorOfOrNone<[F32, QI8]>:$forget_layer_norm_coefficients,
+    TFL_TensorOfOrNone<[F32, QI8]>:$cell_layer_norm_coefficients,
+    TFL_TensorOfOrNone<[F32, QI8]>:$output_layer_norm_coefficients,
 
     // Attributes
     TFL_AFAttr:$fused_activation_function,
-    DefaultValuedAttr<F32Attr, "0.0f">:$cell_clip,
-    DefaultValuedAttr<F32Attr, "0.0f">:$proj_clip,
+    Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
+    Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     BoolAttr:$time_major
   );
 
-  let results = (outs AnyTensor:$output);
+  let results = (outs TFL_TensorOf<[F32, QI8]>:$output);
 
   let hasOptions = 1;
 
@@ -3759,15 +4031,14 @@ def TFL_BidirectionalSequenceLSTMOp :
   }];
 }
 
-def RnnResultConstraint : PredOpTrait<
-  "the input and result tensor elemental types must be same",
-  TCresVTEtIsSameAsOp<0, 0>>;
-
 // UnidirectionalSequenceRNN op.
-def TFL_UnidirectionalSequenceRNNOp :
-  TFL_Op<"unidirectional_sequence_rnn",
-         [RnnResultConstraint, TFL_StatefulOp]> {
-
+def TFL_UnidirectionalSequenceRNNOp : TFL_Op<"unidirectional_sequence_rnn", [
+    TFL_OperandHasRank<4, 2>,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    PredOpTrait<"input and constant value operands must have same element type",
+      TFL_TCopVTEtAreSameAt<1, 2>>,
+    TFL_StatefulOp]> {
   let summary = "Unidirectional sequence rnn operator";
 
   let description = [{
@@ -3784,16 +4055,16 @@ def TFL_UnidirectionalSequenceRNNOp :
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I8]>:$input,
+    ins TFL_FpTensor:$input,
 
     // Weights
-    TFL_TensorOf<[F32, I8]>:$input_to_input_weights,
+    TFL_TensorOf<[F32, QI8]>:$input_to_input_weights,
 
     // Recurrent weights
-    TFL_TensorOf<[F32, I8]>:$recurrent_to_input_weights,
+    TFL_TensorOf<[F32, QI8]>:$recurrent_to_input_weights,
 
     // Bias
-    TFL_TensorOf<[F32]>:$input_gate_bias,
+    TFL_FpTensor:$input_gate_bias,
 
     // Hidden state.
     TFL_StatefulTensor:$hidden_state,
@@ -3803,7 +4074,7 @@ def TFL_UnidirectionalSequenceRNNOp :
     TFL_AFAttr:$fused_activation_function
   );
 
-  let results = (outs TFL_TensorOf<[F32, I8]>:$output);
+  let results = (outs TFL_FpTensor:$output);
 
   let hasOptions = 1;
 
@@ -3849,7 +4120,7 @@ def TFL_NumericVerifyOp : Op<TFL_Dialect, "NumericVerify", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[QI8, QUI8, QI16, QUI16]>:$input,
+    TFL_TensorOf<[QI8, QUI8, QI16, F16, TFL_Quint8]>:$input,
     TFL_TensorOf<[F32]>:$ref,
 
     // Attributes
@@ -3859,14 +4130,12 @@ def TFL_NumericVerifyOp : Op<TFL_Dialect, "NumericVerify", [
   let results = (outs);
 }
 
-def SVDFResultConstraint: PredOpTrait<
-  "the input and result tensor elemental types must be same",
-  TCresVTEtIsSameAsOp<0, 0>>;
-
 // SVDF op.
 def TFL_SVDFOp :
-  TFL_Op<"svdf",
-         [SVDFResultConstraint, TFL_StatefulOp]> {
+  TFL_Op<"svdf", [
+    PredOpTrait<"the input and result tensor elemental types must be same",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    TFL_StatefulOp]> {
 
   let summary = "Single value decomposition filter operator";
 
@@ -3878,13 +4147,13 @@ def TFL_SVDFOp :
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I8]>:$input,
+    ins TFL_TensorOf<[F32, QI8]>:$input,
 
     // Feature Weights.
-    TFL_TensorOf<[F32, I8]>:$feature_weights,
+    TFL_TensorOf<[F32, QI8, QUI8]>:$feature_weights,
 
     // Time weights
-    TFL_TensorOf<[F32, I8]>:$time_weights,
+    TFL_TensorOf<[F32, QI8]>:$time_weights,
 
     // Bias
     TFL_TensorOfOrNone<[F32]>:$input_gate_bias,
@@ -3893,11 +4162,11 @@ def TFL_SVDFOp :
     TFL_StatefulTensor:$activation_state,
 
     // Attributes
-    I32Attr:$rank,
+    Confined<I32Attr, [IntPositive]>:$rank,
     TFL_AFAttr:$fused_activation_function
   );
 
-  let results = (outs TFL_TensorOf<[F32, I8]>:$output);
+  let results = (outs TFL_TensorOf<[F32, QI8]>:$output);
 
   let hasOptions = 1;
 
@@ -3909,7 +4178,10 @@ def TFL_SVDFOp :
   }];
 }
 
-def TFL_SegmentSumOp: TFL_Op<"segment_sum", [NoSideEffect]> {
+def TFL_SegmentSumOp: TFL_Op<"segment_sum", [
+    NoSideEffect,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
   let summary = "SegmentSum operator";
 
   let description = [{
@@ -3917,7 +4189,7 @@ def TFL_SegmentSumOp: TFL_Op<"segment_sum", [NoSideEffect]> {
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I32]>:$data,
+    TFL_TensorOf<[F32, I32]>:$input,
     TFL_I32Tensor:$segment_ids
   );
   let results = (outs TFL_TensorOf<[F32, I32]>:$output);
@@ -3936,8 +4208,8 @@ def TFL_YieldOp : Op<TFL_Dialect, "yield", [Terminator]> {
 }
 
 def TFL_WhileOp : Op<TFL_Dialect, "while", [
-       DeclareOpInterfaceMethods<LoopLikeOpInterface>,
-       SingleBlockImplicitTerminator<"YieldOp">]> {
+    DeclareOpInterfaceMethods<LoopLikeOpInterface>,
+    SingleBlockImplicitTerminator<"YieldOp">]> {
   let summary = [{While loop}];
 
   let description = [{
@@ -3948,7 +4220,7 @@ def TFL_WhileOp : Op<TFL_Dialect, "while", [
 
     input: A list of input tensors whose types are T.
     output: A list of output tensors whose types are T.
-    cond: A region takes 'input' and returns a boolean scalar tensor.
+    cond: A region that takes 'input' and returns a boolean scalar tensor.
     body: A region that takes a list of tensors and returns another
           list of tensors. Both lists have the same types.
   }];

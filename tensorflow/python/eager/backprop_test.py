@@ -32,6 +32,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
@@ -48,6 +49,7 @@ from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import training
 
@@ -1483,6 +1485,19 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     g = backprop.GradientTape()
     with self.assertRaisesRegexp(ValueError, 'ndarray'):
       g.watch(np.array(1.))
+
+  def testWatchComposite(self):
+    """Test that tape.watch expands composites and watches component Tensors."""
+    with backprop.GradientTape() as t:
+      values = constant_op.constant([1.0, 2.0], dtypes.float32)
+      s = sparse_tensor.SparseTensor(
+          indices=[[0, 0], [1, 2]],
+          values=values,
+          dense_shape=[3, 4])
+      t.watch(s)
+      z = sparse_ops.sparse_reduce_sum_v2(s)
+    result = t.gradient(z, values)
+    self.assertAllEqual(result, [1.0, 1.0])
 
   def testWatchedVariablesAfterNonPersistentGradientCall(self):
     with backprop.GradientTape(persistent=False) as tape:

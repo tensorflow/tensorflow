@@ -38,6 +38,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.ops.losses import util as tf_losses_util
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
@@ -1164,6 +1165,7 @@ class Huber(LossFunctionWrapper):
               'keras.losses.mean_squared_error',
               'keras.losses.mse',
               'keras.losses.MSE')
+@dispatch.add_dispatch_support
 def mean_squared_error(y_true, y_pred):
   """Computes the mean squared error between labels and predictions.
 
@@ -1199,6 +1201,7 @@ def mean_squared_error(y_true, y_pred):
               'keras.losses.mean_absolute_error',
               'keras.losses.mae',
               'keras.losses.MAE')
+@dispatch.add_dispatch_support
 def mean_absolute_error(y_true, y_pred):
   """Computes the mean absolute error between labels and predictions.
 
@@ -1231,6 +1234,7 @@ def mean_absolute_error(y_true, y_pred):
               'keras.losses.mean_absolute_percentage_error',
               'keras.losses.mape',
               'keras.losses.MAPE')
+@dispatch.add_dispatch_support
 def mean_absolute_percentage_error(y_true, y_pred):
   """Computes the mean absolute percentage error between `y_true` and `y_pred`.
 
@@ -1267,6 +1271,7 @@ def mean_absolute_percentage_error(y_true, y_pred):
               'keras.losses.mean_squared_logarithmic_error',
               'keras.losses.msle',
               'keras.losses.MSLE')
+@dispatch.add_dispatch_support
 def mean_squared_logarithmic_error(y_true, y_pred):
   """Computes the mean squared logarithmic error between `y_true` and `y_pred`.
 
@@ -1315,6 +1320,7 @@ def _maybe_convert_labels(y_true):
 
 
 @keras_export('keras.metrics.squared_hinge', 'keras.losses.squared_hinge')
+@dispatch.add_dispatch_support
 def squared_hinge(y_true, y_pred):
   """Computes the squared hinge loss between `y_true` and `y_pred`.
 
@@ -1347,6 +1353,7 @@ def squared_hinge(y_true, y_pred):
 
 
 @keras_export('keras.metrics.hinge', 'keras.losses.hinge')
+@dispatch.add_dispatch_support
 def hinge(y_true, y_pred):
   """Computes the hinge loss between `y_true` and `y_pred`.
 
@@ -1378,6 +1385,7 @@ def hinge(y_true, y_pred):
 
 
 @keras_export('keras.losses.categorical_hinge')
+@dispatch.add_dispatch_support
 def categorical_hinge(y_true, y_pred):
   """Computes the categorical hinge loss between `y_true` and `y_pred`.
 
@@ -1410,6 +1418,7 @@ def categorical_hinge(y_true, y_pred):
 
 
 @keras_export('keras.losses.huber', v1=[])
+@dispatch.add_dispatch_support
 def huber(y_true, y_pred, delta=1.0):
   """Computes Huber loss value.
 
@@ -1447,6 +1456,7 @@ def huber(y_true, y_pred, delta=1.0):
 
 
 @keras_export('keras.losses.log_cosh', 'keras.losses.logcosh')
+@dispatch.add_dispatch_support
 def log_cosh(y_true, y_pred):
   """Logarithm of the hyperbolic cosine of the prediction error.
 
@@ -1485,6 +1495,7 @@ def log_cosh(y_true, y_pred):
 
 @keras_export('keras.metrics.categorical_crossentropy',
               'keras.losses.categorical_crossentropy')
+@dispatch.add_dispatch_support
 def categorical_crossentropy(y_true,
                              y_pred,
                              from_logits=False,
@@ -1515,7 +1526,7 @@ def categorical_crossentropy(y_true,
   label_smoothing = ops.convert_to_tensor_v2(label_smoothing, dtype=K.floatx())
 
   def _smooth_labels():
-    num_classes = math_ops.cast(array_ops.shape(y_true)[1], y_pred.dtype)
+    num_classes = math_ops.cast(array_ops.shape(y_true)[-1], y_pred.dtype)
     return y_true * (1.0 - label_smoothing) + (label_smoothing / num_classes)
 
   y_true = smart_cond.smart_cond(label_smoothing,
@@ -1525,6 +1536,7 @@ def categorical_crossentropy(y_true,
 
 @keras_export('keras.metrics.sparse_categorical_crossentropy',
               'keras.losses.sparse_categorical_crossentropy')
+@dispatch.add_dispatch_support
 def sparse_categorical_crossentropy(y_true, y_pred, from_logits=False, axis=-1):
   """Computes the sparse categorical crossentropy loss.
 
@@ -1556,6 +1568,7 @@ def sparse_categorical_crossentropy(y_true, y_pred, from_logits=False, axis=-1):
 
 @keras_export('keras.metrics.binary_crossentropy',
               'keras.losses.binary_crossentropy')
+@dispatch.add_dispatch_support
 def binary_crossentropy(y_true, y_pred, from_logits=False, label_smoothing=0):
   """Computes the binary crossentropy loss.
 
@@ -1599,6 +1612,7 @@ def binary_crossentropy(y_true, y_pred, from_logits=False, label_smoothing=0):
               'keras.losses.kullback_leibler_divergence',
               'keras.losses.kld',
               'keras.losses.KLD')
+@dispatch.add_dispatch_support
 def kl_divergence(y_true, y_pred):
   """Computes Kullback-Leibler divergence loss between `y_true` and `y_pred`.
 
@@ -1635,6 +1649,7 @@ def kl_divergence(y_true, y_pred):
 
 
 @keras_export('keras.metrics.poisson', 'keras.losses.poisson')
+@dispatch.add_dispatch_support
 def poisson(y_true, y_pred):
   """Computes the Poisson loss between y_true and y_pred.
 
@@ -1676,6 +1691,7 @@ def poisson(y_true, y_pred):
         'keras.losses.cosine',
         'keras.losses.cosine_similarity',
     ])
+@dispatch.add_dispatch_support
 def cosine_similarity(y_true, y_pred, axis=-1):
   """Computes the cosine similarity between labels and predictions.
 

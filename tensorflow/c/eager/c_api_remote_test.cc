@@ -19,36 +19,21 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
+#include "tensorflow/core/common_runtime/function_optimization_registry.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/casts.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
 namespace {
 
 using ::tensorflow::string;
-
-tensorflow::ServerDef GetServerDef(const string& job_name, int num_tasks) {
-  tensorflow::ServerDef server_def;
-  server_def.set_protocol("grpc");
-  server_def.set_job_name(job_name);
-  server_def.set_task_index(0);
-  tensorflow::ClusterDef* cluster_def = server_def.mutable_cluster();
-  tensorflow::JobDef* job_def = cluster_def->add_job();
-  job_def->set_name(job_name);
-  for (int i = 0; i < num_tasks; i++) {
-    int port = tensorflow::testing::PickUnusedPortOrDie();
-    job_def->mutable_tasks()->insert(
-        {i, tensorflow::strings::StrCat("localhost:", port)});
-  }
-  return server_def;
-}
-
-tensorflow::ServerDef GetServerDef(int num_tasks) {
-  return GetServerDef("localhost", num_tasks);
-}
 
 void TestRemoteExecute(bool async) {
   tensorflow::ServerDef server_def = GetServerDef(2);
@@ -351,74 +336,4 @@ TEST(CAPI, RemoteExecuteSilentCopiesLocalAsyncFuncOrdering) {
                                 /*heavy_load_on_streaming_rpc=*/true);
 }
 
-void TestRemoteExecuteDeleteContextWithOutstandingRPC(bool async) {
-  tensorflow::ServerDef server_def = GetServerDef(2);
-
-  // This server def has the task index set to 0.
-  string serialized = server_def.SerializeAsString();
-
-  server_def.set_task_index(1);
-
-  std::unique_ptr<tensorflow::GrpcServer> worker_server;
-  ASSERT_TRUE(tensorflow::GrpcServer::Create(
-                  server_def, tensorflow::Env::Default(), &worker_server)
-                  .ok());
-  ASSERT_TRUE(worker_server->Start().ok());
-
-  TF_Status* status = TF_NewStatus();
-  TFE_ContextOptions* opts = TFE_NewContextOptions();
-  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
-  TFE_ContextOptionsSetDevicePlacementPolicy(opts,
-                                             TFE_DEVICE_PLACEMENT_EXPLICIT);
-  TFE_Context* ctx = TFE_NewContext(opts, status);
-  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TFE_DeleteContextOptions(opts);
-
-  TFE_ContextSetServerDef(ctx, 0, serialized.data(), serialized.size(), status);
-  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-
-  // Use large matrices so that RPCs don't return before we get a chance
-  // to call TFE_DeleteContext.
-  TFE_TensorHandle* h0_task0 = TestMatrixTensorHandle100x100(ctx);
-  TFE_TensorHandle* h1_task0 = TestMatrixTensorHandle100x100(ctx);
-  const char remote_device_name[] =
-      "/job:localhost/replica:0/task:1/device:CPU:0";
-  auto* h0_task1 =
-      TFE_TensorHandleCopyToDevice(h0_task0, ctx, remote_device_name, status);
-  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  auto* h1_task1 =
-      TFE_TensorHandleCopyToDevice(h1_task0, ctx, remote_device_name, status);
-  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-
-  TFE_Op* matmul = MatMulOp(ctx, h0_task1, h1_task1);
-  TFE_OpSetDevice(matmul, remote_device_name, status);
-  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-
-  TFE_TensorHandle* retvals[1];
-  int num_retvals = 1;
-  TFE_Execute(matmul, &retvals[0], &num_retvals, status);
-  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteStatus(status);
-
-  TFE_DeleteTensorHandle(h0_task0);
-  TFE_DeleteTensorHandle(h1_task0);
-  TFE_DeleteTensorHandle(h0_task1);
-  TFE_DeleteTensorHandle(h1_task1);
-  TFE_DeleteTensorHandle(retvals[0]);
-
-  TFE_DeleteOp(matmul);
-
-  TFE_DeleteContext(ctx);
-
-  // TODO(b/136478427): Figure out how to correctly shut the server down.
-  worker_server.release();
-}
-
-TEST(CAPI, RemoteExecuteDeleteContextWithOutstandingRPC) {
-  TestRemoteExecuteDeleteContextWithOutstandingRPC(false);
-}
-
-TEST(CAPI, RemoteExecuteDeleteContextWithOutstandingRPCAsync) {
-  TestRemoteExecuteDeleteContextWithOutstandingRPC(true);
-}
 }  // namespace

@@ -81,7 +81,8 @@ TEST_F(RemoteMgrTest, SerializeLocalTensorHandleWithRemoteMirror) {
       handle->SetRemoteShape(shape, remote_device_, ctx_->GetContextViewId()));
   RemoteTensorHandle remote_handle;
   TF_ASSERT_OK(remote_mgr.SerializeRemoteTensorHandle(
-      handle, &remote_handle, remote_device_, remote_device_->name()));
+      handle, /*wait_until_ready=*/true, &remote_handle, remote_device_,
+      remote_device_->name()));
   EXPECT_EQ(op_id, remote_handle.op_id());
   EXPECT_EQ(output_num, remote_handle.output_num());
   EXPECT_EQ(remote_device_->name(), remote_handle.device());
@@ -97,7 +98,8 @@ TEST_F(RemoteMgrTest, SerializeRemoteTensorHandle) {
       op_id, output_num, DT_FLOAT, remote_device_, ctx_);
   RemoteTensorHandle remote_handle;
   TF_ASSERT_OK(remote_mgr.SerializeRemoteTensorHandle(
-      handle, &remote_handle, remote_device_, remote_device_->name()));
+      handle, /*wait_until_ready=*/true, &remote_handle, remote_device_,
+      remote_device_->name()));
   EXPECT_EQ(op_id, remote_handle.op_id());
   EXPECT_EQ(output_num, remote_handle.output_num());
   EXPECT_EQ(remote_device_->name(), remote_handle.device());

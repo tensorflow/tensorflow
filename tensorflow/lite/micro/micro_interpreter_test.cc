@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/micro/micro_optional_debug_tools.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 #include "tensorflow/lite/micro/test_helpers.h"
@@ -147,13 +149,12 @@ class MockCustom {
   }
 };
 
-class MockOpResolver : public OpResolver {
+class MockOpResolver : public MicroOpResolver {
  public:
-  const TfLiteRegistration* FindOp(BuiltinOperator op,
-                                   int version) const override {
+  const TfLiteRegistration* FindOp(BuiltinOperator op) const override {
     return nullptr;
   }
-  const TfLiteRegistration* FindOp(const char* op, int version) const override {
+  const TfLiteRegistration* FindOp(const char* op) const override {
     if (strcmp(op, "mock_custom") == 0) {
       return MockCustom::getRegistration();
     } else if (strcmp(op, "simple_stateful_op") == 0) {
@@ -161,6 +162,22 @@ class MockOpResolver : public OpResolver {
     } else {
       return nullptr;
     }
+  }
+
+  MicroOpResolver::BuiltinParseFunction GetOpDataParser(
+      tflite::BuiltinOperator) const override {
+    // TODO(b/149408647): Figure out an alternative so that we do not have any
+    // references to ParseOpData in the micro code and the signature for
+    // MicroOpResolver::BuiltinParseFunction can be changed to be different from
+    // ParseOpData.
+    return ParseOpData;
+  }
+
+  TfLiteStatus AddBuiltin(tflite::BuiltinOperator op,
+                          TfLiteRegistration* registration,
+                          int version) override {
+    // This function is currently not used in the tests.
+    return kTfLiteError;
   }
 };
 

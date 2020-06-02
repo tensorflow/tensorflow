@@ -1,3 +1,185 @@
+# Release 2.3.0
+
+## Breaking Changes
+
+*   `tf.image.extract_glimpse` has been updated to correctly process the case
+    where `centered=False` and `normalized=False`. This is a breaking change as
+    the output is different from (incorrect) previous versions. Note this
+    breaking change only impacts `tf.image.extract_glimpse` and
+    `tf.compat.v2.image.extract_glimpse` API endpoints. The behavior of
+    `tf.compat.v1.image.extract_glimpse` does not change. The behavior of
+    exsiting C++ kernel `ExtractGlimpse` does not change as well, so saved
+    models will not be impacted.
+
+# Release 2.1.1
+
+## Bug Fixes and Other Changes
+* Updates `sqlite3` to `3.31.01` to handle [CVE-2019-19880](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-19880), [CVE-2019-19244](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-19244) and [CVE-2019-19645](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-19645)
+* Updates `curl` to `7.69.1` to handle [CVE-2019-15601](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-15601)
+* Updates `libjpeg-turbo` to `2.0.4` to handle [CVE-2018-19664](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-19664), [CVE-2018-20330](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-20330) and [CVE-2019-13960](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-13960)
+* Updates Apache Spark to `2.4.5` to handle [CVE-2019-10099](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-10099), [CVE-2018-17190](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-17190) and [CVE-2018-11770](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-11770)
+* Fixes a versioning bug which causes Keras layers from TF 1.x to be used instead of those from TF 2.x
+
+# Release 2.0.2
+
+## Bug Fixes and Other Changes
+* Updates `sqlite3` to `3.31.01` to handle [CVE-2019-19880](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-19880), [CVE-2019-19244](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-19244) and [CVE-2019-19645](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-19645)
+* Updates `curl` to `7.69.1` to handle [CVE-2019-15601](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-15601)
+* Updates `libjpeg-turbo` to `2.0.4` to handle [CVE-2018-19664](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-19664), [CVE-2018-20330](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-20330) and [CVE-2019-13960](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-13960)
+* Updates Apache Spark to `2.4.5` to handle [CVE-2019-10099](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-10099), [CVE-2018-17190](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-17190) and [CVE-2018-11770](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-11770)
+
+# Release 1.15.3
+
+## Bug Fixes and Other Changes
+* Updates `sqlite3` to `3.31.01` to handle [CVE-2019-19880](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-19880), [CVE-2019-19244](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-19244) and [CVE-2019-19645](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-19645)
+* Updates `curl` to `7.69.1` to handle [CVE-2019-15601](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-15601)
+* Updates `libjpeg-turbo` to `2.0.4` to handle [CVE-2018-19664](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-19664), [CVE-2018-20330](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-20330) and [CVE-2019-13960](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-13960)
+* Updates Apache Spark to `2.4.5` to handle [CVE-2019-10099](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-10099), [CVE-2018-17190](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-17190) and [CVE-2018-11770](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2018-11770)
+
+# Release 2.2.0
+
+TensorFlow 2.2 discontinues support for Python 2, [previously announced](https://groups.google.com/a/tensorflow.org/d/msg/announce/gVwS5RC8mds/dCt1ka2XAAAJ) as following [Python 2's EOL on January 1, 2020](https://www.python.org/dev/peps/pep-0373/#update).
+
+Coinciding with this change, new releases of [TensorFlow's Docker images](https://hub.docker.com/r/tensorflow/tensorflow/) provide Python 3 exclusively. Because all images now use Python 3, Docker tags containing `-py3` will no longer be provided and existing `-py3` tags like `latest-py3` will not be updated.
+
+## Major Features and Improvements
+
+* Replaced the scalar type for string tensors from `std::string` to `tensorflow::tstring` which is now ABI stable.
+* A new Profiler for TF 2 for CPU/GPU/TPU. It offers both device and host performance analysis, including input pipeline and TF Ops. Optimization advisory is provided whenever possible. Please see [this tutorial](https://www.tensorflow.org/tensorboard/tensorboard_profiling_keras) and [guide](https://www.tensorflow.org/guide/profiler) for usage guidelines.
+* Export C++ functions to Python using `pybind11` as opposed to `SWIG` as a part of our [deprecation of swig efforts](https://github.com/tensorflow/community/blob/master/rfcs/20190208-pybind11.md).
+* `tf.distribute`:
+  * Support added for global sync `BatchNormalization` by using the newly added `tf.keras.layers.experimental.SyncBatchNormalization` layer. This layer will sync `BatchNormalization` statistics every step across all replicas taking part in sync training.
+  * Performance improvements for GPU multi-worker distributed training using `tf.distribute.experimental.MultiWorkerMirroredStrategy`
+    * Update NVIDIA `NCCL` to `2.5.7-1` for better performance and performance tuning. Please see [nccl developer guide](https://docs.nvidia.com/deeplearning/sdk/nccl-developer-guide/docs/env.html) for more information on this.
+    * Support gradient `allreduce` in `float16`. See this [example](https://github.com/tensorflow/models/blob/master/official/staging/training/grad_utils.py) usage.
+    * Experimental support of [all reduce gradient packing](https://www.tensorflow.org/api_docs/python/tf/distribute/experimental/CollectiveHints) to allow overlapping gradient aggregation with backward path computation.
+    * Deprecated `experimental_run_v2` method for distribution strategies and renamed the method `run` as it is no longer experimental.
+    * Add CompositeTensor support for DistributedIterators. This should help prevent unnecessary function retracing and memory leaks.
+* `tf.keras`:
+  * `Model.fit` major improvements:
+     * You can now use custom training logic with `Model.fit` by overriding `Model.train_step`.
+     * Easily write state-of-the-art training loops without worrying about all of the features `Model.fit` handles for you (distribution strategies, callbacks, data formats, looping logic, etc)
+     * See the default [`Model.train_step`](https://github.com/tensorflow/tensorflow/blob/1381fc8e15e22402417b98e3881dfd409998daea/tensorflow/python/keras/engine/training.py#L540) for an example of what this function should look like. Same applies for validation and inference via `Model.test_step` and `Model.predict_step`.
+     * SavedModel uses its own `Model._saved_model_inputs_spec` attr now instead of
+       relying on `Model.inputs` and `Model.input_names`, which are no longer set for subclass Models.
+       This attr is set in eager, `tf.function`, and graph modes. This gets rid of the need for users to
+       manually call `Model._set_inputs` when using Custom Training Loops(CTLs).
+     * Dynamic shapes are supported for generators by calling the Model on the first batch we "peek" from the generator.
+       This used to happen implicitly in `Model._standardize_user_data`. Long-term, a solution where the
+       `DataAdapter` doesn't need to call the Model is probably preferable.
+  * The SavedModel format now supports all Keras built-in layers (including metrics, preprocessing layers, and stateful RNN layers)
+  * Update Keras batch normalization layer to use the running mean and average computation in the `fused_batch_norm`. You should see significant performance improvements when using `fused_batch_norm` in Eager mode.
+
+* `tf.lite`:
+  * Enable TFLite experimental new converter by default.
+* XLA
+  * XLA now builds and works on windows. All prebuilt packages come with XLA available.
+  * XLA can be [enabled for a `tf.function`](https://www.tensorflow.org/xla#explicit_compilation_with_tffunction
+) with “compile or throw exception” semantics on CPU and GPU.
+
+## Breaking Changes
+* `tf.keras`:
+  * In `tf.keras.applications` the name of the "top" layer has been standardized to "predictions". This is only a problem if your code relies on the exact name of the layer.
+  * Huber loss function has been updated to be consistent with other Keras losses. It now computes mean over the last axis of per-sample losses before applying the reduction function.
+* AutoGraph no longer converts functions passed to `tf.py_function`, `tf.py_func` and `tf.numpy_function`.
+* Deprecating `XLA_CPU` and `XLA_GPU` devices with this release.
+* Increasing the minimum bazel version to build TF to 2.0.0 to use Bazel's `cc_experimental_shared_library`.
+* Keras compile/fit behavior for functional and subclassed models have been unified. Model properties such as `metrics`, `metrics_names` will now be available only after **training/evaluating the model on actual data** for functional models. `metrics` will **now include** model `loss` and output losses.`loss_functions` property has been removed from the model. This was an undocumented property that was accidentally public and has now been removed.
+
+## Known Caveats
+* The current TensorFlow release now **requires** [gast](https://pypi.org/project/gast/) version 0.3.3.
+
+## Bug Fixes and Other Changes
+* `tf.data`:
+  * Removed `autotune_algorithm` from experimental optimization options.
+* TF Core:
+  * `tf.constant` always creates CPU tensors irrespective of the current device context.
+  * Eager `TensorHandles` maintain a list of mirrors for any copies to local or remote devices. This avoids any redundant copies due to op execution.
+  * For `tf.Tensor` & `tf.Variable`, `.experimental_ref()` is no longer experimental and is available as simply `.ref()`.
+  * `pfor/vectorized_map`: Added support for vectorizing 56 more ops. Vectorizing `tf.cond` is also supported now.
+  * Set as much partial shape as we can infer statically within the gradient impl of the gather op.
+  * Gradient of `tf.while_loop` emits `StatelessWhile` op if `cond` and body functions are stateless. This allows multiple gradients while ops to run in parallel under distribution strategy.
+  * Speed up `GradientTape` in eager mode by auto-generating list of op inputs/outputs which are unused and hence not cached for gradient functions.
+  * Support `back_prop=False` in `while_v2` but mark it as deprecated.
+  * Improve error message when attempting to use `None` in data-dependent control flow.
+  * Add `RaggedTensor.numpy()`.
+  * Update `RaggedTensor.__getitem__` to preserve uniform dimensions & allow indexing into uniform dimensions.
+  * Update `tf.expand_dims` to always insert the new dimension as a non-ragged dimension.
+  * Update `tf.embedding_lookup` to use `partition_strategy` and `max_norm` when `ids` is ragged.
+  * Allow `batch_dims==rank(indices)` in `tf.gather`.
+  * Add support for bfloat16 in `tf.print`.
+* `tf.distribute`:
+  * Support `embedding_column` with variable-length input features for `MultiWorkerMirroredStrategy`.
+* `tf.keras`:
+  * Added `experimental_aggregate_gradients` argument to `tf.keras.optimizer.Optimizer.apply_gradients`. This allows custom gradient aggregation and processing aggregated gradients in custom training loop.
+  * Allow `pathlib.Path` paths for loading models via Keras API.
+* `tf.function`/AutoGraph:
+  * AutoGraph is now available in `ReplicaContext.merge_call`, `Strategy.extended.update` and `Strategy.extended.update_non_slot`.
+  * Experimental support for shape invariants has been enabled in `tf.function`. See the API docs for `tf.autograph.experimental.set_loop_options` for additonal info.
+  * AutoGraph error messages now exclude frames corresponding to APIs internal to AutoGraph.
+  * Improve shape inference for `tf.function` input arguments to unlock more Grappler optimizations in TensorFlow 2.x.
+  * Improve automatic control dependency management of resources by allowing resource reads to occur in parallel and synchronizing only on writes.
+  * Fix execution order of multiple stateful calls to `experimental_run_v2` in `tf.function`.
+  * You can now iterate over `RaggedTensors` using a for loop inside `tf.function`.
+* `tf.lite`:
+  *  Migrated the `tf.lite` C inference API out of experimental into lite/c.
+  * Add an option to disallow `NNAPI` CPU / partial acceleration on Android 10
+  * TFLite Android AARs now include the C headers and APIs are required to use TFLite from native code.
+  * Refactors the delegate and delegate kernel sources to allow usage in the linter.
+  * Limit delegated ops to actually supported ones if a device name is specified or `NNAPI` CPU Fallback is disabled.
+  * TFLite now supports `tf.math.reciprocal1` op by lowering to `tf.div op`.
+  * TFLite's unpack op now supports boolean tensor inputs.
+  * Microcontroller and embedded code moved from experimental to main TensorFlow Lite folder
+  * Check for large TFLite tensors.
+  * Fix GPU delegate crash with C++17.
+  * Add 5D support to TFLite `strided_slice`.
+  * Fix error in delegation of `DEPTH_TO_SPACE` to `NNAPI` causing op not to be accelerated.
+  * Fix segmentation fault when running a model with LSTM nodes using `NNAPI` Delegate
+  * Fix `NNAPI` delegate failure when an operand for Maximum/Minimum operation is a scalar.
+  * Fix `NNAPI` delegate failure when Axis input for reduce operation is a scalar.
+  * Expose option to limit the number of partitions that will be delegated to `NNAPI`.
+  * If a target accelerator is specified, use its feature level to determine operations to delegate instead of SDK version.
+* `tf.random`:
+  * Various random number generation improvements:
+    * Add a fast path for default `random_uniform`
+    * `random_seed` documentation improvement.
+    * `RandomBinomial` broadcasts and appends the sample shape to the left rather than the right.
+  * Added `tf.random.stateless_binomial`, `tf.random.stateless_gamma`, `tf.random.stateless_poisson`
+  * `tf.random.stateless_uniform` now supports unbounded sampling of `int` types.
+* Math and Linear Algebra:
+  * Add `tf.linalg.LinearOperatorTridiag`.
+  * Add `LinearOperatorBlockLowerTriangular`
+  * Add broadcasting support to tf.linalg.triangular_solve[#26204](https://github.com/tensorflow/tensorflow/issues/26204), tf.math.invert_permutation.
+  * Add `tf.math.sobol_sample` op.
+  * Add `tf.math.xlog1py`.
+  * Add `tf.math.special.{dawsn,expi,fresnel_cos,fresnel_sin,spence}`.
+  * Add a Modified Discrete Cosine Transform (MDCT) and its inverse to `tf.signal`.
+* TPU Enhancements:
+  * Refactor `TpuClusterResolver` to move shared logic to a separate pip package.
+  * Support configuring TPU software version from cloud tpu client.
+  * Allowed TPU embedding weight decay factor to be multiplied by learning rate.
+* XLA Support:
+  * Add standalone XLA AOT runtime target + relevant .cc sources to pip package.
+  * Add check for memory alignment to MemoryAllocation::MemoryAllocation() on 32-bit ARM. This ensures a deterministic early exit instead of a hard to debug bus error later.
+  * `saved_model_cli aot_compile_cpu` allows you to compile saved models to XLA header+object files and include them in your C++ programs.
+  * Enable `Igamma`, `Igammac` for XLA.
+* Deterministic Op Functionality:
+  * XLA reduction emitter is deterministic when the environment variable `TF_DETERMINISTIC_OPS` is set to "true" or "1". This extends deterministic `tf.nn.bias_add` back-prop functionality (and therefore also deterministic back-prop of bias-addition in Keras layers) to include when XLA JIT complilation is enabled.
+  * Fix problem, when running on a CUDA GPU and when either environment variable `TF_DETERMINSTIC_OPS` or environment variable `TF_CUDNN_DETERMINISTIC` is set to "true" or "1", in which some layer configurations led to an exception with the message "No algorithm worked!"
+* Tracing and Debugging:
+  * Add source, destination name to `_send` traceme to allow easier debugging.
+  * Add traceme event to `fastpathexecute`.
+* Other:
+  * Fix an issue with AUC.reset_states for multi-label AUC [#35852](https://github.com/tensorflow/tensorflow/issues/35852)
+  * Fix the TF upgrade script to not delete files when there is a parsing error and the output mode is `in-place`.
+  * Move `tensorflow/core:framework/*_pyclif` rules to `tensorflow/core/framework:*_pyclif`.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+372046933, 8bitmp3, aaronhma, Abin Shahab, Aditya Patwardhan, Agoniii, Ahti Kitsik, Alan Yee, Albin Joy, Alex Hoffman, Alexander Grund, Alexandre E. Eichenberger, Amit Kumar Jaiswal, amoitra, Andrew Anderson, Angus-Luo, Anthony Barbier, Anton Kachatkou, Anuj Rawat, archis, Arpan-Dhatt, Arvind Sundararajan, Ashutosh Hathidara, autoih, Bairen Yi, Balint Cristian, Bas Aarts, BashirSbaiti, Basit Ayantunde, Ben Barsdell, Benjamin Gaillard, boron, Brett Koonce, Bryan Cutler, Christian Goll, Christian Sachs, Clayne Robison, comet, Daniel Falbel, Daria Zhuravleva, darsh8200, David Truby, Dayananda-V, deepakm, Denis Khalikov, Devansh Singh, Dheeraj R Reddy, Diederik Van Liere, Diego Caballero, Dominic Jack, dothinking, Douman, Drake Gens, Duncan Riach, Ehsan Toosi, ekuznetsov139, Elena Zhelezina, elzino, Ending2015a, Eric Schweitz, Erik Zettel, Ethan Saadia, Eugene Kuznetsov, Evgeniy Zheltonozhskiy, Ewout Ter Hoeven, exfalso, FAIJUL, Fangjun Kuang, Fei Hu, Frank Laub, Frederic Bastien, Fredrik Knutsson, frreiss, Frédéric Rechtenstein, fsx950223, Gaurav Singh, gbaned, George Grzegorz Pawelczak, George Sterpu, Gian Marco Iodice, Giorgio Arena, Hans Gaiser, Hans Pabst, Haoyu Wu, Harry Slatyer, hsahovic, Hugo, Hugo Sjöberg, IrinaM21, jacco, Jake Tae, Jean-Denis Lesage, Jean-Michel Gorius, Jeff Daily, Jens Elofsson, Jerry Shih, jerryyin, Jin Mingjian, Jinjing Zhou, JKIsaacLee, jojimonv, Jonathan Dekhtiar, Jose Ignacio Gomez, Joseph-Rance, Judd, Julian Gross, Kaixi Hou, Kaustubh Maske Patil, Keunwoo Choi, Kevin Hanselman, Khor Chean Wei, Kilaru Yasaswi Sri Chandra Gandhi, Koan-Sin Tan, Koki Ibukuro, Kristian Holsheimer, kurileo, Lakshay Tokas, Lee Netherton, leike666666, Leslie-Fang-Intel, Li, Guizi, LIUJIAN435, Lukas Geiger, Lyo Nguyen, madisetti, Maher Jendoubi, Mahmoud Abuzaina, Manuel Freiberger, Marcel Koester, Marco Jacopo Ferrarotti, Markus Franke, marload, Mbah-Javis, mbhuiyan, Meng Zhang, Michael Liao, MichaelKonobeev, Michal Tarnowski, Milan Straka, minoring, Mohamed Nour Abouelseoud, MoussaMM, Mrinal Jain, mrTsjolder, Måns Nilsson, Namrata Bhave, Nicholas Gao, Niels Ole Salscheider, nikochiko, Niranjan Hasabnis, Nishidha Panpaliya, nmostafa, Noah Trenaman, nuka137, Officium, Owen L - Sfe, Pallavi G, Paul Andrey, Peng Sun, Peng Wu, Phil Pearl, PhilipMay, pingsutw, Pooya Davoodi, PragmaTwice, pshiko, Qwerty71, R Gomathi, Rahul Huilgol, Richard Xiao, Rick Wierenga, Roberto Rosmaninho, ruchit2801, Rushabh Vasani, Sami, Sana Damani, Sarvesh Dubey, Sasan Jafarnejad, Sergii Khomenko, Shane Smiskol, Shaochen Shi, sharkdtu, Shawn Presser, ShengYang1, Shreyash Patodia, Shyam Sundar Dhanabalan, Siju Samuel, Somyajit Chakraborty Sam, Srihari Humbarwadi, srinivasan.narayanamoorthy, Srishti Yadav, Steph-En-M, Stephan Uphoff, Stephen Mugisha, SumanSudhir, Taehun Kim, Tamas Bela Feher, TengLu, Tetragramm, Thierry Herrmann, Tian Jin, tigertang, Tom Carchrae, Tom Forbes, Trent Lo, Victor Peng, vijayphoenix, Vincent Abriou, Vishal Bhola, Vishnuvardhan Janapati, vladbataev, VoVAllen, Wallyss Lima, Wen-Heng (Jack) Chung, wenxizhu, William D. Irons, William Zhang, Xiaoming (Jason) Cui, Xiaoquan Kong, Xinan Jiang, Yasir Modak, Yasuhiro Matsumoto, Yaxun (Sam) Liu, Yong Tang, Ytyt-Yt, yuan, Yuan Mingshuai, Yuan Tang, Yuki Ueda, Yusup, zhangshijin, zhuwenxi
+
 # Release 2.0.1
 
 ## Bug Fixes and Other Changes

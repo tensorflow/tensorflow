@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
+#include "tensorflow/lite/delegates/gpu/common/quantization_util.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/gl/api2.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
@@ -210,12 +211,14 @@ class DelegateKernel {
 
     const bool is_dequant_required = !quant_conversion_map_.empty();
     if (is_dequant_required) {
-      RETURN_IF_ERROR(DequantizeInputs(context));
+      RETURN_IF_ERROR(
+          DequantizeInputs(context, input_indices_, quant_conversion_map_));
     }
     RETURN_IF_ERROR(SetInputsAndOutputs(context));
     RETURN_IF_ERROR(runner_->Run());
     if (is_dequant_required) {
-      RETURN_IF_ERROR(QuantizeOutputs(context));
+      RETURN_IF_ERROR(
+          QuantizeOutputs(context, output_indices_, quant_conversion_map_));
     }
     return absl::OkStatus();
   }
@@ -263,79 +266,15 @@ class DelegateKernel {
 
     input_refs->clear();
     output_refs->clear();
-    const auto& inputs = graph->inputs();
+    const auto inputs = graph->inputs();
     input_refs->reserve(inputs.size());
     for (const auto& input : inputs) {
       input_refs->push_back(input->tensor.ref);
     }
-    const auto& outputs = graph->outputs();
+    const auto outputs = graph->outputs();
     output_refs->reserve(outputs.size());
     for (const auto& output : outputs) {
       output_refs->push_back(output->tensor.ref);
-    }
-
-    return absl::OkStatus();
-  }
-
-  // TODO(b/150798231): Refactor these two into common utils when generalizing
-  // to other backends.
-
-  // Dequantizes input tensors pre-inference, leaving float tensors intact.
-  absl::Status DequantizeInputs(TfLiteContext* context) {
-    for (auto index : input_indices_) {
-      if (quant_conversion_map_.find(index) == quant_conversion_map_.end()) {
-        continue;
-      }
-      int original_tensor_idx = quant_conversion_map_[index];
-      const TfLiteTensor& dequantized_tflite_tensor = context->tensors[index];
-      const TfLiteTensor& original_tflite_tensor =
-          context->tensors[original_tensor_idx];
-      DequantizationParams op_params;
-      op_params.zero_point = original_tflite_tensor.params.zero_point;
-      op_params.scale = original_tflite_tensor.params.scale;
-      if (original_tflite_tensor.type == kTfLiteInt8) {
-        optimized_ops::Dequantize(op_params,
-                                  GetTensorShape(&original_tflite_tensor),
-                                  original_tflite_tensor.data.int8,
-                                  GetTensorShape(&original_tflite_tensor),
-                                  dequantized_tflite_tensor.data.f);
-      } else if (original_tflite_tensor.type == kTfLiteUInt8) {
-        optimized_ops::Dequantize(op_params,
-                                  GetTensorShape(&original_tflite_tensor),
-                                  original_tflite_tensor.data.uint8,
-                                  GetTensorShape(&original_tflite_tensor),
-                                  dequantized_tflite_tensor.data.f);
-      }
-    }
-    return absl::OkStatus();
-  }
-
-  // Quantizes output tensors post-inference, leaving float tensors intact.
-  absl::Status QuantizeOutputs(TfLiteContext* context) {
-    for (auto index : output_indices_) {
-      if (quant_conversion_map_.find(index) == quant_conversion_map_.end()) {
-        continue;
-      }
-      int original_tensor_idx = quant_conversion_map_[index];
-      const TfLiteTensor& dequantized_tflite_tensor = context->tensors[index];
-      const TfLiteTensor& original_tflite_tensor =
-          context->tensors[original_tensor_idx];
-      tflite::QuantizationParams op_params;
-      op_params.zero_point = original_tflite_tensor.params.zero_point;
-      op_params.scale = original_tflite_tensor.params.scale;
-      if (original_tflite_tensor.type == kTfLiteInt8) {
-        optimized_ops::AffineQuantize(op_params,
-                                      GetTensorShape(&original_tflite_tensor),
-                                      dequantized_tflite_tensor.data.f,
-                                      GetTensorShape(&original_tflite_tensor),
-                                      original_tflite_tensor.data.int8);
-      } else if (original_tflite_tensor.type == kTfLiteUInt8) {
-        optimized_ops::AffineQuantize(op_params,
-                                      GetTensorShape(&original_tflite_tensor),
-                                      dequantized_tflite_tensor.data.f,
-                                      GetTensorShape(&original_tflite_tensor),
-                                      original_tflite_tensor.data.uint8);
-      }
     }
 
     return absl::OkStatus();

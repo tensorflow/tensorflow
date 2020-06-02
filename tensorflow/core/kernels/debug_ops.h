@@ -435,9 +435,9 @@ class DebugIdentityV2Op : public OpKernel {
     for (const string& dump_root : dump_roots_) {
       tfdbg::DebugEventsWriter* debug_events_writer =
           tfdbg::DebugEventsWriter::GetDebugEventsWriter(dump_root);
-      debug_events_writer->WriteGraphExecutionTrace(
-          tfdbg_context_id_, device_name_, op_name_, output_slot_,
-          tensor_debug_mode_, tensor);
+      OP_REQUIRES_OK(context, debug_events_writer->WriteGraphExecutionTrace(
+                                  tfdbg_context_id_, device_name_, op_name_,
+                                  output_slot_, tensor_debug_mode_, tensor));
     }
     context->set_output(0, tensor);
   }

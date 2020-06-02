@@ -23,7 +23,8 @@ namespace tflite {
 namespace delegates {
 namespace hexagon {
 
-OpBuilder* GraphBuilder::CreateOpBuilderFromTfLiteOp(int op_type) {
+OpBuilder* GraphBuilder::CreateOpBuilderFromTfLiteOp(int op_type,
+                                                     TfLiteNode* node) {
   switch (op_type) {
     case kTfLiteBuiltinAdd:
       return CreateArithmeticBuilder(this, OP_QuantizedAdd_8p8to8);
@@ -43,8 +44,16 @@ OpBuilder* GraphBuilder::CreateOpBuilderFromTfLiteOp(int op_type) {
       return CreateReduceBuilder(this, OP_QuantizedSum_8to32);
     case kTfLiteBuiltinPad:
       return CreatePadBuilder(this, OP_QuantizedPad_8);
-    case kTfLiteBuiltinFullyConnected:
-      return CreateMatMulBuilder(this, OP_QuantizedMatMul_8x8to32);
+    case kTfLiteBuiltinMirrorPad:
+      return CreateMirrorPadBuilder(this, OP_MirrorPad_8);
+    case kTfLiteBuiltinFullyConnected: {
+      const auto& weights_tensor = context_->tensors[node->inputs->data[1]];
+      if (weights_tensor.allocation_type == kTfLiteMmapRo)
+        return CreateMatMulWithConstWeightsOpBuilder(
+            this, OP_QuantizedMatMul_8x8to32);
+      else
+        return CreateMatMulOpBuilder(this, OP_Transpose_8);
+    }
     case kTfLiteBuiltinAveragePool2d:
       return CreatePool2DBuilder(this, OP_QuantizedAvgPool_8);
     case kTfLiteBuiltinMaxPool2d:
@@ -91,6 +100,14 @@ OpBuilder* GraphBuilder::CreateOpBuilderFromTfLiteOp(int op_type) {
       return CreateQuantizeBuilder(this, OP_Requantize_8to8);
     case kTfLiteBuiltinHardSwish:
       return CreateHardSwishBuilder(this, OP_QuantizedHardSwish_8);
+    case kTfLiteBuiltinMinimum:
+      return CreateMinMaxBuilder(this, OP_QuantizedMinimum_8);
+    case kTfLiteBuiltinMaximum:
+      return CreateMinMaxBuilder(this, OP_QuantizedMaximum_8);
+    case kTfLiteBuiltinSlice:
+      return CreateSliceOpBuilder(this, OP_QuantizedSlice_8);
+    case kTfLiteBuiltinPack:
+      return CreatePackBuilder(this, OP_QuantizedPack_8);
     default:
       context_->ReportError(context_, "Op not supported: %d", op_type);
       return nullptr;
@@ -114,7 +131,8 @@ OpBuilder* GraphBuilder::AddConstNodeWithData(const int shape[], char* data,
 }
 
 OpBuilder* GraphBuilder::AddConstNodeWithData(int tensor_id,
-                                              const TfLiteTensor& tensor) {
+                                              const TfLiteTensor& tensor,
+                                              bool int8_to_uint8) {
   builders_.emplace_back(new OpBuilder(this, OP_Const));
   const int node_id = builders_.size();
   builders_.back()->SetConstNode();
@@ -130,14 +148,19 @@ OpBuilder* GraphBuilder::AddConstNodeWithData(int tensor_id,
     return nullptr;
   }
   AddTensorWithID(tensor_id, node_id, 0);
+  // Cast int8 to uint8 if requested.
+  // This will add cast op to uint8 and update tensor map to point
+  // to the casted tensor.
+  if (int8_to_uint8 && tensor.type == kTfLiteInt8) {
+    AddCastOp(context_, OP_Quantized_CastInt8ToUInt8, tensor_id);
+  }
   return builders_.back().get();
 }
 
 // TODO(b/154604279): Support these casting ops in Hexagon op profiling (which
 // seems to key tensors on a single op, which may not be the case now).
 TfLiteStatus GraphBuilder::AddCastOp(TfLiteContext* context, int op_type,
-                                     int tensor_id,
-                                     OpBuilder::TensorID hexagon_input) {
+                                     int tensor_id) {
   // Create a new OpBuilder for casting the tensor.
   OpBuilder* cast_builder = CreateCastBuilder(this, op_type);
   builders_.emplace_back(cast_builder);
@@ -171,9 +194,8 @@ TfLiteStatus GraphBuilder::AddInputTensors(const TfLiteIntArray* input_tensors,
     AddTensorWithID(tensor_id, input_op->GetID(), num_inputs);
     // If tensor is of type int8, add an op to cast it to uint8.
     if (tensor.type == kTfLiteInt8) {
-      TF_LITE_ENSURE_STATUS(AddCastOp(context, OP_Quantized_CastInt8ToUInt8,
-                                      tensor_id,
-                                      GetHexagonTensorId(tensor_id)));
+      TF_LITE_ENSURE_STATUS(
+          AddCastOp(context, OP_Quantized_CastInt8ToUInt8, tensor_id));
     }
     ++num_inputs;
   }
@@ -191,9 +213,8 @@ TfLiteStatus GraphBuilder::AddOutputTensors(
     const auto& tensor = context->tensors[tensor_id];
     // If tensor is of type int8, add an op to cast it to uint8.
     if (tensor.type == kTfLiteInt8) {
-      TF_LITE_ENSURE_STATUS(AddCastOp(context, OP_Quantized_CastUInt8ToInt8,
-                                      tensor_id,
-                                      GetHexagonTensorId(tensor_id)));
+      TF_LITE_ENSURE_STATUS(
+          AddCastOp(context, OP_Quantized_CastUInt8ToInt8, tensor_id));
     }
     hexagon_output_ids.push_back(GetHexagonTensorId(tensor_id));
   }
@@ -261,7 +282,7 @@ OpBuilder* GraphBuilder::AddNode(int tflite_node_index) {
 
 OpBuilder* GraphBuilder::AddNodeFromTfLiteOp(int op_type, TfLiteNode* node,
                                              int tflite_node_index) {
-  OpBuilder* op = CreateOpBuilderFromTfLiteOp(op_type);
+  OpBuilder* op = CreateOpBuilderFromTfLiteOp(op_type, node);
   builders_.emplace_back(op);
   op->SetNodeId(builders_.size());
   op->SetTFLiteNodeId(tflite_node_index);

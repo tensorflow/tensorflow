@@ -88,7 +88,7 @@ struct OperatorProperty {
   bool restrict_same_input_output_scale = false;
 
   // Use same min of min and max of max for each group.
-  // Incompatable with restrict_same_input_output_scale and restricted_value.
+  // Incompatible with restrict_same_input_output_scale and restricted_value.
   // TODO(jianlijianli): make it compatible with other restrictions when there
   // is a use case.
   std::vector<std::vector<int>> restrict_scale = {};

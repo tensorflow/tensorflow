@@ -191,11 +191,11 @@ class PartitionGraphIntoIndependentNodeSubsetsImpl {
   std::vector<NodeSubset>* node_subsets_;
   std::vector<NodeSubset::Type> node_type_;
   // Maps from tensor index to the epoch in which it is assigned. Also special
-  // negative values of kEpochNotAssigned if not assigned, kEpochNotReady if it
-  // is an input or constant.
+  // negative values of kEpochNotReady if not assigned, kEpochAlwaysReady if it
+  // is an input to the whole model or a constant that has no dependencies.
   std::vector<int> tensor_epochs_;
   // Maps from tensor index to the epoch in which it is assigned. Also special
-  // negative values of kEpochNotAssigned if not assigned.
+  // negative values of kEpochNotReady if not assigned.
   std::vector<int> node_epochs_;
 };
 

@@ -115,6 +115,10 @@ def TestFactory(xla_backend, cloud_tpu=False):
     """Convenience wrapper to create Numpy arrays with a np.float32 dtype."""
     return np.array(*args, dtype=np.float32, **kwargs)
 
+  def NumpyArrayF64(*args, **kwargs):
+    """Convenience wrapper to create Numpy arrays with a np.float64 dtype."""
+    return np.array(*args, dtype=np.float64, **kwargs)
+
   def NumpyArrayS32(*args, **kwargs):
     """Convenience wrapper to create Numpy arrays with a np.int32 dtype."""
     return np.array(*args, dtype=np.int32, **kwargs)
@@ -882,11 +886,19 @@ def TestFactory(xla_backend, cloud_tpu=False):
       ops.Abs(ops.Constant(c, arr))
       self._ExecuteAndCompareClose(c, expected=[np.abs(arr)])
 
-    def testTanh(self):
+    def testTanhF32(self):
       c = self._NewComputation()
-      arr = NumpyArrayF32([3.3, 12.1])
+      arr = NumpyArrayF32([-0.2, 3.3, 12.1, 0.1, 0.0001])
       ops.Tanh(ops.Constant(c, arr))
       self._ExecuteAndCompareClose(c, expected=[np.tanh(arr)])
+
+    def testTanhF64(self):
+      if self.backend.platform == "tpu":
+        self.skipTest("TPU doesn't support 64bit tanh")
+      c = self._NewComputation()
+      arr = NumpyArrayF64([-0.2, 3.3, 12.1, 0.1, 0.0001])
+      ops.Tanh(ops.Constant(c, arr))
+      self._ExecuteAndCompareClose(c, expected=[np.tanh(arr)], rtol=1e-12)
 
     def testTranspose(self):
 
@@ -2029,8 +2041,11 @@ def TestFactory(xla_backend, cloud_tpu=False):
   return tests
 
 
-def InstantiateTests(globals_dict, backend, test_prefix="", **kw):
-  for klass in TestFactory(backend, **kw):
+def InstantiateTests(globals_dict, backend_fn, test_prefix="", **kw):
+  # Avoid creating a new backend per test (this causes GPU OOM, and is probably
+  # inefficient).
+  backend_fn = functools.lru_cache(maxsize=None)(backend_fn)
+  for klass in TestFactory(backend_fn, **kw):
     test = type(test_prefix + klass.__name__, (klass,), {})
     # Clean up the qualified names of the tests to not include the test factory.
     test.__qualname__ = test.__name__
