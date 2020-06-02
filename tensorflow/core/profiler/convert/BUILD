@@ -57,6 +57,7 @@ cc_library(
     hdrs = ["op_metrics_db_combiner.h"],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "//tensorflow/core/profiler/utils:op_metrics_db_utils",
         "@com_google_absl//absl/container:flat_hash_map",
