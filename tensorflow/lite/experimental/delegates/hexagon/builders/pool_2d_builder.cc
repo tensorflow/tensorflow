@@ -29,8 +29,6 @@ namespace hexagon {
 TfLiteStatus Pool2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
                                                const TfLiteIntArray* outputs,
                                                TfLiteContext* context) {
-  static std::vector<int> quant_bound_shape = {1, 1, 1, 1};
-
   // Input data tensor.
   int tensor_id = inputs->data[0];
   const auto& data_tensor = context->tensors[tensor_id];
@@ -38,9 +36,9 @@ TfLiteStatus Pool2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   TF_LITE_ENSURE_STATUS(
       ComputeMinAndMaxQuantValues(data_tensor, &data_min_, &data_max_));
   auto* data_min_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape.data(), (char*)&data_min_, sizeof(data_min_));
+      kScalarShape, (char*)&data_min_, sizeof(data_min_));
   auto* data_max_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape.data(), (char*)&data_max_, sizeof(data_max_));
+      kScalarShape, (char*)&data_max_, sizeof(data_max_));
   AddInput(TensorID(data_min_const->GetID(), 0));
   AddInput(TensorID(data_max_const->GetID(), 0));
 
@@ -76,24 +74,24 @@ TfLiteStatus Pool2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
     node_output_ = AddOutput(sizeof(uint8_t), 4,
                              {output_batch_size, output_height_size,
                               output_width_size, output_depth_size});
-    AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-    AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+    AddOutput(sizeof(float), 4, kScalarShape);
+    AddOutput(sizeof(float), 4, kScalarShape);
   } else {
     // Hexagon's AvgPool output has different min/max bounds than what TFLite
     // expects. Therefore, we add a Requantize op to correct the ranges.
     TensorID pool_out = AddOutput(sizeof(uint8_t), 4,
                                   {output_batch_size, output_height_size,
                                    output_width_size, output_depth_size});
-    const auto& pool_out_min = AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-    const auto& pool_out_max = AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+    const auto& pool_out_min = AddOutput(sizeof(float), 4, kScalarShape);
+    const auto& pool_out_max = AddOutput(sizeof(float), 4, kScalarShape);
 
     // Output min/max for requantization.
     TF_LITE_ENSURE_STATUS(ComputeMinAndMaxQuantValues(
         context->tensors[outputs->data[0]], &output_min_, &output_max_));
     auto* output_min_const = graph_builder_->AddConstNodeWithData(
-        quant_bound_shape.data(), (char*)&output_min_, sizeof(output_min_));
+        kScalarShape, (char*)&output_min_, sizeof(output_min_));
     auto* output_max_const = graph_builder_->AddConstNodeWithData(
-        quant_bound_shape.data(), (char*)&output_max_, sizeof(output_max_));
+        kScalarShape, (char*)&output_max_, sizeof(output_max_));
 
     auto* requantize_op = graph_builder_->AddNode(GetTFLiteNodeID());
     requantize_op->SetOpType(OP_Requantize_8to8);
@@ -106,8 +104,8 @@ TfLiteStatus Pool2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
         requantize_op->AddOutput(sizeof(uint8_t), 4,
                                  {output_batch_size, output_height_size,
                                   output_width_size, output_depth_size});
-    requantize_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-    requantize_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+    requantize_op->AddOutput(sizeof(float), 4, kScalarShape);
+    requantize_op->AddOutput(sizeof(float), 4, kScalarShape);
   }
 
   return kTfLiteOk;

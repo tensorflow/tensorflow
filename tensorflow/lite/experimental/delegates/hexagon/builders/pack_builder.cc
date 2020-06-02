@@ -41,12 +41,11 @@ int GetAxis(int axis, const TfLiteIntArray* inputs, TfLiteContext* context) {
 TfLiteStatus PackOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
                                              const TfLiteIntArray* outputs,
                                              TfLiteContext* context) {
-  static int scalar_shape[] = {1, 1, 1, 1};
   auto* params = reinterpret_cast<TfLitePackParams*>(builtin_data_);
   int axis = GetAxis(params->axis, inputs, context);
   // Add axis
   auto* axis_node = graph_builder_->AddConstNodeWithData(
-      scalar_shape, reinterpret_cast<char*>(&axis), sizeof(axis));
+      kScalarShape, reinterpret_cast<char*>(&axis), sizeof(axis));
   AddInput(TensorID(axis_node->GetID(), 0));
 
   // Add all input tensors.
@@ -67,14 +66,14 @@ TfLiteStatus PackOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   // Minima tensors.
   for (int i = 0; i < minima_.size(); ++i) {
     auto* data_min_const = graph_builder_->AddConstNodeWithData(
-        scalar_shape, reinterpret_cast<char*>(&minima_[i]), sizeof(minima_[i]));
+        kScalarShape, reinterpret_cast<char*>(&minima_[i]), sizeof(minima_[i]));
     AddInput(TensorID(data_min_const->GetID(), 0));
   }
 
   // Maxima tensors.
   for (int i = 0; i < maxima_.size(); ++i) {
     auto* data_max_const = graph_builder_->AddConstNodeWithData(
-        scalar_shape, reinterpret_cast<char*>(&maxima_[i]), sizeof(maxima_[i]));
+        kScalarShape, reinterpret_cast<char*>(&maxima_[i]), sizeof(maxima_[i]));
     AddInput(TensorID(data_max_const->GetID(), 0));
   }
 
@@ -93,12 +92,12 @@ TfLiteStatus PackOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   TF_LITE_ENSURE_STATUS(ComputeMinAndMaxQuantValues(
       context->tensors[outputs->data[0]], &output_min, &output_max));
   auto* output_min_const = graph_builder_->AddConstNodeWithData(
-      scalar_shape, reinterpret_cast<char*>(&output_min), sizeof(output_min));
+      kScalarShape, reinterpret_cast<char*>(&output_min), sizeof(output_min));
   auto* output_max_const = graph_builder_->AddConstNodeWithData(
-      scalar_shape, reinterpret_cast<char*>(&output_max), sizeof(output_max));
+      kScalarShape, reinterpret_cast<char*>(&output_max), sizeof(output_max));
 
-  const auto& pack_out_min = AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-  const auto& pack_out_max = AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+  const auto& pack_out_min = AddOutput(sizeof(float), 4, kScalarShape);
+  const auto& pack_out_max = AddOutput(sizeof(float), 4, kScalarShape);
 
   // Requantize output to the expected min/max.
   auto* requantize_op = graph_builder_->AddNode(GetTFLiteNodeID());
@@ -112,8 +111,8 @@ TfLiteStatus PackOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
       requantize_op->AddOutput(sizeof(uint8_t), 4,
                                {output_batch_size, output_height_size,
                                 output_width_size, output_depth_size});
-  requantize_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-  requantize_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+  requantize_op->AddOutput(sizeof(float), 4, kScalarShape);
+  requantize_op->AddOutput(sizeof(float), 4, kScalarShape);
   return kTfLiteOk;
 }
 
