@@ -1782,10 +1782,9 @@ TEST_F(SpmdPartitioningTest, PadAlongNonPartitionedDimension) {
 HloModule module
 
 ENTRY entry {
-  %param0 = f32[128,14,257] parameter(0)
-  %param0.copy = f32[128,14,257] copy(%param0), sharding={devices=[1,1,2]0,1}
+  %param0 = f32[128,14,257] parameter(0), sharding={devices=[1,1,2]0,1}
   %const = f32[] constant(0)
-  ROOT %pad = f32[128,17,257] pad(%param0.copy, %const), padding=0_0x1_2x0_0,
+  ROOT %pad = f32[128,17,257] pad(%param0, %const), padding=0_0x1_2x0_0,
     sharding={devices=[1,1,2]0,1}
 })";
 
@@ -1794,12 +1793,62 @@ ENTRY entry {
   VLOG(1) << module->ToString();
 
   auto root = module->entry_computation()->root_instruction();
-  auto param0 = AllOf(
-      op::Copy(op::DynamicSlice(op::Pad(op::Parameter(), op::Constant()),
-                                op::Constant(), op::Constant(), op::Reshape())),
-      op::Shape("f32[128,14,129]"));
+  auto param0 = AllOf(op::Parameter(), op::Shape("f32[128,14,129]"));
   EXPECT_THAT(root, AllOf(op::Pad(param0, op::Constant()),
                           op::Shape("f32[128,17,129]")));
+}
+
+TEST_F(SpmdPartitioningTest, PadAlongPartitionedDimension) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[14,257] parameter(0), sharding={devices=[1,2]0,1}
+  %const = f32[] constant(0)
+  ROOT %pad = f32[14,259] pad(%param0, %const), padding=0_0x0_2,
+    sharding={devices=[1,2]0,1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  auto root = module->entry_computation()->root_instruction();
+  auto param0 = AllOf(op::Parameter(), op::Shape("f32[14,129]"));
+  auto after_halo_exchange =
+      AllOf(op::Shape("f32[14,130]"),
+            op::Concatenate(param0, op::CollectivePermute(op::Slice(param0))));
+  auto pad = AllOf(op::Shape("f32[14,131]"),
+                   op::Pad(after_halo_exchange, op::Constant()));
+  EXPECT_THAT(root, op::DynamicSlice(pad, op::Constant(), _));
+}
+
+TEST_F(SpmdPartitioningTest, PadAlongPartitionedDimensionWithInteriorPadding) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[7] parameter(0), sharding={devices=[2]0,1}
+  %param1 = f32[] parameter(1), sharding={replicated}
+  ROOT %pad = f32[22] pad(%param0, %param1), padding=2_1_2,
+    sharding={devices=[2]0,1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+
+  auto param0 = AllOf(op::Parameter(), op::Shape("f32[4]"));
+  auto after_halo_exchange =
+      AllOf(op::Shape("f32[4]"),
+            op::DynamicSlice(
+                AllOf(op::Shape("f32[5]"),
+                      op::Concatenate(op::CollectivePermute(op::Slice(param0)),
+                                      param0)),
+                _));
+  auto pad = op::Pad(after_halo_exchange, op::Parameter(1));
+  EXPECT_THAT(root, op::DynamicSlice(pad, _));
 }
 
 TEST_F(SpmdPartitioningTest, SliceAlongNonPartitionedDimension) {

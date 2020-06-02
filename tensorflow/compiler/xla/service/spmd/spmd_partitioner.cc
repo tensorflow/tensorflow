@@ -539,9 +539,11 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
         }
         swd->set_padding_low(max_pad_low);
       } else {
-        CHECK_EQ(
-            (wd.stride() * per_shard_window_counts[i]) % wd.base_dilation(), 0)
-            << "General base dilation not yet implemented.";
+        if ((wd.stride() * per_shard_window_counts[i]) % wd.base_dilation() !=
+            0) {
+          // General base dilation not yet implemented.
+          return absl::nullopt;
+        }
         // padding_low on all shards should equal the initially assigned
         // swd->padding_low(), i.e., the padding_low() on the original window.
       }
@@ -598,7 +600,7 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
   }
 
   if (target != sharding()) {
-    return Replicate().ReshardAsWindowedInput(window, target, pad_value);
+    return Reshard(target).ReshardAsWindowedInput(window, target, pad_value);
   }
 
   // Halo exchange.
@@ -2267,24 +2269,63 @@ Status SpmdPartitioningVisitor::HandlePad(HloInstruction* hlo) {
   if (hlo->sharding().IsTileMaximal()) {
     return DefaultAction(hlo);
   }
+  auto lhs = GetPartitionedHlo(hlo->operand(0));
+  // Create a window config to represent the pad.
+  Window window;
   for (int64 i = 0; i < hlo->shape().rank(); ++i) {
     const auto& pd = hlo->padding_config().dimensions(i);
-    // Right now we only support non-padded dimensions to be partitioned.
-    if (hlo->sharding().tile_assignment().dim(i) > 1 &&
-        (pd.edge_padding_high() != 0 || pd.edge_padding_low() != 0 ||
-         pd.interior_padding() != 0)) {
-      return DefaultAction(hlo);
-    }
+    WindowDimension* dim = window.add_dimensions();
+    dim->set_size(1);
+    dim->set_stride(1);
+    dim->set_window_dilation(1);
+    dim->set_window_reversal(false);
+    dim->set_padding_low(pd.edge_padding_low());
+    dim->set_padding_high(pd.edge_padding_high());
+    dim->set_base_dilation(pd.interior_padding() + 1);
   }
-  auto resharded_lhs =
-      GetPartitionedHlo(hlo->operand(0)).Reshard(hlo->sharding()).hlo();
+
   auto replicated_rhs = GetPartitionedHlo(hlo->operand(1))
                             .Reshard(HloSharding::Replicate())
                             .hlo();
+  auto reshard_operand =
+      lhs.ReshardAsWindowedInput(window, hlo->sharding(), replicated_rhs,
+                                 /*mask_invalid_region=*/false);
+  if (!reshard_operand.has_value()) {
+    return DefaultAction(hlo);
+  }
+  PaddingConfig sharded_padding_config;
+  bool need_pad = false;
+  for (int64 i = 0; i < hlo->shape().rank(); ++i) {
+    auto dim = sharded_padding_config.add_dimensions();
+    const auto& wd = reshard_operand->shard_window.dimensions(i);
+    dim->set_edge_padding_low(wd.padding_low());
+    dim->set_edge_padding_high(wd.padding_high());
+    dim->set_interior_padding(wd.base_dilation() - 1);
+    if (wd.padding_low() != 0 || wd.padding_high() != 0 ||
+        wd.base_dilation() != 1) {
+      need_pad = true;
+    }
+  }
+  auto sharded_pad = reshard_operand->sharded_input;
+  if (need_pad) {
+    TF_ASSIGN_OR_RETURN(auto sharded_pad_shape,
+                        ShapeInference::InferPadShape(sharded_pad->shape(),
+                                                      replicated_rhs->shape(),
+                                                      sharded_padding_config));
+    sharded_pad = b_.AddInstruction(hlo->CreatePad(sharded_pad_shape,
+                                                   sharded_pad, replicated_rhs,
+                                                   sharded_padding_config));
+  }
+
   SetPartitionedHlo(hlo, [&]() {
+    if (!reshard_operand->dynamic_slice_index_on_output) {
+      return sharded_pad;
+    }
     auto shard_shape = MakePartitionedShape(hlo->shape(), hlo->sharding());
-    return b_.AddInstruction(hlo->CloneWithNewOperands(
-        shard_shape, {resharded_lhs, replicated_rhs}));
+    return b_.AddInstruction(HloInstruction::CreateDynamicSlice(
+        shard_shape, sharded_pad,
+        *reshard_operand->dynamic_slice_index_on_output,
+        shard_shape.dimensions()));
   });
   return Status::OK();
 }
