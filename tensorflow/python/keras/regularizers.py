@@ -30,7 +30,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
-def _check_penalty_number(self, x):
+def _check_penalty_number(x):
   """check penalty number availability, raise ValueError if failed"""
   if not isinstance(x, (float, int)):
     raise ValueError(
