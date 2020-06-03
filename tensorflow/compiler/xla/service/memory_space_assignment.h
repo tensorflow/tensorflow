@@ -78,6 +78,12 @@ class PresetAssignments {
 // bandwidths of different memory spaces.
 class MemorySpaceAssignmentCostAnalysis {
  public:
+  // An optional Cache object may be provided to some of the methods below to
+  // speed up the lookup.
+  struct Cache {
+    absl::flat_hash_map<const HloInstruction*, float> while_nest_multiplier;
+  };
+
   MemorySpaceAssignmentCostAnalysis(
       const HloCostAnalysis& cost_analysis,
       float async_copy_bandwidth_bytes_per_second,
@@ -97,15 +103,16 @@ class MemorySpaceAssignmentCostAnalysis {
   // alternate memory would help if the op is memory bound, or otherwise how far
   // off is the op to memory boundedness. The larger this number, the higher
   // priority it will be placed in the alternate memory.
-  float GetAlternateMemoryBenefit(
-      const HloInstruction& instruction,
-      float elapsed_time_due_to_alternate_mem) const;
+  float GetAlternateMemoryBenefit(const HloInstruction& instruction,
+                                  float elapsed_time_due_to_alternate_mem,
+                                  Cache* cache = nullptr) const;
 
   // Returns a heuristic value of memory boundedness for the given
   // BufferInterval.  The larger this number, the higher priority it will be
   // placed in the alternate memory.
   float GetMemoryBoundedness(
-      const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval) const;
+      const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval,
+      Cache* cache = nullptr) const;
 
   // Returns the elapsed time in seconds due to compute only.
   float GetInstructionElapsedDueToCompute(
@@ -282,10 +289,17 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   // corresponds to the instruction schedule.
   float GetLogicalIntervalElapsed(int64 start_time, int64 end_time) const;
 
+  // Finds the minimum nest level in the given interval.
+  int GetMinWhileNestLevel(int64 start_time, int64 end_time) const;
+
   // For each instruction in the flattened schedule, maintain their elapsed time
-  // and while nesting level.
-  std::vector<float> elapsed_time_;
+  // (in cumulative sum) and while nesting level.
+  std::vector<float> elapsed_time_cumsum_;
   std::vector<int> while_nest_level_;
+  // Maintain the index of the most recent (before this instruction) nest level
+  // change in order to efficiently determine the minimum nest level in an
+  // interval.
+  std::vector<int> while_nest_level_change_;
 
   const MemorySpaceAssignmentCostAnalysis& cost_analysis_;
   float min_async_copy_to_overlap_ratio_;
@@ -645,7 +659,8 @@ class MemorySpaceAssignment {
   StatusOr<AsyncCopyStats> CalculateAsyncCopyStats() const;
 
   static BufferIntervalCompare GetMemoryBoundednessBufferIntervalCompare(
-      const MemorySpaceAssignmentCostAnalysis& cost_analysis);
+      const MemorySpaceAssignmentCostAnalysis& cost_analysis,
+      MemorySpaceAssignmentCostAnalysis::Cache* cache = nullptr);
 
   // Verify that the memory space assignment is free of overlapping buffers and
   // export heap simulator trace to be used by buffer_assignment.
