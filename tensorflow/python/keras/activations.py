@@ -530,7 +530,7 @@ def deserialize(name, custom_objects=None):
 
   # only replace missing activations
   advanced_activations_globs = advanced_activations.get_globals()
-  for key,val in advanced_activations_globs.items():
+  for key, val in advanced_activations_globs.items():
     if key not in globs:
       globs[key] = val
 
