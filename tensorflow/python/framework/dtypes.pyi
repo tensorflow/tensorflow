@@ -38,7 +38,7 @@ uint64: UInt64
 int16: Int16
 int32: Int32
 int64: Int64
-bool: Bool # pylint: disable=redefined-builtin
+bool: Bool
 string: String
 qint8: QInt8
 quint8: QUInt8
