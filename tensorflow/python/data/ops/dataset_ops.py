@@ -2157,7 +2157,7 @@ name=None))
       named constants `tf.data.INFINITE_CARDINALITY` and
       `tf.data.UNKNOWN_CARDINALITY` respectively.
     """
-    return ged_ops.dataset_cardinality(self._variant_tensor)
+    return gen_dataset_ops.dataset_cardinality(self._variant_tensor)
 
 
 @tf_export(v1=["data.Dataset"])
