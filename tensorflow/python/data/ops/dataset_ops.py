@@ -94,6 +94,12 @@ ops.NotDifferentiable("ReduceDataset")
 AUTOTUNE = -1
 tf_export("data.experimental.AUTOTUNE").export_constant(__name__, "AUTOTUNE")
 
+# Constants representing infinite and unknown cardinalities.
+INFINITE = -1
+UNKNOWN = -2
+tf_export("data.INFINITE_CARDINALITY").export_constant(__name__, "INFINITE")
+tf_export("data.UNKNOWN_CARDINALITY").export_constant(__name__, "UNKNOWN")
+
 
 @tf_export("data.Dataset", v1=[])
 @six.add_metaclass(abc.ABCMeta)
@@ -409,6 +415,36 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     else:
       raise RuntimeError("__iter__() is only supported inside of tf.function "
                          "or when eager execution is enabled.")
+
+  def __bool__(self):
+    return True  # Required as __len__ is defined
+
+  __nonzero__ = __bool__  # Python 2 backward compatibility
+
+  def __len__(self):
+    """Returns the length of the dataset if it is known and finite.
+
+    This method requires that you are running in eager mode, and that the
+    length of the dataset is known and non-infinite. When the length may be
+    unknown or infinite, or if you are running in graph mode, use
+    `tf.data.Dataset.cardinality` instead.
+
+    Returns:
+      An integer representing the length of the dataset.
+
+    Raises:
+      RuntimeError: If the dataset length is unknown or infinite, or if eager
+        execution is not enabled.
+    """
+    if not context.executing_eagerly():
+      raise TypeError("__len__() is not supported while tracing functions. "
+                      "Use `tf.data.Dataset.cardinality` instead.")
+    length = self.cardinality()
+    if length.numpy() == INFINITE:
+      raise TypeError("dataset length is infinite.")
+    if length.numpy() == UNKNOWN:
+      raise TypeError("dataset length is unknown.")
+    return length
 
   @abc.abstractproperty
   def element_spec(self):
@@ -2094,6 +2130,34 @@ name=None))
       ValueError: when an option is set more than once to a non-default value
     """
     return _OptionsDataset(self, options)
+
+  def cardinality(self):
+    """Returns the cardinality of the dataset, if known.
+
+    `cardinality` may return `tf.data.INFINITE_CARDINALITY` if the dataset
+    contains an infinite number of elements or `tf.data.UNKNOWN_CARDINALITY` if
+    the analysis fails to determine the number of elements in the dataset
+    (e.g. when the dataset source is a file).
+
+    >>> dataset = tf.data.Dataset.range(42)
+    >>> print(dataset.cardinality().numpy())
+    42
+    >>> dataset = dataset.repeat()
+    >>> cardinality = dataset.cardinality()
+    >>> print((cardinality == tf.data.INFINITE_CARDINALITY).numpy())
+    True
+    >>> dataset = dataset.filter(lambda x: True)
+    >>> cardinality = dataset.cardinality()
+    >>> print((cardinality == tf.data.UNKNOWN_CARDINALITY).numpy())
+    True
+
+    Returns:
+      A scalar `tf.int64` `Tensor` representing the cardinality of the dataset.
+      If the cardinality is infinite or unknown, `cardinality` returns the
+      named constants `tf.data.INFINITE_CARDINALITY` and
+      `tf.data.UNKNOWN_CARDINALITY` respectively.
+    """
+    return ged_ops.dataset_cardinality(self._variant_tensor)
 
 
 @tf_export(v1=["data.Dataset"])

@@ -193,7 +193,6 @@ class Functional(training_lib.Model):
     self._layer_call_argspecs = {}
     for layer in self._layers:
       self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
-      layer._attribute_sentinel.add_parent(self._attribute_sentinel)
 
     # Build self.input_names and self.output_names.
     self._set_output_names()
@@ -731,10 +730,6 @@ class Functional(training_lib.Model):
         self._layers.append(layer)
         deferred_layers.append(layer)
         self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
-
-        # This allows the added layer to broadcast mutations to the current
-        # layer, which is necessary to ensure cache correctness.
-        layer._attribute_sentinel.add_parent(self._attribute_sentinel)
         layer_set.add(layer)
     self._handle_deferred_layer_dependencies(deferred_layers)
 

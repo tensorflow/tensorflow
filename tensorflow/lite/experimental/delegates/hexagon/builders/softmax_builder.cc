@@ -29,19 +29,16 @@ namespace hexagon {
 TfLiteStatus SoftmaxOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
                                                 const TfLiteIntArray* outputs,
                                                 TfLiteContext* context) {
-  static std::vector<int> quant_bound_shape = {1, 1, 1, 1};
-  int tensor_id;
-
   // Input data tensor.
-  tensor_id = inputs->data[0];
+  int tensor_id = inputs->data[0];
   const auto& input_tensor = context->tensors[tensor_id];
   AddInput(graph_builder_->GetHexagonTensorId(tensor_id));
   TF_LITE_ENSURE_STATUS(
       ComputeMinAndMaxQuantValues(input_tensor, &input_min_, &input_max_));
   auto* input_min_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape.data(), (char*)&input_min_, sizeof(input_min_));
+      kScalarShape, (char*)&input_min_, sizeof(input_min_));
   auto* input_max_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape.data(), (char*)&input_max_, sizeof(input_max_));
+      kScalarShape, (char*)&input_max_, sizeof(input_max_));
   AddInput(TensorID(input_min_const->GetID(), 0));
   AddInput(TensorID(input_max_const->GetID(), 0));
 
@@ -50,7 +47,7 @@ TfLiteStatus SoftmaxOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
       reinterpret_cast<const TfLiteSoftmaxParams*>(builtin_data_);
   beta_value_ = softmax_params->beta;
   auto* beta_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape.data(), (char*)&beta_value_, sizeof(beta_value_));
+      kScalarShape, (char*)&beta_value_, sizeof(beta_value_));
   AddInput(TensorID(beta_const->GetID(), 0));
 
   // Hexagon outputs for this node.
@@ -61,8 +58,8 @@ TfLiteStatus SoftmaxOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   node_output_ = AddOutput(sizeof(uint8_t), 4,
                            {output_batch_size, output_height_size,
                             output_width_size, output_depth_size});
-  AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-  AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+  AddOutput(sizeof(float), 4, kScalarShape);
+  AddOutput(sizeof(float), 4, kScalarShape);
 
   return kTfLiteOk;
 }

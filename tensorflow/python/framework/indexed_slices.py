@@ -327,8 +327,8 @@ def internal_convert_n_to_tensor_or_indexed_slices(values,
   unmodified.
 
   Args:
-    values: A list of `None`, `IndexedSlices`, `SparseTensor`, or objects that
-      can be consumed by `convert_to_tensor()`.
+    values: An iterable of `None`, `IndexedSlices`, `SparseTensor`, or objects
+      that can be consumed by `convert_to_tensor()`.
     dtype: (Optional.) The required `DType` of the returned `Tensor` or
       `IndexedSlices`.
     name: (Optional.) A name prefix to used when a new `Tensor` is created, in
@@ -344,8 +344,8 @@ def internal_convert_n_to_tensor_or_indexed_slices(values,
     RuntimeError: If a registered conversion function returns an invalid
       value.
   """
-  if not isinstance(values, collections.Sequence):
-    raise TypeError("values must be a sequence.")
+  if not isinstance(values, collections.Iterable):
+    raise TypeError("values must be iterable.")
   ret = []
   for i, value in enumerate(values):
     if value is None:

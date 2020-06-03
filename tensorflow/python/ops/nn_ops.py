@@ -254,7 +254,7 @@ class _NonAtrousConvolution(object):
         name=self.name)
 
 
-def _squeeze_batch_dims(inp, op, inner_rank, name):
+def squeeze_batch_dims(inp, op, inner_rank, name=None):
   """Returns `unsqueeze_batch(op(squeeze_batch(inp)))`.
 
   Where `squeeze_batch` reshapes `inp` to shape
@@ -272,7 +272,7 @@ def _squeeze_batch_dims(inp, op, inner_rank, name):
   Returns:
     `unsqueeze_batch_op(squeeze_batch(inp))`.
   """
-  with ops.name_scope(name, "Convolution", [inp]):
+  with ops.name_scope(name, "squeeze_batch_dims", [inp]):
     inp = ops.convert_to_tensor(inp, name="input")
     shape = inp.shape
 
@@ -2224,7 +2224,7 @@ def conv2d(  # pylint: disable=redefined-builtin,dangerous-default-value
         data_format=data_format,
         dilations=dilations,
         name=name)
-  return _squeeze_batch_dims(
+  return squeeze_batch_dims(
       input,
       functools.partial(
           gen_nn_ops.conv2d,
@@ -2543,7 +2543,7 @@ def _conv2d_expanded_batch(
         data_format=data_format,
         dilations=dilations,
         name=name)
-  return _squeeze_batch_dims(
+  return squeeze_batch_dims(
       input,
       functools.partial(
           gen_nn_ops.conv2d,

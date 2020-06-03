@@ -65,6 +65,7 @@ public final class InterpreterTest {
   }
 
   @Test
+  @SuppressWarnings("deprecation")
   public void testInterpreterWithOptions() throws Exception {
     Interpreter interpreter =
         new Interpreter(
@@ -390,6 +391,7 @@ public final class InterpreterTest {
   }
 
   @Test
+  @SuppressWarnings("deprecation")
   public void testTurnOnNNAPI() throws Exception {
     Interpreter interpreter =
         new Interpreter(

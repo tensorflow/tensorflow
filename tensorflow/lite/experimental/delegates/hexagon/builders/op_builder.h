@@ -50,6 +50,9 @@ class GraphBuilder;
 
 class OpBuilder {
  public:
+  // Const representing the shape of a scalar value.
+  static constexpr int kScalarShape[] = {1, 1, 1, 1};
+
   OpBuilder(GraphBuilder* graph_builder, int hexagon_op_type)
       : graph_builder_(graph_builder) {
     op_node_.op_type = hexagon_op_type;
@@ -88,10 +91,20 @@ class OpBuilder {
 
   void AddInput(const TensorID& tensor_id) { input_ids_.push_back(tensor_id); }
 
+  // Adds Output to the current node, the output has shape defined in 'dims'.
+  // This assumes the data type is uint8.
+  // Returns the TensorID identifying this output in the graph.
   TensorID AddOutput(const TfLiteIntArray* dims);
 
+  // Adds Output to the current node, each element in the output has
+  // size 'elementsize' and rank 'rank' and for each dimension in the output
+  // the maximum size is max_sizes[i].
+  // Returns the TensorID identifying this output in the graph.
   TensorID AddOutput(int elementsize, int rank,
                      const std::vector<int>& max_sizes);
+
+  // Same as above but accepts pointer instead of std::vector.
+  TensorID AddOutput(int elementsize, int rank, const int* max_sizes_vect);
 
   int GetID() const { return op_node_.node_id; }
 

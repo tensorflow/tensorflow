@@ -17,11 +17,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import multiprocessing
 import os
 import shutil
 import time
 
 from absl.testing import parameterized
+import numpy as np
 
 from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.python.data.experimental.ops import snapshot
@@ -40,6 +42,285 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
 
   def setUp(self):
     super(SnapshotDatasetTest, self).setUp()
+    tmpdir = self.get_temp_dir()
+    tmpdir = os.path.join(tmpdir, "snapshot")
+    os.mkdir(tmpdir)
+    self._snapshot_dir = tmpdir
+
+  def tearDown(self):
+    super(SnapshotDatasetTest, self).tearDown()
+    shutil.rmtree(self._snapshot_dir)
+
+  def createTFRecords(self, num_files=10, num_records=100):
+    self._num_files = num_files
+    self._num_records = num_records
+    self._test_filenames = self._createFiles()
+
+  def removeTFRecords(self):
+    for filename in self._test_filenames:
+      os.remove(filename)
+    self._test_filenames = []
+    self._num_files = None
+    self._num_records = None
+
+  def assertDatasetProducesSet(self, dataset, expected):
+    actual = []
+    next_fn = self.getNext(dataset)
+    for _ in range(len(expected)):
+      elem = self.evaluate(next_fn())
+      actual.append(elem)
+    self.assertCountEqual(actual, expected)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(next_fn())
+
+  def assertSnapshotDirectoryContains(self, directory, num_fingerprints,
+                                      num_runs_per_fingerprint,
+                                      num_snapshot_shards_per_run):
+    dirlist_raw = os.listdir(directory)
+    dirlist = []
+
+    # Ignore the graphdef pbtxts we write for debugging purposes.
+    for i in range(len(dirlist_raw)):
+      if not dirlist_raw[i].endswith("-graph.pbtxt"):
+        dirlist.append(dirlist_raw[i])
+
+    self.assertLen(dirlist, num_fingerprints)
+
+    for i in range(num_fingerprints):
+      fingerprint_dir = os.path.join(directory, dirlist[i])
+      fingerprint_dir_list = sorted(os.listdir(fingerprint_dir))
+      self.assertLen(fingerprint_dir_list, num_runs_per_fingerprint + 1)
+      self.assertEqual(fingerprint_dir_list[num_runs_per_fingerprint],
+                       "snapshot.metadata")
+
+      for j in range(num_runs_per_fingerprint):
+        run_dir = os.path.join(fingerprint_dir, fingerprint_dir_list[j])
+        run_dirlist = sorted(os.listdir(run_dir))
+        self.assertLen(run_dirlist, num_snapshot_shards_per_run)
+
+        file_counter = 0
+        for filename in run_dirlist:
+          self.assertEqual(filename, "%08d.shard" % file_counter)
+          file_counter += 1
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCreateSnapshotDataset(self):
+    dataset = dataset_ops.Dataset.from_tensors([1, 2, 3])
+    dataset.apply(snapshot.snapshot(self._snapshot_dir))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testReadSnapshotDatasetDefault(self):
+    self.createTFRecords()
+    filenames = self._test_filenames
+    expected = [
+        b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
+        for f in range(0, 10)
+        for r in range(0, 100)
+    ]
+
+    dataset = core_readers._TFRecordDataset(filenames)
+    dataset = dataset.apply(snapshot.snapshot(self._snapshot_dir))
+    self.assertDatasetProduces(dataset, expected)
+    self.assertSnapshotDirectoryContains(
+        self._snapshot_dir,
+        num_fingerprints=1,
+        num_runs_per_fingerprint=1,
+        num_snapshot_shards_per_run=multiprocessing.cpu_count())
+
+    self.removeTFRecords()
+    dataset2 = core_readers._TFRecordDataset(filenames)
+    dataset2 = dataset2.apply(snapshot.snapshot(self._snapshot_dir))
+    self.assertDatasetProduces(dataset2, expected)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testReadSnapshotDatasetCustomShardFn(self):
+    self.createTFRecords()
+    filenames = self._test_filenames
+    expected = [
+        b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
+        for f in range(0, 10)
+        for r in range(0, 100)
+    ]
+
+    dataset = core_readers._TFRecordDataset(filenames)
+    dataset = dataset.apply(
+        snapshot.snapshot(self._snapshot_dir, shard_func=lambda _: np.int64(0)))
+    self.assertDatasetProduces(dataset, expected)
+    self.assertSnapshotDirectoryContains(
+        self._snapshot_dir,
+        num_fingerprints=1,
+        num_runs_per_fingerprint=1,
+        num_snapshot_shards_per_run=1)
+
+    self.removeTFRecords()
+    dataset2 = core_readers._TFRecordDataset(filenames)
+    dataset2 = dataset2.apply(
+        snapshot.snapshot(self._snapshot_dir, shard_func=lambda _: 0))
+    self.assertDatasetProduces(dataset2, expected)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testReadSnapshotDatasetCustomReaderFn(self):
+    self.createTFRecords()
+    filenames = self._test_filenames
+    expected = [
+        b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
+        for f in range(0, 10)
+        for r in range(0, 100)
+    ]
+
+    dataset = core_readers._TFRecordDataset(filenames)
+    dataset = dataset.apply(
+        snapshot.snapshot(
+            self._snapshot_dir,
+            reader_func=(
+                lambda ds: ds.interleave(  # pylint:disable=g-long-lambda
+                    lambda x: x,
+                    cycle_length=4,
+                    num_parallel_calls=4))))
+    self.assertDatasetProduces(dataset, expected)
+    self.assertSnapshotDirectoryContains(
+        self._snapshot_dir,
+        num_fingerprints=1,
+        num_runs_per_fingerprint=1,
+        num_snapshot_shards_per_run=multiprocessing.cpu_count())
+
+    self.removeTFRecords()
+    dataset2 = core_readers._TFRecordDataset(filenames)
+    dataset2 = dataset2.apply(
+        snapshot.snapshot(
+            self._snapshot_dir,
+            reader_func=(
+                lambda ds: ds.interleave(  # pylint:disable=g-long-lambda
+                    lambda x: x,
+                    cycle_length=4,
+                    num_parallel_calls=4))))
+    self.assertDatasetProducesSet(dataset2, expected)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testSnapshotDatasetInvalidShardFn(self):
+    dataset = dataset_ops.Dataset.range(1000)
+    with self.assertRaises(TypeError):
+      dataset = dataset.apply(
+          snapshot.snapshot(
+              self._snapshot_dir, shard_func=lambda _: "invalid_fn"))
+      next_fn = self.getNext(dataset)
+      self.evaluate(next_fn())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testSnapshotDatasetInvalidReaderFn(self):
+    dataset = dataset_ops.Dataset.range(1000)
+    with self.assertRaises(TypeError):
+      dataset = dataset.apply(
+          snapshot.snapshot(self._snapshot_dir, reader_func=lambda x: x + 1))
+      next_fn = self.getNext(dataset)
+      self.evaluate(next_fn())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testWriteSnapshotDatasetSimple(self):
+    dataset = dataset_ops.Dataset.range(1000)
+    dataset = dataset.apply(snapshot.snapshot(self._snapshot_dir))
+    self.assertDatasetProduces(dataset, list(range(1000)))
+    self.assertSnapshotDirectoryContains(
+        self._snapshot_dir,
+        num_fingerprints=1,
+        num_runs_per_fingerprint=1,
+        num_snapshot_shards_per_run=multiprocessing.cpu_count())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testWriteSnapshotDatasetMultipleFingerprints(self):
+    dataset1 = dataset_ops.Dataset.range(1000)
+    dataset1 = dataset1.apply(snapshot.snapshot(self._snapshot_dir))
+    self.assertDatasetProduces(dataset1, list(range(1000)))
+
+    dataset2 = dataset_ops.Dataset.range(2000)
+    dataset2 = dataset2.apply(snapshot.snapshot(self._snapshot_dir))
+    self.assertDatasetProduces(dataset2, list(range(2000)))
+
+    self.assertSnapshotDirectoryContains(
+        self._snapshot_dir,
+        num_fingerprints=2,
+        num_runs_per_fingerprint=1,
+        num_snapshot_shards_per_run=multiprocessing.cpu_count())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testWriteSnapshotDatasetSameFingerprintMultipleCompleteRuns(self):
+    dataset1 = dataset_ops.Dataset.range(1000)
+    dataset1 = dataset1.apply(snapshot.snapshot(self._snapshot_dir))
+    self.assertDatasetProduces(dataset1, list(range(1000)))
+    dataset2 = dataset_ops.Dataset.range(1000)
+    dataset2 = dataset2.apply(snapshot.snapshot(self._snapshot_dir))
+    self.assertDatasetProduces(dataset2, list(range(1000)))
+
+    self.assertSnapshotDirectoryContains(
+        self._snapshot_dir,
+        num_fingerprints=1,
+        num_runs_per_fingerprint=1,
+        num_snapshot_shards_per_run=multiprocessing.cpu_count())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testWriteSnapshotDatasetSameFingerprintIncompleteRunRestart(self):
+    dataset1 = dataset_ops.Dataset.range(1000)
+    dataset1 = dataset1.apply(snapshot.snapshot(self._snapshot_dir))
+    next1 = self.getNext(dataset1)
+    for i in range(500):
+      self.assertEqual(i, self.evaluate(next1()))
+
+    dataset2 = dataset_ops.Dataset.range(1000)
+    dataset2 = dataset2.apply(snapshot.snapshot(self._snapshot_dir))
+    next2 = self.getNext(dataset2)
+    for i in range(500):
+      self.assertEqual(i, self.evaluate(next2()))
+
+    for i in range(500, 1000):
+      self.assertEqual(i, self.evaluate(next1()))
+      self.assertEqual(i, self.evaluate(next2()))
+
+    self.assertSnapshotDirectoryContains(
+        self._snapshot_dir,
+        num_fingerprints=1,
+        num_runs_per_fingerprint=2,
+        num_snapshot_shards_per_run=multiprocessing.cpu_count())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testWriteSnapshotCustomShardFunction(self):
+    dataset = dataset_ops.Dataset.range(1000)
+    dataset = dataset.enumerate()
+    dataset = dataset.apply(
+        snapshot.snapshot(self._snapshot_dir, shard_func=lambda i, _: i % 2))
+    dataset = dataset.map(lambda _, elem: elem)
+    self.assertDatasetProduces(dataset, list(range(1000)))
+    self.assertSnapshotDirectoryContains(
+        self._snapshot_dir,
+        num_fingerprints=1,
+        num_runs_per_fingerprint=1,
+        num_snapshot_shards_per_run=2)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testWriteSnapshotDatasetWithTuples(self):
+    dataset1 = dataset_ops.Dataset.range(0, 1000)
+    dataset2 = dataset_ops.Dataset.range(1000, 2000)
+    dataset3 = dataset_ops.Dataset.range(2000, 3000)
+    dataset4 = dataset_ops.Dataset.range(3000, 4000)
+
+    dataset = dataset_ops.Dataset.zip((dataset1, dataset2, dataset3, dataset4))
+    dataset = dataset.apply(snapshot.snapshot(self._snapshot_dir))
+    next1 = self.getNext(dataset)
+    for i in range(0, 1000):
+      self.assertEqual((i, i + 1000, i + 2000, i + 3000),
+                       self.evaluate(next1()))
+    self.assertSnapshotDirectoryContains(
+        self._snapshot_dir,
+        num_fingerprints=1,
+        num_runs_per_fingerprint=1,
+        num_snapshot_shards_per_run=multiprocessing.cpu_count())
+
+
+class LegacySnapshotDatasetTest(
+    reader_dataset_ops_test_base.TFRecordDatasetTestBase,
+    parameterized.TestCase):
+
+  def setUp(self):
+    super(LegacySnapshotDatasetTest, self).setUp()
     self.removeTFRecords()
     tmpdir = self.get_temp_dir()
     tmpdir = os.path.join(tmpdir, "snapshot")
@@ -47,7 +328,7 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     self.snapshot_dir = tmpdir
 
   def tearDown(self):
-    super(SnapshotDatasetTest, self).tearDown()
+    super(LegacySnapshotDatasetTest, self).tearDown()
     shutil.rmtree(self.snapshot_dir)
 
   def removeTFRecords(self):
@@ -63,8 +344,8 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
   def makeSnapshotDirectory(self):
     return self.snapshot_dir
 
-  def assertSnapshotDirectoryContains(
-      self, directory, num_fingerprints, num_runs_per_fp, num_snapshot_files):
+  def assertSnapshotDirectoryContains(self, directory, num_fingerprints,
+                                      num_runs_per_fp, num_snapshot_files):
     dirlist_raw = os.listdir(directory)
     dirlist = []
 
@@ -465,8 +746,8 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
               ]),
               combinations.combine(threads=2, size=[1, 2]) +
               combinations.combine(threads=8, size=[1, 4, 8]))))
-  def testReadSnapshotBackAfterMultiThreadedWrite(
-      self, compression, threads, size):
+  def testReadSnapshotBackAfterMultiThreadedWrite(self, compression, threads,
+                                                  size):
     self.setUpTFRecord()
     filenames = self.test_filenames
 

@@ -12,12 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/tools/gen_op_registration.h"
+
 #include <string>
 #include <vector>
 
 #include "re2/re2.h"
 #include "tensorflow/lite/model.h"
-#include "tensorflow/lite/tools/gen_op_registration.h"
 
 namespace tflite {
 

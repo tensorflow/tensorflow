@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
-load("//tensorflow:tensorflow.bzl", "if_not_android", "tf_cc_test", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "if_not_android", "tf_cuda_library")
 load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")
 
 package(
@@ -109,17 +109,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-tf_cc_test(
-    name = "traceme_encode_test",
-    srcs = ["traceme_encode_test.cc"],
-    deps = [
-        ":traceme_encode",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "@com_google_absl//absl/strings",
     ],
 )

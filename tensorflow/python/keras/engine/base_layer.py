@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import copy
 import functools
 import itertools
@@ -292,12 +293,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # are only applicable to input layers: do not pass these keywords
     # to non-input layers.
     allowed_kwargs = {
-        'input_shape',
-        'batch_input_shape',
-        'batch_size',
-        'weights',
-        'activity_regularizer',
-        'autocast'
+        'input_dim', 'input_shape', 'batch_input_shape', 'batch_size',
+        'weights', 'activity_regularizer', 'autocast'
     }
     # Validate optional keyword arguments.
     generic_utils.validate_kwargs(kwargs, allowed_kwargs)
@@ -322,7 +319,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     self.supports_masking = False
 
     self._init_set_name(name)
-    self._activity_regularizer = kwargs.pop('activity_regularizer', None)
+    self._activity_regularizer = regularizers.get(
+        kwargs.pop('activity_regularizer', None))
     self._maybe_create_attribute('_trainable_weights', [])
     self._maybe_create_attribute('_non_trainable_weights', [])
     self._updates = []
@@ -369,6 +367,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     self._dynamic = dynamic
 
     # Manage input shape information if passed.
+    if 'input_dim' in kwargs and 'input_shape' not in kwargs:
+      # Backwards compatibility: alias 'input_dim' to 'input_shape'.
+      kwargs['input_shape'] = (kwargs['input_dim'],)
     if 'input_shape' in kwargs or 'batch_input_shape' in kwargs:
       # In this case we will later create an input layer
       # to insert before the current layer
@@ -529,7 +530,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     dtype = dtypes.as_dtype(dtype)
     if self._dtype_policy.variable_dtype is None:
       # The policy is "_infer", so we infer the policy from the variable dtype.
-      self._dtype_policy = policy.Policy(dtype.base_dtype.name)
+      self._set_dtype_policy(policy.Policy(dtype.base_dtype.name))
     initializer = initializers.get(initializer)
     regularizer = regularizers.get(regularizer)
     constraint = constraints.get(constraint)
@@ -936,8 +937,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
               call_fn = self.call
 
             try:
-              with base_layer_utils.autocast_context_manager(
-                  self._compute_dtype_object):
+              with ops.enable_auto_cast_variables(self._compute_dtype_object):
                 # Add auto_control_deps in V2 when they are not already added by
                 # a `tf.function`.
                 if (ops.executing_eagerly_outside_functions() and
@@ -998,8 +998,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         with ops.name_scope_v2(self.name):
           self._maybe_build(inputs)
           cast_inputs = self._maybe_cast_inputs(inputs, input_list)
-          with base_layer_utils.autocast_context_manager(
-              self._compute_dtype_object):
+          with ops.enable_auto_cast_variables(self._compute_dtype_object):
             outputs = self.call(cast_inputs, *args, **kwargs)
           self._handle_activity_regularization(inputs, outputs)
           self._set_mask_metadata(inputs, outputs, input_masks, build_graph)
@@ -1019,31 +1018,16 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     return self._name
 
   @property
-  @trackable_layer_utils.cache_recursive_attribute('dynamic')
   def dynamic(self):
     """Whether the layer is dynamic (eager-only); set in the constructor."""
-    # NOTE(taylorrobie): Currently self._dynamic is read-only. If that changes
-    #                    then this cache logic must be updated.
-    return self._dynamic or any(layer.dynamic
-                                for layer in self._unique_sublayers())
-
-  def _unique_sublayers(self):
-    # Model.layers will use this as implementation, but we can't expose this
-    # one as the public property since it might conflict with subclass layers
-    # which also have user defined layers property.
-    self._maybe_create_attribute('_layers', [])
-    return list(
-        trackable_layer_utils.filter_empty_layer_containers(self._layers))
+    return any(layer._dynamic for layer in self._flatten_layers())
 
   @property
   @doc_controls.do_not_doc_inheritable
-  @trackable_layer_utils.cache_recursive_attribute('stateful')
   def stateful(self):
-    return self._stateful or any(
-        getattr(layer, 'stateful', False) for layer in self._unique_sublayers())
+    return any(layer._stateful for layer in self._flatten_layers())
 
   @stateful.setter
-  @trackable_layer_utils.invalidate_recursive_cache('stateful')
   def stateful(self, value):
     self._stateful = value
 
@@ -1053,9 +1037,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   @trainable.setter
   def trainable(self, value):
-    self._trainable = value
-    for layer in getattr(self, '_layers', []):
-      layer.trainable = value
+    for layer in self._flatten_layers():
+      layer._trainable = value
 
   @property
   def activity_regularizer(self):
@@ -1162,7 +1145,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   @doc_controls.do_not_doc_inheritable
   def updates(self):
     collected_updates = []
-    all_layers = self._gather_unique_layers()
+    all_layers = self._flatten_layers()
     with backend.get_graph().as_default():
       for layer in all_layers:
         if not layer.trainable and not layer.stateful:
@@ -1215,8 +1198,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       A list of tensors.
     """
     collected_losses = []
-    all_layers = self._gather_unique_layers()
-    for layer in all_layers:
+    for layer in self._flatten_layers():
       # If any eager losses are present, we assume the model to be part of an
       # eager training loop (either a custom one or the one used when
       # `run_eagerly=True`) and so we always return just the eager losses.
@@ -1304,7 +1286,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       if callable(loss):
         # We run the loss without autocasting, as regularizers are often
         # numerically unstable in float16.
-        with base_layer_utils.autocast_context_manager(None):
+        with ops.enable_auto_cast_variables(None):
           loss = loss()
       if loss is None:
         return None  # Will be filtered out when computing the .losses property
@@ -1357,12 +1339,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def _clear_losses(self):
     """Used every step in eager to reset losses."""
     # Set to thread local directly to avoid Layer.__setattr__ overhead.
-    self._thread_local._eager_losses = []
-    sublayers = getattr(self, '_layers', [])
-    if sublayers:
-      sublayers = trackable_layer_utils.filter_empty_layer_containers(sublayers)
-      for layer in sublayers:
-        layer._clear_losses()
+    if not getattr(self, '_layers', None):  # Fast path for single Layer.
+      self._thread_local._eager_losses = []
+    else:
+      for layer in self._flatten_layers():
+        layer._thread_local._eager_losses = []
 
   @property
   def metrics(self):
@@ -1382,8 +1363,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       A list of tensors.
     """
     collected_metrics = []
-    all_layers = self._gather_unique_layers()
-    for layer in all_layers:
+    for layer in self._flatten_layers():
       with layer._metrics_lock:
         collected_metrics.extend(layer._metrics)
     return collected_metrics
@@ -2170,8 +2150,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       return inputs
 
   def _should_cast_single_input(self, x):
-    return (isinstance(x, _AUTOCAST_TYPES) and x.dtype.is_floating and
-            x.dtype.base_dtype.name != self._compute_dtype)
+    if isinstance(x, _AUTOCAST_TYPES):
+      return (self._compute_dtype_object and
+              x.dtype != self._compute_dtype_object and x.dtype.is_floating)
+    return False
 
   def _cast_single_input(self, x):
     """Cast a single Tensor or TensorSpec to the compute dtype."""
@@ -2220,7 +2202,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   @_dtype.setter
   def _dtype(self, value):
     value = dtypes.as_dtype(value).name
-    self._dtype_policy = policy.Policy(value)
+    self._set_dtype_policy(policy.Policy(value))
 
   def _name_scope(self):
     if not tf2.enabled():
@@ -2454,7 +2436,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         except AttributeError:
           pass
         else:
-          self._dtype_policy = policy.Policy(dtype)
+          self._set_dtype_policy(policy.Policy(dtype))
       input_shapes = None
       # Converts Tensors / CompositeTensors to TensorShapes.
       if all(hasattr(x, 'shape') for x in input_list):
@@ -2507,22 +2489,16 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     Returns:
       A dict mapping all sublayers to their `trainable` value.
     """
-    layers = trackable_layer_utils.filter_empty_layer_containers(self._layers)
-    # Keep track of each top-level layers' `trainable` as well as the
-    # state of all of its sublayers.
     trainable_state = weakref.WeakKeyDictionary()
-    trainable_state[self] = self.trainable
-    for layer in layers:
-      trainable_state.update(layer._get_trainable_state())
+    for layer in self._flatten_layers():
+      trainable_state[layer] = layer.trainable
     return trainable_state
 
   def _set_trainable_state(self, trainable_state):
     """Set `trainable` state for each sublayer."""
-    layers = trackable_layer_utils.filter_empty_layer_containers(self._layers)
-    if self in trainable_state:
-      self.trainable = trainable_state[self]
-    for layer in layers:
-      layer._set_trainable_state(trainable_state)
+    for layer in self._flatten_layers():
+      if layer in trainable_state:
+        layer.trainable = trainable_state[layer]
 
   @property
   def _obj_reference_counts(self):
@@ -2582,7 +2558,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       super(tracking.AutoTrackable, self).__setattr__(
           '_layers',
           [l for l in self._layers if l is not existing_value])
-      self._attribute_sentinel.invalidate_all()
     if isinstance(existing_value, tf_variables.Variable):
       super(tracking.AutoTrackable, self).__setattr__(
           '_trainable_weights',
@@ -2590,13 +2565,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       super(tracking.AutoTrackable, self).__setattr__(
           '_non_trainable_weights',
           [w for w in self._non_trainable_weights if w is not existing_value])
-
-    # Any time we change `_layers` (either by deleting the attribute or by
-    # reassigning it which will call __delattr__ from __setattr__) the topology
-    # of the subgraph of Layers may change. In that case we will need to
-    # recompute any attribute which depends on that subgraph.
-    if name == '_layers':
-      self._attribute_sentinel.invalidate_all()
 
   def __setattr__(self, name, value):
     if (name == '_self_setattr_tracking' or
@@ -2642,8 +2610,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       # container types which compare equal.
       if not any((layer is value for layer in self._layers)):
         self._layers.append(value)
-        if hasattr(value, '_attribute_sentinel'):
-          value._attribute_sentinel.add_parent(self._attribute_sentinel)
         if hasattr(value, '_use_resource_variables'):
           # Legacy layers (V1 tf.layers) must always use
           # resource variables.
@@ -2691,34 +2657,36 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
               getattr(layer, attribute) for layer in nested_layers))
     return []
 
-  def _gather_unique_layers(self):
-    """Returns the current layer and all its children depth first deduped.
+  def _flatten_layers(self, recursive=True, include_self=True):
+    if include_self:
+      yield self
 
-    We are deduping after getting the layers to maintain the order.
-    """
-    all_layers = self._gather_layers()
-    unique_layers, seen_layers = [], object_identity.ObjectIdentitySet()
-    for layer in all_layers:
-      if layer not in seen_layers:
-        unique_layers.append(layer)
-        # Track the Variable's identity to avoid __eq__ issues.
-        seen_layers.add(layer)
-    return unique_layers
+    # Only instantiate set and deque if needed.
+    layers_or_containers = getattr(self, '_layers', None)
+    if layers_or_containers:
+      seen_object_ids = set()
+      deque = collections.deque(layers_or_containers)
+      while deque:
+        layer_or_container = deque.popleft()
 
-  def _gather_layers(self):
-    """Returns the current layer and all its children depth first."""
-    all_layers = [self]
-    if hasattr(self, '_layers'):
-      child_layers = trackable_layer_utils.filter_empty_layer_containers(
-          self._layers)
-      for child_layer in child_layers:
-        all_layers.extend(child_layer._gather_layers())
-    return all_layers
+        layer_or_container_id = id(layer_or_container)
+        if layer_or_container_id in seen_object_ids:
+          continue
+        seen_object_ids.add(layer_or_container_id)
 
-  @property
-  @tracking.cached_per_instance
-  def _attribute_sentinel(self):
-    return trackable_layer_utils.AttributeSentinel()
+        if isinstance(layer_or_container, Layer):
+          yield layer_or_container
+          # Introspect recursively through sublayers.
+          if recursive:
+            sublayers = getattr(layer_or_container, '_layers', None)
+            if sublayers:
+              deque.extendleft(reversed(sublayers))
+        elif isinstance(layer_or_container,
+                        data_structures.TrackableDataStructure):
+          # Data structures are introspected even with `recursive=False`.
+          tracked_values = layer_or_container._values
+          if tracked_values:
+            deque.extendleft(reversed(tracked_values))
 
   # This is a hack so that the is_layer (within
   # training/trackable/layer_utils.py) check doesn't get the weights attr.

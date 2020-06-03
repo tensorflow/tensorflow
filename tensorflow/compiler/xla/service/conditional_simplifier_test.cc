@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
 namespace {
@@ -480,6 +481,40 @@ ENTRY main {
       FindInstruction(status.ValueOrDie().get(), "gte.1");
   EXPECT_EQ(gte_0->tuple_index(), 0);
   EXPECT_EQ(gte_1->tuple_index(), 0);
+}
+
+// Since select can only be used on arrays, use after-all for token types.
+TEST_F(ConditionalSimplifierTest, SimplifyConditionalWithTokens) {
+  absl::string_view hlo_string =
+      R"(
+HloModule SimplifyConditionalWithTokens
+
+true_comp {
+  ROOT parameter.13 = (token[]) parameter(0)
+}
+
+false_comp {
+  ROOT parameter.21 = (token[]) parameter(0)
+}
+
+ENTRY entry {
+  parameter.29 = pred[] parameter(0)
+  token.1 = token[] after-all()
+  token.2 = token[] after-all()
+  tuple.3 = (token[]) tuple(token.1)
+  tuple.4 = (token[]) tuple(token.2)
+  ROOT conditional.5 = (token[]) conditional(parameter.29, tuple.3, tuple.4), true_computation=true_comp, false_computation=false_comp
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloVerifier v(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false);
+  TF_ASSERT_OK(v.Run(module.get()).status());
+  EXPECT_TRUE(ConditionalSimplifier().Run(module.get()).ValueOrDie());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(op::AfterAll(
+                  op::GetTupleElement(op::Tuple(op::AfterAll()), 0),
+                  op::GetTupleElement(op::Tuple(op::AfterAll()), 0))));
 }
 
 }  // namespace

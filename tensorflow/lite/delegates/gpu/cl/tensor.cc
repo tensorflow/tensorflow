@@ -117,6 +117,7 @@ Tensor::Tensor(Tensor&& tensor)
       shape_(tensor.shape_),
       descriptor_(tensor.descriptor_) {
   tensor.memory_ = nullptr;
+  tensor.image_buffer_memory_ = nullptr;
 }
 
 Tensor& Tensor::operator=(Tensor&& tensor) {
@@ -132,14 +133,54 @@ Tensor& Tensor::operator=(Tensor&& tensor) {
 }
 
 void Tensor::Release() {
+  // image_buffer_memory_ always owned by object
   if (image_buffer_memory_) {
     clReleaseMemObject(image_buffer_memory_);
-    memory_ = nullptr;
+    image_buffer_memory_ = nullptr;
   }
   if (memory_owner_ && memory_) {
     clReleaseMemObject(memory_);
     memory_ = nullptr;
   }
+}
+
+GPUResourcesWithValue Tensor::GetGPUResources(AccessType access_type) const {
+  GPUResourcesWithValue resources;
+  if (descriptor_.HasAxis(Axis::WIDTH)) {
+    resources.ints.push_back({"width", Width()});
+  }
+  if (descriptor_.HasAxis(Axis::HEIGHT)) {
+    resources.ints.push_back({"height", Height()});
+  }
+  if (descriptor_.HasAxis(Axis::CHANNELS)) {
+    resources.ints.push_back({"slices", Slices()});
+    resources.ints.push_back({"channels", Channels()});
+  }
+  if (descriptor_.HasAxis(Axis::BATCH)) {
+    resources.ints.push_back({"batch", Batch()});
+  }
+  if (descriptor_.HasAxis(Axis::DEPTH)) {
+    resources.ints.push_back({"depth", Depth()});
+  }
+
+  if (descriptor_.storage_type == TensorStorageType::BUFFER) {
+    resources.buffers.push_back({"buffer", memory_});
+  } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_2D ||
+             descriptor_.storage_type == TensorStorageType::SINGLE_TEXTURE_2D) {
+    resources.images2d.push_back({"image2d", memory_});
+  } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_ARRAY) {
+    resources.image2d_arrays.push_back({"image2d_array", memory_});
+  } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_3D) {
+    resources.images3d.push_back({"image3d", memory_});
+  } else if (descriptor_.storage_type == TensorStorageType::IMAGE_BUFFER) {
+    if (access_type == AccessType::READ) {
+      resources.image_buffers.push_back({"image_buffer", image_buffer_memory_});
+    } else {
+      resources.buffers.push_back({"buffer", memory_});
+    }
+  }
+
+  return resources;
 }
 
 int3 Tensor::GetFullTensorRegion() const {
@@ -281,6 +322,18 @@ absl::Status Tensor::WriteDataBHWDC(absl::Span<const float> in,
 absl::Status Tensor::WriteData(CLCommandQueue* queue,
                                const TensorFloat32& src) {
   RETURN_IF_ERROR(IsValid(src.shape));
+  return WriteDataBHWDC(absl::MakeConstSpan(src.data), queue);
+}
+
+absl::Status Tensor::WriteData(
+    CLCommandQueue* queue,
+    const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src) {
+  return WriteDataBHWDC(absl::MakeConstSpan(src.data), queue);
+}
+
+absl::Status Tensor::WriteData(
+    CLCommandQueue* queue,
+    const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src) {
   return WriteDataBHWDC(absl::MakeConstSpan(src.data), queue);
 }
 

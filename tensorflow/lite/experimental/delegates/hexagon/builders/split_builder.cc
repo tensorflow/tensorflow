@@ -28,8 +28,6 @@ namespace hexagon {
 TfLiteStatus SplitOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
                                               const TfLiteIntArray* outputs,
                                               TfLiteContext* context) {
-  static int quant_bound_shape[] = {1, 1, 1, 1};
-
   const int input_tensor_id = inputs->data[1];
   const auto& input_tensor = context->tensors[input_tensor_id];
 
@@ -50,7 +48,7 @@ TfLiteStatus SplitOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
     axis_value += input_tensor.dims->size;
   }
   auto* input_axis_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&axis_value), sizeof(int32_t));
+      kScalarShape, reinterpret_cast<char*>(&axis_value), sizeof(int32_t));
   AddInput(TensorID(input_axis_const->GetID(), 0));
 
   // Input data tensor & min/max.
@@ -58,11 +56,9 @@ TfLiteStatus SplitOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   TF_LITE_ENSURE_STATUS(
       ComputeMinAndMaxQuantValues(input_tensor, &input_min_, &input_max_));
   auto* input_min_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&input_min_),
-      sizeof(input_min_));
+      kScalarShape, reinterpret_cast<char*>(&input_min_), sizeof(input_min_));
   auto* input_max_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&input_max_),
-      sizeof(input_max_));
+      kScalarShape, reinterpret_cast<char*>(&input_max_), sizeof(input_max_));
   AddInput(TensorID(input_min_const->GetID(), 0));
   AddInput(TensorID(input_max_const->GetID(), 0));
 
@@ -78,8 +74,8 @@ TfLiteStatus SplitOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
     node_outputs_.push_back(output);
   }
   // For Hexagon output min/max.
-  AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-  AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+  AddOutput(sizeof(float), 4, kScalarShape);
+  AddOutput(sizeof(float), 4, kScalarShape);
 
   return kTfLiteOk;
 }

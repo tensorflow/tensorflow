@@ -634,7 +634,7 @@ def gen_selected_ops(name, model, namespace = "", **kwargs):
 
     Args:
       name: Name of the generated library.
-      model: TFLite model to interpret.
+      model: TFLite models to interpret, expect a list in case of multiple models.
       namespace: Namespace in which to put RegisterSelectedOps.
       **kwargs: Additional kwargs to pass to genrule.
     """
@@ -645,12 +645,17 @@ def gen_selected_ops(name, model, namespace = "", **kwargs):
     # isinstance is not supported in skylark.
     if type(model) != type([]):
         model = [model]
+
+    input_models_args = " --input_models=%s" % ",".join(
+        ["$(location %s)" % f for f in model],
+    )
+
     native.genrule(
         name = name,
         srcs = model,
         outs = [out],
-        cmd = ("$(location %s) --namespace=%s --output_registration=$(location %s) --tflite_path=%s $(SRCS)") %
-              (tool, namespace, out, tflite_path[2:]),
+        cmd = ("$(location %s) --namespace=%s --output_registration=$(location %s) --tflite_path=%s %s") %
+              (tool, namespace, out, tflite_path[2:], input_models_args),
         tools = [tool],
         **kwargs
     )

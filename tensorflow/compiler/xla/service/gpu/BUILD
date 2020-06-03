@@ -379,6 +379,7 @@ cc_library(
         "//tensorflow/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -561,6 +562,7 @@ cc_library(
         ":buffer_allocations",
         ":cusolver_context",
         ":cudnn_batchnorm_runner",
+        ":gpu_constants",
         ":gpu_conv_runner",
         ":gpu_debug_info_manager",
         ":gpu_executable_run_options",

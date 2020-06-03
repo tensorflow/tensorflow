@@ -1069,7 +1069,8 @@ def _create_local_cuda_repository(repository_ctx):
         ],
     ))
 
-    if [int(x) for x in cuda_config.cudnn_version.split(".")] < [8, 0]:
+    # Select the headers based on the cuDNN version (strip '64_' for Windows).
+    if cuda_config.cudnn_version.rsplit("_", 1)[0] < "8":
         cudnn_headers = ["cudnn.h"]
     else:
         cudnn_headers = [

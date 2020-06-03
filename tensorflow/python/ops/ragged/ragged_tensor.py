@@ -1715,6 +1715,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
     it is not ragged-right, then an error will be generated.
 
     Example:
+
     >>> indices = [[0, 0], [0, 1], [0, 2], [1, 0], [3, 0]]
     >>> st = tf.sparse.SparseTensor(indices=indices,
     ...                             values=[1, 2, 3, 4, 5],

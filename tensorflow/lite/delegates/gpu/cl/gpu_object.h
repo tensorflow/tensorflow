@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
+#include "tensorflow/lite/delegates/gpu/common/access_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
@@ -31,26 +32,31 @@ namespace cl {
 
 struct GPUImage2DDescriptor {
   DataType data_type;
+  AccessType access_type;
   cl_mem memory;
 };
 
 struct GPUImage3DDescriptor {
   DataType data_type;
+  AccessType access_type;
   cl_mem memory;
 };
 
 struct GPUImage2DArrayDescriptor {
   DataType data_type;
+  AccessType access_type;
   cl_mem memory;
 };
 
 struct GPUImageBufferDescriptor {
   DataType data_type;
+  AccessType access_type;
   cl_mem memory;
 };
 
 struct GPUBufferDescriptor {
   DataType data_type;
+  AccessType access_type;
   int element_size;
   cl_mem memory;
 };
@@ -123,7 +129,9 @@ class GPUObjectDescriptor {
     *result = "";
     return absl::OkStatus();
   }
-  virtual GPUResources GetGPUResources() const { return GPUResources(); }
+  virtual GPUResources GetGPUResources(AccessType access_type) const {
+    return GPUResources();
+  }
 
  protected:
   mutable std::map<std::string, std::string> state_vars_;
@@ -141,7 +149,8 @@ class GPUObject {
   GPUObject& operator=(const GPUObject&) = delete;
   virtual ~GPUObject() = default;
   virtual const GPUObjectDescriptor* GetGPUDescriptor() const = 0;
-  virtual GPUResourcesWithValue GetGPUResources() const = 0;
+  virtual GPUResourcesWithValue GetGPUResources(
+      AccessType access_type) const = 0;
 };
 
 using GPUObjectPtr = std::unique_ptr<GPUObject>;

@@ -221,6 +221,10 @@ tf_module {
     argspec: "args=[\'buffer_size\', \'count\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
+    name: "snapshot"
+    argspec: "args=[\'path\', \'compression\', \'reader_func\', \'shard_func\'], varargs=None, keywords=None, defaults=[\'AUTO\', \'None\', \'None\'], "
+  }
+  member_method {
     name: "take_while"
     argspec: "args=[\'predicate\'], varargs=None, keywords=None, defaults=None"
   }

@@ -381,6 +381,7 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:functional_ops_op_lib",
+        "//tensorflow/core:lib",
         "//tensorflow/core/kernels/data:dataset_utils",
         "//tensorflow/core/kernels/data:name_utils",
         "//tensorflow/core/kernels/data:parallel_map_dataset_op",
@@ -541,9 +542,23 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "snapshot_util_test",
+    size = "small",
+    srcs = ["snapshot_util_test.cc"],
+    deps = [
+        ":snapshot_util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 tf_kernel_library(
     name = "snapshot_dataset_op",
     srcs = ["snapshot_dataset_op.cc"],
+    hdrs = ["snapshot_dataset_op.h"],
     deps = [
         ":snapshot_util",
         "//tensorflow/core:core_cpu_internal",
@@ -552,10 +567,16 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/framework:op_requires",
         "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/kernels/data:captured_function",
         "//tensorflow/core/kernels/data:dataset_utils",
+        "//tensorflow/core/kernels/data:name_utils",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
     ],
 )
