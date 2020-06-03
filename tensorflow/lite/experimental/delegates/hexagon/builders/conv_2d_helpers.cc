@@ -199,7 +199,7 @@ TfLiteStatus Conv2dOpBuilder::ProcessPerChannelQuantizedBias(
   const float input_scale = input_quant_params->scale->data[0];
   // Now dequantize bias values to float first, to adjust for the
   // normalization of channel scales.
-  int32_t* bias_data = bias_tensor.data.i32;
+  int* bias_data = bias_tensor.data.i32;
   const int bias_size = NumElements(&bias_tensor);
   if (bias_size != num_scale_values_) {
     TF_LITE_KERNEL_LOG(
@@ -221,10 +221,10 @@ TfLiteStatus Conv2dOpBuilder::ProcessPerChannelQuantizedBias(
   *bias_max = *bias_max * 8;
   *bias_min = -1 * *bias_max;
   // Now requantize the bias values to the new min/max values.
-  std::vector<int32_t> preprocessed_bias_data;
+  std::vector<int> preprocessed_bias_data;
   preprocessed_bias_data.reserve(num_scale_values_);
   for (int i = 0; i < bias_size; ++i) {
-    preprocessed_bias_data.push_back(static_cast<int32_t>(
+    preprocessed_bias_data.push_back(static_cast<int>(
         std::round(std::pow(2, 31) * (dequantized_bias[i] / *bias_max))));
   }
   // Add nodes for bias.

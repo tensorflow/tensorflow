@@ -75,7 +75,7 @@ TfLiteStatus ArithmeticOpBuilder::PopulateSubGraph(
   }
 
   if (op_node_.op_type == OP_QuantizedMul_8x8to32) {
-    const auto& math_out = AddOutput(sizeof(int32_t), 4,
+    const auto& math_out = AddOutput(sizeof(int), 4,
                                      {output_batch_size, output_height_size,
                                       output_width_size, output_depth_size});
     const auto& math_out_min = AddOutput(sizeof(float), 4, {1, 1, 1, 1});

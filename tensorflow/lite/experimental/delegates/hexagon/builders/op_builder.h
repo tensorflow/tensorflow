@@ -137,8 +137,8 @@ class OpBuilder {
                                          std::numeric_limits<int8_t>::max());
     } else if (tensor.type == kTfLiteInt32) {
       return ComputeMinAndMaxQuantValues(tensor, min, max,
-                                         std::numeric_limits<int32_t>::min(),
-                                         std::numeric_limits<int32_t>::max());
+                                         std::numeric_limits<int>::min(),
+                                         std::numeric_limits<int>::max());
     }
     return kTfLiteError;
   }

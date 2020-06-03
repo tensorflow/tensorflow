@@ -43,23 +43,23 @@ TfLiteStatus SliceOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   // Start / Size
   const auto& begin_tensor = context->tensors[inputs->data[1]];
   const auto& size_tensor = context->tensors[inputs->data[2]];
-  std::vector<int32_t> begins, sizes;
+  std::vector<int> begins, sizes;
   if (begin_tensor.type == kTfLiteInt32) {
-    GetBeginAndSizeVectors<int32_t>(input_tensor.dims->size, &begin_tensor,
-                                    &size_tensor, &begins, &sizes);
+    GetBeginAndSizeVectors<int>(input_tensor.dims->size, &begin_tensor,
+                                &size_tensor, &begins, &sizes);
   } else if (begin_tensor.type == kTfLiteInt64) {
     GetBeginAndSizeVectors<int64_t>(input_tensor.dims->size, &begin_tensor,
                                     &size_tensor, &begins, &sizes);
   } else {
     return kTfLiteError;
   }
-  const int32_t begins_shape[] = {1, 1, 1, static_cast<int32_t>(begins.size())};
+  const int begins_shape[] = {1, 1, 1, static_cast<int>(begins.size())};
   auto begins_node = graph_builder_->AddConstNodeWithData(
       begins_shape, reinterpret_cast<char*>(begins.data()),
-      sizeof(int32_t) * begins.size());
+      sizeof(int) * begins.size());
   auto sizes_node = graph_builder_->AddConstNodeWithData(
       begins_shape, reinterpret_cast<char*>(sizes.data()),
-      sizeof(int32_t) * begins.size());
+      sizeof(int) * begins.size());
   AddInput(TensorID(begins_node->GetID(), 0));
   AddInput(TensorID(sizes_node->GetID(), 0));
 
