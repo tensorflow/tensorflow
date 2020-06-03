@@ -30,6 +30,25 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
+def _check_penalty_number(self, x):
+  """check penalty number availability, raise ValueError if failed"""
+  if not isinstance(x, (float, int)):
+    raise ValueError(
+      (
+          "Value: {} is not a valid regularization penalty number, "
+          "expected an int or float value"
+      ).format(x)
+    )
+
+  if math.isinf(x) or math.isnan(x):
+    raise ValueError(
+      (
+          "Value: {} is not a valid regularization penalty number, "
+          "a positive/negative infinity or NaN is not a property value"
+      ).format(x)
+    )
+
+
 @keras_export('keras.regularizers.Regularizer')
 class Regularizer(object):
   """Regularizer base class.
@@ -194,24 +213,6 @@ class Regularizer(object):
     """
     raise NotImplementedError(str(self) + ' does not implement get_config()')
 
-  def _check_penalty_number(self, x):
-    """check penalty number availability, raise ValueError if failed"""
-    if not isinstance(x, (float, int)):
-      raise ValueError(
-        (
-          "Value: {} is not a valid regularization penalty number, "
-          "expected an int or float value"
-        ).format(x)
-      )
-
-    if math.isinf(x) or math.isnan(x):
-      raise ValueError(
-        (
-          "Value: {} is not a valid regularization penalty number, "
-          "a positive/negative infinity or NaN is not a property value"
-        ).format(x)
-      )
-
 
 @keras_export('keras.regularizers.L1L2')
 class L1L2(Regularizer):
@@ -235,8 +236,8 @@ class L1L2(Regularizer):
   """
 
   def __init__(self, l1=0., l2=0.):  # pylint: disable=redefined-outer-name
-    self._check_penalty_number(l1)
-    self._check_penalty_number(l2)
+    _check_penalty_number(l1)
+    _check_penalty_number(l2)
 
     self.l1 = backend.cast_to_floatx(l1)
     self.l2 = backend.cast_to_floatx(l2)
@@ -275,7 +276,7 @@ class L1(Regularizer):
     if kwargs:
       raise TypeError('Argument(s) not recognized: %s' % (kwargs,))
 
-    self._check_penalty_number(l1)
+    _check_penalty_number(l1)
 
     self.l1 = backend.cast_to_floatx(l1)
 
@@ -308,7 +309,7 @@ class L2(Regularizer):
     if kwargs:
       raise TypeError('Argument(s) not recognized: %s' % (kwargs,))
 
-    self._check_penalty_number(l2)
+    _check_penalty_number(l2)
 
     self.l2 = backend.cast_to_floatx(l2)
 
