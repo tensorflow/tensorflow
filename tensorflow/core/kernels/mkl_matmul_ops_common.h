@@ -707,8 +707,8 @@ void dnnl_gemm_batch(const std::vector<bool>& transa,
                      const std::vector<int>& n, const std::vector<int>& k,
                      const std::vector<float>& alpha, const T* a, const T* b,
                      const std::vector<float>& beta, T* c,
-                     const int group_count,
-                     const std::vector<int>& group_size) {
+                     const int group_count, const std::vector<int>& group_size,
+                     OpKernelContext* ctx = nullptr) {
   // Current BatchMatMul support in Tensorflow is narrower than the one offered
   // by MKL and MKL-DNN. Current BatchMatMul support in Tensorflow uses only 1
   // group of size equal to batch_size, and all MatMul parameters (m, n, k,
