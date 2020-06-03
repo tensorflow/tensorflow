@@ -132,8 +132,8 @@ def save_model(model,
 
   filepath = path_to_string(filepath)
 
-  # TODO(b/130258301): add utility method for detecting model type.
   if save_format == 'h5' or _could_write_as_hdf5(filepath):
+    # TODO(b/130258301): add utility method for detecting model type.
     if (not model._is_graph_network and  # pylint:disable=protected-access
         not isinstance(model, sequential.Sequential)):
       raise NotImplementedError(
