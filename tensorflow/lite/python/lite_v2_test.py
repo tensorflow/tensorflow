@@ -1062,23 +1062,26 @@ class AffineOpThenMulFusionTest(lite_v2_test_util.ModelTest):
       return tf.matmul(x, y_const) * z_const
 
     # Test fusion of (x ∗ y) * z into conv2d
-    input_data2 = tf.constant([1., 2.], shape=[1, 1, 2 , 1])
+    input_data2 = tf.constant([1., 2.], shape=[1, 1, 2, 1])
 
     @tf.function
     def func4(x):
       y_const = tf.constant([3., 4., 5., 6.], shape=[2, 1, 1, 2])
       z_const = tf.constant([7., 8.], shape=[2, 1])
-      return tf.nn.conv2d(x, y_const, strides=[1, 1, 1, 1], padding='SAME') * z_const
+      return tf.nn.conv2d(x, y_const, strides=[1, 1, 1, 1],
+                          padding='SAME') * z_const
 
     @tf.function
     def func5(x):
       y_const = tf.constant([3., 4., 5., 6.], shape=[2, 1, 1, 2])
       z_const = tf.constant([7., 8.], shape=[1, 2])
-      return tf.nn.conv2d(x, y_const, strides=[1, 1, 1, 1], padding='SAME') * z_const
+      return tf.nn.conv2d(x, y_const, strides=[1, 1, 1, 1],
+                          padding='SAME') * z_const
 
     test_cases = [
-      (input_data1, func1, 1), (input_data1, func2, 2), (input_data1, func3, 2),
-      (input_data2, func4, 2), (input_data2, func5, 1)]
+        (input_data1, func1, 1), (input_data1, func2, 2),
+        (input_data1, func3, 2), (input_data2, func4, 2),
+        (input_data2, func5, 1)]
 
     for case in test_cases:
       input_data, func, expected_number_of_ops = case
@@ -1105,8 +1108,7 @@ class AffineOpThenMulFusionTest(lite_v2_test_util.ModelTest):
       actual_value = self. \
         _evaluateTFLiteModel(hybrid_tflite_model, [input_data])
       interpreter = Interpreter(model_content=tflite_model)
-      if expected_number_of_ops != -1:
-        assert len(interpreter._get_ops_details()) == expected_number_of_ops
+      assert len(interpreter._get_ops_details()) == expected_number_of_ops
 
       np.testing.assert_almost_equal(expected_value.numpy(), actual_value[0])
 

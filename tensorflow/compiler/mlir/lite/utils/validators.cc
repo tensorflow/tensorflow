@@ -86,7 +86,7 @@ bool IsDimensionsDegenerateExceptLastOne(const ArrayRef<int64_t> elements_shape)
 }
 
 bool IsDimensionsDegenerateExceptLastOne(Attribute val) {
-  if (const auto elements = val.dyn_cast<DenseElementsAttr>()) {
+  if (auto elements = val.dyn_cast<DenseElementsAttr>()) {
       return IsDimensionsDegenerateExceptLastOne(elements.getType().getShape());
   }
   return false;
