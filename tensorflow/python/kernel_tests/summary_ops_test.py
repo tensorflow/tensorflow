@@ -323,7 +323,7 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
             summary_ops.set_step(3)
           summary_ops.write('tag', 1.0)
       events = events_from_logdir(logdir)
-      self.assertListEqual([1, 1, 2, 1, 3], [event.step for event in events[1:]])
+      self.assertListEqual([1, 1, 2, 1, 3], [e.step for e in events[1:]])
     finally:
       # Reset to default state for other tests.
       summary_ops.set_step(None)
@@ -345,7 +345,7 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
             mystep.assign(4)
           summary_ops.write('tag', 1.0)
       events = events_from_logdir(logdir)
-      self.assertListEqual([1, 2, 3, 2, 4], [event.step for event in events[1:]])
+      self.assertListEqual([1, 2, 3, 2, 4], [e.step for e in events[1:]])
     finally:
       # Reset to default state for other tests.
       summary_ops.set_step(None)
@@ -364,7 +364,7 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
         summary_ops.write('tag', 1.0)
         writer.flush()
       events = events_from_logdir(logdir)
-      self.assertListEqual([1, 2, 3], [event.step for event in events[1:]])
+      self.assertListEqual([1, 2, 3], [e.step for e in events[1:]])
     finally:
       # Reset to default state for other tests.
       summary_ops.set_step(None)
@@ -382,7 +382,7 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
         summary_ops.write('tag', 1.0)
         writer.flush()
       events = events_from_logdir(logdir)
-      self.assertListEqual([1, 2, 2], [event.step for event in events[1:]])
+      self.assertListEqual([1, 2, 2], [e.step for e in events[1:]])
     finally:
       # Reset to default state for other tests.
       summary_ops.set_step(None)
