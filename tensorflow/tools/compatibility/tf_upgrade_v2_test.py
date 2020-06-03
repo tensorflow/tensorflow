@@ -1118,6 +1118,12 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     self.assertEqual("optimizer.compute_gradients(a)\n", new_text)
     self.assertIn("Optimizer.compute_gradients no longer takes", report)
 
+  def testColocateGradientsWithHessians(self):
+    text = "tf.hessians(ys=a, xs=b, colocate_gradients_with_ops=False)\n"
+    _, report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual("tf.hessians(ys=a, xs=b)\n", new_text)
+    self.assertIn("tf.hessians no longer takes", report)
+
   def testExportSavedModelRename(self):
     text = "self.est.export_savedmodel(path)"
     _, report, unused_errors, unused_new_text = self._upgrade(text)
