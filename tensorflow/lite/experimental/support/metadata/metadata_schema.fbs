@@ -287,7 +287,7 @@ table Content {
   // dimension 1/2: the heatmap image.
   // dimension 3: 17 body parts of a person.
   // Even though the last axis is body part, the real content of this tensor is
-  // the heatmap. "range" should be [min=2; max=3].
+  // the heatmap. "range" should be [min=1; max=2].
   //
   // Case 3: The tensor contains multiple different objects. (Not supported by
   // Content at this point).

@@ -784,19 +784,36 @@ class NNAPIOpBuilder {
     return kTfLiteOk;
   }
 
+  // Adds the operation to the model and maps the operation to the originating
+  // TFLite one.
+  TfLiteStatus AddOperationToModel(ANeuralNetworksOperationType type,
+                                   uint32_t input_count, const uint32_t* inputs,
+                                   uint32_t output_count,
+                                   const uint32_t* outputs,
+                                   int lite_node_index) {
+    RETURN_TFLITE_ERROR_IF_NN_ERROR(
+        context_,
+        nnapi_->ANeuralNetworksModel_addOperation(
+            nn_model_, type, input_count, inputs, output_count, outputs),
+        "adding operation", nnapi_errno_);
+    nnapi_to_tflite_op_mapping_->push_back(lite_node_index);
+    return kTfLiteOk;
+  }
+
   // Adds a Dequantize operator and replaces the input tensor index with the
   // dequantized version. If the dequantized version of the operator already
   // exists then it is not added again.
-  TfLiteStatus AddDequantize(int nn_input_index, int lite_index,
-                             TfLiteType dequantized_type) {
-    const int ann_index = operand_mapping_->lite_index_to_ann(lite_index);
+  TfLiteStatus AddDequantize(int nn_input_index, int lite_tensor_index,
+                             TfLiteType dequantized_type, int lite_node_index) {
+    const int ann_index =
+        operand_mapping_->lite_index_to_ann(lite_tensor_index);
     int dequantized_ann_index =
         dequantize_mapping_->DequantizedAnnIndex(ann_index, dequantized_type);
 
     if (dequantized_ann_index == -1) {
       // The dequantized version does not exist yet, it has to be added: a new
       // Dequantize operation is added, yielding a new tensor.
-      const TfLiteTensor& tensor = context_->tensors[lite_index];
+      const TfLiteTensor& tensor = context_->tensors[lite_tensor_index];
       ANeuralNetworksOperandType operand_type{
           ANEURALNETWORKS_TENSOR_FLOAT32,
           static_cast<uint32_t>(tensor.dims->size),
@@ -811,12 +828,11 @@ class NNAPIOpBuilder {
       const uint32_t dequantize_input[1] = {static_cast<uint32_t>(ann_index)};
       const uint32_t dequantize_output[1] = {
           static_cast<uint32_t>(dequantized_ann_index)};
-      RETURN_TFLITE_ERROR_IF_NN_ERROR(
-          context_,
-          nnapi_->ANeuralNetworksModel_addOperation(
-              nn_model_, ANEURALNETWORKS_DEQUANTIZE, 1, dequantize_input, 1,
-              dequantize_output),
-          "adding operation", nnapi_errno_);
+      TF_LITE_ENSURE_OK(
+          context_, AddOperationToModel(ANEURALNETWORKS_DEQUANTIZE,
+                                        /*input_count=*/1, dequantize_input,
+                                        /*output_count=*/1, dequantize_output,
+                                        lite_node_index));
       dequantize_mapping_->Add(ann_index, dequantized_type,
                                dequantized_ann_index);
     }
@@ -832,15 +848,12 @@ class NNAPIOpBuilder {
   TfLiteStatus FinalizeAddOperation(ANeuralNetworksOperationType type,
                                     int lite_node_index) {
     // Actually add a NN API operation
-    RETURN_TFLITE_ERROR_IF_NN_ERROR(
-        context_,
-        nnapi_->ANeuralNetworksModel_addOperation(
-            nn_model_, type, static_cast<uint32_t>(augmented_inputs_.size()),
-            augmented_inputs_.data(),
-            static_cast<uint32_t>(augmented_outputs_.size()),
-            augmented_outputs_.data()),
-        "adding operation", nnapi_errno_);
-    nnapi_to_tflite_op_mapping_->push_back(lite_node_index);
+    TF_LITE_ENSURE_OK(context_,
+                      AddOperationToModel(
+                          type, static_cast<uint32_t>(augmented_inputs_.size()),
+                          augmented_inputs_.data(),
+                          static_cast<uint32_t>(augmented_outputs_.size()),
+                          augmented_outputs_.data(), lite_node_index));
     augmented_inputs_.clear();
     augmented_outputs_.clear();
     return kTfLiteOk;
@@ -2343,6 +2356,50 @@ bool NNAPIDelegateKernel::Validate(
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI13,
                                  &val_ctx);
     } break;
+    case kTfLiteBuiltinFill: {
+      ExpectOpVersion(version, 1, &val_ctx);
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI13,
+                                 &val_ctx);
+      const auto& dims_tensor = context->tensors[node->inputs->data[0]];
+      Expect(IsConstantTensor(&dims_tensor),
+             NNAPIValidationFailureType::kUnsupportedInputType,
+             "NNAPI doesn't support dynamic dimensions tensor.", &val_ctx);
+      EXPECT_INPUT_TYPE_IN(dims_tensor.type, kTfLiteInt32, kTfLiteInt64);
+      if (IsConstantTensor(&dims_tensor)) {
+        Expect(dims_tensor.dims->data[0] != 0,
+               NNAPIValidationFailureType::kUnsupportedOperandValue,
+               "NNAPI doesn't support generating scalars from FILL", &val_ctx);
+        if (dims_tensor.type == kTfLiteInt64) {
+          bool fit_in_int32 =
+              std::all_of(dims_tensor.data.i64,
+                          dims_tensor.data.i64 + dims_tensor.dims->data[0],
+                          [](int64_t dim) {
+                            return std::numeric_limits<int32_t>::min() <= dim &&
+                                   dim <= std::numeric_limits<int32_t>::max();
+                          });
+          Expect(fit_in_int32,
+                 NNAPIValidationFailureType::kUnsupportedOperandValue,
+                 "NNAPI only supports int32 dimensions tensor. If the "
+                 "dimensions type is int64 and they are constant we can "
+                 "convert them to int32 if the value isn't too large.",
+                 &val_ctx);
+        }
+      }
+      const auto& value_tensor = context->tensors[node->inputs->data[1]];
+      EXPECT_INPUT_TYPE_IN(value_tensor.type, kTfLiteFloat32, kTfLiteInt32,
+                           kTfLiteInt64);
+      if (value_tensor.type == kTfLiteInt64) {
+        Expect(
+            IsConstantTensor(&value_tensor) &&
+                *value_tensor.data.i64 <= std::numeric_limits<int32_t>::max() &&
+                *value_tensor.data.i64 >= std::numeric_limits<int32_t>::min(),
+            NNAPIValidationFailureType::kUnsupportedInputType,
+            "NNAPI only supports int32 input. If the input type is int64 and "
+            "constant we can convert it to int32 if the value isn't too "
+            "large.",
+            &val_ctx);
+      }
+    } break;
     default:
       // All other operators are not mapped.
       AddValidationFailure(NNAPIValidationFailureType::kUnsupportedOperator,
@@ -3127,6 +3184,9 @@ TfLiteStatus NNAPIDelegateKernel::Map(
       mapping_args.builder->AddScalarFloat32Operand(1.0);
       *nn_op_type = ANEURALNETWORKS_ELU;
     } break;
+    case kTfLiteBuiltinFill: {
+      *nn_op_type = ANEURALNETWORKS_FILL;
+    } break;
     default:
       // All other operators are not mapped.
       return kTfLiteError;
@@ -3563,7 +3623,7 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
 
 void NNAPIDelegateKernel::AddDequantizeOperatorsWhereNeeded(
     const TfLiteContext* context, int builtin_code, const TfLiteNode* node,
-    NNAPIOpBuilder* builder, int* nnapi_errno) {
+    int tflite_node_index, NNAPIOpBuilder* builder, int* nnapi_errno) {
   // Depending on the operator and the input data format, Dequantize
   // operators may need to be added. For example when the input is
   // floating-point but weights are quantized then the weights will first be
@@ -3611,7 +3671,7 @@ void NNAPIDelegateKernel::AddDequantizeOperatorsWhereNeeded(
 
     // Insert Dequantize operator if it hasn't been done already and change
     // the node's input accordingly.
-    builder->AddDequantize(i, node->inputs->data[i], type);
+    builder->AddDequantize(i, node->inputs->data[i], type, tflite_node_index);
   }
 }
 
@@ -3882,6 +3942,52 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(TfLiteContext* context,
           TF_LITE_ENSURE_STATUS(builder.AddTensorInput(input_index, hybrid_op,
                                                        input_tensor_flags));
         }
+      } else if (reg->builtin_code == kTfLiteBuiltinFill) {
+        if (input_pos == 0) {
+          const int dims_id = node->inputs->data[0];
+          const TfLiteTensor& dims_tensor = context->tensors[dims_id];
+          switch (dims_tensor.type) {
+            case kTfLiteInt32:
+              TF_LITE_ENSURE_STATUS(
+                  builder.AddTensorInput(input_index, hybrid_op));
+              break;
+            case kTfLiteInt64: {
+              // We made sure that dimensions are constant and fit into int32 in
+              // Map(), so we can safely create a new tensor with casted values.
+              const int dims_size = dims_tensor.dims->data[0];
+              std::vector<int32_t> dims_int32(dims_size);
+              std::copy(dims_tensor.data.i64, dims_tensor.data.i64 + dims_size,
+                        dims_int32.begin());
+              int new_tensor_index = -1;
+              builder.AddNewInputConstantTensor(
+                  ANEURALNETWORKS_TENSOR_INT32, kTfLiteInt32, dims_tensor.dims,
+                  dims_int32, dims_tensor.params, &new_tensor_index);
+            } break;
+            default:
+              return kTfLiteError;
+          }
+        } else {
+          const int value_id = node->inputs->data[1];
+          const TfLiteTensor& value_tensor = context->tensors[value_id];
+          switch (value_tensor.type) {
+            case kTfLiteFloat32:
+              TF_LITE_ENSURE_STATUS(
+                  builder.AddScalarFloat32Operand(*value_tensor.data.f));
+              break;
+            case kTfLiteInt32:
+              TF_LITE_ENSURE_STATUS(
+                  builder.AddScalarInt32Operand(*value_tensor.data.i32));
+              break;
+            case kTfLiteInt64:
+              // Map() function already makes sure int64 input is constant and
+              // fits into int32.
+              TF_LITE_ENSURE_STATUS(builder.AddScalarInt32Operand(
+                  static_cast<int32_t>(*value_tensor.data.i64)));
+              break;
+            default:
+              return kTfLiteError;
+          }
+        }
       } else {
         TF_LITE_ENSURE_STATUS(
             builder.AddTensorInput(input_index, hybrid_op, input_tensor_flags));
@@ -3925,7 +4031,7 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(TfLiteContext* context,
     // Dequantize operators may have to be added in case inputs are to be
     // floating-point.
     AddDequantizeOperatorsWhereNeeded(context, reg->builtin_code, node,
-                                      &builder, nnapi_errno);
+                                      node_index, &builder, nnapi_errno);
 
     builder.FinalizeAddOperation(nn_op_type, node_index);
   }

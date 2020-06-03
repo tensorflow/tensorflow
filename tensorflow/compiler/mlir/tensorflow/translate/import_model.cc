@@ -3334,6 +3334,9 @@ Status SavedModelSignatureDefImporter::ConvertSignature(
       graphdef, &sub_graph_def,
       /*terminal_nodes=*/{specs.outputs.begin(), specs.outputs.end()}));
 
+  // Set the function library definitions in the pruned graphdef.
+  *sub_graph_def.mutable_library() = flib_def.ToProto();
+
   // Convert sub-graphdef to sub-graph.
   GraphConstructorOptions options;
   options.allow_internal_ops = true;

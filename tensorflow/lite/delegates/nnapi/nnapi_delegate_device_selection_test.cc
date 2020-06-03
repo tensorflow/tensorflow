@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <numeric>
@@ -568,12 +569,9 @@ TEST_F(UnsupportedOperationOnDeviceTest,
 
 // This is a model with two ops:
 //
-//  input1 ---->
-//                ADD --
-//  input2   -->        |
-//                       -->
-//                          SUB --> output
-//  input3 ---------------->
+//  input1 ----> HARD_SWISH ---->
+//                                ADD --> output
+//  input2 ---------------------->
 //
 class HardSwishAddOpsAcceleratedModel : public MultiOpModel,
                                         public AcceleratedModel {
@@ -712,6 +710,119 @@ TEST_F(TfLiteOpMappedToMultipleNnApiOps, AllConstitutentOpsSupported) {
 
   // Delegation succeded without failures and all nodes have been delegated.
   ASSERT_EQ(m.CountOpsExecutedByCpuKernel(), 0);
+}
+
+class QuantizedWeightsConvolutionOpModel : public SingleOpModel,
+                                           public AcceleratedModel {
+ public:
+  QuantizedWeightsConvolutionOpModel(
+      const NnApi* nnapi, std::string accelerator_name, const TensorData& input,
+      const TensorData& filter, const TensorData& output, int stride_width = 2,
+      int stride_height = 2, enum Padding padding = Padding_VALID,
+      enum ActivationFunctionType activation = ActivationFunctionType_NONE,
+      int dilation_width_factor = 1, int dilation_height_factor = 1,
+      int num_threads = -1, std::initializer_list<uint8_t> filter_data = {})
+      : SingleOpModel(), AcceleratedModel(nnapi, accelerator_name) {
+    auto* delegate = GetDelegate();
+    this->SetApplyDelegate([delegate](Interpreter* interpreter) {
+      interpreter->ModifyGraphWithDelegate(delegate);
+    });
+
+    input_ = AddInput(input);
+
+    if (filter_data.size()) {
+      filter_ = AddConstInput(filter, filter_data);
+    } else {
+      filter_ = AddInput(filter);
+    }
+
+    int bias_size = GetShape(filter_)[0];
+
+    bias_ = AddInput({TensorType_FLOAT32, {bias_size}});
+
+    output_ = AddOutput(output);
+
+    SetBuiltinOp(BuiltinOperator_CONV_2D, BuiltinOptions_Conv2DOptions,
+                 CreateConv2DOptions(
+                     builder_, padding, stride_width, stride_height, activation,
+                     dilation_width_factor, dilation_height_factor)
+                     .Union());
+
+    BuildInterpreter({GetShape(input_), GetShape(filter_), GetShape(bias_)},
+                     num_threads);
+  }
+
+  void SetInput(std::initializer_list<float> data) {
+    PopulateTensor(input_, data);
+  }
+
+  void SetFilter(std::initializer_list<float> data) {
+    QuantizeAndPopulate<uint8_t>(filter_, data);
+  }
+
+  void SetBias(std::initializer_list<float> data) {
+    PopulateTensor(input_, data);
+  }
+
+  std::vector<uint8_t> GetOutput() { return ExtractVector<uint8_t>(output_); }
+  std::vector<float> GetDequantizedOutput() {
+    return Dequantize<uint8_t>(ExtractVector<uint8_t>(output_),
+                               GetScale(output_), GetZeroPoint(output_));
+  }
+
+ protected:
+  int input_;
+  int filter_;
+  int bias_;
+  int output_;
+};
+
+int quantized_conv2d_model_added_nnapi_ops_count = 0;
+TEST_F(TfLiteOpMappedToMultipleNnApiOps,
+       AddedDequantizationsAreAccountedInModelOps) {
+  nnapi_mock_->ModelCreateReturns<0>();
+  nnapi_mock_->StubGetSupportedOperationsForDevicesWith(
+      [](const ANeuralNetworksModel* model,
+         const ANeuralNetworksDevice* const* devices, uint32_t numDevices,
+         bool* supportedOps) -> int {
+        std::fill(supportedOps,
+                  supportedOps + quantized_conv2d_model_added_nnapi_ops_count,
+                  true);
+        return ANEURALNETWORKS_NO_ERROR;
+      });
+  nnapi_mock_->StubAddOperationWith(
+      [](ANeuralNetworksModel* model, ANeuralNetworksOperationType type,
+         uint32_t inputCount, const uint32_t* inputs, uint32_t outputCount,
+         const uint32_t* outputs) -> int {
+        ++quantized_conv2d_model_added_nnapi_ops_count;
+        return ANEURALNETWORKS_NO_ERROR;
+      });
+
+  QuantizedWeightsConvolutionOpModel m(
+      nnapi_mock_->GetNnApi(),
+      /*accelerator_name=*/"test-device", {TensorType_FLOAT32, {2, 2, 4, 1}},
+      {TensorType_UINT8, {3, 2, 2, 1}, -63.5, 64}, {TensorType_FLOAT32, {}});
+  m.SetInput({
+      // First batch
+      1, 1, 1, 1,  // row = 1
+      2, 2, 2, 2,  // row = 2
+      // Second batch
+      1, 2, 3, 4,  // row = 1
+      1, 2, 3, 4,  // row = 2
+  });
+  m.SetFilter({
+      1, 2, 3, 4,    // first 2x2 filter
+      -1, 1, -1, 1,  // second 2x2 filter
+      -1, -1, 1, 1,  // third 2x2 filter
+  });
+  m.SetBias({1, 2, 3});
+
+  EXPECT_EQ(m.CountOpsExecutedByCpuKernel(), 0);
+  // When delegating quantized Conv2D, for each quantized inputs a
+  // dequantize operation is added to the model.
+  // In our case 1 Dequantize op for the weights is expected generating
+  // a 2 ops model.
+  EXPECT_EQ(quantized_conv2d_model_added_nnapi_ops_count, 2);
 }
 
 // Model with a chain of no-op (add with zero operations)

@@ -29,6 +29,7 @@ from tensorflow.python.eager import backprop_util
 from tensorflow.python.framework import auto_control_deps_utils as acd
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -1061,8 +1062,17 @@ def _CaseGrad(op, *grads):  # pylint: disable=invalid-name
   # This modifies the graphs in branch_grad_graphs.
   _make_output_composite_tensors_match(_CASE, branch_grad_graphs)
 
-  outputs = _build_case(case_op.inputs[0], branch_grad_graphs,
-                        branches_grad_inputs, name="gradient")
+  try:
+    lowering = case_op._get_attr_bool("_lower_using_switch_merge")
+  except errors_impl.NotFoundError:
+    lowering = None
+
+  outputs = _build_case(
+      case_op.inputs[0],
+      branch_grad_graphs,
+      branches_grad_inputs,
+      name="gradient",
+      lower_using_switch_merge=lowering)
 
   # The predicate has no gradient.
   return [None] + outputs

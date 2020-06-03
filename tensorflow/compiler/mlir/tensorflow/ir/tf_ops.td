@@ -99,6 +99,30 @@ def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect,
   }];
 }
 
+def TF_CollectivePermuteOp : TF_Op<"CollectivePermute", []> {
+  let summary = "An Op to permute tensors across replicated TPU instances.";
+
+  let description = [{
+Each instance supplies its own input.
+
+For example, suppose there are 4 TPU instances: `[A, B, C, D]`. Passing
+source_target_pairs=`[[0,1],[1,2],[2,3],[3,0]]` gets the outputs:
+`[D, A, B, C]`.
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
+    I32Tensor:$source_target_pairs
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+
 def TF_DataFormatVecPermuteOp : TF_Op<"DataFormatVecPermute", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Permute input tensor from `src_format` to `dst_format`";
 

@@ -616,6 +616,14 @@ class BaseLayerTest(keras_parameterized.TestCase):
     self.assertTrue(layer.built)
     self.assertEqual([None, 3], layer._build_input_shape.as_list())
 
+  def test_activity_regularizer_string(self):
+
+    class MyLayer(base_layer.Layer):
+      pass
+
+    layer = MyLayer(activity_regularizer='l2')
+    self.assertIsInstance(layer.activity_regularizer, regularizers.L2)
+
 
 class SymbolicSupportTest(keras_parameterized.TestCase):
 

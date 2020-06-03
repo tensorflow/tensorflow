@@ -280,7 +280,7 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
       // CHECK: tf_executor.Exit
       // CHECK-SAME: : tensor<?x?x?xf32>
       // CHECK: tf_executor.LoopCond
-      // CHECK-SAME: : tensor<*xi1>
+      // CHECK-SAME: tensor<i1>
       %merge:3 = "tf_executor.Merge"(%island#0, %arg1) : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> (tensor<?x?x?xf32>, tensor<i32>, !tf_executor.control)
       %switch:3 = "tf_executor.Switch"(%island#0, %arg2) : (tensor<?x?x?xf32>, tensor<i1>) -> (tensor<?x?x?xf32>, tensor<?x?x?xf32>, !tf_executor.control)
       %switchn:3 = "tf_executor.SwitchN"(%island#0, %arg3) {num_outs = 2} : (tensor<?x?x?xf32>, tensor<i32>) -> (tensor<?x?x?xf32>, tensor<?x?x?xf32>, !tf_executor.control)
@@ -415,5 +415,22 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
     // CHECK-SAME: (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
     %2 = "tf.Add"(%0, %1) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
     return
+  }
+
+  // CHECK-LABEL: cast_at_end(%arg0:
+  // CHECK-SAME: tensor<16x194x199x4xui8>, tensor<16x194x199x4xi8>, tensor<*xi8>
+  func @cast_at_end(%arg0: tensor<16x194x199x4xf32>, %arg1: tensor<16x194x199x4xi8>) -> (tensor<*xui8>, tensor<*xi8>, tensor<*xi8>) {
+    // CHECK: %[[CAST_RESULT_0:.*]] = "tf.Cast"(%arg0)
+    // CHECK-SAME: (tensor<16x194x199x4xf32>) -> tensor<16x194x199x4xui8>
+    %27 = "tf.Cast"(%arg0) {Truncate = false, device = ""} : (tensor<16x194x199x4xf32>) -> tensor<*xui8>
+    // CHECK: %[[CAST_RESULT_1:.*]] = "tf.Cast"(%arg0)
+    // CHECK-SAME: (tensor<16x194x199x4xf32>) -> tensor<16x194x199x4xi8>
+    // CHECK: %[[CAST_RESULT_2:.*]] = "tf.Cast"(%[[CAST_RESULT_1]])
+    // CHECK-SAME: (tensor<16x194x199x4xi8>) -> tensor<*xi8>
+    %28 = "tf.Cast"(%arg0) {Truncate = false, device = ""} : (tensor<16x194x199x4xf32>) -> tensor<*xi8>
+    // CHECK: %[[ADDI:.*]] = addi %[[CAST_RESULT_2]], %[[CAST_RESULT_2]]
+    %2 = addi %28, %28 : tensor<*xi8>
+    // CHECK: return %[[CAST_RESULT_0]], %[[CAST_RESULT_1]], %[[ADDI]]
+    return %27, %28, %2 : tensor<*xui8>, tensor<*xi8>, tensor<*xi8>
   }
 }

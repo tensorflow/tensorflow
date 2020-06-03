@@ -34,6 +34,97 @@ class SnapshotDatasetSerializationTest(
     dataset_serialization_test_base.DatasetSerializationTestBase,
     parameterized.TestCase):
 
+  def _build_snapshot_dataset(self, repeat=False):
+
+    def ds_fn():
+      self._snapshot_dir = os.path.join(self.get_temp_dir(), "snapshot")
+      if not os.path.exists(self._snapshot_dir):
+        os.mkdir(self._snapshot_dir)
+
+      dataset = dataset_ops.Dataset.range(100)
+      dataset = dataset.apply(snapshot.snapshot(self._snapshot_dir))
+      if repeat:
+        dataset = dataset.repeat(2)
+      return dataset
+
+    return ds_fn
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCheckpointBeforeEpochEndNoRepeat(self):
+    ds_fn = self._build_snapshot_dataset(repeat=False)
+    outputs = self.gen_outputs(ds_fn, [], 50, verify_exhausted=False)
+    self.assertSequenceEqual(outputs, range(50))
+    outputs.extend(
+        self.gen_outputs(ds_fn, [], 50, ckpt_saved=True, verify_exhausted=True))
+    self.assertSequenceEqual(outputs, range(100))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCheckpointBeforeOneEpochWithReading(self):
+    ds_fn = self._build_snapshot_dataset(repeat=True)
+
+    # Generate 50 entries from iterator and save checkpoint.
+    outputs = self.gen_outputs(ds_fn, [], 50, verify_exhausted=False)
+    self.assertSequenceEqual(outputs, list(range(50)))
+
+    # Restore from checkpoint and produce the rest of the elements from the
+    # iterator.
+    t = self.gen_outputs(ds_fn, [], 150, ckpt_saved=True, verify_exhausted=True)
+    outputs.extend(t)
+    self.assertSequenceEqual(
+        outputs,
+        list(range(50)) + list(range(50, 100)) + list(range(100)))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCheckpointBeforeOneEpochThenRunAFewSteps(self):
+    ds_fn = self._build_snapshot_dataset(repeat=False)
+    outputs = self.gen_outputs(
+        ds_fn, [10], 20, verify_exhausted=False, save_checkpoint_at_end=False)
+    self.assertSequenceEqual(outputs, range(20))
+
+    outputs = outputs[:10]
+    outputs.extend(
+        self.gen_outputs(ds_fn, [], 90, ckpt_saved=True, verify_exhausted=True))
+    self.assertSequenceEqual(outputs, range(100))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCheckpointAfterOneEpoch(self):
+    ds_fn = self._build_snapshot_dataset(repeat=True)
+
+    # Generate 110 entries from iterator and save checkpoint.
+    outputs = self.gen_outputs(ds_fn, [], 110, verify_exhausted=False)
+    self.assertSequenceEqual(outputs, list(range(100)) + list(range(10)))
+
+    # Restore from checkpoint and produce the rest of the elements from the
+    # iterator.
+    t = self.gen_outputs(ds_fn, [], 90, ckpt_saved=True, verify_exhausted=True)
+    outputs.extend(t)
+    self.assertSequenceEqual(
+        outputs,
+        list(range(100)) + list(range(10)) + list(range(10, 100)))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCheckpointAfterOneEpochRunFewSteps(self):
+    ds_fn = self._build_snapshot_dataset(repeat=True)
+
+    # Generate 120 entries from iterator and save checkpoint at 110.
+    outputs = self.gen_outputs(
+        ds_fn, [110], 120, verify_exhausted=False, save_checkpoint_at_end=False)
+    self.assertSequenceEqual(outputs, list(range(100)) + list(range(20)))
+
+    # Restore from checkpoint and produce the rest of the elements from the
+    # iterator.
+    outputs = outputs[:110]
+    t = self.gen_outputs(ds_fn, [], 90, ckpt_saved=True, verify_exhausted=True)
+    outputs.extend(t)
+    self.assertSequenceEqual(
+        outputs,
+        list(range(100)) + list(range(10)) + list(range(10, 100)))
+
+
+class LegacySnapshotDatasetSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase,
+    parameterized.TestCase):
+
   def _build_snapshot_dataset(self,
                               num_threads=1,
                               repeat=False,

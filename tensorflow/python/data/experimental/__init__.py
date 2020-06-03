@@ -75,6 +75,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@sample_from_datasets
 @@scan
 @@shuffle_and_repeat
+@@snapshot
 @@take_while
 @@to_variant
 @@unbatch
@@ -128,6 +129,7 @@ from tensorflow.python.data.experimental.ops.readers import SqlDataset
 from tensorflow.python.data.experimental.ops.resampling import rejection_resample
 from tensorflow.python.data.experimental.ops.scan_ops import scan
 from tensorflow.python.data.experimental.ops.shuffle_ops import shuffle_and_repeat
+from tensorflow.python.data.experimental.ops.snapshot import snapshot
 from tensorflow.python.data.experimental.ops.stats_aggregator import StatsAggregator
 from tensorflow.python.data.experimental.ops.stats_ops import bytes_produced_stats
 from tensorflow.python.data.experimental.ops.stats_ops import latency_stats

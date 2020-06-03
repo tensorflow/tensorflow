@@ -282,6 +282,10 @@ class ConstantFolding : public GraphOptimizer {
   // Simplify a Case operation where the output_idx is known.
   bool SimplifyCase(GraphDef* optimized_graph, NodeDef* node);
 
+  // Simplify a Select operation where the predicates are all true or all false.
+  bool SimplifySelect(const GraphProperties& properties,
+                      GraphDef* optimized_graph, NodeDef* node);
+
   // Removes Reverse op over dimensions with size 1.
   Status RemoveReverse(const GraphProperties& properties, bool use_shape_info,
                        GraphDef* optimized_graph, NodeDef* node);

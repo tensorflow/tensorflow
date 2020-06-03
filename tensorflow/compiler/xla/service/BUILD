@@ -2212,6 +2212,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "//tensorflow/stream_executor/lib",
     ],
 )
 

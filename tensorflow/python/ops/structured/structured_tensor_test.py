@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import textwrap
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -929,17 +931,25 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
   def testRepr(self):
     st = StructuredTensor.from_pyval({"a": 5, "b": {"c": [1, 2, 3]}})
     if context.executing_eagerly():
-      expected = ("<StructuredTensor(fields={"
-                  '"a": tf.Tensor(5, shape=(), dtype=int32), '
-                  '"b": <StructuredTensor(fields={'
-                  '"c": tf.Tensor([1 2 3], shape=(3,), dtype=int32)}, '
-                  "shape=())>}, shape=())>")
+      expected = textwrap.dedent("""
+          <StructuredTensor(
+              fields={
+                  "a": tf.Tensor(5, shape=(), dtype=int32),
+                  "b": <StructuredTensor(
+                          fields={
+                              "c": tf.Tensor([1 2 3], shape=(3,), dtype=int32)},
+                          shape=())>},
+              shape=())>""")[1:]
     else:
-      expected = ("<StructuredTensor(fields={"
-                  '"a": Tensor("Const:0", shape=(), dtype=int32), '
-                  '"b": <StructuredTensor(fields={'
-                  '"c": Tensor("RaggedConstant/Const:0", shape=(3,), '
-                  "dtype=int32)}, shape=())>}, shape=())>")
+      expected = textwrap.dedent("""
+          <StructuredTensor(
+              fields={
+                  "a": Tensor("Const:0", shape=(), dtype=int32),
+                  "b": <StructuredTensor(
+                          fields={
+                              "c": Tensor("RaggedConstant/Const:0", shape=(3,), dtype=int32)},
+                          shape=())>},
+              shape=())>""")[1:]
     self.assertEqual(repr(st), expected)
 
   def testPartitionOuterDimension2DDenseField(self):

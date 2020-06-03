@@ -39,6 +39,7 @@ filegroup(
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
         "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/ViewLikeInterface.td",
     ],
 )
 
@@ -251,6 +252,21 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "lhlo_legalize_to_llvm",
+    srcs = ["transforms/lhlo_legalize_to_llvm.cc"],
+    deps = [
+        ":lhlo",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:LLVMTransforms",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,
@@ -491,6 +507,7 @@ cc_library(
     name = "xla_test_passes",
     srcs = [
         "transforms/chlo_legalize_to_hlo_pass.cc",
+        "transforms/lhlo_legalize_to_llvm_pass.cc",
         "transforms/materialize_broadcasts_pass.cc",
         "transforms/test_infer_shaped_type_pass.cc",
         "transforms/unfuse_batch_norm_pass.cc",
@@ -498,10 +515,14 @@ cc_library(
     deps = [
         ":chlo_legalize_to_hlo",  # build-cleaner: keep
         ":hlo",
+        ":lhlo",
+        ":lhlo_legalize_to_llvm",  # build-cleaner: keep
         ":xla_materialize_broadcasts",  # build-cleaner: keep
         ":xla_unfuse_batch_norm",  # build-cleaner: keep
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:LLVMTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:StandardOps",
@@ -600,6 +621,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:ViewLikeInterface",
     ],
     alwayslink = 1,
 )
