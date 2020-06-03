@@ -28,8 +28,10 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import keras_export
 
+
 def get_globals():
   return globals()
+
 
 @keras_export('keras.layers.LeakyReLU')
 class LeakyReLU(Layer):
