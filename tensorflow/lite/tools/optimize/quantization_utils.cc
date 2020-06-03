@@ -113,7 +113,8 @@ TfLiteStatus GetQuantizationParams(TensorT* tensor, TensorType activations_type,
                                    tensor->quantization->max[0],
                                    quantized_range, quantization_params);
   } else {
-    error_reporter->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter,
         "Unsupported activation type for quantize-activation: %s",
         activations_type);
     return kTfLiteError;

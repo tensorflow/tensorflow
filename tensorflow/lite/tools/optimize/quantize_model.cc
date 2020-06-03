@@ -370,9 +370,9 @@ TfLiteStatus ApplyConstraints(ModelT* model,
         std::unique_ptr<TensorT> additional_tensor;
         const string requant_tensor_name = input_tensor->name + "_requantized";
         utils::MakeTensorWithQuantParam(
-            requant_tensor_name, input_tensor->shape, 
-            input_tensor->shape_signature, activations_type,
-            output_scale, output_zp, &additional_tensor);
+            requant_tensor_name, input_tensor->shape,
+            input_tensor->shape_signature, activations_type, output_scale,
+            output_zp, &additional_tensor);
         const int32_t additional_tensor_idx = subgraph->tensors.size();
         subgraph->tensors.push_back(std::move(additional_tensor));
 
@@ -869,13 +869,15 @@ TfLiteStatus QuantizeWeightsInputOutput(
 
       if (activations_type == TensorType_INT16 && !property.quantizable &&
           !allow_float) {
-        error_reporter->Report(
-            "Quantization to 16x8-bit not yet supported for op: %s",
+        TF_LITE_REPORT_ERROR(
+            error_reporter,
+            "Quantization to 16x8-bit not yet supported for op: %",
             EnumNameBuiltinOperator(op_code));
         return kTfLiteError;
       } else if (!property.quantizable && !allow_float) {
-        error_reporter->Report("Quantization not yet supported for op: %s",
-                               EnumNameBuiltinOperator(op_code));
+        TF_LITE_REPORT_ERROR(error_reporter,
+                             "Quantization not yet supported for op: %",
+                             EnumNameBuiltinOperator(op_code));
         return kTfLiteError;
       }
 
