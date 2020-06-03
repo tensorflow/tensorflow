@@ -58,14 +58,14 @@ struct LeftUpdate<T, scatter_nd_op::UpdateOp::SUB> {
 template <typename T>
 struct LeftUpdate<T, scatter_nd_op::UpdateOp::MAX> {
   EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC void operator()(T* out, const T& val) {
-    CudaAtomicMax(out, val);
+    GpuAtomicMax(out, val);
   }
 };
 
 template <typename T>
 struct LeftUpdate<T, scatter_nd_op::UpdateOp::MIN> {
   EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC void operator()(T* out, const T& val) {
-    CudaAtomicMin(out, val);
+    GpuAtomicMin(out, val);
   }
 };
 
