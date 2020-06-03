@@ -115,13 +115,6 @@ def toco_convert(options, graph_def, input_tensors, output_tensors, **kwargs):
       converter = tf.compat.v1.lite.TFLiteConverter.from_frozen_graph(
           graphdef_file.name, input_arrays, output_tensors, input_shapes)
 
-      # TODO(b/145313371): Evaluate should we make it work with the new
-      # converter.
-      # Note: Currently this line is a non-functional change because the new
-      # converter is disabled by default. Since this code path doesn't work
-      # with new converter yet, it's explicitly disabled for easier testing.
-      converter.experimental_new_converter = False
-
       def representative_dataset(input_tensors):
         calibration_inputs = []
         for _, shape, _ in input_tensors:
