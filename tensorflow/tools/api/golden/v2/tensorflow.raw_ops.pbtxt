@@ -826,7 +826,7 @@ tf_module {
   }
   member_method {
     name: "ConvexHull"
-    argspec: "args=[\'input\', \'clockwise\', \'name\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    argspec: "args=[\'input\', \'clockwise\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "Copy"
