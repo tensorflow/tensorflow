@@ -4877,9 +4877,6 @@ cuda_py_test(
     srcs = ["ops/control_flow_ops_test.py"],
     python_version = "PY3",
     shard_count = 2,
-    tags = [
-        "noasan",  # b/158098804
-    ],
     deps = [
         ":array_ops",
         ":cond_v2",
