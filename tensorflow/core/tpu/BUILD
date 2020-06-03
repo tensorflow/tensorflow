@@ -9,13 +9,6 @@ package(
 )
 
 cc_library(
-    name = "libtftpu_header",
-    hdrs = ["libtftpu.h"],
-    visibility = ["//visibility:public"],
-    deps = [],
-)
-
-cc_library(
     name = "tpu_embedding_optimization_parameters_utils",
     srcs = ["tpu_embedding_optimization_parameters_utils.cc"],
     hdrs = ["tpu_embedding_optimization_parameters_utils.h"],
@@ -95,7 +88,6 @@ cc_library(
     name = "tpu_config_c_api",
     hdrs = ["tpu_config_c_api.h"],
     deps = [
-        ":libtftpu_header",
         "//tensorflow/c:tf_status",
     ],
 )
@@ -104,11 +96,6 @@ cc_library(
     name = "tpu_library_loader",
     srcs = ["tpu_library_loader.cc"],
     hdrs = ["tpu_library_loader.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":libtftpu_header",
-        ":tpu_config_c_api",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:status",
-    ],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = ["//tensorflow/core/platform:status"],
 )
