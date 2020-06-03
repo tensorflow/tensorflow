@@ -37,7 +37,7 @@ class OpKernelContext;
 
 namespace scatter_nd_op {
 
-enum class UpdateOp { ASSIGN, ADD, SUB, MIN, MAX };
+enum class UpdateOp { ASSIGN, ADD, SUB };
 
 }  // namespace scatter_nd_op
 
