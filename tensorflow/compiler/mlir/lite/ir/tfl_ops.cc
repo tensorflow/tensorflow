@@ -599,8 +599,7 @@ OpFoldResult ConcatenationOp::fold(ArrayRef<Attribute> operands) {
   auto new_concat = builder.create<TFL::ConcatenationOp>(
       getLoc(), getType(), non_empty_values,
       builder.getIntegerAttr(builder.getIntegerType(32), axis()),
-      builder.getStringAttr(fused_activation_function()),
-      builder.getBoolAttr(fixed_point_scaling()));
+      builder.getStringAttr(fused_activation_function()));
   return new_concat.getResult();
 }
 

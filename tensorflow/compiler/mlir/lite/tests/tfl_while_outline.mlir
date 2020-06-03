@@ -110,7 +110,7 @@ func @rnn(%arg0: tensor<4x4x3xf32> {tf.device = "/device:CPU:0"}) -> tensor<4x?x
     %5 = tfl.add %arg2, %cst_5 {fused_activation_function = "NONE"} : tensor<i32>
     %6 = tfl.add %arg1, %cst_5 {fused_activation_function = "NONE"} : tensor<i32>
     %7 = "tfl.gather"(%0, %arg2) {axis = 0 : i32} : (tensor<4x4x3xf32>, tensor<i32>) -> tensor<4x3xf32>
-    %8 = "tfl.concatenation"(%7, %arg5) {axis = 1 : i32, fixed_point_scaling = true, fused_activation_function = "NONE"} : (tensor<4x3xf32>, tensor<4x2xf32>) -> tensor<4x5xf32>
+    %8 = "tfl.concatenation"(%7, %arg5) {axis = 1 : i32, fused_activation_function = "NONE"} : (tensor<4x3xf32>, tensor<4x2xf32>) -> tensor<4x5xf32>
     %9 = "tfl.fully_connected"(%8, %cst_10, %cst_0) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<4x5xf32>, tensor<8x5xf32>, tensor<8xf32>) -> tensor<4x8xf32>
     %10:4 = "tfl.split"(%cst_5, %9) {num_splits = 4 : i32} : (tensor<i32>, tensor<4x8xf32>) -> (tensor<4x2xf32>, tensor<4x2xf32>, tensor<4x2xf32>, tensor<4x2xf32>)
     %11 = "tfl.add"(%10#2, %cst_4) {fused_activation_function = "NONE"} : (tensor<4x2xf32>, tensor<f32>) -> tensor<4x2xf32>
@@ -124,17 +124,17 @@ func @rnn(%arg0: tensor<4x4x3xf32> {tf.device = "/device:CPU:0"}) -> tensor<4x?x
     %19 = "tfl.logistic"(%10#3) : (tensor<4x2xf32>) -> tensor<4x2xf32>
     %20 = tfl.mul %18, %19 {fused_activation_function = "NONE"} : tensor<4x2xf32>
     %21 = "tfl.fill"(%cst_11, %cst_7) : (tensor<1xi32>, tensor<i32>) -> tensor<?xi32>
-    %22 = "tfl.concatenation"(%cst_6, %21) {axis = 0 : i32, fixed_point_scaling = true, fused_activation_function = "NONE"} : (tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
+    %22 = "tfl.concatenation"(%cst_6, %21) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
     %23 = "tfl.reshape"(%arg2, %cst_12) : (tensor<i32>, tensor<1xi32>) -> tensor<1xi32>
     %24 = "tfl.fill"(%cst_11, %cst_9) : (tensor<1xi32>, tensor<i32>) -> tensor<?xi32>
-    %25 = "tfl.concatenation"(%23, %24) {axis = 0 : i32, fixed_point_scaling = true, fused_activation_function = "NONE"} : (tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
+    %25 = "tfl.concatenation"(%23, %24) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
     %26 = "tfl.slice"(%arg3, %22, %25) : (tensor<*xf32>, tensor<?xi32>, tensor<?xi32>) -> tensor<*xf32>
     %27 = "tfl.reshape"(%5, %cst_12) : (tensor<i32>, tensor<1xi32>) -> tensor<1xi32>
-    %28 = "tfl.concatenation"(%27, %21) {axis = 0 : i32, fixed_point_scaling = true, fused_activation_function = "NONE"} : (tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
-    %29 = "tfl.concatenation"(%cst_8, %24) {axis = 0 : i32, fixed_point_scaling = true, fused_activation_function = "NONE"} : (tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
+    %28 = "tfl.concatenation"(%27, %21) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
+    %29 = "tfl.concatenation"(%cst_8, %24) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
     %30 = "tfl.slice"(%arg3, %28, %29) : (tensor<*xf32>, tensor<?xi32>, tensor<?xi32>) -> tensor<*xf32>
     %31 = "tfl.expand_dims"(%20, %cst_7) : (tensor<4x2xf32>, tensor<i32>) -> tensor<*xf32>
-    %32 = "tfl.concatenation"(%26, %31, %30) {axis = 0 : i32, fixed_point_scaling = true, fused_activation_function = "NONE"} : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    %32 = "tfl.concatenation"(%26, %31, %30) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
     "tfl.yield"(%6, %5, %32, %17, %20, %0) : (tensor<i32>, tensor<i32>, tensor<*xf32>, tensor<4x2xf32>, tensor<4x2xf32>, tensor<4x4x3xf32>) -> ()
   }) {is_stateless = true} : (tensor<i32>, tensor<i32>, tensor<4x4x2xf32>, tensor<4x2xf32>, tensor<4x2xf32>, tensor<4x4x3xf32>) -> (tensor<i32>, tensor<i32>, tensor<*xf32>, tensor<4x2xf32>, tensor<4x2xf32>, tensor<*xf32>)
   %2 = "tfl.shape"(%1#2) : (tensor<*xf32>) -> tensor<?xi32>
