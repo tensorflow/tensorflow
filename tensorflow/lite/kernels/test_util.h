@@ -486,6 +486,9 @@ class SingleOpModel {
     return std::vector<T>(v, v + tensor_size);
   }
 
+  // Return the TFLite model buffer, only available after BuildInterpreter.
+  const uint8_t* GetModelBuffer() { return builder_.GetBufferPointer(); }
+
   std::vector<int> GetTensorShape(int index) {
     std::vector<int> result;
     TfLiteTensor* t = interpreter_->tensor(index);

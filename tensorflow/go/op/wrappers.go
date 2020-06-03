@@ -12571,6 +12571,151 @@ func EncodePng(scope *Scope, image tf.Output, optional ...EncodePngAttr) (conten
 	return op.Output(0)
 }
 
+// Invert (flip) each bit of supported types; for example, type `uint8` value 01010101 becomes 10101010.
+//
+// Flip each bit of supported types.  For example, type `int8` (decimal 2) binary 00000010 becomes (decimal -3) binary 11111101.
+// This operation is performed on each element of the tensor argument `x`.
+//
+// Example:
+// ```python
+// import tensorflow as tf
+// from tensorflow.python.ops import bitwise_ops
+//
+// # flip 2 (00000010) to -3 (11111101)
+// tf.assert_equal(-3, bitwise_ops.invert(2))
+//
+// dtype_list = [dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
+//               dtypes.uint8, dtypes.uint16, dtypes.uint32, dtypes.uint64]
+//
+// inputs = [0, 5, 3, 14]
+// for dtype in dtype_list:
+//   # Because of issues with negative numbers, let's test this indirectly.
+//   # 1. invert(a) and a = 0
+//   # 2. invert(a) or a = invert(0)
+//   input_tensor = tf.constant([0, 5, 3, 14], dtype=dtype)
+//   not_a_and_a, not_a_or_a, not_0 = [bitwise_ops.bitwise_and(
+//                                       input_tensor, bitwise_ops.invert(input_tensor)),
+//                                     bitwise_ops.bitwise_or(
+//                                       input_tensor, bitwise_ops.invert(input_tensor)),
+//                                     bitwise_ops.invert(
+//                                       tf.constant(0, dtype=dtype))]
+//
+//   expected = tf.constant([0, 0, 0, 0], dtype=tf.float32)
+//   tf.assert_equal(tf.cast(not_a_and_a, tf.float32), expected)
+//
+//   expected = tf.cast([not_0] * 4, tf.float32)
+//   tf.assert_equal(tf.cast(not_a_or_a, tf.float32), expected)
+//
+//   # For unsigned dtypes let's also check the result directly.
+//   if dtype.is_unsigned:
+//     inverted = bitwise_ops.invert(input_tensor)
+//     expected = tf.constant([dtype.max - x for x in inputs], dtype=tf.float32)
+//     tf.assert_equal(tf.cast(inverted, tf.float32), tf.cast(expected, tf.float32))
+// ```
+func Invert(scope *Scope, x tf.Output) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Invert",
+		Input: []tf.Input{
+			x,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// DecodePngAttr is an optional argument to DecodePng.
+type DecodePngAttr func(optionalAttr)
+
+// DecodePngChannels sets the optional channels attribute to value.
+//
+// value: Number of color channels for the decoded image.
+// If not specified, defaults to 0
+func DecodePngChannels(value int64) DecodePngAttr {
+	return func(m optionalAttr) {
+		m["channels"] = value
+	}
+}
+
+// DecodePngDtype sets the optional dtype attribute to value.
+// If not specified, defaults to DT_UINT8
+func DecodePngDtype(value tf.DataType) DecodePngAttr {
+	return func(m optionalAttr) {
+		m["dtype"] = value
+	}
+}
+
+// Decode a PNG-encoded image to a uint8 or uint16 tensor.
+//
+// The attr `channels` indicates the desired number of color channels for the
+// decoded image.
+//
+// Accepted values are:
+//
+// *   0: Use the number of channels in the PNG-encoded image.
+// *   1: output a grayscale image.
+// *   3: output an RGB image.
+// *   4: output an RGBA image.
+//
+// If needed, the PNG-encoded image is transformed to match the requested number
+// of color channels.
+//
+// This op also supports decoding JPEGs and non-animated GIFs since the interface
+// is the same, though it is cleaner to use `tf.io.decode_image`.
+//
+// Arguments:
+//	contents: 0-D.  The PNG-encoded image.
+//
+// Returns 3-D with shape `[height, width, channels]`.
+func DecodePng(scope *Scope, contents tf.Output, optional ...DecodePngAttr) (image tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "DecodePng",
+		Input: []tf.Input{
+			contents,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Adjust the saturation of one or more images.
+//
+// `images` is a tensor of at least 3 dimensions.  The last dimension is
+// interpreted as channels, and must be three.
+//
+// The input image is considered in the RGB colorspace. Conceptually, the RGB
+// colors are first mapped into HSV. A scale is then applied all the saturation
+// values, and then remapped back to RGB colorspace.
+//
+// Arguments:
+//	images: Images to adjust.  At least 3-D.
+//	scale: A float scale to add to the saturation.
+//
+// Returns The hue-adjusted image or images.
+func AdjustSaturation(scope *Scope, images tf.Output, scale tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "AdjustSaturation",
+		Input: []tf.Input{
+			images, scale,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // ExtractJpegShapeAttr is an optional argument to ExtractJpegShape.
 type ExtractJpegShapeAttr func(optionalAttr)
 
@@ -15365,123 +15510,6 @@ func TensorSummaryV2(scope *Scope, tag tf.Output, tensor tf.Output, serialized_s
 		Input: []tf.Input{
 			tag, tensor, serialized_summary_metadata,
 		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Invert (flip) each bit of supported types; for example, type `uint8` value 01010101 becomes 10101010.
-//
-// Flip each bit of supported types.  For example, type `int8` (decimal 2) binary 00000010 becomes (decimal -3) binary 11111101.
-// This operation is performed on each element of the tensor argument `x`.
-//
-// Example:
-// ```python
-// import tensorflow as tf
-// from tensorflow.python.ops import bitwise_ops
-//
-// # flip 2 (00000010) to -3 (11111101)
-// tf.assert_equal(-3, bitwise_ops.invert(2))
-//
-// dtype_list = [dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
-//               dtypes.uint8, dtypes.uint16, dtypes.uint32, dtypes.uint64]
-//
-// inputs = [0, 5, 3, 14]
-// for dtype in dtype_list:
-//   # Because of issues with negative numbers, let's test this indirectly.
-//   # 1. invert(a) and a = 0
-//   # 2. invert(a) or a = invert(0)
-//   input_tensor = tf.constant([0, 5, 3, 14], dtype=dtype)
-//   not_a_and_a, not_a_or_a, not_0 = [bitwise_ops.bitwise_and(
-//                                       input_tensor, bitwise_ops.invert(input_tensor)),
-//                                     bitwise_ops.bitwise_or(
-//                                       input_tensor, bitwise_ops.invert(input_tensor)),
-//                                     bitwise_ops.invert(
-//                                       tf.constant(0, dtype=dtype))]
-//
-//   expected = tf.constant([0, 0, 0, 0], dtype=tf.float32)
-//   tf.assert_equal(tf.cast(not_a_and_a, tf.float32), expected)
-//
-//   expected = tf.cast([not_0] * 4, tf.float32)
-//   tf.assert_equal(tf.cast(not_a_or_a, tf.float32), expected)
-//
-//   # For unsigned dtypes let's also check the result directly.
-//   if dtype.is_unsigned:
-//     inverted = bitwise_ops.invert(input_tensor)
-//     expected = tf.constant([dtype.max - x for x in inputs], dtype=tf.float32)
-//     tf.assert_equal(tf.cast(inverted, tf.float32), tf.cast(expected, tf.float32))
-// ```
-func Invert(scope *Scope, x tf.Output) (y tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Invert",
-		Input: []tf.Input{
-			x,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// DecodePngAttr is an optional argument to DecodePng.
-type DecodePngAttr func(optionalAttr)
-
-// DecodePngChannels sets the optional channels attribute to value.
-//
-// value: Number of color channels for the decoded image.
-// If not specified, defaults to 0
-func DecodePngChannels(value int64) DecodePngAttr {
-	return func(m optionalAttr) {
-		m["channels"] = value
-	}
-}
-
-// DecodePngDtype sets the optional dtype attribute to value.
-// If not specified, defaults to DT_UINT8
-func DecodePngDtype(value tf.DataType) DecodePngAttr {
-	return func(m optionalAttr) {
-		m["dtype"] = value
-	}
-}
-
-// Decode a PNG-encoded image to a uint8 or uint16 tensor.
-//
-// The attr `channels` indicates the desired number of color channels for the
-// decoded image.
-//
-// Accepted values are:
-//
-// *   0: Use the number of channels in the PNG-encoded image.
-// *   1: output a grayscale image.
-// *   3: output an RGB image.
-// *   4: output an RGBA image.
-//
-// If needed, the PNG-encoded image is transformed to match the requested number
-// of color channels.
-//
-// This op also supports decoding JPEGs and non-animated GIFs since the interface
-// is the same, though it is cleaner to use `tf.io.decode_image`.
-//
-// Arguments:
-//	contents: 0-D.  The PNG-encoded image.
-//
-// Returns 3-D with shape `[height, width, channels]`.
-func DecodePng(scope *Scope, contents tf.Output, optional ...DecodePngAttr) (image tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "DecodePng",
-		Input: []tf.Input{
-			contents,
-		},
-		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -20378,34 +20406,6 @@ func TensorListPopBack(scope *Scope, input_handle tf.Output, element_shape tf.Ou
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
-}
-
-// Adjust the saturation of one or more images.
-//
-// `images` is a tensor of at least 3 dimensions.  The last dimension is
-// interpreted as channels, and must be three.
-//
-// The input image is considered in the RGB colorspace. Conceptually, the RGB
-// colors are first mapped into HSV. A scale is then applied all the saturation
-// values, and then remapped back to RGB colorspace.
-//
-// Arguments:
-//	images: Images to adjust.  At least 3-D.
-//	scale: A float scale to add to the saturation.
-//
-// Returns The hue-adjusted image or images.
-func AdjustSaturation(scope *Scope, images tf.Output, scale tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "AdjustSaturation",
-		Input: []tf.Input{
-			images, scale,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // QueueDequeueManyV2Attr is an optional argument to QueueDequeueManyV2.
@@ -26421,72 +26421,45 @@ func Conv2DBackpropFilter(scope *Scope, input tf.Output, filter_sizes tf.Output,
 	return op.Output(0)
 }
 
-// ConfigureDistributedTPUAttr is an optional argument to ConfigureDistributedTPU.
-type ConfigureDistributedTPUAttr func(optionalAttr)
-
-// ConfigureDistributedTPUEmbeddingConfig sets the optional embedding_config attribute to value.
+// Returns the truth value of x OR y element-wise.
 //
-// value: Reserved. Do not use.
-// If not specified, defaults to ""
-func ConfigureDistributedTPUEmbeddingConfig(value string) ConfigureDistributedTPUAttr {
-	return func(m optionalAttr) {
-		m["embedding_config"] = value
-	}
-}
-
-// ConfigureDistributedTPUTpuEmbeddingConfig sets the optional tpu_embedding_config attribute to value.
-//
-// value: Serialized tensorflow.tpu.TPUEmbeddingConfiguration that
-// describes the embedding lookups of the program.
-// If not specified, defaults to ""
-func ConfigureDistributedTPUTpuEmbeddingConfig(value string) ConfigureDistributedTPUAttr {
-	return func(m optionalAttr) {
-		m["tpu_embedding_config"] = value
-	}
-}
-
-// ConfigureDistributedTPUIsGlobalInit sets the optional is_global_init attribute to value.
-//
-// value: Reserved. Do not use.
-// If not specified, defaults to false
-func ConfigureDistributedTPUIsGlobalInit(value bool) ConfigureDistributedTPUAttr {
-	return func(m optionalAttr) {
-		m["is_global_init"] = value
-	}
-}
-
-// ConfigureDistributedTPUEnableWholeMeshCompilations sets the optional enable_whole_mesh_compilations attribute to value.
-// If not specified, defaults to false
-func ConfigureDistributedTPUEnableWholeMeshCompilations(value bool) ConfigureDistributedTPUAttr {
-	return func(m optionalAttr) {
-		m["enable_whole_mesh_compilations"] = value
-	}
-}
-
-// ConfigureDistributedTPUCompilationFailureClosesChips sets the optional compilation_failure_closes_chips attribute to value.
-// If not specified, defaults to true
-func ConfigureDistributedTPUCompilationFailureClosesChips(value bool) ConfigureDistributedTPUAttr {
-	return func(m optionalAttr) {
-		m["compilation_failure_closes_chips"] = value
-	}
-}
-
-// Sets up the centralized structures for a distributed TPU system.
-//
-// Returns A serialized tensorflow.tpu.TopologyProto that describes the TPU
-// topology.
-func ConfigureDistributedTPU(scope *Scope, optional ...ConfigureDistributedTPUAttr) (topology tf.Output) {
+// *NOTE*: `LogicalOr` supports broadcasting. More about broadcasting
+// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+func LogicalOr(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
+	opspec := tf.OpSpec{
+		Type: "LogicalOr",
+		Input: []tf.Input{
+			x, y,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Adds `bias` to `value`.
+//
+// This is a deprecated version of BiasAdd and will be soon removed.
+//
+// This is a special case of `tf.add` where `bias` is restricted to be 1-D.
+// Broadcasting is supported, so `value` may have any number of dimensions.
+//
+// Arguments:
+//	value: Any number of dimensions.
+//	bias: 1-D with size the last dimension of `value`.
+//
+// Returns Broadcasted sum of `value` and `bias`.
+func BiasAddV1(scope *Scope, value tf.Output, bias tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
 	}
 	opspec := tf.OpSpec{
-		Type: "ConfigureDistributedTPU",
-
-		Attrs: attrs,
+		Type: "BiasAddV1",
+		Input: []tf.Input{
+			value, bias,
+		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -29334,21 +29307,6 @@ func RandomPoissonV2(scope *Scope, shape tf.Output, rate tf.Output, optional ...
 			shape, rate,
 		},
 		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes the derivative of a Gamma random sample w.r.t. `alpha`.
-func RandomGammaGrad(scope *Scope, alpha tf.Output, sample tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "RandomGammaGrad",
-		Input: []tf.Input{
-			alpha, sample,
-		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -34779,50 +34737,6 @@ func SparseSliceGrad(scope *Scope, backprop_val_grad tf.Output, input_indices tf
 	return op.Output(0)
 }
 
-// Returns the truth value of x OR y element-wise.
-//
-// *NOTE*: `LogicalOr` supports broadcasting. More about broadcasting
-// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-func LogicalOr(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "LogicalOr",
-		Input: []tf.Input{
-			x, y,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Adds `bias` to `value`.
-//
-// This is a deprecated version of BiasAdd and will be soon removed.
-//
-// This is a special case of `tf.add` where `bias` is restricted to be 1-D.
-// Broadcasting is supported, so `value` may have any number of dimensions.
-//
-// Arguments:
-//	value: Any number of dimensions.
-//	bias: 1-D with size the last dimension of `value`.
-//
-// Returns Broadcasted sum of `value` and `bias`.
-func BiasAddV1(scope *Scope, value tf.Output, bias tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "BiasAddV1",
-		Input: []tf.Input{
-			value, bias,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Generates sparse cross from a list of sparse and dense tensors.
 //
 // The op takes two lists, one of 2D `SparseTensor` and one of 2D `Tensor`, each
@@ -38329,6 +38243,139 @@ func RecvTPUEmbeddingActivations(scope *Scope, num_outputs int64, config string)
 		return
 	}
 	return outputs
+}
+
+// Computes the derivative of a Gamma random sample w.r.t. `alpha`.
+func RandomGammaGrad(scope *Scope, alpha tf.Output, sample tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "RandomGammaGrad",
+		Input: []tf.Input{
+			alpha, sample,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// LRNGradAttr is an optional argument to LRNGrad.
+type LRNGradAttr func(optionalAttr)
+
+// LRNGradDepthRadius sets the optional depth_radius attribute to value.
+//
+// value: A depth radius.
+// If not specified, defaults to 5
+func LRNGradDepthRadius(value int64) LRNGradAttr {
+	return func(m optionalAttr) {
+		m["depth_radius"] = value
+	}
+}
+
+// LRNGradBias sets the optional bias attribute to value.
+//
+// value: An offset (usually > 0 to avoid dividing by 0).
+// If not specified, defaults to 1
+func LRNGradBias(value float32) LRNGradAttr {
+	return func(m optionalAttr) {
+		m["bias"] = value
+	}
+}
+
+// LRNGradAlpha sets the optional alpha attribute to value.
+//
+// value: A scale factor, usually positive.
+// If not specified, defaults to 1
+func LRNGradAlpha(value float32) LRNGradAttr {
+	return func(m optionalAttr) {
+		m["alpha"] = value
+	}
+}
+
+// LRNGradBeta sets the optional beta attribute to value.
+//
+// value: An exponent.
+// If not specified, defaults to 0.5
+func LRNGradBeta(value float32) LRNGradAttr {
+	return func(m optionalAttr) {
+		m["beta"] = value
+	}
+}
+
+// Gradients for Local Response Normalization.
+//
+// Arguments:
+//	input_grads: 4-D with shape `[batch, height, width, channels]`.
+//	input_image: 4-D with shape `[batch, height, width, channels]`.
+//	output_image: 4-D with shape `[batch, height, width, channels]`.
+//
+// Returns The gradients for LRN.
+func LRNGrad(scope *Scope, input_grads tf.Output, input_image tf.Output, output_image tf.Output, optional ...LRNGradAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "LRNGrad",
+		Input: []tf.Input{
+			input_grads, input_image, output_image,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// PrelinearizeAttr is an optional argument to Prelinearize.
+type PrelinearizeAttr func(optionalAttr)
+
+// PrelinearizeShape sets the optional shape attribute to value.
+//
+// value: The shape of the tensor.
+// If not specified, defaults to <>
+func PrelinearizeShape(value tf.Shape) PrelinearizeAttr {
+	return func(m optionalAttr) {
+		m["shape"] = value
+	}
+}
+
+// PrelinearizeLayout sets the optional layout attribute to value.
+//
+// value: A vector holding the requested layout in minor-to-major sequence. If a layout
+// attribute is passed but its values are all -1 the layout will be computed by
+// the infeed operation.
+// If not specified, defaults to <>
+func PrelinearizeLayout(value []int64) PrelinearizeAttr {
+	return func(m optionalAttr) {
+		m["layout"] = value
+	}
+}
+
+// An op which linearizes one Tensor value to an opaque variant tensor.
+//
+// Arguments:
+//	input: A tensor that will be linearized.
+func Prelinearize(scope *Scope, input tf.Output, optional ...PrelinearizeAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Prelinearize",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Computes the sparse Cholesky decomposition of `input`.
@@ -48648,6 +48695,77 @@ func RetrieveTPUEmbeddingMomentumParameters(scope *Scope, num_shards int64, shar
 	return op.Output(0), op.Output(1)
 }
 
+// ConfigureDistributedTPUAttr is an optional argument to ConfigureDistributedTPU.
+type ConfigureDistributedTPUAttr func(optionalAttr)
+
+// ConfigureDistributedTPUEmbeddingConfig sets the optional embedding_config attribute to value.
+//
+// value: Reserved. Do not use.
+// If not specified, defaults to ""
+func ConfigureDistributedTPUEmbeddingConfig(value string) ConfigureDistributedTPUAttr {
+	return func(m optionalAttr) {
+		m["embedding_config"] = value
+	}
+}
+
+// ConfigureDistributedTPUTpuEmbeddingConfig sets the optional tpu_embedding_config attribute to value.
+//
+// value: Serialized tensorflow.tpu.TPUEmbeddingConfiguration that
+// describes the embedding lookups of the program.
+// If not specified, defaults to ""
+func ConfigureDistributedTPUTpuEmbeddingConfig(value string) ConfigureDistributedTPUAttr {
+	return func(m optionalAttr) {
+		m["tpu_embedding_config"] = value
+	}
+}
+
+// ConfigureDistributedTPUIsGlobalInit sets the optional is_global_init attribute to value.
+//
+// value: Reserved. Do not use.
+// If not specified, defaults to false
+func ConfigureDistributedTPUIsGlobalInit(value bool) ConfigureDistributedTPUAttr {
+	return func(m optionalAttr) {
+		m["is_global_init"] = value
+	}
+}
+
+// ConfigureDistributedTPUEnableWholeMeshCompilations sets the optional enable_whole_mesh_compilations attribute to value.
+// If not specified, defaults to false
+func ConfigureDistributedTPUEnableWholeMeshCompilations(value bool) ConfigureDistributedTPUAttr {
+	return func(m optionalAttr) {
+		m["enable_whole_mesh_compilations"] = value
+	}
+}
+
+// ConfigureDistributedTPUCompilationFailureClosesChips sets the optional compilation_failure_closes_chips attribute to value.
+// If not specified, defaults to true
+func ConfigureDistributedTPUCompilationFailureClosesChips(value bool) ConfigureDistributedTPUAttr {
+	return func(m optionalAttr) {
+		m["compilation_failure_closes_chips"] = value
+	}
+}
+
+// Sets up the centralized structures for a distributed TPU system.
+//
+// Returns A serialized tensorflow.tpu.TopologyProto that describes the TPU
+// topology.
+func ConfigureDistributedTPU(scope *Scope, optional ...ConfigureDistributedTPUAttr) (topology tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ConfigureDistributedTPU",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 //   Combines (nests of) input elements into a dataset of (nests of) windows.
 //
 //   A "window" is a finite dataset of flat elements of size `size` (or possibly
@@ -48906,124 +49024,6 @@ func RetrieveTPUEmbeddingFTRLParameters(scope *Scope, num_shards int64, shard_id
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
-}
-
-// LRNGradAttr is an optional argument to LRNGrad.
-type LRNGradAttr func(optionalAttr)
-
-// LRNGradDepthRadius sets the optional depth_radius attribute to value.
-//
-// value: A depth radius.
-// If not specified, defaults to 5
-func LRNGradDepthRadius(value int64) LRNGradAttr {
-	return func(m optionalAttr) {
-		m["depth_radius"] = value
-	}
-}
-
-// LRNGradBias sets the optional bias attribute to value.
-//
-// value: An offset (usually > 0 to avoid dividing by 0).
-// If not specified, defaults to 1
-func LRNGradBias(value float32) LRNGradAttr {
-	return func(m optionalAttr) {
-		m["bias"] = value
-	}
-}
-
-// LRNGradAlpha sets the optional alpha attribute to value.
-//
-// value: A scale factor, usually positive.
-// If not specified, defaults to 1
-func LRNGradAlpha(value float32) LRNGradAttr {
-	return func(m optionalAttr) {
-		m["alpha"] = value
-	}
-}
-
-// LRNGradBeta sets the optional beta attribute to value.
-//
-// value: An exponent.
-// If not specified, defaults to 0.5
-func LRNGradBeta(value float32) LRNGradAttr {
-	return func(m optionalAttr) {
-		m["beta"] = value
-	}
-}
-
-// Gradients for Local Response Normalization.
-//
-// Arguments:
-//	input_grads: 4-D with shape `[batch, height, width, channels]`.
-//	input_image: 4-D with shape `[batch, height, width, channels]`.
-//	output_image: 4-D with shape `[batch, height, width, channels]`.
-//
-// Returns The gradients for LRN.
-func LRNGrad(scope *Scope, input_grads tf.Output, input_image tf.Output, output_image tf.Output, optional ...LRNGradAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "LRNGrad",
-		Input: []tf.Input{
-			input_grads, input_image, output_image,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// PrelinearizeAttr is an optional argument to Prelinearize.
-type PrelinearizeAttr func(optionalAttr)
-
-// PrelinearizeShape sets the optional shape attribute to value.
-//
-// value: The shape of the tensor.
-// If not specified, defaults to <>
-func PrelinearizeShape(value tf.Shape) PrelinearizeAttr {
-	return func(m optionalAttr) {
-		m["shape"] = value
-	}
-}
-
-// PrelinearizeLayout sets the optional layout attribute to value.
-//
-// value: A vector holding the requested layout in minor-to-major sequence. If a layout
-// attribute is passed but its values are all -1 the layout will be computed by
-// the infeed operation.
-// If not specified, defaults to <>
-func PrelinearizeLayout(value []int64) PrelinearizeAttr {
-	return func(m optionalAttr) {
-		m["layout"] = value
-	}
-}
-
-// An op which linearizes one Tensor value to an opaque variant tensor.
-//
-// Arguments:
-//	input: A tensor that will be linearized.
-func Prelinearize(scope *Scope, input tf.Output, optional ...PrelinearizeAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Prelinearize",
-		Input: []tf.Input{
-			input,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // Returns the result of a TPU compilation.

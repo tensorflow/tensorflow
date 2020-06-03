@@ -4145,6 +4145,72 @@ TEST_F(ConstantFoldingTest, SimplifyCase) {
   test::ExpectTensorEqual<float>(tensors[0], tensors_expected[0]);
 }
 
+TEST_F(ConstantFoldingTest, SimplifySelect) {
+  for (bool scalar_pred : {true, false}) {
+    for (bool pred_val : {true, false}) {
+      tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+      std::unique_ptr<Tensor> if_t;
+      if (scalar_pred) {
+        if_t.reset(new Tensor(DT_BOOL, TensorShape()));
+      } else {
+        if_t.reset(new Tensor(DT_BOOL, TensorShape({2, 2})));
+      }
+      for (int i = 0; i < (scalar_pred ? 1 : 4); ++i) {
+        if_t->flat<bool>()(i) = pred_val;
+      }
+      Output if_ = ops::Const(scope.WithOpName("if"), *if_t);
+      Output then_ =
+          ops::Placeholder(scope.WithOpName("then"), DT_FLOAT,
+                           ops::Placeholder::Shape(TensorShape({2, 2})));
+      Output else_ =
+          ops::Placeholder(scope.WithOpName("else"), DT_FLOAT,
+                           ops::Placeholder::Shape(TensorShape({2, 2})));
+      Output select =
+          ops::SelectV2(scope.WithOpName("select"), if_, then_, else_);
+      Output id = ops::Identity(scope.WithOpName("id"), select);
+
+      GrapplerItem item;
+      TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+      item.fetch = {"id"};
+
+      const Tensor kOne =
+          test::AsTensor<float>({1.0f, 1.0f, 1.0f, 1.0f}, TensorShape({2, 2}));
+      const Tensor kTwo =
+          test::AsTensor<float>({2.0f, 2.0f, 2.0f, 2.0f}, TensorShape({2, 2}));
+      auto tensors_expected = EvaluateNodes(item.graph, item.fetch,
+                                            {{"then", kOne}, {"else", kTwo}});
+
+      // Use aggressive mode to force the shape inference to propagate
+      // placeholder shapes.
+      ConstantFolding optimizer(RewriterConfig::AGGRESSIVE,
+                                /*cpu_device=*/nullptr);
+      GraphDef optimized_graph;
+      TF_EXPECT_OK(
+          optimizer.Optimize(/*cluster=*/nullptr, item, &optimized_graph));
+
+      ASSERT_EQ(optimized_graph.node_size(), 5);
+      bool found = false;
+      for (const auto& node : optimized_graph.node()) {
+        if (node.name() == "select") {
+          found = true;
+          EXPECT_EQ(node.op(), "Identity");
+          ASSERT_EQ(node.input_size(), 3);
+          EXPECT_EQ(node.input(0), pred_val ? "then" : "else");
+          EXPECT_EQ(node.input(1), pred_val ? "^if" : "^then");
+          EXPECT_EQ(node.input(2), pred_val ? "^else" : "^if");
+        }
+      }
+      EXPECT_TRUE(found);
+
+      auto tensors = EvaluateNodes(optimized_graph, item.fetch,
+                                   {{"then", kOne}, {"else", kTwo}});
+      ASSERT_EQ(tensors.size(), 1);
+      ASSERT_EQ(tensors_expected.size(), 1);
+      test::ExpectTensorEqual<float>(tensors[0], tensors_expected[0]);
+    }
+  }
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

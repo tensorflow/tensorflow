@@ -81,6 +81,8 @@ cc_library(
         ":op_metrics_db_utils",
         ":tf_op_utils",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/profiler/convert:op_metrics_db_combiner",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "@com_google_absl//absl/strings",
     ],

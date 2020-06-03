@@ -136,6 +136,17 @@ std::string GetReadImageFromDataType(DataType data_type) {
     return "error";
   }
 }
+
+std::string GetWriteImageFromDataType(DataType data_type) {
+  if (data_type == DataType::FLOAT32) {
+    return "write_imagef";
+  } else if (data_type == DataType::FLOAT16) {
+    return "write_imageh";
+  } else {
+    return "error";
+  }
+}
+
 }  // namespace
 
 std::string ToString(TensorStorageType type) {
@@ -245,9 +256,11 @@ absl::Status TensorDescriptor::PerformSelector(
     return absl::OkStatus();
   } else if (selector == "Read") {
     return PerformReadSelector(args, result);
+  } else if (selector == "Write") {
+    return PerformWriteSelector(args, result);
   } else {
     return absl::NotFoundError(absl::StrCat(
-        "TensorLinearDescriptor don't have selector with name - ", selector));
+        "TensorDescriptor don't have selector with name - ", selector));
   }
 }
 
@@ -283,6 +296,39 @@ absl::Status TensorDescriptor::PerformReadSelector(
   }
 }
 
+absl::Status TensorDescriptor::PerformWriteSelector(
+    const std::vector<std::string>& args, std::string* result) const {
+  std::string xc;
+  std::string yc;
+  std::string zc;
+  std::string sc;
+  std::string bc;
+  bool parsed = ParseCoordsFromArgs(args, 1, &xc, &yc, &zc, &sc, &bc);
+  if (args.size() < 2 || !parsed) {
+    return absl::NotFoundError("Unrecognized Write selector");
+  }
+
+  if (layout == Layout::HWC) {
+    *result = Write(args[0],
+                    GetGlobalAddressNoDeclarationWHS(xc, yc, sc, storage_type));
+    return absl::OkStatus();
+  } else if (layout == Layout::BHWC) {
+    *result = Write(args[0], GetGlobalAddressNoDeclarationWHSB(xc, yc, sc, bc,
+                                                               storage_type));
+    return absl::OkStatus();
+  } else if (layout == Layout::HWDC) {
+    *result = Write(args[0], GetGlobalAddressNoDeclarationWHDS(xc, yc, zc, sc,
+                                                               storage_type));
+    return absl::OkStatus();
+  } else if (layout == Layout::BHWDC) {
+    *result = Write(args[0], GetGlobalAddressNoDeclarationWHDSB(
+                                 xc, yc, zc, sc, bc, storage_type));
+    return absl::OkStatus();
+  } else {
+    return absl::NotFoundError("Unsupported layout");
+  }
+}
+
 std::string TensorDescriptor::Read(const std::string& global_address) const {
   std::string image_type;
   if (storage_type == TensorStorageType::TEXTURE_2D ||
@@ -305,6 +351,32 @@ std::string TensorDescriptor::Read(const std::string& global_address) const {
     case TensorStorageType::IMAGE_BUFFER:
       return absl::StrCat(GetReadImageFromDataType(data_type),
                           "(image_buffer, ", global_address, ")");
+    case TensorStorageType::UNKNOWN:
+      return "";
+  }
+}
+
+std::string TensorDescriptor::Write(const std::string& var_name,
+                                    const std::string& global_address) const {
+  std::string image_type;
+  if (storage_type == TensorStorageType::TEXTURE_2D ||
+      storage_type == TensorStorageType::SINGLE_TEXTURE_2D) {
+    image_type = "image2d";
+  } else if (storage_type == TensorStorageType::TEXTURE_3D) {
+    image_type = "image3d";
+  } else if (storage_type == TensorStorageType::TEXTURE_ARRAY) {
+    image_type = "image2d_array";
+  }
+  switch (storage_type) {
+    case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
+      return absl::StrCat("buffer[", global_address, "] = ", var_name, ";\n");
+    case TensorStorageType::TEXTURE_2D:
+    case TensorStorageType::TEXTURE_3D:
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+    case TensorStorageType::TEXTURE_ARRAY:
+      return absl::StrCat(GetWriteImageFromDataType(data_type), "(", image_type,
+                          ", ", global_address, ", ", var_name, ");\n");
     case TensorStorageType::UNKNOWN:
       return "";
   }

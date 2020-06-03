@@ -56,8 +56,7 @@ class SimpleDelegateKernelInterface {
 
   // Actual subgraph inference should happen on this call.
   // Returns status, and signalling any errors.
-  // TODO(b/157882025): change this to Eval to be consistent w/ a TFLite kernel.
-  virtual TfLiteStatus Invoke(TfLiteContext* context, TfLiteNode* node) = 0;
+  virtual TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) = 0;
 };
 
 // Pure Interface that clients should implement.
@@ -87,8 +86,7 @@ class SimpleDelegateInterface {
 
   // Returns a name that identifies the delegate.
   // This name is used for debugging/logging/profiling.
-  // TODO(b/157882025): change this to Name()
-  virtual const char* name() const = 0;
+  virtual const char* Name() const = 0;
 
   // Returns instance of an object that implements the interface
   // SimpleDelegateKernelInterface.

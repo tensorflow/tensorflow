@@ -485,7 +485,7 @@ TfLiteStatus DelegateKernel::Prepare(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-TfLiteStatus DelegateKernel::Invoke(TfLiteContext* context, TfLiteNode* node) {
+TfLiteStatus DelegateKernel::Eval(TfLiteContext* context, TfLiteNode* node) {
   BufferMap* buffer_map = op_data_->buffer_map;
 
   // Insert a tensor in the buffer map for all inputs that are not constant.

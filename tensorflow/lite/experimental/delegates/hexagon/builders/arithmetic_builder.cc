@@ -28,21 +28,16 @@ namespace hexagon {
 TfLiteStatus ArithmeticOpBuilder::PopulateSubGraph(
     const TfLiteIntArray* inputs, const TfLiteIntArray* outputs,
     TfLiteContext* context) {
-  static int quant_bound_shape[] = {1, 1, 1, 1};
-  int tensor_id;
-
   // First input data tensor.
-  tensor_id = inputs->data[0];
+  int tensor_id = inputs->data[0];
   const auto& input1_tensor = context->tensors[tensor_id];
   AddInput(graph_builder_->GetHexagonTensorId(tensor_id));
   TF_LITE_ENSURE_STATUS(
       ComputeMinAndMaxQuantValues(input1_tensor, &input1_min_, &input1_max_));
   auto* input1_min_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&input1_min_),
-      sizeof(input1_min_));
+      kScalarShape, reinterpret_cast<char*>(&input1_min_), sizeof(input1_min_));
   auto* input1_max_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&input1_max_),
-      sizeof(input1_max_));
+      kScalarShape, reinterpret_cast<char*>(&input1_max_), sizeof(input1_max_));
 
   // Second input data tensor.
   tensor_id = inputs->data[1];
@@ -51,11 +46,9 @@ TfLiteStatus ArithmeticOpBuilder::PopulateSubGraph(
   TF_LITE_ENSURE_STATUS(
       ComputeMinAndMaxQuantValues(input2_tensor, &input2_min_, &input2_max_));
   auto* input2_min_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&input2_min_),
-      sizeof(input2_min_));
+      kScalarShape, reinterpret_cast<char*>(&input2_min_), sizeof(input2_min_));
   auto* input2_max_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&input2_max_),
-      sizeof(input2_max_));
+      kScalarShape, reinterpret_cast<char*>(&input2_max_), sizeof(input2_max_));
 
   // Min/max values for input tensors.
   AddInput(TensorID(input1_min_const->GetID(), 0));
@@ -67,11 +60,9 @@ TfLiteStatus ArithmeticOpBuilder::PopulateSubGraph(
   TF_LITE_ENSURE_STATUS(ComputeMinAndMaxQuantValues(
       context->tensors[outputs->data[0]], &output_min_, &output_max_));
   auto* output_min_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&output_min_),
-      sizeof(output_min_));
+      kScalarShape, reinterpret_cast<char*>(&output_min_), sizeof(output_min_));
   auto* output_max_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&output_max_),
-      sizeof(output_max_));
+      kScalarShape, reinterpret_cast<char*>(&output_max_), sizeof(output_max_));
   int output_batch_size, output_height_size, output_width_size,
       output_depth_size;
   GetDims(&output_batch_size, &output_height_size, &output_width_size,

@@ -69,7 +69,7 @@ class FlexDelegate : public SimpleDelegateInterface {
 
   FlexDelegate() {}
 
-  const char* name() const override;
+  const char* Name() const override;
 
   bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration,
                                  const TfLiteNode* node,

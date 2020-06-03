@@ -52,6 +52,10 @@ xla_platform_names = {
 }
 
 
+def _interpreter_backend_factory():
+  return _xla.get_interpreter_client()
+
+
 def _cpu_backend_factory():
   return _xla.get_cpu_client(asynchronous=True)
 
@@ -85,6 +89,7 @@ def _gpu_backend_factory(distributed_client=None, node_id=0):
 
 # Backend factories, keyed by user-visible name, in increasing priority order.
 _local_backend_factories = collections.OrderedDict([
+    ('interpreter', _interpreter_backend_factory),
     ('cpu', _cpu_backend_factory),
     ('gpu', _gpu_backend_factory),
 ])

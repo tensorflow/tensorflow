@@ -1,5 +1,10 @@
 # Generates headers containing cubin for CUDA kernels.
-load("//tensorflow/core/kernels/cubin_headers:build_defs.bzl", "gen_kernel_image_hdr")
+load("//tensorflow/core/kernels/cubin_headers:build_defs.bzl", "gen_kernel_library")
+
+package(
+    default_visibility = ["//tensorflow/core/kernels:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 bias_add_kernel = """
 func @bias_add(%arg0: tensor<?x?xf99>,
@@ -10,19 +15,17 @@ func @bias_add(%arg0: tensor<?x?xf99>,
 }
 """
 
-[
-    gen_kernel_image_hdr(
-        name = "bias_add_{type}_kernel".format(type = type),
-        op = bias_add_kernel.replace("f99", type).replace("DT_TYPE", dtype),
-        same_shape = "0,2",
-        tile_size = "16x16",
-    )
-    for (type, dtype) in [
-        ("f16", "DT_HALF"),
-        ("f32", "DT_FLOAT"),
-        ("f64", "DT_DOUBLE"),
-    ]
-]
+gen_kernel_library(
+    name = "bias_add",
+    op = bias_add_kernel,
+    same_shape = "0,2",
+    tile_size = "16x16",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+)
 
 relu_kernel = """
 func @relu(%arg0: tensor<?xf99>) -> tensor<?xf99> {
@@ -32,19 +35,17 @@ func @relu(%arg0: tensor<?xf99>) -> tensor<?xf99> {
 }
 """
 
-[
-    gen_kernel_image_hdr(
-        name = "relu_{type}_kernel".format(type = type),
-        op = relu_kernel.replace("f99", type).replace("DT_TYPE", dtype),
-        same_shape = "0,1",
-        tile_size = "256",
-    )
-    for (type, dtype) in [
-        ("f16", "DT_HALF"),
-        ("f32", "DT_FLOAT"),
-        ("f64", "DT_DOUBLE"),
-    ]
-]
+gen_kernel_library(
+    name = "relu",
+    op = relu_kernel,
+    same_shape = "0,1",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+)
 
 tanh_kernel = """
 func @tanh(%arg0: tensor<?xf99>) -> tensor<?xf99> {
@@ -54,14 +55,12 @@ func @tanh(%arg0: tensor<?xf99>) -> tensor<?xf99> {
 }
 """
 
-[
-    gen_kernel_image_hdr(
-        name = "tanh_{type}_kernel".format(type = type),
-        op = tanh_kernel.replace("f99", type).replace("DT_TYPE", dtype),
-        tile_size = "256",
-    )
-    for (type, dtype) in [
-        ("f32", "DT_FLOAT"),
-        ("f64", "DT_DOUBLE"),
-    ]
-]
+gen_kernel_library(
+    name = "tanh",
+    op = tanh_kernel,
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+)

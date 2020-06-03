@@ -23,13 +23,15 @@ import os
 import threading
 import time
 from absl import logging
+from six.moves import queue as Queue
 
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.eager import test
 
 
-def proc_func_that_adds_task_type_in_return_data():
+def proc_func_that_adds_task_type_in_return_data(test_obj, val):
+  test_obj.assertEqual(val, 3)
   return multi_worker_test_base.get_task_type()
 
 
@@ -49,10 +51,6 @@ def proc_func_that_return_args_and_kwargs(*args, **kwargs):
   return list(args) + list(kwargs.items())
 
 
-def proc_func_with_barrier():
-  return multi_process_runner.barrier()
-
-
 class MultiProcessRunnerTest(test.TestCase):
 
   def _worker_idx(self):
@@ -63,7 +61,8 @@ class MultiProcessRunnerTest(test.TestCase):
     mpr_result = multi_process_runner.run(
         proc_func_that_adds_task_type_in_return_data,
         multi_worker_test_base.create_cluster_spec(
-            num_workers=2, num_ps=3, has_eval=1))
+            num_workers=2, num_ps=3, has_eval=1),
+        args=(self, 3))
 
     job_count_dict = {'worker': 2, 'ps': 3, 'evaluator': 1}
     for data in mpr_result.return_value:
@@ -125,21 +124,35 @@ class MultiProcessRunnerTest(test.TestCase):
 
   def test_process_that_exits(self):
 
-    def func_to_exit_in_5_sec():
-      logging.error('foo')
-      time.sleep(10)
-      logging.error('bar')
+    def func_to_exit_in_15_sec():
+      time.sleep(5)
+      print('foo', flush=True)
+      time.sleep(20)
+      print('bar', flush=True)
 
     mpr = multi_process_runner.MultiProcessRunner(
-        func_to_exit_in_5_sec,
+        func_to_exit_in_15_sec,
         multi_worker_test_base.create_cluster_spec(num_workers=1),
         list_stdout=True,
-        max_run_time=5)
+        max_run_time=15)
 
     mpr.start()
     stdout = mpr.join().stdout
     self.assertLen([msg for msg in stdout if 'foo' in msg], 1)
     self.assertLen([msg for msg in stdout if 'bar' in msg], 0)
+
+  def test_signal_doesnt_fire_after_process_exits(self):
+    mpr = multi_process_runner.MultiProcessRunner(
+        proc_func_that_does_nothing,
+        multi_worker_test_base.create_cluster_spec(num_workers=1),
+        max_run_time=10)
+    mpr.start()
+    mpr.join()
+    with self.assertRaisesRegexp(Queue.Empty, ''):
+      # If the signal was fired, another message would be added to internal
+      # queue, so verifying it's empty.
+      multi_process_runner._resource(
+          multi_process_runner.PROCESS_STATUS_QUEUE).get(block=False)
 
   def test_termination(self):
 
@@ -179,7 +192,7 @@ class MultiProcessRunnerTest(test.TestCase):
         multi_worker_test_base.create_cluster_spec(num_workers=2),
         list_stdout=True)
     mpr.start()
-    time.sleep(3)
+    time.sleep(5)
     mpr.terminate('worker', 0)
     mpr.start_single_process('worker', 0)
     std_stream_results = mpr.join().stdout
@@ -260,14 +273,11 @@ class MultiProcessRunnerTest(test.TestCase):
             has_chief=True, num_workers=1),
         list_stdout=True)
 
-    def eval_func():
-      time.sleep(1)
+    def follow_ups():
       mpr.start_single_process(task_type='evaluator', task_id=0)
 
-    eval_thread = threading.Thread(target=eval_func)
-    eval_thread.start()
+    threading.Thread(target=follow_ups).start()
     mpr.start_in_process_as(as_task_type='chief', as_task_id=0)
-    eval_thread.join()
     list_to_assert = mpr.join().stdout
     for job in ['worker', 'evaluator']:
       for iteration in range(5):
@@ -275,17 +285,15 @@ class MultiProcessRunnerTest(test.TestCase):
             any('{}-0, i: {}'.format(job, iteration) in line
                 for line in list_to_assert))
 
-  def test_barrier(self):
-    multi_process_runner.run(
-        proc_func_with_barrier,
-        cluster_spec=multi_worker_test_base.create_cluster_spec(
-            has_chief=True, num_workers=1),
-    )
-
-  def test_barrier_called_in_main_process(self):
-    with self.assertRaises(ValueError):
-      multi_process_runner.barrier()
-
+  def test_terminate_all_does_not_ignore_error(self):
+    mpr = multi_process_runner.MultiProcessRunner(
+        proc_func_that_errors,
+        multi_worker_test_base.create_cluster_spec(num_workers=2),
+        list_stdout=True)
+    mpr.start()
+    mpr.terminate_all()
+    with self.assertRaisesRegexp(ValueError, 'This is an error.'):
+      mpr.join()
 
 if __name__ == '__main__':
   multi_process_runner.test_main()

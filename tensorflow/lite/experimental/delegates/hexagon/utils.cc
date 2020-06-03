@@ -212,7 +212,7 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
           reinterpret_cast<const TfLiteFullyConnectedParams*>(
               node->builtin_data);
       return (bias_const_or_no_bias &&
-              matmul_params->activation == kTfLiteActNone &&
+              IsActivationReluOrNone(matmul_params->activation) &&
               matmul_params->keep_num_dims == false &&
               matmul_params->weights_format ==
                   kTfLiteFullyConnectedWeightsFormatDefault);

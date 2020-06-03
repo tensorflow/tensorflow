@@ -52,7 +52,7 @@ class TestSimpleDelegateKernel : public SimpleDelegateKernelInterface {
     return !options_.error_during_prepare ? kTfLiteOk : kTfLiteError;
   }
 
-  TfLiteStatus Invoke(TfLiteContext* context, TfLiteNode* node) override {
+  TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) override {
     return !options_.error_during_invoke ? kTfLiteOk : kTfLiteError;
   }
 
@@ -74,7 +74,7 @@ class TestSimpleDelegate : public SimpleDelegateInterface {
 
   TfLiteStatus Initialize(TfLiteContext* context) override { return kTfLiteOk; }
 
-  const char* name() const override {
+  const char* Name() const override {
     static constexpr char kName[] = "TestSimpleDelegate";
     return kName;
   }

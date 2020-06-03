@@ -541,6 +541,13 @@ class DivAndModTest(test_util.TensorFlowTestCase):
     # Consistent with desire to get numerator
     self.assertAllEqual(tf_result, expanded_nums)
 
+  def testWithPythonValue(self):
+    # Test case for https://github.com/tensorflow/tensorflow/issues/39475
+    x = math_ops.divide(5, 2)
+    self.assertIsInstance(x, ops.Tensor)
+    x = math_ops.divide(5, array_ops.constant(2.0))
+    self.assertIsInstance(x, ops.Tensor)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class DivNoNanTest(test_util.TensorFlowTestCase):

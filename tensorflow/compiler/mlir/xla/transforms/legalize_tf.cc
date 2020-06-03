@@ -3222,16 +3222,19 @@ class ConvertTileOp : public OpRewritePattern<TF::TileOp> {
 
       // Line input up with the next dimension in broadcasted_shape
       // when broadcasting.
-      broadcast_dimensions.push_back(broadcasted_shape.size());
+      int64_t broadcast_dim;
       int64_t output_size = input_size * multiple;
       if (input_size == 1 || multiple == 1) {
         // Special case for when normal broadcasting will just work.
+        broadcast_dim = broadcasted_shape.size();
         broadcasted_shape.push_back(output_size);
       } else {
         // Tiling will happen for this dimension during the ReshapeOp below.
-        broadcasted_shape.push_back(input_size);
         broadcasted_shape.push_back(multiple);
+        broadcast_dim = broadcasted_shape.size();
+        broadcasted_shape.push_back(input_size);
       }
+      broadcast_dimensions.push_back(broadcast_dim);
     }
     Location loc = op.getLoc();
     Type broadcasted_type =

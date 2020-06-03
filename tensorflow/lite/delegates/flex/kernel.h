@@ -32,7 +32,7 @@ class DelegateKernel : public SimpleDelegateKernelInterface {
   TfLiteStatus Init(TfLiteContext* context,
                     const TfLiteDelegateParams* params) override;
   TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) override;
-  TfLiteStatus Invoke(TfLiteContext* context, TfLiteNode* node) override;
+  TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) override;
 
  private:
   std::unique_ptr<OpData> op_data_;

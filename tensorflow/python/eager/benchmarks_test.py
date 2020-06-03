@@ -1432,6 +1432,18 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
 
     self._run(fn, 10000)
 
+  # TODO(b/157587712): Move to keras when benchmarks are setup.
+  def benchmark_tf_keras_flatten_overhead(self):
+
+    layer = core_layers.Flatten()
+    x = ops.convert_to_tensor([[[1.]]])
+    layer(x)  # Warmup call to `build` layer.
+
+    def fn():
+      layer(x)
+
+    self._run(fn, 10000)
+
 
 if __name__ == "__main__":
   test.main()

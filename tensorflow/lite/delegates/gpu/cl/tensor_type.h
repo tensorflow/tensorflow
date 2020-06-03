@@ -82,7 +82,12 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   absl::Status PerformReadSelector(const std::vector<std::string>& args,
                                    std::string* result) const;
 
+  absl::Status PerformWriteSelector(const std::vector<std::string>& args,
+                                    std::string* result) const;
+
   std::string Read(const std::string& global_address) const;
+  std::string Write(const std::string& var_name,
+                    const std::string& global_address) const;
 
   bool ParseCoordsFromArgs(const std::vector<std::string>& args, int offset,
                            std::string* xc, std::string* yc, std::string* zc,

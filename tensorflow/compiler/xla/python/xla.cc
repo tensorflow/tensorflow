@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/distributed.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/service.h"
+#include "tensorflow/compiler/xla/pjrt/interpreter_device.h"
 #include "tensorflow/compiler/xla/pjrt/nvidia_gpu_device.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/bfloat16.h"
@@ -767,6 +768,7 @@ PYBIND11_MODULE(xla_extension, m) {
       py::arg("computation"), py::arg("compile_options") = CompileOptions());
 
   m.def("get_cpu_client", &GetCpuClient, py::arg("asynchronous") = true);
+  m.def("get_interpreter_client", &GetInterpreterClient);
   m.def("get_nvidia_gpu_client", &GetNvidiaGpuClient,
         py::arg("asynchronous") = true,
         py::arg("allocator_config") = GpuAllocatorConfig(),

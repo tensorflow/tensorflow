@@ -77,30 +77,6 @@ absl::Status NewPassthroughNode(GraphFloat32* graph, Node* node,
   return absl::OkStatus();
 }
 
-template <typename T>
-inline void DequantizeConstantTensor(const TfLiteTensor& tensor,
-                                     const T* source_data,
-                                     float* dequantized_data) {
-  TfLiteAffineQuantization* quant_params =
-      static_cast<TfLiteAffineQuantization*>(tensor.quantization.params);
-  if (quant_params->scale->size > 1) {
-    // Tensor is per-channel quantized.
-    PerChannelDequantizationParams op_params;
-    op_params.zero_point = quant_params->zero_point->data;
-    op_params.scale = quant_params->scale->data;
-    op_params.quantized_dimension = quant_params->quantized_dimension;
-    reference_ops::PerChannelDequantize(op_params, GetTensorShape(&tensor),
-                                        source_data, GetTensorShape(&tensor),
-                                        dequantized_data);
-  } else {
-    DequantizationParams op_params;
-    op_params.zero_point = tensor.params.zero_point;
-    op_params.scale = tensor.params.scale;
-    reference_ops::Dequantize(op_params, GetTensorShape(&tensor), source_data,
-                              GetTensorShape(&tensor), dequantized_data);
-  }
-}
-
 absl::Status CheckTensorIsAvailable(const TfLiteContext* context,
                                     const TfLiteNode* tflite_node, int idx) {
   // If tensor id is in range, it's guaranteed that it'll be available.
@@ -1330,9 +1306,11 @@ class PadOperationParser : public TFLiteOperationParser {
           "Invalid paddings tensor dimension: expected 2 dim, got ",
           pad_tensor->dims->size, " dim"));
     }
-    if (pad_tensor->dims->data[0] != 4 || pad_tensor->dims->data[1] != 2) {
+    bool supported =
+        pad_tensor->dims->data[0] == 3 || pad_tensor->dims->data[0] == 4;
+    if (!supported || pad_tensor->dims->data[1] != 2) {
       return absl::InvalidArgumentError(absl::StrCat(
-          "Invalid paddings tensor shape: expected 4x2, got ",
+          "Invalid paddings tensor shape: expected 4x2 or 3x2, got ",
           pad_tensor->dims->data[0], "x", pad_tensor->dims->data[1]));
     }
     return absl::OkStatus();
@@ -1356,16 +1334,23 @@ class PadOperationParser : public TFLiteOperationParser {
     Tensor<HW, DataType::INT32> paddings;
     RETURN_IF_ERROR(reader->ReadTensor(1, &paddings));
 
-    // 4x2 tensor with paddings.
-    if (paddings.shape.h != 4 || paddings.shape.w != 2) {
+    if (paddings.shape.h == 4 && paddings.shape.w == 2) {
+      // 4x2 tensor with paddings.
+      attr.prepended = BHWC(paddings.data[0], paddings.data[2],
+                            paddings.data[4], paddings.data[6]);
+      attr.appended = BHWC(paddings.data[1], paddings.data[3], paddings.data[5],
+                           paddings.data[7]);
+    } else if (paddings.shape.h == 3 && paddings.shape.w == 2) {
+      // 3x2 tensor with paddings.
+      attr.prepended =
+          BHWC(1, paddings.data[0], paddings.data[2], paddings.data[4]);
+      attr.appended =
+          BHWC(1, paddings.data[1], paddings.data[3], paddings.data[5]);
+    } else {
       // It shouldn't fail here since it's checked at IsSupported().
       return absl::InvalidArgumentError(
           "Paddings tensor has unexpected shape.");
     }
-    attr.prepended = BHWC(paddings.data[0], paddings.data[2], paddings.data[4],
-                          paddings.data[6]);
-    attr.appended = BHWC(paddings.data[1], paddings.data[3], paddings.data[5],
-                         paddings.data[7]);
     node->operation.attributes = attr;
     return absl::OkStatus();
   }
