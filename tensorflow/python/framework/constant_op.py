@@ -38,7 +38,6 @@ from typing import Optional, TypeVar
 
 # Define type variables
 DataType = TypeVar("DataType",
-<<<<<<< HEAD
                    dtypes.Float16, dtypes.Float32, dtypes.Float64,
                    dtypes.BFloat16, dtypes.Complex64, dtypes.Complex128,
                    dtypes.Int8, dtypes.UInt8, dtypes.UInt16, dtypes.UInt32,
@@ -46,14 +45,6 @@ DataType = TypeVar("DataType",
                    dtypes.Bool, dtypes.String, dtypes.QInt8, dtypes.QUInt8,
                    dtypes.QInt16, dtypes.QUInt16, dtypes.QInt32,
                    dtypes.Resource, dtypes.Variant)
-=======
-          dtypes.Float16, dtypes.Float32, dtypes.Float64, dtypes.BFloat16,
-          dtypes.Complex64, dtypes.Complex128, dtypes.Int8, dtypes.UInt8,
-          dtypes.UInt16, dtypes.UInt32, dtypes.UInt64, dtypes.Int16,
-          dtypes.Int32, dtypes.Int64, dtypes.Bool, dtypes.String,
-          dtypes.QInt8, dtypes.QUInt8, dtypes.QInt16, dtypes.QUInt16,
-          dtypes.QInt32, dtypes.Resource, dtypes.Variant)
->>>>>>> 6439ae7695... add type annotations to tf.constant
 
 
 def _eager_reshape(tensor, shape, ctx):
@@ -185,7 +176,11 @@ def constant_v1(
 
 @tf_export("constant", v1=[])
 def constant(value,
+<<<<<<< HEAD
              dtype: Optional[DataType] = None, # pylint: disable=bad-whitespace
+=======
+             dtype: Optional[DataType] = None,
+>>>>>>> 4043f3c7e5... fix pylint errors
              shape=None,
              name="Const") -> ops.Tensor[DataType]:
   """Creates a constant tensor from a tensor-like object.
