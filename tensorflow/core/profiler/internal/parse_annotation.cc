@@ -51,7 +51,7 @@ std::vector<absl::string_view> SplitPairs(absl::string_view metadata) {
   std::vector<absl::string_view> key_value_pairs;
   std::stack<char> quotes;
   int start = 0, end = 0;
-  for (; end < metadata.size(); ++end) {
+  for (; static_cast<size_t>(end) < metadata.size(); ++end) {
     char ch = metadata[end];
     switch (ch) {
       case '\"':
