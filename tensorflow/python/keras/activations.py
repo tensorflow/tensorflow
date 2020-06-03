@@ -457,12 +457,11 @@ def deserialize(name, custom_objects=None):
   """
   globs = globals()
 
-  # only replace missing activations, when there are no custom objects
-  if custom_objects is None:
-    advanced_activations_globs = advanced_activations.get_globals()
-    for key,val in advanced_activations_globs.items():
-      if key not in globs:
-        globs[key] = val
+  # only replace missing activations
+  advanced_activations_globs = advanced_activations.get_globals()
+  for key,val in advanced_activations_globs.items():
+    if key not in globs:
+      globs[key] = val
 
   return deserialize_keras_object(
       name,
