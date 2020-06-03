@@ -168,7 +168,7 @@ class GRULayerTest(keras_parameterized.TestCase):
             input_length=timesteps,
             batch_input_shape=(num_samples, timesteps)))
     layer = layer_class(
-        units, return_sequences=False, stateful=True, weights=None)
+        units, return_sequences=False, stateful=False, weights=None)
     model.add(layer)
     model.compile(
         optimizer='sgd',
