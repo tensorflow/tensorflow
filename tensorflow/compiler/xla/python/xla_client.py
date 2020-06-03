@@ -406,6 +406,8 @@ def window_padding_type_to_pad_values(padding_type, lhs_dims, rhs_dims,
 XlaBuilder = _xla.XlaBuilder
 XlaComputation = _xla.XlaComputation
 FftType = _xla.FftType
+Buffer = _xla.Buffer
+Executable = _xla.Executable
 
 
 def register_custom_call_target(name, fn, platform='cpu'):

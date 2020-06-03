@@ -113,7 +113,7 @@ using PjRtCrossHostRecvNotifier =
 //
 // It is the responsibility of the client of this API to keep the PjRtClient
 // alive as long as any of the other runtime objects are alive.
-class PjRtClient : public std::enable_shared_from_this<PjRtClient> {
+class PjRtClient {
  public:
   // `allocator` may null, in which case the platform default allocator is used.
   explicit PjRtClient(

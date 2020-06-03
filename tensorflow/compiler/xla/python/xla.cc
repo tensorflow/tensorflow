@@ -45,6 +45,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/dlpack.h"
 #include "tensorflow/compiler/xla/python/ops.h"
 #include "tensorflow/compiler/xla/python/outfeed_receiver_py.h"
+#include "tensorflow/compiler/xla/python/py_buffer.h"
+#include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
@@ -155,154 +157,6 @@ Status PyRegisterCustomCallTarget(const std::string& fn_name,
       fn_name, static_cast<void*>(capsule), platform);
   return Status::OK();
 }
-
-// PEP 3118 buffer protocol implementation.
-
-// Extra data to be kept alive by the consumer of the buffer protocol.
-struct ExtraBufferInfo {
-  explicit ExtraBufferInfo(PjRtBuffer::ScopedHold device_buffer)
-      : device_buffer(std::move(device_buffer)) {}
-
-  std::string format;
-  std::vector<Py_ssize_t> strides;
-  // We keep a reference to the TrackedDeviceBuffer that backs the
-  // PjRtBuffer. This prevents a use-after-free in the event that Delete() is
-  // called on a buffer with an live buffer protocol view. It does however mean
-  // that Delete() sometimes won't actually delete immediately.
-  PjRtBuffer::ScopedHold device_buffer;
-};
-
-int PjRtBufferGetBuffer(PyObject* exporter, Py_buffer* view, int flags) {
-  auto& buffer =
-      py::reinterpret_borrow<py::object>(exporter).cast<PjRtBuffer&>();
-  Status status = [&]() {
-    // Py_buffer objects are POD C structures, so we don't need to hold the GIL.
-    // Additionally we call BlockHostUntilReady() below, which may block.
-    py::gil_scoped_release gil_release;
-
-    if (buffer.device()->platform_name() != "cpu") {
-      return InvalidArgument(
-          "Python buffer protocol is only defined for CPU buffers.");
-    }
-    if (!buffer.on_device_shape().IsArray()) {
-      return InvalidArgument(
-          "Python buffer protocol is only defined for array buffers.");
-    }
-    // If we allowed exports of formatted BF16 buffers, consumers would get
-    // confused about the type because there is no way to describe BF16 to
-    // Python.
-    if (buffer.on_host_shape().element_type() == BF16 &&
-        ((flags & PyBUF_FORMAT) == PyBUF_FORMAT)) {
-      return InvalidArgument(
-          "bfloat16 buffer format not supported by Python buffer protocol.");
-    }
-    if ((flags & PyBUF_WRITEABLE) == PyBUF_WRITEABLE) {
-      return InvalidArgument("XLA buffers are read-only.");
-    }
-    PjRtBuffer::ScopedHold device_buffer(
-        buffer.GetBufferWithExternalReference());
-    if (!device_buffer.status().ok()) {
-      return InvalidArgument("Deleted buffer used in buffer protocol.");
-    }
-    const Shape& shape = buffer.on_host_shape();
-    if (((flags & PyBUF_C_CONTIGUOUS) == PyBUF_C_CONTIGUOUS ||
-         (flags & PyBUF_STRIDES) == PyBUF_ND) &&
-        !LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
-      return InvalidArgument("Buffer is not in C-contiguous layout.");
-    } else if ((flags & PyBUF_F_CONTIGUOUS) == PyBUF_F_CONTIGUOUS &&
-               !LayoutUtil::IsMonotonicWithDim0Minor(shape.layout())) {
-      return InvalidArgument("Buffer is not in F-contiguous layout.");
-    } else if ((flags & PyBUF_ANY_CONTIGUOUS) == PyBUF_ANY_CONTIGUOUS &&
-               !LayoutUtil::IsMonotonicWithDim0Major(shape.layout()) &&
-               !LayoutUtil::IsMonotonicWithDim0Minor(shape.layout())) {
-      return InvalidArgument("Buffer is not in contiguous layout.");
-    }
-    std::memset(view, 0, sizeof(Py_buffer));
-    CHECK_EQ(device_buffer->device_memory().size(), 1);
-    view->buf =
-        const_cast<void*>(device_buffer->device_memory().front().opaque());
-    auto extra = absl::make_unique<ExtraBufferInfo>(std::move(device_buffer));
-    view->itemsize = ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type());
-    view->len = ShapeUtil::ByteSizeOf(shape);
-    view->readonly = 1;
-    if ((flags & PyBUF_FORMAT) == PyBUF_FORMAT) {
-      TF_ASSIGN_OR_RETURN(extra->format, FormatDescriptorForPrimitiveType(
-                                             shape.element_type()));
-      view->format = const_cast<char*>(extra->format.c_str());
-    }
-    if ((flags & PyBUF_ND) == PyBUF_ND) {
-      view->ndim = shape.dimensions_size();
-      static_assert(sizeof(int64) == sizeof(Py_ssize_t),
-                    "Py_ssize_t must be 64 bits");
-      if (view->ndim != 0) {
-        view->shape = reinterpret_cast<Py_ssize_t*>(
-            const_cast<int64*>(shape.dimensions().data()));
-        if ((flags & PyBUF_STRIDES) == PyBUF_STRIDES) {
-          extra->strides = ByteStridesForShape(shape);
-          view->strides = extra->strides.data();
-        }
-      }
-    }
-    TF_RETURN_IF_ERROR(buffer.BlockHostUntilReady());
-    view->internal = extra.release();
-    return Status::OK();
-  }();
-  if (!status.ok()) {
-    PyErr_SetString(PyExc_BufferError, status.ToString().c_str());
-    return -1;
-  }
-  view->obj = exporter;
-  Py_INCREF(view->obj);
-  return 0;
-}
-
-void PjRtBufferReleaseBuffer(PyObject*, Py_buffer* buffer) {
-  auto extra = static_cast<ExtraBufferInfo*>(buffer->internal);
-  delete extra;
-}
-
-PyBufferProcs PjRtBufferProcs = []() {
-  PyBufferProcs procs;
-  procs.bf_getbuffer = &PjRtBufferGetBuffer;
-  procs.bf_releasebuffer = &PjRtBufferReleaseBuffer;
-  return procs;
-}();
-
-// Implementation of the CUDA array interface for sharing GPU buffers with other
-// Python libraries.
-StatusOr<py::dict> PjRtBufferCudaArrayInterface(const PjRtBuffer& buffer) {
-  if (buffer.device()->local_device_state()->executor()->platform_kind() !=
-      se::PlatformKind::kCuda) {
-    return InvalidArgument(
-        "__cuda_array_interface__ is only defined for NVidia GPU buffers.");
-  }
-  if (!buffer.on_device_shape().IsArray()) {
-    return InvalidArgument(
-        "__cuda_array_interface__ is only defined for array buffers.");
-  }
-  if (buffer.on_host_shape().element_type() == BF16) {
-    return InvalidArgument(
-        "__cuda_array_interface__ is not supported for bfloat16 buffers.");
-  }
-  TF_RET_CHECK(
-      LayoutUtil::IsMonotonicWithDim0Major(buffer.on_host_shape().layout()));
-  TF_ASSIGN_OR_RETURN(ShapedBuffer shaped_buffer, buffer.AsShapedBuffer());
-
-  py::dict result;
-  result["shape"] = IntSpanToTuple(shaped_buffer.on_host_shape().dimensions());
-  TF_ASSIGN_OR_RETURN(py::str typestr,
-                      TypeDescriptorForPrimitiveType(
-                          shaped_buffer.on_host_shape().element_type()));
-  result["typestr"] = std::move(typestr);
-  py::tuple data(2);
-  data[0] = py::int_(
-      absl::bit_cast<std::uintptr_t>(shaped_buffer.root_buffer().opaque()));
-  data[1] = py::bool_(true);  // read-only
-  result["data"] = std::move(data);
-  result["version"] = py::int_(2);
-  return result;
-}
-
 
 void BuildProfilerSubmodule(py::module* m) {
   py::module profiler =
@@ -720,7 +574,7 @@ PYBIND11_MODULE(xla_extension, m) {
       "buffer_from_pyval",
       [](std::shared_ptr<PjRtClient> client, const pybind11::object& argument,
          Device* device,
-         bool force_copy) -> StatusOr<ClientAndUniquePtr<PjRtBuffer>> {
+         bool force_copy) -> StatusOr<std::unique_ptr<PyBuffer>> {
         if (device == nullptr) {
           TF_RET_CHECK(!client->local_devices().empty());
           device = client->local_devices().front();
@@ -750,20 +604,20 @@ PYBIND11_MODULE(xla_extension, m) {
             PjRtBuffer::FromHostBuffer(c->buf_ptr, c->shape, force_copy,
                                        std::move(py_buffer_ref), client.get(),
                                        device));
-        return WrapWithClient(std::move(client), std::move(buffer));
+        return std::make_unique<PyBuffer>(std::move(client), std::move(buffer));
       },
       py::arg("argument"), py::arg("device") = nullptr,
       py::arg("force_copy") = false);
   py_local_client.def(
       "compile",
       [](std::shared_ptr<PjRtClient> client, const XlaComputation& computation,
-         CompileOptions options)
-          -> StatusOr<ClientAndUniquePtr<PjRtExecutable>> {
+         CompileOptions options) -> StatusOr<std::unique_ptr<PyExecutable>> {
         py::gil_scoped_release gil_release;
         TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
                             PjRtExecutable::Compile(computation, client.get(),
                                                     std::move(options)));
-        return WrapWithClient(std::move(client), std::move(executable));
+        return std::make_unique<PyExecutable>(std::move(client),
+                                              std::move(executable));
       },
       py::arg("computation"), py::arg("compile_options") = CompileOptions());
 
@@ -774,164 +628,65 @@ PYBIND11_MODULE(xla_extension, m) {
         py::arg("allocator_config") = GpuAllocatorConfig(),
         py::arg("distributed_client") = nullptr, py::arg("node_id") = 0);
 
-  py::class_<PjRtBuffer, ClientAndUniquePtr<PjRtBuffer>> buffer(
-      m, "PyLocalBuffer");
-  buffer
-      .def("copy_to_device",
-           [](PjRtBuffer* buffer, const ClientAndPtr<Device>& dst_device)
-               -> StatusOr<ClientAndUniquePtr<PjRtBuffer>> {
-             CHECK(dst_device.get() != nullptr);
-             GlobalPyRefManager()->CollectGarbage();
-             py::gil_scoped_release gil_release;
-             TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> out,
-                                 buffer->CopyToDevice(dst_device.get()));
-             return WrapWithClient(dst_device.client, std::move(out));
-           })
-      .def("delete", &PjRtBuffer::Delete)
-      .def("block_host_until_ready",
-           [](PjRtBuffer* buffer) {
-             GlobalPyRefManager()->CollectGarbage();
-             py::gil_scoped_release gil_release;
-             return buffer->BlockHostUntilReady();
-           })
-      .def("copy_to_host_async", &PjRtBuffer::CopyToHostAsync,
+  py::class_<PyBuffer, std::unique_ptr<PyBuffer>> buffer(m, "Buffer");
+  // TODO(phawkins): alias for backward compatibility. Remove after JAX no
+  // longer uses this name.
+  m.add_object("PyLocalBuffer", buffer);
+  buffer.def("copy_to_device", &PyBuffer::CopyToDevice)
+      .def("delete", &PyBuffer::Delete)
+      .def("block_host_until_ready", &PyBuffer::BlockHostUntilReady)
+      .def("copy_to_host_async", &PyBuffer::CopyToHostAsync,
            py::call_guard<py::gil_scoped_release>())
       .def(
           "to_py",
           [](py::object buffer_obj) -> StatusOr<py::object> {
             GlobalPyRefManager()->CollectGarbage();
-            PjRtBuffer* buffer = buffer_obj.cast<PjRtBuffer*>();
-            LocalDeviceState* state = buffer->device()->local_device_state();
+            PyBuffer* buffer = buffer_obj.cast<PyBuffer*>();
+            LocalDeviceState* state =
+                buffer->buffer()->device()->local_device_state();
             if (state->executor()->platform_kind() == se::PlatformKind::kHost &&
-                buffer->on_device_shape().IsArray() &&
-                buffer->on_device_shape().element_type() != BF16) {
+                buffer->buffer()->on_device_shape().IsArray() &&
+                buffer->buffer()->on_device_shape().element_type() != BF16) {
               py::object out = py::reinterpret_steal<py::object>(
                   PyArray_FROM_O(buffer_obj.ptr()));
               CHECK(out.ptr() != nullptr)
-                  << buffer->on_host_shape().ToString(/*print_layout=*/true);
+                  << buffer->buffer()->on_host_shape().ToString(
+                         /*print_layout=*/true);
               return out;
             }
             std::shared_ptr<Literal> literal;
             {
               py::gil_scoped_release gil_release;
-              TF_ASSIGN_OR_RETURN(literal, buffer->ToLiteral());
+              TF_ASSIGN_OR_RETURN(literal, buffer->buffer()->ToLiteral());
             }
             return LiteralToPython(std::move(literal));
           })
-      .def("shape", &PjRtBuffer::on_host_shape)
-      .def_property_readonly("client",
-                             [](const PjRtBuffer& buffer) {
-                               return buffer.client()->shared_from_this();
-                             })
-      .def("device",
-           [](const PjRtBuffer& buffer) {
-             return WrapWithClient(buffer.client()->shared_from_this(),
-                                   buffer.device());
-           })
-      .def("platform", &PjRtBuffer::platform_name)
-      .def("is_deleted", [](PjRtBuffer* buffer) { return buffer->IsDeleted(); })
-      .def("unsafe_buffer_pointer",
-           [](const PjRtBuffer& buffer) -> StatusOr<std::uintptr_t> {
-             TF_ASSIGN_OR_RETURN(ShapedBuffer shaped_buffer,
-                                 buffer.AsShapedBuffer());
-             if (shaped_buffer.on_device_shape().IsTuple()) {
-               return Unimplemented(
-                   "unsafe_buffer_pointer is not implemented for tuple "
-                   "buffers.");
-             }
-             return absl::bit_cast<std::uintptr_t>(
-                 shaped_buffer.root_buffer().opaque());
-           })
+      .def("shape", &PyBuffer::shape)
+      .def_property_readonly("client", &PyBuffer::client)
+      .def("device", &PyBuffer::Device)
+      .def("platform", &PyBuffer::platform_name)
+      .def("is_deleted", &PyBuffer::is_deleted)
+      .def("unsafe_buffer_pointer", &PyBuffer::UnsafeBufferPointer)
       .def_property_readonly("__cuda_array_interface__",
-                             &PjRtBufferCudaArrayInterface);
+                             &PyBuffer::CudaArrayInterface);
 
   // pybind11's implementation of the buffer protocol doesn't allow for correct
   // error handling. We bypass it and implement the buffer protocol ourselves.
   PyTypeObject* buffer_type = reinterpret_cast<PyTypeObject*>(buffer.ptr());
-  buffer_type->tp_as_buffer = &PjRtBufferProcs;
+  buffer_type->tp_as_buffer = PyBuffer::BufferProtocol();
 
-  py::class_<PjRtExecutable, ClientAndUniquePtr<PjRtExecutable>> executable(
-      m, "LocalExecutable");
-  executable
-      .def_property_readonly("client",
-                             [](const PjRtExecutable& executable) {
-                               return executable.client()->shared_from_this();
-                             })
-      .def("local_logical_device_ids",
-           &PjRtExecutable::local_logical_device_ids)
-      .def("local_devices",
-           [](const PjRtExecutable& executable) {
-             std::vector<ClientAndPtr<Device>> devices;
-             devices.reserve(executable.local_devices().size());
-             for (Device* device : executable.local_devices()) {
-               devices.push_back(WrapWithClient(
-                   executable.client()->shared_from_this(), device));
-             }
-             return devices;
-           })
+  py::class_<PyExecutable, std::unique_ptr<PyExecutable>> executable(
+      m, "Executable");
+  executable.def_property_readonly("client", &PyExecutable::client)
+      .def("local_logical_device_ids", &PyExecutable::local_logical_device_ids)
+      .def("local_devices", &PyExecutable::LocalDevices)
       .def("size_of_generated_code_in_bytes",
-           &PjRtExecutable::SizeOfGeneratedCodeInBytes)
-      .def("delete", &PjRtExecutable::Delete)
-      .def(
-          "execute",
-          [](const PjRtExecutable& executable,
-             absl::Span<PjRtBuffer* const> args)
-              -> StatusOr<std::vector<ClientAndUniquePtr<PjRtBuffer>>> {
-            py::gil_scoped_release gil_release;
-            ExecuteOptions options;
-            options.untuple_result = true;
-            TF_ASSIGN_OR_RETURN(
-                std::vector<std::unique_ptr<PjRtBuffer>> output_buffers,
-                executable.Execute(args, options));
-            std::vector<ClientAndUniquePtr<PjRtBuffer>> outputs;
-            outputs.reserve(output_buffers.size());
-            for (auto& buffer : output_buffers) {
-              outputs.push_back(WrapWithClient(
-                  executable.client()->shared_from_this(), std::move(buffer)));
-            }
-            return outputs;
-          },
-          py::arg("arguments"))
-      .def(
-          "execute_on_local_devices",
-          [](const PjRtExecutable& executable,
-             absl::Span<const std::vector<PjRtBuffer*>> args)
-              -> StatusOr<
-                  std::vector<std::vector<ClientAndUniquePtr<PjRtBuffer>>>> {
-            py::gil_scoped_release gil_release;
-            ExecuteOptions options;
-            options.untuple_result = true;
-            TF_ASSIGN_OR_RETURN(
-                std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>
-                    output_buffers,
-                executable.ExecuteOnLocalDevices(args, options));
-            std::vector<std::vector<ClientAndUniquePtr<PjRtBuffer>>> outputs;
-            outputs.resize(output_buffers.size());
-            for (int computation = 0; computation < output_buffers.size();
-                 ++computation) {
-              for (auto& buffer : output_buffers[computation]) {
-                outputs[computation].push_back(
-                    WrapWithClient(executable.client()->shared_from_this(),
-                                   std::move(buffer)));
-              }
-            }
-            return outputs;
-          },
-          py::arg("arguments"))
-      .def(
-          "hlo_modules",
-          [](const PjRtExecutable& executable)
-              -> StatusOr<std::vector<std::shared_ptr<HloModule>>> {
-            std::vector<std::shared_ptr<HloModule>> modules;
-            modules.reserve(executable.executables().size());
-            for (const auto& local_exec : executable.executables()) {
-              if (!local_exec->executable()->has_module()) {
-                return InvalidArgument("Executable does not have HLO modules.");
-              }
-              modules.push_back(local_exec->executable()->shared_module());
-            }
-            return std::move(modules);
-          });
+           &PyExecutable::SizeOfGeneratedCodeInBytes)
+      .def("delete", &PyExecutable::Delete)
+      .def("execute", &PyExecutable::Execute, py::arg("arguments"))
+      .def("execute_on_local_devices", &PyExecutable::ExecuteOnLocalDevices,
+           py::arg("arguments"))
+      .def("hlo_modules", &PyExecutable::HloModules);
 
   py::class_<DebugOptions>(m, "DebugOptions")
       .def("__repr__", &DebugOptions::DebugString)
@@ -1129,14 +884,7 @@ PYBIND11_MODULE(xla_extension, m) {
            });
 
   m.def("buffer_to_dlpack_managed_tensor", BufferToDLPackManagedTensor);
-  m.def("dlpack_managed_tensor_to_buffer",
-        [](const py::capsule& tensor, std::shared_ptr<PjRtClient> client)
-            -> StatusOr<ClientAndUniquePtr<PjRtBuffer>> {
-          TF_ASSIGN_OR_RETURN(
-              std::unique_ptr<PjRtBuffer> buffer,
-              DLPackManagedTensorToBuffer(tensor, client.get()));
-          return WrapWithClient(std::move(client), std::move(buffer));
-        });
+  m.def("dlpack_managed_tensor_to_buffer", DLPackManagedTensorToBuffer);
 
   py::enum_<PrecisionConfig::Precision>(m, "PrecisionConfig_Precision")
       .value("DEFAULT", PrecisionConfig::DEFAULT)
