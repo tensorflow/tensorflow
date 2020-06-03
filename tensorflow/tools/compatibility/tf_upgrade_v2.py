@@ -1312,6 +1312,13 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
                 "'colocate_gradients_with_ops' argument, it behaves as if it "
                 "was set to True."),
         },
+        "tf.hessians": {
+            ("colocate_gradients_with_ops", 3): (
+                ast_edits.INFO,
+                "tf.hessians no longer takes "
+                "'colocate_gradients_with_ops' argument, it behaves as if it "
+                "was set to True."),
+        },
         "*.minimize": {
             ("colocate_gradients_with_ops", 5): (
                 ast_edits.INFO,
