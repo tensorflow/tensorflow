@@ -129,10 +129,17 @@ class GpuExecutable : public Executable {
       se::DeviceMemoryAllocator* const memory_allocator,
       se::StreamExecutor* executor);
 
-  // The LLVM IR, in string format, of the unoptimized module generated for this
-  // GpuExecutable. We save a string instead of an llvm::Module* because leaving
-  // llvm::Module* in a singleton can cause the heap checker to emit false
-  // positives.
+  StatusOr<se::DeviceMemoryBase> BufferForAllocation(
+      absl::Span<ExecutionInput const> arguments,
+      const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
+      const BufferAllocation& allocation,
+      se::DeviceMemoryAllocator* const memory_allocator, int device_ordinal,
+      int64 arg_idx);
+
+  // The LLVM IR, in string format, of the unoptimized module generated for
+  // this GpuExecutable. We save a string instead of an llvm::Module* because
+  // leaving llvm::Module* in a singleton can cause the heap checker to emit
+  // false positives.
   //
   // This string should be modified only before ExecuteOnStream.
   string ir_module_string_;
