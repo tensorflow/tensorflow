@@ -49,7 +49,7 @@ void TestConcatenateTwoInputs(std::initializer_list<int> input1_dims_data,
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_CONCATENATION, /* version */ 1);
+      resolver.FindOp(tflite::BuiltinOperator_CONCATENATION);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteConcatenationParams builtin_data = {
@@ -111,7 +111,7 @@ void TestConcatenateQuantizedTwoInputs(
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_CONCATENATION, /* version */ 1);
+      resolver.FindOp(tflite::BuiltinOperator_CONCATENATION);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteConcatenationParams builtin_data = {

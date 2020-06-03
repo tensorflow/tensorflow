@@ -616,32 +616,36 @@ class BaseLayerTest(keras_parameterized.TestCase):
     self.assertTrue(layer.built)
     self.assertEqual([None, 3], layer._build_input_shape.as_list())
 
+  def test_activity_regularizer_string(self):
+
+    class MyLayer(base_layer.Layer):
+      pass
+
+    layer = MyLayer(activity_regularizer='l2')
+    self.assertIsInstance(layer.activity_regularizer, regularizers.L2)
+
 
 class SymbolicSupportTest(keras_parameterized.TestCase):
 
   def test_using_symbolic_tensors_with_tf_ops(self):
     # Single-input.
     x = input_layer.Input((3,))
-    y = math_ops.square(x)
-    self.assertEqual(y.graph, backend.get_graph())
+    math_ops.square(x)
 
     # Multi-inputs.
     x1, x2 = input_layer.Input((3,)), input_layer.Input((3,))
-    y = array_ops.concat([x1, x2], axis=1)
-    self.assertEqual(y.graph, backend.get_graph())
+    array_ops.concat([x1, x2], axis=1)
 
     # Mixing Keras symbolic tensors and graph tensors from the same graph works.
     with backend.get_graph().as_default():
       x1 = input_layer.Input((3,))
     x2 = input_layer.Input((3,))
-    y = math_ops.matmul(x1, x2)
-    self.assertEqual(y.graph, backend.get_graph())
+    math_ops.matmul(x1, x2)
 
     # Creating same op type (matmul) multiple times in the Keras graph works.
     x1 = input_layer.Input((3,))
     x2 = input_layer.Input((3,))
-    y = math_ops.matmul(x1, x2)
-    self.assertEqual(y.graph, backend.get_graph())
+    math_ops.matmul(x1, x2)
 
   def test_mixing_eager_and_graph_tensors(self):
     with ops.Graph().as_default():
@@ -663,7 +667,7 @@ class SymbolicSupportTest(keras_parameterized.TestCase):
     x1 = input_layer.Input((3,))
     x2 = array_ops.ones((3, 3))
     y = math_ops.matmul(x1, x2)
-    self.assertEqual(y.graph, backend.get_graph())
+
     fn = backend.function(inputs=[x1], outputs=[y])
     x_val = np.random.random((3, 3))
     y_val = np.ones((3, 3))
@@ -676,7 +680,7 @@ class SymbolicSupportTest(keras_parameterized.TestCase):
     x1 = input_layer.Input((3,))
     x2 = np.ones((3, 3), dtype='float32')
     y = math_ops.matmul(x1, x2)
-    self.assertEqual(y.graph, backend.get_graph())
+
     fn = backend.function(inputs=[x1], outputs=[y])
     x_val = np.random.random((3, 3))
     y_val = np.ones((3, 3))

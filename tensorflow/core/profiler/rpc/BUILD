@@ -14,14 +14,12 @@ cc_library(
         ["//tensorflow_serving/model_servers:__pkg__"],
     ),
     deps = [
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler:profiler_service_proto_cc",
         "//tensorflow/core/profiler/convert:xplane_to_profile_response",
         "//tensorflow/core/profiler/lib:profiler_session_headers",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/memory",
         tf_grpc_cc_dependency(),
     ],
 )
@@ -36,7 +34,6 @@ cc_library(
     ],
     deps = [
         ":profiler_service_impl",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler:profiler_service_proto_cc",
         "@com_google_absl//absl/strings",

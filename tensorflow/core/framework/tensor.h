@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <type_traits>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -52,6 +53,8 @@ namespace batch_util {
 Status CopyElementToSlice(Tensor element, Tensor* parent, int64 index);
 Status CopySliceToElement(const Tensor& parent, Tensor* element, int64 index);
 Status MaybeMoveSliceToElement(Tensor* parent, Tensor* element, int64 index);
+Status CopyContiguousSlices(const Tensor& src, int64 src_offset,
+                            int64 dst_offset, int64 num_slices, Tensor* dst);
 }  // namespace batch_util
 
 /// @ingroup core
@@ -238,6 +241,12 @@ class Tensor {
   /// and can be assigned to, but other calls on it (e.g. shape manipulation)
   /// are not valid.
   Tensor(Tensor&& other);
+
+  // Explicitly delete constructor that take a pointer (except char*)
+  // so that the pointer doesn't get implicitly cast to bool.
+  template <typename T, typename std::enable_if<!std::is_same<T, char>::value,
+                                                T>::type* = nullptr>
+  explicit Tensor(T* t) = delete;
 
   ~Tensor();
 
@@ -672,6 +681,9 @@ class Tensor {
   friend Status batch_util::MaybeMoveSliceToElement(
       Tensor* parent, Tensor* element,
       int64 index);  // For access to base<T>().
+  friend Status batch_util::CopyContiguousSlices(
+      const Tensor& src, int64 src_offset, int64 dst_offset, int64 num_slices,
+      Tensor* dst);  // For access to base<T>().
 
   bool CanUseDMA() const;
 

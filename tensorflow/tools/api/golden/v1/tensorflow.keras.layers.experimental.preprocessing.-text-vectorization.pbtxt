@@ -221,7 +221,7 @@ tf_class {
   }
   member_method {
     name: "set_vocabulary"
-    argspec: "args=[\'self\', \'vocab\', \'df_data\', \'oov_df_value\', \'append\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\'], "
+    argspec: "args=[\'self\', \'vocab\', \'df_data\', \'oov_df_value\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "set_weights"

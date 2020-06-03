@@ -20,6 +20,7 @@ limitations under the License.
 namespace tflite {
 using testing::ElementsAreArray;
 
+namespace {
 void GenerateUniformRandomVector(int size, float min, float max,
                                  std::minstd_rand* random_engine,
                                  std::vector<float>* result) {
@@ -41,6 +42,7 @@ void GenerateUniformRandomVector(int size, float min, float max,
     (*result)[i] = min + (max - min) * random_value_scaled_0_1;
   }
 }
+}  // namespace
 
 class QuantizedConcatenationOpModel : public SingleOpModelWithHexagon {
  public:

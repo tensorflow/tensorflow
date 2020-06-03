@@ -1499,6 +1499,65 @@ class TrainingTest(keras_parameterized.TestCase):
     new_kernel = model.get_weights()[1]
     self.assertNotAllEqual(old_kernel, new_kernel)
 
+  @keras_parameterized.run_all_keras_modes
+  def test_layer_ordering(self):
+
+    class MyLayer(layers_module.Layer):
+      pass
+
+    class MyModel(training_module.Model):
+
+      def __init__(self, name):
+        super(MyModel, self).__init__(name=name)
+
+        self.weight = variables_lib.Variable(0, name=name)
+
+        self.direct_sublayer = MyLayer(name='direct')
+        self.direct_sublayer.d = {'d': MyLayer(name='direct/dict')}
+
+        self.dict_sublayer = {'d': MyLayer(name='dict')}
+        self.dict_sublayer['d'].direct = MyLayer(name='dict/direct')
+
+    model = MyModel('model')
+    # All sublayers, including self and recursive sublayers.
+    self.assertEqual(['model', 'direct', 'direct/dict', 'dict', 'dict/direct'],
+                     [l.name for l in model._flatten_layers()])
+    # Only direct sublayers, including those in data structures.
+    self.assertEqual(['direct', 'dict'], [l.name for l in model.layers])
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_trainable_state_setting(self):
+
+    class UpdateLayer(layers_module.Layer):
+
+      def __init__(self):
+        super(UpdateLayer, self).__init__()
+        self.v = variables_lib.Variable(0., trainable=False)
+
+      def call(self, x):
+        self.add_update(lambda: self.v.assign_add(1.))
+        return x * self.v
+
+    layer = UpdateLayer()
+    model_with_updates = sequential.Sequential([layer])
+    model_with_updates.compile(
+        'sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+
+    layer.trainable = False
+    model_without_updates = sequential.Sequential([layer])
+    model_without_updates.compile(
+        'sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+
+    x, y = np.ones((10, 1)), np.ones((10, 1))
+
+    self.assertEqual(self.evaluate(layer.v), 0.)
+    model_with_updates.fit(x, y, batch_size=10)
+    # assign_add called.
+    self.assertEqual(self.evaluate(layer.v), 1.)
+    model_without_updates.fit(x, y, batch_size=10)
+    # assign_add not called.
+    self.assertEqual(self.evaluate(layer.v), 1.)
+
 
 class TestExceptionsAndWarnings(keras_parameterized.TestCase):
 
@@ -1531,8 +1590,7 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
     output = sparse_ops.sparse_minimum(inputs, inputs)
     with self.assertRaisesRegexp(
         ValueError,
-        'Sparse ops are not supported with functional models with built-in '
-        'layer wrapping'
+        'not supported by Keras automatic op wrapping'
     ):
       training_module.Model([inputs], output)
 
@@ -2979,6 +3037,8 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
         return self.dense1(x)
 
     model = TestModel()
+    self.assertListEqual([m.name for m in model.metrics],
+                         ['metric_1', 'metric_2'])
     model.compile(
         loss='mse',
         optimizer=RMSPropOptimizer(0.01),
@@ -2997,6 +3057,41 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     model.predict(x, batch_size=5)
     model.train_on_batch(x, y)
     model.test_on_batch(x, y)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_multiple_add_metric_calls_layer(self):
+
+    class TestLayer(layers_module.Layer):
+
+      def __init__(self):
+        super(TestLayer, self).__init__(name='test_layer')
+        self.dense1 = layers_module.Dense(2, kernel_initializer='ones')
+        self.m1 = metrics_module.Mean(name='m_1')
+        self.m2 = [
+            metrics_module.Mean(name='m_2'),
+            metrics_module.Mean(name='m_3')
+        ]
+        self.m3 = {
+            'mean4': metrics_module.Mean(name='m_4'),
+            'mean5': metrics_module.Mean(name='m_5')
+        }
+
+      def call(self, x):
+        self.add_metric(self.m2[0](x))
+        self.add_metric(self.m2[1](x))
+        self.add_metric(self.m1(x))
+        self.add_metric(self.m3['mean4'](x))
+        self.add_metric(self.m3['mean5'](x))
+        self.add_metric(math_ops.reduce_sum(x), name='m_6', aggregation='mean')
+        return self.dense1(x)
+
+    layer = TestLayer()
+    self.assertListEqual([m.name for m in layer.metrics],
+                         ['m_1', 'm_2', 'm_3', 'm_4', 'm_5'])
+
+    layer(np.ones((10, 10)))
+    self.assertListEqual([m.name for m in layer.metrics],
+                         ['m_1', 'm_2', 'm_3', 'm_4', 'm_5', 'm_6'])
 
   @keras_parameterized.run_all_keras_modes
   def test_duplicate_metric_name_in_add_metric(self):

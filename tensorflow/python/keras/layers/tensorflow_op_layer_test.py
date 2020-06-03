@@ -288,9 +288,10 @@ class AutoLambdaTest(keras_parameterized.TestCase):
                         constant_op.constant(40.0, shape=(1, 1)))
 
   def test_no_tracking(self):
-    x = keras.backend.placeholder((10, 10))
-    keras.layers.Dense(1)(x)
-    self.assertTrue(x._keras_history_checked)
+    if not context.executing_eagerly():
+      x = constant_op.constant(1.0, shape=(10, 10))
+      keras.layers.Dense(1)(x)
+      self.assertTrue(x._keras_history_checked)
 
   def test_timing_scales_linearly(self):
 

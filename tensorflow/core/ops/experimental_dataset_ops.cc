@@ -132,6 +132,19 @@ REGISTER_OP("ExperimentalChooseFastestDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("CompressElement")
+    .Input("components: input_types")
+    .Output("compressed: variant")
+    .Attr("input_types: list(type) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("UncompressElement")
+    .Input("compressed: variant")
+    .Output("components: output_types")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::DatasetIteratorShape);
+
 REGISTER_OP("CSVDataset")
     .Input("filenames: string")
     .Input("compression_type: string")
@@ -882,6 +895,26 @@ REGISTER_OP("SnapshotDataset")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // snapshot_path should be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
+REGISTER_OP("SnapshotDatasetV2")
+    .Input("input_dataset: variant")
+    .Input("path: string")
+    .Input("reader_func_other_args: Treader_func_args")
+    .Input("shard_func_other_args: Tshard_func_args")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("compression: string = ''")
+    .Attr("reader_func: func")
+    .Attr("shard_func: func")
+    .Attr("Treader_func_args: list(type) >= 0")
+    .Attr("Tshard_func_args: list(type) >= 0")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // `path` should be a scalar.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       return shape_inference::ScalarShape(c);
     });

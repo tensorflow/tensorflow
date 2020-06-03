@@ -73,6 +73,8 @@ TFLite delegate.
     [NNAPI CPU reference implementation](https://developer.android.com/ndk/guides/neuralnetworks#device-assignment)
     from the possible devices to be used by NNAPI to execute the model. This
     option is ignored if `nnapi_accelerator_name` is specified.
+*   `nnapi_allow_fp16`: `bool` (default=false) \
+    Whether to allow FP32 computation to be run in FP16.
 
 ### Hexagon delegate provider
 *   `use_hexagon`: `bool` (default=false) \
@@ -93,6 +95,9 @@ TFLite delegate.
 *   `use_coreml`: `bool` (default=false) \
     Whether to use the [Core ML delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/delegates/coreml).
     This option is only available in iOS.
+*   `coreml_version`: `int` (default=0) \
+    Target Core ML version for model conversion. The default value is 0 and it
+    means using the newest version that's available on the device.
 
 ### External delegate provider
 *   `external_delegate_path`: `string` (default="") \

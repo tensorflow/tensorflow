@@ -34,8 +34,12 @@ TfLiteTensor* output = nullptr;
 int inference_count = 0;
 
 // Create an area of memory to use for input, output, and intermediate arrays.
-// Finding the minimum value for your model may require some trial and error.
-constexpr int kTensorArenaSize = 2 * 1024;
+// Minimum arena size, at the time of writing. After allocating tensors
+// you can retrieve this value by invoking interpreter.arena_used_bytes().
+const int kModelArenaSize = 2352;
+// Extra headroom for model + alignment + future interpreter changes.
+const int kExtraArenaSize = 560 + 16 + 100;
+const int kTensorArenaSize = kModelArenaSize + kExtraArenaSize;
 uint8_t tensor_arena[kTensorArenaSize];
 }  // namespace
 

@@ -21,9 +21,11 @@ limitations under the License.
 #include <cmath>
 
 #include "structmember.h"  // NOLINT // For PyMemberDef
+#include "pybind11/pybind11.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -32,6 +34,7 @@ limitations under the License.
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 #include "tensorflow/python/lib/core/numpy.h"
+#include "tensorflow/python/lib/core/py_exception_registry.h"
 #include "tensorflow/python/lib/core/py_seq_tensor.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
 
@@ -300,7 +303,15 @@ TFE_TensorHandle* ConvertToEagerTensorUncached(TFE_Context* ctx,
       strstr(device_name, "/device:CPU:0") != nullptr) {
     handle = make_safe(TFE_TensorHandleCopyToDevice(handle.get(), ctx,
                                                     device_name, status.get()));
-    if (MaybeRaiseExceptionFromTFStatus(status.get(), PyExc_RuntimeError)) {
+    const TF_Code code = TF_GetCode(status.get());
+    if (code != TF_OK) {
+      // Instead of raising a generic RuntimeError, raise an exception type
+      // based on the status error code.
+      PyObject* exception = PyExceptionRegistry::Lookup(code);
+      PyErr_SetObject(exception,
+                      pybind11::make_tuple(pybind11::none(), pybind11::none(),
+                                           TF_Message(status.get()))
+                          .ptr());
       return nullptr;
     }
   }
@@ -345,6 +356,8 @@ typedef struct EagerTensor {
   char unused[kMaxEagerTensorParentSize];
   TFE_TensorHandle* handle;
   int64_t id;
+  // Indicates whether it's a packed tensor or not.
+  bool is_packed;
   // This mirrors tensorflow.core.framework.ops.Tensor._handle_data Which will
   // be None for tensors of type other than DT_RESOURCE. For DT_RESOURCE
   // tensors, this will contain a serialized HandleData proto with shape
@@ -418,6 +431,7 @@ bool MaybeInvokeCreatedOnEagerTensorProfiler(EagerTensor* created_tensor) {
 int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   self->id = get_uid();
   self->handle = nullptr;
+  self->is_packed = false;
   Py_INCREF(Py_None);
   self->handle_data = Py_None;
   Py_INCREF(Py_None);
@@ -647,6 +661,11 @@ static PyObject* EagerTensor_backing_device(EagerTensor* self) {
 #endif
 }
 
+// Getter `is_packed`.
+static PyObject* EagerTensor_is_packed(EagerTensor* self) {
+  return PyBool_FromLong(self->is_packed);
+}
+
 static PyGetSetDef EagerTensor_getsetters[] = {
     {const_cast<char*>("_id"), (getter)EagerTensor_getid, nullptr,
      const_cast<char*>("Tensor ID."), nullptr},
@@ -654,6 +673,9 @@ static PyGetSetDef EagerTensor_getsetters[] = {
      const_cast<char*>("Device of op that produced the tensor."), nullptr},
     {const_cast<char*>("backing_device"), (getter)EagerTensor_backing_device,
      nullptr, const_cast<char*>("Device on which tensor's memory is resident."),
+     nullptr},
+    {const_cast<char*>("is_packed"), (getter)EagerTensor_is_packed, nullptr,
+     const_cast<char*>("Whether the EagerTensor is a packed tensor or not."),
      nullptr},
     {const_cast<char*>("_handle_data"), (getter)EagerTensor_handle_data,
      (setter)EagerTensor_sethandle_data,
@@ -813,7 +835,8 @@ TFE_TensorHandle* EagerTensor_Handle(const PyObject* o) {
   return reinterpret_cast<const EagerTensor*>(o)->handle;
 }
 
-PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle) {
+PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle,
+                                const bool is_packed) {
   if (handle == nullptr) {
     return nullptr;
   }
@@ -821,6 +844,7 @@ PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle) {
       EagerTensorType->tp_new(EagerTensorType, EmptyTuple(), EmptyDict()));
   if (t != nullptr) {
     t->id = get_uid();
+    t->is_packed = is_packed;
     Py_INCREF(Py_None);
     t->handle_data = Py_None;
     Py_INCREF(Py_None);

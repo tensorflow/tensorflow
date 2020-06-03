@@ -160,7 +160,7 @@ class MultiProcessRunnerTest(test.TestCase):
       for i in range(0, 10):
         print(
             'index {}, iteration {}'.format(self._worker_idx(), i), flush=True)
-        time.sleep(1)
+        time.sleep(5)
 
     mpr = multi_process_runner.MultiProcessRunner(
         proc_func,
@@ -284,6 +284,16 @@ class MultiProcessRunnerTest(test.TestCase):
         self.assertTrue(
             any('{}-0, i: {}'.format(job, iteration) in line
                 for line in list_to_assert))
+
+  def test_terminate_all_does_not_ignore_error(self):
+    mpr = multi_process_runner.MultiProcessRunner(
+        proc_func_that_errors,
+        multi_worker_test_base.create_cluster_spec(num_workers=2),
+        list_stdout=True)
+    mpr.start()
+    mpr.terminate_all()
+    with self.assertRaisesRegexp(ValueError, 'This is an error.'):
+      mpr.join()
 
 if __name__ == '__main__':
   multi_process_runner.test_main()

@@ -32,108 +32,15 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-void BufferAllocations::Builder::RegisterBuffer(BufferAllocation::Index index,
-                                                se::DeviceMemoryBase address) {
-  InsertOrDie(&registered_buffers_, index, address);
-}
-
-StatusOr<std::unique_ptr<BufferAllocations>> BufferAllocations::Builder::Build(
-    const BufferAssignment* buffer_assignment, int device_ordinal,
-    se::DeviceMemoryAllocator* memory_allocator) {
-  const int64 num_buffers = buffer_assignment->Allocations().size();
-  auto buffer_allocations = absl::WrapUnique(new BufferAllocations(
-      num_buffers, device_ordinal, memory_allocator, buffer_assignment));
-
-  for (BufferAllocation::Index i = 0; i < num_buffers; ++i) {
-    const BufferAllocation& allocation = buffer_assignment->GetAllocation(i);
-    const int64 expected_alignment = [&] {
-      if (allocation.is_entry_computation_parameter()) {
-        return kEntryParameterAlignBytes;
-      } else if (allocation.is_constant()) {
-        return kConstantBufferAlignBytes;
-      } else {
-        return kXlaAllocatedBufferAlignBytes;
-      }
-    }();
-
-    // If buffer #i's address is already registered (e.g. external arguments or
-    // result buffers), use that registered buffer.
-    if (se::DeviceMemoryBase* address =
-            tensorflow::gtl::FindOrNull(registered_buffers_, i)) {
-      if (reinterpret_cast<uintptr_t>(address->opaque()) % expected_alignment !=
-          0) {
-        return InternalError(
-            "Address of registered buffer %d must be a multiple of %x, but "
-            "was %p",
-            i, kEntryParameterAlignBytes, address->opaque());
-      }
-      buffer_allocations->SetBuffer(i, *address);
-      continue;
-    }
-
-    // Allocate each allocation that might escape, or is the temp buffer.
-    bool seen_temp_buffer = false;
-    if (allocation.maybe_live_out() || allocation.IsPreallocatedTempBuffer()) {
-      const int64 buffer_size = allocation.size();
-      se::DeviceMemoryBase buffer_address;
-      if (buffer_size > 0) {
-        se::OwningDeviceMemory buffer;
-        TF_ASSIGN_OR_RETURN(
-            buffer, memory_allocator->Allocate(device_ordinal, buffer_size));
-        if (reinterpret_cast<uintptr_t>(buffer->opaque()) %
-                expected_alignment !=
-            0) {
-          return InternalError(
-              "Address returned by memory_allocator->Allocate must be a "
-              "multiple of 0x%x, but was %p",
-              kXlaAllocatedBufferAlignBytes, buffer->opaque());
-        }
-        // We do manual memory management within BufferAllocations.  Be sure not
-        // to do a TF_RETURN_IF_ERROR between this line and the
-        // buffer_allocations->SetBuffer(buffer_address) call below!
-        buffer_address = buffer.Release();
-      }
-
-      buffer_allocations->SetBuffer(i, buffer_address);
-      if (allocation.IsPreallocatedTempBuffer()) {
-        if (seen_temp_buffer) {
-          LOG(FATAL) << "Multiple temporary buffers detected.  BufferAssigner "
-                     << "must guarantee at most one temporary buffer.";
-        }
-        seen_temp_buffer = true;
-        buffer_allocations->temp_buffer_base_ = buffer_address;
-      }
-    }
-  }
-
-  if (VLOG_IS_ON(2)) {
-    for (BufferAllocation::Index i = 0; i < num_buffers; ++i) {
-      const auto& buf = buffer_allocations->buffers_[i];
-      VLOG(2) << "Buffer " << i << " -> " << buf.opaque() << " (" << buf.size()
-              << "B)";
-    }
-  }
-  return std::move(buffer_allocations);
-}
-
-BufferAllocations::~BufferAllocations() {
-  if (!torn_down_) {
-    // Presumably if we're executing this branch, the caller is in an error
-    // state, otherwise it would have explicitly called TearDown so it could
-    // save some set of live addresses.  So ignoring any errors in TearDown is
-    // sensible.
-    TearDown(/*live_addresses=*/{}).IgnoreError();
-  }
-}
-
 Status BufferAllocations::TearDown(
-    const std::set<se::DeviceMemoryBase>& live_addresses) {
+    const std::set<se::DeviceMemoryBase>& live_addresses,
+    const BufferAssignment* buffer_assignment) {
   // Deallocate temporary buffers, taking care to try to deallocate all of them
   // even if one of the deallocations fails.
   Status status;
-  const int64 num_buffers = buffer_assignment_->Allocations().size();
+  const int64 num_buffers = buffer_assignment->Allocations().size();
   for (BufferAllocation::Index i = 0; i < num_buffers; ++i) {
-    const BufferAllocation& allocation = buffer_assignment_->GetAllocation(i);
+    const BufferAllocation& allocation = buffer_assignment->GetAllocation(i);
     se::DeviceMemoryBase buffer_address = GetDeviceAddress(allocation.index());
     // Deallocate buffers marked "maybe_live_out" but aren't actually live out,
     // and temp buffers.
@@ -147,7 +54,6 @@ Status BufferAllocations::TearDown(
       }
     }
   }
-  torn_down_ = true;
   return status;
 }
 
@@ -166,13 +72,6 @@ se::DeviceMemoryBase BufferAllocations::GetDeviceAddress(
   return se::DeviceMemoryBase(
       static_cast<char*>(base.opaque()) + buffer_slice.offset(),
       buffer_slice.size());
-}
-
-void BufferAllocations::SetBuffer(BufferAllocation::Index buffer_index,
-                                  se::DeviceMemoryBase buffer) {
-  CHECK_GE(buffer_index, 0);
-  CHECK_LT(buffer_index, buffers_.size());
-  buffers_[buffer_index] = buffer;
 }
 
 bool ShouldEmitLiteralInLlvmIr(const Literal& literal) {

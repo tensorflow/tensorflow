@@ -43,6 +43,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util as util
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_control_flow_ops
+from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
@@ -54,6 +55,7 @@ from tensorflow.python.ops.gen_control_flow_ops import *
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.lazy_loader import LazyLoader
@@ -110,6 +112,7 @@ def _summarize_eager(tensor, summarize=None):
 # Assert and Print are special symbols in python, so we must
 # use an upper-case version of them.
 @tf_export("debugging.Assert", "Assert")
+@dispatch.add_dispatch_support
 @tf_should_use.should_use_result
 def Assert(condition, data, summarize=None, name=None):
   """Asserts that the given condition is true.
@@ -1095,6 +1098,7 @@ def _UnpackIfSingleton(res):
 # pylint: disable=redefined-outer-name
 # pylint: disable=g-doc-args
 @tf_export(v1=["cond"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(
     None, "fn1/fn2 are deprecated in favor of the true_fn/false_fn arguments.",
     "fn1", "fn2")
@@ -1318,6 +1322,7 @@ def _cast_indexed_slice_indices(a, b):
 
 
 @tf_export("cond", v1=[])
+@dispatch.add_dispatch_support
 def cond_for_tf_v2(pred, true_fn=None, false_fn=None, name=None):
   """Return `true_fn()` if the predicate `pred` is true else `false_fn()`.
 
@@ -2942,6 +2947,7 @@ def group(*inputs, **kwargs):
 
 
 @tf_export("tuple", v1=[])
+@dispatch.add_dispatch_support
 def tuple_v2(tensors, control_inputs=None, name=None):
   """Group tensors together.
 
@@ -2978,6 +2984,7 @@ def tuple_v2(tensors, control_inputs=None, name=None):
 
 
 @tf_export(v1=["tuple"])
+@dispatch.add_dispatch_support
 def tuple(tensors, name=None, control_inputs=None):  # pylint: disable=redefined-builtin
   """Group tensors together.
 
@@ -3277,7 +3284,11 @@ def _indexed_case_verify_and_canonicalize_args(branch_fns, default,
   return actions
 
 
-def _indexed_case_helper(branch_fns, default, branch_index, name):
+def _indexed_case_helper(branch_fns,
+                         default,
+                         branch_index,
+                         name,
+                         lower_using_switch_merge=None):
   """Implementation of case that emits the n-way indexed Case op.
 
   Args:
@@ -3287,6 +3298,7 @@ def _indexed_case_helper(branch_fns, default, branch_index, name):
     branch_index: Optional int `Tensor`, which selects for the corresponding
       pred_fn_pair.
     name: A name for this operation (optional).
+    lower_using_switch_merge: Lower this op using switch merge ops (optional).
 
   Returns:
     The tensors returned by the pair whose key matched branch_index, or
@@ -3308,10 +3320,14 @@ def _indexed_case_helper(branch_fns, default, branch_index, name):
           | math_ops.greater_equal(branch_index, len(branch_fns)),
           len(branch_fns) - 1, branch_index)
       return branch_fns[int(branch_index)]()
-    return cond_v2.indexed_case(branch_index, branch_fns)
+    return cond_v2.indexed_case(
+        branch_index,
+        branch_fns,
+        lower_using_switch_merge=lower_using_switch_merge)
 
 
 @tf_export("case", v1=[])
+@dispatch.add_dispatch_support
 def case_v2(pred_fn_pairs,
             default=None,
             exclusive=False,
@@ -3416,6 +3432,7 @@ def case_v2(pred_fn_pairs,
 
 
 @tf_export(v1=["case"])
+@dispatch.add_dispatch_support
 def case(pred_fn_pairs,
          default=None,
          exclusive=False,
@@ -3597,6 +3614,50 @@ def switch_case(branch_index,
                callable.
   """
   return _indexed_case_helper(branch_fns, default, branch_index, name)
+
+
+def execute_fn_for_device(device_branch_fns, default_fn, name="execute_fn"):
+  """Executes one of the provided callables based on the device placement.
+
+  This API is used when the implementations for high level function depend on
+  the underlying device placement. It takes a dictionary of device type to
+  callables. The device type includes "CPU", "GPU", "TPU", etc. When the type of
+  the device where to run this op matches the key in 'device_branch_fns',
+  the corresponding callable is executed, falling back to 'default_fn' if none
+  matches.
+
+  **Example:**
+  ```python
+  def f1(): return tf.constant(1)
+  def f2(): return tf.constant(2)
+  r = tf.execute_fn_for_device({"CPU": f1, "GPU": f2}, default_fn=f1)
+  ```
+  'r' is evaluated as 1 when it runs on CPU, 2 running on GPU, 1 running on
+  any other device types.
+
+
+  Args:
+    device_branch_fns: a dictionary of device types to the callables. Each
+      callable must return a matching structure of tensors.
+    default_fn: fallback callable when the underlying device does not match any
+      key in the 'device_branch_fns'.
+    name: A name for this operation (optional).
+
+  Returns:
+    The tensors returned by the callable identified by device type during
+    execution, or those returned by 'default_fn' if no key matches.
+  """
+
+  device_branch_fns_upper = {k.upper(): v for k, v in device_branch_fns.items()}
+  branch_fns = list(device_branch_fns_upper.values())
+  devices = list(device_branch_fns_upper.keys())
+  device_index = gen_functional_ops.device_index(device_names=devices)
+  return _indexed_case_helper(
+      branch_fns,
+      default_fn,
+      device_index,
+      name,
+      lower_using_switch_merge=False)
 
 
 class XLAControlFlowContext(ControlFlowContext):

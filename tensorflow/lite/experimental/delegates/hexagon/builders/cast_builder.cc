@@ -29,8 +29,6 @@ namespace hexagon {
 TfLiteStatus CastOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
                                              const TfLiteIntArray* outputs,
                                              TfLiteContext* context) {
-  static int scalar_shape[] = {1, 1, 1, 1};
-
   // Should be only 1 tensor that is cast in-place.
   if (inputs->size != 1 || outputs->size != 1) {
     TF_LITE_KERNEL_LOG(context, "Cast supports a single tensor");
@@ -53,9 +51,9 @@ TfLiteStatus CastOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
         ComputeMinAndMaxQuantValues(tensor, &min_value, &max_value));
   }
   auto* min_const = graph_builder_->AddConstNodeWithData(
-      scalar_shape, reinterpret_cast<char*>(&min_value), sizeof(min_value));
+      kScalarShape, reinterpret_cast<char*>(&min_value), sizeof(min_value));
   auto* max_const = graph_builder_->AddConstNodeWithData(
-      scalar_shape, reinterpret_cast<char*>(&max_value), sizeof(max_value));
+      kScalarShape, reinterpret_cast<char*>(&max_value), sizeof(max_value));
 
   AddInput(graph_builder_->GetHexagonTensorId(tensor_id));
   AddInput(TensorID(min_const->GetID(), 0));

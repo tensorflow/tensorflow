@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/grpc_master_impl.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/grpc_worker_impl.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace data {
@@ -31,6 +32,13 @@ GrpcDataServerBase::GrpcDataServerBase(int port, const std::string& protocol)
     : requested_port_(port), protocol_(protocol) {}
 
 Status GrpcDataServerBase::Start() {
+  if (stopped_) {
+    return errors::FailedPrecondition(
+        "Server cannot be started after it has been stopped.");
+  }
+  if (started_) {
+    return Status::OK();
+  }
   ::grpc::ServerBuilder builder;
   std::shared_ptr<::grpc::ServerCredentials> credentials;
   TF_RETURN_IF_ERROR(
@@ -47,11 +55,18 @@ Status GrpcDataServerBase::Start() {
 
   TF_RETURN_IF_ERROR(StartServiceInternal());
 
+  started_ = true;
   VLOG(1) << "Started tf.data service running at 0.0.0.0:" << BoundPort();
   return Status::OK();
 }
 
-void GrpcDataServerBase::Stop() { server_->Shutdown(); }
+void GrpcDataServerBase::Stop() {
+  if (stopped_) {
+    return;
+  }
+  server_->Shutdown();
+  stopped_ = true;
+}
 
 void GrpcDataServerBase::Join() { server_->Wait(); }
 
@@ -68,15 +83,15 @@ void MasterGrpcDataServer::AddServiceToBuilder(grpc::ServerBuilder* builder) {
   service_ = service.release();
 }
 
-Status MasterGrpcDataServer::NumTasks(int* num_tasks) {
-  GetTasksRequest req;
-  GetTasksResponse resp;
+Status MasterGrpcDataServer::NumWorkers(int* num_workers) {
+  GetWorkersRequest req;
+  GetWorkersResponse resp;
   grpc::ServerContext ctx;
-  grpc::Status s = service_->GetTasks(&ctx, &req, &resp);
+  grpc::Status s = service_->GetWorkers(&ctx, &req, &resp);
   if (!s.ok()) {
-    return grpc_util::WrapError("Failed to get num tasks", s);
+    return grpc_util::WrapError("Failed to get workers", s);
   }
-  *num_tasks = resp.task_info_size();
+  *num_workers = resp.workers_size();
   return Status::OK();
 }
 

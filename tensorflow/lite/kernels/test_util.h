@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cmath>
 #include <complex>
+#include <type_traits>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -485,6 +486,9 @@ class SingleOpModel {
     return std::vector<T>(v, v + tensor_size);
   }
 
+  // Return the TFLite model buffer, only available after BuildInterpreter.
+  const uint8_t* GetModelBuffer() { return builder_.GetBufferPointer(); }
+
   std::vector<int> GetTensorShape(int index) {
     std::vector<int> result;
     TfLiteTensor* t = interpreter_->tensor(index);
@@ -812,6 +816,7 @@ TensorType GetTensorType() {
   if (std::is_same<T, int64_t>::value) return TensorType_INT64;
   if (std::is_same<T, uint8_t>::value) return TensorType_UINT8;
   if (std::is_same<T, string>::value) return TensorType_STRING;
+  if (std::is_same<T, bool>::value) return TensorType_BOOL;
   return TensorType_MIN;  // default value
 }
 

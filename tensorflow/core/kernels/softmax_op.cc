@@ -82,6 +82,7 @@ class SoftmaxOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(                                       \
       Name("Softmax").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       SoftmaxOp<CPUDevice, T>);
+TF_CALL_bfloat16(REGISTER_CPU);
 TF_CALL_half(REGISTER_CPU);
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_double(REGISTER_CPU);

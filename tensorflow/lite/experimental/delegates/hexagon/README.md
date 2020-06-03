@@ -79,9 +79,14 @@ are verified in `IsNodeSupportedByHexagon`:
 * Hardswish
 * L2Normalization (without any activation)
 * Logistic (aka Sigmoid)
+* Maximum
 * MaxPool2D (without any activation) (b/129276536)
+* Mean
+* Minimum
+* MirrorPad
 * Mul (without any activation) (b/129276536)
 * Neg
+* Pack
 * Pad: Only supports 0 padding (b/139277813)
 * Quantize (8-bit inputs & outputs only)
 * Relu
@@ -91,6 +96,7 @@ are verified in `IsNodeSupportedByHexagon`:
   * Constraints:
     - Requested size <= 65 (b/143105433)
 * Resize Nearest Neighbor
+* Slice
 * SoftMax
 * SpaceToDepth
 * Split

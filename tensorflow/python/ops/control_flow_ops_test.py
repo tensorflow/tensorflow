@@ -41,6 +41,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import embedding_ops
@@ -1022,7 +1023,16 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(expected, self.evaluate(case_out))
 
   @parameterized.parameters((-1,), (1,), (4,), (5,))
-  def testCase_gradient(self, bi):
+  def testCase_gradient_disable_lowering(self, bi):
+    self._testCase_gradient(True, bi)
+
+  @parameterized.parameters((-1,), (1,), (4,), (5,))
+  def testCase_gradient_enable_lowering(self, bi):
+    self._testCase_gradient(False, bi)
+
+  def _testCase_gradient(self, disable_lowering, bi):
+    default_lowering = control_flow_util_v2._DISABLE_LOWER_USING_SWITCH_MERGE
+    control_flow_util_v2._DISABLE_LOWER_USING_SWITCH_MERGE = disable_lowering
     nbranches = 5
     inputs = [
         array_ops.constant(float(bi), name="br{}_in".format(bi))
@@ -1047,6 +1057,8 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(len(expected_grads), len(actual_grads))
     for expected, actual in zip(expected_grads, actual_grads):
       self.assertEqual(expected, self.evaluate(actual))
+    # reset to default value
+    control_flow_util_v2._DISABLE_LOWER_USING_SWITCH_MERGE = default_lowering
 
   @parameterized.parameters((-2,), (2,), (5,))
   def testCase_gradient_diffShapedIntermediates(self, bi):
@@ -1209,6 +1221,92 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     branches = [(array_ops.constant(i), make_func(i)) for i in range(5)]
     with self.assertRaisesRegexp(TypeError, "must be a Python `int`"):
       control_flow_ops.switch_case(array_ops.constant(1), branches)
+
+
+class ExecuteFnForDeviceTest(test_util.TensorFlowTestCase):
+
+  def testCommonCases(self):
+
+    def cpu_fn(x):
+      return x + x
+
+    def gpu_fn(x):
+      return x * x
+
+    def flexible_fn(a):
+      branches = {"CPU": lambda: cpu_fn(a), "GPU": lambda: gpu_fn(a)}
+      return control_flow_ops.execute_fn_for_device(branches, lambda: cpu_fn(a))
+
+    @def_function.function
+    def flexible_defun(a):
+      return flexible_fn(a)
+
+    def run_defun_and_tape(a):
+      with backprop.GradientTape() as tape:
+        tape.watch(a)
+        result = flexible_defun(a)
+      grad = tape.gradient(result, a)
+      r = flexible_fn(a)
+      return r, result, grad
+
+    a = array_ops.constant(3.)
+    with ops.device("cpu:0"):
+      r, result, grad = run_defun_and_tape(a)
+      self.assertEqual(6., self.evaluate(r))
+      self.assertEqual(6., self.evaluate(result))
+      self.assertEqual([2.], self.evaluate(grad))
+
+    if test_util.is_gpu_available():
+      with ops.device("gpu:0"):
+        r, result, grad = run_defun_and_tape(a)
+        self.assertEqual(9., self.evaluate(r))
+        self.assertEqual(9., self.evaluate(result))
+        self.assertEqual([6.], self.evaluate(grad))
+
+    # no device annotation
+    r, result, grad = run_defun_and_tape(a)
+    if test_util.is_gpu_available():
+      self.assertEqual(9., self.evaluate(r))
+      self.assertEqual(9., self.evaluate(result))
+      self.assertEqual([6.], self.evaluate(grad))
+    else:
+      self.assertEqual(6., self.evaluate(r))
+      self.assertEqual(6., self.evaluate(result))
+      self.assertEqual([2.], self.evaluate(grad))
+
+  def testFallBack(self):
+
+    def default_fn(x):
+      return x
+
+    def tpu_fn(x):
+      return x * x * x
+
+    def flexible_fn(a):
+      branches = {"TPU": lambda: tpu_fn(a)}
+      return control_flow_ops.execute_fn_for_device(
+          branches, default_fn=lambda: default_fn(a))
+
+    @def_function.function
+    def flexible_defun(a):
+      return flexible_fn(a)
+
+    a = array_ops.constant(3.)
+    with ops.device("cpu:0"):
+      result_defun = flexible_defun(a)
+      result_defun = flexible_fn(a)
+      self.assertEqual(3., self.evaluate(result_defun))
+      # execute_fn_for_device is not inside defun_function.
+      result = flexible_fn(a)
+      self.assertEqual(3., self.evaluate(result))
+
+    if test_util.is_gpu_available():
+      with ops.device("gpu:0"):
+        result_defun = flexible_defun(a)
+        self.assertEqual(3., self.evaluate(result_defun))
+        # execute_fn_for_device is not inside defun_function.
+        result = flexible_fn(a)
+        self.assertEqual(3., self.evaluate(result))
 
 
 class CaseTest(test_util.TensorFlowTestCase):

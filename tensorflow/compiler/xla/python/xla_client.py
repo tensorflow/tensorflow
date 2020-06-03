@@ -52,6 +52,10 @@ xla_platform_names = {
 }
 
 
+def _interpreter_backend_factory():
+  return _xla.get_interpreter_client()
+
+
 def _cpu_backend_factory():
   return _xla.get_cpu_client(asynchronous=True)
 
@@ -85,6 +89,7 @@ def _gpu_backend_factory(distributed_client=None, node_id=0):
 
 # Backend factories, keyed by user-visible name, in increasing priority order.
 _local_backend_factories = collections.OrderedDict([
+    ('interpreter', _interpreter_backend_factory),
     ('cpu', _cpu_backend_factory),
     ('gpu', _gpu_backend_factory),
 ])
@@ -300,13 +305,13 @@ CompileOptions = _xla.CompileOptions
 # An Executable is a C++ class that duck types with the following API:
 # class Executable(object):
 #   def local_devices(self) -> [Device]:
-#   def Execute(self, arguments : [Buffer]) -> Buffer:
+#   def execute(self, arguments : [Buffer]) -> Buffer:
 #     """Execute on one replica with Buffer arguments and return value."""
 #
-#   def SizeOfGeneratedCodeInBytes(self) -> int:
+#   def size_of_generated_code_in_bytes(self) -> int:
 #     """Return generated binary size, or -1 if not known."""
 #
-#   def ExecuteOnLocalDevices(self, arguments: [[Buffer]]) -> [Buffer]:
+#   def execute_on_local_devices(self, arguments: [[Buffer]]) -> [Buffer]:
 #     """Execute on many replicas with Buffer arguments and return value.
 #
 #     Args:
@@ -329,7 +334,7 @@ def execute_with_python_values(executable, arguments, backend):
     return backend.buffer_from_pyval(arg, device=executable.local_devices()[0])
 
   arguments = [put(arg) for arg in arguments]
-  outputs = executable.Execute(arguments)
+  outputs = executable.execute(arguments)
   return [x.to_py() for x in outputs]
 
 
@@ -359,7 +364,7 @@ def execute_with_python_values_replicated(executable, arguments, backend):
     flat_arg_buffers = flat_arg_buffers[len(replica_args):]
   return [[x.to_py()
            for x in xs]
-          for xs in executable.ExecuteOnLocalDevices(arg_buffers)]
+          for xs in executable.execute_on_local_devices(arg_buffers)]
 
 
 class PaddingType(enum.Enum):

@@ -77,6 +77,11 @@ class ExecutableBuildOptions {
   int num_partitions() const { return num_partitions_; }
   ExecutableBuildOptions& set_num_partitions(int num_partitions);
 
+  // Indicates whether to use SPMD (true) or MPMD (false) partitioning when
+  // num_partitions > 1 and XLA is requested to partition the input program.
+  bool use_spmd_partitioning() const { return use_spmd_partitioning_; }
+  ExecutableBuildOptions& set_use_spmd_partitioning(bool use_spmd_partitioning);
+
   // If set, this specifies a static device assignment for the computation.
   // Otherwise, the computation will be compiled generically and can be run with
   // any device assignment compatible with the computation's replica and
@@ -104,6 +109,7 @@ class ExecutableBuildOptions {
   se::DeviceMemoryAllocator* device_allocator_ = nullptr;
   int num_replicas_ = 1;
   int num_partitions_ = 1;
+  bool use_spmd_partitioning_ = false;
   absl::optional<DeviceAssignment> device_assignment_;
   bool alias_passthrough_params_ = false;
 };

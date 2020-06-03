@@ -199,7 +199,9 @@ tf_py_test(
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

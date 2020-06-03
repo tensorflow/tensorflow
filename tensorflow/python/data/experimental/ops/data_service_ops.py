@@ -22,11 +22,14 @@ import functools
 import six
 
 from tensorflow.python import tf2
+from tensorflow.python.data.experimental.ops import compression_ops
+from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
 from tensorflow.python.data.experimental.ops.distribute_options import ExternalStatePolicy
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_experimental_dataset_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
 class ProcessingMode(object):
@@ -84,15 +87,30 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
     if task_refresh_interval_hint_ms is None:
       task_refresh_interval_hint_ms = dataset_ops.AUTOTUNE
 
+    self._input_dataset = input_dataset
+    self._dataset_id = ops.convert_to_tensor(
+        dataset_id, dtype=dtypes.int64, name="dataset_id")
+    self._processing_mode = ops.convert_to_tensor(
+        processing_mode, dtype=dtypes.string, name="processing_mode")
+    self._address = ops.convert_to_tensor(
+        address, dtype=dtypes.string, name="address")
+    self._protocol = ops.convert_to_tensor(
+        protocol, dtype=dtypes.string, name="protocol")
+    self._job_name = ops.convert_to_tensor(
+        job_name, dtype=dtypes.string, name="job_name")
+    self._max_outstanding_requests = ops.convert_to_tensor(
+        max_outstanding_requests,
+        dtype=dtypes.int64,
+        name="max_outstanding_requests")
     self._element_spec = input_dataset.element_spec
 
     variant_tensor = gen_experimental_dataset_ops.data_service_dataset(
-        dataset_id=dataset_id,
-        processing_mode=processing_mode,
-        address=address,
-        protocol=protocol,
-        job_name=job_name,
-        max_outstanding_requests=max_outstanding_requests,
+        dataset_id=self._dataset_id,
+        processing_mode=self._processing_mode,
+        address=self._address,
+        protocol=self._protocol,
+        job_name=self._job_name,
+        max_outstanding_requests=self._max_outstanding_requests,
         task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
         iteration_counter=gen_experimental_dataset_ops.dummy_iteration_counter(
         ),
@@ -187,16 +205,31 @@ def _distribute(processing_mode,
   protocol = ops.convert_to_tensor(
       protocol, dtype=dtypes.string, name="protocol")
 
-  def _apply_fn(dataset):
+  def _apply_fn(dataset):  # pylint: disable=missing-docstring
     external_state_policy = dataset.options().experimental_external_state_policy
     if external_state_policy is None:
       external_state_policy = ExternalStatePolicy.WARN
+
+    uncompressed_spec = dataset.element_spec
+    # Compress the dataset elements to reduce the amount of data that needs to
+    # be sent over the network.
+    # TODO(b/157105111): Make this an autotuned parallel map when we have a way
+    # to limit memory usage.
+    dataset = dataset.map(lambda *x: compression_ops.compress(x))
+    # Prefetch one compressed element to reduce latency when requesting data
+    # from tf.data workers.
+    # TODO(b/157105111): Set this to autotune when we have a way to limit
+    # memory usage
+    dataset = dataset.prefetch(1)
+    # Apply options so that the dataset executed in the tf.data service will
+    # be optimized and support autotuning.
+    dataset = dataset._apply_options()  # pylint: disable=protected-access
     dataset_id = gen_experimental_dataset_ops.register_dataset(
         dataset._variant_tensor,  # pylint: disable=protected-access
         address=address,
         protocol=protocol,
         external_state_policy=external_state_policy.value)
-    return _DataServiceDataset(
+    dataset = _DataServiceDataset(
         input_dataset=dataset,
         dataset_id=dataset_id,
         processing_mode=processing_mode,
@@ -205,10 +238,22 @@ def _distribute(processing_mode,
         job_name=job_name,
         max_outstanding_requests=max_outstanding_requests,
         task_refresh_interval_hint_ms=task_refresh_interval_hint_ms)
+    # TODO(b/157105111): Make this an autotuned parallel map when we have a way
+    # to limit memory usage.
+    dataset = dataset.map(
+        lambda x: compression_ops.uncompress(x, output_spec=uncompressed_spec))
+
+    # Disable autosharding for shared jobs.
+    if job_name:
+      options = dataset_ops.Options()
+      options.experimental_distribute.auto_shard_policy = AutoShardPolicy.OFF
+      dataset = dataset.with_options(options)
+    return dataset
 
   return _apply_fn
 
 
+@tf_export("data.experimental.service.distribute")
 def distribute(processing_mode,
                service,
                job_name=None,
@@ -253,31 +298,64 @@ def distribute(processing_mode,
   executed locally.
 
   The `job_name` argument allows jobs to be shared across multiple
-  datasets. Instead of each dataset creating its own job, all datasets with the
-  same `job_name` will consume from the same job. A new job will
-  be created for each iteration of the dataset (with each repetition of
-  `Dataset.repeat` counting as a new iteration). The following example
-  demonstrates shared iteration, with the assumption that the tf.data service is
-  running with a single worker.
+  datasets. Instead of each dataset creating its own job, all
+  datasets with the same `job_name` will consume from the same job. A new job
+  will be created for each iteration of the dataset (with each repetition of
+  `Dataset.repeat` counting as a new iteration). Suppose two training workers
+  (in either a single client or multi-client setup) iterate over the below
+  dataset, and there is a single tf.data worker:
 
   ```
   range5_dataset = tf.data.Dataset.range(5)
-  dataset1 = range5_dataset.apply(tf.data.experimental.service.distribute(
-      "parallel_epochs", "my_job_name", "grpc://dataservice:5000"))
-  dataset2 = range5_dataset.apply(tf.data.experimental.service.distribute(
-      "parallel_epochs", "my_job_name", "grpc://dataservice:5000"))
-  iter_1_1 = iter(dataset1)
-  iter_1_2 = iter(dataset1)
-  iter_2_1 = iter(dataset2)
-  iter_2_2 = iter(dataset2)
-  print(next(iter_1_1))  # Prints "0"
-  # iter_1_2 consumes from the same job as iter_1_1
-  print(next(iter_1_2))  # Prints "1"
-  # iter_2_1 consumes from a new job
-  print(next(iter_2_1))  # Prints "0"
-  # iter_2_2 consumes from the same job as iter_2_1
-  print(next(iter_2_2))  # Prints "1"
+  dataset = range5_dataset.apply(tf.data.experimental.service.distribute(
+      "parallel_epochs", "grpc://dataservice:5000", job_name="my_job_name"))
+  for iteration in range(3):
+    print(list(dataset))
   ```
+
+  The elements of each job will be split between the two processes, with
+  elements being consumed by the processes on a first-come first-served basis.
+  One possible result is that process 1 prints
+
+  ```
+  [0, 2, 4]
+  [0, 1, 3]
+  [1]
+  ```
+
+  and process 2 prints
+
+  ```
+  [1, 3]
+  [2, 4]
+  [0, 2, 3, 4]
+  ```
+
+  Job names must not be re-used across different training jobs within the
+  lifetime of the tf.data service. In general, the tf.data service is expected
+  to live for the duration of a single training job.
+  To use the tf.data service with multiple training jobs, make sure to use
+  different job names to avoid conflicts. For example, suppose a training job
+  calls `distribute` with `job_name="job"` and reads until end of input. If
+  another independent job connects to the same tf.data service and tries to read
+  from `job_name="job"`, it will immediately receive end of input, without
+  getting any data.
+
+  **Keras and Distribution Strategies**
+
+  The dataset produced by the `distribute` transformation can be passed to
+  Keras' `Model.fit` or Distribution Strategy's
+  `tf.distribute.Strategy.experimental_distribute_dataset` like any other
+  `tf.data.Dataset`. We recommend setting a `job_name` on the call to
+  `distribute` so that if there are multiple workers, they read data from the
+  same job. Note that the autosharding normally performed by
+  `experimental_distribute_dataset` will be disabled when setting a `job_name`,
+  since sharing the job already results in splitting data across the workers.
+  When using a shared job, data will be dynamically balanced across workers, so
+  that they reach end of input about the same time. This results in better
+  worker utilization than with autosharding, where each worker processes an
+  independent set of files, and some workers may run out of data earlier than
+  others.
 
   Args:
     processing_mode: A string specifying the policy for how data should be
@@ -297,5 +375,8 @@ def distribute(processing_mode,
   Returns:
     Dataset: A `Dataset` of the elements produced by the data service.
   """
-  return _distribute(processing_mode, service, job_name,
-                     max_outstanding_requests)
+  return _distribute(
+      processing_mode=processing_mode,
+      service=service,
+      job_name=job_name,
+      max_outstanding_requests=max_outstanding_requests)

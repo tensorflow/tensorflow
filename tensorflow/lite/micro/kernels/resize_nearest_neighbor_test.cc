@@ -71,7 +71,7 @@ void TestResizeNearestNeighbor(const int* input_dims_data, const T* input_data,
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_RESIZE_NEAREST_NEIGHBOR, 1);
+      resolver.FindOp(tflite::BuiltinOperator_RESIZE_NEAREST_NEIGHBOR);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteResizeNearestNeighborParams builtin_data = {

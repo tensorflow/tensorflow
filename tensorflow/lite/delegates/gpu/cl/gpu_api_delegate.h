@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_GPU_API_DELEGATE_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_GPU_API_DELEGATE_H_
 
-#include <stdint.h>
-
 #include <EGL/egl.h>
 #include <GLES3/gl31.h>
+#include <stdint.h>
+
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/gpu/delegate.h"
 

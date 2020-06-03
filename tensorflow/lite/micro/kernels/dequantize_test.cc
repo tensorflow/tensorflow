@@ -32,9 +32,8 @@ void ValidateDequantizeGoldens(TfLiteTensor* tensors, int tensors_size,
   ::tflite::ops::micro::AllOpsResolver resolver;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
-  // Version 2 of dequantize supports int8 quantization.
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_DEQUANTIZE, 2);
+      resolver.FindOp(tflite::BuiltinOperator_DEQUANTIZE);
 
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 

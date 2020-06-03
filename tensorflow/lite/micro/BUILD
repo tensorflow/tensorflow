@@ -25,22 +25,19 @@ cc_library(
 cc_library(
     name = "micro_framework",
     srcs = [
-        "debug_log.cc",
         "memory_helpers.cc",
         "micro_allocator.cc",
-        "micro_error_reporter.cc",
         "micro_interpreter.cc",
         "micro_optional_debug_tools.cc",
         "simple_memory_allocator.cc",
         "test_helpers.cc",
     ],
     hdrs = [
-        "debug_log.h",
         "memory_helpers.h",
         "micro_allocator.h",
-        "micro_error_reporter.h",
         "micro_interpreter.h",
         "micro_mutable_op_resolver.h",
+        "micro_op_resolver.h",
         "micro_optional_debug_tools.h",
         "simple_memory_allocator.h",
         "test_helpers.h",
@@ -49,15 +46,46 @@ cc_library(
     copts = micro_copts(),
     deps = [
         ":micro_compatibility",
-        ":micro_string",
         ":micro_utils",
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/micro/memory_planner",
         "//tensorflow/lite/micro/memory_planner:greedy_memory_planner",
         "//tensorflow/lite/schema:schema_fbs",
+        "@flatbuffers//:runtime_cc",
+    ],
+)
+
+cc_library(
+    name = "debug_log",
+    srcs = [
+        "debug_log.cc",
+    ],
+    hdrs = [
+        "debug_log.h",
+    ],
+    build_for_embedded = True,
+    copts = micro_copts(),
+)
+
+cc_library(
+    name = "micro_error_reporter",
+    srcs = [
+        "micro_error_reporter.cc",
+    ],
+    hdrs = [
+        "micro_error_reporter.h",
+    ],
+    build_for_embedded = True,
+    copts = micro_copts(),
+    deps = [
+        ":debug_log",
+        ":micro_compatibility",
+        ":micro_string",
+        "//tensorflow/lite/core/api",
     ],
 )
 
@@ -103,13 +131,29 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "recording_simple_memory_allocator",
+    srcs = [
+        "recording_simple_memory_allocator.cc",
+    ],
+    hdrs = [
+        "recording_simple_memory_allocator.h",
+    ],
+    build_for_embedded = True,
+    copts = micro_copts(),
+    deps = [
+        ":micro_compatibility",
+        ":micro_framework",
+    ],
+)
+
 tflite_micro_cc_test(
     name = "micro_error_reporter_test",
     srcs = [
         "micro_error_reporter_test.cc",
     ],
     deps = [
-        ":micro_framework",
+        ":micro_error_reporter",
     ],
 )
 
@@ -132,6 +176,7 @@ tflite_micro_cc_test(
     deps = [
         ":micro_framework",
         ":micro_utils",
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
@@ -144,6 +189,18 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":micro_framework",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "recording_simple_memory_allocator_test",
+    srcs = [
+        "recording_simple_memory_allocator_test.cc",
+    ],
+    deps = [
+        ":micro_framework",
+        ":recording_simple_memory_allocator",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )

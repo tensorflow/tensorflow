@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
+
 from tensorflow.python.eager import monitoring
 from tensorflow.python.eager import test
 from tensorflow.python.framework import errors
@@ -99,6 +101,26 @@ class MonitoringTest(test_util.TensorFlowTestCase):
     self.assertEqual(histogram_proto1.max, 4.0)
     self.assertEqual(histogram_proto1.num, 2.0)
     self.assertEqual(histogram_proto1.sum, 6.0)
+
+  def test_context_manager(self):
+    counter = monitoring.Counter('test/ctxmgr', 'test context manager', 'slot')
+    with monitoring.MonitoredTimer(counter.get_cell('short')):
+      time.sleep(0.001)
+    with monitoring.MonitoredTimer(counter.get_cell('long')):
+      time.sleep(0.02)
+    self.assertGreater(
+        counter.get_cell('long').value(),
+        counter.get_cell('short').value())
+
+  def test_function_decorator(self):
+    counter = monitoring.Counter('test/funcdecorator', 'test func decorator')
+
+    @monitoring.monitored_timer(counter.get_cell())
+    def timed_function(seconds):
+      time.sleep(seconds)
+
+    timed_function(0.001)
+    self.assertGreater(counter.get_cell().value(), 1000)
 
 
 if __name__ == '__main__':

@@ -7,11 +7,29 @@ op {
     name: "minimum"
   }
   description: <<END
-Example:
+Both inputs are number-type tensors (except complex).  `minimum` expects that
+both tensors have the same `dtype`.
+
+Examples:
+
 >>> x = tf.constant([0., 0., 0., 0.])
 >>> y = tf.constant([-5., -2., 0., 3.])
 >>> tf.math.minimum(x, y)
 <tf.Tensor: shape=(4,), dtype=float32, numpy=array([-5., -2., 0., 0.], dtype=float32)>
+
+Note that `minimum` supports broadcast semantics.
+
+>>> x = tf.constant([-5., 0., 0., 0.])
+>>> y = tf.constant([-3.])
+>>> tf.math.minimum(x, y)
+<tf.Tensor: shape=(4,), dtype=float32, numpy=array([-5., -3., -3., -3.], dtype=float32)>
+
+If inputs are not tensors, they will be converted to tensors.  See
+`tf.convert_to_tensor`.
+
+>>> x = tf.constant([-3.], dtype=tf.float32)
+>>> tf.math.minimum([-5], x)
+<tf.Tensor: shape=(1,), dtype=float32, numpy=array([-5.], dtype=float32)>
 
 END
 }

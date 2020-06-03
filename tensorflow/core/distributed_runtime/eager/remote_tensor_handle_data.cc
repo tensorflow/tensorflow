@@ -194,9 +194,12 @@ string RemoteTensorHandleData::DebugString() const {
                          " output_num: ", output_num_);
 }
 
-Status RemoteTensorHandleData::OpIdAndOutputNumUntilReady(
-    int64* op_id, int32* output_num) const {
-  TF_RETURN_IF_ERROR(WaitReady("OpIdAndOutputNumUntilReady"));
+Status RemoteTensorHandleData::OpIdAndOutputNum(const bool wait_util_ready,
+                                                int64* op_id,
+                                                int32* output_num) const {
+  if (wait_util_ready) {
+    TF_RETURN_IF_ERROR(WaitReady("OpIdAndOutputNumUntilReady"));
+  }
   *op_id = op_id_;
   *output_num = output_num_;
   return Status::OK();

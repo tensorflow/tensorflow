@@ -45,7 +45,7 @@ void TestLogisticFloat(std::initializer_list<int> input_dims_data,
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_LOGISTIC, 1);
+      resolver.FindOp(tflite::BuiltinOperator_LOGISTIC);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   const char* init_data = nullptr;
@@ -107,7 +107,7 @@ void TestLogisticInt8(std::initializer_list<int> input_dims_data,
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_LOGISTIC, 1);
+      resolver.FindOp(tflite::BuiltinOperator_LOGISTIC);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   const char* init_data = nullptr;

@@ -15,15 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
 
+#include <algorithm>
+#include <string>
 #include <tuple>
 #include <vector>
 
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 
 namespace tensorflow {
@@ -34,15 +36,15 @@ void ParseKernelLaunchParams(absl::string_view xstat_kernel_details,
   const std::vector<absl::string_view> params =
       absl::StrSplit(xstat_kernel_details, absl::ByAnyChar(":\n"));
 
-  constexpr uint32_t kNumDimensions = 3;
-  for (uint32_t dim = 0; dim < kNumDimensions; ++dim) {
+  constexpr uint32 kNumDimensions = 3;
+  for (uint32 dim = 0; dim < kNumDimensions; ++dim) {
     kernel->add_block_dim(1);
     kernel->add_grid_dim(1);
   }
 
   // Process value pairs.
-  for (uint32_t ii = 0; ii < params.size(); ii += 2) {
-    uint32_t value = 0;
+  for (uint32 ii = 0; ii < params.size(); ii += 2) {
+    uint32 value = 0;
     if (params[ii] == "registers_per_thread" &&
         absl::SimpleAtoi(params[ii + 1], &value)) {
       kernel->set_registers_per_thread(value);

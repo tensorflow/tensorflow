@@ -16,10 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_UTILS_H_
 #define TENSORFLOW_LITE_DELEGATES_UTILS_H_
 
+// Utility functions and classes for implementing delegates.
+
 #include <functional>
 #include <limits>
 #include <set>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/c/common.h"
@@ -68,9 +72,20 @@ class GraphPartitionHelper {
   // Note that partitions are ranked according to the number of nodes that
   // a partition has, and the returned TfLiteDelegateParams objects are *owned*
   // by the TfLite runtime.
+  // TODO(b/156707497): remove this and use GetNodesOfFirstNLargestPartitions
   std::vector<TfLiteDelegateParams*> GetFirstNLargestPartitions(
       int n = std::numeric_limits<int>::max(),
       int min_nodes_per_partition = 0) const;
+
+  // Returns a list of node indices of all nodes from the first n largest
+  // partitions. If there are fewer paritions than n, all nodes will be
+  // returned. The partition is ranked according to the number of nodes.
+  std::vector<int> GetNodesOfFirstNLargestPartitions(
+      int n = std::numeric_limits<int>::max(),
+      int min_nodes_per_partition = 0) {
+    // Separated implementation that can be overrided, to preserve default value
+    return GetNodesOfFirstNLargestPartitionsImpl(n, min_nodes_per_partition);
+  }
 
   int num_total_nodes() const { return num_total_nodes_; }
   int num_partitions() const { return partitions_.size(); }
@@ -82,6 +97,8 @@ class GraphPartitionHelper {
     return is_node_supported_fn_(context, node, registration,
                                  unsupported_details);
   }
+  virtual std::vector<int> GetNodesOfFirstNLargestPartitionsImpl(
+      int n, int min_nodes_per_partition);
 
   TfLiteContext* const context_ = nullptr;
 
@@ -109,6 +126,64 @@ class GraphPartitionHelper {
   // Contains an array of supported node indices.
   TfLiteIntArray* supported_nodes_ = nullptr;  // owns the memory
 };
+
+// While partitioning the graph, this claims DEQUANTIZE nodes (FP16->FP32) in
+// addition to supported nodes for the delegate, when the DEQUANTIZE node's
+// output is an input to the kernel that supports FP16 input.
+class FP16GraphPartitionHelper : public GraphPartitionHelper {
+ public:
+  FP16GraphPartitionHelper(TfLiteContext* context,
+                           IsNodeSupportedFn is_node_supported_fn)
+      : GraphPartitionHelper(context, std::move(is_node_supported_fn)) {}
+
+  TfLiteStatus Partition(
+      std::set<std::string>* unsupported_nodes_info) override;
+
+ protected:
+  bool IsNodeSupported(TfLiteContext* context, TfLiteNode* node,
+                       TfLiteRegistration* registration, int node_id,
+                       std::string* unsupported_details) override;
+
+  // This will remap input tensors by removing FP16 to FP32 dequantized tensors.
+  std::vector<int> GetNodesOfFirstNLargestPartitionsImpl(
+      int n, int min_nodes_per_partition) override;
+
+ private:
+  // Record 'node' if it is a dequant op (i.e. a fp16 one here) and return true.
+  // When it's not a dequant op, remap its inputs to the inputs of the preceding
+  // dequant if there's a one and returns false. 'orig_inputs' records original
+  // input tensor ids of this node if any input is remapped.
+  bool RecordAndRemapInputTensors(int32_t op_code, int node_id,
+                                  TfLiteNode* node,
+                                  std::vector<int>* orig_inputs);
+
+  // Restore inputs of 'node' to 'orig_inputs' only if two sizes match.
+  void RestoreToOrigInputTensors(TfLiteNode* node,
+                                 const std::vector<int>& orig_inputs);
+
+  // Remap input tensors of every node in 'nodes' (i.e. node indices) if some of
+  // them are from dequant ops.
+  void RemapInputTensors(const std::vector<int>& nodes) const;
+
+  void RemoveSingleDequantNodePartitions();
+
+  void RemoveReservedDequantsFromNodes(std::vector<int>* nodes);
+
+  // Remap input tensors of a single 'node' if some of come from a dequant op.
+  // If 'orig_inputs' isn't nullptr, it records original input tensor ids of
+  // this node if any input is remapped.
+  void RemapInputTensors(TfLiteNode* node, std::vector<int>* orig_inputs) const;
+
+  // A map recording dequantize nodes's input/output tensors of this selected
+  // graph. The key is the output tensor id, and the value is the input tensor
+  // id.
+  std::unordered_map<int, int> dequant_nodes_;
+
+  // A set of dequant nodes as in node indices that have to be preserved in the
+  // graph.
+  std::set<int> dequant_nodes_to_save_;
+};
+
 }  // namespace delegates
 }  // namespace tflite
 

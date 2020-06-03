@@ -259,7 +259,7 @@ class GpuSparse {
   // http://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-coo2csr.
   Status Coo2csr(const int* cooRowInd, int nnz, int m, int* csrRowPtr) const;
 
-#if CUDA_VERSION < 10020
+#if (GOOGLE_CUDA && (CUDA_VERSION < 10020)) || TENSORFLOW_USE_ROCM
   // Sparse-dense matrix multiplication C = alpha * op(A) * op(B)  + beta * C,
   // where A is a sparse matrix in CSR format, B and C are dense tall
   // matrices.  This routine allows transposition of matrix B, which
@@ -311,7 +311,7 @@ class GpuSparse {
   // http://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-csrmv_mergepath
   //
   // **NOTE** This is an in-place operation for data in y.
-#if CUDA_VERSION < 10020
+#if (GOOGLE_CUDA && (CUDA_VERSION < 10020)) || TENSORFLOW_USE_ROCM
   template <typename Scalar>
   Status Csrmv(gpusparseOperation_t transA, int m, int n, int nnz,
                const Scalar* alpha_host, const gpusparseMatDescr_t descrA,
@@ -366,7 +366,7 @@ class GpuSparse {
                  Scalar* csrSortedValC, int* csrSortedRowPtrC,
                  int* csrSortedColIndC, void* workspace);
 
-#if CUDA_VERSION >= 10000
+#if GOOGLE_CUDA && (CUDA_VERSION >= 10000)
   // Computes sparse-sparse matrix multiplication of matrices
   // stored in CSR format.  This is part zero: calculate required workspace
   // size.
@@ -383,7 +383,7 @@ class GpuSparse {
   // output.  csrSortedRowPtrC must be preallocated on device with
   // m + 1 entries.  See:
   // http://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-csrgemm.
-#if CUDA_VERSION < 10000
+#if (GOOGLE_CUDA && (CUDA_VERSION < 10000)) || TENSORFLOW_USE_ROCM
   Status CsrgemmNnz(gpusparseOperation_t transA, gpusparseOperation_t transB,
                     int m, int k, int n, const gpusparseMatDescr_t descrA,
                     int nnzA, const int* csrSortedRowPtrA,
@@ -408,7 +408,7 @@ class GpuSparse {
   // addition.  csrValC and csrColIndC must be allocated on the device
   // with nnzTotalDevHostPtr entries (as calculated by CsrgemmNnz).  See:
   // http://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-csrgemm.
-#if CUDA_VERSION < 10000
+#if (GOOGLE_CUDA && (CUDA_VERSION < 10000)) || TENSORFLOW_USE_ROCM
   template <typename Scalar>
   Status Csrgemm(gpusparseOperation_t transA, gpusparseOperation_t transB,
                  int m, int k, int n, const gpusparseMatDescr_t descrA,

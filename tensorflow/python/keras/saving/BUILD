@@ -175,6 +175,9 @@ tf_py_test(
     srcs = ["saved_model/revive_test.py"],
     python_version = "PY3",
     shard_count = 4,
+    tags = [
+        "no_windows",  # b/158005583
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",

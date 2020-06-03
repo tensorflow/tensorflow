@@ -55,7 +55,7 @@ TfLiteStatus TestFullyConnectedFloat(
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_FULLY_CONNECTED, 1);
+      resolver.FindOp(tflite::BuiltinOperator_FULLY_CONNECTED);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteFullyConnectedParams builtin_data = {
@@ -135,7 +135,7 @@ TfLiteStatus TestFullyConnectedQuantized(
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_FULLY_CONNECTED, 4);
+      resolver.FindOp(tflite::BuiltinOperator_FULLY_CONNECTED);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteFullyConnectedParams builtin_data = {

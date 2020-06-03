@@ -15,11 +15,15 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_MICRO_INTERPRETER_H_
 #define TENSORFLOW_LITE_MICRO_MICRO_INTERPRETER_H_
 
+#include <cstddef>
+#include <cstdint>
+
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/micro/micro_allocator.h"
+#include "tensorflow/lite/micro/micro_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
 
@@ -68,7 +72,7 @@ class MicroInterpreter {
   // function.
   // The interpreter doesn't do any deallocation of any of the pointed-to
   // objects, ownership remains with the caller.
-  MicroInterpreter(const Model* model, const OpResolver& op_resolver,
+  MicroInterpreter(const Model* model, const MicroOpResolver& op_resolver,
                    uint8_t* tensor_arena, size_t tensor_arena_size,
                    ErrorReporter* error_reporter);
 
@@ -132,7 +136,7 @@ class MicroInterpreter {
 
   TfLiteStatus initialization_status() const { return initialization_status_; }
 
-  size_t operators_size() const { return operators_->size(); }
+  size_t operators_size() const { return subgraph_->operators()->size(); }
 
   // For debugging only.
   const NodeAndRegistration node_and_registration(int node_index) const {
@@ -156,15 +160,13 @@ class MicroInterpreter {
   NodeAndRegistration* node_and_registrations_ = nullptr;
 
   const Model* model_;
-  const OpResolver& op_resolver_;
+  const MicroOpResolver& op_resolver_;
   ErrorReporter* error_reporter_;
   TfLiteContext context_ = {};
   MicroAllocator allocator_;
   bool tensors_allocated_;
 
   TfLiteStatus initialization_status_;
-  const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors_;
-  const flatbuffers::Vector<flatbuffers::Offset<Operator>>* operators_;
 
   const SubGraph* subgraph_;
   internal::ContextHelper context_helper_;

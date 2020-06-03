@@ -1,4 +1,4 @@
-// RUN: tf-mlir-translate -hlo-text-to-mlir-hlo %s -o - | FileCheck %s
+// RUN: tf-mlir-translate -hlo-text-to-mlir-hlo %s -o - | FileCheck %s --dump-input-on-failure
 
 HloModule main
 
@@ -18,29 +18,6 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   // TODO(b/129709049) consider making this default precision config inferred.
   // CHECK-NEXT:  "xla_hlo.dot"(%0, %arg1) {name = "{{.*}}", precision_config = ["DEFAULT", "DEFAULT"]} : (tensor<4xf32>, tensor<4xf32>) -> tensor<f32>
   ROOT %dot.4 = f32[] dot(f32[4]{0} %add.3, f32[4]{0} %Arg_1.2), lhs_contracting_dims={0}, rhs_contracting_dims={0}
-}
-
-// This test is more thorough than those of the the other binary ops to test
-// their shared functionality.
-
-// CHECK-LABEL:  func @test_add
-%test_add (Arg_0.1: f32[4], Arg_1.2: f32[4], Arg_2.3: f32[], Arg_3.4: f32[]) -> f32[4] {
-  %Arg_0.1 = f32[4] parameter(0)
-  %Arg_1.2 = f32[4] parameter(1)
-  %Arg_2.3 = f32[] parameter(2)
-  %Arg_3.4 = f32[] parameter(3)
-
-  // Add two tensors
-  // CHECK-NEXT:  xla_hlo.add %arg0, %arg1 {name = "{{.*}}"}
-  %add.3 = f32[4] add(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
-
-  // Add two scalars
-  // CHECK-NEXT:  xla_hlo.add %arg2, %arg3
-  %add.4 = f32[] add(f32[] %Arg_2.3, f32[] %Arg_3.4)
-
-  // Add a tensor and scalar
-  // CHECK-NEXT:  "xla_hlo.add"(%0, %1)
-  ROOT %add.5 = f32[4] add(f32[4] %add.3, f32[] %add.4)
 }
 
 // CHECK-LABEL:  func @test_after_all
@@ -159,11 +136,11 @@ add {
 }
 
 
-// CHECK-LABEL:  func @test_compare(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>, %arg2: tensor<1xf32>) -> tensor<3xi1> {
-%test_compare (Arg_0.1: f32[3], Arg_1.2: f32[3], Arg_2.3: f32[1]) -> pred[3] {
+// CHECK-LABEL:  func @test_compare(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>, %arg2: tensor<3xf32>) -> tensor<3xi1> {
+%test_compare (Arg_0.1: f32[3], Arg_1.2: f32[3], Arg_2.3: f32[3]) -> pred[3] {
   %Arg_0.1 = f32[3] parameter(0)
   %Arg_1.2 = f32[3] parameter(1)
-  %Arg_2.3 = f32[1] parameter(2)
+  %Arg_2.3 = f32[3] parameter(2)
 
   // CHECK-NEXT:  "xla_hlo.compare"(%arg0, %arg1) {comparison_direction = "EQ", name = "{{.*}}"} : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xi1>
   %compare.4 = pred[3] compare(Arg_0.1, Arg_1.2), direction=EQ
@@ -172,7 +149,7 @@ add {
   %compare.5 = pred[3] compare(Arg_0.1, Arg_1.2), direction=LE
 
   // Requires broadcast of compatible tensors.
-  // CHECK-NEXT:  "xla_hlo.compare"(%arg0, %arg2) {comparison_direction = "GT", name = "{{.*}}"} : (tensor<3xf32>, tensor<1xf32>) -> tensor<3xi1>
+  // CHECK-NEXT:  "xla_hlo.compare"(%arg0, %arg2) {comparison_direction = "GT", name = "{{.*}}"} : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xi1>
   ROOT %compare.6 = pred[3] compare(Arg_0.1, Arg_2.3), direction=GT
 }
 
@@ -212,10 +189,14 @@ add {
   // CHECK: dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xbf16>
   %constant.3 = bf16[4] constant({1, 2, 3, 4})
 
+  // CHECK: dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f32>>
+  %constant.4 = c64[] constant((1, 0))
+
+  // CHECK: dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f64>>
+  %constant.5 = c128[] constant((1, 0))
+
   // CHECK: dense<[1.000000e+00, -4.000000e+00, -6.550400e+04, 1.562500e-02]> : tensor<4xf16>
-  ROOT %constant.4 = f16[4] constant({1, -4, -65504, 0.015625})
-
-
+  ROOT %constant.6 = f16[4] constant({1, -4, -65504, 0.015625})
 }
 
 // TODO(b/129422361) Potentially update when copy, reshape, and conv have actual
@@ -276,19 +257,19 @@ add {
   ROOT %convolution = f32[1,5,1] convolution(f32[1,2,1] %input, f32[1,1,1] %filter), feature_group_count=1, dim_labels=b0f_0io->b0f, window={pad=1_2 size=1}
 }
 
-// CHECK-LABEL:  func @test_convert(%arg0: tensor<4xf32>, %arg1: tensor<f32>) -> tensor<4xf64> {
-%test_convert (Arg_0.1: f32[4], Arg_1.2: f32[]) -> f64[4] {
+// CHECK-LABEL:  func @test_convert(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf64> {
+%test_convert (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f64[4] {
   %Arg_0.1 = f32[4] parameter(0)
-  %Arg_1.2 = f32[] parameter(1)
+  %Arg_1.2 = f32[4] parameter(1)
 
   // CHECK-NEXT:  %0 = "xla_hlo.convert"(%arg0) {name = "{{.*}}"} : (tensor<4xf32>) -> tensor<4xf64>
   %convert.3 = f64[4] convert(f32[4] %Arg_0.1)
 
-  // CHECK-NEXT:  %1 = "xla_hlo.convert"(%arg1) {name = "{{.*}}"} : (tensor<f32>) -> tensor<f64>
-  %convert.4 = f64[] convert(f32[] %Arg_1.2)
+  // CHECK-NEXT:  %1 = "xla_hlo.convert"(%arg1) {name = "{{.*}}"} : (tensor<4xf32>) -> tensor<4xf64>
+  %convert.4 = f64[4] convert(f32[4] %Arg_1.2)
 
-  // CHECK-NEXT:  "xla_hlo.add"(%0, %1)
-  ROOT %add.5 = f64[4] add(f64[4] %convert.3, f64[] %convert.4)
+  // CHECK-NEXT:  xla_hlo.add %0, %1
+  ROOT %add.5 = f64[4] add(f64[4] %convert.3, f64[4] %convert.4)
 }
 
 // CHECK-LABEL:  func @test_cosine(%arg0: tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32> {

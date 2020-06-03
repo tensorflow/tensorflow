@@ -31,7 +31,7 @@ models.
 For a step-by-step tutorial, watch the
 [GPU Delegate for Android](https://youtu.be/Xkhgre8r5G0) video.
 
-Note: This requires OpenGL ES 3.1 or higher.
+Note: This requires OpenCL or OpenGL ES (3.1 or higher).
 
 #### Step 1. Clone the TensorFlow source code and open it in Android Studio
 

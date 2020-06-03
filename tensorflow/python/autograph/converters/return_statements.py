@@ -220,9 +220,9 @@ class ReturnStatementsTransformer(converter.Base):
         retval = val
   """
 
-  def __init__(self, ctx, default_to_null_return):
+  def __init__(self, ctx, allow_missing_return):
     super(ReturnStatementsTransformer, self).__init__(ctx)
-    self.default_to_null_return = default_to_null_return
+    self.allow_missing_return = allow_missing_return
 
   def visit_Return(self, node):
     for block in reversed(self.state[_Block].stack):
@@ -339,75 +339,68 @@ class ReturnStatementsTransformer(converter.Base):
     return node
 
   def visit_FunctionDef(self, node):
-    self.state[_Function].enter()
-    self.state[_Block].enter()
-    self.state[_Block].is_function = True
+    with self.state[_Function] as fn:
+      with self.state[_Block] as block:
+        block.is_function = True
 
-    scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
-    do_return_var_name = self.ctx.namer.new_symbol(
-        'do_return', scope.referenced)
-    retval_var_name = self.ctx.namer.new_symbol('retval_', scope.referenced)
-    self.state[_Function].do_return_var_name = do_return_var_name
-    self.state[_Function].retval_var_name = retval_var_name
+        scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
+        do_return_var_name = self.ctx.namer.new_symbol('do_return',
+                                                       scope.referenced)
+        retval_var_name = self.ctx.namer.new_symbol('retval_', scope.referenced)
+        fn.do_return_var_name = do_return_var_name
+        fn.retval_var_name = retval_var_name
 
-    converted_body = self._visit_statement_block(node, node.body)
+        node.body = self._visit_statement_block(node, node.body)
 
-    # Avoid placing statements before any eventual docstring.
-    # TODO(mdan): Should a docstring even be included in the output?
-    docstring = None
-    if converted_body:
-      if (isinstance(converted_body[0], gast.Expr) and
-          isinstance(converted_body[0].value, gast.Constant)):
-        docstring = converted_body[0]
-        converted_body = converted_body[1:]
+        if block.return_used:
 
-    if self.state[_Block].return_used:
+          if self.allow_missing_return:
+            # The function whould have a single `with` node that wraps the
+            # entire body. If the function had a docstring, the body has two
+            # nodes, with the `with` as the second node.
+            wrapper_node = node.body[-1]
+            assert isinstance(wrapper_node, gast.With), (
+                'This transformer requires the functions converter.')
 
-      if self.default_to_null_return:
-        # TODO(mdan): Remove the (do_return_var_name,) below.
-        # Currently, that line ensures the variable is both defined and alive
-        # throughout the function.
-        template = """
-          do_return_var_name = False
-          retval_var_name = ag__.UndefinedReturnValue()
-          body
-          (do_return_var_name,)
-          return ag__.retval(retval_var_name)
-        """
-      else:
-        template = """
-          body
-          return retval_var_name
-        """
-      node.body = templates.replace(
-          template,
-          body=converted_body,
-          do_return_var_name=do_return_var_name,
-          retval_var_name=retval_var_name)
+            template = """
+              do_return_var_name = False
+              retval_var_name = ag__.UndefinedReturnValue()
+              body
+              return function_context.ret(retval_var_name, do_return_var_name)
+            """
 
-      if docstring:
-        node.body.insert(0, docstring)
+            wrapper_node.body = templates.replace(
+                template,
+                body=wrapper_node.body,
+                do_return_var_name=do_return_var_name,
+                function_context=anno.getanno(node, 'function_context_name'),
+                retval_var_name=retval_var_name)
+          else:
+            template = """
+              body
+              return retval_var_name
+            """
+            node.body = templates.replace(
+                template,
+                body=node.body,
+                do_return_var_name=do_return_var_name,
+                retval_var_name=retval_var_name)
 
-    self.state[_Block].exit()
-    self.state[_Function].exit()
     return node
 
 
 def transform(node, ctx, default_to_null_return=True):
-  """Ensure a function has only a single return."""
-  # Note: Technically, these two could be merged into a single walk, but
-  # keeping them separate helps with readability.
-
+  """Ensure a function has only a single return, at the end."""
   node = qual_names.resolve(node)
   node = activity.resolve(node, ctx, None)
 
+  # Note: Technically, these two could be merged into a single walk, but
+  # keeping them separate helps with readability.
   node = ConditionalReturnRewriter(ctx).visit(node)
 
   node = qual_names.resolve(node)
   node = activity.resolve(node, ctx, None)
-
   transformer = ReturnStatementsTransformer(
-      ctx, default_to_null_return=default_to_null_return)
+      ctx, allow_missing_return=default_to_null_return)
   node = transformer.visit(node)
-
   return node

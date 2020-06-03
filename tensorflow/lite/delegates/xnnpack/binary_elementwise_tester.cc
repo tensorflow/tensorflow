@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include <fp16.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -61,6 +62,9 @@ void BinaryElementwiseTester::Test(tflite::BuiltinOperator binary_op,
                                    TfLiteDelegate* delegate) const {
   if (Input1Static()) {
     ASSERT_FALSE(Input2Static());
+  }
+  if (FP16Weights()) {
+    ASSERT_TRUE(Input1Static() || Input2Static());
   }
 
   std::random_device random_device;
@@ -180,8 +184,12 @@ std::vector<char> BinaryElementwiseTester::CreateTfLiteModel(
   auto input2_rng = std::bind(input2_distribution, std::ref(rng));
 
   flatbuffers::FlatBufferBuilder builder;
-  flatbuffers::Offset<OperatorCode> operator_code =
-      CreateOperatorCode(builder, binary_op);
+  std::vector<flatbuffers::Offset<OperatorCode>> operator_codes{
+      {CreateOperatorCode(builder, binary_op)}};
+  if (FP16Weights()) {
+    operator_codes.emplace_back(
+        CreateOperatorCode(builder, BuiltinOperator_DEQUANTIZE));
+  }
 
   std::vector<flatbuffers::Offset<Buffer>> buffers{{
       CreateBuffer(builder, builder.CreateVector({})),
@@ -189,43 +197,89 @@ std::vector<char> BinaryElementwiseTester::CreateTfLiteModel(
 
   int32_t input1_buffer = 0;
   if (Input1Static()) {
-    std::vector<float> input1_data(ComputeSize(Input1Shape()));
-    std::generate(input1_data.begin(), input1_data.end(), input1_rng);
+    if (FP16Weights()) {
+      std::vector<uint16_t> input1_data(ComputeSize(Input1Shape()));
+      std::generate(input1_data.begin(), input1_data.end(),
+                    std::bind(fp16_ieee_from_fp32_value, input1_rng));
 
-    input1_buffer = buffers.size();
-    buffers.push_back(CreateBuffer(
-        builder, builder.CreateVector(
-                     reinterpret_cast<const uint8_t*>(input1_data.data()),
-                     sizeof(float) * input1_data.size())));
+      buffers.push_back(CreateBuffer(
+          builder, builder.CreateVector(
+                       reinterpret_cast<const uint8_t*>(input1_data.data()),
+                       sizeof(uint16_t) * input1_data.size())));
+    } else {
+      std::vector<float> input1_data(ComputeSize(Input1Shape()));
+      std::generate(input1_data.begin(), input1_data.end(), input1_rng);
+
+      input1_buffer = buffers.size();
+      buffers.push_back(CreateBuffer(
+          builder, builder.CreateVector(
+                       reinterpret_cast<const uint8_t*>(input1_data.data()),
+                       sizeof(float) * input1_data.size())));
+    }
   }
 
   int32_t input2_buffer = 0;
   if (Input2Static()) {
-    std::vector<float> input2_data(ComputeSize(Input2Shape()));
-    std::generate(input2_data.begin(), input2_data.end(), input2_rng);
+    if (FP16Weights()) {
+      std::vector<uint16_t> input2_data(ComputeSize(Input2Shape()));
+      std::generate(input2_data.begin(), input2_data.end(),
+                    std::bind(fp16_ieee_from_fp32_value, input1_rng));
 
-    input2_buffer = buffers.size();
-    buffers.push_back(CreateBuffer(
-        builder, builder.CreateVector(
-                     reinterpret_cast<const uint8_t*>(input2_data.data()),
-                     sizeof(float) * input2_data.size())));
+      buffers.push_back(CreateBuffer(
+          builder, builder.CreateVector(
+                       reinterpret_cast<const uint8_t*>(input2_data.data()),
+                       sizeof(uint16_t) * input2_data.size())));
+    } else {
+      std::vector<float> input2_data(ComputeSize(Input2Shape()));
+      std::generate(input2_data.begin(), input2_data.end(), input2_rng);
+
+      input2_buffer = buffers.size();
+      buffers.push_back(CreateBuffer(
+          builder, builder.CreateVector(
+                       reinterpret_cast<const uint8_t*>(input2_data.data()),
+                       sizeof(float) * input2_data.size())));
+    }
   }
 
   const std::vector<int32_t> output_shape = OutputShape();
-  const std::array<flatbuffers::Offset<Tensor>, 3> tensors{{
-      CreateTensor(builder,
-                   builder.CreateVector<int32_t>(Input1Shape().data(),
-                                                 Input1Shape().size()),
-                   TensorType_FLOAT32, input1_buffer),
-      CreateTensor(builder,
-                   builder.CreateVector<int32_t>(Input2Shape().data(),
-                                                 Input2Shape().size()),
-                   TensorType_FLOAT32, input2_buffer),
-      CreateTensor(builder,
-                   builder.CreateVector<int32_t>(output_shape.data(),
-                                                 output_shape.size()),
-                   TensorType_FLOAT32),
-  }};
+  std::vector<flatbuffers::Offset<Tensor>> tensors;
+  std::vector<flatbuffers::Offset<Operator>> operators;
+  if (FP16Weights() && Input1Static()) {
+    tensors.emplace_back(
+        CreateTensor(builder,
+                     builder.CreateVector<int32_t>(Input1Shape().data(),
+                                                   Input1Shape().size()),
+                     TensorType_FLOAT16, 1));
+  }
+  if (FP16Weights() && Input2Static()) {
+    tensors.emplace_back(
+        CreateTensor(builder,
+                     builder.CreateVector<int32_t>(Input2Shape().data(),
+                                                   Input2Shape().size()),
+                     TensorType_FLOAT16, 1));
+  }
+  if (FP16Weights()) {
+    const std::array<int32_t, 1> dequantize_inputs{{0}};
+    const std::array<int32_t, 1> dequantize_outputs{{Input1Static() ? 1 : 2}};
+    operators.emplace_back(CreateOperator(
+        builder, /*opcode_index=*/1,
+        builder.CreateVector<int32_t>(dequantize_inputs.data(),
+                                      dequantize_inputs.size()),
+        builder.CreateVector<int32_t>(dequantize_outputs.data(),
+                                      dequantize_outputs.size())));
+  }
+  tensors.emplace_back(CreateTensor(
+      builder,
+      builder.CreateVector<int32_t>(Input1Shape().data(), Input1Shape().size()),
+      TensorType_FLOAT32, input1_buffer));
+  tensors.emplace_back(CreateTensor(
+      builder,
+      builder.CreateVector<int32_t>(Input2Shape().data(), Input2Shape().size()),
+      TensorType_FLOAT32, input2_buffer));
+  tensors.emplace_back(CreateTensor(
+      builder,
+      builder.CreateVector<int32_t>(output_shape.data(), output_shape.size()),
+      TensorType_FLOAT32));
 
   tflite::BuiltinOptions builtin_options_type = tflite::BuiltinOptions_NONE;
   flatbuffers::Offset<void> builtin_options = 0;
@@ -250,35 +304,40 @@ std::vector<char> BinaryElementwiseTester::CreateTfLiteModel(
       EXPECT_EQ(Activation(), ActivationFunctionType_NONE);
   }
 
-  const std::array<int32_t, 2> op_inputs{{0, 1}};
-  const std::array<int32_t, 1> op_outputs{{2}};
-  flatbuffers::Offset<Operator> op = CreateOperator(
+  const std::array<int32_t, 2> op_inputs{
+      {static_cast<int>(tensors.size()) - 3,
+       static_cast<int>(tensors.size()) - 2}};
+  const std::array<int32_t, 1> op_outputs{
+      {static_cast<int>(tensors.size()) - 1}};
+  operators.emplace_back(CreateOperator(
       builder, /*opcode_index=*/0,
       builder.CreateVector<int32_t>(op_inputs.data(), op_inputs.size()),
       builder.CreateVector<int32_t>(op_outputs.data(), op_outputs.size()),
-      builtin_options_type, builtin_options);
+      builtin_options_type, builtin_options));
 
   std::vector<int32_t> subgraph_inputs;
   if (!Input1Static()) {
-    subgraph_inputs.push_back(0);
+    subgraph_inputs.push_back(tensors.size() - 3);
   }
   if (!Input2Static()) {
-    subgraph_inputs.push_back(1);
+    subgraph_inputs.push_back(tensors.size() - 2);
   }
-  const std::array<int32_t, 1> subgraph_outputs{{2}};
+  const std::array<int32_t, 1> subgraph_outputs{
+      {static_cast<int>(tensors.size()) - 1}};
   flatbuffers::Offset<SubGraph> subgraph = CreateSubGraph(
       builder, builder.CreateVector(tensors.data(), tensors.size()),
       builder.CreateVector<int32_t>(subgraph_inputs.data(),
                                     subgraph_inputs.size()),
       builder.CreateVector<int32_t>(subgraph_outputs.data(),
                                     subgraph_outputs.size()),
-      builder.CreateVector(&op, 1));
+      builder.CreateVector(operators.data(), operators.size()));
 
   flatbuffers::Offset<flatbuffers::String> description =
       builder.CreateString("Binary operator model");
 
   flatbuffers::Offset<Model> model_buffer = CreateModel(
-      builder, TFLITE_SCHEMA_VERSION, builder.CreateVector(&operator_code, 1),
+      builder, TFLITE_SCHEMA_VERSION,
+      builder.CreateVector(operator_codes.data(), operator_codes.size()),
       builder.CreateVector(&subgraph, 1), description,
       builder.CreateVector(buffers.data(), buffers.size()));
 

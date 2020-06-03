@@ -109,7 +109,7 @@ class _FrequentTracingDetector(object):
             "retracing. Tracing is expensive and the excessive number of "
             "tracings could be due to (1) creating @tf.function repeatedly in "
             "a loop, (2) passing tensors with different shapes, (3) passing "
-            "Python objects instead of tensors. For (1), please  define your "
+            "Python objects instead of tensors. For (1), please define your "
             "@tf.function outside of the loop. For (2), @tf.function has "
             "experimental_relax_shapes=True option that relaxes argument "
             "shapes that can avoid unnecessary retracing. For (3), please "
@@ -308,7 +308,8 @@ RUN_FUNCTIONS_EAGERLY = False
 
 @deprecation.deprecated(
     None,
-    "Use tf.config.run_functions_eagerly instead of the experimental version.")
+    "Use `tf.config.run_functions_eagerly` instead of the experimental "
+    "version.")
 @tf_export("config.experimental_run_functions_eagerly")
 def experimental_run_functions_eagerly(run_eagerly):
   """Enables / disables eager execution of `tf.function`s.

@@ -460,6 +460,38 @@ def skip_if(condition):
   return real_skip_if
 
 
+@contextlib.contextmanager
+def skip_if_error(test_obj, error_type, messages=None):
+  """Context manager to skip cases not considered failures by the tests.
+
+  Note that this does not work if used in setUpClass/tearDownClass.
+  Usage in setUp/tearDown works fine just like regular test methods.
+
+  Args:
+    test_obj: A test object provided as `self` in the test methods; this object
+      is usually an instance of `unittest.TestCase`'s subclass and should have
+      `skipTest` method.
+    error_type: The error type to skip. Note that if `messages` are given, both
+      `error_type` and `messages` need to match for the test to be skipped.
+    messages: Optional, a string or list of strings. If `None`, the test will be
+      skipped if `error_type` matches what is raised; otherwise, the test is
+      skipped if any of the `messages` is contained in the message of the error
+      raised, and `error_type` matches the error raised.
+
+  Yields:
+    Nothing.
+  """
+  if messages:
+    messages = nest.flatten(messages)
+  try:
+    yield
+  except error_type as e:
+    if not messages or any(message in str(e) for message in messages):
+      test_obj.skipTest("Skipping error: {}".format(str(e)))
+    else:
+      raise
+
+
 def enable_c_shapes(fn):
   """No-op. TODO(b/74620627): Remove this."""
   return fn
@@ -2096,7 +2128,9 @@ class TensorFlowTestCase(googletest.TestCase):
               values=tensor.values.numpy(),
               indices=tensor.indices.numpy(),
               dense_shape=tensor.dense_shape.numpy())
-        return tensor.numpy()
+        # Convert tensors and composite tensors to numpy arrays.
+        return nest.map_structure(lambda t: t.numpy(), tensor,
+                                  expand_composites=True)
       except AttributeError as e:
         six.raise_from(ValueError("Unsupported type %s." % type(tensor)), e)
 
@@ -2654,7 +2688,7 @@ class TensorFlowTestCase(googletest.TestCase):
     if (b.ndim <= 3 or b.size < 500):
       self.assertEqual(
           a.shape, b.shape, "Shape mismatch: expected %s, got %s."
-          " Contents: %s. \n%s." % (a.shape, b.shape, b, msg))
+          " Contents: %r. \n%s." % (a.shape, b.shape, b, msg))
     else:
       self.assertEqual(
           a.shape, b.shape, "Shape mismatch: expected %s, got %s."
@@ -2677,10 +2711,28 @@ class TensorFlowTestCase(googletest.TestCase):
       else:
         # np.where is broken for scalars
         x, y = a, b
-      msgs.append("not equal lhs = {}".format(x))
-      msgs.append("not equal rhs = {}".format(y))
-      # With Python 3, we need to make sure the dtype matches between a and b.
-      b = b.astype(a.dtype)
+      msgs.append("not equal lhs = %r" % x)
+      msgs.append("not equal rhs = %r" % y)
+
+      # Handle mixed string types as a result of PY2to3 migration. That is, the
+      # mixing between bytes (b-prefix strings, PY2 default) and unicodes
+      # (u-prefix strings, PY3 default).
+      if six.PY3:
+        if (a.dtype.kind != b.dtype.kind and
+            {a.dtype.kind, b.dtype.kind}.issubset({"U", "S", "O"})):
+          a_list = []
+          b_list = []
+          # OK to flatten `a` and `b` because they are guaranteed to have the
+          # same shape.
+          for out_list, flat_arr in [(a_list, a.flat), (b_list, b.flat)]:
+            for item in flat_arr:
+              if isinstance(item, str):
+                out_list.append(item.encode("utf-8"))
+              else:
+                out_list.append(item)
+          a = np.array(a_list)
+          b = np.array(b_list)
+
       np.testing.assert_array_equal(a, b, err_msg="\n".join(msgs))
 
   @py_func_if_in_function

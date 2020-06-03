@@ -155,6 +155,10 @@ class IrArray {
     llvm::Value* Linearize(absl::Span<const int64> dimensions,
                            llvm::IRBuilder<>* builder) const;
 
+    // Linearizes the index into the given dynamic dimensions.
+    llvm::Value* Linearize(const std::vector<llvm::Value*>& dynamic_dims,
+                           llvm::IRBuilder<>* builder) const;
+
     llvm::Type* GetType() const { return index_type_; }
 
     llvm::Constant* GetConstantWithIndexType(int64 c) const {

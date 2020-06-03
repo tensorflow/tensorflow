@@ -365,8 +365,12 @@ Status GetOrCreateKernelAndDevice(
   Device* device = absl::get<Device*>(op->Device());
 
   Fprint128 cache_key = op->MutableAttrs()->CacheKey(op->DeviceName());
+  /// Include soft placement policy in cache key since the placement strategy
+  // can change and thus affect which kernel is picked.
+  cache_key = FingerprintCat128(cache_key, ctx.AllowSoftPlacement());
 
   std::vector<Device*> input_dev_ptrs;
+  absl::flat_hash_map<string, const std::vector<string>*> composite_devices;
   std::unordered_map<int, DtypeAndPartialTensorShape>
       input_resource_variable_dtypes_and_shapes;
   // We can eliminate some overhead by running simple functions using regular
@@ -410,6 +414,13 @@ Status GetOrCreateKernelAndDevice(
       Device* input_device;
       TF_RETURN_IF_ERROR(GetDeviceForInput(ctx, input, &input_device));
       input_dev_ptrs.push_back(input_device);
+      CompositeDevice* composite_device = nullptr;
+      if (ctx.FindCompositeDeviceFromName(input_device->name().c_str(),
+                                          &composite_device)
+              .ok()) {
+        composite_devices[input_device->name()] =
+            composite_device->underlying_devices();
+      }
       cache_key =
           FingerprintCat128(cache_key, Fingerprint128(input_device->name()));
 
@@ -480,13 +491,6 @@ Status GetOrCreateKernelAndDevice(
                << KernelsRegisteredForOp(op->Name());
       op->SetDevice(device);
     }
-    if (ctx.LogDevicePlacement() || VLOG_IS_ON(1)) {
-      string msg = strings::StrCat("Executing op ", ndef.op(), " in device ",
-                                   DeviceNameOrUnspecified(device));
-      if (!logging::LogToListeners(msg)) {
-        LOG(INFO) << msg;
-      }
-    }
 
     FunctionLibraryRuntime* flr =
         device == nullptr ? nullptr : ctx.func_lib(device);
@@ -520,6 +524,7 @@ Status GetOrCreateKernelAndDevice(
 #endif  // IS_MOBILE_PLATFORM
       kernel.reset(new KernelAndDeviceFunc(
           flr, ctx.pflr(), std::move(input_dev_ptrs),
+          std::move(composite_devices),
           std::move(input_resource_variable_dtypes_and_shapes), runner,
           ctx.GetCollectiveExecutorHandle(), ctx.HostCPU(), op->Name(),
           [&ctx](const int64 step_id) { return ctx.CreateRendezvous(step_id); },
@@ -597,6 +602,14 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
 
   int num_outputs = kernel->num_outputs();
   TF_RETURN_IF_ERROR(ValidateInputTypeAndPlacement(&ctx, op, kernel));
+
+  if (ctx.LogDevicePlacement() || VLOG_IS_ON(1)) {
+    string msg = strings::StrCat("Executing op ", op->Name(), " in device ",
+                                 kernel->device()->name());
+    if (!logging::LogToListeners(msg)) {
+      LOG(INFO) << msg;
+    }
+  }
 
   GraphCollector* graph_collector = nullptr;
   if (ctx.ShouldStoreGraphs()) {
@@ -769,9 +782,15 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
         }
       }
       auto* input_handle = remote_op->add_op_inputs()->mutable_remote_handle();
+      // For a multi-device function, a remote RunComponentFunction request is
+      // not sent through StreamingEnqueueAsync. It could arrive at a remote
+      // worker before a remote execution request which produces an input of the
+      // component function. So we wait until the remote input is ready before
+      // serializing it.
+      const bool wait_until_ready = op->is_function();
       TF_RETURN_IF_ERROR(ctx.RemoteMgr()->SerializeRemoteTensorHandle(
-          input, input_handle, input_device, *input_device_name,
-          serialize_resource_dtype_and_shape));
+          input, wait_until_ready, input_handle, input_device,
+          *input_device_name, serialize_resource_dtype_and_shape));
       if (!input_handle->resource_dtypes_and_shapes().empty()) {
         TF_RETURN_IF_ERROR(
             input->AddResourceShapeMirror(op_device, input_handle->op_id(),
@@ -832,6 +851,16 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
       ctx.GetContextViewId(), eager_client.get(),
       op->MutableAttrs()->BuildNodeDef(), op->EagerContext().FuncLibDef(),
       op->Inputs(), {retvals, num_outputs}));
+
+  if (op->EagerContext().LogDevicePlacement() || VLOG_IS_ON(1)) {
+    string msg = strings::StrCat(
+        "Executing op ", op->Name(), " on task ",
+        DeviceNameUtils::ParsedNameToString(op->GetDeviceParsedName()));
+    if (!logging::LogToListeners(msg)) {
+      LOG(INFO) << msg;
+    }
+  }
+
   Status s = executor.AddOrExecute(std::move(node));
   // Since the operation failed, we need to Unref any outputs that were
   // allocated.
@@ -863,6 +892,19 @@ bool IsPinnableOp(const string& op_type) {
   // devices.
   return unpinnable_ops->find(op_type) == unpinnable_ops->end() &&
          !absl::StartsWith(op_type, "XRT");
+}
+
+// Validate if the remote device with the given incarnation is valid in the
+// remote device manager of the current eager context.
+Status ValidateTensorHandleRemoteDevice(EagerContext* ctx,
+                                        int64 device_incarnation) {
+  if (ctx->remote_device_mgr()->ContainsDevice(device_incarnation)) {
+    return Status::OK();
+  }
+  return errors::InvalidArgument(
+      "Resource input tensor contains an invalid device. This might happen "
+      "when the client has connected to a different cluster, or some remote "
+      "workers have been restarted.");
 }
 
 // The Op device may be updated if:
@@ -926,6 +968,10 @@ Status MaybeUpdateOpDevice(EagerOperation* op) {
   for (int i = 0; i < op->Inputs().size(); ++i) {
     TensorHandle* tensor_handle = op->Inputs()[i];
     if (tensor_handle->dtype == DT_RESOURCE) {
+      if (tensor_handle->resource_remote_device_incarnation() != 0) {
+        TF_RETURN_IF_ERROR(ValidateTensorHandleRemoteDevice(
+            &ctx, tensor_handle->resource_remote_device_incarnation()));
+      }
       Device* resource_device = tensor_handle->resource_device();
       DVLOG(2) << "for op " << op->Name() << " input " << i << " "
                << DataTypeString(tensor_handle->dtype)
@@ -1091,15 +1137,6 @@ Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
       op = out_op.get();
     }
     return EagerLocalExecute(op, retvals, num_retvals);
-  }
-
-  if (op->EagerContext().LogDevicePlacement() || VLOG_IS_ON(1)) {
-    string msg = strings::StrCat(
-        "Executing op ", op->Name(), " on task ",
-        DeviceNameUtils::ParsedNameToString(op->GetDeviceParsedName()));
-    if (!logging::LogToListeners(msg)) {
-      LOG(INFO) << msg;
-    }
   }
 
 #if defined(IS_MOBILE_PLATFORM)
@@ -1402,6 +1439,14 @@ void EagerLocalExecuteAsync(EagerOperation* op, TensorHandle** retvals,
     return;
   }
 
+  if (ctx.LogDevicePlacement() || VLOG_IS_ON(1)) {
+    string msg = strings::StrCat("Executing op ", op->Name(), " in device ",
+                                 kernel->device()->name());
+    if (!logging::LogToListeners(msg)) {
+      LOG(INFO) << msg;
+    }
+  }
+
   GraphCollector* graph_collector = nullptr;
   if (ctx.ShouldStoreGraphs()) {
     graph_collector = ctx.GetGraphCollector();
@@ -1414,7 +1459,7 @@ void EagerLocalExecuteAsync(EagerOperation* op, TensorHandle** retvals,
   EagerKernelExecuteAsync(
       &ctx, op->Inputs(), op->remote_func_params(), std::move(kernel),
       graph_collector, op->GetCancellationManager(), retvals, num_outputs,
-      [op, num_outputs, &retvals, done = std::move(done)](const Status& s) {
+      [op, num_outputs, retvals, done = std::move(done)](const Status& s) {
         op->Clear();
         // Since the operation failed, we need to Unref any outputs if they were
         // allocated.

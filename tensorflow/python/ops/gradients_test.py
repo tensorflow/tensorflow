@@ -59,6 +59,8 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.nn_ops import bias_add
 from tensorflow.python.platform import googletest
+from tensorflow.python.ops import gradient_checker_v2
+from tensorflow.python.util import nest
 
 
 class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
@@ -1038,7 +1040,7 @@ class GetDependentVariablesTest(test_util.TensorFlowTestCase):
       self.assertEqual(dependent_vars, [var])
 
 
-class CustomGradientTest(test_util.TensorFlowTestCase):
+class CustomGradientTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testCustomGradientTrivial(self):
 
@@ -1118,7 +1120,7 @@ class CustomGradientTest(test_util.TensorFlowTestCase):
       out = core_layers.dense(x, 3, use_bias=False)
 
       def Grad(out_grad, variables=None):  # pylint: disable=redefined-outer-name
-        self.assertEqual(1, len(variables))
+        self.assertEqual(1, len(variables))  # pylint: disable=g-generic-assert
         grads = gradients.gradients(out, [x, variables[0]], grad_ys=out_grad)
         return grads[0], [array_ops.ones((4, 3))]
 
@@ -1145,7 +1147,7 @@ class CustomGradientTest(test_util.TensorFlowTestCase):
       out = core_layers.dense(x, 3, use_bias=False)
 
       def Grad(out_grad, variables=None):  # pylint: disable=redefined-outer-name
-        self.assertEqual(1, len(variables))
+        self.assertEqual(1, len(variables))  # pylint: disable=g-generic-assert
         grads = gradients.gradients(out, [x, variables[0]], grad_ys=out_grad)
         return grads[0], [array_ops.ones((3, 3))]
 
@@ -1184,7 +1186,7 @@ class CustomGradientTest(test_util.TensorFlowTestCase):
 
         def Grad(out_grad, variables=None):  # pylint: disable=redefined-outer-name
           del out_grad
-          self.assertEqual(1, len(variables))
+          self.assertEqual(1, len(variables))  # pylint: disable=g-generic-assert
           return (array_ops.ones((3, 2)),
                   [array_ops.ones((2, 4))])
 
@@ -1208,7 +1210,7 @@ class CustomGradientTest(test_util.TensorFlowTestCase):
 
       def Grad(out_grad, variables=None):  # pylint: disable=redefined-outer-name
         del out_grad
-        self.assertEqual(1, len(variables))
+        self.assertEqual(1, len(variables))  # pylint: disable=g-generic-assert
         return (array_ops.ones((3, 2)), [array_ops.ones((2, 4))])
 
       return out, Grad
@@ -1272,7 +1274,7 @@ class CustomGradientTest(test_util.TensorFlowTestCase):
       out = core_layers.dense(x, 3, use_bias=False)
 
       def Grad(out_grad, variables=None):  # pylint: disable=redefined-outer-name
-        self.assertEqual(1, len(variables))
+        self.assertEqual(1, len(variables))  # pylint: disable=g-generic-assert
         grads = gradients.gradients(out, [x, variables[0]], grad_ys=out_grad)
         return grads[0], [array_ops.ones((4, 3))]
 
@@ -1283,7 +1285,7 @@ class CustomGradientTest(test_util.TensorFlowTestCase):
       out = F(x)
 
       def Grad(out_grad, variables=None):  # pylint: disable=redefined-outer-name
-        self.assertEqual(1, len(variables))
+        self.assertEqual(1, len(variables))  # pylint: disable=g-generic-assert
         grads = gradients.gradients(out, [x, variables[0]], grad_ys=out_grad)
         return grads[0], [array_ops.ones((4, 3))]
 
@@ -1301,6 +1303,43 @@ class CustomGradientTest(test_util.TensorFlowTestCase):
         self.evaluate(variables.global_variables_initializer())
         dw = sess.run(math_ops.reduce_sum(grads[1]))
         self.assertEqual(12., dw)
+
+  @parameterized.named_parameters(
+      [(("_%s_%s" % (x_struct, y_struct)).replace(" ", "").replace("None", ""),  # pylint: disable=g-complex-comprehension
+        x_struct, y_struct)
+       for y_struct in [[None, ()], (None, (), [], (None, ((), None)))]
+       for x_struct in [(None, ()), (((), ()), [None, None], [], (None, ()))]
+      ])
+  @test_util.run_in_graph_and_eager_modes
+  def testCustomGradientStructuralInputOutput(self, x_struct, y_struct):
+    """Tests that custom_gradient can handle structured inputs/outputs."""
+    def Zeros(x):
+      return nest.map_structure(lambda _: array_ops.zeros([], "float32"), x)
+    def GetStruct(x):
+      return nest.map_structure(lambda _: None, x)
+
+    def MakeVjp(f, *x):
+      with backprop.GradientTape(persistent=True) as tape:
+        tape.watch(nest.flatten(x))
+        y = f(*x)
+      def Vjp(dy):
+        return tape.gradient(y, x, output_gradients=dy)
+      return y, Vjp
+
+    @custom_gradient.custom_gradient
+    def F(*x):
+      self.assertEqual(x_struct, GetStruct(x))
+      def Vjp(*dy):
+        self.assertEqual(len(nest.flatten(y_struct)),
+                         len(nest.flatten(dy)))
+        return nest.flatten(Zeros(x_struct))
+      return Zeros(y_struct), Vjp
+
+    x, dy = Zeros([x_struct, y_struct])
+    y, vjp = MakeVjp(F, *x)
+    dx = vjp(dy)
+    self.assertEqual(x_struct, GetStruct(dx))
+    self.assertEqual(y_struct, GetStruct(y))
 
 
 class TensorListGradientsTest(test_util.TensorFlowTestCase):
@@ -1340,6 +1379,46 @@ class VariablesGradientTest(test_util.TensorFlowTestCase):
 
     return grads_re, grads
 
+  def _grad(self, f, argnums=0):
+    """Return a function which computes the gradient of `f`."""
+
+    def _f(*params):
+      with backprop.GradientTape() as tape:
+        tape.watch(params)
+        outputs = f(*params)
+      return tape.gradient(
+          outputs,
+          params[argnums],
+          unconnected_gradients=unconnected_gradients.UnconnectedGradients.ZERO)
+
+    return _f
+
+  def _test_gradients(self, f, inputs, order, delta=1e-3, rtol=1e-2, atol=1e-6):
+    """Tests backward jacobians of `f`'s [0, `order`)-order gradients."""
+    if order < 1:
+      raise ValueError(
+          "`order` should be a positive integer, got '{}'.".format(order))
+    if order > 1:
+      self._test_gradients(
+          f=self._grad(f),
+          inputs=inputs,
+          order=order - 1,
+          delta=delta,
+          rtol=rtol,
+          atol=atol)
+    sym_jac_back, num_jac = gradient_checker_v2.compute_gradient(
+        f, inputs, delta=delta)
+    self.assertAllClose(num_jac, sym_jac_back, rtol=rtol, atol=atol)
+
+  @test_util.run_v2_only
+  def testCustomGradientRecomputeGradHigherOrder(self):
+
+    @custom_gradient.recompute_grad
+    def f(x):
+      return math_ops.reduce_prod(math_ops.tanh(x)**2)
+
+    self._test_gradients(f, [constant_op.constant([1.])], order=3)
+
   @test_util.run_in_graph_and_eager_modes
   def testFnRecompute(self):
     """Checks that recompute_grad works grads of function args."""
@@ -1356,8 +1435,8 @@ class VariablesGradientTest(test_util.TensorFlowTestCase):
           shape=10,
           trainable=True,
       )
-
-      test_input = constant(np.zeros((10, 10), dtype=np.float32))
+      self.evaluate(test_var.assign(np.ones([10])))
+      test_input = constant(np.ones((10, 10), dtype=np.float32))
 
       grads_re, grads = self._TestFnVariablesGradient(test_input, TestFn,
                                                       test_input)
@@ -1400,6 +1479,7 @@ class VariablesGradientTest(test_util.TensorFlowTestCase):
             shape=10,
             trainable=True,
         )
+        self.evaluate(test_var.assign(np.ones([10])))
         return input_t * test_var
 
     test_input_t = constant(np.zeros((10, 10), dtype=np.float32))
@@ -1442,6 +1522,8 @@ class VariablesGradientTest(test_util.TensorFlowTestCase):
       out_re = test_fn_re(test_input_t)
       out = TestFn(test_input_t)
 
+    init = variables.global_variables_initializer()
+    self.evaluate(init)
     grads_re = gradients.gradients(out_re, variables.trainable_variables())
     grads = gradients.gradients(out, variables.trainable_variables())
 

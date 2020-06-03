@@ -23,7 +23,7 @@ limitations under the License.
 #define TFJS_DIALECT
 
 include "mlir/IR/OpBase.td"
-include "mlir/Interfaces/SideEffects.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 
 //===----------------------------------------------------------------------===//
 // TensorFlow.js dialect definitions

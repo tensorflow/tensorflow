@@ -2556,6 +2556,20 @@ std::unique_ptr<Array2D<double>> HloEvaluator::MatmulArray2D(
       lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF64);
 }
 
+std::unique_ptr<Array2D<std::complex<float>>> HloEvaluator::MatmulArray2D(
+    const Array2D<std::complex<float>>& lhs,
+    const Array2D<std::complex<float>>& rhs) {
+  return MatmulArray2DImpl<std::complex<float>>(
+      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulC64);
+}
+
+std::unique_ptr<Array2D<std::complex<double>>> HloEvaluator::MatmulArray2D(
+    const Array2D<std::complex<double>>& lhs,
+    const Array2D<std::complex<double>>& rhs) {
+  return MatmulArray2DImpl<std::complex<double>>(
+      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulC128);
+}
+
 std::unique_ptr<Array2D<int32>> HloEvaluator::MatmulArray2D(
     const Array2D<int32>& lhs, const Array2D<int32>& rhs) {
   return MatmulArray2DImpl<int32>(

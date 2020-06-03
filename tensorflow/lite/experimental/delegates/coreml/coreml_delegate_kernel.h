@@ -29,6 +29,8 @@ namespace coreml {
 // implements Init/Prepare/Invoke as TFLite kernel nodes.
 class CoreMlDelegateKernel {
  public:
+  explicit CoreMlDelegateKernel(int coreml_version)
+      : coreml_version_(coreml_version) {}
   // Initialize the delegated graph and add required nodes.
   TfLiteStatus Init(TfLiteContext* context, const TfLiteDelegateParams* params);
 
@@ -56,6 +58,7 @@ class CoreMlDelegateKernel {
   std::unique_ptr<delegates::coreml::GraphBuilder> builder_;
   std::unique_ptr<CoreML::Specification::Model> model_;
   ::CoreMlExecutor* executor_;
+  int coreml_version_;
 
   std::vector<int> input_tensor_ids_;
   std::vector<TensorData> inputs_;
