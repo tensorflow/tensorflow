@@ -827,28 +827,131 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # - configuring the Functional API SavedModel saving spec for deciding what
     #   should be serialized during SavedModel saving
     inputs, args, kwargs = self._split_out_first_arg(args, kwargs)
+    input_list = nest.flatten(inputs)
+
+    # Functional Model construction mode is invoked when `Layer`s are called on
+    # symbolic `KerasTensor`s, i.e.:
+    # >> inputs = tf.keras.Input(10)
+    # >> outputs = MyLayer()(inputs)  # Functional construction mode.
+    # >> model = tf.keras.Model(inputs, outputs)
+    if _in_functional_construction_mode(inputs, args, kwargs, input_list):
+      return self._functional_construction_call(inputs, args, kwargs,
+                                                input_list)
 
     call_context = base_layer_utils.call_context()
     in_call = call_context.in_call
-    input_list = nest.flatten(inputs)
-
-    # We will attempt to build a TF graph if & only if all inputs are symbolic.
-    # This is always the case in graph mode. It can also be the case in eager
-    # mode when all inputs can be traced back to `keras.Input()` (when building
-    # models using the functional API).
-    # TODO(kaftan): make this not special case inputs. Instead
-    # build a functional api model if *any* *arg or **kwarg is symbolic,
-    # even if part of the data structure in that arg is not symbolic.
-    build_graph = tf_utils.are_all_symbolic_tensors(input_list)
 
     # Accept NumPy and scalar inputs by converting to Tensors.
     if any(isinstance(x, (np.ndarray, float, int)) for x in input_list):
+
       def _convert_non_tensor(x):
         # Don't call `ops.convert_to_tensor_v2` on all `inputs` because
         # `SparseTensors` can't be converted to `Tensor`.
         if isinstance(x, (np.ndarray, float, int)):
           return ops.convert_to_tensor_v2(x)
         return x
+
+      inputs = nest.map_structure(_convert_non_tensor, inputs)
+      input_list = nest.flatten(inputs)
+
+    # Handle `mask` propagation from previous layer to current layer. Masks can
+    # be propagated explicitly via the `mask` argument, or implicitly via
+    # setting the `_keras_mask` attribute on the inputs to a Layer. Masks passed
+    # explicitly take priority.
+    input_masks, mask_is_implicit = self._get_input_masks(
+        inputs, input_list, args, kwargs)
+    if self._expects_mask_arg and mask_is_implicit:
+      kwargs['mask'] = input_masks
+
+    # If `training` argument is None or not explicitly passed,
+    # propagate `training` value from this layer's calling layer.
+    training_value = None
+    # Priority 1: `training` was explicitly passed.
+    if self._call_arg_was_passed('training', args, kwargs):
+      training_value = self._get_call_arg_value('training', args, kwargs)
+      if not self._expects_training_arg:
+        kwargs.pop('training')
+
+    if training_value is None:
+      # Priority 2: `training` was passed to a parent layer.
+      if call_context.training is not None:
+        training_value = call_context.training
+      # Priority 3a: `learning_phase()` has been set.
+      elif backend.global_learning_phase_is_set():
+        training_value = backend.learning_phase()
+
+      if self._expects_training_arg and training_value is not None:
+        # Force the training_value to be bool type which matches to the contract
+        # for layer/model call args.
+        if tensor_util.is_tensor(training_value):
+          training_value = math_ops.cast(training_value, dtypes.bool)
+        else:
+          training_value = bool(training_value)
+        args, kwargs = self._set_call_arg_value('training', training_value,
+                                                args, kwargs)
+
+    eager = context.executing_eagerly()
+    with call_context.enter(
+        layer=self,
+        inputs=inputs,
+        build_graph=not eager,
+        training=training_value):
+      # Check input assumptions set after layer building, e.g. input shape.
+      if eager:
+        call_fn = self.call
+        # In Eager mode, `ops.name_scope_v2` does not autoincrement the name.
+        name_scope = self._name
+      else:
+        # TODO(reedwm): We should assert input compatibility after the inputs
+        # are casted, not before.
+        input_spec.assert_input_compatibility(self.input_spec, inputs,
+                                              self.name)
+        # Avoid autoincrementing.
+        name_scope = self._name_scope()
+
+        # Wrapping `call` function in autograph to allow for dynamic control
+        # flow and control dependencies in call. We are limiting this to
+        # subclassed layers as autograph is strictly needed only for
+        # subclassed layers and models.
+        # tf_convert will respect the value of autograph setting in the
+        # enclosing tf.function, if any.
+        if (base_layer_utils.is_subclassed(self) and
+            not base_layer_utils.from_saved_model(self)):
+          call_fn = autograph.tf_convert(self.call, ag_ctx.control_status_ctx())
+        else:
+          call_fn = self.call
+
+      # Losses are cleared for all Layers when the outermost layer is called.
+      # Losses are not cleared each time an inner layer is called, bc inner
+      # Layers can be reused in a Model.
+      if not in_call:
+        self._clear_losses()
+
+      with ops.name_scope_v2(name_scope):
+        self._maybe_build(inputs)
+        cast_inputs = self._maybe_cast_inputs(inputs, input_list)
+        with ops.enable_auto_cast_variables(self._compute_dtype_object):
+          outputs = call_fn(cast_inputs, *args, **kwargs)
+        self._handle_activity_regularization(inputs, outputs)
+        self._set_mask_metadata(inputs, outputs, input_masks, not eager)
+        if self._saved_model_inputs_spec is None:
+          self._set_save_spec(cast_inputs)
+
+    return outputs
+
+  def _functional_construction_call(self, inputs, args, kwargs, input_list):
+    call_context = base_layer_utils.call_context()
+
+    # Accept NumPy and scalar inputs by converting to Tensors.
+    if any(isinstance(x, (np.ndarray, float, int)) for x in input_list):
+
+      def _convert_non_tensor(x):
+        # Don't call `ops.convert_to_tensor_v2` on all `inputs` because
+        # `SparseTensors` can't be converted to `Tensor`.
+        if isinstance(x, (np.ndarray, float, int)):
+          return ops.convert_to_tensor_v2(x)
+        return x
+
       inputs = nest.map_structure(_convert_non_tensor, inputs)
       input_list = nest.flatten(inputs)
 
@@ -888,122 +991,95 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           training_value = math_ops.cast(training_value, dtypes.bool)
         else:
           training_value = bool(training_value)
-        args, kwargs = self._set_call_arg_value(
-            'training', training_value, args, kwargs)
+        args, kwargs = self._set_call_arg_value('training', training_value,
+                                                args, kwargs)
         training_arg_passed_by_framework = True
 
     # Only create Keras history if at least one tensor originates from a
     # `keras.Input`. Otherwise this Layer may be being used outside the Keras
     # framework.
     # TODO(kaftan): make this not special case inputs
-    if build_graph and base_layer_utils.needs_keras_history(inputs):
+    if base_layer_utils.needs_keras_history(inputs):
       base_layer_utils.create_keras_history(inputs)
 
-    with call_context.enter(self, inputs, build_graph, training_value):
-      # Check input assumptions set after layer building, e.g. input shape.
-      if build_graph:
-        # Losses are cleared for all Layers when the outermost layer is called.
-        # Losses are not cleared each time an inner layer is called, bc inner
-        # Layers can be reused in a Model.
-        if not in_call and base_layer_utils.is_in_tf_function():
-          self._clear_losses()
+    with call_context.enter(
+        layer=self, inputs=inputs, build_graph=True, training=training_value):
+      # Symbolic execution on symbolic tensors. We will attempt to build
+      # the corresponding TF subgraph inside `backend.get_graph()`
+      # TODO(reedwm): We should assert input compatibility after the inputs
+      # are casted, not before.
+      input_spec.assert_input_compatibility(self.input_spec, inputs, self.name)
+      graph = backend.get_graph()
+      # Use `self._name_scope()` to avoid auto-incrementing the name.
+      with graph.as_default(), backend.name_scope(self._name_scope()):
+        # Build layer if applicable (if the `build` method has been
+        # overridden).
+        self._maybe_build(inputs)
+        cast_inputs = self._maybe_cast_inputs(inputs, input_list)
 
-        # Symbolic execution on symbolic tensors. We will attempt to build
-        # the corresponding TF subgraph inside `backend.get_graph()`
-        # TODO(reedwm): We should assert input compatibility after the inputs
-        # are casted, not before.
-        input_spec.assert_input_compatibility(self.input_spec, inputs,
-                                              self.name)
-        graph = backend.get_graph()
-        # Use `self._name_scope()` to avoid auto-incrementing the name.
-        with graph.as_default(), backend.name_scope(self._name_scope()):
-          # Build layer if applicable (if the `build` method has been
-          # overridden).
-          self._maybe_build(inputs)
-          cast_inputs = self._maybe_cast_inputs(inputs, input_list)
-
-          if not self.dynamic:
-            # Wrapping `call` function in autograph to allow for dynamic control
-            # flow and control dependencies in call. We are limiting this to
-            # subclassed layers as autograph is strictly needed only for
-            # subclassed layers and models.
-            # tf_convert will respect the value of autograph setting in the
-            # enclosing tf.function, if any.
-            if (base_layer_utils.is_subclassed(self) and
-                not base_layer_utils.from_saved_model(self)):
-              call_fn = autograph.tf_convert(
-                  self.call, ag_ctx.control_status_ctx())
-            else:
-              call_fn = self.call
-
-            try:
-              with ops.enable_auto_cast_variables(self._compute_dtype_object):
-                # Add auto_control_deps in V2 when they are not already added by
-                # a `tf.function`.
-                if (ops.executing_eagerly_outside_functions() and
-                    not base_layer_utils.is_in_eager_or_tf_function()):
-                  with auto_control_deps.AutomaticControlDependencies() as acd:
-                    outputs = call_fn(cast_inputs, *args, **kwargs)
-                    # Wrap Tensors in `outputs` in `tf.identity` to avoid
-                    # circular dependencies.
-                    outputs = base_layer_utils.mark_as_return(outputs, acd)
-                else:
-                  outputs = call_fn(cast_inputs, *args, **kwargs)
-
-            except errors.OperatorNotAllowedInGraphError as e:
-              raise TypeError('You are attempting to use Python control '
-                              'flow in a layer that was not declared to be '
-                              'dynamic. Pass `dynamic=True` to the class '
-                              'constructor.\nEncountered error:\n"""\n' +
-                              str(e) + '\n"""')
+        if not self.dynamic:
+          # Wrapping `call` function in autograph to allow for dynamic control
+          # flow and control dependencies in call. We are limiting this to
+          # subclassed layers as autograph is strictly needed only for
+          # subclassed layers and models.
+          # tf_convert will respect the value of autograph setting in the
+          # enclosing tf.function, if any.
+          if (base_layer_utils.is_subclassed(self) and
+              not base_layer_utils.from_saved_model(self)):
+            call_fn = autograph.tf_convert(self.call,
+                                           ag_ctx.control_status_ctx())
           else:
-            # We will use static shape inference to return symbolic tensors
-            # matching the specifications of the layer outputs.
-            # Since `self.dynamic` is True, we will never attempt to
-            # run the underlying TF graph (which is disconnected).
-            # TODO(fchollet): consider py_func as an alternative, which
-            # would enable us to run the underlying graph if needed.
-            outputs = self._symbolic_call(inputs)
+            call_fn = self.call
 
-          if outputs is None:
-            raise ValueError('A layer\'s `call` method should return a '
-                             'Tensor or a list of Tensors, not None '
-                             '(layer: ' + self.name + ').')
-          # TODO(kaftan): This should be 'any' and check all args
-          if base_layer_utils.have_all_keras_metadata(inputs):
-            if training_arg_passed_by_framework:
-              args, kwargs = self._set_call_arg_value(
-                  'training', None, args, kwargs, pop_kwarg_if_none=True)
-            if mask_arg_passed_by_framework:
-              kwargs.pop('mask')
-            # Node connectivity does not special-case the first argument.
-            outputs = self._set_connectivity_metadata((inputs,) + args, kwargs,
-                                                      outputs)
-          self._handle_activity_regularization(inputs, outputs)
-          self._set_mask_metadata(inputs, outputs, input_masks, build_graph)
-          if hasattr(self, '_set_inputs') and not self.inputs:
-            # Subclassed network: explicitly set metadata normally set by
-            # a call to self._set_inputs().
-            self._set_inputs(cast_inputs, outputs)
-      else:
-        # Eager execution on data tensors.
+          try:
+            with ops.enable_auto_cast_variables(self._compute_dtype_object):
+              # Add auto_control_deps in V2 when they are not already added by
+              # a `tf.function`.
+              if (ops.executing_eagerly_outside_functions() and
+                  not base_layer_utils.is_in_eager_or_tf_function()):
+                with auto_control_deps.AutomaticControlDependencies() as acd:
+                  outputs = call_fn(cast_inputs, *args, **kwargs)
+                  # Wrap Tensors in `outputs` in `tf.identity` to avoid
+                  # circular dependencies.
+                  outputs = base_layer_utils.mark_as_return(outputs, acd)
+              else:
+                outputs = call_fn(cast_inputs, *args, **kwargs)
 
-        # Losses are cleared for all Layers when the outermost layer is called.
-        # Losses are not cleared each time an inner layer is called, bc inner
-        # Layers can be reused in a Model.
-        if not in_call:
-          self._clear_losses()
+          except errors.OperatorNotAllowedInGraphError as e:
+            raise TypeError('You are attempting to use Python control '
+                            'flow in a layer that was not declared to be '
+                            'dynamic. Pass `dynamic=True` to the class '
+                            'constructor.\nEncountered error:\n"""\n' + str(e) +
+                            '\n"""')
+        else:
+          # We will use static shape inference to return symbolic tensors
+          # matching the specifications of the layer outputs.
+          # Since `self.dynamic` is True, we will never attempt to
+          # run the underlying TF graph (which is disconnected).
+          # TODO(fchollet): consider py_func as an alternative, which
+          # would enable us to run the underlying graph if needed.
+          outputs = self._symbolic_call(inputs)
 
-        # In Eager mode, `ops.name_scope_v2` does not autoincrement the name.
-        with ops.name_scope_v2(self.name):
-          self._maybe_build(inputs)
-          cast_inputs = self._maybe_cast_inputs(inputs, input_list)
-          with ops.enable_auto_cast_variables(self._compute_dtype_object):
-            outputs = self.call(cast_inputs, *args, **kwargs)
-          self._handle_activity_regularization(inputs, outputs)
-          self._set_mask_metadata(inputs, outputs, input_masks, build_graph)
-          if self._saved_model_inputs_spec is None:
-            self._set_save_spec(cast_inputs)
+        if outputs is None:
+          raise ValueError('A layer\'s `call` method should return a '
+                           'Tensor or a list of Tensors, not None '
+                           '(layer: ' + self.name + ').')
+        # TODO(kaftan): This should be 'any' and check all args
+        if base_layer_utils.have_all_keras_metadata(inputs):
+          if training_arg_passed_by_framework:
+            args, kwargs = self._set_call_arg_value(
+                'training', None, args, kwargs, pop_kwarg_if_none=True)
+          if mask_arg_passed_by_framework:
+            kwargs.pop('mask')
+          # Node connectivity does not special-case the first argument.
+          outputs = self._set_connectivity_metadata((inputs,) + args, kwargs,
+                                                    outputs)
+        self._handle_activity_regularization(inputs, outputs)
+        self._set_mask_metadata(inputs, outputs, input_masks, True)
+        if hasattr(self, '_set_inputs') and not self.inputs:
+          # Subclassed network: explicitly set metadata normally set by
+          # a call to self._set_inputs().
+          self._set_inputs(cast_inputs, outputs)
 
     return outputs
 
@@ -2999,6 +3075,13 @@ class AddMetric(Layer):
         'metric_name': self.metric_name
     })
     return config
+
+
+def _in_functional_construction_mode(inputs, args, kwargs, input_list):  # pylint: disable=unused-argument
+  if context.executing_eagerly():
+    return all(tf_utils.is_symbolic_tensor(t) for t in input_list)
+  else:
+    return base_layer_utils.is_in_keras_graph()
 
 
 # Avoid breaking users who directly import this symbol from this file.
