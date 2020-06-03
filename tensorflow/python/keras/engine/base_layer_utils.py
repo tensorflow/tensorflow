@@ -39,6 +39,7 @@ from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.training.tracking import base as tracking
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import keras_export
 
 _call_context = threading.local()
@@ -398,11 +399,9 @@ def mark_checked(tensors):
 
 def call_context():
   """Returns currently active `CallContext`."""
-  call_ctx = getattr(_call_context, 'call_context', None)
-  if call_ctx is None:
-    call_ctx = CallContext()
-    _call_context.call_context = call_ctx
-  return call_ctx
+  if getattr(_call_context, 'call_context', None) is None:
+    _call_context.call_context = CallContext()
+  return _call_context.call_context
 
 
 control_flow_util_v2._register_keras_layer_context_function(call_context)  # pylint: disable=protected-access
@@ -412,80 +411,57 @@ class CallContext(object):
   """Keeps track of properties currently inside a Layer/Model's `call`.
 
   Attributes:
-    in_call: Whether currently inside the `call` of a Layer.
     layer: The `Layer` whose `call` is currently active.
     inputs: The inputs to the currently active `Layer`.
-    build_graph: Whether currently inside a Graph or FuncGraph.
-    training: Whether currently executing in training or inference mode.
-    saving: Whether currently saving to SavedModel.
     frozen: Whether currently executing inside a `Layer` with `trainable` set to
       `False`.
+    in_call: Whether currently inside the `call` of a Layer.
+    training: Whether currently executing in training or inference mode.
     in_keras_graph: Whether executing inside the Keras Graph.
+    saving: Whether currently saving to SavedModel.
   """
 
   def __init__(self):
-    # Handle `in_call` separately as it is the most-read attr and reading it is
-    # on the hot path.
+    self.layer = None
+    self.inputs = None
+    self.frozen = False
     self.in_call = False
-    self._state = {
-        'layer': None,
-        'inputs': None,
-        'build_graph': False,
-        'training': None,
-        'saving': None
-    }
-    # TODO(b/150169018): This logic can be replaced after the Functional API
-    # refactor.
+    self.training = None
     self._in_keras_graph = False
+    self.saving = False
 
+  @tf_contextlib.contextmanager
   def enter(self, layer, inputs, build_graph, training, saving=None):
-    """Push a Layer and its inputs and state onto the current call context.
+    """Push a Layer and its inputs and state onto the current call context."""
+    prev_layer = self.layer
+    prev_inputs = self.inputs
+    prev_frozen = self.frozen
+    prev_in_call = self.in_call
+    prev_training = self.training
+    prev_in_keras_graph = self._in_keras_graph
+    prev_saving = self.saving
 
-    Arguments:
-      layer: The `Layer` whose `call` is currently active.
-      inputs: The inputs to the currently active `Layer`.
-      build_graph: Whether currently inside a Graph or FuncGraph.
-      training: Whether currently executing in training or inference mode.
-      saving: Whether currently saving to SavedModel.
+    self.layer = layer
+    self.inputs = inputs
+    self.frozen = self.frozen or not layer.trainable
+    self.in_call = True
+    self.training = training
+    self._in_keras_graph = (
+        self._in_keras_graph or
+        (build_graph and
+         getattr(backend.get_graph(), 'name', None) == 'keras_graph'))
+    self.saving = prev_saving if saving is None else saving
 
-    Returns:
-      Context manager.
-    """
-    state = {
-        'layer': layer,
-        'inputs': inputs,
-        'build_graph': build_graph,
-        'training': training,
-        'saving': saving
-    }
-    return CallContextManager(self, state)
-
-  @property
-  def layer(self):
-    return self._state['layer']
-
-  @property
-  def inputs(self):
-    return self._state['inputs']
-
-  @property
-  def build_graph(self):
-    return self._state['build_graph']
-
-  @property
-  def training(self):
-    return self._state['training']
-
-  @property
-  def saving(self):
-    return self._state['saving']
-
-  @property
-  def frozen(self):
-    layer = self._state['layer']
-    if not layer:
-      return False
-    return not layer.trainable
+    try:
+      yield
+    finally:
+      self.layer = prev_layer
+      self.inputs = prev_inputs
+      self.frozen = prev_frozen
+      self.in_call = prev_in_call
+      self.training = prev_training
+      self._in_keras_graph = prev_in_keras_graph
+      self.saving = prev_saving
 
   @property
   def in_keras_graph(self):
@@ -495,39 +471,6 @@ class CallContext(object):
       return False
     return (self._in_keras_graph or
             getattr(backend.get_graph(), 'name', None) == 'keras_graph')
-
-
-class CallContextManager(object):
-  """Context manager for `CallContext`."""
-
-  def __init__(self, call_ctx, state):
-    self._call_ctx = call_ctx
-    self._state = state
-    self._build_graph = state['build_graph']
-
-  def __enter__(self):
-    call_ctx = self._call_ctx
-    self._prev_in_call = call_ctx.in_call
-    self._prev_state = call_ctx._state
-
-    call_ctx.in_call = True
-    call_ctx._state = self._state
-
-    # TODO(b/150169018): This logic can be removed after the Functional API
-    # refactor.
-    if self._build_graph:
-      self._prev_in_keras_graph = call_ctx._in_keras_graph
-      call_ctx._in_keras_graph = (
-          call_ctx._in_keras_graph or
-          getattr(backend.get_graph(), 'name', None) == 'keras_graph')
-
-  def __exit__(self, *exc_info):
-    call_ctx = self._call_ctx
-    call_ctx.in_call = self._prev_in_call
-    call_ctx._state = self._prev_state
-
-    if self._build_graph:
-      call_ctx._in_keras_graph = self._prev_in_keras_graph
 
 
 def training_arg_passed_to_call(argspec, args, kwargs):
