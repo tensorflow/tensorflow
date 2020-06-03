@@ -41,6 +41,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import embedding_ops
@@ -1022,7 +1023,16 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(expected, self.evaluate(case_out))
 
   @parameterized.parameters((-1,), (1,), (4,), (5,))
-  def testCase_gradient(self, bi):
+  def testCase_gradient_disable_lowering(self, bi):
+    self._testCase_gradient(True, bi)
+
+  @parameterized.parameters((-1,), (1,), (4,), (5,))
+  def testCase_gradient_enable_lowering(self, bi):
+    self._testCase_gradient(False, bi)
+
+  def _testCase_gradient(self, disable_lowering, bi):
+    default_lowering = control_flow_util_v2._DISABLE_LOWER_USING_SWITCH_MERGE
+    control_flow_util_v2._DISABLE_LOWER_USING_SWITCH_MERGE = disable_lowering
     nbranches = 5
     inputs = [
         array_ops.constant(float(bi), name="br{}_in".format(bi))
@@ -1047,6 +1057,8 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(len(expected_grads), len(actual_grads))
     for expected, actual in zip(expected_grads, actual_grads):
       self.assertEqual(expected, self.evaluate(actual))
+    # reset to default value
+    control_flow_util_v2._DISABLE_LOWER_USING_SWITCH_MERGE = default_lowering
 
   @parameterized.parameters((-2,), (2,), (5,))
   def testCase_gradient_diffShapedIntermediates(self, bi):
