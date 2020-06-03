@@ -9,15 +9,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_MICRO_KERNELS_ALL_OPS_RESOLVER_H_
-#define TENSORFLOW_LITE_MICRO_KERNELS_ALL_OPS_RESOLVER_H_
+#ifndef TENSORFLOW_LITE_MICRO_ALL_OPS_RESOLVER_H_
+#define TENSORFLOW_LITE_MICRO_ALL_OPS_RESOLVER_H_
 
 #include "tensorflow/lite/micro/compatibility.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 
 namespace tflite {
-namespace ops {
-namespace micro {
 
 // The magic number in the template parameter is the maximum number of ops that
 // can be added to AllOpsResolver. It can be increased if needed. And most
@@ -32,8 +30,6 @@ class AllOpsResolver : public MicroMutableOpResolver<128> {
   TF_LITE_REMOVE_VIRTUAL_DELETE
 };
 
-}  // namespace micro
-}  // namespace ops
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_MICRO_KERNELS_ALL_OPS_RESOLVER_H_
+#endif  // TENSORFLOW_LITE_MICRO_ALL_OPS_RESOLVER_H_
