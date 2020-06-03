@@ -355,6 +355,7 @@ filegroup(
     srcs = [
         "src/test/java/org/tensorflow/lite/InterpreterTestHelper.java",
         "src/test/java/org/tensorflow/lite/gpu/GpuDelegateTest.java",
+        "src/test/java/org/tensorflow/lite/gpu/WhitelistTest.java",
     ],
     visibility = ["//visibility:public"],
 )
