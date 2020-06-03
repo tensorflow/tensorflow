@@ -123,6 +123,12 @@ class GpuExecutable : public Executable {
   Status CheckCompatibilityWithServiceExecutableRunOptions(
       const ServiceExecutableRunOptions* run_options);
 
+  StatusOr<BufferAllocations> GenerateBufferAllocations(
+      absl::Span<ExecutionInput const> arguments,
+      const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
+      se::DeviceMemoryAllocator* const memory_allocator,
+      se::StreamExecutor* executor);
+
   // The LLVM IR, in string format, of the unoptimized module generated for this
   // GpuExecutable. We save a string instead of an llvm::Module* because leaving
   // llvm::Module* in a singleton can cause the heap checker to emit false

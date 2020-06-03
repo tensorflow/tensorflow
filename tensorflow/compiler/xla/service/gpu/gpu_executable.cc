@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_debug_info_manager.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
@@ -36,6 +37,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -317,6 +320,105 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   return &module_globals_.emplace(executor, std::move(globals)).first->second;
 }
 
+StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
+    absl::Span<ExecutionInput const> arguments,
+    const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
+    se::DeviceMemoryAllocator* const memory_allocator,
+    se::StreamExecutor* executor) {
+  absl::flat_hash_map<BufferAllocation::Index, se::DeviceMemoryBase>
+      registered_buffers;
+  tensorflow::profiler::TraceMe hlo_module_activity(
+      [&] { return std::string("Build buffer allocations"); },
+      tensorflow::profiler::TraceMeLevel::kInfo);
+
+  const int64 num_buffers = assignment_->Allocations().size();
+  std::vector<se::DeviceMemoryBase> buffers(num_buffers);
+  for (BufferAllocation::Index i = 0; i < assignment_->Allocations().size();
+       ++i) {
+    const BufferAllocation& allocation = assignment_->GetAllocation(i);
+    if (allocation.is_entry_computation_parameter()) {
+      auto param_no = allocation.parameter_number();
+      se::DeviceMemoryBase buffer = arguments[param_no]
+                                        .Buffer(allocation.param_shape_index())
+                                        .AsDeviceMemoryBase();
+
+      // All top-level buffers and sub-buffers must have an explicit, non-null
+      // pointer, except for zero-sized buffers, which may be null.
+      if (buffer.is_null() && buffer.size() > 0) {
+        return FailedPrecondition(
+            "Cannot run XLA computation because pointer to (sub-)buffer at "
+            "index %s of parameter %d was null.  All pointers to "
+            "(sub-)buffers must not be null, unless the (sub-)buffer has "
+            "zero elements.",
+            allocation.param_shape_index().ToString(), param_no);
+      }
+
+      InsertOrDie(&registered_buffers, i, buffer);
+    }
+
+    if (allocation.is_constant()) {
+      InsertOrDie(&registered_buffers, i, FindOrDie(*globals, i));
+    }
+  }
+
+  int device_ordinal = executor->device_ordinal();
+  for (BufferAllocation::Index i = 0; i < num_buffers; ++i) {
+    const BufferAllocation& allocation = assignment_->GetAllocation(i);
+    const int64 expected_alignment = [&] {
+      if (allocation.is_entry_computation_parameter()) {
+        return kEntryParameterAlignBytes;
+      } else if (allocation.is_constant()) {
+        return kConstantBufferAlignBytes;
+      } else {
+        return kXlaAllocatedBufferAlignBytes;
+      }
+    }();
+
+    // If buffer #i's address is already registered (e.g. external arguments or
+    // result buffers), use that registered buffer.
+    if (se::DeviceMemoryBase* address =
+            tensorflow::gtl::FindOrNull(registered_buffers, i)) {
+      if (reinterpret_cast<uintptr_t>(address->opaque()) % expected_alignment !=
+          0) {
+        return InternalError(
+            "Address of registered buffer %d must be a multiple of %x, but "
+            "was %p",
+            i, kEntryParameterAlignBytes, address->opaque());
+      }
+      CHECK_LT(i, buffers.size());
+      buffers[i] = *address;
+      continue;
+    }
+
+    // Allocate each allocation that might escape, or is the temp buffer.
+    if (allocation.maybe_live_out() || allocation.IsPreallocatedTempBuffer()) {
+      const int64 buffer_size = allocation.size();
+      se::DeviceMemoryBase buffer_address;
+      if (buffer_size > 0) {
+        TF_ASSIGN_OR_RETURN(
+            se::OwningDeviceMemory buffer,
+            memory_allocator->Allocate(device_ordinal, buffer_size));
+        if (reinterpret_cast<uintptr_t>(buffer->opaque()) %
+                expected_alignment !=
+            0) {
+          return InternalError(
+              "Address returned by memory_allocator->Allocate must be a "
+              "multiple of 0x%x, but was %p",
+              kXlaAllocatedBufferAlignBytes, buffer->opaque());
+        }
+        // We do manual memory management within BufferAllocations.  Be sure not
+        // to do a TF_RETURN_IF_ERROR between this line and the
+        // buffer_allocations.SetBuffer(buffer_address) call below!
+        buffer_address = buffer.Release();
+      }
+
+      CHECK_LT(i, buffers.size());
+      buffers[i] = buffer_address;
+    }
+  }
+  return {{buffers, device_ordinal, memory_allocator}};
+}
+
 StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     std::vector<ExecutionInput> arguments,
@@ -332,7 +434,6 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
     return Unimplemented("Points-to set of root instruction is ambiguous");
   }
 
-  BufferAllocations::Builder buffer_allocations_builder;
   const GpuExecutable::BufferAllocToDeviceMemoryMap* globals;
   {
     tensorflow::profiler::TraceMe hlo_module_activity(
@@ -343,54 +444,15 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
   }
 
   se::StreamExecutor* executor = run_options->stream()->parent();
-
-  std::unique_ptr<BufferAllocations> buffer_allocations;
-
-  {
-    tensorflow::profiler::TraceMe hlo_module_activity(
-        [&] { return std::string("Build buffer allocations"); },
-        tensorflow::profiler::TraceMeLevel::kInfo);
-
-    for (BufferAllocation::Index i = 0; i < assignment_->Allocations().size();
-         ++i) {
-      const BufferAllocation& allocation = assignment_->GetAllocation(i);
-      if (allocation.is_entry_computation_parameter()) {
-        auto param_no = allocation.parameter_number();
-        se::DeviceMemoryBase buffer =
-            arguments[param_no]
-                .Buffer(allocation.param_shape_index())
-                .AsDeviceMemoryBase();
-
-        // All top-level buffers and sub-buffers must have an explicit, non-null
-        // pointer, except for zero-sized buffers, which may be null.
-        if (buffer.is_null() && buffer.size() > 0) {
-          return FailedPrecondition(
-              "Cannot run XLA computation because pointer to (sub-)buffer at "
-              "index %s of parameter %d was null.  All pointers to "
-              "(sub-)buffers must not be null, unless the (sub-)buffer has "
-              "zero elements.",
-              allocation.param_shape_index().ToString(), param_no);
-        }
-
-        buffer_allocations_builder.RegisterBuffer(i, buffer);
-      }
-
-      if (allocation.is_constant()) {
-        buffer_allocations_builder.RegisterBuffer(i, FindOrDie(*globals, i));
-      }
-    }
-
-    TF_ASSIGN_OR_RETURN(
-        buffer_allocations,
-        buffer_allocations_builder.Build(
-            assignment_.get(), executor->device_ordinal(), memory_allocator));
-  }
+  TF_ASSIGN_OR_RETURN(BufferAllocations buffer_allocations,
+                      GenerateBufferAllocations(arguments, globals,
+                                                memory_allocator, executor));
 
   for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
     TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
   }
-
-  TF_RETURN_IF_ERROR(ExecuteThunks(run_options, *buffer_allocations,
+  VLOG(2) << buffer_allocations.ToString();
+  TF_RETURN_IF_ERROR(ExecuteThunks(run_options, buffer_allocations,
                                    block_host_until_done,
                                    hlo_execution_profile));
 
@@ -403,8 +465,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
   // the respective location in ShapedBuffer.
   std::set<se::DeviceMemoryBase> buffers_in_result;
   TF_RETURN_IF_ERROR(shaped_buffer.buffers().ForEachMutableElementWithStatus(
-      [&buffer_allocations, &buffers_in_result, this](
-          const ShapeIndex& index, se::DeviceMemoryBase* device_memory) {
+      [&](const ShapeIndex& index, se::DeviceMemoryBase* device_memory) {
         const auto& sources = this->GetRootValueSet().element(index);
         // The points-to set is unambiguous so the set should be a
         // singleton. That is, we know exactly which instruction
@@ -421,7 +482,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
                                 src_hlo, sources.values()[0]->index()));
 
         se::DeviceMemoryBase src_base =
-            buffer_allocations->GetDeviceAddress(slice.index());
+            buffer_allocations.GetDeviceAddress(slice.index());
         CHECK(!src_base.is_null() || src_base.size() == 0);
         if (!slice.allocation()->is_entry_computation_parameter()) {
           // If the buffer coming out of the result is from a parameter, it
@@ -450,7 +511,8 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
         buffers_in_result.insert(src_base);
         return Status::OK();
       }));
-  TF_RETURN_IF_ERROR(buffer_allocations->TearDown(buffers_in_result));
+  TF_RETURN_IF_ERROR(
+      buffer_allocations.TearDown(buffers_in_result, assignment_.get()));
 
   std::vector<se::OwningDeviceMemory> buffers_to_free;
   for (auto& argument : arguments) {
