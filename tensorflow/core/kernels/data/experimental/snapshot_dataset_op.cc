@@ -536,16 +536,8 @@ Status SnapshotDatasetV2Op::Dataset::Iterator::GetNextInternal(
   if (iterator_ == nullptr) {
     TF_RETURN_IF_ERROR(InitializeIterator(ctx, nullptr));
   }
-  // TODO(b/154341936): Explicitly stopping and starting this iterator
-  // should not be necessary, but the additional
-  // `{Reader,Writer,Passthrough}::kIteratorName` added to the prefix passed to
-  // `iterator_` when it was created prevents the model from identifying this
-  // iterator as the output of `iterator_`.
-  RecordStop(ctx);
-  Status s = iterator_->GetNext(ctx, out_tensors, end_of_sequence);
   index_++;
-  RecordStart(ctx);
-  return s;
+  return iterator_->GetNext(ctx, out_tensors, end_of_sequence);
 }
 
 Status SnapshotDatasetV2Op::Dataset::Iterator::InitializeIterator(
@@ -611,6 +603,7 @@ Status SnapshotDatasetV2Op::Dataset::Iterator::InitializeIterator(
           dataset(), absl::StrCat(prefix(), Passthrough::kIteratorName)});
       break;
   }
+  TF_RETURN_IF_ERROR(iterator_->InitializeBase(ctx, this));
   return iterator_->Initialize(ctx);
 }
 
@@ -1352,6 +1345,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                     dataset(), absl::StrCat(prefix(), "PassthroughImpl")});
             break;
         }
+        TF_RETURN_IF_ERROR(iterator_->InitializeBase(ctx, this));
         return iterator_->Initialize(ctx);
       }
 

@@ -1089,22 +1089,18 @@ Node::NodeVector Node::CollectNodes(TraversalOrder order) const
   NodeVector node_vector;
   std::list<std::shared_ptr<Node>> temp_list;
 
-  {
-    for (auto& input : inputs_) {
-      node_vector.push_back(input);
-      temp_list.push_back(input);
-    }
+  for (auto& input : inputs_) {
+    node_vector.push_back(input);
+    temp_list.push_back(input);
   }
 
   while (!temp_list.empty()) {
     auto cur_node = temp_list.front();
     temp_list.pop_front();
-    {
-      tf_shared_lock l(cur_node->mu_);
-      for (auto& input : cur_node->inputs_) {
-        node_vector.push_back(input);
-        temp_list.push_back(input);
-      }
+    tf_shared_lock l(cur_node->mu_);
+    for (auto& input : cur_node->inputs_) {
+      node_vector.push_back(input);
+      temp_list.push_back(input);
     }
   }
 
@@ -1222,46 +1218,41 @@ void Node::TotalMaximumBufferedBytesHelper(
 }
 
 void Model::AddNode(Node::Factory factory, const string& name,
-                    const string& output_name,
+                    std::shared_ptr<Node> parent,
                     std::shared_ptr<Node>* out_node) {
-  // The name captures the sequence of iterators joined by `::`. We use the full
-  // sequence as the key in the lookup table, but only the last element of the
-  // sequence as the name node.
-  std::vector<string> tokens =
-      str_util::Split(name, ':', str_util::SkipEmpty());
-  // The output name might contain an index. We need to strip it to make it
-  // possible for the model to successfully identify the output node.
-  string sanitized_output_name = output_name;
-  if (str_util::EndsWith(output_name, "]")) {
-    sanitized_output_name = output_name.substr(0, output_name.rfind('['));
-  }
-  std::shared_ptr<Node> output;
+  // The name captures the sequence of iterators joined by `::`. We only use the
+  // last element of the sequence as the name node.
+  auto node_name = str_util::Split(name, ':', str_util::SkipEmpty()).back();
   mutex_lock l(mu_);
-  auto it = lookup_table_.find(sanitized_output_name);
-  if (it != lookup_table_.end()) {
-    output = it->second;
-  }
-  std::shared_ptr<Node> node = factory({id_counter_++, tokens.back(), output});
+  std::shared_ptr<Node> node = factory({id_counter_++, node_name, parent});
   if (!output_) {
     output_ = node;
   }
-  if (output) {
+  if (parent) {
     VLOG(3) << "Adding " << node->long_name() << " as input for "
-            << output->long_name();
-    output->add_input(node);
+            << parent->long_name();
+    parent->add_input(node);
   } else {
     VLOG(3) << "Adding " << node->long_name();
   }
   collect_resource_usage_ =
       collect_resource_usage_ || node->has_tunable_parameters();
-  lookup_table_.insert(std::make_pair(name, node));
-  *out_node = node;
+  *out_node = std::move(node);
 }
 
 void Model::FlushMetrics() {
-  tf_shared_lock l(mu_);
-  for (const auto& pair : lookup_table_) {
-    pair.second->FlushMetrics();
+  std::deque<std::shared_ptr<Node>> queue;
+  {
+    tf_shared_lock l(mu_);
+    if (output_) queue.push_back(output_);
+  }
+  while (!queue.empty()) {
+    auto node = queue.front();
+    queue.pop_front();
+    node->FlushMetrics();
+    for (auto input : node->inputs()) {
+      queue.push_back(input);
+    }
   }
 }
 
@@ -1277,16 +1268,14 @@ void Model::Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget,
   }
 }
 
-void Model::RemoveNode(const string& name) {
+void Model::RemoveNode(std::shared_ptr<Node> node) {
   mutex_lock l(mu_);
-  auto node = gtl::FindOrNull(lookup_table_, name);
   if (node) {
-    if ((*node)->output()) {
-      (*node)->output()->remove_input(*node);
+    if (node->output()) {
+      node->output()->remove_input(node);
     }
-    VLOG(3) << "Removing " << (*node)->long_name();
+    VLOG(3) << "Removing " << node->long_name();
   }
-  lookup_table_.erase(name);
 }
 
 absl::flat_hash_map<string, std::shared_ptr<Parameter>>
