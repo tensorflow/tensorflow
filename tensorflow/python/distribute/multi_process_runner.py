@@ -422,32 +422,28 @@ class MultiProcessRunner(object):
       timeout = float('inf')
     start_time = time.time()
     while self._outstanding_subprocess_count > 0:
-      while True:
-        try:
-          process_status = _resource(PROCESS_STATUS_QUEUE).get(timeout=10)
+      try:
+        process_status = _resource(PROCESS_STATUS_QUEUE).get(timeout=10)
+
+        self._outstanding_subprocess_count -= 1
+        assert isinstance(process_status, _ProcessStatusInfo)
+        if not process_status.is_successful:
+          six.reraise(*process_status.exc_info)
+
+        if self._dependence_on_chief and process_status.task_type == 'chief':
+          self.terminate_all()
           break
-        except Queue.Empty:
-          if self._all_forced_terminated:
-            break
-          if time.time() - start_time > timeout:
-            # Send SIGTERM signal to subprocesses to dump their current
-            # stack trace.
-            self.terminate_all(sig=signal.SIGTERM)
-            # If none of those did, report timeout to user.
-            raise RuntimeError('One or more subprocesses timed out. '
-                               'Number of outstanding subprocesses '
-                               'is %d.' % self._outstanding_subprocess_count)
-
-      if self._all_forced_terminated:
-        break
-      self._outstanding_subprocess_count -= 1
-      assert isinstance(process_status, _ProcessStatusInfo)
-      if not process_status.is_successful:
-        six.reraise(*process_status.exc_info)
-
-      if self._dependence_on_chief and process_status.task_type == 'chief':
-        self.terminate_all()
-        break
+      except Queue.Empty:
+        if self._all_forced_terminated:
+          break
+        if time.time() - start_time > timeout:
+          # Send SIGTERM signal to subprocesses to dump their current
+          # stack trace.
+          self.terminate_all(sig=signal.SIGTERM)
+          # If none of those did, report timeout to user.
+          raise RuntimeError('One or more subprocesses timed out. '
+                             'Number of outstanding subprocesses '
+                             'is %d.' % self._outstanding_subprocess_count)
 
     # Giving threads some time to finish the message reading from subprocesses.
     time.sleep(5)
