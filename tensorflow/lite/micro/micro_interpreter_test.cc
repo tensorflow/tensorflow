@@ -174,8 +174,13 @@ class MockOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddBuiltin(tflite::BuiltinOperator op,
-                          TfLiteRegistration* registration,
-                          int version) override {
+                          TfLiteRegistration* registration) override {
+    // This function is currently not used in the tests.
+    return kTfLiteError;
+  }
+
+  TfLiteStatus AddCustom(const char* name,
+                         TfLiteRegistration* registration) override {
     // This function is currently not used in the tests.
     return kTfLiteError;
   }

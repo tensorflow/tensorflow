@@ -77,25 +77,21 @@ void setup() {
   static tflite::MicroMutableOpResolver<4> micro_op_resolver(error_reporter);
   if (micro_op_resolver.AddBuiltin(
           tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
-          tflite::ops::micro::Register_DEPTHWISE_CONV_2D(),
-          tflite::MicroOpResolverAnyVersion()) != kTfLiteOk) {
+          tflite::ops::micro::Register_DEPTHWISE_CONV_2D()) != kTfLiteOk) {
     return;
   }
   if (micro_op_resolver.AddBuiltin(
           tflite::BuiltinOperator_FULLY_CONNECTED,
-          tflite::ops::micro::Register_FULLY_CONNECTED(),
-          tflite::MicroOpResolverAnyVersion()) != kTfLiteOk) {
+          tflite::ops::micro::Register_FULLY_CONNECTED()) != kTfLiteOk) {
     return;
   }
   if (micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
-                                   tflite::ops::micro::Register_SOFTMAX(),
-                                   tflite::MicroOpResolverAnyVersion()) !=
+                                   tflite::ops::micro::Register_SOFTMAX()) !=
       kTfLiteOk) {
     return;
   }
   if (micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_RESHAPE,
-                                   tflite::ops::micro::Register_RESHAPE(),
-                                   tflite::MicroOpResolverAnyVersion()) !=
+                                   tflite::ops::micro::Register_RESHAPE()) !=
       kTfLiteOk) {
     return;
   }

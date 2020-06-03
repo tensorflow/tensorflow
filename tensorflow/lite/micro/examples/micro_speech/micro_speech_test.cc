@@ -49,18 +49,15 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   //
   // tflite::AllOpsResolver resolver;
   tflite::MicroMutableOpResolver<4> micro_op_resolver;
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
-                               tflite::ops::micro::Register_DEPTHWISE_CONV_2D(),
-                               tflite::MicroOpResolverAnyVersion());
+  micro_op_resolver.AddBuiltin(
+      tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
+      tflite::ops::micro::Register_DEPTHWISE_CONV_2D());
   micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_FULLY_CONNECTED,
-                               tflite::ops::micro::Register_FULLY_CONNECTED(),
-                               tflite::MicroOpResolverAnyVersion());
+                               tflite::ops::micro::Register_FULLY_CONNECTED());
   micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
-                               tflite::ops::micro::Register_SOFTMAX(),
-                               tflite::MicroOpResolverAnyVersion());
+                               tflite::ops::micro::Register_SOFTMAX());
   micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_RESHAPE,
-                               tflite::ops::micro::Register_RESHAPE(),
-                               tflite::MicroOpResolverAnyVersion());
+                               tflite::ops::micro::Register_RESHAPE());
 
   // Create an area of memory to use for input, output, and intermediate arrays.
   const int tensor_arena_size = 10 * 1024;
