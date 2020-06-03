@@ -198,16 +198,6 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
   auto op_type = OperationTypeFromString(node->operation.type);
   switch (op_type) {
     case OperationType::ADD: {
-      const AddAttributes& attr =
-          absl::any_cast<AddAttributes>(node->operation.attributes);
-      const auto* hwc_tensor =
-          absl::get_if<tflite::gpu::Tensor<HWC, DataType::FLOAT32>>(
-              &attr.param);
-      if (hwc_tensor) {
-        return absl::UnimplementedError(
-            "Unsupported op: " + node->operation.type +
-            ", no support of HWC constant tensor");
-      }
       const auto srcs = graph.FindInputs(node_id);
       ElementwiseBroadcastSettings broadcast;
       broadcast.width = IsWidthBroadcastedForSecondInput(srcs);
@@ -217,6 +207,16 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
         *tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0], op_type,
                                           broadcast);
       } else {
+        const AddAttributes& attr =
+            absl::any_cast<AddAttributes>(node->operation.attributes);
+        const auto* hwc_tensor =
+            absl::get_if<tflite::gpu::Tensor<HWC, DataType::FLOAT32>>(
+                &attr.param);
+        if (hwc_tensor) {
+          return absl::UnimplementedError(
+              "Unsupported op: " + node->operation.type +
+              ", no support of HWC constant tensor");
+        }
         *tasks = Add(node_id, inputs, outputs[0], attr, options);
       }
       break;
