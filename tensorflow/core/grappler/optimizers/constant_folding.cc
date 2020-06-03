@@ -2032,6 +2032,8 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
   SET_AND_RETURN_IF_MODIFIED(
       ConstantPushDownBiasAdd(properties, optimized_graph, node));
   SET_AND_RETURN_IF_MODIFIED(SimplifyCase(optimized_graph, node));
+  SET_AND_RETURN_IF_MODIFIED(
+      SimplifySelect(*properties, optimized_graph, node));
 
   graph_modified_ = graph_modified_cached;
   return Status::OK();
@@ -2402,6 +2404,40 @@ bool ConstantFolding::SimplifyCase(GraphDef* optimized_graph, NodeDef* node) {
   call_node.mutable_attr()->erase("branches");
   call_node.mutable_attr()->erase("output_shapes");
   *node = std::move(call_node);
+  return true;
+}
+
+bool ConstantFolding::SimplifySelect(const GraphProperties& properties,
+                                     GraphDef* optimized_graph, NodeDef* node) {
+  if (!IsSelect(*node)) return false;
+  // Replace node with Identity if no broadcasting is involved.
+  // TODO(b/155503011): Add support for broadcast.
+  const std::vector<OpInfo::TensorProperties>& input_props =
+      properties.GetInputProperties(node->name());
+  if (input_props.size() < 3) return false;
+  const TensorShapeProto& predicate_shape = input_props[0].shape();
+  const bool predicate_is_scalar =
+      !predicate_shape.unknown_rank() && predicate_shape.dim_size() == 0;
+  if (!ShapesSymbolicallyEqual(input_props[1], input_props[2]) ||
+      !(ShapesSymbolicallyEqual(input_props[0], input_props[1]) ||
+        predicate_is_scalar)) {
+    return false;
+  }
+  const NodeDef* predicate_node = node_map_->GetNode(node->input(0));
+  const bool is_all_true = IsOnes(*predicate_node);
+  const bool is_all_false = IsZeros(*predicate_node);
+  if (!is_all_true && !is_all_false) {
+    return false;
+  }
+  const int live_input_idx = is_all_true ? 1 : 2;
+  const int ignored_input_idx = is_all_true ? 2 : 1;
+  node->set_op("Identity");
+  *node->mutable_input(0) =
+      AddControlDependency(node->input(0), optimized_graph, node_map_.get());
+  *node->mutable_input(ignored_input_idx) = AddControlDependency(
+      node->input(ignored_input_idx), optimized_graph, node_map_.get());
+  node->mutable_input()->SwapElements(0, live_input_idx);
+  DedupControlInputs(node);
   return true;
 }
 
@@ -3771,6 +3807,7 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
                                         /*include_output_tensor_values=*/true);
 
   const bool can_use_shape_info = s.ok();
+  VLOG(1) << "can_use_shape_info = " << can_use_shape_info;
 
   absl::flat_hash_set<string> nodes_to_not_simplify;
   if (can_use_shape_info) {
