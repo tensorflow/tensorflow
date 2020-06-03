@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -76,13 +76,14 @@ void AverageEvalFloat(const TfLiteContext* context, const TfLiteNode* node,
       GetTensorShape(output), GetTensorData<float>(output));
 }
 
-void AverageEvalUint8(TfLiteContext* context, const TfLiteNode* node,
-                      const TfLitePoolParams* params, const OpData* data,
-                      const TfLiteTensor* input, TfLiteTensor* output) {
+void AverageEvalQuantized(TfLiteContext* context, const TfLiteNode* node,
+                          const TfLitePoolParams* params, const OpData* data,
+                          const TfLiteTensor* input, TfLiteTensor* output) {
+  TFLITE_DCHECK(input->type == kTfLiteUInt8 || input->type == kTfLiteInt8);
+
   int32_t activation_min, activation_max;
   (void)CalculateActivationRangeQuantized(context, params->activation, output,
                                           &activation_min, &activation_max);
-
   PoolParams op_params;
   op_params.stride_height = params->stride_height;
   op_params.stride_width = params->stride_width;
@@ -92,76 +93,62 @@ void AverageEvalUint8(TfLiteContext* context, const TfLiteNode* node,
   op_params.padding_values.width = data->padding.width;
   op_params.quantized_activation_min = activation_min;
   op_params.quantized_activation_max = activation_max;
-  reference_ops::AveragePool(
-      op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
-      GetTensorShape(output), GetTensorData<uint8_t>(output));
-}
 
-TfLiteStatus AverageEvalInt8(TfLiteContext* context, const TfLiteNode* node,
-                             const TfLitePoolParams* params, const OpData* data,
-                             TfLiteTensor* input, TfLiteTensor* output) {
-  int32_t activation_min, activation_max;
-  (void)CalculateActivationRangeQuantized(context, params->activation, output,
-                                          &activation_min, &activation_max);
+  if (input->type == kTfLiteUInt8) {
+    reference_ops::AveragePool(
+        op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+        GetTensorShape(output), GetTensorData<uint8_t>(output));
+  } else {
+    TFLITE_DCHECK_LE(activation_min, activation_max);
 
-  TFLITE_DCHECK_LE(activation_min, activation_max);
+    RuntimeShape input_shape = GetTensorShape(input);
+    TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
 
-#if defined(__ARM_FEATURE_DSP) || defined(__ARM_FEATURE_MVE)
-  RuntimeShape input_shape = GetTensorShape(input);
-  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+    RuntimeShape output_shape = GetTensorShape(output);
+    TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
 
-  RuntimeShape output_shape = GetTensorShape(output);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+    const int depth = MatchingDim(input_shape, 3, output_shape, 3);
 
-  const int depth = MatchingDim(input_shape, 3, output_shape, 3);
-  const int input_height = input_shape.Dims(1);
-  const int input_width = input_shape.Dims(2);
-  const int output_height = output_shape.Dims(1);
-  const int output_width = output_shape.Dims(2);
-  const int stride_height = params->stride_height;
-  const int stride_width = params->stride_width;
+    cmsis_nn_dims input_dims;
+    input_dims.n = 1;
+    input_dims.h = input_shape.Dims(1);
+    input_dims.w = input_shape.Dims(2);
+    input_dims.c = depth;
 
-  const int filter_height = params->filter_height;
-  const int filter_width = params->filter_width;
-  const int padding_height = data->padding.height;
-  const int padding_width = data->padding.width;
+    cmsis_nn_dims output_dims;
+    output_dims.n = 1;
+    output_dims.h = output_shape.Dims(1);
+    output_dims.w = output_shape.Dims(2);
+    output_dims.c = depth;
 
-  int16_t* scratch_buffer = nullptr;
+    cmsis_nn_pool_params pool_params;
+    pool_params.stride.h = params->stride_height;
+    pool_params.stride.w = params->stride_width;
+    pool_params.padding.h = data->padding.height;
+    pool_params.padding.w = data->padding.width;
+    pool_params.activation.min = activation_min;
+    pool_params.activation.max = activation_max;
 
-  auto* buffer_idx = reinterpret_cast<int*>(node->user_data);
+    cmsis_nn_dims filter_dims;
+    filter_dims.n = 1;
+    filter_dims.h = params->filter_height;
+    filter_dims.w = params->filter_width;
+    filter_dims.c = 1;
 
-  if (*buffer_idx > -1) {
-    void* raw = context->GetScratchBuffer(context, *buffer_idx);
-    scratch_buffer = reinterpret_cast<int16_t*>(raw);
+    auto* buffer_idx = reinterpret_cast<int*>(node->user_data);
+    cmsis_nn_context ctx;
+    ctx.buf = nullptr;
+    ctx.size = 0;
+    if (*buffer_idx > -1) {
+      ctx.buf = context->GetScratchBuffer(context, *buffer_idx);
+    }
+
+    TFLITE_DCHECK_EQ(
+        arm_avgpool_s8(&ctx, &pool_params, &input_dims,
+                       GetTensorData<int8_t>(input), &filter_dims, &output_dims,
+                       GetTensorData<int8_t>(output)),
+        ARM_MATH_SUCCESS);
   }
-
-  TF_LITE_ENSURE_EQ(
-      context,
-      arm_avgpool_s8(input_height, input_width, output_height, output_width,
-                     stride_height, stride_width, filter_height, filter_width,
-                     padding_height, padding_width, activation_min,
-                     activation_max, depth, GetTensorData<int8_t>(input),
-                     scratch_buffer, GetTensorData<int8_t>(output)),
-      ARM_MATH_SUCCESS);
-#else
-#pragma message( \
-    "CMSIS-NN optimization for avg_pool not available for this target. Using reference kernel.")
-
-  PoolParams op_params;
-  op_params.stride_height = params->stride_height;
-  op_params.stride_width = params->stride_width;
-  op_params.filter_height = params->filter_height;
-  op_params.filter_width = params->filter_width;
-  op_params.padding_values.height = data->padding.height;
-  op_params.padding_values.width = data->padding.width;
-  op_params.quantized_activation_min = activation_min;
-  op_params.quantized_activation_max = activation_max;
-  reference_integer_ops::AveragePool(
-      op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
-      GetTensorShape(output), GetTensorData<int8_t>(output));
-
-#endif
-  return kTfLiteOk;
 }
 
 void MaxEvalFloat(TfLiteContext* context, TfLiteNode* node,
@@ -215,7 +202,6 @@ TfLiteStatus MaxEvalInt8(TfLiteContext* context, const TfLiteNode* node,
 
   TFLITE_DCHECK_LE(activation_min, activation_max);
 
-#if defined(__ARM_FEATURE_DSP)
   RuntimeShape input_shape = GetTensorShape(input);
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
 
@@ -245,32 +231,14 @@ TfLiteStatus MaxEvalInt8(TfLiteContext* context, const TfLiteNode* node,
   }
 
   TF_LITE_ENSURE_EQ(
-      context,
-      arm_max_pool_s8_opt(input_height, input_width, output_height,
-                          output_width, stride_height, stride_width,
-                          filter_height, filter_width, padding_height,
-                          padding_width, activation_min, activation_max, depth,
-                          GetTensorData<int8_t>(input), scratch_buffer,
-                          GetTensorData<int8_t>(output)),
+      context, arm_max_pool_s8_opt(
+                   input_height, input_width, output_height, output_width,
+                   stride_height, stride_width, filter_height, filter_width,
+                   padding_height, padding_width, activation_min,
+                   activation_max, depth, GetTensorData<int8_t>(input),
+                   scratch_buffer, GetTensorData<int8_t>(output)),
       ARM_MATH_SUCCESS);
-#else
-#pragma message( \
-    "CMSIS-NN optimization for max_pool not available for this target. Using reference kernel.")
 
-  PoolParams op_params;
-  op_params.stride_height = params->stride_height;
-  op_params.stride_width = params->stride_width;
-  op_params.filter_height = params->filter_height;
-  op_params.filter_width = params->filter_width;
-  op_params.padding_values.height = data->padding.height;
-  op_params.padding_values.width = data->padding.width;
-  op_params.quantized_activation_min = activation_min;
-  op_params.quantized_activation_max = activation_max;
-  reference_integer_ops::MaxPool(
-      op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
-      GetTensorShape(output), GetTensorData<int8_t>(output));
-
-#endif
   return kTfLiteOk;
 }
 
@@ -283,32 +251,33 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-#if defined(__ARM_FEATURE_DSP) || defined(__ARM_FEATURE_MVE)
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  const TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  RuntimeShape input_shape = GetTensorShape(input);
-  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+  if (input->type == kTfLiteInt8) {
+    const TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  RuntimeShape output_shape = GetTensorShape(output);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+    RuntimeShape input_shape = GetTensorShape(input);
+    TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
 
-  const int depth = MatchingDim(input_shape, 3, output_shape, 3);
-  const int output_width = output_shape.Dims(2);
+    RuntimeShape output_shape = GetTensorShape(output);
+    TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
 
-  const int32_t buffer_size =
-      arm_avgpool_s8_get_buffer_size(output_width, depth);
+    const int depth = MatchingDim(input_shape, 3, output_shape, 3);
+    const int output_width = output_shape.Dims(2);
 
-  int* buffer_idx = reinterpret_cast<int*>(node->user_data);
+    const int32_t buffer_size =
+        arm_avgpool_s8_get_buffer_size(output_width, depth);
 
-  node->user_data = buffer_idx;
-  if (buffer_size > 0) {
-    TF_LITE_ENSURE_STATUS(
-        context->RequestScratchBufferInArena(context, buffer_size, buffer_idx));
-  } else {
-    *buffer_idx = -1;
+    int* buffer_idx = reinterpret_cast<int*>(node->user_data);
+
+    node->user_data = buffer_idx;
+    if (buffer_size > 0) {
+      TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
+          context, buffer_size, buffer_idx));
+    } else {
+      *buffer_idx = -1;
+    }
   }
-#endif
   return kTfLiteOk;
 }
 
@@ -316,9 +285,7 @@ TfLiteStatus AverageEval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLitePoolParams*>(node->builtin_data);
   OpData data;
 
-  // Todo: make 'input' const once CMSIS-reuse is fixed
-  TfLiteTensor* input = &context->tensors[flatbuffers::EndianScalar(
-      node->inputs->data[kInputTensor])];
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   TF_LITE_ENSURE_STATUS(CalculateOpData(context, params, input, output, &data));
@@ -329,10 +296,8 @@ TfLiteStatus AverageEval(TfLiteContext* context, TfLiteNode* node) {
       AverageEvalFloat(context, node, params, &data, input, output);
       break;
     case kTfLiteUInt8:
-      AverageEvalUint8(context, node, params, &data, input, output);
-      break;
     case kTfLiteInt8:
-      return AverageEvalInt8(context, node, params, &data, input, output);
+      AverageEvalQuantized(context, node, params, &data, input, output);
       break;
     default:
       TF_LITE_KERNEL_LOG(context, "Input type %s is not currently supported",
@@ -387,7 +352,7 @@ TfLiteRegistration* Register_AVERAGE_POOL_2D() {
 TfLiteRegistration* Register_MAX_POOL_2D() {
   static TfLiteRegistration r = {/*init=*/pooling::Init,
                                  /*free=*/nullptr,
-                                 /*prepare=*/pooling::Prepare,
+                                 /*prepare=*/nullptr,
                                  /*invoke=*/pooling::MaxEval,
                                  /*profiling_string=*/nullptr,
                                  /*builtin_code=*/0,
