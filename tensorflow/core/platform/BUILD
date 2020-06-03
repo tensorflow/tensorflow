@@ -386,6 +386,7 @@ py_test(
     name = "ram_file_system_test",
     srcs = ["ram_file_system_test.py"],
     python_version = "PY3",
+    tags = ["no_windows"],  # TODO(b/156428279): reenable this test once the image is updated.
     deps = [
         "//tensorflow:tensorflow_py",
     ],
