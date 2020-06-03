@@ -579,10 +579,9 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
     converter_kwargs.update(quant_mode.converter_flags())
     if not self.experimental_new_converter:
       logging.warning(
-          "Please consider switching to use new converter by setting "
-          "experimental_new_converter to true. "
-          "Old converter (TOCO) is deprecated and flow will be switched on "
-          "by default to use new converter soon.")
+          "Please consider switching to the new converter by setting "
+          "experimental_new_converter=True. "
+          "The old converter (TOCO) is deprecated.")
     else:
       logging.info("Using experimental converter: If you encountered a problem "
                    "please file a bug. You can opt-out "
@@ -875,7 +874,7 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       training integer quantization. (default tf.float32, must be in
       {tf.float32, tf.int8, tf.uint8})
     experimental_new_converter: Experimental flag, subject to change. Enables
-      MLIR-based conversion instead of TOCO conversion.
+      MLIR-based conversion instead of TOCO conversion. (default True)
 
   Example usage:
 
@@ -1095,7 +1094,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
       generate input and output samples for the model. The converter can use the
       dataset to evaluate different optimizations.
     experimental_new_converter: Experimental flag, subject to change. Enables
-      MLIR-based conversion instead of TOCO conversion.
+      MLIR-based conversion instead of TOCO conversion. (default True)
   """
 
   def __init__(self, experimental_debug_info_func):
@@ -1256,10 +1255,9 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
 
     if not self.experimental_new_converter:
       logging.warning(
-          "Please consider switching to use new converter by setting "
-          "experimental_new_converter to true. "
-          "Old converter (TOCO) is deprecated and flow will be switched on "
-          "by default to use new converter soon.")
+          "Please consider switching to the new converter by setting "
+          "experimental_new_converter=True. "
+          "The old converter (TOCO) is deprecated.")
     else:
       logging.info("Using experimental converter: If you encountered a problem "
                    "please file a bug. You can opt-out "
@@ -1637,7 +1635,7 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
       generate input and output samples for the model. The converter can use
       the dataset to evaluate different optimizations.
     experimental_new_converter: Experimental flag, subject to change.
-      Enables MLIR-based conversion instead of TOCO conversion.
+      Enables MLIR-based conversion instead of TOCO conversion. (default True)
 
   Example usage:
 
