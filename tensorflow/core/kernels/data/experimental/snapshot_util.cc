@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
+#include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/lib/io/snappy/snappy_inputbuffer.h"
 #include "tensorflow/core/lib/io/snappy/snappy_outputbuffer.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
@@ -43,8 +44,10 @@ namespace tensorflow {
 namespace data {
 namespace snapshot_util {
 
-/* static */ constexpr const int64 Reader::kSnappyReaderInputBufferSizeBytes;
-/* static */ constexpr const int64 Reader::kSnappyReaderOutputBufferSizeBytes;
+/* static */ constexpr const int64
+    CustomReader::kSnappyReaderInputBufferSizeBytes;
+/* static */ constexpr const int64
+    CustomReader::kSnappyReaderOutputBufferSizeBytes;
 
 std::string GetCurrentCheckpointFile(const std::string& shard_directory,
                                      const uint64 current_checkpoint_id) {
@@ -52,24 +55,84 @@ std::string GetCurrentCheckpointFile(const std::string& shard_directory,
                       absl::StrFormat("%08d.snapshot", current_checkpoint_id));
 }
 
-Writer::Writer(const std::string& filename, const std::string& compression_type,
-               int version, const DataTypeVector& dtypes)
-    : filename_(filename),
-      compression_type_(compression_type),
-      version_(version),
-      dtypes_(dtypes) {}
-
 Status Writer::Create(Env* env, const std::string& filename,
                       const std::string& compression_type, int version,
                       const DataTypeVector& dtypes,
                       std::unique_ptr<Writer>* out_writer) {
-  *out_writer =
-      absl::WrapUnique(new Writer(filename, compression_type, version, dtypes));
+  switch (version) {
+    case 1:
+      *out_writer =
+          absl::make_unique<CustomWriter>(filename, compression_type, dtypes);
+      break;
+    case 2:
+      *out_writer =
+          absl::make_unique<TFRecordWriter>(filename, compression_type);
+      break;
+    default:
+      return errors::InvalidArgument("Snapshot writer version: ", version,
+                                     " is not supported.");
+  }
 
   return (*out_writer)->Initialize(env);
 }
 
-Status Writer::Initialize(tensorflow::Env* env) {
+TFRecordWriter::TFRecordWriter(const std::string& filename,
+                               const std::string& compression_type)
+    : filename_(filename), compression_type_(compression_type) {}
+
+Status TFRecordWriter::Initialize(tensorflow::Env* env) {
+  TF_RETURN_IF_ERROR(env->NewAppendableFile(filename_, &dest_));
+
+  record_writer_ = absl::make_unique<io::RecordWriter>(
+      dest_.get(), io::RecordWriterOptions::CreateRecordWriterOptions(
+                       /*compression_type=*/compression_type_));
+  return Status::OK();
+}
+
+Status TFRecordWriter::WriteTensors(const std::vector<Tensor>& tensors) {
+  for (const auto& tensor : tensors) {
+    TensorProto proto;
+    tensor.AsProtoTensorContent(&proto);
+#if defined(PLATFORM_GOOGLE)
+    TF_RETURN_IF_ERROR(record_writer_->WriteRecord(proto.SerializeAsCord()));
+#else   // PLATFORM_GOOGLE
+    TF_RETURN_IF_ERROR(record_writer_->WriteRecord(proto.SerializeAsString()));
+#endif  // PLATFORM_GOOGLE
+  }
+  return Status::OK();
+}
+
+Status TFRecordWriter::Sync() {
+  TF_RETURN_IF_ERROR(record_writer_->Flush());
+  return dest_->Flush();
+}
+
+Status TFRecordWriter::Close() {
+  if (record_writer_ != nullptr) {
+    TF_RETURN_IF_ERROR(Sync());
+    TF_RETURN_IF_ERROR(record_writer_->Close());
+    TF_RETURN_IF_ERROR(dest_->Close());
+    record_writer_ = nullptr;
+    dest_ = nullptr;
+  }
+  return Status::OK();
+}
+
+TFRecordWriter::~TFRecordWriter() {
+  Status s = Close();
+  if (!s.ok()) {
+    LOG(ERROR) << "Failed to close snapshot file " << filename_ << ": " << s;
+  }
+}
+
+CustomWriter::CustomWriter(const std::string& filename,
+                           const std::string& compression_type,
+                           const DataTypeVector& dtypes)
+    : filename_(filename),
+      compression_type_(compression_type),
+      dtypes_(dtypes) {}
+
+Status CustomWriter::Initialize(tensorflow::Env* env) {
   TF_RETURN_IF_ERROR(env->NewAppendableFile(filename_, &dest_));
 #if defined(IS_SLIM_BUILD)
   if (compression_type_ != io::compression::kNone) {
@@ -103,7 +166,7 @@ Status Writer::Initialize(tensorflow::Env* env) {
   return Status::OK();
 }
 
-Status Writer::WriteTensors(const std::vector<Tensor>& tensors) {
+Status CustomWriter::WriteTensors(const std::vector<Tensor>& tensors) {
   if (compression_type_ != io::compression::kSnappy) {
     experimental::SnapshotRecord record;
     for (const auto& tensor : tensors) {
@@ -117,12 +180,9 @@ Status Writer::WriteTensors(const std::vector<Tensor>& tensors) {
 #endif  // PLATFORM_GOOGLE
   }
 
-  if (version_ != 1) {
-    return errors::InvalidArgument("Version: ", version_, " is not supported.");
-  }
   if (compression_type_ != io::compression::kSnappy) {
-    return errors::InvalidArgument(
-        "Version 1 is only compatible with snappy compression");
+    return errors::InvalidArgument("Compression ", compression_type_,
+                                   " is not supported.");
   }
 
   std::vector<const TensorBuffer*> tensor_buffers;
@@ -184,9 +244,9 @@ Status Writer::WriteTensors(const std::vector<Tensor>& tensors) {
   return Status::OK();
 }
 
-Status Writer::Sync() { return dest_->Sync(); }
+Status CustomWriter::Sync() { return dest_->Sync(); }
 
-Status Writer::Close() {
+Status CustomWriter::Close() {
   if (dest_ != nullptr) {
     TF_RETURN_IF_ERROR(dest_->Close());
     dest_ = nullptr;
@@ -198,14 +258,14 @@ Status Writer::Close() {
   return Status::OK();
 }
 
-Writer::~Writer() {
+CustomWriter::~CustomWriter() {
   Status s = Close();
   if (!s.ok()) {
     LOG(ERROR) << "Could not finish writing file: " << s;
   }
 }
 
-Status Writer::WriteRecord(const StringPiece& data) {
+Status CustomWriter::WriteRecord(const StringPiece& data) {
   char header[kHeaderSize];
   core::EncodeFixed64(header, data.size());
   TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
@@ -213,7 +273,7 @@ Status Writer::WriteRecord(const StringPiece& data) {
 }
 
 #if defined(PLATFORM_GOOGLE)
-Status Writer::WriteRecord(const absl::Cord& data) {
+Status CustomWriter::WriteRecord(const absl::Cord& data) {
   char header[kHeaderSize];
   core::EncodeFixed64(header, data.size());
   TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
@@ -225,10 +285,34 @@ Status Reader::Create(Env* env, const std::string& filename,
                       const string& compression_type, int version,
                       const DataTypeVector& dtypes,
                       std::unique_ptr<Reader>* out_reader) {
-  *out_reader =
-      absl::WrapUnique(new Reader(filename, compression_type, version, dtypes));
+  switch (version) {
+    // CustomReader is able to read a legacy snapshot file format (v0) though
+    // custom writer doesn't have the ability to write it any more since it is
+    // strictly worse than V1.
+    case 0:
+    case 1:
+      *out_reader = absl::make_unique<CustomReader>(filename, compression_type,
+                                                    version, dtypes);
+      break;
+    case 2:
+      *out_reader =
+          absl::make_unique<TFRecordReader>(filename, compression_type, dtypes);
+      break;
+    default:
+      return errors::InvalidArgument("Snapshot reader version: ", version,
+                                     " is not supported.");
+  }
 
   return (*out_reader)->Initialize(env);
+}
+
+Status Reader::SkipRecords(int64 num_records) {
+  // TODO(frankchn): Optimize to not parse the entire Tensor and actually skip.
+  for (int i = 0; i < num_records; ++i) {
+    std::vector<Tensor> unused_tensors;
+    TF_RETURN_IF_ERROR(ReadTensors(&unused_tensors));
+  }
+  return Status::OK();
 }
 
 class Reader::Dataset : public DatasetBase {
@@ -478,14 +562,51 @@ Status Reader::MakeNestedDataset(Env* env,
   return Status::OK();
 }
 
-Reader::Reader(const std::string& filename, const string& compression_type,
-               int version, const DataTypeVector& dtypes)
+TFRecordReader::TFRecordReader(const std::string& filename,
+                               const string& compression_type,
+                               const DataTypeVector& dtypes)
+    : filename_(filename),
+      offset_(0),
+      compression_type_(compression_type),
+      dtypes_(dtypes) {}
+
+Status TFRecordReader::Initialize(Env* env) {
+  TF_RETURN_IF_ERROR(Env::Default()->NewRandomAccessFile(filename_, &file_));
+
+  record_reader_ = absl::make_unique<io::RecordReader>(
+      file_.get(), io::RecordReaderOptions::CreateRecordReaderOptions(
+                       /*compression_type=*/compression_type_));
+  return Status::OK();
+}
+
+Status TFRecordReader::ReadTensors(std::vector<Tensor>* read_tensors) {
+  read_tensors->reserve(dtypes_.size());
+  for (int i = 0; i < dtypes_.size(); ++i) {
+    tstring record;
+    TF_RETURN_IF_ERROR(record_reader_->ReadRecord(&offset_, &record));
+
+    TensorProto proto;
+    proto.ParseFromArray(record.data(), record.size());
+
+    Tensor tensor;
+    if (!tensor.FromProto(proto)) {
+      return errors::DataLoss("Unable to parse tensor from stored proto.");
+    }
+
+    read_tensors->push_back(std::move(tensor));
+  }
+  return Status::OK();
+}
+
+CustomReader::CustomReader(const std::string& filename,
+                           const string& compression_type, const int version,
+                           const DataTypeVector& dtypes)
     : filename_(filename),
       compression_type_(compression_type),
       version_(version),
       dtypes_(dtypes) {}
 
-Status Reader::Initialize(Env* env) {
+Status CustomReader::Initialize(Env* env) {
   TF_RETURN_IF_ERROR(Env::Default()->NewRandomAccessFile(filename_, &file_));
   input_stream_ = std::make_unique<io::RandomAccessInputStream>(file_.get());
 
@@ -527,16 +648,7 @@ Status Reader::Initialize(Env* env) {
   return Status::OK();
 }
 
-Status Reader::SkipRecords(int64 num_records) {
-  // TODO(frankchn): Optimize to not parse the entire Tensor and actually skip.
-  for (int i = 0; i < num_records; ++i) {
-    std::vector<Tensor> unused_tensors;
-    TF_RETURN_IF_ERROR(ReadTensors(&unused_tensors));
-  }
-  return Status::OK();
-}
-
-Status Reader::ReadTensors(std::vector<Tensor>* read_tensors) {
+Status CustomReader::ReadTensors(std::vector<Tensor>* read_tensors) {
   profiler::TraceMe activity(
       [&]() { return absl::StrCat(kClassName, kSeparator, "ReadTensors"); },
       profiler::TraceMeLevel::kInfo);
@@ -547,7 +659,8 @@ Status Reader::ReadTensors(std::vector<Tensor>* read_tensors) {
     return errors::InvalidArgument("Version: ", version_, " is not supported.");
   }
   if (compression_type_ != io::compression::kSnappy) {
-    return errors::InvalidArgument("Version 1 only supports snappy.");
+    return errors::InvalidArgument("Compression ", compression_type_,
+                                   " is not supported.");
   }
 
   experimental::SnapshotTensorMetadata metadata;
@@ -599,7 +712,7 @@ Status Reader::ReadTensors(std::vector<Tensor>* read_tensors) {
   return Status::OK();
 }
 
-Status Reader::ReadTensorsV0(std::vector<Tensor>* read_tensors) {
+Status CustomReader::ReadTensorsV0(std::vector<Tensor>* read_tensors) {
   experimental::SnapshotRecord record;
 #if defined(PLATFORM_GOOGLE)
   absl::Cord c;
@@ -620,7 +733,7 @@ Status Reader::ReadTensorsV0(std::vector<Tensor>* read_tensors) {
   return Status::OK();
 }
 
-Status Reader::SnappyUncompress(
+Status CustomReader::SnappyUncompress(
     const experimental::SnapshotTensorMetadata* metadata,
     std::vector<Tensor>* simple_tensors,
     std::vector<std::pair<std::unique_ptr<char[]>, size_t>>*
@@ -669,7 +782,7 @@ Status Reader::SnappyUncompress(
   return Status::OK();
 }
 
-Status Reader::ReadRecord(tstring* record) {
+Status CustomReader::ReadRecord(tstring* record) {
   tstring header;
   TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(kHeaderSize, &header));
   uint64 length = core::DecodeFixed64(header.data());
@@ -677,7 +790,7 @@ Status Reader::ReadRecord(tstring* record) {
 }
 
 #if defined(PLATFORM_GOOGLE)
-Status Reader::ReadRecord(absl::Cord* record) {
+Status CustomReader::ReadRecord(absl::Cord* record) {
   tstring header;
   TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(kHeaderSize, &header));
   uint64 length = core::DecodeFixed64(header.data());

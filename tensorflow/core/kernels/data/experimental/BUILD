@@ -542,6 +542,19 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "snapshot_util_test",
+    size = "small",
+    srcs = ["snapshot_util_test.cc"],
+    deps = [
+        ":snapshot_util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 tf_kernel_library(
     name = "snapshot_dataset_op",
     srcs = ["snapshot_dataset_op.cc"],
