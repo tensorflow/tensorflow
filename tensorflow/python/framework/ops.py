@@ -256,12 +256,14 @@ def disable_tensor_equality():
 
 
 DataType = TypeVar("DataType",
-          dtypes.Float16, dtypes.Float32, dtypes.Float64, dtypes.BFloat16,
-          dtypes.Complex64, dtypes.Complex128, dtypes.Int8, dtypes.UInt8,
-          dtypes.UInt16, dtypes.UInt32, dtypes.UInt64, dtypes.Int16,
-          dtypes.Int32, dtypes.Int64, dtypes.Bool, dtypes.String,
-          dtypes.QInt8, dtypes.QUInt8, dtypes.QInt16, dtypes.QUInt16,
-          dtypes.QInt32, dtypes.Resource, dtypes.Variant)
+                   dtypes.Float16, dtypes.Float32, dtypes.Float64,
+                   dtypes.BFloat16, dtypes.Complex64, dtypes.Complex128,
+                   dtypes.Int8, dtypes.UInt8, dtypes.UInt16,
+                   dtypes.UInt32, dtypes.UInt64, dtypes.Int16,
+                   dtypes.Int32, dtypes.Int64, dtypes.Bool,
+                   dtypes.String, dtypes.QInt8, dtypes.QUInt8,
+                   dtypes.QInt16, dtypes.QUInt16, dtypes.QInt32,
+                   dtypes.Resource, dtypes.Variant)
 
 # TODO(mdan): This object should subclass Symbol, not just Tensor.
 @tf_export("Tensor")
