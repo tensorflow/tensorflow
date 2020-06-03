@@ -333,8 +333,7 @@ StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
 
   const int64 num_buffers = assignment_->Allocations().size();
   std::vector<se::DeviceMemoryBase> buffers(num_buffers);
-  for (BufferAllocation::Index i = 0; i < assignment_->Allocations().size();
-       ++i) {
+  for (BufferAllocation::Index i = 0; i < num_buffers; ++i) {
     const BufferAllocation& allocation = assignment_->GetAllocation(i);
     if (allocation.is_entry_computation_parameter()) {
       auto param_no = allocation.parameter_number();
@@ -464,53 +463,53 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
   // Copy DeviceMemoryBase values which contain the array(s) of the result into
   // the respective location in ShapedBuffer.
   std::set<se::DeviceMemoryBase> buffers_in_result;
-  TF_RETURN_IF_ERROR(shaped_buffer.buffers().ForEachMutableElementWithStatus(
-      [&](const ShapeIndex& index, se::DeviceMemoryBase* device_memory) {
-        const auto& sources = this->GetRootValueSet().element(index);
-        // The points-to set is unambiguous so the set should be a
-        // singleton. That is, we know exactly which instruction
-        // produced the array at this element.
-        CHECK_EQ(1, sources.values().size());
-        auto src_hlo = sources.values()[0]->instruction();
+  for (auto& p : shaped_buffer.buffers()) {
+    const ShapeIndex& index = p.first;
+    se::DeviceMemoryBase& device_memory = p.second;
+    const auto& sources = GetRootValueSet().element(index);
+    // The points-to set is unambiguous so the set should be a
+    // singleton. That is, we know exactly which instruction
+    // produced the array at this element.
+    CHECK_EQ(1, sources.values().size());
+    auto src_hlo = sources.values()[0]->instruction();
 
-        VLOG(4) << "Looking at: " << sources.values()[0];
+    VLOG(4) << "Looking at: " << sources.values()[0];
 
-        // The source instruction should have a non-parameter buffer
-        // assigned.
-        TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
-                            this->assignment_->GetUniqueSlice(
-                                src_hlo, sources.values()[0]->index()));
+    // The source instruction should have a non-parameter buffer
+    // assigned.
+    TF_ASSIGN_OR_RETURN(
+        const BufferAllocation::Slice slice,
+        assignment_->GetUniqueSlice(src_hlo, sources.values()[0]->index()));
 
-        se::DeviceMemoryBase src_base =
-            buffer_allocations.GetDeviceAddress(slice.index());
-        CHECK(!src_base.is_null() || src_base.size() == 0);
-        if (!slice.allocation()->is_entry_computation_parameter()) {
-          // If the buffer coming out of the result is from a parameter, it
-          // means the caller aliased some parameter buffer to an output one
-          // (via the HloInputOutputAliasConfig API). If that is the case, the
-          // caller will receive a partially complete scoped shaped buffer,
-          // which they will have to fill up on return.
-          // Unfortunately the interface to the execute APIs are ShapedBuffer
-          // pointer based, which assumes caller ownership, and hence a buffer
-          // coming from there cannot be part of the new ScopedShapedBuffer we
-          // create for the result (which assumes ownership).
-          *device_memory = src_base;
-        } else {
-          const HloInputOutputAliasConfig& input_output_alias =
-              module().input_output_alias_config();
-          auto output_alias = input_output_alias.GetAliasedOutput(
-              slice.allocation()->parameter_number(),
-              slice.allocation()->param_shape_index());
-          CHECK(output_alias)
-              << "Output buffer is coming from parameter "
-              << slice.allocation()->parameter_number() << " at index "
-              << slice.allocation()->param_shape_index()
-              << ", but no alias exists";
-          CHECK_EQ(*output_alias, index);
-        }
-        buffers_in_result.insert(src_base);
-        return Status::OK();
-      }));
+    se::DeviceMemoryBase src_base =
+        buffer_allocations.GetDeviceAddress(slice.index());
+    CHECK(!src_base.is_null() || src_base.size() == 0);
+    if (!slice.allocation()->is_entry_computation_parameter()) {
+      // If the buffer coming out of the result is from a parameter, it
+      // means the caller aliased some parameter buffer to an output one
+      // (via the HloInputOutputAliasConfig API). If that is the case, the
+      // caller will receive a partially complete scoped shaped buffer,
+      // which they will have to fill up on return.
+      // Unfortunately the interface to the execute APIs are ShapedBuffer
+      // pointer based, which assumes caller ownership, and hence a buffer
+      // coming from there cannot be part of the new ScopedShapedBuffer we
+      // create for the result (which assumes ownership).
+      device_memory = src_base;
+    } else {
+      const HloInputOutputAliasConfig& input_output_alias =
+          module().input_output_alias_config();
+      auto output_alias = input_output_alias.GetAliasedOutput(
+          slice.allocation()->parameter_number(),
+          slice.allocation()->param_shape_index());
+      CHECK(output_alias) << "Output buffer is coming from parameter "
+                          << slice.allocation()->parameter_number()
+                          << " at index "
+                          << slice.allocation()->param_shape_index()
+                          << ", but no alias exists";
+      CHECK_EQ(*output_alias, index);
+    }
+    buffers_in_result.insert(src_base);
+  }
   TF_RETURN_IF_ERROR(
       buffer_allocations.TearDown(buffers_in_result, assignment_.get()));
 
