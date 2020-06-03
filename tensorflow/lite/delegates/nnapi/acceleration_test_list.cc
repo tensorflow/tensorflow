@@ -381,6 +381,7 @@ TransposeTest/.+
 
 # transpose_conv_test
 -TransposeConvOpTest/TransposeConvOpTest.SimpleTestQuantizedPerChannelSingleChannel/0
+-TransposeConvOpTest/TransposeConvOpTest.SimpleTestQuantizedPerChannel16x8/0
 -TransposeConvOpTest/TransposeConvOpTest.TestQuantizedPerChannelMultiChannel/0
 # Const tensor only
 TransposeConvOpTest/TransposeConvOpTest/.+/0,29
