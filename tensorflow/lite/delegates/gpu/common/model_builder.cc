@@ -1048,28 +1048,45 @@ class LSTMOperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
-    RETURN_IF_ERROR(
-        CheckInputsConstsOutputs(context, tflite_node, /*runtime_inputs=*/3,
-                                 /*const_inputs=*/2, /*outputs=*/4));
     const TfLiteLSTMParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
-    RETURN_IF_ERROR(CheckParameters(tf_options));
-    return absl::OkStatus();
+    switch (tf_options->kernel_type) {
+      case kTfLiteLSTMFullKernel:
+        // TODO(b/157166356): Add check for input/output tensor counts.
+        return CheckFullParameters(tf_options);
+      case kTfLiteLSTMBasicKernel:
+        RETURN_IF_ERROR(
+            CheckInputsConstsOutputs(context, tflite_node, /*runtime_inputs=*/3,
+                                     /*const_inputs=*/2, /*outputs=*/4));
+        return CheckBasicParameters(tf_options);
+    }
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration,
                      GraphFloat32* graph, ObjectReader* reader) final {
+    const TfLiteLSTMParams* tf_options;
+    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
+    switch (tf_options->kernel_type) {
+      case kTfLiteLSTMFullKernel:
+        return ParseFull(tflite_node, registration, graph, reader, tf_options);
+      case kTfLiteLSTMBasicKernel:
+        return ParseBasic(tflite_node, registration, graph, reader, tf_options);
+    }
+  }
+
+ private:
+  absl::Status ParseBasic(const TfLiteNode* tflite_node,
+                          const TfLiteRegistration* registration,
+                          GraphFloat32* graph, ObjectReader* reader,
+                          const TfLiteLSTMParams* tf_options) {
     if (tflite_node->inputs->size != 5) {
       return absl::InvalidArgumentError("LSTM should have 5 input tensors");
     }
     if (tflite_node->outputs->size != 4) {
       return absl::InvalidArgumentError("LSTM should have 4 output tensors");
     }
-
-    const TfLiteLSTMParams* tf_options;
-    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
-    RETURN_IF_ERROR(CheckParameters(tf_options));
+    RETURN_IF_ERROR(CheckBasicParameters(tf_options));
 
     Node* concat_node = graph->NewNode();
     concat_node->operation.type = ToString(OperationType::CONCAT);
@@ -1113,13 +1130,7 @@ class LSTMOperationParser : public TFLiteOperationParser {
     return absl::OkStatus();
   }
 
- private:
-  absl::Status CheckParameters(const TfLiteLSTMParams* tf_options) {
-    if (tf_options->kernel_type !=
-        TfLiteLSTMKernelType::kTfLiteLSTMBasicKernel) {
-      return absl::UnimplementedError(
-          "Only kTfLiteLSTMBasicKernel is supported.");
-    }
+  absl::Status CheckBasicParameters(const TfLiteLSTMParams* tf_options) {
     if (tf_options->activation != kTfLiteActTanh) {
       return absl::UnimplementedError("Only TANH activation is supported.");
     }
@@ -1130,6 +1141,19 @@ class LSTMOperationParser : public TFLiteOperationParser {
       return absl::UnimplementedError("proj_clip is not supported.");
     }
     return absl::OkStatus();
+  }
+
+  absl::Status ParseFull(const TfLiteNode* tflite_node,
+                         const TfLiteRegistration* registration,
+                         GraphFloat32* graph, ObjectReader* reader,
+                         const TfLiteLSTMParams* tf_options) {
+    return absl::UnimplementedError(
+        "Full LSTM support is not yet implemented.");
+  }
+
+  absl::Status CheckFullParameters(const TfLiteLSTMParams* tf_options) {
+    return absl::UnimplementedError(
+        "Full LSTM support is not yet implemented.");
   }
 };
 
