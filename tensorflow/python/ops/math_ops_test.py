@@ -423,6 +423,16 @@ class AddNTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(slc_as_dense, math_ops.add_n([slc]))
       self.assertAllEqual(2 * slc_as_dense, math_ops.add_n([slc, slc]))
 
+  def test_iterable(self):
+    """Test that add_n supports iterables (e.g. generators and dict values)."""
+    def fn():
+      yield 1
+      yield 2
+    values_dict = {"a": 1, "b": 2}
+    with test_util.use_gpu():
+      self.assertAllEqual(3, math_ops.add_n(fn()))
+      self.assertAllEqual(3, math_ops.add_n(values_dict.values()))
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class DivAndModTest(test_util.TensorFlowTestCase):
