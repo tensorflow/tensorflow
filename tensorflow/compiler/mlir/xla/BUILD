@@ -360,6 +360,7 @@ cc_library(
         ":hlo",
         ":lhlo",
         ":map_hlo_to_lhlo_op",
+        "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/memory",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",

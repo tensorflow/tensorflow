@@ -432,7 +432,23 @@ func @dot(%arg0: tensor<1024x1024xf32>) -> tensor<1024x1024xf32> {
 // CHECK-SAME: (%[[ARG0:.*]]: [[TYPE:.*]],
 // CHECK-SAME:  %[[RESULT:.*]]: [[TYPE]])
 // CHECK: "xla_lhlo.dot"(%[[ARG0]], %[[ARG0]], %{{.*}}) : ([[TYPE]], [[TYPE]], [[TYPE]]) -> ()
-    %dot = "xla_hlo.dot"(%arg0, %arg0)
-      : (tensor<1024x1024xf32>, tensor<1024x1024xf32>) -> tensor<1024x1024xf32>
-    return %dot : tensor<1024x1024xf32>
-  }
+  %dot = "xla_hlo.dot"(%arg0, %arg0)
+     : (tensor<1024x1024xf32>, tensor<1024x1024xf32>) -> tensor<1024x1024xf32>
+  return %dot : tensor<1024x1024xf32>
+}
+
+// -----
+
+// Test whether std.constant's generating tensors are converted to lhlo.const.
+func @std.const.tensor() {
+  %cst = constant  dense<0.000000e+00> : tensor<f32>
+  %0 = "xla_hlo.broadcast_in_dim"(%cst) {broadcast_dimensions = dense<[]> : tensor<0xi64>, name = "broadcast.6"} : (tensor<f32>) -> tensor<4x30x42x10xf32>
+  return
+}
+// CHECK:       %[[Z:.*]] = alloc() : memref<f32>
+// CHECK-NEXT:  "xla_lhlo.constant"(%[[Z]]) {value = dense<0.000000e+00> : tensor<f32>} : (memref<f32>) -> ()
+// CHECK-NEXT:  %[[OUT:.*]] = alloc() : memref<4x30x42x10xf32>
+// CHECK-NEXT:  "xla_lhlo.broadcast_in_dim"(%[[Z]], %[[OUT]]) {broadcast_dimensions = dense<[]> : tensor<0xi64>, name = "broadcast.6"} : (memref<f32>, memref<4x30x42x10xf32>) -> ()
+// CHECK-NEXT:  dealloc %[[OUT]] : memref<4x30x42x10xf32>
+// CHECK-NEXT:  dealloc %[[Z]] : memref<f32>
+// CHECK-NEXT:  "xla_lhlo.terminator"()
