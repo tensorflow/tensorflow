@@ -98,7 +98,7 @@ class OpsSet(enum.Enum):
   # and int16 activations.
   # Specifying this will throw an error for operations that do not yet have
   # quantized implementations.
-  TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8 = "TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8"
+  EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8 = "EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8"
 
   def __str__(self):
     return self.value
