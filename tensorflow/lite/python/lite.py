@@ -258,7 +258,7 @@ class QuantizationMode(object):
 
     if self.training_time_int8_allow_float():
       return {
-          "inference_type": inference_ty if inference_ty else constants.INT8,
+          "inference_type": inference_ty if inference_ty else self.activations_type(),
           "inference_input_type":
               inference_input_ty if inference_input_ty else constants.FLOAT,
           "post_training_quantize": False,  # disable dynamic range quantization
@@ -297,12 +297,28 @@ class QuantizationMode(object):
       return True, {
           "inference_input_type": inference_input_type,
           "inference_output_type": inference_output_type,
+          "activations_type": constants.INT8,
           "allow_float": False
       }
     elif self.post_training_int8_allow_float():
       return True, {
           "inference_input_type": inference_input_type,
           "inference_output_type": inference_output_type,
+          "activations_type": constants.INT8,
+          "allow_float": True
+      }
+    elif self.post_training_int16x8_no_float():
+      return True, {
+          "inference_input_type": inference_input_type,
+          "inference_output_type": inference_output_type,
+          "activations_type": constants.INT16,
+          "allow_float": False
+      }
+    elif self.post_training_int16x8_allow_float():
+      return True, {
+          "inference_input_type": inference_input_type,
+          "inference_output_type": inference_output_type,
+          "activations_type": constants.INT16,
           "allow_float": True
       }
     else:
@@ -572,25 +588,6 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
         input_tensors=input_tensors,
         output_tensors=output_tensors,
         **converter_kwargs)
-
-    activations_type = quant_mode.activations_type()
-
-    if quant_mode.post_training_int8_no_float():
-      result = self._calibrate_quantize_model(result, constants.FLOAT,
-                                              constants.FLOAT, activations_type,
-                                              False)
-    elif quant_mode.post_training_int8_allow_float():
-      result = self._calibrate_quantize_model(result, constants.FLOAT,
-                                              constants.FLOAT, activations_type,
-                                              True)
-    elif quant_mode.post_training_int16x8_no_float():
-      result = self._calibrate_quantize_model(result, constants.FLOAT,
-                                              constants.FLOAT, activations_type,
-                                              False)
-    elif quant_mode.post_training_int16x8_allow_float():
-      result = self._calibrate_quantize_model(result, constants.FLOAT,
-                                              constants.FLOAT, activations_type,
-                                              True)
 
     calibrate_and_quantize, flags = quant_mode.quantizer_flags()
     if calibrate_and_quantize:
