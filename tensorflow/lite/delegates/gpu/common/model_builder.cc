@@ -1048,10 +1048,9 @@ class LSTMOperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
-    // TODO(eignasheva): Fix bad check.
-    // RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
-    // /*runtime_inputs=*/5,
-    //                                    /*outputs=*/4));
+    RETURN_IF_ERROR(
+        CheckInputsConstsOutputs(context, tflite_node, /*runtime_inputs=*/3,
+                                 /*const_inputs=*/2, /*outputs=*/4));
     const TfLiteLSTMParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     RETURN_IF_ERROR(CheckParameters(tf_options));
