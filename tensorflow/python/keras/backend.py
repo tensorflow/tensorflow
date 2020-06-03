@@ -1644,15 +1644,41 @@ def update_sub(x, decrement):
 
 @keras_export('keras.backend.moving_average_update')
 def moving_average_update(x, value, momentum):
-  """Compute the moving average of a variable.
+  """Compute the exponential moving average of a value.
+
+  The moving average 'x' is updated with 'value' following:
+
+  ```
+  x = x * momentum + value * (1 - momentum)
+  ```
+
+  For example:
+
+  >>> x = tf.Variable(0.0)
+  >>> momentum=0.9
+  >>> moving_average_update(x, value = 2.0, momentum=momentum).numpy()
+  >>> x.numpy()
+  0.2
+
+  The result will be biased towards the initial value of the variable.
+
+  If the variable was initialized to zero, you can divide by
+  `1 - momentum ** num_updates` to debias it (Section 3 of
+  [Kingma et al., 2015](https://arxiv.org/abs/1412.6980)):
+
+  >>> num_updates = 1.0
+  >>> x_zdb = x/(1 - momentum**num_updates)
+  >>> x_zdb.numpy()
+  2.0
 
   Arguments:
-      x: A Variable.
-      value: A tensor with the same shape as `variable`.
+      x: A Variable, the moving average.
+      value: A tensor with the same shape as `x`, the new value to be
+        averaged in.
       momentum: The moving average momentum.
 
   Returns:
-      An Operation to update the variable.
+      The updated variable.
   """
   zero_debias = not tf2.enabled()
   return moving_averages.assign_moving_average(
