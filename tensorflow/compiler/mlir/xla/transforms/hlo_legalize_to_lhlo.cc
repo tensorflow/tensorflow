@@ -347,7 +347,6 @@ class HloToLhloTensorStoreOpConverter
 //     "xla_lhlo.terminator"() : () -> ()
 //   }) : () -> ()
 //   return
-//  }
 // }
 //
 // FuncOp signature conversion example:

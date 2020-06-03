@@ -690,13 +690,12 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
 //   ^bb0(%arg4: f32, %arg5: f32):
 //     %0 = addf %arg4, %arg5 : f32
 //     "linalg.yield"(%0) : (f32) -> ()
-//   }) {
+// }) {
 //     args_in = 2,
 //     args_out = 1,
 //     indexing_maps = [#map0, #map0, #map0],
 //     iterator_types = ["parallel", "parallel"],
-//   } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
-// }
+// } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
 struct LhloLegalizeToLinalg
     : public PassWrapper<LhloLegalizeToLinalg, FunctionPass> {
   void runOnFunction() override {
