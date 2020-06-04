@@ -31,10 +31,7 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
  public:
   explicit SingleOpModelWithNNAPI(const NnApi* nnapi) {
     stateful_delegate_.reset(new StatefulNnApiDelegate(nnapi));
-    auto* delegate = stateful_delegate_.get();
-    this->SetApplyDelegate([delegate](Interpreter* interpreter) {
-      interpreter->ModifyGraphWithDelegate(delegate);
-    });
+    this->SetDelegate(stateful_delegate_.get());
   }
 
   StatefulNnApiDelegate* GetDelegate() { return stateful_delegate_.get(); }

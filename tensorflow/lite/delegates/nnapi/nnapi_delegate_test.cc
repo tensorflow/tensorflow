@@ -46,19 +46,12 @@ MATCHER(QuantizedNear, "") {
 
 class SingleOpModelWithNNAPI : public SingleOpModel {
  public:
-  SingleOpModelWithNNAPI() {
-    this->SetApplyDelegate([](Interpreter* interpreter) {
-      interpreter->ModifyGraphWithDelegate(NnApiDelegate());
-    });
-  }
+  SingleOpModelWithNNAPI() { SetDelegate(NnApiDelegate()); }
 
   explicit SingleOpModelWithNNAPI(
       const StatefulNnApiDelegate::Options& options) {
     stateful_delegate_.reset(new StatefulNnApiDelegate(options));
-    auto* delegate = stateful_delegate_.get();
-    this->SetApplyDelegate([delegate](Interpreter* interpreter) {
-      interpreter->ModifyGraphWithDelegate(delegate);
-    });
+    SetDelegate(stateful_delegate_.get());
   }
 
   TfLiteStatus ResizeInputTensor(int tensor_index,

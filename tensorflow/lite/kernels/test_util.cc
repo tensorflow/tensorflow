@@ -199,15 +199,16 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
   if (apply_delegate) ApplyDelegate();
 }
 
-void SingleOpModel::ApplyDelegate() {
+TfLiteStatus SingleOpModel::ApplyDelegate() {
   if (force_use_nnapi) {
-    interpreter_->ModifyGraphWithDelegate(TestNnApiDelegate());
+    delegate_ = TestNnApiDelegate();
   }
 
-  // Modify delegate with function.
-  if (apply_delegate_fn_) {
-    apply_delegate_fn_(interpreter_.get());
+  if (delegate_) {
+    return interpreter_->ModifyGraphWithDelegate(delegate_);
   }
+
+  return kTfLiteOk;
 }
 
 void SingleOpModel::Invoke() { ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk); }
