@@ -176,7 +176,7 @@ def constant_v1(
 
 @tf_export("constant", v1=[])
 def constant(value,
-             dtype: Optional[DataType] = None,
+             dtype: Optional[DataType] = None, # pylint: disable=bad-whitespace
              shape=None,
              name="Const") -> ops.Tensor[DataType]:
   """Creates a constant tensor from a tensor-like object.
