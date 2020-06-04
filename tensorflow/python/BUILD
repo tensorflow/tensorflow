@@ -223,6 +223,7 @@ py_library(
         "//tensorflow/python/ops/linalg",
         "//tensorflow/python/ops/linalg/sparse",
         "//tensorflow/python/ops/losses",
+        "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/ops/parallel_for",
         "//tensorflow/python/ops/ragged",
         "//tensorflow/python/ops/signal",
