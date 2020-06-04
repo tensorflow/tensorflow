@@ -210,7 +210,7 @@ class BatchNormalization(normalization.BatchNormalizationBase):
   __doc__ = normalization.replace_in_base_docstring([
       ('{{TRAINABLE_ATTRIBUTE_NOTE}}',
        '''
-  **About setting `layer.trainable = False` on a `BatchNormalization layer:**
+  **About setting `layer.trainable = False` on a `BatchNormalization` layer:**
 
   The meaning of setting `layer.trainable = False` is to freeze the layer,
   i.e. its internal state will not change during training:
