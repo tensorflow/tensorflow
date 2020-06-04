@@ -29,6 +29,7 @@ limitations under the License.
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
+#include "pybind11/stl_bind.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -48,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
+#include "tensorflow/compiler/xla/python/traceback_manager.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
@@ -598,13 +600,16 @@ PYBIND11_MODULE(xla_extension, m) {
         std::shared_ptr<PythonRefManager::ManagedPyObjects> py_buffer_ref =
             GlobalPyRefManager()->ManageReference(std::move(c->array));
 
+        auto traceback = TracebackManager::Get()->GetTraceback();
+
         py::gil_scoped_release gil_release;
         TF_ASSIGN_OR_RETURN(
             std::unique_ptr<PjRtBuffer> buffer,
             PjRtBuffer::FromHostBuffer(c->buf_ptr, c->shape, force_copy,
                                        std::move(py_buffer_ref), client.get(),
                                        device));
-        return std::make_unique<PyBuffer>(std::move(client), std::move(buffer));
+        return std::make_unique<PyBuffer>(std::move(client), std::move(buffer),
+                                          traceback);
       },
       py::arg("argument"), py::arg("device") = nullptr,
       py::arg("force_copy") = false);
@@ -612,12 +617,13 @@ PYBIND11_MODULE(xla_extension, m) {
       "compile",
       [](std::shared_ptr<PjRtClient> client, const XlaComputation& computation,
          CompileOptions options) -> StatusOr<std::unique_ptr<PyExecutable>> {
+        auto traceback = TracebackManager::Get()->GetTraceback();
         py::gil_scoped_release gil_release;
         TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
                             PjRtExecutable::Compile(computation, client.get(),
                                                     std::move(options)));
-        return std::make_unique<PyExecutable>(std::move(client),
-                                              std::move(executable));
+        return std::make_unique<PyExecutable>(
+            std::move(client), std::move(executable), std::move(traceback));
       },
       py::arg("computation"), py::arg("compile_options") = CompileOptions());
 
@@ -627,6 +633,40 @@ PYBIND11_MODULE(xla_extension, m) {
         py::arg("asynchronous") = true,
         py::arg("allocator_config") = GpuAllocatorConfig(),
         py::arg("distributed_client") = nullptr, py::arg("node_id") = 0);
+
+  py::class_<TracebackManager::Frame>(m, "Frame")
+      .def_readonly("file_name", &TracebackManager::Frame::file_name)
+      .def_readonly("function_name", &TracebackManager::Frame::function_name)
+      .def_readonly("function_start_line",
+                    &TracebackManager::Frame::function_start_line)
+      .def_readonly("line_num", &TracebackManager::Frame::line_num)
+      .def("__repr__", [](const TracebackManager::Frame& frame) {
+        return absl::StrFormat("%s;%s:%d", frame.function_name, frame.file_name,
+                               frame.line_num);
+      });
+  py::bind_vector<std::vector<TracebackManager::Frame>>(m, "FrameVector");
+
+  py::class_<TracebackManager::Traceback> traceback(
+      m, "Traceback", "Represents a Python stack trace.");
+  traceback.def_property_static(
+      "enabled",
+      [](py::object /* cls */) { return TracebackManager::Get()->enabled(); },
+      [](py::object /* cls */, bool enabled) {
+        return TracebackManager::Get()->SetEnabled(enabled);
+      });
+  traceback.def_static(
+      "get_traceback", []() { return TracebackManager::Get()->GetTraceback(); },
+      R"doc(
+    Returns a :class:`Traceback` for the current thread.
+
+    If ``Traceback.enabled`` is ``True``, returns a :class:`Traceback` object
+    that describes the Python stack of the calling thread. Stack trace
+    collection has a small overhead, so it is disabled by default. If traceback
+    collection is disabled, returns ``None``.
+    )doc");
+  traceback.def_property_readonly("frames",
+                                  &TracebackManager::Traceback::Frames);
+  traceback.def("__str__", &TracebackManager::Traceback::ToString);
 
   py::class_<PyBuffer, std::unique_ptr<PyBuffer>> buffer(m, "Buffer");
   // TODO(phawkins): alias for backward compatibility. Remove after JAX no
@@ -668,7 +708,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("is_deleted", &PyBuffer::is_deleted)
       .def("unsafe_buffer_pointer", &PyBuffer::UnsafeBufferPointer)
       .def_property_readonly("__cuda_array_interface__",
-                             &PyBuffer::CudaArrayInterface);
+                             &PyBuffer::CudaArrayInterface)
+      .def_property_readonly("traceback", &PyBuffer::traceback);
 
   // pybind11's implementation of the buffer protocol doesn't allow for correct
   // error handling. We bypass it and implement the buffer protocol ourselves.
@@ -686,7 +727,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("execute", &PyExecutable::Execute, py::arg("arguments"))
       .def("execute_on_local_devices", &PyExecutable::ExecuteOnLocalDevices,
            py::arg("arguments"))
-      .def("hlo_modules", &PyExecutable::HloModules);
+      .def("hlo_modules", &PyExecutable::HloModules)
+      .def_property_readonly("traceback", &PyExecutable::traceback);
 
   py::class_<DebugOptions>(m, "DebugOptions")
       .def("__repr__", &DebugOptions::DebugString)
@@ -927,6 +969,8 @@ PYBIND11_MODULE(xla_extension, m) {
 
   m.def("get_distributed_runtime_service", &GetDistributedRuntimeService);
   m.def("get_distributed_runtime_client", &GetDistributedRuntimeClient);
+
+  m.def("collect_garbage", []() { GlobalPyRefManager()->CollectGarbage(); });
 }  // NOLINT(readability/fn_size)
 
 }  // namespace xla
