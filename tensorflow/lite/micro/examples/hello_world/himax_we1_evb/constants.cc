@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,21 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Implementation for the DebugLog() function that prints to the UART on the
-// SparkFun Edge microcontroller. The same should work for other targets using
-// the Ambiq Apollo 3.
+#include "tensorflow/lite/micro/examples/hello_world/constants.h"
 
-#include "tensorflow/lite/micro/debug_log.h"
-#include "xprintf.h"
-#include "console_io.h"
-#include <cstdio>
-
-extern "C" void DebugLog(const char* s) {
-  static bool is_initialized = false;
-  if (!is_initialized) {
-	  xprintf_setup();
-	  is_initialized = true;
-  }
-
-  xprintf("%s", s);
-}
+// This is tuned so that a full cycle takes ~4 seconds on a SparkFun Edge.
+const int kInferencesPerCycle = 1000;

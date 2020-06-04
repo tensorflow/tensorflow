@@ -81,6 +81,6 @@ XTENSA_HIFI4_URL :="https://github.com/foss-xtensa/nnlib-hifi4/raw/master/archiv
 XTENSA_HIFI4_MD5 :="f234764928f9a42901df33a27e118c8b"
 
 HIMAX_WE1_SDK_URL ="https://www.himax.com.tw/we-i/himax_we1_sdk_v02.zip"
-HIMAX_WE1_SDK_MD5 ="9a4b2f29b16052764e437b64bdcba816"
+HIMAX_WE1_SDK_MD5 ="5063c24d298fbcfe118163f3ccc43079"
                     
 
