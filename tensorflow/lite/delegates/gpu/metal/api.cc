@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/padding.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/pooling.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/prelu.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/quantize_and_dequantize.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/relu.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/reshape.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/resize.h"
@@ -94,6 +95,12 @@ std::vector<ComputeTaskDescriptorPtr> SelectConvolutionTransposed(
     return ConvolutionTransposed(id, input_id, output_id, attr, device_info,
                                  options);
   }
+}
+
+std::vector<ComputeTaskDescriptorPtr> SelectQuantizeAndDequantize(
+    int id, ValueId input_id, ValueId output_id,
+    const QuantizeAndDequantizeAttributes& attr) {
+  return QuantizeAndDequantize(id, input_id, output_id, attr);
 }
 
 std::vector<ComputeTaskDescriptorPtr> SelectPReLU(
@@ -351,6 +358,12 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
       *tasks = ReLU(node_id, inputs[0], outputs[0],
                     absl::any_cast<ReLUAttributes>(node->operation.attributes));
       break;
+    case OperationType::QUANTIZE_AND_DEQUANTIZE:
+      *tasks = SelectQuantizeAndDequantize(
+          node_id, inputs[0], outputs[0],
+          absl::any_cast<QuantizeAndDequantizeAttributes>(
+              node->operation.attributes));
+      break;
     case OperationType::RESHAPE:
       *tasks = SelectReshape(
           graph, node_id, inputs[0], outputs[0],
@@ -427,7 +440,6 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     case OperationType::BATCH_TO_SPACE:
     case OperationType::CONST:
     case OperationType::LSTM:
-    case OperationType::QUANTIZE_AND_DEQUANTIZE:
     case OperationType::SPACE_TO_BATCH:
     case OperationType::TRANSPOSE:
     case OperationType::UNKNOWN:

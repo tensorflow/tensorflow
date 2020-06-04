@@ -13,17 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_GL_KERNELS_QUANTIZE_AND_DEQUANTIZE_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_GL_KERNELS_QUANTIZE_AND_DEQUANTIZE_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_QUANTIZE_AND_DEQUANTIZE_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_QUANTIZE_AND_DEQUANTIZE_H_
 
-#include <memory>
+#include <vector>
 
+#include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
-#include "tensorflow/lite/delegates/gpu/gl/node_shader.h"
+#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
+#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
 namespace gpu {
-namespace gl {
+namespace metal {
 
 // Performs the operation: {Quantize, Dequantize} on floating-point data.
 // We need this operation to emulate the error introduced by quantization
@@ -37,10 +39,12 @@ namespace gl {
 //
 // NOTE: We do not need to nudge min/max values in this op, since they would
 // already be adjusted while generating the quantized model.
-std::unique_ptr<NodeShader> NewQuantizeAndDequantizeNodeShader();
+std::vector<ComputeTaskDescriptorPtr> QuantizeAndDequantize(
+    int id, ValueId input_id, ValueId output_id,
+    const QuantizeAndDequantizeAttributes& attr);
 
-}  // namespace gl
+}  // namespace metal
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_GL_KERNELS_QUANTIZE_AND_DEQUANTIZE_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_QUANTIZE_AND_DEQUANTIZE_H_
