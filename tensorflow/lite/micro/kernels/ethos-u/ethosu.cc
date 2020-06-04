@@ -19,6 +19,8 @@ limitations under the License.
 #include "tensorflow/lite/micro/tools/make/downloads/flatbuffers/include/flatbuffers/flexbuffers.h"
 
 namespace tflite {
+namespace ops {
+namespace micro {
 namespace custom {
 namespace ethosu {
 
@@ -100,4 +102,6 @@ const char* GetString_ETHOSU() {
 }
 
 }  // namespace custom
+}  // namespace micro
+}  // namespace ops
 }  // namespace tflite

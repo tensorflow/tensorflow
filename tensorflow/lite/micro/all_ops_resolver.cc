@@ -15,10 +15,14 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/micro_ops.h"
 
 namespace tflite {
+namespace ops {
+namespace micro {
 namespace custom {
 TfLiteRegistration* Register_ETHOSU();
 const char* GetString_ETHOSU();
 }  // namespace custom
+}  // namespace micro
+}  // namespace ops
 
 AllOpsResolver::AllOpsResolver() {
   // Please keep this list of Builtin Operators in alphabetical order.
@@ -90,9 +94,9 @@ AllOpsResolver::AllOpsResolver() {
   AddBuiltin(BuiltinOperator_TANH, tflite::ops::micro::Register_TANH());
   AddBuiltin(BuiltinOperator_UNPACK, tflite::ops::micro::Register_UNPACK());
 
-  TfLiteRegistration* registration = tflite::custom::Register_ETHOSU();
+  TfLiteRegistration* registration = tflite::ops::micro::custom::Register_ETHOSU();
   if (registration) {
-     AddCustom(tflite::custom::GetString_ETHOSU(), registration);
+    AddCustom(tflite::ops::micro::custom::GetString_ETHOSU(), registration);
   }
 }
 
