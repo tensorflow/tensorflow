@@ -191,7 +191,7 @@ void GreedyMemoryPlanner::CalculateOffsetsIfNeeded() {
   // Work through the rest of the buffers to find a good gap to place each one.
   for (int i = 1; i < buffer_count_; ++i) {
     // The id is the order the buffer was originally added by the client.
-    const int buffer_id = buffer_ids_sorted_[i];
+    buffer_id = buffer_ids_sorted_[i];
     // Look at what size and time range the buffer needs to be active.
     BufferRequirements* wanted_requirements = &requirements_[buffer_id];
     const int wanted_size = wanted_requirements->size;

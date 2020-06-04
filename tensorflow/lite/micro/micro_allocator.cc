@@ -99,6 +99,9 @@ TfLiteStatus AllocateVariables(
 // not called by default. Hence it's not linked in to the final binary code.
 TfLiteStatus CheckOfflinePlannedOffsets(const Model* model,
                                         ErrorReporter* error_reporter) {
+  // Suppress compile warning for unused function
+  (void)CheckOfflinePlannedOffsets;
+
   if (model->metadata()) {
     for (size_t i = 0; i < model->metadata()->size(); ++i) {
       auto metadata = model->metadata()->Get(i);
