@@ -82,8 +82,8 @@ class Writer {
 // Writes snapshots with the standard TFRecord file format.
 class TFRecordWriter : public Writer {
  public:
-  explicit TFRecordWriter(const std::string& filename,
-                          const std::string& compression_type);
+  TFRecordWriter(const std::string& filename,
+                 const std::string& compression_type);
 
   Status WriteTensors(const std::vector<Tensor>& tensors) override;
 
@@ -114,9 +114,8 @@ class CustomWriter : public Writer {
   static constexpr const char* const kWriteCord = "WriteCord";
   static constexpr const char* const kSeparator = "::";
 
-  explicit CustomWriter(const std::string& filename,
-                        const std::string& compression_type,
-                        const DataTypeVector& dtypes);
+  CustomWriter(const std::string& filename, const std::string& compression_type,
+               const DataTypeVector& dtypes);
 
   Status WriteTensors(const std::vector<Tensor>& tensors) override;
 
@@ -192,9 +191,8 @@ class Reader {
 // Reads snapshots previously written with `TFRecordWriter`.
 class TFRecordReader : public Reader {
  public:
-  explicit TFRecordReader(const std::string& filename,
-                          const string& compression_type,
-                          const DataTypeVector& dtypes);
+  TFRecordReader(const std::string& filename, const string& compression_type,
+                 const DataTypeVector& dtypes);
 
   Status ReadTensors(std::vector<Tensor>* read_tensors) override;
 
@@ -231,9 +229,8 @@ class CustomReader : public Reader {
   static constexpr const char* const kReadCord = "ReadCord";
   static constexpr const char* const kSeparator = "::";
 
-  explicit CustomReader(const std::string& filename,
-                        const string& compression_type, const int version,
-                        const DataTypeVector& dtypes);
+  CustomReader(const std::string& filename, const string& compression_type,
+               const int version, const DataTypeVector& dtypes);
 
   Status ReadTensors(std::vector<Tensor>* read_tensors) override;
 
