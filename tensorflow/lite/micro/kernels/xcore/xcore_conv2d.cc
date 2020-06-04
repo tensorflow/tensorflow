@@ -48,12 +48,13 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   // set param values not parsed from custom options
   op->params.K_h = weights->dims->data[1];
 
-  op->Init(input->dims->data[1],   // X_h
-           input->dims->data[2],   // X_w
-           input->dims->data[3],   // C_in
-           output->dims->data[1],  // Y_h
-           output->dims->data[2],  // Y_w
-           weights->dims->data[0]  // C_out
+  op->Init(input->dims->data[1],    // X_h
+           input->dims->data[2],    // X_w
+           input->dims->data[3],    // C_in
+           output->dims->data[1],   // Y_h
+           output->dims->data[2],   // Y_w
+           weights->dims->data[0],  // C_out
+           weights->dims->data[2]   // K_w padded
   );
 
   return kTfLiteOk;
