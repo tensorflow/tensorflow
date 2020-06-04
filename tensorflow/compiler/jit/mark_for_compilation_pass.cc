@@ -1177,28 +1177,18 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
     }
 
     // skip nodes that have cross device edges.
-    bool cross_device = false;
-    for (const Edge* e : node->out_edges()) {
+    auto is_cross_device_edge = [](const Edge* e) {
+      auto src = e->src();
       auto dst = e->dst();
-      if (!node->assigned_device_name().empty() &&
-          !dst->assigned_device_name().empty() &&
-          node->assigned_device_name() != dst->assigned_device_name()) {
-        cross_device = true;
-        break;
-      }
-    }
-    if (!cross_device) {
-      for (const Edge* e : node->in_edges()) {
-        auto src = e->src();
-        if (!node->assigned_device_name().empty() &&
-            !src->assigned_device_name().empty() &&
-            node->assigned_device_name() != src->assigned_device_name()) {
-          cross_device = true;
-          break;
-        }
-      }
-    }
-    if (cross_device)
+      return !src->assigned_device_name().empty() &&
+             !dst->assigned_device_name().empty() &&
+             src->assigned_device_name() != dst->assigned_device_name();
+    };
+
+    if (absl::c_any_of(node->out_edges(), is_cross_device_edge))
+      continue;
+
+    if (absl::c_any_of(node->in_edges(), is_cross_device_edge))
       continue;
 
     TF_ASSIGN_OR_RETURN(
