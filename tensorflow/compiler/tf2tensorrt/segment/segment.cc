@@ -721,6 +721,10 @@ Status SegmentGraph(const Graph* tf_graph,
   std::vector<UnionFind<SimpleNode*>> node_segments;
   for (int i = 0; i < graph->num_node_ids(); ++i) {
     SimpleNode* node = graph->FindNodeId(i);
+	if (!node) {
+		VLOG(1) << "Node " << i << " doesn't exist in the graph";
+		continue;
+	}
     auto exclude_node = [&](absl::string_view reason) {
       VLOG(1) << "Not a TF-TRT candidate, "
               << "(Op type: " << node->tf_node()->type_string() << "), "
