@@ -890,7 +890,15 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   void CreateAllocationValues(const HloValue* value,
                               std::vector<AllocationValue>* allocation_values);
 
-  // Finds an allocation for the given interval.
+  // Finds allocations for colocated intervals. Colocated intervals consist of
+  // one or more BufferIntervals, each with a different HloValue. All of the
+  // intervals within colocated intervals have a must-alias relationship with
+  // each other.
+  void AllocateColocatedIntervals(
+      const std::vector<const BufferInterval*>& colocated_intervals);
+
+  // Finds an allocation for an allocation request for a segment (see the
+  // documentation for AllocationRequest above how a segment is defined).
   //
   // It performs three things in the following order:
   //  1- Allocate the allocation request entirely in the alternate memory, if
@@ -904,7 +912,7 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // false. This means we could not find a suitable allocation, so all previous
   // allocations for this buffer must be removed and allocated in the default
   // memory. Otherwise, this method returns true.
-  bool FindAllocation(const AllocationRequest& request);
+  bool AllocateSegment(const AllocationRequest& request);
 
   // Try allocating in alternate memory without any copies. Returns true if
   // successful.
@@ -1000,8 +1008,7 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
       const BufferInterval& interval,
       const MemorySpaceAssignment::Allocation& allocation,
       std::string* debug_str) const;
-  void DumpIfEnabled(absl::string_view buffer_info_str,
-                     absl::string_view allocation_info_str) const;
+  void DumpDebugStringsIfEnabled() const;
 
   // Returns the available heap size in the alternate memory.
   int64 available_heap_size() const {
@@ -1025,6 +1032,9 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
       required_assignments_;
   // Number of bytes reserved in alternate memory space.
   int64 reserved_in_bytes_ = 0;
+  // Debug strings.
+  std::string buffer_info_str_;
+  std::string allocation_info_str_;
 };
 
 }  // namespace xla
