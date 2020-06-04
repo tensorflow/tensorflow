@@ -1030,9 +1030,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       # Create the validation data using the training data. Only supported for
       # `Tensor` and `NumPy` input.
       (x, y, sample_weight), validation_data = (
-          data_adapter.train_validation_split((x, y, sample_weight),
-                                              validation_split=validation_split,
-                                              shuffle=False))
+          data_adapter.train_validation_split(
+              (x, y, sample_weight), validation_split=validation_split))
 
     with self.distribute_strategy.scope(), \
          training_utils.RespectCompiledTrainableState(self):

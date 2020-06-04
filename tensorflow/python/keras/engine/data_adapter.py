@@ -1365,8 +1365,10 @@ def expand_1d(data):
   return nest.map_structure(_expand_single_1d_tensor, data)
 
 
-def train_validation_split(arrays, validation_split, shuffle=True):
-  """Split arrays into random train and validation subsets.
+def train_validation_split(arrays, validation_split):
+  """Split arrays into train and validation subsets in deterministic order.
+
+  The last part of data will become validation data.
 
   Arguments:
     arrays: Tensors to split. Allowed inputs are arbitrarily nested structures
@@ -1374,10 +1376,6 @@ def train_validation_split(arrays, validation_split, shuffle=True):
     validation_split: Float between 0 and 1. The proportion of the dataset to
       include in the validation split. The rest of the dataset will be included
       in the training split.
-    shuffle: Bool. Whether to shuffle the data before performing a split. If
-      `False`, the last `validation_split` fraction of that training data will
-      become the validation split.
-
   Returns:
     `(train_arrays, validation_arrays)`
   """
@@ -1406,12 +1404,7 @@ def train_validation_split(arrays, validation_split, shuffle=True):
 
   # Assumes all arrays have the same batch shape or are `None`.
   batch_dim = int(first_non_none.shape[0])
-  indices = ops.convert_to_tensor_v2(range(batch_dim))
-  if shuffle:
-    indices = random_ops.random_shuffle(indices)
   split_at = int(math.floor(batch_dim * (1. - validation_split)))
-  train_indices = indices[:split_at]
-  val_indices = indices[split_at:]
 
   if split_at == 0 or split_at == batch_dim:
     raise ValueError(
@@ -1421,16 +1414,15 @@ def train_validation_split(arrays, validation_split, shuffle=True):
         "different value for the `validation_split` argument." .format(
             batch_dim=batch_dim, validation_split=validation_split))
 
-  def _split(t, indices):
+  def _split(t, start, end):
     if t is None:
       return t
-    t = ops.convert_to_tensor_v2(t)
-    return array_ops.gather_v2(t, indices)
+    return t[start:end]
 
   train_arrays = nest.map_structure(
-      functools.partial(_split, indices=train_indices), arrays)
+      functools.partial(_split, start=0, end=split_at), arrays)
   val_arrays = nest.map_structure(
-      functools.partial(_split, indices=val_indices), arrays)
+      functools.partial(_split, start=split_at, end=batch_dim), arrays)
 
   return train_arrays, val_arrays
 
