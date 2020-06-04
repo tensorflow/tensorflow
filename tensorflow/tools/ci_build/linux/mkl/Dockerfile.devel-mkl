@@ -19,6 +19,7 @@ ARG ENABLE_HOROVOD=""
 ARG OPENMPI_VERSION=""
 ARG OPENMPI_DOWNLOAD_URL=""
 ARG HOROVOD_VERSION=""
+ARG TF_NIGHTLY_FLAG=""
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -56,8 +57,8 @@ RUN ${PIP} install future>=0.17.1
 
 RUN bazel --bazelrc=/root/.bazelrc build -c opt \
     tensorflow/tools/pip_package:build_pip_package && \
-    bazel-bin/tensorflow/tools/pip_package/build_pip_package "${WHL_DIR}" && \
-    ${PIP} --no-cache-dir install --upgrade "${WHL_DIR}"/tensorflow-*.whl && \
+    bazel-bin/tensorflow/tools/pip_package/build_pip_package "${TF_NIGHTLY_FLAG}" "${WHL_DIR}" && \
+    ${PIP} --no-cache-dir install --upgrade "${WHL_DIR}"/*.whl && \
     rm -rf /root/.cache
     # Clean up Bazel cache when done.
 
