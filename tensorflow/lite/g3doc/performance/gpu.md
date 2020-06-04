@@ -76,6 +76,10 @@ on your phone.
 
 #### Step 2. Modify the Podfile to use the TensorFlow Lite GPU CocoaPod
 
+<section class="zippy">
+
+Until TensorFlow Lite 2.0.0
+
 We have built a binary CocoaPod that includes the GPU delegate. To switch the
 project to use it, modify the
 `tensorflow/tensorflow/lite/examples/ios/camera/Podfile` file to use
@@ -86,6 +90,30 @@ target 'YourProjectName'
   # pod 'TensorFlowLite', '1.12.0'
   pod 'TensorFlowLiteGpuExperimental'
 ```
+
+</section>
+
+From TensorFlow Lite 2.1.0, GPU delegate is inlcuded in the `TensorFlowLiteC`
+pod. You can choose between `TensorFlowLiteC` and `TensorFlowLiteSwift`
+depending on the language.
+
+Note: This behavior will be changed in 2.3.0 and latest nightly releases
+
+For nightly version and upcoming 2.3.0 release, by default GPU delegate is
+excluded from the pod to reduce the binary size. You can include them by
+specifying subspec. For `TensorFlowLiteSwift` pod:
+
+```ruby
+pod 'TensorFlowLiteSwift/Metal', '~> 0.0.1-nightly',
+```
+
+OR
+
+```ruby
+pod 'TensorFlowLiteSwift', '~> 0.0.1-nightly', :subspecs => ['Metal']
+```
+
+You can do similiarly for `TensorFlowLiteC` if you want to use the C API.
 
 #### Step 3. Enable the GPU delegate
 
