@@ -741,7 +741,7 @@ class MIOpenSupport : public dnn::DnnSupport {
   std::unique_ptr<class MIOpenAccess> miopen_;
 
   PoolingWorkspaceCache m_pooling_cache;
-  bool m_pooling_cache_allowed = true;
+  bool m_pooling_cache_allowed = false;
   bool m_pooling_cache_enabled = false;
 
   template <class T, class U>
