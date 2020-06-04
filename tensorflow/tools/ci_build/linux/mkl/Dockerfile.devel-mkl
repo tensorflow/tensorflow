@@ -18,6 +18,7 @@ ARG ENABLE_DNNL1=""
 ARG ENABLE_HOROVOD=""
 ARG OPENMPI_VERSION=""
 ARG OPENMPI_DOWNLOAD_URL=""
+ARG HOROVOD_VERSION=""
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -60,11 +61,11 @@ RUN bazel --bazelrc=/root/.bazelrc build -c opt \
     rm -rf /root/.cache
     # Clean up Bazel cache when done.
 
-#Install OpenMPI/Horovod
+# Install OpenMPI/Horovod
 COPY install_openmpi_horovod.sh .
 RUN if [ "${ENABLE_HOROVOD}" = "yes" ]; then \
         chmod +x install_openmpi_horovod.sh && \
-        ./install_openmpi_horovod.sh ${OPENMPI_VERSION} ${OPENMPI_DOWNLOAD_URL} && \
+        ./install_openmpi_horovod.sh OPENMPI_VERSION=${OPENMPI_VERSION} OPENMPI_DOWNLOAD_URL=${OPENMPI_DOWNLOAD_URL} HOROVOD_VERSION=${HOROVOD_VERSION} && \
         rm -rf install_openmpi_horovod.sh; \
     fi
 

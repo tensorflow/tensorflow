@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,25 +13,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# Install OpenMPI, OpenSSH and Horovod in Intel(R) MKL support
-# Usage: install_openmpi_horovod.sh [openmpi version] [openmpi download url]
+# Install OpenMPI, OpenSSH and Horovod during Intel(R) MKL container build
+# Usage: install_openmpi_horovod.sh [OPENMPI_VERSION=<openmpi version>] [OPENMPI_DOWNLOAD_URL=<openmpi download url>] [HOROVOD_VERSION=<horovod version>]
 
 set -e
 
 apt-get clean && apt-get update -y
 
 # Set default
-if [[ $# -gt 1 ]]; then
-  OPENMPI_VERSION="${1}"
-  OPENMPI_DOWNLOAD_URL="${2}"
-else
-  OPENMPI_VERSION=openmpi-2.1.1
-  OPENMPI_DOWNLOAD_URL=https://www.open-mpi.org/software/ompi/v2.1/downloads/${OPENMPI_VERSION}.tar.gz  
-fi
+OPENMPI_VERSION=${OPENMPI_VERSION:-openmpi-2.1.1}
+OPENMPI_DOWNLOAD_URL=${OPENMPI_DOWNLOAD_URL:-https://www.open-mpi.org/software/ompi/v2.1/downloads/${OPENMPI_VERSION}.tar.gz}
+HOROVOD_VERSION=${HOROVOD_VERSION:-0.19.1}
 
 # Install Open MPI
-echo "Installing OpenMPI version ${OPENMPI_VERSION}..."
-echo "OpenMPI Download url ${OPENMPI_DOWNLOAD_URL}..."
+echo "Installing OpenMPI version ${OPENMPI_VERSION} ..."
+echo "OpenMPI Download url ${OPENMPI_DOWNLOAD_URL} ..."
 
 mkdir /tmp/openmpi
 cd /tmp/openmpi
@@ -54,7 +50,7 @@ chmod a+x /usr/local/bin/mpirun
 # Configure OpenMPI to run good defaults:
 echo "btl_tcp_if_exclude = lo,docker0" >> /usr/local/etc/openmpi-mca-params.conf
 
-#Check mpi version
+# Check mpi version
 echo 'OpenMPI version:'
 mpirun --version
 
@@ -66,6 +62,6 @@ cat /etc/ssh/ssh_config | grep -v StrictHostKeyChecking > /etc/ssh/ssh_config.ne
 echo " StrictHostKeyChecking no" >> /etc/ssh/ssh_config.new
 mv /etc/ssh/ssh_config.new /etc/ssh/ssh_config
 
-#Install Horovod
+# Install Horovod
 HOROVOD_WITH_TENSORFLOW=1
-python3 -m pip install --no-cache-dir horovod==0.19.1
+python3 -m pip install --no-cache-dir horovod==${HOROVOD_VERSION}
