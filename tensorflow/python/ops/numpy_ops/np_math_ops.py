@@ -415,8 +415,8 @@ def isclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False):  # pylint: disable=m
   def f(a, b):  # pylint: disable=missing-docstring
     dtype = a.dtype
     if np.issubdtype(dtype.as_numpy_dtype, np.inexact):
-      rtol_ = ops.convert_to_tensor(rtol, dtype)
-      atol_ = ops.convert_to_tensor(atol, dtype)
+      rtol_ = ops.convert_to_tensor(rtol, dtype.real_dtype)
+      atol_ = ops.convert_to_tensor(atol, dtype.real_dtype)
       result = (math_ops.abs(a - b) <= atol_ + rtol_ * math_ops.abs(b))
       if equal_nan:
         result = result | (math_ops.is_nan(a) & math_ops.is_nan(b))
@@ -539,8 +539,8 @@ def _scalar(tf_fn, x, promote_to_float=False):
     determined by `np_dtypes.default_float_type`, unless x is an ndarray with a
     floating point type, in which case the output type is same as x.dtype.
   """
-  x = np_array_ops.array(x)
-  if promote_to_float and not np.issubdtype(x.dtype, np.floating):
+  x = np_array_ops.asarray(x)
+  if promote_to_float and not np.issubdtype(x.dtype, np.inexact):
     x = x.astype(np_dtypes.default_float_type())
   return np_utils.tensor_to_ndarray(tf_fn(x.data))
 
@@ -884,29 +884,27 @@ def diff(a, n=1, axis=-1):
   return _scalar(f, a)
 
 
-def flip(f):
-
+def _flip_args(f):
   def _f(a, b):
     return f(b, a)
-
   return _f
 
 
 setattr(np_arrays.ndarray, '__abs__', absolute)
 setattr(np_arrays.ndarray, '__floordiv__', floor_divide)
-setattr(np_arrays.ndarray, '__rfloordiv__', flip(floor_divide))
+setattr(np_arrays.ndarray, '__rfloordiv__', _flip_args(floor_divide))
 setattr(np_arrays.ndarray, '__mod__', mod)
-setattr(np_arrays.ndarray, '__rmod__', flip(mod))
+setattr(np_arrays.ndarray, '__rmod__', _flip_args(mod))
 setattr(np_arrays.ndarray, '__add__', add)
-setattr(np_arrays.ndarray, '__radd__', flip(add))
+setattr(np_arrays.ndarray, '__radd__', _flip_args(add))
 setattr(np_arrays.ndarray, '__sub__', subtract)
-setattr(np_arrays.ndarray, '__rsub__', flip(subtract))
+setattr(np_arrays.ndarray, '__rsub__', _flip_args(subtract))
 setattr(np_arrays.ndarray, '__mul__', multiply)
-setattr(np_arrays.ndarray, '__rmul__', flip(multiply))
+setattr(np_arrays.ndarray, '__rmul__', _flip_args(multiply))
 setattr(np_arrays.ndarray, '__pow__', power)
-setattr(np_arrays.ndarray, '__rpow__', flip(power))
+setattr(np_arrays.ndarray, '__rpow__', _flip_args(power))
 setattr(np_arrays.ndarray, '__truediv__', true_divide)
-setattr(np_arrays.ndarray, '__rtruediv__', flip(true_divide))
+setattr(np_arrays.ndarray, '__rtruediv__', _flip_args(true_divide))
 
 
 def _comparison(tf_fun, x1, x2, cast_bool_to_int=False):
@@ -1000,42 +998,44 @@ setattr(np_arrays.ndarray, '__ne__', not_equal)
 
 
 @np_utils.np_doc(np.linspace)
-def linspace(start, stop, num=50, endpoint=True, retstep=False, dtype=float):
+def linspace(  # pylint: disable=missing-docstring
+    start, stop, num=50, endpoint=True, retstep=False, dtype=float, axis=0):
   if dtype:
     dtype = np_utils.result_type(dtype)
-  start = np_array_ops.array(start, dtype=dtype)
-  stop = np_array_ops.array(stop, dtype=dtype)
-  if num == 0:
-    return empty(dtype)
+  start = np_array_ops.array(start, dtype=dtype).data
+  stop = np_array_ops.array(stop, dtype=dtype).data
   if num < 0:
     raise ValueError('Number of samples {} must be non-negative.'.format(num))
-  step = np.nan
+  step = ops.convert_to_tensor(np.nan)
   if endpoint:
-    result = math_ops.linspace(start.data, stop.data, num)
+    result = math_ops.linspace(start, stop, num, axis=axis)
     if num > 1:
       step = (stop - start) / (num - 1)
   else:
     # math_ops.linspace does not support endpoint=False so we manually handle it
     # here.
     if num > 1:
-      step = (stop - start) / num
-      result = math_ops.linspace(start.data, (stop - step).data, num)
+      step = ((stop - start) / num)
+      new_stop = math_ops.cast(stop, step.dtype) - step
+      start = math_ops.cast(start, new_stop.dtype)
+      result = math_ops.linspace(start, new_stop, num, axis=axis)
     else:
-      result = math_ops.linspace(start.data, stop.data, num)
+      result = math_ops.linspace(start, stop, num, axis=axis)
   if dtype:
     result = math_ops.cast(result, dtype)
   if retstep:
-    return np_arrays.tensor_to_ndarray(result), step
+    return (np_arrays.tensor_to_ndarray(result),
+            np_arrays.tensor_to_ndarray(step))
   else:
     return np_arrays.tensor_to_ndarray(result)
 
 
 @np_utils.np_doc(np.logspace)
-def logspace(start, stop, num=50, endpoint=True, base=10.0, dtype=None):
-  if dtype:
-    dtype = np_utils.result_type(dtype)
-  result = linspace(start, stop, num=num, endpoint=endpoint)
-  result = math_ops.pow(base, result.data)
+def logspace(start, stop, num=50, endpoint=True, base=10.0, dtype=None, axis=0):
+  dtype = np_utils.result_type(start, stop, dtype)
+  result = linspace(
+      start, stop, num=num, endpoint=endpoint, dtype=dtype, axis=axis).data
+  result = math_ops.pow(math_ops.cast(base, result.dtype), result)
   if dtype:
     result = math_ops.cast(result, dtype)
   return np_arrays.tensor_to_ndarray(result)
@@ -1049,6 +1049,8 @@ def ptp(a, axis=None, keepdims=None):
 
 @np_utils.np_doc_only(np.concatenate)
 def concatenate(arys, axis=0):
+  if not isinstance(arys, (list, tuple)):
+    arys = [arys]
   if not arys:
     raise ValueError('Need at least one array to concatenate.')
   dtype = np_utils.result_type(*arys)
