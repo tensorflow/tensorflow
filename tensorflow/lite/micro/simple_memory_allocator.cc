@@ -48,8 +48,8 @@ SimpleMemoryAllocator* SimpleMemoryAllocator::Create(
   // allocator instance.
   uint8_t* allocator_buffer = tmp.AllocateFromTail(
       sizeof(SimpleMemoryAllocator), alignof(SimpleMemoryAllocator));
-  return new (allocator_buffer)
-      SimpleMemoryAllocator(error_reporter, tmp.head_, tmp.tail_);
+  // Use the default copy constructor to populate internal states.
+  return new (allocator_buffer) SimpleMemoryAllocator(tmp);
 }
 
 SimpleMemoryAllocator::~SimpleMemoryAllocator() {}
