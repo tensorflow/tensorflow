@@ -297,7 +297,8 @@ bool CostAnalysisPrefetchIntervalPicker::CanAllocateInAlternateMemoryNoCopy(
   float async_copy_elapsed = cost_analysis_.GetAsyncCopyElapsed(shape);
   float logical_interval_elapsed =
       GetLogicalIntervalElapsed(start_time, end_time);
-  return max_async_copy_to_overlap_ratio_ * async_copy_elapsed >
+  return max_async_copy_to_overlap_ratio_ * max_overlap_multiplier_ *
+             async_copy_elapsed >
          logical_interval_elapsed;
 }
 
@@ -332,10 +333,19 @@ void CostAnalysisPrefetchIntervalPicker::Begin(const HloUse& use,
   // Find the earliest time we're allowed to start prefetching.
   for (current_logical_prefetch_time_ = start_time;
        current_logical_prefetch_time_ < end_logical_time_ &&
-       max_async_copy_to_overlap_ratio_ * async_copy_elapsed_ <
+       max_async_copy_to_overlap_ratio_ * max_overlap_multiplier_ *
+               async_copy_elapsed_ <
            GetLogicalIntervalElapsed(current_logical_prefetch_time_,
                                      end_logical_time_);
        ++current_logical_prefetch_time_) {
+  }
+  // If the first prefetch interval violates the min overlap (this can happen if
+  // there is an HLO that has a very long estimated execution time), we go
+  // earlier in time until we no longer violate the min overlap (we start
+  // prefetching before the HLO that has the very long estimated execution
+  // time).
+  while (Done() && current_logical_prefetch_time_ > start_time) {
+    --current_logical_prefetch_time_;
   }
 }
 
@@ -355,6 +365,11 @@ bool CostAnalysisPrefetchIntervalPicker::Done() const {
       current_logical_prefetch_time_, end_logical_time_);
   return async_copy_elapsed_ * min_async_copy_to_overlap_ratio_ >
          logical_interval_elapsed + inst_elapsed_reduction_;
+}
+
+void CostAnalysisPrefetchIntervalPicker::SetRetryNumber(int retry_number) {
+  // Use twice as large max overlap limit in each retry.
+  max_overlap_multiplier_ = 1 << retry_number;
 }
 
 int CostAnalysisPrefetchIntervalPicker::GetMinWhileNestLevel(
@@ -391,7 +406,9 @@ std::string CostAnalysisPrefetchIntervalPicker::ToDebugString() const {
   return absl::StrCat(
       "Async copy elapsed (s) = ", async_copy_elapsed_,
       ", inst elapsed reduction (s) = ", inst_elapsed_reduction_,
-      ", logical interval elapsed (s) = ", logical_interval_elapsed);
+      ", logical interval elapsed (s) = ", logical_interval_elapsed,
+      ", interval = (", current_logical_prefetch_time_, ", ", end_logical_time_,
+      ")");
 }
 
 std::string CostAnalysisPrefetchIntervalPicker::ToNoCopyDebugString(
@@ -879,26 +896,19 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
       continue;
     }
 
-    // TODO(berkin): For now, place the phi values due to conditionals in
-    // default memory.
-    for (const BufferInterval* colocated_interval : colocated_intervals) {
-      const HloValue* value = colocated_interval->buffer;
-      for (const auto& position : value->positions()) {
-        if (position.instruction->opcode() == HloOpcode::kConditional) {
-          VLOG(3) << "Adding required assignment for condition output: "
-                  << value->ToShortString();
-          AddRequiredAssignment(position.instruction, position.index,
-                                MemorySpace::kDefault);
-          for (const HloComputation* called_computation :
-               position.instruction->called_computations()) {
-            AddRequiredAssignment(called_computation->root_instruction(),
-                                  position.index, MemorySpace::kDefault);
-          }
-        }
-      }
-    }
+    AppendBufferInfoDebugString(interval, &buffer_info_str_);
 
-    AllocateColocatedIntervals(colocated_intervals);
+    // Retry allocating this value with larger limits if allocation fails.
+    for (int retry_number = 0; retry_number < options_.max_retries;
+         retry_number++) {
+      final_retry_ = (retry_number == options_.max_retries - 1);
+      options_.prefetch_interval_picker->SetRetryNumber(retry_number);
+      bool success = AllocateColocatedIntervals(colocated_intervals);
+      if (success) {
+        break;
+      }
+      VLOG(2) << "Couldn't allocate. Retry number " << retry_number;
+    }
   }
 
   VLOG(3) << "Debug buffer info: ";
@@ -910,9 +920,28 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
   return result_;
 }
 
-void AlternateMemoryBestFitHeap::AllocateColocatedIntervals(
+bool AlternateMemoryBestFitHeap::AllocateColocatedIntervals(
     const std::vector<const AlternateMemoryBestFitHeap::BufferInterval*>&
         colocated_intervals) {
+  // TODO(berkin): For now, place the phi values due to conditionals in
+  // default memory.
+  for (const BufferInterval* colocated_interval : colocated_intervals) {
+    const HloValue* value = colocated_interval->buffer;
+    for (const auto& position : value->positions()) {
+      if (position.instruction->opcode() == HloOpcode::kConditional) {
+        VLOG(3) << "Adding required assignment for condition output: "
+                << value->ToShortString();
+        AddRequiredAssignment(position.instruction, position.index,
+                              MemorySpace::kDefault);
+        for (const HloComputation* called_computation :
+             position.instruction->called_computations()) {
+          AddRequiredAssignment(called_computation->root_instruction(),
+                                position.index, MemorySpace::kDefault);
+        }
+      }
+    }
+  }
+
   // Create AllocationValues for all the colocated intervals.
   std::vector<AllocationValue> allocation_values;
   for (const auto& colocated_interval : colocated_intervals) {
@@ -925,8 +954,6 @@ void AlternateMemoryBestFitHeap::AllocateColocatedIntervals(
   // as well as inside the while loop.
   absl::flat_hash_map<const HloComputation*, int64>
       preferred_offset_for_computation;
-
-  AppendBufferInfoDebugString(*colocated_intervals[0], &buffer_info_str_);
 
   bool allocation_success = true;
   for (auto& allocation_value : allocation_values) {
@@ -1093,6 +1120,8 @@ void AlternateMemoryBestFitHeap::AllocateColocatedIntervals(
 
   pending_chunks_.clear();
   pending_async_copies_.clear();
+  pending_required_assignments_.clear();
+  return allocation_success;
 }
 
 bool operator<(const AsynchronousCopy& a, const AsynchronousCopy& b) {
@@ -1180,6 +1209,7 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
 
   pending_chunks_.clear();
   pending_async_copies_.clear();
+  pending_required_assignments_.clear();
 }
 
 void AlternateMemoryBestFitHeap::AddAliasedRequiredAssignmentsForSequentialCall(
@@ -1242,7 +1272,9 @@ void AlternateMemoryBestFitHeap::AddRequiredAssignment(
     VLOG(3) << "Adding required assignment: " << value->ToShortString()
             << " at " << time << " at "
             << (memory_space == MemorySpace::kDefault ? "def" : "alt");
-    required_assignments_[value].push_back({memory_space, time, chunk});
+    RequiredMemoryAssignment required_assignment{memory_space, time, chunk};
+    required_assignments_[value].push_back(required_assignment);
+    pending_required_assignments_.push_back({value, required_assignment});
   }
 }
 
@@ -1361,8 +1393,30 @@ void AlternateMemoryBestFitHeap::UncommitPendingChunks() {
                                      kDummyChunk);
     }
   }
+  for (const auto& value_and_required_assignment :
+       pending_required_assignments_) {
+    auto& required_assignment_vector =
+        required_assignments_[value_and_required_assignment.first];
+    const RequiredMemoryAssignment& required_assignment =
+        value_and_required_assignment.second;
+    VLOG(3) << "Removing required assignment: "
+            << (required_assignment.memory_space == MemorySpace::kDefault
+                    ? "def"
+                    : "alt")
+            << " time = " << required_assignment.time << " off = "
+            << (required_assignment.chunk ? required_assignment.chunk->offset
+                                          : -1);
+    for (auto it = required_assignment_vector.begin();
+         it != required_assignment_vector.end(); ++it) {
+      if (*it == value_and_required_assignment.second) {
+        required_assignment_vector.erase(it);
+        break;
+      }
+    }
+  }
   pending_chunks_.clear();
   pending_async_copies_.clear();
+  pending_required_assignments_.clear();
 }
 
 void AlternateMemoryBestFitHeap::AddToPendingChunks(
@@ -1506,6 +1560,12 @@ bool AlternateMemoryBestFitHeap::AllocateSegment(
   // Finally, try to prefetch the buffer into alternate memory.
   if (Prefetch(request, **prev_allocation_in_default_mem_it)) {
     return true;
+  }
+  if (!final_retry_ && prefetch_failed_due_to_async_copy_) {
+    // If prefetching failed due to asynchronous copy and we're not in our final
+    // try, return false (failure) so that we can retry this interval with
+    // larger limits.
+    return false;
   }
 
   // If the end assignment was required to be in alternate memory but that
@@ -1818,6 +1878,10 @@ bool AlternateMemoryBestFitHeap::Prefetch(
   BufferInterval alternate_mem_interval;
   alternate_mem_interval.buffer = request.allocation_value->value();
   alternate_mem_interval.size = request.size;
+  // If any of the prefetch intervals couldn't be used due to number of
+  // outstanding async copy limit or async copy ordering, set
+  // prefetch_failed_due_to_async_copy_.
+  prefetch_failed_due_to_async_copy_ = false;
   while (!options_.prefetch_interval_picker->Done()) {
     alternate_mem_interval.start = options_.prefetch_interval_picker->Next();
     CHECK_LT(alternate_mem_interval.start, request.latest_prefetch_time);
@@ -1825,15 +1889,17 @@ bool AlternateMemoryBestFitHeap::Prefetch(
             << alternate_mem_interval.start << ", " << request.end_time << ")";
     // If this additional asynchronous copy would violate the limit, try a
     // different interval.
+    if (ViolatesAsyncCopyOrdering(alternate_mem_interval.start,
+                                  request.latest_prefetch_time)) {
+      VLOG(4) << "This would violate asynchronous copy ordering.";
+      prefetch_failed_due_to_async_copy_ = true;
+      continue;
+    }
     if (ViolatesMaximumOutstandingAsyncCopies(alternate_mem_interval.start,
                                               request.latest_prefetch_time,
                                               /*is_prefetch=*/true)) {
       VLOG(4) << "This would violate the outstanding async copy limit.";
-      continue;
-    }
-    if (ViolatesAsyncCopyOrdering(alternate_mem_interval.start,
-                                  request.latest_prefetch_time)) {
-      VLOG(4) << "This would violate asynchronous copy ordering.";
+      prefetch_failed_due_to_async_copy_ = true;
       continue;
     }
 
@@ -1857,6 +1923,7 @@ bool AlternateMemoryBestFitHeap::Prefetch(
 
       request.allocation_value->allocation_sequence()->back()->AddUse(
           request.use);
+      prefetch_failed_due_to_async_copy_ = false;
       return true;
     }
   }
