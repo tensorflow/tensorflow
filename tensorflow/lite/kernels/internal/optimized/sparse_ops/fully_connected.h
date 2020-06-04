@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_SPARSE_OPS_FULLY_CONNECTED_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_SPARSE_OPS_FULLY_CONNECTED_H_
 
+#include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
@@ -31,6 +32,8 @@ inline void FullyConnectedSparseWeight(
     const RuntimeShape& weights_shape, const float* weights_data,
     const RuntimeShape& bias_shape, const float* bias_data,
     const RuntimeShape& output_shape, float* output_data) {
+  ruy::profiler::ScopeLabel label("FullyConnected");
+  ruy::profiler::ScopeLabel inner_label("Random Sparse");
   const float output_activation_min = params.float_activation_min;
   const float output_activation_max = params.float_activation_max;
 
@@ -75,6 +78,8 @@ inline void FullyConnectedSparseWeight1x4(
     const RuntimeShape& weights_shape, const float* weights_data,
     const RuntimeShape& bias_shape, const float* bias_data,
     const RuntimeShape& output_shape, float* output_data) {
+  ruy::profiler::ScopeLabel label("FullyConnected");
+  ruy::profiler::ScopeLabel inner_label("1x4 Block Sparse");
   const float output_activation_min = params.float_activation_min;
   const float output_activation_max = params.float_activation_max;
 

@@ -20,6 +20,9 @@ from __future__ import print_function
 
 import copy
 import itertools
+import json
+import os
+import six
 
 from tensorflow.python.autograph.lang import directives
 from tensorflow.python.distribute import distribute_coordinator as dc
@@ -31,19 +34,31 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import monitoring
+from tensorflow.python.framework import errors
+from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks as callbacks_module
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.distribute import distributed_training_utils as dist_utils
+from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import compile_utils
 from tensorflow.python.keras.engine import data_adapter
-from tensorflow.python.keras.engine import network
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer as lso
+from tensorflow.python.keras.saving import hdf5_format
+from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.saving.saved_model import model_serialization
+from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils import version_utils
+from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
+from tensorflow.python.keras.utils.io_utils import path_to_string
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -52,12 +67,33 @@ from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
+from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.training.tracking import data_structures
+from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
+from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
+from tensorflow.python.util import serialization
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import keras_export
+from tensorflow.tools.docs import doc_controls
+
+
+# pylint: disable=g-import-not-at-top
+try:
+  import h5py
+except ImportError:
+  h5py = None
+
+try:
+  import yaml
+except ImportError:
+  yaml = None
+# pylint: enable=g-import-not-at-top
 
 
 _keras_api_gauge = monitoring.BoolGauge('/tensorflow/api/keras',
@@ -97,8 +133,25 @@ def disable_multi_worker(method):
       target=method, decorator_func=_method_wrapper)
 
 
+def inject_functional_model_class(cls):
+  from tensorflow.python.keras.engine import functional  # pylint: disable=g-import-not-at-top
+  from tensorflow.python.keras.engine import training_v1  # pylint: disable=g-import-not-at-top
+  if cls == Model or cls == training_v1.Model:
+    return functional.Functional
+
+  cls.__bases__ = tuple(inject_functional_model_class(base)
+                        for base in cls.__bases__)
+  return cls
+
+
+def is_functional_model_init_params(args, kwargs):
+  return (len(args) == 2 or
+          len(args) == 1 and 'outputs' in kwargs or
+          'inputs' in kwargs and 'outputs' in kwargs)
+
+
 @keras_export('keras.Model', 'keras.models.Model')
-class Model(network.Network, version_utils.ModelVersionSelector):
+class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   """`Model` groups layers into an object with training and inference features.
 
   Arguments:
@@ -174,11 +227,61 @@ class Model(network.Network, version_utils.ModelVersionSelector):
   _TF_MODULE_IGNORED_PROPERTIES = frozenset(
       itertools.chain(('_train_counter', '_test_counter', '_predict_counter',
                        '_steps_per_execution'),
-                      network.Network._TF_MODULE_IGNORED_PROPERTIES))  # pylint: disable=protected-access
+                      base_layer.Layer._TF_MODULE_IGNORED_PROPERTIES))  # pylint: disable=protected-access
 
+  def __new__(cls, *args, **kwargs):
+    # Signature detection
+    if is_functional_model_init_params(args, kwargs) and cls == Model:
+      # Functional model
+      from tensorflow.python.keras.engine import functional  # pylint: disable=g-import-not-at-top
+      return functional.Functional(*args, **kwargs)
+    else:
+      return super(Model, cls).__new__(cls, *args, **kwargs)
+
+  @trackable.no_automatic_dependency_tracking
   def __init__(self, *args, **kwargs):
-    super(Model, self).__init__(*args, **kwargs)
-    _keras_api_gauge.get_cell('model').set(True)
+    # Special case for Subclassed Functional Model, which we couldn't detect
+    # when __new__ is called. We only realize it is a functional model when it
+    # calls super.__init__ with input and output tensor.
+    from tensorflow.python.keras.engine import functional  # pylint: disable=g-import-not-at-top
+    if (is_functional_model_init_params(args, kwargs) and
+        not isinstance(self, functional.Functional)):
+      inject_functional_model_class(self.__class__)
+      functional.Functional.__init__(self, *args, **kwargs)
+      return
+
+    # The following are implemented as property functions:
+    # self.trainable_weights
+    # self.non_trainable_weights
+    generic_utils.validate_kwargs(kwargs, {'trainable', 'dtype', 'dynamic',
+                                           'name', 'autocast'})
+    super(Model, self).__init__(**kwargs)
+    # By default, Model is a subclass model, which is not in graph network.
+    self._is_graph_network = False
+
+    self.inputs = None
+    self.outputs = None
+    self.input_names = None
+    self.output_names = None
+    # stop_training is used by callback to stop training when error happens
+    self.stop_training = False
+    self.history = None
+    # These objects are used in the default `Model.compile`. They are not
+    # guaranteed to be set after `Model.compile` is called, as users can
+    # override compile with custom logic.
+    self.compiled_loss = None
+    self.compiled_metrics = None
+
+    # This is True for Sequential networks and Functional networks.
+    self._compute_output_and_mask_jointly = False
+
+    # Don't reset compilation if already done. This may occur if calling
+    # `__init__` (or `_init_graph_network`) on an already-compiled model
+    # such as a Sequential model. Sequential models may need to rebuild
+    # themselves after compilation.
+    self._maybe_create_attribute('_is_compiled', False)
+    self._maybe_create_attribute('optimizer', None)
+
     # Model must be created under scope of DistStrat it will be trained with.
     if ds_context.has_strategy():
       self._distribution_strategy = ds_context.get_strategy()
@@ -186,23 +289,20 @@ class Model(network.Network, version_utils.ModelVersionSelector):
       self._distribution_strategy = None
     # Defaults to value of `tf.config.experimental_functions_run_eagerly`.
     self._run_eagerly = None
-    self.stop_training = False
     # Initialize cache attrs.
     self._reset_compile_cache()
 
     # Fault-tolerance handler. Set in `ModelCheckpoint`.
     self._training_state = None
-    self.history = None
-
-    # These objects are used in the default `Model.compile`. They are not
-    # guaranteed to be set after `Model.compile` is called, as users can
-    # override compile with custom logic.
-    self.compiled_loss = None
-    self.compiled_metrics = None
+    self._saved_model_inputs_spec = None
+    self._trackable_saver = (
+        trackable_utils.saver_with_op_caching(self))
 
     self._steps_per_execution = None
 
     self._init_batch_counters()
+    self._base_model_initialized = True
+    _keras_api_gauge.get_cell('model').set(True)
 
   @trackable.no_automatic_dependency_tracking
   def _init_batch_counters(self):
@@ -214,67 +314,146 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     self._predict_counter = variables.Variable(
         0, dtype='int64', aggregation=agg)
 
-  def get_weights(self):
-    """Retrieves the weights of the model.
+  def __setattr__(self, name, value):
+    if not getattr(self, '_self_setattr_tracking', True):
+      super(Model, self).__setattr__(name, value)
+      return
 
-    Returns:
-        A flat list of Numpy arrays.
-    """
-    with self.distribute_strategy.scope():
-      return super(Model, self).get_weights()
+    if all(
+        isinstance(v, (base_layer.Layer,
+                       data_structures.TrackableDataStructure)) or
+        trackable_layer_utils.has_weights(v) for v in nest.flatten(value)):
+      try:
+        self._base_model_initialized
+      except AttributeError:
+        # six.raise_from supresses the original AttributeError from being raised
+        six.raise_from(
+            RuntimeError('It looks like you are subclassing `Model` and you '
+                         'forgot to call `super(YourClass, self).__init__()`.'
+                         ' Always start with this line.'), None)
 
-  def load_weights(self, filepath, by_name=False, skip_mismatch=False):
-    """Loads all layer weights, either from a TensorFlow or an HDF5 weight file.
+    super(Model, self).__setattr__(name, value)
 
-    If `by_name` is False weights are loaded based on the network's
-    topology. This means the architecture should be the same as when the weights
-    were saved.  Note that layers that don't have weights are not taken into
-    account in the topological ordering, so adding or removing layers is fine as
-    long as they don't have weights.
+  @generic_utils.default
+  def build(self, input_shape):
+    """Builds the model based on input shapes received.
 
-    If `by_name` is True, weights are loaded into layers only if they share the
-    same name. This is useful for fine-tuning or transfer-learning models where
-    some of the layers have changed.
+    This is to be used for subclassed models, which do not know at instantiation
+    time what their inputs look like.
 
-    Only topological loading (`by_name=False`) is supported when loading weights
-    from the TensorFlow format. Note that topological loading differs slightly
-    between TensorFlow and HDF5 formats for user-defined classes inheriting from
-    `tf.keras.Model`: HDF5 loads based on a flattened list of weights, while the
-    TensorFlow format loads based on the object-local names of attributes to
-    which layers are assigned in the `Model`'s constructor.
+    This method only exists for users who want to call `model.build()` in a
+    standalone way (as a substitute for calling the model on real data to
+    build it). It will never be called by the framework (and thus it will
+    never throw unexpected errors in an unrelated workflow).
 
-    Arguments:
-        filepath: String, path to the weights file to load. For weight files in
-            TensorFlow format, this is the file prefix (the same as was passed
-            to `save_weights`).
-        by_name: Boolean, whether to load weights by name or by topological
-            order. Only topological loading is supported for weight files in
-            TensorFlow format.
-        skip_mismatch: Boolean, whether to skip loading of layers where there is
-            a mismatch in the number of weights, or a mismatch in the shape of
-            the weight (only valid when `by_name=True`).
-
-    Returns:
-        When loading a weight file in TensorFlow format, returns the same status
-        object as `tf.train.Checkpoint.restore`. When graph building, restore
-        ops are run automatically as soon as the network is built (on first call
-        for user-defined classes inheriting from `Model`, immediately if it is
-        already built).
-
-        When loading weights in HDF5 format, returns `None`.
+    Args:
+     input_shape: Single tuple, TensorShape, or list of shapes, where shapes
+         are tuples, integers, or TensorShapes.
 
     Raises:
-        ImportError: If h5py is not available and the weight file is in HDF5
-            format.
-        ValueError: If `skip_mismatch` is set to `True` when `by_name` is
-          `False`.
+      ValueError:
+        1. In case of invalid user-provided data (not of type tuple,
+           list, or TensorShape).
+        2. If the model requires call arguments that are agnostic
+           to the input shapes (positional or kwarg in call signature).
+        3. If not all layers were properly built.
+        4. If float type inputs are not supported within the layers.
+
+      In each of these cases, the user should build their model by calling it
+      on real tensor data.
     """
-    if dist_utils.is_tpu_strategy(self._distribution_strategy):
-      if (self._distribution_strategy.extended.steps_per_run > 1 and
-          (not network._is_hdf5_filepath(filepath))):  # pylint: disable=protected-access
-        raise ValueError('Load weights is not yet supported with TPUStrategy '
-                         'with steps_per_run greater than 1.')
-    return super(Model, self).load_weights(filepath, by_name, skip_mismatch)
+    if self._is_graph_network:
+      super(Model, self).build(input_shape)
+      return
+
+    if input_shape is None:
+      raise ValueError('Input shape must be defined when calling build on a '
+                       'model subclass network.')
+    valid_types = (tuple, list, tensor_shape.TensorShape)
+    if not isinstance(input_shape, valid_types):
+      raise ValueError('Specified input shape is not one of the valid types. '
+                       'Please specify a batch input shape of type tuple or '
+                       'list of input shapes. User provided '
+                       'input type: {}'.format(type(input_shape)))
+
+    if input_shape and not self.inputs:
+      # We create placeholders for the `None`s in the shape and build the model
+      # in a Graph. Since tf.Variable is compatible with both eager execution
+      # and graph building, the variables created after building the model in
+      # a Graph are still valid when executing eagerly.
+      if context.executing_eagerly():
+        graph = func_graph.FuncGraph('build_graph')
+      else:
+        graph = backend.get_graph()
+      with graph.as_default():
+        if isinstance(input_shape, list):
+          x = [base_layer_utils.generate_placeholders_from_shape(shape)
+               for shape in input_shape]
+        elif isinstance(input_shape, dict):
+          x = {
+              k: base_layer_utils.generate_placeholders_from_shape(shape)
+              for k, shape in input_shape.items()
+          }
+        else:
+          x = base_layer_utils.generate_placeholders_from_shape(input_shape)
+
+        kwargs = {}
+        call_signature = self._call_full_argspec
+        call_args = call_signature.args
+        # Exclude `self`, `inputs`, and any argument with a default value.
+        if len(call_args) > 2:
+          if call_signature.defaults:
+            call_args = call_args[2:-len(call_signature.defaults)]
+          else:
+            call_args = call_args[2:]
+          for arg in call_args:
+            if arg == 'training':
+              # Case where `training` is a positional arg with no default.
+              kwargs['training'] = False
+            else:
+              # Has invalid call signature with unknown positional arguments.
+              raise ValueError(
+                  'Currently, you cannot build your model if it has '
+                  'positional or keyword arguments that are not '
+                  'inputs to the model, but are required for its '
+                  '`call` method. Instead, in order to instantiate '
+                  'and build your model, `call` your model on real '
+                  'tensor data with all expected call arguments.')
+        elif len(call_args) < 2:
+          # Signature without `inputs`.
+          raise ValueError('You can only call `build` on a model if its `call` '
+                           'method accepts an `inputs` argument.')
+        try:
+          self.call(x, **kwargs)
+        except (errors.InvalidArgumentError, TypeError):
+          raise ValueError('You cannot build your model by calling `build` '
+                           'if your layers do not support float type inputs. '
+                           'Instead, in order to instantiate and build your '
+                           'model, `call` your model on real tensor data (of '
+                           'the correct dtype).')
+
+    super(Model, self).build(input_shape)
+
+  def call(self, inputs, training=None, mask=None):
+    """Calls the model on new inputs.
+
+    In this case `call` just reapplies
+    all ops in the graph to the new inputs
+    (e.g. build a new computational graph from the provided inputs).
+
+    Arguments:
+        inputs: A tensor or list of tensors.
+        training: Boolean or boolean scalar tensor, indicating whether to run
+          the `Network` in training mode or inference mode.
+        mask: A mask or list of masks. A mask can be
+            either a tensor or None (no mask).
+
+    Returns:
+        A tensor if there is a single output, or
+        a list of tensors if there are more than one outputs.
+    """
+    raise NotImplementedError('When subclassing the `Model` class, you should '
+                              'implement a `call` method.')
 
   def compile(self,
               optimizer='rmsprop',
@@ -400,6 +579,10 @@ class Model(network.Network, version_utils.ModelVersionSelector):
         aggregation=variables.VariableAggregationV2.ONLY_FIRST_REPLICA)
 
   @property
+  def _should_compute_mask(self):
+    return False
+
+  @property
   def metrics(self):
     """Returns the model's metrics added using `compile`, `add_metric` APIs.
 
@@ -445,8 +628,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
       if self.compiled_metrics is not None:
         metrics += self.compiled_metrics.metrics
 
-    all_layers = self._gather_unique_layers()
-    for l in all_layers:
+    for l in self._flatten_layers():
       metrics.extend(l._metrics)  # pylint: disable=protected-access
     return metrics
 
@@ -1661,6 +1843,556 @@ class Model(network.Network, version_utils.ModelVersionSelector):
         verbose=verbose,
         callbacks=callbacks)
 
+  ######################################################################
+  # Functions below are not training related. They are for model weights
+  # tracking, save/load, serialization, etc.
+  ######################################################################
+
+  @property
+  def trainable_weights(self):
+    self._assert_weights_created()
+    return self._dedup_weights(
+        trackable_layer_utils.gather_trainable_weights(
+            trainable=self.trainable,
+            sub_layers=self._layers,
+            extra_variables=self._trainable_weights))
+
+  @property
+  def non_trainable_weights(self):
+    self._assert_weights_created()
+    return self._dedup_weights(
+        trackable_layer_utils.gather_non_trainable_weights(
+            trainable=self.trainable,
+            sub_layers=self._layers,
+            extra_variables=self._non_trainable_weights +
+            self._trainable_weights))
+
+  def get_weights(self):
+    """Retrieves the weights of the model.
+
+    Returns:
+        A flat list of Numpy arrays.
+    """
+    with self.distribute_strategy.scope():
+      return super(Model, self).get_weights()
+
+  def save(self,
+           filepath,
+           overwrite=True,
+           include_optimizer=True,
+           save_format=None,
+           signatures=None,
+           options=None):
+    """Saves the model to Tensorflow SavedModel or a single HDF5 file.
+
+    The savefile includes:
+
+    - The model architecture, allowing to re-instantiate the model.
+    - The model weights.
+    - The state of the optimizer, allowing to resume training
+        exactly where you left off.
+
+    This allows you to save the entirety of the state of a model
+    in a single file.
+
+    Saved models can be reinstantiated via `keras.models.load_model`.
+    The model returned by `load_model` is a compiled model ready to be used
+    (unless the saved model was never compiled in the first place).
+
+    Models built with the Sequential and Functional API can be saved to both the
+    HDF5 and SavedModel formats. Subclassed models can only be saved with the
+    SavedModel format.
+
+    Note that the model weights may have different scoped names after being
+    loaded. Scoped names include the model/layer names, such as
+    `"dense_1/kernel:0"`. It is recommended that you use the layer properties to
+     access specific variables, e.g. `model.get_layer("dense_1").kernel`.
+
+    Arguments:
+        filepath: String, PathLike, path to SavedModel or H5 file to save the
+            model.
+        overwrite: Whether to silently overwrite any existing file at the
+            target location, or provide the user with a manual prompt.
+        include_optimizer: If True, save optimizer's state together.
+        save_format: Either `'tf'` or `'h5'`, indicating whether to save the
+            model to Tensorflow SavedModel or HDF5. Defaults to 'tf' in TF 2.X,
+            and 'h5' in TF 1.X.
+        signatures: Signatures to save with the SavedModel. Applicable to the
+            'tf' format only. Please see the `signatures` argument in
+            `tf.saved_model.save` for details.
+        options: Optional `tf.saved_model.SaveOptions` object that specifies
+            options for saving to SavedModel.
+
+    Example:
+
+    ```python
+    from keras.models import load_model
+
+    model.save('my_model.h5')  # creates a HDF5 file 'my_model.h5'
+    del model  # deletes the existing model
+
+    # returns a compiled model
+    # identical to the previous one
+    model = load_model('my_model.h5')
+    ```
+    """
+    save.save_model(self, filepath, overwrite, include_optimizer, save_format,
+                    signatures, options)
+
+  def save_weights(self, filepath, overwrite=True, save_format=None):
+    """Saves all layer weights.
+
+    Either saves in HDF5 or in TensorFlow format based on the `save_format`
+    argument.
+
+    When saving in HDF5 format, the weight file has:
+      - `layer_names` (attribute), a list of strings
+          (ordered names of model layers).
+      - For every layer, a `group` named `layer.name`
+          - For every such layer group, a group attribute `weight_names`,
+              a list of strings
+              (ordered names of weights tensor of the layer).
+          - For every weight in the layer, a dataset
+              storing the weight value, named after the weight tensor.
+
+    When saving in TensorFlow format, all objects referenced by the network are
+    saved in the same format as `tf.train.Checkpoint`, including any `Layer`
+    instances or `Optimizer` instances assigned to object attributes. For
+    networks constructed from inputs and outputs using `tf.keras.Model(inputs,
+    outputs)`, `Layer` instances used by the network are tracked/saved
+    automatically. For user-defined classes which inherit from `tf.keras.Model`,
+    `Layer` instances must be assigned to object attributes, typically in the
+    constructor. See the documentation of `tf.train.Checkpoint` and
+    `tf.keras.Model` for details.
+
+    While the formats are the same, do not mix `save_weights` and
+    `tf.train.Checkpoint`. Checkpoints saved by `Model.save_weights` should be
+    loaded using `Model.load_weights`. Checkpoints saved using
+    `tf.train.Checkpoint.save` should be restored using the corresponding
+    `tf.train.Checkpoint.restore`. Prefer `tf.train.Checkpoint` over
+    `save_weights` for training checkpoints.
+
+    The TensorFlow format matches objects and variables by starting at a root
+    object, `self` for `save_weights`, and greedily matching attribute
+    names. For `Model.save` this is the `Model`, and for `Checkpoint.save` this
+    is the `Checkpoint` even if the `Checkpoint` has a model attached. This
+    means saving a `tf.keras.Model` using `save_weights` and loading into a
+    `tf.train.Checkpoint` with a `Model` attached (or vice versa) will not match
+    the `Model`'s variables. See the [guide to training
+    checkpoints](https://www.tensorflow.org/guide/checkpoint) for details
+    on the TensorFlow format.
+
+    Arguments:
+        filepath: String or PathLike, path to the file to save the weights to.
+            When saving in TensorFlow format, this is the prefix used for
+            checkpoint files (multiple files are generated). Note that the '.h5'
+            suffix causes weights to be saved in HDF5 format.
+        overwrite: Whether to silently overwrite any existing file at the
+            target location, or provide the user with a manual prompt.
+        save_format: Either 'tf' or 'h5'. A `filepath` ending in '.h5' or
+            '.keras' will default to HDF5 if `save_format` is `None`. Otherwise
+            `None` defaults to 'tf'.
+
+    Raises:
+        ImportError: If h5py is not available when attempting to save in HDF5
+            format.
+        ValueError: For invalid/unknown format arguments.
+    """
+    self._assert_weights_created()
+    filepath = path_to_string(filepath)
+    filepath_is_h5 = _is_hdf5_filepath(filepath)
+    if save_format is None:
+      if filepath_is_h5:
+        save_format = 'h5'
+      else:
+        save_format = 'tf'
+    else:
+      user_format = save_format.lower().strip()
+      if user_format in ('tensorflow', 'tf'):
+        save_format = 'tf'
+      elif user_format in ('hdf5', 'h5', 'keras'):
+        save_format = 'h5'
+      else:
+        raise ValueError(
+            'Unknown format "%s". Was expecting one of {"tf", "h5"}.' % (
+                save_format,))
+    if save_format == 'tf' and filepath_is_h5:
+      raise ValueError(
+          ('save_weights got save_format="tf"/"tensorflow", but the '
+           'filepath ("%s") looks like an HDF5 file. Omit the ".h5"/".keras" '
+           'when saving in TensorFlow format.')
+          % filepath)
+
+    if save_format == 'h5' and h5py is None:
+      raise ImportError(
+          '`save_weights` requires h5py when saving in hdf5.')
+    if save_format == 'tf':
+      check_filepath = filepath + '.index'
+    else:
+      check_filepath = filepath
+    # If file exists and should not be overwritten:
+    if not overwrite and os.path.isfile(check_filepath):
+      proceed = ask_to_proceed_with_overwrite(check_filepath)
+      if not proceed:
+        return
+    if save_format == 'h5':
+      with h5py.File(filepath, 'w') as f:
+        hdf5_format.save_weights_to_hdf5_group(f, self.layers)
+    else:
+      if context.executing_eagerly():
+        session = None
+      else:
+        session = backend.get_session()
+      optimizer = getattr(self, 'optimizer', None)
+      if (optimizer
+          and not isinstance(optimizer, trackable.Trackable)):
+        logging.warning(
+            ('This model was compiled with a Keras optimizer (%s) but is being '
+             'saved in TensorFlow format with `save_weights`. The model\'s '
+             'weights will be saved, but unlike with TensorFlow optimizers in '
+             'the TensorFlow format the optimizer\'s state will not be '
+             'saved.\n\nConsider using a TensorFlow optimizer from `tf.train`.')
+            % (optimizer,))
+      self._trackable_saver.save(filepath, session=session)
+      # Record this checkpoint so it's visible from tf.train.latest_checkpoint.
+      checkpoint_management.update_checkpoint_state_internal(
+          save_dir=os.path.dirname(filepath),
+          model_checkpoint_path=filepath,
+          save_relative_paths=True,
+          all_model_checkpoint_paths=[filepath])
+
+  def load_weights(self, filepath, by_name=False, skip_mismatch=False):
+    """Loads all layer weights, either from a TensorFlow or an HDF5 weight file.
+
+    If `by_name` is False weights are loaded based on the network's
+    topology. This means the architecture should be the same as when the weights
+    were saved.  Note that layers that don't have weights are not taken into
+    account in the topological ordering, so adding or removing layers is fine as
+    long as they don't have weights.
+
+    If `by_name` is True, weights are loaded into layers only if they share the
+    same name. This is useful for fine-tuning or transfer-learning models where
+    some of the layers have changed.
+
+    Only topological loading (`by_name=False`) is supported when loading weights
+    from the TensorFlow format. Note that topological loading differs slightly
+    between TensorFlow and HDF5 formats for user-defined classes inheriting from
+    `tf.keras.Model`: HDF5 loads based on a flattened list of weights, while the
+    TensorFlow format loads based on the object-local names of attributes to
+    which layers are assigned in the `Model`'s constructor.
+
+    Arguments:
+        filepath: String, path to the weights file to load. For weight files in
+            TensorFlow format, this is the file prefix (the same as was passed
+            to `save_weights`).
+        by_name: Boolean, whether to load weights by name or by topological
+            order. Only topological loading is supported for weight files in
+            TensorFlow format.
+        skip_mismatch: Boolean, whether to skip loading of layers where there is
+            a mismatch in the number of weights, or a mismatch in the shape of
+            the weight (only valid when `by_name=True`).
+
+    Returns:
+        When loading a weight file in TensorFlow format, returns the same status
+        object as `tf.train.Checkpoint.restore`. When graph building, restore
+        ops are run automatically as soon as the network is built (on first call
+        for user-defined classes inheriting from `Model`, immediately if it is
+        already built).
+
+        When loading weights in HDF5 format, returns `None`.
+
+    Raises:
+        ImportError: If h5py is not available and the weight file is in HDF5
+            format.
+        ValueError: If `skip_mismatch` is set to `True` when `by_name` is
+          `False`.
+    """
+    if dist_utils.is_tpu_strategy(self._distribution_strategy):
+      if (self._distribution_strategy.extended.steps_per_run > 1 and
+          (not _is_hdf5_filepath(filepath))):
+        raise ValueError('Load weights is not yet supported with TPUStrategy '
+                         'with steps_per_run greater than 1.')
+    if skip_mismatch and not by_name:
+      raise ValueError(
+          'When calling model.load_weights, skip_mismatch can only be set to '
+          'True when by_name is True.')
+
+    filepath = path_to_string(filepath)
+    if _is_hdf5_filepath(filepath):
+      save_format = 'h5'
+    else:
+      try:
+        py_checkpoint_reader.NewCheckpointReader(filepath)
+        save_format = 'tf'
+      except errors_impl.DataLossError:
+        # The checkpoint is not readable in TensorFlow format. Try HDF5.
+        save_format = 'h5'
+    if save_format == 'tf':
+      status = self._trackable_saver.restore(filepath)
+      if by_name:
+        raise NotImplementedError(
+            'Weights may only be loaded based on topology into Models when '
+            'loading TensorFlow-formatted weights (got by_name=True to '
+            'load_weights).')
+      if not context.executing_eagerly():
+        session = backend.get_session()
+        # Restore existing variables (if any) immediately, and set up a
+        # streaming restore for any variables created in the future.
+        trackable_utils.streaming_restore(status=status, session=session)
+      status.assert_nontrivial_match()
+      return status
+    if h5py is None:
+      raise ImportError(
+          '`load_weights` requires h5py when loading weights from HDF5.')
+    if not self._is_graph_network and not self.built:
+      raise ValueError(
+          'Unable to load weights saved in HDF5 format into a subclassed '
+          'Model which has not created its variables yet. Call the Model '
+          'first, then load the weights.')
+    self._assert_weights_created()
+    with h5py.File(filepath, 'r') as f:
+      if 'layer_names' not in f.attrs and 'model_weights' in f:
+        f = f['model_weights']
+      if by_name:
+        hdf5_format.load_weights_from_hdf5_group_by_name(
+            f, self.layers, skip_mismatch=skip_mismatch)
+      else:
+        hdf5_format.load_weights_from_hdf5_group(f, self.layers)
+
+  def _updated_config(self):
+    """Util shared between different serialization methods.
+
+    Returns:
+        Model config with Keras version information added.
+    """
+    from tensorflow.python.keras import __version__ as keras_version  # pylint: disable=g-import-not-at-top
+
+    config = self.get_config()
+    model_config = {
+        'class_name': self.__class__.__name__,
+        'config': config,
+        'keras_version': keras_version,
+        'backend': backend.backend()
+    }
+    return model_config
+
+  def get_config(self):
+    raise NotImplementedError
+
+  @classmethod
+  def from_config(cls, config, custom_objects=None):
+    # Since only FunctionalModel produces config, the model can only
+    # be constructed for FunctionalModel
+    from tensorflow.python.keras.engine import functional  # pylint: disable=g-import-not-at-top
+    return functional.Functional.from_config(
+        config, custom_objects=custom_objects)
+
+  def to_json(self, **kwargs):
+    """Returns a JSON string containing the network configuration.
+
+    To load a network from a JSON save file, use
+    `keras.models.model_from_json(json_string, custom_objects={})`.
+
+    Arguments:
+        **kwargs: Additional keyword arguments
+            to be passed to `json.dumps()`.
+
+    Returns:
+        A JSON string.
+    """
+    model_config = self._updated_config()
+    return json.dumps(
+        model_config, default=serialization.get_json_type, **kwargs)
+
+  def to_yaml(self, **kwargs):
+    """Returns a yaml string containing the network configuration.
+
+    To load a network from a yaml save file, use
+    `keras.models.model_from_yaml(yaml_string, custom_objects={})`.
+
+    `custom_objects` should be a dictionary mapping
+    the names of custom losses / layers / etc to the corresponding
+    functions / classes.
+
+    Arguments:
+        **kwargs: Additional keyword arguments
+            to be passed to `yaml.dump()`.
+
+    Returns:
+        A YAML string.
+
+    Raises:
+        ImportError: if yaml module is not found.
+    """
+    if yaml is None:
+      raise ImportError(
+          'Requires yaml module installed (`pip install pyyaml`).')
+    return yaml.dump(self._updated_config(), **kwargs)
+
+  def reset_states(self):
+    for layer in self.layers:
+      if hasattr(layer, 'reset_states') and getattr(layer, 'stateful', False):
+        layer.reset_states()
+
+  @property
+  @deprecation.deprecated(
+      date=None,
+      instructions='This property should not be used in TensorFlow 2.0, '
+      'as updates are applied automatically.')
+  @doc_controls.do_not_generate_docs
+  def state_updates(self):
+    """Deprecated, do NOT use!
+
+    Returns the `updates` from all layers that are stateful.
+
+    This is useful for separating training updates and
+    state updates, e.g. when we need to update a layer's internal state
+    during prediction.
+
+    Returns:
+        A list of update ops.
+    """
+    state_updates = []
+    for layer in self.layers:
+      if getattr(layer, 'stateful', False):
+        if hasattr(layer, 'updates'):
+          state_updates += layer.updates
+    return state_updates
+
+  @property
+  def weights(self):
+    """Returns the list of all layer variables/weights.
+
+    Returns:
+      A list of variables.
+    """
+    return self._dedup_weights(self._undeduplicated_weights)
+
+  @property
+  def _undeduplicated_weights(self):
+    """Returns the undeduplicated list of all layer variables/weights."""
+    self._assert_weights_created()
+    weights = []
+    for layer in self._layers:
+      weights += layer.weights
+    weights += (self._trainable_weights + self._non_trainable_weights)
+    return weights
+
+  def summary(self, line_length=None, positions=None, print_fn=None):
+    """Prints a string summary of the network.
+
+    Arguments:
+        line_length: Total length of printed lines
+            (e.g. set this to adapt the display to different
+            terminal window sizes).
+        positions: Relative or absolute positions of log elements
+            in each line. If not provided,
+            defaults to `[.33, .55, .67, 1.]`.
+        print_fn: Print function to use. Defaults to `print`.
+            It will be called on each line of the summary.
+            You can set it to a custom function
+            in order to capture the string summary.
+
+    Raises:
+        ValueError: if `summary()` is called before the model is built.
+    """
+    if not self.built:
+      raise ValueError('This model has not yet been built. '
+                       'Build the model first by calling `build()` or calling '
+                       '`fit()` with some data, or specify '
+                       'an `input_shape` argument in the first layer(s) for '
+                       'automatic build.')
+    layer_utils.print_summary(self,
+                              line_length=line_length,
+                              positions=positions,
+                              print_fn=print_fn)
+
+  @property
+  def layers(self):
+    return list(self._flatten_layers(include_self=False, recursive=False))
+
+  def get_layer(self, name=None, index=None):
+    """Retrieves a layer based on either its name (unique) or index.
+
+    If `name` and `index` are both provided, `index` will take precedence.
+    Indices are based on order of horizontal graph traversal (bottom-up).
+
+    Arguments:
+        name: String, name of layer.
+        index: Integer, index of layer.
+
+    Returns:
+        A layer instance.
+
+    Raises:
+        ValueError: In case of invalid layer name or index.
+    """
+    # TODO(fchollet): We could build a dictionary based on layer names
+    # since they are constant, but we have not done that yet.
+    if index is not None and name is not None:
+      raise ValueError('Provide only a layer name or a layer index.')
+
+    if index is not None:
+      if len(self.layers) <= index:
+        raise ValueError('Was asked to retrieve layer at index ' + str(index) +
+                         ' but model only has ' + str(len(self.layers)) +
+                         ' layers.')
+      else:
+        return self.layers[index]
+
+    if name is not None:
+      for layer in self.layers:
+        if layer.name == name:
+          return layer
+      raise ValueError('No such layer: ' + name + '.')
+    raise ValueError('Provide either a layer name or layer index.')
+
+  @trackable.no_automatic_dependency_tracking
+  def _set_save_spec(self, inputs):
+    if self._saved_model_inputs_spec is not None:
+      return  # Already set.
+
+    input_names = self.input_names
+    if not input_names:
+      input_names = compile_utils.create_pseudo_input_names(inputs)
+
+    flat_inputs = nest.flatten(inputs)
+    specs = []
+    for name, tensor in zip(input_names, flat_inputs):
+      specs.append(
+          tf_utils.get_tensor_spec(tensor, dynamic_batch=False, name=name))
+    specs = nest.pack_sequence_as(inputs, specs)
+
+    self._saved_model_inputs_spec = specs
+
+  def _assert_weights_created(self):
+    """Asserts that all the weights for the model have been created.
+
+    For a non-dynamic model, the weights must already be created after the
+    layer has been called. For a dynamic model, the exact list of weights can
+    never be known for certain since it may change at any time during execution.
+
+    We run this check right before accessing weights or getting the Numpy value
+    for the current weights. Otherwise, if the layer has never been called,
+    the user would just get an empty list, which is misleading.
+
+    Raises:
+      ValueError: if the weights of the network has not yet been created.
+    """
+    if self.dynamic:
+      return
+
+    if ('build' in self.__class__.__dict__ and
+        self.__class__ != Model and
+        not self.built):
+      # For any model that has customized build() method but hasn't
+      # been invoked yet, this will cover both sequential and subclass model.
+      # Also make sure to exclude Model class itself which has build() defined.
+      raise ValueError('Weights for model %s have not yet been created. '
+                       'Weights are created when the Model is first called on '
+                       'inputs or `build()` is called with an `input_shape`.' %
+                       self.name)
+
   def _check_call_args(self, method_name):
     """Check that `call` has only one positional arg."""
     # Always allow first arg, regardless of arg name.
@@ -1990,3 +2722,8 @@ def _disallow_inside_tf_function(method_name):
         'directly on `Tensor`s inside a `tf.function` like: `model(x)`.'
     ).format(method_name=method_name)
     raise RuntimeError(error_msg)
+
+
+def _is_hdf5_filepath(filepath):
+  return (filepath.endswith('.h5') or filepath.endswith('.keras') or
+          filepath.endswith('.hdf5'))

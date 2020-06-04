@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 #include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
@@ -53,9 +53,9 @@ TfLiteStatus TestFullyConnectedFloat(
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
-  ::tflite::ops::micro::AllOpsResolver resolver;
+  ::tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_FULLY_CONNECTED, 1);
+      resolver.FindOp(tflite::BuiltinOperator_FULLY_CONNECTED);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteFullyConnectedParams builtin_data = {
@@ -133,9 +133,9 @@ TfLiteStatus TestFullyConnectedQuantized(
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
-  ::tflite::ops::micro::AllOpsResolver resolver;
+  ::tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_FULLY_CONNECTED, 4);
+      resolver.FindOp(tflite::BuiltinOperator_FULLY_CONNECTED);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteFullyConnectedParams builtin_data = {

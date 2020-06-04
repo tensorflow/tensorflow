@@ -114,12 +114,12 @@ FunctionDefLibrary GetFunctionDefLibraryStub(
 }
 
 uint64 DeadlineMicroSeconds(const RewriterConfig& cfg) {
-  const uint64 kFiveMinutesInUsec = 5 * 60 * 1000 * 1000;
+  const uint64 kTwentyMinutesInUsec = 20 * 60 * 1000 * 1000;
   if (cfg.meta_optimizer_timeout_ms() < 0) {
     return 0;
   } else {
     return cfg.meta_optimizer_timeout_ms() == 0
-               ? Env::Default()->NowMicros() + kFiveMinutesInUsec
+               ? Env::Default()->NowMicros() + kTwentyMinutesInUsec
                : Env::Default()->NowMicros() +
                      cfg.meta_optimizer_timeout_ms() * 1000;
   }

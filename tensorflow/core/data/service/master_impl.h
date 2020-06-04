@@ -60,6 +60,8 @@ class DataServiceMasterImpl {
   Status GetOrCreateJob(const GetOrCreateJobRequest* request,
                         GetOrCreateJobResponse* response);
   Status GetTasks(const GetTasksRequest* request, GetTasksResponse* response);
+  Status GetWorkers(const GetWorkersRequest* request,
+                    GetWorkersResponse* response);
 
  private:
   class Worker {
@@ -75,7 +77,7 @@ class DataServiceMasterImpl {
     }
 
     std::string DebugString() {
-      return absl::StrCat("id: ", worker_id_, "address: ", address_);
+      return absl::StrCat("id: ", worker_id_, " address: ", address_);
     }
 
    private:

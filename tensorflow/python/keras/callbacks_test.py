@@ -302,8 +302,8 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
           epochs=10,
           callbacks=[SleepCallback()])
     warning_msg = ('Callbacks method `on_train_batch_end` is slow compared '
-                   'to the batch time. Check your callbacks.')
-    self.assertIn(warning_msg, warning_messages)
+                   'to the batch time')
+    self.assertIn(warning_msg, '\n'.join(warning_messages))
 
   @keras_parameterized.run_with_all_model_types(exclude_models='functional')
   @keras_parameterized.run_all_keras_modes
@@ -1975,12 +1975,12 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         callbacks=[tb_cbk])
 
     with open(os.path.join(self.logdir, 'projector_config.pbtxt')) as f:
-      self.assertEqual(
-          f.readlines(), [
-              'embeddings {\n',
-              '  tensor_name: "test_embedding/.ATTRIBUTES/VARIABLE_VALUE"\n',
-              '  metadata_path: "metadata.tsv"\n',
-              '}\n'])
+      self.assertEqual(f.readlines(), [
+          'embeddings {\n',
+          ('  tensor_name: '
+           '"layer_with_weights-0/embeddings/.ATTRIBUTES/VARIABLE_VALUE"\n'),
+          '  metadata_path: "metadata.tsv"\n', '}\n'
+      ])
 
   def test_custom_summary(self):
     if not context.executing_eagerly():

@@ -44,6 +44,16 @@ class ReduceTest(test_util.TensorFlowTestCase):
       y_tf = self.evaluate(math_ops.reduce_sum(x))
       self.assertEqual(y_tf, 21)
 
+  def testReduceExtendType(self):
+    in_f32 = np.random.randn(1000, 1000).astype(np.float32)
+    in_bf16 = math_ops.cast(in_f32, dtypes.bfloat16)
+
+    out_f32 = self.evaluate(math_ops.reduce_sum(in_f32))
+    out_bf16 = self.evaluate(math_ops.reduce_sum(in_bf16))
+    expected = math_ops.cast(out_f32, dtypes.bfloat16)
+
+    self.assertAllClose(out_bf16, expected, 1e-3)
+
   def testReduceExplicitAxes(self):
     x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
     with test_util.device(use_gpu=True):
@@ -72,8 +82,26 @@ class ReduceTest(test_util.TensorFlowTestCase):
     self.assertAllClose(
         self.evaluate(math_ops.reduce_variance(x, axis=0)), [0, 0, 0])
 
-    x = np.array([[0, 2, 1, 1], [1, 2, 0, 1]], "float32")
-    self.assertAllClose(self.evaluate(math_ops.reduce_variance(x)), 0.5)
+    x = [[1, 2, 1, 1], [1, 1, 0, 1]]
+    with self.assertRaisesRegexp(TypeError, "must be either real or complex"):
+      math_ops.reduce_variance(x)
+
+    x = [[1., 2., 1., 1.], [1., 1., 0., 1.]]
+    self.assertEqual(self.evaluate(math_ops.reduce_variance(x)), 0.25)
+    x_np = np.array(x)
+    self.assertEqual(np.var(x_np), 0.25)
+    self.assertEqual(self.evaluate(math_ops.reduce_variance(x_np)), 0.25)
+
+  def testReduceVarComplex(self):
+    # Ensure that complex values are handled to be consistent with numpy
+    complex_ys = [([0 - 1j, 0 + 1j], dtypes.float64),
+                  (np.array([0 - 1j, 0 + 1j], "complex64"), dtypes.float32),
+                  (np.array([0 - 1j, 0 + 1j], "complex128"), dtypes.float64)]
+    for y, dtype in complex_ys:
+      y_result = math_ops.reduce_variance(y)
+      self.assertEqual(np.var(y), 1.0)
+      self.assertEqual(self.evaluate(y_result), 1.0)
+      self.assertEqual(y_result.dtype, dtype)
 
   def testReduceStd(self):
     x = np.array([[0, 0, 0], [0, 0, 0]], "float32")
@@ -81,8 +109,26 @@ class ReduceTest(test_util.TensorFlowTestCase):
     self.assertAllClose(
         self.evaluate(math_ops.reduce_std(x, axis=0)), [0, 0, 0])
 
-    x = np.array([[1, 2, 1, 1], [1, 1, 0, 1]], "float32")
-    self.assertAllClose(self.evaluate(math_ops.reduce_std(x)), 0.5)
+    x = [[1, 2, 1, 1], [1, 1, 0, 1]]
+    with self.assertRaisesRegexp(TypeError, "must be either real or complex"):
+      math_ops.reduce_std(x)
+
+    x = [[1., 2., 1., 1.], [1., 1., 0., 1.]]
+    self.assertEqual(self.evaluate(math_ops.reduce_std(x)), 0.5)
+    x_np = np.array(x)
+    self.assertEqual(np.std(x_np), 0.5)
+    self.assertEqual(self.evaluate(math_ops.reduce_std(x_np)), 0.5)
+
+  def testReduceStdComplex(self):
+    # Ensure that complex values are handled to be consistent with numpy
+    complex_ys = [([0 - 1j, 0 + 1j], dtypes.float64),
+                  (np.array([0 - 1j, 0 + 1j], "complex64"), dtypes.float32),
+                  (np.array([0 - 1j, 0 + 1j], "complex128"), dtypes.float64)]
+    for y, dtype in complex_ys:
+      y_result = math_ops.reduce_std(y)
+      self.assertEqual(np.std(y), 1.0)
+      self.assertEqual(self.evaluate(y_result), 1.0)
+      self.assertEqual(y_result.dtype, dtype)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -377,6 +423,16 @@ class AddNTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(slc_as_dense, math_ops.add_n([slc]))
       self.assertAllEqual(2 * slc_as_dense, math_ops.add_n([slc, slc]))
 
+  def test_iterable(self):
+    """Test that add_n supports iterables (e.g. generators and dict values)."""
+    def fn():
+      yield 1
+      yield 2
+    values_dict = {"a": 1, "b": 2}
+    with test_util.use_gpu():
+      self.assertAllEqual(3, math_ops.add_n(fn()))
+      self.assertAllEqual(3, math_ops.add_n(values_dict.values()))
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class DivAndModTest(test_util.TensorFlowTestCase):
@@ -494,6 +550,13 @@ class DivAndModTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(tf3_result, expanded_nums)
     # Consistent with desire to get numerator
     self.assertAllEqual(tf_result, expanded_nums)
+
+  def testWithPythonValue(self):
+    # Test case for https://github.com/tensorflow/tensorflow/issues/39475
+    x = math_ops.divide(5, 2)
+    self.assertIsInstance(x, ops.Tensor)
+    x = math_ops.divide(5, array_ops.constant(2.0))
+    self.assertIsInstance(x, ops.Tensor)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -680,6 +743,45 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
           "match type int32 of argument 'x'.")
     with self.assertRaisesRegexp(error, error_message):
       a = array_ops.ones([1], dtype=dtypes.int32) + 1.0
+      self.evaluate(a)
+
+  def testRHSDispatchingAndErrorRaising(self):
+    if context.executing_eagerly():
+      error = ValueError
+      error_message = (
+          r"Attempt to convert a value .* with an unsupported type")
+    else:
+      error = TypeError
+      error_message = (
+          r"Failed to convert object of type .* to Tensor")
+
+    class RHSReturnsTrue(object):
+
+      def __radd__(self, other):
+        return True
+    a = array_ops.ones([1], dtype=dtypes.int32) + RHSReturnsTrue()
+    self.assertEqual(a, True)
+
+    class RHSRaisesError(object):
+
+      def __radd__(self, other):
+        raise TypeError("RHS not implemented")
+    with self.assertRaisesRegexp(error, error_message):
+      a = array_ops.ones([1], dtype=dtypes.int32) + RHSRaisesError()
+      self.evaluate(a)
+
+    class RHSReturnsNotImplemented(object):
+
+      def __radd__(self, other):
+        return NotImplemented
+    with self.assertRaisesRegexp(error, error_message):
+      a = array_ops.ones([1], dtype=dtypes.int32) + RHSReturnsNotImplemented()
+      self.evaluate(a)
+
+    class RHSNotImplemented(object):
+      pass
+    with self.assertRaisesRegexp(error, error_message):
+      a = array_ops.ones([1], dtype=dtypes.int32) + RHSNotImplemented()
       self.evaluate(a)
 
 

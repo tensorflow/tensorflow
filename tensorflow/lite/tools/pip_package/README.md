@@ -49,6 +49,76 @@ BUILD_DEB=y to the make command (only for python3):
 make BASE_IMAGE=debian:buster PYTHON=python3 TENSORFLOW_TARGET=rpi BUILD_DEB=y docker-build
 ```
 
+## Alternative build with Bazel (experimental)
+
+There is another build steps to build a binary wheel which uses Bazel instead of
+Makefile. You don't need to install additional dependencies.
+This approach can leverage TF's ci_build.sh for ARM cross builds.
+
+### Native build for your workstation
+
+```sh
+tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh
+```
+
+### Cross build for armhf Python 3.5
+
+```sh
+CI_DOCKER_EXTRA_PARAMS="-e CI_BUILD_PYTHON=python3 -e CROSSTOOL_PYTHON_INCLUDE_PATH=/usr/include/python3.5" \
+  tensorflow/tools/ci_build/ci_build.sh PI-PYTHON3 \
+  tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh armhf
+```
+
+### Cross build for armhf Python 3.7
+
+```sh
+CI_DOCKER_EXTRA_PARAMS="-e CI_BUILD_PYTHON=python3 -e CROSSTOOL_PYTHON_INCLUDE_PATH=/usr/include/python3.7" \
+  tensorflow/tools/ci_build/ci_build.sh PI-PYTHON37 \
+  tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh armhf
+```
+
+### Cross build for aarch64 Python 3.5
+
+```sh
+  CI_DOCKER_EXTRA_PARAMS="-e CI_BUILD_PYTHON=python3 -e CROSSTOOL_PYTHON_INCLUDE_PATH=/usr/include/python3.5" \
+  tensorflow/tools/ci_build/ci_build.sh PI-PYTHON3 \
+  tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh aarch64
+```
+
+### Cross build for aarch64 Python 3.7
+
+```sh
+CI_DOCKER_EXTRA_PARAMS="-e CI_BUILD_PYTHON=python3 -e CROSSTOOL_PYTHON_INCLUDE_PATH=/usr/include/python3.7" \
+  tensorflow/tools/ci_build/ci_build.sh PI-PYTHON37 \
+  tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh aarch64
+```
+
+## Enable TF OP support (Flex delegate)
+
+If you want to use TF ops with Python API, you need to enable flex support.
+You can build TFLite interpreter with flex ops support by providing
+"--define=tflite_pip_with_flex=true" to Bazel.
+
+Here are some examples.
+
+### Native build with Flex for your workstation
+
+```sh
+CUSTOM_BAZEL_FLAGS=--define=tflite_pip_with_flex=true \
+  tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh
+```
+
+### Cross build with Flex for armhf Python 3.5
+
+```sh
+CI_DOCKER_EXTRA_PARAMS="-e CUSTOM_BAZEL_FLAGS=--define=tflite_pip_with_flex=true \
+  -e CI_BUILD_PYTHON=python3 -e CROSSTOOL_PYTHON_INCLUDE_PATH=/usr/include/python3.5" \
+  tensorflow/tools/ci_build/ci_build.sh PI-PYTHON3 \
+  tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh armhf
+```
+
+## Usage
+
 Note, unlike tensorflow this will be installed to a tflite_runtime namespace.
 You can then use the Tensorflow Lite interpreter as.
 

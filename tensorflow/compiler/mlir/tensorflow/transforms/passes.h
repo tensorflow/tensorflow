@@ -52,6 +52,10 @@ std::unique_ptr<OperationPass<FuncOp>> CreateBatchMatMulToEinsumPass();
 // Optimizes Tensorflow graph.
 std::unique_ptr<OperationPass<FuncOp>> CreateTFOptimizePass();
 
+// Creates pass to rewrite RecvTPUEmbeddingActivationsOp and
+// SendTPUEmbeddingGradients ops to internal variants.
+std::unique_ptr<OperationPass<FuncOp>> CreateRewriteTPUEmbeddingOps();
+
 // Performs specific fusion for GPU targets.
 std::unique_ptr<OperationPass<FuncOp>> CreateGpuOpFusionPass();
 
@@ -90,6 +94,17 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateResourceDeviceInferencePass();
 // The pass also annotates the input arguments for resources with the indices
 // of their aliasing output arguments.
 std::unique_ptr<OperationPass<ModuleOp>> CreatePromoteResourcesToArgsPass();
+
+// Creates a pass that promotes tf.VarHandleOp to to resource arguments of where
+// resource names are `tf_saved_model.bound_input` symbol argument attributes
+// for all functions.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreatePromoteVarHandlesToSavedModelArgsPass();
+
+// Creates a pass that converts readonly reference variables to the
+// corresponding resource variables.
+std::unique_ptr<OperationPass<FuncOp>>
+CreateConvertReadonlyReferenceVariablesToResourceVariablesPass();
 
 // Marks function visibility using tf.entry_function specification. That is,
 // functions with tf.entry_function attributes are marked with public
@@ -258,7 +273,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTPUVariableReformattingPass();
 
 // Creates a pass that extracts outside compilation (CPU ops inside TPU cluster)
 // at head/tail of TPU cluster to run before/after TPU computation.
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUExtractHeadTailOutsideCompilationPass();
 
 // Creates a pass that extract outside compilation (CPU ops inside TPU cluster)

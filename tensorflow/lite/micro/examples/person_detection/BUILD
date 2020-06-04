@@ -23,7 +23,7 @@ cc_library(
 cc_library(
     name = "person_detect_model_data",
     srcs = [
-        "person_detect_model_data.cc",
+        "@person_detect_data//:person_detect_model_data",
     ],
     hdrs = [
         "person_detect_model_data.h",
@@ -56,7 +56,7 @@ cc_library(
     deps = [
         ":model_settings",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_error_reporter",
     ],
 )
 
@@ -69,7 +69,7 @@ tflite_micro_cc_test(
         ":image_provider",
         ":model_settings",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -84,7 +84,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_error_reporter",
     ],
 )
 
@@ -112,8 +112,16 @@ cc_binary(
         ":model_settings",
         ":person_detect_model_data",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro/kernels:micro_ops",
         "//tensorflow/lite/schema:schema_fbs",
     ],
+)
+
+sh_test(
+    name = "person_detection_binary_test",
+    srcs = ["person_detection_binary_test.sh"],
+    data = [":person_detection"],
 )

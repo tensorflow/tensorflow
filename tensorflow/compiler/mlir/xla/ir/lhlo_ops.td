@@ -19,7 +19,8 @@ limitations under the License.
 #define LHLO_OPS
 
 include "mlir/IR/OpBase.td"
-include "mlir/Interfaces/SideEffects.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/Interfaces/ViewLikeInterface.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops_base.td"
 
 def LHLO_Dialect : Dialect {
@@ -92,9 +93,19 @@ def LHLO_CosOp: LHLO_UnaryElementwiseOp<"cosine">, BASE_HLO_CosOp;
 
 def LHLO_ExpOp: LHLO_UnaryElementwiseOp<"exponential">, BASE_HLO_ExpOp;
 
+def LHLO_ImagOp: LHLO_Op<"imag", [SameOperandsShape]>, BASE_HLO_ImagOp {
+  let arguments = (ins Arg<LHLO_Buffer, "", [MemRead]>:$input,
+                       Arg<LHLO_Buffer, "", [MemWrite]>:$output);
+}
+
 def LHLO_LogOp: LHLO_UnaryElementwiseOp<"log">, BASE_HLO_LogOp;
 
 def LHLO_NegOp: LHLO_UnaryElementwiseOp<"negate">, BASE_HLO_NegOp;
+
+def LHLO_RealOp: LHLO_Op<"real", [SameOperandsShape]>, BASE_HLO_RealOp {
+  let arguments = (ins Arg<LHLO_Buffer, "", [MemRead]>:$input,
+                       Arg<LHLO_Buffer, "", [MemWrite]>:$output);
+}
 
 def LHLO_RsqrtOp: LHLO_UnaryElementwiseOp<"rsqrt">, BASE_HLO_RsqrtOp;
 
@@ -105,27 +116,6 @@ def LHLO_SignOp: LHLO_UnaryElementwiseOp<"sign">, BASE_HLO_SignOp;
 def LHLO_SinOp: LHLO_UnaryElementwiseOp<"sine">, BASE_HLO_SinOp;
 
 def LHLO_TanhOp: LHLO_UnaryElementwiseOp<"tanh">, BASE_HLO_TanhOp;
-
-//===----------------------------------------------------------------------===//
-// XLA complex unary elementwise op definitions.
-//===----------------------------------------------------------------------===//
-// See https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions
-
-def LHLO_ComplexOp: LHLO_Op<"complex", [SameOperandsShape]>, BASE_HLO_ComplexOp {
-  let arguments = (ins Arg<LHLO_Buffer, "", [MemRead]>:$lhs,
-                       Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
-                       Arg<LHLO_Buffer, "", [MemWrite]>:$output);
-}
-
-def LHLO_ImagOp: LHLO_Op<"imag", [SameOperandsShape]>, BASE_HLO_ImagOp {
-  let arguments = (ins Arg<LHLO_Buffer, "", [MemRead]>:$input,
-                       Arg<LHLO_Buffer, "", [MemWrite]>:$output);
-}
-
-def LHLO_RealOp: LHLO_Op<"real", [SameOperandsShape]>, BASE_HLO_RealOp {
-  let arguments = (ins Arg<LHLO_Buffer, "", [MemRead]>:$input,
-                       Arg<LHLO_Buffer, "", [MemWrite]>:$output);
-}
 
 //===----------------------------------------------------------------------===//
 // XLA binary elementwise op definitions.
@@ -143,6 +133,12 @@ class LHLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
 }
 
 def LHLO_AddOp : LHLO_BinaryElementwiseOp<"add", []>, BASE_HLO_AddOp;
+
+def LHLO_ComplexOp: LHLO_Op<"complex", [SameOperandsShape]>, BASE_HLO_ComplexOp {
+  let arguments = (ins Arg<LHLO_Buffer, "", [MemRead]>:$lhs,
+                       Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
+                       Arg<LHLO_Buffer, "", [MemWrite]>:$output);
+}
 
 def LHLO_DivOp : LHLO_BinaryElementwiseOp<"divide", []>, BASE_HLO_DivOp;
 
@@ -201,6 +197,19 @@ def LHLO_ReduceWindowOp: LHLO_Op<"reduce_window", [
   let regions = (region SizedRegion<1>:$body);
 }
 
+def LHLO_CaseOp: LHLO_Op<"case", [
+      SingleBlockImplicitTerminator<"TerminatorOp">
+    ]>, BASE_HLO_CaseOp {
+
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$index,
+    Arg<Variadic<LHLO_BufferOrTuple>, "", [MemRead]>:$branch_operands,
+    Arg<LHLO_BufferOrTuple, "", [MemWrite]>:$out
+  );
+
+  let regions = (region VariadicRegion<SizedRegion<1>>:$branches);
+}
+
 //===----------------------------------------------------------------------===//
 // XLA tuple op definitions.
 //===----------------------------------------------------------------------===//
@@ -252,6 +261,96 @@ def HLO_DynamicUpdateSliceOp: LHLO_Op<"dynamic-update-slice", []> {
     Arg<LHLO_Buffer, "", [MemWrite]>:$output,
     Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$start_indices
   );
+}
+
+//===----------------------------------------------------------------------===//
+// StaticMemRefCastOp
+//===----------------------------------------------------------------------===//
+
+def HLO_StaticMemRefCastOp: Op<LHLO_Dialect, "static_memref_cast",
+    [NoSideEffect, DeclareOpInterfaceMethods<ViewLikeOpInterface>]> {
+  let summary = "static memref cast operation";
+  let description = [{
+    Allows to modify the offset, sizes and strides of a statically shaped memref.
+
+    Example:
+    ```mlir
+    %buf_transformed =
+        xla_lhlo.static_memref_cast %buf
+        : memref<1x5xf32> -> memref<5xf32, offset: 2, strides: [1]>
+
+    // The result of the op is a rank-1 memref with `[5]` shape, stride 1 and
+    // offset 2.
+    ```
+  }];
+
+  let arguments = (ins Arg<LHLO_Buffer, "", []>:$operand);
+  let results = (outs Res<LHLO_Buffer, "", []>:$result);
+
+  let builders = [OpBuilder<
+    "OpBuilder &builder, OperationState &result, MemRefType resultType, " #
+    "Value operand", [{
+       result.addOperands(operand);
+       result.types.push_back(resultType);
+     }]>];
+
+  let extraClassDeclaration = [{
+    MemRefType getType() { return getResult().getType().cast<MemRefType>(); }
+  }];
+
+  let verifier = [{ return Verify(*this); }];
+  let assemblyFormat = [{
+    $operand attr-dict `:` type($operand) `->` type($result)
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// DynamicMemRefCastOp
+//===----------------------------------------------------------------------===//
+
+def HLO_DynamicMemRefCastOp: Op<LHLO_Dialect, "dynamic_memref_cast",
+    [SameVariadicOperandSize, NoSideEffect,
+     DeclareOpInterfaceMethods<ViewLikeOpInterface>]> {
+  let summary = "dynamic memref cast operation";
+  let description = [{
+    Change sizes and strides of a memref using the values computed in runtime.
+
+    Example:
+    ```mlir
+    %buf_transformed =
+        xla_lhlo.dynamic_memref_cast %buf(%size_X, %size_Y)[%step_X, %step_Y]
+        : memref<?x?xf32> -> memref<?x?xf32, offset: 0, strides: [?, ?]>
+    // The result of the op is a type-erased memref with `[%size_X, %size_Y]`
+    // shape and `[%step_X, %step_Y]` strides. The offset will be inherited
+    // from the input.
+    ```
+  }];
+
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", []>:$operand,
+    Variadic<Index>:$sizes,
+    Variadic<Index>:$strides
+  );
+  let results = (outs Res<LHLO_Buffer, "", []>:$result);
+
+  let builders = [OpBuilder<
+    "OpBuilder &builder, OperationState &result, MemRefType resultType, " #
+    "Value operand, ValueRange sizes, ValueRange strides", [{
+       result.addOperands(operand);
+       result.addOperands(sizes);
+       result.addOperands(strides);
+       result.types.push_back(resultType);
+     }]>];
+
+  let extraClassDeclaration = [{
+    MemRefType getType() { return getResult().getType().cast<MemRefType>(); }
+  }];
+
+  let verifier = [{ return Verify(*this); }];
+  let assemblyFormat = [{
+    $operand `(` $sizes `)` `[` $strides `]` attr-dict `:` type($operand) `->`
+    type($result)
+  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -436,6 +535,10 @@ def TerminatorOp :
   let description = [{
     Terminator operation for the LHLO dialect.
   }];
+  let builders = [OpBuilder<
+    "OpBuilder &b, OperationState &result, ValueRange operands",
+    [{ build(b, result, llvm::None, operands, llvm::None); }]
+  >];
 }
 
 #endif // LHLO_OPS

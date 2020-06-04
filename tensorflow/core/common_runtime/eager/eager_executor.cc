@@ -50,7 +50,6 @@ EagerExecutor::~EagerExecutor() {
 
 Status EagerExecutor::ShutDown() {
   {
-    std::vector<core::RefCountPtr<NodeItem>> items_to_destroy;
     bool has_thread;
     Status status;
     {
@@ -71,9 +70,6 @@ Status EagerExecutor::ShutDown() {
       if (has_thread) {
         nodes_pending_.notify_all();
       }
-    }
-    for (auto& item : items_to_destroy) {
-      item->node->Abort(status);
     }
     if (!has_thread) {
       return status;
@@ -98,7 +94,7 @@ const char* EagerExecutor::StateStringLocked() {
 
 Status EagerExecutor::SyncExecute(EagerNode* node) {
   if (Async()) {
-    return errors::Internal("Executor does not support sync execution");
+    return errors::Internal("Executor does not support async execution");
   }
   if (node->AsAsync() != nullptr) {
     return errors::Internal("Executor does not support executing async nodes");

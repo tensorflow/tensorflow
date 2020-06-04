@@ -158,7 +158,7 @@ Status XRTCompileOp::Compile(OpKernelContext* ctx,
     argument_layout_ptrs[i] = &argument_layouts[i];
   }
   xla::ExecutableBuildOptions build_options;
-  build_options.set_device_ordinal(client->default_device_ordinal());
+  build_options.set_device_ordinal(device_ref.device_ordinal());
   build_options.set_num_replicas(num_replicas);
   build_options.set_result_layout(xla::Shape(config.program_shape().result()));
   build_options.set_device_allocator(device_ref.backend()->memory_allocator());
@@ -206,7 +206,8 @@ void XRTCompileOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, CompilationCacheKey(computation_proto, &key));
 
   // Process-wide cache of XLA executables.
-  auto cache_or = GetOrCreateCompilationCache(rm, /*max_number_of_entries=*/0);
+  auto cache_or = XRTGenericDeviceAccessor::GetOrCreateCompilationCache(
+      ctx, /*max_number_of_entries=*/0);
   OP_REQUIRES_OK(ctx, cache_or.status());
   auto cache = cache_or.ConsumeValueOrDie();
 
@@ -259,15 +260,11 @@ void XRTReleaseCompilationRefOp::Compute(OpKernelContext* ctx) {
   VLOG(1) << "XRTReleaseCompilationRefOp::Compute";
   auto timed = monitoring::MakeTimed(xrt_metrics::GetReleaseCompilationCell());
 
-  ResourceMgr* rm;
-  OP_REQUIRES_OK(ctx, XRTGenericDeviceAccessor::GetResourceManager(ctx, &rm));
-
   // Process-wide cache of XLA executables.
-  XRTCompilationCache* cache;
-  OP_REQUIRES_OK(ctx, rm->Lookup<XRTCompilationCache>(
-                          rm->default_container(),
-                          kXRTCompilationCacheResourceName, &cache));
-  core::ScopedUnref cache_unref(cache);
+  auto cache_or = XRTGenericDeviceAccessor::GetOrCreateCompilationCache(
+      ctx, /*max_number_of_entries=*/0);
+  OP_REQUIRES_OK(ctx, cache_or.status());
+  auto cache = cache_or.ConsumeValueOrDie();
 
   const Tensor& keys_tensor = ctx->input(0);
   auto flat_keys = keys_tensor.flat<int64>();

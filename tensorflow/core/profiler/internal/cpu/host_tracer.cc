@@ -12,18 +12,23 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/internal/cpu/host_tracer_utils.h"
 #include "tensorflow/core/profiler/internal/profiler_factory.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
 #include "tensorflow/core/profiler/internal/traceme_recorder.h"
+#include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
@@ -119,8 +124,8 @@ Status HostTracer::CollectData(RunMetadata* run_metadata) {
           std::vector<absl::string_view> parts =
               absl::StrSplit(event.name, kUserMetadataMarker);
           if (parts.size() >= 2) {
-            ns->set_node_name(string(parts[0]));
-            ns->set_timeline_label(string(parts[1]));
+            ns->set_node_name(std::string(parts[0]));
+            ns->set_timeline_label(std::string(parts[1]));
           } else {
             ns->set_node_name(std::move(event.name));
           }

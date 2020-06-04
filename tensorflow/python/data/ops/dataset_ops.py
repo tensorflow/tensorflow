@@ -30,7 +30,6 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import stats_options
@@ -93,6 +92,12 @@ ops.NotDifferentiable("ReduceDataset")
 # A constant that can be used to enable auto-tuning.
 AUTOTUNE = -1
 tf_export("data.experimental.AUTOTUNE").export_constant(__name__, "AUTOTUNE")
+
+# Constants representing infinite and unknown cardinalities.
+INFINITE = -1
+UNKNOWN = -2
+tf_export("data.INFINITE_CARDINALITY").export_constant(__name__, "INFINITE")
+tf_export("data.UNKNOWN_CARDINALITY").export_constant(__name__, "UNKNOWN")
 
 
 @tf_export("data.Dataset", v1=[])
@@ -396,8 +401,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def __iter__(self):
     """Creates an `Iterator` for enumerating the elements of this dataset.
 
-    The returned iterator implements the Python iterator protocol and therefore
-    can only be used in eager mode.
+    The returned iterator implements the Python iterator protocol.
 
     Returns:
       An `Iterator` over the elements of this dataset.
@@ -410,6 +414,36 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     else:
       raise RuntimeError("__iter__() is only supported inside of tf.function "
                          "or when eager execution is enabled.")
+
+  def __bool__(self):
+    return True  # Required as __len__ is defined
+
+  __nonzero__ = __bool__  # Python 2 backward compatibility
+
+  def __len__(self):
+    """Returns the length of the dataset if it is known and finite.
+
+    This method requires that you are running in eager mode, and that the
+    length of the dataset is known and non-infinite. When the length may be
+    unknown or infinite, or if you are running in graph mode, use
+    `tf.data.Dataset.cardinality` instead.
+
+    Returns:
+      An integer representing the length of the dataset.
+
+    Raises:
+      RuntimeError: If the dataset length is unknown or infinite, or if eager
+        execution is not enabled.
+    """
+    if not context.executing_eagerly():
+      raise TypeError("__len__() is not supported while tracing functions. "
+                      "Use `tf.data.Dataset.cardinality` instead.")
+    length = self.cardinality()
+    if length.numpy() == INFINITE:
+      raise TypeError("dataset length is infinite.")
+    if length.numpy() == UNKNOWN:
+      raise TypeError("dataset length is unknown.")
+    return length
 
   @abc.abstractproperty
   def element_spec(self):
@@ -1461,6 +1495,16 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     >>> list(dataset.as_numpy_iterator())
     [(array([[ 1,  2,  3, -1], [ 4,  5, -1, -1]], dtype=int32),
       array([[ 10, 100], [ 11,  12]], dtype=int32))]
+    >>> # Pad with a single value and multiple components.
+    >>> E = tf.data.Dataset.zip((A, A)).padded_batch(2, padding_values=-1)
+    >>> for element in E.as_numpy_iterator():
+    ...   print(element)
+    (array([[ 1, -1],
+           [ 2,  2]], dtype=int32), array([[ 1, -1],
+           [ 2,  2]], dtype=int32))
+    (array([[ 3,  3,  3, -1],
+           [ 4,  4,  4,  4]], dtype=int32), array([[ 3,  3,  3, -1],
+           [ 4,  4,  4,  4]], dtype=int32))
 
     See also `tf.data.experimental.dense_to_sparse_batch`, which combines
     elements that may have different shapes into a `tf.sparse.SparseTensor`.
@@ -1479,7 +1523,12 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
         `tf.Tensor`, representing the padding values to use for the respective
         components. None represents that the nested structure should be padded
         with default values.  Defaults are `0` for numeric types and the empty
-        string for string types.
+        string for string types. The `padding_values` should have the
+        same structure as the input dataset. If `padding_values` is a single
+        element and the input dataset has multiple components, then the same
+        `padding_values` will be used to pad every component of the dataset.
+        If `padding_values` is a scalar, then its value will be broadcasted
+        to match the shape of each component.
       drop_remainder: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
         whether the last batch should be dropped in the case it has fewer than
         `batch_size` elements; the default behavior is not to drop the smaller
@@ -2080,6 +2129,34 @@ name=None))
       ValueError: when an option is set more than once to a non-default value
     """
     return _OptionsDataset(self, options)
+
+  def cardinality(self):
+    """Returns the cardinality of the dataset, if known.
+
+    `cardinality` may return `tf.data.INFINITE_CARDINALITY` if the dataset
+    contains an infinite number of elements or `tf.data.UNKNOWN_CARDINALITY` if
+    the analysis fails to determine the number of elements in the dataset
+    (e.g. when the dataset source is a file).
+
+    >>> dataset = tf.data.Dataset.range(42)
+    >>> print(dataset.cardinality().numpy())
+    42
+    >>> dataset = dataset.repeat()
+    >>> cardinality = dataset.cardinality()
+    >>> print((cardinality == tf.data.INFINITE_CARDINALITY).numpy())
+    True
+    >>> dataset = dataset.filter(lambda x: True)
+    >>> cardinality = dataset.cardinality()
+    >>> print((cardinality == tf.data.UNKNOWN_CARDINALITY).numpy())
+    True
+
+    Returns:
+      A scalar `tf.int64` `Tensor` representing the cardinality of the dataset.
+      If the cardinality is infinite or unknown, `cardinality` returns the
+      named constants `tf.data.INFINITE_CARDINALITY` and
+      `tf.data.UNKNOWN_CARDINALITY` respectively.
+    """
+    return gen_dataset_ops.dataset_cardinality(self._variant_tensor)
 
 
 @tf_export(v1=["data.Dataset"])
@@ -3531,54 +3608,6 @@ class RangeDataset(DatasetSource):
     return self._structure
 
 
-# This can be deleted after the forward compatibility window for switching
-# to using dummy resource expires on 5/20.
-class _MemoryCacheDeleter(object):
-  """An object which cleans up an anonymous memory cache resource.
-
-  An alternative to defining a __del__ method on an object. Even if the parent
-  object is part of a reference cycle, the cycle will be collectable.
-  """
-
-  def __init__(self, handle, device, deleter):
-    self._deleter = deleter
-    self._handle = handle
-    self._device = device
-    self._eager_mode = context.executing_eagerly()
-
-  def __del__(self):
-    with ops.device(self._device):
-      # Make sure the resource is deleted in the same mode as it was created in.
-      if self._eager_mode:
-        with context.eager_mode():
-          gen_dataset_ops.delete_memory_cache(
-              handle=self._handle, deleter=self._deleter)
-      else:
-        with context.graph_mode():
-          gen_dataset_ops.delete_memory_cache(
-              handle=self._handle, deleter=self._deleter)
-
-
-# This can be deleted after the forward compatibility window for switching
-# to using dummy resource expires on 5/20.
-class _MemoryCache(object):
-  """Represents a memory cache resource."""
-
-  def __init__(self):
-    super(_MemoryCache, self).__init__()
-    if compat.forward_compatible(2020, 5, 20):
-      self._handle = gen_dataset_ops.dummy_memory_cache()
-    else:
-      self._device = context.context().device_name
-      self._handle, self._deleter = gen_dataset_ops.anonymous_memory_cache()
-      self._resource_deleter = _MemoryCacheDeleter(
-          handle=self._handle, device=self._device, deleter=self._deleter)
-
-  @property
-  def handle(self):
-    return self._handle
-
-
 class CacheDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that caches elements of its input."""
 
@@ -3588,11 +3617,10 @@ class CacheDataset(UnaryUnchangedStructureDataset):
     self._filename = ops.convert_to_tensor(
         filename, dtype=dtypes.string, name="filename")
     if tf2.enabled() and (context.executing_eagerly() or ops.inside_function()):
-      self._cache = _MemoryCache()
       variant_tensor = gen_dataset_ops.cache_dataset_v2(
           input_dataset._variant_tensor,  # pylint: disable=protected-access
           filename=self._filename,
-          cache=self._cache.handle,
+          cache=gen_dataset_ops.dummy_memory_cache(),
           **self._flat_structure)
     else:
       variant_tensor = gen_dataset_ops.cache_dataset(
@@ -3600,56 +3628,6 @@ class CacheDataset(UnaryUnchangedStructureDataset):
           filename=self._filename,
           **self._flat_structure)
     super(CacheDataset, self).__init__(input_dataset, variant_tensor)
-
-
-# This can be deleted after the forward compatibility window for switching
-# to using dummy resource expires on 5/22.
-class _SeedGeneratorDeleter(object):
-  """An object which cleans up an anonymous seed generator resource.
-
-  An alternative to defining a __del__ method on an object. Even if the parent
-  object is part of a reference cycle, the cycle will be collectable.
-  """
-
-  def __init__(self, handle, device, deleter):
-    self._deleter = deleter
-    self._handle = handle
-    self._device = device
-    self._eager_mode = context.executing_eagerly()
-
-  def __del__(self):
-    with ops.device(self._device):
-      # Make sure the resource is deleted in the same mode as it was created in.
-      if self._eager_mode:
-        with context.eager_mode():
-          gen_dataset_ops.delete_seed_generator(
-              handle=self._handle, deleter=self._deleter)
-      else:
-        with context.graph_mode():
-          gen_dataset_ops.delete_seed_generator(
-              handle=self._handle, deleter=self._deleter)
-
-
-# This can be deleted after the forward compatibility window for switching
-# to using dummy resource expires on 5/22.
-class _SeedGenerator(object):
-  """Represents a fixed seed generator resource."""
-
-  def __init__(self, seed, seed2, reshuffle):
-    super(_SeedGenerator, self).__init__()
-    if compat.forward_compatible(2020, 5, 22):
-      self._handle = gen_dataset_ops.dummy_seed_generator()
-    else:
-      self._device = context.context().device_name
-      self._handle, self._deleter = (
-          gen_dataset_ops.anonymous_seed_generator(
-              seed=seed, seed2=seed2, reshuffle=reshuffle))
-      self._resource_deleter = _SeedGeneratorDeleter(
-          handle=self._handle, device=self._device, deleter=self._deleter)
-
-  @property
-  def handle(self):
-    return self._handle
 
 
 class ShuffleDataset(UnaryUnchangedStructureDataset):
@@ -3689,23 +3667,14 @@ class ShuffleDataset(UnaryUnchangedStructureDataset):
 
     if (tf2.enabled() and
         (context.executing_eagerly() or ops.inside_function())):
-      self._seed_generator = _SeedGenerator(self._seed, self._seed2,
-                                            self._reshuffle_each_iteration)
-      if compat.forward_compatible(2020, 5, 22):
-        variant_tensor = gen_dataset_ops.shuffle_dataset_v3(
-            input_dataset._variant_tensor,  # pylint: disable=protected-access
-            buffer_size=self._buffer_size,
-            seed=self._seed,
-            seed2=self._seed2,
-            seed_generator=self._seed_generator.handle,
-            reshuffle_each_iteration=self._reshuffle_each_iteration,
-            **self._flat_structure)
-      else:
-        variant_tensor = gen_dataset_ops.shuffle_dataset_v2(
-            input_dataset._variant_tensor,  # pylint: disable=protected-access
-            buffer_size=self._buffer_size,
-            seed_generator=self._seed_generator.handle,
-            **self._flat_structure)
+      variant_tensor = gen_dataset_ops.shuffle_dataset_v3(
+          input_dataset._variant_tensor,  # pylint: disable=protected-access
+          buffer_size=self._buffer_size,
+          seed=self._seed,
+          seed2=self._seed2,
+          seed_generator=gen_dataset_ops.dummy_seed_generator(),
+          reshuffle_each_iteration=self._reshuffle_each_iteration,
+          **self._flat_structure)
     else:
       variant_tensor = gen_dataset_ops.shuffle_dataset(
           input_dataset._variant_tensor,  # pylint: disable=protected-access
@@ -3997,6 +3966,12 @@ class PaddedBatchDataset(UnaryDataset):
 
     self._padded_shapes = nest.pack_sequence_as(input_shapes,
                                                 flat_padded_shapes_as_tensors)
+
+    # If padding_values is a single element and input_shapes is a structure,
+    # "broadcast" padding_values to the same structure as input_shapes.
+    if nest.is_sequence(input_shapes) and not nest.is_sequence(padding_values):
+      padding_values = nest.map_structure(lambda _: padding_values,
+                                          input_shapes)
 
     self._padding_values = nest.map_structure_up_to(
         input_shapes, _padding_value_to_tensor, padding_values,
@@ -4327,14 +4302,18 @@ class PrefetchDataset(UnaryUnchangedStructureDataset):
     """
     self._input_dataset = input_dataset
     if buffer_size is None:
-      buffer_size = -1  # This is the sentinel for auto-tuning.
+      buffer_size = AUTOTUNE
     self._buffer_size = ops.convert_to_tensor(
         buffer_size, dtype=dtypes.int64, name="buffer_size")
-    variant_tensor = gen_dataset_ops.prefetch_dataset(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        buffer_size=self._buffer_size,
-        slack_period=slack_period,
-        **self._flat_structure)
+    # pylint: disable=protected-access
+    # We colocate the prefetch dataset with its input as this collocation only
+    # happens automatically in graph mode.
+    with ops.device(input_dataset._variant_tensor.device):
+      variant_tensor = gen_dataset_ops.prefetch_dataset(
+          input_dataset._variant_tensor,
+          buffer_size=self._buffer_size,
+          slack_period=slack_period,
+          **self._flat_structure)
     super(PrefetchDataset, self).__init__(input_dataset, variant_tensor)
 
 

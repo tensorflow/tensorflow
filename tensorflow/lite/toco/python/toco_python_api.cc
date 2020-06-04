@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/lite/toco/toco_tooling.h"
 #include "tensorflow/lite/toco/toco_types.h"
 #include "tensorflow/lite/toco/tooling_util.h"
+#include "tensorflow/lite/toco/types.pb.h"
 
 namespace toco {
 
@@ -229,7 +230,7 @@ PyObject* TocoGetPotentiallySupportedOps() {
 }
 
 PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
-                            bool fully_quantize) {
+                            bool fully_quantize, int inference_type) {
   using tflite::interpreter_wrapper::PythonErrorReporter;
   char* buf = nullptr;
   Py_ssize_t length;
@@ -249,11 +250,27 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
   auto tflite_model = absl::make_unique<tflite::ModelT>();
   model->GetModel()->UnPackTo(tflite_model.get(), nullptr);
 
+  tflite::TensorType inference_tensor_type;
+  switch (inference_type) {
+    case toco::IODataType::QUANTIZED_INT16:
+      inference_tensor_type = tflite::TensorType_INT16;
+      break;
+    case toco::IODataType::QUANTIZED_UINT8:
+      inference_tensor_type = tflite::TensorType_UINT8;
+      break;
+    case toco::IODataType::INT8:
+      inference_tensor_type = tflite::TensorType_INT8;
+      break;
+    default:
+      return nullptr;
+  }
+  tflite::TensorType inference_io_type =
+      fully_quantize ? inference_tensor_type : tflite::TensorType_FLOAT32;
   flatbuffers::FlatBufferBuilder builder;
   auto status = mlir::lite::QuantizeModel(
-      *tflite_model, tflite::TensorType::TensorType_FLOAT32,
-      tflite::TensorType::TensorType_FLOAT32, {}, disable_per_channel,
-      fully_quantize, &builder, error_reporter.get());
+      *tflite_model, inference_io_type, inference_io_type,
+      inference_tensor_type, {}, disable_per_channel, fully_quantize, &builder,
+      error_reporter.get());
 
   if (status != kTfLiteOk) {
     error_reporter->exception();

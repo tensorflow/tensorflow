@@ -1021,7 +1021,7 @@ class TensorArrayTest(test.TestCase):
     # self._testWhileLoopWritePackGradients(
     #     dynamic_size=False, dtype=tf.int64)
 
-  @test_util.run_v1_only("b/117943489")
+  @test_util.run_deprecated_v1
   def testSkipEagerWhileLoopDynamicWritePackGradients(self):
     self._testWhileLoopWritePackGradients(
         dynamic_size=True, dtype=dtypes.float32)
@@ -1251,7 +1251,6 @@ class TensorArrayTest(test.TestCase):
       with self.assertRaises(ValueError):
         w1.write(4, c2)
 
-  @test_util.run_v1_only("b/117943489")
   def testUnpackShape(self):
     self._testUnpackShape()
 
@@ -1340,11 +1339,11 @@ class TensorArrayTest(test.TestCase):
       grad = gradients_impl.gradients(ys=[r], xs=[x])
       self.assertAllEqual(np.array([1.0, 1.0, 1.0]), self.evaluate(grad)[0])
 
-  @test_util.run_v1_only("b/117943489")
+  @test_util.run_deprecated_v1
   def testSkipEagerTensorArrayUnpackDynamic(self):
     self._testTensorArrayUnpackDynamic()
 
-  @test_util.run_v1_only("b/117943489")
+  @test_util.run_deprecated_v1
   def testSkipEagerTensorArraySplitDynamic(self):
     with self.session(use_gpu=True) as sess:
       ta = tensor_array_ops.TensorArray(
@@ -1422,7 +1421,7 @@ class TensorArrayTest(test.TestCase):
           v2_msg if control_flow_util.ENABLE_CONTROL_FLOW_V2 else v1_msg):
         ta.stack().eval()
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_deprecated_v1
   def testSkipEagerTensorArrayEvalEmpty(self):
     self._testTensorArrayEvalEmpty()
 
@@ -1445,11 +1444,11 @@ class TensorArrayTest(test.TestCase):
       # first dimension of zero
       self.assertAllEqual([0, 5], self.evaluate(concatenated).shape)
 
-  @test_util.run_v1_only("b/117943489")
+  @test_util.run_deprecated_v1
   def testSkipEagerTensorArrayEvalEmptyWithDefault(self):
     self._testTensorArrayEvalEmptyWithDefault()
 
-  @test_util.run_v1_only("b/117943489")
+  @test_util.run_deprecated_v1
   def testSkipEagerTensorArrayScatterReadAndGradients(self):
     with self.session(use_gpu=True) as session:
       ta = tensor_array_ops.TensorArray(
@@ -1476,7 +1475,7 @@ class TensorArrayTest(test.TestCase):
       self.assertAllEqual([10.0, -10.0], read_vals[1])
       self.assertAllEqual([[2.0, 3.0], [4.0, 5.0]], grad_vals[0])
 
-  @test_util.run_v1_only("b/117943489")
+  @test_util.run_deprecated_v1
   def testSkipEagerTensorArrayScatterPartialReadAndGradients(self):
     with self.session(use_gpu=True) as session:
       ta = tensor_array_ops.TensorArray(

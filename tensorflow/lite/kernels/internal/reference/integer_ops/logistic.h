@@ -58,12 +58,15 @@ inline void Logistic(int32_t input_zero_point, int32_t input_range_radius,
   }
 }
 
-inline void Logistic(int32_t input_size, const int16_t* ptr_input_data,
-                     int16_t* ptr_output_data) {
+inline void Logistic(int32_t input_multiplier, int32_t input_size,
+                     const int16_t* ptr_input_data, int16_t* ptr_output_data) {
   // We use the LUT for sigmoid and take into account, that
   // tanh(x) = 2*sigmoid(2*x) - 1
+
+  int32_t input_data_mul = (input_multiplier > 0) ? input_multiplier : 1;
+
   for (int i = 0; i < input_size; ++i, ptr_input_data++, ptr_output_data++) {
-    int32_t input_data = *ptr_input_data;
+    int32_t input_data = (*ptr_input_data) * input_data_mul;
 
     // Scale by 3/4 to expand range [-8,8]->[-10.7,10.7] and
     // we do interpolation on unsigned values.

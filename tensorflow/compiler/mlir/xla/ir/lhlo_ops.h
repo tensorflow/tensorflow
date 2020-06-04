@@ -27,7 +27,8 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
-#include "mlir/Interfaces/SideEffects.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
+#include "mlir/Interfaces/ViewLikeInterface.h"  // from @llvm-project
 
 namespace mlir {
 class OpBuilder;

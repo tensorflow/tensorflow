@@ -244,7 +244,7 @@ class MklAddNOp : public OpKernel {
 
       // Create Sum op, and submit net for execution.
       std::vector<primitive> net;
-      auto sum_stream = CPU_STREAM(cpu_engine);
+      stream* fwd_cpu_stream = CreateStream(ctx, cpu_engine);
 #ifdef ENABLE_MKLDNN_V1
       mkldnn::sum sum_op(sum_pd);
       std::unordered_map<int, memory> net_args = {
@@ -253,10 +253,10 @@ class MklAddNOp : public OpKernel {
       for (int i = 0; i < num_inputs; ++i) {
         net_args.insert({MKLDNN_ARG_MULTIPLE_SRC + i, inputs[i]});
       }
-      sum_op.execute(sum_stream, net_args);
+      sum_op.execute(*fwd_cpu_stream, net_args);
 #else
       net.push_back(sum(sum_pd, inputs, dst.GetOpMem()));
-      sum_stream.submit(net).wait();
+      fwd_cpu_stream->submit(net).wait();
 #endif
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +

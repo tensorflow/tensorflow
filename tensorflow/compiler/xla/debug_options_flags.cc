@@ -55,18 +55,23 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // b/77879207.
   opts.set_xla_gpu_disable_multi_streaming(true);
 
-  // TODO(jlebar): Disable fastmath once doing so is not a performance
-  // regression.
+  // Disable forms of fast math that have caused users problems in the past.
   opts.set_xla_cpu_enable_fast_math(true);
+  opts.set_xla_cpu_fast_math_honor_nans(true);
+  opts.set_xla_cpu_fast_math_honor_infs(true);
+  opts.set_xla_cpu_fast_math_honor_functions(true);
+  opts.set_xla_cpu_fast_math_honor_division(true);
+
+  // By default, copy TF's Eigen style min_max behavior with nans.
+  opts.set_xla_cpu_enable_fast_min_max(false);
+
   opts.set_xla_gpu_enable_fast_min_max(true);
 
   opts.set_xla_allow_excess_precision(true);
   opts.set_xla_force_host_platform_device_count(1);
   opts.set_xla_gpu_deterministic_reductions(false);
   opts.set_xla_cpu_enable_xprof_traceme(true);
-  // TODO(b/155295372): disable ptxas fallback by default.
-  opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(true);
-  opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_error(true);
+  opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(false);
 
   return opts;
 }
@@ -261,6 +266,12 @@ static void AllocateFlags() {
       "When xla_cpu_enable_fast_math is true then this controls whether we "
       "forbid to approximate calculations for functions. Ignored when "
       "xla_cpu_enable_fast_math is false."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_cpu_enable_fast_min_max",
+      bool_setter_for(&DebugOptions::set_xla_cpu_enable_fast_min_max),
+      flag_values->xla_cpu_enable_fast_min_max(),
+      "Enable fast floating point min/max lowering that always propagates "
+      "NaNs."));
   flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_enable_fast_min_max",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_fast_min_max),
@@ -554,15 +565,6 @@ static void AllocateFlags() {
       "that falling back to the driver can have drawbacks like using more "
       "memory and/or other bugs during compilation, so we recommend setting "
       "this flag to false."));
-  flag_objects->push_back(tensorflow::Flag(
-      "xla_gpu_unsafe_fallback_to_driver_on_ptxas_error",
-      bool_setter_for(
-          &DebugOptions::set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_error),
-      flag_values->xla_gpu_unsafe_fallback_to_driver_on_ptxas_error(),
-      "If true, XLA GPU falls back to the driver if there is an error when "
-      "running ptxas. Note that falling back to the driver can have drawbacks "
-      "like using more memory and/or other bugs during compilation, so we "
-      "recommend setting this flag to false."));
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }
 

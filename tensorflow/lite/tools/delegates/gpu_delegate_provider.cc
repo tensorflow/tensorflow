@@ -154,8 +154,8 @@ TfLiteDelegatePtr GpuDelegateProvider::CreateTfLiteDelegate(
     delegate = TfLiteDelegatePtr(TFLGpuDelegateCreate(&gpu_opts),
                                  &TFLGpuDelegateDelete);
 #else
-    TFLITE_LOG(WARN) << "The GPU delegate compile options are only supported on"
-                        "Android or iOS platforms.";
+    TFLITE_LOG(WARN) << "The GPU delegate compile options are only supported "
+                        "on Android or iOS platforms.";
     delegate = evaluation::CreateGPUDelegate();
 #endif
 

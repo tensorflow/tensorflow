@@ -92,7 +92,8 @@ class StatusOr : private internal_statusor::StatusOrData<T>,
   typedef internal_statusor::StatusOrData<T> Base;
 
  public:
-  typedef T element_type;
+  typedef T element_type;  // DEPRECATED: use `value_type`.
+  typedef T value_type;
 
   // Constructs a new StatusOr with Status::UNKNOWN status.  This is marked
   // 'explicit' to try to catch cases like 'return {};', where people think

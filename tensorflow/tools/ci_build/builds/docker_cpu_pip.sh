@@ -40,7 +40,7 @@ yes "" | python configure.py
 PIP_TEST_ROOT=pip_test_root
 mkdir -p ${PIP_TEST_ROOT}
 ln -s $(pwd)/tensorflow ${PIP_TEST_ROOT}/tensorflow
-bazel test --define=no_tensorflow_py_deps=true \
+bazel --output_base=/tmp test --define=no_tensorflow_py_deps=true \
       --test_lang_filters=py \
       --build_tests_only \
       -k \

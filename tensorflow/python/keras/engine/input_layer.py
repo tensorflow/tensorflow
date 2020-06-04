@@ -20,7 +20,9 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.engine import base_layer
@@ -161,11 +163,21 @@ class InputLayer(base_layer.Layer):
                          'InputLayer, you should instantiate your model and '
                          'directly call it on your input.')
       self.is_placeholder = False
-      self._batch_input_shape = tuple(input_tensor.shape.as_list())
-
+      try:
+        self._batch_input_shape = tuple(input_tensor.shape.as_list())
+      except ValueError:
+        # If the shape cannot be represented as a tuple (e.g. unknown rank)
+        self._batch_input_shape = None
     # Create an input node.
     input_tensor._keras_mask = None
     node_module.Node(layer=self, outputs=input_tensor)
+
+    # Store type spec
+    if isinstance(input_tensor, composite_tensor.CompositeTensor):
+      self._type_spec = input_tensor._type_spec  # pylint: disable=protected-access
+    else:
+      self._type_spec = tensor_spec.TensorSpec(
+          shape=input_tensor.shape, dtype=input_tensor.dtype, name=self.name)
 
   def get_config(self):
     config = {
@@ -215,7 +227,9 @@ def Input(  # pylint: disable=invalid-name
       dtype: The data type expected by the input, as a string
           (`float32`, `float64`, `int32`...)
       sparse: A boolean specifying whether the placeholder to be created is
-          sparse. Only one of 'ragged' and 'sparse' can be True.
+          sparse. Only one of 'ragged' and 'sparse' can be True. Note that,
+          if `sparse` is False, sparse tensors can still be passed into the
+          input - they will be densified with a default value of 0.
       tensor: Optional existing tensor to wrap into the `Input` layer.
           If set, the layer will not create a placeholder tensor.
       ragged: A boolean specifying whether the placeholder to be created is

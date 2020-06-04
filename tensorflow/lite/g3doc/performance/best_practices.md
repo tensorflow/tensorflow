@@ -50,9 +50,8 @@ operator is executed. Check out our
 ## Optimize your model
 
 Model optimization aims to create smaller models that are generally faster and
-more energy efficient, so that they can be deployed on mobile devices. There are
-multiple optimization techniques supported by TensorFlow Lite, such as
-quantization.
+more energy efficient, so that they can be deployed on mobile devices.
+TensorFlow Lite supports multiple optimization techniques, such as quantization.
 
 Check out our [model optimization docs](model_optimization.md) for details.
 
@@ -78,7 +77,7 @@ If your application is not carefully designed, there can be redundant copies
 when feeding the input to and reading the output from the model. Make sure to
 eliminate redundant copies. If you are using higher level APIs, like Java, make
 sure to carefully check the documentation for performance caveats. For example,
-the Java API is a lot faster if ByteBuffers are used as
+the Java API is a lot faster if `ByteBuffers` are used as
 [inputs](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/java/src/main/java/org/tensorflow/lite/Interpreter.java#L175).
 
 ## Profile your application with platform specific tools

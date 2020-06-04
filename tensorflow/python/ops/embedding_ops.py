@@ -36,6 +36,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -250,6 +251,7 @@ def _embedding_lookup_and_transform(params,
 
 
 @tf_export(v1=["nn.embedding_lookup"])
+@dispatch.add_dispatch_support
 def embedding_lookup(
     params,
     ids,
@@ -327,6 +329,7 @@ def embedding_lookup(
 
 
 @tf_export("nn.embedding_lookup", v1=[])
+@dispatch.add_dispatch_support
 def embedding_lookup_v2(params, ids, max_norm=None, name=None):
   """Looks up embeddings for the given `ids` from a list of tensors.
 
@@ -392,6 +395,7 @@ def embedding_lookup_v2(params, ids, max_norm=None, name=None):
 
 
 @tf_export(v1=["nn.embedding_lookup_sparse"])
+@dispatch.add_dispatch_support
 def embedding_lookup_sparse(params,
                             sp_ids,
                             sp_weights,
@@ -574,6 +578,7 @@ def embedding_lookup_sparse(params,
 
 
 @tf_export("nn.embedding_lookup_sparse", v1=[])
+@dispatch.add_dispatch_support
 def embedding_lookup_sparse_v2(params,
                                sp_ids,
                                sp_weights,
@@ -664,6 +669,7 @@ def embedding_lookup_sparse_v2(params,
 
 
 @tf_export("nn.safe_embedding_lookup_sparse", v1=[])
+@dispatch.add_dispatch_support
 def safe_embedding_lookup_sparse_v2(embedding_weights,
                                     sparse_ids,
                                     sparse_weights=None,
@@ -765,6 +771,7 @@ def safe_embedding_lookup_sparse_v2(embedding_weights,
 
 
 @tf_export(v1=["nn.safe_embedding_lookup_sparse"])
+@dispatch.add_dispatch_support
 def safe_embedding_lookup_sparse(embedding_weights,
                                  sparse_ids,
                                  sparse_weights=None,

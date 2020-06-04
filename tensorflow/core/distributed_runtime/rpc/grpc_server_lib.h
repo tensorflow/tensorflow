@@ -68,11 +68,14 @@ struct GrpcServerOptions {
   WorkerCreationFunction worker_func = nullptr;
   StatsPublisherFactory stats_factory = CreateNoOpStatsPublisher;
   GrpcWorkerServiceOptions worker_service_options;
+  const DeviceMgr* local_device_mgr = nullptr;
 };
 
 class GrpcServer : public ServerInterface {
  protected:
   GrpcServer(const ServerDef& server_def, Env* env);
+  GrpcServer(const ServerDef& server_def, DeviceMgr* local_device_mgr,
+             Env* env);
   // Allow children classes to override this and provide custom args to the
   // server before it is constructed. Default behavior is to do nothing.
   virtual void MaybeMutateBuilder(::grpc::ServerBuilder* builder);
@@ -82,6 +85,10 @@ class GrpcServer : public ServerInterface {
                        std::unique_ptr<ServerInterface>* out_server);
   static Status Create(const ServerDef& server_def, Env* env,
                        std::unique_ptr<GrpcServer>* out_server);
+  // Reuse the local_device_mgr.
+  static Status Create(const ServerDef& server_def, Env* env,
+                       const DeviceMgr* local_device_mgr,
+                       std::unique_ptr<ServerInterface>* out_server);
 
   // Destruction is only supported in the factory method. Clean
   // shutdown is not currently implemented for this server type.
@@ -104,7 +111,8 @@ class GrpcServer : public ServerInterface {
   Status UpdateServerDef(const ServerDef& server_def);
 
  protected:
-  virtual Status GetPort(const ServerDef& server_def, int* port) const;
+  virtual Status GetHostAndPort(const ServerDef& server_def, string* host_name,
+                                int* port) const;
   Status Init(const GrpcServerOptions& opts = GrpcServerOptions());
 
   // A subclass can override this method to support secure credentials.
@@ -136,6 +144,9 @@ class GrpcServer : public ServerInterface {
   // The port to which this server is bound.
   int bound_port_ = 0;
 
+  // The host name of this server
+  string host_name_;
+
   // Guards server configuration, server, and state.
   mutex mu_;
 
@@ -159,6 +170,7 @@ class GrpcServer : public ServerInterface {
 
   // Implementation of a TensorFlow worker, and RPC polling thread.
   WorkerEnv worker_env_;
+  std::unique_ptr<const DeviceMgr> owned_device_manager_;
   std::unique_ptr<GrpcWorker> worker_impl_;
   AsyncServiceInterface* worker_service_ = nullptr;
   std::unique_ptr<Thread> worker_thread_ TF_GUARDED_BY(mu_);

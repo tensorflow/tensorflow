@@ -57,7 +57,22 @@ cc_library(
         "tensor.h",
     ],
     deps = [
+        ":status",
         "//tensorflow/c:tf_datatype",
         "//tensorflow/c:tf_tensor",
+    ],
+)
+
+cc_library(
+    name = "tensorhandle",
+    hdrs = [
+        "tensorhandle.h",
+    ],
+    deps = [
+        ":runtime",
+        ":status",
+        ":tensor",
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_experimental",
     ],
 )

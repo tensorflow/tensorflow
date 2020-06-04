@@ -3,6 +3,10 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
 )
+load(
+    "//third_party/mlir:tblgen.bzl",
+    "gentbl",
+)
 
 package(
     default_visibility = [
@@ -23,6 +27,7 @@ package_group(
 exports_files([
     "quantization_traits.h",
     "quantization_config.h",
+    "quantization_utils.h",
 ])
 
 filegroup(
@@ -31,6 +36,25 @@ filegroup(
         "quantization.td",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:QuantizationOpsTdFiles",
+    ],
+)
+
+gentbl(
+    name = "quantization_interfaces_inc_gen",
+    tbl_outs = [
+        (
+            "-gen-op-interface-decls",
+            "quantization_interface.h.inc",
+        ),
+        (
+            "-gen-op-interface-defs",
+            "quantization_interface.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "quantization.td",
+    td_srcs = [
+        ":quantization_td_files",
     ],
 )
 
@@ -71,9 +95,11 @@ cc_library(
     name = "quantization_lib",
     srcs = [
         "quantization_driver.cc",
+        "quantization_interface.cc.inc",
         "quantization_utils.cc",
     ],
     hdrs = [
+        "quantization_interface.h.inc",
         "quantization_traits.h",
         "quantization_utils.h",
     ],

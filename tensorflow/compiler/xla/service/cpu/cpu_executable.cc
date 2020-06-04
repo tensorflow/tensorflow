@@ -363,12 +363,21 @@ StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
   if (shape.IsOpaque()) {
     return sizeof(void*);
   }
-  return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
+  if (shape.is_static() || shape.IsTuple()) {
+    return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
+  }
+  // Each dynamic dimension size is represented as a S32.
+  int64 metadata_size = sizeof(int32) * shape.dimensions_size();
+  return ShapeUtil::ByteSizeOf(shape, sizeof(void*)) + metadata_size;
 }
 
 const InstructionValueSet& CpuExecutable::GetRootValueSet() const {
   return assignment_->dataflow_analysis().GetInstructionValueSet(
       module().entry_computation()->root_instruction());
+}
+
+int64 CpuExecutable::SizeOfGeneratedCodeInBytes() const {
+  return jit_->SizeOfGeneratedCodeInBytes();
 }
 
 }  // namespace cpu

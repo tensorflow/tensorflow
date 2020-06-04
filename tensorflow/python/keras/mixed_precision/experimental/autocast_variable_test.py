@@ -146,7 +146,8 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(x.true_dtype, dtypes.float32)
       self.assertIsInstance(x.true_dtype, dtypes.DType)
 
-      with ops.get_default_graph()._enable_auto_casting_variables('float16'):
+      dtype = dtypes.float16
+      with ops.get_default_graph()._enable_auto_casting_variables(dtype):
         self.assertEqual(x.dtype, dtypes.float16)
         self.assertIsInstance(x.dtype, dtypes.DType)
         self.assertEqual(x.true_dtype, dtypes.float32)

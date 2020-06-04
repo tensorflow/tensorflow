@@ -402,14 +402,26 @@ JNIEXPORT void JNICALL Java_org_tensorflow_lite_Tensor_writeDirectBuffer(
   TfLiteTensor* tensor = GetTensorFromHandle(env, handle);
   if (tensor == nullptr) return;
 
-  char* src_data_raw = static_cast<char*>(env->GetDirectBufferAddress(src));
+  void* src_data_raw = env->GetDirectBufferAddress(src);
   if (!src_data_raw) {
     ThrowException(env, kIllegalArgumentException,
                    "Input ByteBuffer is not a direct buffer");
     return;
   }
 
-  tensor->data.raw = src_data_raw;
+  if (!tensor->data.data) {
+    ThrowException(env, kIllegalArgumentException,
+                   "Internal error: Tensor hasn't been allocated.");
+    return;
+  }
+
+  // Historically, we would simply overwrite the tensor buffer pointer with
+  // the direct Buffer address. However, that is generally unsafe, and
+  // specifically wrong if the graph happens to have dynamic shapes where
+  // arena-allocated input buffers will be refreshed during invocation.
+  // TODO(b/156094015): Explore whether this is actually faster than
+  // using ByteBuffer.put(ByteBuffer).
+  memcpy(tensor->data.data, src_data_raw, tensor->bytes);
 }
 
 JNIEXPORT void JNICALL

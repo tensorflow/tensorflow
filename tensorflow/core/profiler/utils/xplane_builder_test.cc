@@ -14,7 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 
+#include <string>
+
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {

@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/padding.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/pooling.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/prelu.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/quantize_and_dequantize.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/relu.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/reshape.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/resize.h"
@@ -94,6 +95,12 @@ std::vector<ComputeTaskDescriptorPtr> SelectConvolutionTransposed(
     return ConvolutionTransposed(id, input_id, output_id, attr, device_info,
                                  options);
   }
+}
+
+std::vector<ComputeTaskDescriptorPtr> SelectQuantizeAndDequantize(
+    int id, ValueId input_id, ValueId output_id,
+    const QuantizeAndDequantizeAttributes& attr) {
+  return QuantizeAndDequantize(id, input_id, output_id, attr);
 }
 
 std::vector<ComputeTaskDescriptorPtr> SelectPReLU(
@@ -207,9 +214,17 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
         *tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0], op_type,
                                           broadcast);
       } else {
-        *tasks = Add(node_id, inputs, outputs[0],
-                     absl::any_cast<AddAttributes>(node->operation.attributes),
-                     options);
+        const AddAttributes& attr =
+            absl::any_cast<AddAttributes>(node->operation.attributes);
+        const auto* hwc_tensor =
+            absl::get_if<tflite::gpu::Tensor<HWC, DataType::FLOAT32>>(
+                &attr.param);
+        if (hwc_tensor) {
+          return absl::UnimplementedError(
+              "Unsupported op: " + node->operation.type +
+              ", no support of HWC constant tensor");
+        }
+        *tasks = Add(node_id, inputs, outputs[0], attr, options);
       }
       break;
     }
@@ -295,10 +310,17 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
       break;
     case OperationType::MUL:
       if (node->operation.attributes.has_value()) {
-        *tasks = Multiply(
-            node_id, inputs[0], outputs[0],
-            absl::any_cast<MultiplyAttributes>(node->operation.attributes),
-            options);
+        const MultiplyAttributes& attr =
+            absl::any_cast<MultiplyAttributes>(node->operation.attributes);
+        const auto* hwc_tensor =
+            absl::get_if<tflite::gpu::Tensor<HWC, DataType::FLOAT32>>(
+                &attr.param);
+        if (hwc_tensor) {
+          return absl::UnimplementedError(
+              "Unsupported op: " + node->operation.type +
+              ", no support of HWC constant tensor");
+        }
+        *tasks = Multiply(node_id, inputs[0], outputs[0], attr, options);
       } else {
         if (inputs.size() == 2) {
           const auto srcs = graph.FindInputs(node_id);
@@ -335,6 +357,12 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     case OperationType::RELU:
       *tasks = ReLU(node_id, inputs[0], outputs[0],
                     absl::any_cast<ReLUAttributes>(node->operation.attributes));
+      break;
+    case OperationType::QUANTIZE_AND_DEQUANTIZE:
+      *tasks = SelectQuantizeAndDequantize(
+          node_id, inputs[0], outputs[0],
+          absl::any_cast<QuantizeAndDequantizeAttributes>(
+              node->operation.attributes));
       break;
     case OperationType::RESHAPE:
       *tasks = SelectReshape(
@@ -388,6 +416,14 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
       const ElementwiseAttributes* attr =
           absl::any_cast<ElementwiseAttributes>(&node->operation.attributes);
       if (attr) {
+        const auto* hwc_tensor =
+            absl::get_if<tflite::gpu::Tensor<HWC, DataType::FLOAT32>>(
+                &attr->param);
+        if (hwc_tensor) {
+          return absl::UnimplementedError(
+              "Unsupported op: " + node->operation.type +
+              ", no support of HWC constant tensor");
+        }
         *tasks = ElementwiseWithOneInputAndConstantArguent(
             node_id, inputs[0], outputs[0], options, op_type, *attr);
       } else {
@@ -404,7 +440,6 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     case OperationType::BATCH_TO_SPACE:
     case OperationType::CONST:
     case OperationType::LSTM:
-    case OperationType::QUANTIZE_AND_DEQUANTIZE:
     case OperationType::SPACE_TO_BATCH:
     case OperationType::TRANSPOSE:
     case OperationType::UNKNOWN:
