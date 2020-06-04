@@ -115,7 +115,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'max_tokens\', \'output_mode\', \'sparse\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'count\', \'False\'], "
+    argspec: "args=[\'self\', \'max_tokens\', \'output_mode\', \'sparse\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'binary\', \'False\'], "
   }
   member_method {
     name: "adapt"
