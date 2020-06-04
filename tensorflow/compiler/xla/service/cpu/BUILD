@@ -30,6 +30,15 @@ filegroup(
     ]),
 )
 
+cc_library(
+    name = "test_header_helper",
+    testonly = True,
+    hdrs = ["test_target_triple_helper.h"],
+    deps = [
+        "//tensorflow/core:test",
+    ],
+)
+
 filegroup(
     name = "single_threaded_runtime_srcs",
     srcs = [
@@ -1071,6 +1080,7 @@ tf_cc_test(
     deps = [
         ":cpu_compiler",
         ":cpu_transfer_manager",
+	":test_header_helper",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
