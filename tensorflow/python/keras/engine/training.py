@@ -319,7 +319,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       super(Model, self).__setattr__(name, value)
       return
 
-    if all(
+    if any(
         isinstance(v, (base_layer.Layer,
                        data_structures.TrackableDataStructure)) or
         trackable_layer_utils.has_weights(v) for v in nest.flatten(value)):
