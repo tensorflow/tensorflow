@@ -18,7 +18,7 @@ Another benefit with GPU inference is its power efficiency. GPUs carry out the
 computations in a very efficient and optimized manner, so that they consume less
 power and generate less heat than when the same task is run on CPUs.
 
-## Demo App Tutorials
+## Demo app tutorials
 
 The easiest way to try out the GPU delegate is to follow the below tutorials,
 which go through building our classification demo applications with GPU support.
@@ -35,7 +35,7 @@ Note: This requires OpenCL or OpenGL ES (3.1 or higher).
 
 #### Step 1. Clone the TensorFlow source code and open it in Android Studio
 
-```
+```sh
 git clone https://github.com/tensorflow/tensorflow
 ```
 
@@ -87,7 +87,7 @@ target 'YourProjectName'
   pod 'TensorFlowLiteGpuExperimental'
 ```
 
-#### Step 3. Enable the GPU Delegate
+#### Step 3. Enable the GPU delegate
 
 To enable the code that will use the GPU delegate, you will need to change
 `TFLITE_USE_GPU_DELEGATE` from 0 to 1 in `CameraExampleViewController.h`.
@@ -100,8 +100,7 @@ To enable the code that will use the GPU delegate, you will need to change
 
 After following the previous step, you should be able to run the app.
 
-
-#### Step 5. Release mode.
+#### Step 5. Release mode
 
 While in Step 4 you ran in debug mode, to get better performance, you should
 change to a release build with the appropriate optimal Metal settings. In
@@ -111,19 +110,18 @@ Scheme...`. Select `Run`. On the `Info` tab, change `Build Configuration`, from
 
 ![setting up release](images/iosdebug.png)
 
-Then
-click the `Options` tab and change `GPU Frame Capture` to `Disabled` and
+Then click the `Options` tab and change `GPU Frame Capture` to `Disabled` and
 `Metal API Validation` to `Disabled`.
 
 ![setting up metal options](images/iosmetal.png)
 
-Lastly make sure Release only builds on 64-bit architecture. Under `Project
-navigator -> tflite_camera_example -> PROJECT -> tflite_camera_example -> Build
-Settings` set `Build Active Architecture Only > Release` to Yes.
+Lastly make sure to select Release-only builds on 64-bit architecture. Under
+`Project navigator -> tflite_camera_example -> PROJECT -> tflite_camera_example
+-> Build Settings` set `Build Active Architecture Only > Release` to Yes.
 
 ![setting up release options](images/iosrelease.png)
 
-## Trying the GPU Delegate on your own model
+## Trying the GPU delegate on your own model
 
 ### Android
 
@@ -197,12 +195,12 @@ To see a full list of supported ops, please see the [advanced documentation](gpu
 ## Non-supported models and ops
 
 If some of the ops are not supported by the GPU delegate, the framework will
-only run a part of the graph on the GPU and the remaining part on the CPU.  Due
+only run a part of the graph on the GPU and the remaining part on the CPU. Due
 to the high cost of CPU/GPU synchronization, a split execution mode like this
-will often result in a performance slower than when the whole network is run on
-the CPU alone.  In this case, the user will get a warning like:
+will often result in slower performance than when the whole network is run on
+the CPU alone. In this case, the user will get a warning like:
 
-```
+```none
 WARNING: op code #42 cannot be handled by this delegate.
 ```
 
@@ -226,6 +224,6 @@ In that sense, if the camera hardware supports image frames in RGBA, feeding
 that 4-channel input is significantly faster as a memory copy (from 3-channel
 RGB to 4-channel RGBX) can be avoided.
 
-For best performance, do not hesitate to retrain your classifier with a mobile-
-optimized network architecture. That is a significant part of optimization for
-on-device inference.
+For best performance, do not hesitate to retrain your classifier with a
+mobile-optimized network architecture. That is a significant part of
+optimization for on-device inference.

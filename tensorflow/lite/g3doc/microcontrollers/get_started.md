@@ -372,5 +372,5 @@ applications on GitHub</a>
 To learn how to use the library in your own project, read
 [Understand the C++ library](library.md).
 
-For information about training and convert models for deployment on
+For information about training and converting models for deployment on
 microcontrollers, read [Build and convert models](build_convert.md).

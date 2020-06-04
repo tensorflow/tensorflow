@@ -32,9 +32,9 @@ path are also supported, for e.g.,
 [these quantized versions](https://www.tensorflow.org/lite/guide/hosted_models#quantized_models)
 on our Hosted Models page.
 
-## Hexagon Delegate Java API
+## Hexagon delegate Java API
 
-```
+```java
 public class HexagonDelegate implements Delegate, Closeable {
 
   /*
@@ -96,7 +96,7 @@ will need to add the Hexagon shared libs to both 32 and 64-bit lib folders.
 
 #### Step 3. Create a delegate and initialize a TensorFlow Lite Interpreter
 
-```
+```java
 import org.tensorflow.lite.experimental.HexagonDelegate;
 
 // Create the Delegate instance.
@@ -116,9 +116,9 @@ if (hexagonDelegate != null) {
 }
 ```
 
-## Hexagon Delegate C API
+## Hexagon delegate C API
 
-```
+```c
 struct TfLiteHexagonDelegateOptions {
   // This corresponds to the debug level in the Hexagon SDK. 0 (default)
   // means no debug.
@@ -161,7 +161,7 @@ Void TfLiteHexagonInit();
 Void TfLiteHexagonTearDown();
 ```
 
-### Example Usage
+### Example usage
 
 #### Step 1. Edit app/build.gradle to use the nightly Hexagon delegate AAR
 
@@ -213,7 +213,7 @@ will need to add the Hexagon shared libs to both 32 and 64-bit lib folders.
 
 *   Create a delegate, example:
 
-```
+```c
 #include "tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h"
 
 // Assuming shared libraries are under "/data/local/tmp/"
