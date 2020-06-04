@@ -1527,6 +1527,67 @@ func @rfft_1D(%arg0: tensor<8xf32>) -> tensor<8xcomplex<f32>> {
 }
 
 //===----------------------------------------------------------------------===//
+// Shape op legalization.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @shape_1D
+func @shape_1D(%arg0: tensor<?xf32>) -> tensor<1xi32> {
+  // CHECK-DAG: [[SHAPE:%.+]] = shape.shape_of %arg0
+  // CHECK-DAG: [[EXTENT:%.+]] = shape.get_extent [[SHAPE]], 0
+  // CHECK-DAG: [[TO_INDEX:%.+]] = shape.size_to_index [[EXTENT]]
+  // CHECK-DAG: [[CAST:%.+]] = index_cast [[TO_INDEX]]
+  // CHECK-DAG: [[TENSOR:%.+]] = tensor_from_elements([[CAST]])
+  // CHECK-DAG: [[RESHAPE:%.+]] = "xla_hlo.reshape"([[TENSOR]])
+  // CHECK-DAG: [[CONCAT:%.+]] = "xla_hlo.concatenate"([[RESHAPE]]) {dimension = 0 : i64}
+  %0 = "tf.Shape"(%arg0) : (tensor<?xf32>) -> tensor<1xi32>
+
+  // CHECK: return [[CONCAT]]
+  return %0 : tensor<1xi32>
+}
+
+// CHECK-LABEL: func @shape_2D
+func @shape_2D(%arg0: tensor<?x?xf32>) -> tensor<2xi32> {
+  // CHECK-DAG: [[SHAPE:%.+]] = shape.shape_of %arg0
+  // CHECK-DAG: [[EXTENT0:%.+]] = shape.get_extent [[SHAPE]], 0
+  // CHECK-DAG: [[EXTENT1:%.+]] = shape.get_extent [[SHAPE]], 1
+  // CHECK-DAG: [[TO_INDEX0:%.+]] = shape.size_to_index [[EXTENT0]]
+  // CHECK-DAG: [[TO_INDEX1:%.+]] = shape.size_to_index [[EXTENT1]]
+  // CHECK-DAG: [[CAST0:%.+]] = index_cast [[TO_INDEX0]]
+  // CHECK-DAG: [[CAST1:%.+]] = index_cast [[TO_INDEX1]]
+  // CHECK-DAG: [[TENSOR0:%.+]] = tensor_from_elements([[CAST0]])
+  // CHECK-DAG: [[TENSOR1:%.+]] = tensor_from_elements([[CAST1]])
+  // CHECK-DAG: [[RESHAPE0:%.+]] = "xla_hlo.reshape"([[TENSOR0]])
+  // CHECK-DAG: [[RESHAPE1:%.+]] = "xla_hlo.reshape"([[TENSOR1]])
+  // CHECK-DAG: [[CONCAT:%.+]] = "xla_hlo.concatenate"([[RESHAPE0]], [[RESHAPE1]]) {dimension = 0 : i64}
+  %0 = "tf.Shape"(%arg0) : (tensor<?x?xf32>) -> tensor<2xi32>
+
+  // CHECK: return [[CONCAT]]
+  return %0 : tensor<2xi32>
+}
+
+// CHECK-LABEL: func @shape_with_const
+func @shape_with_const(%arg0: tensor<?x3xf32>) -> tensor<2xi32> {
+  // CHECK-DAG: [[SHAPE:%.+]] = shape.shape_of %arg0
+  // CHECK-DAG: [[EXTENT:%.+]] = shape.get_extent [[SHAPE]], 0
+  // CHECK-DAG: [[TO_INDEX:%.+]] = shape.size_to_index [[EXTENT]]
+  // CHECK-DAG: [[CAST:%.+]] = index_cast [[TO_INDEX]]
+  // CHECK-DAG: [[TENSOR:%.+]] = tensor_from_elements([[CAST]])
+  // CHECK-DAG: [[RESHAPE:%.+]] = "xla_hlo.reshape"([[TENSOR]])
+  // CHECK-DAG: [[CONST:%.+]] = xla_hlo.constant dense<3>
+  // CHECK-DAG: [[CONCAT:%.+]] = "xla_hlo.concatenate"([[RESHAPE]], [[CONST]]) {dimension = 0 : i64}
+  %0 = "tf.Shape"(%arg0) : (tensor<?x3xf32>) -> tensor<2xi32>
+
+  // CHECK: return [[CONCAT]]
+  return %0 : tensor<2xi32>
+}
+
+// CHECK-LABEL: func @shape_rankless
+func @shape_rankless(%arg0: tensor<*xf32>) -> tensor<?xi32> {
+  %0 = "tf.Shape"(%arg0) : (tensor<*xf32>) -> tensor<?xi32>
+  return %0 : tensor<?xi32>
+}
+
+//===----------------------------------------------------------------------===//
 // Transpose op legalization.
 //===----------------------------------------------------------------------===//
 
