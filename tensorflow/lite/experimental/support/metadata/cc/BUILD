@@ -10,7 +10,9 @@ cc_library(
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/support/metadata:metadata_schema_cc",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/tools:logging",
+        "@com_google_absl//absl/strings",
         "@flatbuffers",
     ],
 )
