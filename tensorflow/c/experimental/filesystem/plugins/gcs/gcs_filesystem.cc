@@ -15,11 +15,22 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
+#include "google/cloud/storage/client.h"
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
 #include "tensorflow/c/tf_status.h"
 
 // Implementation of a filesystem for GCS environments.
 // This filesystem will support `gs://` URI schemes.
+namespace gcs = google::cloud::storage;
+
+// We can cast `google::cloud::StatusCode` to `TF_Code` because they have the
+// same integer values. See
+// https://github.com/googleapis/google-cloud-cpp/blob/6c09cbfa0160bc046e5509b4dd2ab4b872648b4a/google/cloud/status.h#L32-L52
+static inline void TF_SetStatusFromGCSStatus(
+    const google::cloud::Status& gcs_status, TF_Status* status) {
+  TF_SetStatus(status, static_cast<TF_Code>(gcs_status.code()),
+               gcs_status.message().c_str());
+}
 
 static void* plugin_memory_allocate(size_t size) { return calloc(1, size); }
 static void plugin_memory_free(void* ptr) { free(ptr); }
@@ -52,6 +63,20 @@ namespace tf_read_only_memory_region {
 // ----------------------------------------------------------------------------
 namespace tf_gcs_filesystem {
 
+// TODO(vnvo2409): Add lazy-loading and customizing parameters.
+static void Init(TF_Filesystem* filesystem, TF_Status* status) {
+  google::cloud::StatusOr<gcs::Client> client =
+      gcs::Client::CreateDefaultClient();
+  if (!client) {
+    TF_SetStatusFromGCSStatus(client.status(), status);
+    return;
+  }
+  filesystem->plugin_filesystem = plugin_memory_allocate(sizeof(gcs::Client));
+  auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
+  (*gcs_client) = client.value();
+  TF_SetStatus(status, TF_OK, "");
+}
+
 // TODO(vnvo2409): Implement later
 
 }  // namespace tf_gcs_filesystem
@@ -60,6 +85,10 @@ static void ProvideFilesystemSupportFor(TF_FilesystemPluginOps* ops,
                                         const char* uri) {
   TF_SetFilesystemVersionMetadata(ops);
   ops->scheme = strdup(uri);
+
+  ops->filesystem_ops = static_cast<TF_FilesystemOps*>(
+      plugin_memory_allocate(TF_FILESYSTEM_OPS_SIZE));
+  ops->filesystem_ops->init = tf_gcs_filesystem::Init;
 }
 
 void TF_InitPlugin(TF_FilesystemPluginInfo* info) {

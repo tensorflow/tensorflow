@@ -1,0 +1,13 @@
+diff --git a/google/cloud/storage/BUILD b/google/cloud/storage/BUILD
+index d48b297..a7dd6a6 100644
+--- a/google/cloud/storage/BUILD
++++ b/google/cloud/storage/BUILD
+@@ -76,7 +76,7 @@ cc_library(
+         "//google/cloud:google_cloud_cpp_common",
+         "@boringssl//:crypto",
+         "@boringssl//:ssl",
+-        "@com_github_curl_curl//:curl",
++        "@curl//:curl",
+         "@com_github_google_crc32c//:crc32c",
+         "@com_google_absl//absl/memory",
+     ],
