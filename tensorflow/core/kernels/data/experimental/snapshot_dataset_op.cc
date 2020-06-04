@@ -316,7 +316,7 @@ class SnapshotDatasetV2Op::Dataset::Iterator::Writer
           env,
           snapshot_util::GetCurrentCheckpointFile(shard_directory,
                                                   current_checkpoint_id),
-          writer_iterator->dataset()->compression_, kSnapshotFileFormatVersion,
+          writer_iterator->dataset()->compression_, kFileFormatVersion,
           writer_iterator->dataset()->output_dtypes(), &writer));
 
       while (true) {
@@ -638,7 +638,7 @@ Status SnapshotDatasetV2Op::Dataset::Iterator::Reader::Initialize(
   DatasetBase* dataset_of_snapshot_files;
   TF_RETURN_IF_ERROR(snapshot_util::Reader::MakeNestedDataset(
       ctx->env(), snapshot_shard_dirs, dataset()->compression_,
-      kSnapshotFileFormatVersion, dataset()->output_dtypes(),
+      metadata.version(), dataset()->output_dtypes(),
       dataset()->output_shapes(), start_index_, &dataset_of_snapshot_files));
 
   Tensor input_dataset_tensor(DT_VARIANT, TensorShape({}));
@@ -715,7 +715,7 @@ Status SnapshotDatasetV2Op::Dataset::Iterator::Writer::WriteMetadataFile(
   metadata.set_creation_timestamp(EnvTime::NowMicros());
   metadata.set_graph_hash(absl::StrFormat("%d", dataset()->hash_));
   metadata.set_run_id(absl::StrFormat("%d", run_id_));
-  metadata.set_version(kSnapshotFileFormatVersion);
+  metadata.set_version(kFileFormatVersion);
   for (const auto& output_dtype : dataset()->output_dtypes()) {
     metadata.add_dtype(output_dtype);
   }
