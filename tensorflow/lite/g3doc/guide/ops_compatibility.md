@@ -9,8 +9,8 @@ Since the set of TensorFlow Lite operations is smaller than TensorFlow's, not
 every model is convertible. Even for supported operations, very specific usage
 patterns are sometimes expected, for performance reasons. We expect to expand
 the set of supported operations in future TensorFlow Lite releases. Additional
-ops can be included by [using select TensorFlow ops](ops_select.md), at
-the cost of binary size.
+ops can be included by [using select TensorFlow ops](ops_select.md), at the cost
+of binary size.
 
 The best way to understand how to build a TensorFlow model that can be used with
 TensorFlow Lite is to carefully consider how operations are converted and
@@ -40,8 +40,8 @@ broadcasting is only support in a limited number of ops (`tf.add`, `tf.mul`,
 The following TensorFlow operations are usually mapped to their TensorFlow Lite
 counterparts:
 
-*   `tf.batch_to_space_nd` —As long as the input tensor is 4D (1 batch + 2
-    spatial + 1 other) and the crops attribute is not used.
+*   `tf.batch_to_space_nd` —As long as the input tensor is 3D or 4D (1 batch + 1
+    or 2 spatial + 1 other) and the crops attribute is not used.
 *   `tf.exp`
 *   `tf.fake_quant`
 *   `tf.matmul` —As the second argument is constant and transposition is not
@@ -62,8 +62,8 @@ counterparts:
 *   `tf.reduce_mean` —As long as the `reduction_indices` attribute is not used.
 *   `tf.reshape`
 *   `tf.sigmoid`
-*   `tf.space_to_batch_nd` —As long as the input tensor is 4D (1 batch + 2
-    spatial + 1 other).
+*   `tf.space_to_batch_nd` —As long as the input tensor is 3D or 4D (1 batch + 1
+    or 2 spatial + 1 other).
 *   `tf.space_to_depth`
 *   `tf.split` —As long as num is not provided and `num_or_size_split` contains
     number of splits as a 0D tensor.
@@ -213,7 +213,7 @@ Options {
 
 ```
 Inputs {
-  0: 4D tensor
+  0: 3D-4D tensor
   1: 1D tensor
   2: 2D tensor
 }
@@ -939,7 +939,7 @@ Options {
 
 ```
 Inputs {
-  0: 4D tensor
+  0: 3D-4D tensor
   1: 1D tensor
   2: 2D tensor
 }
