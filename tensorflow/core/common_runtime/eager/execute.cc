@@ -477,10 +477,11 @@ Status GetOrCreateKernelAndDevice(
           SupportedDeviceTypesForNode(*device_type_list, ndef, &supported_devs,
                                       &ctx.HostCPU()->parsed_name()));
       if (supported_devs.empty()) {
-        return errors::NotFound("Could not find valid device for node.\nNode:",
-                                FormatNodeDefForError(ndef),
-                                "\nAll kernels registered for op ", ndef.op(),
-                                " :\n", KernelsRegisteredForOp(ndef.op()));
+        return errors::NotFound(
+            "Could not find device for node: ",
+            errors::FormatNodeNameForError(ndef.name()), " = ", ndef.op(), "[",
+            SummarizeAttrs(ndef), "]", "\nAll kernels registered for op ",
+            ndef.op(), ":\n", KernelsRegisteredForOp(ndef.op()));
       }
       TF_RETURN_IF_ERROR(ctx.SelectDevice(op->GetDeviceParsedName(),
                                           supported_devs, DT_INVALID, &device));
