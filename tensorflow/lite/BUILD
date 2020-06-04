@@ -93,6 +93,8 @@ cc_library(
 alias(
     name = "schema_fbs_version",
     actual = ":version",
+    # avoid_dep tells build_cleaner to not use schema_fbs_version.
+    tags = ["avoid_dep"],
 )
 
 cc_library(
