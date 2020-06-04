@@ -37,12 +37,12 @@ class PyBuffer {
   std::shared_ptr<PjRtClient> client() const { return client_; }
   PjRtBuffer* buffer() const { return buffer_.get(); }
 
-  ClientAndPtr<Device> Device() const;
+  ClientAndPtr<Device> device() const;
   const std::string& platform_name() const { return buffer_->platform_name(); }
   bool is_deleted() const { return buffer_->IsDeleted(); }
 
   StatusOr<std::unique_ptr<PyBuffer>> CopyToDevice(
-      const ClientAndPtr<xla::Device>& dst_device) const;
+      const ClientAndPtr<Device>& dst_device) const;
 
   void Delete() { return buffer_->Delete(); }
 

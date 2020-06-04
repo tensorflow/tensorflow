@@ -663,7 +663,7 @@ PYBIND11_MODULE(xla_extension, m) {
           })
       .def("shape", &PyBuffer::shape)
       .def_property_readonly("client", &PyBuffer::client)
-      .def("device", &PyBuffer::Device)
+      .def("device", &PyBuffer::device)
       .def("platform", &PyBuffer::platform_name)
       .def("is_deleted", &PyBuffer::is_deleted)
       .def("unsafe_buffer_pointer", &PyBuffer::UnsafeBufferPointer)

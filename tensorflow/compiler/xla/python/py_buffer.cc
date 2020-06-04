@@ -25,12 +25,12 @@ PyBuffer::PyBuffer(std::shared_ptr<PjRtClient> client,
                    std::unique_ptr<PjRtBuffer> buffer)
     : client_(std::move(client)), buffer_(std::move(buffer)) {}
 
-ClientAndPtr<Device> PyBuffer::Device() const {
+ClientAndPtr<Device> PyBuffer::device() const {
   return WrapWithClient(client_, buffer_->device());
 }
 
 StatusOr<std::unique_ptr<PyBuffer>> PyBuffer::CopyToDevice(
-    const ClientAndPtr<xla::Device>& dst_device) const {
+    const ClientAndPtr<Device>& dst_device) const {
   CHECK(dst_device.get() != nullptr);
   GlobalPyRefManager()->CollectGarbage();
   py::gil_scoped_release gil_release;
