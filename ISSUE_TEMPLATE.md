@@ -4,7 +4,7 @@ https://stackoverflow.com/questions/tagged/tensorflow
 
 If you open a GitHub issue, here is our policy:
 
-1. It must be a bug, a feature request, or a significant problem with documentation (for small docs fixes please send a PR instead).
+1. It must be a bug, a feature request, or a significant problem with the documentation (for small docs fixes please send a PR instead).
 2. The form below must be filled out.
 3. It shouldn't be a TensorBoard issue. Those go [here](https://github.com/tensorflow/tensorboard/issues).
 
@@ -15,7 +15,7 @@ If you open a GitHub issue, here is our policy:
 ### System information
 - **Have I written custom code (as opposed to using a stock example script provided in TensorFlow)**:
 - **OS Platform and Distribution (e.g., Linux Ubuntu 16.04)**:
-- **Mobile device (e.g. iPhone 8, Pixel 2, Samsung Galaxy) if the issue happens on mobile device**:
+- **Mobile device (e.g. iPhone 8, Pixel 2, Samsung Galaxy) if the issue happens on a mobile device**:
 - **TensorFlow installed from (source or binary)**:
 - **TensorFlow version (use command below)**:
 - **Python version**:
