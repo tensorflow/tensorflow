@@ -76,8 +76,8 @@ class FloatAddOpModel : public SingleOpModelWithNNAPI {
     output_ = AddOutput(output);
     SetBuiltinOp(BuiltinOperator_ADD, BuiltinOptions_AddOptions,
                  CreateAddOptions(builder_, activation_type).Union());
-    BuildInterpreter({GetShape(input1_), GetShape(input2_)},
-                     allow_fp32_relax_to_fp16);
+    BuildInterpreter({GetShape(input1_), GetShape(input2_)}, /*num_threads=*/-1,
+                     allow_fp32_relax_to_fp16, /*apply_delegate=*/true);
   }
 
   int input1() { return input1_; }
@@ -433,7 +433,8 @@ class AddSubOpsAcceleratedModel : public MultiOpModel, public AcceleratedModel {
                  CreateSubOptions(builder_, activation_type).Union(),
                  {add_output, input3_}, {output_});
     BuildInterpreter({GetShape(input1_), GetShape(input2_), GetShape(input3_)},
-                     allow_fp32_relax_to_fp16);
+                     /*num_threads=*/-1, allow_fp32_relax_to_fp16,
+                     /*apply_delegate=*/true);
   }
 };
 
@@ -616,8 +617,8 @@ class HardSwishAddOpsAcceleratedModel : public MultiOpModel,
     AddBuiltinOp(BuiltinOperator_ADD, BuiltinOptions_AddOptions,
                  CreateAddOptions(builder_, activation_type).Union(),
                  {input1_, hard_swish_output}, {output_});
-    BuildInterpreter({GetShape(input1_), GetShape(input2_)},
-                     allow_fp32_relax_to_fp16);
+    BuildInterpreter({GetShape(input1_), GetShape(input2_)}, /*num_threads=*/-1,
+                     allow_fp32_relax_to_fp16, /*apply_delegate=*/true);
   }
 };
 
@@ -749,7 +750,8 @@ class QuantizedWeightsConvolutionOpModel : public SingleOpModel,
                      .Union());
 
     BuildInterpreter({GetShape(input_), GetShape(filter_), GetShape(bias_)},
-                     num_threads);
+                     num_threads, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/true);
   }
 
   void SetInput(std::initializer_list<float> data) {

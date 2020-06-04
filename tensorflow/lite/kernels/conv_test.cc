@@ -113,7 +113,8 @@ class BaseConvolutionOpModel : public SingleOpModel {
     resolver_ = absl::make_unique<SingleOpResolver>(BuiltinOperator_CONV_2D,
                                                     registration);
     BuildInterpreter({GetShape(input_), GetShape(filter_), GetShape(bias_)},
-                     num_threads);
+                     num_threads, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/true);
   }
 
  protected:

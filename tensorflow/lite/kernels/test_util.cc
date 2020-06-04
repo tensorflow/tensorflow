@@ -221,20 +221,6 @@ void SingleOpModel::BuildInterpreter(
                    /*apply_delegate=*/true);
 }
 
-void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
-                                     bool allow_fp32_relax_to_fp16,
-                                     bool apply_delegate) {
-  BuildInterpreter(input_shapes, /*num_threads=*/-1, allow_fp32_relax_to_fp16,
-                   apply_delegate);
-}
-
-void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
-                                     int num_threads) {
-  BuildInterpreter(input_shapes, num_threads,
-                   /*allow_fp32_relax_to_fp16=*/false,
-                   /*apply_delegate=*/true);
-}
-
 // static
 void SingleOpModel::SetForceUseNnapi(bool use_nnapi) {
   force_use_nnapi = use_nnapi;

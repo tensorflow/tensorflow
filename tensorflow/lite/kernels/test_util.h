@@ -382,13 +382,7 @@ class SingleOpModel {
   // tensors given the shapes of the inputs.
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                         int num_threads, bool allow_fp32_relax_to_fp16,
-                        bool apply_delegate = true);
-
-  void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
-                        int num_threads);
-
-  void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
-                        bool allow_fp32_relax_to_fp16, bool apply_delegate);
+                        bool apply_delegate);
 
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes);
 
