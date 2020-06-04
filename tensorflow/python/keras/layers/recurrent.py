@@ -323,7 +323,7 @@ class RNN(Layer):
         This is the expected shape of your inputs
         *including the batch size*.
         It should be a tuple of integers, e.g. `(32, 10, 100)`.
-      - Specify `shuffle=False` when calling fit().
+      - Specify `shuffle=False` when calling `fit()`.
 
     To reset the states of your model, call `.reset_states()` on either
     a specific layer, or on your entire model.
@@ -1114,7 +1114,7 @@ class DropoutRNNCellMixin(object):
     is used every time.
 
     Also the caches are created without tracking. Since they are not picklable
-    by python when deepcopy, we don't want layer._obj_reference_counts_dict
+    by python when deepcopy, we don't want `layer._obj_reference_counts_dict`
     to track it by default.
     """
     self._dropout_mask_cache = K.ContextValueCache(self._create_dropout_mask)
@@ -1124,8 +1124,8 @@ class DropoutRNNCellMixin(object):
   def reset_dropout_mask(self):
     """Reset the cached dropout masks if any.
 
-    This is important for the RNN layer to invoke this in it call() method so
-    that the cached mask is cleared before calling the cell.call(). The mask
+    This is important for the RNN layer to invoke this in it `call()` method so
+    that the cached mask is cleared before calling the `cell.call()`. The mask
     should be cached across the timestep within the same batch, but shouldn't
     be cached between batches. Otherwise it will introduce unreasonable bias
     against certain index of data within the batch.
@@ -2634,7 +2634,7 @@ class LSTM(RNN):
       the `recurrent_kernel` weights matrix.
     bias_regularizer: Regularizer function applied to the bias vector.
     activity_regularizer: Regularizer function applied to
-      the output of the layer (its "activation")..
+      the output of the layer (its "activation").
     kernel_constraint: Constraint function applied to
       the `kernel` weights matrix.
     recurrent_constraint: Constraint function applied to
