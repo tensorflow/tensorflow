@@ -125,8 +125,9 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
   }
 
   int64 Cardinality() const override {
-    if (!preserve_cardinality_)
+    if (!preserve_cardinality_) {
       return kUnknownCardinality;
+    }
     int64 n = input_->Cardinality();
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;

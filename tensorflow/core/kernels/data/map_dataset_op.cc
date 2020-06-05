@@ -73,10 +73,11 @@ class MapDatasetOp::Dataset : public DatasetBase {
   }
 
   int64 Cardinality() const override {
-    if (preserve_cardinality_)
+    if (preserve_cardinality_) {
       return input_->Cardinality();
-    else
+    } else {
       return kUnknownCardinality;
+    }
   }
 
   Status CheckExternalState() const override {
