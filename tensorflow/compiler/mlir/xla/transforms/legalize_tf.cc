@@ -3806,17 +3806,15 @@ class ConvertInfeedDequeueTupleOp
 
       // Token is a control signal and not a real data, so arbitrarily assign
       // the token to device 0.
-      if (sharding_proto.type() == ::xla::OpSharding::TUPLE)
+      if (sharding_proto.type() == ::xla::OpSharding::TUPLE) {
         *sharding_proto.add_tuple_shardings() =
             ::xla::sharding_builder::AssignDevice(0);
-
-      std::string sharding_str;
-      if (!::tensorflow::protobuf::TextFormat::PrintToString(sharding_proto,
-                                                             &sharding_str))
-        return failure();
-
-      data_and_token.setAttr(kShardingAttr,
-                             rewriter.getStringAttr(sharding_str));
+        data_and_token.setAttr(
+            kShardingAttr,
+            rewriter.getStringAttr(sharding_proto.SerializeAsString()));
+      } else {
+        data_and_token.setAttr(kShardingAttr, op._XlaShardingAttr());
+      }
     }
 
     // The infeed instruction produces a tuple of the infeed data and a token
@@ -4359,21 +4357,12 @@ class ConvertXlaShardingOp : public OpRewritePattern<TF::XlaShardingOp> {
     // using a string.
     if (!op._XlaSharding().hasValue()) return failure();
 
-    // _XlaSharding attribute in TF is a serialized string of the OpSharding
-    // proto, so convert to a text form here.
-    ::xla::OpSharding sharding_proto;
-    std::string sharding_str;
-    if (!sharding_proto.ParseFromString(op._XlaSharding().getValue().str()) ||
-        !::tensorflow::protobuf::TextFormat::PrintToString(sharding_proto,
-                                                           &sharding_str))
-      return failure();
-
     auto custom_call = rewriter.create<xla_hlo::CustomCallOp>(
         op.getLoc(), op.getType(), op.input(),
         /*call_target_name=*/rewriter.getStringAttr("Sharding"),
         /*has_side_effect=*/rewriter.getBoolAttr(false),
         /*backend_config=*/rewriter.getStringAttr(""));
-    custom_call.setAttr(kShardingAttr, rewriter.getStringAttr(sharding_str));
+    custom_call.setAttr(kShardingAttr, op._XlaShardingAttr());
     rewriter.replaceOp(op, custom_call.getResult());
 
     return success();
