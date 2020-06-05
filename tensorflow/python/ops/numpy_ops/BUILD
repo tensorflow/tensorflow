@@ -30,6 +30,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:indexed_slices",
         "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:manip_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:sort_ops",
         "//tensorflow/python:tensor_util",
