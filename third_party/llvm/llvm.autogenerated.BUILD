@@ -5446,3 +5446,98 @@ cc_library(
         ":gtest",
     ],
 )
+
+alias(
+    name = "aarch64_target",
+    actual = ":aarch64_code_gen",
+)
+
+alias(
+    name = "aarch64_target_disassembler",
+    actual = ":aarch64_disassembler",
+)
+
+alias(
+    name = "arm_target",
+    actual = ":arm_code_gen",
+)
+
+alias(
+    name = "arm_target_disassembler",
+    actual = ":arm_disassembler",
+)
+
+alias(
+    name = "codegen",
+    actual = ":code_gen",
+)
+
+alias(
+    name = "frontend_openmp",
+    actual = ":frontend_open_mp",
+)
+
+alias(
+    name = "ipo_transforms",
+    actual = ":ipo",
+)
+
+alias(
+    name = "ir",
+    actual = ":core",
+)
+
+alias(
+    name = "machine_code",
+    actual = ":mc",
+)
+
+alias(
+    name = "machine_code_disassembler",
+    actual = ":mc_disassembler",
+)
+
+alias(
+    name = "nvptx_target",
+    actual = ":nvptx_code_gen",
+)
+
+alias(
+    name = "objcarc_transforms",
+    actual = ":objc_arc",
+)
+
+alias(
+    name = "orcjit",
+    actual = ":orc_jit",
+)
+
+alias(
+    name = "powerpc_target",
+    actual = ":powerpc_code_gen",
+)
+
+alias(
+    name = "powerpc_target_disassembler",
+    actual = ":powerpc_disassembler",
+)
+
+alias(
+    name = "scalar_transforms",
+    actual = ":scalar",
+)
+
+alias(
+    name = "target_base",
+    actual = ":target",
+)
+
+alias(
+    name = "x86_target",
+    actual = ":x86_code_gen",
+)
+
+alias(
+    name = "x86_target_disassembler",
+    actual = ":x86_disassembler",
+)
