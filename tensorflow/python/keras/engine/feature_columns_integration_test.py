@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests specific to Feature Columns and Keras integration."""
+"""Tests specific to Feature Columns integration."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -21,17 +21,11 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python import keras
-from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.feature_column import feature_column_lib as fc
-from tensorflow.python.feature_column import feature_column_v2
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import testing_utils
-from tensorflow.python.keras.feature_column import dense_features_v2
-from tensorflow.python.keras.optimizer_v2 import gradient_descent
-from tensorflow.python.keras.premade import linear
-from tensorflow.python.keras.premade import wide_deep
 from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.platform import test
 
@@ -303,108 +297,6 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
     model.compile(optimizer='sgd',
                   loss=keras.losses.BinaryCrossentropy())
     model.fit(dataset)
-
-  def test_serialization_dense_features(self):
-    dense_feature = fc.DenseFeatures([fc.numeric_column('a')])
-    config = keras.layers.serialize(dense_feature)
-    self.assertEqual(config['class_name'], 'DenseFeatures')
-
-    revived = keras.layers.deserialize(config)
-    if tf2.enabled():
-      self.assertIsInstance(revived, dense_features_v2.DenseFeatures)
-    else:
-      self.assertIsInstance(revived, fc.DenseFeatures)
-      self.assertNotIsInstance(revived, dense_features_v2.DenseFeatures)
-
-  # This test is an example for a regression on categorical inputs, i.e.,
-  # the output is 0.4, 0.6, 0.9 when input is 'alpha', 'beta', 'gamma'
-  # separately.
-  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
-  def test_linear_model_with_feature_column(self):
-    vocab_list = ['alpha', 'beta', 'gamma']
-    vocab_val = [0.4, 0.6, 0.9]
-    data = np.random.choice(vocab_list, size=256)
-    y = np.zeros_like(data, dtype=np.float32)
-    for vocab, val in zip(vocab_list, vocab_val):
-      indices = np.where(data == vocab)
-      y[indices] = val + np.random.uniform(
-          low=-0.01, high=0.01, size=indices[0].shape)
-    cat_column = feature_column_v2.categorical_column_with_vocabulary_list(
-        key='symbol', vocabulary_list=vocab_list)
-    ind_column = feature_column_v2.indicator_column(cat_column)
-    dense_feature_layer = dense_features_v2.DenseFeatures([ind_column])
-    linear_model = linear.LinearModel(
-        use_bias=False, kernel_initializer='zeros')
-    combined = keras.Sequential([dense_feature_layer, linear_model])
-    opt = gradient_descent.SGD(learning_rate=0.1)
-    combined.compile(opt, 'mse', [])
-    combined.fit(x={'symbol': data}, y=y, batch_size=32, epochs=10)
-    self.assertAllClose([[0.4], [0.6], [0.9]],
-                        combined.layers[1].dense_layers[0].kernel.numpy(),
-                        atol=0.01)
-
-  # This test is an example for cases where linear and dnn model accepts
-  # same raw input and same transformed inputs, i.e., the raw input is
-  # categorical, and both linear and dnn model accept one hot encoding.
-  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
-  def test_wide_deep_model_with_single_feature_column(self):
-    vocab_list = ['alpha', 'beta', 'gamma']
-    vocab_val = [0.4, 0.6, 0.9]
-    data = np.random.choice(vocab_list, size=256)
-    y = np.zeros_like(data, dtype=np.float32)
-    for vocab, val in zip(vocab_list, vocab_val):
-      indices = np.where(data == vocab)
-      y[indices] = val + np.random.uniform(
-          low=-0.01, high=0.01, size=indices[0].shape)
-    cat_column = feature_column_v2.categorical_column_with_vocabulary_list(
-        key='symbol', vocabulary_list=vocab_list)
-    ind_column = feature_column_v2.indicator_column(cat_column)
-    dense_feature_layer = dense_features_v2.DenseFeatures([ind_column])
-    linear_model = linear.LinearModel(
-        use_bias=False, kernel_initializer='zeros')
-    dnn_model = keras.Sequential([keras.layers.Dense(units=1)])
-    wide_deep_model = wide_deep.WideDeepModel(linear_model, dnn_model)
-    combined = keras.Sequential([dense_feature_layer, wide_deep_model])
-    opt = gradient_descent.SGD(learning_rate=0.1)
-    combined.compile(
-        opt,
-        'mse', [],
-        run_eagerly=testing_utils.should_run_eagerly())
-    combined.fit(x={'symbol': data}, y=y, batch_size=32, epochs=10)
-
-  # This test is an example for cases where linear and dnn model accepts
-  # same raw input but different transformed inputs, i.e,. the raw input is
-  # categorical, and linear model accepts one hot encoding, while dnn model
-  # accepts embedding encoding.
-  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
-  def test_wide_deep_model_with_two_feature_columns(self):
-    vocab_list = ['alpha', 'beta', 'gamma']
-    vocab_val = [0.4, 0.6, 0.9]
-    data = np.random.choice(vocab_list, size=256)
-    y = np.zeros_like(data, dtype=np.float32)
-    for vocab, val in zip(vocab_list, vocab_val):
-      indices = np.where(data == vocab)
-      y[indices] = val + np.random.uniform(
-          low=-0.01, high=0.01, size=indices[0].shape)
-    cat_column = feature_column_v2.categorical_column_with_vocabulary_list(
-        key='symbol', vocabulary_list=vocab_list)
-    ind_column = feature_column_v2.indicator_column(cat_column)
-    emb_column = feature_column_v2.embedding_column(cat_column, dimension=5)
-    linear_feature_layer = dense_features_v2.DenseFeatures([ind_column])
-    linear_model = linear.LinearModel(
-        use_bias=False, kernel_initializer='zeros')
-    combined_linear = keras.Sequential(
-        [linear_feature_layer, linear_model])
-    dnn_model = keras.Sequential([keras.layers.Dense(units=1)])
-    dnn_feature_layer = dense_features_v2.DenseFeatures([emb_column])
-    combined_dnn = keras.Sequential([dnn_feature_layer, dnn_model])
-    wide_deep_model = wide_deep.WideDeepModel(combined_linear, combined_dnn)
-    opt = gradient_descent.SGD(learning_rate=0.1)
-    wide_deep_model.compile(
-        opt,
-        'mse', [],
-        run_eagerly=testing_utils.should_run_eagerly())
-    wide_deep_model.fit(x={'symbol': data}, y=y, batch_size=32, epochs=10)
 
 
 if __name__ == '__main__':

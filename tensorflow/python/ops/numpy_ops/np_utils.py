@@ -36,6 +36,22 @@ from tensorflow.python.util import nest
 tensor_to_ndarray = np_arrays.tensor_to_ndarray
 
 
+def _canonicalize_axis(axis, rank):
+  return _canonicalize_axes([axis], rank)[0]
+
+
+def _canonicalize_axes(axes, rank):
+  rank = _maybe_static(rank)
+
+  if isinstance(rank, ops.Tensor):
+    canonicalizer = (
+        lambda axis: cond(axis < 0, lambda: axis + rank, lambda: axis))
+  else:
+    canonicalizer = lambda axis: axis+rank if axis < 0 else axis
+
+  return [canonicalizer(axis) for axis in axes]
+
+
 def _supports_signature():
   return hasattr(inspect, 'signature')
 

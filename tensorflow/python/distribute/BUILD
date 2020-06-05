@@ -12,6 +12,9 @@ exports_files(["LICENSE"])
 
 py_library(
     name = "distribute_test_lib_pip",
+    data = [
+        "//tensorflow/python/distribute/testdata:text_input",
+    ],
     deps = [
         ":combinations",
         ":model_combinations",
@@ -1767,6 +1770,9 @@ py_test(
 cuda_py_test(
     name = "strategy_common_test",
     srcs = ["strategy_common_test.py"],
+    data = [
+        "//tensorflow/python/distribute/testdata:text_input",
+    ],
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
@@ -1783,10 +1789,12 @@ cuda_py_test(
         ":strategy_test_lib",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/data/experimental/ops:distribute_options",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/eager:def_function",
         "@absl_py//absl/testing:parameterized",
     ],

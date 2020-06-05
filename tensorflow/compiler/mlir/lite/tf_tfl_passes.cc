@@ -85,6 +85,8 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
             pass_config.quant_specs.serialized_quant_stats));
   }
 
+  pass_manager->addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
+
   // The conversion pipeline has to follow the following orders:
   // 1) Saved model related optimization like decompose resource ops
   // 2) Convert composite functions like lstm/rnns, along with proper function
@@ -128,6 +130,9 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     // Add a shape inference pass to optimize away the unnecessary casts.
     pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
   }
+
+  pass_manager->addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
+
   // Legalize while early to allow further constant folding.
   // TODO(jpienaar): This may not actually matter as we do canonicalization
   // after the legalize below, for now it needs to be below the above passes

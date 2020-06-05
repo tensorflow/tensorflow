@@ -594,6 +594,7 @@ gentbl(
         ("-gen-global-isel", "lib/Target/AMDGPU/AMDGPUGenGlobalISel.inc"),
         ("-gen-global-isel-combiner -combiners=AMDGPUPreLegalizerCombinerHelper", "lib/Target/AMDGPU/AMDGPUGenPreLegalizeGICombiner.inc"),
         ("-gen-global-isel-combiner -combiners=AMDGPUPostLegalizerCombinerHelper", "lib/Target/AMDGPU/AMDGPUGenPostLegalizeGICombiner.inc"),
+        ("-gen-global-isel-combiner -combiners=AMDGPURegBankCombinerHelper", "lib/Target/AMDGPU/AMDGPUGenRegBankGICombiner.inc"),
     ],
     tblgen = ":llvm-tblgen",
     td_file = "lib/Target/AMDGPU/AMDGPUGISel.td",
@@ -4883,6 +4884,33 @@ alias(
 )
 
 cc_library(
+    name = "VEDisassembler",
+    srcs = glob([
+        "lib/Target/VE/Disassembler/*.c",
+        "lib/Target/VE/Disassembler/*.cpp",
+        "lib/Target/VE/Disassembler/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/VE/Disassembler/*.h",
+        "include/llvm/Target/VE/Disassembler/*.def",
+        "include/llvm/Target/VE/Disassembler/*.inc",
+        "lib/Target/VE/Disassembler/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm-project/llvm/lib/Target/VE"],
+    deps = [
+        ":MCDisassembler",
+        ":Support",
+        ":VEInfo",
+        ":config",
+    ],
+)
+
+alias(
+    name = "ve_disassembler",
+    actual = ":VEDisassembler",
+)
+
+cc_library(
     name = "VEInfo",
     srcs = glob([
         "lib/Target/VE/TargetInfo/*.c",
@@ -5438,4 +5466,109 @@ cc_library(
         ":config",
         ":gtest",
     ],
+)
+
+alias(
+    name = "aarch64_target",
+    actual = ":aarch64_code_gen",
+)
+
+alias(
+    name = "aarch64_target_disassembler",
+    actual = ":aarch64_disassembler",
+)
+
+alias(
+    name = "arm_target",
+    actual = ":arm_code_gen",
+)
+
+alias(
+    name = "arm_target_disassembler",
+    actual = ":arm_disassembler",
+)
+
+alias(
+    name = "codegen",
+    actual = ":code_gen",
+)
+
+alias(
+    name = "frontend_openmp",
+    actual = ":frontend_open_mp",
+)
+
+alias(
+    name = "ipo_transforms",
+    actual = ":ipo",
+)
+
+alias(
+    name = "ir",
+    actual = ":core",
+)
+
+alias(
+    name = "machine_code",
+    actual = ":mc",
+)
+
+alias(
+    name = "machine_code_disassembler",
+    actual = ":mc_disassembler",
+)
+
+alias(
+    name = "nvptx_target",
+    actual = ":nvptx_code_gen",
+)
+
+alias(
+    name = "objcarc_transforms",
+    actual = ":objc_arc",
+)
+
+alias(
+    name = "orcjit",
+    actual = ":orc_jit",
+)
+
+alias(
+    name = "powerpc_target",
+    actual = ":powerpc_code_gen",
+)
+
+alias(
+    name = "powerpc_target_disassembler",
+    actual = ":powerpc_disassembler",
+)
+
+alias(
+    name = "system_z_target",
+    actual = ":system_z_code_gen",
+)
+
+alias(
+    name = "system_z_target_disassembler",
+    actual = ":system_z_disassembler",
+)
+
+alias(
+    name = "scalar_transforms",
+    actual = ":scalar",
+)
+
+alias(
+    name = "target_base",
+    actual = ":target",
+)
+
+alias(
+    name = "x86_target",
+    actual = ":x86_code_gen",
+)
+
+alias(
+    name = "x86_target_disassembler",
+    actual = ":x86_disassembler",
 )

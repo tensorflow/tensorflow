@@ -23,6 +23,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":utils",
+        "@six_archive//:six",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:control_flow_ops",
@@ -48,7 +49,13 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras/engine",
-        "@six_archive//:six",
+        # TODO(scottzhu): Remove metrics after we cleanup the keras internal cyclar dependency.
+        #     //third_party/tensorflow/python/feature_column:feature_column
+        #     //third_party/tensorflow/python/keras/engine:engine
+        # .-> //third_party/tensorflow/python/keras/distribute:distribute
+        # |   //third_party/tensorflow/python/keras:metrics
+        # `-- //third_party/tensorflow/python/keras/distribute:distribute
+        "//tensorflow/python/keras:metrics",
     ],
 )
 
@@ -72,7 +79,6 @@ py_library(
         "//tensorflow/python:init_ops",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:sparse_ops",
@@ -85,11 +91,7 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:initializers",
-        "//tensorflow/python/keras/engine",
-        "//tensorflow/python/keras/engine:base_layer",
-        "//tensorflow/python/keras/layers",
         "//tensorflow/python/keras/utils:generic_utils",
         "//tensorflow/python/training/tracking",
         "//tensorflow/python/training/tracking:data_structures",
@@ -236,11 +238,8 @@ py_test(
     deps = [
         ":feature_column_v2",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_ops",
         "//tensorflow/python:parsing_ops",
-        "//tensorflow/python:training",
         "//tensorflow/python:util",
-        "//tensorflow/python/keras/layers",
     ],
 )
 
@@ -251,40 +250,6 @@ tf_py_test(
         ":feature_column_v2",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:util",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "keras_integration_test",
-    size = "medium",
-    srcs = ["keras_integration_test.py"],
-    python_version = "PY3",
-    shard_count = 4,
-    tags = [
-        "nomac",  # TODO(mihaimaruseac): b/127695564
-        "notsan",
-    ],
-    deps = [
-        ":feature_column_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/keras",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "save_test",
-    size = "medium",
-    srcs = ["save_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":feature_column_v2",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/keras",
-        "//tensorflow/python/keras:combinations",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )

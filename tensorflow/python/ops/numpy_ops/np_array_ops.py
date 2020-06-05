@@ -31,6 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import manip_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
@@ -881,7 +882,7 @@ def around(a, decimals=0):  # pylint: disable=missing-docstring
   else:
     # Use float as the working dtype when a.dtype is exact (e.g. integer),
     # because `decimals` can be negative.
-    float_dtype = dtypes.default_float_type()
+    float_dtype = np_dtypes.default_float_type()
     a = a.astype(float_dtype).data
     factor = math_ops.cast(factor, float_dtype)
   a = math_ops.multiply(a, factor)
@@ -1109,7 +1110,7 @@ def _setitem(arr, index, value):
 
 
 setattr(np_arrays.ndarray, 'transpose', transpose)
-setattr(np_arrays.ndarray, 'reshape', reshape)
+setattr(np_arrays.ndarray, 'reshape', _reshape_method_wrapper)
 setattr(np_arrays.ndarray, '__setitem__', _setitem)
 
 
@@ -1518,11 +1519,11 @@ def roll(a, shift, axis=None):  # pylint: disable=missing-docstring
   a = asarray(a).data
 
   if axis is not None:
-    return np_utils.tensor_to_ndarray(array_ops.roll(a, shift, axis))
+    return np_utils.tensor_to_ndarray(manip_ops.roll(a, shift, axis))
 
   # If axis is None, the roll happens as a 1-d tensor.
   original_shape = array_ops.shape(a)
-  a = array_ops.roll(array_ops.reshape(a, [-1]), shift, 0)
+  a = manip_ops.roll(array_ops.reshape(a, [-1]), shift, 0)
   return np_utils.tensor_to_ndarray(array_ops.reshape(a, original_shape))
 
 
@@ -1538,7 +1539,7 @@ def rot90(m, k=1, axes=(0, 1)):  # pylint: disable=missing-docstring
     return flip(flip(m, ax1), ax2)
   else:
     perm = math_ops.range(m_rank)
-    perm = array_ops.tensor_scatter_nd_update(perm, [[ax1], [ax2]], [ax2, ax1])
+    perm = array_ops.tensor_scatter_update(perm, [[ax1], [ax2]], [ax2, ax1])
 
     if k == 1:
       return transpose(flip(m, ax2), perm)

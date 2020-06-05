@@ -297,7 +297,7 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "cpu_outfeed_receiver_test",
+    name = "outfeed_receiver_test_cpu",
     size = "small",
     srcs = ["outfeed_receiver_test.cc"],
     deps = [
@@ -328,6 +328,7 @@ cc_library(
         ":types",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
         "@pybind11",

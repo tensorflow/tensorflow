@@ -73,7 +73,7 @@ constexpr char kPaddingMapAttr[] = "xla_hlo.padding_map";
 constexpr char kShapeIndicesAttr[] = "shape_indices";
 constexpr char kPaddingArgIndicesAttr[] = "padding_arg_indices";
 constexpr char kShardingAttr[] = "xla_hlo.sharding";
-constexpr char kRepicationAttr[] = "tf_device.is_same_data_across_replicas";
+constexpr char kRepicationAttr[] = "xla_hlo.is_same_data_across_replicas";
 
 // Passes through everything except for unique_ptr, on which it calls get().
 // This exists to allow the generated code to call XLA functions that take a raw
@@ -1137,8 +1137,8 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
     bool any_arg_replicated = false;
     entry_args_same_across_replicas.reserve(f.getNumArguments());
     for (int64_t i = 0; i < f.getNumArguments(); ++i) {
-      auto attr = f.getArgAttrOfType<mlir::BoolAttr>(i, kRepicationAttr);
-      entry_args_same_across_replicas.push_back(attr && attr.getValue());
+      auto attr = f.getArgAttrOfType<mlir::UnitAttr>(i, kRepicationAttr);
+      entry_args_same_across_replicas.push_back(attr != nullptr);
       any_arg_replicated |= entry_args_same_across_replicas.back();
       // Pass the alias info to the builder so that it will build the alias info
       // into the resulting HloModule.
