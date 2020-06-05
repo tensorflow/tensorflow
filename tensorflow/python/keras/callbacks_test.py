@@ -1243,7 +1243,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     self.assertTrue(hasattr(reduce_on_plateau, 'min_delta'))
     self.assertEqual(reduce_on_plateau.min_delta, 1e-13)
 
-  def test_CSVLogger(self):
+  def test_CSVLogger(self, log_all=False):
     with self.cached_session():
       np.random.seed(1337)
       temp_dir = self.get_temp_dir()
@@ -1306,6 +1306,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
           y_train,
           batch_size=BATCH_SIZE,
           validation_data=(x_test, y_test),
+          validation_freq=1 if not log_all else 2,
           callbacks=cbks,
           epochs=2,
           verbose=0)
@@ -1319,6 +1320,9 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         assert len(re.findall('epoch', output)) == 1
 
       os.remove(filepath)
+
+  def test_CSVLogger_log_all(self):
+    self.test_CSVLogger(log_all=True)
 
   def test_stop_training_csv(self):
     # Test that using the CSVLogger callback with the TerminateOnNaN callback
