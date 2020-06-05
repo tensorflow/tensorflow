@@ -413,7 +413,9 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     input_shape = K.int_shape(inputs)
     timesteps = input_shape[0] if self.time_major else input_shape[1]
 
-    if not self._could_use_gpu_kernel:
+    # TODO(b/156447398) Investigate why the cuDNN kernel kernel fails with
+    # ragged inputs.
+    if is_ragged_input or not self._could_use_gpu_kernel:
       kwargs = {'training': training}
       self._maybe_reset_cell_dropout_mask(self.cell)
 
@@ -1109,7 +1111,9 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
     input_shape = K.int_shape(inputs)
     timesteps = input_shape[0] if self.time_major else input_shape[1]
 
-    if not self._could_use_gpu_kernel:
+    # TODO(b/156447398) Investigate why the cuDNN kernel kernel fails with
+    # ragged inputs.
+    if is_ragged_input or not self._could_use_gpu_kernel:
       # Fall back to use the normal LSTM.
       kwargs = {'training': training}
       self._maybe_reset_cell_dropout_mask(self.cell)

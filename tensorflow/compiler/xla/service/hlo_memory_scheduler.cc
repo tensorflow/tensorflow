@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -211,6 +212,18 @@ class ListScheduler {
   // improve accounting for subcomputation memory (b/65409243).
   int64 BytesFreedIfScheduled(const ReadyListEntry& entry) {
     auto instruction = entry.instruction;
+    auto opcode = instruction->opcode();
+
+    // Scheduling the outfeed early and the infeed late gives more time to the
+    // communicating processor to do its work.
+    if (opcode == HloOpcode::kOutfeed &&
+        !instruction->outfeed_config().empty()) {
+      return INT_MAX;
+    }
+    if (opcode == HloOpcode::kInfeed && !instruction->infeed_config().empty()) {
+      return INT_MIN;
+    }
+
     int64 freed_bytes = 0;
     for (const auto& kv : entry.used_buffer_unscheduled_use_counts) {
       auto buffer = kv->first;
@@ -232,7 +245,6 @@ class ListScheduler {
       }
     }
     int64 bytes_defined;
-    auto opcode = instruction->opcode();
     if (max_subcomputation_bytes > 0 &&
         (opcode == HloOpcode::kWhile || opcode == HloOpcode::kCall ||
          opcode == HloOpcode::kConditional)) {

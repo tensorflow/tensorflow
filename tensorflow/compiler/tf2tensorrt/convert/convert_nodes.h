@@ -185,6 +185,10 @@ class TRT_ShapedWeights {
     return const_cast<char*>(tensor_.tensor_data().data());
   }
 
+  // Fills all the weight values with value.
+  template <typename T>
+  Status SetValues(T value);
+
   int64_t count() const;
 
   size_t size_bytes() const;
@@ -293,6 +297,8 @@ class TRT_TensorOrWeights {
   }
 
   nvinfer1::Dims GetTrtDims() const;
+
+  Status GetTfType(DataType* tf_type) const;
 
   int batch_size() const { return batch_size_; }
 
@@ -527,12 +533,62 @@ class Converter {
                                const bool validation_only,
                                nvinfer1::ITensor** tensor);
 
+  // Reshapes a dynamic shape tensor by removing or adding dimensions of size 1,
+  // and/or permuting the dimensions. The new shape is derived from the shape of
+  // the input tensor according to the slices and size_for_added_dims arguments.
+  //
+  // If there would be at most one unknown dimension, we could set the new shape
+  // using IShuffleLayer::setReshapeDimensions, which treats -1 as a special
+  // value (the same way as TF). In general, we can have more than one unknown
+  // dimensions, and we have to manipulate the shape tensors during runtime to
+  // define the new shape. This helper function defines the necessary shape
+  // inference layers and calls reshape using the calculated new shape.
+  //
+  // Example:
+  //
+  // Assume that we want to reshape a tensor from shape {A,B,C,D} to {C,D,A,B}
+  // (no transpose, just change the shape). In dynamic shape mode, the A,B,C,D
+  // values are not necessarily known at conversion time, they can be all -1. We
+  // can only define the new shape at runtime, when the actual shape is already
+  // known. To define the new shape:
+  // - We use an IShapeLayer to retrieve a shape tensor with the {A,B,C,D}
+  //   values.
+  // - Create two slices {C,D} and {A,B} of the shape tensor.
+  // - Concatenate these slices {C,D,A,B},
+  // - Set the {C,D,A,B} shape tensor as an input shape tensor for
+  // IShuffleLayer.
+  //
+  // This can be achieved by calling DynamicReshape(input, {{2,4},{0,2}},
+  // params).
+  //
+  // Before each slice we can insert a new dim if the corresponding
+  // size_for_added_dims element is not negative. The size_for_added_dims array
+  // can have more than slices.size() elements, in order to insert a dimension
+  // ater the last slice.
+  //
+  // Parameters:
+  // input - input tensor
+  // slices - [start, end) pairs of slices
+  // params - conversion parameters
+  // output - reshaped tensor
+  // size_for_added_dims - size of dimension inserted right before slice[i]. We
+  //   only insert a new dim if size_for_added_dims[i] >= 0.
+  Status DynamicReshape(nvinfer1::ITensor* input,
+                        std::vector<std::pair<int, int>> slices,
+                        OpConverterParams* params, nvinfer1::ITensor** output,
+                        std::vector<int> size_for_added_dims = {});
+
+  // Inserts a singleton dimension at axis for a dynamic shape tensor.
+  Status DynamicExpandDims(nvinfer1::ITensor* input, const nvinfer1::Dims& dims,
+                           int axis, OpConverterParams* params,
+                           nvinfer1::ITensor** output);
+
   // Helper function to add a squeeze op to the network.
   //
   // The input_dims argument stores the TRT dimensions of the input tensor,
   // where the dimensions to be squeezed are replaced by 0.
   Status SqueezeTensor(nvinfer1::ITensor* input, std::vector<int>* input_dims,
-                       nvinfer1::ITensor** output);
+                       OpConverterParams* params, nvinfer1::ITensor** output);
 
   // Creates an IConstantLayer using 'weights' whose dimensions are specified by
   // 'dims', and returns the output ITensor.

@@ -420,15 +420,37 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
     }
     case HloOpcode::kConditional: {
       llvm::SmallVector<Type, 4> rets;
-      TF_RETURN_IF_ERROR(GetMlirTypes(
-          {instruction->true_computation()->root_instruction()}, &rets));
+      mlir::Type pred_or_index_type =
+          operands[0].getType().cast<mlir::TensorType>().getElementType();
+      // It is a predicated conditional if first argument is a boolean and
+      // should be mapped to If op.
+      if (pred_or_index_type.isInteger(1)) {
+        TF_RETURN_IF_ERROR(GetMlirTypes(
+            {instruction->true_computation()->root_instruction()}, &rets));
 
-      auto op = func_builder->create<mlir::xla_hlo::ConditionalOp>(
-          loc, rets, operands, attributes);
-      TF_RETURN_IF_ERROR(ImportComputation(instruction->true_computation(),
-                                           &op.true_branch()));
-      TF_RETURN_IF_ERROR(ImportComputation(instruction->false_computation(),
-                                           &op.false_branch()));
+        auto op = func_builder->create<mlir::xla_hlo::IfOp>(loc, rets, operands,
+                                                            attributes);
+        TF_RETURN_IF_ERROR(ImportComputation(instruction->true_computation(),
+                                             &op.true_branch()));
+        TF_RETURN_IF_ERROR(ImportComputation(instruction->false_computation(),
+                                             &op.false_branch()));
+        return op.getOperation();
+      }
+
+      // Otherwise, it is a indexed conditional and should be mapped to Case op.
+      TF_RETURN_IF_ERROR(GetMlirTypes(
+          {instruction->branch_computation(0)->root_instruction()}, &rets));
+
+      int num_branches = instruction->branch_count();
+      auto op = func_builder->create<mlir::xla_hlo::CaseOp>(
+          loc, rets, operands, attributes, num_branches);
+      for (auto index_and_computation :
+           llvm::enumerate(instruction->branch_computations())) {
+        auto index = index_and_computation.index();
+        HloComputation* computation = index_and_computation.value();
+        TF_RETURN_IF_ERROR(
+            ImportComputation(computation, &op.branches()[index]));
+      }
       return op.getOperation();
     }
     case HloOpcode::kConcatenate: {

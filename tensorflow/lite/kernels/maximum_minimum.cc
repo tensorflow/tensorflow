@@ -125,6 +125,31 @@ void TFLiteOperation<maximum_minimum::kGenericOptimized, int8, MaximumOp>(
       MaximumOp::template op<int8>);
 }
 
+// Minimum generic opt int8.
+template <>
+void TFLiteOperation<maximum_minimum::kGenericOptimized, int8, MinimumOp>(
+    TfLiteContext* context, TfLiteNode* node, const OpContext& op_context) {
+  tflite::ArithmeticParams op_params;
+  const bool need_broadcast = optimized_ops::ProcessBroadcastShapes(
+      GetTensorShape(op_context.input1), GetTensorShape(op_context.input2),
+      &op_params);
+  if (need_broadcast) {
+    optimized_ops::BroadcastMinimumDispatch(
+        op_params, GetTensorShape(op_context.input1),
+        GetTensorData<int8>(op_context.input1),
+        GetTensorShape(op_context.input2),
+        GetTensorData<int8>(op_context.input2),
+        GetTensorShape(op_context.output),
+        GetTensorData<int8>(op_context.output), MinimumOp::template op<int8>);
+    return;
+  }
+  reference_ops::MaximumMinimumBroadcastSlow(
+      GetTensorShape(op_context.input1), GetTensorData<int8>(op_context.input1),
+      GetTensorShape(op_context.input2), GetTensorData<int8>(op_context.input2),
+      GetTensorShape(op_context.output), GetTensorData<int8>(op_context.output),
+      MinimumOp::template op<int8>);
+}
+
 template <KernelType kernel_type, typename OpType>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   OpContext op_context(context, node);
@@ -186,10 +211,21 @@ TfLiteRegistration* Register_MINIMUM_REF() {
                             maximum_minimum::MinimumOp>};
   return &r;
 }
+
+TfLiteRegistration* Register_MINIMUM_GENERIC_OPT() {
+  static TfLiteRegistration r = {
+      nullptr, nullptr, maximum_minimum::Prepare,
+      maximum_minimum::Eval<maximum_minimum::kGenericOptimized,
+                            maximum_minimum::MinimumOp>};
+  return &r;
+}
+
 TfLiteRegistration* Register_MAXIMUM() {
   return Register_MAXIMUM_GENERIC_OPT();
 }
-TfLiteRegistration* Register_MINIMUM() { return Register_MINIMUM_REF(); }
+TfLiteRegistration* Register_MINIMUM() {
+  return Register_MINIMUM_GENERIC_OPT();
+}
 
 }  // namespace builtin
 }  // namespace ops

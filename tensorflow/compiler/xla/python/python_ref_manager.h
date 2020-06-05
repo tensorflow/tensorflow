@@ -66,6 +66,9 @@ class PythonRefManager {
   std::shared_ptr<ManagedPyObjects> ManageReferences(
       absl::Span<pybind11::object> objects);
 
+  // Adds garbage objects to the manager.
+  void AddGarbage(absl::Span<pybind11::object> garbage);
+
   // Releases the contents of python_garbage_. Requires that the GIL is held.
   // The client calls this method during API entry points where the GIL is held
   // to free any garbage that has accumulated.

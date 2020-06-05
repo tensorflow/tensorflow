@@ -44,6 +44,7 @@ tf_proto_library(
     cc_api_version = 2,
     protodeps = tf_additional_all_protos() + [
         ":common_proto",
+        "//tensorflow/core/data:dataset_proto",
     ],
 )
 
@@ -84,7 +85,6 @@ cc_library(
     ],
     deps = [
         ":common_proto_cc",
-        ":compression_utils",
         ":credentials_factory",
         ":grpc_util",
         ":master_cc_grpc_proto",
@@ -98,6 +98,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/data:dataset_proto_cc",
         "//tensorflow/core/data:standalone",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
@@ -126,39 +127,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-    ],
-)
-
-cc_library(
-    name = "compression_utils",
-    srcs = ["compression_utils.cc"],
-    hdrs = [
-        "compression_utils.h",
-    ],
-    deps = [
-        ":common_proto_cc",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/profiler/lib:traceme",
-        "@com_google_absl//absl/memory",
-    ],
-)
-
-tf_cc_test(
-    name = "compression_utils_test",
-    srcs = ["compression_utils_test.cc"],
-    deps = [
-        ":compression_utils",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels/data:dataset_test_base",
     ],
 )
 
@@ -276,6 +244,7 @@ cc_library(
     name = "server_lib",
     srcs = ["server_lib.cc"],
     hdrs = ["server_lib.h"],
+    linkstatic = True,
     visibility = [
         "//visibility:public",
     ],
@@ -284,11 +253,11 @@ cc_library(
         ":grpc_master_impl",
         ":grpc_util",
         ":grpc_worker_impl",
-        ":local_credentials_factory",
         "//tensorflow/core:lib",
         "//tensorflow/core:tensorflow",
         tf_grpc_cc_dependency(),
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -317,7 +286,6 @@ tf_cc_test(
     srcs = ["data_service_test.cc"],
     tags = ["no_windows"],
     deps = [
-        ":compression_utils",
         ":data_service",
         ":grpc_master_impl",
         ":grpc_util",
@@ -333,6 +301,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/data:compression_utils",
         "//tensorflow/core/kernels/data:dataset_test_base",
         "@com_google_absl//absl/strings",
         tf_grpc_cc_dependency(),

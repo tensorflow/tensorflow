@@ -1338,7 +1338,10 @@ tf_kernel_library(
         "tile_functor_cpu_int64.cc",
         "tile_functor_cpu_int8.cc",
         "tile_functor_cpu_tstring.cc",
+        "tile_functor_cpu_uint32.cc",
+        "tile_functor_cpu_uint64.cc",
         "tile_functor_cpu_uint8.cc",
+        "tile_functor_cpu_variant.cc",
         "tile_functor_sycl.cc",
     ],
     hdrs = ["tile_functor.h"],
@@ -4021,7 +4024,7 @@ cc_library(
     ],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
+            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
             "//third_party/eigen3",
@@ -4046,7 +4049,7 @@ cc_library(
         ":eigen_spatial_convolutions-inl",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
+            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
             "//tensorflow/core:framework",
@@ -4062,7 +4065,7 @@ cc_library(
     deps = select({
         "//tensorflow:android": [
             ":conv_3d_mobile",
-            "//tensorflow/core:android_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
+            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
             ":conv_3d",
@@ -6613,6 +6616,8 @@ filegroup(
         "avgpooling_op.h",
         "batch_matmul_op_impl.h",
         "batch_norm_op.h",
+        "broadcast_to_op.h",
+        "bucketize_op.h",
         "control_flow_ops.h",
         "conv_2d.h",
         "conv_3d.h",
@@ -6666,6 +6671,7 @@ filegroup(
         "spectrogram.h",
         "stateless_random_ops.h",
         "string_util.h",
+        "string_to_hash_bucket_op.h",
         "tensor_array.h",
         "tile_functor.h",
         "tile_ops_cpu_impl.h",
@@ -6677,6 +6683,8 @@ filegroup(
         "transpose_op.h",
         "where_op.h",
         "xent_op.h",
+    ] + [
+        "//tensorflow/core/kernels/boosted_trees/quantiles:weighted_quantiles_hdrs",
     ],
 )
 
@@ -6702,6 +6710,7 @@ filegroup(
         "conv_ops_fused_float.cc",
         "conv_ops_fused_half.cc",
         "conv_ops_fused_impl.h",
+        "conv_ops_fused_image_transform.cc",
         "conv_ops_using_gemm.cc",
         "crop_and_resize_op.cc",
         "crop_and_resize_op.h",
@@ -6711,6 +6720,7 @@ filegroup(
         "cwise_op_bitwise_and.cc",
         "cwise_op_bitwise_or.cc",
         "cwise_op_bitwise_xor.cc",
+        "cwise_op_ceil.cc",
         "cwise_op_conj.cc",
         "cwise_op_cos.cc",
         "cwise_op_cosh.cc",
@@ -6726,6 +6736,7 @@ filegroup(
         "cwise_op_floor_mod.cc",
         "cwise_op_greater.cc",
         "cwise_op_greater_equal.cc",
+        "cwise_op_imag.cc",
         "cwise_op_invert.cc",
         "cwise_op_isfinite.cc",
         "cwise_op_isnan.cc",
@@ -6742,6 +6753,7 @@ filegroup(
         "cwise_op_mul_2.cc",
         "cwise_op_neg.cc",
         "cwise_op_pow.cc",
+        "cwise_op_real.cc",
         "cwise_op_reciprocal.cc",
         "cwise_op_right_shift.cc",
         "cwise_op_round.cc",
@@ -6803,6 +6815,8 @@ filegroup(
     name = "android_extended_ops_group2",
     srcs = [
         "batchtospace_op.cc",
+        "broadcast_to_op.cc",
+        "bucketize_op.cc",
         "ctc_decoder_ops.cc",
         "decode_bmp_op.cc",
         "depthtospace_op.cc",
@@ -6879,6 +6893,7 @@ filegroup(
         "spacetobatch_functor.cc",
         "spacetobatch_op.cc",
         "spacetodepth_op.cc",
+        "sparse_cross_op.cc",
         "sparse_fill_empty_rows_op.cc",
         "sparse_reshape_op.cc",
         "sparse_to_dense_op.cc",
@@ -6890,6 +6905,7 @@ filegroup(
         "stateless_random_ops.cc",
         "string_join_op.cc",
         "string_util.cc",
+        "string_to_hash_bucket_op.cc",
         "summary_op.cc",
         "tensor_array.cc",
         "tensor_array_ops.cc",
@@ -6906,7 +6922,10 @@ filegroup(
         "tile_functor_cpu_int64.cc",
         "tile_functor_cpu_int8.cc",
         "tile_functor_cpu_tstring.cc",
+        "tile_functor_cpu_uint32.cc",
+        "tile_functor_cpu_uint64.cc",
         "tile_functor_cpu_uint8.cc",
+        "tile_functor_cpu_variant.cc",
         "tile_ops.cc",
         "tile_ops_cpu_impl_1.cc",
         "tile_ops_cpu_impl_2.cc",
@@ -6924,6 +6943,8 @@ filegroup(
         "where_op.cc",
         "xent_op.cc",
         ":android_extended_ops_headers",
+    ] + [
+        "//tensorflow/core/kernels/boosted_trees:quantile_ops.cc",
     ],
 )
 
@@ -7086,6 +7107,7 @@ cc_library(
     deps = [
         "//tensorflow/core:portable_tensorflow_lib_lite",
         "//tensorflow/core:protos_all_cc_impl",
+        "//tensorflow/core/platform:strong_hash",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
         "@com_google_absl//absl/base",
@@ -7270,8 +7292,8 @@ tf_cc_binary(
     ] + select({
         "//tensorflow:android": [
             ":android_tensorflow_kernels",
-            "//tensorflow/core:android_tensorflow_lib",
-            "//tensorflow/core:android_tensorflow_test_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_test_lib",
         ],
         "//conditions:default": [
             ":quantized_ops",
@@ -7331,8 +7353,8 @@ cc_binary(
     ] + select({
         "//tensorflow:android": [
             ":android_tensorflow_kernels",
-            "//tensorflow/core:android_tensorflow_lib",
-            "//tensorflow/core:android_tensorflow_test_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_test_lib",
         ],
         "//conditions:default": [
             ":ops_util",
@@ -7416,8 +7438,8 @@ cc_binary(
     ] + select({
         "//tensorflow:android": [
             ":android_tensorflow_kernels",
-            "//tensorflow/core:android_tensorflow_lib",
-            "//tensorflow/core:android_tensorflow_test_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_test_lib",
         ],
         "//conditions:default": [
             ":ops_testutil",
@@ -7603,8 +7625,8 @@ cc_binary(
     ] + select({
         "//tensorflow:android": [
             ":android_tensorflow_kernels",
-            "//tensorflow/core:android_tensorflow_lib",
-            "//tensorflow/core:android_tensorflow_test_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_test_lib",
         ],
         "//conditions:default": [
             ":ops_util",
@@ -7829,8 +7851,8 @@ cc_binary(
     ] + select({
         "//tensorflow:android": [
             ":android_tensorflow_kernels",
-            "//tensorflow/core:android_tensorflow_lib",
-            "//tensorflow/core:android_tensorflow_test_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_test_lib",
         ],
         "//conditions:default": [
             "//tensorflow/core:framework",
@@ -8227,7 +8249,10 @@ tf_mkl_kernel_library(
 tf_mkl_kernel_library(
     name = "mkl_fused_batch_norm_op",
     srcs = ["mkl_fused_batch_norm_op.cc"],
-    deps = NN_DEPS + mkl_deps(),
+    deps = NN_DEPS + [
+        ":fused_batch_norm_op",
+        ":no_op",
+    ] + mkl_deps(),
 )
 
 tf_cc_test_mkl(

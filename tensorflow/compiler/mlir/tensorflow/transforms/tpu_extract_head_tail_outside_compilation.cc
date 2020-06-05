@@ -14,23 +14,31 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <tuple>
 #include <type_traits>
+#include <utility>
 
-#include "llvm/ADT/Optional.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
 namespace mlir {
 namespace TFTPU {
@@ -46,146 +54,361 @@ bool HasOutsideCompilationAttribute(Operation* op) {
   return op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr) != nullptr;
 }
 
-// Returns whether all operands of `op` are from values inside the
-// `input_value_set`.
-bool OpContainsOperandsFromSet(Operation* op,
-                               const llvm::SetVector<Value>& input_value_set) {
-  for (auto operand : op->getOperands())
-    if (input_value_set.count(operand) == 0) return false;
+// Finds op that created a given value. If the value is a BlockArgument, this
+// returns the owner of the Block.
+Operation* GetOpOfValue(Value value) {
+  if (auto block_arg = value.dyn_cast<BlockArgument>())
+    return block_arg.getOwner()->getParentOp();
 
-  return true;
+  return value.getDefiningOp();
 }
 
-void RecordOutsideCompiledOpsAndUsages(
-    Operation* op, llvm::SmallSetVector<Operation*, 4>* outside_compiled_ops,
-    llvm::SetVector<Value>* outside_compiled_op_usages) {
-  if (HasOutsideCompilationAttribute(op) &&
-      OpContainsOperandsFromSet(op, *outside_compiled_op_usages)) {
-    outside_compiled_ops->insert(op);
-    outside_compiled_op_usages->insert(op->getResults().begin(),
-                                       op->getResults().end());
-  }
-}
-
-// Traverses the MLIR graph and returns a set of ops that
-// are connected to inputs of TPU computation and outside compiled.
-void ExtractOutsideCompiledOpsConnectedToHead(
-    Value input_value, llvm::SetVector<Value>* values_used_in_host_cluster,
-    llvm::SmallSetVector<Operation*, 4>* outside_compiled_ops) {
-  llvm::SmallSetVector<Operation*, 4> parent_outside_compiled_ops_at_head;
-  for (auto& usage : input_value.getUses()) {
-    auto head_operation = usage.getOwner();
-    RecordOutsideCompiledOpsAndUsages(head_operation,
-                                      &parent_outside_compiled_ops_at_head,
-                                      values_used_in_host_cluster);
-  }
-
-  // Traverse the graph and find all outside compiled ops connected from
-  // the `input_value`.
-  while (!parent_outside_compiled_ops_at_head.empty()) {
-    llvm::SmallSetVector<Operation*, 4> connected_outside_compiled_ops;
-    for (auto head_outside_compiled_op : parent_outside_compiled_ops_at_head) {
-      auto op_results = head_outside_compiled_op->getOpResults();
-      for (auto op_result : op_results) {
-        for (auto& use : op_result.getUses()) {
-          auto connected_op = use.getOwner();
-          RecordOutsideCompiledOpsAndUsages(connected_op,
-                                            &connected_outside_compiled_ops,
-                                            values_used_in_host_cluster);
-        }
-      }
+// Checks if `op` is nested in `block`.
+bool OpInBlock(Operation* op, Block* block) {
+  Block* op_block = op->getBlock();
+  while (op_block) {
+    if (op_block == block) return true;
+    if (auto* parent_op = op_block->getParentOp()) {
+      op_block = parent_op->getBlock();
+    } else {
+      break;
     }
-
-    outside_compiled_ops->insert(parent_outside_compiled_ops_at_head.begin(),
-                                 parent_outside_compiled_ops_at_head.end());
-    std::swap(parent_outside_compiled_ops_at_head,
-              connected_outside_compiled_ops);
   }
+  return false;
 }
 
-// TODO(hongjunchoi): Also handle ops without inputs that are outside
-// compiled.
-//
-// Returns set of ops that are outside compiled and are directly connected
-// to inputs to the TPU computation.
-llvm::SmallSetVector<Operation*, 4> IdentifyOutsideCompiledOpsAtHead(
-    tf_device::ClusterOp tpu_cluster) {
-  llvm::SmallSetVector<Operation*, 4> outside_compiled_at_head_ops;
-  llvm::SetVector<Value> values_used_in_cluster;
-  auto& cluster_region = tpu_cluster.body();
-  getUsedValuesDefinedAbove(cluster_region, cluster_region,
-                            values_used_in_cluster);
-
-  auto input_value_list = llvm::to_vector<8>(values_used_in_cluster);
-  for (auto input_value : input_value_list)
-    ExtractOutsideCompiledOpsConnectedToHead(
-        input_value, &values_used_in_cluster, &outside_compiled_at_head_ops);
-  return outside_compiled_at_head_ops;
-}
-
-// Returns output values of extracted outside compiled cluster at head that
-// are used by the TPU computation.
-llvm::SmallVector<Value, 8> GetHeadExtractedClusterOutputs(
-    const llvm::SmallSetVector<Operation*, 4>& head_outside_compiled_ops) {
-  llvm::SmallVector<Value, 8> outputs;
-  outputs.reserve(head_outside_compiled_ops.size());
-
-  for (auto op : head_outside_compiled_ops) {
-    for (Operation* user : op->getUsers()) {
-      if (!head_outside_compiled_ops.count(user)) {
-        outputs.append(op->result_begin(), op->result_end());
+// Wraps block in a Launch. External uses of ops in the block will be return
+// values of the Launch and remapped to the Launch results. If `before` is set
+// to true, the Launch is created before `op`. Otherwise the Launch is created
+// after `op`.
+tf_device::LaunchOp CreateLaunchForBlock(OpBuilder* builder, Operation* op,
+                                         bool before, Block* launch_block,
+                                         llvm::StringRef host_device) {
+  // Find results and result types of ops in block that needs to returned.
+  llvm::SmallVector<Value, 4> launch_results;
+  llvm::SmallVector<Type, 4> launch_result_types;
+  for (Operation& head_outside_compiled_op : *launch_block) {
+    for (Value result : head_outside_compiled_op.getResults()) {
+      bool has_external_uses = false;
+      for (Operation* user : result.getUsers()) {
+        if (OpInBlock(user, launch_block)) continue;
+        has_external_uses = true;
         break;
       }
+      if (has_external_uses) {
+        launch_results.push_back(result);
+        launch_result_types.push_back(result.getType());
+      }
     }
   }
 
-  return outputs;
+  before ? builder->setInsertionPoint(op) : builder->setInsertionPointAfter(op);
+  auto launch = builder->create<tf_device::LaunchOp>(
+      op->getLoc(), builder->getStringAttr(host_device), launch_result_types);
+  launch.body().push_back(launch_block);
+
+  builder->setInsertionPointToEnd(&launch.GetBody());
+  builder->create<tf_device::ReturnOp>(op->getLoc(), launch_results);
+
+  return launch;
 }
 
-// Creates new tf_device.launch op with outside compiled ops extracted
-// from the head of TPU computation.
-llvm::Optional<tf_device::LaunchOp> IsolateHeadExtractedOpsToLaunchOp(
+// Parses TPU compilation and execution devices from a TPU cluster and returns
+// the host device for the head and tail computations. If the TPU computation is
+// replicated, kTPUReplicatedHost is returned instead.
+LogicalResult GetHostDeviceForHeadTailComputation(
+    mlir::TF::RuntimeDevices devices, tf_device::ClusterOp cluster,
+    std::string* host_device) {
+  auto replicate = cluster.getParentOfType<tf_device::ReplicateOp>();
+  if (replicate) {
+    *host_device = tensorflow::kTPUReplicatedHost;
+    return success();
+  }
+
+  auto num_cores_per_replica_attr =
+      cluster.getAttrOfType<IntegerAttr>(tensorflow::kNumCoresPerReplicaAttr);
+  if (!num_cores_per_replica_attr)
+    return cluster.emitOpError(
+        "cluster op missing `num_cores_per_replica` attribute");
+
+  if (num_cores_per_replica_attr.getInt() != 1)
+    return cluster.emitOpError(
+        "outside compilation is not supported with model parallelism.");
+
+  auto topology_attr =
+      cluster.getAttrOfType<StringAttr>(tensorflow::kTopologyAttr);
+  if (!topology_attr)
+    return cluster.emitOpError("cluster op missing `topology` attribute");
+
+  auto device_assignment_attr =
+      cluster.getAttrOfType<mlir::ArrayAttr>(tensorflow::kDeviceAssignmentAttr);
+  if (!device_assignment_attr)
+    return cluster.emitOpError(llvm::formatv("requires attribute '{0}'",
+                                             tensorflow::kDeviceAssignmentAttr)
+                                   .str());
+
+  auto status_or_device_coodinates =
+      tensorflow::GetDeviceCoordinates(device_assignment_attr);
+
+  if (!status_or_device_coodinates.ok())
+    return cluster.emitError()
+           << "error in fetching tpu device coordinates: "
+           << status_or_device_coodinates.status().error_message();
+
+  // Determine compilation and execution devices.
+  auto status_or_tpu_device_assignment =
+      tensorflow::GetTPUCompilationAndExecutionDevices(
+          devices.device_names(), /*num_replicas=*/1,
+          /*num_cores_per_replica=*/1, topology_attr.getValue(),
+          status_or_device_coodinates.ConsumeValueOrDie());
+  if (!status_or_tpu_device_assignment.ok())
+    return cluster.emitError()
+           << "error in fetching TPU compilation/execution devices: "
+           << status_or_tpu_device_assignment.status().error_message();
+  auto& tpu_device_assignment = status_or_tpu_device_assignment.ValueOrDie();
+
+  *host_device = tpu_device_assignment.tpu_devices[0][0].host;
+  return success();
+}
+
+// Returns a set of ops that are outside compiled and can be extracted to before
+// the TPU computation. These ops are either connected to the inputs of the TPU
+// computation or other ops that can be extracted, and have no operands from
+// other ops in the TPU computation that cannot be extracted.
+llvm::SmallVector<Operation*, 4> FindOutsideCompiledOpsAtHead(
+    tf_device::ClusterOp cluster) {
+  Region* cluster_region = &cluster.body();
+  llvm::SmallSetVector<Operation*, 4> head_outside_compiled_ops;
+
+  auto cluster_ops = cluster.GetBody().without_terminator();
+  for (Operation& cluster_op : cluster_ops) {
+    if (!HasOutsideCompilationAttribute(&cluster_op)) continue;
+    // An outside compiled op can be extracted if its operands are not from
+    // other ops in the cluster that cannot be extracted.
+    auto walk_result = cluster_op.walk([&](Operation* op) {
+      for (Value operand : op->getOperands()) {
+        Operation* operand_op = GetOpOfValue(operand);
+        if (head_outside_compiled_ops.count(operand_op)) continue;
+
+        if (operand_op->getParentRegion() == cluster_region)
+          return WalkResult::interrupt();
+      }
+      return WalkResult::advance();
+    });
+
+    if (!walk_result.wasInterrupted())
+      head_outside_compiled_ops.insert(&cluster_op);
+  }
+
+  return head_outside_compiled_ops.takeVector();
+}
+
+// Moves head outside compiled ops into its own `tf_device.LaunchOp`
+// computation before the cluster.
+void CreateHeadComputation(OpBuilder* builder, tf_device::ClusterOp cluster,
+                           llvm::ArrayRef<Operation*> head_outside_compiled_ops,
+                           llvm::StringRef host_device) {
+  Block* launch_block = new Block;
+  for (Operation* head_outside_compiled_op : head_outside_compiled_ops)
+    head_outside_compiled_op->moveBefore(launch_block, launch_block->end());
+
+  tf_device::LaunchOp launch = CreateLaunchForBlock(
+      builder, cluster, /*before=*/true, launch_block, host_device);
+
+  for (auto result : llvm::zip(launch.GetBody().getTerminator()->getOperands(),
+                               launch.getResults()))
+    replaceAllUsesInRegionWith(std::get<0>(result), std::get<1>(result),
+                               cluster.body());
+}
+
+// Extracts and move outside compiled ops that have no dependencies in the
+// cluster to before the cluster.
+mlir::LogicalResult LiftHeadOutsideCompiledOps(
+    OpBuilder* builder, const mlir::TF::RuntimeDevices& devices,
+    tf_device::ClusterOp cluster, std::string* host_device,
+    bool* cluster_updated) {
+  llvm::SmallVector<Operation*, 4> head_outside_compiled_ops =
+      FindOutsideCompiledOpsAtHead(cluster);
+  if (head_outside_compiled_ops.empty()) return success();
+  if (failed(
+          GetHostDeviceForHeadTailComputation(devices, cluster, host_device)))
+    return failure();
+
+  CreateHeadComputation(builder, cluster, head_outside_compiled_ops,
+                        *host_device);
+
+  *cluster_updated = true;
+  return success();
+}
+
+// Fills `tail_outside_compiled_ops` with ops that are outside compiled and
+// can be extracted to after the TPU computation, and `cluster_results` with new
+// results of the cluster. These ops are either connected to the output of the
+// TPU computation or other ops that can be extracted, and have no results used
+// by other ops in the TPU computation that cannot be extracted.
+void FindOutsideCompiledOpsAtTailAndClusterResults(
+    tf_device::ClusterOp cluster,
+    llvm::SmallVectorImpl<Operation*>* tail_outside_compiled_ops,
+    llvm::SmallVectorImpl<Value>* cluster_results) {
+  Region* cluster_region = &cluster.body();
+  llvm::SmallSetVector<Operation*, 4> tail_outside_compiled_ops_set;
+  Operation* terminator = cluster.GetBody().getTerminator();
+  llvm::SmallSetVector<Value, 4> cluster_results_set;
+  cluster_results_set.insert(terminator->getOperands().begin(),
+                             terminator->getOperands().end());
+
+  auto cluster_ops = llvm::reverse(cluster.GetBody().without_terminator());
+  for (Operation& cluster_op : cluster_ops) {
+    if (!HasOutsideCompilationAttribute(&cluster_op)) continue;
+
+    llvm::SmallVector<int, 4> results_to_forward;
+    bool can_be_extracted =
+        llvm::all_of(cluster_op.getUsers(), [&](Operation* op) {
+          return op == terminator || tail_outside_compiled_ops_set.count(op);
+        });
+    if (!can_be_extracted) continue;
+
+    // Collect operands of cluster op that are generated within the cluster.
+    // These values should be returned by the cluster.
+    cluster_op.walk([&](Operation* op) {
+      for (Value operand : op->getOperands()) {
+        Operation* operand_op = GetOpOfValue(operand);
+        if (operand_op->getParentRegion() == cluster_region)
+          cluster_results_set.insert(operand);
+      }
+    });
+
+    // Remove results of op to be extracted as there are no uses in the cluster.
+    for (Value result : cluster_op.getResults())
+      cluster_results_set.remove(result);
+    tail_outside_compiled_ops_set.insert(&cluster_op);
+  }
+
+  *tail_outside_compiled_ops = tail_outside_compiled_ops_set.takeVector();
+  *cluster_results = cluster_results_set.takeVector();
+}
+
+// Moves tail outside compiled ops into its own `tf_device.LaunchOp`
+// computation after the cluster.
+void CreateTailComputation(OpBuilder* builder, tf_device::ClusterOp cluster,
+                           llvm::ArrayRef<Operation*> tail_outside_compiled_ops,
+                           llvm::StringRef host_device) {
+  Block* launch_block = new Block;
+  for (Operation* tail_outside_compiled_op : tail_outside_compiled_ops)
+    tail_outside_compiled_op->moveBefore(launch_block, launch_block->begin());
+
+  tf_device::LaunchOp launch = CreateLaunchForBlock(
+      builder, cluster, /*before=*/false, launch_block, host_device);
+
+  auto operand_not_in_launch = [&](OpOperand& operand) {
+    return !launch.getOperation()->isProperAncestor(operand.getOwner());
+  };
+  for (auto result : llvm::zip(launch.GetBody().getTerminator()->getOperands(),
+                               launch.getResults()))
+    std::get<0>(result).replaceUsesWithIf(std::get<1>(result),
+                                          operand_not_in_launch);
+}
+
+// Updates cluster with updated cluster results after extracting tail outside
+// compiled ops.
+tf_device::ClusterOp UpdateClusterResults(
     OpBuilder* builder, tf_device::ClusterOp cluster,
-    const llvm::SmallSetVector<Operation*, 4>& head_outside_compiled_ops) {
-  if (head_outside_compiled_ops.empty())
-    return llvm::Optional<tf_device::LaunchOp>();
-
-  // Create tf_device.launch op to separate all extracted outside compiled ops
-  // before the tf_device.cluster.
-  auto output_values =
-      GetHeadExtractedClusterOutputs(head_outside_compiled_ops);
-
-  llvm::SmallVector<Type, 8> output_return_types;
-  output_return_types.reserve(output_values.size());
-  for (auto output : output_values)
-    output_return_types.emplace_back(output.getType());
+    llvm::ArrayRef<Value> new_cluster_results) {
+  Operation* old_terminator = cluster.GetBody().getTerminator();
+  builder->setInsertionPoint(old_terminator);
+  builder->create<tf_device::ReturnOp>(old_terminator->getLoc(),
+                                       new_cluster_results);
+  old_terminator->erase();
 
   builder->setInsertionPoint(cluster);
-  auto host_launch_op = builder->create<tf_device::LaunchOp>(
-      cluster.getLoc(), builder->getStringAttr(""), output_return_types);
+  llvm::SmallVector<Type, 4> new_cluster_result_types;
+  new_cluster_result_types.reserve(new_cluster_results.size());
+  for (const auto& new_cluster_result : new_cluster_results)
+    new_cluster_result_types.push_back(new_cluster_result.getType());
 
-  // Replace all usages of outside compiled ops that are used in TPU
-  // computation with the results of the above created launch op.
-  for (auto output_and_index : llvm::enumerate(output_values)) {
-    auto output_index = output_and_index.index();
-    auto output = output_and_index.value();
-    for (auto& use : output.getUses()) {
-      if (!head_outside_compiled_ops.count(use.getOwner()))
-        use.set(host_launch_op.getResult(output_index));
+  auto new_cluster = builder->create<tf_device::ClusterOp>(
+      cluster.getLoc(), new_cluster_result_types,
+      /*operands=*/llvm::ArrayRef<Value>{}, cluster.getAttrs());
+  new_cluster.body().takeBody(cluster.body());
+
+  auto operand_not_in_cluster = [&](OpOperand& operand) {
+    return !new_cluster.getOperation()->isProperAncestor(operand.getOwner());
+  };
+  for (auto result :
+       llvm::zip(new_cluster.GetBody().getTerminator()->getOperands(),
+                 new_cluster.getResults()))
+    std::get<0>(result).replaceUsesWithIf(std::get<1>(result),
+                                          operand_not_in_cluster);
+
+  cluster.erase();
+  return new_cluster;
+}
+
+// Extracts and move outside compiled ops that do not create dependencies in the
+// cluster to after the cluster.
+mlir::LogicalResult LiftTailOutsideCompiledOps(
+    OpBuilder* builder, const mlir::TF::RuntimeDevices& devices,
+    std::string host_device, tf_device::ClusterOp* cluster,
+    bool* cluster_updated) {
+  llvm::SmallVector<Operation*, 4> tail_outside_compiled_ops;
+  llvm::SmallVector<Value, 4> cluster_results;
+  FindOutsideCompiledOpsAtTailAndClusterResults(
+      *cluster, &tail_outside_compiled_ops, &cluster_results);
+  if (tail_outside_compiled_ops.empty()) return success();
+
+  if (host_device.empty())
+    if (failed(GetHostDeviceForHeadTailComputation(devices, *cluster,
+                                                   &host_device)))
+      return failure();
+
+  // Forward all results of cluster first. These results will be remapped once
+  // a new cluster is formed.
+  cluster->replaceAllUsesWith(
+      cluster->GetBody().getTerminator()->getOperands());
+
+  CreateTailComputation(builder, *cluster, tail_outside_compiled_ops,
+                        host_device);
+
+  *cluster = UpdateClusterResults(builder, *cluster, cluster_results);
+
+  *cluster_updated = true;
+  return success();
+}
+
+// Removes aliased outputs in cluster from ops outside of cluster.
+void RemoveClusterAliasedOutputs(OpBuilder* builder,
+                                 tf_device::ClusterOp cluster) {
+  llvm::SmallVector<Value, 4> used_old_cluster_results;
+  llvm::SmallVector<Value, 4> new_cluster_results;
+  llvm::SmallVector<Type, 4> new_cluster_result_types;
+  Operation* cluster_terminator = cluster.GetBody().getTerminator();
+  for (auto result :
+       llvm::zip(cluster_terminator->getOperands(), cluster.getResults())) {
+    Value cluster_terminator_operand = std::get<0>(result);
+    if (cluster.getOperation()->isProperAncestor(
+            cluster_terminator_operand.getDefiningOp())) {
+      new_cluster_results.push_back(cluster_terminator_operand);
+      new_cluster_result_types.push_back(cluster_terminator_operand.getType());
+      used_old_cluster_results.push_back(std::get<1>(result));
+    } else {
+      std::get<1>(result).replaceAllUsesWith(cluster_terminator_operand);
     }
   }
 
-  // Create terminator op for the newly created launch op.
-  host_launch_op.body().push_back(new Block());
-  builder->setInsertionPointToEnd(&host_launch_op.GetBody());
-  auto terminator = builder->create<tf_device::ReturnOp>(
-      host_launch_op.getLoc(), output_values);
+  if (new_cluster_results.size() == cluster.getNumResults()) return;
 
-  // Move all outside compile ops from cluster op to launch op.
-  for (auto outside_compiled_op : head_outside_compiled_ops)
-    outside_compiled_op->moveBefore(terminator);
+  builder->setInsertionPoint(cluster);
+  auto new_cluster = builder->create<tf_device::ClusterOp>(
+      cluster.getLoc(), new_cluster_result_types,
+      /*operands=*/llvm::ArrayRef<Value>{}, cluster.getAttrs());
+  new_cluster.body().takeBody(cluster.body());
+  new_cluster.GetBody().getTerminator()->setOperands(new_cluster_results);
 
-  return host_launch_op;
+  for (auto result :
+       llvm::zip(used_old_cluster_results, new_cluster.getResults()))
+    std::get<0>(result).replaceAllUsesWith(std::get<1>(result));
+
+  cluster.erase();
 }
 
 struct TPUExtractHeadTailOutsideCompilation
@@ -202,17 +425,20 @@ void TPUExtractHeadTailOutsideCompilation::runOnOperation() {
     return signalPassFailure();
 
   OpBuilder builder(&getContext());
-  module.walk([&](tf_device::ClusterOp cluster) {
-    auto head_outside_compiled_ops = IdentifyOutsideCompiledOpsAtHead(cluster);
-    IsolateHeadExtractedOpsToLaunchOp(&builder, cluster,
-                                      head_outside_compiled_ops);
+  llvm::SmallVector<tf_device::ClusterOp, 4> clusters;
+  module.walk(
+      [&](tf_device::ClusterOp cluster) { clusters.push_back(cluster); });
 
-    // TODO(b/156030523): Update device attribute of newly created host launch
-    // op as well as enclosing Replicate op (if TPU computation is replicated)
-    // with host device names.
-
-    // TODO(b/155115766): Implement tail outside compiled op extraction.
-  });
+  for (tf_device::ClusterOp cluster : clusters) {
+    std::string host_device;
+    bool cluster_updated = false;
+    if (failed(LiftHeadOutsideCompiledOps(&builder, devices, cluster,
+                                          &host_device, &cluster_updated)) ||
+        failed(LiftTailOutsideCompiledOps(&builder, devices, host_device,
+                                          &cluster, &cluster_updated)))
+      return signalPassFailure();
+    if (cluster_updated) RemoveClusterAliasedOutputs(&builder, cluster);
+  }
 }
 
 }  // anonymous namespace

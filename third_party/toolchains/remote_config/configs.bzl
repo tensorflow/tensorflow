@@ -39,6 +39,19 @@ def initialize_rbe_configs():
         python_install_path = "/usr/local",
     )
 
+    tensorflow_rbe_config(
+        name = "ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0",
+        compiler = "/dt7/usr/bin/gcc",
+        compiler_prefix = "/usr/bin",
+        cuda_version = "10.1",
+        cudnn_version = "7",
+        os = "ubuntu18.04-manylinux2010-multipython",
+        python_versions = ["2.7", "3.5", "3.6", "3.7", "3.8"],
+        tensorrt_install_path = "/usr",
+        tensorrt_version = "6.0",
+        python_install_path = "/usr/local",
+    )
+
     # TODO(klimek): Delete this once all users are migrated to a python-version
     # independent configuration. In the future, use
     # "ubuntu16.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0" instead.

@@ -88,6 +88,7 @@ struct PreluOpData : public OpData {
   int32_t output_shift_1 = 0;
   int32_t output_multiplier_2 = 0;
   int32_t output_shift_2 = 0;
+  bool requires_broadcast;
 };
 
 struct HardSwishData {
@@ -693,6 +694,7 @@ TfLiteStatus PreluPrepare(TfLiteContext* context, TfLiteNode* node) {
                        &data->output_shift_2);
   }
 
+  data->requires_broadcast = !HaveSameShapes(input, alpha);
   // PRelu (parameteric Relu) shares the same alpha value on "shared axis".
   // This means it's always required to "broadcast" alpha values in PRelu.
   TfLiteIntArray* output_size = nullptr;
@@ -1161,11 +1163,19 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
   const PreluOpData* data = reinterpret_cast<PreluOpData*>(node->user_data);
   switch (input->type) {
     case kTfLiteFloat32: {
-      reference_ops::BroadcastBinaryFunction4DSlow<float, float, float>(
-          GetTensorShape(input), GetTensorData<float>(input),
-          GetTensorShape(alpha), GetTensorData<float>(alpha),
-          GetTensorShape(output), GetTensorData<float>(output),
-          ApplyPrelu<float>);
+      if (data->requires_broadcast) {
+        reference_ops::BroadcastBinaryFunction4DSlow<float, float, float>(
+            GetTensorShape(input), GetTensorData<float>(input),
+            GetTensorShape(alpha), GetTensorData<float>(alpha),
+            GetTensorShape(output), GetTensorData<float>(output),
+            ApplyPrelu<float>);
+      } else {
+        reference_ops::BinaryFunction<float, float, float>(
+            GetTensorShape(input), GetTensorData<float>(input),
+            GetTensorShape(alpha), GetTensorData<float>(alpha),
+            GetTensorShape(output), GetTensorData<float>(output),
+            ApplyPrelu<float>);
+      }
       return kTfLiteOk;
     } break;
     case kTfLiteUInt8: {
@@ -1177,10 +1187,17 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
       op_params.output_shift_1 = data->output_shift_1;
       op_params.output_multiplier_2 = data->output_multiplier_2;
       op_params.output_shift_2 = data->output_shift_2;
-      reference_ops::BroadcastPrelu4DSlow(
-          op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
-          GetTensorShape(alpha), GetTensorData<uint8_t>(alpha),
-          GetTensorShape(output), GetTensorData<uint8_t>(output));
+      if (data->requires_broadcast) {
+        reference_ops::BroadcastPrelu4DSlow(
+            op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+            GetTensorShape(alpha), GetTensorData<uint8_t>(alpha),
+            GetTensorShape(output), GetTensorData<uint8_t>(output));
+      } else {
+        reference_ops::Prelu(
+            op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+            GetTensorShape(alpha), GetTensorData<uint8_t>(alpha),
+            GetTensorShape(output), GetTensorData<uint8_t>(output));
+      }
       return kTfLiteOk;
     } break;
     case kTfLiteInt8: {
@@ -1192,10 +1209,17 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
       op_params.output_shift_1 = data->output_shift_1;
       op_params.output_multiplier_2 = data->output_multiplier_2;
       op_params.output_shift_2 = data->output_shift_2;
-      reference_ops::BroadcastPrelu4DSlow(
-          op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
-          GetTensorShape(alpha), GetTensorData<int8_t>(alpha),
-          GetTensorShape(output), GetTensorData<int8_t>(output));
+      if (data->requires_broadcast) {
+        reference_ops::BroadcastPrelu4DSlow(
+            op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+            GetTensorShape(alpha), GetTensorData<int8_t>(alpha),
+            GetTensorShape(output), GetTensorData<int8_t>(output));
+      } else {
+        reference_ops::Prelu(
+            op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+            GetTensorShape(alpha), GetTensorData<int8_t>(alpha),
+            GetTensorShape(output), GetTensorData<int8_t>(output));
+      }
       return kTfLiteOk;
     } break;
     default:

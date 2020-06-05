@@ -51,6 +51,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import keras_export
 
 try:
   from scipy import sparse as scipy_sparse  # pylint: disable=g-import-not-at-top
@@ -1364,8 +1365,10 @@ def expand_1d(data):
   return nest.map_structure(_expand_single_1d_tensor, data)
 
 
-def train_validation_split(arrays, validation_split, shuffle=True):
-  """Split arrays into random train and validation subsets.
+def train_validation_split(arrays, validation_split):
+  """Split arrays into train and validation subsets in deterministic order.
+
+  The last part of data will become validation data.
 
   Arguments:
     arrays: Tensors to split. Allowed inputs are arbitrarily nested structures
@@ -1373,10 +1376,6 @@ def train_validation_split(arrays, validation_split, shuffle=True):
     validation_split: Float between 0 and 1. The proportion of the dataset to
       include in the validation split. The rest of the dataset will be included
       in the training split.
-    shuffle: Bool. Whether to shuffle the data before performing a split. If
-      `False`, the last `validation_split` fraction of that training data will
-      become the validation split.
-
   Returns:
     `(train_arrays, validation_arrays)`
   """
@@ -1405,12 +1404,7 @@ def train_validation_split(arrays, validation_split, shuffle=True):
 
   # Assumes all arrays have the same batch shape or are `None`.
   batch_dim = int(first_non_none.shape[0])
-  indices = ops.convert_to_tensor_v2(range(batch_dim))
-  if shuffle:
-    indices = random_ops.random_shuffle(indices)
   split_at = int(math.floor(batch_dim * (1. - validation_split)))
-  train_indices = indices[:split_at]
-  val_indices = indices[split_at:]
 
   if split_at == 0 or split_at == batch_dim:
     raise ValueError(
@@ -1420,22 +1414,67 @@ def train_validation_split(arrays, validation_split, shuffle=True):
         "different value for the `validation_split` argument." .format(
             batch_dim=batch_dim, validation_split=validation_split))
 
-  def _split(t, indices):
+  def _split(t, start, end):
     if t is None:
       return t
-    t = ops.convert_to_tensor_v2(t)
-    return array_ops.gather_v2(t, indices)
+    return t[start:end]
 
   train_arrays = nest.map_structure(
-      functools.partial(_split, indices=train_indices), arrays)
+      functools.partial(_split, start=0, end=split_at), arrays)
   val_arrays = nest.map_structure(
-      functools.partial(_split, indices=val_indices), arrays)
+      functools.partial(_split, start=split_at, end=batch_dim), arrays)
 
   return train_arrays, val_arrays
 
 
+@keras_export("keras.utils.unpack_x_y_sample_weight", v1=[])
 def unpack_x_y_sample_weight(data):
-  """Unpacks user-provided data tuple."""
+  """Unpacks user-provided data tuple.
+
+  This is a convenience utility to be used when overriding
+  `Model.train_step`, `Model.test_step`, or `Model.predict_step`.
+  This utility makes it easy to support data of the form `(x,)`,
+  `(x, y)`, or `(x, y, sample_weight)`.
+
+  Standalone usage:
+
+  >>> features_batch = tf.ones((10, 5))
+  >>> labels_batch = tf.zeros((10, 5))
+  >>> data = (features_batch, labels_batch)
+  >>> # `y` and `sample_weight` will default to `None` if not provided.
+  >>> x, y, sample_weight = tf.keras.utils.unpack_x_y_sample_weight(data)
+  >>> sample_weight is None
+  True
+
+  Example in overridden `Model.train_step`:
+
+  ```python
+  class MyModel(tf.keras.Model):
+
+    def train_step(self, data):
+      # If `sample_weight` is not provided, all samples will be weighted
+      # equally.
+      x, y, sample_weight = tf.keras.utils.unpack_x_y_sample_weight(data)
+
+      with tf.GradientTape() as tape:
+        y_pred = self(x, training=True)
+        loss = self.compiled_loss(
+          y, y_pred, sample_weight, regularization_losses=self.losses)
+        trainable_variables = self.trainable_variables
+        gradients = tape.gradient(loss, trainable_variables)
+        self.optimizer.apply_gradients(zip(gradients, trainable_variables))
+
+      self.compiled_metrics.update_state(y, y_pred, sample_weight)
+      return {m.name: m.result() for m in self.metrics}
+  ```
+
+  Arguments:
+    data: A tuple of the form `(x,)`, `(x, y)`, or `(x, y, sample_weight)`.
+
+  Returns:
+    The unpacked tuple, with `None`s for `y` and `sample_weight` if they are not
+    provided.
+  """
   if not isinstance(data, tuple):
     return (data, None, None)
   elif len(data) == 1:
@@ -1444,12 +1483,38 @@ def unpack_x_y_sample_weight(data):
     return (data[0], data[1], None)
   elif len(data) == 3:
     return (data[0], data[1], data[2])
+  else:
+    error_msg = ("Data is expected to be in format `x`, `(x,)`, `(x, y)`, "
+                 "or `(x, y, sample_weight)`, found: {}").format(data)
+    raise ValueError(error_msg)
 
-  raise ValueError("Data not understood.")
 
-
+@keras_export("keras.utils.pack_x_y_sample_weight", v1=[])
 def pack_x_y_sample_weight(x, y=None, sample_weight=None):
-  """Packs user-provided data into a tuple."""
+  """Packs user-provided data into a tuple.
+
+  This is a convenience utility for packing data into the tuple formats
+  that `Model.fit` uses.
+
+  Standalone usage:
+
+  >>> x = tf.ones((10, 1))
+  >>> data = tf.keras.utils.pack_x_y_sample_weight(x)
+  >>> len(data)
+  1
+  >>> y = tf.ones((10, 1))
+  >>> data = tf.keras.utils.pack_x_y_sample_weight(x, y)
+  >>> len(data)
+  2
+
+  Arguments:
+    x: Features to pass to `Model`.
+    y: Ground-truth targets to pass to `Model`.
+    sample_weight: Sample weight for each element.
+
+  Returns:
+    Tuple in the format used in `Model.fit`.
+  """
   if y is None:
     return (x,)
   elif sample_weight is None:

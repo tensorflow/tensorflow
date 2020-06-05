@@ -209,7 +209,6 @@ StatusOr<XlaOp> MlirHloBuilder::Compare(const Shape& shape, XlaOp lhs,
                                          shape, builder_));
   auto op = builder_.create<mlir::xla_hlo::CompareOp>(
       loc_, ty, GetValue(lhs), GetValue(rhs),
-      /*broadcast_dimensions=*/mlir::DenseIntElementsAttr(),
       builder_.getStringAttr(ComparisonDirectionToString(direction)));
   return MakeXlaOp(op.getResult());
 }
@@ -280,6 +279,28 @@ StatusOr<XlaOp> MlirHloBuilder::SliceInternal(
       loc_, GetValue(operand), GetI64ElementsAttr(start_indices, &builder_),
       GetI64ElementsAttr(limit_indices, &builder_),
       GetI64ElementsAttr(strides, &builder_)));
+}
+
+StatusOr<XlaOp> MlirHloBuilder::DynamicSliceInternal(
+    const Shape& shape, XlaOp operand, absl::Span<const XlaOp> start_indices,
+    absl::Span<const int64> slice_sizes) {
+  TF_ASSIGN_OR_RETURN(
+      mlir::Type result_ty,
+      ConvertShapeToType<mlir::RankedTensorType>(shape, builder_));
+  return MakeXlaOp(builder_.create<mlir::xla_hlo::DynamicSliceOp>(
+      loc_, result_ty, GetValue(operand), GetValues(start_indices),
+      GetI64ElementsAttr(slice_sizes, &builder_)));
+}
+
+StatusOr<XlaOp> MlirHloBuilder::DynamicUpdateSliceInternal(
+    const Shape& shape, XlaOp operand, XlaOp update,
+    absl::Span<const XlaOp> start_indices) {
+  TF_ASSIGN_OR_RETURN(
+      mlir::Type result_ty,
+      ConvertShapeToType<mlir::RankedTensorType>(shape, builder_));
+  return MakeXlaOp(builder_.create<mlir::xla_hlo::DynamicUpdateSliceOp>(
+      loc_, result_ty, GetValue(operand), GetValue(update),
+      GetValues(start_indices)));
 }
 
 StatusOr<XlaOp> MlirHloBuilder::PadInternal(

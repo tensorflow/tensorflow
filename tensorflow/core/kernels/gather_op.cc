@@ -88,17 +88,17 @@ class GatherOp : public OpKernel {
     }
 
     if (batch_dims_ != 0) {
-      if (batch_dims_ < 0) {
-        batch_dims_ = indices.dims() + batch_dims_;
-      }
-
-      if (!axis_is_set) axis = batch_dims_;
-
       OP_REQUIRES(
           c, batch_dims_ >= -indices.dims() && batch_dims_ <= indices.dims(),
           errors::InvalidArgument("Expected batch_dims in the range [",
                                   -indices.dims(), ", ", indices.dims(),
                                   "], but got ", batch_dims_));
+
+      if (batch_dims_ < 0) {
+        batch_dims_ = indices.dims() + batch_dims_;
+      }
+
+      if (!axis_is_set) axis = batch_dims_;
 
       OP_REQUIRES(c, batch_dims_ < params.dims(),
                   errors::InvalidArgument("batch_dims (", batch_dims_,
@@ -154,6 +154,7 @@ class GatherOp : public OpKernel {
     Tensor* out = nullptr;
     OP_REQUIRES_OK(c, c->allocate_output(0, result_shape, &out));
     if (N == 0) return;
+    if (inner_size == 0) return;
 
     int64 bad_i = -1;
     auto indices_flat = indices.flat<Index>();

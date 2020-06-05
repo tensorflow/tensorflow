@@ -640,5 +640,8 @@ def as_dtype(type_value):
     except (KeyError, TypeError):
       pass
 
+  if isinstance(type_value, _dtypes.DType):
+    return _INTERN_TABLE[type_value.as_datatype_enum]
+
   raise TypeError("Cannot convert value %r to a TensorFlow DType." %
                   (type_value,))

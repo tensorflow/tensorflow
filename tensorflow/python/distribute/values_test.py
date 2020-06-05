@@ -651,7 +651,10 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
       self.assertIsInstance(v.assign_add(delta), core.Tensor)
 
     # In cross replica context we return a PerReplica which is not Tensor like
-    # yet.
+    # all the time yet.
+    if (synchronization == variables_lib.VariableSynchronization.ON_READ and
+        aggregation != variables_lib.VariableAggregation.SUM):
+      assert_is_tensor_like(v)
 
     # In replica context.
     distribution.run(assert_is_tensor_like, args=(v,))
@@ -1610,10 +1613,16 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
         variables_lib.VariableAggregation.MEAN,
         variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
     ]
-    options = (  # VariableAggregation.SUM in cross-replica mode is tested below
-        [x for x in itertools.product(updates, aggregations, [True, False])
-         if not(x[1] == variables_lib.VariableAggregation.SUM and x[2])])
+    options = list(
+        x for x in itertools.product(updates, aggregations, [True, False]))
     for update, aggregation, cross_replica in options:
+      # VariableAggregation.SUM in cross-replica mode is tested below,
+      # VariableAggregation.NONE in cross-replica mode is not supported.
+      if cross_replica and aggregation in [
+          variables_lib.VariableAggregation.SUM,
+          variables_lib.VariableAggregation.NONE,
+      ]:
+        continue
       with distribution.scope():
         v = variable_scope.variable(
             0.,
@@ -1647,10 +1656,16 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
         variables_lib.VariableAggregation.MEAN,
         variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
     ]
-    options = (  # VariableAggregation.SUM in cross-replica mode is tested below
-        [x for x in itertools.product(updates, aggregations, [True, False])
-         if not(x[1] == variables_lib.VariableAggregation.SUM and x[2])])
+    options = list(
+        x for x in itertools.product(updates, aggregations, [True, False]))
     for update, aggregation, cross_replica in options:
+      # VariableAggregation.SUM in cross-replica mode is tested below,
+      # VariableAggregation.NONE in cross-replica mode is not supported.
+      if cross_replica and aggregation in [
+          variables_lib.VariableAggregation.SUM,
+          variables_lib.VariableAggregation.NONE,
+      ]:
+        continue
       with distribution.scope():
         v = variable_scope.variable(
             0.,
@@ -1722,8 +1737,8 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
                                          experimental_run_tf_function):
     aggregations = [
         variables_lib.VariableAggregation.SUM,
-        variables_lib.VariableAggregation.MEAN,
-        variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
+        # variables_lib.VariableAggregation.MEAN,
+        # variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
     ]
     for aggregation in aggregations:
       if isinstance(distribution, _TPU_STRATEGIES):
@@ -1991,38 +2006,6 @@ class SyncOnReadScatterReplicaTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaises(NotImplementedError):
       self.evaluate(distribution.run(v.scatter_min, args=(delta,)))
-
-
-@combinations.generate(
-    combinations.combine(
-        distribution=[
-            strategy_combinations.central_storage_strategy_with_two_gpus
-        ],
-        mode=["graph", "eager"]))
-class AggregatingVariableTest(test.TestCase, parameterized.TestCase):
-
-  def testAssignOutOfScope(self, distribution):
-    with distribution.scope():
-      aggregating = variables_lib.Variable(1.)
-    self.assertIsInstance(aggregating, values.AggregatingVariable)
-    self.evaluate(aggregating.assign(3.))
-    self.assertEqual(self.evaluate(aggregating.read_value()), 3.)
-    self.assertEqual(self.evaluate(aggregating._v.read_value()), 3.)
-
-  def testAssignAdd(self, distribution):
-    with distribution.scope():
-      v = variable_scope.variable(
-          1, aggregation=variables_lib.VariableAggregation.MEAN)
-    self.evaluate(variables_lib.global_variables_initializer())
-
-    @def_function.function
-    def assign():
-      return v.assign_add(2)
-
-    per_replica_results = self.evaluate(
-        distribution.experimental_local_results(
-            distribution.experimental_run_v2(assign)))
-    self.assertAllEqual([3], per_replica_results)
 
 
 class MirroredTest(test.TestCase):

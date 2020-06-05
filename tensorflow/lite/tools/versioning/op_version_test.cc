@@ -352,6 +352,15 @@ TEST(OpVersionTest, VersioningFullyConnectedTest) {
   fake_op_sig.options.fully_connected = {
       false, FullyConnectedOptionsWeightsFormat_SHUFFLED4x16INT8};
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 6);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_FULLY_CONNECTED,
+      .input_types = std::vector<TensorType>{TensorType_INT8, TensorType_INT8},
+      .output_types = std::vector<TensorType>{TensorType_INT8},
+  };
+  fake_op_sig.options.fully_connected = {
+      false, FullyConnectedOptionsWeightsFormat_DEFAULT, true};
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 8);
 }
 
 TEST(OpVersionTest, VersioningDequantizeTest) {

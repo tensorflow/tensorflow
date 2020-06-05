@@ -143,6 +143,10 @@ cc_library(
     name = "external_delegate_provider",
     srcs = ["external_delegate_provider.cc"],
     copts = tflite_copts(),
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-ldl"],
+    }),
     linkstatic = True,
     visibility = ["//visibility:public"],
     deps = [

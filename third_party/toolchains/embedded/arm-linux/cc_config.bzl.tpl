@@ -252,6 +252,10 @@ def _impl(ctx):
                                 "%{AARCH64_COMPILER_PATH}%/aarch64-linux-gnu/include/c++/8.3.0/",
                                 "-isystem",
                                 "%{AARCH64_COMPILER_PATH}%/aarch64-linux-gnu/libc/usr/include/",
+                                "-isystem",
+                                "%{PYTHON_INCLUDE_PATH}%",
+                                "-isystem",
+                                "/usr/include/",
                             ],
                         ),
                     ],
@@ -347,6 +351,10 @@ def _impl(ctx):
                                 "%{ARMHF_COMPILER_PATH}%/arm-linux-gnueabihf/include/c++/8.3.0/",
                                 "-isystem",
                                 "%{ARMHF_COMPILER_PATH}%/arm-linux-gnueabihf/libc/usr/include/",
+                                "-isystem",
+                                "%{PYTHON_INCLUDE_PATH}%",
+                                "-isystem",
+                                "/usr/include/",
                             ],
                         ),
                     ],
@@ -466,6 +474,7 @@ def _impl(ctx):
                 "%{AARCH64_COMPILER_PATH}%/lib/gcc/aarch64-linux-gnu/8.3.0/include-fixed",
                 "%{AARCH64_COMPILER_PATH}%/aarch64-linux-gnu/include/c++/8.3.0/",
                 "%{AARCH64_COMPILER_PATH}%/aarch64-linux-gnu/libc/usr/include/",
+                "/usr/include",
             ]
     elif (ctx.attr.cpu == "armhf"):
         cxx_builtin_include_directories = [
@@ -473,6 +482,7 @@ def _impl(ctx):
                 "%{ARMHF_COMPILER_PATH}%/lib/gcc/arm-linux-gnueabihf/8.3.0/include-fixed",
                 "%{ARMHF_COMPILER_PATH}%/arm-linux-gnueabihf/include/c++/8.3.0/",
                 "%{ARMHF_COMPILER_PATH}%/arm-linux-gnueabihf/libc/usr/include/",
+                "/usr/include",
             ]
     else:
         fail("Unreachable")

@@ -87,6 +87,7 @@ static bool IsOpWhitelisted(Operation* op) {
     TypeID::get<TF::AcosOp>(),
     TypeID::get<TF::AddNOp>(),
     TypeID::get<TF::AddV2Op>(),
+    TypeID::get<TF::AngleOp>(),
     TypeID::get<TF::ApproximateEqualOp>(),
     TypeID::get<TF::AsinhOp>(),
     TypeID::get<TF::AsinOp>(),
@@ -168,6 +169,8 @@ static bool IsOpWhitelisted(Operation* op) {
     TypeID::get<TF::XlaBroadcastHelperOp>(),
     TypeID::get<TF::XlaConvOp>(),
     TypeID::get<TF::XlaDotOp>(),
+    TypeID::get<TF::XlaDynamicSliceOp>(),
+    TypeID::get<TF::XlaDynamicUpdateSliceOp>(),
     TypeID::get<TF::XlaPadOp>(),
     TypeID::get<TF::Xlog1pyOp>(),
     TypeID::get<TF::XlogyOp>()

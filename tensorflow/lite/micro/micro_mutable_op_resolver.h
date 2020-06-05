@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,58 +15,54 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_MICRO_MUTABLE_OP_RESOLVER_H_
 #define TENSORFLOW_LITE_MICRO_MICRO_MUTABLE_OP_RESOLVER_H_
 
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/core/api/op_resolver.h"
-#include "tensorflow/lite/micro/compatibility.h"
-#include "tensorflow/lite/schema/schema_generated.h"
+#include <cstring>
 
-#ifndef TFLITE_REGISTRATIONS_MAX
-#define TFLITE_REGISTRATIONS_MAX (128)
-#endif
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/core/api/flatbuffer_conversions.h"
+#include "tensorflow/lite/micro/compatibility.h"
+#include "tensorflow/lite/micro/micro_op_resolver.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 
-// Op versions discussed in this file are enumerated here:
-// tensorflow/lite/tools/versioning/op_version.cc
-
-inline int MicroOpResolverAnyVersion() { return 0; }
-
-template <unsigned int tOpCount = TFLITE_REGISTRATIONS_MAX>
-class MicroOpResolver : public OpResolver {
+template <unsigned int tOpCount>
+class MicroMutableOpResolver : public MicroOpResolver {
  public:
-  explicit MicroOpResolver(ErrorReporter* error_reporter = nullptr)
+  explicit MicroMutableOpResolver(ErrorReporter* error_reporter = nullptr)
       : error_reporter_(error_reporter) {}
 
-  const TfLiteRegistration* FindOp(tflite::BuiltinOperator op,
-                                   int version) const override {
+  const TfLiteRegistration* FindOp(tflite::BuiltinOperator op) const override {
+    if (op == BuiltinOperator_CUSTOM) return nullptr;
+
     for (unsigned int i = 0; i < registrations_len_; ++i) {
       const TfLiteRegistration& registration = registrations_[i];
-      if ((registration.builtin_code == op) &&
-          (registration.version == MicroOpResolverAnyVersion() ||
-           version == MicroOpResolverAnyVersion() ||
-           registration.version == version)) {
+      if (registration.builtin_code == op) {
         return &registration;
       }
     }
     return nullptr;
   }
 
-  const TfLiteRegistration* FindOp(const char* op, int version) const override {
+  const TfLiteRegistration* FindOp(const char* op) const override {
     for (unsigned int i = 0; i < registrations_len_; ++i) {
       const TfLiteRegistration& registration = registrations_[i];
       if ((registration.builtin_code == BuiltinOperator_CUSTOM) &&
-          (strcmp(registration.custom_name, op) == 0) &&
-          (registration.version == MicroOpResolverAnyVersion() ||
-           version == MicroOpResolverAnyVersion() ||
-           registration.version == version)) {
+          (strcmp(registration.custom_name, op) == 0)) {
         return &registration;
       }
     }
     return nullptr;
   }
 
+  MicroOpResolver::BuiltinParseFunction GetOpDataParser(
+      tflite::BuiltinOperator) const override {
+    // TODO(b/149408647): Replace with the more selective builtin parser.
+    return ParseOpData;
+  }
+
   TfLiteStatus AddBuiltin(tflite::BuiltinOperator op,
-                          TfLiteRegistration* registration, int version = 1) {
+                          TfLiteRegistration* registration) override {
     if (registrations_len_ >= tOpCount) {
       if (error_reporter_) {
         TF_LITE_REPORT_ERROR(error_reporter_,
@@ -76,30 +72,27 @@ class MicroOpResolver : public OpResolver {
       }
       return kTfLiteError;
     }
+
+    if (FindOp(op) != nullptr) {
+      if (error_reporter_ != nullptr) {
+        TF_LITE_REPORT_ERROR(error_reporter_,
+                             "Calling AddBuiltin with the same op more than "
+                             "once is not supported (Op: #%d).",
+                             op);
+      }
+      return kTfLiteError;
+    }
+
     TfLiteRegistration* new_registration = &registrations_[registrations_len_];
     registrations_len_ += 1;
 
     *new_registration = *registration;
     new_registration->builtin_code = op;
-    new_registration->version = version;
-
     return kTfLiteOk;
   }
 
-  TfLiteStatus AddBuiltin(tflite::BuiltinOperator op,
-                          TfLiteRegistration* registration, int min_version,
-                          int max_version) {
-    for (int version = min_version; version <= max_version; ++version) {
-      TfLiteStatus add_status = AddBuiltin(op, registration, version);
-      if (add_status != kTfLiteOk) {
-        return add_status;
-      }
-    }
-    return kTfLiteOk;
-  }
-
-  TfLiteStatus AddCustom(const char* name, TfLiteRegistration* registration,
-                         int version = 1) {
+  TfLiteStatus AddCustom(const char* name,
+                         TfLiteRegistration* registration) override {
     if (registrations_len_ >= tOpCount) {
       if (error_reporter_) {
         TF_LITE_REPORT_ERROR(
@@ -109,25 +102,23 @@ class MicroOpResolver : public OpResolver {
       }
       return kTfLiteError;
     }
+
+    if (FindOp(name) != nullptr) {
+      if (error_reporter_ != nullptr) {
+        TF_LITE_REPORT_ERROR(error_reporter_,
+                             "Calling AddCustom for the same op more than once "
+                             "is not supported (Op: %s).",
+                             name);
+      }
+      return kTfLiteError;
+    }
+
     TfLiteRegistration* new_registration = &registrations_[registrations_len_];
     registrations_len_ += 1;
 
     *new_registration = *registration;
     new_registration->builtin_code = BuiltinOperator_CUSTOM;
     new_registration->custom_name = name;
-    new_registration->version = version;
-
-    return kTfLiteOk;
-  }
-
-  TfLiteStatus AddCustom(const char* name, TfLiteRegistration* registration,
-                         int min_version, int max_version) {
-    for (int version = min_version; version <= max_version; ++version) {
-      TfLiteStatus add_status = AddCustom(name, registration, version);
-      if (add_status != kTfLiteOk) {
-        return add_status;
-      }
-    }
     return kTfLiteOk;
   }
 
@@ -138,14 +129,6 @@ class MicroOpResolver : public OpResolver {
   unsigned int registrations_len_ = 0;
   ErrorReporter* error_reporter_;
 
-  TF_LITE_REMOVE_VIRTUAL_DELETE
-};
-
-// TODO(b/147854028): Consider switching all uses of MicroMutableOpResolver to
-// MicroOpResolver.
-class MicroMutableOpResolver
-    : public MicroOpResolver<TFLITE_REGISTRATIONS_MAX> {
- private:
   TF_LITE_REMOVE_VIRTUAL_DELETE
 };
 

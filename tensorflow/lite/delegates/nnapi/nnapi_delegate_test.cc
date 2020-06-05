@@ -46,19 +46,12 @@ MATCHER(QuantizedNear, "") {
 
 class SingleOpModelWithNNAPI : public SingleOpModel {
  public:
-  SingleOpModelWithNNAPI() {
-    this->SetApplyDelegate([](Interpreter* interpreter) {
-      interpreter->ModifyGraphWithDelegate(NnApiDelegate());
-    });
-  }
+  SingleOpModelWithNNAPI() { SetDelegate(NnApiDelegate()); }
 
   explicit SingleOpModelWithNNAPI(
       const StatefulNnApiDelegate::Options& options) {
     stateful_delegate_.reset(new StatefulNnApiDelegate(options));
-    auto* delegate = stateful_delegate_.get();
-    this->SetApplyDelegate([delegate](Interpreter* interpreter) {
-      interpreter->ModifyGraphWithDelegate(delegate);
-    });
+    SetDelegate(stateful_delegate_.get());
   }
 
   TfLiteStatus ResizeInputTensor(int tensor_index,
@@ -154,8 +147,8 @@ class FloatAddOpModel : public SingleOpModelWithNNAPI {
     output_ = AddOutput(output);
     SetBuiltinOp(BuiltinOperator_ADD, BuiltinOptions_AddOptions,
                  CreateAddOptions(builder_, activation_type).Union());
-    BuildInterpreter({GetShape(input1_), GetShape(input2_)},
-                     allow_fp32_relax_to_fp16);
+    BuildInterpreter({GetShape(input1_), GetShape(input2_)}, /*num_threads=*/-1,
+                     allow_fp32_relax_to_fp16, /*apply_delegate=*/true);
   }
 };
 
@@ -294,6 +287,23 @@ TEST(NNAPIDelegate, StatefulDelegateWithCompilationCaching) {
       StatefulNnApiDelegate::Options::ExecutionPreference::kLowPower;
   options.cache_dir = "/data/local/tmp";
   options.model_token = "NNAPIDelegate.StatefulDelegateWithCompilationCaching";
+
+  FloatAddOpModel m(options, {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
+  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3}));
+}
+
+// Sanity check for the state-ful NNAPI delegate with QoS hints.
+TEST(NNAPIDelegate, StatefulDelegateWithQoS) {
+  StatefulNnApiDelegate::Options options;
+  options.execution_priority = ANEURALNETWORKS_PRIORITY_HIGH;
+  options.max_compilation_timeout_duration_ns = UINT64_MAX;
+  options.max_execution_timeout_duration_ns = UINT64_MAX;
+  options.max_execution_loop_timeout_duration_ns = UINT64_MAX;
 
   FloatAddOpModel m(options, {TensorType_FLOAT32, {1, 2, 2, 1}},
                     {TensorType_FLOAT32, {1, 2, 2, 1}},

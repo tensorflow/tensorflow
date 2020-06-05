@@ -301,8 +301,8 @@ public final class NativeInterpreterWrapperTest {
         assertThat(e)
             .hasMessageThat()
             .contains(
-                "Cannot copy between a TensorFlowLite tensor with shape [2, 4, 4, 12] and "
-                    + "a Java object with shape [2, 4, 4, 10]");
+                "Cannot copy from a TensorFlowLite tensor (output_tensor) with shape [2, 4, 4, 12] "
+                    + "to a Java object with shape [2, 4, 4, 10]");
       }
     }
   }
@@ -365,7 +365,7 @@ public final class NativeInterpreterWrapperTest {
         assertThat(e)
             .hasMessageThat()
             .contains(
-                "Cannot convert between a TensorFlowLite buffer with 768 bytes and a "
+                "Cannot copy to a TensorFlowLite tensor (input) with 768 bytes from a "
                     + "Java Buffer with 3072 bytes.");
       }
       int[] inputDims = {4, 8, 8, 3};
@@ -393,7 +393,7 @@ public final class NativeInterpreterWrapperTest {
         assertThat(e)
             .hasMessageThat()
             .contains(
-                "Cannot convert between a TensorFlowLite buffer with 192 bytes and a "
+                "Cannot copy to a TensorFlowLite tensor (input) with 192 bytes from a "
                     + "Java Buffer with 336 bytes.");
       }
     }
@@ -494,7 +494,7 @@ public final class NativeInterpreterWrapperTest {
         assertThat(e)
             .hasMessageThat()
             .contains(
-                "Cannot copy between a TensorFlowLite tensor with shape [8, 7, 3] and a "
+                "Cannot copy from a TensorFlowLite tensor (output) with shape [8, 7, 3] to a "
                     + "Java object with shape [2, 8, 8, 3].");
       }
     }
@@ -518,7 +518,7 @@ public final class NativeInterpreterWrapperTest {
         assertThat(e)
             .hasMessageThat()
             .contains(
-                "Cannot copy between a TensorFlowLite tensor with shape [2, 8, 7, 3] and a "
+                "Cannot copy from a TensorFlowLite tensor (output) with shape [2, 8, 7, 3] to a "
                     + "Java object with shape [2, 8, 8, 3].");
       }
     }

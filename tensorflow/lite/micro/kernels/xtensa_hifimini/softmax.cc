@@ -48,12 +48,12 @@ constexpr int kExpFractionalBits = 16;
 constexpr int kMaxExponentValue = (1 << kExpFractionalBits);
 
 // Quantized softmax with int8 input and int16 output.
-// TODO(b/155656675): Investigate removing const ref params.
-inline TfLiteStatus Softmax(const OpData& op_data,
-                            const RuntimeShape& input_shape,
-                            const int8_t* input_data,
-                            const RuntimeShape& output_shape,
-                            int16_t* output_data) {
+// Passing OpData by value does not have much savings in this op, but following
+// that as a best practice, at least for the xtensa kernels. See b/155656675 for
+// more details.
+TfLiteStatus Softmax(OpData op_data, const RuntimeShape& input_shape,
+                     const int8_t* input_data, const RuntimeShape& output_shape,
+                     int16_t* output_data) {
   // The last dimension is depth.  Outer size is the the total input size
   // divided by depth.
   const int trailing_dim = input_shape.DimensionsCount() - 1;
@@ -190,7 +190,6 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
 
   if (input->type == kTfLiteInt8 && output->type == kTfLiteInt16) {
-    // TODO(b/155656675): Const ref params can be slow on xtensa.
     return Softmax(*op_data, GetTensorShape(input),
                    GetTensorData<int8_t>(input), GetTensorShape(output),
                    GetTensorData<int16_t>(output));

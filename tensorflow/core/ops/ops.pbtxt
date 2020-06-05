@@ -3553,6 +3553,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "enable_large_batch_splitting"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "BatchIFFT"
@@ -7068,6 +7075,13 @@ op {
       s: "auto"
     }
   }
+  attr {
+    name: "timeout_seconds"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
   is_stateful: true
 }
 op {
@@ -7117,6 +7131,13 @@ op {
       s: "auto"
     }
   }
+  attr {
+    name: "timeout_seconds"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
   is_stateful: true
 }
 op {
@@ -7163,6 +7184,13 @@ op {
     type: "string"
     default_value {
       s: "auto"
+    }
+  }
+  attr {
+    name: "timeout_seconds"
+    type: "float"
+    default_value {
+      f: 0
     }
   }
   is_stateful: true
@@ -7281,6 +7309,13 @@ op {
     type: "string"
     default_value {
       s: "auto"
+    }
+  }
+  attr {
+    name: "timeout_seconds"
+    type: "float"
+    default_value {
+      f: 0
     }
   }
   is_stateful: true
@@ -7449,6 +7484,23 @@ op {
         type: DT_DOUBLE
       }
     }
+  }
+}
+op {
+  name: "CompressElement"
+  input_arg {
+    name: "components"
+    type_list_attr: "input_types"
+  }
+  output_arg {
+    name: "compressed"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "input_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
   }
 }
 op {
@@ -10801,6 +10853,13 @@ op {
       }
     }
   }
+  attr {
+    name: "circular_buffer_size"
+    type: "int"
+    default_value {
+      i: 1000
+    }
+  }
   is_stateful: true
 }
 op {
@@ -11515,7 +11574,7 @@ op {
     }
   }
   attr {
-    name: "binary_count"
+    name: "binary_output"
     type: "bool"
     default_value {
       b: false
@@ -11530,7 +11589,7 @@ op {
   }
   input_arg {
     name: "weights"
-    type: DT_FLOAT
+    type_attr: "output_type"
   }
   output_arg {
     name: "output_indices"
@@ -11573,7 +11632,7 @@ op {
     minimum: -1
   }
   attr {
-    name: "binary_count"
+    name: "binary_output"
     type: "bool"
   }
   attr {
@@ -11581,8 +11640,10 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_INT32
         type: DT_INT64
         type: DT_FLOAT
+        type: DT_DOUBLE
       }
     }
   }
@@ -12196,6 +12257,17 @@ op {
   attr {
     name: "var_name"
     type: "string"
+  }
+}
+op {
+  name: "DeviceIndex"
+  output_arg {
+    name: "index"
+    type: DT_INT32
+  }
+  attr {
+    name: "device_names"
+    type: "list(string)"
   }
 }
 op {
@@ -15047,6 +15119,53 @@ op {
 }
 op {
   name: "ExtractGlimpse"
+  input_arg {
+    name: "input"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "offsets"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "glimpse"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "centered"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "normalized"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "uniform_noise"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "noise"
+    type: "string"
+    default_value {
+      s: "uniform"
+    }
+  }
+}
+op {
+  name: "ExtractGlimpseV2"
   input_arg {
     name: "input"
     type: DT_FLOAT
@@ -33206,7 +33325,7 @@ op {
     }
   }
   attr {
-    name: "binary_count"
+    name: "binary_output"
     type: "bool"
     default_value {
       b: false
@@ -33225,7 +33344,7 @@ op {
   }
   input_arg {
     name: "weights"
-    type: DT_FLOAT
+    type_attr: "output_type"
   }
   output_arg {
     name: "output_indices"
@@ -33268,7 +33387,7 @@ op {
     minimum: -1
   }
   attr {
-    name: "binary_count"
+    name: "binary_output"
     type: "bool"
   }
   attr {
@@ -33276,8 +33395,10 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_INT32
         type: DT_INT64
         type: DT_FLOAT
+        type: DT_DOUBLE
       }
     }
   }
@@ -37726,6 +37847,80 @@ op {
   is_stateful: true
 }
 op {
+  name: "ResourceScatterNdMax"
+  input_arg {
+    name: "ref"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "updates"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "ResourceScatterNdMin"
+  input_arg {
+    name: "ref"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "updates"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "ResourceScatterNdSub"
   input_arg {
     name: "ref"
@@ -41139,6 +41334,132 @@ op {
   }
 }
 op {
+  name: "ScatterNdMax"
+  input_arg {
+    name: "ref"
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "updates"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output_ref"
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_INT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_COMPLEX128
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "ScatterNdMin"
+  input_arg {
+    name: "ref"
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "updates"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output_ref"
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_INT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_COMPLEX128
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
   name: "ScatterNdNonAliasingAdd"
   input_arg {
     name: "input"
@@ -43166,6 +43487,66 @@ op {
   }
 }
 op {
+  name: "SnapshotDatasetV2"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "path"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "reader_func_other_args"
+    type_list_attr: "Treader_func_args"
+  }
+  input_arg {
+    name: "shard_func_other_args"
+    type_list_attr: "Tshard_func_args"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "compression"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "reader_func"
+    type: "func"
+  }
+  attr {
+    name: "shard_func"
+    type: "func"
+  }
+  attr {
+    name: "Treader_func_args"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Tshard_func_args"
+    type: "list(type)"
+    has_minimum: true
+  }
+}
+op {
   name: "SobolSample"
   input_arg {
     name: "dim"
@@ -44717,7 +45098,7 @@ op {
     }
   }
   attr {
-    name: "binary_count"
+    name: "binary_output"
     type: "bool"
     default_value {
       b: false
@@ -44849,7 +45230,7 @@ op {
   }
   input_arg {
     name: "weights"
-    type: DT_FLOAT
+    type_attr: "output_type"
   }
   output_arg {
     name: "output_indices"
@@ -44892,7 +45273,7 @@ op {
     minimum: -1
   }
   attr {
-    name: "binary_count"
+    name: "binary_output"
     type: "bool"
   }
   attr {
@@ -44900,8 +45281,10 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_INT32
         type: DT_INT64
         type: DT_FLOAT
+        type: DT_DOUBLE
       }
     }
   }
@@ -44991,6 +45374,142 @@ op {
   attr {
     name: "internal_type"
     type: "type"
+    allowed_values {
+      list {
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+}
+op {
+  name: "SparseCrossHashed"
+  input_arg {
+    name: "indices"
+    type: DT_INT64
+    number_attr: "N"
+  }
+  input_arg {
+    name: "values"
+    type_list_attr: "sparse_types"
+  }
+  input_arg {
+    name: "shapes"
+    type: DT_INT64
+    number_attr: "N"
+  }
+  input_arg {
+    name: "dense_inputs"
+    type_list_attr: "dense_types"
+  }
+  input_arg {
+    name: "num_buckets"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "strong_hash"
+    type: DT_BOOL
+  }
+  input_arg {
+    name: "salt"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_values"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_shape"
+    type: DT_INT64
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "sparse_types"
+    type: "list(type)"
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "dense_types"
+    type: "list(type)"
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+}
+op {
+  name: "SparseCrossV2"
+  input_arg {
+    name: "indices"
+    type: DT_INT64
+    number_attr: "N"
+  }
+  input_arg {
+    name: "values"
+    type_list_attr: "sparse_types"
+  }
+  input_arg {
+    name: "shapes"
+    type: DT_INT64
+    number_attr: "N"
+  }
+  input_arg {
+    name: "dense_inputs"
+    type_list_attr: "dense_types"
+  }
+  input_arg {
+    name: "sep"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_values"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output_shape"
+    type: DT_INT64
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "sparse_types"
+    type: "list(type)"
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "dense_types"
+    type: "list(type)"
+    has_minimum: true
     allowed_values {
       list {
         type: DT_INT64
@@ -45891,6 +46410,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -46009,6 +46529,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -46077,6 +46598,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -46195,6 +46717,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -49723,6 +50246,13 @@ op {
       i: -1
     }
   }
+  attr {
+    name: "is_packed"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "TPUReplicatedOutput"
@@ -51549,6 +52079,72 @@ op {
   }
 }
 op {
+  name: "TensorScatterMax"
+  input_arg {
+    name: "tensor"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "updates"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "TensorScatterMin"
+  input_arg {
+    name: "tensor"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "updates"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
   name: "TensorScatterSub"
   input_arg {
     name: "tensor"
@@ -52518,6 +53114,29 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+}
+op {
+  name: "UncompressElement"
+  input_arg {
+    name: "compressed"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "components"
+    type_list_attr: "output_types"
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
   }
 }
 op {

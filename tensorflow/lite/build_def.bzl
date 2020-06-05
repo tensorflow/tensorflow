@@ -634,7 +634,7 @@ def gen_selected_ops(name, model, namespace = "", **kwargs):
 
     Args:
       name: Name of the generated library.
-      model: TFLite model to interpret.
+      model: TFLite models to interpret, expect a list in case of multiple models.
       namespace: Namespace in which to put RegisterSelectedOps.
       **kwargs: Additional kwargs to pass to genrule.
     """
@@ -645,12 +645,17 @@ def gen_selected_ops(name, model, namespace = "", **kwargs):
     # isinstance is not supported in skylark.
     if type(model) != type([]):
         model = [model]
+
+    input_models_args = " --input_models=%s" % ",".join(
+        ["$(location %s)" % f for f in model],
+    )
+
     native.genrule(
         name = name,
         srcs = model,
         outs = [out],
-        cmd = ("$(location %s) --namespace=%s --output_registration=$(location %s) --tflite_path=%s $(SRCS)") %
-              (tool, namespace, out, tflite_path[2:]),
+        cmd = ("$(location %s) --namespace=%s --output_registration=$(location %s) --tflite_path=%s %s") %
+              (tool, namespace, out, tflite_path[2:], input_models_args),
         tools = [tool],
         **kwargs
     )
@@ -680,6 +685,9 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags, size = "m
         if failure_type[i] != "none":
             args.append("--failure_type=%s" % failure_type[i])
         i = i + 1
+
+        # Avoid coverage timeouts for large/enormous tests.
+        coverage_tags = ["nozapfhahn"] if size in ["large", "enormous"] else []
         native.py_test(
             name = "model_coverage_test_%s_%s" % (model_name, target_op_sets.lower().replace(",", "_")),
             srcs = [src],
@@ -696,13 +704,12 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags, size = "m
                 "no_gpu",  # Executing with TF GPU configurations is redundant.
                 "no_oss",
                 "no_windows",
-            ] + tags,
+            ] + tags + coverage_tags,
             deps = [
                 "//tensorflow/lite/testing/model_coverage:model_coverage_lib",
                 "//tensorflow/lite/python:lite",
                 "//tensorflow/python:client_testlib",
             ] + flex_dep(target_op_sets),
-            timeout = "long",
         )
 
 def if_tflite_experimental_runtime(if_eager, if_non_eager, if_none = []):

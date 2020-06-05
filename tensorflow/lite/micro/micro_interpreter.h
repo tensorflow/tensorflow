@@ -15,11 +15,15 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_MICRO_INTERPRETER_H_
 #define TENSORFLOW_LITE_MICRO_MICRO_INTERPRETER_H_
 
+#include <cstddef>
+#include <cstdint>
+
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/micro/micro_allocator.h"
+#include "tensorflow/lite/micro/micro_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
 
@@ -68,7 +72,7 @@ class MicroInterpreter {
   // function.
   // The interpreter doesn't do any deallocation of any of the pointed-to
   // objects, ownership remains with the caller.
-  MicroInterpreter(const Model* model, const OpResolver& op_resolver,
+  MicroInterpreter(const Model* model, const MicroOpResolver& op_resolver,
                    uint8_t* tensor_arena, size_t tensor_arena_size,
                    ErrorReporter* error_reporter);
 
@@ -156,7 +160,7 @@ class MicroInterpreter {
   NodeAndRegistration* node_and_registrations_ = nullptr;
 
   const Model* model_;
-  const OpResolver& op_resolver_;
+  const MicroOpResolver& op_resolver_;
   ErrorReporter* error_reporter_;
   TfLiteContext context_ = {};
   MicroAllocator allocator_;

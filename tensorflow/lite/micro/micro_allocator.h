@@ -15,9 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_MICRO_ALLOCATOR_H_
 #define TENSORFLOW_LITE_MICRO_MICRO_ALLOCATOR_H_
 
+#include <cstddef>
+#include <cstdint>
+
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/core/api/flatbuffer_conversions.h"
+#include "tensorflow/lite/micro/micro_op_resolver.h"
 #include "tensorflow/lite/micro/simple_memory_allocator.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -26,9 +30,9 @@ namespace tflite {
 // Namespace used for unittests.
 namespace internal {
 
-// Sets up all of the data structure members for a runtime tensor
-// based on the contents of a serialized tensor.
-TfLiteStatus InitializeRuntimeTensor(
+// Sets up all of the data structure members for a TfLiteTensor based on the
+// contents of a serialized tensor in the flatbuffer.
+TfLiteStatus InitializeTfLiteTensorFromFlatbuffer(
     SimpleMemoryAllocator* allocator, const tflite::Tensor& flatbuffer_tensor,
     const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
     ErrorReporter* error_reporter, TfLiteTensor* result);
@@ -82,23 +86,21 @@ class MicroAllocator {
                  uint8_t* tensor_arena, size_t arena_size,
                  ErrorReporter* error_reporter);
 
+  // Run through the model flatbuffer data (loaded from the TfLiteModel
+  // instance) to allocate nodes and registrations. We need to keep them for the
+  // entire life time of the model to allow persistent tensors. This method
+  // needs to be called before FinishTensorAllocation method. This method also
+  // allocates any internal Op data that is required from the flatbuffer.
+  TfLiteStatus InitializeFromFlatbuffer(
+      const MicroOpResolver& op_resolver,
+      NodeAndRegistration** node_and_registrations);
+
   // Runs through the model and allocates all necessary input, output and
   // intermediate tensors.
   // WARNING: doing any allocation after calling this method has the risk of
   // corrupting tensor data so this method should be the last non-const method
   // called in this class.
   TfLiteStatus FinishTensorAllocation();
-
-  // Returns the arena usage in bytes, only available after
-  // `FinishTensorAllocation`. Otherwise, it will return 0.
-  size_t used_bytes() const;
-
-  // Run through the model to allocate nodes and registrations. We need to keep
-  // them for the entire life time of the model to allow persistent tensors.
-  // This method needs to be called before FinishTensorAllocation method.
-  TfLiteStatus AllocateNodeAndRegistrations(
-      const OpResolver& op_resolver,
-      NodeAndRegistration** node_and_registrations);
 
   // Allocates persistent buffer which has the same life time as the allocator.
   // The memory is immediately available and is allocated from the tail of the
@@ -116,8 +118,38 @@ class MicroAllocator {
   // Returns the pointer to the planned scratch buffer.
   void* GetScratchBuffer(int buffer_idx) const;
 
+  // Returns the arena usage in bytes, only available after
+  // `FinishTensorAllocation`. Otherwise, it will return 0.
+  size_t used_bytes() const;
+
+ protected:
+  // Allocates an array in the arena to hold pointers to the tensors required
+  // to initialize and prepare a model. These allocations are stored and
+  // populated on the context.
+  TfLiteStatus AllocateTfLiteTensorArray();
+
+  // Populates content on the list of tensor pointers required to initialize and
+  // prepare a model from data in the flatbuffer (loaded from the TfLiteModel
+  // instance). Persistent data (e.g. quantization params) is allocated from the
+  // arena.
+  TfLiteStatus PopulateTfLiteTensorArrayFromFlatbuffer();
+
+  // Allocates an array in the arena to hold pointers to the node and
+  // registration pointers required to represent the inference graph of the
+  // model.
+  TfLiteStatus AllocateNodeAndRegistrations(
+      NodeAndRegistration** node_and_registrations);
+
+  // Populates node and registration pointers representing the inference graph
+  // of the model from values inside the flatbuffer (loaded from the TfLiteModel
+  // instance). Persistent data (e.g. operator data) is allocated from the
+  // arena.
+  TfLiteStatus PrepareNodeAndRegistrationDataFromFlatbuffer(
+      const MicroOpResolver& op_resolver,
+      NodeAndRegistration* node_and_registrations);
+
  private:
-  TfLiteStatus Init();
+  TfLiteStatus InitGraphAndContextTensorData();
 
   const Model* model_;
   // A simple memory allocator that always allocate from the arena tail.

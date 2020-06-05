@@ -1128,6 +1128,10 @@ renames = {
         'tf.compat.v1.scatter_nd_add',
     'tf.scatter_nd_sub':
         'tf.compat.v1.scatter_nd_sub',
+    'tf.scatter_nd_max':
+        'tf.compat.v1.scatter_nd_max',
+    'tf.scatter_nd_min':
+        'tf.compat.v1.scatter_nd_min',
     'tf.scatter_nd_update':
         'tf.compat.v1.scatter_nd_update',
     'tf.scatter_sub':

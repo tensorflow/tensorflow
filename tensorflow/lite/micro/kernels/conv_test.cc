@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
@@ -57,10 +57,10 @@ TfLiteStatus ValidateConvGoldens(TfLiteTensor* tensors, int tensors_size,
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
-  ::tflite::ops::micro::AllOpsResolver resolver;
+  ::tflite::AllOpsResolver resolver;
 
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_CONV_2D, 1);
+      resolver.FindOp(tflite::BuiltinOperator_CONV_2D);
 
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
@@ -409,8 +409,9 @@ TF_LITE_MICRO_TEST(Kernel1x1QuantizedPerChannel) {
 
 TF_LITE_MICRO_TEST(Kernel1x1QuantizedPerChannelRelu6) {
   // conv params:
-  // padding, stride_<width,height>, dilation_<width, height>, activation
-  TfLiteConvParams conv_params = {kTfLitePaddingValid, 1, 1, kTfLiteActRelu6};
+  // padding, stride_<width,height>, activation, dilation_<width, height>
+  TfLiteConvParams conv_params = {kTfLitePaddingValid, 1, 1,
+                                  kTfLiteActRelu6,     1, 1};
   const int kInputShape[] = {4, 1, 2, 2, 4};  // [len,N,H,W,C]
   const int kInputElements =
       kInputShape[1] * kInputShape[2] * kInputShape[3] * kInputShape[4];

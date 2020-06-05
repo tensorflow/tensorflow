@@ -101,6 +101,9 @@ class AbstractContextInterface {
   // Destroy the step resource container for a training step.
   virtual void EndStep() = 0;
 
+  // Block until all pending nodes are finished.
+  virtual Status AsyncWait() = 0;
+
  protected:
   virtual ~AbstractContextInterface() {}
 };

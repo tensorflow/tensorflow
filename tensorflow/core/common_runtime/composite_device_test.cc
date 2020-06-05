@@ -20,12 +20,15 @@ limitations under the License.
 namespace tensorflow {
 
 TEST(CompositeDeviceTest, Basic) {
+  const string host_name = "/job:localhost/replica:0/task:0/device:CPU:0";
+  DeviceNameUtils::ParsedName parsed_host_name;
+  EXPECT_TRUE(DeviceNameUtils::ParseFullName(host_name, &parsed_host_name));
   std::vector<string> underlying_devices;
   {
     Status status;
     std::unique_ptr<CompositeDevice> composite_device =
         CompositeDevice::MakeDevice(underlying_devices, /*unique_device_id=*/0,
-                                    &status);
+                                    parsed_host_name, &status);
     EXPECT_EQ(composite_device, nullptr);
     EXPECT_EQ(error::INVALID_ARGUMENT, status.code());
     EXPECT_TRUE(absl::StrContains(status.error_message(),
@@ -41,7 +44,7 @@ TEST(CompositeDeviceTest, Basic) {
         "/job:localhost/replica:0/task:0/device:CPU:1");
     std::unique_ptr<CompositeDevice> composite_device =
         CompositeDevice::MakeDevice(underlying_devices, /*unique_device_id=*/0,
-                                    &status);
+                                    parsed_host_name, &status);
     TF_ASSERT_OK(status);
     EXPECT_EQ(composite_device->device_type(), kCompositeDeviceType);
     EXPECT_EQ(underlying_devices, *composite_device->underlying_devices());
@@ -53,7 +56,7 @@ TEST(CompositeDeviceTest, Basic) {
         "/job:localhost/replica:0/task:0/device:CPU:0");
     std::unique_ptr<CompositeDevice> composite_device =
         CompositeDevice::MakeDevice(underlying_devices, /*unique_device_id=*/1,
-                                    &status);
+                                    parsed_host_name, &status);
     EXPECT_EQ(composite_device, nullptr);
     EXPECT_EQ(error::INVALID_ARGUMENT, status.code());
     EXPECT_TRUE(
@@ -68,7 +71,7 @@ TEST(CompositeDeviceTest, Basic) {
         "/job:localhost/replica:0/task:0/device:GPU:0");
     std::unique_ptr<CompositeDevice> composite_device =
         CompositeDevice::MakeDevice(underlying_devices, /*unique_device_id=*/1,
-                                    &status);
+                                    parsed_host_name, &status);
     EXPECT_EQ(composite_device, nullptr);
     EXPECT_EQ(error::INVALID_ARGUMENT, status.code());
     EXPECT_TRUE(absl::StrContains(status.error_message(),

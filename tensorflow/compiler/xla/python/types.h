@@ -89,41 +89,9 @@ ClientAndPtr<T> WrapWithClient(std::shared_ptr<PjRtClient> client,
   return result;
 }
 
-// A pair of a PjRtClient reference and an owned pointer to T.
-template <typename T>
-struct ClientAndUniquePtr {
-  ClientAndUniquePtr() = default;
-  // pybind11 requires that we define a constructor that takes a raw pointer,
-  // but it should be unreachable.
-  explicit ClientAndUniquePtr(T*) {
-    LOG(FATAL) << "ClientAndUniquePtr should constructed via WrapWithClient.";
-  }
-  ClientAndUniquePtr(const ClientAndUniquePtr&) = delete;
-  ClientAndUniquePtr(ClientAndUniquePtr&&) = default;
-  ClientAndUniquePtr& operator=(const ClientAndUniquePtr&) = delete;
-  ClientAndUniquePtr& operator=(ClientAndUniquePtr&&) = default;
-
-  std::shared_ptr<PjRtClient> client;
-  std::unique_ptr<T> contents;
-
-  T* get() const { return contents.get(); }
-  T* operator->() const { return contents.get(); }
-  T& operator*() const { return *contents; }
-};
-
-template <typename T>
-ClientAndUniquePtr<T> WrapWithClient(std::shared_ptr<PjRtClient> client,
-                                     std::unique_ptr<T> contents) {
-  ClientAndUniquePtr<T> result;
-  result.client = std::move(client);
-  result.contents = std::move(contents);
-  return result;
-}
-
 }  // namespace xla
 
 PYBIND11_DECLARE_HOLDER_TYPE(T, xla::ClientAndPtr<T>);
-PYBIND11_DECLARE_HOLDER_TYPE(T, xla::ClientAndUniquePtr<T>);
 
 namespace xla {
 

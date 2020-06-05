@@ -87,6 +87,7 @@ cuda_py_test(
     name = "random_ops_test",
     size = "medium",
     srcs = ["random_ops_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -101,6 +102,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["stateless_random_ops_test.py"],
     shard_count = 2,
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

@@ -30,26 +30,6 @@ namespace {
 
 using ::tensorflow::string;
 
-tensorflow::ServerDef GetServerDef(const string& job_name, int num_tasks) {
-  tensorflow::ServerDef server_def;
-  server_def.set_protocol("grpc");
-  server_def.set_job_name(job_name);
-  server_def.set_task_index(0);
-  tensorflow::ClusterDef* cluster_def = server_def.mutable_cluster();
-  tensorflow::JobDef* job_def = cluster_def->add_job();
-  job_def->set_name(job_name);
-  for (int i = 0; i < num_tasks; i++) {
-    int port = tensorflow::testing::PickUnusedPortOrDie();
-    job_def->mutable_tasks()->insert(
-        {i, tensorflow::strings::StrCat("localhost:", port)});
-  }
-  return server_def;
-}
-
-tensorflow::ServerDef GetServerDef(int num_tasks) {
-  return GetServerDef("localhost", num_tasks);
-}
-
 void ReplaceTaskInServerDef(tensorflow::ServerDef* server_def, int task_index) {
   tensorflow::JobDef* job_def = server_def->mutable_cluster()->mutable_job(0);
   int port = tensorflow::testing::PickUnusedPortOrDie();
@@ -429,5 +409,71 @@ TEST(CAPI, RemoteExecuteUpdateServerDefWithFailures) {
 TEST(CAPI, RemoteExecuteUpdateServerDefWithFailuresAsync) {
   TestRemoteExecuteUpdateServerDefWithFailures(true);
 }
+
+void TestConnectToCluster(bool keep_localhost_for_first_connect) {
+  // Fail fast on GetStatus requests so we can get errors instead of timeout
+  // when updating cluster with non-exsitent worker
+  tensorflow::setenv("GRPC_FAIL_FAST", "TRUE", /*overwrite=*/1);
+
+  const string first_name =
+      keep_localhost_for_first_connect ? "localhost" : "abc";
+  tensorflow::ServerDef server_def = GetServerDef(first_name, 1);
+
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_ContextOptionsSetDevicePlacementPolicy(opts, TFE_DEVICE_PLACEMENT_SILENT);
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  const string dev0_name = "/job:localhost/replica:0/task:0/device:CPU:0";
+  TFE_TensorHandle* var_handle0 = TestVariable(ctx, 1.0, dev0_name);
+  EXPECT_NE(var_handle0, nullptr);
+
+  tensorflow::Status status2;
+  EXPECT_EQ(tensorflow::unwrap(var_handle0)->DeviceName(&status2), dev0_name);
+
+  // Rename local device
+  // This server def has the task index set to 0.
+  string serialized = server_def.SerializeAsString();
+  TFE_ContextSetServerDef(ctx, 0, serialized.data(), serialized.size(), status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  const string dev1_name =
+      absl::StrCat("/job:", first_name, "/replica:0/task:0/device:CPU:0");
+  TFE_TensorHandle* var_handle1 = TestVariable(ctx, 2.0, dev1_name);
+  EXPECT_NE(var_handle1, nullptr);
+  EXPECT_EQ(tensorflow::unwrap(var_handle1)->DeviceName(&status2), dev1_name);
+
+  // Another renaming of local device
+  const string second_name = "def";
+  server_def.set_job_name(second_name);
+  server_def.mutable_cluster()->mutable_job(0)->set_name(second_name);
+  (*server_def.mutable_cluster()->mutable_job(0)->mutable_tasks())[0] =
+      absl::StrCat(second_name, ":",
+                   tensorflow::testing::PickUnusedPortOrDie());
+
+  serialized = server_def.SerializeAsString();
+  TFE_ContextSetServerDef(ctx, 0, serialized.data(), serialized.size(), status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  const string dev2_name = "/job:def/replica:0/task:0/device:CPU:0";
+  TFE_TensorHandle* var_handle2 = TestVariable(ctx, 2.0, dev2_name);
+  EXPECT_NE(var_handle2, nullptr);
+  EXPECT_EQ(tensorflow::unwrap(var_handle2)->DeviceName(&status2), dev2_name);
+
+  TFE_DeleteTensorHandle(var_handle0);
+  TFE_DeleteTensorHandle(var_handle1);
+  TFE_DeleteTensorHandle(var_handle2);
+
+  TFE_DeleteContext(ctx);
+  TF_DeleteStatus(status);
+
+  tensorflow::unsetenv("GRPC_FAIL_FAST");
+}
+
+TEST(CAPI, ConnectToClusterLocalhostFirst) { TestConnectToCluster(false); }
+
+TEST(CAPI, ConnectToClusterRenameFirst) { TestConnectToCluster(true); }
 
 }  // namespace

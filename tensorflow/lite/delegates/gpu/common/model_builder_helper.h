@@ -16,17 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MODEL_BUILDER_HELPER_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MODEL_BUILDER_HELPER_H_
 
-#include <set>
-#include <string>
-#include <unordered_map>
-
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
-#include "tensorflow/lite/delegates/utils.h"
 #include "tensorflow/lite/kernels/internal/reference/dequantize.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -34,61 +29,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-
-class GraphWithDequantPartitionHelper : public delegates::GraphPartitionHelper {
- public:
-  GraphWithDequantPartitionHelper(
-      TfLiteContext* context, delegates::IsNodeSupportedFn is_node_supported_fn)
-      : GraphPartitionHelper(context, std::move(is_node_supported_fn)) {}
-
-  TfLiteStatus Partition(
-      std::set<std::string>* unsupported_nodes_info) override;
-
-  // Returns a list of node indices of all nodes from the first n largest
-  // partitions. If there are fewer paritions than n, all nodes will be
-  // returned. The partition is ranked according to the number of nodes.
-  std::vector<int> GetNodesOfFirstNLargestPartitions(int n);
-
- protected:
-  bool IsNodeSupported(TfLiteContext* context, TfLiteNode* node,
-                       TfLiteRegistration* registration, int node_id,
-                       std::string* unsupported_details) override;
-
- private:
-  // Record 'node' if it is a dequant op (i.e. a fp16 one here) and return true.
-  // When it's not a dequant op, remap its inputs to the inputs of the preceding
-  // dequant if there's a one and returns false. 'orig_inputs' records original
-  // input tensor ids of this node if any input is remapped.
-  bool RecordAndRemapInputTensors(int32_t op_code, int node_id,
-                                  TfLiteNode* node,
-                                  std::vector<int>* orig_inputs);
-
-  // Restore inputs of 'node' to 'orig_inputs' only if two sizes match.
-  void RestoreToOrigInputTensors(TfLiteNode* node,
-                                 const std::vector<int>& orig_inputs);
-
-  // Remap input tensors of every node in 'nodes' (i.e. node indices) if some of
-  // them are from dequant ops.
-  void RemapInputTensors(const std::vector<int>& nodes) const;
-
-  void RemoveSingleDequantNodePartitions();
-
-  void RemoveReservedDequantsFromNodes(std::vector<int>* nodes);
-
-  // Remap input tensors of a single 'node' if some of come from a dequant op.
-  // If 'orig_inputs' isn't nullptr, it records original input tensor ids of
-  // this node if any input is remapped.
-  void RemapInputTensors(TfLiteNode* node, std::vector<int>* orig_inputs) const;
-
-  // A map recording dequantize nodes's input/output tensors of this selected
-  // graph. The key is the output tensor id, and the value is the input tensor
-  // id.
-  std::unordered_map<int, int> dequant_nodes_;
-
-  // A set of dequant nodes as in node indices that have to be preserved in the
-  // graph.
-  std::set<int> dequant_nodes_to_save_;
-};
 
 absl::Status GetNodeAndRegistration(TfLiteContext* context, int node_id,
                                     TfLiteNode** tflite_node,
@@ -129,10 +69,11 @@ void ConvertFloat16ToFloat32(size_t num_elements, const uint16_t* src,
                              float* dst);
 
 template <typename T>
-void DequantizeConstantTensor(const TfLiteTensor& tensor, const T* source_data,
-                              float* dequantized_data) {
+inline void DequantizeConstantTensor(const TfLiteTensor& tensor,
+                                     const T* source_data,
+                                     float* dequantized_data) {
   TfLiteAffineQuantization* quant_params =
-      reinterpret_cast<TfLiteAffineQuantization*>(tensor.quantization.params);
+      static_cast<TfLiteAffineQuantization*>(tensor.quantization.params);
   if (quant_params->scale->size > 1) {
     // Tensor is per-channel quantized.
     PerChannelDequantizationParams op_params;
@@ -167,6 +108,8 @@ absl::Status CreateVectorCopyData<float>(const TfLiteTensor& tensor,
                                          float* tensor_data);
 
 absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, Scalar* shape);
+
+absl::Status CheckIfLinearConvertible(const TfLiteIntArray* dimensions);
 
 absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, Linear* shape);
 

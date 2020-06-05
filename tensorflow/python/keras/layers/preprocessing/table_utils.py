@@ -21,6 +21,7 @@ import collections
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras import backend as K
 from tensorflow.python.ops import array_ops
@@ -60,6 +61,11 @@ class TableHandler(object):
       raise RuntimeError("Size mismatch between values and key arrays. "
                          "Keys had size %s, values had size %s." %
                          (len(keys), len(values)))
+    keys = ops.convert_to_tensor(keys, dtype=self.table._key_dtype)  # pylint: disable=protected-access
+    values = ops.convert_to_tensor(values, dtype=self.table._value_dtype)  # pylint: disable=protected-access
+    if values.shape.ndims != 1:
+      raise ValueError("`values` must be 1-dimensional, got an input with "
+                       " %s dimensions." % values.shape.ndims)
     self._run(self.table.insert(keys, values))
 
   def _replace_oov_buckets(self, inputs, lookups):
@@ -87,6 +93,8 @@ class TableHandler(object):
         self.table.lookup, inputs)
     indexed_data = ragged_functional_ops.map_flat_values(
         self._replace_oov_buckets, inputs, indexed_data)
+    # table.lookup is not shape-preserving, so we need to set the shape here.
+    indexed_data._set_shape(inputs.shape)  # pylint: disable=protected-access
     # Composite tensors can pass tensor values through, which will cause
     # errors if all operations in the TF graph do so. We can break this chain
     # with an identity here.
@@ -144,7 +152,7 @@ def get_vocabulary_from_file(vocabulary_path, encoding="utf-8"):
   vocab = []
   with gfile.GFile(vocabulary_path, "r") as reader:
     while True:
-      # Get the next line, and break if it is None.
+      # Get the next line (incl. \n), and break if nothing is left to read.
       text = reader.readline()
       if not text:
         break
@@ -189,4 +197,3 @@ def convert_to_ndarray(x, dtype=None):
     if np.can_cast(array.dtype, np_dtype):
       array = array.astype(np_dtype, casting="safe")
   return array
-

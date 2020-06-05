@@ -575,6 +575,7 @@ InputPipelineAnalysisResult ConvertOpStatsToInputPipelineAnalysis(
   InputPipelineAnalysisRecommendation recommendation = GenerateRecommendation();
   BottleneckAnalysis bottleneck_analysis = ComputeBottleneckAnalysis(
       result.input_time_breakdown(), result.step_details());
+  result.set_overall_input_percent(bottleneck_analysis.input_percent());
   recommendation.mutable_bottleneck_analysis()->PackFrom(bottleneck_analysis);
   *recommendation.mutable_summary_next_step() =
       GetSummaryNextStep(bottleneck_analysis.input_classification(),
@@ -719,6 +720,7 @@ BottleneckAnalysis ComputeBottleneckAnalysis(
                    &all_other_classification, &all_other_statement);
 
   BottleneckAnalysis analysis;
+  analysis.set_input_percent(input_percent);
   analysis.set_input_classification(input_classification);
   analysis.set_input_statement(input_statement);
   analysis.set_kernel_launch_classification(kernel_launch_classification);
@@ -750,6 +752,18 @@ std::string GetSummaryNextStep(absl::string_view input_classification,
   }
 
   return summary_next_step;
+}
+
+double HostToDeviceTransferAsPercentOfInputTime(
+    const InputTimeBreakdown& breakdown) {
+  // Thanks to the scaling trick we did in GenerateHostResult(), we can
+  // estimate the percentage of input-time spent on host-to-device transfer in
+  // the following way.
+  double total_input_time_us =
+      breakdown.demanded_file_read_us() + breakdown.advanced_file_read_us() +
+      breakdown.preprocessing_us() + breakdown.enqueue_us() +
+      breakdown.unclassified_non_enqueue_us();
+  return 100.0 * SafeDivide(breakdown.enqueue_us(), total_input_time_us);
 }
 
 }  // namespace profiler

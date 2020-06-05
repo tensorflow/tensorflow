@@ -43,6 +43,10 @@ class CpuBackendContext final : public TfLiteInternalBackendContext {
 
   int max_num_threads() const { return max_num_threads_; }
 
+  void SetUseCaching(bool flag);
+
+  bool use_caching() const { return use_caching_; }
+
   void ClearCaches() override { ruy_context_->ClearPrepackedCache(); }
 
  private:
@@ -51,7 +55,7 @@ class CpuBackendContext final : public TfLiteInternalBackendContext {
   // (see :cpu_backend_gemm), for now a CpuBackendContext always
   // stores both a gemmlowp context and a ruy context.
   // TODO(b/131416458): Once call sites all go through abstractions,
-  // elide what can be elided based on TFLITE_WITH_RUY.
+  // elide what can be elided based on TFLITE_WITH_RUY_ONLY.
   const std::unique_ptr<ruy::Context> ruy_context_;
   const std::unique_ptr<gemmlowp::GemmContext> gemmlowp_context_;
 
@@ -65,6 +69,12 @@ class CpuBackendContext final : public TfLiteInternalBackendContext {
   // This value also gets propagated to back-ends, where it plays the same
   // information-only role.
   int max_num_threads_;
+  // For matrix muliplications with constants parameters (i.e. weights), we can
+  // sometimes provide speedups by caching the "prepacked" data, for some
+  // additional memory cost. This flag permits the user to route all
+  // CpuBackendGem operations to a library that permits such an optimization
+  // (currently the Ruy library only).
+  bool use_caching_;
 
   CpuBackendContext(const CpuBackendContext&) = delete;
 };

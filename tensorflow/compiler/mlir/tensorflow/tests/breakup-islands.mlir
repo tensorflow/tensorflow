@@ -344,3 +344,31 @@ func @switchn_control_input(%arg1: tensor<i32>) {
   }
   return
 }
+
+// CHECK-LABEL: func @single_op_island_forward_block_arg
+// CHECK: %[[CONST:.*]], %{{.*}} = tf_executor.island wraps "tf.Const"
+// CHECK: tf_executor.fetch %[[CONST]], %arg0
+func @single_op_island_forward_block_arg(%arg0: tensor<?x?x?x?xbf16>) -> (tensor<2048xf32>, tensor<?x?x?x?xbf16>) {
+  %0:2 = tf_executor.graph {
+    %outputs:2, %control = tf_executor.island {
+      %1 = "tf.Const"() {value = dense<0.000000e+00> : tensor<2048xf32>} : () -> tensor<2048xf32>
+      tf_executor.yield %1, %arg0 : tensor<2048xf32>, tensor<?x?x?x?xbf16>
+    }
+    tf_executor.fetch %outputs#0, %outputs#1 : tensor<2048xf32>, tensor<?x?x?x?xbf16>
+  }
+  return %0#0, %0#1 : tensor<2048xf32>, tensor<?x?x?x?xbf16>
+}
+
+// CHECK-LABEL: func @single_op_island_duplicate_result
+// CHECK: %[[CONST:.*]], %{{.*}} = tf_executor.island wraps "tf.Const"
+// CHECK: tf_executor.fetch %[[CONST]], %[[CONST]]
+func @single_op_island_duplicate_result() -> (tensor<2048xf32>, tensor<2048xf32>) {
+  %0:2 = tf_executor.graph {
+    %outputs:2, %control = tf_executor.island {
+      %1 = "tf.Const"() {value = dense<0.000000e+00> : tensor<2048xf32>} : () -> tensor<2048xf32>
+      tf_executor.yield %1, %1 : tensor<2048xf32>, tensor<2048xf32>
+    }
+    tf_executor.fetch %outputs#0, %outputs#1 : tensor<2048xf32>, tensor<2048xf32>
+  }
+  return %0#0, %0#1 : tensor<2048xf32>, tensor<2048xf32>
+}

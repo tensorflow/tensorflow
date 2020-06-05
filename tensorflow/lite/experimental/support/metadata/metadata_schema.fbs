@@ -29,14 +29,39 @@ namespace tflite;
 // generate the model interface. It is recommended to fill in at least those
 // enties to boost the codegen performance.
 
-// This corresponds to the schema version.
+// LINT.IfChange
+
+// The Metadata schema is versioned by the Semantic versioning number, which
+// tracks the schema changes according to the Semantic versioning rules.
+//
+// ModelMetadata.min_parser_version indicates the minimum necessary metadata
+// parser version to fully understand all fields in a given metadata flatbuffer.
+//
+// New fields and types will have associated comments with the schema version for
+// which they were added.
+//
+// Schema Semantic version: 1.0.1
+
+// This indicates the flatbuffer compatibility. The number will bump up when a
+// break change is applied to the schema, such as removing fields or adding new
+// fields to the middle of a table.
 file_identifier "M001";
+
+// History:
+// 1.0.1 - Added VOCABULARY type to AssociatedFileType.
+
 // File extension of any written files.
 file_extension "tflitemeta";
 
+// LINT.ThenChange(//tensorflow/lite/experimental/\
+//     /support/metadata/java/src/java/org/tensorflow/lite/support/metadata/\
+//     MetadataExtractor.java)
+
+// LINT.IfChange
 enum AssociatedFileType : byte {
   UNKNOWN = 0,
-  // Files such as readme.txt
+
+  // Files such as readme.txt.
   DESCRIPTIONS = 1,
 
   // Contains labels that annotate certain axis of the tensor. For example,
@@ -78,6 +103,11 @@ enum AssociatedFileType : byte {
   //
   // [1]: https://en.cppreference.com/w/c/string/byte/strtof
   TENSOR_AXIS_SCORE_CALIBRATION = 4,
+
+  // Contains a list of unique words (characters separated by "\n" or in lines)
+  // that help to convert natural language words to embedding vectors.
+  // Added in: 1.0.1
+  VOCABULARY = 5,
 }
 
 table AssociatedFile {
@@ -267,7 +297,7 @@ table Content {
   // dimension 1/2: the heatmap image.
   // dimension 3: 17 body parts of a person.
   // Even though the last axis is body part, the real content of this tensor is
-  // the heatmap. "range" should be [min=2; max=3].
+  // the heatmap. "range" should be [min=1; max=2].
   //
   // Case 3: The tensor contains multiple different objects. (Not supported by
   // Content at this point).
@@ -297,12 +327,22 @@ table NormalizationOptions{
   // mean and std are normalization parameters. Tensor values are normalized
   // on a per-channel basis, by the formula
   //   (x - mean) / std.
-  // For example, a float MobileNet model will have
-  //   mean = 127.5f and std = 127.5f.
-  // A quantized MobileNet model will have
-  //   mean = 0.0f and std = 1.0f.
   // If there is only one value in mean or std, we'll propogate the value to
   // all channels.
+  //
+  // Quantized models share the same normalization parameters as their
+  // corresponding float models. For example, an image input tensor may have
+  // the normalization parameter of
+  //   mean = 127.5f and std = 127.5f.
+  // The image value will be normalized from [0, 255] to [-1, 1].
+  // Then, for quantized models, the image data should be further quantized
+  // according to the quantization parameters. In the case of uint8, the image
+  // data will be scaled back to [0, 255], while for int8, the image data will
+  // be scaled to [-128, 127].
+  //
+  // Both the normalization parameters and quantization parameters can be
+  // retrieved through the metadata extractor library.
+  // TODO(b/156644598): add link for the metadata extractor library.
 
   // Per-channel mean of the possible values used in normalization.
   //
@@ -498,6 +538,17 @@ table ModelMetadata {
 
   // A list of associated files of this model.
   associated_files:[AssociatedFile];
+
+  // The minimum metadata parser version that can fully understand the fields in
+  // the metadata flatbuffer. The version is effectively the largest version
+  // number among the versions of all the fields populated and the smallest
+  // compatible version indicated by the file identifier.
+  //
+  // This field is automaticaly populated by the MetadataPopulator when
+  // the metadata is populated into a TFLite model.
+  min_parser_version:string;
 }
+// LINT.ThenChange(//tensorflow/lite/experimental/\
+//     support/metadata/cc/metadata_version.cc)
 
 root_type ModelMetadata;

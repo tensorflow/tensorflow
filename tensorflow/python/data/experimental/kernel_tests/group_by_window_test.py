@@ -331,6 +331,16 @@ class GroupByWindowTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(
         dataset, expected_output=[[i] for i in range(10)])
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testGroupByWindowWithAutotune(self):
+    dataset = dataset_ops.Dataset.range(1000).apply(
+        grouping.group_by_window(
+            lambda x: x // 10,
+            lambda key, window: dataset_ops.Dataset.from_tensors(key), 4))
+    dataset = dataset.map(lambda x: x + 1, num_parallel_calls=-1)
+    get_next = self.getNext(dataset)
+    self.evaluate(get_next())
+
 
 if __name__ == "__main__":
   test.main()

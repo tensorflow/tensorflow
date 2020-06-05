@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
+
 #if defined(_MSC_VER)
 #define __restrict__ __restrict
 #endif
@@ -38,8 +40,9 @@ void SseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors,
     const float* __restrict__ scaling_factors, int n_batch,
-    float* __restrict__ result, const float* __restrict__ per_channel_scale,
-    const int32_t* __restrict__ input_offset);
+    float* __restrict__ result, const float* per_channel_scale,
+    const int32_t* input_offset, int32_t* scratch, int32_t* row_sums,
+    bool* compute_row_sums, CpuBackendContext* context);
 
 // Matrix multiplication for quantized values using symmetric quantization.
 // Sparse version.
@@ -48,6 +51,9 @@ void SseSparseMatrixBatchVectorMultiplyAccumulate(
     const int m_rows, const int m_cols, const int8_t* __restrict__ vectors,
     const float* __restrict__ scaling_factors, int n_batch,
     float* __restrict__ result);
+
+void SseReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
+                           const int output_size, const int reduction_size);
 
 #endif  // __SSSE3__
 
