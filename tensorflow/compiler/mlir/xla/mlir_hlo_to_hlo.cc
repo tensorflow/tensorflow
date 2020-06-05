@@ -73,7 +73,7 @@ constexpr char kPaddingMapAttr[] = "xla_hlo.padding_map";
 constexpr char kShapeIndicesAttr[] = "shape_indices";
 constexpr char kPaddingArgIndicesAttr[] = "padding_arg_indices";
 constexpr char kShardingAttr[] = "xla_hlo.sharding";
-constexpr char kRepicationAttr[] = "tf_device.is_same_data_across_replicas";
+constexpr char kRepicationAttr[] = "xla_hlo.is_same_data_across_replicas";
 
 // Passes through everything except for unique_ptr, on which it calls get().
 // This exists to allow the generated code to call XLA functions that take a raw
@@ -381,21 +381,22 @@ static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
   return output;
 }
 
+// Extracts sharding from attribute string.
+static absl::optional<xla::OpSharding> CreateOpShardingFromStringRef(
+    llvm::StringRef sharding) {
+  xla::OpSharding sharding_proto;
+  if (!sharding_proto.ParseFromString(sharding.str())) return absl::nullopt;
+  return sharding_proto;
+}
+
 // Returns an OpSharding proto from the "sharding" attribute of the op. If the
 // op doesn't have a sharding attribute or the sharding attribute is invalid,
 // returns absl::nullopt.
 static absl::optional<xla::OpSharding> CreateOpShardingFromAttribute(
     mlir::Operation* op) {
   auto sharding = op->getAttrOfType<mlir::StringAttr>(kShardingAttr);
-  if (!sharding) {
-    return absl::nullopt;
-  }
-  ::xla::OpSharding sharding_proto;
-  if (!::tensorflow::protobuf::TextFormat::ParseFromString(
-          sharding.getValue().str(), &sharding_proto)) {
-    return absl::nullopt;
-  }
-  return sharding_proto;
+  if (!sharding) return absl::nullopt;
+  return CreateOpShardingFromStringRef(sharding.getValue());
 }
 
 // Checks if all shardings are set.
@@ -405,14 +406,6 @@ static bool AllOptionalShardingsAreSet(
                       [](const absl::optional<xla::OpSharding>& sharding) {
                         return sharding.has_value();
                       });
-}
-
-// Extracts sharding from attribute string.
-static absl::optional<xla::OpSharding> CreateOpShardingFromStringRef(
-    llvm::StringRef sharding) {
-  xla::OpSharding sharding_proto;
-  if (!sharding_proto.ParseFromString(sharding.str())) return absl::nullopt;
-  return sharding_proto;
 }
 
 // Extracts argument and result shardings from function.
@@ -602,13 +595,12 @@ LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
   return success();
 }
 
-LogicalResult ExportXlaOp(ScalarsToDimensionTensorOp op,
-                          OpLoweringContext ctx) {
+LogicalResult ExportXlaOp(DynamicBroadcastInDimOp op, OpLoweringContext ctx) {
   // This op has no expression in the legacy export format.
   return failure();
 }
 
-LogicalResult ExportXlaOp(DynamicBroadcastInDimOp op, OpLoweringContext ctx) {
+LogicalResult ExportXlaOp(DynamicIotaOp op, OpLoweringContext ctx) {
   // This op has no expression in the legacy export format.
   return failure();
 }
@@ -618,7 +610,7 @@ LogicalResult ExportXlaOp(DynamicReshapeOp op, OpLoweringContext ctx) {
   return failure();
 }
 
-LogicalResult ExportXlaOp(ConditionalOp op, OpLoweringContext ctx) {
+LogicalResult ExportXlaOp(IfOp op, OpLoweringContext ctx) {
   xla::XlaComputation true_branch;
   xla::XlaComputation false_branch;
   auto& value_map = *ctx.values;
@@ -633,6 +625,33 @@ LogicalResult ExportXlaOp(ConditionalOp op, OpLoweringContext ctx) {
       xla::Conditional(value_map[op.pred()], value_map[op.true_arg()],
                        true_branch, value_map[op.false_arg()], false_branch);
 
+  return success();
+}
+
+LogicalResult ExportXlaOp(CaseOp op, OpLoweringContext ctx) {
+  llvm::DenseMap<mlir::Value, xla::XlaOp>& value_map = *ctx.values;
+  OperandRange operands = op.branch_operands();
+  MutableArrayRef<Region> branches = op.branches();
+  llvm::SmallVector<xla::XlaOp, 4> branch_operands(branches.size());
+  std::vector<xla::XlaComputation> computations(branches.size());
+  std::vector<xla::XlaComputation*> computations_p(branches.size());
+
+  for (unsigned i = 0; i < branches.size(); ++i) {
+    branch_operands[i] = value_map[operands[i]];
+    computations_p[i] = &computations[i];
+    if (failed(ctx.converter->LowerRegionAsComputation(&branches[i],
+                                                       computations_p[i])))
+      return failure();
+  }
+  xla::XlaOp result =
+      xla::Conditional(value_map[op.index()], computations_p, branch_operands);
+  if (op.getNumResults() == 1) {
+    value_map[op.getResult(0)] = result;
+  } else {
+    for (auto item : llvm::enumerate(op.getResults())) {
+      value_map[item.value()] = xla::GetTupleElement(result, item.index());
+    }
+  }
   return success();
 }
 
@@ -933,6 +952,8 @@ StatusOr<xla::Literal> CreateLiteralFromAttr(ElementsAttr attr) {
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U16, uint16)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U32, uint32)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U64, uint64)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::C64, std::complex<float>)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::C128, std::complex<double>)
     case xla::PrimitiveType::F16: {
       llvm::SmallVector<xla::half, 16> values;
       values.reserve(attr.getNumElements());
@@ -982,6 +1003,21 @@ LogicalResult ConvertToHloModule::Lower(
 
   if (auto call_op = dyn_cast<mlir::CallOp>(inst)) {
     return LowerFunctionCall(&call_op, builder, &value_map);
+  }
+
+  if (auto op = dyn_cast<mlir::TensorCastOp>(inst)) {
+    Value operand = op.getOperand();
+    auto ty = operand.getType().dyn_cast<ShapedType>();
+    // If this was a cast from a static shaped tensors, then it is a noop for
+    // export to HLO and we can use the operand.
+    if (!ty || !ty.hasStaticShape()) {
+      inst->emitOpError()
+          << "requires static shaped operand for HLO translation";
+      return failure();
+    }
+
+    value_map[op.getResult()] = value_map[operand];
+    return success();
   }
 
   // TODO(jpienaar): This doesn't support layouts yet.
@@ -1101,8 +1137,8 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
     bool any_arg_replicated = false;
     entry_args_same_across_replicas.reserve(f.getNumArguments());
     for (int64_t i = 0; i < f.getNumArguments(); ++i) {
-      auto attr = f.getArgAttrOfType<mlir::BoolAttr>(i, kRepicationAttr);
-      entry_args_same_across_replicas.push_back(attr && attr.getValue());
+      auto attr = f.getArgAttrOfType<mlir::UnitAttr>(i, kRepicationAttr);
+      entry_args_same_across_replicas.push_back(attr != nullptr);
       any_arg_replicated |= entry_args_same_across_replicas.back();
       // Pass the alias info to the builder so that it will build the alias info
       // into the resulting HloModule.

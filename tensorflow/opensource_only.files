@@ -4,10 +4,9 @@ tensorflow/api_template_v1.__init__.py
 tensorflow/compat_template.__init__.py
 tensorflow/compat_template_v1.__init__.py
 tensorflow/compiler/mlir/glob_lit_test.bzl
+tensorflow/go/op/wrappers.go
 tensorflow/lite/micro/build_def.bzl
 tensorflow/python/autograph/core/config.py
-tensorflow/python/distribute/cluster_resolver/tpu_cluster_resolver.py
-tensorflow/python/distribute/cluster_resolver/tpu_cluster_resolver_test.py
 tensorflow/python/eager/benchmarks_test_base.py
 tensorflow/python/tpu/profiler/pip_package/BUILD
 tensorflow/python/tpu/profiler/pip_package/README
@@ -343,6 +342,8 @@ tensorflow/tools/ci_build/release/ubuntu_16/gpu_py37_full/pip_v1.sh
 tensorflow/tools/ci_build/release/ubuntu_16/gpu_py38_full/nightly_release.sh
 tensorflow/tools/ci_build/release/ubuntu_16/gpu_py38_full/nonpip.sh
 tensorflow/tools/ci_build/release/ubuntu_16/gpu_py38_full/pip.sh
+tensorflow/tools/ci_build/release/ubuntu_16/libtensorflow/cpu/build.sh
+tensorflow/tools/ci_build/release/ubuntu_16/libtensorflow/gpu/build.sh
 tensorflow/tools/ci_build/release/ubuntu_16/sanity/build.sh
 tensorflow/tools/ci_build/release/ubuntu_16/tpu_py37_full/nonpip.sh
 tensorflow/tools/ci_build/release/windows/cpu_libtensorflow/nightly.bat

@@ -27,20 +27,8 @@ import numpy as np
 # pylint: disable=g-import-not-at-top
 if not __file__.endswith('tflite_runtime/interpreter.py'):
   # This file is part of tensorflow package.
-  from tensorflow.python.util.lazy_loader import LazyLoader
+  from tensorflow.lite.python.interpreter_wrapper import _pywrap_tensorflow_interpreter_wrapper as _interpreter_wrapper
   from tensorflow.python.util.tf_export import tf_export as _tf_export
-
-  # Lazy load since some of the performance benchmark skylark rules
-  # break dependencies. Must use double quotes to match code internal rewrite
-  # rule.
-  # pylint: disable=g-inconsistent-quotes
-  _interpreter_wrapper = LazyLoader(
-      "_interpreter_wrapper", globals(),
-      "tensorflow.lite.python.interpreter_wrapper."
-      '_pywrap_tensorflow_interpreter_wrapper')
-  # pylint: enable=g-inconsistent-quotes
-
-  del LazyLoader
 else:
   # This file is part of tflite_runtime package.
   from tflite_runtime import _pywrap_tensorflow_interpreter_wrapper as _interpreter_wrapper

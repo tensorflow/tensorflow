@@ -63,7 +63,10 @@ class AnonymousResourceOp : public OpKernel {
 
     if (create_deleter_) {
       Tensor* deleter_t;
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(1, TensorShape({}), &deleter_t));
+      AllocatorAttributes attr;
+      attr.set_on_host(true);
+      OP_REQUIRES_OK(
+          ctx, ctx->allocate_output(1, TensorShape({}), &deleter_t, attr));
       deleter_t->scalar<Variant>()() =
           ResourceDeleter(handle, ctx->resource_manager());
     }
@@ -91,10 +94,16 @@ Status RegisterCancellationCallback(CancellationManager* cancellation_manager,
 Status VerifyTypesMatch(const DataTypeVector& expected,
                         const DataTypeVector& received);
 
+Status VerifyTypesMatch(const DataTypeVector& expected,
+                        const std::vector<Tensor>& received);
+
 // Returns Status::OK() if `expected` and `received` shapes are compatible,
 // errors::InvalidArgument otherwise.
 Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
                               const std::vector<PartialTensorShape>& received);
+
+Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
+                              const std::vector<Tensor>& received);
 
 // Returns a stable hash of the subgraph rooted at the given node.
 //

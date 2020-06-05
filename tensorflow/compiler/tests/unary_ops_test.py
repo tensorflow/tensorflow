@@ -186,8 +186,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
         self._assertOpOutputMatchesExpected(
             math_ops.cos, x, expected=np.cos(x), rtol=tol, atol=1e-5)
 
-  @test_util.disable_mlir_bridge(
-      "TODO(b/153812660): Handle tf.Softmax compilation")
   def testFloatOps(self):
     for dtype in self.float_types:
       x = np.arange(-0.90, 0.90, 0.25)
@@ -349,17 +347,15 @@ class UnaryOpsTest(xla_test.XLATestCase):
           expected=np.array(
               [1.55740772, -2.18503986, -0.14254654, 1.15782128], dtype=dtype))
 
-      # TODO(b/130689556): Turn this on for CPU when we start honoring NaNs.
-      if self.device != "XLA_CPU":
-        self._assertOpOutputMatchesExpected(
-            math_ops.tanh,
-            np.array([[1, 2, 3, 4], [np.inf, -np.inf, np.nan, 20],
-                      [19, -19, 22, -22]],
-                     dtype=dtype),
-            expected=np.array(
-                [[0.76159418, 0.96402758, 0.99505478, 0.99932933],
-                 [1.0, -1.0, np.nan, 1.0], [1.0, -1.0, 1.0, -1.0]],
-                dtype=dtype))
+      self._assertOpOutputMatchesExpected(
+          math_ops.tanh,
+          np.array([[1, 2, 3, 4], [np.inf, -np.inf, np.nan, 20],
+                    [19, -19, 22, -22]],
+                   dtype=dtype),
+          expected=np.array(
+              [[0.76159418, 0.96402758, 0.99505478, 0.99932933],
+               [1.0, -1.0, np.nan, 1.0], [1.0, -1.0, 1.0, -1.0]],
+              dtype=dtype))
 
       self._assertOpOutputMatchesExpected(
           nn_ops.log_softmax,
@@ -514,6 +510,11 @@ class UnaryOpsTest(xla_test.XLATestCase):
               ],
               dtype=dtype))
 
+  @test_util.disable_mlir_bridge(
+      "TODO(b/153812660): Handle tf.QuantizeAndDequantize compilation")
+  def testQuantizeAndDequantize(self):
+    for dtype in self.float_types:
+
       def quantize_and_dequantize_v2(x):
         return array_ops.quantize_and_dequantize_v2(
             x, -127, 127, signed_input=True, num_bits=8)
@@ -598,8 +599,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
           np.array([-1, -0.5, 0, 0.3], dtype=dtype),
           expected=np.array([-1., -0.5, 0., 0.296875], dtype=dtype))
 
-  @test_util.disable_mlir_bridge(
-      "Complex types not supported in CreateDenseElementsAttrFromLiteral")
   def testComplexOps(self):
     for dtype in self.complex_types:
 

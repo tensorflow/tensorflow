@@ -1278,6 +1278,18 @@ port::Status CheckAndFetchProjectionWeights(
   cudnnRNNMode_t mode;
   cudnnRNNAlgo_t algo;
   cudnnDataType_t data_type;
+#if CUDNN_VERSION >= 8000
+  RETURN_IF_CUDNN_ERROR(cudnnGetRNNDescriptor_v6(
+      /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc,
+      /*hiddenSize=*/&hidden_size_v,
+      /*numLayers=*/&num_layers_v,
+      /*dropoutDesc=*/&dropout_desc,
+      /*inputMode=*/&input_mode,
+      /*direction=*/&direction,
+      /*mode=*/&mode,
+      /*algo=*/&algo,
+      /*mathPrec=*/&data_type));
+#else
   RETURN_IF_CUDNN_ERROR(cudnnGetRNNDescriptor(
       /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc,
       /*hiddenSize=*/&hidden_size_v,
@@ -1287,7 +1299,8 @@ port::Status CheckAndFetchProjectionWeights(
       /*direction=*/&direction,
       /*mode=*/&mode,
       /*algo=*/&algo,
-      /*dataType=*/&data_type));
+      /*mathPrec=*/&data_type));
+#endif
   int rec_proj_size_v;
   int out_proj_size_v;
   RETURN_IF_CUDNN_ERROR(cudnnGetRNNProjectionLayers(
@@ -2424,6 +2437,28 @@ port::StatusOr<cudnnConvolutionFwdAlgo_t> GetCudnnConvolutionForwardAlgo(
     const CudnnFilterDescriptor& filter, const CudnnConvolutionDescriptor& conv,
     const CudnnTensorDescriptor& output_nd, bool specify_workspace_limit,
     size_t memory_limit_bytes) {
+#if CUDNN_VERSION >= 8000
+  const int num_requested_algos = 5;
+  int num_returned_algos = 0;
+  cudnnConvolutionFwdAlgoPerf_t perf_results[num_requested_algos];
+
+  RETURN_IF_CUDNN_ERROR(cudnnGetConvolutionForwardAlgorithm_v7(
+      cudnn.handle(), input_nd.handle(), filter.handle(), conv.handle(),
+      output_nd.handle(), num_requested_algos, &num_returned_algos,
+      perf_results));
+
+  size_t mem_limit = specify_workspace_limit ? memory_limit_bytes : 0ULL;
+  for (int r = 0; r < num_returned_algos; r++) {
+    if (perf_results[r].status == CUDNN_STATUS_SUCCESS &&
+        perf_results[r].algo != CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED &&
+        perf_results[r].memory <= mem_limit) {
+      return perf_results[r].algo;
+    }
+  }
+  return port::Status(port::error::INTERNAL,
+                      "cudnnGetConvolutionForwardAlgorithm_v7 returned "
+                      "no suitable algorithms. This could be a cudnn bug.");
+#else
   cudnnConvolutionFwdPreference_t preference =
       specify_workspace_limit ? CUDNN_CONVOLUTION_FWD_SPECIFY_WORKSPACE_LIMIT
                               : CUDNN_CONVOLUTION_FWD_NO_WORKSPACE;
@@ -2432,6 +2467,7 @@ port::StatusOr<cudnnConvolutionFwdAlgo_t> GetCudnnConvolutionForwardAlgo(
       cudnn.handle(), input_nd.handle(), filter.handle(), conv.handle(),
       output_nd.handle(), preference, memory_limit_bytes, &algo_to_use));
   return algo_to_use;
+#endif
 }
 
 port::StatusOr<cudnnConvolutionBwdDataAlgo_t>
@@ -2442,6 +2478,29 @@ GetCudnnConvolutionBackwardDataAlgo(const CudnnHandle& cudnn,
                                     const CudnnTensorDescriptor& output_nd,
                                     bool specify_workspace_limit,
                                     size_t memory_limit_bytes) {
+#if CUDNN_VERSION >= 8000
+  const int num_requested_algos = 5;
+  int num_returned_algos = 0;
+  cudnnConvolutionBwdDataAlgoPerf_t perf_results[num_requested_algos];
+
+  RETURN_IF_CUDNN_ERROR(cudnnGetConvolutionBackwardDataAlgorithm_v7(
+      cudnn.handle(), filter.handle(), output_nd.handle(), conv.handle(),
+      input_nd.handle(), num_requested_algos, &num_returned_algos,
+      perf_results));
+
+  size_t mem_limit = specify_workspace_limit ? memory_limit_bytes : 0ULL;
+  for (int r = 0; r < num_returned_algos; r++) {
+    if (perf_results[r].status == CUDNN_STATUS_SUCCESS &&
+        perf_results[r].algo !=
+            CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED &&
+        perf_results[r].memory <= mem_limit) {
+      return perf_results[r].algo;
+    }
+  }
+  return port::Status(port::error::INTERNAL,
+                      "cudnnGetConvolutionBackwardDataAlgorithm_v7 returned "
+                      "no suitable algorithms. This could be a cudnn bug.");
+#else
   cudnnConvolutionBwdDataPreference_t preference =
       specify_workspace_limit
           ? CUDNN_CONVOLUTION_BWD_DATA_SPECIFY_WORKSPACE_LIMIT
@@ -2451,6 +2510,7 @@ GetCudnnConvolutionBackwardDataAlgo(const CudnnHandle& cudnn,
       cudnn.handle(), filter.handle(), output_nd.handle(), conv.handle(),
       input_nd.handle(), preference, memory_limit_bytes, &algo_to_use));
   return algo_to_use;
+#endif
 }
 
 port::StatusOr<cudnnConvolutionBwdFilterAlgo_t>
@@ -2461,6 +2521,28 @@ GetCudnnConvolutionBackwardFilterAlgo(const CudnnHandle& cudnn,
                                       const CudnnTensorDescriptor& output_nd,
                                       bool specify_workspace_limit,
                                       size_t memory_limit_bytes) {
+#if CUDNN_VERSION >= 8000
+  const int num_requested_algos = 5;
+  int num_returned_algos = 0;
+  cudnnConvolutionBwdFilterAlgoPerf_t perf_results[num_requested_algos];
+
+  RETURN_IF_CUDNN_ERROR(cudnnGetConvolutionBackwardFilterAlgorithm_v7(
+      cudnn.handle(), input_nd.handle(), output_nd.handle(), conv.handle(),
+      filter.handle(), num_requested_algos, &num_returned_algos, perf_results));
+
+  size_t mem_limit = specify_workspace_limit ? memory_limit_bytes : 0ULL;
+  for (int r = 0; r < num_returned_algos; r++) {
+    if (perf_results[r].status == CUDNN_STATUS_SUCCESS &&
+        perf_results[r].algo !=
+            CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED &&
+        perf_results[r].memory <= mem_limit) {
+      return perf_results[r].algo;
+    }
+  }
+  return port::Status(port::error::INTERNAL,
+                      "cudnnGetConvolutionBackwardFilterAlgorithm_v7 returned "
+                      "no suitable algorithms. This could be a cudnn bug.");
+#else
   cudnnConvolutionBwdFilterPreference_t preference =
       specify_workspace_limit
           ? CUDNN_CONVOLUTION_BWD_FILTER_SPECIFY_WORKSPACE_LIMIT
@@ -2470,6 +2552,7 @@ GetCudnnConvolutionBackwardFilterAlgo(const CudnnHandle& cudnn,
       cudnn.handle(), input_nd.handle(), output_nd.handle(), conv.handle(),
       filter.handle(), preference, memory_limit_bytes, &algo_to_use));
   return algo_to_use;
+#endif
 }
 
 port::StatusOr<DeviceMemory<uint8>> AllocateCudnnConvolutionForwardWorkspace(

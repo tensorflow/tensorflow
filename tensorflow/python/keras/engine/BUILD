@@ -21,8 +21,8 @@ py_library(
     srcs = [
         "__init__.py",
         "compile_utils.py",
+        "functional.py",
         "input_layer.py",
-        "network.py",
         "node.py",
         "partial_batch_padding_handler.py",
         "saving.py",
@@ -118,6 +118,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:constraints",
@@ -426,6 +427,24 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "feature_columns_integration_test",
+    size = "medium",
+    srcs = ["feature_columns_integration_test.py"],
+    python_version = "PY3",
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+        "notsan",
+    ],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/feature_column:feature_column_py",
+        "//tensorflow/python/keras",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
     name = "training_eager_test",
     size = "medium",
     srcs = ["training_eager_test.py"],
@@ -460,9 +479,9 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "network_test",
+    name = "functional_test",
     size = "medium",
-    srcs = ["network_test.py"],
+    srcs = ["functional_test.py"],
     python_version = "PY3",
     shard_count = 8,
     tags = [

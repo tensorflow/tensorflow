@@ -76,7 +76,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateOptimizeFunctionalOpsPass();
 // Creates an instance of the TensorFlow Lite dialect pass to add default
 // quantization parameters.
 std::unique_ptr<OperationPass<FuncOp>> CreateDefaultQuantParamsPass(
-    double default_min, double default_max);
+    double default_min, double default_max, bool is_signed);
 
 // Creates an instance of the TensorFlow Lite dialect pass to convert dense
 // tensor to sparse format.

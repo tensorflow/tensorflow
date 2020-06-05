@@ -65,6 +65,7 @@ class CLKernel {
   int GetPrivateMemorySize() const { return private_memory_size_; }
   int GetMaxWorkGroupSize() const { return max_work_group_size_; }
 
+  int GetBindingCounter() const { return binding_counter_; }
   void ResetBindingCounter() { binding_counter_ = 0; }
 
   // Do not use this function

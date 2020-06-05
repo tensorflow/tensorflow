@@ -45,6 +45,60 @@ func @multiply_scalar_fold() -> tensor<4xi64> {
   return %2 : tensor<4xi64>
 }
 
+// CHECK-LABEL: divide_scalar_fold
+func @divide_scalar_fold() -> tensor<4xi64> {
+  %0 = xla_hlo.constant dense<7> : tensor<4xi64>
+  %1 = xla_hlo.constant dense<5> : tensor<4xi64>
+  // CHECK: xla_hlo.constant dense<1>
+  %2 = "xla_hlo.divide"(%0, %1) : (tensor<4xi64>, tensor<4xi64>) -> (tensor<4xi64>)
+  return %2 : tensor<4xi64>
+}
+
+// CHECK-LABEL: divide_fold_float
+func @divide_fold_float() -> tensor<4xf64> {
+  %0 = xla_hlo.constant dense<[5.0, 66.0, 5.0, 1.0]> : tensor<4xf64>
+  %1 = xla_hlo.constant dense<[5.0, 3.0, 2.0, 4.0]> : tensor<4xf64>
+  // CHECK: xla_hlo.constant dense<[1.000000e+00, 2.200000e+01, 2.500000e+00, 2.500000e-01]>
+  %2 = "xla_hlo.divide"(%0, %1) : (tensor<4xf64>, tensor<4xf64>) -> (tensor<4xf64>)
+  return %2 : tensor<4xf64>
+}
+
+// CHECK-LABEL: max_scalar_fold
+func @max_scalar_fold() -> tensor<4xi64> {
+  %0 = xla_hlo.constant dense<7> : tensor<4xi64>
+  %1 = xla_hlo.constant dense<5> : tensor<4xi64>
+  // CHECK: xla_hlo.constant dense<7>
+  %2 = "xla_hlo.maximum"(%0, %1) : (tensor<4xi64>, tensor<4xi64>) -> (tensor<4xi64>)
+  return %2 : tensor<4xi64>
+}
+
+// CHECK-LABEL: max_fold_float
+func @max_fold_float() -> tensor<4xf64> {
+  %0 = xla_hlo.constant dense<[5.0, 66.0, 5.0, 1.0]> : tensor<4xf64>
+  %1 = xla_hlo.constant dense<[5.0, 3.0, 2.0, 4.0]> : tensor<4xf64>
+  // CHECK: xla_hlo.constant dense<[5.000000e+00, 6.600000e+01, 5.000000e+00, 4.000000e+00]>
+  %2 = "xla_hlo.maximum"(%0, %1) : (tensor<4xf64>, tensor<4xf64>) -> (tensor<4xf64>)
+  return %2 : tensor<4xf64>
+}
+
+// CHECK-LABEL: min_scalar_fold
+func @min_scalar_fold() -> tensor<4xi64> {
+  %0 = xla_hlo.constant dense<7> : tensor<4xi64>
+  %1 = xla_hlo.constant dense<-5> : tensor<4xi64>
+  // CHECK: xla_hlo.constant dense<-5>
+  %2 = "xla_hlo.minimum"(%0, %1) : (tensor<4xi64>, tensor<4xi64>) -> (tensor<4xi64>)
+  return %2 : tensor<4xi64>
+}
+
+// CHECK-LABEL: min_fold_float
+func @min_fold_float() -> tensor<4xf64> {
+  %0 = xla_hlo.constant dense<[5.0, 66.0, 5.0, 1.0]> : tensor<4xf64>
+  %1 = xla_hlo.constant dense<[5.0, 3.0, 2.0, 4.0]> : tensor<4xf64>
+  // CHECK: xla_hlo.constant dense<[5.000000e+00, 3.000000e+00, 2.000000e+00, 1.000000e+00]>
+  %2 = "xla_hlo.minimum"(%0, %1) : (tensor<4xf64>, tensor<4xf64>) -> (tensor<4xf64>)
+  return %2 : tensor<4xf64>
+}
+
 // CHECK-LABEL: concatenate_noop
 func @concatenate_noop(%arg0: tensor<4xi32>) -> tensor<4xi32> {
   // CHECK-SAME: [[ARG:%.+]]: tensor<4xi32>
@@ -281,6 +335,14 @@ func @complex_collapse_fold(%arg0: tensor<4xcomplex<f32>>) -> tensor<4xcomplex<f
   return %2 : tensor<4xcomplex<f32>>
 }
 
+// CHECK-LABEL: @dynamic_iota_is_static
+func @dynamic_iota_is_static(%arg0 : tensor<1xindex>) -> tensor<4xi32> {
+  // CHECK: [[RESULT:%.*]] = "xla_hlo.iota"
+  // CHECK: return [[RESULT]]
+  %0 = "xla_hlo.dynamic_iota"(%arg0) {iota_dimension = 0 : i64} : (tensor<1xindex>) -> tensor<4xi32>
+  return %0 : tensor<4xi32>
+}
+
 // CHECK-LABEL: @iota_not_lowered_to_constant
 func @iota_not_lowered_to_constant() -> tensor<4xi32> {
   // CHECK: [[RESULT:%.*]] = "xla_hlo.iota"
@@ -295,16 +357,6 @@ func @unary_einsum(%arg0: tensor<2x3xf32>) -> tensor<2x2xf32> {
   // CHECK: "xla_hlo.einsum"(%[[ONE]], %arg0) {einsum_config = ",ab->aa"}
   %0 = "xla_hlo.unary_einsum"(%arg0) {einsum_config = "ab->aa"} : (tensor<2x3xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
-}
-
-// CHECK-LABEL: @extract_scalars_to_tensor
-// CHECK-SAME: %[[ARG0:.*]]: i32, %[[ARG1:.*]]: i32
-func @extract_scalars_to_tensor(%arg0: i32, %arg1: i32) -> i32 {
-  %0 = "xla_hlo.scalars_to_dimension_tensor"(%arg0, %arg1) : (i32, i32) -> tensor<2xi32>
-  %1 = constant 0 : index
-  %2 = extract_element %0[%1] : tensor<2xi32>
-  // CHECK: return %[[ARG0]]
-  return %2 : i32
 }
 
 // CHECK-LABEL: func @fold_copy
@@ -387,8 +439,8 @@ func @dynamic_reshape_not_actually_dynamic(%arg0: tensor<4xf32>, %shape: tensor<
   return %0 : tensor<4x1xf32>
 }
 
-// CHECK-LABEL: do_not_dce_while
-func @do_not_dce_while(%arg0: tensor<i64>) -> tensor<i64> {
+// CHECK-LABEL: do_not_dce_while_with_outfeed
+func @do_not_dce_while_with_outfeed(%arg0: tensor<i64>) -> tensor<i64> {
   // CHECK: xla_hlo.while
   %0 = "xla_hlo.while"(%arg0) ( {
   ^bb0(%arg1: tensor<i64>):
@@ -399,6 +451,22 @@ func @do_not_dce_while(%arg0: tensor<i64>) -> tensor<i64> {
     %1 = "xla_hlo.create_token"() : () -> !xla_hlo.token
     // Side-effecting op outfeed present inside while.
     %2 = "xla_hlo.outfeed"(%arg1, %1) {outfeed_config = ""} : (tensor<i64>, !xla_hlo.token) -> !xla_hlo.token
+    "xla_hlo.return"(%arg1) : (tensor<i64>) -> ()
+  }) : (tensor<i64>) -> tensor<i64>
+
+  return %arg0 : tensor<i64>
+}
+
+// CHECK-LABEL: dce_while_without_side_effect
+func @dce_while_without_side_effect(%arg0: tensor<i64>) -> tensor<i64> {
+  // CHECK-NOT: xla_hlo.while
+  %0 = "xla_hlo.while"(%arg0) ( {
+  ^bb0(%arg1: tensor<i64>):
+    %1 = "xla_hlo.compare"(%arg1, %arg1) {comparison_direction = "LT"} : (tensor<i64>, tensor<i64>) -> tensor<i1>
+    "xla_hlo.return"(%1) : (tensor<i1>) -> ()
+  },  {
+  ^bb0(%arg1: tensor<i64>):
+    %1 = "xla_hlo.create_token"() : () -> !xla_hlo.token
     "xla_hlo.return"(%arg1) : (tensor<i64>) -> ()
   }) : (tensor<i64>) -> tensor<i64>
 

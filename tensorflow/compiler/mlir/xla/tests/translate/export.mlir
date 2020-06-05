@@ -1,4 +1,4 @@
-// RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo-text %s | FileCheck %s
+// RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo-text %s | FileCheck %s --dump-input-on-failure
 
 // CHECK:  HloModule
 func @main(%arg0: !xla_hlo.token, %arg1: !xla_hlo.token) -> !xla_hlo.token {
@@ -92,34 +92,6 @@ func @main(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> (tensor<4xi32>, tensor
   // CHECK:  ROOT
   // CHECK-SAME:  [[VAL_7:%.*]] = (s32[4], s32[4], s32[4], s32[4]) tuple(s32[4] [[ATAN2]], s32[4] [[SHL]], s32[4] [[SHRA]], s32[4] [[SHRL]])
   return %0, %1, %2, %3 : tensor<4xi32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>
-}
-
-// -----
-
-// CHECK:  HloModule
-func @main(%arg0: tensor<1x4xi32>, %arg1: tensor<2x4xi32>, %arg2: tensor<2x3x4xi32>) -> tensor<2x3x4xi32> {
-  // Same rank degenerate broadcast
-  // CHECK:  [[ARG_0:%.*]] = s32[1,4] parameter(0)
-  // CHECK-NEXT:  [[RESHAPE_1:%.*]] = s32[4] reshape(s32[1,4] [[ARG_0]])
-  // CHECK-NEXT:  [[BROADCAST_1:%.*]] = s32[2,4] broadcast(s32[4] [[RESHAPE_1]])
-  // CHECK-NEXT:  [[ARG_1:%.*]] = s32[2,4] parameter(1)
-  // CHECK-NEXT:  s32[2,4] add(s32[2,4] [[BROADCAST_1]], s32[2,4] [[ARG_1]])
-  %0 = "xla_hlo.add"(%arg0, %arg1) : (tensor<1x4xi32>, tensor<2x4xi32>) -> tensor<2x4xi32>
-
-  // Broadcast up rank
-  // CHECK-NEXT:  [[BROADCAST_2:%.*]] = s32[2,3,4] broadcast(s32[2,4] [[ARG_1]]), dimensions={0,2}
-  // CHECK-NEXT:  [[ARG_2:%.*]] = s32[2,3,4] parameter(2)
-  // CHECK-NEXT:  s32[2,3,4] add(s32[2,3,4] [[BROADCAST_2]], s32[2,3,4] [[ARG_2]])
-  %1 = "xla_hlo.add"(%arg1, %arg2) {broadcast_dimensions = dense<[0,2]> : tensor<2xi64>} : (tensor<2x4xi32>, tensor<2x3x4xi32>) -> tensor<2x3x4xi32>
-
-  // Broadcast up rank + degenerate broadcast
-  // CHECK-NEXT:  [[BROADCAST_3:%.*]] = s32[2,1,4] broadcast(s32[1,4] [[ARG_0]]), dimensions={1,2}
-  // CHECK-NEXT:  [[RESHAPE_2:%.*]] = s32[2,4] reshape(s32[2,1,4] [[BROADCAST_3]])
-  // CHECK-NEXT:  [[BROADCAST_4:%.*]] = s32[2,3,4] broadcast(s32[2,4] [[RESHAPE_2]]), dimensions={0,2}
-  // CHECK:  ROOT
-  // CHECK-SAME:  s32[2,3,4] add(s32[2,3,4] [[BROADCAST_4]], s32[2,3,4] [[ARG_2]])
-  %2 = "xla_hlo.add"(%arg0, %arg2) {broadcast_dimensions = dense<[1,2]> : tensor<2xi64>} : (tensor<1x4xi32>, tensor<2x3x4xi32>) -> tensor<2x3x4xi32>
-  return %2 : tensor<2x3x4xi32>
 }
 
 // -----
@@ -293,6 +265,12 @@ func @main() {
 
   // CHECK: f16[4] constant({1, -4, -65504, 0.015625}
   %cst_8 = constant dense<[1.0e+00, -4.0e+00, -65504.0e+00, 1.5625e-02]> : tensor<4xf16>
+
+  // CHECK: c64[] constant((1, 0))
+  %cst_9 = constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f32>>
+
+  // CHECK: c128[] constant((1, 0))
+  %cst_10 = constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f64>>
 
   return
 }
@@ -985,9 +963,19 @@ func @main(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
 
 // -----
 
+// The following op sharding is used:
+// Proto debug string:
+//   type: OTHER
+//   tile_assignment_dimensions: 1
+//   tile_assignment_dimensions: 2
+//   tile_assignment_devices: 0
+//   tile_assignment_devices: 1
+// Serialized string:
+//   "\08\03\1A\02\01\02\22\02\00\01"
+
 // CHECK:  HloModule
 func @main(%arg0: tensor<16x16xf32>) -> tensor<16x16xf32> {
-  %0 = "xla_hlo.custom_call"(%arg0) {backend_config = "", call_target_name = "Sharding", xla_hlo.sharding = "type: OTHER\ntile_assignment_dimensions: 1\ntile_assignment_dimensions: 2\ntile_assignment_devices: 0\ntile_assignment_devices: 1"} : (tensor<16x16xf32>) -> tensor<16x16xf32>
+  %0 = "xla_hlo.custom_call"(%arg0) {backend_config = "", call_target_name = "Sharding", xla_hlo.sharding = "\08\03\1A\02\01\02\22\02\00\01"} : (tensor<16x16xf32>) -> tensor<16x16xf32>
   return %0 : tensor<16x16xf32>
 }
 
@@ -1000,7 +988,7 @@ func @main(%arg0: tensor<16x16xf32>) -> tensor<16x16xf32> {
 // Tests that the exported HLO module keeps parameter replication annotation.
 
 // CHECK:  HloModule
-func @main(%arg0: tensor<16x16xf32>, %arg1: tensor<16x16xf32> {tf_device.is_same_data_across_replicas = true}) -> tensor<16x16xf32> {
+func @main(%arg0: tensor<16x16xf32>, %arg1: tensor<16x16xf32> {xla_hlo.is_same_data_across_replicas}) -> tensor<16x16xf32> {
   %0 = "xla_hlo.add"(%arg0, %arg1) : (tensor<16x16xf32>, tensor<16x16xf32>) -> tensor<16x16xf32>
   return %0 : tensor<16x16xf32>
 }
@@ -1038,3 +1026,16 @@ func @main(%arg0: tensor<4xui8>) -> (tensor<4xui8>) {
 // CHECK: ENTRY
 // CHECK: %[[ARG0:.*]] = u8[4] parameter(0)
 //  ROOT %[[RESULT:.*]] = u8[4] not(u8[4] %[[ARG0]])
+
+// -----
+
+// CHECK:  HloModule
+func @main(%arg0: tensor<4xi32>) -> (tensor<*xi32>) {
+  %0 = "xla_hlo.not"(%arg0) : (tensor<4xi32>) -> tensor<4xi32>
+  %1 = tensor_cast %0 : tensor<4xi32> to tensor<*xi32>
+  return %1 : tensor<*xi32>
+}
+
+// CHECK: ENTRY
+// CHECK: %[[ARG0:.*]] = s32[4] parameter(0)
+//  ROOT %[[RESULT:.*]] = s32[4] not(s32[4] %[[ARG0]])

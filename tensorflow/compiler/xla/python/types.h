@@ -26,104 +26,12 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
-
-namespace xla {
-
-// Custom holder types.
-//
-// We must keep the PjRtClient object alive as long as any of the runtime
-// objects are alive. Since we don't have a lot of control over Python
-// destructor ordering, we keep the PjRtClient object as a std::shared_ptr<>,
-// and ensure that each Python runtime object holds a reference to the
-// PjRtClient. An alternative design would be to keep a single global
-// singleton PjRtClient, although this seems less flexible, especially for
-// writing tests.
-//
-// To maintain PjRtClient references, we define pybind11 holder classes that
-// are custom smart pointers that also keep a reference to a PjRtClient.
-// pybind11 has a `keep_alive` feature that has a similar goal, but it doesn't
-// seem sufficiently flexible to describe ownership relationships in cases where
-// the ownership doesn't pertain to a direct argument or return value of a
-// function. Another alternative to the holder classes would be to create proxy
-// objects that contain both a reference and a runtime class; holder classes
-// seem less tedious to define.
-
-// A pair of a PjRtClient reference and an unowned pointer to T.
-template <typename T>
-struct ClientAndPtr {
-  ClientAndPtr() = default;
-  // pybind11 requires that we define a constructor that takes a raw pointer,
-  // but it should be unreachable.
-  explicit ClientAndPtr(T*) {
-    LOG(FATAL) << "ClientAndPtr should constructed via WrapWithClient.";
-  }
-
-  ClientAndPtr(const ClientAndPtr&) = default;
-  ClientAndPtr(ClientAndPtr&&) = default;
-  ClientAndPtr& operator=(const ClientAndPtr&) = default;
-  ClientAndPtr& operator=(ClientAndPtr&&) = default;
-
-  std::shared_ptr<PjRtClient> client;
-  T* contents;
-
-  T* get() const { return contents; }
-  T* operator->() const { return contents; }
-  T& operator*() const { return *contents; }
-};
-
-// By defining a templated helper function, we can use return type deduction
-// and avoid specifying types at the caller.
-template <typename T>
-ClientAndPtr<T> WrapWithClient(std::shared_ptr<PjRtClient> client,
-                               T* contents) {
-  ClientAndPtr<T> result;
-  result.client = std::move(client);
-  result.contents = contents;
-  return result;
-}
-
-// A pair of a PjRtClient reference and an owned pointer to T.
-template <typename T>
-struct ClientAndUniquePtr {
-  ClientAndUniquePtr() = default;
-  // pybind11 requires that we define a constructor that takes a raw pointer,
-  // but it should be unreachable.
-  explicit ClientAndUniquePtr(T*) {
-    LOG(FATAL) << "ClientAndUniquePtr should constructed via WrapWithClient.";
-  }
-  ClientAndUniquePtr(const ClientAndUniquePtr&) = delete;
-  ClientAndUniquePtr(ClientAndUniquePtr&&) = default;
-  ClientAndUniquePtr& operator=(const ClientAndUniquePtr&) = delete;
-  ClientAndUniquePtr& operator=(ClientAndUniquePtr&&) = default;
-
-  std::shared_ptr<PjRtClient> client;
-  std::unique_ptr<T> contents;
-
-  T* get() const { return contents.get(); }
-  T* operator->() const { return contents.get(); }
-  T& operator*() const { return *contents; }
-};
-
-template <typename T>
-ClientAndUniquePtr<T> WrapWithClient(std::shared_ptr<PjRtClient> client,
-                                     std::unique_ptr<T> contents) {
-  ClientAndUniquePtr<T> result;
-  result.client = std::move(client);
-  result.contents = std::move(contents);
-  return result;
-}
-
-}  // namespace xla
-
-PYBIND11_DECLARE_HOLDER_TYPE(T, xla::ClientAndPtr<T>);
-PYBIND11_DECLARE_HOLDER_TYPE(T, xla::ClientAndUniquePtr<T>);
 
 namespace xla {
 

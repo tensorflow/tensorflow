@@ -1969,6 +1969,56 @@ TEST(GcsFileSystemTest, GetMatchingPaths_SelfDirectoryMarker) {
   EXPECT_EQ(std::vector<string>({"gs://bucket/path/file3.txt"}), result);
 }
 
+TEST(GcsFileSystemTest, GetMatchingPaths_SlashInObjectName) {
+  std::vector<HttpRequest*> requests({new FakeHttpRequest(
+      "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
+      "fields=items%2Fname%2CnextPageToken&prefix=path%2F\n"
+      "Auth Token: fake_token\n"
+      "Timeouts: 5 1 10\n",
+      "{\"items\": [ "
+      "  { \"name\": \"path/\" },"
+      "  { \"name\": \"path//foo.txt\" }]}")});
+  GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+                   std::unique_ptr<HttpRequest::Factory>(
+                       new FakeHttpRequestFactory(&requests)),
+                   std::unique_ptr<ZoneProvider>(new FakeZoneProvider),
+                   0 /* block size */, 0 /* max bytes */, 0 /* max staleness */,
+                   0 /* stat cache max age */, 0 /* stat cache max entries */,
+                   0 /* matching paths cache max age */,
+                   0 /* matching paths cache max entries */, kTestRetryConfig,
+                   kTestTimeoutConfig, *kAllowedLocationsDefault,
+                   nullptr /* gcs additional header */);
+
+  std::vector<string> result;
+  TF_EXPECT_OK(fs.GetMatchingPaths("gs://bucket/path/*", &result));
+  EXPECT_EQ(std::vector<string>(), result);
+}
+
+TEST(GcsFileSystemTest, GetMatchingPaths_SlashInObjectNameEscaped) {
+  std::vector<HttpRequest*> requests({new FakeHttpRequest(
+      "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
+      "fields=items%2Fname%2CnextPageToken&prefix=path%2F\n"
+      "Auth Token: fake_token\n"
+      "Timeouts: 5 1 10\n",
+      "{\"items\": [ "
+      "  { \"name\": \"path/\" },"
+      "  { \"name\": \"path//foo.txt\" }]}")});
+  GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+                   std::unique_ptr<HttpRequest::Factory>(
+                       new FakeHttpRequestFactory(&requests)),
+                   std::unique_ptr<ZoneProvider>(new FakeZoneProvider),
+                   0 /* block size */, 0 /* max bytes */, 0 /* max staleness */,
+                   0 /* stat cache max age */, 0 /* stat cache max entries */,
+                   0 /* matching paths cache max age */,
+                   0 /* matching paths cache max entries */, kTestRetryConfig,
+                   kTestTimeoutConfig, *kAllowedLocationsDefault,
+                   nullptr /* gcs additional header */);
+
+  std::vector<string> result;
+  TF_EXPECT_OK(fs.GetMatchingPaths("gs://bucket/path/\\/*", &result));
+  EXPECT_EQ(std::vector<string>({"gs://bucket/path//foo.txt"}), result);
+}
+
 TEST(GcsFileSystemTest, GetMatchingPaths_FolderAndWildcard_NoMatches) {
   std::vector<HttpRequest*> requests({new FakeHttpRequest(
       "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"

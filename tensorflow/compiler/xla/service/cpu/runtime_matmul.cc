@@ -114,6 +114,22 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenMatMulF64(
                          transpose_rhs);
 }
 
+TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenMatMulC64(
+    const void* run_options_ptr, std::complex<float>* out,
+    std::complex<float>* lhs, std::complex<float>* rhs, int64 m, int64 n,
+    int64 k, int32 transpose_lhs, int32 transpose_rhs) {
+  MatMulDispatch<std::complex<float>>(run_options_ptr, out, lhs, rhs, m, n, k,
+                                      transpose_lhs, transpose_rhs);
+}
+
+TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenMatMulC128(
+    const void* run_options_ptr, std::complex<double>* out,
+    std::complex<double>* lhs, std::complex<double>* rhs, int64 m, int64 n,
+    int64 k, int32 transpose_lhs, int32 transpose_rhs) {
+  MatMulDispatch<std::complex<double>>(run_options_ptr, out, lhs, rhs, m, n, k,
+                                       transpose_lhs, transpose_rhs);
+}
+
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenMatMulS32(
     const void* run_options_ptr, int32* out, int32* lhs, int32* rhs, int64 m,
     int64 n, int64 k, int32 transpose_lhs, int32 transpose_rhs) {

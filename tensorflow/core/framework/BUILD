@@ -1008,6 +1008,7 @@ tf_cc_tests(
     srcs = [
         "allocator_test.cc",
         "attr_value_util_test.cc",
+        "batch_util_test.cc",
         "bfloat16_test.cc",
         "cancellation_test.cc",
         "common_shape_fns_test.cc",

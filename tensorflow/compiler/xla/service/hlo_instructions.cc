@@ -556,6 +556,51 @@ bool HloCollectiveInstruction::IdenticalSlowPath(
                        });
 }
 
+HloAllGatherInstruction::HloAllGatherInstruction(
+    const Shape& shape, HloInstruction* operand, int64 all_gather_dimension,
+    const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
+    const absl::optional<int64>& channel_id, bool use_global_device_ids)
+    : HloCollectiveInstruction(HloOpcode::kAllGather, shape, {operand},
+                               replica_groups, constrain_layout, channel_id),
+      all_gather_dimension_(all_gather_dimension),
+      use_global_device_ids_(use_global_device_ids) {}
+
+std::vector<string> HloAllGatherInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  std::vector<string> result =
+      HloCollectiveInstruction::ExtraAttributesToStringImpl(options);
+  result.push_back(StrCat("dimensions={", all_gather_dimension_, "}"));
+  if (use_global_device_ids_) {
+    result.push_back("use_global_device_ids=true");
+  }
+  return result;
+}
+
+std::unique_ptr<HloInstruction>
+HloAllGatherInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* /*context*/) const {
+  return absl::make_unique<HloAllGatherInstruction>(
+      shape, new_operands[0], all_gather_dimension(), replica_groups(),
+      constrain_layout(), channel_id(), use_global_device_ids());
+}
+
+HloInstructionProto HloAllGatherInstruction::ToProto() const {
+  HloInstructionProto proto = HloCollectiveInstruction::ToProto();
+  proto.add_dimensions(all_gather_dimension_);
+  return proto;
+}
+
+bool HloAllGatherInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloAllGatherInstruction&>(other);
+  return HloCollectiveInstruction::IdenticalSlowPath(other, eq_computations) &&
+         all_gather_dimension_ == casted_other.all_gather_dimension() &&
+         use_global_device_ids() == casted_other.use_global_device_ids();
+}
+
 HloAllReduceInstruction::HloAllReduceInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
@@ -658,10 +703,10 @@ bool HloAllToAllInstruction::IdenticalSlowPath(
 }
 
 HloCollectivePermuteInstruction::HloCollectivePermuteInstruction(
-    const Shape& shape, HloInstruction* operand,
+    HloOpcode opcode, const Shape& shape, HloInstruction* operand,
     const std::vector<std::pair<int64, int64>>& source_target_pairs,
     const absl::optional<int64>& channel_id)
-    : HloChannelInstruction(HloOpcode::kCollectivePermute, shape, channel_id),
+    : HloChannelInstruction(opcode, shape, channel_id),
       source_target_pairs_(source_target_pairs) {
   AppendOperand(operand);
 }
@@ -693,6 +738,9 @@ bool HloCollectivePermuteInstruction::IdenticalSlowPath(
     const HloInstruction& other,
     const std::function<bool(const HloComputation*, const HloComputation*)>&
         eq_computations) const {
+  if (opcode() != other.opcode()) {
+    return false;
+  }
   const auto& casted_other =
       static_cast<const HloCollectivePermuteInstruction&>(other);
   return HloChannelInstruction::IdenticalSlowPath(other, eq_computations) &&
@@ -707,7 +755,7 @@ HloCollectivePermuteInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* /*context*/) const {
   return absl::make_unique<HloCollectivePermuteInstruction>(
-      shape, new_operands[0], source_target_pairs(), channel_id());
+      opcode(), shape, new_operands[0], source_target_pairs(), channel_id());
 }
 
 HloReverseInstruction::HloReverseInstruction(const Shape& shape,
@@ -1377,9 +1425,25 @@ void HloFusionInstruction::MergeFusionInstruction(
         unfused_instructions.empty());
   // Replace instruction_to_merge use of 'this' with unfused_root.
   TF_CHECK_OK(instruction_to_merge->ReplaceUseWith(this, unfused_root));
-  // Fuse 'unfused_instructions' into 'this'.
+
+  // Build a dummy root for the cloned fusion as we may remove the original root
+  // in the fusion process.
+  if (!unfused_instructions.empty()) {
+    HloComputation* computation = unfused_root->parent();
+    auto* dummy_root = computation->AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::Zero(U32)));
+    computation->set_root_instruction(dummy_root,
+                                      /*accept_different_shape=*/true);
+  }
+
+  // Fuse 'unfused_instructions' into 'this'. Everytime we fuse an instruction
+  // we remove it from the closed fusion node. This is so that we don't add
+  // extra users to the producer of that instruction (we use user count to
+  // decide if a side-effectful instruction is fusible).
   for (auto& instruction : unfused_instructions) {
-    FuseInstruction(instruction);
+    auto* fused = FuseInstruction(instruction);
+    TF_CHECK_OK(instruction->ReplaceAllUsesWith(fused));
+    TF_CHECK_OK(instruction->parent()->RemoveInstruction(instruction));
   }
   CHECK_EQ(0, cloned_fusion->user_count());
   TF_CHECK_OK(parent()->parent()->RemoveEmbeddedComputation(
@@ -1754,7 +1818,8 @@ bool HloRngInstruction::IdenticalSlowPath(
     const HloInstruction& other,
     const std::function<bool(const HloComputation*, const HloComputation*)>&
         eq_computations) const {
-  return true;
+  const auto& casted_other = static_cast<const HloRngInstruction&>(other);
+  return distribution_ == casted_other.distribution_;
 }
 
 std::unique_ptr<HloInstruction> HloRngInstruction::CloneWithNewOperandsImpl(
@@ -1819,8 +1884,14 @@ std::unique_ptr<HloInstruction>
 HloParameterInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
-  return absl::make_unique<HloParameterInstruction>(parameter_number_, shape,
-                                                    name());
+  auto clone = absl::make_unique<HloParameterInstruction>(parameter_number_,
+                                                          shape, name());
+  if (parameter_replicated_at_leaf_buffers_ &&
+      ShapeUtil::Equal(shape, this->shape())) {
+    clone->set_parameter_replicated_at_leaf_buffers(
+        *parameter_replicated_at_leaf_buffers_);
+  }
+  return clone;
 }
 
 HloGetTupleElementInstruction::HloGetTupleElementInstruction(

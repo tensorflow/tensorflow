@@ -42,9 +42,17 @@ constexpr int64 kAutotune = -1;
 constexpr char kParallelism[] = "parallelism";
 constexpr char kBufferSize[] = "buffer_size";
 
+// A key used to identify input time gradient.
+constexpr char kInputTimeKey[] = "input_time";
+
 enum class AutotuneAlgorithm {
   HILL_CLIMB = 0,
   GRADIENT_DESCENT = 1,
+};
+
+enum class TraversalOrder {
+  BFS = 0,
+  REVERSE_BFS = 1,
 };
 
 // Represents thread-safe state that can be shared between an input pipeline and
@@ -142,7 +150,31 @@ class Node {
         metrics_(name_),
         output_(args.output.get()) {}
 
-  virtual ~Node() { FlushMetrics(); }
+  virtual ~Node() {
+    // Clear the sub-nodes instead of relying on implicit shared pointer
+    // destructor to avoid potential stack overflow when the tree is deep.
+    std::deque<std::shared_ptr<Node>> queue;
+    {
+      mutex_lock l(mu_);
+      while (inputs_.size() > 0) {
+        queue.push_back(inputs_.front());
+        inputs_.pop_front();
+      }
+    }
+    while (!queue.empty()) {
+      auto node = queue.back();
+      queue.pop_back();
+      {
+        mutex_lock l(node->mu_);
+        while (node->inputs_.size() > 0) {
+          queue.push_back(node->inputs_.front());
+          node->inputs_.pop_front();
+        }
+      }
+    }
+
+    FlushMetrics();
+  }
 
   // Adds an input.
   void add_input(std::shared_ptr<Node> node) TF_LOCKS_EXCLUDED(mu_) {
@@ -242,6 +274,7 @@ class Node {
 
   // Records that a node thread has stopped executing.
   void record_stop(int64 time_nanos) TF_LOCKS_EXCLUDED(mu_) {
+    // TODO(jsimsa): Use DCHECK_NE(work_start_, 0) here.
     if (work_start_ != 0) {
       processing_time_ += time_nanos - work_start_;
       work_start_ = 0;
@@ -261,6 +294,26 @@ class Node {
     autotune_.store(autotune);
   }
 
+  // Given the average time between output events (`output_time`), the average
+  // time between input events (`input_time`) and the buffer size, the method
+  // computes the expected time an input event will have to wait.
+  //
+  // The wait time is approximated as the product of the probability the buffer
+  // will be empty and the time it takes to produce an element into the buffer.
+  //
+  // The formula used for computing the probability is derived by modeling the
+  // problem as an M/M/1/K queue
+  // (https://en.wikipedia.org/wiki/Birth%E2%80%93death_process#M/M/1/K_queue).
+  //
+  // Collects derivatives of `ComputeWaitTime` w.r.t `output_time`, `input_time'
+  // and `buffer_size` if the corresponding pointers are not `nullptr`.
+  static double ComputeWaitTime(const double& output_time,
+                                const double& input_time,
+                                const double& buffer_size,
+                                double* output_time_derivative,
+                                double* input_time_derivative,
+                                double* buffer_size_derivative);
+
   // Collects tunable parameters in the subtree rooted in this node.
   void CollectTunableParameters(
       absl::flat_hash_map<string, std::shared_ptr<Parameter>>* parameters) const
@@ -272,11 +325,11 @@ class Node {
   // Flushes the metrics recorded by this node.
   void FlushMetrics() TF_LOCKS_EXCLUDED(mu_);
 
-  // Returns the per-element output time for this node and if `gradient` is not
-  // `nullptr`, collects the gradient of the output time w.r.t. tunable
-  // parameters of the subtree rooted in this node and the last input time.
-  double OutputTime(std::vector<double>* input_times,
-                    absl::flat_hash_map<string, double>* gradient) const
+  // Returns the per-element output time for this node and if `gradients` is not
+  // `nullptr`, collects the output time gradient w.r.t. tunable parameters of
+  // the subtree rooted in this node.
+  double OutputTime(absl::flat_hash_map<string, double>* input_times,
+                    absl::flat_hash_map<string, double>* gradients) const
       TF_LOCKS_EXCLUDED(mu_);
 
   // Returns a copy of this node, making a deep copy of its inputs and a
@@ -370,19 +423,33 @@ class Node {
   // Returns the average size of an element buffered in this node.
   double AverageBufferedElementSize() const TF_SHARED_LOCKS_REQUIRED(mu_);
 
-  // Returns the sum of per-element output time for the inputs of this node and
-  // if `gradient` is not `nullptr`, collects gradients of output times w.r.t.
-  // tunable parameters and the last input time.
-  double OutputTimeForInputs(std::vector<double>* input_times,
-                             absl::flat_hash_map<string, double>* gradient)
-      const TF_SHARED_LOCKS_REQUIRED(mu_);
+  // Returns the sum of per-element output time for the tunable inputs of this
+  // node.
+  double OutputTimeForInputs(
+      const absl::flat_hash_map<string, double>& output_times) const
+      TF_SHARED_LOCKS_REQUIRED(mu_);
 
-  // Returns the per-element output time for this node and if `gradient` is not
-  // `nullptr`, collects the gradient of the output time w.r.t. tunable
-  // parameters of the subtree rooted in this node and the last input time.
-  virtual double OutputTimeLocked(std::vector<double>* input_times,
-                                  absl::flat_hash_map<string, double>* gradient)
+  // Returns the sum of output time gradient w.r.t. input time for the tunable
+  // inputs of this node.
+  double OutputTimeGradientsForInputs(
+      const absl::flat_hash_map<string, double>& output_time_gradients) const
+      TF_SHARED_LOCKS_REQUIRED(mu_);
+
+  // Computes the input time for this node and stores it in `input_times`.
+  virtual void InputTimeLocked(absl::flat_hash_map<string, double>* input_times)
       const TF_SHARED_LOCKS_REQUIRED(mu_) = 0;
+
+  // Computes the per-element output time for this node and stores it in
+  // `output_times`. If `gradients` is not `nullptr`, computes the output time
+  // gradient w.r.t. tunable parameters of the subtree rooted in this node and
+  // stores it in `gradients`, also computes the output time gradient w.r.t.
+  // input time and stores it in `output_time_gradients`.
+  virtual void OutputTimeLocked(
+      const absl::flat_hash_map<string, double>& input_times,
+      absl::flat_hash_map<string, double>* gradients,
+      absl::flat_hash_map<string, double>* output_times,
+      absl::flat_hash_map<string, double>* output_time_gradients) const
+      TF_SHARED_LOCKS_REQUIRED(mu_) = 0;
 
   // Returns the sum of per-element processing time for the inputs of this node
   // by adding values for input nodes in `total_processing_times`. Processing
@@ -408,18 +475,20 @@ class Node {
       absl::flat_hash_map<string, double>* total_processing_times)
       TF_SHARED_LOCKS_REQUIRED(mu_) = 0;
 
-  // Returns a vector of nodes of the subtree rooted in this node.
-  // The nodes are in the reverse breadth-first search order.
-  NodeVector CollectNodes() const;
+  // Returns a vector of nodes of the subtree rooted in this node. The nodes are
+  // either in breadth-first search or reverse breadth-first search order
+  // depending on the `order` argument. The root node itself is not collected.
+  NodeVector CollectNodes(TraversalOrder order) const
+      TF_SHARED_LOCKS_REQUIRED(mu_);
 
   // Collect tunable parameters for the node.
   void CollectTunableParametersHelper(
-      absl::flat_hash_map<string, std::shared_ptr<Parameter>>* parameters)
-      const;
+      absl::flat_hash_map<string, std::shared_ptr<Parameter>>* parameters) const
+      TF_SHARED_LOCKS_REQUIRED(mu_);
 
   // Build up debug string for the node and store in the debug strings map.
-  void DebugStringHelper(
-      absl::flat_hash_map<string, string>* debug_strings) const;
+  void DebugStringHelper(absl::flat_hash_map<string, string>* debug_strings)
+      const TF_SHARED_LOCKS_REQUIRED(mu_);
 
   // Copy the node and add the (input, copy) pairs to the NodePairList.
   std::shared_ptr<Node> SnapshotHelper(std::shared_ptr<Node> clone_base,
@@ -427,12 +496,14 @@ class Node {
 
   // Compute total buffered bytes for the node and store in the total bytes map.
   void TotalBufferedBytesHelper(
-      absl::flat_hash_map<string, double>* total_bytes) const;
+      absl::flat_hash_map<string, double>* total_bytes) const
+      TF_SHARED_LOCKS_REQUIRED(mu_);
 
   // Compute total maximum buffered bytes for the node and store in the total
   // bytes map.
   void TotalMaximumBufferedBytesHelper(
-      absl::flat_hash_map<string, double>* total_bytes) const;
+      absl::flat_hash_map<string, double>* total_bytes) const
+      TF_SHARED_LOCKS_REQUIRED(mu_);
 
   // Stores the time passed to the last call to `Node::record_start()` on the
   // current thread.
@@ -528,10 +599,9 @@ class Model {
   // Indicates whether to collect resource usage.
   bool collect_resource_usage() const { return collect_resource_usage_; }
 
-  // Adds a node with the given name and given output. The method returns
-  // a pointer to the node but does not transfer ownership.
+  // Adds a node with the given name and given parent.
   void AddNode(Node::Factory factory, const string& name,
-               const string& output_name, std::shared_ptr<Node>* out_node)
+               std::shared_ptr<Node> parent, std::shared_ptr<Node>* out_node)
       TF_LOCKS_EXCLUDED(mu_);
 
   // Flushes metrics record by the model.
@@ -542,7 +612,7 @@ class Model {
       TF_LOCKS_EXCLUDED(mu_);
 
   // Removes the given node.
-  void RemoveNode(const string& name) TF_LOCKS_EXCLUDED(mu_);
+  void RemoveNode(std::shared_ptr<Node> node) TF_LOCKS_EXCLUDED(mu_);
 
  private:
   // Collects tunable parameters in the tree rooted in the given node, returning
@@ -575,11 +645,11 @@ class Model {
   // an element divided by CPU budget.
   void OptimizeGradientDescent(int64 cpu_budget, int64 ram_budget);
 
-  // Collects the output time and if `gradient` is not `nullptr`, the output
+  // Collects the output time and if `gradients` is not `nullptr`, the output
   // time gradient w.r.t. tunable parameters of the subtree rooted in the given
-  // node and the last input time.
+  // node.
   double OutputTime(std::shared_ptr<Node> node,
-                    absl::flat_hash_map<string, double>* gradient);
+                    absl::flat_hash_map<string, double>* gradients);
 
   // Collects the processing time for the given node.
   double TotalProcessingTime(std::shared_ptr<Node> node);
@@ -600,8 +670,6 @@ class Model {
   mutex mu_;
   int64 id_counter_ TF_GUARDED_BY(mu_) = 1;
   std::shared_ptr<Node> output_ TF_GUARDED_BY(mu_);
-  absl::flat_hash_map<string, std::shared_ptr<Node>> lookup_table_
-      TF_GUARDED_BY(mu_);
 
   // Indicates whether the modeling framework should collect resource usage
   // (e.g. CPU, memory). The logic for collecting this information assumes that

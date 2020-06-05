@@ -1,8 +1,8 @@
 path: "tensorflow.keras.Sequential"
 tf_class {
   is_instance: "<class \'tensorflow.python.keras.engine.sequential.Sequential\'>"
+  is_instance: "<class \'tensorflow.python.keras.engine.functional.Functional\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.training.Model\'>"
-  is_instance: "<class \'tensorflow.python.keras.engine.network.Network\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"
   is_instance: "<class \'tensorflow.python.training.tracking.tracking.AutoTrackable\'>"
@@ -108,6 +108,10 @@ tf_class {
   }
   member {
     name: "submodules"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "supports_masking"
     mtype: "<type \'property\'>"
   }
   member {

@@ -1,7 +1,7 @@
 # Description:
 #   Contains Keras integration tests that verify with other TF high level APIs.
 
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test", "tf_py_test")
 
 package(
     default_visibility = [
@@ -65,6 +65,17 @@ tf_py_test(
     name = "vectorized_map_test",
     srcs = ["vectorized_map_test.py"],
     python_version = "PY3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:extra_py_tests_deps",
+    ],
+)
+
+cuda_py_test(
+    name = "gradient_checkpoint_test",
+    srcs = ["gradient_checkpoint_test.py"],
+    python_version = "PY3",
+    tags = ["no_rocm"],
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:extra_py_tests_deps",

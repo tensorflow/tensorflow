@@ -45,7 +45,7 @@ export TF_TEST_FLAGS="--define=no_tensorflow_py_deps=true --test_lang_filters=py
 export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/... "
 export TF_PIP_TESTS="test_pip_virtualenv_non_clean test_pip_virtualenv_clean"
 export TF_TEST_FILTER_TAGS='-no_oss,-oss_serial,-no_oss_py35,-v1only'
-export IS_NIGHTLY=0 # Not nightly
+#export IS_NIGHTLY=0 # Not nightly; uncomment if building from tf repo.
 export TF_PROJECT_NAME="tensorflow_cpu"
 export TF_PIP_TEST_ROOT="pip_test"
 

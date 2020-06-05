@@ -18,6 +18,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/delegates/flex:delegate",
+        "//tensorflow/lite/delegates/utils:simple_delegate",
         "//tensorflow/lite/java/jni",
         "//tensorflow/lite/testing:init_tensorflow",
     ],

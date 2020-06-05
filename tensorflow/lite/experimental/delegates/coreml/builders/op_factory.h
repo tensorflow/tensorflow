@@ -44,6 +44,8 @@ OpBuilder* CreateTransposeConvolutionOpBuilder(GraphBuilder* graph_builder);
 
 OpBuilder* CreateActivationLayerBuilder(GraphBuilder* graph_builder);
 OpBuilder* CreateThresholdLayerBuilder(GraphBuilder* graph_builder);
+// Dummy Opbuilder for nodes that are claimed but not used. ex) FP16 dequantize
+OpBuilder* CreateDummyOpBuilder(GraphBuilder* graph_builder);
 
 }  // namespace coreml
 }  // namespace delegates

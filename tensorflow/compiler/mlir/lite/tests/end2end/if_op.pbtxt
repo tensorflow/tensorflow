@@ -1,0 +1,422 @@
+# RUN: tf_tfl_translate -tf-input-arrays=a,b -tf-input-data-types=DT_FLOAT,DT_FLOAT -tf-input-shapes=4:4 -tf-output-arrays=StatefulIf,StatelessIf %s -o - --output-mlir | FileCheck %s --dump-input-on-failure
+
+node {
+  name: "tf.Less"
+  op: "Less"
+  input: "a"
+  input: "b"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "my_equal"
+  op: "Equal"
+  input: "a"
+  input: "b"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "cst0"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 4
+          }
+        }
+        float_val: 1.0
+        float_val: 2.0
+        float_val: 3.0
+        float_val: 4.0
+      }
+    }
+  }
+}
+node {
+  name: "cst1"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 4
+          }
+        }
+        float_val: 5.0
+        float_val: 6.0
+        float_val: 7.0
+        float_val: 8.0
+      }
+    }
+  }
+}
+node {
+  name: "StatefulIf"
+  op: "If"
+  input: "tf.Less"
+  input: "a"
+  input: "b"
+  input: "cst0"
+  input: "cst1"
+  attr {
+    key: "Tcond"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "Tin"
+    value {
+      list {
+        type: DT_FLOAT
+        type: DT_FLOAT
+        type: DT_FLOAT
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "Tout"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "else_branch"
+    value {
+      func {
+        name: "cond_false"
+      }
+    }
+  }
+  attr {
+    key: "then_branch"
+    value {
+      func {
+        name: "cond_true"
+      }
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "StatelessIf"
+  op: "StatelessIf"
+  input: "my_equal"
+  input: "a"
+  input: "b"
+  attr {
+    key: "Tcond"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "Tin"
+    value {
+      list {
+        type: DT_FLOAT
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "Tout"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "else_branch"
+    value {
+      func {
+        name: "cond_false_1"
+      }
+    }
+  }
+  attr {
+    key: "then_branch"
+    value {
+      func {
+        name: "cond_true_1"
+      }
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "main"
+  op: "_Retval"
+  input: "StatefulIf"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 0
+    }
+  }
+}
+node {
+  name: "main1"
+  op: "_Retval"
+  input: "StatelessIf"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 1
+    }
+  }
+}
+node {
+  name: "a"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "b"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  experimental_debug_info {
+  }
+}
+library {
+  function {
+    signature {
+      name: "cond_true"
+      input_arg {
+        name: "cond_true_arg0"
+        type: DT_FLOAT
+      }
+      input_arg {
+        name: "cond_true_arg1"
+        type: DT_FLOAT
+      }
+      input_arg {
+        name: "cond_true_arg2"
+        type: DT_FLOAT
+      }
+      input_arg {
+        name: "cond_true_arg3"
+        type: DT_FLOAT
+      }
+      output_arg {
+        name: "cond_true_ret"
+        type: DT_FLOAT
+      }
+    }
+    node_def {
+      name: "tf.Add"
+      op: "Add"
+      input: "cond_true_arg2"
+      input: "cond_true_arg3"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "tf.Add"
+      }
+    }
+    ret {
+      key: "cond_true_ret"
+      value: "tf.Add:z:0"
+    }
+  }
+  function {
+    signature {
+      name: "cond_false"
+      input_arg {
+        name: "cond_false_arg0"
+        type: DT_FLOAT
+      }
+      input_arg {
+        name: "cond_false_arg1"
+        type: DT_FLOAT
+      }
+      input_arg {
+        name: "cond_false_arg2"
+        type: DT_FLOAT
+      }
+      input_arg {
+        name: "cond_false_arg3"
+        type: DT_FLOAT
+      }
+      output_arg {
+        name: "cond_false_ret"
+        type: DT_FLOAT
+      }
+    }
+    node_def {
+      name: "tf.Mul"
+      op: "Mul"
+      input: "cond_false_arg0"
+      input: "cond_false_arg3"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "tf.Mul"
+      }
+    }
+    ret {
+      key: "cond_false_ret"
+      value: "tf.Mul:z:0"
+    }
+  }
+  function {
+    signature {
+      name: "cond_true_1"
+      input_arg {
+        name: "cond_true_arg0"
+        type: DT_FLOAT
+      }
+      input_arg {
+        name: "cond_true_arg1"
+        type: DT_FLOAT
+      }
+      output_arg {
+        name: "cond_true_ret"
+        type: DT_FLOAT
+      }
+    }
+    node_def {
+      name: "tf.Sub"
+      op: "Sub"
+      input: "cond_true_arg0"
+      input: "cond_true_arg1"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "tf.Sub"
+      }
+    }
+    ret {
+      key: "cond_true_ret"
+      value: "tf.Sub:z:0"
+    }
+  }
+  function {
+    signature {
+      name: "cond_false_1"
+      input_arg {
+        name: "cond_false_arg0"
+        type: DT_FLOAT
+      }
+      input_arg {
+        name: "cond_false_arg1"
+        type: DT_FLOAT
+      }
+      output_arg {
+        name: "cond_false_ret"
+        type: DT_FLOAT
+      }
+    }
+    node_def {
+      name: "tf.Div"
+      op: "Div"
+      input: "cond_false_arg0"
+      input: "cond_false_arg1"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "tf.Div"
+      }
+    }
+    ret {
+      key: "cond_false_ret"
+      value: "tf.Div:z:0"
+    }
+  }
+}
+versions {
+  producer: 115
+  min_consumer: 12
+}
+
+# CHECK:      func @StatefulIf_else
+# CHECK-NEXT: constant dense<[5.000000e+00, 6.000000e+00, 7.000000e+00, 8.000000e+00]>
+# CHECK-NEXT: tfl.mul
+# CHECK:      func @StatefulIf_then
+# CHECK-NEXT: constant dense<[6.000000e+00, 8.000000e+00, 1.000000e+01, 1.200000e+01]>
+# CHECK-NEXT: return
+# CHECK:      func @StatelessIf_else
+# CHECK-NEXT: tfl.div
+# CHECK:      func @StatelessIf_then
+# CHECK-NEXT: tfl.sub
+# CHECK:      "tf.If"{{.+}}else_branch = @StatelessIf_else{{.+}}then_branch = @StatelessIf_then
+# CHECK:      "tf.If"{{.+}}else_branch = @StatefulIf_else{{.+}}then_branch = @StatefulIf_then
+

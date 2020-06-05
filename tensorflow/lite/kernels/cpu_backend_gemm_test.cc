@@ -25,7 +25,7 @@ limitations under the License.
 #include <type_traits>
 
 #include <gtest/gtest.h>
-#include "ruy/ruy.h"  // from @ruy
+#include "ruy/reference_mul.h"  // from @ruy
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 
@@ -353,8 +353,7 @@ void ReferenceGemm(
   ruy::MulParams<AccumScalar, DstScalar> ruy_mul_params;
   cpu_backend_gemm::detail::MakeRuyMulParams(params, &ruy_mul_params);
 
-  ruy::Mul<ruy::Path::kReference>(ruy_lhs, ruy_rhs, ruy_mul_params,
-                                  context->ruy_context(), &ruy_dst);
+  ruy::ReferenceMul(ruy_lhs, ruy_rhs, ruy_mul_params, &ruy_dst);
 }
 
 template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
@@ -364,7 +363,8 @@ void TestSomeGemm(int rows, int depth, int cols,
   CpuBackendContext cpu_backend_context;
   std::default_random_engine random_engine;
   cpu_backend_context.SetMaxNumThreads(1 + (random_engine() % 8));
-
+  bool use_caching = static_cast<bool>(random_engine() % 2);
+  cpu_backend_context.SetUseCaching(use_caching);
   const bool use_golden = !golden.empty();
 
   std::vector<LhsScalar> lhs_data;

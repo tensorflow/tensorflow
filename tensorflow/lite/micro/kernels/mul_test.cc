@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
@@ -35,7 +35,7 @@ void TestMulFloat(std::initializer_list<int> input1_dims_data,
   TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);
   const int output_dims_count = ElementCount(*output_dims);
 
-  ::tflite::ops::micro::AllOpsResolver resolver;
+  ::tflite::AllOpsResolver resolver;
 
   constexpr int inputs_size = 2;
   constexpr int outputs_size = 1;
@@ -49,7 +49,7 @@ void TestMulFloat(std::initializer_list<int> input1_dims_data,
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_MUL, 1);
+      resolver.FindOp(tflite::BuiltinOperator_MUL);
 
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
@@ -107,7 +107,7 @@ void TestMulQuantized(std::initializer_list<int> input1_dims_data,
   TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);
   const int output_dims_count = ElementCount(*output_dims);
 
-  ::tflite::ops::micro::AllOpsResolver resolver;
+  ::tflite::AllOpsResolver resolver;
 
   constexpr int inputs_size = 2;
   constexpr int outputs_size = 1;
@@ -124,7 +124,7 @@ void TestMulQuantized(std::initializer_list<int> input1_dims_data,
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_MUL, 1);
+      resolver.FindOp(tflite::BuiltinOperator_MUL);
 
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 

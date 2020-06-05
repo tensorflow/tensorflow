@@ -1,4 +1,4 @@
-# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -46,12 +46,18 @@ objc_library(
     name = "coreml_delegate",
     srcs = ["coreml_delegate.mm"],
     hdrs = ["coreml_delegate.h"],
+    module_name = "TensorFlowLiteCCoreML",
+    # By setting CoreML as weak_framework, the TensorFlow Lite can be built for older iOS versions.
+    weak_sdk_frameworks = [
+        "CoreML",
+    ],
     deps = [
         ":coreml_delegate_kernel",
         ":mlmodel_proto_cc",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite/experimental/delegates/coreml/builders:op_builder",
     ],
 )

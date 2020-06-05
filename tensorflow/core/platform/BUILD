@@ -386,6 +386,7 @@ py_test(
     name = "ram_file_system_test",
     srcs = ["ram_file_system_test.py"],
     python_version = "PY3",
+    tags = ["no_windows"],  # TODO(b/156428279): reenable this test once the image is updated.
     deps = [
         "//tensorflow:tensorflow_py",
     ],
@@ -621,7 +622,7 @@ cc_library(
         ":stringpiece",
         ":stringprintf",
         ":types",
-        "//tensorflow/core:error_codes_proto_impl_cc",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/base",
     ],
 )
@@ -674,6 +675,7 @@ cc_library(
 cc_library(
     name = "strong_hash",
     hdrs = ["strong_hash.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":platform",
         ":types",
@@ -1472,6 +1474,7 @@ filegroup(
         "abi.h",
         "blocking_counter.h",
         "byte_order.h",
+        "casts.h",
         "coding.cc",
         "coding.h",
         "context.h",
@@ -1557,7 +1560,6 @@ filegroup(
     srcs = [
         "base64.cc",
         "base64.h",
-        "casts.h",
         "cpu_feature_guard.cc",
         "cpu_feature_guard.h",
         "fingerprint.h",

@@ -16,12 +16,15 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/group_events.h"
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/core/profiler/utils/xplane_test_utils.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -232,6 +235,84 @@ TEST(GroupEventsTest, FunctionOpTest) {
   EXPECT_EQ(device_plane_visitor.GetStatType(gpu_kernel.stats(2)),
             StatType::kIsEager);
   EXPECT_EQ(gpu_kernel.stats(2).int64_value(), 0);
+}
+
+TEST(GroupEventsTest, SemanticArgTest) {
+  constexpr int64 kStepNum = 100;
+  constexpr int kContextType = 123;
+  constexpr uint64 kContextId = 456;
+
+  XSpace raw_space;
+  XPlane* raw_plane = raw_space.add_planes();
+  XPlaneBuilder plane(raw_plane);
+  plane.ReserveLines(2);
+  auto root_producer = plane.GetOrCreateLine(0);
+  CreateXEvent(&plane, &root_producer, HostEventType::kTraceContext, 0, 100,
+               {{StatType::kIsRoot, 1}, {StatType::kStepNum, kStepNum}});
+  CreateXEvent(&plane, &root_producer, HostEventType::kFunctionRun, 10, 90,
+               {{StatType::kProducerType, kContextType},
+                {StatType::kProducerId, kContextId}});
+  auto consumer = plane.GetOrCreateLine(1);
+  CreateXEvent(&plane, &consumer, HostEventType::kExecutorStateProcess, 20, 80,
+               {{StatType::kConsumerType, kContextType},
+                {StatType::kConsumerId, kContextId}});
+
+  GroupTfEvents(&raw_space, /*event_group_name_map=*/nullptr);
+  int num_events = 0;
+  CreateTfXPlaneVisitor(raw_plane).ForEachLine(
+      [&](const tensorflow::profiler::XLineVisitor& line) {
+        num_events += line.NumEvents();
+        line.ForEachEvent(
+            [&](const tensorflow::profiler::XEventVisitor& event) {
+              absl::optional<int64> group_id;
+              event.ForEachStat(
+                  [&](const tensorflow::profiler::XStatVisitor& stat) {
+                    if (stat.Type() == StatType::kGroupId) {
+                      group_id = stat.IntValue();
+                    }
+                  });
+              EXPECT_TRUE(group_id.has_value());
+              EXPECT_EQ(*group_id, 0);
+            });
+      });
+  EXPECT_EQ(num_events, 3);
+}
+
+TEST(GroupEventsTest, AsyncEventTest) {
+  constexpr absl::string_view kParent = "parent";
+  constexpr absl::string_view kAsync = "async";
+  constexpr absl::string_view kChild = "child";
+
+  XSpace raw_space;
+  XPlane* raw_plane = raw_space.add_planes();
+  XPlaneBuilder plane(raw_plane);
+  plane.ReserveLines(1);
+  auto line = plane.GetOrCreateLine(0);
+  CreateXEvent(&plane, &line, kParent, 0, 100, {{StatType::kIsRoot, 1}});
+  CreateXEvent(&plane, &line, kAsync, 10, 200, {{StatType::kIsAsync, 1}});
+  CreateXEvent(&plane, &line, kChild, 20, 80);
+
+  GroupTfEvents(&raw_space, /*event_group_name_map=*/nullptr);
+  CreateTfXPlaneVisitor(raw_plane).ForEachLine(
+      [&](const tensorflow::profiler::XLineVisitor& line) {
+        EXPECT_EQ(line.NumEvents(), 3);
+        line.ForEachEvent(
+            [&](const tensorflow::profiler::XEventVisitor& event) {
+              absl::optional<int64> group_id;
+              event.ForEachStat(
+                  [&](const tensorflow::profiler::XStatVisitor& stat) {
+                    if (stat.Type() == StatType::kGroupId) {
+                      group_id = stat.IntValue();
+                    }
+                  });
+              if (event.Name() == kAsync) {
+                EXPECT_FALSE(group_id.has_value());
+              } else {
+                EXPECT_TRUE(group_id.has_value());
+                EXPECT_EQ(*group_id, 0);
+              }
+            });
+      });
 }
 
 }  // namespace

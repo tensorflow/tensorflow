@@ -20,6 +20,7 @@ from __future__ import print_function
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.util.tf_export import tf_export
 
@@ -32,6 +33,7 @@ tf_export("data.experimental.UNKNOWN_CARDINALITY").export_constant(
     __name__, "UNKNOWN")
 
 
+# TODO(b/157691652): Deprecate this method after migrating users to the new API.
 @tf_export("data.experimental.cardinality")
 def cardinality(dataset):
   """Returns the cardinality of `dataset`, if known.
@@ -63,7 +65,7 @@ def cardinality(dataset):
     constant `INFINITE_CARDINALITY` and `UNKNOWN_CARDINALITY` respectively.
   """
 
-  return ged_ops.dataset_cardinality(dataset._variant_tensor)  # pylint: disable=protected-access
+  return gen_dataset_ops.dataset_cardinality(dataset._variant_tensor)  # pylint: disable=protected-access
 
 
 @tf_export("data.experimental.assert_cardinality")

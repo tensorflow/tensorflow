@@ -102,8 +102,10 @@ public final class Interpreter implements AutoCloseable {
      * Sets whether to allow float16 precision for FP32 calculation when possible. Defaults to false
      * (disallow).
      *
-     * <p>WARNING: This is an experimental API and subject to change.
+     * @deprecated Prefer using {@link
+     *     org.tensorflow.lite.nnapi.NnApiDelegate.Options#setAllowFp16(boolean enable)}.
      */
+    @Deprecated
     public Options setAllowFp16PrecisionForFp32(boolean allow) {
       this.allowFp16PrecisionForFp32 = allow;
       return this;
@@ -489,6 +491,11 @@ public final class Interpreter implements AutoCloseable {
   public void resetVariableTensors() {
     checkNotClosed();
     wrapper.resetVariableTensors();
+  }
+
+  int getExecutionPlanLength() {
+    checkNotClosed();
+    return wrapper.getExecutionPlanLength();
   }
 
   /** Release resources associated with the {@code Interpreter}. */

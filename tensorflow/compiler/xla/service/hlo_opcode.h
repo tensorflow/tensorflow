@@ -48,6 +48,7 @@ namespace xla {
   V(kAdd, "add", 2)                                                    \
   V(kAddDependency, "add-dependency", 2)                               \
   V(kAfterAll, "after-all", kHloOpcodeIsVariadic)                      \
+  V(kAllGather, "all-gather", 1)                                       \
   V(kAllReduce, "all-reduce", kHloOpcodeIsVariadic)                    \
   V(kAllToAll, "all-to-all", kHloOpcodeIsVariadic)                     \
   V(kAtan2, "atan2", 2)                                                \
@@ -62,6 +63,8 @@ namespace xla {
   V(kCholesky, "cholesky", 1)                                          \
   V(kClamp, "clamp", 3)                                                \
   V(kCollectivePermute, "collective-permute", 1)                       \
+  V(kCollectivePermuteStart, "collective-permute-start", 1)            \
+  V(kCollectivePermuteDone, "collective-permute-done", 1)              \
   V(kClz, "count-leading-zeros", 1)                                    \
   V(kCompare, "compare", 2)                                            \
   V(kComplex, "complex", 2)                                            \

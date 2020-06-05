@@ -16,10 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_UTILS_H_
 #define TENSORFLOW_LITE_DELEGATES_UTILS_H_
 
+// Utility functions and classes for implementing delegates.
+
 #include <functional>
 #include <limits>
 #include <set>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/c/common.h"
@@ -68,9 +72,20 @@ class GraphPartitionHelper {
   // Note that partitions are ranked according to the number of nodes that
   // a partition has, and the returned TfLiteDelegateParams objects are *owned*
   // by the TfLite runtime.
+  // TODO(b/156707497): remove this and use GetNodesOfFirstNLargestPartitions
   std::vector<TfLiteDelegateParams*> GetFirstNLargestPartitions(
       int n = std::numeric_limits<int>::max(),
       int min_nodes_per_partition = 0) const;
+
+  // Returns a list of node indices of all nodes from the first n largest
+  // partitions. If there are fewer paritions than n, all nodes will be
+  // returned. The partition is ranked according to the number of nodes.
+  std::vector<int> GetNodesOfFirstNLargestPartitions(
+      int n = std::numeric_limits<int>::max(),
+      int min_nodes_per_partition = 0) {
+    // Separated implementation that can be overrided, to preserve default value
+    return GetNodesOfFirstNLargestPartitionsImpl(n, min_nodes_per_partition);
+  }
 
   int num_total_nodes() const { return num_total_nodes_; }
   int num_partitions() const { return partitions_.size(); }
@@ -82,6 +97,8 @@ class GraphPartitionHelper {
     return is_node_supported_fn_(context, node, registration,
                                  unsupported_details);
   }
+  virtual std::vector<int> GetNodesOfFirstNLargestPartitionsImpl(
+      int n, int min_nodes_per_partition);
 
   TfLiteContext* const context_ = nullptr;
 
@@ -109,6 +126,54 @@ class GraphPartitionHelper {
   // Contains an array of supported node indices.
   TfLiteIntArray* supported_nodes_ = nullptr;  // owns the memory
 };
+
+// Specialized partitioner for graphs that possibly contain fp16 tensors.
+//
+// From nodes that accept fp16 inputs, this delegates the following:
+// 1. All nodes (except DEQUANTIZE) that are supported with fp16 inputs by the
+// delegate (in the TFLite graph, these nodes take in dequantized FP32
+// outputs).
+// 2. All fp16 DEQUANTIZE nodes that have *all* their consumers in the *first*
+// delegated partition. This is because TFLite's partitioning algorithm
+// greedily puts all such nodes in the first partition.
+class FP16GraphPartitionHelper : public GraphPartitionHelper {
+ public:
+  FP16GraphPartitionHelper(TfLiteContext* context,
+                           IsNodeSupportedFn is_node_supported_fn)
+      : GraphPartitionHelper(context, std::move(is_node_supported_fn)) {}
+
+ protected:
+  // Specialized function to handle fp16 nodes.
+  bool IsNodeSupported(TfLiteContext* context, TfLiteNode* node,
+                       TfLiteRegistration* registration, int node_id,
+                       std::string* unsupported_details) override;
+
+  // This will remap input tensors by removing FP16 to FP32 dequantized tensors.
+  std::vector<int> GetNodesOfFirstNLargestPartitionsImpl(
+      int n, int min_nodes_per_partition) override;
+
+ private:
+  // This remaps fp32 inputs of the given node to their corresponding fp16
+  // version, if applicable. Can be summarized as:
+  // fp16 -> DEQUANTIZE -> fp32 -> OP -> output
+  // becomes
+  // fp16 -> OP -> output
+  void RemapFp16InputTensors(TfLiteNode* node,
+                             std::vector<int>* orig_inputs) const;
+
+  // Performs the above remapping for all nodes in the given list, without
+  // tracking the original inputs.
+  void RemapFp16InputTensors(const std::vector<int>& nodes) const;
+
+  // ('dequantize' here refers to fp16 DEQUANTIZE)
+  // Mapping of dequantize nodes' output tensor-id to its node id.
+  std::unordered_map<int, int> dequant_nodes_;
+  // Mapping of DEQUANTIZE node's output (fp32) to its input (fp16).
+  std::unordered_map<int, int> dequant_map_;
+  // mapping of DEQUANTIZE output tensor-id to its number of consumers.
+  std::unordered_map<int, int> dequant_consumers_;
+};
+
 }  // namespace delegates
 }  // namespace tflite
 

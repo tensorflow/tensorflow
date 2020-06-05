@@ -201,66 +201,132 @@ MatrixMap<Scalar> MapAsMatrixWithGivenNumberOfRows(Scalar* data,
 // MultiplyByQuantizedMultipler.
 #ifdef USE_NEON
 inline int32x4x4_t MultiplyByQuantizedMultiplier4Rows(
-    int32x4x4_t input_val, int32 quantized_multiplier, int shift) {
-  using gemmlowp::RoundingDivideByPOT;
-  using gemmlowp::SaturatingRoundingDoublingHighMul;
-  const int left_shift = shift > 0 ? shift : 0;
-  const int right_shift = shift > 0 ? 0 : -shift;
+    int32x4x4_t input_val, int32 quantized_multiplier, int32 shift) {
+  const int left_shift = std::max(shift, 0);
+  const int right_shift = std::min(shift, 0);
   int32x4x4_t result;
-  // The vector type support for SaturatingRoundingDoublingHighMulth in gemmlowp
-  // is limited to NEON.
-#ifdef GEMMLOWP_NEON
-  const int32x4_t left_shifted_one_dup = vdupq_n_s32(1 << left_shift);
-  result.val[0] =
-      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
-                              vmulq_s32(input_val.val[0], left_shifted_one_dup),
-                              quantized_multiplier),
-                          right_shift);
-  result.val[1] =
-      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
-                              vmulq_s32(input_val.val[1], left_shifted_one_dup),
-                              quantized_multiplier),
-                          right_shift);
-  result.val[2] =
-      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
-                              vmulq_s32(input_val.val[2], left_shifted_one_dup),
-                              quantized_multiplier),
-                          right_shift);
-  result.val[3] =
-      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
-                              vmulq_s32(input_val.val[3], left_shifted_one_dup),
-                              quantized_multiplier),
-                          right_shift);
-#else
-  for (int i = 0; i < 4; ++i) {
-    int32_t vals[4];
-    vals[0] = RoundingDivideByPOT(
-        SaturatingRoundingDoublingHighMul(
-            vgetq_lane_s32(input_val.val[i], 0) * (1 << left_shift),
-            quantized_multiplier),
-        right_shift);
-    vals[1] = RoundingDivideByPOT(
-        SaturatingRoundingDoublingHighMul(
-            vgetq_lane_s32(input_val.val[i], 1) * (1 << left_shift),
-            quantized_multiplier),
-        right_shift);
-    vals[2] = RoundingDivideByPOT(
-        SaturatingRoundingDoublingHighMul(
-            vgetq_lane_s32(input_val.val[i], 2) * (1 << left_shift),
-            quantized_multiplier),
-        right_shift);
-    vals[3] = RoundingDivideByPOT(
-        SaturatingRoundingDoublingHighMul(
-            vgetq_lane_s32(input_val.val[i], 3) * (1 << left_shift),
-            quantized_multiplier),
-        right_shift);
 
-    result.val[i] = vld1q_s32(reinterpret_cast<int32_t*>(&vals));
-  }
-#endif
+  int32x4_t multiplier_dup = vdupq_n_s32(quantized_multiplier);
+  int32x4_t left_shift_dup = vdupq_n_s32(left_shift);
+  int32x4_t right_shift_dup = vdupq_n_s32(right_shift);
+
+  result.val[0] =
+      vrshlq_s32(vqrdmulhq_s32(vshlq_s32(input_val.val[0], left_shift_dup),
+                               multiplier_dup),
+                 right_shift_dup);
+
+  result.val[1] =
+      vrshlq_s32(vqrdmulhq_s32(vshlq_s32(input_val.val[1], left_shift_dup),
+                               multiplier_dup),
+                 right_shift_dup);
+
+  result.val[2] =
+      vrshlq_s32(vqrdmulhq_s32(vshlq_s32(input_val.val[2], left_shift_dup),
+                               multiplier_dup),
+                 right_shift_dup);
+
+  result.val[3] =
+      vrshlq_s32(vqrdmulhq_s32(vshlq_s32(input_val.val[3], left_shift_dup),
+                               multiplier_dup),
+                 right_shift_dup);
+
   return result;
 }
 #endif
+
+template <typename ElementwiseF, typename ScalarBroadcastF, typename T>
+inline void BinaryBroadcastFiveFold(const ArithmeticParams& unswitched_params,
+                                    const RuntimeShape& unswitched_input1_shape,
+                                    const T* unswitched_input1_data,
+                                    const RuntimeShape& unswitched_input2_shape,
+                                    const T* unswitched_input2_data,
+                                    const RuntimeShape& output_shape,
+                                    T* output_data, ElementwiseF elementwise_f,
+                                    ScalarBroadcastF scalar_broadcast_f) {
+  ArithmeticParams switched_params = unswitched_params;
+  switched_params.input1_offset = unswitched_params.input2_offset;
+  switched_params.input1_multiplier = unswitched_params.input2_multiplier;
+  switched_params.input1_shift = unswitched_params.input2_shift;
+  switched_params.input2_offset = unswitched_params.input1_offset;
+  switched_params.input2_multiplier = unswitched_params.input1_multiplier;
+  switched_params.input2_shift = unswitched_params.input1_shift;
+
+  const bool use_unswitched =
+      unswitched_params.broadcast_category ==
+      tflite::BroadcastableOpCategory::kFirstInputBroadcastsFast;
+
+  const ArithmeticParams& params =
+      use_unswitched ? unswitched_params : switched_params;
+  const T* input1_data =
+      use_unswitched ? unswitched_input1_data : unswitched_input2_data;
+  const T* input2_data =
+      use_unswitched ? unswitched_input2_data : unswitched_input1_data;
+
+  // Fivefold nested loops. The second input resets its position for each
+  // iteration of the second loop. The first input resets its position at the
+  // beginning of the fourth loop. The innermost loop is an elementwise add of
+  // sections of the arrays.
+  T* output_data_ptr = output_data;
+  const T* input1_data_ptr = input1_data;
+  const T* input2_data_reset = input2_data;
+  // In the fivefold pattern, y0, y2 and y4 are not broadcast, and so shared
+  // between input shapes. y3 for input 1 is always broadcast, and so the
+  // dimension there is 1, whereas optionally y1 might be broadcast for
+  // input 2. Put another way, input1.shape.FlatSize = y0 * y1 * y2 * y4,
+  // input2.shape.FlatSize = y0 * y2 * y3 * y4.
+  int y0 = params.broadcast_shape[0];
+  int y1 = params.broadcast_shape[1];
+  int y2 = params.broadcast_shape[2];
+  int y3 = params.broadcast_shape[3];
+  int y4 = params.broadcast_shape[4];
+  if (y4 > 1) {
+    // General fivefold pattern, with y4 > 1 so there is a non-broadcast inner
+    // dimension.
+    for (int i0 = 0; i0 < y0; ++i0) {
+      const T* input2_data_ptr = nullptr;
+      for (int i1 = 0; i1 < y1; ++i1) {
+        input2_data_ptr = input2_data_reset;
+        for (int i2 = 0; i2 < y2; ++i2) {
+          for (int i3 = 0; i3 < y3; ++i3) {
+            elementwise_f(y4, params, input1_data_ptr, input2_data_ptr,
+                          output_data_ptr);
+            input2_data_ptr += y4;
+            output_data_ptr += y4;
+          }
+          // We have broadcast y4 of input1 data y3 times, and now move on.
+          input1_data_ptr += y4;
+        }
+      }
+      // We have broadcast y2*y3*y4 of input2 data y1 times, and now move on.
+      input2_data_reset = input2_data_ptr;
+    }
+  } else {
+    // Special case of y4 == 1, in which the innermost loop is a single
+    // element and can be combined with the next (y3) as an inner broadcast.
+    //
+    // Note that this handles the case of pure scalar broadcast when
+    // y0 == y1 == y2 == 1. With low overhead it handles cases such as scalar
+    // broadcast with batch (as y2 > 1).
+    //
+    // NOTE The process is the same as the above general case except
+    // simplified for y4 == 1 and the loop over y3 is contained within the
+    // AddScalarBroadcast function.
+    for (int i0 = 0; i0 < y0; ++i0) {
+      const T* input2_data_ptr = nullptr;
+      for (int i1 = 0; i1 < y1; ++i1) {
+        input2_data_ptr = input2_data_reset;
+        for (int i2 = 0; i2 < y2; ++i2) {
+          scalar_broadcast_f(y3, params, *input1_data_ptr, input2_data_ptr,
+                             output_data_ptr);
+          input2_data_ptr += y3;
+          output_data_ptr += y3;
+          input1_data_ptr += 1;
+        }
+      }
+      input2_data_reset = input2_data_ptr;
+    }
+  }
+}
 
 inline void AddBiasAndEvalActivationFunction(float output_activation_min,
                                              float output_activation_max,
@@ -2101,186 +2167,6 @@ inline void Add(const ArithmeticParams& params,
   output_map = output_map.cwiseMin(params.quantized_activation_max);
 }
 
-inline void BroadcastAddFivefold(const ArithmeticParams& unswitched_params,
-                                 const RuntimeShape& unswitched_input1_shape,
-                                 const uint8* unswitched_input1_data,
-                                 const RuntimeShape& unswitched_input2_shape,
-                                 const uint8* unswitched_input2_data,
-                                 const RuntimeShape& output_shape,
-                                 uint8* output_data) {
-  ruy::profiler::ScopeLabel label("BroadcastAddFivefold/8bit");
-
-  ArithmeticParams switched_params = unswitched_params;
-  switched_params.input1_offset = unswitched_params.input2_offset;
-  switched_params.input1_multiplier = unswitched_params.input2_multiplier;
-  switched_params.input1_shift = unswitched_params.input2_shift;
-  switched_params.input2_offset = unswitched_params.input1_offset;
-  switched_params.input2_multiplier = unswitched_params.input1_multiplier;
-  switched_params.input2_shift = unswitched_params.input1_shift;
-
-  const bool use_unswitched =
-      unswitched_params.broadcast_category ==
-      tflite::BroadcastableOpCategory::kFirstInputBroadcastsFast;
-
-  const ArithmeticParams& params =
-      use_unswitched ? unswitched_params : switched_params;
-  const uint8* input1_data =
-      use_unswitched ? unswitched_input1_data : unswitched_input2_data;
-  const uint8* input2_data =
-      use_unswitched ? unswitched_input2_data : unswitched_input1_data;
-
-  // Fivefold nested loops. The second input resets its position for each
-  // iteration of the second loop. The first input resets its position at the
-  // beginning of the fourth loop. The innermost loop is an elementwise add of
-  // sections of the arrays.
-  uint8* output_data_ptr = output_data;
-  const uint8* input1_data_ptr = input1_data;
-  const uint8* input2_data_reset = input2_data;
-  // In the fivefold pattern, y0, y2 and y4 are not broadcast, and so shared
-  // between input shapes. y3 for input 1 is always broadcast, and so the
-  // dimension there is 1, whereas optionally y1 might be broadcast for input 2.
-  // Put another way,
-  // input1.shape.FlatSize = y0 * y1 * y2 * y4,
-  // input2.shape.FlatSize = y0 * y2 * y3 * y4.
-  int y0 = params.broadcast_shape[0];
-  int y1 = params.broadcast_shape[1];
-  int y2 = params.broadcast_shape[2];
-  int y3 = params.broadcast_shape[3];
-  int y4 = params.broadcast_shape[4];
-  if (y4 > 1) {
-    // General fivefold pattern, with y4 > 1 so there is a non-broadcast inner
-    // dimension.
-    for (int i0 = 0; i0 < y0; ++i0) {
-      const uint8* input2_data_ptr = nullptr;
-      for (int i1 = 0; i1 < y1; ++i1) {
-        input2_data_ptr = input2_data_reset;
-        for (int i2 = 0; i2 < y2; ++i2) {
-          for (int i3 = 0; i3 < y3; ++i3) {
-            AddElementwise(y4, params, input1_data_ptr, input2_data_ptr,
-                           output_data_ptr);
-            input2_data_ptr += y4;
-            output_data_ptr += y4;
-          }
-          // We have broadcast y4 of input1 data y3 times, and now move on.
-          input1_data_ptr += y4;
-        }
-      }
-      // We have broadcast y2*y3*y4 of input2 data y1 times, and now move on.
-      input2_data_reset = input2_data_ptr;
-    }
-  } else {
-    // Special case of y4 == 1, in which the innermost loop is a single element
-    // and can be combined with the next (y3) as an inner broadcast.
-    //
-    // Note that this handles the case of pure scalar broadcast when
-    // y0 == y1 == y2 == 1. With low overhead it handles cases such as scalar
-    // broadcast with batch (as y2 > 1).
-    //
-    // NOTE The process is the same as the above general case except simplified
-    // for y4 == 1 and the loop over y3 is contained within the
-    // AddScalarBroadcast function.
-    for (int i0 = 0; i0 < y0; ++i0) {
-      const uint8* input2_data_ptr = nullptr;
-      for (int i1 = 0; i1 < y1; ++i1) {
-        input2_data_ptr = input2_data_reset;
-        for (int i2 = 0; i2 < y2; ++i2) {
-          AddScalarBroadcast(y3, params, *input1_data_ptr, input2_data_ptr,
-                             output_data_ptr);
-          input2_data_ptr += y3;
-          output_data_ptr += y3;
-          input1_data_ptr += 1;
-        }
-      }
-      input2_data_reset = input2_data_ptr;
-    }
-  }
-}
-
-inline void BroadcastAddFivefold(const ArithmeticParams& params,
-                                 const RuntimeShape& unswitched_input1_shape,
-                                 const float* unswitched_input1_data,
-                                 const RuntimeShape& unswitched_input2_shape,
-                                 const float* unswitched_input2_data,
-                                 const RuntimeShape& output_shape,
-                                 float* output_data) {
-  ruy::profiler::ScopeLabel label("BroadcastAddFivefold/float");
-
-  const bool use_unswitched =
-      params.broadcast_category ==
-      tflite::BroadcastableOpCategory::kFirstInputBroadcastsFast;
-
-  const float* input1_data =
-      use_unswitched ? unswitched_input1_data : unswitched_input2_data;
-  const float* input2_data =
-      use_unswitched ? unswitched_input2_data : unswitched_input1_data;
-
-  // Fivefold nested loops. The second input resets its position for each
-  // iteration of the second loop. The first input resets its position at the
-  // beginning of the fourth loop. The innermost loop is an elementwise add of
-  // sections of the arrays.
-  float* output_data_ptr = output_data;
-  const float* input1_data_ptr = input1_data;
-  const float* input2_data_reset = input2_data;
-  // In the fivefold pattern, y0, y2 and y4 are not broadcast, and so shared
-  // between input shapes. y3 for input 1 is always broadcast, and so the
-  // dimension there is 1, whereas optionally y1 might be broadcast for input 2.
-  // Put another way,
-  // input1.shape.FlatSize = y0 * y1 * y2 * y4,
-  // input2.shape.FlatSize = y0 * y2 * y3 * y4.
-  int y0 = params.broadcast_shape[0];
-  int y1 = params.broadcast_shape[1];
-  int y2 = params.broadcast_shape[2];
-  int y3 = params.broadcast_shape[3];
-  int y4 = params.broadcast_shape[4];
-  if (y4 > 1) {
-    // General fivefold pattern, with y4 > 1 so there is a non-broadcast inner
-    // dimension.
-    for (int i0 = 0; i0 < y0; ++i0) {
-      const float* input2_data_ptr = nullptr;
-      for (int i1 = 0; i1 < y1; ++i1) {
-        input2_data_ptr = input2_data_reset;
-        for (int i2 = 0; i2 < y2; ++i2) {
-          for (int i3 = 0; i3 < y3; ++i3) {
-            AddElementwise(y4, params, input1_data_ptr, input2_data_ptr,
-                           output_data_ptr);
-            input2_data_ptr += y4;
-            output_data_ptr += y4;
-          }
-          // We have broadcast y4 of input1 data y3 times, and now move on.
-          input1_data_ptr += y4;
-        }
-      }
-      // We have broadcast y2*y3*y4 of input2 data y1 times, and now move on.
-      input2_data_reset = input2_data_ptr;
-    }
-  } else {
-    // Special case of y4 == 1, in which the innermost loop is a single element
-    // and can be combined with the next (y3) as an inner broadcast.
-    //
-    // Note that this handles the case of pure scalar broadcast when
-    // y0 == y1 == y2 == 1. With low overhead it handles cases such as scalar
-    // broadcast with batch (as y2 > 1).
-    //
-    // NOTE The process is the same as the above general case except simplified
-    // for y4 == 1 and the loop over y3 is contained within the
-    // AddScalarBroadcast function.
-    for (int i0 = 0; i0 < y0; ++i0) {
-      const float* input2_data_ptr = nullptr;
-      for (int i1 = 0; i1 < y1; ++i1) {
-        input2_data_ptr = input2_data_reset;
-        for (int i2 = 0; i2 < y2; ++i2) {
-          AddScalarBroadcast(y3, params, *input1_data_ptr, input2_data_ptr,
-                             output_data_ptr);
-          input2_data_ptr += y3;
-          output_data_ptr += y3;
-          input1_data_ptr += 1;
-        }
-      }
-      input2_data_reset = input2_data_ptr;
-    }
-  }
-}
-
 template <typename T>
 inline void BroadcastAddDispatch(
     const ArithmeticParams& params, const RuntimeShape& input1_shape,
@@ -2291,8 +2177,37 @@ inline void BroadcastAddDispatch(
                               input2_data, output_shape, output_data);
   }
 
-  BroadcastAddFivefold(params, input1_shape, input1_data, input2_shape,
-                       input2_data, output_shape, output_data);
+  BinaryBroadcastFiveFold(
+      params, input1_shape, input1_data, input2_shape, input2_data,
+      output_shape, output_data,
+      static_cast<void (*)(int, const ArithmeticParams&, const T*, const T*,
+                           T*)>(AddElementwise),
+      static_cast<void (*)(int, const ArithmeticParams&, T, const T*, T*)>(
+          AddScalarBroadcast));
+}
+
+inline void BroadcastAddFivefold(const ArithmeticParams& unswitched_params,
+                                 const RuntimeShape& unswitched_input1_shape,
+                                 const uint8* unswitched_input1_data,
+                                 const RuntimeShape& unswitched_input2_shape,
+                                 const uint8* unswitched_input2_data,
+                                 const RuntimeShape& output_shape,
+                                 uint8* output_data) {
+  BroadcastAddDispatch(unswitched_params, unswitched_input1_shape,
+                       unswitched_input1_data, unswitched_input2_shape,
+                       unswitched_input2_data, output_shape, output_data);
+}
+
+inline void BroadcastAddFivefold(const ArithmeticParams& params,
+                                 const RuntimeShape& unswitched_input1_shape,
+                                 const float* unswitched_input1_data,
+                                 const RuntimeShape& unswitched_input2_shape,
+                                 const float* unswitched_input2_data,
+                                 const RuntimeShape& output_shape,
+                                 float* output_data) {
+  BroadcastAddDispatch(params, unswitched_input1_shape, unswitched_input1_data,
+                       unswitched_input2_shape, unswitched_input2_data,
+                       output_shape, output_data);
 }
 
 inline void MulElementwise(int size, const ArithmeticParams& params,
@@ -2650,144 +2565,6 @@ inline void Mul(const ArithmeticParams& params,
   MulElementwise(flat_size, params, input1_data, input2_data, output_data);
 }
 
-inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
-                                 const RuntimeShape& unswitched_input1_shape,
-                                 const uint8* unswitched_input1_data,
-                                 const RuntimeShape& unswitched_input2_shape,
-                                 const uint8* unswitched_input2_data,
-                                 const RuntimeShape& output_shape,
-                                 uint8* output_data) {
-  ruy::profiler::ScopeLabel label("BroadcastMulFivefold/8bit");
-
-  ArithmeticParams switched_params = unswitched_params;
-  switched_params.input1_offset = unswitched_params.input2_offset;
-  switched_params.input2_offset = unswitched_params.input1_offset;
-
-  const bool use_unswitched =
-      unswitched_params.broadcast_category ==
-      tflite::BroadcastableOpCategory::kFirstInputBroadcastsFast;
-
-  const ArithmeticParams& params =
-      use_unswitched ? unswitched_params : switched_params;
-  const uint8* input1_data =
-      use_unswitched ? unswitched_input1_data : unswitched_input2_data;
-  const uint8* input2_data =
-      use_unswitched ? unswitched_input2_data : unswitched_input1_data;
-
-  // Fivefold nested loops. The second input resets its position for each
-  // iteration of the second loop. The first input resets its position at the
-  // beginning of the fourth loop. The innermost loop is an elementwise Mul of
-  // sections of the arrays.
-  uint8* output_data_ptr = output_data;
-  const uint8* input1_data_ptr = input1_data;
-  const uint8* input2_data_reset = input2_data;
-  int y0 = params.broadcast_shape[0];
-  int y1 = params.broadcast_shape[1];
-  int y2 = params.broadcast_shape[2];
-  int y3 = params.broadcast_shape[3];
-  int y4 = params.broadcast_shape[4];
-  if (y4 > 1) {
-    for (int i0 = 0; i0 < y0; ++i0) {
-      const uint8* input2_data_ptr = nullptr;
-      for (int i1 = 0; i1 < y1; ++i1) {
-        input2_data_ptr = input2_data_reset;
-        for (int i2 = 0; i2 < y2; ++i2) {
-          for (int i3 = 0; i3 < y3; ++i3) {
-            MulElementwise(y4, params, input1_data_ptr, input2_data_ptr,
-                           output_data_ptr);
-            input2_data_ptr += y4;
-            output_data_ptr += y4;
-          }
-          input1_data_ptr += y4;
-        }
-      }
-      input2_data_reset = input2_data_ptr;
-    }
-  } else {
-    for (int i0 = 0; i0 < y0; ++i0) {
-      const uint8* input2_data_ptr = nullptr;
-      for (int i1 = 0; i1 < y1; ++i1) {
-        input2_data_ptr = input2_data_reset;
-        for (int i2 = 0; i2 < y2; ++i2) {
-          MulSimpleBroadcast(y3, params, *input1_data_ptr, input2_data_ptr,
-                             output_data_ptr);
-          input2_data_ptr += y3;
-          output_data_ptr += y3;
-          ++input1_data_ptr;
-        }
-      }
-      input2_data_reset = input2_data_ptr;
-    }
-  }
-}
-
-inline void BroadcastMulFivefold(const ArithmeticParams& params,
-                                 const RuntimeShape& unswitched_input1_shape,
-                                 const float* unswitched_input1_data,
-                                 const RuntimeShape& unswitched_input2_shape,
-                                 const float* unswitched_input2_data,
-                                 const RuntimeShape& output_shape,
-                                 float* output_data) {
-  ruy::profiler::ScopeLabel label("BroadcastMulFivefold/float");
-
-  const bool use_unswitched =
-      params.broadcast_category ==
-      tflite::BroadcastableOpCategory::kFirstInputBroadcastsFast;
-
-  const float* input1_data =
-      use_unswitched ? unswitched_input1_data : unswitched_input2_data;
-  const float* input2_data =
-      use_unswitched ? unswitched_input2_data : unswitched_input1_data;
-
-  // Fivefold nested loops. The second input resets its position for each
-  // iteration of the second loop. The first input resets its position at the
-  // beginning of the fourth loop. The innermost loop is an elementwise Mul of
-  // sections of the arrays.
-  float* output_data_ptr = output_data;
-  const float* input1_data_ptr = input1_data;
-  const float* input2_data_reset = input2_data;
-  int y0 = params.broadcast_shape[0];
-  int y1 = params.broadcast_shape[1];
-  int y2 = params.broadcast_shape[2];
-  int y3 = params.broadcast_shape[3];
-  int y4 = params.broadcast_shape[4];
-  if (y4 > 1) {
-    for (int i0 = 0; i0 < y0; ++i0) {
-      const float* input2_data_ptr = nullptr;
-      for (int i1 = 0; i1 < y1; ++i1) {
-        input2_data_ptr = input2_data_reset;
-        for (int i2 = 0; i2 < y2; ++i2) {
-          for (int i3 = 0; i3 < y3; ++i3) {
-            MulElementwise(y4, params, input1_data_ptr, input2_data_ptr,
-                           output_data_ptr);
-            input2_data_ptr += y4;
-            output_data_ptr += y4;
-          }
-          input1_data_ptr += y4;
-        }
-      }
-      input2_data_reset = input2_data_ptr;
-    }
-  } else {
-    for (int i0 = 0; i0 < y0; ++i0) {
-      const float* input2_data_ptr = nullptr;
-      for (int i1 = 0; i1 < y1; ++i1) {
-        input2_data_ptr = input2_data_reset;
-        for (int i2 = 0; i2 < y2; ++i2) {
-          // The input may be switched here, but the common parameters here
-          // do not matter as they will not influence the float math execution.
-          MulSimpleBroadcast(y3, params, *input1_data_ptr, input2_data_ptr,
-                             output_data_ptr);
-          input2_data_ptr += y3;
-          output_data_ptr += y3;
-          ++input1_data_ptr;
-        }
-      }
-      input2_data_reset = input2_data_ptr;
-    }
-  }
-}
-
 template <typename T>
 inline void BroadcastMulDispatch(
     const ArithmeticParams& params, const RuntimeShape& input1_shape,
@@ -2798,9 +2575,40 @@ inline void BroadcastMulDispatch(
                               input2_data, output_shape, output_data);
   }
 
-  BroadcastMulFivefold(params, input1_shape, input1_data, input2_shape,
-                       input2_data, output_shape, output_data);
+  BinaryBroadcastFiveFold(
+      params, input1_shape, input1_data, input2_shape, input2_data,
+      output_shape, output_data,
+      static_cast<void (*)(int, const ArithmeticParams&, const T*, const T*,
+                           T*)>(MulElementwise),
+      static_cast<void (*)(int, const ArithmeticParams&, T, const T*, T*)>(
+          MulSimpleBroadcast));
 }
+
+inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
+                                 const RuntimeShape& unswitched_input1_shape,
+                                 const uint8* unswitched_input1_data,
+                                 const RuntimeShape& unswitched_input2_shape,
+                                 const uint8* unswitched_input2_data,
+                                 const RuntimeShape& output_shape,
+                                 uint8* output_data) {
+  BroadcastMulDispatch(unswitched_params, unswitched_input1_shape,
+                       unswitched_input1_data, unswitched_input2_shape,
+                       unswitched_input2_data, output_shape, output_data);
+}
+
+inline void BroadcastMulFivefold(const ArithmeticParams& params,
+                                 const RuntimeShape& unswitched_input1_shape,
+                                 const float* unswitched_input1_data,
+                                 const RuntimeShape& unswitched_input2_shape,
+                                 const float* unswitched_input2_data,
+                                 const RuntimeShape& output_shape,
+                                 float* output_data) {
+  BroadcastMulDispatch(params, unswitched_input1_shape, unswitched_input1_data,
+                       unswitched_input2_shape, unswitched_input2_data,
+                       output_shape, output_data);
+}
+
+
 
 // TODO(jiawen): We can implement BroadcastDiv on buffers of arbitrary
 // dimensionality if the runtime code does a single loop over one dimension
@@ -4332,6 +4140,41 @@ inline void Logistic(const LogisticParams& params,
     }
   }
 #endif
+#ifdef GEMMLOWP_SSE4
+  {
+    // F0 uses 0 integer bits, range [-1, 1].
+    // This is the return type of math functions such as tanh, logistic,
+    // whose range is in [-1, 1].
+    using F0 = gemmlowp::FixedPoint<gemmlowp::int16x8_m128i, 0>;
+    // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
+    using F3 = gemmlowp::FixedPoint<gemmlowp::int16x8_m128i, 3>;
+
+    for (; c <= flat_size - 16; c += 16) {
+      F3 input0 = F3::FromRaw(gemmlowp::to_int16x8_m128i(
+          _mm_loadu_si128(reinterpret_cast<const __m128i*>(input_data_ptr))));
+      F3 input1 = F3::FromRaw(gemmlowp::to_int16x8_m128i(_mm_loadu_si128(
+          reinterpret_cast<const __m128i*>(input_data_ptr + 8))));
+      F0 output0 = gemmlowp::logistic(input0);
+      F0 output1 = gemmlowp::logistic(input1);
+      _mm_storeu_si128(reinterpret_cast<__m128i*>(output_data_ptr),
+                       output0.raw().v);
+      _mm_storeu_si128(reinterpret_cast<__m128i*>(output_data_ptr + 8),
+                       output1.raw().v);
+      input_data_ptr += 16;
+      output_data_ptr += 16;
+    }
+    for (; c <= flat_size - 8; c += 8) {
+      F3 input = F3::FromRaw(gemmlowp::to_int16x8_m128i(
+          _mm_loadu_si128(reinterpret_cast<const __m128i*>(input_data_ptr))));
+      F0 output = gemmlowp::logistic(input);
+      _mm_storeu_si128(reinterpret_cast<__m128i*>(output_data_ptr),
+                       output.raw().v);
+      input_data_ptr += 8;
+      output_data_ptr += 8;
+    }
+  }
+#endif
+
   {
     // F0 uses 0 integer bits, range [-1, 1].
     // This is the return type of math functions such as tanh, logistic,
@@ -4438,6 +4281,72 @@ inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
     }
   }
 #endif
+#ifdef GEMMLOWP_SSE4
+  {
+    // F0 uses 0 integer bits, range [-1, 1].
+    // This is the return type of math functions such as tanh, logistic,
+    // whose range is in [-1, 1].
+    using F0 = gemmlowp::FixedPoint<gemmlowp::int16x8_m128i, 0>;
+    // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
+    using F3 = gemmlowp::FixedPoint<gemmlowp::int16x8_m128i, 3>;
+
+    if (input_left_shift == 0) {
+      for (; c <= flat_size - 16; c += 16) {
+        F3 input0 = F3::FromRaw(gemmlowp::to_int16x8_m128i(
+            _mm_loadu_si128(reinterpret_cast<const __m128i*>(input_data_ptr))));
+        F3 input1 = F3::FromRaw(gemmlowp::to_int16x8_m128i(_mm_loadu_si128(
+            reinterpret_cast<const __m128i*>(input_data_ptr + 8))));
+        F0 output0 = gemmlowp::tanh(input0);
+        F0 output1 = gemmlowp::tanh(input1);
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(output_data_ptr),
+                         output0.raw().v);
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(output_data_ptr + 8),
+                         output1.raw().v);
+
+        input_data_ptr += 16;
+        output_data_ptr += 16;
+      }
+      for (; c <= flat_size - 8; c += 8) {
+        F3 input = F3::FromRaw(gemmlowp::to_int16x8_m128i(
+            _mm_loadu_si128(reinterpret_cast<const __m128i*>(input_data_ptr))));
+        F0 output = gemmlowp::tanh(input);
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(output_data_ptr),
+                         output.raw().v);
+        input_data_ptr += 8;
+        output_data_ptr += 8;
+      }
+    } else {
+      for (; c <= flat_size - 16; c += 16) {
+        F3 input0 = F3::FromRaw(gemmlowp::SaturatingRoundingMultiplyByPOT<1>(
+            gemmlowp::to_int16x8_m128i(_mm_loadu_si128(
+                reinterpret_cast<const __m128i*>(input_data_ptr)))));
+        F3 input1 = F3::FromRaw(gemmlowp::SaturatingRoundingMultiplyByPOT<1>(
+            gemmlowp::to_int16x8_m128i(_mm_loadu_si128(
+                reinterpret_cast<const __m128i*>(input_data_ptr + 8)))));
+        F0 output0 = gemmlowp::tanh(input0);
+        F0 output1 = gemmlowp::tanh(input1);
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(output_data_ptr),
+                         output0.raw().v);
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(output_data_ptr + 8),
+                         output1.raw().v);
+
+        input_data_ptr += 16;
+        output_data_ptr += 16;
+      }
+      for (; c <= flat_size - 8; c += 8) {
+        F3 input = F3::FromRaw(gemmlowp::SaturatingRoundingMultiplyByPOT<1>(
+            gemmlowp::to_int16x8_m128i(_mm_loadu_si128(
+                reinterpret_cast<const __m128i*>(input_data_ptr)))));
+        F0 output = gemmlowp::tanh(input);
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(output_data_ptr),
+                         output.raw().v);
+        input_data_ptr += 8;
+        output_data_ptr += 8;
+      }
+    }
+  }
+#endif
+
   {
     // F0 uses 0 integer bits, range [-1, 1].
     // This is the return type of math functions such as tanh, logistic,
@@ -7818,6 +7727,130 @@ void Transpose(const TransposeParams& unshrinked_params,
   // Call non-flattened case.
   TransposeImpl<T, N>(shrinked_params, shrinked_input_shape, input_data,
                       shrinked_output_shape, output_data);
+}
+
+// Assume input1 & input2 have the same scale & zero point.
+inline void MaximumElementwise(int size, const ArithmeticParams& params,
+                               const int8* input1_data, const int8* input2_data,
+                               int8* output_data) {
+  ruy::profiler::ScopeLabel label("MaximumElementwiseInt8/8bit");
+  int i = 0;
+#ifdef USE_NEON
+  for (; i <= size - 16; i += 16) {
+    const int8x16_t input1_val_original = vld1q_s8(input1_data + i);
+    const int8x16_t input2_val_original = vld1q_s8(input2_data + i);
+    const int8x16_t max_data =
+        vmaxq_s8(input1_val_original, input2_val_original);
+    vst1q_s8(output_data + i, max_data);
+  }
+#endif  // USE_NEON
+  for (; i < size; ++i) {
+    const int8 input1_val = input1_data[i];
+    const int8 input2_val = input2_data[i];
+    output_data[i] = std::max(input1_val, input2_val);
+  }
+}
+
+inline void MaximumScalarBroadcast(int size, const ArithmeticParams& params,
+                                   int8 input1_data, const int8* input2_data,
+                                   int8* output_data) {
+  ruy::profiler::ScopeLabel label("MaximumScalarBroadcastInt8/8bit");
+  int i = 0;
+
+#ifdef USE_NEON
+  const int8x16_t input1_val_original = vdupq_n_s8(input1_data);
+  for (; i <= size - 16; i += 16) {
+    const int8x16_t input2_val_original = vld1q_s8(input2_data + i);
+    const int8x16_t max_data =
+        vmaxq_s8(input1_val_original, input2_val_original);
+    vst1q_s8(output_data + i, max_data);
+  }
+#endif  // USE_NEON
+  for (; i < size; ++i) {
+    const int8 input2_val = input2_data[i];
+    output_data[i] = std::max(input1_data, input2_val);
+  }
+}
+
+// Assume input1 & input2 have the same scale & zero point.
+inline void MinimumElementwise(int size, const ArithmeticParams& params,
+                               const int8* input1_data, const int8* input2_data,
+                               int8* output_data) {
+  ruy::profiler::ScopeLabel label("MinimumElementwiseInt8/8bit");
+  int i = 0;
+#ifdef USE_NEON
+  for (; i <= size - 16; i += 16) {
+    const int8x16_t input1_val_original = vld1q_s8(input1_data + i);
+    const int8x16_t input2_val_original = vld1q_s8(input2_data + i);
+    const int8x16_t min_data =
+        vminq_s8(input1_val_original, input2_val_original);
+    vst1q_s8(output_data + i, min_data);
+  }
+#endif  // USE_NEON
+  for (; i < size; ++i) {
+    const int8 input1_val = input1_data[i];
+    const int8 input2_val = input2_data[i];
+    output_data[i] = std::min(input1_val, input2_val);
+  }
+}
+
+inline void MinimumScalarBroadcast(int size, const ArithmeticParams& params,
+                                   int8 input1_data, const int8* input2_data,
+                                   int8* output_data) {
+  ruy::profiler::ScopeLabel label("MinimumScalarBroadcastInt8/8bit");
+  int i = 0;
+
+#ifdef USE_NEON
+  const int8x16_t input1_val_original = vdupq_n_s8(input1_data);
+  for (; i <= size - 16; i += 16) {
+    const int8x16_t input2_val_original = vld1q_s8(input2_data + i);
+    const int8x16_t min_data =
+        vminq_s8(input1_val_original, input2_val_original);
+    vst1q_s8(output_data + i, min_data);
+  }
+#endif  // USE_NEON
+  for (; i < size; ++i) {
+    const int8 input2_val = input2_data[i];
+    output_data[i] = std::min(input1_data, input2_val);
+  }
+}
+
+template <typename Op>
+inline void BroadcastMaximumDispatch(const ArithmeticParams& params,
+                                     const RuntimeShape& input1_shape,
+                                     const int8* input1_data,
+                                     const RuntimeShape& input2_shape,
+                                     const int8* input2_data,
+                                     const RuntimeShape& output_shape,
+                                     int8* output_data, Op op) {
+  if (params.broadcast_category == BroadcastableOpCategory::kGenericBroadcast) {
+    return reference_ops::MaximumMinimumBroadcastSlow(
+        input1_shape, input1_data, input2_shape, input2_data, output_shape,
+        output_data, op);
+  }
+
+  BinaryBroadcastFiveFold(params, input1_shape, input1_data, input2_shape,
+                          input2_data, output_shape, output_data,
+                          MaximumElementwise, MaximumScalarBroadcast);
+}
+
+template <typename Op>
+inline void BroadcastMinimumDispatch(const ArithmeticParams& params,
+                                     const RuntimeShape& input1_shape,
+                                     const int8* input1_data,
+                                     const RuntimeShape& input2_shape,
+                                     const int8* input2_data,
+                                     const RuntimeShape& output_shape,
+                                     int8* output_data, Op op) {
+  if (params.broadcast_category == BroadcastableOpCategory::kGenericBroadcast) {
+    return reference_ops::MaximumMinimumBroadcastSlow(
+        input1_shape, input1_data, input2_shape, input2_data, output_shape,
+        output_data, op);
+  }
+
+  BinaryBroadcastFiveFold(params, input1_shape, input1_data, input2_shape,
+                          input2_data, output_shape, output_data,
+                          MinimumElementwise, MinimumScalarBroadcast);
 }
 
 }  // namespace optimized_ops

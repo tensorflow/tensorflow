@@ -21,19 +21,27 @@ limitations under the License.
 #include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/experimental/saved_model/public/concrete_function.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif  // __cplusplus
+
 // An opaque type that is acts like a list of TF_ConcreteFunction pointers.
 typedef struct TF_ConcreteFunctionList TF_ConcreteFunctionList;
 
 // Returns the size of `list`.
-TF_CAPI_EXPORT size_t
-TF_ConcreteFunctionListSize(TF_ConcreteFunctionList* list);
+TF_CAPI_EXPORT extern size_t TF_ConcreteFunctionListSize(
+    TF_ConcreteFunctionList* list);
 
 // Returns the `i`th TF_ConcreteFunction in the list.
-TF_CAPI_EXPORT TF_ConcreteFunction* TF_ConcreteFunctionListGet(
+TF_CAPI_EXPORT extern TF_ConcreteFunction* TF_ConcreteFunctionListGet(
     TF_ConcreteFunctionList* list, int i);
 
 // Deletes `list`.
-TF_CAPI_EXPORT void TF_DeleteConcreteFunctionList(
+TF_CAPI_EXPORT extern void TF_DeleteConcreteFunctionList(
     TF_ConcreteFunctionList* list);
+
+#ifdef __cplusplus
+}  // end extern "C"
+#endif  // __cplusplus
 
 #endif  // TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_PUBLIC_CONCRETE_FUNCTION_LIST_H_

@@ -41,28 +41,28 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
 // CHECK:  [[C56:%.*]] = constant 56 : index
 // CHECK:  [[C1:%.*]] = constant 1 : index
 // CHECK:  [[C0_F32:%.*]] = constant 0.000000e+00 : f32
-// CHECK:  [[CFALSE:%.*]] = constant 0 : i1
+// CHECK:  [[CFALSE:%.*]] = constant false
 // CHECK:  [[C3:%.*]] = constant 3 : index
 // CHECK:  [[C2:%.*]] = constant 2 : index
 // CHECK:  [[C0:%.*]] = constant 0 : index
 // CHECK:  [[C112:%.*]] = constant 112 : index
-// CHECK:  [[CTRUE:%.*]] = constant 1 : i1
+// CHECK:  [[CTRUE:%.*]] = constant true
 
 // Parallel loop to initialize the output buffer.
 // CHECK:    [[INIT:%.*]] = load [[INIT_BUF]][] : memref<f32>
-// CHECK:    loop.parallel ([[I:%.*]], [[J:%.*]]) = ([[C0]], [[C0]])
+// CHECK:    scf.parallel ([[I:%.*]], [[J:%.*]]) = ([[C0]], [[C0]])
 // CHECK-SAME:          to ([[C112]], [[C112]]) step ([[C1]], [[C1]]) {
 // CHECK:      store [[INIT]], [[RESULT_BUF]]{{\[}}[[I]], [[J]]]
-// CHECK:      loop.yield
+// CHECK:      scf.yield
 // CHECK:    }
 
 // Parallel loop over source buffer to compute scattered values.
-// CHECK:    loop.parallel ([[II:%.*]], [[JJ:%.*]]) = ([[C0]], [[C0]])
+// CHECK:    scf.parallel ([[II:%.*]], [[JJ:%.*]]) = ([[C0]], [[C0]])
 // CHECK-SAME:          to ([[C56]], [[C56]]) step ([[C1]], [[C1]]) {
 
 // Window loop w.r.t. first dim.
 // CHECK:      [[SEL_RES_I:%.*]]:4
-// CHECK-SAME:   = loop.for [[WIN_I:%.*]] = [[C0]] to [[C3]] step [[C1]]
+// CHECK-SAME:   = scf.for [[WIN_I:%.*]] = [[C0]] to [[C3]] step [[C1]]
 // CHECK-SAME:     iter_args(
 // CHECK-SAME:       [[SEL_I_0:%.*]] = [[C0]], [[SEL_J_0:%.*]] = [[C0]],
 // CHECK-SAME:       [[SEL_VAL_0:%.*]] = [[C0_F32]],
@@ -71,7 +71,7 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
 
 // Window loop w.r.t. second dim.
 // CHECK:      [[SEL_RES_J:%.*]]:4
-// CHECK-SAME:   = loop.for [[WIN_J:%.*]] = [[C0]] to [[C3]] step [[C1]]
+// CHECK-SAME:   = scf.for [[WIN_J:%.*]] = [[C0]] to [[C3]] step [[C1]]
 // CHECK-SAME:     iter_args(
 // CHECK-SAME:       [[SEL_I:%.*]] = [[SEL_I_0]], [[SEL_J:%.*]] = [[SEL_J_0]],
 // CHECK-SAME:       [[SEL_VAL:%.*]] = [[SEL_VAL_0]],
@@ -102,14 +102,14 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
 // be applied, current selected ivs (SEL_I, SEL_J) and value (SEL_VAL) are
 // returned in that case.
 // CHECK:  [[IF_INBOUNDS_RES:%.*]]:4
-// CHECK-SAME:  = loop.if [[INBOUNDS_1]] -> (index, index, f32, i1) {
+// CHECK-SAME:  = scf.if [[INBOUNDS_1]] -> (index, index, f32, i1) {
 
 
   // INBOUNDS-THEN-BODY, i.e. if INBOUNDS == true
 
   // CHECK: [[ARG_ELEM:%.*]] = load [[ARG_BUF]]{{\[}}[[ARG_I]], [[ARG_J]]]
   // CHECK: [[IF_INIT_RES:%.*]]:4
-  // CHECK-SAME:  = loop.if [[SEL_INIT]] -> (index, index, f32, i1) {
+  // CHECK-SAME:  = scf.if [[SEL_INIT]] -> (index, index, f32, i1) {
 
     // INIT-THEN-BODY, i.e. INBOUNDS == true and INIT = true
 
@@ -133,40 +133,40 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
 
 
     // Depending on PRED, return ARG ivs & elem or current select ivs and value.
-    // CHECK:  [[IF_PRED_RES:%.*]]:4 = loop.if [[PRED]]
-    // CHECK:    loop.yield [[ARG_I]], [[ARG_J]], [[ARG_ELEM]], [[CTRUE]]
+    // CHECK:  [[IF_PRED_RES:%.*]]:4 = scf.if [[PRED]]
+    // CHECK:    scf.yield [[ARG_I]], [[ARG_J]], [[ARG_ELEM]], [[CTRUE]]
     // CHECK:  } else {
-    // CHECK:    loop.yield [[SEL_I]], [[SEL_J]], [[SEL_VAL]], [[SEL_INIT]]
+    // CHECK:    scf.yield [[SEL_I]], [[SEL_J]], [[SEL_VAL]], [[SEL_INIT]]
     // CHECK:  }
 
     // INIT-THEN-BODY yield.
-    // CHECK:  loop.yield [[IF_PRED_RES]]#0, [[IF_PRED_RES]]#1,
+    // CHECK:  scf.yield [[IF_PRED_RES]]#0, [[IF_PRED_RES]]#1,
     // CHECK-SAME:        [[IF_PRED_RES]]#2, [[IF_PRED_RES]]#3
 
     // INIT-ELSE-BODY, i.e. if INBOUNDS == TRUE and INIT == FALSE, returns ARG
     // ivs and element without computing Select function.
-    // CHECK:  loop.yield [[ARG_I]], [[ARG_J]], [[ARG_ELEM]],
+    // CHECK:  scf.yield [[ARG_I]], [[ARG_J]], [[ARG_ELEM]],
     // CHECK-SAME:        [[CTRUE]] : index, index, f32, i1
     // CHECK:  }
 
   // INBOUNDS-THEN-BODY yield.
-  // CHECK:  loop.yield [[IF_INIT_RES]]#0, [[IF_INIT_RES]]#1, [[IF_INIT_RES]]#2,
+  // CHECK:  scf.yield [[IF_INIT_RES]]#0, [[IF_INIT_RES]]#1, [[IF_INIT_RES]]#2,
   // CHECK-SAME:        [[IF_INIT_RES]]#3 : index, index, f32, i1
   // CHECK:  }
 
   // INBOUNDS-ELSE-REGION, i.e. if INBOUNDS == FALSE
   // We are in the pad area, return current iter_args.
-  // CHECK:  loop.yield [[SEL_I]], [[SEL_J]], [[SEL_VAL]],
+  // CHECK:  scf.yield [[SEL_I]], [[SEL_J]], [[SEL_VAL]],
   // CHECK-SAME:  [[SEL_INIT]] : index, index, f32, i1
   // CHECK:  }
 
 // Window loop w.r.t. second dim yield.
-// CHECK:  loop.yield [[IF_INBOUNDS_RES]]#0, [[IF_INBOUNDS_RES]]#1,
+// CHECK:  scf.yield [[IF_INBOUNDS_RES]]#0, [[IF_INBOUNDS_RES]]#1,
 // CHECK-SAME:        [[IF_INBOUNDS_RES]]#2, [[IF_INBOUNDS_RES]]#3
 // CHECK:  }
 
 // Window loop w.r.t. first dim yield.
-// CHECK:    loop.yield [[SEL_RES_J]]#0, [[SEL_RES_J]]#1, [[SEL_RES_J]]#2,
+// CHECK:    scf.yield [[SEL_RES_J]]#0, [[SEL_RES_J]]#1, [[SEL_RES_J]]#2,
 // CHECK-SAME:          [[SEL_RES_J]]#3 : index, index, f32, i1
 // CHECK:  }
 
@@ -196,4 +196,4 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
 // CHECK:  atomic_yield [[RES]] : f32
 
 // Parallel loop over source buffer yield
-// CHECK:  loop.yield
+// CHECK:  scf.yield

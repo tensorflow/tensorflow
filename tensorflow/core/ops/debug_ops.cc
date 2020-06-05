@@ -90,6 +90,7 @@ REGISTER_OP("DebugIdentityV2")
     .Attr("output_slot: int = -1")
     .Attr("tensor_debug_mode: int = -1")
     .Attr("debug_urls: list(string) = []")
+    .Attr("circular_buffer_size: int = 1000")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnchangedShape);
 

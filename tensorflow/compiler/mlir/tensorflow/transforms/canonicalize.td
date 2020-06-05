@@ -65,6 +65,12 @@ def BatchMatMulV2ToMatMul : Pat<(TF_BatchMatMulV2Op $x, $y, $adj_x, $adj_y),
                               (TF_MatMulOp $x, $y, $adj_x, $adj_y),
                               [(IsRank2Tensor $x), (IsRank2Tensor $y)]>;
 
+//===----------------------------------------------------------------------===//
+// BiasAddV1 op patterns.
+//===----------------------------------------------------------------------===//
+
+def BiasAddV1ToBiasAdd : Pat<(TF_BiasAddV1Op $arg0, $arg1),
+  (TF_BiasAddOp $arg0, $arg1, ConstantAttr<TF_ConvnetDataFormatAttr, "NHWC">)>;
 
 //===----------------------------------------------------------------------===//
 // Bitcast op patterns.
@@ -151,6 +157,23 @@ def RealDivWithSqrtDivisor : Pat<(TF_RealDivOp $arg0, (TF_SqrtOp $arg1)),
 
 def ReciprocalNested : Pat<(TF_ReciprocalOp (TF_ReciprocalOp $arg)),
                            (replaceWithValue $arg)>;
+
+//===----------------------------------------------------------------------===//
+// Select op patterns.
+//===----------------------------------------------------------------------===//
+
+def ReshapeSelectPredIfNecessary : NativeCodeCall<
+  "ReshapeSelectPredIfNecessary(&($_builder), $0.getOwner()->getLoc(), $1, "
+  "$2.getType().cast<RankedTensorType>().getRank())">;
+
+// Select supports tensor `condition` where the shape is equal to the first
+// dimension of t and e. SelectV2 op supports normal broadcasting, so in these
+// cases the condition needs to be reshaped.
+def SelectToSelectV2 : Pat<
+  (TF_SelectOp:$op StaticShapeTensorOf<[AnyType]>:$cond,
+                   StaticShapeTensorOf<[AnyType]>:$t,
+                   StaticShapeTensorOf<[AnyType]>:$e),
+  (TF_SelectV2Op (ReshapeSelectPredIfNecessary $op, $cond, $t), $t, $e)>;
 
 //===----------------------------------------------------------------------===//
 // Square op patterns.

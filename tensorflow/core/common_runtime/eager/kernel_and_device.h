@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
@@ -92,11 +93,16 @@ class EagerKernelArgs : public FunctionArgsInterface {
 // https://www.tensorflow.org/code/tensorflow/core/kernels/ops_testutil.h
 class KernelAndDevice : public core::RefCounted {
  public:
+  struct Context {
+    bool log_device_placement = false;
+  };
+
   // Populates this with a kernel appropriate for 'ndef'.
   //
   // The provided FunctionLibraryRuntime MUST outlive all calls to
   // Run() on the returned KernelAndDevice.
-  virtual Status Init(const NodeDef& ndef, GraphCollector* graph_collector) = 0;
+  virtual Status Init(const Context& ctx, const NodeDef& ndef,
+                      GraphCollector* graph_collector) = 0;
 
   // Non-multi-device functions are run using regular CallOp and look like
   // primitive operations from KernelAndDevice perspective.
@@ -193,7 +199,8 @@ class KernelAndDeviceOp final : public KernelAndDevice {
 
   ~KernelAndDeviceOp() override {}
 
-  Status Init(const NodeDef& ndef, GraphCollector* graph_collector) override;
+  Status Init(const Context& ctx, const NodeDef& ndef,
+              GraphCollector* graph_collector) override;
 
   Status Run(ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
              std::vector<Tensor>* outputs,
@@ -241,7 +248,7 @@ class KernelAndDeviceOp final : public KernelAndDevice {
 // Represents a multi-device function. Functions can also be run using
 // various function-calling kernels including CallOp and PartitionedCallOp.
 // In such cases, KernelAndDeviceOp is used.
-class KernelAndDeviceFunc final : public KernelAndDevice {
+class KernelAndDeviceFunc : public KernelAndDevice {
  public:
   // `flr` can be nullptr.
   // `pflr` must not be nullptr.
@@ -249,6 +256,7 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
   KernelAndDeviceFunc(
       FunctionLibraryRuntime* flr, ProcessFunctionLibraryRuntime* pflr,
       std::vector<Device*> input_devices,
+      absl::flat_hash_map<string, const std::vector<string>*> composite_devices,
       std::unordered_map<int, DtypeAndPartialTensorShape>
           input_resource_dtypes_and_shapes,
       std::function<void(std::function<void()>)>* runner,
@@ -261,6 +269,7 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
         pflr_(pflr),
         handle_(kInvalidHandle),
         input_devices_(std::move(input_devices)),
+        composite_devices_(std::move(composite_devices)),
         input_resource_dtypes_and_shapes_(
             std::move(input_resource_dtypes_and_shapes)),
         name_(name),
@@ -279,9 +288,11 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
 
   bool IsFunction() override { return true; };
 
-  Status InstantiateFunc(const NodeDef& ndef, GraphCollector* graph_collector);
+  Status InstantiateFunc(const Context& ctx, const NodeDef& ndef,
+                         GraphCollector* graph_collector);
 
-  Status Init(const NodeDef& ndef, GraphCollector* graph_collector) override;
+  Status Init(const Context& ctx, const NodeDef& ndef,
+              GraphCollector* graph_collector) override;
 
   Status Run(ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
              std::vector<Tensor>* outputs,
@@ -320,6 +331,8 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
   // CPU devices are not null. Resource handles' devices are actual backing
   // devices.
   std::vector<Device*> input_devices_;
+  // Maps from a CompositeDevice name to a list of physical device names.
+  absl::flat_hash_map<string, const std::vector<string>*> composite_devices_;
   std::unordered_map<int, DtypeAndPartialTensorShape>
       input_resource_dtypes_and_shapes_;
 

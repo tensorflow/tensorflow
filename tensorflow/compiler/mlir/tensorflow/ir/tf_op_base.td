@@ -23,7 +23,7 @@ limitations under the License.
 #define TF_OP_BASE
 
 include "mlir/IR/OpBase.td"
-include "mlir/Interfaces/SideEffects.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.td"
 
 //===----------------------------------------------------------------------===//
@@ -69,6 +69,36 @@ class TF_OpIsBroadcastableToRes<int opId, int resId> : And<[
     CPred<"mlir::TF::BroadcastCompatible("
               "$_op.getOperand(" # opId # ").getType(), "
               "$_op.getResult(" # resId # ").getType())">]>;
+
+
+class TF_AllTypesMatchPred<list<string> values> :
+    CPred<"TF::AreCastCompatible(llvm::makeArrayRef({"# StrJoin<values>.result #"}))">;
+
+class TF_AllTypesMatch<list<string> names> :
+    PredOpTrait<
+        "all of {" # StrJoin<names>.result # "} have dynamically equal types ",
+        TF_AllTypesMatchPred<
+            !foreach(n, names, !subst("$_self", "$" # n, "$_self.getType()"))>>;
+
+//===----------------------------------------------------------------------===//
+// TensorFlow op side effects
+//===----------------------------------------------------------------------===//
+
+class TF_ResourceBase<string resourceKind> :
+  Resource<!strconcat("::mlir::TF::ResourceEffects::", resourceKind)> {
+}
+
+def TF_VariableResource : TF_ResourceBase<"Variable">;
+def TF_StackResource : TF_ResourceBase<"Stack">;
+def TF_TensorArrayResource : TF_ResourceBase<"TensorArray">;
+
+def TF_VariableRead : MemRead<TF_VariableResource>;
+def TF_StackRead : MemRead<TF_StackResource>;
+def TF_TensorArrayRead : MemRead<TF_TensorArrayResource>;
+
+def TF_VariableWrite : MemWrite<TF_VariableResource>;
+def TF_StackWrite : MemWrite<TF_StackResource>;
+def TF_TensorArrayWrite : MemWrite<TF_TensorArrayResource>;
 
 //===----------------------------------------------------------------------===//
 // TensorFlow op definitions

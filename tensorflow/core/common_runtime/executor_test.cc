@@ -549,7 +549,8 @@ BENCHMARK(BM_FeedInputFetchOutput);
 //
 // ...using the functional `WhileOp` (if `lower` is false) or the
 // `Switch`/`Merge`-style of control flow (if `lower` is true).
-static void BM_WhileLoopHelper(int iters, int loop_iters, bool lower) {
+static void BM_WhileLoopHelper(int iters, int loop_iters, int loop_vars,
+                               bool lower) {
   testing::StopTiming();
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
 
@@ -558,20 +559,44 @@ static void BM_WhileLoopHelper(int iters, int loop_iters, bool lower) {
 
   // Define the loop body as a function: `x = x + 1`.
   const Tensor one_t = test::AsScalar<int32>(1);
+
+  std::vector<string> args;
+  args.reserve(loop_vars);
+  args.push_back("x: int32");
+  for (int i = 1; i < loop_vars; ++i) {
+    args.push_back(strings::StrCat("x", i, ": int32"));
+  }
+
+  std::vector<string> body_rets;
+  body_rets.reserve(loop_vars);
+  body_rets.push_back("y: int32");
+  for (int i = 1; i < loop_vars; ++i) {
+    body_rets.push_back(strings::StrCat("y", i, ": int32"));
+  }
+
+  std::vector<FunctionDefHelper::Node> body_nodes;
+  body_nodes.reserve(1 + loop_vars);
+  body_nodes.push_back(
+      {{"one"}, "Const", {}, {{"value", one_t}, {"dtype", DT_INT32}}});
+  body_nodes.push_back({{"y"}, "Add", {"x", "one"}, {{"T", DT_INT32}}});
+  for (int i = 1; i < loop_vars; ++i) {
+    body_nodes.push_back({{strings::StrCat("y", i)},
+                          "Identity",
+                          {strings::StrCat("x", i)},
+                          {{"T", DT_INT32}}});
+  }
+
   *f_lib_proto.add_function() = FunctionDefHelper::Define(
       // Name
       "XPlusOne",
       // Args
-      {"x: int32"},
+      args,
       // Return values
-      {"y: int32"},
+      body_rets,
       // Attr def
       {},
       // Nodes
-      {
-          {{"one"}, "Const", {}, {{"value", one_t}, {"dtype", DT_INT32}}},
-          {{"y"}, "Add", {"x", "one"}, {{"T", DT_INT32}}},
-      });
+      body_nodes);
 
   // Define the loop condition as a function: `x < loop_iters`.
   const Tensor loop_iters_t = test::AsScalar<int32>(loop_iters);
@@ -579,7 +604,7 @@ static void BM_WhileLoopHelper(int iters, int loop_iters, bool lower) {
       // Name
       "LessThanOrEqualToN",
       // Args
-      {"x: int32"},
+      args,
       // Return values
       {"z: bool"},
       // Attr def
@@ -594,7 +619,12 @@ static void BM_WhileLoopHelper(int iters, int loop_iters, bool lower) {
   TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
   auto a = ops::Const(root.WithOpName("A"), 0, {});
   Node* while_node;
-  std::vector<NodeBuilder::NodeOut> inputs({NodeBuilder::NodeOut(a.node())});
+  std::vector<NodeBuilder::NodeOut> inputs;
+  std::vector<DataType> input_types(loop_vars, DT_INT32);
+  inputs.reserve(loop_vars);
+  for (int i = 0; i < loop_vars; ++i) {
+    inputs.push_back(NodeBuilder::NodeOut(a.node()));
+  }
   AttrValue int32_attr;
   int32_attr.set_type(DT_INT32);
   AttrValue cond_func;
@@ -604,7 +634,7 @@ static void BM_WhileLoopHelper(int iters, int loop_iters, bool lower) {
   TF_ASSERT_OK(
       NodeBuilder("while", "While", &root.graph()->flib_def())
           .Input(inputs)
-          .Attr("T", {DT_INT32})
+          .Attr("T", input_types)
           .Attr("cond", cond_func)
           .Attr("body", body_func)
           .Attr("parallel_iterations", 100)
@@ -635,21 +665,33 @@ static void BM_WhileLoopHelper(int iters, int loop_iters, bool lower) {
   test::Benchmark("cpu", graph.release()).Run(iters);
 }
 
-static void BM_LoweredWhileLoop(int iters, int loop_iters) {
-  BM_WhileLoopHelper(iters, loop_iters, /* lower= */ true);
+static void BM_LoweredWhileLoop(int iters, int loop_iters, int loop_vars) {
+  BM_WhileLoopHelper(iters, loop_iters, loop_vars, /* lower= */ true);
 }
-BENCHMARK(BM_LoweredWhileLoop)->Arg(0);
-BENCHMARK(BM_LoweredWhileLoop)->Arg(1);
-BENCHMARK(BM_LoweredWhileLoop)->Arg(10);
-BENCHMARK(BM_LoweredWhileLoop)->Arg(100);
-BENCHMARK(BM_LoweredWhileLoop)->Arg(1000);
+BENCHMARK(BM_LoweredWhileLoop)
+    ->ArgPair(0, 1)
+    ->ArgPair(1, 1)
+    ->ArgPair(10, 1)
+    ->ArgPair(100, 1)
+    ->ArgPair(1000, 1)
+    ->ArgPair(0, 100)
+    ->ArgPair(1, 100)
+    ->ArgPair(10, 100)
+    ->ArgPair(100, 100)
+    ->ArgPair(1000, 100);
 
-static void BM_FunctionalWhileLoop(int iters, int loop_iters) {
-  BM_WhileLoopHelper(iters, loop_iters, /* lower= */ false);
+static void BM_FunctionalWhileLoop(int iters, int loop_iters, int loop_vars) {
+  BM_WhileLoopHelper(iters, loop_iters, loop_vars, /* lower= */ false);
 }
-BENCHMARK(BM_FunctionalWhileLoop)->Arg(0);
-BENCHMARK(BM_FunctionalWhileLoop)->Arg(1);
-BENCHMARK(BM_FunctionalWhileLoop)->Arg(10);
-BENCHMARK(BM_FunctionalWhileLoop)->Arg(100);
-BENCHMARK(BM_FunctionalWhileLoop)->Arg(1000);
+BENCHMARK(BM_FunctionalWhileLoop)
+    ->ArgPair(0, 1)
+    ->ArgPair(1, 1)
+    ->ArgPair(10, 1)
+    ->ArgPair(100, 1)
+    ->ArgPair(1000, 1)
+    ->ArgPair(0, 100)
+    ->ArgPair(1, 100)
+    ->ArgPair(10, 100)
+    ->ArgPair(100, 100)
+    ->ArgPair(1000, 100);
 }  // namespace tensorflow

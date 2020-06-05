@@ -79,11 +79,8 @@ TfLiteStatus TransposeConv2dOpBuilder::ProcessPerChannelQuantizedWeights(
 TfLiteStatus TransposeConv2dOpBuilder::PopulateSubGraph(
     const TfLiteIntArray* inputs, const TfLiteIntArray* outputs,
     TfLiteContext* context) {
-  static std::vector<int> quant_bound_shape = {1, 1, 1, 1};
-  int tensor_id;
-
   // DATA TENSOR.
-  tensor_id = inputs->data[2];
+  int tensor_id = inputs->data[2];
   const auto& data_tensor = context->tensors[tensor_id];
   AddInput(graph_builder_->GetHexagonTensorId(tensor_id));
   float data_min = 0;
@@ -91,11 +88,9 @@ TfLiteStatus TransposeConv2dOpBuilder::PopulateSubGraph(
   TF_LITE_ENSURE_STATUS(
       ComputeMinAndMaxQuantValues(data_tensor, &data_min, &data_max));
   auto* data_min_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape.data(), reinterpret_cast<char*>(&data_min),
-      sizeof(data_min));
+      kScalarShape, reinterpret_cast<char*>(&data_min), sizeof(data_min));
   auto* data_max_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape.data(), reinterpret_cast<char*>(&data_max),
-      sizeof(data_max));
+      kScalarShape, reinterpret_cast<char*>(&data_max), sizeof(data_max));
 
   // WEIGHTS.
   tensor_id = inputs->data[1];
@@ -150,11 +145,9 @@ TfLiteStatus TransposeConv2dOpBuilder::PopulateSubGraph(
         weights_tensor, &weights_min, &weights_max));
   }
   auto* weights_min_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape.data(), reinterpret_cast<char*>(&weights_min),
-      sizeof(weights_min));
+      kScalarShape, reinterpret_cast<char*>(&weights_min), sizeof(weights_min));
   auto* weights_max_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape.data(), reinterpret_cast<char*>(&weights_max),
-      sizeof(weights_max));
+      kScalarShape, reinterpret_cast<char*>(&weights_max), sizeof(weights_max));
 
   // Min/max inputs for data & weights tensors.
   AddInput(TensorID(data_min_const->GetID(), 0));
@@ -205,11 +198,9 @@ TfLiteStatus TransposeConv2dOpBuilder::PopulateSubGraph(
       sizeof(bias_data[0]) * bias_data.size());
   float zero_bound = 0;
   auto* bias_min_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape.data(), reinterpret_cast<char*>(&zero_bound),
-      sizeof(zero_bound));
+      kScalarShape, reinterpret_cast<char*>(&zero_bound), sizeof(zero_bound));
   auto* bias_max_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape.data(), reinterpret_cast<char*>(&zero_bound),
-      sizeof(zero_bound));
+      kScalarShape, reinterpret_cast<char*>(&zero_bound), sizeof(zero_bound));
   AddInput(TensorID(bias_const->GetID(), 0));
   AddInput(TensorID(bias_min_const->GetID(), 0));
   AddInput(TensorID(bias_max_const->GetID(), 0));
@@ -220,11 +211,9 @@ TfLiteStatus TransposeConv2dOpBuilder::PopulateSubGraph(
   ComputeMinAndMaxQuantValues(context->tensors[outputs->data[0]], &output_min,
                               &output_max);
   auto* output_min_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape.data(), reinterpret_cast<char*>(&output_min),
-      sizeof(output_min));
+      kScalarShape, reinterpret_cast<char*>(&output_min), sizeof(output_min));
   auto* output_max_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape.data(), reinterpret_cast<char*>(&output_max),
-      sizeof(output_max));
+      kScalarShape, reinterpret_cast<char*>(&output_max), sizeof(output_max));
   AddInput(TensorID(output_min_const->GetID(), 0));
   AddInput(TensorID(output_max_const->GetID(), 0));
 
@@ -237,8 +226,8 @@ TfLiteStatus TransposeConv2dOpBuilder::PopulateSubGraph(
   node_output_ = AddOutput(sizeof(uint8_t), 4,
                            {output_batch_size, output_height_size,
                             output_width_size, output_depth_size});
-  AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-  AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+  AddOutput(sizeof(float), 4, kScalarShape);
+  AddOutput(sizeof(float), 4, kScalarShape);
 
   return kTfLiteOk;
 }

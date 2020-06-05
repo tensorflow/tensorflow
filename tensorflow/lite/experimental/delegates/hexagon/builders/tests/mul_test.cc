@@ -22,13 +22,13 @@ using testing::ElementsAreArray;
 class MulOpModel : public SingleOpModelWithHexagon {
  public:
   explicit MulOpModel(const TensorData& input1, const TensorData& input2,
-                      const TensorData& output) {
+                      const TensorData& output,
+                      ActivationFunctionType activation_func) {
     input1_ = AddInput(input1);
     input2_ = AddInput(input2);
     output_ = AddOutput(output);
-    SetBuiltinOp(
-        BuiltinOperator_MUL, BuiltinOptions_MulOptions,
-        CreateMulOptions(builder_, ActivationFunctionType_NONE).Union());
+    SetBuiltinOp(BuiltinOperator_MUL, BuiltinOptions_MulOptions,
+                 CreateMulOptions(builder_, activation_func).Union());
     BuildInterpreter({GetShape(input1_), GetShape(input2_)});
   }
 
@@ -57,11 +57,11 @@ class MulOpModel : public SingleOpModelWithHexagon {
 };
 
 template <TensorType tensor_type, typename integer_dtype>
-void TestMulOutputImpl() {
+void TestMulOutputImpl(ActivationFunctionType activation_func) {
   MulOpModel model(
       /*input1=*/{tensor_type, {2, 3}, -0.44f, 8.0f},
       /*input2=*/{tensor_type, {1, 3}, 0, 0.999f},
-      /*output=*/{tensor_type, {2, 3}, -0.44f, 4.996f});
+      /*output=*/{tensor_type, {2, 3}, -1.0f, 1.0f}, activation_func);
   model.SetInput1<integer_dtype>({1, 2, 3, 4, 5, 6});
   model.SetInput2<integer_dtype>({0.1f, 0.2f, 0.3f});
 
@@ -76,11 +76,11 @@ void TestMulOutputImpl() {
 }
 
 template <TensorType tensor_type, typename integer_dtype>
-void TestLargeInputRangeImpl() {
+void TestLargeInputRangeImpl(ActivationFunctionType activation_func) {
   MulOpModel model(
       /*input1=*/{tensor_type, {1, 2, 2, 3}, -0.44f, 55.7f},
       /*input2=*/{tensor_type, {1, 1, 2, 3}, 0, 0.999f},
-      /*output=*/{tensor_type, {1, 2, 2, 3}, -0.44f, 4.996f});
+      /*output=*/{tensor_type, {1, 2, 2, 3}, -1.0f, 1.0f}, activation_func);
   model.SetInput1<integer_dtype>({1, 2, 3, 4, 5, 6, 20, 30, 40, 50, 52, 55});
   model.SetInput2<integer_dtype>({0.8f, 0.9f, 0.99f, 0.8f, 0.9f, 0.99f});
 
@@ -94,20 +94,28 @@ void TestLargeInputRangeImpl() {
               ElementsAreArray(ArrayFloatNear(reference_out, 0.03)));
 }
 
-TEST(MulOpModel, MulOutput_UInt8) {
-  TestMulOutputImpl<TensorType_UINT8, uint8_t>();
+class MulOpModelTest : public testing::TestWithParam<ActivationFunctionType> {};
+
+TEST_P(MulOpModelTest, MulOutput_UInt8) {
+  TestMulOutputImpl<TensorType_UINT8, uint8_t>(GetParam());
 }
 
-TEST(MulOpModel, MulOutput_Int8) {
-  TestMulOutputImpl<TensorType_INT8, int8_t>();
+TEST_P(MulOpModelTest, MulOutput_Int8) {
+  TestMulOutputImpl<TensorType_INT8, int8_t>(GetParam());
 }
 
-TEST(MulOpModel, LargeInputRange_UInt8) {
-  TestLargeInputRangeImpl<TensorType_UINT8, uint8_t>();
+TEST_P(MulOpModelTest, LargeInputRange_UInt8) {
+  TestLargeInputRangeImpl<TensorType_UINT8, uint8_t>(GetParam());
 }
 
-TEST(MulOpModel, LargeInputRange_Int8) {
-  TestLargeInputRangeImpl<TensorType_INT8, int8_t>();
+TEST_P(MulOpModelTest, LargeInputRange_Int8) {
+  TestLargeInputRangeImpl<TensorType_INT8, int8_t>(GetParam());
 }
+
+INSTANTIATE_TEST_SUITE_P(MulOpModelTest, MulOpModelTest,
+                         testing::Values(ActivationFunctionType_NONE,
+                                         ActivationFunctionType_RELU,
+                                         ActivationFunctionType_RELU_N1_TO_1,
+                                         ActivationFunctionType_RELU6));
 
 }  // namespace tflite
