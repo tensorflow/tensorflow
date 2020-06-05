@@ -643,7 +643,7 @@ def imag(a):
   return np_utils.tensor_to_ndarray(math_ops.imag(a.data))
 
 
-_TO_INT64 = 0
+_TO_INT_ = 0
 _TO_FLOAT = 1
 
 
@@ -652,7 +652,7 @@ def _reduce(tf_fn,
             axis=None,
             dtype=None,
             keepdims=None,
-            promote_int=_TO_INT64,
+            promote_int=_TO_INT_,
             tf_bool_fn=None,
             preserve_bool=False):
   """A general reduction function.
@@ -665,7 +665,7 @@ def _reduce(tf_fn,
     dtype: (optional) the dtype of the result.
     keepdims: (optional) whether to keep the reduced dimension(s).
     promote_int: how to promote integer and bool inputs. There are three
-      choices. (1) `_TO_INT64` always promotes them to int64 or uint64; (2)
+      choices. (1) `_TO_INT_` always promotes them to np.int_ or np.uint; (2)
       `_TO_FLOAT` always promotes them to a float type (determined by
       dtypes.default_float_type); (3) None: don't promote.
     tf_bool_fn: (optional) the TF reduction function for bool inputs. It will
@@ -690,20 +690,23 @@ def _reduce(tf_fn,
   if dtype is None:
     dtype = a.dtype
     if np.issubdtype(dtype, np.integer) or dtype == np.bool_:
-      if promote_int == _TO_INT64:
-        # If a is an integer/bool type and whose bit width is less than 64,
-        # numpy up-casts it to 64-bit.
+      if promote_int == _TO_INT_:
+        # If a is an integer/bool type and whose bit width is less than np.int_,
+        # numpy up-casts it to np.int_ based on the documentation at
+        # https://numpy.org/doc/1.18/reference/generated/numpy.sum.html
         if dtype == np.bool_:
           is_signed = True
           width = 8  # We can use any number here that is less than 64
         else:
           is_signed = np.issubdtype(dtype, np.signedinteger)
           width = np.iinfo(dtype).bits
-        if width < 64:
+        # Numpy int_ and uint are defined as 'long' and 'unsigned long', so
+        # should have the same bit width.
+        if width < np.iinfo(np.int_).bits:
           if is_signed:
-            dtype = np.int64
+            dtype = np.int_
           else:
-            dtype = np.uint64
+            dtype = np.uint
           a = a.astype(dtype)
       elif promote_int == _TO_FLOAT:
         a = a.astype(np_dtypes.default_float_type())
