@@ -1025,7 +1025,7 @@ class Lambda(Layer):
   def _parse_function_from_config(
       cls, config, custom_objects, func_attr_name, module_attr_name,
       func_type_attr_name):
-    globs = globals()
+    globs = globals().copy()
     module = config.pop(module_attr_name, None)
     if module in sys.modules:
       globs.update(sys.modules[module].__dict__)
