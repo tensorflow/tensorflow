@@ -433,7 +433,7 @@ class GroupedConvTest(keras_parameterized.TestCase):
       ('Conv2D', keras.layers.Conv2D, (32, 12, 12, 32)),
       ('Conv3D', keras.layers.Conv3D, (32, 12, 12, 12, 32)),
   )
-  def test_group_conv(self, layer_cls, input_shape):
+  def disable_test_group_conv(self, layer_cls, input_shape):
     if test.is_gpu_available(cuda_only=True):
       with test_util.use_gpu():
         inputs = random_ops.random_uniform(shape=input_shape)
