@@ -8651,11 +8651,11 @@ particular,
 begin = [1, 2, x, x, 0, x] # x denotes don't care (usually 0)
 end = [2, 4, x, x, -3, x]
 strides = [1, 1, x, x, -1, 1]
-begin_mask = 1<<4 | 1 << 5 = 48
+begin_mask = 1<<4 | 1<<5 = 48
 end_mask = 1<<5 = 32
 ellipsis_mask = 1<<3 = 8
-new_axis_mask = 1<<2 4
-shrink_axis_mask = 1<<0
+new_axis_mask = 1<<2 = 4
+shrink_axis_mask = 1<<0 = 1
 ```
 
 In this case if `foo.shape` is (5, 5, 5, 5, 5, 5) the final shape of
