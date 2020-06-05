@@ -50,6 +50,9 @@ class MicroOpResolver : public OpResolver {
   // i.e. if this function is called again for a previously added
   // BuiltinOperator, the MicroOpResolver will be unchanged and this function
   // will return kTfLiteError.
+  //
+  // TODO(b/149408647): remove this API once the templated AddBuiltin API in
+  // MicroMutableOpResolver is properly implemented.
   virtual TfLiteStatus AddBuiltin(tflite::BuiltinOperator op,
                                   TfLiteRegistration* registration) = 0;
 

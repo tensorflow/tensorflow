@@ -684,25 +684,35 @@ TfLiteStatus MicroAllocator::PrepareNodeAndRegistrationDataFromFlatbuffer(
     BuiltinOperator op_type =
         static_cast<BuiltinOperator>(registration->builtin_code);
 
-    if (op_type != BuiltinOperator_CUSTOM && op->custom_options()) {
-      TF_LITE_REPORT_ERROR(
-          error_reporter_,
-          "Unsupported behavior: found builtin operator %s with custom "
-          "options.\n",
-          EnumNameBuiltinOperator(op_type));
-      return kTfLiteError;
-    }
-
     const char* custom_data = nullptr;
     size_t custom_data_size = 0;
     unsigned char* builtin_data = nullptr;
-    if (op->custom_options()) {
-      custom_data = reinterpret_cast<const char*>(op->custom_options()->data());
-      custom_data_size = op->custom_options()->size();
+
+    if (op_type == BuiltinOperator_CUSTOM) {
+      // Custom Ops may or may not have a non-null custom_options field.
+      if (op->custom_options() != nullptr) {
+        custom_data =
+            reinterpret_cast<const char*>(op->custom_options()->data());
+        custom_data_size = op->custom_options()->size();
+      }
     } else {
+      if (op->custom_options() != nullptr) {
+        TF_LITE_REPORT_ERROR(
+            error_reporter_,
+            "Unsupported behavior: found builtin operator %s with custom "
+            "options.\n",
+            EnumNameBuiltinOperator(op_type));
+        return kTfLiteError;
+      }
+
       MicroOpResolver::BuiltinParseFunction parser =
           op_resolver.GetOpDataParser(op_type);
-      TFLITE_DCHECK(parser != nullptr);
+      if (parser == nullptr) {
+        TF_LITE_REPORT_ERROR(error_reporter_, "Did not find a parser for %s",
+                             EnumNameBuiltinOperator(op_type));
+
+        return kTfLiteError;
+      }
       TF_LITE_ENSURE_STATUS(parser(op, op_type, error_reporter_,
                                    &builtin_data_allocator,
                                    (void**)(&builtin_data)));
@@ -724,6 +734,6 @@ TfLiteStatus MicroAllocator::PrepareNodeAndRegistrationDataFromFlatbuffer(
   }
 
   return kTfLiteOk;
-}
+}  // namespace tflite
 
 }  // namespace tflite
