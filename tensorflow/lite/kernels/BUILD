@@ -537,8 +537,6 @@ BUILTIN_KERNEL_DEPS = [
     ":lstm_shared",
     ":op_macros",
     ":padding",
-    "@com_google_absl//absl/memory",
-    "@com_google_absl//absl/strings",
     "//third_party/eigen3",
     "@flatbuffers",
     "//tensorflow/lite:framework_lib",

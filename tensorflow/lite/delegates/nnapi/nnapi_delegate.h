@@ -20,7 +20,6 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
@@ -234,7 +233,7 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
                              NNAPIDelegateKernel* delegate_state);
     // Returns a cached NNAPIDelegateKernel if available and removes it
     // from the cache transferring the ownership to the caller.
-    absl::optional<NNAPIDelegateKernel*> GetCachedDelegateKernel(
+    NNAPIDelegateKernel* MaybeGetCachedDelegateKernel(
         const TfLiteDelegateParams* delegate_params);
   };
 
