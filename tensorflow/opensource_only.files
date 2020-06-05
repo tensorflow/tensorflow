@@ -96,6 +96,7 @@ tensorflow/third_party/gpus/cuda/BUILD.windows.tpl
 tensorflow/third_party/gpus/cuda/LICENSE
 tensorflow/third_party/gpus/cuda/build_defs.bzl.tpl
 tensorflow/third_party/gpus/cuda/cuda_config.h.tpl
+tensorflow/third_party/gpus/cuda/cuda_config.py.tpl
 tensorflow/third_party/gpus/cuda_configure.bzl
 tensorflow/third_party/gpus/find_cuda_config.py
 tensorflow/third_party/gpus/find_cuda_config.py.gz.base64
