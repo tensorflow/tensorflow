@@ -472,4 +472,5 @@ def HessiansV2(ys,
   """
   return hessians(ys, xs, name=name,
                   colocate_gradients_with_ops=True,
-                  gate_gradients=gate_gradients, aggregation_method=aggregation_method)
+                  gate_gradients=gate_gradients,
+                  aggregation_method=aggregation_method)
