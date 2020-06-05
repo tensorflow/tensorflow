@@ -333,6 +333,14 @@ llvm_all_cmake_vars = select({
             posix_cmake_vars,
         ),
     ),
+    "@org_tensorflow//tensorflow:linux_s390x": cmake_var_string(
+        _dict_add(
+            cmake_vars,
+            llvm_target_cmake_vars("SystemZ", "systemz-unknown-linux_gnu"),
+            posix_cmake_vars,
+       linux_cmake_vars,
+        ),
+    ),
     "//conditions:default": cmake_var_string(
         _dict_add(
             cmake_vars,

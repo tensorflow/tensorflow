@@ -176,6 +176,10 @@ static void InitializeTargets() {
   LLVMInitializePowerPCTargetInfo();
   LLVMInitializePowerPCTargetMC();
   LLVMInitializePowerPCAsmPrinter();
+  LLVMInitializeSystemZTarget();
+  LLVMInitializeSystemZTargetInfo();
+  LLVMInitializeSystemZTargetMC();
+  LLVMInitializeSystemZAsmPrinter();
   LLVMInitializeX86Target();
   LLVMInitializeX86TargetInfo();
   LLVMInitializeX86TargetMC();

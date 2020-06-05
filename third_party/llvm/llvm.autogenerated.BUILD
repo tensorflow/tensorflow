@@ -33,6 +33,7 @@ llvm_targets = [
     "NVPTX",
     "PowerPC",
     "X86",
+    "SystemZ",
 ]
 
 llvm_target_asm_parsers = llvm_targets
@@ -539,6 +540,22 @@ llvm_target_list = [
         ],
     },
     {
+        "name": "SystemZ",
+        "lower_name": "system_z",
+        "short_name": "SystemZ",
+        "tbl_outs": [
+            ("-gen-asm-writer", "lib/Target/SystemZ/SystemZGenAsmWriter.inc"),
+            ("-gen-asm-matcher", "lib/Target/SystemZ/SystemZGenAsmMatcher.inc"),
+            ("-gen-emitter", "lib/Target/SystemZ/SystemZGenMCCodeEmitter.inc"),
+            ("-gen-register-info", "lib/Target/SystemZ/SystemZGenRegisterInfo.inc"),
+            ("-gen-instr-info", "lib/Target/SystemZ/SystemZGenInstrInfo.inc"),
+            ("-gen-dag-isel", "lib/Target/SystemZ/SystemZGenDAGISel.inc"),
+            ("-gen-callingconv", "lib/Target/SystemZ/SystemZGenCallingConv.inc"),
+            ("-gen-subtarget", "lib/Target/SystemZ/SystemZGenSubtargetInfo.inc"),
+            ("-gen-disassembler", "lib/Target/SystemZ/SystemZGenDisassemblerTables.inc"),
+        ],
+    },
+    {
         "name": "X86",
         "lower_name": "x86",
         "short_name": "X86",
@@ -655,6 +672,7 @@ cc_library(
         ":nvptx_code_gen",
         ":powerpc_code_gen",
         ":x86_code_gen",
+        ":system_z_code_gen",
     ],
 )
 
@@ -3902,6 +3920,7 @@ cc_library(
         ":mc",
         ":support",
         ":system_z_info",
+        ":system_z_target_gen",
     ],
 )
 
@@ -3935,6 +3954,7 @@ cc_library(
         "lib/Target/SystemZ/TargetInfo/*.c",
         "lib/Target/SystemZ/TargetInfo/*.cpp",
         "lib/Target/SystemZ/TargetInfo/*.inc",
+        "lib/Target/SystemZ/MCTargetDesc/*.h",
     ]),
     hdrs = glob([
         "include/llvm/Target/SystemZ/TargetInfo/*.h",
@@ -3946,6 +3966,7 @@ cc_library(
     deps = [
         ":config",
         ":support",
+        ":system_z_target_gen",
     ],
 )
 

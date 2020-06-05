@@ -191,6 +191,9 @@ cc_library(
         "//tensorflow:linux_ppc64le": [
             "@llvm-project//llvm:powerpc_code_gen",  # fixdeps: keep
         ],
+        "//tensorflow:linux_s390x": [
+            "@llvm-project//llvm:system_z_code_gen",  # fixdeps: keep
+        ],
         "//conditions:default": [
         ],
     }),
