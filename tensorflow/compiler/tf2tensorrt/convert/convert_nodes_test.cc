@@ -2011,6 +2011,142 @@ TEST_F(OpConverterTest, ConvertConst) {
   TestConvertConst<DT_UINT64, uint64, int32>(this);
 }
 
+template <typename T>
+NodeDef CreateFusedBatchNormOp(DataType tf_type, std::string data_format,
+                               bool is_training, float epsilon) {
+  Scope s = Scope::NewRootScope();
+  auto x = ops::Placeholder(s.WithOpName("x"), tf_type);
+  auto scale = ops::Placeholder(s.WithOpName("scale"), tf_type);
+  auto offset = ops::Placeholder(s.WithOpName("offset"), tf_type);
+  auto mean = ops::Placeholder(s.WithOpName("mean"), tf_type);
+  auto variance = ops::Placeholder(s.WithOpName("variance"), tf_type);
+  typename T::Attrs attrs;
+  attrs.data_format_ = data_format;
+  attrs.is_training_ = is_training;
+  if (epsilon > 0) {
+    attrs.epsilon_ = epsilon;
+  } else {
+    EXPECT_GE(epsilon, 0);
+  }
+  return T(s.WithOpName("my_batchnorm"), x, scale, offset, mean, variance,
+           attrs)
+      .operation.node()
+      ->def();
+}
+
+TEST_P(OpConverterTest1, ConvertFusedBatchNorm) {
+  using OpFunc = std::function<NodeDef(DataType, std::string, bool, float)>;
+  std::vector<OpFunc> get_node_def_vec{
+      CreateFusedBatchNormOp<ops::FusedBatchNorm>,
+      CreateFusedBatchNormOp<ops::FusedBatchNormV2>,
+      CreateFusedBatchNormOp<ops::FusedBatchNormV3>};
+
+  struct TestParam {
+    std::string data_format;
+    int tensor_input_idx;  // Index of an input that will be provided as tensor.
+    bool is_training;
+    float epsilon;
+    Status conversion_status;
+    bool keep_channel_unknown;
+  };
+
+  struct NodeInput {
+    std::string name;
+    std::vector<int> dims;
+    std::vector<float> val;
+  };
+  std::vector<NodeInput> node_input{
+      {"x", {2, 3, 2, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}},
+      {"scale", {3}, {7, 8, 9}},
+      {"offset", {3}, {10, 20, 30}},
+      {"mean", {3}, {1, 2, 3}},
+      {"variance", {3}, {4, 5, 6}}};
+
+  std::vector<float> expected_output{10.0,      13.495633, 23.574135, 27.148273,
+                                     37.342354, 41.013527, 30.9738,   34.469433,
+                                     45.018955, 48.59309,  59.369415, 63.04059};
+  for (auto get_node_def : get_node_def_vec) {
+    NodeDef tmp_node_def = get_node_def(tf_type, "NCHW", true, 0);
+    std::string op_name = tmp_node_def.op();
+    std::vector<TestParam> test_param{
+        {"NHWC", 0, false, 0,
+         errors::Unimplemented(StrCat(
+             op_name, " only supports data_format=NCHW, at my_batchnorm"))},
+        {"NCHW", 0, true, 0,
+         errors::Unimplemented(StrCat(
+             op_name, " only supports is_training=false, at my_batchnorm"))},
+        {"NCHW", 1, false, 0,
+         errors::Unimplemented(StrCat("The input \"scale\" for ", op_name,
+                                      " must be a constant, at my_batchnorm"))},
+        {"NCHW", 2, false, 0,
+         errors::Unimplemented(StrCat("The input \"offset\" for ", op_name,
+                                      " must be a constant, at my_batchnorm"))},
+        {"NCHW", 3, false, 0,
+         errors::Unimplemented(StrCat("The input \"mean\" for ", op_name,
+                                      " must be a constant, at my_batchnorm"))},
+        {"NCHW", 4, false, 0,
+         errors::Unimplemented(StrCat("The input \"variance\" for ", op_name,
+                                      " must be a constant, at my_batchnorm"))},
+        {"NCHW", 0, false, 0.01}};  // The last one is the only test that runs.
+    if (trt_mode == TrtTestMode::kDynamicShape) {
+      test_param.push_back(
+          {"NCHW", 0, false, 0.01,
+           errors::InvalidArgument(
+               "Channel dimension must be static, at my_batchnorm"),
+           true});
+    }
+    for (auto p : test_param) {
+      Reset();
+      NodeDef node_def =
+          get_node_def(tf_type, p.data_format, p.is_training, p.epsilon);
+      for (int i = 0; i < node_input.size(); i++) {
+        if (i == 0 || i == p.tensor_input_idx) {
+          // The first input (x) is always added as a tensor, and it hase shape
+          // NCHW. The other inputs are per channel values (1D, size C).
+          //
+          // In implicit batch mode, it is not possible to add any of the 1D
+          // inputs as a tensor: the first dim is always treated as batch dim in
+          // implicit batch mode, and that has to agree for all tensors. We have
+          // two input tensors with shapes NCHW and C and in general N != C.
+          // The converter already picked up N from the fist input, and reports
+          // an error when we try to add any other tensors with not matching
+          // first dim.
+          //
+          // This restriction does not apply in explicit batch mode: the tensors
+          // can have different first dim. The converter still expects that only
+          // the first arg is a tensor. TODO(tfeher) Check if one can relax this
+          // restriction.
+          Status expected_status =
+              (i != 0 && trt_mode == TrtTestMode::kImplicitBatch)
+                  ? errors::InvalidArgument(
+                        StrCat("Batch size doesn't match for tensor ",
+                               node_input[i].name,
+                               ": Provided batch size does not match "
+                               "converter batch size: 3 vs 2"))
+                  : Status::OK();
+          std::vector<int> partial_input_shape;
+          if (i == 0 && trt_mode == TrtTestMode::kDynamicShape &&
+              !p.keep_channel_unknown) {
+            // keep channel dim static (known)
+            partial_input_shape.resize(4, -1);
+            partial_input_shape[1] = node_input[i].dims[1];
+          }
+          AddTestTensor(node_input[i].name, node_input[i].dims, tf_type,
+                        node_input[i].val, partial_input_shape,
+                        expected_status);
+
+        } else {
+          AddTestWeights(node_input[i].name, node_input[i].dims,
+                         node_input[i].val, tf_type);
+        }
+      }
+      TestOpConverter("my_batchnorm", node_def, node_input[0].dims,
+                      p.conversion_status, Status::OK(),
+                      ArrayFloatNear(expected_output));
+    }
+  }
+}  // namespace convert
+
 TEST_P(OpConverterTest1, ConvertTranspose) {
   // Get the NodeDef for Transpose.
   Scope s = Scope::NewRootScope();
