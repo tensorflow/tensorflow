@@ -3800,6 +3800,23 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     c5_summary = 'func2(x=8, y)'
     self.assertEqual(c5.pretty_printed_signature(verbose=False), c5_summary)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testIndexedSlicesAsGradientsForConcreteFunctions(self):
+    @def_function.function
+    def summing_rnn(inputs):
+      return math_ops.reduce_sum(inputs, axis=1)
+
+    @def_function.function
+    def gradients(inputs):
+      with backprop.GradientTape() as tape:
+        tape.watch(inputs)
+        hidden = summing_rnn(inputs)
+        hidden = array_ops.gather(hidden, constant_op.constant([0]))
+        loss = math_ops.reduce_mean(hidden)
+      return tape.gradient(loss, inputs)
+
+    gradients(constant_op.constant([[[1.0], [2.0]]])) # No error is raised
+
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
