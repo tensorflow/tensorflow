@@ -1180,6 +1180,46 @@ class ResizeMethod(object):
   MITCHELLCUBIC = 'mitchellcubic'
 
 
+def _check_equal_input_output_dtypes(func):
+  """This decorator issue will issue a warning if the input dtype and output
+  dtype are different. Help to prevent silent dtype conversion from integer to
+  floating point format."""
+
+  def wrapper(*args, **kwargs):
+    try:
+      check_dtype = _check_equal_input_output_dtypes._fns_flagged[func.__name__]
+    except KeyError:
+      _check_equal_input_output_dtypes._fns_flagged[func.__name__] = True
+      check_dtype = True
+
+    if check_dtype:
+        if args:
+            input_dtype = args[0].dtype
+        else:
+            input_dtype = kwargs["images"].dtype
+
+    output = func(*args, **kwargs)
+
+    if check_dtype and (input_dtype != output.dtype):
+        _check_equal_input_output_dtypes._fns_flagged[func.__name__] = False
+        logging.warning(
+          "The operation `{func_name}` has silently converted the "
+          "data type from `{input_dtype}` to `{output_dtype}`. "
+          "This might have an adverse effect on data numerical "
+          "range.".format(
+              func_name=func.__name__,
+              input_dtype=input_dtype,
+              output_dtype=output.dtype
+          ))
+    return output
+
+  return wrapper
+
+
+_check_equal_input_output_dtypes._fns_flagged = dict()
+
+
+@_check_equal_input_output_dtypes
 def _resize_images_common(images, resizer_fn, size, preserve_aspect_ratio, name,
                           skip_resize_if_same):
   """Core functionality for v1 and v2 resize functions."""
@@ -2016,8 +2056,6 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
   if not dtype.is_floating and not dtype.is_integer:
     raise AttributeError('dtype must be either floating point or integer')
   if dtype == image.dtype:
-    logging.warning("The operation `tf.image.convert_image_dtype` will be "
-                    "skipped since the input and output dtypes are identical.")
     return array_ops.identity(image, name=name)
 
   with ops.name_scope(name, 'convert_image', [image]) as name:
@@ -2049,9 +2087,6 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
       # Both float: Just cast, no possible overflows in the allowed ranges.
       # Note: We're ignoring float overflows. If your image dynamic range
       # exceeds float range, you're on your own.
-      logging.warning("The operation `tf.image.convert_image_dtype` will not "
-                      "automatically rescale input data since input and "
-                      "output dtypes are floating formats.")
       return math_ops.cast(image, dtype, name=name)
     else:
       if image.dtype.is_integer:
