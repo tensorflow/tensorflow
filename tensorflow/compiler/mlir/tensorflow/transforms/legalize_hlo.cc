@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -157,6 +158,44 @@ Value ConvertDotOp(PatternRewriter &rewriter, Operation *old_op) {
   auto reshape =
       rewriter.create<xla_hlo::ReshapeOp>(loc, output_type, matmul.product());
   return reshape.getResult();
+}
+
+// Returns true if broadcast_dimensions obey Tensorflow convention, as in new
+// dimensions are added as prefix.
+bool IsTFStyleBroadcast(DenseIntElementsAttr broadcast_dimensions,
+                        Value output) {
+  // broadcast_dimensions is an increasing list by definition, thus it suffices
+  // to check the first element.
+  int64_t input_rank = broadcast_dimensions.getNumElements();
+  int64_t output_rank = output.getType().cast<ShapedType>().getRank();
+  return input_rank == 0 ||
+         (broadcast_dimensions.getValue({0}).cast<IntegerAttr>().getInt() ==
+          output_rank - input_rank);
+}
+
+// Returns the intermediate shape that input tensor should be reshaped to during
+// legalization of BroadcastInDimOp.
+ConstantOp ExpandedShape(PatternRewriter &rewriter, Value input,
+                         DenseIntElementsAttr broadcast_dimensions,
+                         Value output) {
+  // Initialize expanded shape with output rank and dimensions of 1.
+  SmallVector<Attribute, 4> expanded_shape(
+      output.getType().cast<ShapedType>().getRank(),
+      /*Value=*/rewriter.getI64IntegerAttr(1));
+
+  // Set dimension sizes specified by broadcast_dimensions.
+  ArrayRef<int64_t> input_shape = input.getType().cast<ShapedType>().getShape();
+  for (auto x : llvm::enumerate(broadcast_dimensions)) {
+    expanded_shape[x.value().getSExtValue()] =
+        rewriter.getI64IntegerAttr(input_shape[x.index()]);
+  }
+
+  // Create the expanded type wrapped in a ConstantOp.
+  auto attr_type =
+      RankedTensorType::get({static_cast<int64_t>(expanded_shape.size())},
+                            rewriter.getIntegerType(64));
+  auto attr = DenseElementsAttr::get(attr_type, expanded_shape);
+  return rewriter.create<ConstantOp>(output.getLoc(), attr_type, attr);
 }
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_legalize_hlo.inc"
