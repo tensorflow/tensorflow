@@ -10,24 +10,27 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-# Enables usage of ruy in TFLite kernels.
+# Enables usage of ruy exclusively as the GEMM backend in TFLite kernels.
+# This will cause TFLite to build with ruy only, providing a smaller binary.
 # WARNING: This build flag is experimental and subject to change.
 config_setting(
-    name = "tflite_with_ruy_explicit_true",
-    define_values = {"tflite_with_ruy": "true"},
+    name = "tflite_with_ruy_only_explicit_true",
+    define_values = {"TFLITE_WITH_RUY_ONLY": "true"},
 )
 
-# Disables usage of ruy in TFLite kernels.
+# Disables usage of ruy as the exclusive GEMM backend in TFLite kernels.
+# TFLite will be built with ruy and other GEMM libraries. Ruy will not be
+# the default GEMM option at runtime.
 # WARNING: This build flag is experimental and subject to change.
 config_setting(
-    name = "tflite_with_ruy_explicit_false",
-    define_values = {"tflite_with_ruy": "false"},
+    name = "tflite_with_ruy_only_explicit_false",
+    define_values = {"TFLITE_WITH_RUY_ONLY": "false"},
 )
 
 ###### Beginning of config_setting's to match aarch64 ######
 #
 # We need to identify the aarch64 instruction set to decide whether to enable
-# tflite_with_ruy by default. This is surprisingly hard to do because select()
+# TFLITE_WITH_RUY_ONLY by default. This is surprisingly hard to do because select()
 # can only consume config_setting's, these config_settings are not centralized,
 # and the "cpu" value which they define are free-form strings and there is no
 # standardization of the strings that we need to match for the aarch64 architecture.
@@ -229,45 +232,45 @@ cc_test(
 )
 
 cc_library(
-    name = "tflite_with_ruy_enabled",
+    name = "tflite_with_ruy_only_enabled",
     build_for_embedded = True,
-    defines = ["TFLITE_WITH_RUY"],
+    defines = ["TFLITE_WITH_RUY_ONLY"],
     visibility = ["//visibility:private"],
 )
 
 cc_library(
-    name = "tflite_with_ruy_and_caching_enabled",
+    name = "tflite_with_ruy_only_and_caching_enabled",
     defines = [
-        "TFLITE_WITH_RUY",
+        "TFLITE_WITH_RUY_ONLY",
         "TFLITE_WITH_RUY_GEMV",
     ],
     visibility = ["//visibility:private"],
 )
 
 cc_library(
-    name = "tflite_with_ruy_default",
+    name = "tflite_with_ruy_only_default",
     build_for_embedded = True,
     select_deps = {
-        ":chromiumos_arm64": [":tflite_with_ruy_enabled"],
-        ":cpu_aarch64": [":tflite_with_ruy_enabled"],
-        ":cpu_arm64": [":tflite_with_ruy_enabled"],
-        ":cpu_arm64e": [":tflite_with_ruy_enabled"],
-        ":cpu_ios_arm64": [":tflite_with_ruy_enabled"],
-        ":cpu_ios_arm64e": [":tflite_with_ruy_enabled"],
-        ":cpu_arm64_v8a": [":tflite_with_ruy_enabled"],
-        "//tensorflow:android_arm": ["tflite_with_ruy_enabled"],
+        ":chromiumos_arm64": [":tflite_with_ruy_only_enabled"],
+        ":cpu_aarch64": [":tflite_with_ruy_only_enabled"],
+        ":cpu_arm64": [":tflite_with_ruy_only_enabled"],
+        ":cpu_arm64e": [":tflite_with_ruy_only_enabled"],
+        ":cpu_ios_arm64": [":tflite_with_ruy_only_enabled"],
+        ":cpu_ios_arm64e": [":tflite_with_ruy_only_enabled"],
+        ":cpu_arm64_v8a": [":tflite_with_ruy_only_enabled"],
+        "//tensorflow:android_arm": ["tflite_with_ruy_only_enabled"],
         "//conditions:default": [],
     },
     visibility = ["//visibility:private"],
 )
 
 cc_library(
-    name = "tflite_with_ruy",
+    name = "tflite_with_ruy_only",
     build_for_embedded = True,
     select_deps = {
-        ":tflite_with_ruy_explicit_true": [":tflite_with_ruy_enabled"],
-        ":tflite_with_ruy_explicit_false": [],
-        "//conditions:default": [":tflite_with_ruy_default"],
+        ":tflite_with_ruy_only_explicit_true": [":tflite_with_ruy_only_enabled"],
+        ":tflite_with_ruy_only_explicit_false": [],
+        "//conditions:default": [":tflite_with_ruy_only_default"],
     },
 )
 
@@ -281,7 +284,7 @@ cc_library(
     ],
     copts = tflite_copts(),
     deps = [
-        ":tflite_with_ruy",
+        ":tflite_with_ruy_only",
         ":op_macros",
         # For now this unconditionally depends on both ruy and gemmlowp.
         # See the comment inside class CpuBackendContext on the
@@ -300,11 +303,11 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":cpu_backend_context",
-        ":tflite_with_ruy",
+        ":tflite_with_ruy_only",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:types",
         # For now this unconditionally depends on both ruy and gemmlowp.
-        # We only need to depend on gemmlowp when tflite_with_ruy
+        # We only need to depend on gemmlowp when tflite_with_ruy_only
         # is false, but putting these dependencies in a select() seems to
         # defeat copybara's rewriting rules.
         "@ruy//ruy:context",
@@ -338,19 +341,19 @@ cc_library(
     ],
     copts = tflite_copts(),
     deps = [
-        ":tflite_with_ruy",
+        ":tflite_with_ruy_only",
         "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:types",
         ":cpu_backend_context",
         ":cpu_backend_threadpool",
-        # Depend on ruy regardless of `tflite_with_ruy`. See the comment in
+        # Depend on ruy regardless of `tflite_with_ruy_only`. See the comment in
         # cpu_backend_gemm.h about why ruy is the generic path.
         "@ruy//ruy",
         "@ruy//ruy:matrix",
         "@ruy//ruy:path",
         "@ruy//ruy/profiler:instrumentation",
-        # We only need to depend on gemmlowp and Eigen when tflite_with_ruy
+        # We only need to depend on gemmlowp and Eigen when tflite_with_ruy_only
         # is false, but putting these dependencies in a select() seems to
         # defeat copybara's rewriting rules.
         "@gemmlowp",
@@ -580,7 +583,7 @@ cc_library(
     ],
     copts = tflite_copts() + tf_opts_nortti_if_android() + EXTRA_EIGEN_COPTS,
     visibility = ["//visibility:private"],
-    deps = BUILTIN_KERNEL_DEPS + ["@farmhash_archive//:farmhash"] + [":tflite_with_ruy_and_caching_enabled"],
+    deps = BUILTIN_KERNEL_DEPS + ["@farmhash_archive//:farmhash"] + [":tflite_with_ruy_only_and_caching_enabled"],
 )
 
 cc_library(
