@@ -246,6 +246,7 @@ TfLiteStatus PrepareMeanOrSum(TfLiteContext* context, TfLiteNode* node) {
   // reduce_mean requires a buffer to store intermediate sum result.
   OpContext op_context(context, node);
   if (op_context.input->type == kTfLiteInt8 ||
+      op_context.input->type == kTfLiteUInt8 ||
       op_context.input->type == kTfLiteInt16) {
     const double real_multiplier =
         static_cast<double>(op_context.input->params.scale) /

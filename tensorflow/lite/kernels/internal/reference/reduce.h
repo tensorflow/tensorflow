@@ -319,7 +319,7 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32 input_zero_point,
                                const int num_axis_dimensions, bool keep_dims,
                                int* temp_index, int* resolved_axis, U* temp_sum,
                                bool compute_sum) {
-  const bool uint8_case = std::is_same<T, int8_t>::value;
+  const bool uint8_case = std::is_same<T, uint8_t>::value;
   const bool int16_case = std::is_same<T, int16_t>::value;
   if (uint8_case) {
     ruy::profiler::ScopeLabel label(compute_sum ? "Sum/Uint8" : "Mean/Uint8");
