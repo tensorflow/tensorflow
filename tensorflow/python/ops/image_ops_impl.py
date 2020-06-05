@@ -383,6 +383,7 @@ def random_flip_left_right(image, seed=None):
   [[[2], [1]], [[4], [3]]]
 
   Randomly flip multiple images.
+
   >>> images = np.array(
   ... [
   ...     [[[1], [2]], [[3], [4]]],

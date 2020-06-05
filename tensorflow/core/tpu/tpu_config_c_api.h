@@ -24,9 +24,13 @@ limitations under the License.
 
 typedef struct TpuSerializedProto TpuSerializedProto;
 
-extern "C" {
+namespace tensorflow {
+namespace tpu {
+class TpuMeshStateInterface;
+}  // namespace tpu
+}  // namespace tensorflow
 
-TFTPU_CAPI_EXPORT bool TPUHostInitialized();
+extern "C" {
 
 TFTPU_CAPI_EXPORT void ConfigureDistributedTpuOp_DoWork(
     const size_t num_cores_per_host_size, const int32_t* num_cores_per_host,
@@ -36,6 +40,7 @@ TFTPU_CAPI_EXPORT void ConfigureDistributedTpuOp_DoWork(
 TFTPU_CAPI_EXPORT void WaitForDistributedTpuOp_DoWork(
     const size_t num_hosts, const size_t num_cores_per_host,
     const int32_t** host_ordinal_to_global_core_id_map,
+    tensorflow::tpu::TpuMeshStateInterface* tpu_mesh_state_interface,
     size_t* tpu_topology_output_size, char** tpu_topology_output,
     TF_Status* status);
 
@@ -58,7 +63,6 @@ TFTPU_CAPI_EXPORT void TpuConfigurationApi_FreeInt32Array(int32_t* output);
 }
 
 struct TfTpu_ConfigApiFn {
-  TFTPU_ADD_FN_IN_STRUCT(TPUHostInitialized);
   TFTPU_ADD_FN_IN_STRUCT(ConfigureDistributedTpuOp_DoWork);
   TFTPU_ADD_FN_IN_STRUCT(WaitForDistributedTpuOp_DoWork);
   TFTPU_ADD_FN_IN_STRUCT(ShutdownDistributedTpuOp_DoWork);

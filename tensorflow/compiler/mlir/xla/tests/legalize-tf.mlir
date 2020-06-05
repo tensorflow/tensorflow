@@ -845,7 +845,19 @@ func @infeed_dequeue_tuple() -> (tensor<3xi32>, tensor<4xf32>) {
 func @infeed_dequeue_tuple_sharding() -> tensor<8xi32> {
   // CHECK: "xla_hlo.infeed"
   // An additional sharding is added at the end to account for token result.
-  // CHECK-SAME: xla_hlo.sharding = "type: TUPLE\0Atuple_shardings {\0A type: MAXIMAL\0A tile_assignment_dimensions: 1\0A tile_assignment_devices: 0\0A}\0Atuple_shardings {\0A type: MAXIMAL\0A tile_assignment_dimensions: 1\0A tile_assignment_devices: 0\0A}\0A"
+  // Proto debug string:
+  //   type: TUPLE
+  //   tuple_shardings {
+  //     type: MAXIMAL
+  //     tile_assignment_dimensions: 1
+  //     tile_assignment_devices: 0
+  //   }
+  //   tuple_shardings {
+  //     type: MAXIMAL
+  //     tile_assignment_dimensions: 1
+  //     tile_assignment_devices: 0
+  //   }
+  // CHECK-SAME: xla_hlo.sharding = "\08\02*\08\08\01\1A\01\01\22\01\00*\08\08\01\1A\01\01\22\01\00"
   %0 = "tf.InfeedDequeueTuple"() {_XlaSharding = "\08\02*\08\08\01\1A\01\01\22\01\00"} : () -> tensor<8xi32>
   return %0 : tensor<8xi32>
 }
@@ -1524,6 +1536,67 @@ func @rfft_1D(%arg0: tensor<8xf32>) -> tensor<8xcomplex<f32>> {
   // CHECK: "xla_hlo.fft"(%arg0) {fft_length = dense<8> : tensor<1xi64>, fft_type = "RFFT"} : (tensor<8xf32>
   %0 = "tf.RFFT"(%arg0, %fftlength) : (tensor<8xf32>, tensor<1xi32>) -> tensor<8xcomplex<f32>>
   return %0 : tensor<8xcomplex<f32>>
+}
+
+//===----------------------------------------------------------------------===//
+// Shape op legalization.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @shape_1D
+func @shape_1D(%arg0: tensor<?xf32>) -> tensor<1xi32> {
+  // CHECK-DAG: [[SHAPE:%.+]] = shape.shape_of %arg0
+  // CHECK-DAG: [[EXTENT:%.+]] = shape.get_extent [[SHAPE]], 0
+  // CHECK-DAG: [[TO_INDEX:%.+]] = shape.size_to_index [[EXTENT]]
+  // CHECK-DAG: [[CAST:%.+]] = index_cast [[TO_INDEX]]
+  // CHECK-DAG: [[TENSOR:%.+]] = tensor_from_elements([[CAST]])
+  // CHECK-DAG: [[RESHAPE:%.+]] = "xla_hlo.reshape"([[TENSOR]])
+  // CHECK-DAG: [[CONCAT:%.+]] = "xla_hlo.concatenate"([[RESHAPE]]) {dimension = 0 : i64}
+  %0 = "tf.Shape"(%arg0) : (tensor<?xf32>) -> tensor<1xi32>
+
+  // CHECK: return [[CONCAT]]
+  return %0 : tensor<1xi32>
+}
+
+// CHECK-LABEL: func @shape_2D
+func @shape_2D(%arg0: tensor<?x?xf32>) -> tensor<2xi32> {
+  // CHECK-DAG: [[SHAPE:%.+]] = shape.shape_of %arg0
+  // CHECK-DAG: [[EXTENT0:%.+]] = shape.get_extent [[SHAPE]], 0
+  // CHECK-DAG: [[EXTENT1:%.+]] = shape.get_extent [[SHAPE]], 1
+  // CHECK-DAG: [[TO_INDEX0:%.+]] = shape.size_to_index [[EXTENT0]]
+  // CHECK-DAG: [[TO_INDEX1:%.+]] = shape.size_to_index [[EXTENT1]]
+  // CHECK-DAG: [[CAST0:%.+]] = index_cast [[TO_INDEX0]]
+  // CHECK-DAG: [[CAST1:%.+]] = index_cast [[TO_INDEX1]]
+  // CHECK-DAG: [[TENSOR0:%.+]] = tensor_from_elements([[CAST0]])
+  // CHECK-DAG: [[TENSOR1:%.+]] = tensor_from_elements([[CAST1]])
+  // CHECK-DAG: [[RESHAPE0:%.+]] = "xla_hlo.reshape"([[TENSOR0]])
+  // CHECK-DAG: [[RESHAPE1:%.+]] = "xla_hlo.reshape"([[TENSOR1]])
+  // CHECK-DAG: [[CONCAT:%.+]] = "xla_hlo.concatenate"([[RESHAPE0]], [[RESHAPE1]]) {dimension = 0 : i64}
+  %0 = "tf.Shape"(%arg0) : (tensor<?x?xf32>) -> tensor<2xi32>
+
+  // CHECK: return [[CONCAT]]
+  return %0 : tensor<2xi32>
+}
+
+// CHECK-LABEL: func @shape_with_const
+func @shape_with_const(%arg0: tensor<?x3xf32>) -> tensor<2xi32> {
+  // CHECK-DAG: [[SHAPE:%.+]] = shape.shape_of %arg0
+  // CHECK-DAG: [[EXTENT:%.+]] = shape.get_extent [[SHAPE]], 0
+  // CHECK-DAG: [[TO_INDEX:%.+]] = shape.size_to_index [[EXTENT]]
+  // CHECK-DAG: [[CAST:%.+]] = index_cast [[TO_INDEX]]
+  // CHECK-DAG: [[TENSOR:%.+]] = tensor_from_elements([[CAST]])
+  // CHECK-DAG: [[RESHAPE:%.+]] = "xla_hlo.reshape"([[TENSOR]])
+  // CHECK-DAG: [[CONST:%.+]] = xla_hlo.constant dense<3>
+  // CHECK-DAG: [[CONCAT:%.+]] = "xla_hlo.concatenate"([[RESHAPE]], [[CONST]]) {dimension = 0 : i64}
+  %0 = "tf.Shape"(%arg0) : (tensor<?x3xf32>) -> tensor<2xi32>
+
+  // CHECK: return [[CONCAT]]
+  return %0 : tensor<2xi32>
+}
+
+// CHECK-LABEL: func @shape_rankless
+func @shape_rankless(%arg0: tensor<*xf32>) -> tensor<?xi32> {
+  %0 = "tf.Shape"(%arg0) : (tensor<*xf32>) -> tensor<?xi32>
+  return %0 : tensor<?xi32>
 }
 
 //===----------------------------------------------------------------------===//

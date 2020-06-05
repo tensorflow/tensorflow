@@ -515,6 +515,23 @@ tf_py_test(
     ],
 )
 
+tpu_py_test(
+    name = "tpu_outside_compilation_test",
+    srcs = [
+        "tpu_outside_compilation_test.py",
+    ],
+    disable_experimental = True,
+    python_version = "PY3",
+    tags = ["no_oss"],
+    deps = [
+        ":tpu_lib",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
 tf_proto_library(
     name = "tensor_tracer_proto",
     srcs = ["tensor_tracer.proto"],

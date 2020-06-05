@@ -281,21 +281,20 @@ class SoftmaxOpGPU : public OpKernel {
   bool log_;
 };
 
-REGISTER_KERNEL_BUILDER(
-    Name("Softmax").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
-    SoftmaxOpGPU<Eigen::half>);
-REGISTER_KERNEL_BUILDER(
-    Name("Softmax").Device(DEVICE_GPU).TypeConstraint<float>("T"),
-    SoftmaxOpGPU<float>);
-REGISTER_KERNEL_BUILDER(
-    Name("Softmax").Device(DEVICE_GPU).TypeConstraint<double>("T"),
-    SoftmaxOpGPU<double>);
-REGISTER_KERNEL_BUILDER(
-    Name("LogSoftmax").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
-    SoftmaxOpGPU<Eigen::half>);
-REGISTER_KERNEL_BUILDER(
-    Name("LogSoftmax").Device(DEVICE_GPU).TypeConstraint<float>("T"),
-    SoftmaxOpGPU<float>);
+#define REGISTER_GPU(T)                                          \
+  REGISTER_KERNEL_BUILDER(                                       \
+      Name("Softmax").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      SoftmaxOpGPU<T>);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+
+#undef REGISTER_GPU
+#define REGISTER_GPU(T)                                             \
+  REGISTER_KERNEL_BUILDER(                                          \
+      Name("LogSoftmax").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      SoftmaxOpGPU<T>);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+
+#undef REGISTER_GPU
 
 }  // end namespace tensorflow
 

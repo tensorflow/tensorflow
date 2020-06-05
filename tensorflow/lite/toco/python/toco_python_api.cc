@@ -264,11 +264,13 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
     default:
       return nullptr;
   }
+  tflite::TensorType inference_io_type =
+      fully_quantize ? inference_tensor_type : tflite::TensorType_FLOAT32;
   flatbuffers::FlatBufferBuilder builder;
   auto status = mlir::lite::QuantizeModel(
-      *tflite_model, tflite::TensorType::TensorType_FLOAT32,
-      tflite::TensorType::TensorType_FLOAT32, inference_tensor_type, {},
-      disable_per_channel, fully_quantize, &builder, error_reporter.get());
+      *tflite_model, inference_io_type, inference_io_type,
+      inference_tensor_type, {}, disable_per_channel, fully_quantize, &builder,
+      error_reporter.get());
 
   if (status != kTfLiteOk) {
     error_reporter->exception();

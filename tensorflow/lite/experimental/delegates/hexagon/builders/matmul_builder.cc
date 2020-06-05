@@ -76,7 +76,7 @@ TfLiteStatus AddFullyConnectedHelper(const TfLiteIntArray* inputs,
   GetDims(&output_batch_size, &output_height_size, &output_width_size,
           &output_depth_size, context->tensors[outputs->data[0]].dims);
   const auto& matmul_out =
-      matmul_op->AddOutput(sizeof(int32_t), 4,
+      matmul_op->AddOutput(sizeof(int), 4,
                            {output_batch_size, output_height_size,
                             output_width_size, output_depth_size});
   const auto& matmul_out_min =
@@ -108,7 +108,7 @@ TfLiteStatus AddFullyConnectedHelper(const TfLiteIntArray* inputs,
     bias_add_op->AddInput(OpBuilder::TensorID(bias_min_const->GetID(), 0));
     bias_add_op->AddInput(OpBuilder::TensorID(bias_max_const->GetID(), 0));
     matmul_and_bias_out =
-        bias_add_op->AddOutput(sizeof(int32_t), 4,
+        bias_add_op->AddOutput(sizeof(int), 4,
                                {output_batch_size, output_height_size,
                                 output_width_size, output_depth_size});
     matmul_and_bias_out_min =

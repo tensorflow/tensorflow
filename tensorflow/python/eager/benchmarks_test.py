@@ -463,6 +463,15 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     func = lambda: f(m, m, transpose_b=transpose_b)
     self._run(func, num_iters, execution_mode=execution_mode)
 
+  def _benchmark_defun_args_matmul(self, m, num_iters, execution_mode=None):
+
+    @def_function.function
+    def defun_matmul(m):
+      return math_ops.matmul(m, m)
+
+    func = lambda: defun_matmul(m)
+    self._run(func, num_iters, execution_mode=execution_mode)
+
   def _benchmark_nested_defun_matmul(self, m, transpose_b, num_iters):
     inner = function.defun(math_ops.matmul)
 
@@ -629,6 +638,14 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       m = self._m_2_by_2.gpu()
       self._benchmark_defun_matmul(
           m, transpose_b=False, num_iters=self._num_iters_2_by_2)
+
+  @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
+  def benchmark_defun_args_matmul_2_by_2_GPU(self):
+    if not context.num_gpus():
+      return
+    with context.device(GPU):
+      m = self._m_2_by_2.gpu()
+      self._benchmark_defun_args_matmul(m, num_iters=self._num_iters_2_by_2)
 
   @test_util.disable_tfrt("async not supported")
   def benchmark_defun_matmul_2_by_2_GPU_async(self):

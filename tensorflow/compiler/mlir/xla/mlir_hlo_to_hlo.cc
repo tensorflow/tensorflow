@@ -381,21 +381,22 @@ static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
   return output;
 }
 
+// Extracts sharding from attribute string.
+static absl::optional<xla::OpSharding> CreateOpShardingFromStringRef(
+    llvm::StringRef sharding) {
+  xla::OpSharding sharding_proto;
+  if (!sharding_proto.ParseFromString(sharding.str())) return absl::nullopt;
+  return sharding_proto;
+}
+
 // Returns an OpSharding proto from the "sharding" attribute of the op. If the
 // op doesn't have a sharding attribute or the sharding attribute is invalid,
 // returns absl::nullopt.
 static absl::optional<xla::OpSharding> CreateOpShardingFromAttribute(
     mlir::Operation* op) {
   auto sharding = op->getAttrOfType<mlir::StringAttr>(kShardingAttr);
-  if (!sharding) {
-    return absl::nullopt;
-  }
-  ::xla::OpSharding sharding_proto;
-  if (!::tensorflow::protobuf::TextFormat::ParseFromString(
-          sharding.getValue().str(), &sharding_proto)) {
-    return absl::nullopt;
-  }
-  return sharding_proto;
+  if (!sharding) return absl::nullopt;
+  return CreateOpShardingFromStringRef(sharding.getValue());
 }
 
 // Checks if all shardings are set.
@@ -405,14 +406,6 @@ static bool AllOptionalShardingsAreSet(
                       [](const absl::optional<xla::OpSharding>& sharding) {
                         return sharding.has_value();
                       });
-}
-
-// Extracts sharding from attribute string.
-static absl::optional<xla::OpSharding> CreateOpShardingFromStringRef(
-    llvm::StringRef sharding) {
-  xla::OpSharding sharding_proto;
-  if (!sharding_proto.ParseFromString(sharding.str())) return absl::nullopt;
-  return sharding_proto;
 }
 
 // Extracts argument and result shardings from function.

@@ -36,8 +36,6 @@ cc_library(
         "memory_helpers.h",
         "micro_allocator.h",
         "micro_interpreter.h",
-        "micro_mutable_op_resolver.h",
-        "micro_op_resolver.h",
         "micro_optional_debug_tools.h",
         "simple_memory_allocator.h",
         "test_helpers.h",
@@ -47,6 +45,7 @@ cc_library(
     deps = [
         ":micro_compatibility",
         ":micro_utils",
+        ":op_resolvers",
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
@@ -56,6 +55,49 @@ cc_library(
         "//tensorflow/lite/micro/memory_planner:greedy_memory_planner",
         "//tensorflow/lite/schema:schema_fbs",
         "@flatbuffers//:runtime_cc",
+    ],
+)
+
+cc_library(
+    name = "op_resolvers",
+    srcs = [
+        "all_ops_resolver.cc",
+    ],
+    hdrs = [
+        "all_ops_resolver.h",
+        "micro_mutable_op_resolver.h",
+        "micro_op_resolver.h",
+    ],
+    build_for_embedded = True,
+    copts = micro_copts(),
+    deps = [
+        ":micro_compatibility",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/micro/kernels:micro_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+    ],
+)
+
+# TODO(b/144176795): This target should really be handled differently so that we
+# do not have a fork in the build graph. The bug has some initial ideas.
+cc_library(
+    name = "portable_optimized_op_resolver",
+    srcs = [
+        "all_ops_resolver.cc",
+        "micro_mutable_op_resolver.h",
+        "micro_op_resolver.h",
+    ],
+    hdrs = [
+        "all_ops_resolver.h",
+    ],
+    copts = micro_copts(),
+    deps = [
+        ":micro_compatibility",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/micro/kernels:portable_optimized_micro_ops",
+        "//tensorflow/lite/schema:schema_fbs",
     ],
 )
 
@@ -164,6 +206,7 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":micro_framework",
+        ":op_resolvers",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -176,6 +219,7 @@ tflite_micro_cc_test(
     deps = [
         ":micro_framework",
         ":micro_utils",
+        ":op_resolvers",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/micro/testing:micro_test",

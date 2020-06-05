@@ -963,9 +963,19 @@ func @main(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
 
 // -----
 
+// The following op sharding is used:
+// Proto debug string:
+//   type: OTHER
+//   tile_assignment_dimensions: 1
+//   tile_assignment_dimensions: 2
+//   tile_assignment_devices: 0
+//   tile_assignment_devices: 1
+// Serialized string:
+//   "\08\03\1A\02\01\02\22\02\00\01"
+
 // CHECK:  HloModule
 func @main(%arg0: tensor<16x16xf32>) -> tensor<16x16xf32> {
-  %0 = "xla_hlo.custom_call"(%arg0) {backend_config = "", call_target_name = "Sharding", xla_hlo.sharding = "type: OTHER\ntile_assignment_dimensions: 1\ntile_assignment_dimensions: 2\ntile_assignment_devices: 0\ntile_assignment_devices: 1"} : (tensor<16x16xf32>) -> tensor<16x16xf32>
+  %0 = "xla_hlo.custom_call"(%arg0) {backend_config = "", call_target_name = "Sharding", xla_hlo.sharding = "\08\03\1A\02\01\02\22\02\00\01"} : (tensor<16x16xf32>) -> tensor<16x16xf32>
   return %0 : tensor<16x16xf32>
 }
 

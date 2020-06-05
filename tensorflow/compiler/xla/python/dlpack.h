@@ -18,13 +18,14 @@ limitations under the License.
 
 #include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/python/py_buffer.h"
 
 namespace xla {
 
-StatusOr<pybind11::capsule> BufferToDLPackManagedTensor(PjRtBuffer* buffer);
+StatusOr<pybind11::capsule> BufferToDLPackManagedTensor(PyBuffer* buffer);
 
-StatusOr<std::unique_ptr<PjRtBuffer>> DLPackManagedTensorToBuffer(
-    const pybind11::capsule& tensor, PjRtClient* client);
+StatusOr<std::unique_ptr<PyBuffer>> DLPackManagedTensorToBuffer(
+    const pybind11::capsule& tensor, std::shared_ptr<PjRtClient> client);
 
 }  // namespace xla
 

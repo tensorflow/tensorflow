@@ -32,6 +32,7 @@ from six.moves import range
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python.convert import ConverterError
+from tensorflow.lite.python.convert import mlir_quantize
 from tensorflow.lite.python.interpreter import Interpreter
 from tensorflow.python import keras
 from tensorflow.python.client import session
@@ -1175,8 +1176,20 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     converter._experimental_new_quantizer = True
     quantized_tflite = converter.convert()
     self.assertTrue(quantized_tflite)
-
     self.assertLess(len(quantized_tflite), len(float_tflite))
+
+    # calibration only api
+    converter._experimental_calibrate_only = True
+    calibrated_tflite = converter.convert()
+    quantized_tflite = mlir_quantize(calibrated_tflite, fully_quantize=True)
+    interpreter = Interpreter(model_content=quantized_tflite)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    self.assertEqual(np.int8, input_details[0]['dtype'])
+    self.assertEqual((1., 0.), input_details[0]['quantization'])
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(np.int8, output_details[0]['dtype'])
 
   def testFloatTocoConverter(self):
     """Tests deprecated test TocoConverter."""
@@ -1754,7 +1767,7 @@ class FromSavedModelTest(TestModels):
     log = io.BytesIO() if six.PY2 else io.StringIO()
     handler = logging.StreamHandler(log)
     logging.root.addHandler(handler)
-    warning_message = 'Please consider switching to use new converter'
+    warning_message = 'Please consider switching to the new converter'
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_saved_model(saved_model_dir)
     converter.experimental_new_converter = False

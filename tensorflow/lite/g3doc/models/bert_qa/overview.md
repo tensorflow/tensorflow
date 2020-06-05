@@ -1,4 +1,4 @@
-# Question and Answer
+# Question and answer
 
 Use a pre-trained model to answer questions based on the content of a given
 passage.
@@ -44,7 +44,7 @@ pre-processing including tokenization and post-processing steps that are
 described in the BERT [paper](https://arxiv.org/abs/1810.04805) and implemented
 in the sample app.
 
-## Performance Benchmarks
+## Performance benchmarks
 
 Performance benchmark numbers are generated with the tool
 [described here](https://www.tensorflow.org/lite/performance/benchmarks).

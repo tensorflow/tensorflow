@@ -695,8 +695,6 @@ StatusOr<absl::flat_hash_set<const tflite::OperatorT*>> PruneSubgraph(
   for (int32_t output : output_indices) {
     if (auto& op = defining_op[output]) {
       queue.push_back(op);
-    } else {
-      return errors::InvalidArgument("Output tensor doesn't have defining op");
     }
   }
 

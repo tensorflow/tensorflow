@@ -31,6 +31,7 @@ cc_library(
         ":padding",
         ":pooling",
         ":prelu",
+        ":quantize_and_dequantize",
         ":relu",
         ":reshape",
         ":resize",
@@ -537,6 +538,53 @@ ios_unit_test(
         "tflite_not_portable_android",
     ],
     deps = [":prelu_test_lib"],
+)
+
+cc_library(
+    name = "quantize_and_dequantize",
+    srcs = ["quantize_and_dequantize.cc"],
+    hdrs = ["quantize_and_dequantize.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+objc_library(
+    name = "quantize_and_dequantize_test_lib",
+    testonly = 1,
+    srcs = ["quantize_and_dequantize_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":quantize_and_dequantize",
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
+        "//tensorflow/lite/kernels/internal:quantization_util",
+    ],
+)
+
+ios_unit_test(
+    name = "quantize_and_dequantize_test",
+    testonly = 1,
+    minimum_os_version = "11.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
+    tags = tf_gpu_tests_tags() + [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":quantize_and_dequantize_test_lib"],
 )
 
 cc_library(

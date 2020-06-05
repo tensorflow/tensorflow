@@ -191,7 +191,7 @@ build --action_env ANDROID_SDK_API_LEVEL="23"
 build --action_env ANDROID_SDK_HOME="/usr/local/android/android-sdk-linux"
 ```
 
-#### Build and Install
+#### Build and install
 
 Once Bazel is properly configured, you can build the TensorFlow Lite AAR from
 the root checkout directory as follows:
@@ -268,11 +268,13 @@ If you want to use TFLite through C++ libraries, you can build the shared
 libraries:
 
 32bit armeabi-v7a:
-```
+
+```sh
 bazel build -c opt --config=android_arm //tensorflow/lite:libtensorflowlite.so
 ```
 
 64bit arm64-v8a:
-```
+
+```sh
 bazel build -c opt --config=android_arm64 //tensorflow/lite:libtensorflowlite.so
 ```

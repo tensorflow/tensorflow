@@ -50,6 +50,13 @@ PythonRefManager::ManageReferences(absl::Span<py::object> objects) {
   return std::make_shared<ManagedPyObjects>(this, objects);
 }
 
+void PythonRefManager::AddGarbage(absl::Span<py::object> garbage) {
+  absl::MutexLock lock(&mu_);
+  for (py::object& o : garbage) {
+    python_garbage_.push_back(std::move(o));
+  }
+}
+
 void PythonRefManager::CollectGarbage() {
   // TODO(phawkins): we should CHECK(PyGILState_Check());
   std::deque<pybind11::object> garbage;

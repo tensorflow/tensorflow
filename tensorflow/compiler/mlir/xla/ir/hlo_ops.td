@@ -634,7 +634,7 @@ def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]>, BASE_HLO
     I32Attr:$index
   );
 
-  let results = (outs HLO_TensorOrTuple);
+  let results = (outs HLO_TensorOrTokenOrTuple);
 
   let hasFolder = 1;
 

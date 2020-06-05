@@ -1,7 +1,7 @@
 # Generate code from TensorFlow Lite metadata
 
 Note: TensorFlow Lite wrapper code generator is in experimental (beta) phase and
-it currently only supports Android.
+currently only supports Android.
 
 For TensorFlow Lite model enhanced with [metadata](../convert/metadata.md),
 developers can use the TensorFlow Lite Android wrapper code generator to create
@@ -19,13 +19,13 @@ to see how the codegen tool parses each field.
 
 You will need to install the following tooling in your terminal:
 
-```
+```sh
 pip install tflite-support
 ```
 
 Once completed, the code generator can be used using the following syntax:
 
-```
+```sh
 tflite_codegen --model=./model_with_metadata/mobilenet_v1_0.75_160_quantized.tflite \
     --package_name=org.tensorflow.lite.classify \
     --model_class_name=MyClassifierModel \
@@ -66,7 +66,7 @@ In the app module that will be consuming the generated library module:
 
 Under the android section, add the following:
 
-```java
+```build
 aaptOptions {
    noCompress "tflite"
 }
@@ -74,14 +74,14 @@ aaptOptions {
 
 Under the dependencies section, add the following:
 
-```java
+```build
 implementation project(":classify_wrapper")
 ```
 
 ### Step 3: Using the model
 
 ```java
-// 1. Initialize the Model
+// 1. Initialize the model
 MyClassifierModel myImageClassifier = null;
 
 try {
@@ -92,14 +92,14 @@ try {
 
 if(null != myImageClassifier) {
 
-    // 2. Setting the input with a Bitmap called inputBitmap
+    // 2. Set the input with a Bitmap called inputBitmap
     MyClassifierModel.Inputs inputs = myImageClassifier.createInputs();
     inputs.loadImage(inputBitmap));
 
-    // 3. Running the model
+    // 3. Run the model
     MyClassifierModel.Outputs outputs = myImageClassifier.run(inputs);
 
-    // 4. Retrieving the result
+    // 4. Retrieve the result
     Map<String, Float> labeledProbability = outputs.getProbability();
 }
 ```
@@ -117,7 +117,7 @@ parameters:
 *   (Optional) **`numThreads`**: Number of threads used to run the model -
     default is one.
 
-For example, to use a NNAPI delegate and up to three threads, you can initiate
+For example, to use a NNAPI delegate and up to three threads, you can initialize
 the model like this:
 
 ```java
@@ -135,7 +135,7 @@ try {
 Under the app module that will uses the library module, insert the following
 lines under the android section:
 
-```java
+```build
 aaptOptions {
    noCompress "tflite"
 }

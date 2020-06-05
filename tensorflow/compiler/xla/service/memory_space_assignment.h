@@ -78,6 +78,12 @@ class PresetAssignments {
 // bandwidths of different memory spaces.
 class MemorySpaceAssignmentCostAnalysis {
  public:
+  // An optional Cache object may be provided to some of the methods below to
+  // speed up the lookup.
+  struct Cache {
+    absl::flat_hash_map<const HloInstruction*, float> while_nest_multiplier;
+  };
+
   MemorySpaceAssignmentCostAnalysis(
       const HloCostAnalysis& cost_analysis,
       float async_copy_bandwidth_bytes_per_second,
@@ -97,15 +103,16 @@ class MemorySpaceAssignmentCostAnalysis {
   // alternate memory would help if the op is memory bound, or otherwise how far
   // off is the op to memory boundedness. The larger this number, the higher
   // priority it will be placed in the alternate memory.
-  float GetAlternateMemoryBenefit(
-      const HloInstruction& instruction,
-      float elapsed_time_due_to_alternate_mem) const;
+  float GetAlternateMemoryBenefit(const HloInstruction& instruction,
+                                  float elapsed_time_due_to_alternate_mem,
+                                  Cache* cache = nullptr) const;
 
   // Returns a heuristic value of memory boundedness for the given
   // BufferInterval.  The larger this number, the higher priority it will be
   // placed in the alternate memory.
   float GetMemoryBoundedness(
-      const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval) const;
+      const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval,
+      Cache* cache = nullptr) const;
 
   // Returns the elapsed time in seconds due to compute only.
   float GetInstructionElapsedDueToCompute(
@@ -182,6 +189,10 @@ class PrefetchIntervalPicker {
 
   // Returns true if the available prefetch intervals have been exhausted.
   virtual bool Done() const = 0;
+
+  // The retry number can be used to modify the interval picking policies. The
+  // first attempt will have a retry_number of 0, then 1, etc.
+  virtual void SetRetryNumber(int retry_number) {}
 
   // Returns a debug string for the current state of the prefetch interval
   // picker.
@@ -269,6 +280,8 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   int64 Next() override;
   bool Done() const override;
 
+  void SetRetryNumber(int retry_number) override;
+
   std::string ToDebugString() const override;
   std::string ToNoCopyDebugString(const Shape& shape, int64 start_time,
                                   int64 end_time) const override;
@@ -282,14 +295,22 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   // corresponds to the instruction schedule.
   float GetLogicalIntervalElapsed(int64 start_time, int64 end_time) const;
 
+  // Finds the minimum nest level in the given interval.
+  int GetMinWhileNestLevel(int64 start_time, int64 end_time) const;
+
   // For each instruction in the flattened schedule, maintain their elapsed time
-  // and while nesting level.
-  std::vector<float> elapsed_time_;
+  // (in cumulative sum) and while nesting level.
+  std::vector<float> elapsed_time_cumsum_;
   std::vector<int> while_nest_level_;
+  // Maintain the index of the most recent (before this instruction) nest level
+  // change in order to efficiently determine the minimum nest level in an
+  // interval.
+  std::vector<int> while_nest_level_change_;
 
   const MemorySpaceAssignmentCostAnalysis& cost_analysis_;
   float min_async_copy_to_overlap_ratio_;
   float max_async_copy_to_overlap_ratio_;
+  float max_overlap_multiplier_ = 1.0;
 
   float async_copy_elapsed_;
   float inst_elapsed_reduction_;
@@ -347,6 +368,11 @@ class MemorySpaceAssignment {
     // evictions, -1 for unlimited.
     int64 max_outstanding_prefetches = -1;
     int64 max_outstanding_evictions = -1;
+
+    // Specifies the maximum number of retries that will be performed for each
+    // value in case prefetching failed due to running out of asynchronous
+    // copies or asynchronous copy ordering.
+    int64 max_retries = 1;
 
     // If true, tries allocating buffers across (e.g., before and inside a while
     // loop body) sequential calls (kWhile, kCall, and kConditional).
@@ -645,7 +671,8 @@ class MemorySpaceAssignment {
   StatusOr<AsyncCopyStats> CalculateAsyncCopyStats() const;
 
   static BufferIntervalCompare GetMemoryBoundednessBufferIntervalCompare(
-      const MemorySpaceAssignmentCostAnalysis& cost_analysis);
+      const MemorySpaceAssignmentCostAnalysis& cost_analysis,
+      MemorySpaceAssignmentCostAnalysis::Cache* cache = nullptr);
 
   // Verify that the memory space assignment is free of overlapping buffers and
   // export heap simulator trace to be used by buffer_assignment.
@@ -741,6 +768,11 @@ struct RequiredMemoryAssignment {
   MemorySpaceAssignment::MemorySpace memory_space;
   int64 time;
   absl::optional<HeapSimulator::Chunk> chunk;
+
+  bool operator==(const RequiredMemoryAssignment& other) const {
+    return memory_space == other.memory_space && time == other.time &&
+           chunk == other.chunk;
+  }
 };
 
 // A struct representing an asynchronous copy with its logical start and end
@@ -875,7 +907,15 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   void CreateAllocationValues(const HloValue* value,
                               std::vector<AllocationValue>* allocation_values);
 
-  // Finds an allocation for the given interval.
+  // Finds allocations for colocated intervals. Colocated intervals consist of
+  // one or more BufferIntervals, each with a different HloValue. All of the
+  // intervals within colocated intervals have a must-alias relationship with
+  // each other. Returns true if allocation succeeded.
+  bool AllocateColocatedIntervals(
+      const std::vector<const BufferInterval*>& colocated_intervals);
+
+  // Finds an allocation for an allocation request for a segment (see the
+  // documentation for AllocationRequest above how a segment is defined).
   //
   // It performs three things in the following order:
   //  1- Allocate the allocation request entirely in the alternate memory, if
@@ -889,7 +929,7 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // false. This means we could not find a suitable allocation, so all previous
   // allocations for this buffer must be removed and allocated in the default
   // memory. Otherwise, this method returns true.
-  bool FindAllocation(const AllocationRequest& request);
+  bool AllocateSegment(const AllocationRequest& request);
 
   // Try allocating in alternate memory without any copies. Returns true if
   // successful.
@@ -985,8 +1025,7 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
       const BufferInterval& interval,
       const MemorySpaceAssignment::Allocation& allocation,
       std::string* debug_str) const;
-  void DumpIfEnabled(absl::string_view buffer_info_str,
-                     absl::string_view allocation_info_str) const;
+  void DumpDebugStringsIfEnabled() const;
 
   // Returns the available heap size in the alternate memory.
   int64 available_heap_size() const {
@@ -1004,12 +1043,20 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   AsynchronousCopyOrdering async_copy_ordering_;
   std::vector<std::pair<BufferInterval, ChunkCandidate>> pending_chunks_;
   std::vector<AsynchronousCopy> pending_async_copies_;
+  std::vector<std::pair<const HloValue*, RequiredMemoryAssignment>>
+      pending_required_assignments_;
   // This map contains required memory assignments for HloValues (e.g., input
   // and outputs).
   absl::flat_hash_map<const HloValue*, std::vector<RequiredMemoryAssignment>>
       required_assignments_;
   // Number of bytes reserved in alternate memory space.
   int64 reserved_in_bytes_ = 0;
+  // Variables to control allocation retries.
+  bool final_retry_;
+  bool prefetch_failed_due_to_async_copy_;
+  // Debug strings.
+  std::string buffer_info_str_;
+  std::string allocation_info_str_;
 };
 
 }  // namespace xla

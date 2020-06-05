@@ -39,45 +39,24 @@ limitations under the License.
 namespace tflite {
 namespace {
 
-class SingleOpModelWithNNAPI : public SingleOpModel {
- public:
-  SingleOpModelWithNNAPI() = default;
-  void Init(const NnApi* nnapi,
-            tflite::StatefulNnApiDelegate::Options options) {
-    stateful_delegate_.reset(new StatefulNnApiDelegate(nnapi, options));
-    auto* delegate = stateful_delegate_.get();
-    this->SetApplyDelegate([delegate, this](Interpreter* interpreter) {
-      compilation_status_ = interpreter->ModifyGraphWithDelegate(delegate);
-    });
-  }
-
-  StatefulNnApiDelegate* GetDelegate() { return stateful_delegate_.get(); }
-
-  void SetBufferHandle(int index, TfLiteBufferHandle handle) {
-    interpreter_->SetBufferHandle(index, handle, stateful_delegate_.get());
-  }
-  TfLiteStatus GetCompilationStatus() { return compilation_status_; }
-
- private:
-  std::unique_ptr<StatefulNnApiDelegate> stateful_delegate_;
-  TfLiteStatus compilation_status_;
-};
-
-class FloatAddOpModel : public SingleOpModelWithNNAPI {
+class FloatAddOpModel : public SingleOpModel {
  public:
   FloatAddOpModel() = default;
   void Init(const NnApi* nnapi, tflite::StatefulNnApiDelegate::Options options,
             const TensorData& input1, const TensorData& input2,
             const TensorData& output, ActivationFunctionType activation_type,
             bool allow_fp32_relax_to_fp16 = false) {
-    SingleOpModelWithNNAPI::Init(nnapi, options);
+    stateful_delegate_.reset(new StatefulNnApiDelegate(nnapi, options));
+    SetDelegate(stateful_delegate_.get());
+
     input1_ = AddInput(input1);
     input2_ = AddInput(input2);
     output_ = AddOutput(output);
     SetBuiltinOp(BuiltinOperator_ADD, BuiltinOptions_AddOptions,
                  CreateAddOptions(builder_, activation_type).Union());
-    BuildInterpreter({GetShape(input1_), GetShape(input2_)},
-                     allow_fp32_relax_to_fp16);
+    BuildInterpreter({GetShape(input1_), GetShape(input2_)}, /*num_threads=*/-1,
+                     allow_fp32_relax_to_fp16, /*apply_delegate=*/false);
+    compilation_status_ = ApplyDelegate();
   }
 
   int input1() { return input1_; }
@@ -85,12 +64,16 @@ class FloatAddOpModel : public SingleOpModelWithNNAPI {
 
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
 
+  TfLiteStatus GetCompilationStatus() { return compilation_status_; }
+
  protected:
   int input1_;
   int input2_;
   int output_;
 
  private:
+  std::unique_ptr<StatefulNnApiDelegate> stateful_delegate_;
+  TfLiteStatus compilation_status_;
 };
 
 struct NnApiDeviceSelectionTest
@@ -281,10 +264,7 @@ class ArgMaxOpModel : public SingleOpModel, public AcceleratedModel {
 
   void Init(std::initializer_list<int> input_shape, TensorType input_type,
             int axis_value, TensorType output_type) {
-    auto* delegate = GetDelegate();
-    this->SetApplyDelegate([delegate](Interpreter* interpreter) {
-      interpreter->ModifyGraphWithDelegate(delegate);
-    });
+    SetDelegate(GetDelegate());
     input_ = AddInput(input_type);
     axis_ = AddConstInput(TensorType_INT32, {axis_value}, {1});
     output_ = AddOutput(output_type);
@@ -395,10 +375,7 @@ class AddSubOpsAcceleratedModel : public MultiOpModel, public AcceleratedModel {
                             const std::string& accelerator_name,
                             bool allow_fp32_relax_to_fp16 = false)
       : MultiOpModel(), AcceleratedModel(nnapi, accelerator_name) {
-    auto* delegate = GetDelegate();
-    this->SetApplyDelegate([delegate](Interpreter* interpreter) {
-      interpreter->ModifyGraphWithDelegate(delegate);
-    });
+    SetDelegate(GetDelegate());
     Init(input1, input2, input3, output, activation_type,
          allow_fp32_relax_to_fp16);
   }
@@ -433,7 +410,8 @@ class AddSubOpsAcceleratedModel : public MultiOpModel, public AcceleratedModel {
                  CreateSubOptions(builder_, activation_type).Union(),
                  {add_output, input3_}, {output_});
     BuildInterpreter({GetShape(input1_), GetShape(input2_), GetShape(input3_)},
-                     allow_fp32_relax_to_fp16);
+                     /*num_threads=*/-1, allow_fp32_relax_to_fp16,
+                     /*apply_delegate=*/true);
   }
 };
 
@@ -584,10 +562,7 @@ class HardSwishAddOpsAcceleratedModel : public MultiOpModel,
                                   const std::string& accelerator_name,
                                   bool allow_fp32_relax_to_fp16 = false)
       : MultiOpModel(), AcceleratedModel(nnapi, accelerator_name) {
-    auto* delegate = GetDelegate();
-    this->SetApplyDelegate([delegate](Interpreter* interpreter) {
-      interpreter->ModifyGraphWithDelegate(delegate);
-    });
+    SetDelegate(GetDelegate());
     Init(input1, input2, output, activation_type, allow_fp32_relax_to_fp16);
   }
 
@@ -616,8 +591,8 @@ class HardSwishAddOpsAcceleratedModel : public MultiOpModel,
     AddBuiltinOp(BuiltinOperator_ADD, BuiltinOptions_AddOptions,
                  CreateAddOptions(builder_, activation_type).Union(),
                  {input1_, hard_swish_output}, {output_});
-    BuildInterpreter({GetShape(input1_), GetShape(input2_)},
-                     allow_fp32_relax_to_fp16);
+    BuildInterpreter({GetShape(input1_), GetShape(input2_)}, /*num_threads=*/-1,
+                     allow_fp32_relax_to_fp16, /*apply_delegate=*/true);
   }
 };
 
@@ -723,10 +698,7 @@ class QuantizedWeightsConvolutionOpModel : public SingleOpModel,
       int dilation_width_factor = 1, int dilation_height_factor = 1,
       int num_threads = -1, std::initializer_list<uint8_t> filter_data = {})
       : SingleOpModel(), AcceleratedModel(nnapi, accelerator_name) {
-    auto* delegate = GetDelegate();
-    this->SetApplyDelegate([delegate](Interpreter* interpreter) {
-      interpreter->ModifyGraphWithDelegate(delegate);
-    });
+    SetDelegate(GetDelegate());
 
     input_ = AddInput(input);
 
@@ -749,7 +721,8 @@ class QuantizedWeightsConvolutionOpModel : public SingleOpModel,
                      .Union());
 
     BuildInterpreter({GetShape(input_), GetShape(filter_), GetShape(bias_)},
-                     num_threads);
+                     num_threads, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/true);
   }
 
   void SetInput(std::initializer_list<float> data) {
@@ -859,10 +832,7 @@ class LongIdentityModel : public MultiOpModel, public AcceleratedModel {
  private:
   void Init(const std::vector<int>& input_shape, int graph_size,
             const std::unordered_set<int>& custom_nodes_indexes) {
-    auto* delegate = GetDelegate();
-    this->SetApplyDelegate([delegate](Interpreter* interpreter) {
-      interpreter->ModifyGraphWithDelegate(delegate);
-    });
+    SetDelegate(GetDelegate());
 
     const TensorData tensor_data{TensorType_FLOAT32, input_shape};
 

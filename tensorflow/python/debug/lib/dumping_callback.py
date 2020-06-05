@@ -30,6 +30,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.protobuf import debug_event_pb2
 from tensorflow.core.protobuf import graph_debug_info_pb2
+from tensorflow.python.compat import compat as tf_compat
 from tensorflow.python.debug.lib import debug_events_writer
 from tensorflow.python.debug.lib import op_callbacks_common
 from tensorflow.python.debug.lib import source_utils
@@ -366,17 +367,31 @@ class _DumpingCallback(object):
         with self._symbolic_tensor_counter_lock:
           debug_identity_name = ("DebugIdentityV2_%d" %
                                  self._symbolic_tensor_counter)
-        debug_tensor = gen_debug_ops.debug_identity_v2(
-            # Use an empty (shape=[0]) float32 tensor for the NO_TENSOR mode
-            # as a low-overhead placeholder, since no actual tensor value is
-            # traced.
-            constant_op.constant([], dtype=dtypes.float32),
-            tfdbg_context_id=tfdbg_context_id,
-            op_name=op_name,
-            output_slot=output_slot,
-            tensor_debug_mode=self._tensor_debug_mode,
-            debug_urls=debug_urls,
-            name=debug_identity_name)
+        if tf_compat.forward_compatible(2020, 6, 24):
+          debug_tensor = gen_debug_ops.debug_identity_v2(
+              # Use an empty (shape=[0]) float32 tensor for the NO_TENSOR mode
+              # as a low-overhead placeholder, since no actual tensor value is
+              # traced.
+              constant_op.constant([], dtype=dtypes.float32),
+              tfdbg_context_id=tfdbg_context_id,
+              op_name=op_name,
+              output_slot=output_slot,
+              tensor_debug_mode=self._tensor_debug_mode,
+              debug_urls=debug_urls,
+              circular_buffer_size=self._circular_buffer_size,
+              name=debug_identity_name)
+        else:
+          debug_tensor = gen_debug_ops.debug_identity_v2(
+              # Use an empty (shape=[0]) float32 tensor for the NO_TENSOR mode
+              # as a low-overhead placeholder, since no actual tensor value is
+              # traced.
+              constant_op.constant([], dtype=dtypes.float32),
+              tfdbg_context_id=tfdbg_context_id,
+              op_name=op_name,
+              output_slot=output_slot,
+              tensor_debug_mode=self._tensor_debug_mode,
+              debug_urls=debug_urls,
+              name=debug_identity_name)
         if is_v1_graph_mode:
           instrumented_tensors.append(self._process_v1_graph_mode_tensor(
               op_type, tensor, debug_tensor, tensor_debug_mode))
@@ -400,17 +415,31 @@ class _DumpingCallback(object):
           if is_v1_graph_mode:
             instrumented_tensors.append(tensor)
           continue
-        debug_tensor = gen_debug_ops.debug_identity_v2(
-            gen_debug_ops.debug_numeric_summary_v2(
-                tensor,
-                tensor_id=tensor_ids[output_slot],
-                tensor_debug_mode=self._tensor_debug_mode,
-                output_dtype=dtypes.float64),
-            tfdbg_context_id=tfdbg_context_id,
-            op_name=op_name,
-            output_slot=output_slot,
-            tensor_debug_mode=self._tensor_debug_mode,
-            debug_urls=debug_urls)
+        if tf_compat.forward_compatible(2020, 6, 24):
+          debug_tensor = gen_debug_ops.debug_identity_v2(
+              gen_debug_ops.debug_numeric_summary_v2(
+                  tensor,
+                  tensor_id=tensor_ids[output_slot],
+                  tensor_debug_mode=self._tensor_debug_mode,
+                  output_dtype=dtypes.float64),
+              tfdbg_context_id=tfdbg_context_id,
+              op_name=op_name,
+              output_slot=output_slot,
+              tensor_debug_mode=self._tensor_debug_mode,
+              debug_urls=debug_urls,
+              circular_buffer_size=self._circular_buffer_size)
+        else:
+          debug_tensor = gen_debug_ops.debug_identity_v2(
+              gen_debug_ops.debug_numeric_summary_v2(
+                  tensor,
+                  tensor_id=tensor_ids[output_slot],
+                  tensor_debug_mode=self._tensor_debug_mode,
+                  output_dtype=dtypes.float64),
+              tfdbg_context_id=tfdbg_context_id,
+              op_name=op_name,
+              output_slot=output_slot,
+              tensor_debug_mode=self._tensor_debug_mode,
+              debug_urls=debug_urls)
         if is_v1_graph_mode:
           instrumented_tensors.append(self._process_v1_graph_mode_tensor(
               op_type, tensor, debug_tensor, tensor_debug_mode))
@@ -424,13 +453,23 @@ class _DumpingCallback(object):
           if is_v1_graph_mode:
             instrumented_tensors.append(tensor)
           continue
-        debug_tensor = gen_debug_ops.debug_identity_v2(
-            tensor,
-            tfdbg_context_id=tfdbg_context_id,
-            op_name=op_name,
-            output_slot=output_slot,
-            tensor_debug_mode=self._tensor_debug_mode,
-            debug_urls=debug_urls)
+        if tf_compat.forward_compatible(2020, 6, 24):
+          debug_tensor = gen_debug_ops.debug_identity_v2(
+              tensor,
+              tfdbg_context_id=tfdbg_context_id,
+              op_name=op_name,
+              output_slot=output_slot,
+              tensor_debug_mode=self._tensor_debug_mode,
+              debug_urls=debug_urls,
+              circular_buffer_size=self._circular_buffer_size)
+        else:
+          debug_tensor = gen_debug_ops.debug_identity_v2(
+              tensor,
+              tfdbg_context_id=tfdbg_context_id,
+              op_name=op_name,
+              output_slot=output_slot,
+              tensor_debug_mode=self._tensor_debug_mode,
+              debug_urls=debug_urls)
         if is_v1_graph_mode:
           instrumented_tensors.append(self._process_v1_graph_mode_tensor(
               op_type, tensor, debug_tensor, tensor_debug_mode))

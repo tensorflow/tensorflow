@@ -67,6 +67,14 @@ genrule(
     tools = [":json_to_fb"],
 )
 
+py_binary(
+    name = "convert_binary_to_cc_source",
+    srcs = ["convert_binary_to_cc_source.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+)
+
 genrule(
     name = "devicedb-sample_cc",
     srcs = ["devicedb-sample.bin"],
@@ -77,14 +85,13 @@ genrule(
     # convert_file_to_c_source for some reason doesn't define the global with
     # 'extern', which is needed for global const variables in C++.
     cmd = """
-    $(location //tensorflow/lite/python:convert_file_to_c_source) \
-        --input_tflite_file $(location :devicedb-sample.bin) \
+    $(location :convert_binary_to_cc_source) \
+        --input_binary_file $(location :devicedb-sample.bin) \
         --output_header_file $(location :devicedb-sample.h) \
         --output_source_file $(location :devicedb-sample.cc) \
         --array_variable_name g_tflite_acceleration_devicedb_sample_binary
-    perl -p -i -e 's/const unsigned char/extern const unsigned char/' $(location :devicedb-sample.cc)
     """,
-    tools = ["//tensorflow/lite/python:convert_file_to_c_source"],
+    tools = [":convert_binary_to_cc_source"],
 )
 
 cc_test(
@@ -113,14 +120,13 @@ genrule(
     # convert_file_to_c_source for some reason doesn't define the global with
     # 'extern', which is needed for global const variables in C++.
     cmd = """
-    $(location //tensorflow/lite/python:convert_file_to_c_source) \
-        --input_tflite_file $(location :gpu_whitelist.bin) \
+    $(location :convert_binary_to_cc_source) \
+        --input_binary_file $(location :gpu_whitelist.bin) \
         --output_header_file $(location :gpu_whitelist_binary.h) \
         --output_source_file $(location :gpu_whitelist_binary.cc) \
         --array_variable_name g_tflite_acceleration_gpu_whitelist_binary
-    perl -p -i -e 's/const unsigned char/extern const unsigned char/' $(location :gpu_whitelist_binary.cc)
     """,
-    tools = ["//tensorflow/lite/python:convert_file_to_c_source"],
+    tools = [":convert_binary_to_cc_source"],
 )
 
 cc_library(

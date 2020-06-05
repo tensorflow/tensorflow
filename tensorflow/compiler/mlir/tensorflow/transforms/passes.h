@@ -52,6 +52,10 @@ std::unique_ptr<OperationPass<FuncOp>> CreateBatchMatMulToEinsumPass();
 // Optimizes Tensorflow graph.
 std::unique_ptr<OperationPass<FuncOp>> CreateTFOptimizePass();
 
+// Creates pass to rewrite RecvTPUEmbeddingActivationsOp and
+// SendTPUEmbeddingGradients ops to internal variants.
+std::unique_ptr<OperationPass<FuncOp>> CreateRewriteTPUEmbeddingOps();
+
 // Performs specific fusion for GPU targets.
 std::unique_ptr<OperationPass<FuncOp>> CreateGpuOpFusionPass();
 

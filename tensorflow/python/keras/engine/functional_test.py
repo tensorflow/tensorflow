@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -1167,6 +1168,28 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     model.trackable = Checkpoint()
     self.assertIn('trackable', model._unconditional_dependency_names)
     self.assertEqual(model.trackable, model._lookup_dependency('trackable'))
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_model_construction_in_tf_function(self):
+
+    d = {'model': None}
+
+    @def_function.function
+    def fn(x):
+      if d['model'] is None:
+        # Check that Functional can be built in a `tf.function`.
+        inputs = input_layer_lib.Input(10)
+        outputs = layers.Dense(1)(inputs)
+        model = functional.Functional(inputs, outputs)
+        d['model'] = model
+      else:
+        model = d['model']
+
+      return model(x)
+
+    x = array_ops.ones((10, 10))
+    y = fn(x)
+    self.assertEqual(y.shape.as_list(), [10, 1])
 
 
 class DeferredModeTest(keras_parameterized.TestCase):

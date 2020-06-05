@@ -686,6 +686,25 @@ gentbl(
     ],
 )
 
+gentbl(
+    name = "MLIRShapeCanonicalizationIncGen",
+    strip_include_prefix = "include/mlir/Dialect/Shape",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "include/mlir/Dialect/Shape/IR/ShapeCanonicalization.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "lib/Dialect/Shape/IR/ShapeCanonicalization.td",
+    td_srcs = [
+        ":StdOpsTdFiles",
+        "include/mlir/Dialect/Shape/IR/ShapeBase.td",
+        "include/mlir/Dialect/Shape/IR/ShapeOps.td",
+        "include/mlir/Interfaces/InferTypeOpInterface.td",
+    ],
+)
+
 cc_library(
     name = "Shape",
     srcs = glob(
@@ -704,9 +723,35 @@ cc_library(
         ":Dialect",
         ":IR",
         ":InferTypeOpInterface",
+        ":MLIRShapeCanonicalizationIncGen",
         ":ShapeOpsIncGen",
         ":SideEffects",
         ":Support",
+        "@llvm-project//llvm:support",
+    ],
+)
+
+cc_library(
+    name = "ShapeToStandard",
+    srcs = glob([
+        "lib/Conversion/ShapeToStandard/*.cpp",
+        "lib/Conversion/ShapeToStandard/*.h",
+    ]) + ["lib/Conversion/PassDetail.h"],
+    hdrs = glob([
+        "include/mlir/Conversion/ShapeToStandard/*.h",
+    ]),
+    includes = ["include"],
+    deps = [
+        ":Affine",
+        ":ConversionPassIncGen",
+        ":IR",
+        ":Pass",
+        ":SCFDialect",
+        ":Shape",
+        ":StandardOps",
+        ":Support",
+        ":Transforms",
+        "@llvm-project//llvm:core",
         "@llvm-project//llvm:support",
     ],
 )
@@ -2486,6 +2531,7 @@ cc_library(
         ":Parser",
         ":Pass",
         ":SCFTransforms",
+        ":ShapeToStandard",
         ":StandardOpsTransforms",
         ":StandardToSPIRVConversions",
         ":Support",
@@ -2583,6 +2629,7 @@ cc_library(
         ":SPIRVLowering",
         ":SPIRVPassIncGen",
         ":Shape",
+        ":ShapeToStandard",
         ":StandardOps",
         ":StandardOpsTransforms",
         ":StandardOpsTransformsPassIncGen",
@@ -3269,6 +3316,7 @@ cc_library(
         "include/mlir/Dialect/Linalg/EDSC/Builders.h",
         "include/mlir/Dialect/Linalg/EDSC/FoldedIntrinsics.h",
         "include/mlir/Dialect/Linalg/Passes.h",
+        "include/mlir/Dialect/Linalg/Transforms/Hoisting.h",
         "include/mlir/Dialect/Linalg/Transforms/Transforms.h",
         "include/mlir/Dialect/Linalg/Utils/Utils.h",
     ],
@@ -3288,6 +3336,7 @@ cc_library(
         ":LinalgStructuredOpsIncGen",
         ":Pass",
         ":SCFDialect",
+        ":SCFTransforms",
         ":StandardOps",
         ":Support",
         ":TransformUtils",

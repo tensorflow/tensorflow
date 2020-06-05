@@ -26,11 +26,6 @@ limitations under the License.
 
 namespace tflite {
 
-// TODO(b/151245712) TODO(b/149408647): remove any version once we no longer
-// support op versions in the API or we switch most users and AllOpsResolver to
-// the new selective registration API, whichever seems more appropriate.
-inline int MicroOpResolverAnyVersion() { return 0; }
-
 template <unsigned int tOpCount>
 class MicroMutableOpResolver : public MicroOpResolver {
  public:
@@ -67,8 +62,7 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddBuiltin(tflite::BuiltinOperator op,
-                          TfLiteRegistration* registration,
-                          int version = 1) override {
+                          TfLiteRegistration* registration) override {
     if (registrations_len_ >= tOpCount) {
       if (error_reporter_) {
         TF_LITE_REPORT_ERROR(error_reporter_,
@@ -82,9 +76,9 @@ class MicroMutableOpResolver : public MicroOpResolver {
     if (FindOp(op) != nullptr) {
       if (error_reporter_ != nullptr) {
         TF_LITE_REPORT_ERROR(error_reporter_,
-                             "Registering multiple versions of the same op is "
-                             "not supported (Op: #%d, version: %d).",
-                             op, version);
+                             "Calling AddBuiltin with the same op more than "
+                             "once is not supported (Op: #%d).",
+                             op);
       }
       return kTfLiteError;
     }
@@ -94,14 +88,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
 
     *new_registration = *registration;
     new_registration->builtin_code = op;
-    new_registration->version = version;
-
     return kTfLiteOk;
   }
 
-  TfLiteStatus AddCustom(const char* name, TfLiteRegistration* registration,
-                         int version = 1) {
-    printf("registrations_len_: %d\n", registrations_len_);
+  TfLiteStatus AddCustom(const char* name,
+                         TfLiteRegistration* registration) override {
     if (registrations_len_ >= tOpCount) {
       if (error_reporter_) {
         TF_LITE_REPORT_ERROR(
@@ -115,9 +106,9 @@ class MicroMutableOpResolver : public MicroOpResolver {
     if (FindOp(name) != nullptr) {
       if (error_reporter_ != nullptr) {
         TF_LITE_REPORT_ERROR(error_reporter_,
-                             "Registering multiple versions of the same op is "
-                             "not supported (Op: %s, version: %d).",
-                             name, version);
+                             "Calling AddCustom for the same op more than once "
+                             "is not supported (Op: %s).",
+                             name);
       }
       return kTfLiteError;
     }
@@ -128,8 +119,6 @@ class MicroMutableOpResolver : public MicroOpResolver {
     *new_registration = *registration;
     new_registration->builtin_code = BuiltinOperator_CUSTOM;
     new_registration->custom_name = name;
-    new_registration->version = version;
-
     return kTfLiteOk;
   }
 

@@ -124,6 +124,26 @@ cc_library(
 )
 
 cc_library(
+    name = "traceback_manager",
+    srcs = ["traceback_manager.cc"],
+    hdrs = ["traceback_manager.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        ":python_ref_manager",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
+        "@pybind11",
+    ],
+)
+
+cc_library(
     name = "bfloat16",
     srcs = ["bfloat16.cc"],
     hdrs = ["bfloat16.h"],
@@ -160,6 +180,48 @@ py_test(
 )
 
 cc_library(
+    name = "py_buffer",
+    srcs = ["py_buffer.cc"],
+    hdrs = ["py_buffer.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        ":python_ref_manager",
+        ":traceback_manager",
+        ":types",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "py_executable",
+    srcs = ["py_executable.cc"],
+    hdrs = ["py_executable.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        ":py_buffer",
+        ":traceback_manager",
+        ":types",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "dlpack",
     srcs = ["dlpack.cc"],
     hdrs = ["dlpack.h"],
@@ -169,6 +231,8 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
+        ":py_buffer",
+        ":traceback_manager",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
@@ -290,8 +354,11 @@ pybind_extension(
         ":bfloat16",
         ":dlpack",
         ":ops",
+        ":py_buffer",
+        ":py_executable",
         ":python_ref_manager",
         ":outfeed_receiver_py",
+        ":traceback_manager",
         ":types",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/hash",
@@ -307,6 +374,7 @@ pybind_extension(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:client_library",
