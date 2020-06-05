@@ -138,6 +138,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/compiler/xla/service/cpu/tests:cpu_codegen_test",
         "//tensorflow/compiler/xla/tests:test_utils",
+	"//tensorflow/compiler/xla/service/cpu:test_header_helper",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
