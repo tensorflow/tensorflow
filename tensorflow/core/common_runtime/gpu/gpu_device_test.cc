@@ -229,52 +229,89 @@ TEST_F(GPUDeviceTest, SingleVirtualDeviceWithMemoryLimitAndNoPriority) {
 
 TEST_F(GPUDeviceTest, SingleVirtualDeviceWithInvalidPriority) {
   {
-    // Priority outside the range (-1, 0).
+#if TENSORFLOW_USE_ROCM
+    // Priority outside the range (0, 2) for AMD GPUs
+    SessionOptions opts =
+        MakeSessionOptions("0", 0, 1, {{123, 456}}, {{-1, 2}});
+#else
+    // Priority outside the range (-1, 0) for NVidia GPUs
     SessionOptions opts =
         MakeSessionOptions("0", 0, 1, {{123, 456}}, {{-2, 0}});
+#endif
     std::vector<std::unique_ptr<Device>> devices;
     Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
         opts, kDeviceNamePrefix, &devices);
     EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
+#if TENSORFLOW_USE_ROCM
+    ExpectErrorMessageSubstr(
+        status,
+        "Priority -1 is outside the range of supported priorities [0,2] for"
+        " virtual device 0 on GPU# 0");
+#else
     ExpectErrorMessageSubstr(
         status,
         "Priority -2 is outside the range of supported priorities [-1,0] for"
         " virtual device 0 on GPU# 0");
+#endif
   }
   {
-    // Priority outside the range (-1, 0).
+#if TENSORFLOW_USE_ROCM
+    // Priority outside the range (0, 2) for AMD GPUs
+    SessionOptions opts = MakeSessionOptions("0", 0, 1, {{123, 456}}, {{0, 3}});
+#else
+    // Priority outside the range (-1, 0) for NVidia GPUs
     SessionOptions opts = MakeSessionOptions("0", 0, 1, {{123, 456}}, {{0, 1}});
+#endif
     std::vector<std::unique_ptr<Device>> devices;
     Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
         opts, kDeviceNamePrefix, &devices);
     EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
+#if TENSORFLOW_USE_ROCM
+    ExpectErrorMessageSubstr(
+        status,
+        "Priority 3 is outside the range of supported priorities [0,2] for"
+        " virtual device 0 on GPU# 0");
+#else
     ExpectErrorMessageSubstr(
         status,
         "Priority 1 is outside the range of supported priorities [-1,0] for"
         " virtual device 0 on GPU# 0");
+#endif
   }
 }
 
 TEST_F(GPUDeviceTest, SingleVirtualDeviceWithMemoryLimitAndPriority) {
-  SessionOptions opts = MakeSessionOptions("0", 0, 1, {{123}}, {{-1}});
+  // 0 is a valid priority value for both AMD and NVidia GPUs
+  SessionOptions opts = MakeSessionOptions("0", 0, 1, {{123}}, {{0}});
   std::vector<std::unique_ptr<Device>> devices;
   TF_CHECK_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices));
   EXPECT_EQ(1, devices.size());
   EXPECT_EQ(123 << 20, devices[0]->attributes().memory_limit());
-  EXPECT_EQ(-1, static_cast<BaseGPUDevice*>(devices[0].get())->priority());
+  EXPECT_EQ(0, static_cast<BaseGPUDevice*>(devices[0].get())->priority());
 }
 
 TEST_F(GPUDeviceTest, MultipleVirtualDevices) {
+#if TENSORFLOW_USE_ROCM
+  // Valid range for priority values on AMD GPUs in (0,2)
+  SessionOptions opts = MakeSessionOptions("0", 0, 1, {{123, 456}}, {{0, 1}});
+#else
+  // Valid range for priority values on NVidia GPUs in (-1, 0)
   SessionOptions opts = MakeSessionOptions("0", 0, 1, {{123, 456}}, {{0, -1}});
+#endif
   std::vector<std::unique_ptr<Device>> devices;
   TF_CHECK_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices));
   EXPECT_EQ(2, devices.size());
   EXPECT_EQ(123 << 20, devices[0]->attributes().memory_limit());
   EXPECT_EQ(456 << 20, devices[1]->attributes().memory_limit());
+#if TENSORFLOW_USE_ROCM
+  EXPECT_EQ(0, static_cast<BaseGPUDevice*>(devices[0].get())->priority());
+  EXPECT_EQ(1, static_cast<BaseGPUDevice*>(devices[1].get())->priority());
+#else
   EXPECT_EQ(0, static_cast<BaseGPUDevice*>(devices[0].get())->priority());
   EXPECT_EQ(-1, static_cast<BaseGPUDevice*>(devices[1].get())->priority());
+#endif
   ASSERT_EQ(1, devices[0]->attributes().locality().links().link_size());
   ASSERT_EQ(1, devices[1]->attributes().locality().links().link_size());
   EXPECT_EQ(1, devices[0]->attributes().locality().links().link(0).device_id());
@@ -292,7 +329,8 @@ TEST_F(GPUDeviceTest, MultipleVirtualDevices) {
 TEST_F(GPUDeviceTest, MultipleVirtualDevicesWithPriority) {
   {
     // Multile virtual devices with fewer priorities.
-    SessionOptions opts = MakeSessionOptions("0", 0, 1, {{123, 456}}, {{-1}});
+    // 0 is a valid priority value for both AMD and NVidia GPUs
+    SessionOptions opts = MakeSessionOptions("0", 0, 1, {{123, 456}}, {{0}});
     std::vector<std::unique_ptr<Device>> devices;
     Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
         opts, kDeviceNamePrefix, &devices);
@@ -305,16 +343,27 @@ TEST_F(GPUDeviceTest, MultipleVirtualDevicesWithPriority) {
   }
   {
     // Multile virtual devices with matching priority.
+#if TENSORFLOW_USE_ROCM
+    // Valid range for priority values on AMD GPUs in (0,2)
+    SessionOptions opts = MakeSessionOptions("0", 0, 1, {{123, 456}}, {{2, 1}});
+#else
+    // Valid range for priority values on NVidia GPUs in (-1, 0)
     SessionOptions opts =
         MakeSessionOptions("0", 0, 1, {{123, 456}}, {{-1, 0}});
+#endif
     std::vector<std::unique_ptr<Device>> devices;
     TF_CHECK_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
         opts, kDeviceNamePrefix, &devices));
     EXPECT_EQ(2, devices.size());
     EXPECT_EQ(123 << 20, devices[0]->attributes().memory_limit());
     EXPECT_EQ(456 << 20, devices[1]->attributes().memory_limit());
+#if TENSORFLOW_USE_ROCM
+    EXPECT_EQ(2, static_cast<BaseGPUDevice*>(devices[0].get())->priority());
+    EXPECT_EQ(1, static_cast<BaseGPUDevice*>(devices[1].get())->priority());
+#else
     EXPECT_EQ(-1, static_cast<BaseGPUDevice*>(devices[0].get())->priority());
     EXPECT_EQ(0, static_cast<BaseGPUDevice*>(devices[1].get())->priority());
+#endif
   }
 }
 
