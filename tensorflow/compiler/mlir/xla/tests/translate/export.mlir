@@ -988,7 +988,7 @@ func @main(%arg0: tensor<16x16xf32>) -> tensor<16x16xf32> {
 // Tests that the exported HLO module keeps parameter replication annotation.
 
 // CHECK:  HloModule
-func @main(%arg0: tensor<16x16xf32>, %arg1: tensor<16x16xf32> {tf_device.is_same_data_across_replicas = true}) -> tensor<16x16xf32> {
+func @main(%arg0: tensor<16x16xf32>, %arg1: tensor<16x16xf32> {xla_hlo.is_same_data_across_replicas}) -> tensor<16x16xf32> {
   %0 = "xla_hlo.add"(%arg0, %arg1) : (tensor<16x16xf32>, tensor<16x16xf32>) -> tensor<16x16xf32>
   return %0 : tensor<16x16xf32>
 }
