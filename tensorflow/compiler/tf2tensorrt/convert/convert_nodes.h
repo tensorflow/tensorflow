@@ -686,6 +686,9 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
 const std::unordered_map<string, nvinfer1::UnaryOperation>* UnaryOperationMap();
 // Map of all supported ActivationTypes
 const std::unordered_map<string, nvinfer1::ActivationType>* ActivationTypeMap();
+// Map of all supported BinaryOperations
+const std::unordered_map<string, nvinfer1::ElementWiseOperation>*
+BinaryOperationMap();
 
 }  // namespace convert
 }  // namespace tensorrt
