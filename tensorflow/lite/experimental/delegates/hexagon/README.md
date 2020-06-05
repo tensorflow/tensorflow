@@ -100,6 +100,7 @@ are verified in `IsNodeSupportedByHexagon`:
 * SoftMax
 * SpaceToDepth
 * Split
+* Strided Slice
 * Sub (Support relu activations)
 * Tanh
 * Transpose
