@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 """Mathematical operations."""
+# pylint: disable=g-direct-tensorflow-import
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -95,7 +97,7 @@ def multiply(x1, x2):
 
 
 @np_utils.np_doc(np.true_divide)
-def true_divide(x1, x2):
+def true_divide(x1, x2):  # pylint: disable=missing-function-docstring
 
   def _avoid_float64(x1, x2):
     if x1.dtype == x2.dtype and x1.dtype in (dtypes.int32, dtypes.int64):
@@ -122,7 +124,7 @@ divide = true_divide
 
 
 @np_utils.np_doc(np.floor_divide)
-def floor_divide(x1, x2):
+def floor_divide(x1, x2):  # pylint: disable=missing-function-docstring
 
   def f(x1, x2):
     if x1.dtype == dtypes.bool:
@@ -135,7 +137,7 @@ def floor_divide(x1, x2):
 
 
 @np_utils.np_doc(np.mod)
-def mod(x1, x2):
+def mod(x1, x2):  # pylint: disable=missing-function-docstring
 
   def f(x1, x2):
     if x1.dtype == dtypes.bool:
@@ -219,7 +221,7 @@ def tensordot(a, b, axes=2):
 
 
 @np_utils.np_doc_only(np.inner)
-def inner(a, b):
+def inner(a, b):  # pylint: disable=missing-function-docstring
 
   def f(a, b):
     return np_utils.cond(
@@ -328,7 +330,7 @@ def nextafter(x1, x2):
 
 
 @np_utils.np_doc(np.heaviside)
-def heaviside(x1, x2):
+def heaviside(x1, x2):  # pylint: disable=missing-function-docstring
 
   def f(x1, x2):
     return array_ops.where_v2(
@@ -347,7 +349,7 @@ def hypot(x1, x2):
 
 
 @np_utils.np_doc(np.kron)
-def kron(a, b):
+def kron(a, b):  # pylint: disable=missing-function-docstring
   # pylint: disable=protected-access,g-complex-comprehension
   a, b = np_array_ops._promote_dtype(a, b)
   ndim = max(a.ndim, b.ndim)
@@ -392,7 +394,7 @@ def logaddexp2(x1, x2):
 
 
 @np_utils.np_doc(np.polyval)
-def polyval(p, x):
+def polyval(p, x):  # pylint: disable=missing-function-docstring
 
   def f(p, x):
     if p.shape.rank == 0:
@@ -433,9 +435,9 @@ def allclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False):
       isclose(a, b, rtol=rtol, atol=atol, equal_nan=equal_nan))
 
 
-def _tf_gcd(x1, x2):
+def _tf_gcd(x1, x2):  # pylint: disable=missing-function-docstring
 
-  def _gcd_cond_fn(x1, x2):
+  def _gcd_cond_fn(_, x2):
     return math_ops.reduce_any(x2 != 0)
 
   def _gcd_body_fn(x1, x2):
@@ -455,20 +457,20 @@ def _tf_gcd(x1, x2):
   shape = array_ops.broadcast_static_shape(x1.shape, x2.shape)
   x1 = array_ops.broadcast_to(x1, shape)
   x2 = array_ops.broadcast_to(x2, shape)
-  gcd, _ = control_flow_ops.while_loop(_gcd_cond_fn, _gcd_body_fn,
-                                       (math_ops.abs(x1), math_ops.abs(x2)))
-  return gcd
+  value, _ = control_flow_ops.while_loop(_gcd_cond_fn, _gcd_body_fn,
+                                         (math_ops.abs(x1), math_ops.abs(x2)))
+  return value
 
 
 # Note that np.gcd may not be present in some supported versions of numpy.
-@np_utils.np_doc(None, np_fun_name="gcd")
+@np_utils.np_doc(None, np_fun_name='gcd')
 def gcd(x1, x2):
   return _bin_op(_tf_gcd, x1, x2)
 
 
 # Note that np.lcm may not be present in some supported versions of numpy.
-@np_utils.np_doc(None, np_fun_name="lcm")
-def lcm(x1, x2):
+@np_utils.np_doc(None, np_fun_name='lcm')
+def lcm(x1, x2):  # pylint: disable=missing-function-docstring
 
   def f(x1, x2):
     d = _tf_gcd(x1, x2)
@@ -482,7 +484,7 @@ def lcm(x1, x2):
   return _bin_op(f, x1, x2)
 
 
-def _bitwise_binary_op(tf_fn, x1, x2):
+def _bitwise_binary_op(tf_fn, x1, x2):  # pylint: disable=missing-function-docstring
 
   def f(x1, x2):
     is_bool = (x1.dtype == dtypes.bool)
@@ -691,7 +693,7 @@ _tf_float_types = [
 
 
 @np_utils.np_doc(np.angle)
-def angle(z, deg=False):
+def angle(z, deg=False):  # pylint: disable=missing-function-docstring
 
   def f(x):
     if x.dtype in _tf_float_types:
@@ -861,7 +863,7 @@ def square(x):
 
 
 @np_utils.np_doc(np.diff)
-def diff(a, n=1, axis=-1):
+def diff(a, n=1, axis=-1):  # pylint: disable=missing-function-docstring
 
   def f(a):
     nd = a.shape.rank
@@ -1059,7 +1061,7 @@ def concatenate(arys, axis=0):
 
 
 @np_utils.np_doc_only(np.tile)
-def tile(a, reps):
+def tile(a, reps):  # pylint: disable=missing-function-docstring
   a = np_array_ops.array(a).data
   reps = np_array_ops.array(reps, dtype=dtypes.int32).reshape([-1]).data
 

@@ -1104,6 +1104,16 @@ class ArrayManipulationTest(test.TestCase):
     run_test([[1, 2]], (3, 2))
     run_test([[[1, 2]], [[3, 4]], [[5, 6]]], (3, 4, 2))
 
+  def testIx_(self):
+    possible_arys = [[True, True], [True, False], [False, False],
+                     list(range(5)), np_array_ops.empty(0, dtype=np.int64)]
+    for r in range(len(possible_arys)):
+      for arys in itertools.combinations_with_replacement(possible_arys, r):
+        tnp_ans = np_array_ops.ix_(*arys)
+        onp_ans = np.ix_(*arys)
+        for t, o in zip(tnp_ans, onp_ans):
+          self.match(t, o)
+
   def match_shape(self, actual, expected, msg=None):
     if msg:
       msg = 'Shape match failed for: {}. Expected: {} Actual: {}'.format(
