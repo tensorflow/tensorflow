@@ -134,6 +134,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":python_ref_manager",
+        "//tensorflow/core:lib",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",

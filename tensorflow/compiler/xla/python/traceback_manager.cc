@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 namespace {
