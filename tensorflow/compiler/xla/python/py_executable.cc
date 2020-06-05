@@ -22,7 +22,7 @@ namespace xla {
 namespace py = pybind11;
 
 PyExecutable::PyExecutable(
-    std::shared_ptr<PjRtClient> client,
+    std::shared_ptr<PyClient> client,
     std::unique_ptr<PjRtExecutable> executable,
     absl::optional<TracebackManager::Traceback> traceback)
     : client_(std::move(client)),

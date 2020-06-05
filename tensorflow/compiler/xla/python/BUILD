@@ -180,9 +180,17 @@ py_test(
 )
 
 cc_library(
-    name = "py_buffer",
-    srcs = ["py_buffer.cc"],
-    hdrs = ["py_buffer.h"],
+    name = "py_client",
+    srcs = [
+        "py_buffer.cc",
+        "py_client.cc",
+        "py_executable.cc",
+    ],
+    hdrs = [
+        "py_buffer.h",
+        "py_client.h",
+        "py_executable.h",
+    ],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
@@ -195,29 +203,10 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "@com_google_absl//absl/types:optional",
-    ],
-)
-
-cc_library(
-    name = "py_executable",
-    srcs = ["py_executable.cc"],
-    hdrs = ["py_executable.h"],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
-    deps = [
-        ":py_buffer",
-        ":traceback_manager",
-        ":types",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@pybind11",
     ],
 )
 
@@ -231,7 +220,7 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
-        ":py_buffer",
+        ":py_client",
         ":traceback_manager",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
@@ -325,6 +314,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":outfeed_receiver",
+        ":py_client",
         ":types",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
@@ -355,8 +345,7 @@ pybind_extension(
         ":bfloat16",
         ":dlpack",
         ":ops",
-        ":py_buffer",
-        ":py_executable",
+        ":py_client",
         ":python_ref_manager",
         ":outfeed_receiver_py",
         ":traceback_manager",

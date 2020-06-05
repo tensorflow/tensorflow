@@ -15,13 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
+#include "tensorflow/compiler/xla/python/types.h"
 
 namespace xla {
 
 namespace py = pybind11;
 
-PyBuffer::PyBuffer(std::shared_ptr<PjRtClient> client,
+PyBuffer::PyBuffer(std::shared_ptr<PyClient> client,
                    std::unique_ptr<PjRtBuffer> buffer,
                    absl::optional<TracebackManager::Traceback> traceback)
     : client_(std::move(client)),
