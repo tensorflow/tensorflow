@@ -712,6 +712,31 @@ cc_library(
 )
 
 cc_library(
+    name = "ShapeToStandard",
+    srcs = glob([
+        "lib/Conversion/ShapeToStandard/*.cpp",
+        "lib/Conversion/ShapeToStandard/*.h",
+    ]) + ["lib/Conversion/PassDetail.h"],
+    hdrs = glob([
+        "include/mlir/Conversion/ShapeToStandard/*.h",
+    ]),
+    includes = ["include"],
+    deps = [
+        ":Affine",
+        ":ConversionPassIncGen",
+        ":IR",
+        ":Pass",
+        ":SCFDialect",
+        ":Shape",
+        ":StandardOps",
+        ":Support",
+        ":Transforms",
+        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:support",
+    ],
+)
+
+cc_library(
     name = "StandardOps",
     srcs = glob(
         [
@@ -2486,6 +2511,7 @@ cc_library(
         ":Parser",
         ":Pass",
         ":SCFTransforms",
+        ":ShapeToStandard",
         ":StandardOpsTransforms",
         ":StandardToSPIRVConversions",
         ":Support",
@@ -2583,6 +2609,7 @@ cc_library(
         ":SPIRVLowering",
         ":SPIRVPassIncGen",
         ":Shape",
+        ":ShapeToStandard",
         ":StandardOps",
         ":StandardOpsTransforms",
         ":StandardOpsTransformsPassIncGen",
