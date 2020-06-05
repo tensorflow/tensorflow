@@ -690,7 +690,7 @@ class TrainingTest(keras_parameterized.TestCase):
         metrics=['accuracy'],
         run_eagerly=testing_utils.should_run_eagerly())
 
-  @keras_parameterized.run_all_keras_modes
+  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
   def test_that_trainable_disables_updates(self):
     val_a = np.random.random((10, 4))
     val_out = np.random.random((10, 4))
@@ -1584,7 +1584,7 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
           run_eagerly=testing_utils.should_run_eagerly())
 
   @keras_parameterized.run_with_all_model_types
-  @keras_parameterized.run_all_keras_modes
+  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
   def test_sparse_op_with_op_layer(self):
     inputs = layers_module.Input(shape=(2,), sparse=True, name='sparse_tensor')
     output = sparse_ops.sparse_minimum(inputs, inputs)
@@ -2817,7 +2817,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     scores = model.train_on_batch(x, y, sample_weight=w)
     self.assertArrayNear(scores, [0.3328, 0.8], 0.001)
 
-  @keras_parameterized.run_all_keras_modes
+  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
   def test_add_metric_with_tensor_on_model(self):
     x = layers_module.Input(shape=(1,))
     y = layers_module.Dense(1, kernel_initializer='ones')(x)
@@ -2932,7 +2932,8 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     self.assertEqual(history.history['metric_1'][-1], 5)
     self.assertAlmostEqual(history.history['val_metric_1'][-1], 5, 0)
 
-  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True,
+                                           skip_keras_tensors=True)
   def test_model_metrics_list(self):
 
     class LayerWithAddMetric(layers_module.Layer):

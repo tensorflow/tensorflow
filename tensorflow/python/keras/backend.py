@@ -49,8 +49,10 @@ from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend_config
+from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
@@ -1070,6 +1072,8 @@ def is_keras_tensor(x):
   True
 
   """
+  if keras_tensor.keras_tensors_enabled():
+    return isinstance(x, keras_tensor.KerasTensor)
   if not isinstance(x,
                     (ops.Tensor, variables_module.Variable,
                      sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor)):
@@ -1120,35 +1124,56 @@ def placeholder(shape=None,
     raise ValueError(
         'Cannot set both sparse and ragged to True when creating a placeholder.'
     )
-
   if dtype is None:
     dtype = floatx()
   if not shape:
     if ndim:
       shape = (None,) * ndim
-  with get_graph().as_default():
+  if keras_tensor.keras_tensors_enabled():
+    spec = tensor_spec.TensorSpec(
+        shape=shape, dtype=dtype, name=name)
     if sparse:
-      x = array_ops.sparse_placeholder(dtype, shape=shape, name=name)
+      spec = sparse_tensor.SparseTensorSpec(
+          shape=shape, dtype=dtype)
     elif ragged:
       ragged_rank = 0
       for i in range(1, len(shape)):
-        if shape[i] is None:
+        # Hacky because could be tensorshape or tuple maybe?
+        # Or just tensorshape?
+        if shape[i] is None or (
+            hasattr(shape[i], 'value') and
+            shape[i].value is None):
           ragged_rank = i
-      type_spec = ragged_tensor.RaggedTensorSpec(
+      spec = ragged_tensor.RaggedTensorSpec(
           shape=shape, dtype=dtype, ragged_rank=ragged_rank)
-      def tensor_spec_to_placeholder(tensorspec):
-        return array_ops.placeholder(tensorspec.dtype, tensorspec.shape)
-      x = nest.map_structure(tensor_spec_to_placeholder, type_spec,
-                             expand_composites=True)
-    else:
-      x = array_ops.placeholder(dtype, shape=shape, name=name)
+
+    x = keras_tensor.KerasTensor(spec, name=name)
+  else:
+    with get_graph().as_default():
+      if sparse:
+        x = array_ops.sparse_placeholder(dtype, shape=shape, name=name)
+      elif ragged:
+        ragged_rank = 0
+        for i in range(1, len(shape)):
+          if shape[i] is None:
+            ragged_rank = i
+        type_spec = ragged_tensor.RaggedTensorSpec(
+            shape=shape, dtype=dtype, ragged_rank=ragged_rank)
+        def tensor_spec_to_placeholder(tensorspec):
+          return array_ops.placeholder(tensorspec.dtype, tensorspec.shape)
+        x = nest.map_structure(tensor_spec_to_placeholder, type_spec,
+                               expand_composites=True)
+      else:
+        x = array_ops.placeholder(dtype, shape=shape, name=name)
 
   if context.executing_eagerly():
     # Add keras_history connectivity information to the placeholder
     # when the placeholder is built in a top-level eager context
     # (intended to be used with keras.backend.function)
     from tensorflow.python.keras.engine import input_layer  # pylint: disable=g-import-not-at-top
-    return input_layer.Input(tensor=x)
+    x = input_layer.Input(tensor=x)
+    if keras_tensor.keras_tensors_enabled():
+      x._is_backend_placeholder = True
 
   return x
 
@@ -1163,6 +1188,8 @@ def is_placeholder(x):
       Boolean.
   """
   try:
+    if keras_tensor.keras_tensors_enabled():
+      return hasattr(x, '_is_backend_placeholder')
     if isinstance(x, composite_tensor.CompositeTensor):
       flat_components = nest.flatten(x, expand_composites=True)
       return py_any(is_placeholder(c) for c in flat_components)

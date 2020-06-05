@@ -41,6 +41,7 @@ py_library(
         ":base_preprocessing_layer",
         ":data_adapter",
         ":input_spec",
+        ":keras_tensor",
         "//tensorflow/python:composite_tensor_utils",
         "//tensorflow/python:py_checkpoint_reader",
         "//tensorflow/python/data",
@@ -160,6 +161,18 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python/keras:backend",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "keras_tensor",
+    srcs = ["keras_tensor.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:tensor_spec",
         "@six_archive//:six",
     ],
 )
