@@ -316,7 +316,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     self._saved_model_inputs_spec = None
     # Provides information about which inputs are compatible with the layer.
     self._input_spec = None
-    self.supports_masking = False
+
+    # `Layer.compute_mask` will be called at the end of `Layer.__call__` if
+    # `Layer.compute_mask` is overridden, or if the `Layer` subclass sets
+    # `self.supports_masking=True`.
+    self._supports_masking = not generic_utils.is_default(self.compute_mask)
 
     self._init_set_name(name)
     self._activity_regularizer = regularizers.get(
@@ -392,11 +396,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # Default to True, which means auto tracking is turned on. Certain subclass
     # might want to turn it off, like Sequential model.
     self._auto_track_sub_layers = True
-
-    # Will compute masking if `compute_mask` is overridden or `supports_masking`
-    # is set.
-    self._compute_mask_overridden = (not getattr(self.compute_mask,
-                                                 '_is_default', False))
 
   @trackable.no_automatic_dependency_tracking
   @generic_utils.default
@@ -772,7 +771,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         None or a tensor (or list of tensors,
             one per output tensor of the layer).
     """
-    if not self.supports_masking:
+    if not self._supports_masking:
       if any(m is not None for m in nest.flatten(mask)):
         raise TypeError('Layer ' + self.name + ' does not support masking, '
                         'but was passed an input_mask: ' + str(mask))
@@ -811,7 +810,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       raise RuntimeError(
           'You must call `super().__init__()` in the layer constructor.')
 
-    # 'inputs` (the first arg in the method spec) is special cased in
+    # `inputs` (the first arg in the method spec) is special cased in
     # layer call due to historical reasons.
     # This special casing currently takes the form of:
     # - 'inputs' must be explicitly passed. A layer cannot have zero arguments,
@@ -820,12 +819,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # - implicit masks / mask metadata are only collected from 'inputs`
     # - Layers are built using shape info from 'inputs' only
     # - input_spec compatibility is only checked against `inputs`
-    # - checking if a layer has ragged tensor support is only done against
-    #   `inputs`
     # - mixed precision casting (autocast) is only applied to `inputs`,
     #   not to any other argument.
-    # - configuring the Functional API SavedModel saving spec for deciding what
-    #   should be serialized during SavedModel saving
+    # - setting the SavedModel saving spec.
     inputs, args, kwargs = self._split_out_first_arg(args, kwargs)
     input_list = nest.flatten(inputs)
 
@@ -838,20 +834,12 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       return self._functional_construction_call(inputs, args, kwargs,
                                                 input_list)
 
+    # Maintains info about the `Layer.call` stack.
     call_context = base_layer_utils.call_context()
-    in_call = call_context.in_call
 
     # Accept NumPy and scalar inputs by converting to Tensors.
     if any(isinstance(x, (np.ndarray, float, int)) for x in input_list):
-
-      def _convert_non_tensor(x):
-        # Don't call `ops.convert_to_tensor_v2` on all `inputs` because
-        # `SparseTensors` can't be converted to `Tensor`.
-        if isinstance(x, (np.ndarray, float, int)):
-          return ops.convert_to_tensor_v2(x)
-        return x
-
-      inputs = nest.map_structure(_convert_non_tensor, inputs)
+      inputs = nest.map_structure(_convert_numpy_or_python_types, inputs)
       input_list = nest.flatten(inputs)
 
     # Handle `mask` propagation from previous layer to current layer. Masks can
@@ -863,81 +851,52 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     if self._expects_mask_arg and mask_is_implicit:
       kwargs['mask'] = input_masks
 
-    # If `training` argument is None or not explicitly passed,
-    # propagate `training` value from this layer's calling layer.
-    training_value = None
-    # Priority 1: `training` was explicitly passed.
-    if self._call_arg_was_passed('training', args, kwargs):
-      training_value = self._get_call_arg_value('training', args, kwargs)
-      if not self._expects_training_arg:
-        kwargs.pop('training')
+    # Training mode for `Layer.call` is set via (in order of priority):
+    # (1) The `training` argument passed to this `Layer.call`.
+    # (2) The training mode of an outer `Layer.call`.
+    # (3) The default mode set by `tf.keras.backed.set_learning_phase` (if set).
+    training_mode = self._set_training_mode(args, kwargs, call_context)
 
-    if training_value is None:
-      # Priority 2: `training` was passed to a parent layer.
-      if call_context.training is not None:
-        training_value = call_context.training
-      # Priority 3a: `learning_phase()` has been set.
-      elif backend.global_learning_phase_is_set():
-        training_value = backend.learning_phase()
-
-      if self._expects_training_arg and training_value is not None:
-        # Force the training_value to be bool type which matches to the contract
-        # for layer/model call args.
-        if tensor_util.is_tensor(training_value):
-          training_value = math_ops.cast(training_value, dtypes.bool)
-        else:
-          training_value = bool(training_value)
-        args, kwargs = self._set_call_arg_value('training', training_value,
-                                                args, kwargs)
+    # Losses are cleared for all sublayers on the outermost `Layer.call`.
+    # Losses are not cleared on inner `Layer.call`s, because sublayers can be
+    # called multiple times.
+    if not call_context.in_call:
+      self._clear_losses()
 
     eager = context.executing_eagerly()
     with call_context.enter(
         layer=self,
         inputs=inputs,
         build_graph=not eager,
-        training=training_value):
-      # Check input assumptions set after layer building, e.g. input shape.
+        training=training_mode):
+
+      if self._autocast:
+        inputs = self._maybe_cast_inputs(inputs, input_list)
+
       if eager:
         call_fn = self.call
-        # In Eager mode, `ops.name_scope_v2` does not autoincrement the name.
         name_scope = self._name
       else:
-        # TODO(reedwm): We should assert input compatibility after the inputs
-        # are casted, not before.
         input_spec.assert_input_compatibility(self.input_spec, inputs,
                                               self.name)
-        # Avoid autoincrementing.
-        name_scope = self._name_scope()
-
-        # Wrapping `call` function in autograph to allow for dynamic control
-        # flow and control dependencies in call. We are limiting this to
-        # subclassed layers as autograph is strictly needed only for
-        # subclassed layers and models.
-        # tf_convert will respect the value of autograph setting in the
-        # enclosing tf.function, if any.
-        if (base_layer_utils.is_subclassed(self) and
-            not base_layer_utils.from_saved_model(self)):
-          call_fn = autograph.tf_convert(self.call, ag_ctx.control_status_ctx())
-        else:
-          call_fn = self.call
-
-      # Losses are cleared for all Layers when the outermost layer is called.
-      # Losses are not cleared each time an inner layer is called, bc inner
-      # Layers can be reused in a Model.
-      if not in_call:
-        self._clear_losses()
+        name_scope = self._name_scope()  # Avoid autoincrementing.
+        call_fn = self._autographed_call()
 
       with ops.name_scope_v2(name_scope):
-        self._maybe_build(inputs)
-        cast_inputs = self._maybe_cast_inputs(inputs, input_list)
-        with ops.enable_auto_cast_variables(self._compute_dtype_object):
-          outputs = call_fn(cast_inputs, *args, **kwargs)
-        self._handle_activity_regularization(inputs, outputs)
-        self._set_mask_metadata(inputs, outputs, input_masks, not eager)
-        if self._saved_model_inputs_spec is None:
-          self._set_save_spec(cast_inputs)
+        if not self.built:
+          self._maybe_build(inputs)
 
-    return outputs
+        with ops.enable_auto_cast_variables(self._compute_dtype_object):
+          outputs = call_fn(inputs, *args, **kwargs)
+
+        if self._activity_regularizer:
+          self._handle_activity_regularization(inputs, outputs)
+        if self._supports_masking:
+          self._set_mask_metadata(inputs, outputs, input_masks, not eager)
+        if self._saved_model_inputs_spec is None:
+          self._set_save_spec(inputs)
+
+        return outputs
 
   def _functional_construction_call(self, inputs, args, kwargs, input_list):
     call_context = base_layer_utils.call_context()
@@ -1083,6 +1042,55 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     return outputs
 
+  def _set_training_mode(self, args, kwargs, call_context):
+    training_mode = None
+    if self._expects_training_arg:
+      # (1) `training` was passed to this `Layer.call`.
+      if self._call_arg_was_passed('training', args, kwargs):
+        training_mode = self._get_call_arg_value('training', args, kwargs)
+      if training_mode is None:
+        call_ctx_training = call_context.training
+        # (2) `training` mode is inferred from an outer `Layer.call`.
+        if call_ctx_training is not None:
+          training_mode = call_ctx_training
+        # (3) User set `tf.keras.backend.set_learning_phase`.
+        elif backend.global_learning_phase_is_set():
+          training_mode = backend.learning_phase()
+          # Ensure value is a `bool` or `tf.bool`.
+          if isinstance(training_mode, bool):
+            pass
+          elif tensor_util.is_tensor(training_mode):
+            training_mode = math_ops.cast(training_mode, dtypes.bool)
+          else:
+            training_mode = bool(training_mode)
+
+        # For case (2) or (3), `training` arg is passed by framework.
+        if training_mode is not None:
+          kwargs['training'] = training_mode
+    else:
+      if 'training' in kwargs:
+        # `training` was passed to this `Layer` but is not needed for
+        # `Layer.call`. It will set the default mode for inner `Layer.call`s.
+        training_mode = kwargs.pop('training')
+      else:
+        # Grab the current `training` mode from any outer `Layer.call`.
+        training_mode = call_context.training
+
+    return training_mode
+
+  def _autographed_call(self):
+    # Wrapping `call` function in autograph to allow for dynamic control
+    # flow and control dependencies in call. We are limiting this to
+    # subclassed layers as autograph is strictly needed only for
+    # subclassed layers and models.
+    # tf_convert will respect the value of autograph setting in the
+    # enclosing tf.function, if any.
+    if (base_layer_utils.is_subclassed(self) and
+        not base_layer_utils.from_saved_model(self)):
+      return autograph.tf_convert(self.call, ag_ctx.control_status_ctx())
+    else:
+      return self.call
+
   @property
   def dtype(self):
     """Dtype used by the weights of the layer, set in the constructor."""
@@ -1092,6 +1100,15 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def name(self):
     """Name of the layer (string), set in the constructor."""
     return self._name
+
+  @property
+  def supports_masking(self):
+    """Whether this layer supports computing a mask using `compute_mask`."""
+    return self._supports_masking
+
+  @supports_masking.setter
+  def supports_masking(self, value):
+    self._supports_masking = value
 
   @property
   def dynamic(self):
@@ -2346,7 +2363,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # Many `Layer`s don't need to call `compute_mask`.
     # This method is optimized to do as little work as needed for the common
     # case.
-    if not self.supports_masking and not self._compute_mask_overridden:
+    if not self._supports_masking:
       return
 
     flat_outputs = nest.flatten(outputs)
@@ -2381,8 +2398,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         output._keras_mask._keras_history_checked = True
 
   def _get_input_masks(self, inputs, input_list, args, kwargs):
-    if (not self._expects_mask_arg and not self.supports_masking and
-        not self._compute_mask_overridden):
+    if not self._supports_masking and not self._expects_mask_arg:
       # Input masks only need to be retrieved if they are needed for `call`
       # or `compute_mask`.
       input_masks = None
@@ -3082,6 +3098,12 @@ def _in_functional_construction_mode(inputs, args, kwargs, input_list):  # pylin
     return all(tf_utils.is_symbolic_tensor(t) for t in input_list)
   else:
     return base_layer_utils.is_in_keras_graph()
+
+
+def _convert_numpy_or_python_types(x):
+  if isinstance(x, (np.ndarray, float, int)):
+    return ops.convert_to_tensor_v2(x)
+  return x
 
 
 # Avoid breaking users who directly import this symbol from this file.
