@@ -2934,6 +2934,50 @@ func @range(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<5xf32> {
   return %3 : tensor<5xf32>
 }
 
+// CHECK-LABEL: func @range_dynamic
+// CHECK-SAME: [[START:%.*]]: tensor<f32>, [[DELTA:%.*]]: tensor<f32>
+func @range_dynamic(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<?xf32> {
+  // CHECK-DAG: [[SUB:%.+]] = xla_hlo.subtract %arg1, %arg0
+  // CHECK-DAG: [[ABS1:%.+]] = "xla_hlo.abs"([[SUB]])
+  // CHECK-DAG: [[CONVERT1:%.+]] = "xla_hlo.convert"([[ABS1]])
+  // CHECK-DAG: [[CONVERT2:%.+]] = "xla_hlo.convert"(%arg2)
+  // CHECK-DAG: [[DIV:%.+]] = xla_hlo.divide [[CONVERT1]], [[CONVERT2]]
+  // CHECK-DAG: [[CEIL:%.+]] = "xla_hlo.ceil"([[DIV]])
+  // CHECK-DAG: [[CONVERT3:%.+]] = "xla_hlo.convert"([[CEIL]])
+  // CHECK-DAG: [[RESHAPE:%.+]] = "xla_hlo.reshape"([[CONVERT3]])
+  // CHECK-DAG: [[IOTA:%.+]] = "xla_hlo.dynamic_iota"([[RESHAPE]]) {iota_dimension = 0 : i64}
+  // CHECK-DAG: [[CONVERT3:%.+]] = "xla_hlo.convert"(%arg0)
+  // CHECK-DAG: [[CONVERT4:%.+]] = "xla_hlo.convert"(%arg2)
+  // CHECK-DAG: [[MUL:%.+]] = xla_chlo.broadcast_multiply [[IOTA]], [[CONVERT4]] {broadcast_dimensions = dense<[]> : tensor<0xi64>}
+  // CHECK-DAG: [[ADD:%.+]] = xla_chlo.broadcast_add [[MUL]], [[CONVERT3]] {broadcast_dimensions = dense<[]> : tensor<0xi64>}
+  %2 = "tf.Range"(%arg0, %arg1, %arg2) {Tidx = "tfdtype$DT_FLOAT", device = "", name = "range"} : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<?xf32>
+
+  // CHECK: return [[ADD]]
+  return %2 : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @range_int_dynamic
+// CHECK-SAME: [[START:%.*]]: tensor<i32>, [[DELTA:%.*]]: tensor<i32>
+func @range_int_dynamic(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> tensor<?xi32> {
+  // CHECK-DAG: [[SUB:%.+]] = xla_hlo.subtract %arg1, %arg0
+  // CHECK-DAG: [[ABS1:%.+]] = "xla_hlo.abs"([[SUB]])
+  // CHECK-DAG: [[CONVERT1:%.+]] = "xla_hlo.convert"([[ABS1]])
+  // CHECK-DAG: [[CONVERT2:%.+]] = "xla_hlo.convert"(%arg2)
+  // CHECK-DAG: [[DIV:%.+]] = xla_hlo.divide [[CONVERT1]], [[CONVERT2]]
+  // CHECK-DAG: [[CEIL:%.+]] = "xla_hlo.ceil"([[DIV]])
+  // CHECK-DAG: [[CONVERT3:%.+]] = "xla_hlo.convert"([[CEIL]])
+  // CHECK-DAG: [[RESHAPE:%.+]] = "xla_hlo.reshape"([[CONVERT3]])
+  // CHECK-DAG: [[IOTA:%.+]] = "xla_hlo.dynamic_iota"([[RESHAPE]]) {iota_dimension = 0 : i64}
+  // CHECK-DAG: [[CONVERT3:%.+]] = "xla_hlo.convert"(%arg0)
+  // CHECK-DAG: [[CONVERT4:%.+]] = "xla_hlo.convert"(%arg2)
+  // CHECK-DAG: [[MUL:%.+]] = xla_chlo.broadcast_multiply [[IOTA]], [[CONVERT4]] {broadcast_dimensions = dense<[]> : tensor<0xi64>}
+  // CHECK-DAG: [[ADD:%.+]] = xla_chlo.broadcast_add [[MUL]], [[CONVERT3]] {broadcast_dimensions = dense<[]> : tensor<0xi64>}
+  %2 = "tf.Range"(%arg0, %arg1, %arg2) {Tidx = "tfdtype$DT_FLOAT", device = "", name = "range"} : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<?xi32>
+
+  // CHECK: return [[ADD]]
+  return %2 : tensor<?xi32>
+}
+
 // CHECK-LABEL: func @linspace_static
 // CHECK-SAME: [[START:%.*]]: tensor<f32>, [[STOP:%.*]]: tensor<f32>
 func @linspace_static(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<4xf32> {

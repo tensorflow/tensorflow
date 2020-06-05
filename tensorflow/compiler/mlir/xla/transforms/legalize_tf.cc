@@ -2764,6 +2764,86 @@ class ConvertRangeOp : public OpRewritePattern<TF::RangeOp> {
   }
 };
 
+// Converts RangeOp for cases with the length is a dynamic value. The shape of
+// the resulting tensor computed, then the start and delta is used with the
+// dynamic_iota value to compute the final range value.
+//
+// For example, the resulting range op value:
+//   %range = "tf.range"(%start, %limit, %delta)
+//
+// Is converted to the following.
+//   %start + %delta * iota(ceil(abs((%limit - %start) / %delta))
+//
+// Implementation is defined in C++ due to the complicated type behavior.
+class ConvertDynamicRangeOp : public OpRewritePattern<TF::RangeOp> {
+  using OpRewritePattern<TF::RangeOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::RangeOp op,
+                                PatternRewriter &rewriter) const override {
+    auto result = op.getResult();
+    auto result_type = result.getType().cast<ShapedType>();
+    if (result_type.hasStaticShape()) {
+      return failure();
+    }
+
+    Value start = op.start();
+    Value delta = op.delta();
+    Value limit = op.limit();
+
+    // To compute the length we need to use floating point calculations so that
+    // ceil can be computed for the number of steps.
+    auto compute_element_type =
+        getElementTypeOrSelf(start.getType()).isa<FloatType>()
+            ? getElementTypeOrSelf(start.getType())
+            : rewriter.getF64Type();
+    auto compute_type = RankedTensorType::get(
+        limit.getType().cast<ShapedType>().getShape(), compute_element_type);
+
+    // Compute the length of the sequence we are going to need. This includes
+    // some conversion to float for the operations.
+    //
+    // %size = ceil(abs((%limit - %start) / %delta))
+    auto range = rewriter.create<xla_hlo::SubOp>(op.getLoc(), limit, start);
+    auto abs = rewriter.create<xla_hlo::AbsOp>(op.getLoc(), range);
+
+    // Delta is not necessarily the same type as start and limit.
+    auto abs_cast =
+        rewriter.create<xla_hlo::ConvertOp>(op.getLoc(), compute_type, abs);
+    auto delta_cast =
+        rewriter.create<xla_hlo::ConvertOp>(op.getLoc(), compute_type, delta);
+
+    // Compute the total number of integer steps and convert to the HLO
+    // dimension tensor.
+    auto normalized =
+        rewriter.create<xla_hlo::DivOp>(op.getLoc(), abs_cast, delta_cast);
+    auto ceil = rewriter.create<xla_hlo::CeilOp>(op.getLoc(), normalized);
+    auto steps = rewriter.create<xla_hlo::ConvertOp>(
+        op.getLoc(), RankedTensorType::get({}, rewriter.getI64Type()), ceil);
+    auto reshape = rewriter.create<xla_hlo::ReshapeOp>(
+        op.getLoc(), RankedTensorType::get({1}, rewriter.getI64Type()), steps);
+
+    // Using the resulting length compute the correct range value:
+    //
+    // %range = %start + %delta * iota(%size)
+    auto out_scalar_type =
+        RankedTensorType::get({}, getElementTypeOrSelf(result_type));
+    auto start_out_cast = rewriter.create<xla_hlo::ConvertOp>(
+        op.getLoc(), out_scalar_type, start);
+    auto delta_out_cast = rewriter.create<xla_hlo::ConvertOp>(
+        op.getLoc(), out_scalar_type, delta);
+
+    auto iota = rewriter.create<DynamicIotaOp>(
+        op.getLoc(), result_type, reshape, rewriter.getI64IntegerAttr(0));
+    auto scaled = rewriter.create<xla_chlo::BroadcastMulOp>(
+        op.getLoc(), result_type, iota, delta_out_cast,
+        xla::getBroadcastDimensionsAttr(&rewriter, iota, delta_cast));
+    rewriter.replaceOpWithNewOp<xla_chlo::BroadcastAddOp>(
+        op, result_type, scaled, start_out_cast,
+        xla::getBroadcastDimensionsAttr(&rewriter, scaled, start_out_cast));
+    return success();
+  }
+};
+
 ElementsAttr ConvertAxisAttr(Value val, ElementsAttr attr, Builder *builder) {
   auto int_attr = attr.cast<DenseIntElementsAttr>();
   auto type = val.getType().cast<ShapedType>();
@@ -5162,8 +5242,8 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
       ConvertMaxOp, ConvertMinOp, ConvertAvgPoolOp, ConvertMaxPool2DOp,
       ConvertMaxPool3DOp, ConvertMaxPool2DGradOp, ConvertMaxPool3DGradOp,
       ConvertMeanOp, ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp,
-      ConvertProdOp, ConvertQrOp, ConvertRangeOp, ConvertSelectV2Op,
-      ConvertShapeOp, ConvertSigmoidOp, ConvertSizeOp,
+      ConvertProdOp, ConvertQrOp, ConvertDynamicRangeOp, ConvertRangeOp,
+      ConvertSelectV2Op, ConvertSigmoidOp, ConvertShapeOp, ConvertSizeOp,
       ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,
