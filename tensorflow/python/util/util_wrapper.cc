@@ -30,10 +30,6 @@ PYBIND11_MODULE(_pywrap_utils, m) {
           return tensorflow::PyoOrThrow(
               tensorflow::swig::RegisterType(type_name.ptr(), type.ptr()));
         });
-  m.def("RegisterPyObject", [](const py::handle& name, const py::handle& type) {
-    return tensorflow::PyoOrThrow(
-        tensorflow::swig::RegisterPyObject(name.ptr(), type.ptr()));
-  });
   m.def(
       "IsTensor",
       [](const py::handle& o) {
