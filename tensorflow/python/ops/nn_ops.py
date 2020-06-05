@@ -727,10 +727,7 @@ def _with_space_to_batch_base_paddings(filter_shape, num_spatial_dims,
   # Spatial dimensions of the filters and the upsampled filters in which we
   # introduce (rate - 1) zeros between consecutive filter values.
   filter_spatial_shape = filter_shape[:num_spatial_dims]
-  dilated_filter_spatial_shape = (
-      filter_spatial_shape + (filter_spatial_shape - 1) *
-      (rate_or_const_rate - 1))
-  pad_extra_shape = dilated_filter_spatial_shape - 1
+  pad_extra_shape = (filter_spatial_shape - 1) * rate_or_const_rate
 
   # When full_padding_shape is odd, we pad more at end, following the same
   # convention as conv2d.
