@@ -6,6 +6,9 @@ load("//tensorflow:tensorflow.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "if_xla_available", "py_test", "py_tests", "tf_cc_shared_object", "tf_cuda_library", "tf_gen_op_wrapper_py")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_monitoring_python_deps")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 
 # buildifier: disable=same-origin-load
@@ -6013,6 +6016,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/util/tensor_bundle",
         "//tensorflow/compiler/mlir/python:mlir",
     ] + (tf_additional_lib_deps() +
+         tf_monitoring_python_deps() +
          tf_additional_plugin_deps() +
          tf_additional_profiler_deps()) + if_ngraph([
         "@ngraph_tf//:ngraph_tf",

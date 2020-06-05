@@ -2856,8 +2856,39 @@ def if_cuda_or_rocm(if_true, if_false = []):
         "//conditions:default": if_false,
     })
 
-def tf_monitoring_deps():
-    return []
+def tf_monitoring_framework_deps(link_to_tensorflow_framework = True):
+    """Get the monitoring libs that will be linked to the tensorflow framework.
+
+      Currently in OSS, the protos must be statically linked to the tensorflow
+      framework, whereas the grpc should not be linked here.
+    """
+    return select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_stackdriver_support": [],
+        "//conditions:default": [
+            "@com_github_googlecloudplatform_tensorflow_gcp_tools//monitoring:stackdriver_exporter_protos",
+        ],
+    })
+
+def tf_monitoring_python_deps():
+    """Get the monitoring libs that will be linked to the python wrapper.
+
+      Currently in OSS, the grpc must be statically linked to the python wrapper
+      whereas the protos should not be linked here.
+    """
+    return select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_stackdriver_support": [],
+        "//conditions:default": [
+            "@com_github_googlecloudplatform_tensorflow_gcp_tools//monitoring:stackdriver_exporter",
+        ],
+    })
 
 def tf_jit_compilation_passes_extra_deps():
     return []

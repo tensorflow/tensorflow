@@ -100,7 +100,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_monitoring_deps")
+load("//tensorflow:tensorflow.bzl", "tf_monitoring_framework_deps")
 
 # For platform specific build config
 load(
@@ -1950,7 +1950,7 @@ cc_library(
         "@zlib",
         "@double_conversion//:double-conversion",
         "@com_google_protobuf//:protobuf",
-    ] + tf_protos_all_impl() + tf_protos_grappler_impl() + tf_protos_profiler_impl() + tf_monitoring_deps(),
+    ] + tf_protos_all_impl() + tf_protos_grappler_impl() + tf_protos_profiler_impl() + tf_monitoring_framework_deps(),
     # Alwayslink causes a cc_binary to "always link" in the
     # srcs for a given cc_library, even if they are unreferenced, see:
     # https://docs.bazel.build/versions/master/be/c-cpp.html#cc_library.alwayslink
