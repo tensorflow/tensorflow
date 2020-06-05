@@ -3097,7 +3097,8 @@ def _in_functional_construction_mode(inputs, args, kwargs, input_list):  # pylin
   if context.executing_eagerly():
     return all(tf_utils.is_symbolic_tensor(t) for t in input_list)
   else:
-    return base_layer_utils.is_in_keras_graph()
+    return (base_layer_utils.is_in_keras_graph() or
+            all(hasattr(t, '_keras_history') for t in input_list))
 
 
 def _convert_numpy_or_python_types(x):
