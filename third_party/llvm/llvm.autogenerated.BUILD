@@ -577,6 +577,7 @@ gentbl(
         ("-gen-global-isel", "lib/Target/AMDGPU/AMDGPUGenGlobalISel.inc"),
         ("-gen-global-isel-combiner -combiners=AMDGPUPreLegalizerCombinerHelper", "lib/Target/AMDGPU/AMDGPUGenPreLegalizeGICombiner.inc"),
         ("-gen-global-isel-combiner -combiners=AMDGPUPostLegalizerCombinerHelper", "lib/Target/AMDGPU/AMDGPUGenPostLegalizeGICombiner.inc"),
+        ("-gen-global-isel-combiner -combiners=AMDGPURegBankCombinerHelper", "lib/Target/AMDGPU/AMDGPUGenRegBankGICombiner.inc"),
     ],
     tblgen = ":llvm-tblgen",
     td_file = "lib/Target/AMDGPU/AMDGPUGISel.td",
@@ -4859,6 +4860,33 @@ cc_library(
 alias(
     name = "ve_desc",
     actual = ":VEDesc",
+)
+
+cc_library(
+    name = "VEDisassembler",
+    srcs = glob([
+        "lib/Target/VE/Disassembler/*.c",
+        "lib/Target/VE/Disassembler/*.cpp",
+        "lib/Target/VE/Disassembler/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/VE/Disassembler/*.h",
+        "include/llvm/Target/VE/Disassembler/*.def",
+        "include/llvm/Target/VE/Disassembler/*.inc",
+        "lib/Target/VE/Disassembler/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm-project/llvm/lib/Target/VE"],
+    deps = [
+        ":MCDisassembler",
+        ":Support",
+        ":VEInfo",
+        ":config",
+    ],
+)
+
+alias(
+    name = "ve_disassembler",
+    actual = ":VEDisassembler",
 )
 
 cc_library(
