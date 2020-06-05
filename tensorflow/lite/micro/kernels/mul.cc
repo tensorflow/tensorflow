@@ -50,11 +50,11 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
 
   TF_LITE_ENSURE_EQ(context, input1->type, input2->type);
 
-  TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
-      context, params->activation, output, &data->output_activation_min,
-      &data->output_activation_max));
-
   if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8) {
+    TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
+        context, params->activation, output, &data->output_activation_min,
+        &data->output_activation_max));
+
     double real_multiplier = static_cast<double>(input1->params.scale) *
                              static_cast<double>(input2->params.scale) /
                              static_cast<double>(output->params.scale);
@@ -138,7 +138,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input2 = GetInput(context, node, kInput2Tensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  CalculateOpData(context, node, params, &data);
+  TF_LITE_ENSURE_STATUS(CalculateOpData(context, node, params, &data));
 
   switch (input1->type) {
     case kTfLiteUInt8:
