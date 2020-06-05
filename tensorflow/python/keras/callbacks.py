@@ -2381,12 +2381,18 @@ class CSVLogger(Callback):
       separator: String used to separate elements in the CSV file.
       append: Boolean. True: append if file exists (useful for continuing
           training). False: overwrite existing file.
+      log_all: Boolean. True: log all elements, even elements that are
+          only recorded every x epochs (ex. validation sometimes is
+          only recorded every validation_freq). False: Don't log all
+          elements, only log the elements that are present in every epoch.
   """
 
-  def __init__(self, filename, separator=',', append=False):
+  def __init__(self, filename, separator=',', append=False, log_all=False):
     self.sep = separator
     self.filename = path_to_string(filename)
     self.append = append
+    self.log_all = log_all
+    self._row_dicts = []
     self.writer = None
     self.keys = None
     self.append_header = True
@@ -2424,6 +2430,10 @@ class CSVLogger(Callback):
 
     if self.keys is None:
       self.keys = sorted(logs.keys())
+    elif self.log_all and len(self.keys) < len(logs.keys()):
+      # have to make a new writer to accommodate for the new keys
+      self.keys = sorted(logs.keys())
+      self.writer = None
 
     if self.model.stop_training:
       # We set NA so that csv parsers do not fail for this last epoch.
@@ -2442,15 +2452,30 @@ class CSVLogger(Callback):
           self.csv_file,
           fieldnames=fieldnames,
           dialect=CustomDialect)
-      if self.append_header:
+      # if user wants to log all, then we append_header
+      # at the end of training
+      if self.append_header and not self.log_all:
         self.writer.writeheader()
 
     row_dict = collections.OrderedDict({'epoch': epoch})
-    row_dict.update((key, handle_value(logs[key])) for key in self.keys)
-    self.writer.writerow(row_dict)
-    self.csv_file.flush()
+    row_dict.update((key, handle_value(logs[key]))
+                    for key in self.keys if key in logs)
+    # if user wants to log all, then we write all rows to csv file
+    # at the end of training
+    if not self.log_all:
+      self.writer.writerow(row_dict)
+      self.csv_file.flush()
+    else:
+      self._row_dicts.append(row_dict)
 
   def on_train_end(self, logs=None):
+    if self.log_all:
+      if self.append_header:
+        self.writer.writeheader()
+      self.writer.writerows(self._row_dicts)
+      self._row_dicts = []
+      self.csv_file.flush()
+
     self.csv_file.close()
     self.writer = None
 
