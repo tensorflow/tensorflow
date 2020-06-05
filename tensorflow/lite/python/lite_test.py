@@ -1767,7 +1767,7 @@ class FromSavedModelTest(TestModels):
     log = io.BytesIO() if six.PY2 else io.StringIO()
     handler = logging.StreamHandler(log)
     logging.root.addHandler(handler)
-    warning_message = 'Please consider switching to use new converter'
+    warning_message = 'Please consider switching to the new converter'
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_saved_model(saved_model_dir)
     converter.experimental_new_converter = False

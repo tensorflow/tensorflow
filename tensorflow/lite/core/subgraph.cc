@@ -1323,6 +1323,20 @@ TfLiteStatus Subgraph::RemoveAllDelegates() {
 
 bool Subgraph::HasDelegates() { return !delegates_applied_.empty(); }
 
+void Subgraph::EnsureTensorsVectorCapacity() {
+  const size_t required_capacity = tensors_.size() + kTensorsCapacityHeadroom;
+  if (required_capacity > tensors_.capacity()) {
+    // Whenever it's required to increase the vector capacity, make it at
+    // least twice bigger. The behavior is consistent with the default
+    // behavior of GCC STL's `std::vector::resize()`. This avoids frequently
+    // allocating and copying the underlying buffer.
+    size_t reserved_capacity =
+        std::max(required_capacity, tensors_.capacity() * 2);
+    tensors_.reserve(reserved_capacity);
+    context_.tensors = tensors_.data();
+  }
+}
+
 TfLiteStatus Subgraph::EnsureMemoryAllocations() {
   if (memory_planner_) {
     state_ = kStateUninvokable;

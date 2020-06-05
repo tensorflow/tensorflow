@@ -696,17 +696,33 @@ class TPUEmbedding(tracking.AutoTrackable):
       """Create all variables."""
       shape = (table.vocabulary_size, table.dim)
 
-      # We use functools.partial here for the initial_value so that we have a
-      # variable creation that is compatible with both the sharded variable
-      # creator and the normal variable creator. The sharded variable creator
-      # will extract the shape of the tensor from the functool.partial object to
-      # decide on the sharding.
-      parameters = tf_variables.Variable(
-          name=table.name,
-          initial_value=functools.partial(
-              table.initializer, shape=shape, dtype=dtypes.float32),
-          trainable=not self._using_tpu)
-      slot_vars = table.optimizer._create_slots(parameters)  # pylint: disable=protected-access
+      def getter(name, shape, dtype, initializer, trainable):
+        return tf_variables.Variable(
+            name=name,
+            initial_value=functools.partial(initializer, shape, dtype=dtype),
+            trainable=trainable)
+
+      def variable_creator(name, initializer, trainable=True):
+        # use add_variable_with_custom_getter here so that we take advantage of
+        # the checkpoint loading to allow restore before the variables get
+        # created which avoids double initialization.
+        return self._add_variable_with_custom_getter(
+            name=name,
+            initializer=initializer,
+            shape=shape,
+            dtype=dtypes.float32,
+            getter=getter,
+            trainable=trainable)
+
+      parameters = variable_creator(table.name, table.initializer,
+                                    trainable=not self._using_tpu)
+
+      def slot_creator(name, initializer):
+        return variable_creator(table.name + "/" + name,
+                                initializer,
+                                False)
+
+      slot_vars = table.optimizer._create_slots(parameters, slot_creator)  # pylint: disable=protected-access
       slot_vars["parameters"] = parameters
       return slot_vars
 

@@ -17,25 +17,18 @@ limitations under the License.
 
 #include <dlfcn.h>
 
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-
 #define TFTPU_SET_FN(Struct, FnName) \
   Struct->FnName##Fn =               \
       reinterpret_cast<decltype(FnName)*>(dlsym(library_handle, #FnName));
 
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+
+// Reminder: Update tpu_library_loader_windows.cc if you are adding new publicly
+// visible methods.
+
 namespace tensorflow {
 namespace tpu {
-
-TfTpu_BaseFn* InitializeApiFn() {
-  static TfTpu_BaseFn base_fn;
-  return &base_fn;
-}
-
-TfTpu_ConfigApiFn* ConfigApiFn() {
-  static TfTpu_ConfigApiFn config_api_fn;
-  return &config_api_fn;
-}
 
 Status SetTpuInitializeStructFns(void* library_handle) {
   auto* base_fn = InitializeApiFn();
@@ -48,7 +41,6 @@ Status SetTpuInitializeStructFns(void* library_handle) {
 Status SetTpuConfigStructFns(void* library_handle) {
   auto* config_fn = ConfigApiFn();
 
-  TFTPU_SET_FN(config_fn, TPUHostInitialized);
   TFTPU_SET_FN(config_fn, ConfigureDistributedTpuOp_DoWork);
   TFTPU_SET_FN(config_fn, WaitForDistributedTpuOp_DoWork);
   TFTPU_SET_FN(config_fn, ShutdownDistributedTpuOp_DoWork);
@@ -59,6 +51,16 @@ Status SetTpuConfigStructFns(void* library_handle) {
   TFTPU_SET_FN(config_fn, TpuConfigurationApi_FreeInt32Array);
 
   return Status::OK();
+}
+
+TfTpu_BaseFn* InitializeApiFn() {
+  static TfTpu_BaseFn base_fn;
+  return &base_fn;
+}
+
+TfTpu_ConfigApiFn* ConfigApiFn() {
+  static TfTpu_ConfigApiFn config_api_fn;
+  return &config_api_fn;
 }
 
 Status InitializeTpuLibrary(void* library_handle) {

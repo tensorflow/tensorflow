@@ -18,7 +18,7 @@ make sure you [have TensorFlow installed](https://www.tensorflow.org/install).
 You can use any compatible model, but the following MobileNet v1 model offers
 a good demonstration of a model trained to recognize 1,000 different objects.
 
-```
+```sh
 # Get photo
 curl https://raw.githubusercontent.com/tensorflow/tensorflow/master/tensorflow/lite/examples/label_image/testdata/grace_hopper.bmp > /tmp/grace_hopper.bmp
 # Get model
@@ -33,7 +33,7 @@ mv /tmp/mobilenet_v1_1.0_224/labels.txt /tmp/
 
 Note: Instead use `python` if you're using Python 2.x.
 
-```
+```sh
 python3 label_image.py \
   --model_file /tmp/mobilenet_v1_1.0_224.tflite \
   --label_file /tmp/labels.txt \

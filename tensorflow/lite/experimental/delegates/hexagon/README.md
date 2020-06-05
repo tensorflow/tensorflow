@@ -58,7 +58,7 @@ Hexagon only supports ops that have inputs/outputs of <= 4 dimensions.
 The following operations have been implemented, with a few constraints that
 are verified in `IsNodeSupportedByHexagon`:
 
-* Add
+* Add (Support relu activations)
 * ArgMax
 * ArgMin
 * AveragePool2D:
@@ -84,7 +84,7 @@ are verified in `IsNodeSupportedByHexagon`:
 * Mean
 * Minimum
 * MirrorPad
-* Mul (without any activation) (b/129276536)
+* Mul (Support relu activations)
 * Neg
 * Pack
 * Pad: Only supports 0 padding (b/139277813)
@@ -100,7 +100,7 @@ are verified in `IsNodeSupportedByHexagon`:
 * SoftMax
 * SpaceToDepth
 * Split
-* Sub
+* Sub (Support relu activations)
 * Tanh
 * Transpose
 * TransposeConv2D:

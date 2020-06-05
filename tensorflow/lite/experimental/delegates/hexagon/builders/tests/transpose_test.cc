@@ -35,7 +35,7 @@ class TransposeOpModel : public SingleOpModelWithHexagon {
                  CreateTransposeOptions(builder_).Union());
     BuildInterpreter({GetShape(input_)});
     if (!const_perm) {
-      PopulateTensor<int32_t>(perm_, perm);
+      PopulateTensor<int>(perm_, perm);
     }
   }
 

@@ -44,7 +44,7 @@ GPUResources TensorLinearDescriptor::GetGPUResources(
 
 absl::Status TensorLinearDescriptor::PerformSelector(
     const std::string& selector, const std::vector<std::string>& args,
-    std::string* result) const {
+    const std::vector<std::string>& template_args, std::string* result) const {
   if (selector == "Length") {
     *result = "length";
     return absl::OkStatus();

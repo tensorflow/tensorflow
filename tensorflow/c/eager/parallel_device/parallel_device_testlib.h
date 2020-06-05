@@ -165,7 +165,7 @@ void RegisterParallelDevice(
     TF_Status* status) {
   TFE_CustomDevice device;
   void* device_info;
-  tensorflow::eager::AllocateParallelDevice(
+  tensorflow::parallel_device::AllocateParallelDevice(
       device_name, underlying_devices.data(), underlying_devices.size(),
       &device, &device_info);
   TFE_RegisterCustomDevice(context, device, device_name, device_info, status);

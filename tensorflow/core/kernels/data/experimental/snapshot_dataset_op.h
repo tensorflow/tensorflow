@@ -39,8 +39,6 @@ namespace tensorflow {
 namespace data {
 namespace experimental {
 
-const int64 kSnapshotFileFormatVersion = 1;
-
 class SnapshotDatasetV2Op : public UnaryDatasetOpKernel {
  public:
   static constexpr const char* const kDatasetType = "Snapshot";
@@ -64,6 +62,8 @@ class SnapshotDatasetV2Op : public UnaryDatasetOpKernel {
                    DatasetBase** output) override;
 
  private:
+  static constexpr const int kFileFormatVersion = 2;
+
   class Dataset;
 
   const int graph_def_version_;

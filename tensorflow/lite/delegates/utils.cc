@@ -150,74 +150,112 @@ TfLiteStatus GraphPartitionHelper::PrepareSupportedNodes(
   return kTfLiteOk;
 }
 
-TfLiteStatus FP16GraphPartitionHelper::Partition(
-    std::set<std::string>* unsupported_nodes_info) {
-  const auto status = GraphPartitionHelper::Partition(unsupported_nodes_info);
-  // Clean up those partitions that have a single dequant op. NoteThose
-  // removed dequant ops have to be reserved in the graph and should not be
-  // delegated.
-  RemoveSingleDequantNodePartitions();
-  return status;
-}
-
 std::vector<int>
 FP16GraphPartitionHelper::GetNodesOfFirstNLargestPartitionsImpl(
     int n, int min_nodes_per_partition) {
-  std::vector<int> ops_to_replace =
-      GraphPartitionHelper::GetNodesOfFirstNLargestPartitionsImpl(
-          n, min_nodes_per_partition);
-  RemapInputTensors(ops_to_replace);
-  RemoveReservedDequantsFromNodes(&ops_to_replace);
+  auto first_n_partitions =
+      GetFirstNLargestPartitions(n, min_nodes_per_partition);
+  std::vector<int> ops_to_replace;
+  if (first_n_partitions.empty()) return ops_to_replace;
+
+  // Handle the first delegated partition specially.
+  // All fp16 DEQUANTIZE nodes whose consumers exist only in this partition can
+  // be added to the ops to delegate. Others have to be preserved in the graph,
+  // since the partitioning algorithm will put such nodes greedily in the first
+  // partition.
+  const auto* first_partition = first_n_partitions[0];
+  std::unordered_map<int, int> delegated_dequant_consumers;
+  for (int i = 0; i < first_partition->nodes_to_replace->size; ++i) {
+    const int node_id = first_partition->nodes_to_replace->data[i];
+    ops_to_replace.push_back(node_id);
+    TfLiteNode* node;
+    TfLiteRegistration* registration;
+    const auto status = context_->GetNodeAndRegistration(context_, node_id,
+                                                         &node, &registration);
+    if (status != kTfLiteOk) {
+      TF_LITE_KERNEL_LOG(context_,
+                         "Couldn't get node and registration info for op: %d\n",
+                         node_id);
+      ops_to_replace.clear();
+      return ops_to_replace;
+    }
+    // See if any input to the op is a (converted) fp16 value. If yes, increment
+    // its value in delegated_dequant_consumers.
+    for (int j = 0; j < node->inputs->size; ++j) {
+      const int input_tid = node->inputs->data[j];
+      if (dequant_consumers_.find(input_tid) != dequant_consumers_.end()) {
+        delegated_dequant_consumers[input_tid] += 1;
+      }
+    }
+  }
+  // Check all dequant nodes that have some consumers in the first partition.
+  // If the number of delegated consumers is same as total number of consumers,
+  // add the corresponding DEQUANTIZE op to the delegated nodes.
+  for (auto tensor_and_consumers : delegated_dequant_consumers) {
+    if (dequant_consumers_[tensor_and_consumers.first] ==
+        tensor_and_consumers.second) {
+      ops_to_replace.emplace_back(dequant_nodes_[tensor_and_consumers.first]);
+    }
+  }
+
+  // For all other partitions after the first one, insert all nodes into
+  // ops_to_replace.
+  for (int i = 1; i < first_n_partitions.size(); ++i) {
+    auto nodes = first_n_partitions[i]->nodes_to_replace;
+    ops_to_replace.insert(ops_to_replace.end(), nodes->data,
+                          nodes->data + nodes->size);
+  }
+
+  // Modify the inputs of relevant ops that support fp16 constants.
+  // TODO(b/156707497): Ensure that these inputs are remapped during the
+  // delegate's 'free', so that CPU fallback works for fp16 models.
+  RemapFp16InputTensors(ops_to_replace);
   return ops_to_replace;
 }
 
 bool FP16GraphPartitionHelper::IsNodeSupported(
     TfLiteContext* context, TfLiteNode* node, TfLiteRegistration* registration,
     int node_id, std::string* unsupported_details) {
-  // If we need to handle dequant nodes, we have to remap input tensors of
-  // this node if some of them come from a dequant node before testing if
-  // the node is supported.
-  std::vector<int> orig_inputs;
-  if (RecordAndRemapInputTensors(registration->builtin_code, node_id, node,
-                                 &orig_inputs)) {
-    // We have a dequant op here. Note that we retrun an Ok status because a
-    // dequant node is first added as supported. Later, this dequant node
-    // will be removed if it has to be preserved in the graph which happens
-    // when its immediate downstream nodes cannot be supported.
-    return true;
-  }
-  const auto status = GraphPartitionHelper::IsNodeSupported(
-      context, node, registration, node_id, unsupported_details);
-  RestoreToOrigInputTensors(node, orig_inputs);
-  return status;
-}
-
-bool FP16GraphPartitionHelper::RecordAndRemapInputTensors(
-    int32_t op_code, int node_id, TfLiteNode* node,
-    std::vector<int>* orig_inputs) {
-  orig_inputs->clear();
-  // Record the dequant node.
-  if (op_code == kTfLiteBuiltinDequantize &&
+  if (registration->builtin_code == kTfLiteBuiltinDequantize &&
       context_->tensors[node->inputs->data[0]].type ==
           TfLiteType::kTfLiteFloat16) {
-    dequant_nodes_[node->outputs->data[0]] = node->inputs->data[0];
-    return true;
+    // Update mappings if this node is a fp16 DEQUANTIZE node.
+    dequant_map_[node->outputs->data[0]] = node->inputs->data[0];
+    dequant_nodes_[node->outputs->data[0]] = node_id;
+    // We do not accept these ops right now.
+    // This is done to support use-cases where a DEQUANTIZE output might be
+    // consumed by a CPU op.
+    return false;
   }
-  // For a dequantize op, there's no need to remap its input tensors.
-  if (dequant_nodes_.empty()) return false;
-  RemapInputTensors(node, orig_inputs);
-  return false;
+
+  // To check if a (possibly) FP16 node is supported, we temporarily point the
+  // node's inputs to the original fp16 tensors. This 'mutated' node is then
+  // passed to the base IsNodeSupported function for checking. After the check,
+  // we remap the original node inputs, so that the TFLite graph remains the
+  // same.
+  std::vector<int> orig_inputs;
+  if (!dequant_nodes_.empty()) {
+    RemapFp16InputTensors(node, &orig_inputs);
+  }
+
+  const auto is_supported = GraphPartitionHelper::IsNodeSupported(
+      context, node, registration, node_id, unsupported_details);
+
+  if (!orig_inputs.empty() && node->inputs->size == orig_inputs.size()) {
+    // Remapping happened. Restore original inputs.
+    for (int j = 0; j < node->inputs->size; ++j) {
+      node->inputs->data[j] = orig_inputs[j];
+      if (dequant_nodes_.find(orig_inputs[j]) != dequant_nodes_.end()) {
+        // If its a fp16 tensor, increment number of consumers of the
+        // corresponding DEQUANTIZE.
+        dequant_consumers_[orig_inputs[j]] += 1;
+      }
+    }
+  }
+  return is_supported;
 }
 
-void FP16GraphPartitionHelper::RestoreToOrigInputTensors(
-    TfLiteNode* node, const std::vector<int>& orig_inputs) {
-  if (node->inputs->size != orig_inputs.size()) return;
-  for (int j = 0; j < node->inputs->size; ++j) {
-    node->inputs->data[j] = orig_inputs[j];
-  }
-}
-
-void FP16GraphPartitionHelper::RemapInputTensors(
+void FP16GraphPartitionHelper::RemapFp16InputTensors(
     const std::vector<int>& nodes) const {
   for (int node_id : nodes) {
     TfLiteNode* node;
@@ -229,56 +267,11 @@ void FP16GraphPartitionHelper::RemapInputTensors(
                          "Couldn't get node and registration info for op: %d\n",
                          node_id);
     }
-    RemapInputTensors(node, nullptr /* orig_inputs*/);
+    RemapFp16InputTensors(node, nullptr /* orig_inputs*/);
   }
 }
 
-void FP16GraphPartitionHelper::RemoveSingleDequantNodePartitions() {
-  auto it = partitions_.begin();
-  while (it != partitions_.end()) {
-    auto p = *it;
-    if (p->nodes_to_replace->size != 1) {
-      ++it;
-      continue;
-    }
-    int node_id = p->nodes_to_replace->data[0];
-    TfLiteNode* node = nullptr;
-    TfLiteRegistration* registration = nullptr;
-
-    TfLiteStatus status = context_->GetNodeAndRegistration(
-        context_, node_id, &node, &registration);
-    if (status != kTfLiteOk) {
-      TF_LITE_KERNEL_LOG(context_,
-                         "Couldn't get node and registration info for op: %d\n",
-                         node_id);
-    }
-    if (registration->builtin_code != kTfLiteBuiltinDequantize ||
-        context_->tensors[node->inputs->data[0]].type !=
-            TfLiteType::kTfLiteFloat16) {
-      ++it;
-      continue;
-    }
-    // Note such dequant nodes have to be preserved in the graph as dequant
-    // ops are not actually supported in the GPU delegate.
-    dequant_nodes_to_save_.insert(node_id);
-    it = partitions_.erase(it);
-  }
-}
-
-void FP16GraphPartitionHelper::RemoveReservedDequantsFromNodes(
-    std::vector<int>* nodes) {
-  if (dequant_nodes_to_save_.empty()) return;
-  auto it = nodes->begin();
-  while (it != nodes->end()) {
-    if (dequant_nodes_to_save_.find(*it) == dequant_nodes_to_save_.end()) {
-      ++it;
-      continue;
-    }
-    it = nodes->erase(it);
-  }
-}
-
-void FP16GraphPartitionHelper::RemapInputTensors(
+void FP16GraphPartitionHelper::RemapFp16InputTensors(
     TfLiteNode* node, std::vector<int>* orig_inputs) const {
   TfLiteIntArray* inputs = node->inputs;
   auto inputs_view = TfLiteIntArrayView(inputs);
@@ -296,8 +289,8 @@ void FP16GraphPartitionHelper::RemapInputTensors(
   bool is_remapped = false;
   for (int j = 0; j < inputs->size; ++j) {
     const int input_tid = inputs->data[j];
-    const auto it = dequant_nodes_.find(input_tid);
-    if (it != dequant_nodes_.end()) {
+    const auto it = dequant_map_.find(input_tid);
+    if (it != dequant_map_.end()) {
       inputs->data[j] = it->second;
       is_remapped = true;
     }

@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// This file is a copy of the TensorBoard ProjectorConfig proto.
+// Keep this file in sync with the source proto definition at
+// https://github.com/tensorflow/tensorboard/blob/master/tensorboard/plugins/projector/projector_config.proto
+
 syntax = "proto3";
 
 package third_party.tensorflow.python.keras.protobuf;

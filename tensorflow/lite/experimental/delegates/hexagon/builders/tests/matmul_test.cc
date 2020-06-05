@@ -69,7 +69,7 @@ class FullyConnectedOpModel : public SingleOpModelWithHexagon {
   }
 
   void SetBias(const std::vector<float>& data) {
-    QuantizeAndPopulate<int32_t>(bias_, data);
+    QuantizeAndPopulate<int>(bias_, data);
   }
 
   template <typename T>

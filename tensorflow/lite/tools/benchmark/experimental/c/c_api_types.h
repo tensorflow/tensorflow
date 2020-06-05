@@ -58,7 +58,7 @@ typedef enum TfLiteExternalContextType {
   kTfLiteEigenContext = 0,       // include eigen_support.h to use.
   kTfLiteGemmLowpContext = 1,    // include gemm_support.h to use.
   kTfLiteEdgeTpuContext = 2,     // Placeholder for Edge TPU support.
-  kTfLiteCpuBackendContext = 3,  // include cpu_backend_support.h to use.
+  kTfLiteCpuBackendContext = 3,  // include cpu_backend_context.h to use.
   kTfLiteMaxExternalContexts = 4
 } TfLiteExternalContextType;
 

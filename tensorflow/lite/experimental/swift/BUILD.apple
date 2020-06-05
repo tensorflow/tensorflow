@@ -10,21 +10,72 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-# TODO(b/153554551): investigate if separate delegate libraries can be made with same module_name
-# If you don't need delegates and want to reduce size of the app, you can exclude Metal/Core ML
-# delegate related dependencies from the rule.
-# For example, if you don't want to use Core ML delegate:
-# 1. add `exclude = ["Sources/CoreMLDelegate.swift"]` to `glob`, so that `srcs` would look like this:
-#    ```
-#    srcs = glob(
-#        ["Sources/*.swift"],
-#        exclude = ["Sources/CoreMLDelegate.swift"],
-#    ),
-# 2. remove "-Wl,-weak_framework,CoreML" from `linkopts`
-# 3. remove "...:coreml_delegate" from `deps`
+config_setting(
+    name = "use_coreml_delegate",
+    values = {"define": "use_coreml_delegate=1"},
+)
 
+config_setting(
+    name = "use_metal_delegate",
+    values = {"define": "use_metal_delegate=1"},
+)
+
+# By default this builds with no delegates.
+# To build with the Metal delegate pass --define=use_metal_delegate=1
+# To build with the CoreML delegate pass --define=use_coreml_delegate=1
 swift_library(
     name = "TensorFlowLite",
+    srcs = glob(
+        [
+            "Sources/*.swift",
+        ],
+        exclude = [
+            "Sources/CoreMLDelegate.swift",
+            "Sources/MetalDelegate.swift",
+        ],
+    ) + select({
+        ":use_coreml_delegate": [
+            "Sources/CoreMLDelegate.swift",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        ":use_metal_delegate": [
+            "Sources/MetalDelegate.swift",
+        ],
+        "//conditions:default": [],
+    }),
+    linkopts = select({
+        ":use_coreml_delegate": [
+            "-Wl,-weak_framework,CoreML",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        ":use_metal_delegate": [
+            "-Wl,-weak_framework,Metal",
+        ],
+        "//conditions:default": [],
+    }),
+    module_name = "TensorFlowLite",
+    tags = TFL_DEFAULT_TAGS,
+    visibility = ios_visibility_whitelist(),
+    deps = [
+        "//tensorflow/lite/experimental/ios:tensorflow_lite_c",
+    ] + select({
+        ":use_coreml_delegate": [
+            "//tensorflow/lite/experimental/delegates/coreml:coreml_delegate",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        ":use_metal_delegate": [
+            "//tensorflow/lite/delegates/gpu:metal_delegate",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+swift_library(
+    name = "TensorFlowLiteAllDelegates",
+    testonly = 1,
     srcs = glob(["Sources/*.swift"]),
     linkopts = [
         "-Wl,-weak_framework,CoreML",
@@ -32,7 +83,6 @@ swift_library(
     ],
     module_name = "TensorFlowLite",
     tags = TFL_DEFAULT_TAGS,
-    visibility = ios_visibility_whitelist(),
     deps = [
         "//tensorflow/lite/delegates/gpu:metal_delegate",
         "//tensorflow/lite/experimental/delegates/coreml:coreml_delegate",
@@ -71,7 +121,7 @@ swift_library(
     tags = TFL_DEFAULT_TAGS,
     deps = [
         ":Resources",
-        ":TensorFlowLite",
+        ":TensorFlowLiteAllDelegates",
     ],
 )
 

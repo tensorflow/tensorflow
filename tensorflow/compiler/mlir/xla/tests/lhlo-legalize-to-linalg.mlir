@@ -228,32 +228,54 @@ func @dynamic_broadcast_in_dim(%operand: memref<?x?x?xf32>,
 
 // -----
 
-// CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d4, d0, 0)>
-// CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)>
-// CHECK-LABEL: func @broadcast_in_dim_with_expansion
-func @broadcast_in_dim_with_expansion(%operand: memref<5x7x1xf32>,
-                                      %result: memref<7x10x6x4x5xf32>) {
+// CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1) -> (d0)>
+// CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-LABEL: func @static_broadcast_in_dim_no_expansion
+func @static_broadcast_in_dim_no_expansion(%operand: memref<5xf32>,
+                                           %result: memref<5x10xf32>) {
   "xla_lhlo.broadcast_in_dim"(%operand, %result) {
-    broadcast_dimensions = dense<[4,0,2]> : tensor<3xi64>
-  } : (memref<5x7x1xf32>, memref<7x10x6x4x5xf32>) -> ()
+    broadcast_dimensions = dense<[0]> : tensor<1xi64>
+  } : (memref<5xf32>, memref<5x10xf32>) -> ()
   return
 }
+// CHECK-NOT: linalg.reshape
 // CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
 // CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: f32, %[[RESULT:.*]]: f32):
 // CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32
 
 // -----
 
-// CHECK-DAG: #[[RESULT_MAP_0:.*]] = affine_map<(d0, d1, d2) -> ()>
+// CHECK-DAG: #[[REASSOCIATION:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1, d2) -> (d0)>
 // CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
-// CHECK-LABEL: func @broadcast_in_dim_scalar
-func @broadcast_in_dim_scalar(%operand: memref<f32>,
-                              %result: memref<7x10x6xf32>) {
+// CHECK-LABEL: func @static_broadcast_in_dim_expansion
+func @static_broadcast_in_dim_expansion(%operand: memref<1x5xf32>,
+                                        %result: memref<5x10x100xf32>) {
   "xla_lhlo.broadcast_in_dim"(%operand, %result) {
-    broadcast_dimensions = dense<[]> : tensor<0xi64>
-  } : (memref<f32>, memref<7x10x6xf32>) -> ()
+    broadcast_dimensions = dense<[2, 0]> : tensor<2xi64>
+  } : (memref<1x5xf32>, memref<5x10x100xf32>) -> ()
   return
 }
+// CHECK: %[[RESHAPED_ARG:.*]] = linalg.reshape %{{.*}}#[[REASSOCIATION]]]
+// CHECK-SAME:                   memref<1x5xf32> into memref<5xf32>
+// CHECK: linalg.generic {{{.*}}indexing_maps =
+// CHECK-SAME:       [#[[OPERAND_MAP]], #[[RESULT_MAP]]]{{.*}} %[[RESHAPED_ARG]]
+// CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: f32, %[[RESULT:.*]]: f32):
+// CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32
+
+// -----
+
+// CHECK-DAG: #[[RESULT_MAP_0:.*]] = affine_map<(d0, d1) -> ()>
+// CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-LABEL: func @static_broadcast_in_dim_scalar
+func @static_broadcast_in_dim_scalar(%operand: memref<f32>,
+                                     %result: memref<5x10xf32>) {
+  "xla_lhlo.broadcast_in_dim"(%operand, %result) {
+    broadcast_dimensions = dense<[]> : tensor<0xi64>
+  } : (memref<f32>, memref<5x10xf32>) -> ()
+  return
+}
+// CHECK-NOT: linalg.reshape
 // CHECK: linalg.generic {{{.*}}indexing_maps = [#[[RESULT_MAP_0]], #[[RESULT_MAP]]]
 // CHECK-NEXT: ^bb0(%[[CONST:.*]]: f32, %[[RESULT:.*]]: f32):
 // CHECK-NEXT:   linalg.yield %[[CONST]] : f32
@@ -262,16 +284,36 @@ func @broadcast_in_dim_scalar(%operand: memref<f32>,
 
 // CHECK-DAG: #[[OPERAND_MAP:.+]] = affine_map<(d0, d1) -> (d0)>
 // CHECK-DAG: #[[RESULT_MAP:.+]] = affine_map<(d0, d1) -> (d0, d1)>
-// CHECK-LABEL: func @broadcast_in_dim_with_one_to_one
-func @broadcast_in_dim_with_one_to_one(%operand: memref<1xf32>, %result: memref<1x5xf32>) {
+// CHECK-LABEL: func @static_broadcast_in_dim_with_one_to_one
+func @static_broadcast_in_dim_with_one_to_one(%operand: memref<1xf32>,
+                                              %result: memref<1x5xf32>) {
   "xla_lhlo.broadcast_in_dim"(%operand, %result) {
     broadcast_dimensions = dense<[0]> : tensor<1xi64>
   } : (memref<1xf32>, memref<1x5xf32>) -> ()
   return
 }
+// CHECK-NOT: linalg.reshape
 // CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
 // CHECK-NEXT: ^bb0(%[[OPERAND:.+]]: f32, %{{.+}}: f32):
 // CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32
+
+// -----
+
+// CHECK-DAG: #[[RESULT_MAP:.+]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-LABEL: func @static_broadcast_in_dim_with_one_to_many
+func @static_broadcast_in_dim_with_one_to_many(%operand: memref<1xf32>,
+                                               %result: memref<5x5xf32>) {
+  "xla_lhlo.broadcast_in_dim"(%operand, %result) {
+    broadcast_dimensions = dense<[1]> : tensor<1xi64>
+  } : (memref<1xf32>, memref<5x5xf32>) -> ()
+  return
+}
+// CHECK-NOT: linalg.reshape
+// CHECK: %[[C0:.*]] = constant 0 : index
+// CHECK: %[[VALUE:.*]] = load %{{.*}}[[C0]]
+// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[RESULT_MAP]]]
+// CHECK-NEXT: ^bb0(%{{.+}}: f32):
+// CHECK-NEXT:   linalg.yield %[[VALUE]] : f32
 
 // -----
 

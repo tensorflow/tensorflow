@@ -66,7 +66,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service/gpu:target_constants",
         "//tensorflow/core:stream_executor_no_cuda",
-        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:ir",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
     ],

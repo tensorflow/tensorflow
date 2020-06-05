@@ -1,5 +1,10 @@
 # Description: Utilities for TPU Operations
 
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_windows",
+)
+
 package(
     default_visibility = [
         "//tensorflow/core/tpu:__subpackages__",
@@ -102,7 +107,10 @@ cc_library(
 
 cc_library(
     name = "tpu_library_loader",
-    srcs = ["tpu_library_loader.cc"],
+    srcs = if_windows(
+        ["tpu_library_loader_windows.cc"],
+        otherwise = ["tpu_library_loader.cc"],
+    ),
     hdrs = ["tpu_library_loader.h"],
     visibility = ["//visibility:public"],
     deps = [

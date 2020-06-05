@@ -1123,11 +1123,13 @@ cc_library(
         ":gpu_operation",
         ":util",
         ":work_group_picking",
+        "//tensorflow/lite/delegates/gpu/cl:arguments",
         "//tensorflow/lite/delegates/gpu/cl:cl_kernel",
         "//tensorflow/lite/delegates/gpu/cl:precision",
         "//tensorflow/lite/delegates/gpu/cl:tensor",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "@com_google_absl//absl/strings",
     ],
 )
 

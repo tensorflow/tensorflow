@@ -277,6 +277,9 @@ const OpNode* OpBuilder::Build() {
   return &op_node_;
 }
 
+// Static
+constexpr int OpBuilder::kScalarShape[];
+
 OpBuilder* GraphBuilder::AddNode(int tflite_node_index) {
   OpBuilder* op = new OpBuilder(this, OP_Nop);
   builders_.emplace_back(op);

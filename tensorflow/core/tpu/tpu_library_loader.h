@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/libtftpu.h"
 #include "tensorflow/core/tpu/tpu_config_c_api.h"
 
+// LINT.IfChange
 namespace tensorflow {
 namespace tpu {
 
@@ -31,5 +32,6 @@ TfTpu_ConfigApiFn* ConfigApiFn();
 
 }  // namespace tpu
 }  // namespace tensorflow
+// LINT.ThenChange(//tensorflow/core/tpu/tpu_library_loader_windows.cc)
 
 #endif  // TENSORFLOW_CORE_TPU_TPU_LIBRARY_LOADER_H_

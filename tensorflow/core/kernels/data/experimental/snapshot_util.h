@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
@@ -48,11 +49,25 @@ constexpr char kModeAuto[] = "auto";
 constexpr char kModeWrite[] = "write";
 constexpr char kModeRead[] = "read";
 constexpr char kModePassthrough[] = "passthrough";
+constexpr char kShardDirectorySuffix[] = ".shard";
 
 enum Mode { READER = 0, WRITER = 1, PASSTHROUGH = 2 };
 
-std::string GetCurrentCheckpointFile(const std::string& shard_directory,
-                                     const uint64 current_checkpoint_id);
+// Returns the name of the "hash" directory for the given base path and hash ID.
+std::string HashDirectory(const std::string& path, uint64 hash);
+
+// Returns the name of the "run" directory for the given base path and run ID.
+std::string RunDirectory(const std::string& hash_directory, uint64 run_id);
+std::string RunDirectory(const std::string& hash_directory,
+                         const std::string& run_id);
+
+// Returns the name of the "shard" directory for the given base path and shard
+// ID.
+std::string ShardDirectory(const std::string& run_directory, int64 shard_id);
+
+// Returns the checkpoint file name for the given directory and checkpoint ID.
+std::string GetCheckpointFileName(const std::string& shard_directory,
+                                  const uint64 checkpoint_id);
 
 // This is a interface class that exposes snapshot writing functionality.
 class Writer {
@@ -82,8 +97,8 @@ class Writer {
 // Writes snapshots with the standard TFRecord file format.
 class TFRecordWriter : public Writer {
  public:
-  explicit TFRecordWriter(const std::string& filename,
-                          const std::string& compression_type);
+  TFRecordWriter(const std::string& filename,
+                 const std::string& compression_type);
 
   Status WriteTensors(const std::vector<Tensor>& tensors) override;
 
@@ -114,9 +129,8 @@ class CustomWriter : public Writer {
   static constexpr const char* const kWriteCord = "WriteCord";
   static constexpr const char* const kSeparator = "::";
 
-  explicit CustomWriter(const std::string& filename,
-                        const std::string& compression_type,
-                        const DataTypeVector& dtypes);
+  CustomWriter(const std::string& filename, const std::string& compression_type,
+               const DataTypeVector& dtypes);
 
   Status WriteTensors(const std::vector<Tensor>& tensors) override;
 
@@ -192,9 +206,8 @@ class Reader {
 // Reads snapshots previously written with `TFRecordWriter`.
 class TFRecordReader : public Reader {
  public:
-  explicit TFRecordReader(const std::string& filename,
-                          const string& compression_type,
-                          const DataTypeVector& dtypes);
+  TFRecordReader(const std::string& filename, const string& compression_type,
+                 const DataTypeVector& dtypes);
 
   Status ReadTensors(std::vector<Tensor>* read_tensors) override;
 
@@ -231,9 +244,8 @@ class CustomReader : public Reader {
   static constexpr const char* const kReadCord = "ReadCord";
   static constexpr const char* const kSeparator = "::";
 
-  explicit CustomReader(const std::string& filename,
-                        const string& compression_type, const int version,
-                        const DataTypeVector& dtypes);
+  CustomReader(const std::string& filename, const string& compression_type,
+               const int version, const DataTypeVector& dtypes);
 
   Status ReadTensors(std::vector<Tensor>* read_tensors) override;
 
@@ -268,20 +280,76 @@ class CustomReader : public Reader {
   std::vector<bool> simple_tensor_mask_;  // true for simple, false for complex.
 };
 
-Status WriteMetadataFile(const string& hash_dir,
+// Writes snapshot metadata to the given directory.
+Status WriteMetadataFile(Env* env, const string& dir,
                          const experimental::SnapshotMetadataRecord* metadata);
 
-Status ReadMetadataFile(const string& hash_dir,
+// Reads snapshot metadata from the given directory.
+Status ReadMetadataFile(Env* env, const string& dir,
                         experimental::SnapshotMetadataRecord* metadata,
                         bool* file_exists);
 
-Status DumpDatasetGraph(const std::string& path, uint64 hash,
+// Writes a dataset graph to the given directory.
+Status DumpDatasetGraph(Env* env, const std::string& path, uint64 hash,
                         const GraphDef* graph);
 
 Status DetermineOpState(const std::string& mode_string, bool file_exists,
                         const experimental::SnapshotMetadataRecord* metadata,
                         const uint64 pending_snapshot_expiry_seconds,
                         Mode* mode);
+
+// Represents a dataset element or EOF.
+struct ElementOrEOF {
+  std::vector<Tensor> value;
+  bool end_of_sequence = false;
+};
+
+// AsyncWriter provides API for asynchronously writing dataset elements
+// (each represented as a vector of tensors) to a file.
+//
+// The expected use of this API is:
+//
+// std::unique_ptr<AsyncWriter> writer = absl_make_unique<AsyncWriter>(...);
+//
+// while (data_available()) {
+//   std::vector<Tensor> data = read_data()
+//   writer->Write(data);
+// }
+// writer->SignalEOF();
+// writer = nullptr;  // This will block until writes are flushed.
+class AsyncWriter {
+ public:
+  explicit AsyncWriter(Env* env, int64 file_index,
+                       const std::string& shard_directory, uint64 checkpoint_id,
+                       const std::string& compression, int64 version,
+                       const DataTypeVector& output_types,
+                       std::function<void(Status)> done);
+
+  // Writes the given tensors. The method is non-blocking and returns without
+  // waiting for the element to be written.
+  void Write(const std::vector<Tensor>& tensors) TF_LOCKS_EXCLUDED(mu_);
+
+  // Signals the end of input. The method is non-blocking and returns without
+  // waiting for the writer to be closed.
+  void SignalEOF() TF_LOCKS_EXCLUDED(mu_);
+
+ private:
+  void Consume(ElementOrEOF* be) TF_LOCKS_EXCLUDED(mu_);
+  bool ElementAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status WriterThread(Env* env, const std::string& shard_directory,
+                      uint64 checkpoint_id, const std::string& compression,
+                      int64 version, DataTypeVector output_types);
+
+  mutex mu_;
+  std::deque<ElementOrEOF> deque_ TF_GUARDED_BY(mu_);
+
+  // This has to be last. During destruction, we need to make sure that the
+  // Thread object is destroyed first as its destructor blocks on thread
+  // completion. If there are other member variables after this, they may get
+  // destroyed first before the thread finishes, potentially causing the
+  // thread to access invalid memory.
+  std::unique_ptr<Thread> thread_;
+};
 
 }  // namespace snapshot_util
 }  // namespace data

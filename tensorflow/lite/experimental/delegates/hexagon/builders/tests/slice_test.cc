@@ -55,10 +55,10 @@ class SliceOpModel : public SingleOpModelWithHexagon {
 };
 
 TEST(SliceOpTest, Input_1D_Uint8) {
-  SliceOpModel<int32_t> m(/*input=*/{TensorType_UINT8, {4}, -10, 10},
-                          /*output=*/{TensorType_UINT8, {2}, -10, 10},
-                          {TensorType_INT32, {1}}, {TensorType_INT32, {1}}, {1},
-                          {2});
+  SliceOpModel<int> m(/*input=*/{TensorType_UINT8, {4}, -10, 10},
+                      /*output=*/{TensorType_UINT8, {2}, -10, 10},
+                      {TensorType_INT32, {1}}, {TensorType_INT32, {1}}, {1},
+                      {2});
   m.SetInput<uint8_t>({1, 2, 3, 4});
   m.ApplyDelegateAndInvoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
@@ -67,7 +67,7 @@ TEST(SliceOpTest, Input_1D_Uint8) {
 }
 
 TEST(SliceOpTest, Input_2D_Uint8) {
-  SliceOpModel<int32_t> m(
+  SliceOpModel<int> m(
       /*input=*/{TensorType_UINT8, {2, 3}, -10, 10},
       /*output=*/{TensorType_UINT8, {1, 2}, -10, 10}, {TensorType_INT32, {2}},
       {TensorType_INT32, {2}}, {1, 0}, {1, 2});

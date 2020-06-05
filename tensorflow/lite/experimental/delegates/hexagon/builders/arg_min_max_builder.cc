@@ -50,7 +50,7 @@ TfLiteStatus ArgMinMaxOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
     axis_value += input_tensor.dims->size;
   }
   auto* input_axis_const = graph_builder_->AddConstNodeWithData(
-      kScalarShape, reinterpret_cast<char*>(&axis_value), sizeof(int32_t));
+      kScalarShape, reinterpret_cast<char*>(&axis_value), sizeof(int));
   AddInput(TensorID(input_axis_const->GetID(), 0));
 
   // Compute Min/Max

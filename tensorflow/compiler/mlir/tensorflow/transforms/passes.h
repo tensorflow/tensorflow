@@ -32,9 +32,17 @@ std::unique_ptr<OperationPass<FuncOp>>
 CreateFunctionalToExecutorDialectConversionPass();
 
 namespace TF {
-// Transforms functional control flow operations in the standard TensorFlow
-// dialect to MLIR Control Flow Graph (CFG) form.
+// Transforms functional control flow operations in the TensorFlow dialect to
+// MLIR Control Flow Graph (CFG) form.
 std::unique_ptr<OperationPass<FuncOp>> CreateTFFunctionalControlFlowToCFG();
+
+// Transforms functional control flow operations in the TensorFlow dialect to
+// their region based counterparts.
+std::unique_ptr<OperationPass<FuncOp>> CreateTFFunctionalControlFlowToRegions();
+
+// Transforms region bases control flow operations in the TensorFlow dialect to
+// their functional counterparts.
+std::unique_ptr<OperationPass<FuncOp>> CreateTFRegionControlFlowToFunctional();
 
 // Materialize the MlirPassthroughOp by replacing it with the MLIR module
 // attached as an attribute.
@@ -51,6 +59,10 @@ std::unique_ptr<OperationPass<FuncOp>> CreateBatchMatMulToEinsumPass();
 
 // Optimizes Tensorflow graph.
 std::unique_ptr<OperationPass<FuncOp>> CreateTFOptimizePass();
+
+// Creates pass to rewrite RecvTPUEmbeddingActivationsOp and
+// SendTPUEmbeddingGradients ops to internal variants.
+std::unique_ptr<OperationPass<FuncOp>> CreateRewriteTPUEmbeddingOps();
 
 // Performs specific fusion for GPU targets.
 std::unique_ptr<OperationPass<FuncOp>> CreateGpuOpFusionPass();
@@ -266,6 +278,10 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTPUMergeVariablesWithExecutePass();
 // Creates a pass that adds ops which perform formatting on variables at
 // run-time according to compilation result.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUVariableReformattingPass();
+
+// Creates a pass that groups outside compiled operations (CPU ops inside TPU
+// cluster) into clusters that can be extracted and run on the CPU.
+std::unique_ptr<OperationPass<FuncOp>> CreateTPUOutsideCompilationClusterPass();
 
 // Creates a pass that extracts outside compilation (CPU ops inside TPU cluster)
 // at head/tail of TPU cluster to run before/after TPU computation.

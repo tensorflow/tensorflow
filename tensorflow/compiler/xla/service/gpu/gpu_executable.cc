@@ -510,13 +510,21 @@ const InstructionValueSet& GpuExecutable::GetRootValueSet() const {
       module().entry_computation()->root_instruction());
 }
 
-int64 GpuExecutable::SizeOfGeneratedCodeInBytes() {
+int64 GpuExecutable::SizeOfGeneratedCodeInBytes() const {
   // Non-empty PTX but empty cubin: compilation must have failed, return
   // "unknown".
   if (binary().empty() && !text_.empty()) {
     return -1;
   }
-  return binary().size();
+  int64 size = binary().size();
+  for (BufferAllocation::Index i = 0; i < assignment_->Allocations().size();
+       ++i) {
+    const BufferAllocation& allocation = assignment_->GetAllocation(i);
+    if (allocation.is_constant()) {
+      size += allocation.size();
+    }
+  }
+  return size;
 }
 
 }  // namespace gpu

@@ -97,8 +97,18 @@ class BaseLayerTest(keras_parameterized.TestCase):
 
   @combinations.generate(combinations.keras_model_type_combinations())
   def test_dynamic_layer_error(self):
-    with self.assertRaisesRegexp(TypeError,
-                                 'attempting to use Python control flow'):
+    # Functional Models hit the `dyanamic=True` error during construction.
+    # Subclass Models should just throw the original autograph error during
+    # execution.
+    model_type = testing_utils.get_model_type()
+    if 'subclass' in model_type and context.executing_eagerly():
+      error_type = errors_impl.OperatorNotAllowedInGraphError
+      error_message = 'iterating over `tf.Tensor` is not allowed'
+    else:
+      error_type = TypeError
+      error_message = 'attempting to use Python control flow'
+
+    with self.assertRaisesRegexp(error_type, error_message):
       model = testing_utils.get_model_from_layers([DynamicLayer()],
                                                   input_shape=(3,))
       model.compile(rmsprop.RMSprop(0.001), loss='mse')
