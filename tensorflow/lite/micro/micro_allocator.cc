@@ -404,7 +404,10 @@ TfLiteStatus InitializeTfLiteTensorFromFlatbuffer(
 MicroAllocator::MicroAllocator(TfLiteContext* context, const Model* model,
                                uint8_t* tensor_arena, size_t arena_size,
                                ErrorReporter* error_reporter)
-    : model_(model), error_reporter_(error_reporter), context_(context) {
+    : model_(model),
+      context_(context),
+      error_reporter_(error_reporter),
+      active_(false) {
   uint8_t* aligned_arena = AlignPointerUp(tensor_arena, kBufferAlignment);
   if (aligned_arena != tensor_arena) {
     TF_LITE_REPORT_ERROR(
@@ -419,7 +422,20 @@ MicroAllocator::MicroAllocator(TfLiteContext* context, const Model* model,
   // destructed as it's the root allocator.
   memory_allocator_ = SimpleMemoryAllocator::Create(
       error_reporter, aligned_arena, aligned_arena_size);
+}
 
+MicroAllocator::MicroAllocator(TfLiteContext* context, const Model* model,
+                               SimpleMemoryAllocator* memory_allocator,
+                               ErrorReporter* error_reporter)
+    : memory_allocator_(memory_allocator),
+      model_(model),
+      context_(context),
+      error_reporter_(error_reporter),
+      active_(false) {}
+
+MicroAllocator::~MicroAllocator() {}
+
+TfLiteStatus MicroAllocator::Init() {
   TfLiteStatus status = InitGraphAndContextTensorData();
   // TODO(b/147871299): Consider improving this code. A better way of handling
   // failures in the constructor is to have a static function that returns a
@@ -431,9 +447,10 @@ MicroAllocator::MicroAllocator(TfLiteContext* context, const Model* model,
   } else {
     active_ = true;
   }
+  return status;
 }
 
-TfLiteStatus MicroAllocator::InitializeFromFlatbuffer(
+TfLiteStatus MicroAllocator::PrepareFromFlatbuffer(
     const MicroOpResolver& op_resolver,
     NodeAndRegistration** node_and_registrations) {
   if (!active_) {
@@ -580,12 +597,6 @@ size_t MicroAllocator::used_bytes() const {
   if (active_) {
     return 0;
   }
-  TF_LITE_REPORT_ERROR(error_reporter_, "Total buffer usage: %d bytes",
-                       memory_allocator_->GetUsedBytes());
-  TF_LITE_REPORT_ERROR(error_reporter_, "Head usage: %d bytes",
-                       memory_allocator_->GetHeadUsedBytes());
-  TF_LITE_REPORT_ERROR(error_reporter_, "Tail usage: %d bytes",
-                       memory_allocator_->GetTailUsedBytes());
   return memory_allocator_->GetUsedBytes();
 }
 
@@ -735,5 +746,15 @@ TfLiteStatus MicroAllocator::PrepareNodeAndRegistrationDataFromFlatbuffer(
 
   return kTfLiteOk;
 }  // namespace tflite
+
+size_t MicroAllocator::GetTensorsCount() const {
+  return context_->tensors_size;
+}
+
+size_t MicroAllocator::GetOperatorsCount() const {
+  return subgraph_->operators()->size();
+}
+
+ErrorReporter* MicroAllocator::error_reporter() { return error_reporter_; }
 
 }  // namespace tflite

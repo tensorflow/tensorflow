@@ -178,11 +178,13 @@ cc_library(
 )
 
 cc_library(
-    name = "recording_simple_memory_allocator",
+    name = "recording_allocators",
     srcs = [
+        "recording_micro_allocator.cc",
         "recording_simple_memory_allocator.cc",
     ],
     hdrs = [
+        "recording_micro_allocator.h",
         "recording_simple_memory_allocator.h",
     ],
     build_for_embedded = True,
@@ -190,6 +192,7 @@ cc_library(
     deps = [
         ":micro_compatibility",
         ":micro_framework",
+        "//tensorflow/lite/core/api",
     ],
 )
 
@@ -248,7 +251,7 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":micro_framework",
-        ":recording_simple_memory_allocator",
+        ":recording_allocators",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -261,6 +264,20 @@ tflite_micro_cc_test(
     deps = [
         ":micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "recording_micro_allocator_test",
+    srcs = [
+        "recording_micro_allocator_test.cc",
+    ],
+    deps = [
+        ":micro_framework",
+        ":op_resolvers",
+        ":recording_allocators",
+        "//tensorflow/lite/micro/testing:micro_test",
+        "//tensorflow/lite/micro/testing:test_conv_model",
     ],
 )
 
