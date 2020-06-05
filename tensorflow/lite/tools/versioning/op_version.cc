@@ -606,6 +606,7 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
 
     case BuiltinOperator_ADD: {
       auto add_option = op->builtin_options_as_AddOptions();
+      op_sig.options.addsub.pot_scale_int16 = false;
       if (add_option) {
         op_sig.options.addsub.pot_scale_int16 = add_option->pot_scale_int16();
       }
@@ -613,6 +614,7 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
 
     case BuiltinOperator_SUB: {
       auto sub_option = op->builtin_options_as_SubOptions();
+      op_sig.options.addsub.pot_scale_int16 = false;
       if (sub_option) {
         op_sig.options.addsub.pot_scale_int16 = sub_option->pot_scale_int16();
       }
