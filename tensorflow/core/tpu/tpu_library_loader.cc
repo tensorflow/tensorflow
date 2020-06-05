@@ -41,7 +41,6 @@ Status SetTpuInitializeStructFns(void* library_handle) {
 Status SetTpuConfigStructFns(void* library_handle) {
   auto* config_fn = ConfigApiFn();
 
-  TFTPU_SET_FN(config_fn, TPUHostInitialized);
   TFTPU_SET_FN(config_fn, ConfigureDistributedTpuOp_DoWork);
   TFTPU_SET_FN(config_fn, WaitForDistributedTpuOp_DoWork);
   TFTPU_SET_FN(config_fn, ShutdownDistributedTpuOp_DoWork);
