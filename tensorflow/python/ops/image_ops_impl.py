@@ -218,7 +218,8 @@ def _CheckAtLeast3DImage(image, require_static=True):
     else:
       image_shape = image.get_shape().with_rank_at_least(3)
   except ValueError:
-    raise ValueError("'image' must be at least three-dimensional.")
+    raise ValueError("'image' (shape %s) must be at least three-dimensional." %
+                     image.shape)
   if require_static and not image_shape.is_fully_defined():
     raise ValueError('\'image\' must be fully defined.')
   if any(x == 0 for x in image_shape[-3:]):
@@ -283,7 +284,8 @@ def _CheckGrayscaleImage(image, require_static=True):
     else:
       image_shape = image.get_shape().with_rank_at_least(2)
   except ValueError:
-    raise ValueError('A grayscale image must be at least two-dimensional.')
+    raise ValueError('A grayscale image (shape %s) must be at least '
+                     'two-dimensional.' % image.shape)
   if require_static and not image_shape.is_fully_defined():
     raise ValueError('\'image\' must be fully defined.')
   if image_shape.is_fully_defined():
@@ -450,7 +452,8 @@ def _random_flip(image, flip_index, seed, scope_name):
       flipped_input = array_ops.reverse(image, [flip_index + 1])
       return flips * flipped_input + (1 - flips) * image
     else:
-      raise ValueError('\'image\' must have either 3 or 4 dimensions.')
+      raise ValueError(
+          '\'image\' (shape %s) must have either 3 or 4 dimensions.' % shape)
 
 
 @tf_export('image.flip_left_right')
@@ -551,7 +554,8 @@ def _flip(image, flip_index, scope_name):
     elif shape.ndims == 4:
       return array_ops.reverse(image, [flip_index + 1])
     else:
-      raise ValueError('\'image\' must have either 3 or 4 dimensions.')
+      raise ValueError(
+          '\'image\' (shape %s)must have either 3 or 4 dimensions.' % shape)
 
 
 @tf_export('image.rot90')
@@ -600,7 +604,8 @@ def rot90(image, k=1, name=None):
     elif shape.ndims == 4:
       return _rot90_4D(image, k, scope)
     else:
-      raise ValueError('\'image\' must have either 3 or 4 dimensions.')
+      raise ValueError(
+          '\'image\' (shape %s) must have either 3 or 4 dimensions.' % shape)
 
 
 def _rot90_3D(image, k, name_scope):
@@ -722,7 +727,8 @@ def transpose(image, name=None):
     elif shape.ndims == 4:
       return array_ops.transpose(image, [0, 2, 1, 3], name=name)
     else:
-      raise ValueError('\'image\' must have either 3 or 4 dimensions.')
+      raise ValueError(
+          '\'image\' (shape %s) must have either 3 or 4 dimensions.' % shape)
 
 
 @tf_export('image.central_crop')
@@ -929,7 +935,9 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
       image = array_ops.expand_dims(image, 0)
       image.set_shape([None] * 4)
     elif image_shape.ndims != 4:
-      raise ValueError('\'image\' must have either 3 or 4 dimensions.')
+      raise ValueError(
+          '\'image\' (shape %s) must have either 3 or 4 dimensions.' %
+          image_shape)
 
     assert_ops = _CheckAtLeast3DImage(image, require_static=False)
     batch, height, width, depth = _ImageDimensions(image, rank=4)
@@ -1013,7 +1021,9 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
       image = array_ops.expand_dims(image, 0)
       image.set_shape([None] * 4)
     elif image_shape.ndims != 4:
-      raise ValueError('\'image\' must have either 3 or 4 dimensions.')
+      raise ValueError(
+          '\'image\' (shape %s) must have either 3 or 4 dimensions.' %
+          image_shape)
 
     assert_ops = _CheckAtLeast3DImage(image, require_static=False)
 
@@ -1093,7 +1103,9 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
       image = array_ops.expand_dims(image, 0)
       image.set_shape([None] * 4)
     elif image_shape.ndims != 4:
-      raise ValueError('\'image\' must have either 3 or 4 dimensions.')
+      raise ValueError(
+          '\'image\' (shape %s) must have either 3 or 4 dimensions.' %
+          image_shape)
 
     assert_ops = _CheckAtLeast3DImage(image, require_static=False)
     assert_ops += _assert(target_width > 0, ValueError,
@@ -1549,7 +1561,9 @@ def _resize_image_with_pad_common(image, target_height, target_width,
       image = array_ops.expand_dims(image, 0)
       image.set_shape([None] * 4)
     elif image_shape.ndims != 4:
-      raise ValueError('\'image\' must have either 3 or 4 dimensions.')
+      raise ValueError(
+          '\'image\' (shape %s) must have either 3 or 4 dimensions.' %
+          image_shape)
 
     assert_ops = _CheckAtLeast3DImage(image, require_static=False)
     assert_ops += _assert(target_width > 0, ValueError,
