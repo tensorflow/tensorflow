@@ -880,15 +880,15 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
 
     ```python
     # Converting a SavedModel to a TensorFlow Lite model.
-    converter = lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
     tflite_model = converter.convert()
 
     # Converting a tf.Keras model to a TensorFlow Lite model.
-    converter = lite.TFLiteConverter.from_keras_model(model)
+    converter = tf.lite.TFLiteConverter.from_keras_model(model)
     tflite_model = converter.convert()
 
     # Converting ConcreteFunctions to a TensorFlow Lite model.
-    converter = lite.TFLiteConverter.from_concrete_functions([func])
+    converter = tf.lite.TFLiteConverter.from_concrete_functions([func])
     tflite_model = converter.convert()
     ```
   """
@@ -1641,23 +1641,24 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
 
     ```python
     # Converting a GraphDef from session.
-    converter = lite.TFLiteConverter.from_session(sess, in_tensors, out_tensors)
+    converter = tf.compat.v1.TFLiteConverter.from_session(
+      sess, in_tensors, out_tensors)
     tflite_model = converter.convert()
     open("converted_model.tflite", "wb").write(tflite_model)
 
     # Converting a GraphDef from file.
-    converter = lite.TFLiteConverter.from_frozen_graph(
+    converter = tf.compat.v1.TFLiteConverter.from_frozen_graph(
       graph_def_file, input_arrays, output_arrays)
     tflite_model = converter.convert()
     open("converted_model.tflite", "wb").write(tflite_model)
 
     # Converting a SavedModel.
-    converter = lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter = tf.compat.v1.TFLiteConverter.from_saved_model(saved_model_dir)
     tflite_model = converter.convert()
     open("converted_model.tflite", "wb").write(tflite_model)
 
     # Converting a tf.keras model.
-    converter = lite.TFLiteConverter.from_keras_model_file(keras_model)
+    converter = tf.compat.v1.TFLiteConverter.from_keras_model_file(keras_model)
     tflite_model = converter.convert()
     open("converted_model.tflite", "wb").write(tflite_model)
     ```
