@@ -917,6 +917,30 @@ the feature dimension is the third-to-last.
   }];
 }
 
+def TF_BiasAddV1Op : TF_Op<"BiasAddV1", [NoSideEffect]> {
+  let summary = "Adds `bias` to `value`.";
+
+  let description = [{
+This is a deprecated version of BiasAdd and will be soon removed.
+
+This is a special case of `tf.add` where `bias` is restricted to be 1-D.
+Broadcasting is supported, so `value` may have any number of dimensions.
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$value,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$bias
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
+}
+
 def TF_BitcastOp : TF_Op<"Bitcast", [NoSideEffect]> {
   let summary = [{
 Bitcasts a tensor from one type to another without copying data.
