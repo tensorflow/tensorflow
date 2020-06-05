@@ -452,6 +452,7 @@ cc_library(
         "transforms/tpu_extract_head_tail_outside_compilation.cc",
         "transforms/tpu_extract_outside_compilation.cc",
         "transforms/tpu_merge_variables_with_execute.cc",
+        "transforms/tpu_outside_compilation_cluster.cc",
         "transforms/tpu_rewrite_pass.cc",
         "transforms/tpu_sharding_identification_pass.cc",
         "transforms/tpu_space_to_depth_pass.cc",
