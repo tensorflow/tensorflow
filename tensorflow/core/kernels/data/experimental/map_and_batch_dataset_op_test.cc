@@ -316,17 +316,17 @@ DATASET_OUTPUT_SHAPES_TEST_P(MapAndBatchDatasetOpTest, MapAndBatchDatasetParams,
 std::vector<CardinalityTestCase<MapAndBatchDatasetParams>>
 CardinalityTestCases() {
   return {{/*dataset_params=*/MapAndBatchDatasetParams1(),
-           /*expected_cardinality=*/2},
+           /*expected_cardinality=*/-2},
           {/*dataset_params=*/MapAndBatchDatasetParams2(),
            /*expected_cardinality=*/2},
           {/*dataset_params=*/MapAndBatchDatasetParams3(),
            /*expected_cardinality=*/3},
           {/*dataset_params=*/MapAndBatchDatasetParams4(),
-           /*expected_cardinality=*/2},
+           /*expected_cardinality=*/-2},
           {/*dataset_params=*/MapAndBatchDatasetParams5(),
            /*expected_cardinality=*/2},
           {/*dataset_params=*/MapAndBatchDatasetParams6(),
-           /*expected_cardinality=*/3}};
+           /*expected_cardinality=*/-2}};
 }
 
 DATASET_CARDINALITY_TEST_P(MapAndBatchDatasetOpTest, MapAndBatchDatasetParams,
