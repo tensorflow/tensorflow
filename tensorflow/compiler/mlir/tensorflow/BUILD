@@ -427,6 +427,7 @@ cc_library(
         "transforms/layout_optimization.cc",
         "transforms/mark_function_visibility.cc",
         "transforms/materialize_mlir_passthrough_op.cc",
+        "transforms/op_fusion.cc",
         "transforms/optimize.cc",
         "transforms/optimize_global_tensors.cc",
         "transforms/parallel_execute_to_islands.cc",

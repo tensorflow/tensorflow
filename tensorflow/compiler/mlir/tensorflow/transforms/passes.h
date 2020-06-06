@@ -154,6 +154,9 @@ CreateTensorArrayOpsDecompositionPass();
 
 // Create a pass that legalize HLO to TF dialect.
 std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeHloToTfPass();
+
+// Creates a pass that performs fusion of common sequences of ops.
+std::unique_ptr<OperationPass<FuncOp>> CreateOpFusionPass();
 }  // namespace TF
 
 namespace TFControlFlow {
