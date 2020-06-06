@@ -1161,7 +1161,18 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
     } else {
       // Remove simple identity transposes.
       if (IsIdentityPermutation(node_perm_values)) {
-        *simplified_node_name = node->input(0);
+        if (IsConjugateTranspose(*node)) {
+          const NodeScopeAndName transpose = ParseNodeScopeAndName(node->name());
+          const string optimized_node_name = OptimizedNodeName(transpose);
+          NodeDef* new_op = AddCopyNode(optimized_node_name, node);
+          new_op->set_op("Conj");
+          new_op->mutable_input()->RemoveLast();
+          new_op->mutable_attr()->erase("Tperm");
+          ForwardControlDependencies(new_op, {node});
+          *simplified_node_name = new_op->name();
+        } else {
+          *simplified_node_name = node->input(0);
+        }
       }
     }
     return Status::OK();

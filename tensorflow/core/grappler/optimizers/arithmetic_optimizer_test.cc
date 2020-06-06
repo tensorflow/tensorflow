@@ -1331,6 +1331,37 @@ TEST_F(ArithmeticOptimizerTest, RemoveIdentityTransposes) {
             std::set<string>({"id1", "id2", "inputs_shape", "inputs"}));
 }
 
+TEST_F(ArithmeticOptimizerTest, RemoveIdentityConjugateTransposes) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output re = ops::Const(s.WithOpName("re"), {1.0f, 2.0f, 3.0f, 4.0f}, {2, 2});
+  Output im = ops::Const(s.WithOpName("im"), {5.0f, 6.0f, 7.0f, 8.0f}, {2, 2});
+  Output z = ops::Complex(s.WithOpName("z"), re, im);
+  Output perm = ops::Const(s.WithOpName("perm"), {0, 1}, {2});
+  Output transpose = ops::ConjugateTranspose(s.WithOpName("trans"), z, perm);
+  Output id = ops::Identity(s.WithOpName("id"), transpose);
+
+  GrapplerItem item;
+  item.fetch = {"id"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyRemoveIdentityTranspose(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
+  NodeMap node_map(&output);
+
+  EXPECT_EQ(output.node_size(), 5);
+
+  const string p = "ArithmeticOptimizer/RemoveIdentityTranspose";
+  const string optimized_name = absl::StrCat(p, "_", "trans");
+
+  const NodeDef* conj = node_map.GetNode(optimized_name);
+  ASSERT_NE(conj, nullptr);
+  EXPECT_EQ(conj->op(), "Conj");
+  ASSERT_EQ(conj->input_size(), 1);
+  EXPECT_EQ(conj->input(0), "z");
+}
+
 TEST_F(ArithmeticOptimizerTest, RemoveIdentityTransposesMultipleOutputs) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output inputs_shape =
