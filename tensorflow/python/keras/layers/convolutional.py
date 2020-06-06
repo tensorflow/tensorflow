@@ -199,7 +199,7 @@ class Conv(Layer):
     self.input_spec = InputSpec(min_ndim=self.rank + 2,
                                 axes={channel_axis: input_channel})
 
-    self._build_conv_op_input_shape = input_shape
+    self._build_conv_op_data_shape = input_shape[-(self.rank + 1):]
     self._build_input_channel = input_channel
     self._padding_op = self._get_padding_op()
     self._conv_op_data_format = conv_utils.convert_data_format(
@@ -224,7 +224,7 @@ class Conv(Layer):
           padding=self._padding_op,
           data_format=self._conv_op_data_format,
           num_spatial_dims=self.rank)
-      self._build_conv_op_input_shape = inputs.get_shape()
+      self._build_conv_op_data_shape = inputs.shape[-(self.rank + 1):]
 
     # Apply causal padding to inputs for Conv1D.
     if self.padding == 'causal' and self.__class__.__name__ == 'Conv1D':
@@ -373,11 +373,12 @@ class Conv(Layer):
     Returns:
       `True` or `False` to indicate whether to recreate the conv_op.
     """
-    call_input_shape = inputs.shape
-    # If the most specific compatible shape between _build_input_shape and
-    # call_input_shape is not _build_input_shape then we must re-build.
-    return self._build_conv_op_input_shape.most_specific_compatible_shape(
-        call_input_shape) != self._build_conv_op_input_shape
+    call_data_shape = inputs.shape[-(self.rank + 1):]
+    # If the most specific compatible shape between _build_data_shape and
+    # call_data_shape is not _build_data_shape then we must re-build.
+    return (self._build_conv_op_data_shape
+            != self._build_conv_op_data_shape.most_specific_compatible_shape(
+                call_data_shape))
 
 
 @keras_export('keras.layers.Conv1D', 'keras.layers.Convolution1D')
