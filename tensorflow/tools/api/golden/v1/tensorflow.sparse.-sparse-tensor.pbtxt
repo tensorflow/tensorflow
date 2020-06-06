@@ -49,6 +49,10 @@ tf_class {
     argspec: "args=[\'cls\', \'sparse_tensor_value\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "with_values"
+    argspec: "args=[\'self\', \'new_values\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "get_shape"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }

@@ -182,14 +182,15 @@ class SparseTensor(internal.NativeObject, composite_tensor.CompositeTensor):
     """Returns a copy of `self` with `values` replaced by `new_values`.
 
     This method produces a new `SparseTensor` that has the same nonzero
-    indices, but updated values.
+    `indices` and same `dense_shape`, but updated values.
 
     Args:
-      new_values: The values of the new `SparseTensor. Needs to have the same
-        shape as the current `.values` `Tensor`.
+      new_values: The values of the new `SparseTensor`. Needs to have the same
+        shape as the current `.values` `Tensor`. May have a different type
+        than the current `values`.
 
     Returns:
-      A `SparseTensor` with identical indices but updated values.
+      A `SparseTensor` with identical indices and shape but updated values.
     """
     return SparseTensor(self._indices, new_values, self._dense_shape)
 

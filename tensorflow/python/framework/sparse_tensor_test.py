@@ -24,6 +24,7 @@ import numpy as np
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -104,6 +105,10 @@ class SparseTensorTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(new_tensor.indices, source.indices)
       self.assertAllEqual(new_tensor.values, [5.0, 1.0])
       self.assertAllEqual(new_tensor.dense_shape, source.dense_shape)
+
+      # ensure new value's shape is checked
+      with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+        source.with_values([[5.0, 1.0]])
 
 
 class ConvertToTensorOrSparseTensorTest(test_util.TensorFlowTestCase):
