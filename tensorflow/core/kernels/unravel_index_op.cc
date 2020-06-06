@@ -54,6 +54,24 @@ class UnravelIndexOp : public OpKernel {
 
     auto dims = dims_tensor.vec<Tidx>();
 
+    // Chek to make sure indices is not out of boundary
+    Eigen::Tensor<bool, 0, Eigen::RowMajor> check;
+    if (TensorShapeUtils::IsScalar(indices_tensor.shape())) {
+      auto indices = indices_tensor.scalar<Tidx>();
+      auto dims_prod = dims.prod();
+      check = (indices < dims_prod).all();
+    } else {
+      auto indices = indices_tensor.vec<Tidx>();
+      auto dims_prod = dims.prod()
+          .reshape(Eigen::array<Eigen::Index, 1>({1}))
+          .broadcast(
+              Eigen::array<Eigen::Index, 1>({indices_tensor.NumElements()}));
+      check = (indices < dims_prod).all();
+    }
+    OP_REQUIRES(
+        ctx, check(),
+        errors::InvalidArgument("index is out of bound as with dims"));
+
     Eigen::array<bool, 1> reverse({true});
 
     Tensor strides_tensor;

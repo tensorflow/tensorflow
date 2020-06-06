@@ -1384,6 +1384,16 @@ class UnravelIndexTest(test_util.TensorFlowTestCase):
         out_3 = array_ops.unravel_index(indices_3, dims_3)
         self.assertAllEqual(out_3.eval(), [[3, 6, 6], [4, 5, 1]])
 
+  # Test case for GitHub issue 40204.
+  def testUnravelIndexZeroDim(self):
+    with self.cached_session():
+      for dtype in [dtypes.int32, dtypes.int64]:
+        with self.assertRaisesRegexp(
+            errors.InvalidArgumentError, "index is out of bound as with dims"):
+          indices = constant_op.constant([2, 5, 7], dtype=dtype)
+          dims = constant_op.constant([3, 0], dtype=dtype)
+          self.evaluate(array_ops.unravel_index(indices=indices, dims=dims))
+
 
 class GuaranteeConstOpTest(test_util.TensorFlowTestCase):
 
