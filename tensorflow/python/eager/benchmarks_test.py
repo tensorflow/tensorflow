@@ -707,7 +707,6 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       self._benchmark_tfe_py_execute_matmul(
           m, transpose_b=True, num_iters=self._num_iters_100_by_784)
 
-  @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
   def benchmark_defun_matmul_100_by_784_CPU(self):
     with context.device(CPU):
       m = self._m_100_by_784.cpu()
