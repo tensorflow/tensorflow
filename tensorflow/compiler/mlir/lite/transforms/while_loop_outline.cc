@@ -54,6 +54,7 @@ class WhileOutlinePass
 
   tensorflow::OpOrArgLocNameMapper mapper_;
 };
+}  // namespace
 
 std::string WhileOutlinePass::GetName(Operation* op, StringRef suffix) {
   return (mapper_.GetUniqueName(op) + suffix).str();
@@ -61,7 +62,7 @@ std::string WhileOutlinePass::GetName(Operation* op, StringRef suffix) {
 
 // Returns whether the WhileOp is already outlined (e.g., only consists of calls
 // to functions).
-bool IsAlreadyOutlined(WhileOp while_op) {
+static bool IsAlreadyOutlinedd(WhileOp while_op) {
   auto just_call = [](Region& region) {
     auto it = region.front().begin();
     if (!isa<CallOp>(*it)) return false;
@@ -119,7 +120,7 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
   }
 
   // Skip if already just calls.
-  if (extra_operands.empty() && IsAlreadyOutlined(while_op)) return;
+  if (extra_operands.empty() && IsAlreadyOutlinedd(while_op)) return;
 
   // Collect new types.
   SmallVector<Type, 4> types;
@@ -237,7 +238,6 @@ void WhileOutlinePass::runOnOperation() {
   getOperation().walk(
       [&](mlir::TFL::WhileOp while_op) { OutlineWhile(while_op); });
 }
-}  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect WhileOp outline pass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateWhileOutlinePass() {

@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // This transformation pass transforms functional control flow operations in the
-// TensorFlow dialect to MLIR Control Flow Graph (CFG) form.
+// standard TensorFlow dialect to MLIR Control Flow Graph (CFG) form.
 
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -52,6 +52,7 @@ static Value LowerCondition(Location loc, Value value, OpBuilder* builder) {
 //
 // Requires the function to provide arguments for each of the `fn` operands
 // that is compatible for tensor cast.
+//
 static Operation* CallFn(Location loc, const std::function<Value(int)>& get_arg,
                          FuncOp fn, OpBuilder* builder) {
   FunctionType fn_type = fn.getType();
@@ -112,6 +113,7 @@ static void JumpToBlock(Location loc, const std::function<Value(int)>& get_arg,
 // Requires that the block has same number of arguments as number of results of
 // the operation and either they have same types or are more generic types and
 // it is possible to cast them to results' types.
+//
 static void ReplaceOpResultWithBlockArgs(Location loc, Operation* op,
                                          Block* block, OpBuilder* builder) {
   assert(op->getNumResults() == block->getNumArguments());
@@ -130,6 +132,9 @@ static void ReplaceOpResultWithBlockArgs(Location loc, Operation* op,
 // Given a functional IfOp, transforms the enclosing code to eliminate it
 // completely from the IR, breaking it into operations to evaluate the condition
 // as a bool, plus some branches.
+//
+// This returns true on failure.
+//
 static LogicalResult LowerIfOp(IfOp op) {
   Operation* op_inst = op.getOperation();
   Location loc = op_inst->getLoc();
@@ -188,6 +193,9 @@ static LogicalResult LowerIfOp(IfOp op) {
 // Given a functional WhileOp, transforms the enclosing code to eliminate it
 // completely from the IR, breaking it into operations to execute the loop body
 // repeatedly while the loop condition is true.
+//
+// This returns true on failure.
+//
 static LogicalResult LowerWhileOp(WhileOp op) {
   Operation* op_inst = op.getOperation();
   Location loc = op_inst->getLoc();
