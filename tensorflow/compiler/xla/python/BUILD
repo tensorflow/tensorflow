@@ -124,9 +124,9 @@ cc_library(
 )
 
 cc_library(
-    name = "traceback_manager",
-    srcs = ["traceback_manager.cc"],
-    hdrs = ["traceback_manager.h"],
+    name = "traceback",
+    srcs = ["traceback.cc"],
+    hdrs = ["traceback.h"],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
@@ -135,10 +135,9 @@ cc_library(
     deps = [
         ":python_ref_manager",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
         "@pybind11",
     ],
 )
@@ -198,7 +197,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":python_ref_manager",
-        ":traceback_manager",
+        ":traceback",
         ":types",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
@@ -221,7 +220,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":py_client",
-        ":traceback_manager",
+        ":traceback",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
@@ -348,7 +347,7 @@ pybind_extension(
         ":py_client",
         ":python_ref_manager",
         ":outfeed_receiver_py",
-        ":traceback_manager",
+        ":traceback",
         ":types",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/hash",

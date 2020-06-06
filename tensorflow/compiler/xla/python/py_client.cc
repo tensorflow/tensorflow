@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
-#include "tensorflow/compiler/xla/python/traceback_manager.h"
+#include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/python/types.h"
 
 namespace xla {
@@ -104,7 +104,7 @@ StatusOr<std::unique_ptr<PyBuffer>> PyClient::BufferFromPyal(
   std::shared_ptr<PythonRefManager::ManagedPyObjects> py_buffer_ref =
       GlobalPyRefManager()->ManageReference(std::move(c->array));
 
-  auto traceback = TracebackManager::Get()->GetTraceback();
+  auto traceback = Traceback::Get();
 
   py::gil_scoped_release gil_release;
   TF_ASSIGN_OR_RETURN(
@@ -113,12 +113,12 @@ StatusOr<std::unique_ptr<PyBuffer>> PyClient::BufferFromPyal(
                                  std::move(py_buffer_ref), pjrt_client_.get(),
                                  device));
   return std::make_unique<PyBuffer>(shared_from_this(), std::move(buffer),
-                                    traceback);
+                                    std::move(traceback));
 }
 
 StatusOr<std::unique_ptr<PyExecutable>> PyClient::Compile(
     const XlaComputation& computation, CompileOptions options) {
-  auto traceback = TracebackManager::Get()->GetTraceback();
+  auto traceback = Traceback::Get();
   py::gil_scoped_release gil_release;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
                       PjRtExecutable::Compile(computation, pjrt_client_.get(),

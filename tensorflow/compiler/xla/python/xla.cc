@@ -49,7 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
-#include "tensorflow/compiler/xla/python/traceback_manager.h"
+#include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
@@ -551,28 +551,26 @@ PYBIND11_MODULE(xla_extension, m) {
       py::arg("allocator_config") = GpuAllocatorConfig(),
       py::arg("distributed_client") = nullptr, py::arg("node_id") = 0);
 
-  py::class_<TracebackManager::Frame>(m, "Frame")
-      .def_readonly("file_name", &TracebackManager::Frame::file_name)
-      .def_readonly("function_name", &TracebackManager::Frame::function_name)
+  py::class_<Traceback::Frame>(m, "Frame")
+      .def_readonly("file_name", &Traceback::Frame::file_name)
+      .def_readonly("function_name", &Traceback::Frame::function_name)
       .def_readonly("function_start_line",
-                    &TracebackManager::Frame::function_start_line)
-      .def_readonly("line_num", &TracebackManager::Frame::line_num)
-      .def("__repr__", [](const TracebackManager::Frame& frame) {
+                    &Traceback::Frame::function_start_line)
+      .def_readonly("line_num", &Traceback::Frame::line_num)
+      .def("__repr__", [](const Traceback::Frame& frame) {
         return absl::StrFormat("%s;%s:%d", frame.function_name, frame.file_name,
                                frame.line_num);
       });
-  py::bind_vector<std::vector<TracebackManager::Frame>>(m, "FrameVector");
 
-  py::class_<TracebackManager::Traceback> traceback(
-      m, "Traceback", "Represents a Python stack trace.");
+  py::class_<Traceback> traceback(m, "Traceback",
+                                  "Represents a Python stack trace.");
   traceback.def_property_static(
-      "enabled",
-      [](py::object /* cls */) { return TracebackManager::Get()->enabled(); },
+      "enabled", [](py::object /* cls */) { return Traceback::enabled(); },
       [](py::object /* cls */, bool enabled) {
-        return TracebackManager::Get()->SetEnabled(enabled);
+        return Traceback::SetEnabled(enabled);
       });
   traceback.def_static(
-      "get_traceback", []() { return TracebackManager::Get()->GetTraceback(); },
+      "get_traceback", []() { return Traceback::Get(); },
       R"doc(
     Returns a :class:`Traceback` for the current thread.
 
@@ -581,9 +579,8 @@ PYBIND11_MODULE(xla_extension, m) {
     collection has a small overhead, so it is disabled by default. If traceback
     collection is disabled, returns ``None``.
     )doc");
-  traceback.def_property_readonly("frames",
-                                  &TracebackManager::Traceback::Frames);
-  traceback.def("__str__", &TracebackManager::Traceback::ToString);
+  traceback.def_property_readonly("frames", &Traceback::Frames);
+  traceback.def("__str__", &Traceback::ToString);
 
   py::class_<PyBuffer, std::unique_ptr<PyBuffer>> buffer(m, "Buffer");
   // TODO(phawkins): alias for backward compatibility. Remove after JAX no

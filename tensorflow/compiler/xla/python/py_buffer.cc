@@ -25,7 +25,7 @@ namespace py = pybind11;
 
 PyBuffer::PyBuffer(std::shared_ptr<PyClient> client,
                    std::unique_ptr<PjRtBuffer> buffer,
-                   absl::optional<TracebackManager::Traceback> traceback)
+                   std::unique_ptr<Traceback> traceback)
     : client_(std::move(client)),
       buffer_(std::move(buffer)),
       traceback_(std::move(traceback)) {}
@@ -38,12 +38,12 @@ StatusOr<std::unique_ptr<PyBuffer>> PyBuffer::CopyToDevice(
     const ClientAndPtr<Device>& dst_device) const {
   CHECK(dst_device.get() != nullptr);
   GlobalPyRefManager()->CollectGarbage();
-  auto traceback = TracebackManager::Get()->GetTraceback();
+  auto traceback = Traceback::Get();
   py::gil_scoped_release gil_release;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> out,
                       buffer_->CopyToDevice(dst_device.get()));
   return std::make_unique<PyBuffer>(dst_device.client, std::move(out),
-                                    traceback);
+                                    std::move(traceback));
 }
 
 Status PyBuffer::BlockHostUntilReady() {
