@@ -73,6 +73,7 @@ constexpr char kPaddingMapAttr[] = "xla_hlo.padding_map";
 constexpr char kShapeIndicesAttr[] = "shape_indices";
 constexpr char kPaddingArgIndicesAttr[] = "padding_arg_indices";
 constexpr char kShardingAttr[] = "xla_hlo.sharding";
+constexpr char kFrontendAttributesAttr[] = "xla_hlo.frontend_attributes";
 constexpr char kRepicationAttr[] = "xla_hlo.is_same_data_across_replicas";
 
 // Passes through everything except for unique_ptr, on which it calls get().
@@ -397,6 +398,25 @@ static absl::optional<xla::OpSharding> CreateOpShardingFromAttribute(
   auto sharding = op->getAttrOfType<mlir::StringAttr>(kShardingAttr);
   if (!sharding) return absl::nullopt;
   return CreateOpShardingFromStringRef(sharding.getValue());
+}
+
+// Returns a FrontendAttributes proto from the "frontend_attributes" attribute
+// of the op. An empty FrontendAttributes proto is returned if an op does not
+// have frontend attributes.
+static xla::FrontendAttributes CreateOpFrontendAttributesFromAttribute(
+    mlir::Operation* op) {
+  xla::FrontendAttributes frontend_attributes;
+  auto frontend_attributes_dict =
+      op->getAttrOfType<mlir::DictionaryAttr>(kFrontendAttributesAttr);
+
+  if (!frontend_attributes_dict) return frontend_attributes;
+
+  for (const auto& attr : frontend_attributes_dict)
+    if (auto value_str_attr = attr.second.dyn_cast<mlir::StringAttr>())
+      frontend_attributes.mutable_map()->insert(
+          {attr.first.str(), value_str_attr.getValue().str()});
+
+  return frontend_attributes;
 }
 
 // Checks if all shardings are set.
