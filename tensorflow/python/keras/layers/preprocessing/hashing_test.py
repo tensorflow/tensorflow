@@ -60,27 +60,6 @@ class HashingTest(keras_parameterized.TestCase):
     # Assert equal for hashed output that should be true on all platforms.
     self.assertAllClose([[0], [0], [1], [1], [0]], output)
 
-  def test_hash_dense_list_input_farmhash(self):
-    layer = hashing.Hashing(num_bins=2)
-    inp = [['omar'], ['stringer'], ['marlo'], ['wire'], ['skywalker']]
-    output = layer(inp)
-    # Assert equal for hashed output that should be true on all platforms.
-    self.assertAllClose([[0], [0], [1], [0], [0]], output)
-
-    inp = ['omar', 'stringer', 'marlo', 'wire', 'skywalker']
-    output = layer(inp)
-    # Assert equal for hashed output that should be true on all platforms.
-    self.assertAllClose([0, 0, 1, 0, 0], output)
-
-  def test_hash_dense_list_inputs_mixed_int_string_farmhash(self):
-    layer = hashing.Hashing(num_bins=2)
-    inp_1 = np.asarray([['omar'], ['stringer'], ['marlo'], ['wire'],
-                        ['skywalker']])
-    inp_2 = np.asarray([[1], [2], [3], [4], [5]])
-    output = layer([inp_1, inp_2])
-    # Assert equal for hashed output that should be true on all platforms.
-    self.assertAllClose([[0], [1], [1], [1], [0]], output)
-
   def test_hash_dense_int_input_farmhash(self):
     layer = hashing.Hashing(num_bins=3)
     inp = np.asarray([[0], [1], [2], [3], [4]])
