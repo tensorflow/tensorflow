@@ -44,8 +44,6 @@ from setuptools import setup
 from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
 
-from tensorflow.python.platform import build_info
-
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
@@ -72,27 +70,6 @@ REQUIRED_PACKAGES = [
     # scipy < 1.4.1 causes segfaults due to pybind11
     'scipy == 1.4.1',
 ]
-
-# Generate a footer describing the CUDA technology this release was built
-# against.
-GPU_DESCRIPTION = ''
-gpu_classifiers = []
-if build_info.build_info['is_cuda_build']:
-  gpu_header = ('\nTensorFlow {} for NVIDIA GPUs was built with these '
-                'platform and library versions:\n\n  - ').format(_VERSION)
-  bi = build_info.build_info
-  desc_lines = []
-  gpu_classifiers.append('Environment :: GPU :: NVIDIA CUDA :: ' +
-                         bi['cuda_version'])
-  if 'cuda_version' in bi:
-    desc_lines.append('NVIDIA CUDA ' + bi['cuda_version'])
-  if 'cudnn_version' in bi:
-    desc_lines.append('NVIDIA cuDNN ' + bi['cudnn_version'])
-  if 'cuda_compute_capabilities' in bi:
-    desc_lines.append('NVIDIA CUDA Compute Capabilities ' +
-                      ', '.join(bi['cuda_compute_capabilities']))
-  if desc_lines:
-    GPU_DESCRIPTION = gpu_header + '\n  - '.join(desc_lines)
 
 if sys.byteorder == 'little':
   # grpcio does not build correctly on big-endian machines due to lack of
@@ -280,7 +257,7 @@ setup(
     name=project_name,
     version=_VERSION.replace('-', ''),
     description=DOCLINES[0],
-    long_description='\n'.join(DOCLINES[2:]) + GPU_DESCRIPTION,
+    long_description='\n'.join(DOCLINES[2:]),
     url='https://www.tensorflow.org/',
     download_url='https://github.com/tensorflow/tensorflow/tags',
     author='Google Inc.',
@@ -301,11 +278,6 @@ setup(
         ] + matches,
     },
     zip_safe=False,
-    # Accessible with importlib.metadata.metadata('tf-pkg-name').items()
-    platforms=[
-        '{}:{}'.format(key, value)
-        for key, value in build_info.build_info.items()
-    ],
     distclass=BinaryDistribution,
     cmdclass={
         'install_headers': InstallHeaders,
@@ -330,7 +302,7 @@ setup(
         'Topic :: Software Development',
         'Topic :: Software Development :: Libraries',
         'Topic :: Software Development :: Libraries :: Python Modules',
-    ] + gpu_classifiers),
+    ]),
     license='Apache 2.0',
     keywords='tensorflow tensor machine learning',
 )
