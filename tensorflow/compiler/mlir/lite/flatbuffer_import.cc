@@ -424,6 +424,10 @@ StatusOr<Operation*> BuildExternalConstOp(const tflite::TensorT& tensor,
 StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
                                   const std::vector<uint8_t>& buffer,
                                   OpBuilder builder, Location loc) {
+  if (buffer.empty()) {
+    return errors::InvalidArgument("Constant's buffer may not be empty");
+  }
+
   TF_ASSIGN_OR_RETURN(auto type, GetTensorType(tensor, builder,
                                                /*shapeless_are_scalars=*/true,
                                                /*is_constant=*/true));
