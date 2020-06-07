@@ -2143,7 +2143,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/stream_executor",
         "@com_google_absl//absl/memory",
-        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:ir",
     ],
 )
 

@@ -76,7 +76,7 @@ Status SnappyOutputBuffer::Write(StringPiece data) {
 
   // If there is sufficient free space in input_buffer_ to fit data we
   // add it there and return.
-  if (bytes_to_write <= AvailableInputSpace()) {
+  if (static_cast<int32>(bytes_to_write) <= AvailableInputSpace()) {
     AddToInputBuffer(data);
     return Status::OK();
   }
@@ -87,7 +87,7 @@ Status SnappyOutputBuffer::Write(StringPiece data) {
   TF_RETURN_IF_ERROR(DeflateBuffered());
 
   // input_buffer_ should be empty at this point.
-  if (bytes_to_write <= AvailableInputSpace()) {
+  if (static_cast<int32>(bytes_to_write) <= AvailableInputSpace()) {
     AddToInputBuffer(data);
     return Status::OK();
   }
@@ -144,7 +144,7 @@ void SnappyOutputBuffer::AddToInputBuffer(StringPiece data) {
   const int32 free_tail_bytes =
       input_buffer_capacity_ - (read_bytes + unread_bytes);
 
-  if (bytes_to_write > free_tail_bytes) {
+  if (static_cast<int32>(bytes_to_write) > free_tail_bytes) {
     memmove(input_buffer_.get(), next_in_, avail_in_);
     next_in_ = input_buffer_.get();
   }

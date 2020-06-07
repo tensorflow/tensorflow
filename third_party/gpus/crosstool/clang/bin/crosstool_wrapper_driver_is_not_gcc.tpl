@@ -269,7 +269,6 @@ def main():
   if args.x and args.x[0] == 'cuda':
     if args.cuda_log: Log('-x cuda')
     leftover = [pipes.quote(s) for s in leftover]
-    args.cuda_log = True
     if args.cuda_log: Log('using nvcc')
     return InvokeNvcc(leftover, log=args.cuda_log)
 

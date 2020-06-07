@@ -555,6 +555,7 @@ cc_library(
     hdrs = ["convert/utils.h"],
     copts = tf_copts(),
     deps = [
+        "@com_google_absl//absl/algorithm:container",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:lib",

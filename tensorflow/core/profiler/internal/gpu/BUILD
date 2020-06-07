@@ -98,11 +98,18 @@ tf_cuda_library(
     ] + tf_additional_cupti_deps(),
 )
 
+# Rationale for linkstatic: The symbols in libcupti_static.a have hidden
+# visibility. The wrapper will fail to find them if it's ever built as a
+# shared library. This is the same issue as b/11094727. Always linking
+# the wrapper statically works around the issue. An alternative would be
+# to patch libcupti_static, but it's not worth the trouble considering
+# that the wrapper is about the only direct user.
 tf_cuda_library(
     name = "cupti_wrapper",
     srcs = if_cuda_is_configured_compat(["cupti_wrapper.cc"]),
     hdrs = if_cuda_is_configured_compat(["cupti_wrapper.h"]),
     copts = tf_copts(),
+    linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
         ":cupti_interface",

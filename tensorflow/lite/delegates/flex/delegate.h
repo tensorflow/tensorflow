@@ -17,8 +17,15 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/flex/delegate_data.h"
+#include "tensorflow/lite/delegates/utils/simple_delegate.h"
 
 namespace tflite {
+
+namespace flex {
+namespace testing {
+class KernelTest;
+}  // namespace testing
+}  // namespace flex
 
 // WARNING: This is an experimental interface that is subject to change.
 // Delegate that can be used to extract parts of a graph that are designed to be
@@ -33,22 +40,49 @@ namespace tflite {
 //   ... build interpreter ...
 //
 //   if (delegate) {
-//     interpreter->ModifyGraphWithDelegate(delegate.get());
+//     interpreter->ModifyGraphWithDelegate(std::move(delegate));
 //   }
 //   ... run inference ...
 //   ... destroy interpreter ...
-//   ... destroy delegate ...
-class FlexDelegate : public TfLiteDelegate {
+class FlexDelegate : public SimpleDelegateInterface {
  public:
+  friend class flex::testing::KernelTest;
+
   // Creates a delegate that supports TF ops.
-  //
-  // If the underyling TF Flex context creation fails, returns null.
-  static std::unique_ptr<FlexDelegate> Create();
+  static TfLiteDelegateUniquePtr Create() {
+    return Create(/*base_delegate*/ nullptr);
+  }
 
-  ~FlexDelegate();
+  ~FlexDelegate() override {}
 
- private:
-  FlexDelegate();
+  flex::DelegateData* mutable_data() { return &delegate_data_; }
+
+ protected:
+  // We sometimes have to create certain stub data to test FlexDelegate. To
+  // achieve this, we will make a testing flex delegate class that inherits from
+  // FlexDelegate to override certain things for stub data creation. Therefore,
+  // this function accepts a FlexDelegate instance to initiliaze it properly for
+  // create a testing flex delegate in some cases, and it is only used in
+  // testing.
+  static TfLiteDelegateUniquePtr Create(
+      std::unique_ptr<FlexDelegate> base_delegate);
+
+  FlexDelegate() {}
+
+  const char* Name() const override;
+
+  bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration,
+                                 const TfLiteNode* node,
+                                 TfLiteContext* context) const override;
+
+  TfLiteStatus Initialize(TfLiteContext* context) override;
+
+  std::unique_ptr<SimpleDelegateKernelInterface> CreateDelegateKernelInterface()
+      override;
+
+  TfLiteStatus CopyFromBufferHandle(TfLiteContext* context,
+                                    TfLiteBufferHandle buffer_handle,
+                                    TfLiteTensor* output);
 
   flex::DelegateData delegate_data_;
 };

@@ -119,7 +119,6 @@ void PopulateSpaceToBatchOutputDims(
 TfLiteStatus Conv2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
                                                const TfLiteIntArray* outputs,
                                                TfLiteContext* context) {
-  static std::vector<int> quant_bound_shape = {1, 1, 1, 1};
   static std::vector<int> dilation_factors_shape = {1, 1, 1, 2};
   static std::vector<int> paddings_shape = {1, 1, 2, 2};
 
@@ -133,11 +132,9 @@ TfLiteStatus Conv2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   TF_LITE_ENSURE_STATUS(
       ComputeMinAndMaxQuantValues(data_tensor, &data_min, &data_max));
   auto* data_min_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape.data(), reinterpret_cast<char*>(&data_min),
-      sizeof(data_min));
+      kScalarShape, reinterpret_cast<char*>(&data_min), sizeof(data_min));
   auto* data_max_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape.data(), reinterpret_cast<char*>(&data_max),
-      sizeof(data_max));
+      kScalarShape, reinterpret_cast<char*>(&data_max), sizeof(data_max));
 
   // Gather information about the Convolution operations.
   TfLitePadding padding_type = kTfLitePaddingUnknown;
@@ -206,10 +203,10 @@ TfLiteStatus Conv2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
     conv_output_min = 0;
   }
   auto* conv_output_min_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape.data(), reinterpret_cast<char*>(&conv_output_min),
+      kScalarShape, reinterpret_cast<char*>(&conv_output_min),
       sizeof(conv_output_min));
   auto* conv_output_max_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape.data(), reinterpret_cast<char*>(&conv_output_max),
+      kScalarShape, reinterpret_cast<char*>(&conv_output_max),
       sizeof(conv_output_max));
 
   // Bias node.
@@ -262,8 +259,8 @@ TfLiteStatus Conv2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
         &space_to_batch_output_dims);
     TensorID space_to_batch_op_out =
         AddOutput(sizeof(uint8_t), 4, space_to_batch_output_dims);
-    AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-    AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+    AddOutput(sizeof(float), 4, kScalarShape);
+    AddOutput(sizeof(float), 4, kScalarShape);
 
     // 2. Depthwise Conv.
     auto* conv_op = graph_builder_->AddNode(GetTFLiteNodeID());
@@ -303,8 +300,8 @@ TfLiteStatus Conv2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
         {output_batch_size * dilation_factors_h_w_[0] *
              dilation_factors_h_w_[1],
          output_height_size, output_width_size, output_depth_size});
-    conv_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-    conv_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+    conv_op->AddOutput(sizeof(float), 4, kScalarShape);
+    conv_op->AddOutput(sizeof(float), 4, kScalarShape);
 
     // 3. BatchToSpace.
     auto* batch_to_space_op = graph_builder_->AddNode(GetTFLiteNodeID());
@@ -319,9 +316,9 @@ TfLiteStatus Conv2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
                                      {output_batch_size, output_height_size,
                                       output_width_size, output_depth_size});
     output_min_tensor =
-        batch_to_space_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+        batch_to_space_op->AddOutput(sizeof(float), 4, kScalarShape);
     output_max_tensor =
-        batch_to_space_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+        batch_to_space_op->AddOutput(sizeof(float), 4, kScalarShape);
   } else {
     // Standard case.
     // Padding type.
@@ -350,18 +347,16 @@ TfLiteStatus Conv2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
     output_tensor = AddOutput(sizeof(uint8_t), 4,
                               {output_batch_size, output_height_size,
                                output_width_size, output_depth_size});
-    output_min_tensor = AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-    output_max_tensor = AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+    output_min_tensor = AddOutput(sizeof(float), 4, kScalarShape);
+    output_max_tensor = AddOutput(sizeof(float), 4, kScalarShape);
   }
 
   // Requantize if activation was not None.
   if (activation != kTfLiteActNone) {
     auto* requantized_min_const = graph_builder_->AddConstNodeWithData(
-        quant_bound_shape.data(), reinterpret_cast<char*>(&output_min),
-        sizeof(output_min));
+        kScalarShape, reinterpret_cast<char*>(&output_min), sizeof(output_min));
     auto* requantized_max_const = graph_builder_->AddConstNodeWithData(
-        quant_bound_shape.data(), reinterpret_cast<char*>(&output_max),
-        sizeof(output_max));
+        kScalarShape, reinterpret_cast<char*>(&output_max), sizeof(output_max));
     auto* requantize_op = graph_builder_->AddNode(GetTFLiteNodeID());
     requantize_op->SetOpType(OP_Requantize_8to8);
     requantize_op->AddInput(output_tensor);
@@ -373,8 +368,8 @@ TfLiteStatus Conv2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
         requantize_op->AddOutput(sizeof(uint8_t), 4,
                                  {output_batch_size, output_height_size,
                                   output_width_size, output_depth_size});
-    requantize_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-    requantize_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+    requantize_op->AddOutput(sizeof(float), 4, kScalarShape);
+    requantize_op->AddOutput(sizeof(float), 4, kScalarShape);
   } else {
     node_output_ = output_tensor;
   }

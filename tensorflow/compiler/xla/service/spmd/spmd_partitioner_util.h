@@ -45,6 +45,24 @@ HloInstruction* CreateR0WithType(PrimitiveType type, NativeT value,
   return b->AddInstruction(HloInstruction::CreateConstant(std::move(literal)));
 }
 
+inline HloInstruction* CreateFirstWithType(PrimitiveType type, SpmdBuilder* b) {
+  if (type == F32) {
+    auto float_pad_value = std::numeric_limits<float>::quiet_NaN();
+    return CreateR0WithType(type, -float_pad_value, b);
+  }
+  auto literal = LiteralUtil::MinValue(type);
+  return b->AddInstruction(HloInstruction::CreateConstant(std::move(literal)));
+}
+
+inline HloInstruction* CreateLastWithType(PrimitiveType type, SpmdBuilder* b) {
+  if (type == F32) {
+    auto float_pad_value = std::numeric_limits<float>::quiet_NaN();
+    return CreateR0WithType(type, float_pad_value, b);
+  }
+  auto literal = LiteralUtil::MaxValue(type);
+  return b->AddInstruction(HloInstruction::CreateConstant(std::move(literal)));
+}
+
 // Create a binary add computation of the given type and add to the module.
 HloComputation* MakeBinaryAdd(PrimitiveType type, HloModule* module);
 
@@ -233,6 +251,16 @@ absl::optional<HloInstruction*> ExchangeHaloAndGetValidData(
 // kReverse or kConvolution with window reversal.
 HloInstruction* HaloExchangeToPadOnLeft(PartitionedHlo& original,
                                         absl::Span<const int64> dims);
+
+// Check if the computation is GT comparison and safe for NaNs.
+bool IsNanSafeGt(HloComputation* computation);
+
+// Return k in TopK when input value is parttioned in the sort dimension.
+absl::optional<int64> GetKValueInTopKWhenPartitionSortDim(HloInstruction* hlo);
+
+// Slices the first k elements at slice dimension.
+HloInstruction* SliceFirstK(HloInstruction* hlo, SpmdBuilder* builder,
+                            int64 slice_dim, int64 k);
 
 }  // namespace spmd
 }  // namespace xla

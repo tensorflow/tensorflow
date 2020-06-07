@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 #include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
@@ -60,9 +60,9 @@ void TestReshapeImpl(TfLiteTensor* input_tensor, TfLiteTensor* shape_tensor,
     node.outputs = IntArrayFromInitializer({1, 2});
   }
 
-  ::tflite::ops::micro::AllOpsResolver resolver;
+  ::tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_RESHAPE, 1);
+      resolver.FindOp(tflite::BuiltinOperator_RESHAPE);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   void* user_data = nullptr;

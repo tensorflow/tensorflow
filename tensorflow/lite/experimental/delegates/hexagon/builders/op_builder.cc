@@ -108,6 +108,8 @@ OpBuilder* GraphBuilder::CreateOpBuilderFromTfLiteOp(int op_type,
       return CreateSliceOpBuilder(this, OP_QuantizedSlice_8);
     case kTfLiteBuiltinPack:
       return CreatePackBuilder(this, OP_QuantizedPack_8);
+    case kTfLiteBuiltinStridedSlice:
+      return CreateStridedSliceBuilder(this, OP_QuantizedStridedSlice_8);
     default:
       context_->ReportError(context_, "Op not supported: %d", op_type);
       return nullptr;
@@ -248,19 +250,24 @@ OpBuilder::TensorID OpBuilder::AddOutput(const TfLiteIntArray* dims) {
   return TensorID(GetID(), op_node_.outputs.size() - 1);
 }
 
-OpBuilder::TensorID OpBuilder::AddOutput(
-    int elementsize, int rank, const std::vector<int>& max_sizes_vect) {
+OpBuilder::TensorID OpBuilder::AddOutput(int elementsize, int rank,
+                                         const int* max_sizes_vect) {
   op_node_.outputs.push_back(hexagon_nn_output());
   op_node_.outputs.back().elementsize = elementsize;
   op_node_.outputs.back().rank = rank;
   auto& max_sizes = op_node_.outputs.back().max_sizes;
-  for (int i = 0; i < max_sizes_vect.size(); ++i) {
+  for (int i = 0; i < rank; ++i) {
     max_sizes[i] = max_sizes_vect[i];
   }
   if (graph_builder_->GraphHasDynamicBatch()) {
     max_sizes[0] = graph_builder_->GetMaxBatchSize();
   }
   return TensorID(GetID(), op_node_.outputs.size() - 1);
+}
+
+OpBuilder::TensorID OpBuilder::AddOutput(
+    int elementsize, int rank, const std::vector<int>& max_sizes_vect) {
+  return AddOutput(elementsize, rank, max_sizes_vect.data());
 }
 
 const OpNode* OpBuilder::Build() {
@@ -271,6 +278,9 @@ const OpNode* OpBuilder::Build() {
   }
   return &op_node_;
 }
+
+// Static
+constexpr int OpBuilder::kScalarShape[];
 
 OpBuilder* GraphBuilder::AddNode(int tflite_node_index) {
   OpBuilder* op = new OpBuilder(this, OP_Nop);

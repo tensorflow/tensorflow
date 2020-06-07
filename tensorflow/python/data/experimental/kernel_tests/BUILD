@@ -753,9 +753,12 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:string_ops",
+        "//tensorflow/python/data/experimental/ops:readers",
         "//tensorflow/python/data/experimental/ops:snapshot",
+        "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/data/util:nest",
         "@absl_py//absl/testing:parameterized",
     ],
 )

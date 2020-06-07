@@ -70,6 +70,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
 import numpy as np
 import six
 from six.moves import builtins
@@ -82,6 +84,7 @@ from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_data_flow_ops
@@ -450,6 +453,10 @@ def divide(x, y, name=None):
     # override names. Use a dummy class to track the runtime division behavior
     return DivideDelegateWithName(x, name) / y
   else:
+    # We do conversion here to make sure at least x is a tensor.
+    if not tensor_util.is_tensor(x):
+      dtype = y.dtype.base_dtype if tensor_util.is_tensor(y) else None
+      x = ops.convert_to_tensor(x, dtype=dtype)
     return x / y
 
 
@@ -3416,12 +3423,12 @@ def add_n(inputs, name=None):
     ValueError: If `inputs` don't all have same shape and dtype or the shape
     cannot be inferred.
   """
-  if not inputs or not isinstance(inputs, (list, tuple)):
-    raise ValueError("inputs must be a list of at least one "
+  if not inputs or not isinstance(inputs, collections.Iterable):
+    raise ValueError("inputs must be an iterable of at least one "
                      "Tensor/IndexedSlices with the same dtype and shape")
   inputs = ops.convert_n_to_tensor_or_indexed_slices(inputs)
   if not all(isinstance(x, (ops.Tensor, ops.IndexedSlices)) for x in inputs):
-    raise ValueError("inputs must be a list of at least one "
+    raise ValueError("inputs must be an iterable of at least one "
                      "Tensor/IndexedSlices with the same dtype and shape")
 
   if len(inputs) == 1:

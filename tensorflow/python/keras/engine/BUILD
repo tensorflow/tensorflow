@@ -41,6 +41,7 @@ py_library(
         ":base_preprocessing_layer",
         ":data_adapter",
         ":input_spec",
+        ":keras_tensor",
         "//tensorflow/python:composite_tensor_utils",
         "//tensorflow/python:py_checkpoint_reader",
         "//tensorflow/python/data",
@@ -160,6 +161,18 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python/keras:backend",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "keras_tensor",
+    srcs = ["keras_tensor.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:tensor_spec",
         "@six_archive//:six",
     ],
 )
@@ -420,6 +433,24 @@ tf_py_test(
     ],
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "feature_columns_integration_test",
+    size = "medium",
+    srcs = ["feature_columns_integration_test.py"],
+    python_version = "PY3",
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+        "notsan",
+    ],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",

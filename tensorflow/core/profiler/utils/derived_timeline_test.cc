@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/trace_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/core/profiler/utils/xplane_test_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
@@ -47,21 +47,12 @@ TEST(DerivedTimelineTest, HloModuleNameTest) {
   XPlane* plane = space.add_planes();
   XPlaneBuilder plane_builder(plane);
   auto line_builder = plane_builder.GetOrCreateLine(0);
-  auto first_event = CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100);
-  first_event.AddStatValue(*plane_builder.GetOrCreateStatMetadata(
-                               GetStatTypeStr(StatType::kHloModule)),
-                           kHloModuleName);
-  first_event.AddStatValue(*plane_builder.GetOrCreateStatMetadata(
-                               GetStatTypeStr(StatType::kKernelDetails)),
-                           kKernelDetails);
-  auto second_event =
-      CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300);
-  second_event.AddStatValue(*plane_builder.GetOrCreateStatMetadata(
-                                GetStatTypeStr(StatType::kHloModule)),
-                            kHloModuleName);
-  second_event.AddStatValue(*plane_builder.GetOrCreateStatMetadata(
-                                GetStatTypeStr(StatType::kKernelDetails)),
-                            kKernelDetails);
+  CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100,
+               {{StatType::kHloModule, kHloModuleName},
+                {StatType::kKernelDetails, kKernelDetails}});
+  CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300,
+               {{StatType::kHloModule, kHloModuleName},
+                {StatType::kKernelDetails, kKernelDetails}});
   GenerateDerivedTimeLines(event_group_name_map, &space);
   XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(plane);
   // Only the hlo module line is added and other empty lines are removed at the
@@ -86,21 +77,12 @@ TEST(DerivedTimelineTest, TfOpLineTest) {
   XPlane* plane = space.add_planes();
   XPlaneBuilder plane_builder(plane);
   auto line_builder = plane_builder.GetOrCreateLine(0);
-  auto first_event = CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100);
-  first_event.AddStatValue(
-      *plane_builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kLevel0)),
-      kTfOpName);
-  first_event.AddStatValue(*plane_builder.GetOrCreateStatMetadata(
-                               GetStatTypeStr(StatType::kKernelDetails)),
-                           kKernelDetails);
-  auto second_event =
-      CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300);
-  second_event.AddStatValue(
-      *plane_builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kLevel0)),
-      kTfOpName);
-  second_event.AddStatValue(*plane_builder.GetOrCreateStatMetadata(
-                                GetStatTypeStr(StatType::kKernelDetails)),
-                            kKernelDetails);
+  CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100,
+               {{StatType::kLevel0, kTfOpName},
+                {StatType::kKernelDetails, kKernelDetails}});
+  CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300,
+               {{StatType::kLevel0, kTfOpName},
+                {StatType::kKernelDetails, kKernelDetails}});
   GenerateDerivedTimeLines(event_group_name_map, &space);
   XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(plane);
   // Only the tf op line is added and other empty lines are removed at the end.
@@ -127,22 +109,14 @@ TEST(DerivedTimelineTest, DependencyTest) {
   XPlane* plane = space.add_planes();
   XPlaneBuilder plane_builder(plane);
   auto line_builder = plane_builder.GetOrCreateLine(0);
-  auto first_event = CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100,
-                                  {{StatType::kGroupId, 0}});
-  first_event.AddStatValue(
-      *plane_builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kLevel0)),
-      kTfOpName);
-  first_event.AddStatValue(*plane_builder.GetOrCreateStatMetadata(
-                               GetStatTypeStr(StatType::kKernelDetails)),
-                           kKernelDetails);
-  auto second_event = CreateXEvent(&plane_builder, &line_builder, "op2", 200,
-                                   300, {{StatType::kGroupId, 1}});
-  second_event.AddStatValue(
-      *plane_builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kLevel0)),
-      kTfOpName);
-  second_event.AddStatValue(*plane_builder.GetOrCreateStatMetadata(
-                                GetStatTypeStr(StatType::kKernelDetails)),
-                            kKernelDetails);
+  CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100,
+               {{StatType::kGroupId, 0},
+                {StatType::kLevel0, kTfOpName},
+                {StatType::kKernelDetails, kKernelDetails}});
+  CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300,
+               {{StatType::kGroupId, 1},
+                {StatType::kLevel0, kTfOpName},
+                {StatType::kKernelDetails, kKernelDetails}});
   GenerateDerivedTimeLines(event_group_name_map, &space);
   XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(plane);
   // The step line and the TF op line are added.
@@ -164,21 +138,12 @@ TEST(DerivedTimelineTest, TfOpNameScopeTest) {
   XPlane* plane = space.add_planes();
   XPlaneBuilder plane_builder(plane);
   auto line_builder = plane_builder.GetOrCreateLine(0);
-  auto first_event = CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100);
-  first_event.AddStatValue(
-      *plane_builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kLevel0)),
-      kTfOpName);
-  first_event.AddStatValue(*plane_builder.GetOrCreateStatMetadata(
-                               GetStatTypeStr(StatType::kKernelDetails)),
-                           kKernelDetails);
-  auto second_event =
-      CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300);
-  second_event.AddStatValue(
-      *plane_builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kLevel0)),
-      kTfOpName);
-  second_event.AddStatValue(*plane_builder.GetOrCreateStatMetadata(
-                                GetStatTypeStr(StatType::kKernelDetails)),
-                            kKernelDetails);
+  CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100,
+               {{StatType::kLevel0, kTfOpName},
+                {StatType::kKernelDetails, kKernelDetails}});
+  CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300,
+               {{StatType::kLevel0, kTfOpName},
+                {StatType::kKernelDetails, kKernelDetails}});
   GenerateDerivedTimeLines(event_group_name_map, &space);
   XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(plane);
   // The TF name scope line and the TF op line are added.

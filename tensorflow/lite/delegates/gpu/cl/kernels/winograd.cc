@@ -38,16 +38,6 @@ std::string GetWinograd4x4To36Code(
     const OperationDef& op_def,
     const std::vector<ElementwiseOperation*>& linked_operations,
     Arguments* args) {
-  TensorCodeGenerator src_tensor(
-      "src_data",
-      WHSBPoint{"src_size.x", "src_size.y", "src_size.z", "src_size.w"},
-      op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor(
-      "dst_data",
-      WHSBPoint{"dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w"},
-      op_def.dst_tensors[0]);
-
-  const std::string batch_id = op_def.IsBatchSupported() ? "batch_id" : "";
   std::string c = GetCommonDefines(op_def.precision);
 
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
@@ -80,23 +70,30 @@ std::string GetWinograd4x4To36Code(
   }
   c += "};\n";
 
+  std::string cl_type = accum_type == DataType::FLOAT16 ? "half" : "float";
+  auto src_desc = absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]);
+  src_desc->SetStateVar("ACCUM_FLT", cl_type);
+  args->AddObjectRef("src_tensor", AccessType::READ, std::move(src_desc));
+  args->AddObjectRef(
+      "dst_tensor", AccessType::WRITE,
+      absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]));
   args->AddInt("padding_x");
   args->AddInt("padding_y");
   args->AddInt("tiles_total");
   args->AddInt("tiles_x");
 
+  std::string linked_args = GetArgsDeclaration(linked_operations);
+  if (linked_args[0] == ',') {
+    linked_args[0] = ' ';
+  }
   c += "__kernel void main_function(\n";
-  c += src_tensor.GetDeclaration(AccessType::READ);
-  c += GetArgsDeclaration(linked_operations);
-  c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
-  c += "    int4 src_size,                              \n";
-  c += "    int4 dst_size,\n  ";
+  c += linked_args;
   c += "$0) {\n";
   c += "  int DST_X = get_global_id(0);\n";
   c += "  int DST_Y = get_global_id(1);\n";
   c += "  int DST_Z = get_global_id(2);\n";
-  c += "  if (DST_X >= args.tiles_total || DST_Y >= 6 || DST_Z >= dst_size.z) "
-       "{\n";
+  c += "  if (DST_X >= args.tiles_total || DST_Y >= 6 || DST_Z >= "
+       "args.dst_tensor.Slices()) {\n";
   c += "    return; \n";
   c += "  }\n";
   c += "  int tile_x = (DST_X % args.tiles_x) * 4;\n";
@@ -114,19 +111,16 @@ std::string GetWinograd4x4To36Code(
   c += "  bt_ar[5] = t1.y;\n";
   auto read_src = [&](const std::string& src, const std::string& xs) {
     if (is_image_buffer) {
-      c += "    ACCUM_FLT4 " + src + " = " +
-           src_tensor.ReadAsType(accum_type, "src_a_" + xs + " + offset") +
-           ";\n";
+      c += "    ACCUM_FLT4 " + src +
+           " = args.src_tensor.Read<ACCUM_FLT>(src_a_" + xs + " + offset);\n";
     } else if (is_buffer) {
-      c += "    ACCUM_FLT4 " + src + " = " +
-           src_tensor.ReadAsType(accum_type, "src_a_" + xs + " + offset") +
-           " * m" + xs + "_x;\n";
+      c += "    ACCUM_FLT4 " + src +
+           " = args.src_tensor.Read<ACCUM_FLT>(src_a_" + xs + " + offset) * m" +
+           xs + "_x;\n";
     } else {
-      c += "    ACCUM_FLT4 " + src + " = " +
-           src_tensor.ReadAsTypeWHSB(accum_type,
-                                     "tile_x + args.padding_x + " + xs, "yc",
-                                     "DST_Z", batch_id) +
-           ";\n";
+      c += "    ACCUM_FLT4 " + src +
+           " = args.src_tensor.Read<ACCUM_FLT>(tile_x + args.padding_x + " +
+           xs + ", yc, DST_Z);\n";
     }
   };
   if (is_buffer || is_image_buffer) {
@@ -134,14 +128,17 @@ std::string GetWinograd4x4To36Code(
       const std::string xs = std::to_string(x);
       c += "  int xc" + xs + " = tile_x + args.padding_x + " + xs + ";\n";
       c += "  ACCUM_FLT m" + xs + "_x = (ACCUM_FLT)(xc" + xs + " >= 0 && xc" +
-           xs + " < src_size.x);\n";
+           xs + " < args.src_tensor.Width());\n";
       c += "  bool inx" + xs + " = (xc" + xs + " >= 0 && xc" + xs +
-           " < src_size.x);\n";
-      c += "  xc" + xs + " = clamp(xc" + xs + ", 0, src_size.x - 1);\n";
-      c += "  " + src_tensor.GetAddressWHSB("src_a_" + xs, "xc" + xs, "0",
-                                            "DST_Z", batch_id);
+           " < args.src_tensor.Width());\n";
+      c += "  xc" + xs + " = clamp(xc" + xs +
+           ", 0, args.src_tensor.Width() - 1);\n";
+      c += "  args.src_tensor.GetAddress(src_a_" + xs + ", xc" + xs +
+           ", 0, DST_Z);\n";
       if (is_image_buffer) {
-        c += "  src_a_" + xs + " = select(-src_size.x * src_size.y, src_a_" +
+        c += "  src_a_" + xs +
+             " = select(-args.src_tensor.Width() * args.src_tensor.Height(), "
+             "src_a_" +
              xs + ", inx" + xs + ");\n";
       }
     }
@@ -149,8 +146,8 @@ std::string GetWinograd4x4To36Code(
   c += "  {\n";
   c += "    int yc = tile_y + args.padding_y;\n";
   if (is_buffer || is_image_buffer) {
-    c += "    bool iny = (yc >= 0 && yc < src_size.y);\n";
-    c += "    int offset = select(0, yc * src_size.x, iny);\n";
+    c += "    bool iny = (yc >= 0 && yc < args.src_tensor.Height());\n";
+    c += "    int offset = select(0, yc * args.src_tensor.Width(), iny);\n";
     c += "    ACCUM_FLT bt = bt_ar[0] * (ACCUM_FLT)(iny);\n";
   } else {
     c += "    ACCUM_FLT bt = bt_ar[0];\n";
@@ -167,8 +164,8 @@ std::string GetWinograd4x4To36Code(
     c += "  {\n";
     c += "    int yc = tile_y + args.padding_y + (" + ys + ");\n";
     if (is_buffer || is_image_buffer) {
-      c += "    bool iny = (yc >= 0 && yc < src_size.y);\n";
-      c += "    int offset = select(0, yc * src_size.x, iny);\n";
+      c += "    bool iny = (yc >= 0 && yc < args.src_tensor.Height());\n";
+      c += "    int offset = select(0, yc * args.src_tensor.Width(), iny);\n";
       c += "    ACCUM_FLT bt = bt_ar[" + ys + "] * (ACCUM_FLT)(iny);\n";
     } else {
       c += "    ACCUM_FLT bt = bt_ar[" + ys + "];\n";
@@ -185,14 +182,14 @@ std::string GetWinograd4x4To36Code(
   c += "  {\n";
   c += "    FLT4 r0 = TO_FLT4(I0 + Bt[2] * I2 + Bt[4] * I4);\n";
   c += PostProcess(linked_operations, context);
-  c += "    " + dst_tensor.WriteWHSB("r0", "DST_X", "DST_Y", "DST_Z", batch_id);
+  c += "    args.dst_tensor.Write(r0, DST_X, DST_Y, DST_Z);\n";
   c += "    DST_Y++;\n";
   c += "  }\n";
   c += "  {\n";
   c += "    FLT4 r0 = TO_FLT4(Bt[7] * I1 + Bt[8] * I2 + Bt[9] * I3 + Bt[10] * "
        "I4);\n";
   c += PostProcess(linked_operations, context);
-  c += "    " + dst_tensor.WriteWHSB("r0", "DST_X", "DST_Y", "DST_Z", batch_id);
+  c += "    args.dst_tensor.Write(r0, DST_X, DST_Y, DST_Z);\n";
   c += "    DST_Y++;\n";
   c += "  }\n";
   c += "  {\n";
@@ -200,7 +197,7 @@ std::string GetWinograd4x4To36Code(
        "* "
        "I4);\n";
   c += PostProcess(linked_operations, context);
-  c += "    " + dst_tensor.WriteWHSB("r0", "DST_X", "DST_Y", "DST_Z", batch_id);
+  c += "    args.dst_tensor.Write(r0, DST_X, DST_Y, DST_Z);\n";
   c += "    DST_Y++;\n";
   c += "  }\n";
   c += "  {\n";
@@ -208,7 +205,7 @@ std::string GetWinograd4x4To36Code(
        "* "
        "I4);\n";
   c += PostProcess(linked_operations, context);
-  c += "    " + dst_tensor.WriteWHSB("r0", "DST_X", "DST_Y", "DST_Z", batch_id);
+  c += "    args.dst_tensor.Write(r0, DST_X, DST_Y, DST_Z);\n";
   c += "    DST_Y++;\n";
   c += "  }\n";
   c += "  {\n";
@@ -216,13 +213,13 @@ std::string GetWinograd4x4To36Code(
        "* "
        "I4);\n";
   c += PostProcess(linked_operations, context);
-  c += "    " + dst_tensor.WriteWHSB("r0", "DST_X", "DST_Y", "DST_Z", batch_id);
+  c += "    args.dst_tensor.Write(r0, DST_X, DST_Y, DST_Z);\n";
   c += "    DST_Y++;\n";
   c += "  }\n";
   c += "  {\n";
   c += "    FLT4 r0 = TO_FLT4(Bt[31] * I1 + Bt[33] * I3 + I5);\n";
   c += PostProcess(linked_operations, context);
-  c += "    " + dst_tensor.WriteWHSB("r0", "DST_X", "DST_Y", "DST_Z", batch_id);
+  c += "    args.dst_tensor.Write(r0, DST_X, DST_Y, DST_Z);\n";
   c += "    DST_Y++;\n";
   c += "  }\n";
   c += "}\n";
@@ -425,7 +422,8 @@ absl::Status Winograd4x4To36::UploadBt(CLContext* context) {
 
   LinearStorage lt;
   RETURN_IF_ERROR(CreateLinearStorage(create_info, bt_aligned, context, &lt));
-  args_.AddObject("bt", absl::make_unique<LinearStorage>(std::move(lt)));
+  args_.AddObject("bt", AccessType::READ,
+                  absl::make_unique<LinearStorage>(std::move(lt)));
   return absl::OkStatus();
 }
 
@@ -442,16 +440,14 @@ absl::Status Winograd4x4To36::BindArguments() {
   const int tiles_y = DivideRoundUp(
       src_[0]->Height() + padding_.prepended.h + padding_.appended.h - 2, 4);
   const int tiles_total = tiles_x * tiles_y;
+  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
+  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
   RETURN_IF_ERROR(args_.SetInt("padding_x", -padding_.prepended.w));
   RETURN_IF_ERROR(args_.SetInt("padding_y", -padding_.prepended.h));
   RETURN_IF_ERROR(args_.SetInt("tiles_total", tiles_total));
   RETURN_IF_ERROR(args_.SetInt("tiles_x", tiles_x));
   kernel_.ResetBindingCounter();
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHSB()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHSB()));
   RETURN_IF_ERROR(args_.Bind(kernel_.kernel(), kernel_.GetBindingCounter()));
   return absl::OkStatus();
 }

@@ -2819,6 +2819,8 @@ bool HloInstruction::IsFusible() const {
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow:
       return true;
+    case HloOpcode::kRng:
+      return user_count() <= 1;
     // Side effecting instructions cannot be fused.
     default:
       return !HasSideEffect();

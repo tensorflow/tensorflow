@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/array_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -4089,6 +4090,125 @@ TEST_F(ConstantFoldingTest, BitcastDenormalFloats) {
   ASSERT_EQ(tensors.size(), 1);
   ASSERT_EQ(tensors_expected.size(), 1);
   test::ExpectTensorEqual<int64>(tensors[0], tensors_expected[0]);
+}
+
+TEST_F(ConstantFoldingTest, SimplifyCase) {
+  using test::function::NDef;
+
+  // Build a graph to compute y = Case(1, x, XTimesTwo(x), NonZero(x))
+  GrapplerItem item;
+  constexpr char kDevice[] = "/job:localhost/replica:0/task:0/device:CPU:0";
+  AttrValue branches;
+  auto* f = branches.mutable_list()->add_func();
+  f->set_name("XTimesTwo");
+  (*f->mutable_attr())["T"].set_type(DT_FLOAT);
+  auto* g = branches.mutable_list()->add_func();
+  *g = *f;
+  g->set_name("NonZero");
+
+  const Tensor kOne = test::AsScalar<int32>(1);
+  item.graph = test::function::GDef(
+      {NDef("one", "Const", {}, {{"value", kOne}, {"dtype", DT_INT32}},
+            kDevice),
+       NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       NDef("case", "Case", {"one", "x"},
+            {{"Tin", DataTypeSlice{DT_FLOAT}},
+             {"Tout", DataTypeSlice{DT_FLOAT}},
+             {"branches", branches}},
+            kDevice),
+       NDef("y", "Identity", {"case"}, {{"T", DT_FLOAT}}, kDevice)},
+      // FunctionLib
+      {
+          test::function::XTimesTwo(),
+          test::function::NonZero(),
+      });
+  VLOG(1) << "Before: " << item.graph.DebugString();
+
+  item.fetch = {"y"};
+  const Tensor kTwo = test::AsScalar<float>(2.0f);
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, {{"x", kTwo}});
+
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
+  GraphDef optimized_graph;
+  TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &optimized_graph));
+  VLOG(1) << "After: " << optimized_graph.DebugString();
+
+  int pco_count = 0;
+  for (const auto& node : optimized_graph.node()) {
+    EXPECT_NE(node.op(), "Case");
+    if (node.op() == "PartitionedCall") ++pco_count;
+  }
+  EXPECT_EQ(pco_count, 1);
+
+  auto tensors = EvaluateNodes(optimized_graph, item.fetch, {{"x", kTwo}});
+  ASSERT_EQ(tensors.size(), tensors_expected.size());
+  test::ExpectTensorEqual<float>(tensors[0], tensors_expected[0]);
+}
+
+TEST_F(ConstantFoldingTest, SimplifySelect) {
+  for (bool scalar_pred : {true, false}) {
+    for (bool pred_val : {true, false}) {
+      tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+      std::unique_ptr<Tensor> if_t;
+      if (scalar_pred) {
+        if_t.reset(new Tensor(DT_BOOL, TensorShape()));
+      } else {
+        if_t.reset(new Tensor(DT_BOOL, TensorShape({2, 2})));
+      }
+      for (int i = 0; i < (scalar_pred ? 1 : 4); ++i) {
+        if_t->flat<bool>()(i) = pred_val;
+      }
+      Output if_ = ops::Const(scope.WithOpName("if"), *if_t);
+      Output then_ =
+          ops::Placeholder(scope.WithOpName("then"), DT_FLOAT,
+                           ops::Placeholder::Shape(TensorShape({2, 2})));
+      Output else_ =
+          ops::Placeholder(scope.WithOpName("else"), DT_FLOAT,
+                           ops::Placeholder::Shape(TensorShape({2, 2})));
+      Output select =
+          ops::SelectV2(scope.WithOpName("select"), if_, then_, else_);
+      Output id = ops::Identity(scope.WithOpName("id"), select);
+
+      GrapplerItem item;
+      TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+      item.fetch = {"id"};
+
+      const Tensor kOne =
+          test::AsTensor<float>({1.0f, 1.0f, 1.0f, 1.0f}, TensorShape({2, 2}));
+      const Tensor kTwo =
+          test::AsTensor<float>({2.0f, 2.0f, 2.0f, 2.0f}, TensorShape({2, 2}));
+      auto tensors_expected = EvaluateNodes(item.graph, item.fetch,
+                                            {{"then", kOne}, {"else", kTwo}});
+
+      // Use aggressive mode to force the shape inference to propagate
+      // placeholder shapes.
+      ConstantFolding optimizer(RewriterConfig::AGGRESSIVE,
+                                /*cpu_device=*/nullptr);
+      GraphDef optimized_graph;
+      TF_EXPECT_OK(
+          optimizer.Optimize(/*cluster=*/nullptr, item, &optimized_graph));
+
+      ASSERT_EQ(optimized_graph.node_size(), 5);
+      bool found = false;
+      for (const auto& node : optimized_graph.node()) {
+        if (node.name() == "select") {
+          found = true;
+          EXPECT_EQ(node.op(), "Identity");
+          ASSERT_EQ(node.input_size(), 3);
+          EXPECT_EQ(node.input(0), pred_val ? "then" : "else");
+          EXPECT_EQ(node.input(1), pred_val ? "^if" : "^then");
+          EXPECT_EQ(node.input(2), pred_val ? "^else" : "^if");
+        }
+      }
+      EXPECT_TRUE(found);
+
+      auto tensors = EvaluateNodes(optimized_graph, item.fetch,
+                                   {{"then", kOne}, {"else", kTwo}});
+      ASSERT_EQ(tensors.size(), 1);
+      ASSERT_EQ(tensors_expected.size(), 1);
+      test::ExpectTensorEqual<float>(tensors[0], tensors_expected[0]);
+    }
+  }
 }
 
 }  // namespace

@@ -58,7 +58,7 @@ LIBS := \
 # There are no rules for compiling objects for the host system (since we don't
 # generate things like the protobuf compiler that require that), so all of
 # these settings are for the target compiler.
-CFLAGS := -O3 -DNDEBUG -fPIC
+CFLAGS := -O3 -DNDEBUG -fPIC $(EXTRA_CFLAGS)
 CXXFLAGS := $(CFLAGS) --std=c++11 $(EXTRA_CXXFLAGS)
 LDOPTS := -L/usr/local/lib
 ARFLAGS := -r
@@ -97,6 +97,11 @@ BENCHMARK_PERF_OPTIONS_BINARY_NAME := benchmark_model_performance_options
 MINIMAL_SRCS := \
 	tensorflow/lite/examples/minimal/minimal.cc
 
+LABEL_IMAGE_SRCS := \
+	tensorflow/lite/examples/label_image/bitmap_helpers.cc \
+	tensorflow/lite/examples/label_image/label_image.cc \
+	tensorflow/lite/tools/evaluation/utils.cc
+
 # What sources we want to compile, must be kept in sync with the main Bazel
 # build files.
 
@@ -118,6 +123,7 @@ CORE_CC_ALL_SRCS := \
 $(wildcard tensorflow/lite/*.cc) \
 $(wildcard tensorflow/lite/*.c) \
 $(wildcard tensorflow/lite/c/*.c) \
+$(wildcard tensorflow/lite/c/*.cc) \
 $(wildcard tensorflow/lite/core/*.cc) \
 $(wildcard tensorflow/lite/core/api/*.cc) \
 $(wildcard tensorflow/lite/experimental/resource/*.cc) \
@@ -171,9 +177,9 @@ ifeq ($(BUILD_TYPE),windows)
 	BUILD_WITH_MMAP=false
 endif
 ifeq ($(BUILD_WITH_MMAP),true)
-	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/mmap_allocation.cc
-else
 	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/mmap_allocation_disabled.cc
+else
+	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/mmap_allocation.cc
 endif
 
 BUILD_WITH_RUY ?= false
@@ -181,7 +187,7 @@ ifeq ($(TARGET_ARCH),aarch64)
 	BUILD_WITH_RUY=true
 endif
 ifeq ($(BUILD_WITH_RUY),true)
-  CXXFLAGS += -DTFLITE_WITH_RUY
+  CXXFLAGS += -DTFLITE_WITH_RUY_ONLY
 endif
 
 BUILD_WITH_RUY_PROFILER ?= false
@@ -271,6 +277,7 @@ BENCHMARK_LIB := $(LIBDIR)$(BENCHMARK_LIB_NAME)
 BENCHMARK_BINARY := $(BINDIR)$(BENCHMARK_BINARY_NAME)
 BENCHMARK_PERF_OPTIONS_BINARY := $(BINDIR)$(BENCHMARK_PERF_OPTIONS_BINARY_NAME)
 MINIMAL_BINARY := $(BINDIR)minimal
+LABEL_IMAGE_BINARY := $(BINDIR)label_image
 
 CXX := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}g++
 CC := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}gcc
@@ -278,6 +285,9 @@ AR := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}ar
 
 MINIMAL_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(MINIMAL_SRCS))))
+
+LABEL_IMAGE_OBJS := $(addprefix $(OBJDIR), \
+$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(LABEL_IMAGE_SRCS))))
 
 LIB_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(TF_LITE_CC_SRCS)))))
@@ -332,6 +342,14 @@ $(MINIMAL_BINARY): $(MINIMAL_OBJS) $(LIB_PATH)
 	$(LIBFLAGS) $(LIB_PATH) $(LDFLAGS) $(LIBS)
 
 minimal: $(MINIMAL_BINARY)
+
+$(LABEL_IMAGE_BINARY): $(LABEL_IMAGE_OBJS) $(LIB_PATH)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) \
+	-o $(LABEL_IMAGE_BINARY) $(LABEL_IMAGE_OBJS) \
+	$(LIBFLAGS) $(LIB_PATH) $(LDFLAGS) $(LIBS)
+
+label_image: $(LABEL_IMAGE_BINARY)
 
 $(BENCHMARK_LIB) : $(LIB_PATH) $(BENCHMARK_LIB_OBJS)
 	@mkdir -p $(dir $@)

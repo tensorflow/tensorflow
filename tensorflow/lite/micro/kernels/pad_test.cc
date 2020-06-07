@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
@@ -30,9 +30,9 @@ TfLiteStatus ValidatePadGoldens(TfLiteTensor* tensors, int tensors_size,
                                 int output_length) {
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  ::tflite::ops::micro::AllOpsResolver resolver;
+  ::tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_PAD, 1);
+      resolver.FindOp(tflite::BuiltinOperator_PAD);
   TF_LITE_ENSURE(&context, registration != nullptr);
 
   int inputs_array_data[] = {2, 0, 1};
@@ -67,9 +67,9 @@ TfLiteStatus ValidatePadV2Goldens(TfLiteTensor* tensors, int tensors_size,
                                   int output_length) {
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  ::tflite::ops::micro::AllOpsResolver resolver;
+  ::tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_PADV2, 1);
+      resolver.FindOp(tflite::BuiltinOperator_PADV2);
   TF_LITE_ENSURE(&context, registration != nullptr);
 
   int inputs_array_data[] = {3, 0, 1, 2};

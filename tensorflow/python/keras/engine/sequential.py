@@ -188,10 +188,6 @@ class Sequential(functional.Functional):
                        ' of a layer in this model. Update the `name` argument '
                        'to pass a unique name.' % (layer.name,))
 
-    # This allows the added layer to broadcast mutations to the current
-    # layer, which is necessary to ensure cache correctness.
-    layer._attribute_sentinel.add_parent(self._attribute_sentinel)
-
     self.built = False
     set_inputs = False
     if not self._layers:
@@ -236,9 +232,6 @@ class Sequential(functional.Functional):
       self._handle_deferred_layer_dependencies([layer])
 
     self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
-    # Different Model types add to `._layers` in different ways, so for safety
-    # we do a cache invalidation to make sure the changes are reflected.
-    self._attribute_sentinel.invalidate_all()
 
   @trackable.no_automatic_dependency_tracking
   def pop(self):
@@ -252,7 +245,6 @@ class Sequential(functional.Functional):
 
     layer = self._layers.pop()
     self._layer_call_argspecs.pop(layer)
-    self._attribute_sentinel.invalidate_all()
     if not self.layers:
       self.outputs = None
       self.inputs = None

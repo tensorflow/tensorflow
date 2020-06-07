@@ -2,9 +2,9 @@
 
 Caution: This feature is experimental.
 
-The TensorFlow Lite builtin op library has grown rapidly, and will continue to
+The TensorFlow Lite builtin op library has grown rapidly and will continue to
 grow, but there remains a long tail of TensorFlow ops that are not yet natively
-supported by TensorFlow Lite . These unsupported ops can be a point of friction
+supported by TensorFlow Lite. These unsupported ops can be a point of friction
 in the TensorFlow Lite model conversion process. To that end, the team has
 recently been working on an experimental mechanism for reducing this friction.
 
@@ -55,7 +55,7 @@ limitations.
 The following example shows how to use this feature in the
 [`TFLiteConverter`](./convert/python_api.md) Python API.
 
-```
+```python
 import tensorflow as tf
 
 converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
@@ -69,7 +69,7 @@ The following example shows how to use this feature in the
 [`tflite_convert`](../convert/cmdline_examples.md) command line tool using the
 command line flag `target_ops`.
 
-```
+```sh
 tflite_convert \
   --output_file=/tmp/foo.tflite \
   --graph_def_file=/tmp/foo.pb \
@@ -81,7 +81,7 @@ tflite_convert \
 When building and running `tflite_convert` directly with `bazel`, please pass
 `--define=tflite_convert_with_select_tf_ops=true` as an additional argument.
 
-```
+```sh
 bazel run --define=tflite_convert_with_select_tf_ops=true tflite_convert -- \
   --output_file=/tmp/foo.tflite \
   --graph_def_file=/tmp/foo.pb \
@@ -157,7 +157,7 @@ Finally, in your app's `build.gradle`, ensure you have the `mavenLocal()`
 dependency and replace the standard TensorFlow Lite dependency with the one that
 has support for select TensorFlow ops:
 
-```
+```build
 allprojects {
     repositories {
         jcenter()
@@ -220,7 +220,7 @@ creating the interpreter at runtime as long as the delegate is linked into the
 client library. It is not necessary to explicitly install the delegate instance
 as is typically required with other delegate types.
 
-### Python pip Package
+### Python pip package
 
 Python support is actively under development.
 
@@ -241,7 +241,7 @@ Build                                | Time (milliseconds)
 Only built-in ops (`TFLITE_BUILTIN`) | 260.7
 Using only TF ops (`SELECT_TF_OPS`)  | 264.5
 
-### Binary Size
+### Binary size
 
 The following table describes the binary size of TensorFlow Lite for each build.
 These targets were built for Android using `--config=android_arm -c opt`.
@@ -251,22 +251,22 @@ Build                 | C++ Binary Size | Android APK Size
 Only built-in ops     | 796 KB          | 561 KB
 Built-in ops + TF ops | 23.0 MB         | 8.0 MB
 
-## Known Limitations
+## Known limitations
 
 The following is a list of some of the known limitations:
 
 *   Control flow ops are not yet supported.
 *   The
     [`post_training_quantization`](https://www.tensorflow.org/performance/post_training_quantization)
-    flag is currently not supported for TensorFlow ops so it will not quantize
+    flag is currently not supported for TensorFlow ops, so it will not quantize
     weights for any TensorFlow ops. In models with both TensorFlow Lite builtin
     ops and TensorFlow ops, the weights for the builtin ops will be quantized.
-*   Ops that require explicit initialization from resources, like HashTableV2,
+*   Ops that require explicit initialization from resources, like `HashTableV2`,
     are not yet supported.
 *   Certain TensorFlow ops may not support the full set of input/output types
     that are typically available on stock TensorFlow.
 
-## Future Plans
+## Future plans
 
 The following is a list of improvements to this pipeline that are in progress:
 
@@ -276,5 +276,5 @@ The following is a list of improvements to this pipeline that are in progress:
 *   *Improved usability* - The conversion process will be simplified to only
     require a single pass through the converter. Additionally, pre-built Android
     AAR and iOS CocoaPod binaries will be provided.
-*   *Improved performance* - There is work being done to ensure TensorFlow Lite
-    with TensorFlow ops has performance parity to TensorFlow Mobile.
+*   *Improved performance* - Work is being done to ensure TensorFlow Lite with
+    TensorFlow ops has performance parity to TensorFlow Mobile.

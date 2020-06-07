@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <new>
 
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/micro/memory_helpers.h"
@@ -48,8 +49,8 @@ SimpleMemoryAllocator* SimpleMemoryAllocator::Create(
   // allocator instance.
   uint8_t* allocator_buffer = tmp.AllocateFromTail(
       sizeof(SimpleMemoryAllocator), alignof(SimpleMemoryAllocator));
-  return new (allocator_buffer)
-      SimpleMemoryAllocator(error_reporter, tmp.head_, tmp.tail_);
+  // Use the default copy constructor to populate internal states.
+  return new (allocator_buffer) SimpleMemoryAllocator(tmp);
 }
 
 SimpleMemoryAllocator::~SimpleMemoryAllocator() {}

@@ -32,6 +32,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_layer as input_layer_module
+from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.engine import training as training_lib
 from tensorflow.python.keras.engine import training_utils
@@ -193,7 +194,6 @@ class Functional(training_lib.Model):
     self._layer_call_argspecs = {}
     for layer in self._layers:
       self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
-      layer._attribute_sentinel.add_parent(self._attribute_sentinel)
 
     # Build self.input_names and self.output_names.
     self._set_output_names()
@@ -731,10 +731,6 @@ class Functional(training_lib.Model):
         self._layers.append(layer)
         deferred_layers.append(layer)
         self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
-
-        # This allows the added layer to broadcast mutations to the current
-        # layer, which is necessary to ensure cache correctness.
-        layer._attribute_sentinel.add_parent(self._attribute_sentinel)
         layer_set.add(layer)
     self._handle_deferred_layer_dependencies(deferred_layers)
 
@@ -999,7 +995,8 @@ def _map_subgraph_network(inputs, outputs):
   Returns:
     A tuple of List{Node] and List[Layer].
   """
-  base_layer_utils.create_keras_history(outputs)
+  if not keras_tensor.keras_tensors_enabled():
+    base_layer_utils.create_keras_history(outputs)
   # Keep only nodes and layers in the topology between inputs and outputs.
   _, nodes_by_depth, layers, _ = _map_graph_network(inputs, outputs)
   return nest.flatten([nodes for nodes in nodes_by_depth.values()]), layers

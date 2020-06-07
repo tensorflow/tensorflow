@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cmath>
 #include <complex>
+#include <type_traits>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -159,14 +160,11 @@ class SingleOpModel {
   SingleOpModel() {}
   ~SingleOpModel();
 
-  // Set a function callback that is run right after graph is prepared
-  // that allows applying external delegates. This is useful for testing
-  // other runtimes like NN API or GPU.
-  void SetApplyDelegate(std::function<void(Interpreter*)> apply_delegate_fn) {
-    apply_delegate_fn_ = apply_delegate_fn;
-  }
+  // Set a delegate that is applied right after graph is prepared. This is
+  // useful for testing other runtimes like NN API or GPU.
+  void SetDelegate(TfLiteDelegate* delegate) { delegate_ = delegate; }
 
-  void ApplyDelegate();
+  TfLiteStatus ApplyDelegate();
 
   // Copying or assignment is disallowed to simplify ownership semantics.
   SingleOpModel(const SingleOpModel&) = delete;
@@ -381,13 +379,7 @@ class SingleOpModel {
   // tensors given the shapes of the inputs.
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                         int num_threads, bool allow_fp32_relax_to_fp16,
-                        bool apply_delegate = true);
-
-  void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
-                        int num_threads);
-
-  void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
-                        bool allow_fp32_relax_to_fp16, bool apply_delegate);
+                        bool apply_delegate);
 
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes);
 
@@ -484,6 +476,9 @@ class SingleOpModel {
 
     return std::vector<T>(v, v + tensor_size);
   }
+
+  // Return the TFLite model buffer, only available after BuildInterpreter.
+  const uint8_t* GetModelBuffer() { return builder_.GetBufferPointer(); }
 
   std::vector<int> GetTensorShape(int index) {
     std::vector<int> result;
@@ -757,9 +752,7 @@ class SingleOpModel {
   std::vector<int32_t> outputs_;
   std::vector<flatbuffers::Offset<Tensor>> tensors_;
   std::vector<flatbuffers::Offset<Buffer>> buffers_;
-  // A function pointer that gets called after the interpreter is created but
-  // before evaluation happens. This is useful for applying a delegate.
-  std::function<void(Interpreter*)> apply_delegate_fn_;
+  TfLiteDelegate* delegate_ = nullptr;
 };
 
 // Populate string tensors.
@@ -812,6 +805,7 @@ TensorType GetTensorType() {
   if (std::is_same<T, int64_t>::value) return TensorType_INT64;
   if (std::is_same<T, uint8_t>::value) return TensorType_UINT8;
   if (std::is_same<T, string>::value) return TensorType_STRING;
+  if (std::is_same<T, bool>::value) return TensorType_BOOL;
   return TensorType_MIN;  // default value
 }
 

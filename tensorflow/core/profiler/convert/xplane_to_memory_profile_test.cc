@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/core/profiler/utils/xplane_test_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -38,53 +38,52 @@ TEST(ConvertXPlaneToMemoryProfile, OneAllocatorMultiActivitiesTest) {
   host_plane_builder.ReserveLines(1);
 
   auto tf_executor_thread = host_plane_builder.GetOrCreateLine(0);
-  CreateXEventWithIntAndStringViewMetadataValue(
-      &host_plane_builder, &tf_executor_thread, "MemoryAllocation", 40000, 1000,
-      {{StatType::kBytesReserved, 2000},
-       {StatType::kBytesAllocated, 3000},
-       {StatType::kBytesAvailable, 5000},
-       {StatType::kPeakBytesInUse, 8500},
-       {StatType::kRequestedBytes, 200},
-       {StatType::kAllocationBytes, 256},
-       {StatType::kAddress, 222333},
-       {StatType::kStepId, -93746},
-       {StatType::kDataType, 1}},
-      {{StatType::kAllocatorName, "GPU_0_bfc"},
-       {StatType::kTfOp, "foo/bar"},
-       {StatType::kRegionType, "output"},
-       {StatType::kTensorShapes, "[3, 3, 512, 512]"}});
+  CreateXEvent(&host_plane_builder, &tf_executor_thread, "MemoryAllocation",
+               40000, 1000,
+               {{StatType::kBytesReserved, 2000},
+                {StatType::kBytesAllocated, 3000},
+                {StatType::kBytesAvailable, 5000},
+                {StatType::kPeakBytesInUse, 8500},
+                {StatType::kRequestedBytes, 200},
+                {StatType::kAllocationBytes, 256},
+                {StatType::kAddress, 222333},
+                {StatType::kStepId, -93746},
+                {StatType::kDataType, 1},
+                {StatType::kAllocatorName, "GPU_0_bfc"},
+                {StatType::kTfOp, "foo/bar"},
+                {StatType::kRegionType, "output"},
+                {StatType::kTensorShapes, "[3, 3, 512, 512]"}});
 
-  CreateXEventWithIntAndStringViewMetadataValue(
-      &host_plane_builder, &tf_executor_thread, "MemoryDeallocation", 50000,
-      1000,
-      {{StatType::kBytesReserved, 2000},
-       {StatType::kBytesAllocated, 2744},
-       {StatType::kBytesAvailable, 5256},
-       {StatType::kPeakBytesInUse, 8500},
-       {StatType::kRequestedBytes, 200},
-       {StatType::kAllocationBytes, 256},
-       {StatType::kAddress, 222333},
-       {StatType::kStepId, 0},
-       {StatType::kDataType, 0}},
-      {{StatType::kAllocatorName, "GPU_0_bfc"},
-       {StatType::kRegionType, ""},
-       {StatType::kTensorShapes, ""}});
+  CreateXEvent(&host_plane_builder, &tf_executor_thread, "MemoryDeallocation",
+               50000, 1000,
+               {{StatType::kBytesReserved, 2000},
+                {StatType::kBytesAllocated, 2744},
+                {StatType::kBytesAvailable, 5256},
+                {StatType::kPeakBytesInUse, 8500},
+                {StatType::kRequestedBytes, 200},
+                {StatType::kAllocationBytes, 256},
+                {StatType::kAddress, 222333},
+                {StatType::kStepId, 0},
+                {StatType::kDataType, 0},
+                {StatType::kAllocatorName, "GPU_0_bfc"},
+                {StatType::kRegionType, ""},
+                {StatType::kTensorShapes, ""}});
 
-  CreateXEventWithIntAndStringViewMetadataValue(
-      &host_plane_builder, &tf_executor_thread, "MemoryAllocation", 70000, 1000,
-      {{StatType::kBytesReserved, 2000},
-       {StatType::kBytesAllocated, 5000},
-       {StatType::kBytesAvailable, 3000},
-       {StatType::kPeakBytesInUse, 9500},
-       {StatType::kRequestedBytes, 300},
-       {StatType::kAllocationBytes, 300},
-       {StatType::kAddress, 345678},
-       {StatType::kStepId, -93746},
-       {StatType::kDataType, 9}},
-      {{StatType::kAllocatorName, "GPU_0_bfc"},
-       {StatType::kTfOp, "mul_grad/Sum"},
-       {StatType::kRegionType, "temp"},
-       {StatType::kTensorShapes, "[1, 2]"}});
+  CreateXEvent(&host_plane_builder, &tf_executor_thread, "MemoryAllocation",
+               70000, 1000,
+               {{StatType::kBytesReserved, 2000},
+                {StatType::kBytesAllocated, 5000},
+                {StatType::kBytesAvailable, 3000},
+                {StatType::kPeakBytesInUse, 9500},
+                {StatType::kRequestedBytes, 300},
+                {StatType::kAllocationBytes, 300},
+                {StatType::kAddress, 345678},
+                {StatType::kStepId, -93746},
+                {StatType::kDataType, 9},
+                {StatType::kAllocatorName, "GPU_0_bfc"},
+                {StatType::kTfOp, "mul_grad/Sum"},
+                {StatType::kRegionType, "temp"},
+                {StatType::kTensorShapes, "[1, 2]"}});
 
   MemoryProfile memory_profile = ConvertXPlaneToMemoryProfile(*host_plane);
   EXPECT_EQ(memory_profile.memory_profile_per_allocator().size(), 1);

@@ -824,6 +824,15 @@ filegroup(name="cudnn-include")
         "cuda/cuda/cuda_config.h",
     )
 
+    # Set up cuda_config.py, which is used by gen_build_info to provide
+    # static build environment info to the API
+    _tpl(
+        repository_ctx,
+        "cuda:cuda_config.py",
+        _py_tmpl_dict({}),
+        "cuda/cuda/cuda_config.py",
+    )
+
     # If cuda_configure is not configured to build with GPU support, and the user
     # attempts to build with --config=cuda, add a dummy build rule to intercept
     # this and fail with an actionable error message.
@@ -938,6 +947,7 @@ def _create_local_cuda_repository(repository_ctx):
         "crosstool:BUILD",
         "crosstool:cc_toolchain_config.bzl",
         "cuda:cuda_config.h",
+        "cuda:cuda_config.py",
     ]}
     tpl_paths["cuda:BUILD"] = _tpl_path(repository_ctx, "cuda:BUILD.windows" if is_windows(repository_ctx) else "cuda:BUILD")
     find_cuda_config_script = repository_ctx.path(Label("@org_tensorflow//third_party/gpus:find_cuda_config.py.gz.base64"))
@@ -1069,11 +1079,32 @@ def _create_local_cuda_repository(repository_ctx):
         ],
     ))
 
+    # Select the headers based on the cuDNN version (strip '64_' for Windows).
+    if cuda_config.cudnn_version.rsplit("_", 1)[0] < "8":
+        cudnn_headers = ["cudnn.h"]
+    else:
+        cudnn_headers = [
+            "cudnn_adv_infer.h",
+            "cudnn_adv_train.h",
+            "cudnn_cnn_infer.h",
+            "cudnn_cnn_train.h",
+            "cudnn_ops_infer.h",
+            "cudnn_ops_train.h",
+            "cudnn.h",
+            "cudnn_version.h",
+        ]
+
+    cudnn_srcs = []
+    cudnn_outs = []
+    for header in cudnn_headers:
+        cudnn_srcs.append(cudnn_header_dir + "/" + header)
+        cudnn_outs.append("cudnn/include/" + header)
+
     copy_rules.append(make_copy_files_rule(
         repository_ctx,
         name = "cudnn-include",
-        srcs = [cudnn_header_dir + "/cudnn.h"],
-        outs = ["cudnn/include/cudnn.h"],
+        srcs = cudnn_srcs,
+        outs = cudnn_outs,
     ))
 
     # Set up BUILD file for cuda/
@@ -1252,6 +1283,22 @@ def _create_local_cuda_repository(repository_ctx):
         },
     )
 
+    # Set up cuda_config.py, which is used by gen_build_info to provide
+    # static build environment info to the API
+    repository_ctx.template(
+        "cuda/cuda/cuda_config.py",
+        tpl_paths["cuda:cuda_config.py"],
+        _py_tmpl_dict({
+            "cuda_version": cuda_config.cuda_version,
+            "cudnn_version": cuda_config.cudnn_version,
+            "cuda_compute_capabilities": cuda_config.compute_capabilities,
+            "cpu_compiler": str(cc),
+        }),
+    )
+
+def _py_tmpl_dict(d):
+    return {"%{cuda_config}": str(d)}
+
 def _create_remote_cuda_repository(repository_ctx, remote_config_repo):
     """Creates pointers to a remotely configured repo set up to build with CUDA."""
     _tpl(
@@ -1279,6 +1326,11 @@ def _create_remote_cuda_repository(repository_ctx, remote_config_repo):
         "cuda/cuda/cuda_config.h",
         config_repo_label(remote_config_repo, "cuda:cuda/cuda_config.h"),
         {},
+    )
+    repository_ctx.template(
+        "cuda/cuda/cuda_config.py",
+        config_repo_label(remote_config_repo, "cuda:cuda/cuda_config.py"),
+        _py_tmpl_dict({}),
     )
 
     repository_ctx.template(

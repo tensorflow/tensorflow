@@ -59,6 +59,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/platform/logging.h"
@@ -752,6 +753,15 @@ static LogicalResult Verify(BiasAddGradOp op) {
   }
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// BiasAddV1Op
+//===----------------------------------------------------------------------===//
+
+void BiasAddV1Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                              MLIRContext *context) {
+  results.insert<BiasAddV1ToBiasAdd>(context);
 }
 
 //===----------------------------------------------------------------------===//
