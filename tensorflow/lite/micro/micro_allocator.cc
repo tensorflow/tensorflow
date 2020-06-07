@@ -287,7 +287,7 @@ TfLiteStatus FlatBufferIntArrayToTfLiteIntArray(
     return kTfLiteError;
   }
   ret->size = flat_array->Length();
-  for (int i = 0; i < flat_array->Length(); i++) {
+  for (int64_t i = 0; i < static_cast<int64_t>(flat_array->Length()); i++) {
     ret->data[i] = flat_array->Get(i);
   }
   *result = ret;
