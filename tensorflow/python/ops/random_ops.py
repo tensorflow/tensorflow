@@ -288,8 +288,8 @@ def random_uniform(shape,
     shape = tensor_util.shape_tensor(shape)
     # In case of [0,1) floating results, minval and maxval is unused. We do an
     # `is` comparison here since this is cheaper than isinstance or  __eq__.
-    minval_is_zero = minval is 0  # pylint: disable=literal-comparison
-    maxval_is_one = maxval is 1  # pylint: disable=literal-comparison
+    minval_is_zero = minval == 0
+    maxval_is_one = maxval == 1
     if not minval_is_zero or not maxval_is_one or dtype.is_integer:
       minval = ops.convert_to_tensor(minval, dtype=dtype, name="min")
       maxval = ops.convert_to_tensor(maxval, dtype=dtype, name="max")
