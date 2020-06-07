@@ -86,11 +86,10 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
     const int k = src_tf_shape.dim_size(dim_pair[0]);
     const int channel = weight_tf_shape.dim_size(1 - dim_pair[1]);
 
-    OP_REQUIRES(
-        ctx, k == weight_tf_shape.dim_size(dim_pair[1]),
-        errors::InvalidArgument(
-            "Matrix size-incompatible: In[0]: ", src_tf_shape.DebugString(),
-            ", In[1]: ", weight_tf_shape.DebugString()));
+    OP_REQUIRES(ctx, k == weight_tf_shape.dim_size(dim_pair[1]),
+                errors::InvalidArgument("Matrix size-incompatible: In[0]: ",
+                                        src_tf_shape.DebugString(), ", In[1]: ",
+                                        weight_tf_shape.DebugString()));
     OP_REQUIRES(ctx, bias_tensor.shape().dim_size(0) == channel,
                 errors::InvalidArgument(
                     "Must provide as many biases as the channel size: ",
@@ -159,8 +158,10 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
 
       if (IS_SRC_REORDER_NEEDED(src_md, matmul_pd, matmul_prim)) {
         src_mkl.SetUsrMem(src_md, src_data);
-        src_mkl.CheckReorderToOpMem(MEMORY_PD_WITHOUT_DATA(
-            matmul_pd.get()->PRIMITIVE_DESC_SRC, this->cpu_engine_));
+        src_mkl.CheckReorderToOpMem(
+            MEMORY_PD_WITHOUT_DATA(matmul_pd.get()->PRIMITIVE_DESC_SRC,
+                                   this->cpu_engine_),
+            ctx);
         src_data = reinterpret_cast<T*>(src_mkl.GetOpMem().get_data_handle());
       }
 
@@ -191,19 +192,23 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
           weight_data = cached_weight_data;
         } else {
           weight_mkl.SetUsrMem(weight_md, weight_data);
-          weight_mkl.CheckReorderToOpMem(MEMORY_PD_WITHOUT_DATA(
-              matmul_pd.get()->PRIMITIVE_DESC_WEIGHTS, this->cpu_engine_));
+          weight_mkl.CheckReorderToOpMem(
+              MEMORY_PD_WITHOUT_DATA(matmul_pd.get()->PRIMITIVE_DESC_WEIGHTS,
+                                     this->cpu_engine_),
+              ctx);
           weight_data =
               reinterpret_cast<T*>(weight_mkl.GetOpMem().get_data_handle());
         }
       }
-
+      std::shared_ptr<stream> cpu_stream;
+      cpu_stream.reset(CreateStream(ctx, matmul_prim->GetEngine()));
       // Execute fused matmul op.
-      matmul_prim->Execute(src_data, weight_data, bias_data, dst_data);
+      matmul_prim->Execute(src_data, weight_data, bias_data, dst_data,
+                           cpu_stream);
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ", in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                         string(e.message) + ", in file " + string(__FILE__) +
+                         ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           ctx, errors::Aborted("Operation received an exception:", error_msg));
     }
