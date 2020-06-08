@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -66,6 +67,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/annotated_traceme.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
 namespace tensorflow {
@@ -1054,10 +1056,12 @@ bool ExecutorState<PropagatorStateType>::NodeDone(
         // aborting all other execution in the step.
         abort_run = true;
 
-        // If execution has been cancelled, mark any new errors as being
-        // derived. This ensures any errors triggered by cancellation are marked
-        // as derived.
-        if (cancellation_manager_ && cancellation_manager_->IsCancelled()) {
+        // If execution has been cancelled, mark cancelled or aborted errors as
+        // being derived. Note that the original node that fails might also
+        // trigger cancellation, and here we make sure the original error is
+        // exposed to users and not buried as a derived error.
+        if (cancellation_manager_ && cancellation_manager_->IsCancelled() &&
+            (errors::IsCancelled(s) || errors::IsAborted(s))) {
           status_ = StatusGroup::MakeDerived(s);
         } else {
           status_ = s;

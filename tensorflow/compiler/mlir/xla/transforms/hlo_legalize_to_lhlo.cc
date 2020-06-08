@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -43,8 +44,8 @@ constexpr StringRef kTempBufferAttr = "temp";
 template <typename T>
 using BaseOpConversion = BufferAssignmentOpConversionPattern<T>;
 using StdReturnOpConverter =
-    NonVoidToVoidReturnOpConverter<mlir::ReturnOp, xla_lhlo::TerminatorOp,
-                                   xla_lhlo::CopyOp>;
+    BufferAssignmentReturnOpConverter<mlir::ReturnOp, xla_lhlo::TerminatorOp,
+                                      xla_lhlo::CopyOp>;
 
 Value InsertDynamicAllocAndDealloc(Location loc, Value result,
                                    Value shape_operand,
@@ -153,12 +154,77 @@ struct HloToLhloDynamicBroadcastInDimOpConverter
     auto loc = op.getLoc();
     Value resultBuffer = InsertDynamicAllocAndDealloc(
         loc, op.getResult(), op.output_dimensions(), &rewriter);
-    rewriter.create<xla_lhlo::BroadcastInDimOp>(loc, operands[0], resultBuffer,
-                                                op.broadcast_dimensions());
+
+    Value transformed_operand =
+        InsertDynamicMemrefCastOp(op, operands.front(), &rewriter);
+    rewriter.create<xla_lhlo::BroadcastInDimOp>(
+        loc, transformed_operand, resultBuffer, op.broadcast_dimensions());
 
     rewriter.replaceOp(op, {resultBuffer});
 
     return success();
+  }
+
+ private:
+  // Inserts dynamic memref to change the layout of the memref to put 0-stride
+  // and size of the target dimension if size-1 dimension expansion is
+  // necessary.
+  xla_lhlo::DynamicMemRefCastOp InsertDynamicMemrefCastOp(
+      xla_hlo::DynamicBroadcastInDimOp op, Value operand, OpBuilder* b) const {
+    auto loc = op.getLoc();
+    auto operand_type = operand.getType().cast<MemRefType>();
+    auto operand_shape = operand_type.getShape();
+
+    SmallVector<Value, 2> sizes, strides;
+    sizes.reserve(operand_shape.size());
+    strides.reserve(operand_shape.size());
+
+    Value zero = b->create<ConstantIndexOp>(loc, 0);
+    Value one = b->create<ConstantIndexOp>(loc, 1);
+    for (auto dim : llvm::enumerate(op.broadcast_dimensions())) {
+      Value broadcast_dim_value =
+          b->create<ConstantIndexOp>(loc, dim.value().getSExtValue());
+      Value result_dim_size = b->create<ExtractElementOp>(
+          loc, op.output_dimensions(), broadcast_dim_value);
+      Value operand_dim_size =
+          ShapedType::isDynamic(operand_shape[dim.index()])
+              ? b->create<DimOp>(loc, operand, dim.index()).getResult()
+              : b->create<ConstantIndexOp>(loc, operand_shape[dim.index()])
+                    .getResult();
+
+      // TODO(pifon): Revisit if this cast is needed. Maybe we can use
+      // tensor<index> for `output_dimensions` as well.
+      if (!result_dim_size.getType().isIndex()) {
+        result_dim_size =
+            b->create<IndexCastOp>(loc, result_dim_size, b->getIndexType());
+      }
+
+      // There can be two cases:
+      // 1) Operand dim == result dim => expansion is not needed => stride := 1.
+      // 2) Operand dim < result dim => expansion is needed => stride := 0.
+      Value is_expansion = b->create<CmpIOp>(loc, CmpIPredicate::slt,
+                                             operand_dim_size, result_dim_size);
+      strides.push_back(
+          b->create<mlir::SelectOp>(loc, is_expansion, zero, one));
+
+      // Size of input dim can be set to the size of the corresponding output
+      // dimension for both cases.
+      sizes.push_back(result_dim_size);
+    }
+
+    // Type-erased memref type with static rank, dynamic sizes and strides.
+    SmallVector<int64_t, 2> dynamic_layout(operand_shape.size(),
+                                           MemRefType::kDynamicStrideOrOffset);
+    SmallVector<int64_t, 2> dynamic_shape(operand_shape.size(),
+                                          MemRefType::kDynamicSize);
+    auto type_erased_memref_type = MemRefType::get(
+        dynamic_shape, operand_type.getElementType(),
+        makeStridedLinearLayoutMap(dynamic_layout,
+                                   /*offset=*/0, b->getContext()));
+
+    auto transformed_operand = b->create<xla_lhlo::DynamicMemRefCastOp>(
+        loc, type_erased_memref_type, operand, sizes, strides);
+    return transformed_operand;
   }
 };
 
@@ -281,7 +347,6 @@ class HloToLhloTensorStoreOpConverter
 //     "xla_lhlo.terminator"() : () -> ()
 //   }) : () -> ()
 //   return
-//  }
 // }
 //
 // FuncOp signature conversion example:
@@ -322,7 +387,7 @@ struct HloLegalizeToLhlo
     target.addIllegalOp<mlir::TensorLoadOp>();
     target.addIllegalOp<mlir::TensorStoreOp>();
     target.addLegalOp<ModuleTerminatorOp>();
-    target.addLegalOp<ScalarsToDimensionTensorOp>();
+    target.addLegalOp<TensorFromElementsOp>();
     target.addIllegalDialect<xla_hlo::XlaHloDialect>();
     target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
       auto inputs = op.getType().getInputs();

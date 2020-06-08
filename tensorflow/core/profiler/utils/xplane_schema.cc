@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -107,7 +108,6 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"IteratorGetNextOp::DoCompute", kIteratorGetNextOp},
       {"IteratorGetNextAsOptionalOp::DoCompute", kIteratorGetNextAsOptionalOp},
       // Virtual events for grouping.
-      {"HostTrainingLoopIteration", kHostTrainingLoopIteration},
       {"AsyncExecutorTraceContext", kAsyncExecutorTraceContext},
       // GPU related.
       {"KernelLaunch", kKernelLaunch},
@@ -147,11 +147,15 @@ const StatTypeMap& GetStatTypeMap() {
       {"region_type", kRegionType},
       {"data_type", kDataType},
       {"shape", kTensorShapes},
+      {"kpi_name", kKpiName},
+      {"kpi_value", kKpiValue},
       // XPlane semantics related.
       {"$pt", kProducerType},
       {"$ct", kConsumerType},
       {"$p", kProducerId},
       {"$c", kConsumerId},
+      {"$r", kIsRoot},
+      {"$a", kIsAsync},
       // Device trace arguments.
       {"device_id", kDeviceId},
       {"context_id", kContextId},
@@ -163,6 +167,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"stream", kStream},
       // Stats added when processing traces.
       {"group_id", kGroupId},
+      {"flow", kFlow},
       {"step_name", kStepName},
       {"level 0", kLevel0},
       {"tf_op", kTfOp},
@@ -226,6 +231,15 @@ absl::optional<int64> FindStatType(absl::string_view stat_name) {
     return *stat_type;
   }
   return absl::nullopt;
+}
+
+bool IsInternalStat(absl::optional<int64> stat_type) {
+  static const auto* const kInternalStats = new absl::flat_hash_set<int64>{
+      StatType::kKernelDetails, StatType::kLevel0,
+      StatType::kProducerType,  StatType::kProducerId,
+      StatType::kConsumerType,  StatType::kConsumerId,
+      StatType::kIsRoot,        StatType::kIsAsync};
+  return stat_type.has_value() && kInternalStats->contains(*stat_type);
 }
 
 }  // namespace profiler

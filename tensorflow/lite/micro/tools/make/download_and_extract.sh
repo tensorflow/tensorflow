@@ -90,7 +90,18 @@ patch_cifar10_dataset() {
 }
 
 build_embarc_mli() {
-  gmake -j 4 -C ${1}/lib/make TCF_FILE=${2}
+  make -j 4 -C ${1}/lib/make TCF_FILE=${2}
+}
+
+setup_zephyr() {
+  command -v virtualenv >/dev/null 2>&1 || {
+    echo >&2 "The required 'virtualenv' tool isn't installed. Try 'pip install virtualenv'."; exit 1;
+  }
+  virtualenv -p python3 ${1}/venv-zephyr
+  . ${1}/venv-zephyr/bin/activate
+  python ${1}/venv-zephyr/bin/pip install -r ${1}/scripts/requirements.txt
+  west init -m https://github.com/zephyrproject-rtos/zephyr.git
+  deactivate
 }
 
 # Main function handling the download, verify, extract, and patch process.
@@ -173,7 +184,14 @@ download_and_extract() {
   elif [[ ${action} == "patch_cifar10_dataset" ]]; then
     patch_cifar10_dataset ${dir}
   elif [[ ${action} == "build_embarc_mli" ]]; then
-    build_embarc_mli ${dir} ${action_param1}
+    if [[ "${action_param1}" == *.tcf ]]; then
+      cp ${action_param1} ${dir}/hw/arc.tcf
+      build_embarc_mli ${dir} ../../hw/arc.tcf
+    else
+      build_embarc_mli ${dir} ${action_param1}
+    fi
+  elif [[ ${action} == "setup_zephyr" ]]; then
+    setup_zephyr ${dir}
   elif [[ ${action} ]]; then
     echo "Unknown action '${action}'"
     exit 1

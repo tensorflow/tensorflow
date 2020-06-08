@@ -472,8 +472,9 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
       HloInstruction* dot);
 
   HloComputation* GetOrCreateScalarAddComputation(PrimitiveType type) {
-    if (scalar_add_computation_) {
-      return scalar_add_computation_;
+    HloComputation*& scalar_add_computation = scalar_add_computations_[type];
+    if (scalar_add_computation) {
+      return scalar_add_computation;
     }
 
     HloComputation::Builder b("scalar_add_computation");
@@ -485,9 +486,9 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
         HloInstruction::CreateParameter(1, shape, "scalar_rhs"));
     auto scalar_op = b.AddInstruction(HloInstruction::CreateBinary(
         shape, HloOpcode::kAdd, scalar_lhs, scalar_rhs));
-    scalar_add_computation_ =
+    scalar_add_computation =
         computation_->parent()->AddEmbeddedComputation(b.Build(scalar_op));
-    return scalar_add_computation_;
+    return scalar_add_computation;
   }
 
   // Tries to fold a kPad in the input or filter into the convolution
@@ -528,8 +529,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // Whether algebraic simplification has occurred.
   bool changed_ = false;
 
-  // Cached computation for adding two scalar F32.
-  HloComputation* scalar_add_computation_ = nullptr;
+  // Cached computation for adding two scalars of a given type.
+  absl::flat_hash_map<PrimitiveType, HloComputation*> scalar_add_computations_;
 
   AlgebraicSimplifier* simplifier_ = nullptr;
 };
@@ -874,28 +875,21 @@ StatusOr<bool> AlgebraicSimplifierVisitor::TrySimplifyTautologicalCompare(
     int64 constant;
   };
 
-  auto get_compare_info_helper =
-      [&](HloInstruction* lhs,
-          HloInstruction* rhs) -> absl::optional<LessThanCompareInfo> {
-    if (!Match(rhs, m::Constant().WithShape(
-                        m::Shape().IsEffectiveScalar().WithElementType(
-                            PrimitiveType::S32)))) {
-      return absl::nullopt;
-    }
-    return {LessThanCompareInfo{lhs, *rhs->literal().GetFirstInteger()}};
-  };
-
   auto get_compare_info =
       [&](HloInstruction* cmp) -> absl::optional<LessThanCompareInfo> {
     HloInstruction *lhs, *rhs;
-    if (!Match(cmp, m::Compare(m::Op(&lhs), m::Op(&rhs))
-                        .WithComparisonDirection(ComparisonDirection::kLt))) {
-      return absl::nullopt;
-    }
-    if (auto match1 = get_compare_info_helper(lhs, rhs)) {
-      return match1;
-    } else if (auto match2 = get_compare_info_helper(rhs, lhs)) {
-      return match2;
+    auto scalar_shape_matcher =
+        m::Shape().IsEffectiveScalar().WithElementType(PrimitiveType::S32);
+    if (Match(cmp, m::Compare(m::Op(&lhs),
+                              m::Constant(&rhs).WithShape(scalar_shape_matcher))
+                       .WithComparisonDirection(ComparisonDirection::kLt))) {
+      return {LessThanCompareInfo{lhs, *rhs->literal().GetFirstInteger()}};
+    } else if (Match(
+                   cmp,
+                   m::Compare(m::Constant(&lhs).WithShape(scalar_shape_matcher),
+                              m::Op(&rhs))
+                       .WithComparisonDirection(ComparisonDirection::kGt))) {
+      return {LessThanCompareInfo{rhs, *lhs->literal().GetFirstInteger()}};
     }
     return absl::nullopt;
   };
@@ -3064,6 +3058,20 @@ AlgebraicSimplifierVisitor::TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(
     return false;
   }
   HloInstruction* operand = broadcast->mutable_operand(0);
+  auto is_scalar_broadcast = [](const HloInstruction* instruction) {
+    return instruction->opcode() == HloOpcode::kBroadcast &&
+           ShapeUtil::IsScalar(instruction->operand(0)->shape());
+  };
+  auto is_equal_broadcast = [operand,
+                             broadcast](const HloInstruction* instruction) {
+    return instruction->opcode() == HloOpcode::kBroadcast &&
+           ShapeUtil::Equal(operand->shape(),
+                            instruction->operand(0)->shape()) &&
+           broadcast->dimensions() == instruction->dimensions();
+  };
+  auto is_compatible_broadcast = [&](const HloInstruction* instruction) {
+    return is_scalar_broadcast(instruction) || is_equal_broadcast(instruction);
+  };
   for (HloInstruction* user : broadcast->users()) {
     if (user->user_count() == 0 && user != computation_->root_instruction()) {
       continue;
@@ -3082,18 +3090,20 @@ AlgebraicSimplifierVisitor::TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(
       continue;
     }
 
-    // Find the unique non-scalar operand or continue if there isn't one.
-    int64 scalar_broadcast_count = 0;
+    // Check if all the operands of the user are compatible broadcasts for
+    // sinking. (They are either scalar broadcasts or broadcasts casting
+    // from/to the same shape/dimensions)
+    int64 compatible_broadcast_count = 0;
     int64 broadcast_use_count = 0;
     for (HloInstruction* user_operand : user->operands()) {
-      if (user_operand->opcode() == HloOpcode::kBroadcast &&
-          ShapeUtil::IsScalar(user_operand->operand(0)->shape())) {
-        ++scalar_broadcast_count;
+      if (is_compatible_broadcast(user_operand)) {
+        ++compatible_broadcast_count;
       } else if (broadcast == user_operand) {
         ++broadcast_use_count;
       }
     }
-    if (scalar_broadcast_count + broadcast_use_count != user->operand_count()) {
+    if (compatible_broadcast_count + broadcast_use_count !=
+        user->operand_count()) {
       continue;
     }
     std::vector<HloInstruction*> new_operands;
@@ -3101,14 +3111,24 @@ AlgebraicSimplifierVisitor::TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(
 
     Shape changed_shape;
     for (HloInstruction* user_operand : user->operands()) {
-      if (user_operand->opcode() == HloOpcode::kBroadcast &&
-          ShapeUtil::IsScalar(user_operand->operand(0)->shape())) {
-        changed_shape = ShapeUtil::ChangeElementType(
-            operand->shape(), user_operand->shape().element_type());
-        simplifier_->UpdateLayout(&changed_shape);
-        new_operands.push_back(
-            computation_->AddInstruction(HloInstruction::CreateBroadcast(
-                changed_shape, user_operand->mutable_operand(0), {})));
+      // If this is a broadcast operand that is not our original broadcast input
+      // to this function then we might need to change the input.
+      if (is_compatible_broadcast(user_operand)) {
+        // If this is a broadcast from a scalar value rewrite a broadcast from
+        // the scalar to the new shape enforced from the other broadcast
+        // operands.
+        if (is_scalar_broadcast(user_operand)) {
+          changed_shape = ShapeUtil::ChangeElementType(
+              operand->shape(), user_operand->shape().element_type());
+          simplifier_->UpdateLayout(&changed_shape);
+          new_operands.push_back(
+              computation_->AddInstruction(HloInstruction::CreateBroadcast(
+                  changed_shape, user_operand->mutable_operand(0), {})));
+        } else {
+          // For the non-scalar broadcasts we guarantee that the shape of the
+          // operand of the broadcast needs to be already a compatible shape.
+          new_operands.push_back(user_operand->mutable_operand(0));
+        }
       } else {
         CHECK_EQ(broadcast, user_operand);
         new_operands.push_back(operand);

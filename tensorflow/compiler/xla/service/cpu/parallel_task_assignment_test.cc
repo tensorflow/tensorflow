@@ -170,5 +170,26 @@ TEST_F(ParallelTaskAssignmentTest, InPlaceDynamicUpdateSliceNotParallelized) {
   EXPECT_FALSE(changed);
 }
 
+TEST_F(ParallelTaskAssignmentTest, AllReduceNotParallelized) {
+  constexpr char hlo_string[] = R"(
+  HloModule TestTaskParallel_allreduce
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    ENTRY CRS {
+      input = f32[1234567] parameter(0)
+      ROOT crs = f32[1234567] all-reduce(input), replica_groups={}, to_apply=add
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(m.get()));
+  EXPECT_FALSE(changed);
+}
+
 }  // namespace
 }  // namespace xla

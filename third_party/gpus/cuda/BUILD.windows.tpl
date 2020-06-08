@@ -85,6 +85,42 @@ cuda_header_library(
     deps = [":cuda_headers"],
 )
 
+cuda_header_library(
+    name = "cusolver_headers",
+    hdrs = [":cusolver-include"],
+    include_prefix = "third_party/gpus/cuda/include",
+    includes = ["cusolver/include"],
+    strip_include_prefix = "cusolver/include",
+    deps = [":cuda_headers"],
+)
+
+cuda_header_library(
+    name = "cufft_headers",
+    hdrs = [":cufft-include"],
+    include_prefix = "third_party/gpus/cuda/include",
+    includes = ["cufft/include"],
+    strip_include_prefix = "cufft/include",
+    deps = [":cuda_headers"],
+)
+
+cuda_header_library(
+    name = "cusparse_headers",
+    hdrs = [":cusparse-include"],
+    include_prefix = "third_party/gpus/cuda/include",
+    includes = ["cusparse/include"],
+    strip_include_prefix = "cusparse/include",
+    deps = [":cuda_headers"],
+)
+
+cuda_header_library(
+    name = "curand_headers",
+    hdrs = [":curand-include"],
+    include_prefix = "third_party/gpus/cuda/include",
+    includes = ["curand/include"],
+    strip_include_prefix = "curand/include",
+    deps = [":cuda_headers"],
+)
+
 cc_import(
     name = "cublas",
     interface_library = "cuda/lib/%{cublas_lib}",
@@ -166,6 +202,11 @@ bzl_library(
     deps = [
         "@bazel_skylib//lib:selects",
     ],
+)
+
+py_library(
+    name = "cuda_config_py",
+    srcs = ["cuda/cuda_config.py"]
 )
 
 %{copy_rules}

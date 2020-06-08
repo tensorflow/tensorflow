@@ -48,6 +48,7 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
@@ -611,6 +612,41 @@ class DistributedIteratorSingleWorkerTest(DistributedIteratorTestBase,
       self.assertNotAllEqual(first_epoch, second_epoch)
     else:
       self.assertAllEqual(first_epoch, second_epoch)
+
+  @combinations.generate(
+      combinations.combine(
+          mode=["eager"],
+          distribution=[
+              strategy_combinations.one_device_strategy,
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ]))
+  def testGetNextOptionalShape(self, distribution):
+    batch_size = 8
+    dataset = dataset_ops.DatasetV2.from_tensor_slices({
+        "feature": array_ops.ones([batch_size, 10]),
+        "label": array_ops.ones([batch_size]),
+    })
+    dataset = dataset.batch(batch_size, drop_remainder=True)
+    dist_dataset = distribution.experimental_distribute_dataset(dataset)
+    per_replica_batch_size = batch_size // distribution.num_replicas_in_sync
+
+    @def_function.function
+    def train_fn():
+      for data in dist_dataset:
+        data = nest.map_structure(distribution.experimental_local_results, data)
+        feature = data["feature"]
+        label = data["label"]
+
+        # Asser the shapes are still staic from all replicas.
+        for replica_id in range(distribution.num_replicas_in_sync):
+          self.assertEqual([per_replica_batch_size, 10],
+                           feature[replica_id].shape)
+          self.assertEqual([per_replica_batch_size], label[replica_id].shape)
+
+    train_fn()
 
 
 class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,

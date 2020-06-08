@@ -19,7 +19,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import atexit
 import collections
+import contextlib
 import enum  # pylint: disable=g-bad-import-order
 import inspect
 import os
@@ -50,6 +52,10 @@ xla_platform_names = {
     'cpu': 'Host',
     'gpu': 'CUDA',
 }
+
+
+def _interpreter_backend_factory():
+  return _xla.get_interpreter_client()
 
 
 def _cpu_backend_factory():
@@ -85,6 +91,7 @@ def _gpu_backend_factory(distributed_client=None, node_id=0):
 
 # Backend factories, keyed by user-visible name, in increasing priority order.
 _local_backend_factories = collections.OrderedDict([
+    ('interpreter', _interpreter_backend_factory),
     ('cpu', _cpu_backend_factory),
     ('gpu', _gpu_backend_factory),
 ])
@@ -401,6 +408,9 @@ def window_padding_type_to_pad_values(padding_type, lhs_dims, rhs_dims,
 XlaBuilder = _xla.XlaBuilder
 XlaComputation = _xla.XlaComputation
 FftType = _xla.FftType
+Client = _xla.Client
+Buffer = _xla.Buffer
+Executable = _xla.Executable
 
 
 def register_custom_call_target(name, fn, platform='cpu'):
@@ -656,3 +666,22 @@ def make_replica_groups(replica_groups):
         _make_replica_group_proto(group) for group in replica_groups
     ]
   return replica_groups_protos
+
+
+Traceback = _xla.Traceback
+
+
+@contextlib.contextmanager
+def tracebacks(enabled=True):
+  """Context manager that enables or disables traceback collection."""
+  saved = Traceback.enabled
+  Traceback.enabled = enabled
+  try:
+    yield
+  finally:
+    Traceback.enabled = saved
+
+
+# Perform one last garbage collection of deferred Python references. This is
+# mostly to keep ASAN happy.
+atexit.register(_xla.collect_garbage)

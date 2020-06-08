@@ -174,7 +174,6 @@ class TensorFunctionsTest(test_util.TensorFlowTestCase):
         str(error.exception))
     self.assertEqual([None, 3, 5], tensor.shape.as_list())
 
-  @test_util.run_deprecated_v1
   def testSetTensorShapeDimensionInvalid(self):
     # Tests set_tensor_shape where the shape passed in is incompatible.
     with ops.Graph().as_default():

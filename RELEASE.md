@@ -1,3 +1,16 @@
+# Release 2.3.0
+
+## Breaking Changes
+
+*   `tf.image.extract_glimpse` has been updated to correctly process the case
+    where `centered=False` and `normalized=False`. This is a breaking change as
+    the output is different from (incorrect) previous versions. Note this
+    breaking change only impacts `tf.image.extract_glimpse` and
+    `tf.compat.v2.image.extract_glimpse` API endpoints. The behavior of
+    `tf.compat.v1.image.extract_glimpse` does not change. The behavior of
+    exsiting C++ kernel `ExtractGlimpse` does not change as well, so saved
+    models will not be impacted.
+
 # Release 2.1.1
 
 ## Bug Fixes and Other Changes
@@ -77,89 +90,150 @@ Coinciding with this change, new releases of [TensorFlow's Docker images](https:
 * The current TensorFlow release now **requires** [gast](https://pypi.org/project/gast/) version 0.3.3.
 
 ## Bug Fixes and Other Changes
-* `tf.data`:
-  * Removed `autotune_algorithm` from experimental optimization options.
-* TF Core:
-  * `tf.constant` always creates CPU tensors irrespective of the current device context.
-  * Eager `TensorHandles` maintain a list of mirrors for any copies to local or remote devices. This avoids any redundant copies due to op execution.
-  * For `tf.Tensor` & `tf.Variable`, `.experimental_ref()` is no longer experimental and is available as simply `.ref()`.
-  * `pfor/vectorized_map`: Added support for vectorizing 56 more ops. Vectorizing `tf.cond` is also supported now.
-  * Set as much partial shape as we can infer statically within the gradient impl of the gather op.
-  * Gradient of `tf.while_loop` emits `StatelessWhile` op if `cond` and body functions are stateless. This allows multiple gradients while ops to run in parallel under distribution strategy.
-  * Speed up `GradientTape` in eager mode by auto-generating list of op inputs/outputs which are unused and hence not cached for gradient functions.
-  * Support `back_prop=False` in `while_v2` but mark it as deprecated.
-  * Improve error message when attempting to use `None` in data-dependent control flow.
-  * Add `RaggedTensor.numpy()`.
-  * Update `RaggedTensor.__getitem__` to preserve uniform dimensions & allow indexing into uniform dimensions.
-  * Update `tf.expand_dims` to always insert the new dimension as a non-ragged dimension.
-  * Update `tf.embedding_lookup` to use `partition_strategy` and `max_norm` when `ids` is ragged.
-  * Allow `batch_dims==rank(indices)` in `tf.gather`.
-  * Add support for bfloat16 in `tf.print`.
-* `tf.distribute`:
-  * Support `embedding_column` with variable-length input features for `MultiWorkerMirroredStrategy`.
-* `tf.keras`:
-  * Added `experimental_aggregate_gradients` argument to `tf.keras.optimizer.Optimizer.apply_gradients`. This allows custom gradient aggregation and processing aggregated gradients in custom training loop.
-  * Allow `pathlib.Path` paths for loading models via Keras API.
-* `tf.function`/AutoGraph:
-  * AutoGraph is now available in `ReplicaContext.merge_call`, `Strategy.extended.update` and `Strategy.extended.update_non_slot`.
-  * Experimental support for shape invariants has been enabled in `tf.function`. See the API docs for `tf.autograph.experimental.set_loop_options` for additonal info.
-  * AutoGraph error messages now exclude frames corresponding to APIs internal to AutoGraph.
-  * Improve shape inference for `tf.function` input arguments to unlock more Grappler optimizations in TensorFlow 2.x.
-  * Improve automatic control dependency management of resources by allowing resource reads to occur in parallel and synchronizing only on writes.
-  * Fix execution order of multiple stateful calls to `experimental_run_v2` in `tf.function`.
-  * You can now iterate over `RaggedTensors` using a for loop inside `tf.function`.
-* `tf.lite`:
-  *  Migrated the `tf.lite` C inference API out of experimental into lite/c.
-  * Add an option to disallow `NNAPI` CPU / partial acceleration on Android 10
-  * TFLite Android AARs now include the C headers and APIs are required to use TFLite from native code.
-  * Refactors the delegate and delegate kernel sources to allow usage in the linter.
-  * Limit delegated ops to actually supported ones if a device name is specified or `NNAPI` CPU Fallback is disabled.
-  * TFLite now supports `tf.math.reciprocal1` op by lowering to `tf.div op`.
-  * TFLite's unpack op now supports boolean tensor inputs.
-  * Microcontroller and embedded code moved from experimental to main TensorFlow Lite folder
-  * Check for large TFLite tensors.
-  * Fix GPU delegate crash with C++17.
-  * Add 5D support to TFLite `strided_slice`.
-  * Fix error in delegation of `DEPTH_TO_SPACE` to `NNAPI` causing op not to be accelerated.
-  * Fix segmentation fault when running a model with LSTM nodes using `NNAPI` Delegate
-  * Fix `NNAPI` delegate failure when an operand for Maximum/Minimum operation is a scalar.
-  * Fix `NNAPI` delegate failure when Axis input for reduce operation is a scalar.
-  * Expose option to limit the number of partitions that will be delegated to `NNAPI`.
-  * If a target accelerator is specified, use its feature level to determine operations to delegate instead of SDK version.
-* `tf.random`:
-  * Various random number generation improvements:
-    * Add a fast path for default `random_uniform`
-    * `random_seed` documentation improvement.
-    * `RandomBinomial` broadcasts and appends the sample shape to the left rather than the right.
-  * Added `tf.random.stateless_binomial`, `tf.random.stateless_gamma`, `tf.random.stateless_poisson`
-  * `tf.random.stateless_uniform` now supports unbounded sampling of `int` types.
-* Math and Linear Algebra:
-  * Add `tf.linalg.LinearOperatorTridiag`.
-  * Add `LinearOperatorBlockLowerTriangular`
-  * Add broadcasting support to tf.linalg.triangular_solve[#26204](https://github.com/tensorflow/tensorflow/issues/26204), tf.math.invert_permutation.
-  * Add `tf.math.sobol_sample` op.
-  * Add `tf.math.xlog1py`.
-  * Add `tf.math.special.{dawsn,expi,fresnel_cos,fresnel_sin,spence}`.
-  * Add a Modified Discrete Cosine Transform (MDCT) and its inverse to `tf.signal`.
-* TPU Enhancements:
-  * Refactor `TpuClusterResolver` to move shared logic to a separate pip package.
-  * Support configuring TPU software version from cloud tpu client.
-  * Allowed TPU embedding weight decay factor to be multiplied by learning rate.
-* XLA Support:
-  * Add standalone XLA AOT runtime target + relevant .cc sources to pip package.
-  * Add check for memory alignment to MemoryAllocation::MemoryAllocation() on 32-bit ARM. This ensures a deterministic early exit instead of a hard to debug bus error later.
-  * `saved_model_cli aot_compile_cpu` allows you to compile saved models to XLA header+object files and include them in your C++ programs.
-  * Enable `Igamma`, `Igammac` for XLA.
-* Deterministic Op Functionality:
-  * XLA reduction emitter is deterministic when the environment variable `TF_DETERMINISTIC_OPS` is set to "true" or "1". This extends deterministic `tf.nn.bias_add` back-prop functionality (and therefore also deterministic back-prop of bias-addition in Keras layers) to include when XLA JIT complilation is enabled.
-  * Fix problem, when running on a CUDA GPU and when either environment variable `TF_DETERMINSTIC_OPS` or environment variable `TF_CUDNN_DETERMINISTIC` is set to "true" or "1", in which some layer configurations led to an exception with the message "No algorithm worked!"
-* Tracing and Debugging:
-  * Add source, destination name to `_send` traceme to allow easier debugging.
-  * Add traceme event to `fastpathexecute`.
-* Other:
-  * Fix an issue with AUC.reset_states for multi-label AUC [#35852](https://github.com/tensorflow/tensorflow/issues/35852)
-  * Fix the TF upgrade script to not delete files when there is a parsing error and the output mode is `in-place`.
-  * Move `tensorflow/core:framework/*_pyclif` rules to `tensorflow/core/framework:*_pyclif`.
+
+*   `tf.data`:
+    *   Removed `autotune_algorithm` from experimental optimization options.
+*   TF Core:
+    *   `tf.constant` always creates CPU tensors irrespective of the current
+        device context.
+    *   Eager `TensorHandles` maintain a list of mirrors for any copies to local
+        or remote devices. This avoids any redundant copies due to op execution.
+    *   For `tf.Tensor` & `tf.Variable`, `.experimental_ref()` is no longer
+        experimental and is available as simply `.ref()`.
+    *   `pfor/vectorized_map`: Added support for vectorizing 56 more ops.
+        Vectorizing `tf.cond` is also supported now.
+    *   Set as much partial shape as we can infer statically within the gradient
+        impl of the gather op.
+    *   Gradient of `tf.while_loop` emits `StatelessWhile` op if `cond` and body
+        functions are stateless. This allows multiple gradients while ops to run
+        in parallel under distribution strategy.
+    *   Speed up `GradientTape` in eager mode by auto-generating list of op
+        inputs/outputs which are unused and hence not cached for gradient
+        functions.
+    *   Support `back_prop=False` in `while_v2` but mark it as deprecated.
+    *   Improve error message when attempting to use `None` in data-dependent
+        control flow.
+    *   Add `RaggedTensor.numpy()`.
+    *   Update `RaggedTensor.__getitem__` to preserve uniform dimensions & allow
+        indexing into uniform dimensions.
+    *   Update `tf.expand_dims` to always insert the new dimension as a
+        non-ragged dimension.
+    *   Update `tf.embedding_lookup` to use `partition_strategy` and `max_norm`
+        when `ids` is ragged.
+    *   Allow `batch_dims==rank(indices)` in `tf.gather`.
+    *   Add support for bfloat16 in `tf.print`.
+*   `tf.distribute`:
+    *   Support `embedding_column` with variable-length input features for
+        `MultiWorkerMirroredStrategy`.
+*   `tf.keras`:
+    *   Added `experimental_aggregate_gradients` argument to
+        `tf.keras.optimizer.Optimizer.apply_gradients`. This allows custom
+        gradient aggregation and processing aggregated gradients in custom
+        training loop.
+    *   Allow `pathlib.Path` paths for loading models via Keras API.
+*   `tf.function`/AutoGraph:
+    *   AutoGraph is now available in `ReplicaContext.merge_call`,
+        `Strategy.extended.update` and `Strategy.extended.update_non_slot`.
+    *   Experimental support for shape invariants has been enabled in
+        `tf.function`. See the API docs for
+        `tf.autograph.experimental.set_loop_options` for additonal info.
+    *   AutoGraph error messages now exclude frames corresponding to APIs
+        internal to AutoGraph.
+    *   Improve shape inference for `tf.function` input arguments to unlock more
+        Grappler optimizations in TensorFlow 2.x.
+    *   Improve automatic control dependency management of resources by allowing
+        resource reads to occur in parallel and synchronizing only on writes.
+    *   Fix execution order of multiple stateful calls to `experimental_run_v2`
+        in `tf.function`.
+    *   You can now iterate over `RaggedTensors` using a for loop inside
+        `tf.function`.
+*   `tf.lite`:
+    *   Migrated the `tf.lite` C inference API out of experimental into lite/c.
+    *   Add an option to disallow `NNAPI` CPU / partial acceleration on Android
+        10
+    *   TFLite Android AARs now include the C headers and APIs are required to
+        use TFLite from native code.
+    *   Refactors the delegate and delegate kernel sources to allow usage in the
+        linter.
+    *   Limit delegated ops to actually supported ones if a device name is
+        specified or `NNAPI` CPU Fallback is disabled.
+    *   TFLite now supports `tf.math.reciprocal1` op by lowering to `tf.div op`.
+    *   TFLite's unpack op now supports boolean tensor inputs.
+    *   Microcontroller and embedded code moved from experimental to main
+        TensorFlow Lite folder
+    *   Check for large TFLite tensors.
+    *   Fix GPU delegate crash with C++17.
+    *   Add 5D support to TFLite `strided_slice`.
+    *   Fix error in delegation of `DEPTH_TO_SPACE` to `NNAPI` causing op not to
+        be accelerated.
+    *   Fix segmentation fault when running a model with LSTM nodes using
+        `NNAPI` Delegate
+    *   Fix `NNAPI` delegate failure when an operand for Maximum/Minimum
+        operation is a scalar.
+    *   Fix `NNAPI` delegate failure when Axis input for reduce operation is a
+        scalar.
+    *   Expose option to limit the number of partitions that will be delegated
+        to `NNAPI`.
+    *   If a target accelerator is specified, use its feature level to determine
+        operations to delegate instead of SDK version.
+*   `tf.random`:
+    *   Various random number generation improvements:
+    *   Add a fast path for default `random_uniform`
+    *   `random_seed` documentation improvement.
+    *   `RandomBinomial` broadcasts and appends the sample shape to the left
+        rather than the right.
+    *   Added `tf.random.stateless_binomial`, `tf.random.stateless_gamma`,
+        `tf.random.stateless_poisson`
+    *   `tf.random.stateless_uniform` now supports unbounded sampling of `int`
+        types.
+*   Math and Linear Algebra:
+    *   Add `tf.linalg.LinearOperatorTridiag`.
+    *   Add `LinearOperatorBlockLowerTriangular`
+    *   Add broadcasting support to
+        tf.linalg.triangular_solve[#26204](https://github.com/tensorflow/tensorflow/issues/26204),
+        tf.math.invert_permutation.
+    *   Add `tf.math.sobol_sample` op.
+    *   Add `tf.math.xlog1py`.
+    *   Add `tf.math.special.{dawsn,expi,fresnel_cos,fresnel_sin,spence}`.
+    *   Add a Modified Discrete Cosine Transform (MDCT) and its inverse to
+        `tf.signal`.
+*   TPU Enhancements:
+    *   Refactor `TpuClusterResolver` to move shared logic to a separate pip
+        package.
+    *   Support configuring TPU software version from cloud tpu client.
+    *   Allowed TPU embedding weight decay factor to be multiplied by learning
+        rate.
+*   XLA Support:
+    *   Add standalone XLA AOT runtime target + relevant .cc sources to pip
+        package.
+    *   Add check for memory alignment to MemoryAllocation::MemoryAllocation()
+        on 32-bit ARM. This ensures a deterministic early exit instead of a hard
+        to debug bus error later.
+    *   `saved_model_cli aot_compile_cpu` allows you to compile saved models to
+        XLA header+object files and include them in your C++ programs.
+    *   Enable `Igamma`, `Igammac` for XLA.
+*   Deterministic Op Functionality:
+    *   XLA reduction emitter is deterministic when the environment variable
+        `TF_DETERMINISTIC_OPS` is set to "true" or "1". This extends
+        deterministic `tf.nn.bias_add` back-prop functionality (and therefore
+        also deterministic back-prop of bias-addition in Keras layers) to
+        include when XLA JIT compilation is enabled.
+    *   Fix problem, when running on a CUDA GPU and when either environment
+        variable `TF_DETERMINSTIC_OPS` or environment variable
+        `TF_CUDNN_DETERMINISTIC` is set to "true" or "1", in which some layer
+        configurations led to an exception with the message "No algorithm
+        worked!"
+*   Tracing and Debugging:
+    *   Add source, destination name to `_send` traceme to allow easier
+        debugging.
+    *   Add traceme event to `fastpathexecute`.
+*   Other:
+    *   Fix an issue with AUC.reset_states for multi-label AUC
+        [#35852](https://github.com/tensorflow/tensorflow/issues/35852)
+    *   Fix the TF upgrade script to not delete files when there is a parsing
+        error and the output mode is `in-place`.
+    *   Move `tensorflow/core:framework/*_pyclif` rules to
+        `tensorflow/core/framework:*_pyclif`.
 
 ## Thanks to our Contributors
 

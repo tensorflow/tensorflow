@@ -25,12 +25,15 @@ import itertools
 
 from six.moves import zip  # pylint: disable=redefined-builtin
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_layer as input_layer_module
+from tensorflow.python.keras.engine import keras_tensor
+from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.engine import training as training_lib
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.saving.saved_model import network_serialization
@@ -191,7 +194,6 @@ class Functional(training_lib.Model):
     self._layer_call_argspecs = {}
     for layer in self._layers:
       self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
-      layer._attribute_sentinel.add_parent(self._attribute_sentinel)
 
     # Build self.input_names and self.output_names.
     self._set_output_names()
@@ -358,7 +360,8 @@ class Functional(training_lib.Model):
     # by itself because it will duplicate any updates and losses in graph
     # mode by `call`ing the Layers again.
     output_tensors = self._run_internal_graph(inputs, mask=mask)
-    return nest.map_structure(lambda t: t._keras_mask, output_tensors)
+    return nest.map_structure(lambda t: getattr(t, '_keras_mask', None),
+                              output_tensors)
 
   def call(self, inputs, training=None, mask=None):
     """Calls the model on new inputs.
@@ -534,34 +537,38 @@ class Functional(training_lib.Model):
 
   def _conform_to_reference_input(self, tensor, ref_input):
     """Set shape and dtype based on `keras.Input`s."""
-    # Shape handling (only for non-CompositeTensors).
-    if isinstance(tensor, ops.Tensor) and isinstance(ref_input, ops.Tensor):
+    if isinstance(tensor, ops.Tensor):
       # Allow (None,) and (None, 1) Tensors to be passed interchangably. Use the
       # shape specified by the `keras.Input`.
-      if tensor.shape.rank is not None and ref_input.shape.rank is not None:
-        should_squeeze_last_dim = (
-            tensor.shape.rank == ref_input.shape.rank + 1 and
-            tensor.shape[-1] == 1)
-        should_expand_last_dim = (
-            tensor.shape.rank == ref_input.shape.rank - 1 and
-            ref_input.shape[-1] == 1)
-        if should_squeeze_last_dim:
+      t_shape = tensor.shape
+      t_rank = t_shape.rank
+      ref_shape = ref_input.shape
+      ref_rank = ref_shape.rank
+      if t_rank is not None and ref_rank is not None:
+        # Should squeeze last dimension.
+        # True if tensor is (BATCH, ..., 1) and reference is (BATCH, ...).
+        if (t_rank == ref_rank + 1 and t_shape[-1] == 1):
           tensor = array_ops.squeeze_v2(tensor, axis=-1)
-        elif should_expand_last_dim:
+        # Should expand last_dimension.
+        # True if tensor is (BATCH, ...) and reference is (BATCH, ..., 1).
+        elif (t_rank == ref_rank - 1 and ref_shape[-1] == 1):
           tensor = array_ops.expand_dims_v2(tensor, axis=-1)
 
-      # Add shape hints to Tensors that might have None shape dims but have
-      # shapes defined by the `keras.Input`.
-      try:
-        tensor.set_shape(tensor.shape.merge_with(ref_input.shape))
-      except ValueError:
-        logging.warning(
-            'Model was constructed with shape {} for input {}, but it was '
-            'called on an input with incompatible shape {}.'.format(
-                ref_input.shape, ref_input, tensor.shape))
+      # Add shape hints to Tensors that may have None shape dims but have shapes
+      # defined by the `keras.Input` (not applicable in eager mode).
+      if not context.executing_eagerly():
+        try:
+          tensor.set_shape(tensor.shape.merge_with(ref_input.shape))
+        except ValueError:
+          logging.warning(
+              'Model was constructed with shape {} for input {}, but it was '
+              'called on an input with incompatible shape {}.'.format(
+                  ref_input.shape, ref_input, tensor.shape))
 
-    # Dtype handling.
-    if isinstance(ref_input, (ops.Tensor, composite_tensor.CompositeTensor)):
+      # Dtype casting.
+      tensor = math_ops.cast(tensor, dtype=ref_input.dtype)
+    elif isinstance(tensor, composite_tensor.CompositeTensor):
+      # Dtype casting.
       tensor = math_ops.cast(tensor, dtype=ref_input.dtype)
 
     return tensor
@@ -724,10 +731,6 @@ class Functional(training_lib.Model):
         self._layers.append(layer)
         deferred_layers.append(layer)
         self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
-
-        # This allows the added layer to broadcast mutations to the current
-        # layer, which is necessary to ensure cache correctness.
-        layer._attribute_sentinel.add_parent(self._attribute_sentinel)
         layer_set.add(layer)
     self._handle_deferred_layer_dependencies(deferred_layers)
 
@@ -992,7 +995,8 @@ def _map_subgraph_network(inputs, outputs):
   Returns:
     A tuple of List{Node] and List[Layer].
   """
-  base_layer_utils.create_keras_history(outputs)
+  if not keras_tensor.keras_tensors_enabled():
+    base_layer_utils.create_keras_history(outputs)
   # Keep only nodes and layers in the topology between inputs and outputs.
   _, nodes_by_depth, layers, _ = _map_graph_network(inputs, outputs)
   return nest.flatten([nodes for nodes in nodes_by_depth.values()]), layers
@@ -1105,19 +1109,28 @@ def reconstruct_from_config(config, custom_objects=None, created_layers=None):
         kwargs = {}
       elif len(input_data) == 4:
         kwargs = input_data[3]
-        kwargs = _deserialize_keras_tensors(kwargs, created_layers)
+        try:
+          kwargs = _deserialize_keras_tensors(kwargs, created_layers)
+        except IndexError:
+          # Happens if keras tensors in kwargs are still unprocessed
+          add_unprocessed_node(layer, node_data)
+          return
       else:
         raise ValueError('Improperly formatted model config.')
 
-      inbound_layer = created_layers[inbound_layer_name]
-      inbound_node_index = get_node_index(inbound_layer, inbound_node_index)
+      if inbound_layer_name != node_module._CONSTANT_VALUE:
+        inbound_layer = created_layers[inbound_layer_name]
+        inbound_node_index = get_node_index(inbound_layer, inbound_node_index)
 
-      if inbound_node_index is None:
-        add_unprocessed_node(layer, node_data)
-        return
-      inbound_node = inbound_layer._inbound_nodes[inbound_node_index]
-      input_tensors.append(
-          nest.flatten(inbound_node.outputs)[inbound_tensor_index])
+        if inbound_node_index is None:
+          add_unprocessed_node(layer, node_data)
+          return
+        inbound_node = inbound_layer._inbound_nodes[inbound_node_index]
+        input_tensors.append(
+            nest.flatten(inbound_node.outputs)[inbound_tensor_index])
+      else:
+        # We received a constant w/ no Keras history attached
+        input_tensors.append(inbound_tensor_index)
     input_tensors = nest.pack_sequence_as(node_data, input_tensors)
     # Call layer on its inputs, thus creating the node
     # and building the layer if needed.

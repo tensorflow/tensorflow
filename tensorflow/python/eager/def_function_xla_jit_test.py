@@ -355,6 +355,36 @@ class DefFunctionTest(test.TestCase):
     self.assertAllClose([5.0, 5.0, 5.0], g())
     self.assertAllClose(compiled_g(), g())
 
+  def testTensorListConcatGradNestedCompile(self):
+
+    @def_function.function(experimental_compile=True)
+    def f(x):
+      ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, size=2, element_shape=[3])
+      ta = ta.write(0, 2 * x)
+      ta = ta.write(1, 3 * x)
+      return ta.concat()
+
+    @def_function.function(experimental_compile=True)
+    def g():
+      x = constant_op.constant([3.14, 2.68, 7.69])
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = f(x)
+        out = tape.gradient(y, x)
+      return out
+
+    self.assertAllClose([5.0, 5.0, 5.0], g())
+
+  def testCumsum(self):
+
+    @def_function.function(experimental_compile=True)
+    def f(x):
+      return math_ops.cumsum(x)
+
+    f64_input = constant_op.constant([1.1, 2.2, 3.3], dtype=dtypes.float64)
+    self.assertAllClose([1.1, 3.3, 6.6], f(f64_input))
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

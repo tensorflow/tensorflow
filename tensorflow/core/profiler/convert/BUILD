@@ -57,8 +57,10 @@ cc_library(
     hdrs = ["op_metrics_db_combiner.h"],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "//tensorflow/core/profiler/utils:op_metrics_db_utils",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -242,6 +244,7 @@ cc_library(
         "//tensorflow/core/profiler/utils:xplane_utils",
         "//tensorflow/core/profiler/utils:xplane_visitor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -266,7 +269,7 @@ tf_cc_test(
         "//tensorflow/core/profiler/utils:group_events",
         "//tensorflow/core/profiler/utils:xplane_builder",
         "//tensorflow/core/profiler/utils:xplane_schema",
-        "//tensorflow/core/profiler/utils:xplane_utils",
+        "//tensorflow/core/profiler/utils:xplane_test_utils",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -356,7 +359,7 @@ tf_cc_test(
         "//tensorflow/core/profiler/utils:group_events",
         "//tensorflow/core/profiler/utils:xplane_builder",
         "//tensorflow/core/profiler/utils:xplane_schema",
-        "//tensorflow/core/profiler/utils:xplane_utils",
+        "//tensorflow/core/profiler/utils:xplane_test_utils",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -454,6 +457,7 @@ tf_cc_test(
         "//tensorflow/core/profiler/utils:tf_xplane_visitor",
         "//tensorflow/core/profiler/utils:xplane_builder",
         "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_test_utils",
         "//tensorflow/core/profiler/utils:xplane_utils",
         "//tensorflow/core/profiler/utils:xplane_visitor",
         "@com_google_absl//absl/strings",
@@ -496,7 +500,7 @@ tf_cc_test(
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:xplane_builder",
         "//tensorflow/core/profiler/utils:xplane_schema",
-        "//tensorflow/core/profiler/utils:xplane_utils",
+        "//tensorflow/core/profiler/utils:xplane_test_utils",
         "@com_google_absl//absl/strings",
     ],
 )

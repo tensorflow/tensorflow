@@ -18,13 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
-import copy
 import functools
 import inspect
 import os
-import pdb
-import re
 import sys
 import textwrap
 import traceback
@@ -344,6 +340,15 @@ def _call_unconverted(f, args, kwargs, options, update_cache=True):
   return f(*args)
 
 
+def _is_of_known_loaded_module(f, module_name):
+  mod = sys.modules.get(module_name, None)
+  if mod is None:
+    return False
+  if any(v is not None for v in mod.__dict__.values() if f is v):
+    return True
+  return False
+
+
 def _is_known_loaded_type(f, module_name, entity_name):
   """Tests whether the function or method is an instance of a known type."""
   if (module_name not in sys.modules or
@@ -511,7 +516,8 @@ def converted_call(f,
   # Other built-in modules are permanently whitelisted.
   # TODO(mdan): Figure out how to do this consistently for all stdlib modules.
   if any(
-      f in m.__dict__.values() for m in (collections, pdb, copy, inspect, re)):
+      _is_of_known_loaded_module(f, m)
+      for m in ('collections', 'pdb', 'copy', 'inspect', 're')):
     logging.log(2, 'Permanently whitelisted: %s: part of builtin module', f)
     return _call_unconverted(f, args, kwargs, options)
 

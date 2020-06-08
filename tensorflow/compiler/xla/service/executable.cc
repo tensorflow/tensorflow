@@ -245,6 +245,6 @@ StatusOr<ExecutionOutput> Executable::ExecuteAsyncOnStreamWrapper(
   return return_value;
 }
 
-int64 Executable::SizeOfGeneratedCodeInBytes() { return -1; }
+int64 Executable::SizeOfGeneratedCodeInBytes() const { return -1; }
 
 }  // namespace xla

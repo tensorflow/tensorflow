@@ -765,6 +765,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
     case HloOpcode::kClz:
+    case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kCopy:
     case HloOpcode::kCopyStart:
     case HloOpcode::kCopyDone:
@@ -938,7 +939,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
           split_dimension));
       break;
     }
-    case HloOpcode::kCollectivePermute: {
+    case HloOpcode::kCollectivePermute:
+    case HloOpcode::kCollectivePermuteStart: {
       optional<std::vector<std::vector<int64>>> source_targets;
       attrs["source_target_pairs"] = {
           /*required=*/true, AttrTy::kBracedInt64ListList, &source_targets};
@@ -957,9 +959,19 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
         pairs[i].first = (*source_targets)[i][0];
         pairs[i].second = (*source_targets)[i][1];
       }
-      instruction =
-          builder->AddInstruction(HloInstruction::CreateCollectivePermute(
-              shape, operands[0], pairs, channel_id));
+      if (opcode == HloOpcode::kCollectivePermute) {
+        instruction =
+            builder->AddInstruction(HloInstruction::CreateCollectivePermute(
+                shape, operands[0], pairs, channel_id));
+      } else if (opcode == HloOpcode::kCollectivePermuteStart) {
+        instruction = builder->AddInstruction(
+            HloInstruction::CreateCollectivePermuteStart(shape, operands[0],
+                                                         pairs, channel_id));
+      } else {
+        LOG(FATAL) << "Expect opcode to be CollectivePermute or "
+                      "CollectivePermuteStart, but got "
+                   << HloOpcodeString(opcode);
+      }
       break;
     }
     case HloOpcode::kReplicaId: {

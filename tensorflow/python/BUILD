@@ -32,7 +32,7 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_build_info_genrule")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_proto_library_py", "tf_protos_grappler")  # @unused
-load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additional_plugin_deps", "tf_additional_xla_deps_py")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additional_plugin_deps", "tf_additional_profiler_deps", "tf_additional_xla_deps_py")
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 load(
     "//third_party/ngraph:build_defs.bzl",
@@ -56,6 +56,7 @@ visibility = [
     "//third_party/py/tf_slim:__subpackages__",
     # TODO(aselle): to pass open source test.
     "//bazel_pip/tensorflow/lite/toco/python:__pkg__",
+    "//third_party/py/tensorflow_docs:__subpackages__",
 ]
 
 package(
@@ -222,6 +223,7 @@ py_library(
         "//tensorflow/python/ops/linalg",
         "//tensorflow/python/ops/linalg/sparse",
         "//tensorflow/python/ops/losses",
+        "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/ops/parallel_for",
         "//tensorflow/python/ops/ragged",
         "//tensorflow/python/ops/signal",
@@ -235,6 +237,21 @@ py_library(
         "//tensorflow/python/tpu:tpu_noestimator",
         "//tensorflow/python/types",
         "//third_party/py/numpy",
+    ],
+)
+
+# This target should only be used for API generation.
+py_library(
+    name = "modules_with_exports",
+    srcs = ["modules_with_exports.py"],
+    srcs_version = "PY2AND3",
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow/python/tools/api/generator:__pkg__",
+        "//third_party/py/tensorflow_core:__subpackages__",
+    ],
+    deps = [
+        ":no_contrib",
     ],
 )
 
@@ -268,6 +285,7 @@ py_library(
     deps = [
         ":_pywrap_util_port",
         ":lib",
+        ":platform_build_info",
         ":pywrap_tfe",
         ":util",
         "//tensorflow/core:protos_all_py",
@@ -320,6 +338,24 @@ tf_py_test(
     srcs = ["platform/resource_loader_test.py"],
     data = [
         "platform/resource_loader.py",
+    ],
+    python_version = "PY3",
+    tags = [
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
+        ":platform",
+        ":platform_test",
+    ],
+)
+
+tf_py_test(
+    name = "sysconfig_test",
+    size = "small",
+    srcs = ["platform/sysconfig_test.py"],
+    data = [
+        "platform/sysconfig.py",
     ],
     python_version = "PY3",
     tags = [
@@ -2210,6 +2246,21 @@ py_library(
         ":variable_scope",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
+    ],
+)
+
+py_test(
+    name = "ops/functional_ops_test",
+    srcs = ["ops/functional_ops_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":dtypes",
+        ":function",
+        ":functional_ops",
+        ":tensor_spec",
+        "//tensorflow/python/eager:def_function",
     ],
 )
 
@@ -5079,6 +5130,21 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "math_ops_linspace_test",
+    size = "medium",
+    srcs = ["ops/math_ops_linspace_test.py"],
+    python_version = "PY3",
+    tags = ["no_windows_gpu"],
+    deps = [
+        ":framework_for_generated_wrappers",
+        ":framework_test_lib",
+        ":math_ops",
+        ":platform_test",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
     name = "nn_batchnorm_test",
     size = "medium",
     srcs = ["ops/nn_batchnorm_test.py"],
@@ -5121,8 +5187,6 @@ cuda_py_test(
     srcs = ["ops/nn_test.py"],
     python_version = "PY3",
     tags = ["no_windows"],
-    # TODO(b/130689556): Numerical differences due to fast math on CPU.
-    xla_enable_strict_auto_jit = False,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -5297,6 +5361,7 @@ py_library(
         ":variable_scope",
         ":variables",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/data/experimental/service:server_lib",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:distribute_coordinator_context",
         "//tensorflow/python/distribute:distribute_lib",
@@ -5967,7 +6032,8 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/util/tensor_bundle",
         "//tensorflow/compiler/mlir/python:mlir",
     ] + (tf_additional_lib_deps() +
-         tf_additional_plugin_deps()) + if_ngraph([
+         tf_additional_plugin_deps() +
+         tf_additional_profiler_deps()) + if_ngraph([
         "@ngraph_tf//:ngraph_tf",
     ]) + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",

@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl_delegate.h"
 
+#include <EGL/egl.h>
+#include <GLES3/gl31.h>
+
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
@@ -22,8 +25,6 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include <EGL/egl.h>
-#include <GLES3/gl31.h>
 #include "absl/types/span.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/common.h"

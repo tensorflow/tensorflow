@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/delegates/status.h"
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/minimal_logging.h"
@@ -70,6 +71,17 @@ TfLiteQuantization GetQuantizationFromLegacy(
 
   return quantization;
 }
+
+// TODO(b/153131797): We have put 'delegate_status' to 0 in the following macro
+// temporarily because delegate-specific error codes are either not retrievable
+// at the moment, which we will add later.
+#define TF_LITE_ENSURE_STATUS_WITH_SCOPED_INSTRUMENTATION(runtime_event, a) \
+  do {                                                                      \
+    TfLiteStatus status = (a);                                              \
+    runtime_event.set_runtime_status(/*delegate_status=*/0,                 \
+                                     static_cast<int64_t>(status));         \
+    TF_LITE_ENSURE_STATUS(status);                                          \
+  } while (0)
 
 }  // namespace
 
@@ -210,11 +222,15 @@ TfLiteStatus Interpreter::ReleaseNonPersistentMemory() {
 }
 
 TfLiteStatus Interpreter::Invoke() {
-  TF_LITE_ENSURE_STATUS(primary_subgraph().Invoke());
+  ScopedRuntimeInstrumentationProfile scoped_runtime_event(installed_profiler_,
+                                                           "invoke");
+  TF_LITE_ENSURE_STATUS_WITH_SCOPED_INSTRUMENTATION(
+      scoped_runtime_event, primary_subgraph().Invoke());
 
   if (!allow_buffer_handle_output_) {
     for (int tensor_index : outputs()) {
-      TF_LITE_ENSURE_STATUS(
+      TF_LITE_ENSURE_STATUS_WITH_SCOPED_INSTRUMENTATION(
+          scoped_runtime_event,
           primary_subgraph().EnsureTensorDataIsReadable(tensor_index));
     }
   }
@@ -310,6 +326,8 @@ void Interpreter::SetCancellationFunction(void* data,
   }
 }
 
+bool Interpreter::IsCancelled() { return primary_subgraph().IsCancelled(); }
+
 TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   TfLiteStatus status = kTfLiteOk;
   for (auto& subgraph : subgraphs_) {
@@ -339,6 +357,8 @@ TfLiteStatus Interpreter::RemoveAllDelegates() {
   }
   return kTfLiteOk;
 }
+
+bool Interpreter::HasDelegates() { return primary_subgraph().HasDelegates(); }
 
 TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,
                                           TfLiteBufferHandle buffer_handle,
@@ -377,18 +397,21 @@ void Interpreter::SetProfiler(Profiler* profiler) {
   // Release resources occupied by owned_profiler_ which is replaced by
   // caller-owned profiler.
   owned_profiler_.reset(nullptr);
-  SetSubgraphProfiler(profiler);
+  installed_profiler_ = profiler;
+  SetSubgraphProfiler();
 }
 
 void Interpreter::SetProfiler(std::unique_ptr<Profiler> profiler) {
   owned_profiler_ = std::move(profiler);
-  SetSubgraphProfiler(owned_profiler_.get());
+  installed_profiler_ = owned_profiler_.get();
+  SetSubgraphProfiler();
 }
 
-void Interpreter::SetSubgraphProfiler(Profiler* profiler) {
+void Interpreter::SetSubgraphProfiler() {
   for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
        ++subgraph_index) {
-    subgraphs_[subgraph_index]->SetProfiler(profiler, subgraph_index);
+    subgraphs_[subgraph_index]->SetProfiler(installed_profiler_,
+                                            subgraph_index);
   }
 }
 

@@ -59,6 +59,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/platform/logging.h"
@@ -752,6 +753,15 @@ static LogicalResult Verify(BiasAddGradOp op) {
   }
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// BiasAddV1Op
+//===----------------------------------------------------------------------===//
+
+void BiasAddV1Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                              MLIRContext *context) {
+  results.insert<BiasAddV1ToBiasAdd>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1661,10 +1671,16 @@ void FillOp::build(OpBuilder &builder, OperationState &result, Value dims,
 OpFoldResult FillOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.size() == 2 && "fill op has two operand");
 
+  auto type = getType().cast<ShapedType>();
+  // DenseElementsAttr that is used in this folder only supports int and float
+  // types.
+  // TODO(hinsu): Handle complex types once there is a attribute kind for
+  // complex.
+  if (!type.getElementType().isIntOrFloat()) return {};
+
   auto value = operands[1].dyn_cast_or_null<ElementsAttr>();
   if (!value) return {};
 
-  auto type = getType().cast<ShapedType>();
   if (type.hasStaticShape())
     return DenseElementsAttr::get(type, value.getValue({}));
 
@@ -1815,72 +1831,126 @@ static LogicalResult Verify(GatherV2Op op) {
 
 static LogicalResult Verify(IfOp op) {
   auto module = op.getParentOfType<ModuleOp>();
-  auto thenFn = module.lookupSymbol<FuncOp>(op.then_branch());
-  if (!thenFn)
+  auto then_fn = module.lookupSymbol<FuncOp>(op.then_branch());
+  if (!then_fn)
     return op.emitOpError("then_branch refers to an undefined function : ")
            << op.then_branch();
-  auto elseFn = module.lookupSymbol<FuncOp>(op.else_branch());
-  if (!elseFn)
+  auto else_fn = module.lookupSymbol<FuncOp>(op.else_branch());
+  if (!else_fn)
     return op.emitOpError("else_branch refers to an undefined function : ")
            << op.else_branch();
-  auto thenFuncType = thenFn.getType();
-  auto elseFuncType = elseFn.getType();
+  auto then_fn_type = then_fn.getType();
+  auto else_fn_type = else_fn.getType();
 
   // Non-conditional operands starting with the second operand are passed to
   // branches and should be pair-wise compatible with branches' inputs.
-  unsigned expectedNumInputs = op.getNumOperands() - 1;
-  if (thenFuncType.getNumInputs() != expectedNumInputs ||
-      elseFuncType.getNumInputs() != expectedNumInputs)
-    return op.emitError("branches should have " + Twine(expectedNumInputs) +
+  unsigned expected_num_inputs = op.getNumOperands() - 1;
+  if (then_fn_type.getNumInputs() != expected_num_inputs ||
+      else_fn_type.getNumInputs() != expected_num_inputs)
+    return op.emitError("branches should have " + Twine(expected_num_inputs) +
                         " inputs");
 
-  for (unsigned i = 0; i < expectedNumInputs; ++i) {
-    auto operandType = op.getOperand(i + 1).getType().cast<TensorType>();
-    auto thenInputType = thenFuncType.getInput(i).cast<TensorType>();
-    if (!AreCastCompatible({operandType, thenInputType}))
+  for (unsigned i = 0; i < expected_num_inputs; ++i) {
+    auto operand_type = op.getOperand(i + 1).getType().cast<TensorType>();
+    auto then_input_type = then_fn_type.getInput(i).cast<TensorType>();
+    if (!AreCastCompatible({operand_type, then_input_type}))
       return op.emitError(
           llvm::formatv("then branch input type {0} is incompatible with "
                         "operand type {1} at index {2}",
-                        thenInputType, operandType, i));
+                        then_input_type, operand_type, i));
 
-    auto elseInputType = elseFuncType.getInput(i).cast<TensorType>();
-    if (!AreCastCompatible({operandType, elseInputType}))
+    auto else_input_type = else_fn_type.getInput(i).cast<TensorType>();
+    if (!AreCastCompatible({operand_type, else_input_type}))
       return op.emitError(
           llvm::formatv("else branch input type {0} is incompatible with "
                         "operand type {1} at index {2}",
-                        elseInputType, operandType, i));
+                        else_input_type, operand_type, i));
 
     // If branches have incompatible input types that means that no tensor can
     // serve as input to both the functions. Hence, the op is invalid.
-    if (!AreCastCompatible({thenInputType, elseInputType}))
+    if (!AreCastCompatible({then_input_type, else_input_type}))
       return op.emitError(llvm::formatv(
           "branches inputs have incompatible types {0} and {1} at index {2}",
-          thenInputType, elseInputType, i));
+          then_input_type, else_input_type, i));
   }
 
   // Branches' results should be pair-wise compatible with the op results.
-  unsigned expectedNumResults = op.getNumResults();
-  if (thenFuncType.getNumResults() != expectedNumResults ||
-      elseFuncType.getNumResults() != expectedNumResults)
-    return op.emitError("branches should have " + Twine(expectedNumResults) +
+  unsigned expected_num_results = op.getNumResults();
+  if (then_fn_type.getNumResults() != expected_num_results ||
+      else_fn_type.getNumResults() != expected_num_results)
+    return op.emitError("branches should have " + Twine(expected_num_results) +
                         " results");
 
-  for (unsigned i = 0; i < expectedNumResults; ++i) {
-    auto resultType = op.getResult(i).getType().cast<TensorType>();
-    auto thenResultType = thenFuncType.getResult(i).cast<TensorType>();
-    if (!AreCastCompatible({thenResultType, resultType}))
+  for (unsigned i = 0; i < expected_num_results; ++i) {
+    auto result_type = op.getResult(i).getType().cast<TensorType>();
+    auto then_result_type = then_fn_type.getResult(i).cast<TensorType>();
+    if (!AreCastCompatible({then_result_type, result_type}))
       return op.emitError(
           llvm::formatv("then branch result type {0} is incompatible with op "
                         "result type {1} at index {2}",
-                        thenResultType, resultType, i));
+                        then_result_type, result_type, i));
 
-    auto elseResultType = elseFuncType.getResult(i).cast<TensorType>();
-    if (!AreCastCompatible({elseResultType, resultType}))
+    auto else_result_type = else_fn_type.getResult(i).cast<TensorType>();
+    if (!AreCastCompatible({else_result_type, result_type}))
       return op.emitError(
           llvm::formatv("else branch result type {0} is incompatible with op "
                         "result type {1} at index {2}",
-                        elseResultType, resultType, i));
+                        else_result_type, result_type, i));
   }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// YieldOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(YieldOp op) {
+  auto parent = op.getParentOp();
+  // A YieldOp should be contained within an IfRegion op
+  // (and WhileRegion in future)
+  if (!isa<IfRegionOp>(parent))
+    op.emitError() << " expects parent op "
+                   << "'" << IfRegionOp::getOperationName() << "' but got '"
+                   << parent->getName().getStringRef() << "'";
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// IfRegionOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult VerifyRegionResults(Operation *op, Region &region,
+                                  StringRef region_name) {
+  auto op_name = op->getName().getStringRef();
+  // verify that op outputs match yield inputs
+  YieldOp yield = cast<YieldOp>(region.front().getTerminator());
+  unsigned expected_num_results = op->getNumResults();
+  if (yield.getNumOperands() != expected_num_results)
+    return op->emitError(region_name + " region should have " +
+                         Twine(expected_num_results) + " results");
+
+  for (int idx : llvm::seq<int>(0, expected_num_results)) {
+    auto op_result_type = op->getResult(idx).getType().cast<TensorType>();
+    auto region_result_type =
+        yield.getOperand(idx).getType().cast<TensorType>();
+    if (!AreCastCompatible({region_result_type, op_result_type}))
+      return op->emitError(llvm::formatv(
+          "{0} result type {1} is incompatible with {2} "
+          "result type {3} at index {4}",
+          region_name, region_result_type, op_name, op_result_type, idx));
+  }
+  return success();
+}
+
+static LogicalResult Verify(IfRegionOp op) {
+  if (failed(VerifyRegionResults(op, op.then_branch(), "then")))
+    return failure();
+  if (failed(VerifyRegionResults(op, op.else_branch(), "else")))
+    return failure();
+  if (op.then_branch().front().getNumArguments() != 0)
+    return op.emitOpError() << "then region cannot have any arguments";
+  if (op.else_branch().front().getNumArguments() != 0)
+    return op.emitOpError() << "else region cannot have any arguments";
   return success();
 }
 
@@ -3831,36 +3901,37 @@ OpFoldResult VariableShapeOp::fold(ArrayRef<Attribute> operands) {
 
 static LogicalResult Verify(WhileOp op) {
   auto module = op.getParentOfType<ModuleOp>();
-  auto condFn = module.lookupSymbol<FuncOp>(op.cond());
-  auto bodyFn = module.lookupSymbol<FuncOp>(op.body());
-  if (!condFn) {
+  auto cond_fn = module.lookupSymbol<FuncOp>(op.cond());
+  auto body_fn = module.lookupSymbol<FuncOp>(op.body());
+  if (!cond_fn) {
     return op.emitOpError("cond refers to an undefined function : ")
            << op.cond();
   }
-  if (!bodyFn) {
+  if (!body_fn) {
     return op.emitOpError("body refers to an undefined function : ")
            << op.body();
   }
 
-  auto condFuncType = condFn.getType();
-  auto bodyFuncType = bodyFn.getType();
+  auto cond_fn_type = cond_fn.getType();
+  auto body_fn_type = body_fn.getType();
 
   // Verify that the cond function has exactly one result.
-  if (condFuncType.getNumResults() != 1)
+  if (cond_fn_type.getNumResults() != 1)
     return op.emitOpError("requires cond function to have exactly one result");
 
   SmallVector<Type, 4> operands(op.getOperandTypes());
 
   // Collect all the type lists for the op so that different pairs of type lists
   // can be compared for the compatibility.
-  int numTypeLists = 5;
-  std::pair<std::string, ArrayRef<Type>> typeLists[] = {
-      {"operand", operands},
-      {"body function result", bodyFuncType.getResults()},
-      {"result", op.getResultTypes()},
-      {"cond function input", condFuncType.getInputs()},
-      {"body function input", bodyFuncType.getInputs()},
-  };
+  constexpr int kNumTypeLists = 5;
+  const std::array<std::pair<std::string, ArrayRef<Type>>, kNumTypeLists>
+      type_lists = {{
+          {"operand", operands},
+          {"body function result", body_fn_type.getResults()},
+          {"result", op.getResultTypes()},
+          {"cond function input", cond_fn_type.getInputs()},
+          {"body function input", body_fn_type.getInputs()},
+      }};
 
   // A pair of type lists should be cast compatible with each other if one is
   // converted to the another for a function call or assignment or there is a
@@ -3884,28 +3955,28 @@ static LogicalResult Verify(WhileOp op) {
   // never converted from one to the another nor there is a common source
   // tensors.  Compatibility requirement is not transitive.
 
-  for (int i = 0; i < numTypeLists; ++i) {
+  for (int i = 0; i < kNumTypeLists; ++i) {
     // Skip the first pair as the While op operands and body function results
     // does not need to be compatible with each other.
-    for (int j = std::max(2, i + 1); j < numTypeLists; ++j) {
-      auto &a = typeLists[i];
-      auto &b = typeLists[j];
+    for (int j = std::max(2, i + 1); j < kNumTypeLists; ++j) {
+      auto &a = type_lists[i];
+      auto &b = type_lists[j];
 
-      int aSize = a.second.size();
-      if (aSize != b.second.size())
+      int a_size = a.second.size();
+      if (a_size != b.second.size())
         return op.emitOpError(
             llvm::formatv("requires the number of {0}s to be equal to the "
                           "number of {1}s. Found {2} and {3}, respectively",
-                          a.first, b.first, aSize, b.second.size()));
+                          a.first, b.first, a_size, b.second.size()));
 
-      for (int idx = 0; idx < aSize; ++idx) {
-        auto aType = a.second[idx];
-        auto bType = b.second[idx];
+      for (int idx = 0; idx < a_size; ++idx) {
+        auto a_type = a.second[idx];
+        auto b_type = b.second[idx];
 
-        if (!AreCastCompatible({aType, bType}))
+        if (!AreCastCompatible({a_type, b_type}))
           return op.emitError(llvm::formatv(
               "{0} type {1} is incompatible with {2} type {3} at index {4}",
-              a.first, aType, b.first, bType, idx));
+              a.first, a_type, b.first, b_type, idx));
       }
     }
   }

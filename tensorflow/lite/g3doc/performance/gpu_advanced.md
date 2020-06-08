@@ -5,7 +5,7 @@ hardware accelerators. This document describes how to use the GPU backend using
 the TensorFlow Lite delegate APIs on Android (requires OpenCL or OpenGL ES 3.1
 and higher) and iOS (requires iOS 8 or later).
 
-## Benefits of GPU Acceleration
+## Benefits of GPU acceleration
 
 ### Speed
 
@@ -24,13 +24,13 @@ GPUs do their computation with 16-bit or 32-bit floating point numbers and
 decreased accuracy made quantization untenable for your models, running your
 neural network on a GPU may eliminate this concern.
 
-### Energy Efficiency
+### Energy efficiency
 
 Another benefit that comes with GPU inference is its power efficiency. A GPU
 carries out computations in a very efficient and optimized way, consuming less
 power and generating less heat than the same task run on a CPU.
 
-## Supported Ops
+## Supported ops
 
 TensorFlow Lite on GPU supports the following ops in 16-bit and 32-bit float
 precision:
@@ -63,12 +63,12 @@ By default, all ops are only supported at version 1. Enabling the
 [experimental quantization support](gpu_advanced.md#running-quantized-models-experimental-android-only)
 allows the appropriate versions; for example, ADD v2.
 
-## Basic Usage
+## Basic usage
 
 ### Android (Java)
 
 Run TensorFlow Lite on GPU with `TfLiteDelegate`. In Java, you can specify the
-GpuDelegate through `Interpreter.Options`.
+`GpuDelegate` through `Interpreter.Options`.
 
 ```java
 // NEW: Prepare GPU delegate.
@@ -167,7 +167,7 @@ then the developer must ensure that `Interpreter::Invoke()` is always called
 from the same thread in which `Interpreter::ModifyGraphWithDelegate()` was
 called.
 
-## Advanced Usage
+## Advanced usage
 
 ### Running quantized models (Experimental, Android only)
 

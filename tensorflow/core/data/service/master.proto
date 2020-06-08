@@ -98,6 +98,18 @@ message GetTasksResponse {
   bool job_finished = 2;
 }
 
+message WorkerInfo {
+  string address = 1;
+  int64 id = 2;
+}
+
+message GetWorkersRequest {}
+
+message GetWorkersResponse {
+  // A list of all workers.
+  repeated WorkerInfo workers = 1;
+}
+
 service MasterService {
   // Registers a worker with the master.
   rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerResponse);
@@ -121,4 +133,7 @@ service MasterService {
 
   // Reports a list of all tasks for a job.
   rpc GetTasks(GetTasksRequest) returns (GetTasksResponse);
+
+  // Reports a list of all workers registered with the master.
+  rpc GetWorkers(GetWorkersRequest) returns (GetWorkersResponse);
 }

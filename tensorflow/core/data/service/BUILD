@@ -98,7 +98,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/data:compression_utils",
+        "//tensorflow/core/data:dataset_proto_cc",
         "//tensorflow/core/data:standalone",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
@@ -244,6 +244,7 @@ cc_library(
     name = "server_lib",
     srcs = ["server_lib.cc"],
     hdrs = ["server_lib.h"],
+    linkstatic = True,
     visibility = [
         "//visibility:public",
     ],
@@ -252,11 +253,11 @@ cc_library(
         ":grpc_master_impl",
         ":grpc_util",
         ":grpc_worker_impl",
-        ":local_credentials_factory",
         "//tensorflow/core:lib",
         "//tensorflow/core:tensorflow",
         tf_grpc_cc_dependency(),
     ],
+    alwayslink = 1,
 )
 
 cc_library(

@@ -18,6 +18,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -118,6 +119,24 @@ void RemoveQuantizationAdaptorOps(FuncOp func) {
   func.setType(new_func_type);
 }
 
+// Remove the back-to-back quantize and dequantize ops with volatile attribute.
+struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
+  explicit RemoveVolatileOps(MLIRContext* context)
+      : OpRewritePattern<DequantizeOp>(context, 1) {}
+
+  LogicalResult matchAndRewrite(DequantizeOp op,
+                                PatternRewriter& rewriter) const override {
+    auto input_op = op.input().getDefiningOp();
+    if (auto q = llvm::dyn_cast_or_null<QuantizeOp>(input_op)) {
+      if (!q.getAttr(mlir::quant::kVolatileOpAttrName)) return failure();
+
+      op.replaceAllUsesWith(q.input());
+      return success();
+    }
+    return failure();
+  }
+};
+
 #include "tensorflow/compiler/mlir/lite/transforms/generated_post_quantize.inc"
 
 void PostQuantizePass::runOnFunction() {
@@ -131,6 +150,9 @@ void PostQuantizePass::runOnFunction() {
   if (!emit_quant_adaptor_ops_) {
     RemoveQuantizationAdaptorOps(getFunction());
   }
+
+  patterns.insert<RemoveVolatileOps>(ctx);
+  applyPatternsAndFoldGreedily(func, patterns);
 }
 
 }  // namespace

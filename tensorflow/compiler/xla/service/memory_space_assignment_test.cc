@@ -68,7 +68,7 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     return AssignMemorySpace(
         module, /*max_outstanding_async_copies=*/-1,
         MemorySpaceAssignment::GetMemoryBoundednessBufferIntervalCompare(
-            cost_analysis),
+            cost_analysis, &cache_),
         &prefetch_interval_picker);
   }
 
@@ -285,6 +285,8 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     TF_CHECK_OK(module->set_schedule(schedule));
     return module;
   }
+
+  MemorySpaceAssignmentCostAnalysis::Cache cache_;
 };
 
 TEST_P(MemorySpaceAssignmentTest, ParameterOnly) {
@@ -3778,6 +3780,52 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTest) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {param, lhs, rhs, dot});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get());
+
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 1);
+  if (!cross_program_prefetches.empty()) {
+    EXPECT_EQ(cross_program_prefetches[0].first, 0);
+    EXPECT_EQ(cross_program_prefetches[0].second, ShapeIndex({1}));
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchBitcastTest) {
+  HloComputation::Builder builder(TestName());
+
+  constexpr int kBatch = 8;
+  constexpr int kFeature = 8;
+  constexpr int kOutput = 2;
+
+  auto lhs_shape = ShapeUtil::MakeShape(F32, {kBatch, kFeature});
+  auto rhs_shape = ShapeUtil::MakeShape(F32, {kOutput, kFeature});
+  auto bitcast_shape = ShapeUtil::MakeShape(F32, {kFeature, kOutput});
+  auto result_shape = ShapeUtil::MakeShape(F32, {kBatch, kOutput});
+  auto tuple_shape = ShapeUtil::MakeTupleShape({lhs_shape, rhs_shape});
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "p0"));
+
+  auto lhs = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(lhs_shape, param, 0));
+  auto rhs = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(rhs_shape, param, 1));
+
+  auto bitcast =
+      builder.AddInstruction(HloInstruction::CreateBitcast(bitcast_shape, rhs));
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  auto dot = builder.AddInstruction(HloInstruction::CreateDot(
+      result_shape, lhs, bitcast, dot_dnums, DefaultPrecisionConfig(2)));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {param, lhs, rhs, bitcast, dot});
   TF_CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());

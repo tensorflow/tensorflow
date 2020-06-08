@@ -17,22 +17,43 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <new>
 
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/micro/memory_helpers.h"
 
 namespace tflite {
 
-SimpleMemoryAllocator* CreateInPlaceSimpleMemoryAllocator(
-    ErrorReporter* error_reporter, uint8_t* buffer, size_t buffer_size) {
+SimpleMemoryAllocator::SimpleMemoryAllocator(ErrorReporter* error_reporter,
+                                             uint8_t* buffer_head,
+                                             uint8_t* buffer_tail)
+    : error_reporter_(error_reporter),
+      buffer_head_(buffer_head),
+      buffer_tail_(buffer_tail),
+      head_(buffer_head),
+      tail_(buffer_tail) {}
+
+SimpleMemoryAllocator::SimpleMemoryAllocator(ErrorReporter* error_reporter,
+                                             uint8_t* buffer,
+                                             size_t buffer_size)
+    : SimpleMemoryAllocator(error_reporter, buffer, buffer + buffer_size) {}
+
+/* static */
+SimpleMemoryAllocator* SimpleMemoryAllocator::Create(
+    ErrorReporter* error_reporter, uint8_t* buffer_head, size_t buffer_size) {
   SimpleMemoryAllocator tmp =
-      SimpleMemoryAllocator(error_reporter, buffer, buffer_size);
-  SimpleMemoryAllocator* in_place_allocator =
-      reinterpret_cast<SimpleMemoryAllocator*>(tmp.AllocateFromTail(
-          sizeof(SimpleMemoryAllocator), alignof(SimpleMemoryAllocator)));
-  *in_place_allocator = tmp;
-  return in_place_allocator;
+      SimpleMemoryAllocator(error_reporter, buffer_head, buffer_size);
+
+  // Allocate enough bytes from the buffer to create a SimpleMemoryAllocator.
+  // The new instance will use the current adjusted tail buffer from the tmp
+  // allocator instance.
+  uint8_t* allocator_buffer = tmp.AllocateFromTail(
+      sizeof(SimpleMemoryAllocator), alignof(SimpleMemoryAllocator));
+  // Use the default copy constructor to populate internal states.
+  return new (allocator_buffer) SimpleMemoryAllocator(tmp);
 }
+
+SimpleMemoryAllocator::~SimpleMemoryAllocator() {}
 
 uint8_t* SimpleMemoryAllocator::AllocateFromHead(size_t size,
                                                  size_t alignment) {
@@ -62,6 +83,30 @@ uint8_t* SimpleMemoryAllocator::AllocateFromTail(size_t size,
   }
   tail_ = aligned_result;
   return aligned_result;
+}
+
+uint8_t* SimpleMemoryAllocator::GetHead() const { return head_; }
+
+uint8_t* SimpleMemoryAllocator::GetTail() const { return tail_; }
+
+size_t SimpleMemoryAllocator::GetHeadUsedBytes() const {
+  return head_ - buffer_head_;
+}
+
+size_t SimpleMemoryAllocator::GetTailUsedBytes() const {
+  return buffer_tail_ - tail_;
+}
+
+size_t SimpleMemoryAllocator::GetAvailableMemory() const {
+  return tail_ - head_;
+}
+
+size_t SimpleMemoryAllocator::GetUsedBytes() const {
+  return GetBufferSize() - GetAvailableMemory();
+}
+
+size_t SimpleMemoryAllocator::GetBufferSize() const {
+  return buffer_tail_ - buffer_head_;
 }
 
 }  // namespace tflite

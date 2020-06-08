@@ -107,10 +107,14 @@ def _concrete_function_callable_with(function, inputs, allow_conversion):
       if not expected.shape.is_compatible_with(arg.shape):
         return False
     elif isinstance(expected, type_spec.TypeSpec):
-      return expected.is_compatible_with(arg)
-    elif (_is_tensor(arg) and
-          id(arg) != id(expected)) or (not _is_tensor(arg) and arg != expected):
-      return False
+      if not expected.is_compatible_with(arg):
+        return False
+    elif _is_tensor(arg):
+      if id(arg) != id(expected):
+        return False
+    else:
+      if arg != expected:
+        return False
   return True
 
 

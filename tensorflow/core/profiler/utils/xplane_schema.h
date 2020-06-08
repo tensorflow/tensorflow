@@ -101,7 +101,6 @@ enum HostEventType {
   kIteratorGetNextOp,
   kIteratorGetNextAsOptionalOp,
   // Virtual events for grouping.
-  kHostTrainingLoopIteration,
   kAsyncExecutorTraceContext,
   // GPU related.
   kKernelLaunch,
@@ -139,11 +138,15 @@ enum StatType {
   kRegionType,
   kDataType,
   kTensorShapes,
+  kKpiName,
+  kKpiValue,
   // XPlane semantics related.
   kProducerType,
   kConsumerType,
   kProducerId,
   kConsumerId,
+  kIsRoot,
+  kIsAsync,
   // Device trace arguments.
   kDeviceId,
   kContextId,
@@ -155,6 +158,7 @@ enum StatType {
   kStream,
   // Stats added when processing traces.
   kGroupId,
+  kFlow,
   kStepName,
   kLevel0,
   kTfOp,
@@ -204,10 +208,39 @@ inline bool IsStatType(StatType stat_type, absl::string_view stat_name) {
 absl::optional<int64> FindStatType(absl::string_view stat_name);
 
 // Returns true if the given stat shouldn't be shown in the trace viewer.
-inline bool IsInternalStat(absl::optional<int64> stat_type) {
-  return stat_type == StatType::kKernelDetails ||
-         stat_type == StatType::kLevel0;
-}
+bool IsInternalStat(absl::optional<int64> stat_type);
+
+// Support for flow events:
+// This class enables encoding/decoding the flow id and direction, stored as
+// XStat value.
+class XFlow {
+ public:
+  enum FlowDirection {
+    kFlowUnspecified = 0x0,
+    kFlowIn = 0x1,
+    kFlowOut = 0x2,
+    kFlowInOut = 0x3,
+  };
+
+  XFlow(uint64 flow_id, FlowDirection direction)
+      : encoded_((flow_id << 2) | (direction & 0x3)) {
+    DCHECK_NE(Direction(), kFlowUnspecified);
+  }
+
+  // Encoding
+  uint64 ToStatValue() const { return encoded_; }
+
+  // Decoding
+  static XFlow FromStatValue(uint64 encoded) { return XFlow(encoded); }
+
+  uint64 Id() const { return (encoded_ >> 2); }
+  FlowDirection Direction() const { return FlowDirection(encoded_ & 0x3); }
+
+ private:
+  explicit XFlow(uint64 encoded) : encoded_(encoded) {}
+
+  uint64 encoded_;
+};
 
 }  // namespace profiler
 }  // namespace tensorflow

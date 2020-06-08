@@ -21,6 +21,25 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/xla/ir/chlo_ops.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops.td"
 
+// Check that two values can be broadcasted together
+// TODO(jpienaar): Move somewhere more general
+def AreBroadcastCompatible : Constraint<CPred<"AreBroadcastCompatible($0, $1)">,
+    "types must be broadcastable">;
+
+// Return a constant op that carries the shape of the given value.
+def ShapeToConst : NativeCodeCall<"ShapeToConst($_builder, $0)">;
+
+// Check if broadcast dimensions match Tensorflow convention.
+def IsTFStyleBroadcast : Constraint<CPred<"IsTFStyleBroadcast($0, $1)">,
+    "new dimensions are added as prefix">;
+
+// Check if broadcast dimensions do not match Tensorflow convention.
+def IsNotTFStyleBroadcast : Constraint<Neg<CPred<"IsTFStyleBroadcast($0, $1)">>,
+    "new dimensions are inserted in intermediate positions">;
+
+// Return intermediate shape before broadcasting, wrapped in a constant op.
+def ExpandedShape : NativeCodeCall<"ExpandedShape($_builder, $0, $1, $2)">;
+
 def : Pat<(HLO_ConstOp $value), (TF_ConstOp $value)>;
 
 //===----------------------------------------------------------------------===//
@@ -30,11 +49,7 @@ def : Pat<(HLO_ConstOp $value), (TF_ConstOp $value)>;
 // context, getting to these ops may require some raising.
 //===----------------------------------------------------------------------===//
 
-// Check that two values can be broadcasted together
-// TODO(jpienaar): Move somewhere more general
-def AreBroadcastCompatible : Constraint<CPred<"AreBroadcastCompatible($0, $1)">,
-    "types must be broadcastable">;
-
+// TODO(b/158025719): Properly handle broadcast_dimensions.
 foreach fromToBinPair = [[HLO_AddOp, HLOClient_BroadcastAddOp, TF_AddV2Op],
                          [HLO_DivOp, HLOClient_BroadcastDivOp, TF_DivOp],
                          [HLO_ShiftLeftOp, HLOClient_BroadcastShiftLeftOp, TF_LeftShiftOp],
@@ -77,6 +92,7 @@ def : Pat<(HLO_FloorOp (HLOClient_BroadcastDivOp $l, $r, $_)), (TF_FloorDivOp $l
           [(AreBroadcastCompatible $l, $r)]>;
 
 def : Pat<(HLO_ComplexOp $r, $i), (TF_ComplexOp $r, $i)>;
+
 //===----------------------------------------------------------------------===//
 // Unary op patterns.
 //===----------------------------------------------------------------------===//
@@ -109,9 +125,21 @@ def : Pat<(HLO_AbsOp TF_ComplexTensor:$arg), (TF_ComplexAbsOp $arg)>;
 
 def : Pat<(HLO_BroadcastOp $arg, $shape),
           (TF_BroadcastToOp $arg, (TF_ConstOp $shape))>;
+def : Pat<(HLO_BroadcastInDimOp:$output $input, $broadcast_dimensions),
+          (TF_BroadcastToOp $input, (ShapeToConst $output)),
+          [(IsTFStyleBroadcast $broadcast_dimensions, $output)]>;
+def : Pat<(HLO_BroadcastInDimOp:$output $input, $broadcast_dimensions),
+          (TF_BroadcastToOp
+              (TF_ReshapeOp
+                  $input,
+                  (ExpandedShape $input, $broadcast_dimensions, $output)),
+              (ShapeToConst $output)),
+          [(IsNotTFStyleBroadcast $broadcast_dimensions, $output)]>;
 def : Pat<(HLO_TransposeOp $arg, $permutation),
           (TF_TransposeOp $arg, (TF_ConstOp $permutation))>;
 def : Pat<(HLO_ReverseOp $op, $dims), (TF_ReverseV2Op $op, (TF_ConstOp $dims))>;
+def : Pat<(HLO_ReshapeOp:$output $input),
+          (TF_ReshapeOp $input, (ShapeToConst $output))>;
 
 //===----------------------------------------------------------------------===//
 // Ternary op patterns.
@@ -150,3 +178,9 @@ foreach pair = [[TF_GreaterEqualOp, HLO_COMPARISON_DIRECTION_GE],
             [(AreBroadcastCompatible $l, $r)]>;
   def : Pat<(HLO_CompareOp $l, $r, pair[1]), (pair[0] $l, $r)>;
 }
+
+def ConvertDotOp : NativeCodeCall<"ConvertDotOp($_builder, "
+                                               "$0.getDefiningOp())">;
+def : Pat<(HLO_DotOp:$old_value AnyStaticShapeTensor:$lhs,
+               AnyStaticShapeTensor:$rhs, $precision_config),
+          (ConvertDotOp $old_value)>;

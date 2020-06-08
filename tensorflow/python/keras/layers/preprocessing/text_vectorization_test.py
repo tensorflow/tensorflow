@@ -269,10 +269,10 @@ class TextVectorizationLayerTest(keras_parameterized.TestCase,
   def test_layer_end_to_end_with_adapt(self, vocab_data, input_data, kwargs,
                                        use_dataset, expected_output):
     cls = get_layer_class()
-    if kwargs.get("output_mode") == text_vectorization.TFIDF:
-      expected_output_dtype = dtypes.float32
-    else:
+    if kwargs.get("output_mode") == text_vectorization.INT:
       expected_output_dtype = dtypes.int64
+    else:
+      expected_output_dtype = dtypes.float32
     input_shape = input_data.shape
 
     if use_dataset:
@@ -354,6 +354,59 @@ class TextVectorizationLayerTest(keras_parameterized.TestCase,
     out = layer(input_data)
     if context.executing_eagerly():
       self.assertAllClose(out.numpy(), [[2, 3], [4, 5]])
+
+  @parameterized.named_parameters(
+      {
+          "testcase_name": "1d",
+          "data": ["0", "a", "b", "c", "d", "e", "a", "b", "c", "d", "f"],
+          "expected": [1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1]
+      },
+      {
+          "testcase_name": "2d",
+          "data": [["0", "a", "b", "c", "d"], ["e", "a", "b", "c", "d"], ["f"]],
+          "expected": [[1, 2, 3, 4, 5], [1, 2, 3, 4, 5], [1, 0, 0, 0, 0]]
+      },
+      {
+          "testcase_name":
+              "3d",
+          "data": [[["0", "a", "b"], ["c", "d"]], [["e", "a"], ["b", "c", "d"]],
+                   [["f"]]],
+          "expected": [[[1, 2, 3], [4, 5, 0]], [[1, 2, 0], [3, 4, 5]],
+                       [[1, 0, 0], [0, 0, 0]]]
+      },
+  )
+  def test_layer_dimensionality_handling(self, data, expected):
+    vocab = ["a", "b", "c", "d"]
+    vectorization = get_layer_class()(
+        max_tokens=None, standardize=None, split=None, pad_to_max_tokens=False)
+    vectorization.set_vocabulary(vocab)
+    output = vectorization(ragged_factory_ops.constant(data))
+    self.assertAllEqual(expected, output)
+
+  @parameterized.named_parameters(
+      {
+          "testcase_name": "1d",
+          "data": ["0 a b c d e a b c d f"],
+          "expected": [[1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1]]
+      },
+      {
+          "testcase_name":
+              "3d",
+          "data": [[["0 a b"], ["c d"]], [["e a"], ["b c d"]], [["f"]]],
+          "expected": [[[1, 2, 3], [4, 5, 0]], [[1, 2, 0], [3, 4, 5]],
+                       [[1, 0, 0], [0, 0, 0]]]
+      },
+  )
+  def test_layer_dimensionality_handling_with_split(self, data, expected):
+    vocab = ["a", "b", "c", "d"]
+    vectorization = get_layer_class()(
+        max_tokens=None,
+        standardize=None,
+        split=text_vectorization.SPLIT_ON_WHITESPACE,
+        pad_to_max_tokens=False)
+    vectorization.set_vocabulary(vocab)
+    output = vectorization(ragged_factory_ops.constant(data, inner_shape=(1,)))
+    self.assertAllEqual(expected, output)
 
 
 @keras_parameterized.run_all_keras_modes
@@ -580,7 +633,7 @@ class TextVectorizationPreprocessingTest(
         split=text_vectorization.SPLIT_ON_WHITESPACE,
         output_mode=None)
     with self.assertRaisesRegex(RuntimeError,
-                                ".*tokenize strings, the first dimension.*"):
+                                ".*tokenize strings, the innermost dime.*"):
       _ = layer(input_data)
 
   def test_string_splitting_with_non_1d_raggedarray_fails(self):
@@ -591,7 +644,7 @@ class TextVectorizationPreprocessingTest(
         split=text_vectorization.SPLIT_ON_WHITESPACE,
         output_mode=None)
     with self.assertRaisesRegex(RuntimeError,
-                                ".*tokenize strings, the first dimension.*"):
+                                ".*tokenize strings, the innermost dime.*"):
       _ = layer(input_data)
 
   def test_standardization_with_invalid_standardize_arg(self):
@@ -1508,6 +1561,40 @@ class TextVectorizationSavingTest(
     new_model = keras.Model.from_config(serialized_model_data)
     new_output_dataset = new_model.predict(input_array)
     self.assertAllEqual(expected_output, new_output_dataset)
+
+
+@keras_parameterized.run_all_keras_modes
+class TextVectorizationE2ETest(keras_parameterized.TestCase,
+                               preprocessing_test_utils.PreprocessingLayerTest):
+
+  def test_keras_vocab_trimming_example(self):
+    vocab_data = np.array([
+        "earth", "earth", "earth", "earth", "wind", "wind", "wind", "and",
+        "and", "fire"
+    ])
+    input_array = np.array([["earth", "wind", "and", "earth"],
+                            ["ohio", "and", "earth", "michigan"]])
+
+    # pyformat: disable
+    expected_output = [[1, 2, 1],
+                       [3, 1, 0]]
+    # pyformat: enable
+    max_tokens = 3
+    expected_output_shape = [None, max_tokens]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=max_tokens,
+        standardize=None,
+        split=None,
+        output_mode=text_vectorization.COUNT,
+        pad_to_max_tokens=True)
+    int_data = layer(input_data)
+    layer.adapt(vocab_data)
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+    model = keras.Model(input_data, int_data)
+    output = model.predict(input_array)
+    self.assertAllEqual(expected_output, output)
 
 
 if __name__ == "__main__":

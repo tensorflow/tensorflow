@@ -63,10 +63,6 @@ class ExecutionInput {
   explicit ExecutionInput(xla::Shape shape) : buffers_(std::move(shape)) {}
   explicit ExecutionInput(ShapeTree<MaybeOwningDeviceMemory> buffers)
       : buffers_(std::move(buffers)) {}
-  ExecutionInput(ShapeTree<MaybeOwningDeviceMemory> buffers,
-                 std::vector<ShapeIndex> owner_held_indices)
-      : buffers_(std::move(buffers)),
-        unowned_indices_(std::move(owner_held_indices)) {}
   ExecutionInput(ExecutionInput&&) = default;
 
   ~ExecutionInput() {
@@ -322,7 +318,7 @@ class Executable {
   // not supported by the executable.
   //
   // Does not include the size of used libraries (e.g. cuDNN, Eigen, etc.).
-  virtual int64 SizeOfGeneratedCodeInBytes();
+  virtual int64 SizeOfGeneratedCodeInBytes() const;
 
   // Dumping helpers.
   void set_hlo_proto(std::unique_ptr<xla::HloProto> hlo_proto) {

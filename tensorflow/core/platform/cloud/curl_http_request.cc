@@ -145,6 +145,8 @@ CurlHttpRequest::CurlHttpRequest(LibCurl* libcurl, Env* env)
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_NOSIGNAL, 1L));
 
   // TODO(b/74351157): Enable HTTP/2.
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_HTTP_VERSION,
+                                           CURL_HTTP_VERSION_1_1));
 
   // Set up the progress meter.
   CHECK_CURL_OK(

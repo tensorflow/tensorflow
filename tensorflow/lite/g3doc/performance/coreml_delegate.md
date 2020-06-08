@@ -1,8 +1,8 @@
-# Tensorflow Lite Core ML Delegate
+# Tensorflow Lite Core ML delegate
 
-TensorFlow Lite Core ML Delegate enables running TensorFlow Lite models on
-[Core ML framework](https://developer.apple.com/documentation/coreml),
-which results in faster model inference on iOS devices.
+The TensorFlow Lite Core ML delegate enables running TensorFlow Lite models on
+[Core ML framework](https://developer.apple.com/documentation/coreml), which
+results in faster model inference on iOS devices.
 
 Note: This delegate is in experimental (beta) phase.
 
@@ -25,13 +25,21 @@ The Core ML delegate currently supports float32 models.
 
 The Core ML delegate is already included in nightly release of TensorFlow lite
 CocoaPods. To use Core ML delegate, change your TensorFlow lite pod
-(`TensorflowLiteC` for C++ API, and `TensorFlowLiteSwift` for Swift) version to
-`0.0.1-nightly` in your `Podfile`.
+(`TensorflowLiteC` for C API, and `TensorFlowLiteSwift` for Swift) version to
+`0.0.1-nightly` in your `Podfile`, and include subspec `CoreML`
 
 ```
 target 'YourProjectName'
   # pod 'TensorFlowLiteSwift'
-  pod 'TensorFlowLiteSwift', '~> 0.0.1-nightly'
+  pod 'TensorFlowLiteSwift/CoreML', '~> 0.0.1-nightly'
+```
+
+OR
+
+```
+target 'YourProjectName'
+  # pod 'TensorFlowLiteSwift'
+  pod 'TensorFlowLiteSwift', '~> 0.0.1-nightly', :subspecs => ['CoreML']
 ```
 
 Note: After updating `Podfile`, you should run `pod update` to reflect changes.
@@ -160,7 +168,7 @@ devices using other libraries such as
 
 ### Using older Core ML version
 
-Although iOS 13 supprots Core ML 3, the model might work better when it is
+Although iOS 13 supports Core ML 3, the model might work better when it is
 converted with Core ML 2 model specification. The target conversion version is
 set to the latest version by default, but you can change this by setting
 `coreMLVersion` (in Swift, `coreml_version` in C API) in the delegate option to

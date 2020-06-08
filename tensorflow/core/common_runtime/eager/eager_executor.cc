@@ -50,7 +50,6 @@ EagerExecutor::~EagerExecutor() {
 
 Status EagerExecutor::ShutDown() {
   {
-    std::vector<core::RefCountPtr<NodeItem>> items_to_destroy;
     bool has_thread;
     Status status;
     {
@@ -71,9 +70,6 @@ Status EagerExecutor::ShutDown() {
       if (has_thread) {
         nodes_pending_.notify_all();
       }
-    }
-    for (auto& item : items_to_destroy) {
-      item->node->Abort(status);
     }
     if (!has_thread) {
       return status;

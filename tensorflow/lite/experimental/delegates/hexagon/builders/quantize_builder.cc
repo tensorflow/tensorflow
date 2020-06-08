@@ -28,17 +28,15 @@ namespace hexagon {
 TfLiteStatus QuantizeOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
                                                  const TfLiteIntArray* outputs,
                                                  TfLiteContext* context) {
-  static int scalar_shape[] = {1, 1, 1, 1};
-
   // Input.
   float input_min = 0;
   float input_max = 0;
   const auto& input_tensor = context->tensors[inputs->data[0]];
   ComputeMinAndMaxQuantValues(input_tensor, &input_min, &input_max);
   auto* input_min_const = graph_builder_->AddConstNodeWithData(
-      scalar_shape, reinterpret_cast<char*>(&input_min), sizeof(input_min));
+      kScalarShape, reinterpret_cast<char*>(&input_min), sizeof(input_min));
   auto* input_max_const = graph_builder_->AddConstNodeWithData(
-      scalar_shape, reinterpret_cast<char*>(&input_max), sizeof(input_max));
+      kScalarShape, reinterpret_cast<char*>(&input_max), sizeof(input_max));
 
   // Output.
   float output_min = 0;
@@ -51,9 +49,9 @@ TfLiteStatus QuantizeOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   GetDims(&output_batch_size, &output_height_size, &output_width_size,
           &output_depth_size, output_tensor.dims);
   auto* requantized_min_const = graph_builder_->AddConstNodeWithData(
-      scalar_shape, reinterpret_cast<char*>(&output_min), sizeof(output_min));
+      kScalarShape, reinterpret_cast<char*>(&output_min), sizeof(output_min));
   auto* requantized_max_const = graph_builder_->AddConstNodeWithData(
-      scalar_shape, reinterpret_cast<char*>(&output_max), sizeof(output_max));
+      kScalarShape, reinterpret_cast<char*>(&output_max), sizeof(output_max));
 
   AddInput(graph_builder_->GetHexagonTensorId(inputs->data[0]));
   AddInput(TensorID(input_min_const->GetID(), 0));
@@ -65,8 +63,8 @@ TfLiteStatus QuantizeOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   node_output_ = AddOutput(sizeof(uint8_t), 4,
                            {output_batch_size, output_height_size,
                             output_width_size, output_depth_size});
-  AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-  AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+  AddOutput(sizeof(float), 4, kScalarShape);
+  AddOutput(sizeof(float), 4, kScalarShape);
 
   return kTfLiteOk;
 }

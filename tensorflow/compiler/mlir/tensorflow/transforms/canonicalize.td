@@ -65,6 +65,12 @@ def BatchMatMulV2ToMatMul : Pat<(TF_BatchMatMulV2Op $x, $y, $adj_x, $adj_y),
                               (TF_MatMulOp $x, $y, $adj_x, $adj_y),
                               [(IsRank2Tensor $x), (IsRank2Tensor $y)]>;
 
+//===----------------------------------------------------------------------===//
+// BiasAddV1 op patterns.
+//===----------------------------------------------------------------------===//
+
+def BiasAddV1ToBiasAdd : Pat<(TF_BiasAddV1Op $arg0, $arg1),
+  (TF_BiasAddOp $arg0, $arg1, ConstantAttr<TF_ConvnetDataFormatAttr, "NHWC">)>;
 
 //===----------------------------------------------------------------------===//
 // Bitcast op patterns.

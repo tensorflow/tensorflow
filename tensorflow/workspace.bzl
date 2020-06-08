@@ -164,11 +164,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "0440d9ad632945f10992664be84eb0c0c76581f8474df3c124aa30350981126c",
-        strip_prefix = "XNNPACK-d9a7e85c30a2bea7b6b263f21f066a93cb2b4dee",
+        sha256 = "dfa6181e238f0ca88a641952678cd7f3e38da541d8b731ce3fea1d0eeffb6101",
+        strip_prefix = "XNNPACK-b2217ddb5fa74db09d9da1326902269ae18e41ad",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/d9a7e85c30a2bea7b6b263f21f066a93cb2b4dee.zip",
-            "https://github.com/google/XNNPACK/archive/d9a7e85c30a2bea7b6b263f21f066a93cb2b4dee.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/b2217ddb5fa74db09d9da1326902269ae18e41ad.zip",
+            "https://github.com/google/XNNPACK/archive/b2217ddb5fa74db09d9da1326902269ae18e41ad.zip",
         ],
     )
 
@@ -184,11 +184,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "pthreadpool",
-        sha256 = "c4b148fba41fc937fdf96bc195caadf0cf0be83f1c3e335ef5355934d4501f83",
-        strip_prefix = "pthreadpool-e918b206d26b1f3b2100b0edabf445c18708d2b7",
+        sha256 = "9f5fb7f87dc778d9c1d638826344b762afa23884d0252526337ae710264faef3",
+        strip_prefix = "pthreadpool-18a7156cb9be8e534acefade42e46d4209600c35",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/Maratyszcza/pthreadpool/archive/e918b206d26b1f3b2100b0edabf445c18708d2b7.zip",
-            "https://github.com/Maratyszcza/pthreadpool/archive/e918b206d26b1f3b2100b0edabf445c18708d2b7.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/Maratyszcza/pthreadpool/archive/18a7156cb9be8e534acefade42e46d4209600c35.zip",
+            "https://github.com/Maratyszcza/pthreadpool/archive/18a7156cb9be8e534acefade42e46d4209600c35.zip",
         ],
     )
 
@@ -237,11 +237,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "854eabe6817e38d7738fde6ec39c3dfc55fd5e68b2523de8cae936f391a38a69",  # SHARED_EIGEN_SHA
-        strip_prefix = "eigen-cc86a31e20b48b0f03d714b4d1b1f50d52848d36",
+        sha256 = "caee94d191b26265ceab19193d35d5176bba206407343b967a08ddafc3ebd167",  # SHARED_EIGEN_SHA
+        strip_prefix = "eigen-c2ab36f47a34e572f37e3dd556ac8a04ab769277",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/cc86a31e20b48b0f03d714b4d1b1f50d52848d36/eigen-cc86a31e20b48b0f03d714b4d1b1f50d52848d36.tar.gz",
-            "https://gitlab.com/libeigen/eigen/-/archive/cc86a31e20b48b0f03d714b4d1b1f50d52848d36/eigen-cc86a31e20b48b0f03d714b4d1b1f50d52848d36.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/c2ab36f47a34e572f37e3dd556ac8a04ab769277/eigen-c2ab36f47a34e572f37e3dd556ac8a04ab769277.tar.gz",
+            "https://gitlab.com/libeigen/eigen/-/archive/c2ab36f47a34e572f37e3dd556ac8a04ab769277/eigen-c2ab36f47a34e572f37e3dd556ac8a04ab769277.tar.gz",
         ],
     )
 
@@ -655,8 +655,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "7af0c8559b6d9426dd5e977370516d2baa4c206f"
-    LLVM_SHA256 = "4c5efbc48755f9983a8522eddd6e448f0b93e3e75a56a507c1ecb44d367db6d5"
+    LLVM_COMMIT = "c4b5a66e44f031eb89c9d6ea32b144f1169bdbae"
+    LLVM_SHA256 = "8463cbed08a66c7171c831e9549076cf3fd4f7e6fe690b9b799d6afef2465007"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),

@@ -505,8 +505,8 @@ func @floordiv_broadcast_i32(%arg0: tensor<2x3xi32>, %arg1: tensor<3xi32>) -> te
   // CHECK-DAG: [[DIV1:%.+]] = xla_chlo.broadcast_divide %arg0, %arg1 {broadcast_dimensions = dense<1> : tensor<1xi64>}
   // CHECK-DAG: [[ABS1:%.+]] = "xla_hlo.abs"(%arg0)
   // CHECK-DAG: [[ABS2:%.+]] = "xla_hlo.abs"(%arg1)
-  // CHECK-DAG: [[ZEROS3:%.+]] = xla_hlo.constant dense<1>
-  // CHECK-DAG: [[SUB:%.+]] = xla_chlo.broadcast_subtract [[ABS2]], [[ZEROS3]]
+  // CHECK-DAG: [[ONES:%.+]] = xla_hlo.constant dense<1>
+  // CHECK-DAG: [[SUB:%.+]] = xla_chlo.broadcast_subtract [[ABS2]], [[ONES]]
   // CHECK-DAG: [[ADD:%.+]] = xla_chlo.broadcast_add [[ABS1]], [[SUB]] {broadcast_dimensions = dense<1> : tensor<1xi64>}
   // CHECK-DAG: [[NEG:%.+]] = "xla_hlo.negate"([[ADD]])
   // CHECK-DAG: [[ABS3:%.+]] = "xla_hlo.abs"(%arg1)
@@ -527,8 +527,8 @@ func @floordiv_reverse_broadcast_i32(%arg0: tensor<3xi32>, %arg1: tensor<2x3xi32
   // CHECK-DAG: [[DIV1:%.+]] = xla_chlo.broadcast_divide %arg0, %arg1 {broadcast_dimensions = dense<1> : tensor<1xi64>}
   // CHECK-DAG: [[ABS1:%.+]] = "xla_hlo.abs"(%arg0)
   // CHECK-DAG: [[ABS2:%.+]] = "xla_hlo.abs"(%arg1)
-  // CHECK-DAG: [[ZEROS3:%.+]] = xla_hlo.constant dense<1>
-  // CHECK-DAG: [[SUB:%.+]] = xla_chlo.broadcast_subtract [[ABS2]], [[ZEROS3]]
+  // CHECK-DAG: [[ONES:%.+]] = xla_hlo.constant dense<1>
+  // CHECK-DAG: [[SUB:%.+]] = xla_chlo.broadcast_subtract [[ABS2]], [[ONES]]
   // CHECK-DAG: [[ADD:%.+]] = xla_chlo.broadcast_add [[ABS1]], [[SUB]] {broadcast_dimensions = dense<1> : tensor<1xi64>}
   // CHECK-DAG: [[NEG:%.+]] = "xla_hlo.negate"([[ADD]])
   // CHECK-DAG: [[ABS3:%.+]] = "xla_hlo.abs"(%arg1)
@@ -571,7 +571,22 @@ func @floordiv_f16_broadcast(%arg0: tensor<2x3xf16>, %arg1: tensor<3xf16>) -> te
 
 // CHECK-LABEL: func @floordiv_dynamic
 func @floordiv_dynamic(%arg0: tensor<?x?xi32>, %arg1: tensor<?xi32>) -> tensor<?x?xi32> {
-  // CHECK: tf.FloorDiv
+  // CHECK-DAG: [[ZEROS1:%.+]] = xla_hlo.constant dense<0>
+  // CHECK-DAG: [[CMP1:%.+]] = xla_chlo.broadcast_compare %arg0, [[ZEROS1]] {comparison_direction = "LT"}
+  // CHECK-DAG: [[ZEROS2:%.+]] = xla_hlo.constant dense<0>
+  // CHECK-DAG: [[CMP2:%.+]] = xla_chlo.broadcast_compare %arg1, [[ZEROS2]] {comparison_direction = "LT"}
+  // CHECK-DAG: [[CMP3:%.+]] = xla_chlo.broadcast_compare [[CMP1]], [[CMP2]] {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = "EQ"}
+  // CHECK-DAG: [[DIV1:%.+]] = xla_chlo.broadcast_divide %arg0, %arg1 {broadcast_dimensions = dense<1> : tensor<1xi64>}
+  // CHECK-DAG: [[ABS1:%.+]] = "xla_hlo.abs"(%arg0)
+  // CHECK-DAG: [[ABS2:%.+]] = "xla_hlo.abs"(%arg1)
+  // CHECK-DAG: [[ONES:%.+]] = xla_hlo.constant dense<1>
+  // CHECK-DAG: [[SUB:%.+]] = xla_chlo.broadcast_subtract [[ABS2]], [[ONES]]
+  // CHECK-DAG: [[ADD:%.+]] = xla_chlo.broadcast_add [[ABS1]], [[SUB]] {broadcast_dimensions = dense<1> : tensor<1xi64>}
+  // CHECK-DAG: [[NEG:%.+]] = "xla_hlo.negate"([[ADD]])
+  // CHECK-DAG: [[ABS3:%.+]] = "xla_hlo.abs"(%arg1)
+  // CHECK-DAG: [[DIV2:%.+]] = xla_chlo.broadcast_divide [[NEG]], [[ABS3]] {broadcast_dimensions = dense<1> : tensor<1xi64>}
+  // CHECK-DAG: [[SELECT:%.+]] = "xla_hlo.select"([[CMP3]], [[DIV1]], [[DIV2]])
+  // CHECK: return [[SELECT]]
   %0 = "tf.FloorDiv"(%arg0, %arg1) : (tensor<?x?xi32>, tensor<?xi32>) -> tensor<?x?xi32>
   return %0: tensor<?x?xi32>
 }
@@ -589,8 +604,8 @@ func @floormod_broadcast_numerator(%arg0: tensor<3xi32>, %arg1: tensor<2x3xi32>)
   // CHECK-DAG: [[ZL:%.+]] = xla_hlo.constant dense<0>
   // CHECK-DAG: [[CMP1:%.+]] = xla_chlo.broadcast_compare [[REM]], [[ZL]] {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = "NE"}
   // CHECK-DAG: [[ZR:%.+]] = xla_hlo.constant dense<0>
-  // CHECK-DAG: [[CMP2:%.+]] = xla_chlo.broadcast_compare %arg1, [[ZR:%.+]] {comparison_direction = "LT"}
-  // CHECK-DAG: [[CMP3:%.+]] = xla_chlo.broadcast_compare [[REM:%.+]], [[ZR]] {comparison_direction = "LT"}
+  // CHECK-DAG: [[CMP2:%.+]] = xla_chlo.broadcast_compare %arg1, [[ZR]] {comparison_direction = "LT"}
+  // CHECK-DAG: [[CMP3:%.+]] = xla_chlo.broadcast_compare [[REM]], [[ZR]] {broadcast_dimensions = dense<[]> : tensor<0xi64>, comparison_direction = "LT"}
   // CHECK-DAG: [[CMP4:%.+]] = xla_chlo.broadcast_compare [[CMP2]], [[CMP3]] {comparison_direction = "NE"}
   // CHECK-DAG: [[AND:%.+]] = xla_chlo.broadcast_and [[CMP1]], [[CMP4]]
   // CHECK-DAG: [[ADD:%.+]] = xla_chlo.broadcast_add %arg1, [[REM]]
@@ -606,8 +621,8 @@ func @floormod_broadcast_denominator(%arg0: tensor<2x3xi32>, %arg1: tensor<3xi32
   // CHECK-DAG: [[ZL:%.+]] = xla_hlo.constant dense<0>
   // CHECK-DAG: [[CMP1:%.+]] = xla_chlo.broadcast_compare [[REM]], [[ZL]] {comparison_direction = "NE"}
   // CHECK-DAG: [[ZR:%.+]] = xla_hlo.constant dense<0>
-  // CHECK-DAG: [[CMP2:%.+]] = xla_chlo.broadcast_compare %arg1, [[ZR:%.+]] {comparison_direction = "LT"}
-  // CHECK-DAG: [[CMP3:%.+]] = xla_chlo.broadcast_compare [[REM:%.+]], [[ZR]] {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = "LT"}
+  // CHECK-DAG: [[CMP2:%.+]] = xla_chlo.broadcast_compare %arg1, [[ZR]] {comparison_direction = "LT"}
+  // CHECK-DAG: [[CMP3:%.+]] = xla_chlo.broadcast_compare [[REM]], [[ZR]] {broadcast_dimensions = dense<[]> : tensor<0xi64>, comparison_direction = "LT"}
   // CHECK-DAG: [[CMP4:%.+]] = xla_chlo.broadcast_compare [[CMP2]], [[CMP3]] {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = "NE"}
   // CHECK-DAG: [[AND:%.+]] = xla_chlo.broadcast_and [[CMP1]], [[CMP4]]
   // CHECK-DAG: [[ADD:%.+]] = xla_chlo.broadcast_add %arg1, [[REM]] {broadcast_dimensions = dense<1> : tensor<1xi64>}
@@ -619,7 +634,17 @@ func @floormod_broadcast_denominator(%arg0: tensor<2x3xi32>, %arg1: tensor<3xi32
 
 // CHECK-LABEL: func @floormod_dynamic
 func @floormod_dynamic(%arg0: tensor<?x?xi32>, %arg1: tensor<?xi32>) -> tensor<?x?xi32> {
-  // CHECK: tf.FloorMod
+  // CHECK-DAG: [[REM:%.+]] = xla_chlo.broadcast_remainder %arg0, %arg1 {broadcast_dimensions = dense<1> : tensor<1xi64>}
+  // CHECK-DAG: [[ZL:%.+]] = xla_hlo.constant dense<0>
+  // CHECK-DAG: [[CMP1:%.+]] = xla_chlo.broadcast_compare [[REM]], [[ZL]] {comparison_direction = "NE"}
+  // CHECK-DAG: [[ZR:%.+]] = xla_hlo.constant dense<0>
+  // CHECK-DAG: [[CMP2:%.+]] = xla_chlo.broadcast_compare %arg1, [[ZR]] {comparison_direction = "LT"}
+  // CHECK-DAG: [[CMP3:%.+]] = xla_chlo.broadcast_compare [[REM]], [[ZR]] {broadcast_dimensions = dense<[]> : tensor<0xi64>, comparison_direction = "LT"}
+  // CHECK-DAG: [[CMP4:%.+]] = xla_chlo.broadcast_compare [[CMP2]], [[CMP3]] {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = "NE"}
+  // CHECK-DAG: [[AND:%.+]] = xla_chlo.broadcast_and [[CMP1]], [[CMP4]]
+  // CHECK-DAG: [[ADD:%.+]] = xla_chlo.broadcast_add %arg1, [[REM]] {broadcast_dimensions = dense<1> : tensor<1xi64>}
+  // CHECK-DAG: [[SELECT:%.+]] = "xla_hlo.select"([[AND]], [[ADD]], [[REM]])
+  // CHECK-NEXT: return [[SELECT]]
   %0 = "tf.FloorMod"(%arg0, %arg1) : (tensor<?x?xi32>, tensor<?xi32>) -> tensor<?x?xi32>
   return %0: tensor<?x?xi32>
 }
@@ -820,7 +845,19 @@ func @infeed_dequeue_tuple() -> (tensor<3xi32>, tensor<4xf32>) {
 func @infeed_dequeue_tuple_sharding() -> tensor<8xi32> {
   // CHECK: "xla_hlo.infeed"
   // An additional sharding is added at the end to account for token result.
-  // CHECK-SAME: xla_hlo.sharding = "type: TUPLE\0Atuple_shardings {\0A type: MAXIMAL\0A tile_assignment_dimensions: 1\0A tile_assignment_devices: 0\0A}\0Atuple_shardings {\0A type: MAXIMAL\0A tile_assignment_dimensions: 1\0A tile_assignment_devices: 0\0A}\0A"
+  // Proto debug string:
+  //   type: TUPLE
+  //   tuple_shardings {
+  //     type: MAXIMAL
+  //     tile_assignment_dimensions: 1
+  //     tile_assignment_devices: 0
+  //   }
+  //   tuple_shardings {
+  //     type: MAXIMAL
+  //     tile_assignment_dimensions: 1
+  //     tile_assignment_devices: 0
+  //   }
+  // CHECK-SAME: xla_hlo.sharding = "\08\02*\08\08\01\1A\01\01\22\01\00*\08\08\01\1A\01\01\22\01\00"
   %0 = "tf.InfeedDequeueTuple"() {_XlaSharding = "\08\02*\08\08\01\1A\01\01\22\01\00"} : () -> tensor<8xi32>
   return %0 : tensor<8xi32>
 }
@@ -1502,6 +1539,67 @@ func @rfft_1D(%arg0: tensor<8xf32>) -> tensor<8xcomplex<f32>> {
 }
 
 //===----------------------------------------------------------------------===//
+// Shape op legalization.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @shape_1D
+func @shape_1D(%arg0: tensor<?xf32>) -> tensor<1xi32> {
+  // CHECK-DAG: [[SHAPE:%.+]] = shape.shape_of %arg0
+  // CHECK-DAG: [[EXTENT:%.+]] = shape.get_extent [[SHAPE]], 0
+  // CHECK-DAG: [[TO_INDEX:%.+]] = shape.size_to_index [[EXTENT]]
+  // CHECK-DAG: [[CAST:%.+]] = index_cast [[TO_INDEX]]
+  // CHECK-DAG: [[TENSOR:%.+]] = tensor_from_elements([[CAST]])
+  // CHECK-DAG: [[RESHAPE:%.+]] = "xla_hlo.reshape"([[TENSOR]])
+  // CHECK-DAG: [[CONCAT:%.+]] = "xla_hlo.concatenate"([[RESHAPE]]) {dimension = 0 : i64}
+  %0 = "tf.Shape"(%arg0) : (tensor<?xf32>) -> tensor<1xi32>
+
+  // CHECK: return [[CONCAT]]
+  return %0 : tensor<1xi32>
+}
+
+// CHECK-LABEL: func @shape_2D
+func @shape_2D(%arg0: tensor<?x?xf32>) -> tensor<2xi32> {
+  // CHECK-DAG: [[SHAPE:%.+]] = shape.shape_of %arg0
+  // CHECK-DAG: [[EXTENT0:%.+]] = shape.get_extent [[SHAPE]], 0
+  // CHECK-DAG: [[EXTENT1:%.+]] = shape.get_extent [[SHAPE]], 1
+  // CHECK-DAG: [[TO_INDEX0:%.+]] = shape.size_to_index [[EXTENT0]]
+  // CHECK-DAG: [[TO_INDEX1:%.+]] = shape.size_to_index [[EXTENT1]]
+  // CHECK-DAG: [[CAST0:%.+]] = index_cast [[TO_INDEX0]]
+  // CHECK-DAG: [[CAST1:%.+]] = index_cast [[TO_INDEX1]]
+  // CHECK-DAG: [[TENSOR0:%.+]] = tensor_from_elements([[CAST0]])
+  // CHECK-DAG: [[TENSOR1:%.+]] = tensor_from_elements([[CAST1]])
+  // CHECK-DAG: [[RESHAPE0:%.+]] = "xla_hlo.reshape"([[TENSOR0]])
+  // CHECK-DAG: [[RESHAPE1:%.+]] = "xla_hlo.reshape"([[TENSOR1]])
+  // CHECK-DAG: [[CONCAT:%.+]] = "xla_hlo.concatenate"([[RESHAPE0]], [[RESHAPE1]]) {dimension = 0 : i64}
+  %0 = "tf.Shape"(%arg0) : (tensor<?x?xf32>) -> tensor<2xi32>
+
+  // CHECK: return [[CONCAT]]
+  return %0 : tensor<2xi32>
+}
+
+// CHECK-LABEL: func @shape_with_const
+func @shape_with_const(%arg0: tensor<?x3xf32>) -> tensor<2xi32> {
+  // CHECK-DAG: [[SHAPE:%.+]] = shape.shape_of %arg0
+  // CHECK-DAG: [[EXTENT:%.+]] = shape.get_extent [[SHAPE]], 0
+  // CHECK-DAG: [[TO_INDEX:%.+]] = shape.size_to_index [[EXTENT]]
+  // CHECK-DAG: [[CAST:%.+]] = index_cast [[TO_INDEX]]
+  // CHECK-DAG: [[TENSOR:%.+]] = tensor_from_elements([[CAST]])
+  // CHECK-DAG: [[RESHAPE:%.+]] = "xla_hlo.reshape"([[TENSOR]])
+  // CHECK-DAG: [[CONST:%.+]] = xla_hlo.constant dense<3>
+  // CHECK-DAG: [[CONCAT:%.+]] = "xla_hlo.concatenate"([[RESHAPE]], [[CONST]]) {dimension = 0 : i64}
+  %0 = "tf.Shape"(%arg0) : (tensor<?x3xf32>) -> tensor<2xi32>
+
+  // CHECK: return [[CONCAT]]
+  return %0 : tensor<2xi32>
+}
+
+// CHECK-LABEL: func @shape_rankless
+func @shape_rankless(%arg0: tensor<*xf32>) -> tensor<?xi32> {
+  %0 = "tf.Shape"(%arg0) : (tensor<*xf32>) -> tensor<?xi32>
+  return %0 : tensor<?xi32>
+}
+
+//===----------------------------------------------------------------------===//
 // Transpose op legalization.
 //===----------------------------------------------------------------------===//
 
@@ -2155,6 +2253,18 @@ func @simple_strided_slice(%input: tensor<4x8xf32>) -> tensor<3x2xf32> {
   return %output : tensor<3x2xf32>
 }
 
+// CHECK-LABEL: dynamic_strided_slice
+func @dynamic_strided_slice(%input: tensor<?x8xf32>) -> tensor<?x2xf32> {
+  %begin = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %end = "tf.Const"() {value = dense<[3, 7]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %strides = "tf.Const"() {value = dense<[1, 3]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+
+  // CHECK: "tf.StridedSlice"
+  %output = "tf.StridedSlice"(%input, %begin, %end, %strides)
+      : (tensor<?x8xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<?x2xf32>
+  return %output : tensor<?x2xf32>
+}
+
 // CHECK-LABEL: strided_slice_negative_indices
 func @strided_slice_negative_indices(%input: tensor<4x8xf32>) -> tensor<3x2xf32> {
   %begin = "tf.Const"() {value = dense<[-1, -2]> : tensor<2xi32>} : () -> (tensor<2xi32>)
@@ -2172,6 +2282,18 @@ func @strided_slice_negative_indices(%input: tensor<4x8xf32>) -> tensor<3x2xf32>
   %output = "tf.StridedSlice"(%input, %begin, %end, %strides)
       : (tensor<4x8xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x2xf32>
   return %output : tensor<3x2xf32>
+}
+
+// CHECK-LABEL: dynamic_strided_slice_negative_indices
+func @dynamic_strided_slice_negative_indices(%input: tensor<?x8xf32>) -> tensor<?x2xf32> {
+  %begin = "tf.Const"() {value = dense<[-1, -2]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %end = "tf.Const"() {value = dense<[-4, -8]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %strides = "tf.Const"() {value = dense<[-1, -3]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+
+  // CHECK: tf.StridedSlice
+  %output = "tf.StridedSlice"(%input, %begin, %end, %strides)
+      : (tensor<?x8xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<?x2xf32>
+  return %output : tensor<?x2xf32>
 }
 
 // CHECK-LABEL: strided_slice_range_clamping
@@ -2697,8 +2819,8 @@ func @any_dynamic(%input: tensor<4x?xi1>) -> tensor<4x1xi1> {
 
 // CHECK-LABEL: func @tile_by_reshape
 func @tile_by_reshape(%arg0: tensor<4x8xf32>) -> tensor<28x24xf32> {
-  // CHECK: %[[BROADCASTED:.*]] = "xla_hlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0, 2]> : tensor<2xi64>} : (tensor<4x8xf32>) -> tensor<4x7x8x3xf32>
-  // CHECK: %[[RESULT:.*]] = "xla_hlo.reshape"(%[[BROADCASTED]]) : (tensor<4x7x8x3xf32>) -> tensor<28x24xf32>
+  // CHECK: %[[BROADCASTED:.*]] = "xla_hlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[1, 3]> : tensor<2xi64>} : (tensor<4x8xf32>) -> tensor<7x4x3x8xf32>
+  // CHECK: %[[RESULT:.*]] = "xla_hlo.reshape"(%[[BROADCASTED]]) : (tensor<7x4x3x8xf32>) -> tensor<28x24xf32>
   // CHECK: return %[[RESULT]] : tensor<28x24xf32>
   %multiples = "tf.Const"() { value = dense<[7,3]> : tensor<2xi64> } : () -> tensor<2xi64>
   %0 = "tf.Tile"(%arg0, %multiples) : (tensor<4x8xf32>, tensor<2xi64>) -> tensor<28x24xf32>
@@ -2810,6 +2932,50 @@ func @range(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<5xf32> {
   // CHECK: xla_chlo.broadcast_add [[MUL]], [[START]] {broadcast_dimensions = dense<[]> : tensor<0xi64>}
   %3 = "tf.Range"(%arg0, %1, %arg1) {Tidx = "tfdtype$DT_FLOAT", device = "", name = "range"} : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<5xf32>
   return %3 : tensor<5xf32>
+}
+
+// CHECK-LABEL: func @range_dynamic
+// CHECK-SAME: [[START:%.*]]: tensor<f32>, [[DELTA:%.*]]: tensor<f32>
+func @range_dynamic(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<?xf32> {
+  // CHECK-DAG: [[SUB:%.+]] = xla_hlo.subtract %arg1, %arg0
+  // CHECK-DAG: [[ABS1:%.+]] = "xla_hlo.abs"([[SUB]])
+  // CHECK-DAG: [[CONVERT1:%.+]] = "xla_hlo.convert"([[ABS1]])
+  // CHECK-DAG: [[CONVERT2:%.+]] = "xla_hlo.convert"(%arg2)
+  // CHECK-DAG: [[DIV:%.+]] = xla_hlo.divide [[CONVERT1]], [[CONVERT2]]
+  // CHECK-DAG: [[CEIL:%.+]] = "xla_hlo.ceil"([[DIV]])
+  // CHECK-DAG: [[CONVERT3:%.+]] = "xla_hlo.convert"([[CEIL]])
+  // CHECK-DAG: [[RESHAPE:%.+]] = "xla_hlo.reshape"([[CONVERT3]])
+  // CHECK-DAG: [[IOTA:%.+]] = "xla_hlo.dynamic_iota"([[RESHAPE]]) {iota_dimension = 0 : i64}
+  // CHECK-DAG: [[CONVERT3:%.+]] = "xla_hlo.convert"(%arg0)
+  // CHECK-DAG: [[CONVERT4:%.+]] = "xla_hlo.convert"(%arg2)
+  // CHECK-DAG: [[MUL:%.+]] = xla_chlo.broadcast_multiply [[IOTA]], [[CONVERT4]] {broadcast_dimensions = dense<[]> : tensor<0xi64>}
+  // CHECK-DAG: [[ADD:%.+]] = xla_chlo.broadcast_add [[MUL]], [[CONVERT3]] {broadcast_dimensions = dense<[]> : tensor<0xi64>}
+  %2 = "tf.Range"(%arg0, %arg1, %arg2) {Tidx = "tfdtype$DT_FLOAT", device = "", name = "range"} : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<?xf32>
+
+  // CHECK: return [[ADD]]
+  return %2 : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @range_int_dynamic
+// CHECK-SAME: [[START:%.*]]: tensor<i32>, [[DELTA:%.*]]: tensor<i32>
+func @range_int_dynamic(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> tensor<?xi32> {
+  // CHECK-DAG: [[SUB:%.+]] = xla_hlo.subtract %arg1, %arg0
+  // CHECK-DAG: [[ABS1:%.+]] = "xla_hlo.abs"([[SUB]])
+  // CHECK-DAG: [[CONVERT1:%.+]] = "xla_hlo.convert"([[ABS1]])
+  // CHECK-DAG: [[CONVERT2:%.+]] = "xla_hlo.convert"(%arg2)
+  // CHECK-DAG: [[DIV:%.+]] = xla_hlo.divide [[CONVERT1]], [[CONVERT2]]
+  // CHECK-DAG: [[CEIL:%.+]] = "xla_hlo.ceil"([[DIV]])
+  // CHECK-DAG: [[CONVERT3:%.+]] = "xla_hlo.convert"([[CEIL]])
+  // CHECK-DAG: [[RESHAPE:%.+]] = "xla_hlo.reshape"([[CONVERT3]])
+  // CHECK-DAG: [[IOTA:%.+]] = "xla_hlo.dynamic_iota"([[RESHAPE]]) {iota_dimension = 0 : i64}
+  // CHECK-DAG: [[CONVERT3:%.+]] = "xla_hlo.convert"(%arg0)
+  // CHECK-DAG: [[CONVERT4:%.+]] = "xla_hlo.convert"(%arg2)
+  // CHECK-DAG: [[MUL:%.+]] = xla_chlo.broadcast_multiply [[IOTA]], [[CONVERT4]] {broadcast_dimensions = dense<[]> : tensor<0xi64>}
+  // CHECK-DAG: [[ADD:%.+]] = xla_chlo.broadcast_add [[MUL]], [[CONVERT3]] {broadcast_dimensions = dense<[]> : tensor<0xi64>}
+  %2 = "tf.Range"(%arg0, %arg1, %arg2) {Tidx = "tfdtype$DT_FLOAT", device = "", name = "range"} : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<?xi32>
+
+  // CHECK: return [[ADD]]
+  return %2 : tensor<?xi32>
 }
 
 // CHECK-LABEL: func @linspace_static

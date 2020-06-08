@@ -1,6 +1,6 @@
 """Generates cubin headers for TF dialect ops."""
 
-load("@local_config_cuda//cuda:build_defs.bzl", "cuda_gpu_architectures")
+load("@local_config_cuda//cuda:build_defs.bzl", "cuda_gpu_architectures", "if_cuda")
 
 def _lookup_file(filegroup, path):
     """Extracts file at (relative) path in filegroup."""
@@ -22,6 +22,8 @@ def _gen_kernel_image_hdr_impl(ctx):
     cubins = []
     images = []
     for arch in ctx.attr.gpu_archs:
+        # TODO(b/152737872): 'compute_' should generate both SASS and PTX.
+        arch = arch.replace("compute_", "sm_")
         filename = "%s.%s.cubin" % (name, arch)
         cubin = ctx.actions.declare_file(filename)
         ctx.actions.run(
@@ -59,12 +61,12 @@ def _gen_kernel_image_hdr_impl(ctx):
         outputs = [ctx.outputs.out],
         inputs = [fatbin],
         tools = [bin2c],
-        command = "%s --static --const --type=int --name=%s %s 1> %s" %
+        command = "%s --static --const --type=char --name=%s %s 1> %s" %
                   (bin2c.path, ctx.attr.symbol, fatbin.path, ctx.outputs.out.path),
         mnemonic = "bin2c",
     )
 
-_gen_kernel_image_hdr = rule(
+_gen_kernel_image_hdr_rule = rule(
     implementation = _gen_kernel_image_hdr_impl,
     output_to_genfiles = True,
     attrs = {
@@ -85,10 +87,10 @@ _gen_kernel_image_hdr = rule(
     },
 )
 
-def gen_kernel_image_hdr(name, op, tile_size, tags = [], same_shape = None):
+def _gen_kernel_image_hdr(name, op, tile_size, tags = [], same_shape = None):
     """Generates a C header with fatbin data from a Tensorflow op."""
     if cuda_gpu_architectures():
-        _gen_kernel_image_hdr(
+        _gen_kernel_image_hdr_rule(
             name = name,
             op = op,
             tile_size = tile_size,
@@ -98,3 +100,25 @@ def gen_kernel_image_hdr(name, op, tile_size, tags = [], same_shape = None):
             gpu_archs = cuda_gpu_architectures(),
             tags = tags,
         )
+
+def gen_kernel_library(name, op, types, tile_size, tags = [], same_shape = None):
+    if cuda_gpu_architectures():
+        type_to_dtype = {
+            "f16": "DT_HALF",
+            "f32": "DT_FLOAT",
+            "f64": "DT_DOUBLE",
+        }
+        for type in types:
+            _gen_kernel_image_hdr(
+                name = "{name}_{type}_kernel".format(name = name, type = type),
+                op = op.replace("f99", type).replace("DT_TYPE", type_to_dtype[type]),
+                tile_size = tile_size,
+                tags = tags,
+                same_shape = same_shape,
+            )
+
+    native.cc_library(
+        name = name + "_kernels",
+        hdrs = if_cuda(if_true = [":{name}_{type}_kernel".format(name = name, type = type) for type in types]),
+        tags = tags,
+    )

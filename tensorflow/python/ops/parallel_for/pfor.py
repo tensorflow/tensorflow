@@ -24,6 +24,7 @@ import string
 import sys
 import traceback
 
+import numpy as np
 import six
 
 from tensorflow.compiler.tf2xla.python import xla
@@ -75,7 +76,19 @@ flags.DEFINE_bool(
 
 def _stack(t, length):
   """stacks `t` `length` times."""
-  assert t.dtype != dtypes.variant
+  # Note that this stacking may currently be triggered, for example, when a
+  # loop invariant tensor with dtype variant is input to a while_loop which then
+  # produces a loop dependent output. Simply stacking the variants may not be
+  # suitable since operations on stacked handles may expect a vectorized version
+  # of the variant.
+  # Given that variant types are generic, we are currently unable to figure out
+  # which particular variant type is being considered here and hence it may not
+  # be safe to allow stacking it.
+  if t.dtype == dtypes.variant:
+    raise NotImplementedError(
+        "Vectorization tried to stack variant tensor %s. "
+        "This is likely because vectorization of that variant "
+        "is not fully supported yet." % t)
   ones = array_ops.ones_like(array_ops.shape(t))
   ones = array_ops.reshape(ones, [-1])
   length = array_ops.reshape(length, [-1])
@@ -104,6 +117,15 @@ passthrough_stateful_ops = set([
 ])
 
 
+# Ops which we will treat like stateful for the purpose of vectorization.
+# Typically this is used to force pfor converters to run for these ops.
+force_stateful_ops = set([
+    # We vectorize this since we need to change the element shape set on the
+    # list.
+    "TensorListReserve",
+])
+
+
 def _is_stateful_pfor_op(op):
   if isinstance(op, WhileOp):
     return op.is_stateful
@@ -112,6 +134,8 @@ def _is_stateful_pfor_op(op):
     return False
   if op.type in passthrough_stateful_ops:
     return False
+  if op.type in force_stateful_ops:
+    return True
   assert hasattr(op, "op_def") and op.op_def is not None, op
   return op.op_def.is_stateful
 
@@ -3481,9 +3505,10 @@ def _stack_tensor_list_shape(shape, pfor_input):
   # Note that negative values in the shape are used to signify unknown shapes
   # and are handled in a special way.
   if shape_value is not None:
-    if shape_value == -1 or -1 in shape_value:
+    shape_value = np.asarray(shape_value)
+    if -1 in shape_value:
       return constant_op.constant(-1)
-    elif not shape_value:
+    elif not shape_value.size:
       return first_dim
   else:
     shape = array_ops.reshape(shape, [-1])
