@@ -75,8 +75,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
  public:
   explicit MklDnnMatMulFwdPrimitive(
       const MklDnnMatMulFwdParams& matmulFwdParams)
-      : cpu_engine_(ENGINE_CPU, 0) {
-    context_.fwd_stream.reset(new CPU_STREAM(cpu_engine_));
+      : MklPrimitive(engine(ENGINE_CPU, 0)) {
     // Create matmul primitive
     if (context_.matmul_fwd == nullptr) {
       Setup(matmulFwdParams);
@@ -91,7 +90,18 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
   //  - bias_data: input data buffer of bias
   //  - dst_data: output data buffer of dst
   void Execute(const Tinput* src_data, const Tweight* weight_data,
-               const Tbias* bias_data, Toutput* dst_data) {
+               const Tbias* bias_data, Toutput* dst_data,
+               std::shared_ptr<stream> fwd_stream) {
+#ifdef ENABLE_MKLDNN_THREADPOOL
+    context_.src_mem->set_data_handle(
+        static_cast<void*>(const_cast<Tinput*>(src_data)), *fwd_stream);
+    context_.weight_mem->set_data_handle(
+        static_cast<void*>(const_cast<Tweight*>(weight_data)), *fwd_stream);
+    context_.bias_mem->set_data_handle(
+        static_cast<void*>(const_cast<Tbias*>(bias_data)));
+    context_.dst_mem->set_data_handle(static_cast<void*>(dst_data),
+                                      *fwd_stream);
+#else
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<Tinput*>(src_data)));
     context_.weight_mem->set_data_handle(
@@ -99,12 +109,12 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
     context_.bias_mem->set_data_handle(
         static_cast<void*>(const_cast<Tbias*>(bias_data)));
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
+#endif  // ENABLE_MKLDNN_THREADPOOL
 
 #ifdef ENABLE_MKLDNN_V1
-    execute_primitives(context_.fwd_primitives, context_.fwd_stream,
-                       context_.net_args);
+    execute_primitives(context_.fwd_primitives, fwd_stream, context_.net_args);
 #else
-    context_.fwd_stream->submit(context_.fwd_primitives);
+    fwd_stream->submit(context_.fwd_primitives);
 #endif  // ENABLE_MKLDNN_V1
 
     // After execution, set data handle back
@@ -153,7 +163,6 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
 
     // Inner-product primitive.
     std::shared_ptr<mkldnn::primitive> matmul_fwd;
-    std::shared_ptr<mkldnn::stream> fwd_stream;
     std::vector<mkldnn::primitive> fwd_primitives;
 
 #ifdef ENABLE_MKLDNN_V1
@@ -176,8 +185,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
           weight_md(nullptr),
           bias_md(nullptr),
           dst_md(nullptr),
-          matmul_fwd(nullptr),
-          fwd_stream(nullptr) {
+          matmul_fwd(nullptr) {
     }
   };
 
@@ -292,7 +300,6 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
   }
 
   struct MklDnnMatMulFwdContext context_;
-  engine cpu_engine_;
 };
 
 template <typename T, typename Tinput, typename Tweight, typename Tbias,
@@ -439,8 +446,10 @@ class MklDnnMatMulOpBase : public OpKernel {
 
     // reorder and cache the weight
     weight.SetUsrMem(weight_md, &weight_tensor);
-    weight.CheckReorderToOpMem(MEMORY_PD_WITHOUT_DATA(
-        matmul_fwd_pd.get()->PRIMITIVE_DESC_WEIGHTS, cpu_engine_));
+    weight.CheckReorderToOpMem(
+        MEMORY_PD_WITHOUT_DATA(matmul_fwd_pd.get()->PRIMITIVE_DESC_WEIGHTS,
+                               cpu_engine_),
+        context);
     weight_data = static_cast<Tweight*>(weight.GetOpMem().get_data_handle());
 
     Tensor* weight_tensor_ptr = nullptr;
@@ -544,21 +553,28 @@ template <typename T>
 class MklMatMulPrimitive : public MklPrimitive {
  public:
   explicit MklMatMulPrimitive(const MklMatMulParams& params)
-      : cpu_engine_(ENGINE_CPU, 0) {
-    context_.stream.reset(new CPU_STREAM(cpu_engine_));
+      : MklPrimitive(engine(ENGINE_CPU, 0)) {
     // Create matmul primitive
     Setup(params);
   }
 
   ~MklMatMulPrimitive() {}
 
-  void Execute(const T* a_data, const T* b_data, T* c_data) {
+  void Execute(const T* a_data, const T* b_data, T* c_data,
+               std::shared_ptr<stream> stream) {
+#ifdef ENABLE_MKLDNN_THREADPOOL
+    context_.a_mem->set_data_handle(static_cast<void*>(const_cast<T*>(a_data)),
+                                    *stream);
+    context_.b_mem->set_data_handle(static_cast<void*>(const_cast<T*>(b_data)),
+                                    *stream);
+    context_.c_mem->set_data_handle(static_cast<void*>(const_cast<T*>(c_data)),
+                                    *stream);
+#else
     context_.a_mem->set_data_handle(static_cast<void*>(const_cast<T*>(a_data)));
     context_.b_mem->set_data_handle(static_cast<void*>(const_cast<T*>(b_data)));
     context_.c_mem->set_data_handle(static_cast<void*>(const_cast<T*>(c_data)));
-
-    execute_primitives(context_.matmul_primitives, context_.stream,
-                       context_.net_args);
+#endif  // ENABLE_MKLDNN_THREADPOOL
+    execute_primitives(context_.matmul_primitives, stream, context_.net_args);
 
     // After execution, set data handle back
     context_.a_mem->set_data_handle(DummyData);
@@ -584,7 +600,6 @@ class MklMatMulPrimitive : public MklPrimitive {
     std::shared_ptr<mkldnn::memory::desc> c_md;
 
     // MatMul primitive.
-    std::shared_ptr<mkldnn::stream> stream;
     std::vector<mkldnn::primitive> matmul_primitives;
     std::vector<std::unordered_map<int, memory>> net_args;
 
@@ -596,8 +611,7 @@ class MklMatMulPrimitive : public MklPrimitive {
           prim_desc(nullptr),
           a_md(nullptr),
           b_md(nullptr),
-          c_md(nullptr),
-          stream(nullptr) {}
+          c_md(nullptr) {}
   };
 
   void Setup(const MklMatMulParams& params) {
@@ -639,7 +653,6 @@ class MklMatMulPrimitive : public MklPrimitive {
   }
 
   struct MklMatMulContext context_;
-  engine cpu_engine_;
 };
 
 template <typename T>
@@ -757,13 +770,15 @@ void dnnl_gemm_batch(const std::vector<bool>& transa,
       MklMatMulPrimitiveFactory<T>::Get(params, 0);
 
   // Execute matmul primitive.
-  matmul_prim->Execute(a, b, c);
+  std::shared_ptr<stream> cpu_stream;
+  cpu_stream.reset(CreateStream(ctx, matmul_prim->GetEngine()));
+  matmul_prim->Execute(a, b, c, cpu_stream);
 }
 
 template <typename T>
 void dnnl_gemm(char transa, char transb, int64_t m, int64_t n, int64_t k,
                float alpha, const T* a, int64_t lda, const T* b, int64_t ldb,
-               float beta, T* c, int64_t ldc) {
+               float beta, T* c, int64_t ldc, OpKernelContext* ctx = nullptr) {
   using dims = mkldnn::memory::dims;
 
   // Prepare strides based on the transa and transb flags: transposed
@@ -786,7 +801,9 @@ void dnnl_gemm(char transa, char transb, int64_t m, int64_t n, int64_t k,
       MklMatMulPrimitiveFactory<T>::Get(params, 0);
 
   // Execute matmul primitive.
-  matmul_prim->Execute(a, b, c);
+  std::shared_ptr<stream> cpu_stream;
+  cpu_stream.reset(CreateStream(ctx, matmul_prim->GetEngine()));
+  matmul_prim->Execute(a, b, c, cpu_stream);
 }
 
 }  // anonymous namespace
