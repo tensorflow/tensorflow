@@ -18,7 +18,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-void allow_tf32_execution(bool allow);
+void allow_tf32_execution(bool allowed);
 
 bool tf32_execution_allowed();
 
