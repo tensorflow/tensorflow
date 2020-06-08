@@ -2,7 +2,7 @@
 
 load("//tensorflow/lite:special_rules.bzl", "ios_visibility_whitelist", "tflite_ios_lab_runner")
 load("//tensorflow/lite/experimental/ios:ios.bzl", "TFL_DEFAULT_TAGS", "TFL_DISABLED_SANITIZER_TAGS", "TFL_MINIMUM_OS_VERSION")
-load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application", "ios_static_framework", "ios_unit_test")
+load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework", "ios_unit_test")
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
 
 package(
@@ -122,37 +122,6 @@ swift_library(
     deps = [
         ":Resources",
         ":TensorFlowLiteAllDelegates",
-    ],
-)
-
-ios_application(
-    name = "TestApp",
-    app_icons = glob(["TestApp/TestApp/Assets.xcassets/AppIcon.appiconset/**"]),
-    bundle_id = "com.tensorflow.lite.swift.TestApp",
-    families = [
-        "ipad",
-        "iphone",
-    ],
-    infoplists = ["TestApp/TestApp/Info.plist"],
-    minimum_os_version = TFL_MINIMUM_OS_VERSION,
-    sdk_frameworks = [
-        "CoreGraphics",
-    ],
-    tags = TFL_DEFAULT_TAGS,
-    deps = [
-        ":TestAppLibrary",
-    ],
-)
-
-swift_library(
-    name = "TestAppLibrary",
-    srcs = glob(["TestApp/TestApp/*.swift"]),
-    data = glob(["TestApp/TestApp/Base.lproj/*.storyboard"]),
-    module_name = "TestApp",
-    tags = TFL_DEFAULT_TAGS + ["manual"],
-    deps = [
-        ":Resources",
-        ":TensorFlowLite",
     ],
 )
 
