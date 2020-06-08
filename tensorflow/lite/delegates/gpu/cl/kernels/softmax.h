@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_SOFTMAX_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_SOFTMAX_H_
 
-#include "tensorflow/lite/delegates/gpu/cl/arguments.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
@@ -47,7 +46,6 @@ class Softmax : public GPUOperation {
  private:
   absl::Status BindArguments();
   int3 GetGridSize() const;
-  Arguments args_;
   CLKernel kernel_;
   int3 work_group_size_ = int3(8, 4, 1);
 };
