@@ -36,6 +36,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.compiler.tensorrt import trt_convert
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
@@ -375,6 +376,13 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   def _RunGraphV2(self, saved_model_dir, inputs_data, graph_state, num_runs=2):
     """Run given graphdef multiple times using TF 2.0 runtime."""
+
+    gpus = config.list_physical_devices('GPU')
+
+    # Modifying the GPU configuration is not supported
+    for gpu in gpus:
+        config.set_memory_growth(gpu, True)
+
     params = self._GetParamsCached()
     root = load.load(saved_model_dir)
     func = root.signatures[
@@ -429,6 +437,13 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
                        conversion_params):
     """Return a TrtGraphConverter."""
     if run_params.is_v2:
+
+      gpus = config.list_physical_devices('GPU')
+
+      # Modifying the GPU configuration is not supported
+      for gpu in gpus:
+        config.set_memory_growth(gpu, True)
+
       return trt_convert.TrtGraphConverterV2(
           input_saved_model_dir=saved_model_dir,
           conversion_params=conversion_params)
@@ -803,6 +818,13 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   def _MakeSavedModel(self, run_params):
     if run_params.is_v2:
+
+      gpus = config.list_physical_devices('GPU')
+
+      # Modifying the GPU configuration is not supported
+      for gpu in gpus:
+        config.set_memory_growth(gpu, True)
+
       return self._MakeSavedModelV2(run_params)
     return self._MakeSavedModelV1(run_params)
 
