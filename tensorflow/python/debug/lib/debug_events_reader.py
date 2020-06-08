@@ -308,14 +308,17 @@ class Execution(ExecutionDigest):
     graph_id: ID of the executed FuncGraph (applicable only the execution of a
       tf.function). `None` for the eager execution of an individual op.
     input_tensor_ids: IDs of the input (eager) tensor(s) for this execution, if
-      any.
+      any. If the eager execution has no input tensor, this is `None`. Else,
+      this is a `tuple` of `int`s.
     output_tensor_ids: IDs of the output (eager) tensor(s) from this execution,
-      if any.
+      if any. If the eager execution produces no output tensor, this is `None`.
+      Else, this is a `tuple` of `int`s.
     debug_tensor_values: Values of the debug tensor(s), applicable only to
       non-FULL_TENSOR tensor debug mode. A tuple of list of numbers. Each
       element of the tuple corresponds to an output tensor of the execution.
       See documentation of the various TensorDebugModes for the semantics of the
-      numbers.
+      numbers. If the eager execution produces no output tensor, this is
+      `None`. Else, this is a `tuple` of `list`s.
   """
 
   def __init__(self,
@@ -362,7 +365,7 @@ class Execution(ExecutionDigest):
 
   @property
   def num_outputs(self):
-    return len(self._output_tensor_ids)
+    return len(self._output_tensor_ids) if self._output_tensor_ids else 0
 
   @property
   def output_tensor_ids(self):
@@ -542,6 +545,8 @@ class GraphOpCreationDigest(BaseDigest):
     op_type: Type name of the op (e.g., "MatMul").
     op_name: Name of the op (e.g., "dense_1/MatMul").
     output_tensor_ids: Debugger-generated IDs for the output(s) of the op.
+      If the op produces no output tensor, this is `None`. Else, this is a
+      `tuple` of `int`s.
     input_names: Names of the input tensors to the op.
     device_name: The name of the device that the op is placed on (if available).
     host_name: Name of the host on which the op is created.
@@ -588,7 +593,7 @@ class GraphOpCreationDigest(BaseDigest):
 
   @property
   def num_outputs(self):
-    return len(self._output_tensor_ids)
+    return len(self._output_tensor_ids) if self.output_tensor_ids else 0
 
   @property
   def input_names(self):
