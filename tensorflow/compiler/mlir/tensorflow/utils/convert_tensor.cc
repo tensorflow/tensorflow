@@ -89,12 +89,11 @@ StatusOr<ElementsAttr> ConvertFlatTensor(const Tensor& input_tensor,
 
 ElementsAttr ConvertBf16Tensor(const Tensor& input_tensor,
                                RankedTensorType type) {
-  auto flat = input_tensor.flat<bfloat16>();
-  llvm::SmallVector<llvm::APFloat, 4> floats;
-  floats.reserve(flat.size());
-  for (bfloat16 v : llvm::makeArrayRef(flat.data(), flat.size()))
-    floats.push_back(llvm::APFloat(static_cast<double>(v)));
-  return mlir::DenseElementsAttr::get(type, llvm::makeArrayRef(floats));
+  auto buffer = llvm::makeArrayRef(static_cast<char*>(input_tensor.data()),
+                                   input_tensor.TotalBytes());
+  return mlir::DenseElementsAttr::getFromRawBuffer(
+      type, buffer,
+      /*isSplatBuffer=*/type.getNumElements() == 1);
 }
 
 ElementsAttr ConvertHalfTensor(const Tensor& tensor, RankedTensorType type) {
@@ -280,16 +279,11 @@ void ConvertIntElementsAttr(const mlir::DenseIntElementsAttr attr,
 
 void ConvertBfloat16ElementsAttr(const mlir::DenseFPElementsAttr attr,
                                  protobuf::RepeatedField<int>* output) {
-  // Bfloat16 is internally represented as `double` in MLIR.
   if (attr.isSplat()) {
-    double v = attr.getSplatValue<double>();
-    bfloat16 bf16_val = static_cast<bfloat16>(v);
-    output->Add(absl::bit_cast<int16>(bf16_val));
+    output->Add((*attr.begin()).bitcastToAPInt().getSExtValue());
   } else {
-    for (auto v : attr.getValues<double>()) {
-      bfloat16 bf16_val = static_cast<bfloat16>(v);
-      output->Add(absl::bit_cast<int16>(bf16_val));
-    }
+    for (const llvm::APFloat value : attr.getFloatValues())
+      output->Add(value.bitcastToAPInt().getSExtValue());
   }
 }
 

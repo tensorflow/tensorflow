@@ -979,10 +979,10 @@ StatusOr<xla::Literal> CreateLiteralFromAttr(ElementsAttr attr) {
       values.reserve(attr.getNumElements());
       for (APFloat val : attr.getValues<APFloat>()) {
         bool loses_info = false;
-        CHECK_EQ(val.convert(llvm::APFloat::IEEEsingle(),
-                             llvm::APFloat::rmTowardZero, &loses_info),
-                 llvm::APFloat::opOK);
-        CHECK(!loses_info);
+        TF_RET_CHECK(val.convert(llvm::APFloat::IEEEsingle(),
+                                 llvm::APFloat::rmTowardZero,
+                                 &loses_info) == llvm::APFloat::opOK);
+        TF_RET_CHECK(!loses_info);
         values.push_back(xla::half(val.convertToFloat()));
       }
       xla::Array<xla::half> source_data(shape.dimensions());
@@ -992,10 +992,15 @@ StatusOr<xla::Literal> CreateLiteralFromAttr(ElementsAttr attr) {
     case xla::PrimitiveType::BF16: {
       xla::Array<double> source_data(shape.dimensions());
       auto attr_values = attr.getValues<APFloat>();
-      std::vector<double> values_double(source_data.num_elements());
-      for (auto index_and_value : llvm::enumerate(attr_values)) {
-        values_double[index_and_value.index()] =
-            index_and_value.value().convertToDouble();
+      std::vector<double> values_double;
+      values_double.reserve(source_data.num_elements());
+      for (APFloat val : attr_values) {
+        bool loses_info = false;
+        TF_RET_CHECK(val.convert(llvm::APFloat::IEEEdouble(),
+                                 llvm::APFloat::rmTowardZero,
+                                 &loses_info) == llvm::APFloat::opOK);
+        TF_RET_CHECK(!loses_info);
+        values_double.push_back(val.convertToDouble());
       }
       source_data.SetValues(values_double);
       return xla::LiteralUtil::ConvertF64ToBF16(
