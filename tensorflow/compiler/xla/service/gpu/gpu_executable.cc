@@ -37,12 +37,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
-<<<<<<< HEAD
-#include "tensorflow/core/platform/env_time.h"
-=======
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/errors.h"
->>>>>>> upstream/master
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"

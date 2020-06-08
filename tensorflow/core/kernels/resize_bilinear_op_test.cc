@@ -548,10 +548,7 @@ INSTANTIATE_TEST_SUITE_P(ResizeBilinearHalfPixelCentersOpTestGpu,
 INSTANTIATE_TEST_SUITE_P(ResizeBilinearOpAlignCornersTestGpu,
                          ResizeBilinearOpAlignCornersTest,
                          ::testing::Values(TestDevice::GPU));
-<<<<<<< HEAD
 #endif  // GOOGLE_CUDA  || TENSORFLOW_USE_ROCM
-=======
-#endif  // GOOGLE_CUDA
 
 class ResizeBM : public ResizeBilinearOpTest {
  public:

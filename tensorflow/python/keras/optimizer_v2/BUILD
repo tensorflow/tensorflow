@@ -119,9 +119,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras:combinations",
     ],
-    tags = [
-        "no_rocm",
-    ],
 )
 
 cuda_py_test(
