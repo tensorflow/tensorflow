@@ -159,7 +159,7 @@ class MathTest(test.TestCase, parameterized.TestCase):
         actual.shape, expected.shape,
         'Shape mismatch.\nActual: {}\nExpected: {}\n{}'.format(
             actual.shape, expected.shape, msg))
-    np.testing.assert_almost_equal(actual.tolist(), expected.tolist())
+    np.testing.assert_allclose(actual.tolist(), expected.tolist(), rtol=1e-6)
 
   def testArgsort(self):
     self._testUnaryOp(np_math_ops.argsort, np.argsort, 'argsort')
