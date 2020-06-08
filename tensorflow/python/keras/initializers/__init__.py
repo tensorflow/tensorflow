@@ -157,6 +157,8 @@ def get(identifier):
     return deserialize(identifier)
   elif callable(identifier):
     return identifier
+  elif isinstance(identifier, (int, float)):
+    return initializers_v2.Constant(identifier)
   else:
     raise ValueError('Could not interpret initializer identifier: ' +
                      str(identifier))

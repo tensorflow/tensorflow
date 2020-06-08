@@ -201,6 +201,16 @@ class KerasInitializersTest(test.TestCase):
     self.assertEqual(tn.mean, 0.0)
     self.assertEqual(tn.stddev, 0.05)
 
+  def test_constant_int(self):
+    cst = initializers.get(3)
+    self.assertIsInstance(cst, initializers.ConstantV2)
+    self.assertEqual(cst.value, 3.0)
+
+  def test_constant_float(self):
+    cst = initializers.get(6.0)
+    self.assertIsInstance(cst, initializers.ConstantV2)
+    self.assertEqual(cst.value, 6.0)
+
   def test_custom_initializer_saving(self):
 
     def my_initializer(shape, dtype=None):
