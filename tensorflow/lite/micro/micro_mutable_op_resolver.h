@@ -68,63 +68,13 @@ class MicroMutableOpResolver : public MicroOpResolver {
     return nullptr;
   }
 
-  // The Add* functions below add the various Builtin operators to the
-  // MicroMutableOpResolver object.
+  // Registers a Custom Operator with the MicroOpResolver.
   //
-  // This API is currently experimental (and only supported for a small subset
-  // of operators). It will soon be preferred over the AddBuiltin override of
-  // the MicroOpResolver interface for the following reason:
-  //  * If all calls to AddBuiltin for an application use this API, the code
-  //    size will be smaller by 5-8K (compared to the using the AddBuiltin
-  //    override).
-
-  TfLiteStatus AddDequantize() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function once cl/313453102 lands.
-    return AddBuiltin(BuiltinOperator_DEQUANTIZE,
-                      *tflite::ops::micro::Register_DEQUANTIZE(), ParseOpData);
-  }
-
-  TfLiteStatus AddFullyConnected() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function once cl/313453102 lands.
-    return AddBuiltin(BuiltinOperator_FULLY_CONNECTED,
-                      *tflite::ops::micro::Register_FULLY_CONNECTED(),
-                      ParseOpData);
-  }
-
-  TfLiteStatus AddQuantize() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function once cl/313453102 lands.
-    return AddBuiltin(BuiltinOperator_QUANTIZE,
-                      *tflite::ops::micro::Register_QUANTIZE(), ParseOpData);
-  }
-
-  TfLiteStatus AddSoftmax() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function once cl/313453102 lands.
-    return AddBuiltin(BuiltinOperator_SOFTMAX,
-                      *tflite::ops::micro::Register_SOFTMAX(), ParseOpData);
-  }
-
-  TfLiteStatus AddSvdf() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function once cl/313453102 lands.
-    return AddBuiltin(BuiltinOperator_SVDF,
-                      *tflite::ops::micro::Register_SVDF(), ParseOpData);
-  }
-
-  TfLiteStatus AddBuiltin(tflite::BuiltinOperator op,
-                          TfLiteRegistration* registration) override {
-    TFLITE_DCHECK(registration != nullptr);
-    // For code that is not switched over to the new selective registration of
-    // the parse function, we pass in ParseOpData. This allows for backwards
-    // compatibility.
-    return AddBuiltin(op, *registration, ParseOpData);
-  }
-
-  TfLiteStatus AddCustom(const char* name,
-                         TfLiteRegistration* registration) override {
+  // Only the first call for a given name will be successful. i.e. if this
+  // function is called again for a previously added Custom Operator, the
+  // MicroOpResolver will be unchanged and this function will return
+  // kTfLiteError.
+  TfLiteStatus AddCustom(const char* name, TfLiteRegistration* registration) {
     if (registrations_len_ >= tOpCount) {
       if (error_reporter_) {
         TF_LITE_REPORT_ERROR(
@@ -152,6 +102,91 @@ class MicroMutableOpResolver : public MicroOpResolver {
     new_registration->builtin_code = BuiltinOperator_CUSTOM;
     new_registration->custom_name = name;
     return kTfLiteOk;
+  }
+
+  // Registers a Builtin Operator with the MicroOpResolver.
+  //
+  // Only the first call for a given BuiltinOperator enum will be successful.
+  // i.e. if this function is called again for a previously added
+  // BuiltinOperator, the MicroOpResolver will be unchanged and this function
+  // will return kTfLiteError.
+  //
+  // TODO(b/149408647): remove this API once the BuiltinOperator specific Add
+  // functions are fully implemented.
+  TfLiteStatus AddBuiltin(tflite::BuiltinOperator op,
+                          TfLiteRegistration* registration) {
+    TFLITE_DCHECK(registration != nullptr);
+    // For code that is not switched over to the new selective registration of
+    // the parse function, we pass in ParseOpData. This allows for backwards
+    // compatibility.
+    return AddBuiltin(op, *registration, ParseOpData);
+  }
+
+  // The Add* functions below add the various Builtin operators to the
+  // MicroMutableOpResolver object.
+  //
+  // This API is currently experimental (and only supported for a small subset
+  // of operators). It will soon be preferred over the AddBuiltin function for
+  // the following reason:
+  //  * If all calls to AddBuiltin for an application use this API, the code
+  //    size will be smaller by 5-8K (compared to the using the AddBuiltin
+  //    override).
+
+  TfLiteStatus AddConv2D() {
+    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
+    // function once cl/313453102 lands.
+    return AddBuiltin(BuiltinOperator_CONV_2D,
+                      *tflite::ops::micro::Register_CONV_2D(), ParseOpData);
+  }
+
+  TfLiteStatus AddDequantize() {
+    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
+    // function once cl/313453102 lands.
+    return AddBuiltin(BuiltinOperator_DEQUANTIZE,
+                      *tflite::ops::micro::Register_DEQUANTIZE(), ParseOpData);
+  }
+
+  TfLiteStatus AddFullyConnected() {
+    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
+    // function once cl/313453102 lands.
+    return AddBuiltin(BuiltinOperator_FULLY_CONNECTED,
+                      *tflite::ops::micro::Register_FULLY_CONNECTED(),
+                      ParseOpData);
+  }
+
+  TfLiteStatus AddLogistic() {
+    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
+    // function once cl/313453102 lands.
+    return AddBuiltin(BuiltinOperator_LOGISTIC,
+                      *tflite::ops::micro::Register_LOGISTIC(), ParseOpData);
+  }
+
+  TfLiteStatus AddQuantize() {
+    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
+    // function once cl/313453102 lands.
+    return AddBuiltin(BuiltinOperator_QUANTIZE,
+                      *tflite::ops::micro::Register_QUANTIZE(), ParseOpData);
+  }
+
+  TfLiteStatus AddReshape() {
+    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
+    // function once cl/313453102 lands.
+    return AddBuiltin(BuiltinOperator_RESHAPE,
+                      *tflite::ops::micro::Register_RESHAPE(), ParseOpData);
+  }
+
+  TfLiteStatus AddSoftmax() {
+    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
+    // function once cl/313453102 lands.
+    return AddBuiltin(BuiltinOperator_SOFTMAX,
+                      *tflite::ops::micro::Register_SOFTMAX(), ParseOpData);
+  }
+
+  TfLiteStatus AddSvdf() {
+    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
+    // function once cl/313453102 lands.
+    return AddBuiltin(BuiltinOperator_SVDF,
+                      *tflite::ops::micro::Register_SVDF(), ParseOpData);
   }
 
   unsigned int GetRegistrationLength() { return registrations_len_; }
