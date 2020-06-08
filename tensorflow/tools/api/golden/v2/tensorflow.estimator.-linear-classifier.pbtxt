@@ -2,6 +2,7 @@ path: "tensorflow.estimator.LinearClassifier"
 tf_class {
   is_instance: "<class \'tensorflow_estimator.python.estimator.canned.linear.LinearClassifierV2\'>"
   is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.EstimatorV2\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.Estimator\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "config"
@@ -21,7 +22,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'feature_columns\', \'model_dir\', \'n_classes\', \'weight_column\', \'label_vocabulary\', \'optimizer\', \'config\', \'partitioner\', \'warm_start_from\', \'loss_reduction\', \'sparse_combiner\'], varargs=None, keywords=None, defaults=[\'None\', \'2\', \'None\', \'None\', \'Ftrl\', \'None\', \'None\', \'None\', \'weighted_sum_over_batch_size\', \'sum\'], "
+    argspec: "args=[\'self\', \'feature_columns\', \'model_dir\', \'n_classes\', \'weight_column\', \'label_vocabulary\', \'optimizer\', \'config\', \'warm_start_from\', \'loss_reduction\', \'sparse_combiner\'], varargs=None, keywords=None, defaults=[\'None\', \'2\', \'None\', \'None\', \'Ftrl\', \'None\', \'None\', \'sum_over_batch_size\', \'sum\'], "
   }
   member_method {
     name: "eval_dir"

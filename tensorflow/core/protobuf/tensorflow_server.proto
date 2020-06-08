@@ -15,15 +15,18 @@ limitations under the License.
 
 syntax = "proto3";
 
-import "tensorflow/core/protobuf/config.proto";
-import "tensorflow/core/protobuf/cluster.proto";
-
 package tensorflow;
+
+import "tensorflow/core/protobuf/cluster.proto";
+import "tensorflow/core/protobuf/config.proto";
+import "tensorflow/core/protobuf/device_filters.proto";
+
 option cc_enable_arenas = true;
 option java_outer_classname = "ServerProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.distruntime";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
+
 // Defines the configuration of a single TensorFlow server.
 message ServerDef {
   // The cluster of which this server is a member.
@@ -48,4 +51,11 @@ message ServerDef {
   //
   // Acceptable values include: "grpc", "grpc+verbs".
   string protocol = 5;
+
+  // The server port. If not set, then we identify the port from the job_name.
+  int32 port = 6;
+
+  // Device filters for remote tasks in the cluster.
+  // NOTE: This is an experimental feature and only effective in TensorFlow 2.x.
+  ClusterDeviceFilters cluster_device_filters = 7;
 }

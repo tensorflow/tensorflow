@@ -12,22 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for unspect_utils module."""
+"""Tests for inspect_utils module."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import abc
 import collections
 import functools
 import imp
-import types
-import weakref
+import textwrap
 
 import six
 
 from tensorflow.python import lib
 from tensorflow.python.autograph.pyct import inspect_utils
+from tensorflow.python.autograph.pyct.testing import basic_definitions
+from tensorflow.python.autograph.pyct.testing import decorators
 from tensorflow.python.framework import constant_op
 from tensorflow.python.platform import test
 
@@ -128,9 +130,143 @@ class InspectUtilsTest(test.TestCase):
 
     self.assertTrue(inspect_utils.isnamedtuple(NamedTupleSubclass))
 
+  def assertSourceIdentical(self, actual, expected):
+    self.assertEqual(
+        textwrap.dedent(actual).strip(),
+        textwrap.dedent(expected).strip()
+    )
+
+  def test_getimmediatesource_basic(self):
+
+    def test_decorator(f):
+
+      def f_wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+
+      return f_wrapper
+
+    expected = """
+      def f_wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+    """
+
+    @test_decorator
+    def test_fn(a):
+      """Test docstring."""
+      return [a]
+
+    self.assertSourceIdentical(
+        inspect_utils.getimmediatesource(test_fn), expected)
+
+  def test_getimmediatesource_noop_decorator(self):
+
+    def test_decorator(f):
+      return f
+
+    expected = '''
+      @test_decorator
+      def test_fn(a):
+        """Test docstring."""
+        return [a]
+    '''
+
+    @test_decorator
+    def test_fn(a):
+      """Test docstring."""
+      return [a]
+
+    self.assertSourceIdentical(
+        inspect_utils.getimmediatesource(test_fn), expected)
+
+  def test_getimmediatesource_functools_wrapper(self):
+
+    def wrapper_decorator(f):
+
+      @functools.wraps(f)
+      def wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+
+      return wrapper
+
+    expected = textwrap.dedent("""
+      @functools.wraps(f)
+      def wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+    """)
+
+    @wrapper_decorator
+    def test_fn(a):
+      """Test docstring."""
+      return [a]
+
+    self.assertSourceIdentical(
+        inspect_utils.getimmediatesource(test_fn), expected)
+
+  def test_getimmediatesource_functools_wrapper_different_module(self):
+
+    expected = textwrap.dedent("""
+      @functools.wraps(f)
+      def wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+    """)
+
+    @decorators.wrapping_decorator
+    def test_fn(a):
+      """Test docstring."""
+      return [a]
+
+    self.assertSourceIdentical(
+        inspect_utils.getimmediatesource(test_fn), expected)
+
+  def test_getimmediatesource_normal_decorator_different_module(self):
+
+    expected = textwrap.dedent("""
+      def standalone_wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+    """)
+
+    @decorators.standalone_decorator
+    def test_fn(a):
+      """Test docstring."""
+      return [a]
+
+    self.assertSourceIdentical(
+        inspect_utils.getimmediatesource(test_fn), expected)
+
+  def test_getimmediatesource_normal_functional_decorator_different_module(
+      self):
+
+    expected = textwrap.dedent("""
+      def functional_wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+    """)
+
+    @decorators.functional_decorator()
+    def test_fn(a):
+      """Test docstring."""
+      return [a]
+
+    self.assertSourceIdentical(
+        inspect_utils.getimmediatesource(test_fn), expected)
+
   def test_getnamespace_globals(self):
     ns = inspect_utils.getnamespace(factory)
     self.assertEqual(ns['free_function'], free_function)
+
+  def test_getnamespace_closure_with_undefined_var(self):
+    if False:  # pylint:disable=using-constant-test
+      a = 1
+
+    def test_fn():
+      return a
+
+    ns = inspect_utils.getnamespace(test_fn)
+    self.assertNotIn('a', ns)
+
+    a = 2
+    ns = inspect_utils.getnamespace(test_fn)
+
+    self.assertEqual(ns['a'], 2)
 
   def test_getnamespace_hermetic(self):
 
@@ -355,20 +491,6 @@ class InspectUtilsTest(test.TestCase):
     c = TestCallable()
     self.assertEqual(inspect_utils.getmethodclass(c), TestCallable)
 
-  def test_getmethodclass_weakref_mechanism(self):
-    test_obj = TestClass()
-
-    class WeakrefWrapper(object):
-
-      def __init__(self):
-        self.ag_self_weakref__ = weakref.ref(test_obj)
-
-    def test_fn(self):
-      return self
-
-    bound_method = types.MethodType(test_fn, WeakrefWrapper())
-    self.assertEqual(inspect_utils.getmethodclass(bound_method), TestClass)
-
   def test_getmethodclass_no_bool_conversion(self):
 
     tensor = constant_op.constant([1])
@@ -396,18 +518,19 @@ class InspectUtilsTest(test.TestCase):
       def baz(self):
         pass
 
-    self.assertTrue(
-        inspect_utils.getdefiningclass(Subclass.foo, Subclass) is Subclass)
-    self.assertTrue(
-        inspect_utils.getdefiningclass(Subclass.bar, Subclass) is Superclass)
-    self.assertTrue(
-        inspect_utils.getdefiningclass(Subclass.baz, Subclass) is Subclass)
-    self.assertTrue(
-        inspect_utils.getdefiningclass(Subclass.class_method, Subclass) is
+    self.assertIs(
+        inspect_utils.getdefiningclass(Subclass.foo, Subclass), Subclass)
+    self.assertIs(
+        inspect_utils.getdefiningclass(Subclass.bar, Subclass), Superclass)
+    self.assertIs(
+        inspect_utils.getdefiningclass(Subclass.baz, Subclass), Subclass)
+    self.assertIs(
+        inspect_utils.getdefiningclass(Subclass.class_method, Subclass),
         Superclass)
 
   def test_isbuiltin(self):
     self.assertTrue(inspect_utils.isbuiltin(enumerate))
+    self.assertTrue(inspect_utils.isbuiltin(eval))
     self.assertTrue(inspect_utils.isbuiltin(float))
     self.assertTrue(inspect_utils.isbuiltin(int))
     self.assertTrue(inspect_utils.isbuiltin(len))
@@ -415,37 +538,74 @@ class InspectUtilsTest(test.TestCase):
     self.assertTrue(inspect_utils.isbuiltin(zip))
     self.assertFalse(inspect_utils.isbuiltin(function_decorator))
 
-  def test_super_wrapper_for_dynamic_attrs(self):
+  def test_isconstructor(self):
 
-    a = object()
-    b = object()
+    class OrdinaryClass(object):
+      pass
 
-    class Base(object):
+    class OrdinaryCallableClass(object):
+
+      def __call__(self):
+        pass
+
+    class Metaclass(type):
+      pass
+
+    class CallableMetaclass(type):
+
+      def __call__(cls):
+        pass
+
+    self.assertTrue(inspect_utils.isconstructor(OrdinaryClass))
+    self.assertTrue(inspect_utils.isconstructor(OrdinaryCallableClass))
+    self.assertTrue(inspect_utils.isconstructor(Metaclass))
+    self.assertTrue(inspect_utils.isconstructor(Metaclass('TestClass', (), {})))
+    self.assertTrue(inspect_utils.isconstructor(CallableMetaclass))
+
+    self.assertFalse(inspect_utils.isconstructor(
+        CallableMetaclass('TestClass', (), {})))
+
+  def test_isconstructor_abc_callable(self):
+
+    @six.add_metaclass(abc.ABCMeta)
+    class AbcBase(object):
+
+      @abc.abstractmethod
+      def __call__(self):
+        pass
+
+    class AbcSubclass(AbcBase):
 
       def __init__(self):
-        self.a = a
+        pass
 
-    class Subclass(Base):
+      def __call__(self):
+        pass
 
-      def __init__(self):
-        super(Subclass, self).__init__()
-        self.b = b
+    self.assertTrue(inspect_utils.isconstructor(AbcBase))
+    self.assertTrue(inspect_utils.isconstructor(AbcSubclass))
 
-    base = Base()
-    sub = Subclass()
+  def test_getfutureimports_functions(self):
+    imps = inspect_utils.getfutureimports(basic_definitions.function_with_print)
+    self.assertIn('absolute_import', imps)
+    self.assertIn('division', imps)
+    self.assertIn('print_function', imps)
+    self.assertNotIn('generators', imps)
 
-    sub_super = super(Subclass, sub)
-    sub_super_wrapped = inspect_utils.SuperWrapperForDynamicAttrs(sub_super)
+  def test_getfutureimports_lambdas(self):
+    imps = inspect_utils.getfutureimports(basic_definitions.simple_lambda)
+    self.assertIn('absolute_import', imps)
+    self.assertIn('division', imps)
+    self.assertIn('print_function', imps)
+    self.assertNotIn('generators', imps)
 
-    self.assertIs(base.a, a)
-    self.assertIs(sub.a, a)
-
-    self.assertFalse(hasattr(sub_super, 'a'))
-    self.assertIs(sub_super_wrapped.a, a)
-
-    # TODO(mdan): Is this side effect harmful? Can it be avoided?
-    # Note that `b` was set in `Subclass.__init__`.
-    self.assertIs(sub_super_wrapped.b, b)
+  def test_getfutureimports_methods(self):
+    imps = inspect_utils.getfutureimports(
+        basic_definitions.SimpleClass.method_with_print)
+    self.assertIn('absolute_import', imps)
+    self.assertIn('division', imps)
+    self.assertIn('print_function', imps)
+    self.assertNotIn('generators', imps)
 
 
 if __name__ == '__main__':

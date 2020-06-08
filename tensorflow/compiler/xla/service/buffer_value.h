@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/int_type.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -86,7 +85,7 @@ namespace xla {
 
 class BufferValue {
  public:
-  TF_LIB_GTL_DEFINE_INT_TYPE(Color, int64);
+  using Color = int64;
 
   // Id is a unique identifier for the BufferValue to facilitate efficient
   // collections of BufferValues with stable iteration order.
@@ -154,13 +153,13 @@ class BufferValue {
   static LogicalBufferProto::Location ToLocationProto(
       const HloInstruction& instruction, const ShapeIndex& index);
 
-  const Color kInvalidColor = Color(-1);
+  const Color kInvalidColor = -1;
 
  protected:
   BufferValue(HloInstruction* instruction, const ShapeIndex& index, Id id);
 
  private:
-  // The definining instruction and index are not stored here; they can be found
+  // The defining instruction and index are not stored here; they can be found
   // in the LogicalBuffer and HloValue subclasses. This class exists only to
   // support migrations from TuplePointsToAnalysis to HloDataflowAnalysis, by
   // allowing abstract use of LogicalBuffer or HloValue. After those migrations

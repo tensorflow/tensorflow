@@ -22,12 +22,12 @@ limitations under the License.
 namespace xla {
 
 ExecutableBuildOptions& ExecutableBuildOptions::set_device_allocator(
-    DeviceMemoryAllocator* allocator) {
+    se::DeviceMemoryAllocator* allocator) {
   device_allocator_ = allocator;
   return *this;
 }
 
-DeviceMemoryAllocator* ExecutableBuildOptions::device_allocator() const {
+se::DeviceMemoryAllocator* ExecutableBuildOptions::device_allocator() const {
   return device_allocator_;
 }
 
@@ -64,6 +64,24 @@ ExecutableBuildOptions& ExecutableBuildOptions::set_num_replicas(
   return *this;
 }
 
+ExecutableBuildOptions& ExecutableBuildOptions::set_num_partitions(
+    int num_partitions) {
+  num_partitions_ = num_partitions;
+  return *this;
+}
+
+ExecutableBuildOptions& ExecutableBuildOptions::set_use_spmd_partitioning(
+    bool use_spmd_partitioning) {
+  use_spmd_partitioning_ = use_spmd_partitioning;
+  return *this;
+}
+
+ExecutableBuildOptions& ExecutableBuildOptions::set_device_assignment(
+    const DeviceAssignment& device_assignment) {
+  device_assignment_ = device_assignment;
+  return *this;
+}
+
 string ExecutableBuildOptions::ToString() const {
   string result_layout = "nullopt";
   if (result_layout_set_) {
@@ -71,9 +89,8 @@ string ExecutableBuildOptions::ToString() const {
   }
   return absl::StrFormat(
       "ExecutableBuildOptions{device_ordinal=%d, result_layout=%s, "
-      "generate_hlo_graph=%s, num_replicas=%d}",
-      device_ordinal_, result_layout, debug_options().xla_generate_hlo_graph(),
-      num_replicas_);
+      "num_replicas=%d}",
+      device_ordinal_, result_layout, num_replicas_);
 }
 
 }  // namespace xla

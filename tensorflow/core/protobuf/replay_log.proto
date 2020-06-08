@@ -1,11 +1,11 @@
 syntax = "proto3";
 
-option cc_enable_arenas = true;
 package tensorflow;
 
-import "tensorflow/core/framework/graph.proto";
-import "tensorflow/core/protobuf/cluster.proto";
 import "tensorflow/core/protobuf/master.proto";
+
+option cc_enable_arenas = true;
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
 
 // Records the creation of a new replay session.  We record the device listing
 // here to capture the state of the cluster.

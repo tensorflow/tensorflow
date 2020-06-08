@@ -198,7 +198,7 @@ void JNICALL OBJECT_TRACKER_METHOD(setPreviousPositionNative)(
   LOGI(
       "Registering the position of %s at %.2f,%.2f,%.2f,%.2f"
       " at time %lld",
-      id_str, x1, y1, x2, y2, static_cast<int64_t>(timestamp));
+      id_str, x1, y1, x2, y2, static_cast<long long>(timestamp));
 
   get_object_tracker(env, thiz)->SetPreviousPositionOfObject(
       id_str, BoundingBox(x1, y1, x2, y2), timestamp);

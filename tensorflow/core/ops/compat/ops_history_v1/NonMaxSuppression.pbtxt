@@ -1,0 +1,26 @@
+op {
+  name: "NonMaxSuppression"
+  input_arg {
+    name: "boxes"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "scores"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_output_size"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "selected_indices"
+    type: DT_INT32
+  }
+  attr {
+    name: "iou_threshold"
+    type: "float"
+    default_value {
+      f: 0.5
+    }
+  }
+}

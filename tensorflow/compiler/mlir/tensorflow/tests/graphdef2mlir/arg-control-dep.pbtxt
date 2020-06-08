@@ -1,0 +1,76 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -o - | FileCheck %s
+
+node {
+  name: "Constant"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "_tf.foo"
+  op: "foo"
+  input: "Constant"
+}
+library {
+  function {
+    signature {
+      name: "foo"
+      input_arg {
+        name: "arg"
+        type: DT_INT32
+      }
+      output_arg {
+        name: "return_value"
+        type: DT_INT32
+      }
+    }
+    # Drop the control dependency on arg for the node "test"
+    # CHECK-LABEL: func @foo
+    # CHECK: tf_executor.island wraps "tf.Const"()
+    node_def {
+      name: "test"
+      op: "Const"
+      input: "^arg"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+            }
+            int_val: 0
+          }
+        }
+      }
+    }
+    ret {
+      key: "return_value"
+      value: "arg"
+    }
+  }
+}
+versions {
+  producer: 62
+  min_consumer: 12
+}

@@ -23,16 +23,20 @@ import threading
 
 from tensorflow.python.distribute import all_reduce
 from tensorflow.python.distribute import values as value_lib
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager import def_function
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
-from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nccl_ops
+from tensorflow.python.platform import tf_logging as logging
+
+
+OP_INSTANCE_KEY_START_NUMBER = 100
 
 
 def aggregate_gradients_using_nccl(replica_grads):
@@ -253,31 +257,28 @@ class CollectiveKeys(object):
 
   def __init__(self,
                group_key_start=1,
-               instance_key_start=100,
-               instance_key_with_id_start=10000):
+               op_instance_key_start=OP_INSTANCE_KEY_START_NUMBER,
+               variable_instance_key_start=1000000):
     """Initializes the object.
 
     Args:
       group_key_start: the starting integer of group key.
-      instance_key_start: the starting integer of instance key.
-      instance_key_with_id_start: the starting integer of instance key that is
-        recorded with an id.
+      op_instance_key_start: the starting integer of instance key for ops.
+      variable_instance_key_start: the starting integer of instance key for
+        variables.
     """
     self._group_key = group_key_start
-    self._group_key_table = dict()
+    self._group_key_table = {}
 
-    # For instance keys with ids
-    self._instance_key_id_to_key_table = dict()
-    self._instance_key_with_id_counter = instance_key_with_id_start
-
-    # For instance keys without ids
-    self._instance_key_start = instance_key_start
+    assert op_instance_key_start != variable_instance_key_start
+    self._op_instance_key_start = op_instance_key_start
+    self._variable_instance_key = variable_instance_key_start
 
   def _get_thread_local_object(self):
     # We make instance key without key ids thread local so that it will work
     # with MirroredStrategy and distribute coordinator.
-    if not hasattr(_thread_local, 'instance_key'):
-      _thread_local.instance_key = self._instance_key_start
+    if not hasattr(_thread_local, 'op_instance_key'):
+      _thread_local.op_instance_key = self._op_instance_key_start
     return _thread_local
 
   def get_group_key(self, devices):
@@ -304,33 +305,44 @@ class CollectiveKeys(object):
         self._group_key_table[key_id] = new_key
     return self._group_key_table[key_id]
 
-  def get_instance_key(self, key_id=None):
-    """Returns a new instance key for use in defining a collective op.
+  def get_group_key_of_tensors(self, tensors):
+    """Returns a group key for set of tensors.
 
     Args:
-      key_id: optional string. If set, key will be recorded and the same key
-        will be returned when the same key_id is provided. If not, an increasing
-        instance key will be returned.
+      tensors: list of `Tensor`s in a collective group. Each tensor must be on a
+        different device.
+
+    Returns:
+      int key uniquely identifying the set of devices of these tensors.
     """
-    if key_id:
-      with _lock:
-        if key_id not in self._instance_key_id_to_key_table:
-          self._instance_key_with_id_counter += 1
-          self._instance_key_id_to_key_table[key_id] = (
-              self._instance_key_with_id_counter)
-      return self._instance_key_id_to_key_table[key_id]
-    else:
-      v = self._get_thread_local_object().instance_key
-      self._get_thread_local_object().instance_key += 1
-      return v
+    devices = [t.device for t in tensors]
+    return self.get_group_key(devices)
+
+  def get_op_instance_key(self):
+    """Returns a new instance key for use in defining a collective op."""
+    v = self._get_thread_local_object().op_instance_key
+    self._get_thread_local_object().op_instance_key += 1
+    return v
+
+  def get_variable_instance_key(self):
+    """Returns a new instance key for use in creating a Variable."""
+    v = self._variable_instance_key
+    self._variable_instance_key += 1
+    return v
 
 
 def build_collective_reduce(input_tensors,
                             num_workers,
                             collective_keys,
                             reduction_op='Add',
-                            unary_op='Id'):
+                            unary_op='Id',
+                            communication_hint='AUTO',
+                            control_inputs=None,
+                            executors=None):
   """Build a subgraph that does one full all-reduce, using the collective Op.
+
+  If called in eager mode, it's required to supply a list of async executors for
+  each input Tensor.
 
   Args:
     input_tensors: tensors within a single worker graph that are to be reduced
@@ -341,6 +353,11 @@ def build_collective_reduce(input_tensors,
     collective_keys: a CollectiveKeys object.
     reduction_op: string naming the reduction op.
     unary_op: string naming the unary final op.
+    communication_hint: string providing hint to runtime for choosing collective
+      implementation.
+    control_inputs: if not None, add control edges between control_inputs and
+      (index-wise) corresponding collective_reduce tensors
+    executors: a list of async executor. Required for eager execution.
 
   Returns:
     An array of final tensors, one per device, computed by the full reduction.
@@ -348,32 +365,183 @@ def build_collective_reduce(input_tensors,
   Raises:
     ValueError: There must be at least two tensors over all the workers.
   """
+  if context.executing_eagerly():
+    if (not executors or len(executors) != len(input_tensors) or
+        not all(e.is_async() for e in executors)):
+      raise ValueError(
+          'collectives requires async executors for each device in eager mode')
+
   group_size = len(input_tensors) * num_workers
   if group_size < 2:
-    raise ValueError('num_workers * len(input_tensors) must be 2 or greater')
-  devices = [t.device for t in input_tensors]
-  num_devices = len(devices)
-  group_key = collective_keys.get_group_key(devices)
-  instance_key = collective_keys.get_instance_key()
+    return input_tensors
+  group_key = collective_keys.get_group_key_of_tensors(input_tensors)
+  instance_key = collective_keys.get_op_instance_key()
   subdiv_offsets = [0]  # TODO(tucker): maybe support non-default subdiv spec
 
-  def collective_all_reduce():
-    """Call collective allreduce."""
-    assert not context.executing_eagerly()
-    out_tensors = []
-    for d in range(num_devices):
-      with ops.device(devices[d]):
-        reduce_op = collective_ops.all_reduce(
-            input_tensors[d], group_size, group_key, instance_key, reduction_op,
-            unary_op, subdiv_offsets)
-        out_tensors.append(reduce_op)
-    return out_tensors
+  out_tensors = []
+  for idx, input_tensor in enumerate(input_tensors):
+    if context.executing_eagerly():
+      executor_scope = context.executor_scope(executors[idx])
+    else:
+      executor_scope = ops.NullContextmanager()
+    with executor_scope, \
+         ops.device(input_tensor.device), \
+         ops.control_dependencies(
+             _control_input(input_tensors, control_inputs, idx)):
+      out_tensor = collective_ops.all_reduce(input_tensor, group_size,
+                                             group_key, instance_key,
+                                             reduction_op, unary_op,
+                                             subdiv_offsets, communication_hint)
+    out_tensors.append(out_tensor)
+  return out_tensors
 
-  if context.executing_eagerly():
-    # Collective ops will block unless they are executed concurrently such as in
-    # a graph or a defun.
-    collective_all_reduce = def_function.function(collective_all_reduce)
-  return collective_all_reduce()
+
+def build_collective_gather(input_tensors,
+                            num_workers,
+                            collective_keys,
+                            communication_hint='AUTO',
+                            control_inputs=None):
+  """Build a subgraph that does one full all-gather, using the collective Op.
+
+  This method must be called in graph mode or inside a tf.function.
+
+  Args:
+    input_tensors: tensors within a single worker graph that are to be gathered
+      together; must be one per device.
+    num_workers: total number of workers with identical independent graphs that
+      will be doing this same reduction.  The reduction will actually include
+      the corresponding tensors at all these workers.
+    collective_keys: a CollectiveKeys object.
+    communication_hint: string providing hint to runtime for choosing collective
+      implementation.
+    control_inputs: if not None, add control edges between control_inputs and
+      (index-wise) corresponding collective_gather tensors
+
+  Returns:
+    An array of final tensors, one per device, computed by the full gather.
+  """
+  assert not context.executing_eagerly(), (
+      'build_collective_gather can only be called in graph mode or inside '
+      'tf.function')
+
+  group_size = len(input_tensors) * num_workers
+  if group_size < 2:
+    return input_tensors
+  group_key = collective_keys.get_group_key_of_tensors(input_tensors)
+  instance_key = collective_keys.get_op_instance_key()
+
+  out_tensors = []
+  for idx, input_tensor in enumerate(input_tensors):
+    with ops.device(input_tensor.device):
+      with ops.control_dependencies(
+          _control_input(input_tensors, control_inputs, idx)):
+        out_tensor = collective_ops.all_gather(input_tensor, group_size,
+                                               group_key, instance_key,
+                                               communication_hint)
+      out_tensors.append(out_tensor)
+  return out_tensors
+
+
+def build_collective_gather_indexed_slices(input_slices_list,
+                                           num_workers,
+                                           collective_keys,
+                                           communication_hint='AUTO',
+                                           control_inputs=None):
+  """Build a subgraph that all-gathers IndexedSlices using the collective Op.
+
+  This method must be called in graph mode or inside a tf.function.
+
+  Args:
+    input_slices_list: a list of IndexedSlices within a single worker graph that
+      are to be gathered together; must be one per device.
+    num_workers: total number of workers with identical independent graphs that
+      will be doing this same reduction.  The reduction will actually include
+      the corresponding tensors at all these workers.
+    collective_keys: a CollectiveKeys object.
+    communication_hint: string providing hint to runtime for choosing collective
+      implementation.
+    control_inputs: if not None, add control edges between control_inputs and
+      (index-wise) corresponding collective_reduce tensors
+
+  Returns:
+    An array of final IndexedSlices, one per device, computed by the full
+    gather.
+
+  Raises:
+    ValueError: if control_inputs is not None and doesn't match the length and
+      devices of inputs.
+  """
+  assert not context.executing_eagerly(), (
+      'build_collective_gather_indexed_slices can only be called in graph mode'
+      ' or inside tf.function')
+
+  group_size = len(input_slices_list) * num_workers
+  if group_size < 2:
+    return input_slices_list
+
+  group_key = collective_keys.get_group_key_of_tensors(input_slices_list)
+  gather_length_key = collective_keys.get_op_instance_key()
+  gather_indices_key = collective_keys.get_op_instance_key()
+  gather_values_key = collective_keys.get_op_instance_key()
+  reduce_densified_key = collective_keys.get_op_instance_key()
+
+  # Current CollectiveAllGather implementations require input IndexedSlices to
+  # have consistent length across the board, we handle the reduction of
+  # IndexedSlices as follows:
+  #   1. Gather the lengths of IndexedSlices from all participants.
+  #   2. If they have consistent length, apply all_gather.
+  #   3. Otherwise convert IndexedSlices to dense tensors and apply
+  #      all_reduce.
+  out_slices_list = []
+  for idx, input_slices in enumerate(input_slices_list):
+    # pylint: disable = cell-var-from-loop
+    with ops.device(input_slices.device):
+
+      def all_gather():
+        """Use all_gather to aggregate `IndexedSlices`."""
+        all_values = collective_ops.all_gather(input_slices.values, group_size,
+                                               group_key, gather_values_key,
+                                               communication_hint)
+        # Add control dependency to order the all-gather.
+        control = [all_values] if communication_hint == 'NCCL' else []
+        with ops.control_dependencies(control):
+          all_indices = collective_ops.all_gather(input_slices.indices,
+                                                  group_size, group_key,
+                                                  gather_indices_key,
+                                                  communication_hint)
+        return ops.IndexedSlices(
+            values=all_values,
+            indices=all_indices,
+            dense_shape=input_slices.dense_shape)
+
+      def densify_and_all_reduce():
+        """Use all_reduce to aggregate `IndexedSlices`."""
+        densified = ops.convert_to_tensor(input_slices)
+        reduced = collective_ops.all_reduce(densified, group_size, group_key,
+                                            reduce_densified_key, 'Add', 'Id',
+                                            [0], communication_hint)
+        # We have to convert dense grad to IndexedSlice because all_reduce()
+        # and all_gather() must have the same return type as required by
+        # control_flow_ops.cond.
+        return ops.IndexedSlices(
+            values=reduced,
+            indices=math_ops.range(array_ops.shape(reduced)[0]),
+            dense_shape=input_slices.dense_shape)
+
+      length = array_ops.shape(input_slices.indices)
+      with ops.control_dependencies(
+          _control_input(input_slices, control_inputs, idx)):
+        all_lengths = collective_ops.all_gather(length, group_size, group_key,
+                                                gather_length_key,
+                                                communication_hint)
+      out_slices = control_flow_ops.cond(
+          math_ops.equal(
+              math_ops.reduce_max(all_lengths),
+              math_ops.reduce_min(all_lengths)), all_gather,
+          densify_and_all_reduce)
+      out_slices_list.append(out_slices)
+    # pylint: enable=cell-var-from-loop
+  return out_slices_list
 
 
 def sum_grad_and_var_all_reduce(grad_and_vars,
@@ -544,7 +712,7 @@ def unpack_grad_tuple(gv, gpt):
      reduction.
   """
   elt_widths = [x.num_elements() for x in gpt.shapes]
-  with ops.device(gv[0][0].device):
+  with ops.device(gv[0].device):
     with ops.name_scope('unpack'):
       splits = array_ops.split(gv[0], elt_widths)
       unpacked_gv = []
@@ -645,14 +813,14 @@ def unpack_small_tensors(replica_grads, packing):
 def aggregate_tensors_or_indexed_slices(values, accumulation_fn=math_ops.add_n):
   """Aggregate tensors using `accumulation_fn` and IndexedSlices via concat."""
   if any(isinstance(v, ops.IndexedSlices) for v in values):
-    return gradients_impl._AggregateIndexedSlicesGradients(values)  # pylint: disable=protected-access
+    return backprop.aggregate_indexed_slices_gradients(values)
   else:
     return accumulation_fn(values)
 
 
 def divide_by_n_tensors_or_indexed_slices(value, n):
   if isinstance(value, ops.IndexedSlices):
-    value = gradients_impl._HandleNestedIndexedSlices(value)  # pylint: disable=protected-access
+    value = backprop.flatten_nested_indexed_slices(value)
     return ops.IndexedSlices(
         value.values / n, value.indices, value.dense_shape)
   else:
@@ -681,3 +849,147 @@ def contains_indexed_slices(value):
     return contains_indexed_slices(value.values)
   else:
     return False
+
+
+def is_indexed_slices(value):
+  if isinstance(value, ops.IndexedSlices):
+    return True
+  assert isinstance(value, value_lib.DistributedValues)
+  return all(isinstance(v, ops.IndexedSlices) for v in value.values)
+
+
+def split_by_sparsity(values):
+  """Split values into dense and sparse values.
+
+  Args:
+    values: a list of tensors or `PerReplica`s.
+
+  Returns:
+    Four lists:
+      a list of dense values, a list of their indices in `values` and
+      a list of sparse values, a list of their indices in `values`.
+  """
+  dense_values = []
+  dense_indices = []
+  sparse_values = []
+  sparse_indices = []
+  for i, v in enumerate(values):
+    if is_indexed_slices(v):
+      sparse_values.append(v)
+      sparse_indices.append(i)
+    else:
+      dense_values.append(v)
+      dense_indices.append(i)
+  return dense_values, dense_indices, sparse_values, sparse_indices
+
+
+def stitch_values(values_and_indices_list):
+  """Stitch values together according to their indices.
+
+  Args:
+    values_and_indices_list: a list of tuples of values and indices indicating
+      the values and positions in the returned list.
+
+  Returns:
+    a stitched list of values.
+  """
+  length = 0
+  for values_and_indices in values_and_indices_list:
+    length += len(values_and_indices[0])
+
+  result = [None] * length
+  for values_and_indices in values_and_indices_list:
+    if values_and_indices and values_and_indices[0]:
+      for v, i in zip(*values_and_indices):
+        assert result[i] is None
+        result[i] = v
+  return result
+
+
+def per_replica_num_elements(per_replica):
+  """Returns the static number of elements of one replica.
+
+  Args:
+    per_replica: A PerReplica of Tensor or IndexedSlices.
+
+  Returns:
+    Number of elements. None if some replica has a different or unknown shape.
+  """
+
+  values = per_replica._values  # pylint: disable=protected-access
+  s0 = values[0].shape
+  for v in values:
+    assert not isinstance(v, ops.IndexedSlices)
+    if v.shape != s0:
+      return None
+  return s0.num_elements()
+
+
+def pack_by_size(per_replica_list, bytes_per_pack):
+  """Packs `per_replica_list` into chunks of `bytes_per_pack`.
+
+  The method preserves the original order of `per_replica_list`. The packing is
+  best effort, each pack could have more or less bytes than `bytes_per_pack`.
+  It only packs values with known shape. Note that, the usage is different from
+  `cross_device_ops._pack_tensors`, this function is intended to work with the
+  ScopeAllocator style batching used in `CollectiveAllReduce`.
+
+  Args:
+    per_replica_list: A list of PerReplica.
+    bytes_per_pack: Bytes per pack.
+
+  Returns:
+    A list of packs of PerReplica. All values are packed into one pack if
+      `bytes_per_pack` is zero or any of the value has unknown shape.
+  """
+
+  if bytes_per_pack == 0:
+    return [per_replica_list]
+  packs = []
+  last_pack_size = 0
+  for value in per_replica_list:
+    num_elements = per_replica_num_elements(value)
+    if num_elements is None:
+      # Can't pack values with unknown shape.
+      logging.warning(
+          'not packing values due to the unknown or inconsistent shape of %s',
+          value)
+      return [per_replica_list]
+    size = num_elements * value._primary.dtype.size  # pylint: disable=protected-access
+    # Try to keep each pack as close to bytes_per_pack as possible, while each
+    # pack is at least bytes_per_pack large. I.E. we err on the side of having
+    # few but large packs.
+    if not packs or last_pack_size > bytes_per_pack:
+      packs.append([])
+      last_pack_size = 0
+    packs[-1].append(value)
+    last_pack_size += size
+  return packs
+
+
+def _control_input(inputs, control_inputs, idx):
+  """Returns the `idx`-th item in control_inputs to be used in ops.control_dependencies.
+
+  This is a helper function for building collective ops.  The function checks
+  that the devices of control_inputs and inputs match.
+
+  Args:
+    inputs: a list of `Tensor`s
+    control_inputs: a list or None.
+    idx: the index into `inputs` and `control_inputs`.
+
+  Returns:
+    A one item list of the `idx`-th element of `control_inputs`, or an empty
+    list if `control_inputs` is None.
+  """
+  if control_inputs is None:
+    return []
+  if len(control_inputs) != len(inputs):
+    raise ValueError(
+        'control_inputs must match the length of the inputs, %s != %s' %
+        (len(control_inputs), len(inputs)))
+  if control_inputs[idx].device != inputs[idx].device:
+    raise ValueError(
+        'control_inputs must match the device of the inputs, %s != %s' %
+        (control_inputs[idx].device, inputs[idx].device))
+  return [control_inputs[idx]]

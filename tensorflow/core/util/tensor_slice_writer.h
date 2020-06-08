@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/saved_tensor_slice.pb_text.h"
 #include "tensorflow/core/util/saved_tensor_slice.pb.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 
@@ -69,7 +68,7 @@ class TensorSliceWriter {
   static size_t MaxBytesPerElement(DataType dt);
 
  private:
-  static const size_t kMaxMessageBytes = 1LL << 31;
+  static constexpr size_t kMaxMessageBytes = 1LL << 31;
   // Filling in the TensorProto in a SavedSlice will add the following
   // header bytes, in addition to the data:
   // - 1 byte: TensorProto tag and wire format
@@ -78,7 +77,7 @@ class TensorSliceWriter {
   // - <= 5 bytes: *_val length
   // However, we add 1KB of slack, to be conservative and guard
   // against other additions to the TensorProto.
-  static const size_t kTensorProtoHeaderBytes = 1 << 10;
+  static constexpr size_t kTensorProtoHeaderBytes = 1 << 10;
 
   const string filename_;
   const CreateBuilderFunction create_builder_;
@@ -111,7 +110,7 @@ Status TensorSliceWriter::Add(const string& name, const TensorShape& shape,
     // The same tensor has been registered -- we verify that the shapes and the
     // type agree.
     const SavedSliceMeta& ssm = sts_.meta().tensor(index);
-    CHECK_EQ(name, ssm.name()) << ProtoShortDebugString(ssm);
+    CHECK_EQ(name, ssm.name()) << ssm.ShortDebugString();
     TensorShape ssm_shape(ssm.shape());
     if (!shape.IsSameSize(ssm_shape)) {
       return errors::Internal(
@@ -178,7 +177,7 @@ Status TensorSliceWriter::SaveData(const T* data, int64 num_elements,
 }
 
 template <>
-Status TensorSliceWriter::SaveData(const string* data, int64 num_elements,
+Status TensorSliceWriter::SaveData(const tstring* data, int64 num_elements,
                                    SavedSlice* ss);
 
 // Create a table builder that will write to "filename" in

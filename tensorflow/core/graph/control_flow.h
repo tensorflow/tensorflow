@@ -25,6 +25,15 @@ namespace tensorflow {
 
 // Control flow info for a graph node.
 struct ControlFlowInfo {
+  // 'frame' and 'parent_frame' are pointers to:
+  //
+  // a) One of the Enter nodes corresponding to the loop body, if the node
+  //    executes inside a loop. If multiple tensors enter the while loop, it's
+  //    undefined which Enter node will be used.
+  //
+  // b) SOURCE node (node.id() == Graph::kSourceId), if the node is not inside
+  //    any of the while loops.
+
   const Node* frame = nullptr;         // frame of a node
   const Node* parent_frame = nullptr;  // parent frame of a node
   string frame_name;                   // frame name of a node

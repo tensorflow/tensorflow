@@ -59,7 +59,6 @@ from tensorflow.python.framework.tensor_util import MakeNdarray as make_ndarray
 from tensorflow.python.framework.ops import RegisterGradient
 from tensorflow.python.framework.ops import NotDifferentiable
 from tensorflow.python.framework.ops import NoGradient
-from tensorflow.python.framework.ops import RegisterShape
 from tensorflow.python.framework.tensor_shape import Dimension
 from tensorflow.python.framework.tensor_shape import TensorShape
 

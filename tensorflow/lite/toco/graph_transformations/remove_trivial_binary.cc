@@ -31,7 +31,7 @@ namespace {
 template <typename Scalar>
 bool AreAllBufferElementsEqualTo(const std::vector<Scalar>& buffer_data,
                                  Scalar value) {
-  for (auto x : buffer_data) {
+  for (const auto& x : buffer_data) {
     if (x != value) {
       return false;
     }
@@ -122,6 +122,9 @@ bool AreAllBufferElementsEqualTo(const std::vector<Scalar>& buffer_data,
     is_trivial = index_of_constant_input == 1 &&
                  AreAllBufferElementsEqualTo(constant_input_float_data, 1.f);
   }
+
+  is_trivial = is_trivial && binary_op->fused_activation_function ==
+                                 FusedActivationFunctionType::kNone;
 
   if (!is_trivial) {
     return ::tensorflow::Status::OK();

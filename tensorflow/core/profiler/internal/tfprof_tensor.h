@@ -24,10 +24,10 @@ limitations under the License.
 
 #include <typeinfo>
 
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/profiler/tfprof_output.pb.h"
 
 namespace tensorflow {
@@ -56,23 +56,21 @@ class TFProfTensor {
     std::ostringstream sstream;
     sstream << value;
     if (typeid(value) == typeid(double)) {
-      double double_val;
-      CHECK(strings::safe_strtod(sstream.str().c_str(), &double_val));
+      double double_val = 0.0;
+      CHECK(absl::SimpleAtod(sstream.str(), &double_val));  // Crash OK
       dim->add_value_double(double_val);
-      formatted_str_ += strings::Printf(
-          "%.2f ", dim->value_double(dim->value_double_size() - 1));
+      absl::StrAppendFormat(&formatted_str_, "%.2f ",
+                            dim->value_double(dim->value_double_size() - 1));
     } else if (typeid(value) == typeid(int64)) {
-      int64 int64_val;
-      CHECK(strings::safe_strto64(sstream.str().c_str(), &int64_val));
+      int64 int64_val = 0;
+      CHECK(absl::SimpleAtoi(sstream.str(), &int64_val));  // Crash OK
       dim->add_value_int64(int64_val);
-      formatted_str_ += strings::Printf(
-          "%lld ",
-          static_cast<int64>(dim->value_int64(dim->value_int64_size() - 1)));
+      absl::StrAppendFormat(&formatted_str_, "%d ",
+                            dim->value_int64(dim->value_int64_size() - 1));
     } else if (typeid(value) == typeid(string)) {
       dim->add_value_str(sstream.str());
-      formatted_str_ =
-          strings::StrCat(formatted_str_, "'",
-                          dim->value_str(dim->value_str_size() - 1) + "' ");
+      absl::StrAppend(&formatted_str_, "'",
+                      dim->value_str(dim->value_str_size() - 1), "' ");
     } else {
       CHECK(false) << "Unsupported type: " << typeid(value).name();
     }
@@ -91,23 +89,21 @@ class TFProfTensor {
       sstream << values[nstart];
 
       if (typeid(values[nstart]) == typeid(double)) {
-        double double_val;
-        CHECK(strings::safe_strtod(sstream.str().c_str(), &double_val));
+        double double_val = 0.0;
+        CHECK(absl::SimpleAtod(sstream.str(), &double_val));  // Crash OK
         dim->add_value_double(double_val);
-        formatted_str_ += strings::Printf(
-            "%.2f ", dim->value_double(dim->value_double_size() - 1));
+        absl::StrAppendFormat(&formatted_str_, "%.2f ",
+                              dim->value_double(dim->value_double_size() - 1));
       } else if (typeid(values[nstart]) == typeid(int64)) {
-        int64 int64_val;
-        CHECK(strings::safe_strto64(sstream.str().c_str(), &int64_val));
+        int64 int64_val = 0;
+        CHECK(absl::SimpleAtoi(sstream.str(), &int64_val));  // Crash OK
         dim->add_value_int64(int64_val);
-        formatted_str_ += strings::Printf(
-            "%lld ",
-            static_cast<int64>(dim->value_int64(dim->value_int64_size() - 1)));
+        absl::StrAppendFormat(&formatted_str_, "%d ",
+                              dim->value_int64(dim->value_int64_size() - 1));
       } else if (typeid(values[nstart]) == typeid(string)) {
         dim->add_value_str(sstream.str());
-        formatted_str_ =
-            strings::StrCat(formatted_str_, "'",
-                            dim->value_str(dim->value_str_size() - 1) + "' ");
+        absl::StrAppend(&formatted_str_, "'",
+                        dim->value_str(dim->value_str_size() - 1), "' ");
       } else {
         CHECK(false) << "Unsupported type: " << typeid(values[nstart]).name();
       }
@@ -119,23 +115,23 @@ class TFProfTensor {
           sstream << values[nstart];
 
           if (typeid(values[nstart]) == typeid(double)) {
-            double double_val;
-            CHECK(strings::safe_strtod(sstream.str().c_str(), &double_val));
+            double double_val = 0.0;
+            CHECK(absl::SimpleAtod(sstream.str(), &double_val));  // Crash OK
             dim->add_value_double(double_val);
-            formatted_str_ += strings::Printf(
-                "%.2f ", dim->value_double(dim->value_double_size() - 1));
+            absl::StrAppendFormat(
+                &formatted_str_, "%.2f ",
+                dim->value_double(dim->value_double_size() - 1));
           } else if (typeid(values[nstart]) == typeid(int64)) {
-            int64 int64_val;
-            CHECK(strings::safe_strto64(sstream.str().c_str(), &int64_val));
+            int64 int64_val = 0;
+            CHECK(absl::SimpleAtoi(sstream.str(), &int64_val));  // Crash OK
             dim->add_value_int64(int64_val);
-            formatted_str_ += strings::Printf(
-                "%lld ", static_cast<int64>(
-                             dim->value_int64(dim->value_int64_size() - 1)));
+            absl::StrAppendFormat(
+                &formatted_str_, "%d ",
+                dim->value_int64(dim->value_int64_size() - 1));
           } else if (typeid(values[nstart]) == typeid(string)) {
             dim->add_value_str(sstream.str());
-            formatted_str_ = strings::StrCat(
-                formatted_str_, "'",
-                dim->value_str(dim->value_str_size() - 1) + "' ");
+            absl::StrAppend(&formatted_str_, "'",
+                            dim->value_str(dim->value_str_size() - 1), "' ");
           } else {
             CHECK(false) << "Unsupported type: "
                          << typeid(values[nstart]).name();
@@ -158,7 +154,7 @@ class TFProfTensor {
   void GetValueVec(std::vector<U>* value_vec) {
     // TODO(xpan): Address the huge tensor problem.
     if (tensor_->NumElements() > kTFProfTensorMaxWarnLen) {
-      fprintf(stderr, "Showing huge tensor, the tool might halt...\n");
+      absl::FPrintF(stderr, "Showing huge tensor, the tool might halt...\n");
     }
     auto values = tensor_->flat<T>();
     for (int64 i = 0; i < tensor_->NumElements(); i++) {

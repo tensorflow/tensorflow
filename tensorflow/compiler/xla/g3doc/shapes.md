@@ -120,7 +120,7 @@ fields. The field `padded_dimensions` describes the sizes (widths) to which each
 dimension is padded. If present, the number of elements in `padded_dimensions`
 must equal the rank of the shape.
 
-For example, given the `[2 x 3]` array defined above, if `padded_dimension` is
+For example, given the `[2 x 3]` array defined above, if `padded_dimensions` is
 `[3, 5]` then dimension 0 is padded to a width of 3 and dimension 1 is padded to
 a width of 5. The layout in linear memory (assuming a padding value of 0 and
 column-major layout) is:

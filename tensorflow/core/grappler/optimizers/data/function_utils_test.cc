@@ -60,6 +60,18 @@ TEST(FunctionUtilsTest, AddFunctionOutputWithUniqueName) {
   EXPECT_EQ(function.ret().at("y/_1"), "two");
 }
 
+TEST(FunctionUtilsTest, AddFunctionInput) {
+  FunctionDef fdef;
+  auto arg0 = AddFunctionInput("arg0", &fdef, DT_INT32);
+  auto arg1 = AddFunctionInput("arg1", &fdef, DT_BOOL);
+  EXPECT_EQ(fdef.signature().input_arg().data()[0], arg0);
+  EXPECT_EQ(arg0->name(), "arg0");
+  EXPECT_EQ(arg0->type(), DT_INT32);
+  EXPECT_EQ(fdef.signature().input_arg().data()[1], arg1);
+  EXPECT_EQ(arg1->name(), "arg1");
+  EXPECT_EQ(arg1->type(), DT_BOOL);
+}
+
 TEST(FunctionUtilsTest, ContainsFunctionNodeWithName) {
   FunctionDef function = test::function::XTimesTwo();
   EXPECT_FALSE(ContainsFunctionNodeWithName(

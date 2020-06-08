@@ -244,7 +244,7 @@ public class ObjectTracker {
         new byte
             [(frameWidth + DOWNSAMPLE_FACTOR - 1)
                 / DOWNSAMPLE_FACTOR
-                * (frameWidth + DOWNSAMPLE_FACTOR - 1)
+                * (frameHeight + DOWNSAMPLE_FACTOR - 1)
                 / DOWNSAMPLE_FACTOR];
   }
 

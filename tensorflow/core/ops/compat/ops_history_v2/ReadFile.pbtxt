@@ -1,0 +1,11 @@
+op {
+  name: "ReadFile"
+  input_arg {
+    name: "filename"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "contents"
+    type: DT_STRING
+  }
+}

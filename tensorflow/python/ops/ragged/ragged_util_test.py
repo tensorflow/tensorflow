@@ -24,7 +24,6 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.platform import googletest
 
@@ -43,7 +42,7 @@ TENSOR_4D = [[[[('%d%d%d%d' % (i, j, k, l)).encode('utf-8')
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class RaggedUtilTest(ragged_test_util.RaggedTensorTestCase,
+class RaggedUtilTest(test_util.TensorFlowTestCase,
                      parameterized.TestCase):
 
   @parameterized.parameters([

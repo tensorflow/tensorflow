@@ -61,8 +61,9 @@ class EventFileWriterV2(object):
     no effect.  See `tf.contrib.summary.create_file_writer` for details.
 
     Args:
-      session: A `tf.Session`. Session that will hold shared writer resource.
-        The writer ops will be added to session.graph during this init call.
+      session: A `tf.compat.v1.Session`. Session that will hold shared writer
+        resource. The writer ops will be added to session.graph during this
+        init call.
       logdir: A string. Directory where event file will be written.
       max_queue: Integer. Size of the queue for pending events and summaries.
       flush_secs: Number. How often, in seconds, to flush the

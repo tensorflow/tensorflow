@@ -1,6 +1,7 @@
 path: "tensorflow.data.experimental.Optional"
 tf_class {
   is_instance: "<class \'tensorflow.python.data.ops.optional_ops.Optional\'>"
+  is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "value_structure"

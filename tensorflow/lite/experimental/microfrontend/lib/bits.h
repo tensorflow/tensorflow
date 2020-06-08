@@ -63,14 +63,14 @@ static inline int CountLeadingZeros64Slow(uint64_t n) {
 
 static inline int CountLeadingZeros64(uint64_t n) {
 #if defined(_MSC_VER) && defined(_M_X64)
-  // MSVC does not have __buitin_clzll. Use _BitScanReverse64.
+  // MSVC does not have __builtin_clzll. Use _BitScanReverse64.
   unsigned long result = 0;  // NOLINT(runtime/int)
   if (_BitScanReverse64(&result, n)) {
     return 63 - result;
   }
   return 64;
 #elif defined(_MSC_VER)
-  // MSVC does not have __buitin_clzll. Compose two calls to _BitScanReverse
+  // MSVC does not have __builtin_clzll. Compose two calls to _BitScanReverse
   unsigned long result = 0;  // NOLINT(runtime/int)
   if ((n >> 32) && _BitScanReverse(&result, n >> 32)) {
     return 31 - result;

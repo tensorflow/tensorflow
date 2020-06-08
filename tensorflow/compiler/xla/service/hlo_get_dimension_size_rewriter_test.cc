@@ -40,13 +40,13 @@ class HloGetDimensionSizeRewriterTest : public HloTestBase {
 };
 
 TEST_F(HloGetDimensionSizeRewriterTest, Ok) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
 HloModule _
 ENTRY gds {
   p = s32[3,4] parameter(0)
-  size0 = u32[] get-dimension-size(p), dimensions={0}
-  size1 = u32[] get-dimension-size(p), dimensions={1}
-  ROOT mul = u32[] multiply(size0, size1)
+  size0 = s32[] get-dimension-size(p), dimensions={0}
+  size1 = s32[] get-dimension-size(p), dimensions={1}
+  ROOT mul = s32[] multiply(size0, size1)
 })")
                     .ValueOrDie();
   HloGetDimensionSizeRewriter pass;
@@ -56,7 +56,7 @@ ENTRY gds {
 }
 
 TEST_F(HloGetDimensionSizeRewriterTest, IllegalType) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
 HloModule _
 ENTRY gds {
   p = s32[3]{0} parameter(0)
@@ -68,11 +68,11 @@ ENTRY gds {
 }
 
 TEST_F(HloGetDimensionSizeRewriterTest, IllegalDimension) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
 HloModule _
 ENTRY gds {
   p = f32[2,5] parameter(0)
-  ROOT gds = u32[] get-dimension-size(p), dimensions={2}
+  ROOT gds = s32[] get-dimension-size(p), dimensions={2}
 })")
                     .ValueOrDie();
   HloGetDimensionSizeRewriter pass;

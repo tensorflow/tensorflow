@@ -1,7 +1,7 @@
-# TensorFlow Lite GPU Delegate Tutorial
+# TensorFlow Lite GPU delegate
 
 [TensorFlow Lite](https://www.tensorflow.org/lite) supports several hardware
-accelerators. This document describes how to preview the experimental GPU backend using the
+accelerators. This document describes how to use the GPU backend using the
 TensorFlow Lite delegate APIs on Android and iOS.
 
 GPUs are designed to have high throughput for massively parallelizable
@@ -18,33 +18,37 @@ Another benefit with GPU inference is its power efficiency. GPUs carry out the
 computations in a very efficient and optimized manner, so that they consume less
 power and generate less heat than when the same task is run on CPUs.
 
-## Demo App Tutorials
+## Demo app tutorials
 
-The easiest way to try out the experimental GPU delegate is to follow the below tutorials, which go through building our classification demo applications with GPU support. The GPU code is only binary for now; it will be open-sourced soon. Once you understand how to get our demos working, you can try this out on your own custom models.
+The easiest way to try out the GPU delegate is to follow the below tutorials,
+which go through building our classification demo applications with GPU support.
+The GPU code is only binary for now; it will be open-sourced soon. Once you
+understand how to get our demos working, you can try this out on your own custom
+models.
 
 ### Android (with Android Studio)
 
 For a step-by-step tutorial, watch the
-[Experimental GPU Delegate for Android](https://youtu.be/Xkhgre8r5G0) video.
+[GPU Delegate for Android](https://youtu.be/Xkhgre8r5G0) video.
 
-Note: This requires OpenGL ES 3.1 or higher.
+Note: This requires OpenCL or OpenGL ES (3.1 or higher).
 
 #### Step 1. Clone the TensorFlow source code and open it in Android Studio
 
-```
+```sh
 git clone https://github.com/tensorflow/tensorflow
 ```
 
-#### Step 2. Edit `app/build.gradle` to use the experimental GPU AAR
+#### Step 2. Edit `app/build.gradle` to use the nightly GPU AAR
 
-Replace the existing `tensorflow-lite` package in the existing `dependencies`
-block.
+Add the `tensorflow-lite-gpu` package alongside the existing `tensorflow-lite`
+package in the existing `dependencies` block.
 
 ```
 dependencies {
     ...
-    // implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
-    implementation 'org.tensorflow:tensorflow-lite:0.0.0-gpu-experimental'
+    implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
+    implementation 'org.tensorflow:tensorflow-lite-gpu:0.0.0-nightly'
 }
 ```
 
@@ -59,7 +63,7 @@ run on the GPU.
 ### iOS (with XCode)
 
 For a step-by-step tutorial, watch the
-[Experimental GPU Delegate for iOS](https://youtu.be/a5H4Zwjp49c) video.
+[GPU Delegate for iOS](https://youtu.be/a5H4Zwjp49c) video.
 
 Note: This requires XCode v10.1 or later.
 
@@ -72,6 +76,10 @@ on your phone.
 
 #### Step 2. Modify the Podfile to use the TensorFlow Lite GPU CocoaPod
 
+<section class="zippy">
+
+Until TensorFlow Lite 2.0.0
+
 We have built a binary CocoaPod that includes the GPU delegate. To switch the
 project to use it, modify the
 `tensorflow/tensorflow/lite/examples/ios/camera/Podfile` file to use
@@ -83,18 +91,34 @@ target 'YourProjectName'
   pod 'TensorFlowLiteGpuExperimental'
 ```
 
-#### Step 3. Enable the GPU Delegate
+</section>
 
-You will need to change two `#define` flags in `CameraExampleViewController.h`
-to enable the GPU delegate. First, change `TFLITE_USE_CONTRIB_LITE` from 1 to 0
-since TensorFlow Lite has moved from TensorFlow contrib into core.
+From TensorFlow Lite 2.1.0, GPU delegate is inlcuded in the `TensorFlowLiteC`
+pod. You can choose between `TensorFlowLiteC` and `TensorFlowLiteSwift`
+depending on the language.
 
-```c
-#define TFLITE_USE_CONTRIB_LITE 0
+Note: This behavior will be changed in 2.3.0 and latest nightly releases
+
+For nightly version and upcoming 2.3.0 release, by default GPU delegate is
+excluded from the pod to reduce the binary size. You can include them by
+specifying subspec. For `TensorFlowLiteSwift` pod:
+
+```ruby
+pod 'TensorFlowLiteSwift/Metal', '~> 0.0.1-nightly',
 ```
 
-Next, change `TFLITE_USE_GPU_DELEGATE` from 0 to 1, to enable the code that will
-use the GPU delegate.
+OR
+
+```ruby
+pod 'TensorFlowLiteSwift', '~> 0.0.1-nightly', :subspecs => ['Metal']
+```
+
+You can do similiarly for `TensorFlowLiteC` if you want to use the C API.
+
+#### Step 3. Enable the GPU delegate
+
+To enable the code that will use the GPU delegate, you will need to change
+`TFLITE_USE_GPU_DELEGATE` from 0 to 1 in `CameraExampleViewController.h`.
 
 ```c
 #define TFLITE_USE_GPU_DELEGATE 1
@@ -104,8 +128,7 @@ use the GPU delegate.
 
 After following the previous step, you should be able to run the app.
 
-
-#### Step 5. Release mode.
+#### Step 5. Release mode
 
 While in Step 4 you ran in debug mode, to get better performance, you should
 change to a release build with the appropriate optimal Metal settings. In
@@ -115,30 +138,28 @@ Scheme...`. Select `Run`. On the `Info` tab, change `Build Configuration`, from
 
 ![setting up release](images/iosdebug.png)
 
-Then
-click the `Options` tab and change `GPU Frame Capture` to `Disabled` and
+Then click the `Options` tab and change `GPU Frame Capture` to `Disabled` and
 `Metal API Validation` to `Disabled`.
 
 ![setting up metal options](images/iosmetal.png)
 
-Lastly make sure Release only builds on 64-bit architecture. Under `Project
-navigator -> tflite_camera_example -> PROJECT -> tflite_camera_example -> Build
-Settings` set `Build Active Architecture Only > Release` to Yes.
+Lastly make sure to select Release-only builds on 64-bit architecture. Under
+`Project navigator -> tflite_camera_example -> PROJECT -> tflite_camera_example
+-> Build Settings` set `Build Active Architecture Only > Release` to Yes.
 
 ![setting up release options](images/iosrelease.png)
 
-## Trying the GPU Delegate on your own model
+## Trying the GPU delegate on your own model
 
 ### Android
 
-Look at the demo to see how to add the
-delegate. In your application, add the AAR as above, import
-`org.tensorflow.lite.experimental.GpuDelegate` module, and use the`addDelegate`
-function to register the GPU delegate to the interpreter:
+Look at the demo to see how to add the delegate. In your application, add the
+AAR as above, import `org.tensorflow.lite.gpu.GpuDelegate` module, and use
+the`addDelegate` function to register the GPU delegate to the interpreter:
 
 ```java
 import org.tensorflow.lite.Interpreter;
-import org.tensorflow.lite.experimental.GpuDelegate;
+import org.tensorflow.lite.gpu.GpuDelegate;
 
 // Initialize interpreter with GPU delegate
 GpuDelegate delegate = new GpuDelegate();
@@ -202,12 +223,12 @@ To see a full list of supported ops, please see the [advanced documentation](gpu
 ## Non-supported models and ops
 
 If some of the ops are not supported by the GPU delegate, the framework will
-only run a part of the graph on the GPU and the remaining part on the CPU.  Due
+only run a part of the graph on the GPU and the remaining part on the CPU. Due
 to the high cost of CPU/GPU synchronization, a split execution mode like this
-will often result in a performance slower than when the whole network is run on
-the CPU alone.  In this case, the user will get a warning like:
+will often result in slower performance than when the whole network is run on
+the CPU alone. In this case, the user will get a warning like:
 
-```
+```none
 WARNING: op code #42 cannot be handled by this delegate.
 ```
 
@@ -231,6 +252,6 @@ In that sense, if the camera hardware supports image frames in RGBA, feeding
 that 4-channel input is significantly faster as a memory copy (from 3-channel
 RGB to 4-channel RGBX) can be avoided.
 
-For best performance, do not hesitate to retrain your classifier with a mobile-
-optimized network architecture. That is a significant part of optimization for
-on-device inference.
+For best performance, do not hesitate to retrain your classifier with a
+mobile-optimized network architecture. That is a significant part of
+optimization for on-device inference.

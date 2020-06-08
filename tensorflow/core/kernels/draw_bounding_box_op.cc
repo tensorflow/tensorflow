@@ -25,6 +25,30 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
+
+std::vector<std::vector<float>> DefaultColorTable(int depth) {
+  std::vector<std::vector<float>> color_table;
+  color_table.emplace_back(std::vector<float>({1, 1, 0, 1}));      // 0: yellow
+  color_table.emplace_back(std::vector<float>({0, 0, 1, 1}));      // 1: blue
+  color_table.emplace_back(std::vector<float>({1, 0, 0, 1}));      // 2: red
+  color_table.emplace_back(std::vector<float>({0, 1, 0, 1}));      // 3: lime
+  color_table.emplace_back(std::vector<float>({0.5, 0, 0.5, 1}));  // 4: purple
+  color_table.emplace_back(std::vector<float>({0.5, 0.5, 0, 1}));  // 5: olive
+  color_table.emplace_back(std::vector<float>({0.5, 0, 0, 1}));    // 6: maroon
+  color_table.emplace_back(std::vector<float>({0, 0, 0.5, 1}));  // 7: navy blue
+  color_table.emplace_back(std::vector<float>({0, 1, 1, 1}));    // 8: aqua
+  color_table.emplace_back(std::vector<float>({1, 0, 1, 1}));    // 9: fuchsia
+
+  if (depth == 1) {
+    for (int64 i = 0; i < color_table.size(); i++) {
+      color_table[i][0] = 1;
+    }
+  }
+  return color_table;
+}
+}  // namespace
+
 template <class T>
 class DrawBoundingBoxesOp : public OpKernel {
  public:
@@ -52,30 +76,31 @@ class DrawBoundingBoxesOp : public OpKernel {
     const int64 batch_size = images.dim_size(0);
     const int64 height = images.dim_size(1);
     const int64 width = images.dim_size(2);
-    const int64 color_table_length = 10;
+    std::vector<std::vector<float>> color_table;
+    if (context->num_inputs() == 3) {
+      const Tensor& colors_tensor = context->input(2);
+      OP_REQUIRES(context, colors_tensor.shape().dims() == 2,
+                  errors::InvalidArgument("colors must be a 2-D matrix",
+                                          colors_tensor.shape().DebugString()));
+      OP_REQUIRES(context, colors_tensor.shape().dim_size(1) >= depth,
+                  errors::InvalidArgument("colors must have equal or more ",
+                                          "channels than the image provided: ",
+                                          colors_tensor.shape().DebugString()));
+      if (colors_tensor.NumElements() != 0) {
+        color_table.clear();
 
-    // 0: yellow
-    // 1: blue
-    // 2: red
-    // 3: lime
-    // 4: purple
-    // 5: olive
-    // 6: maroon
-    // 7: navy blue
-    // 8: aqua
-    // 9: fuchsia
-    float color_table[color_table_length][4] = {
-        {1, 1, 0, 1},     {0, 0, 1, 1},     {1, 0, 0, 1},   {0, 1, 0, 1},
-        {0.5, 0, 0.5, 1}, {0.5, 0.5, 0, 1}, {0.5, 0, 0, 1}, {0, 0, 0.5, 1},
-        {0, 1, 1, 1},     {1, 0, 1, 1},
-    };
-
-    // Reset first color channel to 1 if image is GRY.
-    // For GRY images, this means all bounding boxes will be white.
-    if (depth == 1) {
-      for (int64 i = 0; i < color_table_length; i++) {
-        color_table[i][0] = 1;
+        auto colors = colors_tensor.matrix<float>();
+        for (int64 i = 0; i < colors.dimension(0); i++) {
+          std::vector<float> color_value(4);
+          for (int64 j = 0; j < 4; j++) {
+            color_value[j] = colors(i, j);
+          }
+          color_table.emplace_back(color_value);
+        }
       }
+    }
+    if (color_table.empty()) {
+      color_table = DefaultColorTable(depth);
     }
     Tensor* output;
     OP_REQUIRES_OK(
@@ -90,7 +115,7 @@ class DrawBoundingBoxesOp : public OpKernel {
       const int64 num_boxes = boxes.dim_size(1);
       const auto tboxes = boxes.tensor<T, 3>();
       for (int64 bb = 0; bb < num_boxes; ++bb) {
-        int64 color_index = bb % color_table_length;
+        int64 color_index = bb % color_table.size();
         const int64 min_box_row =
             static_cast<float>(tboxes(b, bb, 0)) * (height - 1);
         const int64 min_box_row_clamp = std::max<int64>(min_box_row, int64{0});
@@ -176,9 +201,12 @@ class DrawBoundingBoxesOp : public OpKernel {
   }
 };
 
-#define REGISTER_CPU_KERNEL(T)                                             \
-  REGISTER_KERNEL_BUILDER(                                                 \
-      Name("DrawBoundingBoxes").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+#define REGISTER_CPU_KERNEL(T)                                               \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("DrawBoundingBoxes").Device(DEVICE_CPU).TypeConstraint<T>("T"),   \
+      DrawBoundingBoxesOp<T>);                                               \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("DrawBoundingBoxesV2").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       DrawBoundingBoxesOp<T>);
 TF_CALL_half(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);

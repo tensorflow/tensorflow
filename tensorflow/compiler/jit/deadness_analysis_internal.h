@@ -25,15 +25,9 @@ namespace deadness_analysis_internal {
 // Returns a map describing the predicate each Tensor was mapped to.  For
 // testing purposes only.
 using PredicateMapTy = absl::flat_hash_map<TensorId, string, TensorId::Hasher>;
-Status ComputePredicates(const Graph& graph, PredicateMapTy* out_predicate_map);
+Status ComputePredicates(const Graph& graph, PredicateMapTy* out_predicate_map,
+                         bool enable_optimistic = true);
 
-// Returns a map describing the predicate each Tensor was mapped to.  For
-// testing purposes only.  Makes deadness analysis visit the graph in the order
-// specified in `reverse_post_order` which must be a valid RPO for the graph
-// minus NextIteration->Merge edges.
-Status ComputePredicates(const Graph& graph,
-                         absl::Span<Node* const> reverse_post_order,
-                         PredicateMapTy* out_predicate_map);
 }  // namespace deadness_analysis_internal
 }  // namespace tensorflow
 

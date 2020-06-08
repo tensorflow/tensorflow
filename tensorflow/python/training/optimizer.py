@@ -40,7 +40,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import slot_creator
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -215,10 +215,10 @@ def _get_processor(v):
 
 @tf_export(v1=["train.Optimizer"])
 class Optimizer(
-    # Optimizers inherit from CheckpointableBase rather than Checkpointable
+    # Optimizers inherit from Trackable rather than AutoTrackable
     # since they do most of their dependency management themselves (slot
     # variables are special-cased, and non-slot variables are keyed to graphs).
-    checkpointable.Checkpointable):
+    trackable.Trackable):
   """Base class for optimizers.
 
   This class defines the API to add Ops to train a model.  You never use this
@@ -334,9 +334,9 @@ class Optimizer(
     #   ... }
     self._slots = {}
     self._non_slot_dict = {}
-    # For implementing Checkpointable. Stores information about how to restore
+    # For implementing Trackable. Stores information about how to restore
     # slot variables which have not yet been created
-    # (checkpointable._CheckpointPosition objects).
+    # (trackable._CheckpointPosition objects).
     #  {slot_name :
     #      {_var_key(variable_to_train): [checkpoint_position, ... ], ... },
     #   ... }
@@ -520,10 +520,12 @@ class Optimizer(
 
   @staticmethod
   def _scale_loss(loss_value):
+    ops.get_default_graph()._is_loss_scaled_by_optimizer = False  # pylint: disable=protected-access
     if distribute_lib.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN:
       num_replicas = distribute_ctx.get_strategy().num_replicas_in_sync
       if num_replicas > 1:
         loss_value *= (1. / num_replicas)
+        ops.get_default_graph()._is_loss_scaled_by_optimizer = True  # pylint: disable=protected-access
     return loss_value
 
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):
@@ -594,7 +596,7 @@ class Optimizer(
     with ops.init_scope():
       self._create_slots(var_list)
     update_ops = []
-    with ops.name_scope(name, self._name) as name:
+    with ops.name_scope(name, self._name, skip_on_eager=False) as name:
       self._prepare()
       for grad, var, processor in converted_grads_and_vars:
         if grad is None:
@@ -602,20 +604,23 @@ class Optimizer(
         # We colocate all ops created in _apply_dense or _apply_sparse
         # on the same device as the variable.
         # TODO(apassos): figure out how to get the variable name here.
-        if context.executing_eagerly() or isinstance(
-            var,
-            resource_variable_ops.ResourceVariable) and not var._in_graph_mode:  # pylint: disable=protected-access
+        if (context.executing_eagerly() or
+            resource_variable_ops.is_resource_variable(var)
+            and not var._in_graph_mode):  # pylint: disable=protected-access
           scope_name = ""
         else:
           scope_name = var.op.name
-        with ops.name_scope("update_" + scope_name), ops.colocate_with(var):
+        with ops.name_scope(
+            "update_" + scope_name,
+            skip_on_eager=False), ops.colocate_with(var):
           update_ops.append(processor.update_op(self, grad))
       if global_step is None:
         apply_updates = self._finish(update_ops, name)
       else:
         with ops.control_dependencies([self._finish(update_ops, "update")]):
           with ops.colocate_with(global_step):
-            if isinstance(global_step, resource_variable_ops.ResourceVariable):
+            if isinstance(
+                global_step, resource_variable_ops.BaseResourceVariable):
               # TODO(apassos): the implicit read in assign_add is slow; consider
               # making it less so.
               apply_updates = resource_variable_ops.assign_add_variable_op(
@@ -754,7 +759,7 @@ class Optimizer(
     if hasattr(var, "_distributed_container"):
       # NOTE: If this isn't patched, then there is no `handle` in
       # `_resource_apply_dense`.
-      distributed_container = var._distributed_container()
+      distributed_container = var._distributed_container
       assert distributed_container is not None
       if ops.executing_eagerly_outside_functions():
         key = distributed_container._unique_id
@@ -763,7 +768,7 @@ class Optimizer(
       # pylint: enable=protected-access
       mirrored_slot = named_slots.get(key, None)
       if mirrored_slot is None: return None
-      return mirrored_slot.get(device=var.device)
+      return mirrored_slot._get_on_device_or_primary()  # pylint: disable=protected-access
 
     return named_slots.get(_var_key(var), None)
 
@@ -814,7 +819,7 @@ class Optimizer(
     key = (name, graph)
     v = self._non_slot_dict.get(key, None)
     if v is None:
-      self._maybe_initialize_checkpointable()
+      self._maybe_initialize_trackable()
       distribution_strategy = distribute_ctx.get_strategy()
       with distribution_strategy.extended.colocate_vars_with(colocate_with):
         if eager:
@@ -827,19 +832,19 @@ class Optimizer(
             use_resource=resource_variable_ops.is_resource_variable(
                 colocate_with))
       # Restore this variable by name if necessary, but don't add a
-      # Checkpointable dependency. Optimizers return the current graph's
+      # Trackable dependency. Optimizers return the current graph's
       # non-slot variables from _checkpoint_dependencies explicitly rather
       # than unconditionally adding dependencies (since there may be multiple
       # non-slot variables with the same name in different graphs, trying to
       # save all of them would result in errors).
-      self._handle_deferred_dependencies(name=name, checkpointable=v)
+      self._handle_deferred_dependencies(name=name, trackable=v)
       self._non_slot_dict[key] = v
 
     return v
 
   @property
   def _checkpoint_dependencies(self):
-    """From Checkpointable. Gather graph-specific non-slot variables to save."""
+    """From Trackable. Gather graph-specific non-slot variables to save."""
     current_graph_non_slot_variables = []
     current_graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
     for (name, _), variable_object in sorted(self._non_slot_dict.items(),
@@ -847,13 +852,13 @@ class Optimizer(
                                              key=lambda item: item[0][0]):
       if variable_object._graph_key == current_graph_key:  # pylint: disable=protected-access
         current_graph_non_slot_variables.append(
-            checkpointable.CheckpointableReference(
+            trackable.TrackableReference(
                 name=name, ref=variable_object))
     return (super(Optimizer, self)._checkpoint_dependencies
             + current_graph_non_slot_variables)
 
   def _lookup_dependency(self, name):
-    """From Checkpointable. Find a non-slot variable in the current graph."""
+    """From Trackable. Find a non-slot variable in the current graph."""
     unconditional = super(Optimizer, self)._lookup_dependency(name)
     if unconditional is not None:
       return unconditional
@@ -1158,7 +1163,7 @@ class Optimizer(
     return named_slots[_var_key(var)]
 
   # --------------
-  # For implementing the Checkpointable interface.
+  # For implementing the Trackable interface.
   # --------------
 
   def _restore_slot_variable(self, slot_name, variable, slot_variable):
@@ -1189,8 +1194,8 @@ class Optimizer(
     slot variable needs to be restored).
 
     Args:
-      slot_variable_position: A `checkpointable._CheckpointPosition` object
-        indicating the slot variable `Checkpointable` object to be restored.
+      slot_variable_position: A `trackable._CheckpointPosition` object
+        indicating the slot variable `Trackable` object to be restored.
       slot_name: The name of this `Optimizer`'s slot to restore into.
       variable: The variable object this slot is being created for.
     """
@@ -1208,7 +1213,7 @@ class Optimizer(
         # (aside from double initialization), and makes variable creator scopes
         # behave the same way they do when graph building.
         and not ops.get_default_graph()._variable_creator_stack):  # pylint: disable=protected-access
-      initializer = checkpointable.CheckpointInitialValue(
+      initializer = trackable.CheckpointInitialValue(
           checkpoint_position=slot_variable_position)
       slot_variable = self._get_or_make_slot(
           var=variable,

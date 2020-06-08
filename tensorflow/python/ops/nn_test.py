@@ -24,13 +24,16 @@ from absl.testing import parameterized
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import partitioned_variables
@@ -38,10 +41,10 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops.nn_impl import _compute_sampled_logits
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test as test_lib
 
 
-@test_util.disable_all_xla("This test never passed for XLA")
 class ZeroFractionTest(test_lib.TestCase):
 
   def _ZeroFraction(self, x):
@@ -126,6 +129,18 @@ class SoftmaxTest(test_lib.TestCase, parameterized.TestCase):
     eps = 1e-3
     self.assertAllClose(x_neg_axis_tf, y_pos_axis_tf, eps)
     self.assertAllClose(y_pos_axis_tf, z_gt_axis_tf, eps)
+
+  def testSoftmaxExtendType(self):
+    x_shape = [5, 10]
+    x_np = np.random.randn(*x_shape).astype(np.float32)
+
+    x_f32_tf = constant_op.constant(x_np)
+    x_bf16_tf = math_ops.cast(x_f32_tf, dtypes.bfloat16)
+    y_f32_tf = self.evaluate(nn_ops.softmax(x_f32_tf))
+    y_bf16_tf = self.evaluate(nn_ops.softmax(x_bf16_tf))
+    expected = math_ops.cast(y_f32_tf, dtypes.bfloat16)
+    tol = x_shape[1] * 1e-3
+    self.assertAllClose(y_bf16_tf, expected, rtol=tol, atol=tol)
 
   @parameterized.parameters(((5, 10),), ((2, 3, 4),))
   @test_util.run_deprecated_v1
@@ -300,6 +315,20 @@ class L2NormalizeTest(test_lib.TestCase):
       print("L2Normalize gradient err = %g " % err)
       self.assertLess(err, 1e-4)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testL2NormalizeComplex(self):
+    x_shape = [20, 7, 3]
+    for dtype in [np.complex64, np.complex128]:
+      np.random.seed(1)
+      x_np = (
+          np.random.random_sample(x_shape).astype(dtype) +
+          np.random.random_sample(x_shape).astype(dtype) * 1j)
+      for dim in range(len(x_shape)):
+        y_np = self._l2Normalize(x_np, dim)
+        x_tf = constant_op.constant(x_np, name="x")
+        y_tf = nn_impl.l2_normalize_v2(x_tf, dim)
+        self.assertAllClose(y_np, self.evaluate(y_tf))
+
 
 class DropoutTest(test_lib.TestCase):
 
@@ -312,7 +341,7 @@ class DropoutTest(test_lib.TestCase):
     num_iter = 10
     for keep_prob in [0.1, 0.5, 0.8]:
       t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
-      dropout = nn_ops.dropout(t, keep_prob)
+      dropout = nn_ops.dropout(t, rate=(1 - keep_prob))
       final_count = 0
       self.assertEqual([x_dim, y_dim], dropout.get_shape())
       for _ in xrange(0, num_iter):
@@ -339,7 +368,7 @@ class DropoutTest(test_lib.TestCase):
     num_iter = 10
     for keep_prob in [0.1, 0.5, 0.8]:
       t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
-      dropout = nn_ops.dropout(t, keep_prob, noise_shape=[x_dim, 1])
+      dropout = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[x_dim, 1])
       self.assertEqual([x_dim, y_dim], dropout.get_shape())
       final_count = 0
       for _ in xrange(0, num_iter):
@@ -363,7 +392,7 @@ class DropoutTest(test_lib.TestCase):
     num_iter = 10
     for keep_prob in [0.1, 0.5, 0.8]:
       t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
-      dropout = nn_ops.dropout(t, keep_prob, noise_shape=[x_dim, 1])
+      dropout = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[x_dim, 1])
       self.assertEqual([x_dim, y_dim], dropout.get_shape())
       for _ in xrange(0, num_iter):
         value = self.evaluate(dropout)
@@ -408,7 +437,9 @@ class DropoutTest(test_lib.TestCase):
     keep_prob = 0.5
     x = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
     dropout_x = nn_ops.dropout(
-        x, keep_prob, noise_shape=array_ops.placeholder(dtypes.int32))
+        x,
+        rate=(1 - keep_prob),
+        noise_shape=array_ops.placeholder(dtypes.int32))
     self.assertEqual(x.get_shape(), dropout_x.get_shape())
 
   def testPartialShapedDropout(self):
@@ -418,7 +449,7 @@ class DropoutTest(test_lib.TestCase):
     for keep_prob in [0.1, 0.5, 0.8]:
       t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
       # Set noise_shape=[None, 1] which means [x_dim, 1].
-      dropout = nn_ops.dropout(t, keep_prob, noise_shape=[None, 1])
+      dropout = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[None, 1])
       self.assertEqual([x_dim, y_dim], dropout.get_shape())
       final_count = 0
       for _ in xrange(0, num_iter):
@@ -463,6 +494,16 @@ class DropoutTest(test_lib.TestCase):
     with self.assertRaises(ValueError):
       nn_ops.dropout_v2(t, [0.0, 1.0])
 
+  def testLargeRate(self):
+    x_dim = 40
+    y_dim = 30
+    t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
+    _ = nn_ops.dropout_v2(t, 0.9)
+
+  def testVariableRef(self):
+    x = variable_scope.get_variable("x", shape=[10, 10], dtype=dtypes.float32)
+    _ = nn_ops.dropout(x, keep_prob=0.1)
+
   @test_util.run_deprecated_v1
   def testShapedDropoutShapeError(self):
     # Runs shaped dropout and verifies an error is thrown on misshapen noise.
@@ -471,26 +512,27 @@ class DropoutTest(test_lib.TestCase):
     keep_prob = 0.5
     t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
     with self.assertRaises(ValueError):
-      _ = nn_ops.dropout(t, keep_prob, noise_shape=[x_dim, y_dim + 10])
+      _ = nn_ops.dropout(
+          t, rate=(1 - keep_prob), noise_shape=[x_dim, y_dim + 10])
     with self.assertRaises(ValueError):
-      _ = nn_ops.dropout(t, keep_prob, noise_shape=[x_dim, y_dim, 5])
+      _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[x_dim, y_dim, 5])
     with self.assertRaises(ValueError):
-      _ = nn_ops.dropout(t, keep_prob, noise_shape=[x_dim + 3])
+      _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[x_dim + 3])
     with self.assertRaises(ValueError):
-      _ = nn_ops.dropout(t, keep_prob, noise_shape=[x_dim])
+      _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[x_dim])
     # test that broadcasting proceeds
-    _ = nn_ops.dropout(t, keep_prob, noise_shape=[y_dim])
-    _ = nn_ops.dropout(t, keep_prob, noise_shape=[1, y_dim])
-    _ = nn_ops.dropout(t, keep_prob, noise_shape=[x_dim, 1])
-    _ = nn_ops.dropout(t, keep_prob, noise_shape=[1, 1])
+    _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[y_dim])
+    _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[1, y_dim])
+    _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[x_dim, 1])
+    _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[1, 1])
 
-  def testNoDropoutFast(self):
+  def testNoDropout(self):
     x = array_ops.zeros((5,))
-    y = nn_ops.dropout(x, keep_prob=1)
-    self.assertTrue(x is y)
+    y = nn_ops.dropout(x, rate=0)
+    self.assertAllEqual(x, y)
 
     y = nn_ops.dropout_v2(x, rate=0)
-    self.assertTrue(x is y)
+    self.assertAllEqual(x, y)
 
   def testDropoutWithIntegerInputs(self):
     x = constant_op.constant([1, 1, 1, 1, 1])
@@ -1018,11 +1060,10 @@ class LeakyReluTest(test_lib.TestCase):
 class SwishTest(test_lib.TestCase):
 
   @test_util.run_deprecated_v1
-  @test_util.disable_xla("This test never passed for XLA")
   def testValues(self):
     np_values = np.array(
-        [np.linspace(-10.0, 0.0, 100),
-         np.linspace(0.0, 10.0, 100)],
+        [np.linspace(-7.0, 0.0, 100),
+         np.linspace(0.0, 7.0, 100)],
         dtype=np.float32)
     tf_values = constant_op.constant(np_values)
     actual_tf_outputs = nn_impl.swish(tf_values)
@@ -1184,6 +1225,32 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, [7, 3, 4, 9])
 
+  def testNHWCToNCHW_Size2(self):
+    x_val = [4, 9]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x)
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [4, 9])
+
+  @test_util.disable_xla("unsupported data format")
+  def testNHWCToWHCN(self):
+    x_val = [7, 4, 9, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x, src_format="NHWC", dst_format="WHCN")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [9, 4, 3, 7])
+
+  @test_util.disable_xla("unsupported data format")
+  def testNHWCToWHCN_Size2(self):
+    x_val = [4, 9]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x, src_format="NHWC", dst_format="WHCN")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [9, 4])
+
   def testNCHWToNHWC(self):
     x_val = [7, 4, 9, 3]
     x = constant_op.constant(x_val)
@@ -1191,6 +1258,14 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
     with test_util.use_gpu():
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, [7, 9, 3, 4])
+
+  def testNCHWToNHWC_Size2(self):
+    x_val = [9, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x)
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [9, 3])
 
   def testNHWCToHWNC(self):
     x_val = [7, 4, 9, 3]
@@ -1239,6 +1314,369 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
     with test_util.use_gpu():
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, [[7, 4], [4, 5], [5, 1], [9, 3]])
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class AvgPoolTest(test_lib.TestCase):
+
+  def test1DTensor(self):
+    x = array_ops.ones([3, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.avg_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.avg_pool1d(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test1DNumpy(self):
+    # explicitly use float32 for ROCm, as MIOpen does not yet support float64
+    # np.ones defaults to using float64 when dtype is not explicitly specified
+    dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
+    x = np.ones([3, 6, 5], dtype=dtype)
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.avg_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.avg_pool1d(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test1DNumpyWithGolden(self):
+    dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
+    x = np.array([[[3], [6], [5]],
+                  [[1], [0], [1]]], dtype=dtype)
+    ksize = 2
+    strides = 1
+    y = nn_ops.avg_pool1d(x, ksize, strides, "SAME")
+    expected_y = np.array([[[4.5], [5.5], [5.0]],
+                           [[0.5], [0.5], [1.0]]], dtype=dtype)
+    self.assertAllEqual(self.evaluate(y), expected_y)
+
+  def test2DTensor(self):
+    x = array_ops.ones([3, 6, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.avg_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.avg_pool(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test2DNumpy(self):
+    # explicitly use float32 for ROCm, as MIOpen does not yet support float64
+    # np.ones defaults to using float64 when dtype is not explicitly specified
+    dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
+    x = np.ones([3, 6, 6, 5], dtype=dtype)
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.avg_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.avg_pool(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test3DTensor(self):
+    if test_lib.is_built_with_rocm():
+      self.skipTest("Pooling with 3D tensors is not supported in ROCm")
+    x = array_ops.ones([3, 7, 6, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.avg_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.avg_pool3d(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test3DNumpy(self):
+    if test_lib.is_built_with_rocm():
+      self.skipTest("Pooling with 3D tensors is not supported in ROCm")
+    x = np.ones([3, 7, 6, 6, 5], dtype=np.float32)
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.avg_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.avg_pool3d(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class MaxPoolTest(test_lib.TestCase):
+
+  def test1DTensor(self):
+    x = array_ops.ones([3, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.max_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.max_pool1d(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test1DNumpy(self):
+    # explicitly use float32 for ROCm, as MIOpen does not yet support float64
+    # np.ones defaults to using float64 when dtype is not explicitly specified
+    dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
+    x = np.ones([3, 6, 5], dtype=dtype)
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.max_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.max_pool1d(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test1DNumpyWithGolden(self):
+    dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
+    x = np.array([[[3], [6], [5]],
+                  [[1], [0], [1]]], dtype=dtype)
+    ksize = 2
+    strides = 1
+    y = nn_ops.max_pool1d(x, ksize, strides, "SAME")
+    expected_y = np.array([[[6], [6], [5]],
+                           [[1], [1], [1]]], dtype=dtype)
+    self.assertAllEqual(self.evaluate(y), expected_y)
+
+  def test2DTensor(self):
+    x = array_ops.ones([3, 6, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.max_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.max_pool(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test2DNumpy(self):
+    # explicitly use float32 for ROCm, as MIOpen does not yet support float64
+    # np.ones defaults to using float64 when dtype is not explicitly specified
+    dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
+    x = np.ones([3, 6, 6, 5], dtype=dtype)
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.max_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.max_pool(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test3DTensor(self):
+    if test_lib.is_built_with_rocm():
+      self.skipTest("Pooling with 3D tensors is not supported in ROCm")
+    x = array_ops.ones([3, 7, 6, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.max_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.max_pool3d(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test3DNumpy(self):
+    if test_lib.is_built_with_rocm():
+      self.skipTest("Pooling with 3D tensors is not supported in ROCm")
+    x = np.ones([3, 7, 6, 6, 5], dtype=np.float32)
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.max_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.max_pool3d(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def testIncorrectSizeInputSmall(self):
+    x = array_ops.ones([3, 4])
+    with self.assertRaisesRegex(
+        ValueError, "Input tensor must be of rank 3, 4 or 5 but was 2."):
+      nn_ops.max_pool_v2(x, 2, 2, "SAME")
+
+  def testIncorrectSizeInput(self):
+    x = array_ops.ones([3, 4, 1, 2, 1, 2])
+    with self.assertRaisesRegex(
+        ValueError, "Input tensor must be of rank 3, 4 or 5 but was 6."):
+      nn_ops.max_pool_v2(x, 2, 2, "SAME")
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class ConvolutionTest(test_lib.TestCase):
+
+  def testUnknownSize(self):
+    # explicitly use float32 for ROCm, as MIOpen does not yet support float64
+    # np.ones defaults to using float64 when dtype is not explicitly specified
+    dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
+    x = tensor_spec.TensorSpec(None, dtypes.float32, name="x")
+    k = np.ones([3, 6, 6, 5], dtype=dtype)
+
+    @def_function.function
+    def F(value):
+      return nn_ops.convolution(value, k, "SAME")
+
+    F.get_concrete_function(x)
+
+
+class ConvTransposeTest(test_lib.TestCase):
+
+  def test1D(self):
+    t = array_ops.ones([2, 4, 3])
+    v = array_ops.ones([2, 5, 3])
+    strides = 2
+
+    y1 = nn_ops.conv1d_transpose(t, v, [2, 8, 5], strides)
+    y2 = nn_ops.conv_transpose(t, v, [2, 8, 5], strides)
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test1DTensor(self):
+    t = array_ops.ones([2, 4, 3])
+    v = array_ops.ones([2, 5, 3])
+    strides = 2
+
+    y1 = nn_ops.conv1d_transpose(t, v, [2, 8, 5], strides)
+    y2 = nn_ops.conv_transpose(t, v, constant_op.constant([2, 8, 5]), strides)
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test2D(self):
+    t = array_ops.ones([2, 4, 4, 3])
+    v = array_ops.ones([2, 2, 5, 3])
+    strides = 2
+
+    y1 = nn_ops.conv2d_transpose_v2(t, v, [2, 8, 8, 5], strides)
+    y2 = nn_ops.conv_transpose(t, v, [2, 8, 8, 5], strides)
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test2DTensor(self):
+    t = array_ops.ones([2, 4, 4, 3])
+    v = array_ops.ones([2, 2, 5, 3])
+    strides = 2
+
+    y1 = nn_ops.conv2d_transpose_v2(t, v, [2, 8, 8, 5], strides)
+    y2 = nn_ops.conv_transpose(t, v, constant_op.constant([2, 8, 8, 5]),
+                               strides)
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test3D(self):
+    t = array_ops.ones([2, 4, 4, 4, 3])
+    v = array_ops.ones([2, 2, 2, 5, 3])
+    strides = 2
+
+    y1 = nn_ops.conv3d_transpose_v2(t, v, [2, 8, 8, 8, 5], strides)
+    y2 = nn_ops.conv_transpose(t, v, [2, 8, 8, 8, 5], strides)
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test3DTensor(self):
+    t = array_ops.ones([2, 4, 4, 4, 3])
+    v = array_ops.ones([2, 2, 2, 5, 3])
+    strides = 2
+
+    y1 = nn_ops.conv3d_transpose_v2(t, v, [2, 8, 8, 8, 5], strides)
+    y2 = nn_ops.conv_transpose(t, v, constant_op.constant([2, 8, 8, 8, 5]),
+                               strides)
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def testIncorrectSizeInputSmall(self):
+    with self.assertRaisesRegex(
+        ValueError, "output_shape must be of length 3, 4 or 5 but was 2."):
+      nn_ops.conv_transpose(None, 2, [2, 3], "SAME")
+
+  def testIncorrectSizeInput(self):
+    with self.assertRaisesRegex(
+        ValueError, "output_shape must be of length 3, 4 or 5 but was 6."):
+      nn_ops.conv_transpose(None, 2, [2, 3, 4, 2, 5, 1], "SAME")
+
+  def testTensorsNoShape(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "output_shape must be a tensor or sized collection."):
+      nn_ops.conv_transpose(None, None, None, None)
+
+
+class RaggedEmbeddingTest(test_lib.TestCase):
+
+  def testRaggedTensor(self):
+    weights = constant_op.constant([[0, 0, 0], [1, 1, 1], [2, 2, 2], [3, 3, 3]])
+    ragged_ids = ragged_factory_ops.constant([[1, 2, 3], [0], [1, 2]],
+                                             ragged_rank=1)
+
+    embedded_ragged = nn.embedding_lookup_ragged(weights, ragged_ids)
+    expected_output = ragged_factory_ops.constant(
+        [[[1, 1, 1], [2, 2, 2], [3, 3, 3]], [[0, 0, 0]], [[1, 1, 1], [2, 2, 2]]
+        ],
+        ragged_rank=1)
+
+    self.assertAllEqual(expected_output, embedded_ragged)
+
+  def testMultipleRaggedDimTensor(self):
+    weights = constant_op.constant([[0, 0], [1, 1], [2, 2], [3, 3], [4, 4],
+                                    [5, 5], [6, 6]])
+    ragged_ids = ragged_factory_ops.constant(
+        [[[[3, 4], [0, 6]], []], [[[2, 1], [1, 0]], [[2, 5], [2, 3]]], [[[1, 0]]
+                                                                       ]],
+        ragged_rank=2)
+
+    embedded_ragged = nn.embedding_lookup_ragged(weights, ragged_ids)
+    expected_output = ragged_factory_ops.constant(
+        [[[[[3, 3], [4, 4]], [[0, 0], [6, 6]]], []],
+         [[[[2, 2], [1, 1]], [[1, 1], [0, 0]]],
+          [[[2, 2], [5, 5]], [[2, 2], [3, 3]]]], [[[[1, 1], [0, 0]]]]],
+        ragged_rank=2)
+
+    self.assertAllEqual(expected_output, embedded_ragged)
+
+  def testMissingWeights(self):
+    ragged_ids = ragged_factory_ops.constant([[1, 2, 3], [0], [1, 2]])
+
+    with self.assertRaisesRegex(ValueError,
+                                "The embedding weights must be specified.*"):
+      nn.embedding_lookup_ragged(None, ragged_ids)
+
+  def testEmptyWeights(self):
+    ragged_ids = ragged_factory_ops.constant([[1, 2, 3], [0], [1, 2]])
+
+    with self.assertRaisesRegex(ValueError,
+                                "The embedding weights should not be empty.*"):
+      nn.embedding_lookup_ragged([], ragged_ids)
+
+  def testInvalidIndicesType(self):
+    weights = constant_op.constant([[0, 0, 0], [1, 1, 1], [2, 2, 2]])
+    ragged_ids = ragged_factory_ops.constant([[1., 2., 3.], [1., 2.]])
+
+    with self.assertRaisesRegex(
+        ValueError, "The values contained by the inputs have type*"):
+      nn.embedding_lookup_ragged(weights, ragged_ids)
+
+  def testMaxNormForEmbeddings(self):
+    weights = constant_op.constant([[0, 0, 0, 0], [1, 1, 1, 1],
+                                    [2, 2, 2, 2], [3, 3, 3, 3]],
+                                   dtype=dtypes.float32)
+    ragged_ids = ragged_factory_ops.constant([[1, 2, 3], [0], [1, 2]],
+                                             ragged_rank=1)
+
+    actual_embeddings = [
+        nn.embedding_lookup(weights, ragged_ids, max_norm=max_norm)
+        for max_norm in [1, 2, 5]]
+
+    expected_embeddings = (
+        # max_norm = 1
+        [[[.5, .5, .5, .5], [.5, .5, .5, .5], [.5, .5, .5, .5]],
+         [[0, 0, 0, 0]], [[.5, .5, .5, .5], [.5, .5, .5, .5]]],
+        # max_norm = 2
+        [[[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]],
+         [[0, 0, 0, 0]], [[1, 1, 1, 1], [1, 1, 1, 1]]],
+        # max_norm = 5
+        [[[1, 1, 1, 1], [2, 2, 2, 2], [2.5, 2.5, 2.5, 2.5]],
+         [[0, 0, 0, 0]], [[1, 1, 1, 1], [2, 2, 2, 2]]],
+        )
+
+    for expected, actual in zip(expected_embeddings, actual_embeddings):
+      self.assertAllClose(
+          ragged_factory_ops.constant(expected, dtype=float, ragged_rank=1),
+          actual)
 
 
 if __name__ == "__main__":

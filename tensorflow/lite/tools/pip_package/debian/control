@@ -1,0 +1,28 @@
+Source: tflite-runtime
+Maintainer: TensorFlow team <packages@tensorflow.org>
+Section: python
+Priority: optional
+Build-Depends:
+ debhelper (>= 9),
+ dh-python,
+ python3-all,
+ python3-numpy (>= 1:1.12.1),
+ python3-setuptools,
+ python3-wheel
+Standards-Version: 3.9.8
+Homepage: https://www.tensorflow.org/
+
+Package: python3-tflite-runtime
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${python3:Depends},
+ python3-numpy (>= 1:1.12.1),
+ libc6 (>= 2.14),
+ libgcc1 (>= 1:4.7),
+ libstdc++6 (>= 6)
+Description: TensorFlow Lite is for mobile and embedded devices.
+ TensorFlow Lite is the official solution for running machine learning models on
+ mobile and embedded devices. It enables on-device machine learning inference
+ with low latency and a small binary size on Android, iOS, and other operating
+ systems.

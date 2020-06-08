@@ -142,6 +142,46 @@ TEST_F(CallInlinerTest, InlineWithoutRunningPass) {
               ElementsAre(op::Constant()));
 }
 
+// Test that inlining can work with computations with dead parameter.
+TEST_F(CallInlinerTest, InlineWithEmptyComputation) {
+  const Shape pred = ShapeUtil::MakeShape(PRED, {});
+  auto module = CreateNewVerifiedModule();
+  Shape r0s32 = ShapeUtil::MakeShape(S32, {});
+  HloComputation::Builder empty(TestName() + ".empty");
+  empty.AddInstruction(HloInstruction::CreateParameter(0, r0s32, "A"));
+  empty.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+  HloComputation* empty_computation =
+      module->AddEmbeddedComputation(empty.Build());
+
+  HloComputation::Builder empty2(TestName() + ".empty");
+  empty2.AddInstruction(HloInstruction::CreateParameter(0, r0s32, "A"));
+  empty2.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+  HloComputation* empty2_computation =
+      module->AddEmbeddedComputation(empty2.Build());
+
+  HloComputation::Builder entry("entry");
+  auto zero = entry.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+  // The order of the call chain are crafted to test a specific pattern such
+  // that the third call instruction will be flattened before the second one
+  // (which makes the second call instruction dead before it is flattened).
+  entry.AddInstruction(
+      HloInstruction::CreateCall(r0s32, {zero}, empty_computation));
+  HloInstruction* call1 = entry.AddInstruction(
+      HloInstruction::CreateCall(r0s32, {zero}, empty2_computation));
+  entry.AddInstruction(
+      HloInstruction::CreateCall(r0s32, {call1}, empty_computation));
+  auto computation = module->AddEntryComputation(entry.Build());
+
+  CallInliner call_inliner;
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  ASSERT_TRUE(mutated);
+
+  EXPECT_THAT(computation->root_instruction(), op::Constant());
+}
+
 TEST_F(CallInlinerTest, CallToOutfeedComputationIsInlined) {
   const Shape f32 = ShapeUtil::MakeShape(F32, {});
   auto module = CreateNewVerifiedModule();
@@ -165,6 +205,41 @@ TEST_F(CallInlinerTest, CallToOutfeedComputationIsInlined) {
   CallInliner call_inliner;
   TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
   ASSERT_TRUE(mutated);
+}
+
+TEST_F(CallInlinerTest, InlineSingleUseCalleesOnly) {
+  const absl::string_view hlo_string = R"(
+  HloModule inline_module
+
+  a {
+    ROOT tuple = () tuple()
+  }
+
+  b {
+    ROOT tuple.1 = () tuple()
+  }
+
+  ENTRY inline {
+    a = () call(), to_apply=a
+    b = () call(), to_apply=a
+    c = () call(), to_apply=b
+    ROOT tuple = ((), (), ()) tuple(a, b, c)
+  })";
+
+  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  CallInliner call_inliner(/*single_call_site=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  ASSERT_TRUE(mutated);
+
+  ASSERT_EQ(module->entry_computation()->instruction_count(), 4);
+  auto inst = module->entry_computation()->instructions().begin();
+  EXPECT_THAT(*inst, op::Call());
+  ++inst;
+  EXPECT_THAT(*inst, op::Call());
+  ++inst;
+  EXPECT_THAT(*inst, op::Tuple());
+  ++inst;
+  EXPECT_THAT(*inst, op::Tuple());
 }
 
 }  // namespace

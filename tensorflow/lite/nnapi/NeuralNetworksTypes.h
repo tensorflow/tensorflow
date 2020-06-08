@@ -18,6 +18,8 @@ limitations under the License.
 #include <stdint.h>
 #include <stdio.h>
 
+#include <string>
+
 typedef struct AHardwareBuffer AHardwareBuffer;
 
 // NN api types based on NNAPI header file
@@ -39,6 +41,11 @@ enum {
   ANEURALNETWORKS_TENSOR_FLOAT32 = 3,
   ANEURALNETWORKS_TENSOR_INT32 = 4,
   ANEURALNETWORKS_TENSOR_QUANT8_ASYMM = 5,
+  ANEURALNETWORKS_BOOL = 6,
+  ANEURALNETWORKS_TENSOR_BOOL8 = 9,
+  ANEURALNETWORKS_TENSOR_QUANT16_SYMM = 7,
+  ANEURALNETWORKS_TENSOR_QUANT8_SYMM_PER_CHANNEL = 11,
+  ANEURALNETWORKS_TENSOR_QUANT8_SYMM = 13,
 };
 
 /**
@@ -85,6 +92,57 @@ enum {
   ANEURALNETWORKS_STRIDED_SLICE = 35,
   ANEURALNETWORKS_SUB = 36,
   ANEURALNETWORKS_TRANSPOSE = 37,
+  ANEURALNETWORKS_ABS = 38,
+  ANEURALNETWORKS_ARGMAX = 39,
+  ANEURALNETWORKS_ARGMIN = 40,
+  ANEURALNETWORKS_BIDIRECTIONAL_SEQUENCE_LSTM = 42,
+  ANEURALNETWORKS_CAST = 45,
+  ANEURALNETWORKS_EQUAL = 48,
+  ANEURALNETWORKS_EXP = 49,
+  ANEURALNETWORKS_EXPAND_DIMS = 50,
+  ANEURALNETWORKS_GATHER = 51,
+  ANEURALNETWORKS_GREATER = 53,
+  ANEURALNETWORKS_GREATER_EQUAL = 54,
+  ANEURALNETWORKS_LESS = 58,
+  ANEURALNETWORKS_LESS_EQUAL = 59,
+  ANEURALNETWORKS_LOG = 60,
+  ANEURALNETWORKS_LOGICAL_AND = 61,
+  ANEURALNETWORKS_LOGICAL_NOT = 62,
+  ANEURALNETWORKS_LOGICAL_OR = 63,
+  ANEURALNETWORKS_LOG_SOFTMAX = 64,
+  ANEURALNETWORKS_MAXIMUM = 65,
+  ANEURALNETWORKS_MINIMUM = 66,
+  ANEURALNETWORKS_NEG = 67,
+  ANEURALNETWORKS_NOT_EQUAL = 68,
+  ANEURALNETWORKS_PAD_V2 = 69,
+  ANEURALNETWORKS_POW = 70,
+  ANEURALNETWORKS_PRELU = 71,
+  ANEURALNETWORKS_QUANTIZE = 72,
+  ANEURALNETWORKS_QUANTIZED_16BIT_LSTM = 73,
+  ANEURALNETWORKS_REDUCE_ANY = 76,
+  ANEURALNETWORKS_REDUCE_MAX = 77,
+  ANEURALNETWORKS_REDUCE_MIN = 78,
+  ANEURALNETWORKS_REDUCE_PROD = 79,
+  ANEURALNETWORKS_REDUCE_SUM = 80,
+  ANEURALNETWORKS_RSQRT = 83,
+  ANEURALNETWORKS_SELECT = 84,
+  ANEURALNETWORKS_SIN = 85,
+  ANEURALNETWORKS_SLICE = 86,
+  ANEURALNETWORKS_SPLIT = 87,
+  ANEURALNETWORKS_SQRT = 88,
+  ANEURALNETWORKS_TILE = 89,
+  ANEURALNETWORKS_TOPK_V2 = 90,
+  ANEURALNETWORKS_TRANSPOSE_CONV = 91,
+  ANEURALNETWORKS_UNIDIRECTIONAL_SEQUENCE_LSTM = 92,
+  ANEURALNETWORKS_UNIDIRECTIONAL_SEQUENCE_RNN = 93,
+  ANEURALNETWORKS_RESIZE_NEAREST_NEIGHBOR = 94,
+  ANEURALNETWORKS_QUANTIZED_LSTM = 95,
+  ANEURALNETWORKS_IF = 96,
+  ANEURALNETWORKS_WHILE = 97,
+  ANEURALNETWORKS_ELU = 98,
+  ANEURALNETWORKS_HARD_SWISH = 99,
+  ANEURALNETWORKS_FILL = 100,
+  ANEURALNETWORKS_RANK = 101,
 };
 
 /**
@@ -110,6 +168,7 @@ enum {
 /**
  * Result codes.
  */
+// LINT.IfChange
 enum {
   ANEURALNETWORKS_NO_ERROR = 0,
   ANEURALNETWORKS_OUT_OF_MEMORY = 1,
@@ -121,7 +180,13 @@ enum {
   ANEURALNETWORKS_UNMAPPABLE = 7,
   ANEURALNETWORKS_OUTPUT_INSUFFICIENT_SIZE = 8,
   ANEURALNETWORKS_UNAVAILABLE_DEVICE = 9,
+  ANEURALNETWORKS_MISSED_DEADLINE_TRANSIENT = 10,
+  ANEURALNETWORKS_MISSED_DEADLINE_PERSISTENT = 11,
+  ANEURALNETWORKS_RESOURCE_EXHAUSTED_TRANSIENT = 12,
+  ANEURALNETWORKS_RESOURCE_EXHAUSTED_PERSISTENT = 13,
+  ANEURALNETWORKS_DEAD_OBJECT = 14,
 };
+// LINT.ThenChange(//tensorflow/lite/delegates/nnapi/nnapi_delegate.cc:NnApiErrorDescription)
 
 /**
  * Implicit padding algorithms.
@@ -129,6 +194,37 @@ enum {
 enum {
   ANEURALNETWORKS_PADDING_SAME = 1,
   ANEURALNETWORKS_PADDING_VALID = 2,
+};
+
+/**
+ * Device types.
+ *
+ * The type of NNAPI device.
+ */
+enum {
+  /** The device type cannot be provided. */
+  ANEURALNETWORKS_DEVICE_UNKNOWN = 0,
+  /** The device does not fall into any category below. */
+  ANEURALNETWORKS_DEVICE_OTHER = 1,
+  /** The device runs NNAPI models on single or multi-core CPU. */
+  ANEURALNETWORKS_DEVICE_CPU = 2,
+  /** The device can run NNAPI models and also accelerate graphics APIs such
+   * as OpenGL ES and Vulkan. */
+  ANEURALNETWORKS_DEVICE_GPU = 3,
+  /** Dedicated accelerator for Machine Learning workloads. */
+  ANEURALNETWORKS_DEVICE_ACCELERATOR = 4,
+};
+
+/**
+ * Relative execution priority.
+ *
+ * Available since API level 30.
+ */
+enum {
+  ANEURALNETWORKS_PRIORITY_LOW = 90,
+  ANEURALNETWORKS_PRIORITY_MEDIUM = 100,
+  ANEURALNETWORKS_PRIORITY_HIGH = 110,
+  ANEURALNETWORKS_PRIORITY_DEFAULT = ANEURALNETWORKS_PRIORITY_MEDIUM,
 };
 
 /**
@@ -444,8 +540,20 @@ typedef int (*ANeuralNetworksCompilation_setCaching_fn)(
     ANeuralNetworksCompilation* compilation, const char* cacheDir,
     const uint8_t* token);
 
+typedef int (*ANeuralNetworksCompilation_setTimeout_fn)(
+    ANeuralNetworksCompilation* compilation, uint64_t duration);
+
+typedef int (*ANeuralNetworksCompilation_setPriority_fn)(
+    ANeuralNetworksCompilation* compilation, int priority);
+
 typedef int (*ANeuralNetworksExecution_compute_fn)(
     ANeuralNetworksExecution* execution);
+
+typedef int (*ANeuralNetworksExecution_setTimeout_fn)(
+    ANeuralNetworksExecution* execution, uint64_t duration);
+
+typedef int (*ANeuralNetworksExecution_setLoopTimeout_fn)(
+    ANeuralNetworksExecution* execution, uint64_t duration);
 
 typedef int (*ANeuralNetworksExecution_getOutputOperandRank_fn)(
     ANeuralNetworksExecution* execution, int32_t index, uint32_t* rank);
@@ -479,5 +587,21 @@ typedef enum {
 typedef int (*ANeuralNetworksExecution_getDuration_fn)(
     const ANeuralNetworksExecution* execution, int32_t durationCode,
     uint64_t* duration);
+
+typedef int (*ANeuralNetworksDevice_getExtensionSupport_fn)(
+    const ANeuralNetworksDevice* device, const char* extensionName,
+    bool* isExtensionSupported);
+
+typedef int (*ANeuralNetworksModel_getExtensionOperandType_fn)(
+    ANeuralNetworksModel* model, const char* extensionName,
+    uint16_t operandCodeWithinExtension, int32_t* type);
+
+typedef int (*ANeuralNetworksModel_getExtensionOperationType_fn)(
+    ANeuralNetworksModel* model, const char* extensionName,
+    uint16_t operationCodeWithinExtension, ANeuralNetworksOperationType* type);
+
+typedef int (*ANeuralNetworksModel_setOperandExtensionData_fn)(
+    ANeuralNetworksModel* model, int32_t index, const void* data,
+    size_t length);
 
 #endif  // TENSORFLOW_LITE_NNAPI_NEURALNETWORKSTYPES_H_

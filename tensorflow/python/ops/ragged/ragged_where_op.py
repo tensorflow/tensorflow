@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -75,28 +74,25 @@ def where(condition, x=None, y=None, name=None):
       `condition`, `x`, and `y` have incompatible shapes.
 
   #### Examples:
-    ```python
-    >>> # Coordinates where condition is true.
-    >>> condition = tf.ragged.constant_value(
-    ...     [[True, False, True], [False, True]])
-    >>> ragged.where(condition)
-    [[0, 0], [0, 2], [1, 1]]
 
-    >>> # Elementwise selection between x and y, based on condition.
-    >>> condition = tf.ragged.constant_value(
-    ...     [[True, False, True], [False, True]])
-    >>> x = tf.ragged.constant_value([['A', 'B', 'C'], ['D', 'E']])
-    >>> y = tf.ragged.constant_value([['a', 'b', 'c'], ['d', 'e']])
-    >>> ragged.where(condition, x, y)
-    [['A', 'b', 'C'], ['d', 'E']]
+  >>> # Coordinates where condition is true.
+  >>> condition = tf.ragged.constant([[True, False, True], [False, True]])
+  >>> print(where(condition))
+  tf.Tensor( [[0 0] [0 2] [1 1]], shape=(3, 2), dtype=int64)
 
-    >>> # Row selection between x and y, based on condition.
-    >>> condition = [True, False]
-    >>> x = tf.ragged.constant_value([['A', 'B', 'C'], ['D', 'E']])
-    >>> y = tf.ragged.constant_value([['a', 'b', 'c'], ['d', 'e']])
-    >>> ragged.where(condition, x, y)
-    [['A', 'B', 'C'], ['d', 'e']]
-    ```
+  >>> # Elementwise selection between x and y, based on condition.
+  >>> condition = tf.ragged.constant([[True, False, True], [False, True]])
+  >>> x = tf.ragged.constant([['A', 'B', 'C'], ['D', 'E']])
+  >>> y = tf.ragged.constant([['a', 'b', 'c'], ['d', 'e']])
+  >>> print(where(condition, x, y))
+  <tf.RaggedTensor [[b'A', b'b', b'C'], [b'd', b'E']]>
+
+  >>> # Row selection between x and y, based on condition.
+  >>> condition = [True, False]
+  >>> x = tf.ragged.constant([['A', 'B', 'C'], ['D', 'E']])
+  >>> y = tf.ragged.constant([['a', 'b', 'c'], ['d', 'e']])
+  >>> print(where(condition, x, y))
+  <tf.RaggedTensor [[b'A', b'B', b'C'], [b'd', b'e']]>
   """
   if (x is None) != (y is None):
     raise ValueError('x and y must be either both None or both non-None')
@@ -108,6 +104,7 @@ def where(condition, x=None, y=None, name=None):
     else:
       x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x, name='x')
       y = ragged_tensor.convert_to_tensor_or_ragged_tensor(y, name='y')
+      condition, x, y = ragged_tensor.match_row_splits_dtypes(condition, x, y)
       return _elementwise_where(condition, x, y)
 
 
@@ -126,10 +123,11 @@ def _elementwise_where(condition, x, y):
   elif not condition_is_ragged:
     # Concatenate x and y, and then use `gather` to assemble the selected rows.
     condition.shape.assert_has_rank(1)
-    x_nrows = _nrows(x)
     x_and_y = ragged_concat_ops.concat([x, y], axis=0)
+    x_nrows = _nrows(x, out_type=x_and_y.row_splits.dtype)
+    y_nrows = _nrows(y, out_type=x_and_y.row_splits.dtype)
     indices = array_ops.where(condition, math_ops.range(x_nrows),
-                              x_nrows + math_ops.range(_nrows(y)))
+                              x_nrows + math_ops.range(y_nrows))
     return ragged_gather_ops.gather(x_and_y, indices)
 
   else:
@@ -145,6 +143,7 @@ def _coordinate_where(condition):
   selected_coords = _coordinate_where(condition.values)
 
   # Convert the first index in each coordinate to a row index and column index.
+  condition = condition.with_row_splits_dtype(selected_coords.dtype)
   first_index = selected_coords[:, 0]
   selected_rows = array_ops.gather(condition.value_rowids(), first_index)
   selected_row_starts = array_ops.gather(condition.row_splits, selected_rows)
@@ -158,9 +157,8 @@ def _coordinate_where(condition):
                           axis=1)
 
 
-def _nrows(rt_input, out_type=dtypes.int64, name=None):
+def _nrows(rt_input, out_type):
   if isinstance(rt_input, ragged_tensor.RaggedTensor):
-    return rt_input.nrows(out_type=out_type, name=name)
+    return rt_input.nrows(out_type=out_type)
   else:
-    with ops.name_scope(name, 'RaggedNRows', [rt_input]):
-      return array_ops.shape(rt_input, out_type=out_type)[0]
+    return array_ops.shape(rt_input, out_type=out_type)[0]

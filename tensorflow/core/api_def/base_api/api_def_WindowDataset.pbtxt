@@ -4,29 +4,76 @@ op {
   in_arg {
     name: "size"
     description: <<END
-A scalar representing the number of elements to accumulate in a window.
+An integer scalar, representing the number of elements
+of the input dataset to combine into a window. Must be positive.
 END
   }
   in_arg {
     name: "shift"
     description: <<END
-A scalar representing the steps moving the sliding window forward in one
-iteration. It must be positive.
+An integer scalar, representing the number of input elements
+by which the window moves in each iteration.  Defaults to `size`.
+Must be positive.
 END
   }
   in_arg {
     name: "stride"
     description: <<END
-A scalar representing the stride of the input elements of the sliding window.
-It must be positive.
+An integer scalar, representing the stride of the input elements
+in the sliding window. Must be positive. The default value of 1 means
+"retain every input element".
 END
   }
   in_arg {
     name: "drop_remainder"
     description: <<END
-A scalar representing whether a window should be dropped in case its size is
-smaller than desired.
+A Boolean scalar, representing whether the last window should be
+dropped if its size is smaller than `window_size`.
 END
   }
-  summary: "A dataset that creates window datasets from the input dataset."
+  summary: <<END
+  Combines (nests of) input elements into a dataset of (nests of) windows.
+
+  A "window" is a finite dataset of flat elements of size `size` (or possibly
+  fewer if there are not enough input elements to fill the window and
+  `drop_remainder` evaluates to false).
+
+  The `shift` argument determines the number of input elements by which
+  the window moves on each iteration.  The first element in the `k`th window
+  will be element
+
+  ```
+  1 + (k-1) * shift
+  ```
+
+  of the input dataset. In particular, the first element of the first window
+  will always be the first element of the input dataset.  
+
+  If the `stride` parameter is greater than 1, then each window will skip
+  `(stride - 1)` input elements between each element that appears in the
+  window. Output windows will still contain `size` elements regardless of
+  the value of `stride`.
+
+  The `stride` argument determines the stride of the input elements, and the
+  `shift` argument determines the shift of the window.
+
+  For example, letting `{...}` to represent a Dataset:
+
+  - `tf.data.Dataset.range(7).window(2)` produces
+    `{{0, 1}, {2, 3}, {4, 5}, {6}}`
+  - `tf.data.Dataset.range(7).window(3, 2, 1, True)` produces
+    `{{0, 1, 2}, {2, 3, 4}, {4, 5, 6}}`
+  - `tf.data.Dataset.range(7).window(3, 1, 2, True)` produces
+    `{{0, 2, 4}, {1, 3, 5}, {2, 4, 6}}`
+
+  Note that when the `window` transformation is applied to a dataset of
+  nested elements, it produces a dataset of nested windows.
+
+  For example:
+
+  - `tf.data.Dataset.from_tensor_slices((range(4), range(4))).window(2)`
+    produces `{({0, 1}, {0, 1}), ({2, 3}, {2, 3})}`
+  - `tf.data.Dataset.from_tensor_slices({"a": range(4)}).window(2)`
+    produces `{{"a": {0, 1}}, {"a": {2, 3}}}`
+END
 }

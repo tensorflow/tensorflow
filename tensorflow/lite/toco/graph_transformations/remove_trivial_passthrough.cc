@@ -57,6 +57,12 @@ void Reroute(const string& from, const string& to, Model* model) {
       to_array.final_data_type == ArrayDataType::kNone) {
     to_array.final_data_type = from_array.final_data_type;
   }
+  // The 'from' array may now be unused. We delete it here immediately
+  // so that this function doesn't violate graph invariants (no unused arrays)
+  // and as it's not trivial to get this right for the caller since
+  // DeleteOpAndArrays will no longer delete this array, since it's no longer
+  // referenced by this op.
+  DeleteArrayIfUnused(from, model);
 }
 
 }  // namespace
@@ -64,7 +70,7 @@ void Reroute(const string& from, const string& to, Model* model) {
 bool RemoveTrivialPassthroughOp(GraphTransformation* transformation,
                                 Model* model, std::size_t op_index,
                                 int input_index) {
-  const auto passthru_it = model->operators.begin() + op_index;
+  auto passthru_it = model->operators.begin() + op_index;
   auto* passthru_op = passthru_it->get();
   CHECK_EQ(passthru_op->outputs.size(), 1);
   CHECK_GE(passthru_op->inputs.size(), 1);
@@ -88,17 +94,6 @@ bool RemoveTrivialPassthroughOp(GraphTransformation* transformation,
 
   const string main_input_name = passthru_op->inputs[main_input_array_index];
   const string output_name = passthru_op->outputs[0];
-
-  // Build the list of all input and output arrays of the passthrough node
-  // that we are considering removing. Any of these arrays is a candidate
-  // for being removed as well, if nothing else references it. Doing that
-  // arrays-removal together with the passthrough-node-removal proved too
-  // error-prone.
-  std::vector<string> removal_candidates;
-  for (const string& input : passthru_op->inputs) {
-    removal_candidates.push_back(input);
-  }
-  removal_candidates.push_back(output_name);
 
   if (IsDiscardableArray(*model, output_name)) {
     transformation->AddMessageF(
@@ -127,44 +122,15 @@ bool RemoveTrivialPassthroughOp(GraphTransformation* transformation,
       // copy itself is a trivial reshape and we'd go into an infinite loop!
       transformation->AddMessageF("Replacing with a copy (reshape) instead");
       InsertCopyOperator(model, main_input_name, output_name);
+      // To avoid using invalidated iterator, evaluate passthru_it again.
+      passthru_it = model->operators.begin() + op_index;
     } else {
       return false;
     }
   }
 
   // Remove the pass-through node.
-  CHECK_EQ(passthru_it->get(), passthru_op);
-  model->operators.erase(passthru_it);
-
-  // Remove any array that is no longer used.
-  for (const string& removal_candidate : removal_candidates) {
-    bool is_referenced = false;
-    for (const auto& array : model->flags.input_arrays()) {
-      if (array.name() == removal_candidate) {
-        is_referenced = true;
-      }
-    }
-    for (const auto& array_name : model->flags.output_arrays()) {
-      if (array_name == removal_candidate) {
-        is_referenced = true;
-      }
-    }
-    for (const auto& op : model->operators) {
-      for (const string& input : op->inputs) {
-        if (input == removal_candidate) {
-          is_referenced = true;
-        }
-      }
-      for (const string& output : op->outputs) {
-        if (output == removal_candidate) {
-          is_referenced = true;
-        }
-      }
-    }
-    if (!is_referenced) {
-      model->EraseArray(removal_candidate);
-    }
-  }
+  DeleteOpAndArrays(model, passthru_op);
 
   return true;
 }

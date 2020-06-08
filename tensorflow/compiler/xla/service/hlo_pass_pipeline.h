@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/service/compilation_stats.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -34,7 +35,14 @@ namespace xla {
 // Pipeline of HLO passes.
 class HloPassPipeline : public HloPassInterface {
  public:
-  explicit HloPassPipeline(const string& name) : name_(name) {}
+  explicit HloPassPipeline(const string& name,
+                           CompilationStats* compilation_stats = nullptr)
+      : name_(name), compilation_stats_(compilation_stats) {
+    if (compilation_stats == nullptr) {
+      empty_compilation_stats_ = CompilationStats::MakeNoopStats();
+      compilation_stats_ = empty_compilation_stats_.get();
+    }
+  }
   absl::string_view name() const override { return name_; }
 
   // Add a pass to the pipeline. It should be called with the arguments for the
@@ -62,8 +70,18 @@ class HloPassPipeline : public HloPassInterface {
     return *pass;
   }
 
+  // Add an invariant-checking pass to the pipeline on debug builds only.
+  template <typename T, typename... Args>
+  void AddInvariantCheckerDebug(Args&&... args) {
+#ifndef NDEBUG
+    AddInvariantChecker<T>(std::forward<Args>(args)...);
+#endif  // NDEBUG
+  }
+
   StatusOr<bool> Run(HloModule* module) override;
   StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group) override;
+
+  bool IsPassPipeline() override { return true; }
 
  private:
   // Returns the set of passes which are enabled. DebugOptions can selectively
@@ -94,17 +112,26 @@ class HloPassPipeline : public HloPassInterface {
   // helpers enable templating of the core of the pipeline logic by providing
   // HloModule and HloModuleGroup specific methods with the same name.
   static StatusOr<bool> RunHelper(HloPassInterface* pass, HloModule* module) {
-    return pass->Run(module);
+    TF_ASSIGN_OR_RETURN(bool changed, pass->Run(module));
+    module->Cleanup();
+    return changed;
   }
   static StatusOr<bool> RunHelper(HloPassInterface* pass,
                                   HloModuleGroup* module_group) {
-    return pass->RunOnModuleGroup(module_group);
+    TF_ASSIGN_OR_RETURN(bool changed, pass->RunOnModuleGroup(module_group));
+    module_group->Cleanup();
+    return changed;
   }
 
   const string name_;
   std::vector<std::unique_ptr<HloPassInterface>> passes_;
   std::vector<std::unique_ptr<HloPassInterface>> invariant_checkers_;
   bool run_called_ = false;
+
+  CompilationStats* compilation_stats_;
+  // Default stats instance for when one is not passed in the constructor.
+  // Use via compilation_stats_, not directly.
+  std::unique_ptr<CompilationStats> empty_compilation_stats_;
 };
 
 }  // namespace xla

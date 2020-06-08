@@ -46,6 +46,7 @@ import functools
 import sys
 
 from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_inspect
 
 ESTIMATOR_API_NAME = 'estimator'
 KERAS_API_NAME = 'keras'
@@ -92,6 +93,12 @@ class SymbolAlreadyExposedError(Exception):
 class InvalidSymbolNameError(Exception):
   """Raised when trying to export symbol as an invalid or unallowed name."""
   pass
+
+_NAME_TO_SYMBOL_MAPPING = dict()
+
+
+def get_symbol_from_name(name):
+  return _NAME_TO_SYMBOL_MAPPING.get(name)
 
 
 def get_canonical_name_for_symbol(
@@ -169,7 +176,7 @@ def get_v1_names(symbol):
   estimator_api_attr_v1 = API_ATTRS_V1[ESTIMATOR_API_NAME].names
   keras_api_attr_v1 = API_ATTRS_V1[KERAS_API_NAME].names
 
-  if not hasattr(symbol, tensorflow_api_attr_v1):
+  if not hasattr(symbol, '__dict__'):
     return names_v1
   if tensorflow_api_attr_v1 in symbol.__dict__:
     names_v1.extend(getattr(symbol, tensorflow_api_attr_v1))
@@ -195,7 +202,7 @@ def get_v2_names(symbol):
   estimator_api_attr = API_ATTRS[ESTIMATOR_API_NAME].names
   keras_api_attr = API_ATTRS[KERAS_API_NAME].names
 
-  if not hasattr(symbol, tensorflow_api_attr):
+  if not hasattr(symbol, '__dict__'):
     return names_v2
   if tensorflow_api_attr in symbol.__dict__:
     names_v2.extend(getattr(symbol, tensorflow_api_attr))
@@ -332,6 +339,11 @@ class api_export(object):  # pylint: disable=invalid-name
     _, undecorated_func = tf_decorator.unwrap(func)
     self.set_attr(undecorated_func, api_names_attr, self._names)
     self.set_attr(undecorated_func, api_names_attr_v1, self._names_v1)
+
+    for name in self._names:
+      _NAME_TO_SYMBOL_MAPPING[name] = func
+    for name_v1 in self._names_v1:
+      _NAME_TO_SYMBOL_MAPPING['compat.v1.%s' % name_v1] = func
     return func
 
   def set_attr(self, func, api_names_attr, names):
@@ -377,6 +389,21 @@ class api_export(object):  # pylint: disable=invalid-name
       setattr(module, api_constants_attr_v1, [])
     getattr(module, api_constants_attr_v1).append(
         (self._names_v1, name))
+
+
+def kwarg_only(f):
+  """A wrapper that throws away all non-kwarg arguments."""
+  f_argspec = tf_inspect.getargspec(f)
+
+  def wrapper(*args, **kwargs):
+    if args:
+      raise TypeError(
+          '{f} only takes keyword args (possible keys: {kwargs}). '
+          'Please pass these args as kwargs instead.'
+          .format(f=f.__name__, kwargs=f_argspec.args))
+    return f(**kwargs)
+
+  return tf_decorator.make_decorator(f, wrapper, decorator_argspec=f_argspec)
 
 
 tf_export = functools.partial(api_export, api_name=TENSORFLOW_API_NAME)

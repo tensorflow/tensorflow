@@ -122,14 +122,10 @@ namespace toco {
   model->operators.emplace(add_op_it, prelu_op);
   AddMessageF("Creating %s replacing equivalent subgraph", LogName(*prelu_op));
 
-  DeleteArrayIfUsedOnce(neg_alpha_tensor_name, model);
-  DeleteArrayIfUsedOnce(add_op->inputs[0], model);
-  DeleteArrayIfUsedOnce(add_op->inputs[1], model);
-  DeleteArrayIfUsedOnce(mul_op->inputs[1], model);
-  // Remove the existing Add op that outputs the final result. If the other
-  // intermediate tensors aren't used by other ops, those will be removed by
-  // other graph transformation rules.
-  model->operators.erase(FindOp(*model, add_op));
+  DeleteArrayIfUnusedOutsideOfOp(neg_alpha_tensor_name, neg_neg_alpha_op,
+                                 model);
+  DeleteArrayIfUnusedOutsideOfOp(mul_op->inputs[1], mul_op, model);
+  DeleteOpAndArrays(model, add_op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

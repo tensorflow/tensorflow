@@ -57,6 +57,7 @@ CreateResourceOpInfoMap() {
   add("ResourceApplyAdaMax"                  , kReadWrite, kVariable);
   add("ResourceApplyAdadelta"                , kReadWrite, kVariable);
   add("ResourceApplyAdagrad"                 , kReadWrite, kVariable);
+  add("ResourceApplyAdagradV2"               , kReadWrite, kVariable),
   add("ResourceApplyAdagradDA"               , kReadWrite, kVariable);
   add("ResourceApplyAdam"                    , kReadWrite, kVariable);
   add("ResourceApplyAddSign"                 , kReadWrite, kVariable);
@@ -82,6 +83,11 @@ CreateResourceOpInfoMap() {
   add("ResourceScatterSub"                   , kReadWrite, kVariable);
   add("ResourceScatterUpdate"                , kReadWrite, kVariable);
   add("ResourceStridedSliceAssign"           , kReadWrite, kVariable);
+  add("StatefulStandardNormalV2"             , kReadWrite, kVariable);
+  add("StatefulTruncatedNormal"              , kReadWrite, kVariable);
+  add("StatefulUniform"                      , kReadWrite, kVariable);
+  add("StatefulUniformFullInt"               , kReadWrite, kVariable);
+  add("StatefulUniformInt"                   , kReadWrite, kVariable);
   add("VarIsInitializedOp"                   , kRead,      kVariable);
   add("VariableShape"                        , kRead,      kVariable);
 

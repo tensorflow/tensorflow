@@ -1,0 +1,103 @@
+// RUN: tf-mlir-translate -hlo-text-to-mlir-hlo %s -o - | FileCheck %s
+
+// This test comes from a fully connected reference model.
+
+HloModule tfcompile.48
+
+// CHECK-LABEL: func @main(%arg0: tensor<1x300xf32>, %arg1: tensor<1x300x3x1xf32>) -> tuple<tensor<300x1x5xf32>> {
+ENTRY %tfcompile.48 {
+  %arg0.1 = f32[1,300] parameter(0)
+  %arg1.2 = f32[1,300,3,1] parameter(1)
+
+  // CHECK-NEXT: %0 = "xla_hlo.reshape"(%arg0) {name = "reshape.3"} : (tensor<1x300xf32>) -> tensor<1x300xf32>
+  %reshape.3 = f32[1,300] reshape(%arg0.1)
+
+  // CHECK-NEXT: %1 = "xla_hlo.transpose"(%0) {name = "transpose.27", permutation = dense<[1, 0]> : tensor<2xi64>} : (tensor<1x300xf32>) -> tensor<300x1xf32>
+  %transpose.27 = f32[300,1] transpose(%reshape.3), dimensions={1,0}
+
+  // CHECK-NEXT: %2 = "xla_hlo.reshape"(%1) {name = "reshape.28"} : (tensor<300x1xf32>) -> tensor<300x1x1xf32>
+  %reshape.28 = f32[300,1,1] reshape(%transpose.27)
+
+  // CHECK-NEXT: %3 = "xla_hlo.reshape"(%2) {name = "reshape.29"} : (tensor<300x1x1xf32>) -> tensor<300x1xf32>
+  %reshape.29 = f32[300,1] reshape(%reshape.28)
+
+  // CHECK-NEXT: %4 = "xla_hlo.broadcast_in_dim"(%3) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>, name = "broadcast.30"} : (tensor<300x1xf32>) -> tensor<300x1x5xf32>
+  %broadcast.30 = f32[300,1,5] broadcast(%reshape.29), dimensions={0,1}
+
+  // CHECK-NEXT: %cst = constant  {name = "constant.8"} dense<1.000000e+00> : tensor<f32>
+  %constant.8 = f32[] constant(1)
+
+  // CHECK-NEXT: %5 = "xla_hlo.broadcast_in_dim"(%cst) {broadcast_dimensions = dense<[]> : tensor<0xi64>, name = "broadcast.9"} : (tensor<f32>) -> tensor<300x1x5xf32>
+  %broadcast.9 = f32[300,1,5] broadcast(%constant.8), dimensions={}
+
+  // CHECK-NEXT: %6 = xla_hlo.multiply %4, %5 {name = "multiply.31"} : tensor<300x1x5xf32>
+  %multiply.31 = f32[300,1,5] multiply(%broadcast.30, %broadcast.9)
+
+  // CHECK-NEXT: %cst_0 = constant  {name = "constant.32"} dense<0.000000e+00> : tensor<f32>
+  %constant.32 = f32[] constant(0)
+
+  // CHECK-NEXT: %7 = "xla_hlo.broadcast_in_dim"(%cst_0) {broadcast_dimensions = dense<[]> : tensor<0xi64>, name = "broadcast.33"} : (tensor<f32>) -> tensor<300x1x5xf32>
+  %broadcast.33 = f32[300,1,5] broadcast(%constant.32), dimensions={}
+
+  // CHECK-NEXT: %8 = "xla_hlo.compare"(%6, %7) {comparison_direction = "GT", name = "compare.34"} : (tensor<300x1x5xf32>, tensor<300x1x5xf32>) -> tensor<300x1x5xi1>
+  %compare.34 = pred[300,1,5] compare(%multiply.31, %broadcast.33), direction=GT
+
+  // CHECK-NEXT: %cst_1 = constant  {name = "constant.10"} dense<0.000000e+00> : tensor<f32>
+  %constant.10 = f32[] constant(0)
+
+  // CHECK-NEXT: %9 = "xla_hlo.broadcast_in_dim"(%cst_1) {broadcast_dimensions = dense<[]> : tensor<0xi64>, name = "broadcast.11"} : (tensor<f32>) -> tensor<300x1x5xf32>
+  %broadcast.11 = f32[300,1,5] broadcast(%constant.10), dimensions={}
+
+  // CHECK-NEXT: %cst_2 = constant  {name = "constant.40"} dense<0.000000e+00> : tensor<f32>
+  %constant.40 = f32[] constant(0)
+
+  // CHECK-NEXT: %10 = "xla_hlo.broadcast_in_dim"(%cst_2) {broadcast_dimensions = dense<[]> : tensor<0xi64>, name = "broadcast.41"} : (tensor<f32>) -> tensor<300x5xf32>
+  %broadcast.41 = f32[300,5] broadcast(%constant.40), dimensions={}
+
+  // CHECK-NEXT: %11 = "xla_hlo.copy"(%arg1) {name = "copy.1"} : (tensor<1x300x3x1xf32>) -> tensor<1x300x3x1xf32>
+  %copy.1 = f32[1,300,3,1] copy(%arg1.2)
+
+  // CHECK-NEXT: %12 = "xla_hlo.reshape"(%11) {name = "reshape.4"} : (tensor<1x300x3x1xf32>) -> tensor<1x300x3x1xf32>
+  %reshape.4 = f32[1,300,3,1] reshape(%copy.1)
+
+  // CHECK-NEXT: %13 = "xla_hlo.reshape"(%12) {name = "reshape.24"} : (tensor<1x300x3x1xf32>) -> tensor<1x300x3xf32>
+  %reshape.24 = f32[1,300,3] reshape(%reshape.4)
+
+  // CHECK-NEXT: %14 = "xla_hlo.transpose"(%13) {name = "transpose.25", permutation = dense<[1, 0, 2]> : tensor<3xi64>} : (tensor<1x300x3xf32>) -> tensor<300x1x3xf32>
+  %transpose.25 = f32[300,1,3] transpose(%reshape.24), dimensions={1,0,2}
+
+  // CHECK-NEXT: %15 = "xla_hlo.reshape"(%14) {name = "reshape.26"} : (tensor<300x1x3xf32>) -> tensor<300x3xf32>
+  %reshape.26 = f32[300,3] reshape(%transpose.25)
+
+  // CHECK-NEXT: %cst_3 = constant  {name = "constant.35"} dense<{{\[\[}}-1.060230e-01, 1.215050e-01, 8.002390e-01, -7.688850e-01, 0.0966112986], [6.890140e-01, -4.070560e-01, -0.797852993, 3.789250e-03, -2.088810e-01], [-6.085290e-01, 2.766170e-02, 2.685570e-01, 5.774010e-01, -4.284370e-01]]> : tensor<3x5xf32>
+  %constant.35 = f32[3,5] constant({ { -0.106023, 0.121505, 0.800239, -0.768885, 0.0966113 }, { 0.689014, -0.407056, -0.797853, 0.00378925, -0.208881 }, { -0.608529, 0.0276617, 0.268557, 0.577401, -0.428437 } })
+
+  // TODO(b/129709049) consider making this default precision config implied.
+  // CHECK-NEXT: %16 = "xla_hlo.dot"(%15, %cst_3) {name = "dot.36", precision_config = ["DEFAULT", "DEFAULT"]} : (tensor<300x3xf32>, tensor<3x5xf32>) -> tensor<300x5xf32>
+  %dot.36 = f32[300,5] dot(%reshape.26, %constant.35), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+
+  // CHECK-NEXT: %cst_4 = constant  {name = "constant.37"} dense<0.000000e+00> : tensor<5xf32>
+  %constant.37 = f32[5]{0} constant({0, 0, 0, 0, 0})
+
+  // CHECK-NEXT: %17 = "xla_hlo.broadcast_in_dim"(%cst_4) {broadcast_dimensions = dense<1> : tensor<1xi64>, name = "broadcast.38"} : (tensor<5xf32>) -> tensor<300x5xf32>
+  %broadcast.38 = f32[300,5] broadcast(%constant.37), dimensions={1}
+
+  // CHECK-NEXT: %18 = xla_hlo.add %16, %17 {name = "add.39"} : tensor<300x5xf32>
+  %add.39 = f32[300,5] add(%dot.36, %broadcast.38)
+
+  // CHECK-NEXT: %19 = xla_hlo.maximum %10, %18 {name = "maximum.42"} : tensor<300x5xf32>
+  %maximum.42 = f32[300,5] maximum(%broadcast.41, %add.39)
+
+  // CHECK-NEXT: %20 = "xla_hlo.reshape"(%19) {name = "reshape.44"} : (tensor<300x5xf32>) -> tensor<300x1x5xf32>
+  %reshape.44 = f32[300,1,5] reshape(%maximum.42)
+
+  // CHECK-NEXT: %21 = "xla_hlo.select"(%8, %9, %20) {name = "select.45"} : (tensor<300x1x5xi1>, tensor<300x1x5xf32>, tensor<300x1x5xf32>) -> tensor<300x1x5xf32>
+  %select.45 = f32[300,1,5] select(%compare.34, %broadcast.11, %reshape.44)
+
+  // CHECK-NEXT: %22 = "xla_hlo.reshape"(%21) {name = "reshape.46"} : (tensor<300x1x5xf32>) -> tensor<300x1x5xf32>
+  %reshape.46 = f32[300,1,5] reshape(%select.45)
+
+  // CHECK-NEXT: %23 = "xla_hlo.tuple"(%22) {name = "tuple.47"} : (tensor<300x1x5xf32>) -> tuple<tensor<300x1x5xf32>>
+  // CHECK-NEXT: return %23 : tuple<tensor<300x1x5xf32>>
+  ROOT %tuple.47 = (f32[300,1,5]) tuple(%reshape.46)
+}

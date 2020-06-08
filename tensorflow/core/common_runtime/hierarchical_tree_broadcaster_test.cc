@@ -15,12 +15,12 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/hierarchical_tree_broadcaster.h"
 
 #include <algorithm>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/base_collective_executor.h"
 #include "tensorflow/core/common_runtime/collective_rma_local.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
-#include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/test_collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/unbounded_work_queue.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 
@@ -136,8 +137,9 @@ DEF_TL_TEST(8, 7, 7, -1, V(0, 1))
 class FailTestRMA : public CollectiveRemoteAccessLocal {
  public:
   FailTestRMA(const DeviceMgr* dev_mgr, DeviceResolverInterface* dev_resolver,
-              int64 step_id, int fail_after)
-      : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, step_id),
+              std::shared_ptr<UnboundedWorkQueue> work_queue, int64 step_id,
+              int fail_after)
+      : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, work_queue, step_id),
         fail_after_(fail_after) {}
 
   bool MaybeFail(const StatusCallback& done) {
@@ -185,7 +187,7 @@ class FailTestRMA : public CollectiveRemoteAccessLocal {
   }
 
   mutex mu_;
-  int fail_after_ GUARDED_BY(mu_);
+  int fail_after_ TF_GUARDED_BY(mu_);
 };
 
 class HierarchicalTreeBroadcasterTest : public ::testing::Test {
@@ -198,7 +200,7 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
     if (col_exec_) col_exec_->Unref();
   }
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   void InitGPUDevices() {
     auto device_factory = DeviceFactory::GetFactory("GPU");
     CHECK(device_factory);
@@ -211,7 +213,7 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
 
   void Init(int num_workers, int num_devices_per_worker, DataType dtype,
             const DeviceType& device_type, int fail_after) {
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     InitGPUDevices();
 #endif
     VLOG(2) << "num_workers=" << num_workers
@@ -244,12 +246,15 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
       }
     }
     if (!dev_mgr_ || device_type == DEVICE_CPU) {
-      dev_mgr_.reset(new DeviceMgr(std::move(local_devices)));
+      dev_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(local_devices));
     }
-    if (!gpu_ring_order_) gpu_ring_order_.reset(new string());
-    dev_resolver_.reset(new DeviceResolverLocal(dev_mgr_.get()));
-    rma_ = new FailTestRMA(dev_mgr_.get(), dev_resolver_.get(), kStepId,
-                           fail_after);
+    if (!gpu_ring_order_) {
+      gpu_ring_order_ = absl::make_unique<string>();
+    }
+    dev_resolver_ = absl::make_unique<DeviceResolverLocal>(dev_mgr_.get());
+    work_queue_ = std::make_shared<UnboundedWorkQueue>(Env::Default(), "test");
+    rma_ = new FailTestRMA(dev_mgr_.get(), dev_resolver_.get(), work_queue_,
+                           kStepId, fail_after);
     col_exec_ = new BaseCollectiveExecutor(
         &col_exec_mgr_, rma_, kStepId, dev_mgr_.get(), gpu_ring_order_.get());
     col_params_.name = "test_collective";
@@ -436,13 +441,8 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
       Device* dev = instances_[broadcast_dev_id]->device_;
       auto* dev_info = dev->tensorflow_gpu_device_info();
       CHECK(dev_info);
-      dev_info->default_context->CopyDeviceTensorToCPU(
-          t, "" /*tensor_name*/, dev, &cpu_copy,
-          [this, &notification](Status s) {
-            TF_CHECK_OK(s);
-            notification.Notify();
-          });
-      notification.WaitForNotification();
+      TF_CHECK_OK(dev_info->default_context->CopyDeviceTensorToCPUSync(
+          t, "" /*tensor_name*/, dev, &cpu_copy));
       t = &cpu_copy;
     }
     for (size_t i = 0; i < t->NumElements(); ++i) {
@@ -455,8 +455,9 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
     for (int di = 0; di < instances_.size(); ++di) {
       if (!instances_[di]->status_.ok()) {
         ASSERT_GT(fail_after, 0);
-        ASSERT_EQ(instances_[di]->status_.error_message(),
-                  "Deliberate failure");
+        ASSERT_NE(
+            instances_[di]->status_.error_message().find("Deliberate failure"),
+            string::npos);
         mutex_lock l(mu_);
         ++failure_count_;
         continue;
@@ -466,17 +467,11 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
       if (device_type_ == DEVICE_CPU) {
         CHECK(actual.CopyFrom(*inst, inst->shape()));
       } else if (device_type_ == DEVICE_GPU) {
-        Notification notification;
         Device* dev = instances_[di]->device_;
         auto* dev_info = dev->tensorflow_gpu_device_info();
         CHECK(dev_info);
-        dev_info->default_context->CopyDeviceTensorToCPU(
-            inst, "" /*tensor_name*/, dev, &actual,
-            [this, &notification](Status s) {
-              TF_CHECK_OK(s);
-              notification.Notify();
-            });
-        notification.WaitForNotification();
+        TF_CHECK_OK(dev_info->default_context->CopyDeviceTensorToCPUSync(
+            inst, "" /*tensor_name*/, dev, &actual));
       }
       for (int i = 0; i < tensor_len; ++i) {
         switch (dtype) {
@@ -488,6 +483,7 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
             EXPECT_DOUBLE_EQ(expected[i], actual.template flat<T>()(i))
                 << "Mismatch at device " << di << " index " << i;
             break;
+          case DT_BOOL:
           case DT_INT32:
           case DT_INT64:
             EXPECT_EQ(expected[i], actual.template flat<T>()(i))
@@ -504,7 +500,7 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
     // instance may succeed while others fail, even if a transmission
     // failure occurs early in the operation chain.  So, when an abort
     // is specified we need to verify that at least one Op fails with
-    // the expected status and any Op that succeeds yeilds the correct
+    // the expected status and any Op that succeeds yields the correct
     // value.
     if (fail_after > 0) {
       mutex_lock l(mu_);
@@ -615,12 +611,8 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
         Notification notification;
         auto* dev_info = device_->tensorflow_gpu_device_info();
         CHECK(dev_info);
-        dev_info->default_context->CopyCPUTensorToDevice(
-            &cpu_tensor, device_, &tensor_, [this, &notification](Status s) {
-              TF_CHECK_OK(s);
-              notification.Notify();
-            });
-        notification.WaitForNotification();
+        TF_CHECK_OK(dev_info->default_context->CopyCPUTensorToDeviceSync(
+            &cpu_tensor, device_, &tensor_));
       } else {
         LOG(FATAL) << "Unsupported device_type " << device_type_;
       }
@@ -637,7 +629,6 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
       gtl::InlinedVector<AllocatorAttributes, 4> input_aa(
           {AllocatorAttributes()});
       op_params.input_alloc_attrs = &input_aa;
-      gtl::InlinedVector<DeviceContext*, 4> input_dc;
       DeviceContext* dev_ctx = nullptr;
       auto* dev_info = device_->tensorflow_gpu_device_info();
       if (dev_info) {
@@ -646,8 +637,6 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
       } else {
         dev_ctx = new DeviceContext;
       }
-      input_dc.push_back(dev_ctx);
-      op_params.input_device_contexts = &input_dc;
       op_params.op_device_context = dev_ctx;
       int forward_from[] = {OpKernelContext::Params::kNeverForward};
       if (forward_input) forward_from[0] = 0;
@@ -713,15 +702,16 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
   CollectiveExecutor* col_exec_ = nullptr;
   CollectiveRemoteAccessLocal* rma_;
   std::unique_ptr<DeviceResolverLocal> dev_resolver_;
+  std::shared_ptr<UnboundedWorkQueue> work_queue_;
   std::vector<DeviceInstance*> instances_;
   CollectiveParams col_params_;
   std::vector<std::unique_ptr<tensorflow::Device>> gpu_devices_;
   std::unique_ptr<tensorflow::DeviceMgr> dev_mgr_;
   std::unique_ptr<string> gpu_ring_order_;
   mutex mu_;
-  int bcast_recv_counter_ GUARDED_BY(mu_) = 0;
-  int bcast_send_counter_ GUARDED_BY(mu_) = 0;
-  int failure_count_ GUARDED_BY(mu_) = 0;
+  int bcast_recv_counter_ TF_GUARDED_BY(mu_) = 0;
+  int bcast_send_counter_ TF_GUARDED_BY(mu_) = 0;
+  int failure_count_ TF_GUARDED_BY(mu_) = 0;
 };
 
 TEST_F(HierarchicalTreeBroadcasterTest, InitializeParams1Task8GPU) {
@@ -844,11 +834,15 @@ TEST_F(HierarchicalTreeBroadcasterTest, InitializeParams4TasksVariableGPU) {
 // D = number of devices per worker
 // L = tensor length
 // A = abort after count
+// F = forward input
 #define DEF_TEST(B, T, W, D, L, A, F)                                      \
   TEST_F(HierarchicalTreeBroadcasterTest,                                  \
          DaTy##B##_DevTy##T##_Wkr##W##_Dev##D##_Len##L##_Abt##A##_Fw##F) { \
     DataType dtype = DT_##B;                                               \
     switch (dtype) {                                                       \
+      case DT_BOOL: {                                                      \
+        RunTest<bool>(dtype, DEVICE_##T, W, D, L, A, F);                   \
+      } break;                                                             \
       case DT_FLOAT: {                                                     \
         RunTest<float>(dtype, DEVICE_##T, W, D, L, A, F);                  \
       } break;                                                             \
@@ -866,7 +860,7 @@ TEST_F(HierarchicalTreeBroadcasterTest, InitializeParams4TasksVariableGPU) {
     }                                                                      \
   }
 
-#ifndef GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
 //       B      T    W  D  L  A  F
 DEF_TEST(FLOAT, CPU, 1, 2, 1, 0, false)
 DEF_TEST(FLOAT, CPU, 1, 2, 1001, 0, true)
@@ -874,6 +868,10 @@ DEF_TEST(FLOAT, CPU, 2, 1, 128, 0, false)
 DEF_TEST(FLOAT, CPU, 2, 4, 128, 0, true)
 DEF_TEST(FLOAT, CPU, 2, 8, 4095, 0, false)
 DEF_TEST(FLOAT, CPU, 4, 4, 1045991, 0, true)
+
+DEF_TEST(BOOL, CPU, 1, 4, 1, 0, false)
+DEF_TEST(BOOL, CPU, 2, 4, 1, 0, false)
+DEF_TEST(BOOL, CPU, 2, 4, 1001, 0, false)
 
 DEF_TEST(DOUBLE, CPU, 2, 4, 128, 0, false)
 DEF_TEST(INT32, CPU, 2, 4, 128, 0, true)
@@ -884,7 +882,7 @@ DEF_TEST(FLOAT, CPU, 2, 4, 128, 1, true)
 DEF_TEST(FLOAT, CPU, 2, 4, 128, 5, false)
 #endif
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Can only set W=1 for GPU tests.
 //       B      T    W  D  L  A  F
 DEF_TEST(FLOAT, GPU, 1, 2, 1, 0, true)
@@ -893,6 +891,9 @@ DEF_TEST(FLOAT, GPU, 1, 3, 64, 0, true)
 DEF_TEST(FLOAT, GPU, 1, 8, 1001, 0, false)
 DEF_TEST(FLOAT, GPU, 1, 8, 4095, 0, true)
 DEF_TEST(FLOAT, GPU, 1, 8, 1045991, 0, false)
+
+DEF_TEST(BOOL, GPU, 1, 4, 1, 0, false)
+DEF_TEST(BOOL, GPU, 1, 4, 1001, 0, false)
 
 DEF_TEST(DOUBLE, GPU, 1, 8, 1001, 0, true)
 DEF_TEST(INT64, GPU, 1, 8, 1001, 0, false)

@@ -120,7 +120,7 @@ class Bernoulli(distribution.Distribution):
     return array_ops.constant([], dtype=dtypes.int32)
 
   def _event_shape(self):
-    return tensor_shape.scalar()
+    return tensor_shape.TensorShape([])
 
   def _sample_n(self, n, seed=None):
     new_shape = array_ops.concat([[n], self.batch_shape_tensor()], 0)

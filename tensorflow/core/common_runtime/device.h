@@ -34,7 +34,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/control_flow.h"
-#include "tensorflow/core/framework/device_attributes.pb_text.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -51,8 +50,6 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
-
-class DeviceMgr;
 
 class Device : public DeviceBase {
  public:
@@ -95,22 +92,6 @@ class Device : public DeviceBase {
     op_kernel->ComputeAsync(context, std::move(done));
   }
 
-  // Takes ownership of the references in tensors. If necessary, a
-  // device may override this method to keep a reference to the
-  // accessed tensors until the async computation has completed.
-  virtual void ConsumeListOfAccessedTensors(
-      DeviceContext* context, const TensorReferenceVector& tensors) {
-    for (const auto& ref : tensors) {
-      ref.Unref();
-    }
-  }
-
-  // If true, and tracing is enabled, the `tracing::ScopedAnnotation()` tracing
-  // mechanism will be used instead of `tracing::ScopedActivity()`. Some devices
-  // may override this method to use annotations, which enable child activities
-  // (such as GPU kernel launches) to be related to the OpKernel invocation.
-  virtual bool TraceUsingAnnotations() const { return false; }
-
   // Blocks until all operations queued on the device at the time of
   // the call have completed.  Returns any error pending on the device
   // at completion.
@@ -127,16 +108,22 @@ class Device : public DeviceBase {
   // flag settings. Override this to return false for devices that don't allow
   // such calls. Instead, these devices must use other mechanisms (such as
   // num_deferred_ops) to ensure the device has finished processing necessary
-  // work at session completion.
+  // work at session completion. In addition, for these devices, RefreshStatus
+  // must be called at session completion to retrieve execution result status.
   //
-  // Devices that override this function must also implement CurrentStatus.
+  // Devices that override this function must also implement RefreshStatus.
   virtual bool AllowsSyncOnCompletion() const { return true; }
 
   // This is used in conjunction with AllowsSyncOnCompletion to allow the
   // executor to get execution result status at session completion.
-  virtual Status CurrentStatus() {
+  //
+  // For supported devices, this call returns the underlying device stream's
+  // current status in a non-blocking way, without using blocking calls such as
+  // Stream::BlockHostUntilDone or Device::Sync. When applicable, the device
+  // status is also updated with the retrieved stream status.
+  virtual Status RefreshStatus() {
     return errors::Unimplemented(
-        "CurrentStatus is not supported on this device.");
+        "RefreshStatus is not supported on this device.");
   }
 
   // Optionally modify the device's GraphDef before execution.
@@ -151,13 +138,14 @@ class Device : public DeviceBase {
     return Status::OK();
   }
 
-  // Fill in the context map for the graph. Default behavior is to do
-  // nothing.
+  // Sets `out_context` a new DeviceContext* for executing a graph, or nullptr
+  // if the device does not support contexts. Returns an error status if any
+  // error occurred while trying to create a context, otherwise OK.
   //
-  // The caller takes ownership over the DeviceContext objects given
-  // by the device.
-  virtual Status FillContextMap(const Graph* graph,
-                                DeviceContextMap* device_context_map) {
+  // The caller takes ownership of one reference on the output DeviceContext*,
+  // and should call Unref().
+  virtual Status TryGetDeviceContext(DeviceContext** out_context) {
+    *out_context = nullptr;
     return Status::OK();
   }
 
@@ -168,12 +156,8 @@ class Device : public DeviceBase {
   // Returns the resource manager associated w/ this device.
   virtual ResourceMgr* resource_manager() { return rmgr_; }
 
-  // Returns the device manager that owns this device, or nullptr if this Device
-  // is not owned by a device manager.
-  DeviceMgr* device_mgr() const { return device_mgr_; }
-
   // Summarizes the status of this Device, for debugging.
-  string DebugString() const { return ProtoDebugString(device_attributes_); }
+  string DebugString() const { return device_attributes_.DebugString(); }
 
   // Assembles the parameter components into a complete DeviceAttributes value.
   static DeviceAttributes BuildDeviceAttributes(
@@ -190,6 +174,8 @@ class Device : public DeviceBase {
   // Clears the resource manager associated with this device.
   void ClearResourceMgr() { rmgr_->Clear(); }
 
+  virtual bool IsLocal() const { return true; }
+
  protected:
   void DeleteResourceMgr() {
     delete rmgr_;
@@ -197,11 +183,6 @@ class Device : public DeviceBase {
   }
 
  private:
-  friend class DeviceMgr;
-
-  // Pointer to the device manager that owns this device. Not owned.
-  DeviceMgr* device_mgr_ = nullptr;
-
   const DeviceAttributes device_attributes_;
   DeviceNameUtils::ParsedName parsed_name_;
 

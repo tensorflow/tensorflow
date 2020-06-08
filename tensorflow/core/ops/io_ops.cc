@@ -101,7 +101,7 @@ REGISTER_OP("RestoreV2")
       const Tensor* shape_and_slices_tensor = c->input_tensor(2);
       if (shape_and_slices_tensor) {
         const auto& shape_and_slices_flat =
-            shape_and_slices_tensor->flat<string>();
+            shape_and_slices_tensor->flat<tstring>();
         if (shape_and_slices_flat.size() != c->num_outputs()) {
           return errors::InvalidArgument(
               "The number of shape_and_slice doesn't match tensor outputs.");
@@ -222,7 +222,7 @@ REGISTER_OP("RestoreSlice")
       const Tensor* shape_and_slices_tensor = c->input_tensor(2);
       if (shape_and_slices_tensor) {
         const auto& shape_and_slice =
-            shape_and_slices_tensor->flat<string>()(0);
+            shape_and_slices_tensor->flat<tstring>()(0);
         if (shape_and_slice.empty()) {
           c->set_output(0, c->UnknownShape());
         } else {
@@ -474,6 +474,7 @@ REGISTER_OP("ReadFile")
 REGISTER_OP("WriteFile")
     .Input("filename: string")
     .Input("contents: string")
+    .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));

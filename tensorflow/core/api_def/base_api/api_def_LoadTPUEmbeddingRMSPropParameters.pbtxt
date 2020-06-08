@@ -1,0 +1,30 @@
+op {
+  graph_op_name: "LoadTPUEmbeddingRMSPropParameters"
+  visibility: HIDDEN
+  in_arg {
+    name: "parameters"
+    description: <<END
+Value of parameters used in the RMSProp optimization algorithm.
+END
+  }
+  in_arg {
+    name: "ms"
+    description: <<END
+Value of ms used in the RMSProp optimization algorithm.
+END
+  }
+  in_arg {
+    name: "mom"
+    description: <<END
+Value of mom used in the RMSProp optimization algorithm.
+END
+  }
+  summary: "Load RMSProp embedding parameters."
+  description: <<END
+An op that loads optimization parameters into HBM for embedding. Must be
+preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+embedding table configuration. For example, this op is used to install
+parameters that are loaded from a checkpoint before a training loop is
+executed.
+END
+}

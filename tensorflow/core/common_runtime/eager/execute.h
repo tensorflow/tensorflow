@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EXECUTE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EXECUTE_H_
 
+#include "absl/container/inlined_vector.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
@@ -22,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
 
 namespace tensorflow {
 
@@ -36,23 +37,52 @@ namespace tensorflow {
 //    Eager execute will send an RPC to execute the op on a remote device.
 //  Note that in the Async + Remote case, EagerExecute should still return
 //  quickly, but it will schedule the op to be executed remotely.
-Status EagerExecute(
-    EagerOperation* op,
-    tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2>* retvals,
-    int* num_retvals);
+//
+// 'retvals' must point to a pre-allocated array of TensorHandle* and
+// '*num_retvals' should be set to the size of this array. It is an error if
+// the size of 'retvals' is less than the number of outputs. This call sets
+// *num_retvals to the number of outputs.
+Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
+                    int* num_retvals);
 
-// Low-level utility to execute the kernel specified by kernel on device device,
-// with the inputs op_inputs, in the context ctx.
-Status EagerKernelExecute(EagerContext* ctx, Device* device,
-                          const gtl::InlinedVector<TensorHandle*, 4>& op_inputs,
-                          KernelAndDevice* kernel, NodeExecStats* maybe_stats,
-                          StepStats* maybe_step_stats,
-                          GraphCollector* graph_collector,
-                          TensorHandle** retvals, int num_retvals);
+// Low-level utility to execute the kernel specified by `kernel` on
+// `kernel->device()`, with the inputs op_inputs, in the context 'ctx'.
+Status EagerKernelExecute(
+    EagerContext* ctx, const absl::InlinedVector<TensorHandle*, 4>& op_inputs,
+    const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+    const core::RefCountPtr<KernelAndDevice>& kernel,
+    GraphCollector* graph_collector, CancellationManager* cancellation_manager,
+    absl::Span<TensorHandle*> retvals);
 
-// Low-level utility to copy a tensor handle from one device to another.
+// Low-level utility to copy a tensor handle from one device to another. If
+// successful, result TensorHandle will be populated. If the caller requests for
+// the mirror flag, EagerCopyToDevice will attempt to add a mirror to the
+// original handle and update *result to point to h. Since this is not
+// guaranteed, callers should always use the value in *result.
 Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
-                         const char* device_name, TensorHandle** result);
+                         EagerExecutor* executor, Device* device, bool mirror,
+                         TensorHandle** result);
+
+// Utility function that executes a fully constructed EagerOperation
+// asynchronously on the local task. This function works differently from
+// EagerExecute in several ways:
+//  - It supports local execution only.
+//  - It returns after launching the eager operation to run asynchronously.
+//    Different from EagerExecute with async context that apends the operation
+//    to the end of the eager executor schedule queue, this call bypasses the
+//    executor logic and directly launches op execution. Ops running through
+//    this call does NOT have an ordering and can be executed in parallel.
+//  - It takes a StatusCallback which will be triggered after execution with the
+//    execution status.
+//
+// Does not support custom device.
+//
+// 'retvals' must point to a pre-allocated array of TensorHandle* and
+// '*num_retvals' should be set to the size of this array. It is an error if
+// the size of 'retvals' is less than the number of outputs. This call sets
+// *num_retvals to the number of outputs.
+void EagerLocalExecuteAsync(EagerOperation* op, TensorHandle** retvals,
+                            int* num_retvals, StatusCallback done);
 
 }  // namespace tensorflow
 

@@ -22,18 +22,25 @@ limitations under the License.
 extern "C" {
 
 // Each entry in 'values' represents a 3-dimensional shape with dimensions
-// [a, b, c]. The 'b' dimension of the first shape is sorted into ascending
-// order according to the results of comparisons using the provided 'less_than'
+// [a, b, c]. The 'b' dimension of each shape is sorted into ascending order
+// according to the results of comparisons using the provided 'less_than'
 // function. 'values_count' must be > 0 and specifies the number of entries in
 // 'values' and 'values_primitive_type_size_in_bytes'. The size of the primitive
 // type of the i-th shape has exactly 'values_primitive_type_size_in_bytes[i]'
-// bytes. The elements in each 'values' shape are reordered in the same way
-// according to the comparisons using the first shape.
+// bytes. 'is_stable' specifies whether the sorting should be stable.
+// 'run_options' and 'prof_counters' are passed through to the less-than
+// function, which expects the following arguments:
+// - pointer to the return value buffer (char*)
+// - xla::ExecutableRunOptions = 'run_options' (char*)
+// - pointers to the parameter buffers (char**)
+// - pointers to the buffer tables = nullptr for thread local functions (char**)
+// - profile counters = 'prof_counters' (int64*)
 extern void __xla_cpu_runtime_KeyValueSort(
     tensorflow::int64 a, tensorflow::int64 b, tensorflow::int64 c,
     char** values, tensorflow::int32 values_count,
-    tensorflow::int32* values_primitive_type_size_in_bytes,
-    bool (*less_than)(char*, char*));
+    tensorflow::int32* values_primitive_type_size_in_bytes, bool is_stable,
+    char* run_options, tensorflow::int64* prof_counters,
+    void (*less_than)(char*, char*, char**, char**, tensorflow::int64*));
 }
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_KEY_VALUE_SORT_H_

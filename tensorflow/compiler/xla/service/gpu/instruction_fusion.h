@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_INSTRUCTION_FUSION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_INSTRUCTION_FUSION_H_
 
+#include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/service/fusion_node_indexing_evaluation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 
@@ -27,19 +29,6 @@ class GpuInstructionFusion : public InstructionFusion {
   explicit GpuInstructionFusion(bool may_duplicate)
       : InstructionFusion(GpuInstructionFusion::IsExpensive, may_duplicate) {}
 
-  // Maximum number of operands plus outputs allowed on a single fusion node.
-  // Exposed publicly mainly for tests.
-  static constexpr int64 kMaxOperandsAndOutputsPerFusion = 64;
-
-  // Determines whether the combination of `a` and `b` into a (possibly
-  // multi-output) fusion would be "too large" -- i.e., have more operands and
-  // outputs than is allowed.
-  //
-  // `ShouldFuse` and `ShouldFuseIntoMultiOutput` call this; it's public so that
-  // other fusion passes (e.g. GPU multi-output fusion) can also call this.
-  static bool FusionWouldBeTooLarge(const HloInstruction* a,
-                                    const HloInstruction* b);
-
   static bool IsExpensive(const HloInstruction& instruction);
 
   bool ShouldFuse(HloInstruction* consumer, int64 operand_index) override;
@@ -49,6 +38,25 @@ class GpuInstructionFusion : public InstructionFusion {
 
   HloInstruction::FusionKind ChooseKind(
       const HloInstruction* producer, const HloInstruction* consumer) override;
+
+  StatusOr<bool> Run(HloModule* module) override {
+    fusion_node_evaluations_.clear();
+    return InstructionFusion::Run(module);
+  }
+
+ private:
+  // This method is called by ShouldFuse() to do all the computationally
+  // inexpensive checks whether we should fuse the operand into 'consumer'.
+  bool ShouldFuseInexpensiveChecks(HloInstruction* consumer,
+                                   int64 operand_index);
+
+  HloInstruction* FuseInstruction(HloInstruction* fusion_instruction,
+                                  HloInstruction* producer) override;
+
+  // Keep track of the number of times each instruction inside a fusion node is
+  // indexed with different index vectors.
+  absl::flat_hash_map<const HloInstruction*, FusionNodeIndexingEvaluation>
+      fusion_node_evaluations_;
 };
 
 }  // namespace gpu

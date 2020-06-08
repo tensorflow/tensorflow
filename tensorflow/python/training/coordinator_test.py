@@ -133,7 +133,7 @@ class CoordinatorTest(test.TestCase):
       t.start()
     WaitForThreadsToRegister(coord, 2)
     # threads[1] is not registered we must pass it in.
-    coord.join(threads[1:1])
+    coord.join([threads[1]])
     for t in threads:
       self.assertFalse(t.is_alive())
 

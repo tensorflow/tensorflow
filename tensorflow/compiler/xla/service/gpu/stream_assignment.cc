@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
+#include "tensorflow/core/platform/random.h"
 
 namespace xla {
 namespace gpu {
@@ -72,14 +73,18 @@ int ComputeStreamToAssign(
     return kInvalidStreamNum;
   }
 
-  if (hlo.GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_disable_multi_streaming()) {
+  const auto& debug_options = hlo.GetModule()->config().debug_options();
+  if (debug_options.xla_gpu_disable_multi_streaming()) {
     return 0;
   }
 
-  if (!ImplementedAsGemm(hlo)) {
+  if (debug_options.xla_gpu_use_random_streams()) {
+    // Debug feature: make random stream assignments to try to uncover
+    // concurrency bugs.
+    return tensorflow::random::New64() % 100;
+  }
+
+  if (!(IsCublasGemm(hlo) || IsMatrixMultiplication(hlo))) {
     // If `hlo` is not implemented as a GEMM, keep it close to its operands to
     // avoid excessive synchronization.
     int stream_num = -1;
@@ -147,7 +152,7 @@ std::unique_ptr<StreamAssignment> AssignStreams(const HloModule& module) {
         stream_num_for_rng = stream_num;
       }
     }
-    if (ImplementedAsGemm(*hlo)) {
+    if (IsCublasGemm(*hlo) || IsMatrixMultiplication(*hlo)) {
       seen_gemms.push_back(hlo);
     }
   }

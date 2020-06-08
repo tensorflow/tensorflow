@@ -59,21 +59,22 @@ class DeviceType {
   explicit DeviceType(StringPiece type) : type_(type.data(), type.size()) {}
 
   const char* type() const { return type_.c_str(); }
-  const string& type_string() const { return type_; }
+  const std::string& type_string() const { return type_; }
 
   bool operator<(const DeviceType& other) const;
   bool operator==(const DeviceType& other) const;
   bool operator!=(const DeviceType& other) const { return !(*this == other); }
 
  private:
-  string type_;
+  std::string type_;
 };
 std::ostream& operator<<(std::ostream& os, const DeviceType& d);
 
 // Convenient constants that can be passed to a DeviceType constructor
-TF_EXPORT extern const char* const DEVICE_CPU;   // "CPU"
-TF_EXPORT extern const char* const DEVICE_GPU;   // "GPU"
-TF_EXPORT extern const char* const DEVICE_SYCL;  // "SYCL"
+TF_EXPORT extern const char* const DEVICE_DEFAULT;  // "DEFAULT"
+TF_EXPORT extern const char* const DEVICE_CPU;      // "CPU"
+TF_EXPORT extern const char* const DEVICE_GPU;      // "GPU"
+TF_EXPORT extern const char* const DEVICE_SYCL;     // "SYCL"
 
 template <typename Device>
 struct DeviceName {};
@@ -83,12 +84,13 @@ struct DeviceName<Eigen::ThreadPoolDevice> {
   static const std::string value;
 };
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 template <>
 struct DeviceName<Eigen::GpuDevice> {
   static const std::string value;
 };
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 template <>
@@ -108,10 +110,10 @@ typedef gtl::InlinedVector<std::pair<DeviceType, int32>, 4>
     PrioritizedDeviceTypeVector;
 
 // Convert the enums to strings for errors:
-string DataTypeString(DataType dtype);
-string DeviceTypeString(const DeviceType& device_type);
-string DataTypeSliceString(const DataTypeSlice dtypes);
-inline string DataTypeVectorString(const DataTypeVector& dtypes) {
+std::string DataTypeString(DataType dtype);
+std::string DeviceTypeString(const DeviceType& device_type);
+std::string DataTypeSliceString(const DataTypeSlice dtypes);
+inline std::string DataTypeVectorString(const DataTypeVector& dtypes) {
   return DataTypeSliceString(dtypes);
 }
 
@@ -389,7 +391,7 @@ MATCH_TYPE_AND_ENUM(uint16, DT_UINT16);
 MATCH_TYPE_AND_ENUM(uint8, DT_UINT8);
 MATCH_TYPE_AND_ENUM(int16, DT_INT16);
 MATCH_TYPE_AND_ENUM(int8, DT_INT8);
-MATCH_TYPE_AND_ENUM(string, DT_STRING);
+MATCH_TYPE_AND_ENUM(tstring, DT_STRING);
 MATCH_TYPE_AND_ENUM(complex64, DT_COMPLEX64);
 MATCH_TYPE_AND_ENUM(complex128, DT_COMPLEX128);
 MATCH_TYPE_AND_ENUM(int64, DT_INT64);
@@ -476,6 +478,12 @@ int DataTypeSize(DataType dt);
 // Returns HOST_MEMORY if `dtype` is always on host or is a DT_INT32,
 // DEVICE_MEMORY otherwise.
 MemoryType MTypeFromDType(const DataType dtype);
+
+// Returns HOST_MEMORY if `dtype` is always on host, DEVICE_MEMORY otherwise.
+// The reason we have MTypeFromDType() and MTypeFromDTypeIntsOnDevice(): for
+// GPUs, we would like to keep int operations on host for performance concerns.
+// But for TPUs (and other devices), int operations are placed on device.
+MemoryType MTypeFromDTypeIntsOnDevice(const DataType dtype);
 
 // Types that always sit on host: DT_STRING, DT_STRING_REF, DT_RESOURCE.
 // For DT_RESOURCE, the handle always sits on host (even if the underlying

@@ -96,7 +96,7 @@ string InferSourceFileName(const char* argv_zero) {
   // operators defined in <op type>_ops.cc
   const char* kExecPrefix = "gen_";
   const char* kExecSuffix = "_py_wrappers_cc";
-  if (str_util::ConsumePrefix(&command_str, kExecPrefix) &&
+  if (absl::ConsumePrefix(&command_str, kExecPrefix) &&
       str_util::EndsWith(command_str, kExecSuffix)) {
     command_str.remove_suffix(strlen(kExecSuffix));
     return strings::StrCat(command_str, ".cc");
@@ -107,7 +107,7 @@ string InferSourceFileName(const char* argv_zero) {
 
 void PrintAllPythonOps(const std::vector<string>& op_list,
                        const std::vector<string>& api_def_dirs,
-                       const string& source_file_name, bool require_shapes,
+                       const string& source_file_name,
                        bool op_list_is_whitelist) {
   OpList ops;
   OpRegistry::Global()->Export(false, &ops);
@@ -133,10 +133,9 @@ void PrintAllPythonOps(const std::vector<string>& op_list,
         *pruned_ops.mutable_op()->Add() = op_def;
       }
     }
-    PrintPythonOps(pruned_ops, api_def_map, {}, require_shapes,
-                   source_file_name);
+    PrintPythonOps(pruned_ops, api_def_map, {}, source_file_name);
   } else {
-    PrintPythonOps(ops, api_def_map, op_list, require_shapes, source_file_name);
+    PrintPythonOps(ops, api_def_map, op_list, source_file_name);
   }
 }
 
@@ -151,29 +150,26 @@ int main(int argc, char* argv[]) {
 
   // Usage:
   //   gen_main api_def_dir1,api_def_dir2,...
-  //       [ @FILENAME | OpName[,OpName]* ] (0 | 1) [0 | 1]
-  if (argc < 3) {
+  //       [ @FILENAME | OpName[,OpName]* ] [0 | 1]
+  if (argc < 2) {
     return -1;
   }
   std::vector<tensorflow::string> api_def_dirs = tensorflow::str_util::Split(
       argv[1], ",", tensorflow::str_util::SkipEmpty());
 
-  if (argc == 3) {
+  if (argc == 2) {
     tensorflow::PrintAllPythonOps({}, api_def_dirs, source_file_name,
-                                  tensorflow::string(argv[2]) == "1",
                                   false /* op_list_is_whitelist */);
-  } else if (argc == 4) {
+  } else if (argc == 3) {
     std::vector<tensorflow::string> hidden_ops;
     TF_CHECK_OK(tensorflow::ParseOpListCommandLine(argv[2], &hidden_ops));
     tensorflow::PrintAllPythonOps(hidden_ops, api_def_dirs, source_file_name,
-                                  tensorflow::string(argv[3]) == "1",
                                   false /* op_list_is_whitelist */);
-  } else if (argc == 5) {
+  } else if (argc == 4) {
     std::vector<tensorflow::string> op_list;
     TF_CHECK_OK(tensorflow::ParseOpListCommandLine(argv[2], &op_list));
     tensorflow::PrintAllPythonOps(op_list, api_def_dirs, source_file_name,
-                                  tensorflow::string(argv[3]) == "1",
-                                  tensorflow::string(argv[4]) == "1");
+                                  tensorflow::string(argv[3]) == "1");
   } else {
     return -1;
   }

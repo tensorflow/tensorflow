@@ -49,6 +49,7 @@ REGISTER_OP("CudnnRNNParamsSize")
     .Attr("dropout: float = 0.0")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
+    .Attr("num_proj: int = 0")
     .Output("params_size: S")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
@@ -166,10 +167,13 @@ REGISTER_OP("CudnnRNNV3")
     .Attr("dropout: float = 0.0")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
+    .Attr("num_proj: int = 0")
     .Attr("is_training: bool = true")
+    .Attr("time_major: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       auto input_shape = c->input(0);
       auto input_h_shape = c->input(1);
+      auto input_c_shape = c->input(2);
       auto max_seq_length = c->Dim(input_shape, 0);
       auto batch_size = c->Dim(input_shape, 1);
       auto num_units = c->Dim(input_h_shape, 2);
@@ -184,7 +188,7 @@ REGISTER_OP("CudnnRNNV3")
           c->MakeShape({max_seq_length, batch_size, output_size});
       auto output_h_shape = input_h_shape;
       auto output_c_shape TF_ATTRIBUTE_UNUSED =
-          (rnn_mode == "lstm") ? output_h_shape : c->MakeShape({});
+          (rnn_mode == "lstm") ? input_c_shape : c->MakeShape({});
       c->set_output(0, output_shape);
       c->set_output(1, output_h_shape);
       c->set_output(2, output_c_shape);
@@ -292,6 +296,8 @@ REGISTER_OP("CudnnRNNBackpropV3")
     .Attr("dropout: float = 0.0")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
+    .Attr("num_proj: int = 0")
+    .Attr("time_major: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       auto input_shape = c->input(0);
       auto input_h_shape = c->input(1);
@@ -336,6 +342,43 @@ REGISTER_OP("CudnnRNNParamsToCanonical")
       return Status::OK();
     });
 
+REGISTER_OP("CudnnRNNParamsToCanonicalV2")
+    .Input("num_layers: int32")
+    .Input("num_units: int32")
+    .Input("input_size: int32")
+    .Input("params: T")
+    .Output("weights: num_params_weights * T")
+    .Output("biases: num_params_biases * T")
+    .Attr("T: {float16, float32, float64}")
+    .Attr("num_params_weights: int")
+    .Attr("num_params_biases: int")
+    .Attr(kRNNModeAttrs)
+    .Attr(kRNNInputModeAttrs)
+    .Attr(kRNNDirectionAttrs)
+    .Attr("dropout: float = 0.0")
+    .Attr("seed: int = 0")
+    .Attr("seed2: int = 0")
+    .Attr("num_proj: int = 0")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 1, &unused));
+      int num_params_weights;
+      int num_params_biases;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_params_weights", &num_params_weights));
+      TF_RETURN_IF_ERROR(c->GetAttr("num_params_biases", &num_params_biases));
+      // Set shape for weight matrices
+      for (int i = 0; i < num_params_weights; i++) {
+        c->set_output(i, c->Matrix(InferenceContext::kUnknownDim,
+                                   InferenceContext::kUnknownDim));
+      }
+      // Set shape for bias vectors
+      for (int i = 0; i < num_params_biases; i++) {
+        c->set_output(num_params_weights + i,
+                      c->Vector(InferenceContext::kUnknownDim));
+      }
+      return Status::OK();
+    });
+
 REGISTER_OP("CudnnRNNCanonicalToParams")
     .Input("num_layers: int32")
     .Input("num_units: int32")
@@ -351,6 +394,28 @@ REGISTER_OP("CudnnRNNCanonicalToParams")
     .Attr("dropout: float = 0.0")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
+      return Status::OK();
+    });
+
+REGISTER_OP("CudnnRNNCanonicalToParamsV2")
+    .Input("num_layers: int32")
+    .Input("num_units: int32")
+    .Input("input_size: int32")
+    .Input("weights: num_params_weights * T")
+    .Input("biases: num_params_biases * T")
+    .Output("params: T")
+    .Attr("T: {float16, float32, float64}")
+    .Attr("num_params_weights: int")
+    .Attr("num_params_biases: int")
+    .Attr(kRNNModeAttrs)
+    .Attr(kRNNInputModeAttrs)
+    .Attr(kRNNDirectionAttrs)
+    .Attr("dropout: float = 0.0")
+    .Attr("seed: int = 0")
+    .Attr("seed2: int = 0")
+    .Attr("num_proj: int = 0")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
       return Status::OK();

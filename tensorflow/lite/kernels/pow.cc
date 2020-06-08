@@ -12,7 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -80,7 +81,7 @@ template <typename T>
 void PowImpl(const TfLiteTensor* input1, const TfLiteTensor* input2,
              TfLiteTensor* output, bool requires_broadcast) {
   if (requires_broadcast) {
-    reference_ops::BroadcastPow4DSlow(
+    optimized_ops::BroadcastPow4D(
         GetTensorShape(input1), GetTensorData<T>(input1),
         GetTensorShape(input2), GetTensorData<T>(input2),
         GetTensorShape(output), GetTensorData<T>(output));

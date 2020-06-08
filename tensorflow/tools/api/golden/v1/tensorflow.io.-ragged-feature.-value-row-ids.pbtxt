@@ -1,0 +1,18 @@
+path: "tensorflow.io.RaggedFeature.ValueRowIds"
+tf_class {
+  is_instance: "<class \'tensorflow.python.ops.parsing_config.ValueRowIds\'>"
+  is_instance: "<type \'tuple\'>"
+  member {
+    name: "key"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "count"
+  }
+  member_method {
+    name: "index"
+  }
+}

@@ -30,10 +30,15 @@ class AccumulatorSetGlobalStepOp
       : ConditionalAccumulatorBaseSyncOpKernel(context) {}
 
  protected:
+  DataTypeVector GetExpectedInputs(
+      ConditionalAccumulatorBase* accumulator) override {
+    return {DT_STRING_REF, DT_INT64};
+  }
+
   void Compute(OpKernelContext* ctx,
                ConditionalAccumulatorBase* accumulator) override {
     // Check signature
-    OP_REQUIRES_OK(ctx, ctx->MatchSignature({DT_STRING_REF, DT_INT64}, {}));
+    CheckSignature(ctx, accumulator);
 
     // Get input new_global_step
     const Tensor* new_global_step_tensor;
@@ -56,6 +61,24 @@ class AccumulatorSetGlobalStepOp
 REGISTER_KERNEL_BUILDER(Name("AccumulatorSetGlobalStep").Device(DEVICE_CPU),
                         AccumulatorSetGlobalStepOp);
 
+class ResourceAccumulatorSetGlobalStepOp : public AccumulatorSetGlobalStepOp {
+ public:
+  explicit ResourceAccumulatorSetGlobalStepOp(OpKernelConstruction* context)
+      : AccumulatorSetGlobalStepOp(context) {}
+
+  DataTypeVector GetExpectedInputs(
+      ConditionalAccumulatorBase* accumulator) override {
+    return {DT_RESOURCE, DT_INT64};
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(ResourceAccumulatorSetGlobalStepOp);
+};
+
+REGISTER_KERNEL_BUILDER(
+    Name("ResourceAccumulatorSetGlobalStep").Device(DEVICE_CPU),
+    ResourceAccumulatorSetGlobalStepOp);
+
 /**
  * Defines a AccumulatorNumAccumulatedOp, which returns the number of gradients
  * that have been accumulated in the given ConditionalAccumulator, and emits it
@@ -68,10 +91,23 @@ class AccumulatorNumAccumulatedOp
       : ConditionalAccumulatorBaseSyncOpKernel(context) {}
 
  protected:
+  void CheckSignature(OpKernelContext* ctx,
+                      ConditionalAccumulatorBase* accumulator) override {
+    // Check input signature
+    OP_REQUIRES_OK(
+        ctx, ctx->MatchSignature(GetExpectedInputs(accumulator), {DT_INT32}));
+  }
+
+  DataTypeVector GetExpectedInputs(
+      ConditionalAccumulatorBase* accumulator) override {
+    return {DT_STRING_REF};
+  }
+
   void Compute(OpKernelContext* ctx,
                ConditionalAccumulatorBase* accumulator) override {
     // Check signature
-    OP_REQUIRES_OK(ctx, ctx->MatchSignature({DT_STRING_REF}, {DT_INT32}));
+    CheckSignature(ctx, accumulator);
+
     Tensor* Taccumulator_size = nullptr;
     OP_REQUIRES_OK(
         ctx, ctx->allocate_output(0, TensorShape({}), &Taccumulator_size));
@@ -85,5 +121,23 @@ class AccumulatorNumAccumulatedOp
 
 REGISTER_KERNEL_BUILDER(Name("AccumulatorNumAccumulated").Device(DEVICE_CPU),
                         AccumulatorNumAccumulatedOp);
+
+class ResourceAccumulatorNumAccumulatedOp : public AccumulatorNumAccumulatedOp {
+ public:
+  explicit ResourceAccumulatorNumAccumulatedOp(OpKernelConstruction* context)
+      : AccumulatorNumAccumulatedOp(context) {}
+
+  DataTypeVector GetExpectedInputs(
+      ConditionalAccumulatorBase* accumulator) override {
+    return {DT_RESOURCE};
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(ResourceAccumulatorNumAccumulatedOp);
+};
+
+REGISTER_KERNEL_BUILDER(
+    Name("ResourceAccumulatorNumAccumulated").Device(DEVICE_CPU),
+    ResourceAccumulatorNumAccumulatedOp);
 
 }  // namespace tensorflow

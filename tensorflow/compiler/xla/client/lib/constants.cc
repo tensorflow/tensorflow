@@ -80,6 +80,24 @@ XlaOp MinFiniteValue(XlaBuilder* builder, PrimitiveType type) {
   }
 }
 
+XlaOp MinPositiveNormalValue(XlaBuilder* builder, PrimitiveType type) {
+  switch (type) {
+    case F16:
+      return ConstantR0<Eigen::half>(builder,
+                                     std::numeric_limits<Eigen::half>::min());
+    case BF16:
+      return ConstantR0<bfloat16>(builder, bfloat16::min_positive_normal());
+    case F32:
+      return ConstantR0<float>(builder, std::numeric_limits<float>::min());
+    case F64:
+      return ConstantR0<double>(builder, std::numeric_limits<double>::min());
+    default:
+      return builder->ReportError(
+          InvalidArgument("Invalid type for MinPositiveNormalValue (%s).",
+                          PrimitiveType_Name(type)));
+  }
+}
+
 XlaOp MaxValue(XlaBuilder* builder, PrimitiveType type) {
   return ConstantLiteral(builder, LiteralUtil::MaxValue(type));
 }
@@ -98,6 +116,30 @@ XlaOp MaxFiniteValue(XlaBuilder* builder, PrimitiveType type) {
     default:
       return MaxValue(builder, type);
   }
+}
+
+XlaOp NanValue(XlaBuilder* builder, PrimitiveType type) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    switch (type) {
+      case F16:
+        return ConstantR0<Eigen::half>(
+            builder, Eigen::NumTraits<Eigen::half>::quiet_NaN());
+      case BF16:
+        return ConstantR0<bfloat16>(
+            builder, bfloat16(std::numeric_limits<float>::quiet_NaN()));
+      case F32:
+        return ConstantR0<float>(builder,
+                                 std::numeric_limits<float>::quiet_NaN());
+      case F64:
+        return ConstantR0<double>(builder,
+                                  std::numeric_limits<double>::quiet_NaN());
+      default:
+        return InvalidArgument(
+            "Operand to NanValue was %s, but must be a real-valued "
+            "floating-point type.",
+            PrimitiveType_Name(type));
+    }
+  });
 }
 
 }  // namespace xla

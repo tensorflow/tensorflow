@@ -39,10 +39,10 @@ class StringJoinOp : public OpKernel {
     OP_REQUIRES_OK(context, context->input_list("inputs", &input_list));
     TensorShape input_shape;
     std::vector<bool> is_scalar;
-    std::vector<TTypes<string>::ConstFlat> inputs;
+    std::vector<TTypes<tstring>::ConstFlat> inputs;
 
     for (const auto& input : input_list) {
-      inputs.push_back(input.flat<string>());
+      inputs.push_back(input.flat<tstring>());
       is_scalar.push_back(TensorShapeUtils::IsScalar(input.shape()));
       if (!TensorShapeUtils::IsScalar(input.shape())) {
         if (TensorShapeUtils::IsScalar(input_shape)) {
@@ -60,14 +60,14 @@ class StringJoinOp : public OpKernel {
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output("output", input_shape,
                                                      &output_tensor));
-    auto output_flat = output_tensor->flat<string>();
+    auto output_flat = output_tensor->flat<tstring>();
 
     std::vector<StringPiece> strings(input_list.size());
     for (size_t i = 0; i < input_shape.num_elements(); ++i) {
       for (int j = 0; j < input_list.size(); ++j) {
         strings[j] = (is_scalar[j]) ? inputs[j](0) : inputs[j](i);
       }
-      output_flat(i) = str_util::Join(strings, separator_.c_str());
+      output_flat(i) = absl::StrJoin(strings, separator_);
     }
   }
 

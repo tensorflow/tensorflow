@@ -40,6 +40,7 @@ from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import compat
@@ -584,7 +585,13 @@ class EmbeddingLookupTest(test.TestCase):
           # Compare nonsharded to gather
           simple = embedding_ops.embedding_lookup(
               params, ids, max_norm=1.0).eval()
-          self.assertAllEqual(simple, array_ops.gather(params_norm, ids).eval())
+          # assertAllClose is used here as different implementations of sqrt may
+          # be used to compute each of the values being compared.  For example,
+          # on AVX512 builds the embedding operation makes use of Eigen's fast
+          # vectorized square root algorithm for doubles.  These different
+          # implementations of sqrt are not guaranteed to produce exactly the
+          # same results. Therefore, an exact comparison cannot be made.
+          self.assertAllClose(simple, array_ops.gather(params_norm, ids).eval())
           # Run a few different sharded versions.
           for procs in 1, 2, 3:
             stride = procs * math_ops.range(params.shape[0] // procs)
@@ -630,7 +637,19 @@ class EmbeddingLookupTest(test.TestCase):
           sharded = embedding_ops._embedding_lookup_and_transform(
               split_params, ids, max_norm=l2_norm,
               transform_fn=transform).eval()
-          self.assertAllEqual(simple, sharded)
+          # assertAllClose is used here as different implementations of sqrt may
+          # be used to compute each of the values being compared.  For example,
+          # on AVX512 builds the embedding operation makes use of Eigen's fast
+          # vectorized square root algorithm for doubles.  These different
+          # implementations of sqrt are not guaranteed to produce exactly the
+          # same results. Therefore, an exact comparison cannot be made.
+          self.assertAllClose(simple, sharded)
+
+  def testRaggedMaxNorm(self):
+    embeddings = constant_op.constant([[2.0]])
+    ids = ragged_factory_ops.constant([[0, 0], [0]], dtype=dtypes.int32)
+    embedding = embedding_ops.embedding_lookup([embeddings], ids, max_norm=1.0)
+    self.assertAllEqual(embedding, [[[1.0], [1.0]], [[1.0]]])
 
 
 class EmbeddingLookupSparseTest(test.TestCase):

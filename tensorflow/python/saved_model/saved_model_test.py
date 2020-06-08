@@ -35,6 +35,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import constants
@@ -43,6 +44,7 @@ from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import main_op
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.saved_model import utils
 from tensorflow.python.training import saver_test_utils
 from tensorflow.python.training import training
 from tensorflow.python.util import compat
@@ -641,6 +643,19 @@ class SavedModelTest(SavedModelTestBase):
     export_dir = self._get_export_dir("test_signature_def_validation_coo_2")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
     self._validate_outputs_tensor_info_accept(builder, tensor_with_coo)
+
+  @test_util.run_deprecated_v1
+  def testSignatureDefValidationSucceedsWithRagged(self):
+    ragged_tensor = ragged_factory_ops.constant([[1, 2], [3]])
+    tensor_with_ragged = utils.build_tensor_info(ragged_tensor)
+
+    export_dir = self._get_export_dir("test_signature_def_validation_ragged_1")
+    builder = saved_model_builder._SavedModelBuilder(export_dir)
+    self._validate_inputs_tensor_info_accept(builder, tensor_with_ragged)
+
+    export_dir = self._get_export_dir("test_signature_def_validation_ragged_2")
+    builder = saved_model_builder._SavedModelBuilder(export_dir)
+    self._validate_outputs_tensor_info_accept(builder, tensor_with_ragged)
 
   @test_util.run_deprecated_v1
   def testAssets(self):
@@ -1321,11 +1336,7 @@ class SavedModelTest(SavedModelTestBase):
     sess = session.Session(graph=ops.Graph())
     with self.assertRaisesRegexp(
         errors.InvalidArgumentError,
-        "No OpKernel was registered to support Op 'TestAttr' used by node "
-        "test_attr \\(defined at .*\\) with these attrs: \\[.*\\]\n"
-        "Registered devices:.*\n"
-        "Registered kernels:.*"
-    ):
+        "No OpKernel was registered.*DOUBLE"):
       loader.load(sess, ["foo"], export_dir)
 
 

@@ -25,17 +25,27 @@ namespace tensorflow {
 class Env;
 class Status;
 
-// Get a `DescriptorPool` object from the named `descriptor_source`.
-// `descriptor_source` may be a path to a file accessible to TensorFlow, in
-// which case it is parsed as a `FileDescriptorSet` and used to build the
-// `DescriptorPool`.
+// Gets a `DescriptorPool` object from the `descriptor_source`. This may be:
 //
-// `owned_desc_pool` will be filled in with the same pointer as `desc_pool` if
-// the caller should take ownership.
-extern tensorflow::Status GetDescriptorPool(
-    tensorflow::Env* env, string const& descriptor_source,
-    tensorflow::protobuf::DescriptorPool const** desc_pool,
-    std::unique_ptr<tensorflow::protobuf::DescriptorPool>* owned_desc_pool);
+// 1) An empty string  or "local://", in which case the local descriptor pool
+// created for proto definitions linked to the binary is returned.
+//
+// 2) A file path, in which case the descriptor pool is created from the
+// contents of the file, which is expected to contain a `FileDescriptorSet`
+// serialized as a string. The descriptor pool ownership is transferred to the
+// caller via `owned_desc_pool`.
+//
+// 3) A "bytes://<bytes>", in which case the descriptor pool is created from
+// `<bytes>`, which is expected to be a `FileDescriptorSet` serialized as a
+// string. The descriptor pool ownership is transferred to the caller via
+// `owned_desc_pool`.
+//
+// Custom schemas can be supported by registering a handler with the
+// `DescriptorPoolRegistry`.
+Status GetDescriptorPool(
+    Env* env, string const& descriptor_source,
+    protobuf::DescriptorPool const** desc_pool,
+    std::unique_ptr<protobuf::DescriptorPool>* owned_desc_pool);
 
 }  // namespace tensorflow
 

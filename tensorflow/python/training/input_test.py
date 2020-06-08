@@ -401,7 +401,7 @@ class SliceInputProducerTest(test_lib.TestCase):
         frequency[e] = 0
       for _ in range(num_epochs):
         output = [self.evaluate(slices) for _ in range(len(source_strings))]
-        key = b",".join([s + compat.as_bytes(str(i)) for s, i in output])
+        key = b",".join(s + compat.as_bytes(str(i)) for s, i in output)
         self.assertIn(key, expected)
         frequency[key] += 1
 
@@ -554,7 +554,8 @@ class BatchTest(test_lib.TestCase):
       examples = variables.Variable(zero64)
       counter = examples.count_up_to(num_batches * batch_size)
       string = array_ops.tile(["string"],
-                              math_ops.to_int32(array_ops.stack([counter])))
+                              math_ops.cast(array_ops.stack([counter]),
+                                            dtypes.int32))
       self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       batched = inp.batch(
@@ -1082,7 +1083,7 @@ class BatchJoinTest(test_lib.TestCase):
         self.assertEqual(len(which_a) + len(which_b), batch_size)
         if which_a and which_b:
           saw_both += 1
-        all_a.extend([results[0][i] for i in which_a])
+        all_a.extend(results[0][i] for i in which_a)
         seen_b += len(which_b)
         self.assertAllEqual([99] * len(which_b),
                             [results[0][i] for i in which_b])
@@ -1143,10 +1144,12 @@ class BatchJoinTest(test_lib.TestCase):
 
       # These get joined together and grouped into batches of 5.
       batch_size = 5
-      a = array_ops.tile(["a"],
-                         math_ops.to_int32(array_ops.stack([counter + 1])))
-      b = array_ops.tile(["b"],
-                         math_ops.to_int32(array_ops.stack([ninety_nine])))
+      a = array_ops.tile(
+          ["a"],
+          math_ops.cast(array_ops.stack([counter + 1]), dtypes.int32))
+      b = array_ops.tile(
+          ["b"],
+          math_ops.cast(array_ops.stack([ninety_nine]), dtypes.int32))
       batched = inp.batch_join(
           [[counter, a], [ninety_nine, b]],
           batch_size=batch_size,
@@ -1182,7 +1185,7 @@ class BatchJoinTest(test_lib.TestCase):
         self.assertEqual(len(which_a) + len(which_b), batch_size)
         if which_a and which_b:
           saw_both += 1
-        all_a.extend([results[0][i] for i in which_a])
+        all_a.extend(results[0][i] for i in which_a)
         seen_b += len(which_b)
         self.assertAllEqual([99] * len(which_b),
                             [results[0][i] for i in which_b])
@@ -1268,7 +1271,7 @@ class BatchJoinTest(test_lib.TestCase):
         self.assertEqual(len(which_a) + len(which_b), batch_size)
         if which_a and which_b:
           saw_both += 1
-        all_a.extend([results[0][i] for i in which_a])
+        all_a.extend(results[0][i] for i in which_a)
         seen_b += len(which_b)
         self.assertAllEqual([99] * len(which_b),
                             [results[0][i] for i in which_b])
@@ -1288,7 +1291,7 @@ class BatchJoinTest(test_lib.TestCase):
       self.assertEqual(len(which_a) + len(which_b), 2 * extra_elements)
       if which_a and which_b:
         saw_both += 1
-      all_a.extend([results[0][i] for i in which_a])
+      all_a.extend(results[0][i] for i in which_a)
       seen_b += len(which_b)
 
       # We'd like to see some minimum level of mixing of the results of both
@@ -1324,10 +1327,12 @@ class BatchJoinTest(test_lib.TestCase):
 
       # These get joined together and grouped into batches of 5.
       batch_size = 5
-      a = array_ops.tile(["a"],
-                         math_ops.to_int32(array_ops.stack([counter + 1])))
-      b = array_ops.tile(["b"],
-                         math_ops.to_int32(array_ops.stack([ninety_nine])))
+      a = array_ops.tile(
+          ["a"],
+          math_ops.cast(array_ops.stack([counter + 1]), dtypes.int32))
+      b = array_ops.tile(
+          ["b"],
+          math_ops.cast(array_ops.stack([ninety_nine]), dtypes.int32))
       batched = inp.batch_join(
           [[counter, a], [ninety_nine, b]],
           batch_size=batch_size,
@@ -1364,7 +1369,7 @@ class BatchJoinTest(test_lib.TestCase):
         self.assertEqual(len(which_a) + len(which_b), batch_size)
         if which_a and which_b:
           saw_both += 1
-        all_a.extend([results[0][i] for i in which_a])
+        all_a.extend(results[0][i] for i in which_a)
         seen_b += len(which_b)
         self.assertAllEqual([99] * len(which_b),
                             [results[0][i] for i in which_b])
@@ -1384,7 +1389,7 @@ class BatchJoinTest(test_lib.TestCase):
       self.assertEqual(len(which_a) + len(which_b), 2 * extra_elements)
       if which_a and which_b:
         saw_both += 1
-      all_a.extend([results[0][i] for i in which_a])
+      all_a.extend(results[0][i] for i in which_a)
       seen_b += len(which_b)
 
       # We'd like to see some minimum level of mixing of the results of both
@@ -2094,7 +2099,7 @@ class ShuffleBatchJoinTest(test_lib.TestCase):
         self.assertEqual(len(which_a) + len(which_b), batch_size)
         if which_a and which_b:
           saw_both += 1
-        all_a.extend([results[0][i] for i in which_a])
+        all_a.extend(results[0][i] for i in which_a)
         seen_b += len(which_b)
         self.assertAllEqual([99] * len(which_b),
                             [results[0][i] for i in which_b])
@@ -2189,7 +2194,7 @@ class ShuffleBatchJoinTest(test_lib.TestCase):
         self.assertEqual(len(which_a) + len(which_b), batch_size)
         if which_a and which_b:
           saw_both += 1
-        all_a.extend([results[0][i] for i in which_a])
+        all_a.extend(results[0][i] for i in which_a)
         seen_b += len(which_b)
         self.assertAllEqual([99] * len(which_b),
                             [results[0][i] for i in which_b])
@@ -2208,7 +2213,7 @@ class ShuffleBatchJoinTest(test_lib.TestCase):
       self.assertEqual(len(which_a) + len(which_b), 2 * extra_elements)
       if which_a and which_b:
         saw_both += 1
-      all_a.extend([results[0][i] for i in which_a])
+      all_a.extend(results[0][i] for i in which_a)
       seen_b += len(which_b)
 
       # Some minimum level of mixing of the results of both threads.

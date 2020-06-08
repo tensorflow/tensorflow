@@ -22,10 +22,8 @@ namespace ops {
 namespace custom {
 
 TfLiteRegistration* Register_AUDIO_SPECTROGRAM();
-TfLiteRegistration* Register_LAYER_NORM_LSTM();
 TfLiteRegistration* Register_MFCC();
 TfLiteRegistration* Register_DETECTION_POSTPROCESS();
-TfLiteRegistration* Register_RELU_1();
 
 }  // namespace custom
 
@@ -131,6 +129,12 @@ TfLiteRegistration* Register_LEAKY_RELU();
 TfLiteRegistration* Register_SQUARED_DIFFERENCE();
 TfLiteRegistration* Register_FILL();
 TfLiteRegistration* Register_MIRROR_PAD();
+TfLiteRegistration* Register_QUANTIZE();
+TfLiteRegistration* Register_HARD_SWISH_REF();
+TfLiteRegistration* Register_DEPTH_TO_SPACE_REF();
+TfLiteRegistration* Register_SELECT_V2();
+TfLiteRegistration* Register_SEGMENT_SUM();
+TfLiteRegistration* Register_BATCH_MATMUL_REF();
 
 namespace {
 
@@ -218,6 +222,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              Register_RESIZE_NEAREST_NEIGHBOR_REF());
   AddBuiltin(BuiltinOperator_SKIP_GRAM, Register_SKIP_GRAM());
   AddBuiltin(BuiltinOperator_SPACE_TO_DEPTH, Register_SPACE_TO_DEPTH_REF());
+  AddBuiltin(BuiltinOperator_DEPTH_TO_SPACE, Register_DEPTH_TO_SPACE_REF());
   AddBuiltin(BuiltinOperator_GATHER, Register_GATHER());
   AddBuiltin(BuiltinOperator_TRANSPOSE, Register_TRANSPOSE_REF());
   AddBuiltin(BuiltinOperator_MEAN, Register_MEAN_REF());
@@ -280,14 +285,16 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_SQUARED_DIFFERENCE, Register_SQUARED_DIFFERENCE());
   AddBuiltin(BuiltinOperator_FILL, Register_FILL());
   AddBuiltin(BuiltinOperator_MIRROR_PAD, Register_MIRROR_PAD());
+  AddBuiltin(BuiltinOperator_QUANTIZE, Register_QUANTIZE());
+  AddBuiltin(BuiltinOperator_HARD_SWISH, Register_HARD_SWISH_REF());
+  AddBuiltin(BuiltinOperator_SELECT_V2, Register_SELECT_V2());
+  AddBuiltin(BuiltinOperator_SEGMENT_SUM, Register_SEGMENT_SUM());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.
   AddCustom("Mfcc", tflite::ops::custom::Register_MFCC());
   AddCustom("AudioSpectrogram",
             tflite::ops::custom::Register_AUDIO_SPECTROGRAM());
-  AddCustom("LayerNormLstm", tflite::ops::custom::Register_LAYER_NORM_LSTM());
-  AddCustom("Relu1", tflite::ops::custom::Register_RELU_1());
   AddCustom("TFLite_Detection_PostProcess",
             tflite::ops::custom::Register_DETECTION_POSTPROCESS());
 }

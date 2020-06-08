@@ -382,9 +382,9 @@ condition=%condition.1, body=%body
 
 // Test two while loops with identical bodies and same inputs, but different
 // conditions
-TEST_F(HloCseTest, WhileLoopsIdenticalBodiesAndInputDifferntConditions) {
+TEST_F(HloCseTest, WhileLoopsIdenticalBodiesAndInputDifferentConditions) {
   const char* const hlo_string = R"(
-    HloModule WhileLoopsIdenticalBodiesAndInputDifferntConditions
+    HloModule WhileLoopsIdenticalBodiesAndInputDifferentConditions
 
     %body (param: (f32[], f32[])) -> (f32[], f32[]) {
       %param = (f32[], f32[]) parameter(0)
@@ -404,7 +404,7 @@ index=1 %add = f32[] add(f32[] %get-tuple-element, f32[] %get-tuple-element.1)
       ROOT %constant.1 = pred[] constant(true)
     }
 
-    ENTRY %WhileLoopsIdenticalBodiesAndInputDifferntConditions () -> (f32[],
+    ENTRY %WhileLoopsIdenticalBodiesAndInputDifferentConditions () -> (f32[],
 f32[]) { %constant.2 = f32[] constant(1) %constant.3 = f32[] constant(2)
       %tuple.1 = (f32[], f32[]) tuple(f32[] %constant.2, f32[] %constant.3)
       %while = (f32[], f32[]) while((f32[], f32[]) %tuple.1),

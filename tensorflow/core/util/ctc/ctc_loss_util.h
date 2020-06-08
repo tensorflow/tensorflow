@@ -23,18 +23,23 @@ limitations under the License.
 namespace tensorflow {
 namespace ctc {
 
-const float kLogZero = -std::numeric_limits<float>::infinity();
+template <class T>
+constexpr T kLogZero() {
+  return -std::numeric_limits<T>::infinity();  // NOLINT
+}
 
 // Add logarithmic probabilities using:
 // ln(a + b) = ln(a) + ln(1 + exp(ln(b) - ln(a)))
 // The two inputs are assumed to be log probabilities.
 // (GravesTh) Eq. 7.18
-inline float LogSumExp(float log_prob_1, float log_prob_2) {
+template <typename T>
+inline T LogSumExp(T log_prob_1, T log_prob_2) {
+  // const T kLogZero = -std::numeric_limits<T>::infinity();
   // Always have 'b' be the smaller number to avoid the exponential from
   // blowing up.
-  if (log_prob_1 == kLogZero) {
+  if (log_prob_1 == kLogZero<T>()) {
     return log_prob_2;
-  } else if (log_prob_2 == kLogZero) {
+  } else if (log_prob_2 == kLogZero<T>()) {
     return log_prob_1;
   } else {
     return (log_prob_1 > log_prob_2)

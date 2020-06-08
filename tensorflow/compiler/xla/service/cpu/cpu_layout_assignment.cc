@@ -28,7 +28,7 @@ namespace cpu {
 
 // We want to change the layout of constant arrays to be column major when all
 // of their users are dot operations that can be made faster with the flipped
-// layout.  To avoid going quadriatic over the # of instructions, we cache this
+// layout.  To avoid going quadratic over the # of instructions, we cache this
 // property in should_make_rhs_col_major -- it maps a constant to true if all of
 // the users of said constant are dot operations that can be sped up.  This
 // cache is populated lazily as we encounter dot operations traversing the

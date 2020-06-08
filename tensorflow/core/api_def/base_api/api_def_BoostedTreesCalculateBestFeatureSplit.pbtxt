@@ -1,0 +1,106 @@
+op {
+  graph_op_name: "BoostedTreesCalculateBestFeatureSplit"
+  visibility: HIDDEN
+  in_arg {
+    name: "node_id_range"
+    description: <<END
+A Rank 1 tensor (shape=[2]) to specify the range [first, last) of node ids to process within `stats_summary_list`. The nodes are iterated between the two nodes specified by the tensor, as like `for node_id in range(node_id_range[0], node_id_range[1])` (Note that the last index node_id_range[1] is exclusive).
+END
+  }
+  in_arg {
+    name: "stats_summary"
+    description: <<END
+A Rank 4 tensor (#shape=[max_splits, feature_dims, bucket, stats_dims]) for accumulated stats summary (gradient/hessian) per node, per dimension, per buckets for each feature.
+The first dimension of the tensor is the maximum number of splits, and thus not all elements of it will be used, but only the indexes specified by node_ids will be used.
+END
+  }
+  in_arg {
+    name: "l1"
+    description: <<END
+l1 regularization factor on leaf weights, per instance based.
+END
+  }
+  in_arg {
+    name: "l2"
+    description: <<END
+l2 regularization factor on leaf weights, per instance based.
+END
+  }
+  in_arg {
+    name: "tree_complexity"
+    description: <<END
+adjustment to the gain, per leaf based.
+END
+  }
+  in_arg {
+    name: "min_node_weight"
+    description: <<END
+minimum avg of hessians in a node before required for the node to be considered for splitting.
+END
+  }
+  out_arg {
+    name: "node_ids"
+    description: <<END
+A Rank 1 tensors indicating possible split node ids for each feature. The length of the list is num_features, but each tensor has different size as each feature provides different possible nodes. See above for details like shapes and sizes.
+END
+  }
+  out_arg {
+    name: "gains"
+    description: <<END
+A Rank 1 tensors indicating the best gains for each feature to split for certain nodes. See above for details like shapes and sizes.
+END
+  }
+  out_arg {
+    name: "feature_dimensions"
+    description: <<END
+A Rank 1 tensors indicating the best feature dimension for each feature to split for certain nodes if the feature is multi-dimension. See above for details like shapes and sizes.
+END
+  }
+  out_arg {
+    name: "thresholds"
+    description: <<END
+A Rank 1 tensors indicating the bucket id to compare with (as a threshold) for split in each node. See above for details like shapes and sizes.
+END
+  }
+  out_arg {
+    name: "left_node_contribs"
+    description: <<END
+A Rank 2 tensors indicating the contribution of the left nodes when branching from parent nodes (given by the tensor element in the output node_ids_list) to the left direction by the given threshold for each feature. This value will be used to make the left node value by adding to the parent node value. Second dimension size is 1 for 1-dimensional logits, but would be larger for multi-class problems. See above for details like shapes and sizes.
+END
+  }
+  out_arg {
+    name: "right_node_contribs"
+    description: <<END
+A Rank 2 tensors, with the same shape/conditions as left_node_contribs_list, but just that the value is for the right node.
+END
+  }
+  out_arg {
+    name: "split_with_default_directions"
+    description: <<END
+A Rank 1 tensors indicating the which direction to go if data is missing. See above for details like shapes and sizes.
+Inequality with default left returns 0, inequality with default right returns 1, equality with default right returns 2.
+END
+  }
+  attr {
+    name: "logits_dimension"
+    description: <<END
+The dimension of logit, i.e., number of classes.
+END
+  }
+  attr {
+    name: "split_type"
+    description: <<END
+A string indicating if this Op should perform inequality split or equality split.
+END
+  }
+  summary: "Calculates gains for each feature and returns the best possible split information for the feature."
+  description: <<END
+The split information is the best threshold (bucket id), gains and left/right node contributions per node for each feature.
+
+It is possible that not all nodes can be split on each feature. Hence, the list of possible nodes can differ between the features. Therefore, we return `node_ids_list` for each feature, containing the list of nodes that this feature can be used to split.
+
+In this manner, the output is the best split per features and per node, so that it needs to be combined later to produce the best split for each node (among all possible features).
+
+The output shapes are compatible in a way that the first dimension of all tensors are the same and equal to the number of possible split nodes for each feature.
+END
+}

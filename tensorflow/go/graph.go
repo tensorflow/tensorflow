@@ -53,7 +53,7 @@ type Graph struct {
 	c *C.TF_Graph
 }
 
-// Graph execution options
+// The GraphImportOptions struct holds parameters for the ImportWithOptions function.
 type GraphImportOptions struct {
 	// Node prefix
 	Prefix string
@@ -94,7 +94,12 @@ func (g *Graph) WriteTo(w io.Writer) (int64, error) {
 	// A []byte slice backed by C memory.
 	// See: https://github.com/golang/go/wiki/cgo#turning-c-arrays-into-go-slices
 	length := int(buf.length)
-	slice := (*[1 << 30]byte)(unsafe.Pointer(buf.data))[:length:length]
+	var slice []byte
+	if unsafe.Sizeof(unsafe.Pointer(nil)) == 8 {
+		slice = (*[1<<50 - 1]byte)(unsafe.Pointer(buf.data))[:length:length]
+	} else {
+		slice = (*[1 << 30]byte)(unsafe.Pointer(buf.data))[:length:length]
+	}
 	n, err := w.Write(slice)
 	return int64(n), err
 }
@@ -112,31 +117,19 @@ func (g *Graph) ImportWithOptions(def []byte, options GraphImportOptions) error 
 	C.TF_ImportGraphDefOptionsSetPrefix(opts, cprefix)
 
 	if len(options.Device) != 0 {
-		// TODO(ashankar): Remove this error and uncomment below
-		// when a release of the C library which includes
-		// https://github.com/tensorflow/tensorflow/commit/e0af5ac53e5a8ad9b07cdd5738c0a8e12f938c4e
-		// has been made.
-		// See https://github.com/tensorflow/tensorflow/issues/23257
-		return fmt.Errorf("GraphImportOptions.Device is only supported with the TensorFlow C library versions after 1.12 (or built from master). See https://github.com/tensorflow/tensorflow/issues/23257")
-		/*
-			cdev := C.CString(options.Device)
-			defer C.free(unsafe.Pointer(cdev))
-			C.TF_ImportGraphDefOptionsSetDefaultDevice(opts, cdev)
-		*/
+		cdev := C.CString(options.Device)
+		defer C.free(unsafe.Pointer(cdev))
+		C.TF_ImportGraphDefOptionsSetDefaultDevice(opts, cdev)
 	}
 
 	buf := C.TF_NewBuffer()
 	defer C.TF_DeleteBuffer(buf)
-	// Would have preferred to use C.CBytes, but that does not play well
-	// with "go vet" till https://github.com/golang/go/issues/17201 is
-	// resolved.
 	buf.length = C.size_t(len(def))
-	buf.data = C.malloc(buf.length)
+	buf.data = C.CBytes(def)
 	if buf.data == nil {
 		return fmt.Errorf("unable to allocate memory")
 	}
 	defer C.free(buf.data)
-	C.memcpy(buf.data, unsafe.Pointer(&def[0]), buf.length)
 
 	status := newStatus()
 
@@ -170,7 +163,7 @@ func (g *Graph) Operation(name string) *Operation {
 
 // Operations returns a list of all operations in the graph
 func (g *Graph) Operations() []Operation {
-	var pos C.size_t = 0
+	var pos C.size_t
 	ops := []Operation{}
 	for {
 		cop := C.TF_GraphNextOperation(g.c, &pos)

@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
@@ -155,18 +156,19 @@ TEST_F(HloVerifierTest, ResetsShapeVerifierState) {
 
 TEST_F(HloVerifierTest, CheckCallOperandParameterShapesMismatch) {
   const char* const hlo_string = R"(
-HloModule Module
+  HloModule Module
 
-callme {
-  ROOT param = (s32[], f32[4]) parameter(0)
-}
+  callme {
+    ROOT param = (s32[], f32[4]) parameter(0)
+  }
 
-ENTRY entry {
-  p0 = (f32[4], s32[]) parameter(0)
-  ROOT mycall = (s32[], f32[4]) call(p0), to_apply=callme
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+  ENTRY entry {
+    p0 = (f32[4], s32[]) parameter(0)
+    ROOT mycall = (s32[], f32[4]) call(p0), to_apply=callme
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -176,31 +178,78 @@ ENTRY entry {
 
 TEST_F(HloVerifierTest, CheckConditionalOperandParameterShapesMismatch) {
   const char* const hlo_string = R"(
-HloModule Module
+  HloModule Module
 
-true_branch {
-  tparam = (s32[], f32[4]) parameter(0)
-  ROOT tgte1 = f32[4] get-tuple-element(tparam), index=1
-}
+  true_branch {
+    tparam = (s32[], f32[4]) parameter(0)
+    ROOT tgte1 = f32[4] get-tuple-element(tparam), index=1
+  }
 
-false_branch {
-  fparam = (s32[], f32[4]) parameter(0)
-  ROOT fgte1 = f32[4] get-tuple-element(fparam), index=1
-}
+  false_branch {
+    fparam = (s32[], f32[4]) parameter(0)
+    ROOT fgte1 = f32[4] get-tuple-element(fparam), index=1
+  }
 
-ENTRY entry {
-  p0 = (f32[4], s32[]) parameter(0)
-  constant = pred[] constant(true)
-  ROOT conditional = f32[4] conditional(constant, p0, p0),
-    true_computation=true_branch, false_computation=false_branch
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+  ENTRY entry {
+    p0 = (f32[4], s32[]) parameter(0)
+    constant = pred[] constant(true)
+    ROOT conditional = f32[4] conditional(constant, p0, p0),
+      true_computation=true_branch, false_computation=false_branch
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.error_message(),
               HasSubstr("shape does not match parameter"));
+}
+
+TEST_F(HloVerifierTest, CheckConditionalBranchIndexOperandShape) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  branch0 {
+    tparam = f32[4] parameter(0)
+    ROOT tgte1 = f32[4] ceil(tparam)
+  }
+
+  branch1 {
+    fparam = f32[4] parameter(0)
+    ROOT fgte1 = f32[4] floor(fparam)
+  }
+
+  branch2 {
+    sparam = f32[4] parameter(0)
+    ROOT sgte1 = f32[4] ceil(sparam)
+  }
+
+  ENTRY entry {
+    p0 = f32[4] parameter(0)
+    b0 = s32[] parameter(1)
+    ROOT conditional = f32[4] conditional(b0, p0, p0, p0),
+      branch_computations={branch0, branch1, branch2}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+
+  HloInstruction* condition = FindInstruction(module.get(), "b0");
+  *condition->mutable_shape() = ShapeUtil::MakeShape(F32, {});
+  status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.error_message(),
+      HasSubstr(
+          "first operand of indexed conditional must be a scalar of S32"));
+
+  *condition->mutable_shape() = ShapeUtil::MakeShape(S32, {4});
+  status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("first operand of conditional must be a scalar"));
 }
 
 TEST_F(HloVerifierTest, RngOpnd0NotScalar) {
@@ -214,7 +263,8 @@ TEST_F(HloVerifierTest, RngOpnd0NotScalar) {
     distribution=rng_uniform
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -232,7 +282,8 @@ TEST_F(HloVerifierTest, RngOperandElementTypesDoNotMatch) {
     distribution=rng_normal
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -251,7 +302,8 @@ TEST_F(HloVerifierTest, RngMixedPrecisionNotAllowed) {
     distribution=rng_normal
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -270,7 +322,8 @@ TEST_F(HloVerifierTestAllowMixedPrecision, RngMixedPrecisionAllowed) {
     distribution=rng_normal
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
@@ -287,7 +340,8 @@ TEST_F(HloVerifierTest, RngElementTypeNotSupported) {
     distribution=rng_normal
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -352,7 +406,8 @@ ENTRY entry_computation {
 })";
 
 TEST_F(HloVerifierTest, ConvNegativeWindowDilationNotAllowed) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kConvHloString));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kConvHloString));
   auto* conv = module->entry_computation()->root_instruction();
   Window w = conv->window();
   w.mutable_dimensions(0)->set_window_dilation(-1);
@@ -363,7 +418,8 @@ TEST_F(HloVerifierTest, ConvNegativeWindowDilationNotAllowed) {
 }
 
 TEST_F(HloVerifierTest, ConvNegativeBaseDilationNotAllowed) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kConvHloString));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kConvHloString));
   auto* conv = module->entry_computation()->root_instruction();
   Window w = conv->window();
   w.mutable_dimensions(0)->set_base_dilation(-1);
@@ -383,7 +439,8 @@ static const char* const kAddWithLayoutChangeHlo = R"(
   )";
 
 TEST_F(HloVerifierTest, AddWithLayoutChange) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kAddWithLayoutChangeHlo));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kAddWithLayoutChangeHlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
 }
@@ -405,8 +462,8 @@ TEST_F(HloVerifierTest, ScalarIndexDynamicSlice) {
   debug_options.set_xla_allow_scalar_index_dynamic_ops(true);
   config.set_debug_options(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseHloString(kScalarIndexDynamicSlice, config));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kScalarIndexDynamicSlice, config));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
 }
@@ -431,14 +488,15 @@ TEST_F(HloVerifierTest, ScalarIndexDynamicUpdateSlice) {
   debug_options.set_xla_allow_scalar_index_dynamic_ops(true);
   config.set_debug_options(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseHloString(kScalarIndexDynamicSlice, config));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kScalarIndexDynamicSlice, config));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
 }
 
 TEST_F(HloVerifierTestLayoutSensitive, AddWithLayoutChangeNotAllowed) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kAddWithLayoutChangeHlo));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnUnverifiedModule(kAddWithLayoutChangeHlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.error_message(),
@@ -456,8 +514,8 @@ TEST_F(HloVerifierTestLayoutSensitive, SliceWithLayoutChangeNotAllowed) {
         dynamic_slice_sizes={3,4}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseHloString(kSliceWithLayoutChangeHlo));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnUnverifiedModule(kSliceWithLayoutChangeHlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.error_message(),
@@ -474,8 +532,8 @@ TEST_F(HloVerifierTestLayoutSensitive, ConcatWithLayoutChangeNotAllowed) {
         dimensions={1}
    }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseHloString(kConcatWithLayoutChangeHlo));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnUnverifiedModule(kConcatWithLayoutChangeHlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.error_message(),
@@ -491,7 +549,8 @@ TEST_F(HloVerifierTest, BitcastCanNotChangeElementType) {
    ROOT bitcast = s32[2] bitcast(constant.0)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -499,18 +558,38 @@ TEST_F(HloVerifierTest, BitcastCanNotChangeElementType) {
               HasSubstr("Bitcast can not change the element type"));
 }
 
+TEST_F(HloVerifierTestLayoutSensitive, BitcastNeedsSameNumberOfElements) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY BitcastNeedsToBeNoOp {
+   constant.0 = f32[2] constant({0.0, 0.0})
+   ROOT bitcast = f32[3] bitcast(constant.0)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Bitcast cannot have different shape sizes of output "
+                        "(12) and operand (8)"));
+}
+
 TEST_F(HloVerifierTest, SelectMixedPrecisionNotAllowed) {
   const char* const hlo_string = R"(
   HloModule Module
 
   ENTRY SelectMixedPrecisionNotAllowed {
-   p0 = pred[] parameter(0)
+   p0 = pred[32] parameter(0)
    p1 = f32[32] parameter(1)
    p2 = bf16[32] parameter(2)
    ROOT select = f32[32] select(p0, p1, p2)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -523,16 +602,136 @@ TEST_F(HloVerifierTestAllowMixedPrecision, SelectMixedPrecisionAllowed) {
   HloModule Module
 
   ENTRY SelectMixedPrecisionAllowed {
-   p0 = pred[] parameter(0)
+   p0 = pred[32] parameter(0)
    p1 = f32[32] parameter(1)
    p2 = bf16[32] parameter(2)
    ROOT select = f32[32] select(p0, p1, p2)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTest, SelectTupleNotAllowed) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY SelectWithTuple {
+    p0 = (f32[], f32[]) parameter(0)
+    p1 = (f32[], f32[]) parameter(1)
+    p2 = pred[] parameter(2)
+    ROOT select = (f32[], f32[]) select(p2, p0, p1)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Expected array argument for select"));
+}
+
+TEST_F(HloVerifierTestLayoutSensitive, CopyStartAndCopyDone) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY CopyStartAndCopyDone {
+    p0 = f32[2,3]{1,0:S(1)} parameter(0)
+    copy-start = (f32[2,3]{1,0:S(2)}, f32[2,3]{1,0:S(1)}, u32[]) copy-start(p0)
+    ROOT copy-done = f32[2,3]{1,0:S(2)} copy-done(copy-start)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTestLayoutSensitive, CopyStartAndCopyDoneWrongLayout) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY CopyStartAndCopyDone {
+    p0 = f32[2,3]{1,0:S(1)} parameter(0)
+    copy-start = (f32[2,3]{0,1:S(2)}, f32[2,3]{1,0:S(1)}, u32[]) copy-start(p0)
+    ROOT copy-done = f32[2,3]{1,0:S(2)} copy-done(copy-start)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Expected instruction to have shape equal to"));
+}
+
+TEST_F(HloVerifierTest, CopyStartAndCopyDoneWrongType) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY CopyStartAndCopyDone {
+    p0 = f32[2,3] parameter(0)
+    copy-start = f32[2,3] copy-start(p0)
+    ROOT copy-done = f32[2,3] copy-done(copy-start)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Expected instruction to have shape equal to "
+                        "(f32[2,3], f32[2,3], u32[])"));
+}
+
+TEST_F(HloVerifierTest, CopyStartMultipleCopyDone) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY CopyStartAndCopyDone {
+    p0 = f32[2,3] parameter(0)
+    copy-start = (f32[2,3], f32[2,3], u32[]) copy-start(p0)
+    copy-done.1 = f32[2,3] copy-done(copy-start)
+    copy-done.2 = f32[2,3] copy-done(copy-start)
+    ROOT tuple = (f32[2,3], f32[2,3]) tuple(copy-done.1, copy-done.2)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.error_message(),
+      HasSubstr("copy-start instruction requires one consumer, found 2"));
+}
+
+TEST_F(HloVerifierTest, CopyDoneNoCopyStart) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY CopyStartAndCopyDone {
+    p0 = f32[2,3] parameter(0)
+    p1 = u32[] parameter(1)
+    tuple = (f32[2,3], f32[2,3], u32[]) tuple(p0, p0, p1)
+    ROOT copy-done = f32[2,3] copy-done(tuple)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("The operand of a copy-done instruction needs to be "
+                        "copy-start, found tuple"));
 }
 
 TEST_F(HloVerifierTest, IotaNonArrayResult) {
@@ -544,12 +743,477 @@ TEST_F(HloVerifierTest, IotaNonArrayResult) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.error_message(),
               HasSubstr("does not support non-array result"));
+}
+
+TEST_F(HloVerifierTest, IotaNegativeDimension) {
+  const char* const hlo_string = R"(
+  HloModule IotaTupleResult
+
+  ENTRY  kernelEntry {
+    ROOT iota = s32[128,1001]{1,0} iota(), iota_dimension=-1
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(), HasSubstr("negative"));
+}
+
+TEST_F(HloVerifierTest, IotaPredResultNotAllowed) {
+  const char* const hlo_string = R"(
+  HloModule IotaPredResult
+
+  ENTRY  kernelEntry {
+    ROOT iota = pred[128] iota(), iota_dimension=0
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(), HasSubstr("got PRED"));
+}
+
+static const char* const kMapOperandComputationMismatchHlo = R"(
+  HloModule MapOperandComputationMismatch
+
+  Computation {
+    param0 = f32[] parameter(0)
+    constant = f32[] constant(1)
+    ROOT add = f32[] add(param0, constant)
+  }
+
+  ENTRY kernelEntry {
+  param = f64[] parameter(0)
+  ROOT map = f32[] map(param), dimensions={}, to_apply=Computation
+})";
+
+TEST_F(HloVerifierTest, MapOperandComputationMismatch) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
+                                           kMapOperandComputationMismatchHlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.error_message(),
+      HasSubstr(
+          "Shape mismatch between to_apply computation parameter and operand"));
+}
+
+TEST_F(HloVerifierTestAllowMixedPrecision, MapOperandComputationMismatch) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kMapOperandComputationMismatchHlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
+static const char* const kReduceOperandComputationMismatchHlo = R"(
+  HloModule ReduceOperandComputationMismatch
+  computation {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT add = f32[] add(x, y)
+  }
+
+  ENTRY kernelEntry {
+    arg0 = f16[64,64,224,224]{3,2,1,0} parameter(0)
+    constant = f16[] constant(0)
+    reduce = f16[64]{0} reduce(arg0, constant), dimensions={0,2,3}, to_apply=computation
+  })";
+
+TEST_F(HloVerifierTest, ReduceOperandComputationMismatch) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnUnverifiedModule(kReduceOperandComputationMismatchHlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Expected instruction to have shape equal to f32[64]"));
+}
+
+TEST_F(HloVerifierTestAllowMixedPrecision, ReduceOperandComputationMismatch) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(kReduceOperandComputationMismatchHlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
+string ReplicaGroupsStr(std::vector<std::vector<int64>> replica_groups) {
+  std::vector<string> replica_group_strs;
+  for (const auto& g : replica_groups) {
+    replica_group_strs.push_back(
+        absl::StrFormat("{%s}", absl::StrJoin(g, ",")));
+  }
+  return absl::StrFormat("{%s}", absl::StrJoin(replica_group_strs, ", "));
+}
+
+int64 ReplicaCount(const std::vector<std::vector<int64>>& replica_groups) {
+  int64 replica_count = 0;
+  for (auto group : replica_groups) {
+    replica_count += group.size();
+  }
+  return replica_count;
+}
+
+StatusOr<std::unique_ptr<HloModule>> MakeAllReduceComputation(
+    std::vector<std::vector<int64>> replica_groups,
+    absl::optional<int64> replica_count = absl::nullopt) {
+  const char* kTemplate = R"(
+  HloModule test
+  add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT add = f32[] add(x, y)
+  }
+  ENTRY entry {
+    p = f32[128]{0} parameter(0)
+    crs = f32[128]{0} all-reduce(p), to_apply=add, replica_groups=REPLICA_GROUPS
+  })";
+
+  HloModuleConfig config;
+  if (replica_count) {
+    config.set_replica_count(*replica_count);
+  } else {
+    config.set_replica_count(ReplicaCount(replica_groups));
+  }
+  return ParseAndReturnUnverifiedModule(
+      absl::StrReplaceAll(
+          kTemplate, {{"REPLICA_GROUPS", ReplicaGroupsStr(replica_groups)}}),
+      config);
+}
+
+TEST_F(HloVerifierTest, AllReduce_NoReplicaGroupsOK) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllReduceComputation({}));
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, AllReduce_DifferentGroupSizesOk) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          MakeAllReduceComputation({{0}, {1, 3}, {2}}));
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, AllReduce_EmptyReplicaGroup) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllReduceComputation({{0}, {}}));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("empty replica group"));
+}
+
+TEST_F(HloVerifierTest, AllReduce_RepeatedReplicaId) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          MakeAllReduceComputation({{0, 1}, {2, 3}, {4, 0}}));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Replica 0 is repeated"));
+}
+
+TEST_F(HloVerifierTest, AllReduce_MissingReplicaId) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          MakeAllReduceComputation({{0, 1}, {2, 3}, {5, 6}}));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Replica 4 is not named"));
+}
+
+TEST_F(HloVerifierTest, AllReduce_NotEnougReplicasInGroupConfig) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllReduceComputation({{0, 1}}, 8));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Replica count in HloModuleConfig is 8, but "
+                        "ReplicaGroup config contains 2 replicas"));
+}
+
+TEST_F(HloVerifierTest, AllReduce_TooManyReplicasInGroupConfig) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          MakeAllReduceComputation({{0, 1}, {2, 3}}, 2));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Replica count in HloModuleConfig is 2, but "
+                        "ReplicaGroup config contains 4 replicas"));
+}
+
+StatusOr<std::unique_ptr<HloModule>> MakeAllToAllComputation(
+    std::vector<std::vector<int64>> replica_groups) {
+  const char* kTemplate = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[128]{0} parameter(0)
+    p1 = f32[128]{0} parameter(1)
+    a2a = (f32[128], f32[128]) all-to-all(p0, p1), replica_groups=REPLICA_GROUPS
+  })";
+  HloModuleConfig config;
+  config.set_replica_count(ReplicaCount(replica_groups));
+  return ParseAndReturnUnverifiedModule(
+      absl::StrReplaceAll(
+          kTemplate, {{"REPLICA_GROUPS", ReplicaGroupsStr(replica_groups)}}),
+      config);
+}
+
+TEST_F(HloVerifierTest, AllToAll_NoReplicaGroupsOK) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllToAllComputation({}));
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, AllToAll_EmptyReplicaGroup) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllToAllComputation({{0, 1}, {}}));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("empty replica group"));
+}
+
+TEST_F(HloVerifierTest, AllToAll_RepeatedReplicaId) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          MakeAllToAllComputation({{0, 1}, {2, 3}, {4, 0}}));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Replica 0 is repeated"));
+}
+
+TEST_F(HloVerifierTest, AllToAll_MissingReplicaId) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          MakeAllToAllComputation({{0, 1}, {2, 3}, {5, 6}}));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Replica 4 is not named"));
+}
+
+TEST_F(HloVerifierTest, AllToAll_WrongNumberOfReplicasInGroup) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          MakeAllToAllComputation({{0, 1}, {2}, {3, 4}}));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Replica group has size 1"));
+}
+
+TEST_F(HloVerifierTest, AllToAll_LayoutConstrained) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[128,4]{0,1} parameter(0)
+    p1 = f32[128,4]{1,0} parameter(1)
+    ROOT a2a = (f32[128,4]{0,1}, f32[128,4]{1,0}) all-to-all(p0, p1),
+      replica_groups={{0,1}}
+  }
+  )";
+  HloModuleConfig config;
+  config.set_replica_count(2);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("HLO all-to-all has operands with different shapes"));
+}
+
+TEST_F(HloVerifierTest, CollectivePermuteSameSourceTwice) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[128] parameter(0)
+    ROOT permute = f32[128] collective-permute(p0),
+      source_target_pairs={{0,1}, {0,2}, {1,0}}
+  }
+  )";
+  HloModuleConfig config;
+  config.set_replica_count(3);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Source 0 appears more than once"));
+}
+
+TEST_F(HloVerifierTest, CollectivePermuteSameTargetTwice) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[128] parameter(0)
+    ROOT permute = f32[128] collective-permute(p0),
+      source_target_pairs={{0,2}, {1,2}, {2,0}}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Target 2 appears more than once"));
+}
+
+TEST_F(HloVerifierTest, FusionShapeVerifier) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  fused_computation {
+    ROOT p0 = f32[10,10] parameter(0)
+  }
+
+  ENTRY entry {
+    p0 = f32[10,10] parameter(0)
+    ROOT out = f32[10] fusion(p0), kind=kInput, calls=fused_computation
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Fused computation shape"));
+}
+
+TEST_F(HloVerifierTest, AllReduceVerifier) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY entry {
+    input = f32[8,12]{0,1} parameter(0)
+    crs0 = f32[8,12]{0,1} all-reduce(input), replica_groups={}, to_apply=add
+    crs1 = f32[8,12]{0,1} all-reduce(input), replica_groups={}, to_apply=add,
+      constrain_layout=true
+    ROOT result = (f32[8,12]{0,1}, f32[8,12]{0,1}) tuple(crs0, crs1)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  EXPECT_THAT(
+      verifier().Run(module.get()).status().error_message(),
+      HasSubstr("mix of layout constrained and unconstrained AllReduce"));
+}
+
+TEST_F(HloVerifierTest, ChannelVerifier) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY entry {
+    %input = f32[8,12] parameter(0)
+    %token0 = token[] after-all()
+    %send = (f32[8,12], u32[], token[]) send(%input, %token0), channel_id=1
+    %send-done = token[] send-done(%send), channel_id=1
+    %crs = f32[8,12] all-reduce(%input), replica_groups={}, to_apply=add,
+      channel_id=1
+    ROOT result = (f32[8,12]{0,1}, f32[8,12]{0,1}) tuple(%input, %crs)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("used for different types of channel instructions"));
+}
+
+TEST_F(HloVerifierTest, CollectiveChannelVerifier) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY entry {
+    %input = f32[8,12] parameter(0)
+    %permute = f32[8,12] collective-permute(%input),
+      source_target_pairs={{0,1},{1,0}}, channel_id=1
+    %crs = f32[8,12] all-reduce(%input), replica_groups={}, to_apply=add,
+      channel_id=1
+    ROOT result = (f32[8,12]{0,1}, f32[8,12]{0,1}) tuple(%permute, %crs)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("used for different types of channel instructions"));
+}
+
+TEST_F(HloVerifierTestLayoutSensitive, CollectivePermuteStartAndDone) {
+  const char* const kModuleStr = R"(
+  HloModule Module
+
+  ENTRY CollectivePermuteStartAndDone {
+    p0 = f32[2,3]{1,0:S(1)} parameter(0)
+    collective-permute-start.1 = (f32[2,3]{1,0:S(1)}, f32[2,3]{1,0:S(1)}, u32[], u32[]) collective-permute-start(p0), source_target_pairs={{0,1},{1,0}}, channel_id=1
+    ROOT collective-permute-done.1 = f32[2,3]{1,0:S(1)} collective-permute-done(collective-permute-start.1)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTest, CollectivePermuteStartAndDoneWrongType) {
+  const char* const kModuleStr = R"(
+  HloModule Module
+
+  ENTRY CollectivePermuteStartAndDoneWrongType {
+    p0 = f32[2,3]{1,0:S(1)} parameter(0)
+    collective-permute-start.1 = f32[2,3]{1,0:S(1)} collective-permute-start(p0), source_target_pairs={{0,1},{1,0}}, channel_id=1
+    ROOT collective-permute-done.1 = f32[2,3]{1,0:S(1)} collective-permute-done(collective-permute-start.1)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Expected instruction to have shape equal to "
+                        "(f32[2,3], f32[2,3], u32[], u32[])"));
+}
+
+TEST_F(HloVerifierTest, CollectivePermuteStartAndMultipleDone) {
+  const char* const kModuleStr = R"(
+  HloModule Module
+
+  ENTRY CollectivePermuteStartAndMultipleDone {
+    p0 = f32[2,3]{1,0:S(1)} parameter(0)
+    collective-permute-start.1 = (f32[2,3]{1,0:S(1)}, f32[2,3]{1,0:S(1)}, u32[], u32[]) collective-permute-start(p0), source_target_pairs={{0,1},{1,0}}, channel_id=1
+    collective-permute-done.1 = f32[2,3]{1,0:S(1)} collective-permute-done(collective-permute-start.1)
+    ROOT collective-permute-done.2 = f32[2,3]{1,0:S(1)} collective-permute-done(collective-permute-start.1)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.error_message(),
+      HasSubstr("collective-permute-start instruction requires one consumer, "
+                "found 2"));
+}
+
+TEST_F(HloVerifierTest, CollectivePermuteDoneNoCollectivePermuteStart) {
+  const char* const kModuleStr = R"(
+  HloModule Module
+
+  ENTRY CollectivePermuteDoneNoCollectivePermuteStart {
+    p0 = f32[2,3]{1,0:S(1)} parameter(0)
+    p1 = f32[2,3]{1,0:S(1)} parameter(1)
+    p2 = u32[] parameter(2)
+    p3 = u32[] parameter(3)
+    tuple.1 = (f32[2,3], f32[2,3], u32[], u32[]) tuple(p0, p1, p2, p3)
+    ROOT collective-permute-done.1 = f32[2,3]{1,0:S(1)} collective-permute-done(tuple.1)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("The operand of a collective-permute-done instruction "
+                        "needs to be collective-permute-start, found tuple"));
 }
 
 }  // namespace

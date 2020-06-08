@@ -18,7 +18,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #endif
 
@@ -118,11 +118,28 @@ TEST(VariantOpDecodeRegistryTest, TestBasic) {
   v.Encode(&data);
   VariantTensorDataProto proto;
   data.ToProto(&proto);
-  Variant encoded = proto;
+  Variant encoded = std::move(proto);
   EXPECT_TRUE((*decode_fn)(&encoded));
   VariantValue* decoded = encoded.get<VariantValue>();
   EXPECT_NE(decoded, nullptr);
   EXPECT_EQ(decoded->early_exit, true);
+}
+
+TEST(VariantOpDecodeRegistryTest, TestEmpty) {
+  VariantTensorDataProto empty_proto;
+  Variant empty_encoded = std::move(empty_proto);
+  EXPECT_TRUE(DecodeUnaryVariant(&empty_encoded));
+  EXPECT_TRUE(empty_encoded.is_empty());
+
+  VariantTensorData data;
+  Variant number = 3.0f;
+  number.Encode(&data);
+  VariantTensorDataProto proto;
+  data.ToProto(&proto);
+  proto.set_type_name("");
+  Variant encoded = std::move(proto);
+  // Failure when type name is empty but there's data in the proto.
+  EXPECT_FALSE(DecodeUnaryVariant(&encoded));
 }
 
 TEST(VariantOpDecodeRegistryTest, TestDuplicate) {
@@ -188,8 +205,7 @@ TEST(VariantOpZerosLikeRegistryTest, TestBasicCPU) {
   Status s0 = UnaryOpVariant<CPUDevice>(null_context_pointer,
                                         ZEROS_LIKE_VARIANT_UNARY_OP, v, &v_out);
   EXPECT_FALSE(s0.ok());
-  EXPECT_TRUE(
-      str_util::StrContains(s0.error_message(), "early exit zeros_like"));
+  EXPECT_TRUE(absl::StrContains(s0.error_message(), "early exit zeros_like"));
 
   VariantValue vv_ok{false /* early_exit */, 0 /* value */};
   v = vv_ok;
@@ -199,7 +215,7 @@ TEST(VariantOpZerosLikeRegistryTest, TestBasicCPU) {
   EXPECT_EQ(vv_out->value, 1);  // CPU
 }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 TEST(VariantOpUnaryOpRegistryTest, TestBasicGPU) {
   class Blah {};
   EXPECT_EQ(UnaryVariantOpRegistry::Global()->GetUnaryOpFn(
@@ -214,8 +230,7 @@ TEST(VariantOpUnaryOpRegistryTest, TestBasicGPU) {
   Status s0 = UnaryOpVariant<GPUDevice>(null_context_pointer,
                                         ZEROS_LIKE_VARIANT_UNARY_OP, v, &v_out);
   EXPECT_FALSE(s0.ok());
-  EXPECT_TRUE(
-      str_util::StrContains(s0.error_message(), "early exit zeros_like"));
+  EXPECT_TRUE(absl::StrContains(s0.error_message(), "early exit zeros_like"));
 
   VariantValue vv_ok{false /* early_exit */, 0 /* value */};
   v = vv_ok;
@@ -224,7 +239,7 @@ TEST(VariantOpUnaryOpRegistryTest, TestBasicGPU) {
   VariantValue* vv_out = CHECK_NOTNULL(v_out.get<VariantValue>());
   EXPECT_EQ(vv_out->value, 2);  // GPU
 }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 TEST(VariantOpUnaryOpRegistryTest, TestDuplicate) {
   UnaryVariantOpRegistry registry;
@@ -261,7 +276,7 @@ TEST(VariantOpAddRegistryTest, TestBasicCPU) {
   Status s0 = BinaryOpVariants<CPUDevice>(
       null_context_pointer, ADD_VARIANT_BINARY_OP, v_a, v_b, &v_out);
   EXPECT_FALSE(s0.ok());
-  EXPECT_TRUE(str_util::StrContains(s0.error_message(), "early exit add"));
+  EXPECT_TRUE(absl::StrContains(s0.error_message(), "early exit add"));
 
   VariantValue vv_ok{false /* early_exit */, 3 /* value */};
   v_a = vv_ok;
@@ -271,7 +286,7 @@ TEST(VariantOpAddRegistryTest, TestBasicCPU) {
   EXPECT_EQ(vv_out->value, 7);  // CPU
 }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 TEST(VariantOpAddRegistryTest, TestBasicGPU) {
   class Blah {};
   EXPECT_EQ(UnaryVariantOpRegistry::Global()->GetBinaryOpFn(
@@ -288,7 +303,7 @@ TEST(VariantOpAddRegistryTest, TestBasicGPU) {
   Status s0 = BinaryOpVariants<GPUDevice>(
       null_context_pointer, ADD_VARIANT_BINARY_OP, v_a, v_b, &v_out);
   EXPECT_FALSE(s0.ok());
-  EXPECT_TRUE(str_util::StrContains(s0.error_message(), "early exit add"));
+  EXPECT_TRUE(absl::StrContains(s0.error_message(), "early exit add"));
 
   VariantValue vv_ok{false /* early_exit */, 3 /* value */};
   v_a = vv_ok;
@@ -297,7 +312,7 @@ TEST(VariantOpAddRegistryTest, TestBasicGPU) {
   VariantValue* vv_out = CHECK_NOTNULL(v_out.get<VariantValue>());
   EXPECT_EQ(vv_out->value, -7);  // GPU
 }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 TEST(VariantOpAddRegistryTest, TestDuplicate) {
   UnaryVariantOpRegistry registry;

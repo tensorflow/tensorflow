@@ -50,7 +50,7 @@ class StringFormatOp : public OpKernel {
       strings::StrAppend(&msg, split_template_[i + 1].c_str());
     }
 
-    formatted_string->scalar<string>()() = msg;
+    formatted_string->scalar<tstring>()() = std::move(msg);
   }
 
  private:

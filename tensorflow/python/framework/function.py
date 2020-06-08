@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,7 +14,8 @@
 # =============================================================================
 """Python front-end supports for functions.
 
-NOTE: functions are currently experimental and subject to change!
+NOTE: At this time, functions are experimental and subject to change!. Proceed
+with caution.
 """
 
 from __future__ import absolute_import
@@ -26,7 +27,7 @@ import hashlib
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
-from tensorflow.python import pywrap_tensorflow as c_api
+from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.eager import context
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import dtypes
@@ -59,8 +60,8 @@ class Defun(object):
       def foo(x, y):
         ...
 
-  When you call the decorated function it will add `call` ops to the
-  default graph and adds the definition of the function into the
+  When you call the decorated function, it adds the `call` ops to the
+  default graph. In addition, it adds the definition of the function into the
   default graph. Because the addition of the function into the graph
   is deferred, the decorator can be used anywhere in the program.
 
@@ -129,13 +130,15 @@ class Defun(object):
   def __call__(self, func):
     # Various sanity checks on the callable func.
     if not callable(func):
-      raise ValueError("func %s must be callable" % func)
+      raise ValueError("function %s must be callable" % func)
 
     # Func should not use kwargs and defaults.
     argspec = tf_inspect.getargspec(func)
     if argspec.keywords or argspec.defaults:
-      raise ValueError("Functions with argument defaults or keywords "
-                       "arguments are not supported.")
+      raise ValueError(
+          "function with argument defaults or keywords arguments are not"
+          " supported. {} has defaults {} and keywords {}.".format(
+              func, argspec.defaults, argspec.keywords))
 
     # Computes how many arguments 'func' has.
     min_args = len(argspec.args)
@@ -186,6 +189,28 @@ class Defun(object):
         self._python_grad_func,
         out_names=self._out_names,
         **self._extra_kwargs)
+
+
+class _DefinedFunctionDeleter(object):
+  """Unregister function from eager context."""
+
+  def __init__(self, name):
+    self.name = name
+
+  def __del__(self):
+    try:
+      context.remove_function(self.name)
+    except TypeError:
+      # Suppress some exceptions, mainly for the case when we're running on
+      # module deletion. Things that can go wrong include the context module
+      # already being unloaded, self._handle._handle_data no longer being
+      # valid, and so on. Printing warnings in these cases is silly
+      # (exceptions raised from __del__ are printed as warnings to stderr).
+      pass  # 'NoneType' object is not callable when the handle has been
+      # partially unloaded.
+    except AttributeError:
+      pass  # 'NoneType' object has no attribute 'eager_mode' when context has
+      # been unloaded. Will catch other module unloads as well.
 
 
 class _DefinedFunction(object):
@@ -259,12 +284,13 @@ class _DefinedFunction(object):
     self._definition = None
     # Constructed only when C API is enabled, lazily
     self._c_func = None
-    self._sub_functions = dict()  # Constructed with _definition or _c_func
+    self._function_deleter = None
+    self._sub_functions = {}  # Constructed with _definition or _c_func
     # pylint: disable=protected-access
     device_funcs = ops.get_default_graph()._device_functions_outer_to_inner
     # pylint: enable=protected-access
 
-    # Get the innermost device if possbile.
+    # Get the innermost device if possible.
     self._caller_device = device_funcs[-1] if device_funcs else None
 
     # Cached OpDef for this function. When C API is enabled, this is
@@ -294,6 +320,11 @@ class _DefinedFunction(object):
         fdef = function_pb2.FunctionDef()
         proto_data = c_api.TF_GetBuffer(buf)
         fdef.ParseFromString(compat.as_bytes(proto_data))
+        with ops.init_scope():
+          if context.executing_eagerly():
+            context.add_function(self._c_func.func)
+            self._function_deleter = _DefinedFunctionDeleter(
+                fdef.signature.name)
       return fdef
     return self._definition
 
@@ -310,7 +341,7 @@ class _DefinedFunction(object):
 
   @property
   def grad_func_name(self):
-    """Its gradient function's name."""
+    """Returns the name of the gradient function."""
     return self._grad_func.name if self._grad_func else None
 
   @property
@@ -349,6 +380,21 @@ class _DefinedFunction(object):
     if self._definition is not None or self._c_func is not None:
       return
 
+    # Copy variable collections (by reference) from the parent graph such that
+    # name based variable sharing (e.g. via tf.make_template) works between the
+    # func graph and parent graph.
+    variable_keys = []
+    variable_keys.extend(ops.GraphKeys._VARIABLE_COLLECTIONS)  # pylint: disable=protected-access
+    variable_keys.append(vs._VARSTORE_KEY)  # pylint: disable=protected-access
+
+    collections_ref = {}
+    parent_collections_ref = ops.get_default_graph()._collections  # pylint: disable=protected-access
+    for key in variable_keys:
+      if key not in parent_collections_ref:
+        parent_collections_ref[key] = collections_ref[key] = []
+      else:
+        collections_ref[key] = parent_collections_ref[key]
+
     temp_graph = func_graph_from_py_func(
         self._func,
         self._arg_names,
@@ -356,6 +402,7 @@ class _DefinedFunction(object):
         self._func_name,
         self._capture_by_value,
         self._caller_device,
+        collections_ref=collections_ref,
         whitelisted_stateful_ops=self._whitelisted_stateful_ops,
         capture_resource_var_by_value=self._capture_resource_var_by_value)
 
@@ -412,6 +459,8 @@ class _DefinedFunction(object):
           [t._as_tf_output() for t in temp_graph.inputs],
           [t._as_tf_output() for t in temp_graph.outputs],
           output_names,
+          [], # control_outputs
+          [], # control_output_names
           None,  # opts
           description)
       self._c_func = c_api_util.ScopedTFFunction(c_func)
@@ -427,7 +476,7 @@ class _DefinedFunction(object):
 
     self._stateful_ops = [(op.name, op.type)
                           for op in temp_graph.get_operations()
-                          if op.op_def.is_stateful]
+                          if op._is_stateful]  # pylint: disable=protected-access
 
   def _set_c_attrs(self, attrs):
     """Sets `attrs` as attributes of self._c_func.
@@ -675,6 +724,11 @@ class _FuncGraph(ops.Graph):
 
   # pylint: disable=g-doc-return-or-yield
 
+  @property
+  def outer_graph(self):
+    """The graph active when this _FuncGraph was created."""
+    return self._outer_graph
+
   @tf_contextlib.contextmanager
   def container(self, container_name):
     """Returns a context manager that specifies the resource container to use.
@@ -741,7 +795,7 @@ class _FuncGraph(ops.Graph):
           collections=collections,
           use_resource=use_resource)
       self.extra_vars.append(var)
-      if (isinstance(var, resource_variable_ops.ResourceVariable) and
+      if (isinstance(var, resource_variable_ops.BaseResourceVariable) and
           self._capture_resource_var_by_value):
         # For resource-based variables read the variable outside the function
         # and pass in the value. This ensures that the function is pure and
@@ -750,22 +804,43 @@ class _FuncGraph(ops.Graph):
         return var.value()
       return var
 
-  def create_op(self, op_type, inputs, data_types, **kwargs):
+  def _create_op_internal(
+      self,
+      op_type,
+      inputs,
+      dtypes=None,  # pylint: disable=redefined-outer-name
+      input_types=None,
+      name=None,
+      attrs=None,
+      op_def=None,
+      compute_device=True):
     for i, x in enumerate(inputs):
       if isinstance(x, ops.EagerTensor) or x.graph is not self:
         inputs[i] = self.capture(x)
-    return super(_FuncGraph, self).create_op(op_type, inputs, data_types,
-                                             **kwargs)
+    return super(_FuncGraph, self)._create_op_internal(
+        op_type,
+        inputs,
+        dtypes=dtypes,
+        input_types=input_types,
+        name=name,
+        attrs=attrs,
+        op_def=op_def,
+        compute_device=compute_device)
 
   def capture(self, tensor, name=None):
     """Adds the given tensor to this graph and returns the captured tensor."""
-    if tensor in self._captured:
+    if tensor.ref() in self._captured:
       # Captured already.
-      return self._captured[tensor]
+      return self._captured[tensor.ref()]
     elif self._capture_by_value:
       return self._add_tensor_and_parents(tensor)
     else:
       return self._capture_tensor_as_extra_input(tensor, name)
+
+  @property
+  def captures(self):
+    """Pairs of tensors and captured tensor."""
+    return [(k.deref(), v) for k, v in self._captured.items()]
 
   def _capture_tensor_as_extra_input(self, tensor, name=None):
     # Substitute with a placeholder.
@@ -789,7 +864,7 @@ class _FuncGraph(ops.Graph):
                                   compat.as_bytes(handle_data))
     # pylint: enable=protected-access
     self.inputs.append(ph)
-    self._captured[tensor] = ph
+    self._captured[tensor.ref()] = ph
     self.extra_args.append(ph)
     if _is_guaranteed_const(tensor):
       with ops.control_dependencies(None):
@@ -804,17 +879,17 @@ class _FuncGraph(ops.Graph):
   def _add_op_and_parents(self, op):
     # pylint: disable=protected-access
     op_def = graph_to_function_def._get_op_def(op)
-    # pylint: enable=protected-access
-    if op_def.is_stateful and op not in self._whitelisted_stateful_ops:
+    if op._is_stateful and op not in self._whitelisted_stateful_ops:
       raise ValueError("Cannot capture a stateful node (name:%s, type:%s) "
                        "by value." % (op.name, op.type))
     elif op.type in ("Placeholder", "PlaceholderV2"):
       raise ValueError("Cannot capture a placeholder (name:%s, type:%s) "
                        "by value." % (op.name, op.type))
+    # pylint: enable=protected-access
 
     captured_inputs = [self._add_tensor_and_parents(x) for x in op.inputs]
 
-    captured_op = self.create_op(
+    captured_op = self._create_op_internal(
         op.type,
         captured_inputs, [o.dtype for o in op.outputs],
         name=op.name,
@@ -822,7 +897,7 @@ class _FuncGraph(ops.Graph):
         op_def=op_def)
 
     for t, captured_t in zip(op.outputs, captured_op.outputs):
-      self._captured[t] = captured_t
+      self._captured[t.ref()] = captured_t
 
     return captured_op
 
@@ -1008,14 +1083,8 @@ def _call(sig, *inputs, **kwargs):
     name = func_name
   attrs = _parse_kwargs_as_attrs(func_name, **kwargs)
   output_types = [dtypes.DType(x.type) for x in sig.output_arg]
-  op = g.create_op(
-      func_name,
-      list(inputs),
-      output_types,
-      name=name,
-      attrs=attrs,
-      op_def=sig,
-      compute_shapes=False)
+  op = g._create_op_internal(  # pylint: disable=protected-access
+      func_name, list(inputs), output_types, name=name, attrs=attrs, op_def=sig)
   if op.outputs:
     if len(op.outputs) == 1:
       ret = op.outputs[0]
@@ -1143,6 +1212,15 @@ def _get_experimental_kwarg_as_attr(attr_name, value):
                      (attr_name, type(value)))
 
 
+def _get_kwarg_as_str_attr(attr_name, value):
+  """Creates an AttrValue for a python object."""
+  if isinstance(value, str):
+    return attr_value_pb2.AttrValue(s=compat.as_bytes(value))
+  else:
+    raise ValueError("Unsupported attribute type for %s with type %s" %
+                     (attr_name, type(value)))
+
+
 def _parse_kwargs_as_attrs(func_name, **kwargs):
   """Parses **kwargs into a node's attributes."""
   attrs = {}
@@ -1150,6 +1228,10 @@ def _parse_kwargs_as_attrs(func_name, **kwargs):
   noinline = kwargs.pop("noinline", None)
   if noinline is not None:
     attrs["_noinline"] = attr_value_pb2.AttrValue(b=bool(noinline))
+
+  # For compatibility with previous behavior, Defun does not perform shape
+  # inference through its function call operations.
+  attrs["_disable_call_shape_inference"] = attr_value_pb2.AttrValue(b=True)
 
   compiled = kwargs.pop("compiled", None)
   separate_compiled_gradients = kwargs.pop("separate_compiled_gradients", None)
@@ -1171,7 +1253,10 @@ def _parse_kwargs_as_attrs(func_name, **kwargs):
     if key.startswith("experimental_"):
       attrs[key] = _get_experimental_kwarg_as_attr(key, kwargs[key])
       del kwargs[key]
-
+    # Support for https://github.com/tensorflow/community/pull/113/files.
+    elif key == "_implements" or key == "_reference":
+      attrs[key] = _get_kwarg_as_str_attr(key, kwargs[key])
+      del kwargs[key]
   if kwargs:
     raise ValueError("Unknown keyword arguments: %s" % kwargs.keys())
   return attrs
@@ -1227,7 +1312,7 @@ def get_extra_args():
 def _type_list_to_str(types):
   if any(_ not in _DTYPE_TO_STR for _ in types):
     raise ValueError("Unsupported dtypes: %s" % types)
-  return "".join([_DTYPE_TO_STR[_] for _ in types])
+  return "".join(_DTYPE_TO_STR[_] for _ in types)
 
 
 # NOTE: The list needs to be extended when more data types are added.

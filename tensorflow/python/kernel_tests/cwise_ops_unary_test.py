@@ -22,6 +22,7 @@ import math
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import ops
@@ -29,6 +30,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
@@ -388,6 +390,22 @@ class UnaryOpTest(test.TestCase):
     self._compareBothSparse(y, np.sign, math_ops.sign)
     self._compareBothSparse(x, np.vectorize(math.erf), math_ops.erf, tol=1e-3)
 
+  def testBFloat16Basic(self):
+    x = np.arange(-6, 6,
+                  2).reshape(1, 3, 2).astype(dtypes_lib.bfloat16.as_numpy_dtype)
+    self._compareCpu(x, np.abs, math_ops.abs)
+    self._compareCpu(x, np.abs, _ABS)
+
+  def testInt8Basic(self):
+    x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int8)
+    self._compareCpu(x, np.abs, math_ops.abs)
+    self._compareCpu(x, np.abs, _ABS)
+
+  def testInt16Basic(self):
+    x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int16)
+    self._compareCpu(x, np.abs, math_ops.abs)
+    self._compareCpu(x, np.abs, _ABS)
+
   def testInt32Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int32)
     self._compareCpu(x, np.abs, math_ops.abs)
@@ -541,6 +559,24 @@ class UnaryOpTest(test.TestCase):
             grads = [grads]
           for analytical, numerical in grads:
             self.assertAllClose(analytical, numerical, rtol=tol, atol=tol)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testComplexAbsGradGrad(self):
+
+    def f(x):
+      real = math_ops.cos(x)
+      imag = ops.convert_to_tensor(1.)
+      return math_ops.abs(math_ops.complex(real, imag))
+
+    def g(x):
+      with backprop.GradientTape() as t:
+        t.watch(x)
+        y = f(x)
+      return t.gradient(y, x)
+
+    err = gradient_checker_v2.max_error(
+        *gradient_checker_v2.compute_gradient(g, [ops.convert_to_tensor(2.0)]))
+    self.assertLess(err, 1e-3)
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_ADJUST_SATURATION_OP_H_
 #define TENSORFLOW_CORE_KERNELS_ADJUST_SATURATION_OP_H_
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -37,5 +37,5 @@ struct AdjustSaturationGPU {
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #endif  // TENSORFLOW_CORE_KERNELS_ADJUST_SATURATION_OP_H_

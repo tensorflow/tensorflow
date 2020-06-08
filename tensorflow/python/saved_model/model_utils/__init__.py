@@ -25,4 +25,5 @@ from tensorflow.python.saved_model.model_utils.export_utils import EXPORT_TAG_MA
 from tensorflow.python.saved_model.model_utils.export_utils import get_export_outputs
 from tensorflow.python.saved_model.model_utils.export_utils import get_temp_export_dir
 from tensorflow.python.saved_model.model_utils.export_utils import get_timestamped_export_dir
+from tensorflow.python.saved_model.model_utils.export_utils import SIGNATURE_KEY_MAP
 # pylint: enable=wildcard-import

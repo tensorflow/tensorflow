@@ -65,6 +65,10 @@ class ZlibOutputBuffer : public WritableFile {
   // To immediately write contents to file call `Flush()`.
   Status Append(StringPiece data) override;
 
+#if defined(PLATFORM_GOOGLE)
+  Status Append(const absl::Cord& cord) override;
+#endif
+
   // Deflates any cached input and writes all output to file.
   Status Flush() override;
 
@@ -132,7 +136,7 @@ class ZlibOutputBuffer : public WritableFile {
   //
   // Note: This method does not flush contents to file.
   // Returns non-ok status if writing contents to file fails.
-  Status DeflateBuffered(bool last = false);
+  Status DeflateBuffered(int flush_mode);
 
   // Appends contents of `z_stream_output_` to `file_`.
   // Returns non-OK status if writing to file fails.

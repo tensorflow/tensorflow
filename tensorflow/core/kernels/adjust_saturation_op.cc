@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #endif
 
@@ -193,8 +193,8 @@ class AdjustSaturationOp<CPUDevice, float> : public AdjustSaturationOpBase {
         *context->device()->tensorflow_cpu_worker_threads();
     Shard(worker_threads.num_threads, worker_threads.workers, channel_count,
           kCostPerChannel,
-          [channel_count, &input_data, &output_data, scale_h](
-              int64 start_channel, int64 end_channel) {
+          [&input_data, &output_data, scale_h](int64 start_channel,
+                                               int64 end_channel) {
             const float* p = input_data.data() + start_channel * kChannelSize;
             float* q = output_data.data() + start_channel * kChannelSize;
             for (int i = start_channel; i < end_channel; i++) {
@@ -215,7 +215,7 @@ REGISTER_KERNEL_BUILDER(
     Name("AdjustSaturation").Device(DEVICE_CPU).TypeConstraint<float>("T"),
     AdjustSaturationOp<CPUDevice, float>);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <typename T>
 class AdjustSaturationOp<GPUDevice, T> : public AdjustSaturationOpBase {
  public:

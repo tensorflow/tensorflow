@@ -17,7 +17,15 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "BinaryClassHead"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "BoostedTreesClassifier"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "BoostedTreesEstimator"
     mtype: "<type \'type\'>"
   }
   member {
@@ -89,6 +97,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "Head"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "LatestExporter"
     mtype: "<type \'type\'>"
   }
@@ -109,7 +121,23 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "LogisticRegressionHead"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "ModeKeys"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MultiClassHead"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MultiHead"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MultiLabelHead"
     mtype: "<type \'type\'>"
   }
   member {
@@ -121,7 +149,15 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "PoissonRegressionHead"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "ProfilerHook"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RegressionHead"
     mtype: "<type \'type\'>"
   }
   member {

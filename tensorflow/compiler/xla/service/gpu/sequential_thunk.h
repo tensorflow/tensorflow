@@ -39,11 +39,10 @@ class SequentialThunk : public Thunk {
 
   const std::vector<std::unique_ptr<Thunk>>& thunks() const { return thunks_; }
 
+  void ComputeAnnotations() override;
   Status Initialize(const GpuExecutable& executable,
                     se::StreamExecutor* executor) override;
-  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream,
-                         HloExecutionProfiler* profiler) override;
+  Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   // The list of sub-thunks.

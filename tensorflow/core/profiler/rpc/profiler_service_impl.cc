@@ -14,22 +14,41 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
+
+#include <memory>
+
 #include "grpcpp/support/status.h"
-#include "tensorflow/contrib/tpu/profiler/tpu_profiler.grpc.pb.h"
-#include "tensorflow/core/common_runtime/eager/context.h"
-#include "tensorflow/core/profiler/lib/eager_profiler.h"
-#include "tensorflow/core/util/ptr_util.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/memory/memory.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/profiler/convert/xplane_to_profile_response.h"
+#include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/lib/profiler_session.h"
+#include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
+#include "tensorflow/core/profiler/profiler_service.pb.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace {
 
-// TODO(fishx): Rename TPUProfiler to something more generic.
-class ProfilerServiceImpl : public TPUProfiler::Service {
- public:
-  explicit ProfilerServiceImpl(EagerContext* const eager_context)
-      : eager_context_(eager_context) {}
-  ~ProfilerServiceImpl() override {}
+Status CollectDataToResponse(const ProfileRequest& req,
+                             ProfilerSession* profiler,
+                             ProfileResponse* response) {
+  profiler::XSpace xspace;
+  TF_RETURN_IF_ERROR(profiler->CollectData(&xspace));
+  TF_RETURN_IF_ERROR(
+      profiler::ConvertXSpaceToProfileResponse(xspace, req, response));
+  return Status::OK();
+}
 
+class ProfilerServiceImpl : public grpc::ProfilerService::Service {
+ public:
   ::grpc::Status Monitor(::grpc::ServerContext* ctx, const MonitorRequest* req,
                          MonitorResponse* response) override {
     return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "unimplemented.");
@@ -37,38 +56,61 @@ class ProfilerServiceImpl : public TPUProfiler::Service {
 
   ::grpc::Status Profile(::grpc::ServerContext* ctx, const ProfileRequest* req,
                          ProfileResponse* response) override {
-    LOG(INFO) << "Received a profile request.";
-    std::unique_ptr<EagerProfiler> profiler =
-        EagerProfiler::Create(eager_context_);
-    if (!profiler->Status().ok()) {
+    VLOG(1) << "Received a profile request: " << req->DebugString();
+    std::unique_ptr<ProfilerSession> profiler =
+        ProfilerSession::Create(req->opts());
+    Status status = profiler->Status();
+    if (!status.ok()) {
       return ::grpc::Status(::grpc::StatusCode::INTERNAL,
-                            profiler->Status().error_message());
+                            status.error_message());
     }
 
-    Env* env = eager_context_->TFEnv();
-    for (size_t i = 0; i < req->duration_ms(); ++i) {
-      env->SleepForMicroseconds(1000);
+    Env* env = Env::Default();
+    for (uint64 i = 0; i < req->duration_ms(); ++i) {
+      env->SleepForMicroseconds(EnvTime::kMillisToMicros);
       if (ctx->IsCancelled()) {
         return ::grpc::Status::CANCELLED;
       }
+      if (TF_PREDICT_FALSE(IsStopped(req->session_id()))) {
+        mutex_lock lock(mutex_);
+        stop_signals_per_session_.erase(req->session_id());
+        break;
+      }
     }
 
-    Status s = profiler->SerializeToString(response->mutable_encoded_trace());
-    if (!s.ok()) {
-      return ::grpc::Status(::grpc::StatusCode::INTERNAL, s.error_message());
+    status = CollectDataToResponse(*req, profiler.get(), response);
+    if (!status.ok()) {
+      return ::grpc::Status(::grpc::StatusCode::INTERNAL,
+                            status.error_message());
     }
 
     return ::grpc::Status::OK;
   }
 
+  ::grpc::Status Terminate(::grpc::ServerContext* ctx,
+                           const TerminateRequest* req,
+                           TerminateResponse* response) override {
+    mutex_lock lock(mutex_);
+    stop_signals_per_session_[req->session_id()] = true;
+    return ::grpc::Status::OK;
+  }
+
  private:
-  EagerContext* const eager_context_;
+  bool IsStopped(const std::string& session_id) {
+    mutex_lock lock(mutex_);
+    auto it = stop_signals_per_session_.find(session_id);
+    return it != stop_signals_per_session_.end() && it->second;
+  }
+
+  mutex mutex_;
+  absl::flat_hash_map<std::string, bool> stop_signals_per_session_
+      GUARDED_BY(mutex_);
 };
+
 }  // namespace
 
-std::unique_ptr<TPUProfiler::Service> CreateProfilerService(
-    EagerContext* const eager_context) {
-  return MakeUnique<ProfilerServiceImpl>(eager_context);
+std::unique_ptr<grpc::ProfilerService::Service> CreateProfilerService() {
+  return absl::make_unique<ProfilerServiceImpl>();
 }
 
 }  // namespace tensorflow

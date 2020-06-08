@@ -124,7 +124,7 @@ class EncodeJpegOp : public OpKernel {
                    context->allocate_output(0, TensorShape({}), &output));
     OP_REQUIRES(context,
                 jpeg::Compress(image.flat<uint8>().data(), dim_size1, dim_size0,
-                               adjusted_flags, &output->scalar<string>()()),
+                               adjusted_flags, &output->scalar<tstring>()()),
                 errors::Internal("JPEG encoding failed"));
   }
 
@@ -134,5 +134,67 @@ class EncodeJpegOp : public OpKernel {
   jpeg::CompressFlags flags_;
 };
 REGISTER_KERNEL_BUILDER(Name("EncodeJpeg").Device(DEVICE_CPU), EncodeJpegOp);
+
+class EncodeJpegVariableQualityOp : public OpKernel {
+ public:
+  explicit EncodeJpegVariableQualityOp(OpKernelConstruction* context)
+      : OpKernel(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& image = context->input(0);
+    OP_REQUIRES(context, image.dims() == 3,
+                errors::InvalidArgument("image must be 3-dimensional",
+                                        image.shape().DebugString()));
+
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(image.NumElements(), std::numeric_limits<int32>::max()),
+        errors::InvalidArgument(
+            "Cannot encode images with >= max int32 elements"));
+
+    const int32 dim_size0 = static_cast<int32>(image.dim_size(0));
+    const int32 dim_size1 = static_cast<int32>(image.dim_size(1));
+    const int32 dim_size2 = static_cast<int32>(image.dim_size(2));
+
+    // Use default jpeg compression flags except for format and quality.
+    jpeg::CompressFlags adjusted_flags;
+
+    // Get jpeg encoding quality.
+    const Tensor& quality = context->input(1);
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(quality.shape()),
+                errors::InvalidArgument("quality must be scalar: ",
+                                        quality.shape().DebugString()));
+    adjusted_flags.quality = quality.scalar<int>()();
+    OP_REQUIRES(context,
+                0 <= adjusted_flags.quality && adjusted_flags.quality <= 100,
+                errors::InvalidArgument("quality must be in [0,100], got ",
+                                        adjusted_flags.quality));
+
+    // Autodetect format.
+    int channels;
+    channels = dim_size2;
+    if (channels == 1) {
+      adjusted_flags.format = jpeg::FORMAT_GRAYSCALE;
+    } else if (channels == 3) {
+      adjusted_flags.format = jpeg::FORMAT_RGB;
+    } else {
+      OP_REQUIRES(
+          context, false,
+          errors::InvalidArgument("image must have 1 or 3 channels, got ",
+                                  image.shape().DebugString()));
+    }
+
+    // Encode image to jpeg string
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, TensorShape({}), &output));
+    OP_REQUIRES(context,
+                jpeg::Compress(image.flat<uint8>().data(), dim_size1, dim_size0,
+                               adjusted_flags, &output->scalar<tstring>()()),
+                errors::Internal("JPEG encoding failed"));
+  }
+};
+REGISTER_KERNEL_BUILDER(Name("EncodeJpegVariableQuality").Device(DEVICE_CPU),
+                        EncodeJpegVariableQualityOp);
 
 }  // namespace tensorflow

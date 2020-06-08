@@ -63,8 +63,10 @@ TfLiteStatus CheckOutputs(tflite::Interpreter* interpreter, const Example&);
 //   invoke {
 //     input: "1,2,3,4,56"
 //     input: "0.1,0.2,0.3,4.3,56.4"
-//     output: "12,3,4,545,3"
+//     output: "12,3,4,545,3,6"
 //     output: "0.01,0.02"
+//     output_shape: "2,3"
+//     output_shape: "1"
 //   }
 bool ParseAndRunTests(std::istream* input, TestRunner* test_runner,
                       int max_invocations = -1);

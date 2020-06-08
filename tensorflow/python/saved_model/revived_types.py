@@ -19,20 +19,19 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import versions_pb2
-from tensorflow.python.saved_model import saved_object_graph_pb2
+from tensorflow.core.protobuf import saved_object_graph_pb2
 
 
 class VersionedTypeRegistration(object):
   """Holds information about one version of a revived type."""
 
   def __init__(self, object_factory, version, min_producer_version,
-               min_consumer_version, bad_consumers=None, setter=setattr,
-               getter=getattr, attribute_extractor=dir):
+               min_consumer_version, bad_consumers=None, setter=setattr):
     """Identify a revived type version.
 
     Args:
       object_factory: A callable which takes a SavedUserObject proto and returns
-        a checkpointable object. Dependencies are added later via `setter`.
+        a trackable object. Dependencies are added later via `setter`.
       version: An integer, the producer version of this wrapper type. When
         making incompatible changes to a wrapper, add a new
         `VersionedTypeRegistration` with an incremented `version`. The most
@@ -46,11 +45,11 @@ class VersionedTypeRegistration(object):
         with this object. `min_consumer_version` should be set to the lowest
         version number which can successfully load protos saved by this
         object. If no matching registration is available on load, the object
-        will be revived with a generic checkpointable type.
+        will be revived with a generic trackable type.
 
         `min_consumer_version` and `bad_consumers` are a blunt tool, and using
         them will generally break forward compatibility: previous versions of
-        TensorFlow will revive newly saved objects as opaque checkpointable
+        TensorFlow will revive newly saved objects as opaque trackable
         objects rather than wrapped objects. When updating wrappers, prefer
         saving new information but preserving compatibility with previous
         wrapper versions. They are, however, useful for ensuring that
@@ -60,16 +59,8 @@ class VersionedTypeRegistration(object):
         addition to any version less than `min_consumer_version`).
       setter: A callable with the same signature as `setattr` to use when adding
         dependencies to generated objects.
-      getter: A callable with the same signature as `getattr` to use when
-        retrieving items from objects of this type. Used along with
-        `attribute_extractor` to find functions, which are not Checkpointable
-        objects and so not regular dependencies.
-      attribute_extractor: A callable equivalent of the builtin `dir`, used for
-        listing items in this container (if any).
     """
     self.setter = setter
-    self.getter = getter
-    self.attribute_extractor = attribute_extractor
     self.identifier = None  # Set after registration
     self._object_factory = object_factory
     self.version = version
@@ -92,7 +83,7 @@ class VersionedTypeRegistration(object):
             bad_consumers=self._bad_consumers))
 
   def from_proto(self, proto):
-    """Recreate a checkpointable object from a SavedUserObject proto."""
+    """Recreate a trackable object from a SavedUserObject proto."""
     return self._object_factory(proto)
 
   def should_load(self, proto):
@@ -120,7 +111,7 @@ def register_revived_type(identifier, predicate, versions):
   Args:
     identifier: A unique string identifying this class of objects.
     predicate: A Boolean predicate for this registration. Takes a
-      checkpointable object as an argument. If True, `type_registration` may be
+      trackable object as an argument. If True, `type_registration` may be
       used to save and restore the object.
     versions: A list of `VersionedTypeRegistration` objects.
   """
@@ -146,17 +137,8 @@ def register_revived_type(identifier, predicate, versions):
   _TYPE_IDENTIFIERS.append(identifier)
 
 
-def get_attribute_extractors(obj):
-  """Get a `dir` and `getattr` equivalent for use with `obj`."""
-  for identifier in _TYPE_IDENTIFIERS:
-    predicate, versions = _REVIVED_TYPE_REGISTRY[identifier]
-    if predicate(obj):
-      return versions[0].attribute_extractor, versions[0].getter
-  return dir, getattr
-
-
 def serialize(obj):
-  """Create a SavedUserObject from a checkpointable object."""
+  """Create a SavedUserObject from a trackable object."""
   for identifier in _TYPE_IDENTIFIERS:
     predicate, versions = _REVIVED_TYPE_REGISTRY[identifier]
     if predicate(obj):
@@ -166,15 +148,15 @@ def serialize(obj):
 
 
 def deserialize(proto):
-  """Create a checkpointable object from a SavedUserObject proto.
+  """Create a trackable object from a SavedUserObject proto.
 
   Args:
     proto: A SavedUserObject to deserialize.
 
   Returns:
-    A tuple of (checkpointable, assignment_fn) where assignment_fn has the same
+    A tuple of (trackable, assignment_fn) where assignment_fn has the same
     signature as setattr and should be used to add dependencies to
-    `checkpointable` when they are available.
+    `trackable` when they are available.
   """
   _, type_registrations = _REVIVED_TYPE_REGISTRY.get(
       proto.identifier, (None, None))
@@ -182,4 +164,18 @@ def deserialize(proto):
     for type_registration in type_registrations:
       if type_registration.should_load(proto):
         return (type_registration.from_proto(proto), type_registration.setter)
+  return None
+
+
+def registered_identifiers():
+  return _REVIVED_TYPE_REGISTRY.keys()
+
+
+def get_setter(proto):
+  _, type_registrations = _REVIVED_TYPE_REGISTRY.get(
+      proto.identifier, (None, None))
+  if type_registrations is not None:
+    for type_registration in type_registrations:
+      if type_registration.should_load(proto):
+        return type_registration.setter
   return None

@@ -60,17 +60,21 @@ Status KernelSupportLibrary::IfWithStatus(
     absl::string_view name, llvm::Value* condition,
     const std::function<Status()>& true_block_generator,
     const std::function<Status()>& false_block_generator) {
-  llvm_ir::LlvmIfData if_data = llvm_ir::EmitIfThenElse(condition, name, b_);
+  llvm_ir::LlvmIfData if_data =
+      llvm_ir::EmitIfThenElse(condition, name, b_,
+                              /*emit_else=*/false_block_generator != nullptr);
   b_->SetInsertPoint(&if_data.true_block->back());
   TF_RETURN_IF_ERROR(true_block_generator());
-  b_->SetInsertPoint(&if_data.false_block->back());
-  TF_RETURN_IF_ERROR(false_block_generator());
+  if (false_block_generator != nullptr) {
+    b_->SetInsertPoint(&if_data.false_block->back());
+    TF_RETURN_IF_ERROR(false_block_generator());
+  }
   llvm_ir::SetToLastInsertPoint(if_data.after_block, b_);
   return Status::OK();
 }
 
 void KernelSupportLibrary::EmitAndCallOutlinedKernel(
-    bool enable_fast_math, bool optimize_for_size, llvm::IRBuilder<>* b,
+    const HloModuleConfig& module_config, llvm::IRBuilder<>* b,
     absl::string_view kernel_name,
     KernelSupportLibrary::ArgumentVector arguments,
     const std::function<void(KernelSupportLibrary::ArgumentVector)>&
@@ -101,10 +105,9 @@ void KernelSupportLibrary::EmitAndCallOutlinedKernel(
     auto* function_type =
         llvm::FunctionType::get(b->getVoidTy(), arg_types, /*isVarArg=*/false);
 
-    function = llvm_ir::CreateFunction(
-        function_type, llvm::GlobalValue::InternalLinkage,
-        /*enable_fast_math=*/enable_fast_math,
-        /*optimize_for_size=*/optimize_for_size, kernel_name, module);
+    function = llvm_ir::CreateCpuFunction(function_type,
+                                          llvm::GlobalValue::InternalLinkage,
+                                          module_config, kernel_name, module);
 
     llvm::IRBuilder<>::InsertPointGuard guard(*b);
 

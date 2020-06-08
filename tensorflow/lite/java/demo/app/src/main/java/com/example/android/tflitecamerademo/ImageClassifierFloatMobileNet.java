@@ -21,6 +21,11 @@ import java.io.IOException;
 /** This classifier works with the float MobileNet model. */
 public class ImageClassifierFloatMobileNet extends ImageClassifier {
 
+  /** The mobile net requires additional normalization of the used input. */
+  private static final float IMAGE_MEAN = 127.5f;
+
+  private static final float IMAGE_STD = 127.5f;
+
   /**
    * An array to hold inference results, to be feed into Tensorflow Lite as outputs. This isn't part
    * of the super class, because we need a primitive array here.
@@ -67,9 +72,9 @@ public class ImageClassifierFloatMobileNet extends ImageClassifier {
 
   @Override
   protected void addPixelValue(int pixelValue) {
-    imgData.putFloat(((pixelValue >> 16) & 0xFF) / 255.f);
-    imgData.putFloat(((pixelValue >> 8) & 0xFF) / 255.f);
-    imgData.putFloat((pixelValue & 0xFF) / 255.f);
+    imgData.putFloat((((pixelValue >> 16) & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
+    imgData.putFloat((((pixelValue >> 8) & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
+    imgData.putFloat(((pixelValue & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
   }
 
   @Override

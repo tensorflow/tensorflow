@@ -58,7 +58,7 @@ class EncodeWavOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    wav::EncodeAudioAsS16LEWav(
                        audio.flat<float>().data(), sample_rate, channel_count,
-                       sample_count, &output->scalar<string>()()));
+                       sample_count, &output->scalar<tstring>()()));
   }
 };
 REGISTER_KERNEL_BUILDER(Name("EncodeWav").Device(DEVICE_CPU), EncodeWavOp);

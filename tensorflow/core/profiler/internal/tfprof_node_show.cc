@@ -14,9 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/internal/tfprof_node_show.h"
 
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
-
 namespace tensorflow {
 namespace tfprof {
 namespace {}
@@ -142,7 +139,7 @@ bool ShowMultiNode::ReInit(int64 step,
 
   std::vector<ShowNode> snodes;
   mutable_proto()->mutable_graph_nodes()->Clear();
-  for (auto it : node->graph_nodes()) {
+  for (const auto& it : node->graph_nodes()) {
     ShowNode snode(it.second);
     snodes.push_back(snode);
     snodes.back().ReInit(step);

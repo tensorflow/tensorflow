@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import functools
 import itertools
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -45,7 +46,7 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     """Tests that the output of 'tf_reduce_fn' matches numpy's output."""
 
     for test_input in test_inputs:
-      with self.cached_session() as sess:
+      with self.session() as sess:
         with self.test_scope():
           a = array_ops.placeholder(dtype)
           index = array_ops.placeholder(index_dtype)
@@ -190,7 +191,7 @@ class ReduceOpPrecisionTest(xla_test.XLATestCase):
     """
 
     for test_input in test_inputs:
-      with self.cached_session() as sess:
+      with self.session() as sess:
         with self.test_scope():
           a = array_ops.placeholder(dtype)
           index = array_ops.placeholder(dtypes.int32)

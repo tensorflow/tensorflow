@@ -243,7 +243,7 @@ class AdamOptimizerTest(test.TestCase):
     with self.cached_session():
       self.doTestBasic(use_resource=False)
 
-  @test_util.run_in_graph_and_eager_modes(reset_test=True)
+  @test_util.run_in_graph_and_eager_modes
   def testResourceBasic(self):
     self.doTestBasic(use_resource=True)
 
@@ -366,7 +366,8 @@ class AdamOptimizerTest(test.TestCase):
       opt.minimize(lambda: v1 + v2)
       # There should be two non-slot variables, and two unique slot variables
       # for v1 and v2 respectively.
-      self.assertEqual(6, len(set(opt.variables())))
+      self.assertEqual(6, len({id(v) for v in opt.variables()}))
+
 
 if __name__ == "__main__":
   test.main()

@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import importlib
 import types
+from tensorflow.python.platform import tf_logging as logging
 
 
 class LazyLoader(types.ModuleType):
@@ -46,7 +47,7 @@ class LazyLoader(types.ModuleType):
 
     # Emit a warning if one was specified
     if self._warning:
-      print(self._warning)
+      logging.warning(self._warning)
       # Make sure to only warn once.
       self._warning = None
 

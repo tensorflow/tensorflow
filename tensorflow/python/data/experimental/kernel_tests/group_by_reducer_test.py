@@ -17,25 +17,26 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import grouping
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class GroupByReducerTest(test_base.DatasetTestBase):
+class GroupByReducerTest(test_base.DatasetTestBase, parameterized.TestCase):
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSum(self):
     reducer = grouping.Reducer(
         init_func=lambda _: np.int64(0),
@@ -46,9 +47,10 @@ class GroupByReducerTest(test_base.DatasetTestBase):
           grouping.group_by_reducer(lambda x: x % 2, reducer))
       self.assertDatasetProduces(
           dataset,
-          expected_shapes=tensor_shape.scalar(),
+          expected_shapes=tensor_shape.TensorShape([]),
           expected_output=[(i - 1) * i, i * i])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testAverage(self):
 
     def reduce_fn(x, y):
@@ -65,9 +67,10 @@ class GroupByReducerTest(test_base.DatasetTestBase):
               lambda x: math_ops.cast(x, dtypes.int64) % 2, reducer))
       self.assertDatasetProduces(
           dataset,
-          expected_shapes=tensor_shape.scalar(),
+          expected_shapes=tensor_shape.TensorShape([]),
           expected_output=[i - 1, i])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testConcat(self):
     components = np.array(list("abcdefghijklmnopqrst")).view(np.chararray)
     reducer = grouping.Reducer(
@@ -81,9 +84,10 @@ class GroupByReducerTest(test_base.DatasetTestBase):
                grouping.group_by_reducer(lambda x, y: y % 2, reducer))
       self.assertDatasetProduces(
           dataset,
-          expected_shapes=tensor_shape.scalar(),
-          expected_output=[b"acegikmoqs" [:i], b"bdfhjlnprt" [:i]])
+          expected_shapes=tensor_shape.TensorShape([]),
+          expected_output=[b"acegikmoqs"[:i], b"bdfhjlnprt"[:i]])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSparseSum(self):
     def _sparse(i):
       return sparse_tensor.SparseTensorValue(
@@ -100,9 +104,10 @@ class GroupByReducerTest(test_base.DatasetTestBase):
           grouping.group_by_reducer(lambda x: x.values[0] % 2, reducer))
       self.assertDatasetProduces(
           dataset,
-          expected_shapes=tensor_shape.scalar(),
+          expected_shapes=tensor_shape.TensorShape([]),
           expected_output=[(i - 1) * i, i * i])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testChangingStateShape(self):
 
     def reduce_fn(x, _):
@@ -120,8 +125,9 @@ class GroupByReducerTest(test_base.DatasetTestBase):
     for i in range(1, 11):
       dataset = dataset_ops.Dataset.from_tensors(np.int64(0)).repeat(i).apply(
           grouping.group_by_reducer(lambda x: x, reducer))
-      self.assertEqual([None], dataset.output_shapes[0].as_list())
-      self.assertIs(None, dataset.output_shapes[1].ndims)
+      dataset_output_shapes = dataset_ops.get_legacy_output_shapes(dataset)
+      self.assertEqual([None], dataset_output_shapes[0].as_list())
+      self.assertIs(None, dataset_output_shapes[1].ndims)
       get_next = self.getNext(dataset)
       x, y = self.evaluate(get_next())
       self.assertAllEqual([0] * (2**i), x)
@@ -129,6 +135,7 @@ class GroupByReducerTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(get_next())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testTypeMismatch(self):
     reducer = grouping.Reducer(
         init_func=lambda x: constant_op.constant(1, dtype=dtypes.int32),
@@ -143,6 +150,7 @@ class GroupByReducerTest(test_base.DatasetTestBase):
           grouping.group_by_reducer(lambda _: np.int64(0), reducer))
 
   # TODO(b/78665031): Remove once non-scalar keys are supported.
+  @combinations.generate(test_base.default_test_combinations())
   def testInvalidKeyShape(self):
     reducer = grouping.Reducer(
         init_func=lambda x: np.int64(0),
@@ -156,6 +164,7 @@ class GroupByReducerTest(test_base.DatasetTestBase):
           grouping.group_by_reducer(lambda _: np.int64((0, 0)), reducer))
 
   # TODO(b/78665031): Remove once non-int64 keys are supported.
+  @combinations.generate(test_base.default_test_combinations())
   def testInvalidKeyType(self):
     reducer = grouping.Reducer(
         init_func=lambda x: np.int64(0),
@@ -168,6 +177,7 @@ class GroupByReducerTest(test_base.DatasetTestBase):
       dataset.apply(
           grouping.group_by_reducer(lambda _: "wrong", reducer))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testTuple(self):
     def init_fn(_):
       return np.array([], dtype=np.int64), np.int64(0)

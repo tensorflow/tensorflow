@@ -64,7 +64,7 @@ Status ServerFactory::GetFactory(const ServerDef& server_def,
   return errors::NotFound(
       "No server factory registered for the given ServerDef: ",
       server_def.DebugString(), "\nThe available server factories are: [ ",
-      str_util::Join(server_names, ", "), " ]");
+      absl::StrJoin(server_names, ", "), " ]");
 }
 
 // Creates a server based on the given `server_def`, and stores it in
@@ -73,7 +73,17 @@ Status NewServer(const ServerDef& server_def,
                  std::unique_ptr<ServerInterface>* out_server) {
   ServerFactory* factory;
   TF_RETURN_IF_ERROR(ServerFactory::GetFactory(server_def, &factory));
-  return factory->NewServer(server_def, out_server);
+  return factory->NewServer(server_def, ServerFactory::Options(), out_server);
+}
+
+// Creates a server based on the given `server_def`, and stores it in
+// `*out_server`. Returns OK on success, otherwise returns an error.
+Status NewServerWithOptions(const ServerDef& server_def,
+                            const ServerFactory::Options& options,
+                            std::unique_ptr<ServerInterface>* out_server) {
+  ServerFactory* factory;
+  TF_RETURN_IF_ERROR(ServerFactory::GetFactory(server_def, &factory));
+  return factory->NewServer(server_def, options, out_server);
 }
 
 }  // namespace tensorflow

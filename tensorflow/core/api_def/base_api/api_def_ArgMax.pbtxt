@@ -11,5 +11,15 @@ END
   summary: "Returns the index with the largest value across dimensions of a tensor."
   description: <<END
 Note that in case of ties the identity of the return value is not guaranteed.
+
+Usage:
+  ```python
+  import tensorflow as tf
+  a = [1, 10, 26.9, 2.8, 166.32, 62.3]
+  b = tf.math.argmax(input = a)
+  c = tf.keras.backend.eval(b)
+  # c = 4
+  # here a[4] = 166.32 which is the largest element of a across axis 0
+  ```
 END
 }

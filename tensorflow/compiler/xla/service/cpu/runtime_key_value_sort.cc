@@ -32,8 +32,9 @@ using tensorflow::int64;
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSort(
     int64 a, int64 b, int64 c, char** values, int32 values_count,
-    int32* values_primitive_type_size_in_bytes,
-    bool (*less_than)(char*, char*)) {
+    int32* values_primitive_type_size_in_bytes, bool is_stable,
+    char* run_options, int64* prof_counters,
+    void (*less_than)(char*, char*, char**, char**, tensorflow::int64*)) {
   // 'values' and 'values_primitive_type_size_in_bytes' are managed by the JIT
   // code, so msan can't tell they are initialized.
   TF_ANNOTATE_MEMORY_IS_INITIALIZED(values, values_count * sizeof(char*));
@@ -54,10 +55,16 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSort(
   int64 sort_dimension_offset = c;
 
   std::unique_ptr<int64[]> indices(new int64[sort_dimension_elements]);
+  std::unique_ptr<char*[]> comparison_values(new char*[2 * values_count]);
   std::iota(indices.get(), indices.get() + sort_dimension_elements, 0);
   std::unique_ptr<std::string[]> reordered_values(
       new std::string[sort_dimension_elements]);
   for (int64 index = 0; index < num_iteration_elements; ++index) {
+    // If the sort should be stable, we have to reinitialize indices to iota to
+    // guarantee that we still keep the relative order in case of ties.
+    if (is_stable && index > 0) {
+      std::iota(indices.get(), indices.get() + sort_dimension_elements, 0);
+    }
     // 'index' can be split into two values which index into the 'c' dimension
     // and the 'a' dimension, respectively. 'index' % 'c' is the index into the
     // 'c' dimension, 'index' / 'c' is the index into the 'a' dimension. When
@@ -67,16 +74,27 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSort(
     int64 base_offset =
         index % sort_dimension_offset +
         (index - index % sort_dimension_offset) * sort_dimension_elements;
-    std::stable_sort(
-        indices.get(), indices.get() + sort_dimension_elements,
-        [&](int64 a, int64 b) {
-          int64 memory_index_lhs = (base_offset + a * sort_dimension_offset) *
-                                   values_primitive_type_size_in_bytes[0];
-          int64 memory_index_rhs = (base_offset + b * sort_dimension_offset) *
-                                   values_primitive_type_size_in_bytes[0];
-          return less_than(values[0] + memory_index_lhs,
-                           values[0] + memory_index_rhs);
-        });
+    auto compare_function = [&](int64 a, int64 b) -> bool {
+      for (int32 i = 0; i < values_count; ++i) {
+        int64 memory_index_lhs = (base_offset + a * sort_dimension_offset) *
+                                 values_primitive_type_size_in_bytes[i];
+        int64 memory_index_rhs = (base_offset + b * sort_dimension_offset) *
+                                 values_primitive_type_size_in_bytes[i];
+        comparison_values[i * 2] = values[i] + memory_index_lhs;
+        comparison_values[i * 2 + 1] = values[i] + memory_index_rhs;
+      }
+      char result = 0;  // Overwritten by less_than.
+      less_than(&result, run_options, comparison_values.get(), nullptr,
+                prof_counters);
+      return result != 0u;
+    };
+    if (is_stable) {
+      std::stable_sort(indices.get(), indices.get() + sort_dimension_elements,
+                       compare_function);
+    } else {
+      std::sort(indices.get(), indices.get() + sort_dimension_elements,
+                compare_function);
+    }
 
     // Reorder the values according to the order defined by 'indices'.
     for (int32 idx = 0; idx < values_count; ++idx) {

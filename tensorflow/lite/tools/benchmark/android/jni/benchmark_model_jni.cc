@@ -19,7 +19,6 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/lite/tools/benchmark/benchmark_tflite_model.h"
-#include "tensorflow/lite/tools/benchmark/logging.h"
 
 #ifdef __ANDROID__
 #include <android/log.h>
@@ -39,6 +38,8 @@ class AndroidBenchmarkLoggingListener : public BenchmarkListener {
                    << "Warmup: " << warmup_us.avg() << ", "
                    << "Init: " << init_us << ", "
                    << "Inference: " << inference_us.avg();
+    results_output << "Overall " << results.overall_mem_usage();
+
 #ifdef __ANDROID__
     __android_log_print(ANDROID_LOG_ERROR, "tflite", "%s",
                         results_output.str().c_str());

@@ -55,7 +55,7 @@ TEST(DecodeWavOpTest, DecodeWavTest) {
       0x00, 0x80,  // fourth sample: -32768 (saturated)
   };
   Tensor content_tensor =
-      test::AsScalar<string>(string(wav_data.begin(), wav_data.end()));
+      test::AsScalar<tstring>(string(wav_data.begin(), wav_data.end()));
   Output content_op =
       Const(root.WithOpName("content_op"), Input::Initializer(content_tensor));
 

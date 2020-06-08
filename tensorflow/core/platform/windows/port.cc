@@ -55,6 +55,18 @@ int NumSchedulableCPUs() {
   return system_info.dwNumberOfProcessors;
 }
 
+int MaxParallelism() { return NumSchedulableCPUs(); }
+
+int MaxParallelism(int numa_node) {
+  if (numa_node != port::kNUMANoAffinity) {
+    // Assume that CPUs are equally distributed over available NUMA nodes.
+    // This may not be true, but there isn't currently a better way of
+    // determining the number of CPUs specific to the requested node.
+    return NumSchedulableCPUs() / port::NUMANumNodes();
+  }
+  return NumSchedulableCPUs();
+}
+
 int NumTotalCPUs() {
   // TODO(ebrevdo): Make this more accurate.
   //
@@ -65,7 +77,7 @@ int NumTotalCPUs() {
   // the Size fields by iterating over the written-to buffer.  Since I can't
   // easily test this on Windows, I'm deferring this to someone who can!
   //
-  // If you fix this, also consider updatig GetCurrentCPU below.
+  // If you fix this, also consider updating GetCurrentCPU below.
   return NumSchedulableCPUs();
 }
 
@@ -100,7 +112,7 @@ void* Malloc(size_t size) { return malloc(size); }
 
 void* Realloc(void* ptr, size_t size) { return realloc(ptr, size); }
 
-void Free(void* ptr) { return free(ptr); }
+void Free(void* ptr) { free(ptr); }
 
 void* NUMAMalloc(int node, size_t size, int minimum_alignment) {
   return AlignedMalloc(size, minimum_alignment);
@@ -115,10 +127,6 @@ void MallocExtension_ReleaseToSystem(std::size_t num_bytes) {
 }
 
 std::size_t MallocExtension_GetAllocatedSize(const void* p) { return 0; }
-
-void AdjustFilenameForLogging(string* filename) {
-  // Nothing to do
-}
 
 bool Snappy_Compress(const char* input, size_t length, string* output) {
 #ifdef TF_USE_SNAPPY
@@ -144,6 +152,17 @@ bool Snappy_GetUncompressedLength(const char* input, size_t length,
 bool Snappy_Uncompress(const char* input, size_t length, char* output) {
 #ifdef TF_USE_SNAPPY
   return snappy::RawUncompress(input, length, output);
+#else
+  return false;
+#endif
+}
+
+bool Snappy_UncompressToIOVec(const char* compressed, size_t compressed_length,
+                              const struct iovec* iov, size_t iov_cnt) {
+#ifdef TF_USE_SNAPPY
+  const snappy::iovec* snappy_iov = reinterpret_cast<const snappy::iovec*>(iov);
+  return snappy::RawUncompressToIOVec(compressed, compressed_length, snappy_iov,
+                                      iov_cnt);
 #else
   return false;
 #endif

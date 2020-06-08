@@ -25,14 +25,24 @@ import pickle
 import shutil
 import sys
 
+from absl.testing import parameterized
 import numpy as np
 from six import StringIO
 
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.debug.wrappers import local_cli_wrapper
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.lib.io import file_io
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import save
 from tensorflow.python.tools import saved_model_cli
+from tensorflow.python.training.tracking import tracking
 
 SAVED_MODEL_PATH = ('cc/saved_model/testdata/half_plus_two/00000123')
 
@@ -48,7 +58,7 @@ def captured_output():
     sys.stdout, sys.stderr = old_out, old_err
 
 
-class SavedModelCLITestCase(test.TestCase):
+class SavedModelCLITestCase(test.TestCase, parameterized.TestCase):
 
   def testShowCommandAll(self):
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
@@ -138,7 +148,163 @@ signature_def['serving_default']:
         name: y:0
   Method name is: tensorflow/serving/predict"""
     # pylint: enable=line-too-long
-    self.maxDiff = None # Produce a useful error msg if the comparison fails
+    self.maxDiff = None  # Produce a useful error msg if the comparison fails
+    self.assertMultiLineEqual(output, exp_out)
+    self.assertEqual(err.getvalue().strip(), '')
+
+  def testShowAllWithFunctions(self):
+
+    class DummyModel(tracking.AutoTrackable):
+      """Model with callable polymorphic functions specified."""
+
+      @def_function.function
+      def func1(self, a, b, c):
+        if c:
+          return a + b
+        else:
+          return a * b
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=(2, 2), dtype=dtypes.float32)
+      ])
+      def func2(self, x):
+        return x + 2
+
+      @def_function.function
+      def __call__(self, y, c=7):
+        return y + 2 * c
+
+    saved_model_dir = os.path.join(test.get_temp_dir(), 'dummy_model')
+    dummy_model = DummyModel()
+    # Call with specific values to create new polymorphic function traces.
+    dummy_model.func1(
+        constant_op.constant(5), constant_op.constant(9), True)
+    dummy_model(constant_op.constant(5))
+    save.save(dummy_model, saved_model_dir)
+    self.parser = saved_model_cli.create_parser()
+    args = self.parser.parse_args(['show', '--dir', saved_model_dir, '--all'])
+    with captured_output() as (out, err):
+      saved_model_cli.show(args)
+    output = out.getvalue().strip()
+    exp_out = """MetaGraphDef with tag-set: 'serve' contains the following SignatureDefs:
+
+signature_def['__saved_model_init_op']:
+  The given SavedModel SignatureDef contains the following input(s):
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['__saved_model_init_op'] tensor_info:
+        dtype: DT_INVALID
+        shape: unknown_rank
+        name: NoOp
+  Method name is: 
+
+signature_def['serving_default']:
+  The given SavedModel SignatureDef contains the following input(s):
+    inputs['x'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (2, 2)
+        name: serving_default_x:0
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['output_0'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (2, 2)
+        name: PartitionedCall:0
+  Method name is: tensorflow/serving/predict
+
+Defined Functions:
+  Function Name: '__call__'
+    Option #1
+      Callable with:
+        Argument #1
+          y: TensorSpec(shape=(), dtype=tf.int32, name='y')
+        Argument #2
+          DType: int
+          Value: 7
+
+  Function Name: 'func1'
+    Option #1
+      Callable with:
+        Argument #1
+          a: TensorSpec(shape=(), dtype=tf.int32, name='a')
+        Argument #2
+          b: TensorSpec(shape=(), dtype=tf.int32, name='b')
+        Argument #3
+          DType: bool
+          Value: True
+
+  Function Name: 'func2'
+    Option #1
+      Callable with:
+        Argument #1
+          x: TensorSpec(shape=(2, 2), dtype=tf.float32, name='x')
+""".strip()  # pylint: enable=line-too-long
+    self.maxDiff = None  # Produce a useful error msg if the comparison fails
+    self.assertMultiLineEqual(output, exp_out)
+    self.assertEqual(err.getvalue().strip(), '')
+
+  def testShowAllWithPureConcreteFunction(self):
+
+    class DummyModel(tracking.AutoTrackable):
+      """Model with a callable concrete function."""
+
+      def __init__(self):
+        function = def_function.function(
+            self.multiply,
+            input_signature=[
+                tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+                tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32)
+            ])
+        self.pure_concrete_function = function.get_concrete_function()
+        super(DummyModel, self).__init__()
+
+      def multiply(self, a, b):
+        return a * b
+
+    saved_model_dir = os.path.join(test.get_temp_dir(), 'dummy_model')
+    dummy_model = DummyModel()
+    save.save(dummy_model, saved_model_dir)
+    self.parser = saved_model_cli.create_parser()
+    args = self.parser.parse_args(['show', '--dir', saved_model_dir, '--all'])
+    with captured_output() as (out, err):
+      saved_model_cli.show(args)
+    output = out.getvalue().strip()
+    exp_out = """MetaGraphDef with tag-set: 'serve' contains the following SignatureDefs:
+
+signature_def['__saved_model_init_op']:
+  The given SavedModel SignatureDef contains the following input(s):
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['__saved_model_init_op'] tensor_info:
+        dtype: DT_INVALID
+        shape: unknown_rank
+        name: NoOp
+  Method name is: 
+
+signature_def['serving_default']:
+  The given SavedModel SignatureDef contains the following input(s):
+    inputs['a'] tensor_info:
+        dtype: DT_FLOAT
+        shape: ()
+        name: serving_default_a:0
+    inputs['b'] tensor_info:
+        dtype: DT_FLOAT
+        shape: ()
+        name: serving_default_b:0
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['output_0'] tensor_info:
+        dtype: DT_FLOAT
+        shape: ()
+        name: PartitionedCall:0
+  Method name is: tensorflow/serving/predict
+
+Defined Functions:
+  Function Name: 'pure_concrete_function'
+    Option #1
+      Callable with:
+        Argument #1
+          a: TensorSpec(shape=(), dtype=tf.float32, name='a')
+        Argument #2
+          b: TensorSpec(shape=(), dtype=tf.float32, name='b')
+""".strip()  # pylint: enable=line-too-long
+    self.maxDiff = None  # Produce a useful error msg if the comparison fails
     self.assertMultiLineEqual(output, exp_out)
     self.assertEqual(err.getvalue().strip(), '')
 
@@ -149,7 +315,7 @@ signature_def['serving_default']:
     with captured_output() as (out, err):
       saved_model_cli.show(args)
     output = out.getvalue().strip()
-    exp_out = 'The given SavedModel contains the following tag-sets:\nserve'
+    exp_out = 'The given SavedModel contains the following tag-sets:\n\'serve\''
     self.assertMultiLineEqual(output, exp_out)
     self.assertEqual(err.getvalue().strip(), '')
 
@@ -546,6 +712,112 @@ signature_def['serving_default']:
     saved_model_cli._OP_BLACKLIST = op_blacklist
     output = out.getvalue().strip()
     self.assertTrue('\'VariableV2\'' in output)
+
+  def testAOTCompileCPUWrongSignatureDefKey(self):
+    if not test.is_built_with_xla():
+      self.skipTest('Skipping test because XLA is not compiled in.')
+
+    self.parser = saved_model_cli.create_parser()
+    base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
+    output_dir = os.path.join(test.get_temp_dir(), 'aot_compile_cpu_dir')
+    args = self.parser.parse_args(
+        ['aot_compile_cpu', '--dir', base_path, '--tag_set', 'serve',
+         '--output_prefix', output_dir,
+         '--cpp_class', 'Compiled',
+         '--signature_def_key', 'MISSING'])
+    with self.assertRaisesRegexp(ValueError, 'Unable to find signature_def'):
+      saved_model_cli.aot_compile_cpu(args)
+
+  class AOTCompileDummyModel(tracking.AutoTrackable):
+    """Model compatible with XLA compilation."""
+
+    def __init__(self):
+      self.var = variables.Variable(1.0, name='my_var')
+      self.write_var = variables.Variable(1.0, name='write_var')
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=(2, 2), dtype=dtypes.float32),
+        # Test unused inputs.
+        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+    ])
+    def func2(self, x, y):
+      del y
+      return {'res': x + self.var}
+
+    @def_function.function(input_signature=[
+        # Test large inputs.
+        tensor_spec.TensorSpec(shape=(2048, 16), dtype=dtypes.float32),
+        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+    ])
+    def func3(self, x, y):
+      del y
+      return {'res': x + self.var}
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+    ])
+    def func_write(self, x, y):
+      del y
+      self.write_var.assign(x + self.var)
+      return {'res': self.write_var}
+
+  @parameterized.named_parameters(
+      ('VariablesToFeedNone', '', 'func2'),
+      ('VariablesToFeedAll', 'all', 'func2'),
+      ('VariablesToFeedMyVar', 'my_var', 'func2'),
+      ('VariablesToFeedNoneLargeConstant', '', 'func3'),
+      ('WriteToWriteVar', 'all', 'func_write'),
+  )
+  def testAOTCompileCPUFreezesAndCompiles(self, variables_to_feed, func):
+    if not test.is_built_with_xla():
+      self.skipTest('Skipping test because XLA is not compiled in.')
+
+    saved_model_dir = os.path.join(test.get_temp_dir(), 'dummy_model')
+    dummy_model = self.AOTCompileDummyModel()
+    func = getattr(dummy_model, func)
+    with self.cached_session():
+      self.evaluate(dummy_model.var.initializer)
+      self.evaluate(dummy_model.write_var.initializer)
+      save.save(dummy_model, saved_model_dir, signatures={'func': func})
+
+    self.parser = saved_model_cli.create_parser()
+    output_prefix = os.path.join(test.get_temp_dir(), 'aot_compile_cpu_dir/out')
+    args = self.parser.parse_args([
+        'aot_compile_cpu', '--dir', saved_model_dir, '--tag_set', 'serve',
+        '--signature_def_key', 'func',
+        '--output_prefix', output_prefix, '--variables_to_feed',
+        variables_to_feed, '--cpp_class', 'Generated'
+    ])  # Use the default seving signature_key.
+    with test.mock.patch.object(logging, 'warn') as captured_warn:
+      saved_model_cli.aot_compile_cpu(args)
+    self.assertRegexpMatches(
+        str(captured_warn.call_args),
+        'Signature input key \'y\'.*has been pruned while freezing the graph.')
+    self.assertTrue(file_io.file_exists('{}.o'.format(output_prefix)))
+    self.assertTrue(file_io.file_exists('{}.h'.format(output_prefix)))
+    self.assertTrue(file_io.file_exists('{}_metadata.o'.format(output_prefix)))
+    self.assertTrue(
+        file_io.file_exists('{}_makefile.inc'.format(output_prefix)))
+    header_contents = file_io.read_file_to_string('{}.h'.format(output_prefix))
+    self.assertIn('class Generated', header_contents)
+    self.assertIn('arg_feed_x_data', header_contents)
+    self.assertIn('result_fetch_res_data', header_contents)
+    # arg_y got filtered out as it's not used by the output.
+    self.assertNotIn('arg_feed_y_data', header_contents)
+    if variables_to_feed:
+      # Read-only-variables' setters preserve constness.
+      self.assertIn('set_var_param_my_var_data(const float', header_contents)
+      self.assertNotIn('set_var_param_my_var_data(float', header_contents)
+    if func == dummy_model.func_write:
+      # Writeable variables setters do not preserve constness.
+      self.assertIn('set_var_param_write_var_data(float', header_contents)
+      self.assertNotIn(
+          'set_var_param_write_var_data(const float', header_contents)
+
+    makefile_contents = file_io.read_file_to_string(
+        '{}_makefile.inc'.format(output_prefix))
+    self.assertIn('-D_GLIBCXX_USE_CXX11_ABI=', makefile_contents)
 
 
 if __name__ == '__main__':

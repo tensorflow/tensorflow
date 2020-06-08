@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -49,7 +50,6 @@ def simple_scoped_fn(a, x):
 
 
 @test_util.with_control_flow_v2
-@test_util.disable_all_xla("This test never passed for XLA")
 class MapFnTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
@@ -70,13 +70,14 @@ class MapFnTest(test.TestCase):
 
   def testMapSparseTensor(self):
     with self.cached_session():
-      with self.assertRaises(TypeError):
-        map_fn.map_fn(
-            lambda x: x,
-            sparse_tensor.SparseTensor(
-                indices=[[0, 0], [0, 1], [1, 0]],
-                values=constant_op.constant([0, 1, 2]),
-                dense_shape=[2, 2]))
+      st = sparse_tensor.SparseTensor(
+          indices=[[0, 0], [0, 1], [1, 0]],
+          values=constant_op.constant([0, 1, 2]),
+          dense_shape=[2, 2])
+      result = map_fn.map_fn(lambda x: x, st)
+      self.assertAllEqual(result.indices, st.indices)
+      self.assertAllEqual(result.values, st.values)
+      self.assertAllEqual(result.dense_shape, st.dense_shape)
 
   @test_util.run_in_graph_and_eager_modes
   def testMapOverScalarErrors(self):
@@ -187,6 +188,25 @@ class MapFnTest(test.TestCase):
     self.assertAllEqual(nums, received[2])
 
   @test_util.run_in_graph_and_eager_modes
+  def testMap_autograph_indirect(self):
+
+    def test_function(x):
+      cond = constant_op.constant(-1)
+      if cond == 0:
+        result = x
+      else:
+        result = x
+      return result
+
+    @def_function.function
+    def map_call(x):
+      return map_fn.map_fn(test_function, x)
+
+    x = constant_op.constant([1])
+    y = map_call(x)
+    self.assertAllEqual([1], self.evaluate(y))
+
+  @test_util.run_in_graph_and_eager_modes
   def testMapShape(self):
     x = constant_op.constant([[1, 2, 3], [4, 5, 6]])
     y = map_fn.map_fn(lambda e: e, x)
@@ -198,17 +218,17 @@ class MapFnTest(test.TestCase):
     y = map_fn.map_fn(lambda e: e, x)
     self.assertIs(None, y.get_shape().dims)
 
-  @test_util.disable_control_flow_v2("b/119323354")
-  @test_util.run_in_graph_and_eager_modes
+  # TODO(b/124383826): this test fails in eager: the iterable is of length 0 so
+  # so the body of the while loop never executes
   @test_util.run_v1_only("b/120545219")
   def testMapEmptyScalar(self):
-    map_return = map_fn.map_fn(lambda x: 1, constant_op.constant([]))
+    map_return = map_fn.map_fn(lambda x: 1,
+                               constant_op.constant([], dtype=dtypes.int32))
     self.assertAllEqual([0], map_return.get_shape().dims)
     self.assertAllEqual([0], self.evaluate(map_return).shape)
 
-  # TODO(akshayka): this test fails in eager: the iterable is of length 0 so
+  # TODO(b/124383826): this test fails in eager: the iterable is of length 0 so
   # so the body of the while loop never executes
-  @test_util.disable_control_flow_v2("b/119323354")
   @test_util.run_v1_only("b/120545219")
   def testMapEmptyTensor(self):
     with self.cached_session():

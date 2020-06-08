@@ -317,7 +317,7 @@ namespace {
 template <typename Device, typename T>
 class ParameterizedTruncatedNormalOp : public OpKernel {
   // Reshape batches so each batch is this size if possible.
-  static const int32 kDesiredBatchSize = 100;
+  static constexpr int32 kDesiredBatchSize = 100;
 
  public:
   explicit ParameterizedTruncatedNormalOp(OpKernelConstruction* context)
@@ -450,7 +450,7 @@ TF_CALL_double(REGISTER);
 
 #undef REGISTER
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER(TYPE)                                         \
   REGISTER_KERNEL_BUILDER(Name("ParameterizedTruncatedNormal") \
@@ -465,6 +465,6 @@ TF_CALL_double(REGISTER);
 
 #undef REGISTER
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace tensorflow

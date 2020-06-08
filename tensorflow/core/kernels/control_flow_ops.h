@@ -46,6 +46,21 @@ class SwitchOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(SwitchOp);
 };
 
+// An n-way switch op has two inputs and N outputs. It forwards the value of
+// Input:0 to the output specified by Input:1. Input:1 is an integer tensor.
+// Input:0 is forwarded to output:0 if Input:1 is 0, to output:1 if 1, and so
+// forth. If Input:1 is <0 or >=num_outputs(), Input:0 is forwarded to
+// output:num_outputs()-1.
+class SwitchNOp : public OpKernel {
+ public:
+  explicit SwitchNOp(OpKernelConstruction* context) : OpKernel(context) {}
+  void Compute(OpKernelContext* context) override;
+  bool IsExpensive() override { return false; }
+  ~SwitchNOp() override {}
+
+  TF_DISALLOW_COPY_AND_ASSIGN(SwitchNOp);
+};
+
 // A merge op has n inputs and two outputs. It forwards the value of the
 // first input that becomes available to its first output, and the
 // index of the first input to its second output.

@@ -23,7 +23,8 @@ limitations under the License.
 #include "tensorflow/core/platform/byte_order.h"
 
 #if defined(_MSC_VER)
-#include "tensorflow/core/platform/windows/cpu_info.h"
+// included so __cpuidex function is available for GETCPUID on Windows
+#include <intrin.h>
 #endif
 
 namespace tensorflow {
@@ -35,6 +36,21 @@ namespace port {
 // software can change it dynamically.  If the underlying call fails, a default
 // value (e.g. `4`) may be returned.
 int NumSchedulableCPUs();
+
+// Returns an estimate for the maximum parallelism for this process.
+// Applications should avoid running more than this number of threads with
+// intensive workloads concurrently to avoid performance degradation and
+// contention.
+// This value is either the number of schedulable CPUs, or a value specific to
+// the underlying cluster management. Applications should assume this value can
+// change throughout the lifetime of the process. This function must not be
+// called during initialization, i.e., before before main() has started.
+int MaxParallelism();
+
+// Returns an estimate for the maximum parallelism for this process on the
+// provided numa node, or any numa node if `numa_node` is kNUMANoAffinity.
+// See MaxParallelism() for more information.
+int MaxParallelism(int numa_node);
 
 // Returns the total number of CPUs on the system.  This number should
 // not change even if the underlying cluster management software may

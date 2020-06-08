@@ -61,9 +61,9 @@ template <>
 struct conjunction<> : std::true_type {};
 
 // A type trait that is valid when all elements in a parameter pack are of
-// integral type.
-template <typename... T>
-using pack_is_integral = conjunction<std::is_integral<T>...>;
+// integral type. Not using an alias template to work around MSVC 14.00 bug.
+template <typename... Ts>
+struct pack_is_integral : conjunction<std::is_integral<Ts>...> {};
 
 // Compares three same-sized vectors elementwise. For each item in `values`,
 // returns false if any of values[i] is outside the half-open range [starts[i],
@@ -574,6 +574,12 @@ class Array {
   std::vector<int64> sizes_;
   std::unique_ptr<T[]> values_;
 };
+
+// Specialization of FillRandom() method for complex64 type. Uses real part of
+// the stddev parameter as the standard deviation value.
+template <>
+void Array<complex64>::FillRandom(const complex64& stddev, const double mean,
+                                  const int seed);
 
 }  // namespace xla
 

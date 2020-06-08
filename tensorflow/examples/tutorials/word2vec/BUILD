@@ -1,9 +1,10 @@
 # Description:
 # TensorFlow model for word2vec
 
-package(default_visibility = ["//tensorflow:internal"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -12,6 +13,7 @@ py_binary(
     srcs = [
         "word2vec_basic.py",
     ],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "no-internal-py3",

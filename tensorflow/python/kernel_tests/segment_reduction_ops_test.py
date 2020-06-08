@@ -28,6 +28,7 @@ from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -65,7 +66,7 @@ class SegmentReductionHelper(test.TestCase):
         output[index] = op1(output[index], x_flat[i])
       else:
         output[index] = x_flat[i]
-    # zero initialize values that are still uncalcuated.
+    # zero initialize values that are still uncalculated.
     initial_value_slice = np.ones(slice_shape) * initial_value
     output = [o if o is not None else initial_value_slice for o in output]
     if op2 is not None:
@@ -335,7 +336,7 @@ class UnsortedSegmentTest(SegmentReductionHelper):
         self.assertShapeEqual(np_ans, s)
 
   @test_util.run_deprecated_v1
-  def testGradients(self):
+  def testGradientsTFGradients(self):
     num_cols = 2
     indices_flat = np.array([0, 4, 0, -1, 3, -1, 4, 7, 7, 3])
     num_segments = max(indices_flat) + 3
@@ -354,8 +355,33 @@ class UnsortedSegmentTest(SegmentReductionHelper):
                   shape,
                   s, [num_segments, num_cols],
                   x_init_value=np_x,
-                  delta=1)
-            self.assertAllClose(jacob_t, jacob_n)
+                  delta=1.)
+              self.assertAllCloseAccordingToType(jacob_t, jacob_n,
+                                                 half_atol=1e-2)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGradientsGradientTape(self):
+    num_cols = 2
+    indices_flat = np.array([0, 4, 0, -1, 3, -1, 4, 7, 7, 3])
+    num_segments = max(indices_flat) + 3
+    for dtype in self.differentiable_dtypes:
+      ops_list = self.complex_ops_list if dtype.is_complex else self.ops_list
+      for indices in indices_flat, indices_flat.reshape(5, 2):
+        shape = indices.shape + (num_cols,)
+        # test CPU and GPU as tf.gather behaves differently on each device
+        for use_gpu in [test_util.use_gpu, test_util.force_cpu]:
+          with use_gpu():
+            for _, _, tf_op, _ in ops_list:
+              _, np_x = self._input(shape, dtype=dtype)
+              # pylint: disable=cell-var-from-loop
+              def f(x):
+                return tf_op(x, indices, num_segments)
+              gradient_tape_jacob_t, jacob_n = (
+                  gradient_checker_v2.compute_gradient(
+                      f, [np_x], delta=1.))
+              # pylint: enable=cell-var-from-loop
+              self.assertAllCloseAccordingToType(jacob_n, gradient_tape_jacob_t,
+                                                 half_atol=1e-2)
 
   @test_util.run_deprecated_v1
   def testProdGrad(self):
@@ -490,6 +516,9 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         dtypes_lib.int32
     ]
 
+    index_dtypes = [dtypes_lib.int32, dtypes_lib.int64]
+    segment_ids_dtypes = [dtypes_lib.int32, dtypes_lib.int64]
+
     mean_dtypes = [dtypes_lib.float32, dtypes_lib.float64]
 
     # Each item is np_op1, np_op2, tf_op
@@ -505,22 +534,29 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         segment_indices.append(i)
     num_indices = len(segment_indices)
     for dtype in dtypes:
-      with self.cached_session(use_gpu=False):
-        tf_indices, np_indices, tf_x, np_x = self._sparse_input(
-            shape, num_indices, dtype=dtype)
-        for np_op1, np_op2, tf_op in ops_list:
-          if tf_op == math_ops.sparse_segment_mean and dtype not in mean_dtypes:
-            continue
-          np_ans = self._sparseSegmentReduce(np_x, np_indices, segment_indices,
-                                             np_op1, np_op2)
-          s = tf_op(data=tf_x, indices=tf_indices, segment_ids=segment_indices)
-          tf_ans = self.evaluate(s)
-          self.assertAllClose(np_ans, tf_ans)
-          # NOTE(mrry): The static shape inference that computes
-          # `tf_ans.shape` can only infer that sizes from dimension 1
-          # onwards, because the size of dimension 0 is data-dependent
-          # and may therefore vary dynamically.
-          self.assertAllEqual(np_ans.shape[1:], tf_ans.shape[1:])
+      for index_dtype in index_dtypes:
+        for segment_ids_dtype in segment_ids_dtypes:
+          with self.cached_session(use_gpu=False):
+            tf_indices, np_indices, tf_x, np_x = self._sparse_input(
+                shape, num_indices, dtype=dtype)
+            for np_op1, np_op2, tf_op in ops_list:
+              if (tf_op == math_ops.sparse_segment_mean
+                  and dtype not in mean_dtypes):
+                continue
+              np_ans = self._sparseSegmentReduce(np_x, np_indices,
+                                                 segment_indices, np_op1,
+                                                 np_op2)
+              s = tf_op(
+                  data=tf_x,
+                  indices=math_ops.cast(tf_indices, index_dtype),
+                  segment_ids=math_ops.cast(segment_indices, segment_ids_dtype))
+              tf_ans = self.evaluate(s)
+              self.assertAllClose(np_ans, tf_ans)
+              # NOTE(mrry): The static shape inference that computes
+              # `tf_ans.shape` can only infer that sizes from dimension 1
+              # onwards, because the size of dimension 0 is data-dependent
+              # and may therefore vary dynamically.
+              self.assertAllEqual(np_ans.shape[1:], tf_ans.shape[1:])
 
   def testSegmentIdsHole(self):
     tf_x, np_x = self._input([10, 4], dtype=dtypes_lib.float32)

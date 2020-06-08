@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -255,10 +256,9 @@ class BinaryOpTest(test.TestCase):
     var_x = variables.Variable(x)
     var_y = variables.Variable(y)
 
-    with self.cached_session() as sess:
-      self.evaluate([var_x.initializer, var_y.initializer])
-      left_result = self.evaluate(var_x * y)
-      right_result = self.evaluate(x * var_y)
+    self.evaluate([var_x.initializer, var_y.initializer])
+    left_result = self.evaluate(var_x * y)
+    right_result = self.evaluate(x * var_y)
 
     np_result = x * y
     self.assertAllEqual(np_result, left_result)
@@ -341,6 +341,11 @@ class BinaryOpTest(test.TestCase):
     # _compareBoth tests on GPU only for floating point types, so test
     # _MOD for int32 on GPU by calling _compareGpu
     self._compareGpu(x, y, np.mod, _MOD)
+
+  def testUint32Basic(self):
+    x = np.arange(1, 13, 2).reshape(1, 3, 2).astype(np.int32)
+    y = np.arange(1, 7, 1).reshape(1, 3, 2).astype(np.int32)
+    self._compareBoth(x, y, np.add, math_ops.add)
 
   def testInt64Basic(self):
     x = np.arange(1 << 40, 13 << 40, 2 << 40).reshape(1, 3, 2).astype(np.int64)
@@ -933,7 +938,6 @@ class ComparisonOpTest(test.TestCase):
     self._testBCastByFunc(
         np.not_equal, math_ops.not_equal, include_complex=True)
 
-  @test_util.run_deprecated_v1
   def testShapeMismatch(self):
     dtypes = [np.float16, np.float32, np.float64, np.int32, np.int64]
     funcs = [
@@ -944,9 +948,48 @@ class ComparisonOpTest(test.TestCase):
     y = np.arange(0, 10).reshape([5, 2])
     for t in dtypes:
       for f in funcs:
-        with self.assertRaisesWithPredicateMatch(
-            ValueError, lambda e: "Dimensions must" in str(e)):
+        with self.assertRaisesRegexp(
+            (ValueError, errors.InvalidArgumentError),
+            "Incompatible shapes|Dimensions must be equal"):
           f(x.astype(t), y.astype(t))
+
+  def testEqualDType(self):
+    dtypes = [
+        np.float16,
+        np.float32,
+        np.float64,
+        np.int8,
+        np.int16,
+        np.int32,
+        np.int64,
+        np.uint8,
+        np.uint16,
+        np.uint32,
+        np.uint64,
+        np.bool,
+    ]
+    x = np.asarray([0, 1, 2, 3, 4])
+    y = np.asarray([0, 1, 2, 3, 4])
+    for dtype in dtypes:
+      xt = x.astype(dtype)
+      yt = y.astype(dtype)
+      cmp_eq = math_ops.equal(xt, yt)
+      cmp_ne = math_ops.not_equal(xt, yt)
+      values = self.evaluate([cmp_eq, cmp_ne])
+      self.assertAllEqual(
+          [[True, True, True, True, True], [False, False, False, False, False]],
+          values)
+    for dtype in [np.complex64, np.complex128]:
+      xt = x.astype(dtype)
+      xt -= 1j * xt
+      yt = y.astype(dtype)
+      yt -= 1j * yt
+      cmp_eq = math_ops.equal(xt, yt)
+      cmp_ne = math_ops.not_equal(xt, yt)
+      values = self.evaluate([cmp_eq, cmp_ne])
+      self.assertAllEqual(
+          [[True, True, True, True, True], [False, False, False, False, False]],
+          values)
 
 
 if __name__ == "__main__":

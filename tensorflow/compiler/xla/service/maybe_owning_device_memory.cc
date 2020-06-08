@@ -17,25 +17,25 @@ limitations under the License.
 #include "absl/types/variant.h"
 namespace xla {
 
-se::DeviceMemoryBase MaybeOwningDeviceMemory::AsDeviceMemoryBase() {
+tensorflow::se::DeviceMemoryBase MaybeOwningDeviceMemory::AsDeviceMemoryBase()
+    const {
   if (HasOwnership()) {
-    return absl::get<OwningDeviceMemory>(mem_).AsDeviceMemoryBase();
+    return *absl::get<tensorflow::se::OwningDeviceMemory>(mem_);
   } else {
-    return absl::get<se::DeviceMemoryBase>(mem_);
+    return absl::get<tensorflow::se::DeviceMemoryBase>(mem_);
   }
 }
 
 bool MaybeOwningDeviceMemory::HasOwnership() const {
-  return absl::holds_alternative<OwningDeviceMemory>(mem_);
+  return absl::holds_alternative<tensorflow::se::OwningDeviceMemory>(mem_);
 }
 
-absl::optional<OwningDeviceMemory> MaybeOwningDeviceMemory::Release() {
+absl::optional<tensorflow::se::OwningDeviceMemory>
+MaybeOwningDeviceMemory::Release() {
   if (!HasOwnership()) {
     return {};
   }
-  OwningDeviceMemory result = std::move(absl::get<OwningDeviceMemory>(mem_));
-  mem_ = result.AsDeviceMemoryBase();
-  return absl::make_optional<OwningDeviceMemory>(std::move(result));
+  return std::move(absl::get<tensorflow::se::OwningDeviceMemory>(mem_));
 }
 
 }  // namespace xla

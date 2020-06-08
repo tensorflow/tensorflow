@@ -86,7 +86,7 @@ void VerifyFlush(const io::RecordWriterOptions& options) {
 
     // Verify that file has all records written so far and no more.
     uint64 offset = 0;
-    string record;
+    tstring record;
     for (size_t j = 0; j <= i; j++) {
       // Check that j'th record is written correctly.
       TF_CHECK_OK(reader.ReadRecord(&offset, &record));
@@ -142,7 +142,7 @@ TEST(RecordReaderWriterTest, TestBasics) {
       options.zlib_options.input_buffer_size = buf_size;
       io::RecordReader reader(read_file.get(), options);
       uint64 offset = 0;
-      string record;
+      tstring record;
       TF_CHECK_OK(reader.ReadRecord(&offset, &record));
       EXPECT_EQ("abc", record);
       TF_CHECK_OK(reader.ReadRecord(&offset, &record));
@@ -187,7 +187,7 @@ TEST(RecordReaderWriterTest, TestZlib) {
       options.zlib_options.input_buffer_size = buf_size;
       io::RecordReader reader(read_file.get(), options);
       uint64 offset = 0;
-      string record;
+      tstring record;
       TF_CHECK_OK(reader.ReadRecord(&offset, &record));
       EXPECT_EQ("abc", record);
       TF_CHECK_OK(reader.ReadRecord(&offset, &record));

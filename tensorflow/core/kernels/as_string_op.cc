@@ -116,7 +116,7 @@ class AsStringOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output("output", input_tensor->shape(),
                                             &output_tensor));
-    auto output_flat = output_tensor->flat<string>();
+    auto output_flat = output_tensor->flat<tstring>();
 
 #define ENCODE_TYPE(type, T, enc_str)                                     \
   case (type): {                                                          \

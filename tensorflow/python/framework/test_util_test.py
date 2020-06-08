@@ -22,6 +22,7 @@ import collections
 import copy
 import random
 import threading
+import unittest
 import weakref
 
 from absl.testing import parameterized
@@ -31,7 +32,9 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -458,11 +461,27 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     k = math_ops.add(i, j, name="k")
 
     self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual([100] * 3, i)
     self.assertAllEqual([120] * 3, k)
     self.assertAllEqual([20] * 3, j)
 
     with self.assertRaisesRegexp(AssertionError, r"not equal lhs"):
       self.assertAllEqual([0] * 3, k)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAssertNotAllEqual(self):
+    i = variables.Variable([100], dtype=dtypes.int32, name="i")
+    j = constant_op.constant([20], dtype=dtypes.int32, name="j")
+    k = math_ops.add(i, j, name="k")
+
+    self.evaluate(variables.global_variables_initializer())
+    self.assertNotAllEqual([100] * 3, i)
+    self.assertNotAllEqual([120] * 3, k)
+    self.assertNotAllEqual([20] * 3, j)
+
+    with self.assertRaisesRegexp(
+        AssertionError, r"two values are equal at all elements.*extra message"):
+      self.assertNotAllEqual([120], k, msg="extra message")
 
   @test_util.run_in_graph_and_eager_modes
   def testAssertNotAllClose(self):
@@ -619,7 +638,7 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   def testRandomSeed(self):
-    # Call setUp again for WithCApi case (since it makes a new defeault graph
+    # Call setUp again for WithCApi case (since it makes a new default graph
     # after setup).
     # TODO(skyewm): remove this when C API is permanently enabled.
     self.setUp()
@@ -740,6 +759,115 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def test_run_in_graph_and_eager_works_with_parameterized_keyword(self, arg):
     self.assertEqual(arg, True)
 
+  @combinations.generate(combinations.combine(arg=True))
+  @test_util.run_in_graph_and_eager_modes
+  def test_run_in_graph_and_eager_works_with_combinations(self, arg):
+    self.assertEqual(arg, True)
+
+  def test_build_as_function_and_v1_graph(self):
+
+    class GraphModeAndFunctionTest(parameterized.TestCase):
+
+      def __init__(inner_self):  # pylint: disable=no-self-argument
+        super(GraphModeAndFunctionTest, inner_self).__init__()
+        inner_self.graph_mode_tested = False
+        inner_self.inside_function_tested = False
+
+      def runTest(self):
+        del self
+
+      @test_util.build_as_function_and_v1_graph
+      def test_modes(inner_self):  # pylint: disable=no-self-argument
+        if ops.inside_function():
+          self.assertFalse(inner_self.inside_function_tested)
+          inner_self.inside_function_tested = True
+        else:
+          self.assertFalse(inner_self.graph_mode_tested)
+          inner_self.graph_mode_tested = True
+
+    test_object = GraphModeAndFunctionTest()
+    test_object.test_modes_v1_graph()
+    test_object.test_modes_function()
+    self.assertTrue(test_object.graph_mode_tested)
+    self.assertTrue(test_object.inside_function_tested)
+
+  def test_with_forward_compatibility_horizons(self):
+
+    tested_codepaths = set()
+    def some_function_with_forward_compat_behavior():
+      if compat.forward_compatible(2050, 1, 1):
+        tested_codepaths.add("future")
+      else:
+        tested_codepaths.add("present")
+
+    @test_util.with_forward_compatibility_horizons(None, [2051, 1, 1])
+    def some_test(self):
+      del self  # unused
+      some_function_with_forward_compat_behavior()
+
+    some_test(None)
+    self.assertEqual(tested_codepaths, set(["present", "future"]))
+
+
+class SkipTestTest(test_util.TensorFlowTestCase):
+
+  def _verify_test_in_set_up_or_tear_down(self):
+    with self.assertRaises(unittest.SkipTest):
+      with test_util.skip_if_error(self, ValueError,
+                                   ["foo bar", "test message"]):
+        raise ValueError("test message")
+    try:
+      with self.assertRaisesRegexp(ValueError, "foo bar"):
+        with test_util.skip_if_error(self, ValueError, "test message"):
+          raise ValueError("foo bar")
+    except unittest.SkipTest:
+      raise RuntimeError("Test is not supposed to skip.")
+
+  def setUp(self):
+    super(SkipTestTest, self).setUp()
+    self._verify_test_in_set_up_or_tear_down()
+
+  def tearDown(self):
+    super(SkipTestTest, self).tearDown()
+    self._verify_test_in_set_up_or_tear_down()
+
+  def test_skip_if_error_should_skip(self):
+    with self.assertRaises(unittest.SkipTest):
+      with test_util.skip_if_error(self, ValueError, "test message"):
+        raise ValueError("test message")
+
+  def test_skip_if_error_should_skip_with_list(self):
+    with self.assertRaises(unittest.SkipTest):
+      with test_util.skip_if_error(self, ValueError,
+                                   ["foo bar", "test message"]):
+        raise ValueError("test message")
+
+  def test_skip_if_error_should_skip_without_expected_message(self):
+    with self.assertRaises(unittest.SkipTest):
+      with test_util.skip_if_error(self, ValueError):
+        raise ValueError("test message")
+
+  def test_skip_if_error_should_skip_without_error_message(self):
+    with self.assertRaises(unittest.SkipTest):
+      with test_util.skip_if_error(self, ValueError):
+        raise ValueError()
+
+  def test_skip_if_error_should_raise_message_mismatch(self):
+    try:
+      with self.assertRaisesRegexp(ValueError, "foo bar"):
+        with test_util.skip_if_error(self, ValueError, "test message"):
+          raise ValueError("foo bar")
+    except unittest.SkipTest:
+      raise RuntimeError("Test is not supposed to skip.")
+
+  def test_skip_if_error_should_raise_no_message(self):
+    try:
+      with self.assertRaisesRegexp(ValueError, ""):
+        with test_util.skip_if_error(self, ValueError, "test message"):
+          raise ValueError()
+    except unittest.SkipTest:
+      raise RuntimeError("Test is not supposed to skip.")
+
 
 # Its own test case to reproduce variable sharing issues which only pop up when
 # setUp() is overridden and super() is not called.
@@ -821,6 +949,7 @@ class GarbageCollectionTest(test_util.TensorFlowTestCase):
       LeakedObjectTest().test_has_leak()
 
     LeakedObjectTest().test_has_no_leak()
+
 
 if __name__ == "__main__":
   googletest.main()

@@ -97,7 +97,7 @@ class VirtualGpuTestUtil(object):
 
   # Generates a list of 3-tuples, each tuple contains the source and destination
   # device index for a binary operation like 'add', like:
-  # (src_devcie_1, src_device_2, dst_device)
+  # (src_device_1, src_device_2, dst_device)
   def _GenerateOperationPlacement(self):
     result = []
     for unused_i in range(self._num_ops):
@@ -198,6 +198,7 @@ class VirtualGpuTest(test_util.TensorFlowTestCase):
     super(VirtualGpuTest, self).__init__(method_name)
     self._util = VirtualGpuTestUtil()
 
+  @test_util.deprecated_graph_mode_only
   def testStatsContainAllDeviceNames(self):
     with self.session(config=self._util.config) as sess:
       # TODO(laigd): b/70811538. The is_gpu_available() call will invoke
@@ -231,6 +232,7 @@ class VirtualGpuTest(test_util.TensorFlowTestCase):
     self.assertTrue('/job:localhost/replica:0/task:0/device:GPU:1' in devices)
     self.assertTrue('/job:localhost/replica:0/task:0/device:GPU:2' in devices)
 
+  @test_util.deprecated_graph_mode_only
   def testLargeRandomGraph(self):
     with self.session(config=self._util.config) as sess:
       if not test.is_gpu_available(cuda_only=True):

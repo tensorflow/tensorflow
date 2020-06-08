@@ -18,10 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python import framework
 from tensorflow.python.client import session
-from tensorflow.python.distribute.cluster_resolver import ClusterResolver
-from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
-from tensorflow.python.distribute.cluster_resolver import UnionClusterResolver
+from tensorflow.python.distribute.cluster_resolver.cluster_resolver import ClusterResolver
+from tensorflow.python.distribute.cluster_resolver.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.distribute.cluster_resolver.cluster_resolver import UnionClusterResolver
+from tensorflow.python.eager.context import LogicalDevice
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
@@ -40,45 +43,81 @@ class MockBaseClusterResolver(ClusterResolver):
     return ""
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class BaseClusterResolverTest(test.TestCase):
 
+  @mock.patch.object(framework.config, "list_logical_devices")
   @mock.patch.object(session.BaseSession, "list_devices")
-  def testNumAcceleratorsSuccess(self, mock_list_devices):
-    device_names = [
-        "/job:worker/task:0/device:GPU:0",
-        "/job:worker/task:0/device:GPU:1",
-        "/job:worker/task:0/device:GPU:2",
-        "/job:worker/task:0/device:GPU:3",
+  def testNumAcceleratorsSuccess(self, mock_list_devices,
+                                 mock_eager_list_devices):
+    devices = [
+        LogicalDevice("/job:worker/task:0/device:GPU:0", "GPU"),
+        LogicalDevice("/job:worker/task:0/device:GPU:1", "GPU"),
+        LogicalDevice("/job:worker/task:0/device:GPU:2", "GPU"),
+        LogicalDevice("/job:worker/task:0/device:GPU:3", "GPU"),
     ]
     device_list = [
-        session._DeviceAttributes(
-            name, "GPU", 1024, 0) for name in device_names
+        session._DeviceAttributes(d.name, d.device_type, 1024, 0)
+        for d in devices
     ]
+    mock_eager_list_devices.return_value = devices
     mock_list_devices.return_value = device_list
 
     resolver = MockBaseClusterResolver()
     self.assertEqual(resolver.num_accelerators(), {"GPU": 4})
 
+  @mock.patch.object(framework.config, "list_logical_devices")
   @mock.patch.object(session.BaseSession, "list_devices")
-  def testNumAcceleratorsMultiDeviceSuccess(self, mock_list_devices):
-    device_names = [
-        "/job:worker/task:0/device:TPU:0",
-        "/job:worker/task:0/device:TPU:1",
-        "/job:worker/task:0/device:TPU:2",
-        "/job:worker/task:0/device:TPU:3",
-        "/job:worker/task:0/device:GPU:0",
-        "/job:worker/task:0/device:GPU:1",
-        "/job:worker/task:0/device:GPU:2",
-        "/job:worker/task:0/device:GPU:3",
+  def testNumAcceleratorsMultiDeviceSuccess(self, mock_list_devices,
+                                            mock_eager_list_devices):
+    devices = [
+        LogicalDevice("/job:worker/task:0/device:TPU:0", "TPU"),
+        LogicalDevice("/job:worker/task:0/device:TPU:1", "TPU"),
+        LogicalDevice("/job:worker/task:0/device:TPU:2", "TPU"),
+        LogicalDevice("/job:worker/task:0/device:TPU:3", "TPU"),
+        LogicalDevice("/job:worker/task:0/device:GPU:0", "GPU"),
+        LogicalDevice("/job:worker/task:0/device:GPU:1", "GPU"),
+        LogicalDevice("/job:worker/task:0/device:GPU:2", "GPU"),
+        LogicalDevice("/job:worker/task:0/device:GPU:3", "GPU"),
     ]
     device_list = [
-        session._DeviceAttributes(
-            name, name[26:29], 1024, 0) for name in device_names
+        session._DeviceAttributes(d.name, d.device_type, 1024, 0)
+        for d in devices
     ]
+    mock_eager_list_devices.return_value = devices
     mock_list_devices.return_value = device_list
 
     resolver = MockBaseClusterResolver()
     self.assertEqual(resolver.num_accelerators(), {"TPU": 4, "GPU": 4})
+
+  @mock.patch.object(framework.config, "list_logical_devices")
+  @mock.patch.object(session.BaseSession, "list_devices")
+  def testNumAcceleratorsFilterTasks(self, mock_list_devices,
+                                     mock_eager_list_devices):
+    devices = [
+        LogicalDevice("/job:worker1/task:0/device:TPU:0", "TPU"),
+        LogicalDevice("/job:worker1/task:0/device:TPU:1", "TPU"),
+        LogicalDevice("/job:worker1/task:0/device:GPU:0", "GPU"),
+        LogicalDevice("/job:worker1/task:0/device:GPU:1", "GPU"),
+        LogicalDevice("/job:worker2/task:1/device:TPU:2", "TPU"),
+        LogicalDevice("/job:worker2/task:2/device:TPU:3", "TPU"),
+        LogicalDevice("/job:worker2/task:3/device:GPU:2", "GPU"),
+        LogicalDevice("/job:worker2/task:4/device:GPU:3", "GPU"),
+    ]
+    device_list = [
+        session._DeviceAttributes(d.name, d.device_type, 1024, 0)
+        for d in devices
+    ]
+    mock_eager_list_devices.return_value = devices
+    mock_list_devices.return_value = device_list
+
+    resolver = MockBaseClusterResolver()
+    self.assertEqual(resolver.num_accelerators(task_type="worker1", task_id=0),
+                     {"TPU": 2, "GPU": 2})
+    self.assertEqual(resolver.num_accelerators(task_type="worker2", task_id=3),
+                     {"GPU": 1})
+    self.assertEqual(resolver.num_accelerators(task_type="worker2", task_id=4),
+                     {"GPU": 1})
 
 
 class UnionClusterResolverTest(test.TestCase):
@@ -122,13 +161,13 @@ class UnionClusterResolverTest(test.TestCase):
 
     simple_resolver = SimpleClusterResolver(base_cluster_spec, task_type="ps",
                                             task_id=1, environment="cloud",
-                                            num_accelerators=8,
+                                            num_accelerators={"GPU": 8},
                                             rpc_layer="grpc")
 
     self.assertEqual(simple_resolver.task_type, "ps")
     self.assertEqual(simple_resolver.task_id, 1)
     self.assertEqual(simple_resolver.environment, "cloud")
-    self.assertEqual(simple_resolver.num_accelerators(), 8)
+    self.assertEqual(simple_resolver.num_accelerators(), {"GPU": 8})
     self.assertEqual(simple_resolver.rpc_layer, "grpc")
 
   def testOverrideSimpleClusterResolver(self):
@@ -139,7 +178,7 @@ class UnionClusterResolverTest(test.TestCase):
 
     simple_resolver = SimpleClusterResolver(base_cluster_spec, task_type="ps",
                                             task_id=1, environment="cloud",
-                                            num_accelerators=8,
+                                            num_accelerators={"GPU": 8},
                                             rpc_layer="grpc")
 
     simple_resolver.task_type = "worker"
@@ -187,7 +226,7 @@ class UnionClusterResolverTest(test.TestCase):
     })
     resolver1 = SimpleClusterResolver(cluster_spec_1, task_type="ps",
                                       task_id=1, environment="cloud",
-                                      num_accelerators=8,
+                                      num_accelerators={"GPU": 8},
                                       rpc_layer="grpc")
 
     cluster_spec_2 = server_lib.ClusterSpec({
@@ -196,7 +235,7 @@ class UnionClusterResolverTest(test.TestCase):
     })
     resolver2 = SimpleClusterResolver(cluster_spec_2, task_type="worker",
                                       task_id=2, environment="local",
-                                      num_accelerators=16,
+                                      num_accelerators={"GPU": 16},
                                       rpc_layer="http")
 
     union_resolver = UnionClusterResolver(resolver1, resolver2)
@@ -204,7 +243,7 @@ class UnionClusterResolverTest(test.TestCase):
     self.assertEqual(union_resolver.task_type, "ps")
     self.assertEqual(union_resolver.task_id, 1)
     self.assertEqual(union_resolver.environment, "cloud")
-    self.assertEqual(union_resolver.num_accelerators(), 8)
+    self.assertEqual(union_resolver.num_accelerators(), {"GPU": 8})
     self.assertEqual(union_resolver.rpc_layer, "grpc")
 
     union_resolver.task_type = "worker"

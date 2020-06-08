@@ -24,6 +24,7 @@ from __future__ import print_function
 import enum
 
 # pylint:disable=g-bad-import-order
+
 import gast
 # pylint:enable=g-bad-import-order
 
@@ -55,6 +56,12 @@ class Basic(NoValue):
       ' `name_map` allows renaming symbols.')
   ORIGIN = ('Information about the source code that converted code originated'
             ' from. See origin_information.py.')
+  DIRECTIVES = ('User directives associated with a statement or a variable.'
+                ' Typically, they affect the immediately-enclosing statement.')
+
+  EXTRA_LOOP_TEST = (
+      'A special annotation containing additional test code to be executed in'
+      ' for loops.')
 
 
 class Static(NoValue):
@@ -86,6 +93,9 @@ class Static(NoValue):
   ORIG_DEFINITIONS = (
       'The value of DEFINITIONS that applied to the original code before any'
       ' conversion.')
+  DEFINED_FNS_IN = (
+      'Local function definitions that may exist when exiting the node. See'
+      ' reaching_fndefs.py')
   DEFINED_VARS_IN = (
       'Symbols defined when entering the node. See reaching_definitions.py.')
   LIVE_VARS_OUT = ('Symbols live when exiting the node. See liveness.py.')
@@ -105,8 +115,7 @@ def getanno(node, key, default=FAIL, field_name='___pyct_anno'):
   if (default is FAIL or (hasattr(node, field_name) and
                           (key in getattr(node, field_name)))):
     return getattr(node, field_name)[key]
-  else:
-    return default
+  return default
 
 
 def hasanno(node, key, field_name='___pyct_anno'):

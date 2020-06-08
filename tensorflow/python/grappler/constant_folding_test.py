@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -60,9 +59,9 @@ class ConstantFoldingTest(test.TestCase):
           loop_vars=[0, init_y],
           back_prop=False,
           parallel_iterations=1)
-      with session.Session() as sess:
-        y_v = self.evaluate(y)
-        self.assertAllEqual(np.zeros([10, 20, 30]), y_v)
+
+      y_v = self.evaluate(y)
+      self.assertAllEqual(np.zeros([10, 20, 30]), y_v)
 
 
 if __name__ == '__main__':

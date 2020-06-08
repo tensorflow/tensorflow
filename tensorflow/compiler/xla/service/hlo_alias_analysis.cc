@@ -59,7 +59,7 @@ class BufferValueMap {
   // construction process.
   using BufferNumber = int64;
 
-  explicit BufferValueMap(HloModule* module,
+  explicit BufferValueMap(const HloModule* module,
                           const HloDataflowAnalysis& dataflow)
       : module_(module), dataflow_(dataflow) {
     buffers_.reserve(dataflow_.values().size());
@@ -185,7 +185,7 @@ class BufferValueMap {
     };
 
     // If the value shows up in a root instruction, alias it with parameter
-    // intruction.
+    // instruction.
     for (const HloPosition& pos : value.positions()) {
       if (pos.instruction == module_->entry_computation()->root_instruction()) {
         ShapeIndex output_index = pos.index;
@@ -252,7 +252,8 @@ class BufferValueMap {
           if (callsite.instruction()->opcode() == HloOpcode::kWhile &&
               callsite.instruction()->while_body() == computation) {
             // Call graph must have been flattened.
-            CHECK_EQ(call_graph_node.caller_callsites().size(), 1);
+            CHECK_EQ(call_graph_node.caller_callsites().size(), 1)
+                << "Call graph must have been flattened.";
 
             const HloValue& while_value = dataflow_.GetUniqueValueAt(
                 callsite.instruction(), position.index);
@@ -293,7 +294,7 @@ class BufferValueMap {
             VLOG(3)
                 << "  value @ " << position << " is root of "
                 << callsite.instruction()->name()
-                << "; true/false branch roots must share buffer among them : "
+                << "; branch computation roots must share buffer among them : "
                 << cond_value.ToShortString();
             aliased_buffers->push_back(GetBufferForValue(cond_value));
           }
@@ -325,7 +326,7 @@ class BufferValueMap {
     return aliased_buffers;
   }
 
-  HloModule* module_;
+  const HloModule* module_ = nullptr;
 
   // Dataflow analysis used to construct the buffer map.
   const HloDataflowAnalysis& dataflow_;
@@ -341,7 +342,7 @@ class BufferValueMap {
   BufferNumber next_buffer_number_ = 0;
 };
 
-HloAliasAnalysis::HloAliasAnalysis(HloModule* module) : module_(module) {}
+HloAliasAnalysis::HloAliasAnalysis(const HloModule* module) : module_(module) {}
 
 const HloBuffer& HloAliasAnalysis::GetUniqueBufferAt(
     const HloInstruction* instruction, const ShapeIndex& index) const {
@@ -403,7 +404,7 @@ bool HloAliasAnalysis::InstructionBuffersAreDistinct(
       }
     } else {
       // It's possible for multiple values at this index to have the same
-      // HloBuffer. This does not result in non-distictness. To account for
+      // HloBuffer. This does not result in non-distinctness. To account for
       // this case, add all of the buffers at this index after checking
       // whether each buffer exists at an earlier index. This is a corner
       // case, however, as the number of values at an index is almost always
@@ -488,8 +489,8 @@ string HloAliasAnalysis::ToString() const {
 
 /* static */
 StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
-    HloModule* module, const HloDataflowAnalysis::FusionCanShareBufferFunction&
-                           fusion_can_share_buffer) {
+    const HloModule* module,
+    const HloDataflowAnalysis::CanShareBuffer& can_share_buffer) {
   VLOG(2) << "HloAliasAnalysis::Run on module " << module->name();
   XLA_VLOG_LINES(2, module->ToString());
 
@@ -497,7 +498,7 @@ StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
   TF_ASSIGN_OR_RETURN(alias_analysis->dataflow_analysis_,
                       HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
                                                /*bitcast_defines_value=*/false,
-                                               fusion_can_share_buffer));
+                                               can_share_buffer));
 
   BufferValueMap buffer_map(module, alias_analysis->dataflow_analysis());
   buffer_map.MergeAliasedBuffers();
@@ -523,8 +524,73 @@ StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
 
   TF_DCHECK_OK(alias_analysis->Verify());
 
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  ShapeUtil::ForEachSubshape(
+      root->shape(), [&](const Shape& /*subshape*/, const ShapeIndex& index) {
+        for (const HloBuffer* buffer :
+             alias_analysis->ComputeBuffersAt(root, index)) {
+          alias_analysis->live_out_buffers_.insert(buffer);
+        }
+      });
+
   XLA_VLOG_LINES(2, alias_analysis->ToString());
   return std::move(alias_analysis);
+}
+
+void HloAliasAnalysis::MergeBuffers(const HloBuffer& to,
+                                    const HloBuffer& from) {
+  CHECK(to.id() != from.id());
+  VLOG(2) << "Merge buffer: " << from.ToString() << " into :" << to.ToString();
+
+  CHECK(from.id() < buffers_.size());
+  CHECK(to.id() < buffers_.size());
+
+  // Merge the values of `to` and `from`, creates a new buffer with the
+  // merged values.
+  std::vector<const HloValue*> merged_values(to.values().begin(),
+                                             to.values().end());
+
+  merged_values.insert(merged_values.end(), from.values().begin(),
+                       from.values().end());
+  absl::c_sort(merged_values, [](const HloValue* a, const HloValue* b) {
+    return a->id() < b->id();
+  });
+
+  buffers_[to.id()] = HloBuffer(to.id(), merged_values);
+  for (const HloValue* value : merged_values) {
+    // Update references of values.
+    value_to_buffer_[value] = &buffers_[to.id()];
+  }
+
+  if (live_out_buffers_.count(&from) > 0) {
+    // Update live out set to erase `from` and add `to`.
+    live_out_buffers_.erase(&from);
+    live_out_buffers_.insert(&buffers_[to.id()]);
+  }
+
+  int64 from_id = from.id();
+  if (from_id != buffers_.size() - 1) {
+    // Now `from` is invalid, move the last element of buffers to replace `from`
+    // and update references to the last element.
+    const HloBuffer& last_elem = buffers_.back();
+    buffers_[from.id()] = HloBuffer(from_id, last_elem.values());
+
+    if (live_out_buffers_.count(&last_elem) > 0) {
+      // Update live out set to redirect the last element to its new position.
+      live_out_buffers_.erase(&last_elem);
+      live_out_buffers_.insert(&buffers_[from_id]);
+    }
+
+    // Update references of values.
+    for (const HloValue* value : buffers_[from_id].values()) {
+      value_to_buffer_[value] = &buffers_[from_id];
+    }
+  }
+
+  // Remove the last element.
+  buffers_.pop_back();
+
+  CHECK(Verify().ok());
 }
 
 bool HloAliasAnalysis::HasLiveRangeInterference(

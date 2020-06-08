@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/node_matchers.h"
 
 #include <utility>
+
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -24,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/graph/graph_node_util.h"
 
 namespace tensorflow {
 namespace testing {
@@ -77,6 +79,8 @@ bool MatchAndExplainTensor(const Tensor& tensor, const Tensor& expected_tensor,
   }
 
   switch (tensor.dtype()) {
+    case DT_HALF:
+      return CompareTensor<Eigen::half>(tensor, expected_tensor, listener);
     case DT_FLOAT:
       return CompareTensor<float>(tensor, expected_tensor, listener);
     case DT_DOUBLE:
@@ -133,7 +137,7 @@ struct NodeMatcher : public ::testing::MatcherInterface<const Node*> {
 
     if (constant_value) {
       const TensorProto* proto = nullptr;
-      if (!GetNodeAttr(node->def(), "value", &proto).ok()) {
+      if (!TryGetNodeAttr(node->def(), "value", &proto)) {
         if (listener->IsInterested()) {
           *listener << "\ncould not find \"value\" attribute in node";
         }
@@ -489,7 +493,7 @@ std::pair<string, AttrValue> impl::AttrLiteralHelper(
     const std::pair<string, absl::Span<const string>>& string_list_attr) {
   AttrValue attr_value;
   AttrValue::ListValue* list = attr_value.mutable_list();
-  for (string s : string_list_attr.second) {
+  for (const string& s : string_list_attr.second) {
     list->add_s(s);
   }
   return {string_list_attr.first, attr_value};

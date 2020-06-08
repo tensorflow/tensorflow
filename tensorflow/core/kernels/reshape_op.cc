@@ -86,7 +86,8 @@ REGISTER_KERNEL_BUILDER(Name("Reshape")
 #undef REGISTER_SYCL_KERNEL
 #endif  // TENSORFLOW_USE_SYCL
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
@@ -106,6 +107,6 @@ REGISTER_KERNEL_BUILDER(Name("Reshape")
                             .TypeConstraint<int32>("T")
                             .TypeConstraint<int64>("Tshape"),
                         ReshapeOp);
-#endif
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

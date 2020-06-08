@@ -42,6 +42,8 @@ class MemoryOptimizer : public GraphOptimizer {
 
   string name() const override { return "memory_optimizer"; };
 
+  bool UsesFunctionLibrary() const override { return false; }
+
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* pruned_graph) override;
 

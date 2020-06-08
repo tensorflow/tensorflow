@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_CORD_H_
 #define TENSORFLOW_CORE_PLATFORM_CORD_H_
 
+#include "tensorflow/core/platform/platform.h"
+
 // Include appropriate platform-dependent implementations
 #if defined(PLATFORM_GOOGLE)
 #include "tensorflow/core/platform/google/cord.h"

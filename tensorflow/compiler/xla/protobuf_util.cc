@@ -38,41 +38,18 @@ bool ProtobufEquals(const tensorflow::protobuf::Message& m1,
   return (serialized1 == serialized2);
 }
 
-namespace {
-
-std::pair<tensorflow::mutex*, std::vector<std::function<string(string)>>*>
-GetDirectoryExpanders() {
-  static auto* mutex = new tensorflow::mutex;
-  static auto* singleton = new std::vector<std::function<string(string)>>;
-  return {mutex, singleton};
-}
-
-// Runs all the directory expanders over x and returns the result.
-string Expand(string x) {
-  auto pair = GetDirectoryExpanders();
-  tensorflow::mutex_lock lock(*pair.first);
-  for (const auto& f : *pair.second) {
-    x = f(x);
-  }
-  return x;
-}
-
-}  // namespace
-
 Status DumpProtoToDirectory(const tensorflow::protobuf::Message& message,
-                            const string& directory, const string& file_name) {
+                            const string& directory, const string& file_name,
+                            string* full_path) {
   tensorflow::Env* env = tensorflow::Env::Default();
-  string expanded_dir = Expand(directory);
-  TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(expanded_dir));
+  TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(directory));
   string safe_file_name = SanitizeFileName(file_name) + ".pb";
-  const string path = tensorflow::io::JoinPath(expanded_dir, safe_file_name);
-  return tensorflow::WriteBinaryProto(env, path, message);
-}
-
-void RegisterDirectoryExpander(const std::function<string(string)>& expander) {
-  auto pair = GetDirectoryExpanders();
-  tensorflow::mutex_lock lock(*pair.first);
-  pair.second->push_back(expander);
+  string full_path_impl;
+  if (!full_path) {
+    full_path = &full_path_impl;
+  }
+  *full_path = tensorflow::io::JoinPath(directory, safe_file_name);
+  return tensorflow::WriteBinaryProto(env, *full_path, message);
 }
 
 }  // namespace protobuf_util

@@ -1,0 +1,11 @@
+op {
+  graph_op_name: "StringLower"
+  summary: "Converts all uppercase characters into their respective lowercase replacements."
+  description: <<END
+Example:
+
+>>> tf.strings.lower("CamelCase string and ALL CAPS")
+<tf.Tensor: shape=(), dtype=string, numpy=b'camelcase string and all caps'>
+
+END
+}

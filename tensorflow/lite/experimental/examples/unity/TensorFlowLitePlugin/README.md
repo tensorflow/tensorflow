@@ -6,24 +6,17 @@ Unity by way of a C# `Interpreter` wrapper.
 
 Note that the native TF Lite plugin(s) *must* be built before using the Unity
 Plugin, and placed in Assets/TensorFlowLite/SDK/Plugins/. For the editor (note
-that this has only been tested on Linux; the syntax may differ on Mac/Windows):
+that the generated shared library name and suffix are platform-dependent):
 
 ```sh
-bazel build -c opt --cxxopt=--std=c++11 \
-  //tensorflow/lite/experimental/c:libtensorflowlite_c.so
+bazel build -c opt //tensorflow/lite/c:tensorflowlite_c
 ```
 
-and for Android:
+and for Android (replace `android_arm` with `android_arm64` for 64-bit):
 
 ```sh
-bazel build -c opt --cxxopt=--std=c++11 \
-  --crosstool_top=//external:android/crosstool \
-  --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
-  --cpu=armeabi-v7a \
-  //tensorflow/lite/experimental/c:libtensorflowlite_c.so
+bazel build -c opt --config=android_arm //tensorflow/lite/c:tensorflowlite_c
 ```
 
 If you encounter issues with native plugin discovery on Mac ("Darwin")
-platforms, try renaming `libtensorflowlite_c.so` to `tensorflowlite_c.bundle`.
-Similarly, on Windows you'll likely need to rename `libtensorflowlite_c.so` to
-`tensorflowlite_c.dll`.
+platforms, try renaming `libtensorflowlite_c.dylib` to `tensorflowlite_c.bundle`.

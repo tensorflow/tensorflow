@@ -196,7 +196,7 @@ else
 "/usr/local/cuda/lib and /usr/local/cuda/lib64"
   fi
 
-  echo "Found CUDA library diretory at: ${CUDA_LIB_DIR}"
+  echo "Found CUDA library directory at: ${CUDA_LIB_DIR}"
   echo ""
 
   # USER_OP_SO=$(basename $(echo "${OP_KERNEL_CC}" | sed -e 's/\.cc/\.so/'))

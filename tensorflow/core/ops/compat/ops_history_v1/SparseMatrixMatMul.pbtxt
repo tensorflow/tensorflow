@@ -1,0 +1,61 @@
+op {
+  name: "SparseMatrixMatMul"
+  input_arg {
+    name: "a"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "b"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "transpose_a"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "transpose_b"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "adjoint_a"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "adjoint_b"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "transpose_output"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "conjugate_output"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}

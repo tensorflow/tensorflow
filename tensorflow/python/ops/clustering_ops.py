@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed as random_seed_ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -143,7 +144,7 @@ class KMeans(object):
     self._distance_metric = distance_metric
     self._use_mini_batch = use_mini_batch
     self._mini_batch_steps_per_iteration = int(mini_batch_steps_per_iteration)
-    self._random_seed = random_seed
+    self._seed = random_seed_ops.get_seed(random_seed)[0]
     self._kmeans_plus_plus_num_retries = kmeans_plus_plus_num_retries
     self._kmc2_chain_length = kmc2_chain_length
 
@@ -215,11 +216,11 @@ class KMeans(object):
     output = []
     if not inputs_normalized:
       with ops.colocate_with(clusters, ignore_existing=True):
-        clusters = nn_impl.l2_normalize(clusters, dim=1)
+        clusters = nn_impl.l2_normalize(clusters, axis=1)
     for inp in inputs:
       with ops.colocate_with(inp, ignore_existing=True):
         if not inputs_normalized:
-          inp = nn_impl.l2_normalize(inp, dim=1)
+          inp = nn_impl.l2_normalize(inp, axis=1)
         output.append(1 - math_ops.matmul(inp, clusters, transpose_b=True))
     return output
 
@@ -250,7 +251,7 @@ class KMeans(object):
       # TODO(ands): Support COSINE distance in nearest_neighbors and remove
       # this.
       with ops.colocate_with(clusters, ignore_existing=True):
-        clusters = nn_impl.l2_normalize(clusters, dim=1)
+        clusters = nn_impl.l2_normalize(clusters, axis=1)
     for inp, score in zip(inputs, scores):
       with ops.colocate_with(inp, ignore_existing=True):
         (indices, distances) = gen_clustering_ops.nearest_neighbors(
@@ -285,7 +286,7 @@ class KMeans(object):
       - update_in_steps: numbers of steps left before we sync
             cluster_centers_updated back to cluster_centers.
     """
-    init_value = array_ops.constant([], dtype=dtypes.float32)
+    init_value = array_ops.placeholder_with_default([], shape=None)
     cluster_centers = variable_scope.variable(
         init_value, name=CLUSTERS_VAR_NAME, validate_shape=False)
     cluster_centers_initialized = variable_scope.variable(
@@ -364,8 +365,8 @@ class KMeans(object):
      update_in_steps) = self._create_variables(num_clusters)
     init_op = _InitializeClustersOpFactory(
         self._inputs, num_clusters, initial_clusters, self._distance_metric,
-        self._random_seed, self._kmeans_plus_plus_num_retries,
-        self._kmc2_chain_length, cluster_centers_var, cluster_centers_updated,
+        self._seed, self._kmeans_plus_plus_num_retries, self._kmc2_chain_length,
+        cluster_centers_var, cluster_centers_updated,
         cluster_centers_initialized).op()
     cluster_centers = cluster_centers_var
 
@@ -584,7 +585,7 @@ class _InitializeClustersOpFactory(object):
     self._num_clusters = num_clusters
     self._initial_clusters = initial_clusters
     self._distance_metric = distance_metric
-    self._random_seed = random_seed
+    self._seed = random_seed
     self._kmeans_plus_plus_num_retries = kmeans_plus_plus_num_retries
     self._kmc2_chain_length = kmc2_chain_length
     self._cluster_centers = cluster_centers
@@ -601,7 +602,7 @@ class _InitializeClustersOpFactory(object):
         array_ops.reshape(self._num_remaining, [-1]),
         minval=0,
         maxval=math_ops.cast(self._num_data, dtypes.int64),
-        seed=self._random_seed,
+        seed=self._seed,
         dtype=dtypes.int64)
     return embedding_lookup(self._inputs, indices, partition_strategy='div')
 
@@ -612,8 +613,7 @@ class _InitializeClustersOpFactory(object):
     if self._distance_metric == COSINE_DISTANCE:
       inp = nn_impl.l2_normalize(inp, dim=1)
     return gen_clustering_ops.kmeans_plus_plus_initialization(
-        inp,
-        math_ops.to_int64(self._num_remaining), self._random_seed,
+        inp, math_ops.cast(self._num_remaining, dtypes.int64), self._seed,
         self._kmeans_plus_plus_num_retries)
 
   def _kmc2_multiple_centers(self):
@@ -670,7 +670,7 @@ class _InitializeClustersOpFactory(object):
             subset, self._cluster_centers, 1)
         # Sample index of new center using k-MC2 Markov chain.
         new_center_index = gen_clustering_ops.kmc2_chain_initialization(
-            array_ops.squeeze(distances), self._random_seed)
+            array_ops.squeeze(distances), self._seed)
         # Extract actual new center.
         newly_sampled_center = array_ops.reshape(subset[new_center_index],
                                                  [1, -1])

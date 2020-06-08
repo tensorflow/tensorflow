@@ -4,8 +4,12 @@ tf_module {
     name: "Feature"
     mtype: "<class \'enum.EnumMeta\'>"
   }
-  member {
-    name: "Verbosity"
-    mtype: "<class \'enum.EnumMeta\'>"
+  member_method {
+    name: "do_not_convert"
+    argspec: "args=[\'func\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "set_loop_options"
+    argspec: "args=[\'parallel_iterations\', \'swap_memory\', \'maximum_iterations\', \'shape_invariants\'], varargs=None, keywords=None, defaults=[\'<object object instance>\', \'<object object instance>\', \'<object object instance>\', \'<object object instance>\'], "
   }
 }

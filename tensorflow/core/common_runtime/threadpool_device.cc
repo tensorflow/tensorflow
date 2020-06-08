@@ -22,7 +22,8 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/tensor.pb_text.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -49,7 +50,7 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
                                name, DEVICE_CPU, memory_limit, locality)),
       allocator_(allocator),
       scoped_allocator_mgr_(new ScopedAllocatorMgr(name)) {
-#ifdef INTEL_MKL
+#if !defined(ENABLE_MKLDNN_THREADPOOL) && defined(INTEL_MKL)
   // Early return when MKL is disabled
   if (DisableMKL()) return;
 #ifdef _OPENMP
@@ -68,7 +69,7 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
     }
   }
 #endif  // _OPENMP
-#endif  // INTEL_MKL
+#endif  // !defined(ENABLE_MKLDNN_THREADPOOL) && defined(INTEL_MKL)
 }
 
 ThreadPoolDevice::~ThreadPoolDevice() {}
@@ -99,7 +100,20 @@ Status ThreadPoolDevice::MakeTensorFromProto(
     }
   }
   return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                 ProtoDebugString(tensor_proto));
+                                 tensor_proto.DebugString());
+}
+
+void ThreadPoolDevice::CopyTensorInSameDevice(
+    const Tensor* input_tensor, Tensor* output_tensor,
+    const DeviceContext* device_context, StatusCallback done) {
+  if (input_tensor->NumElements() != output_tensor->NumElements()) {
+    done(errors::Internal(
+        "CPU->CPU copy shape mismatch: input=", input_tensor->shape(),
+        ", output=", output_tensor->shape()));
+    return;
+  }
+  tensor::DeepCopy(*input_tensor, output_tensor);
+  done(Status::OK());
 }
 
 #ifdef INTEL_MKL

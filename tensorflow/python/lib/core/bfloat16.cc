@@ -313,11 +313,15 @@ PyTypeObject PyBfloat16_Type = {
 #else
     PyVarObject_HEAD_INIT(nullptr, 0)
 #endif
-    "bfloat16",                                // tp_name
-    sizeof(PyBfloat16),                        // tp_basicsize
-    0,                                         // tp_itemsize
-    nullptr,                                   // tp_dealloc
-    nullptr,                                   // tp_print
+    "bfloat16",          // tp_name
+    sizeof(PyBfloat16),  // tp_basicsize
+    0,                   // tp_itemsize
+    nullptr,             // tp_dealloc
+#if PY_VERSION_HEX < 0x03080000
+    nullptr,  // tp_print
+#else
+    0,  // tp_vectorcall_offset
+#endif
     nullptr,                                   // tp_getattr
     nullptr,                                   // tp_setattr
     nullptr,                                   // tp_compare / tp_reserved
@@ -532,7 +536,9 @@ struct Bfloat16GeFunctor {
 
 // Initializes the module.
 bool Initialize() {
-  // It's critical to import umath to avoid crash in open source build.
+  // It's critical to ImportNumpy and import umath
+  // to avoid crash in open source build.
+  ImportNumpy();
   import_umath1(false);
 
   Safe_PyObjectPtr numpy_str = make_safe(MakePyString("numpy"));

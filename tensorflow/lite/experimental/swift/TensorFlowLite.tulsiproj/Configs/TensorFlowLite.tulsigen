@@ -1,0 +1,61 @@
+{
+  "additionalFilePaths" : [
+    "tensorflow/lite/experimental/swift/BUILD"
+  ],
+  "buildTargets" : [
+    "//tensorflow/lite/experimental/swift:TensorFlowLiteAllDelegates",
+    "//tensorflow/lite/experimental/swift:Tests",
+    "//tensorflow/lite/experimental/swift:TestsLibrary"
+  ],
+  "optionSet" : {
+    "BazelBuildOptionsDebug" : {
+      "p" : "$(inherited)"
+    },
+    "BazelBuildOptionsRelease" : {
+      "p" : "$(inherited)"
+    },
+    "BazelBuildStartupOptionsDebug" : {
+      "p" : "$(inherited)"
+    },
+    "BazelBuildStartupOptionsRelease" : {
+      "p" : "$(inherited)"
+    },
+    "BuildActionPostActionScript" : {
+      "p" : "$(inherited)"
+    },
+    "BuildActionPreActionScript" : {
+      "p" : "$(inherited)"
+    },
+    "CLANG_CXX_LANGUAGE_STANDARD" : {
+      "p" : "c++14"
+    },
+    "CommandlineArguments" : {
+      "p" : "$(inherited)"
+    },
+    "EnvironmentVariables" : {
+      "p" : "$(inherited)"
+    },
+    "LaunchActionPostActionScript" : {
+      "p" : "$(inherited)"
+    },
+    "LaunchActionPreActionScript" : {
+      "p" : "$(inherited)"
+    },
+    "ProjectGenerationCompilationMode" : {
+      "p" : "opt"
+    },
+    "TestActionPostActionScript" : {
+      "p" : "$(inherited)"
+    },
+    "TestActionPreActionScript" : {
+      "p" : "$(inherited)"
+    }
+  },
+  "projectName" : "TensorFlowLite",
+  "sourceFilters" : [
+    "tensorflow/lite/c",
+    "tensorflow/lite/experimental/swift",
+    "tensorflow/lite/experimental/swift/Sources",
+    "tensorflow/lite/experimental/swift/Tests"
+  ]
+}

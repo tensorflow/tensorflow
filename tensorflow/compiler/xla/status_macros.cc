@@ -25,6 +25,13 @@ limitations under the License.
 namespace xla {
 namespace status_macros {
 
+ABSL_CONST_INIT const char kPossibleAutoJitAlternative[] =
+    "This error might be occurring with the use of xla.compile. If it is not "
+    "necessary that every Op be compiled with XLA, an alternative is to use "
+    "auto_jit with OptimizerOptions.global_jit_level = ON_2 or the environment "
+    "variable TF_XLA_FLAGS=\"tf_xla_auto_jit=2\" which will attempt to use xla "
+    "to compile as much of the graph as the compiler is able to.";
+
 static Status MakeStatus(tensorflow::error::Code code, const string& message) {
   return Status(code, message);
 }

@@ -20,5 +20,7 @@ namespace tensorflow {
 
 REGISTER_KERNEL_BUILDER(Name("FIFOQueue").Device(DEVICE_CPU), FIFOQueueOp);
 REGISTER_KERNEL_BUILDER(Name("FIFOQueueV2").Device(DEVICE_CPU), FIFOQueueOp);
-
+REGISTER_KERNEL_BUILDER(
+    Name("FIFOQueueV2").Device(DEVICE_DEFAULT).HostMemory("handle"),
+    FIFOQueueOp);
 }  // namespace tensorflow

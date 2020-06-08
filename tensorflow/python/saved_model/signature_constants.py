@@ -136,6 +136,9 @@ tf_export(
 ################################################################################
 # Train/Eval API constants.
 # Not exported while export_all_saved_models is experimental.
+DEFAULT_TRAIN_SIGNATURE_DEF_KEY = "train"
+
+DEFAULT_EVAL_SIGNATURE_DEF_KEY = "eval"
 
 SUPERVISED_TRAIN_METHOD_NAME = "tensorflow/supervised/training"
 

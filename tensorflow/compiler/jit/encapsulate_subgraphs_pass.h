@@ -27,6 +27,15 @@ limitations under the License.
 
 namespace tensorflow {
 
+// EncapsulateSubgraphs pass takes all the nodes with the same cluster ID
+// (derived from kXlaClusterAttr=ID (kXlaClusterAttr) attribute), puts them into
+// a TF function, and replaces the subgraph in the main graph with a call to
+// that TF function annotated with kXlaCompiledKernelAttr (_XlaCompiledKernel).
+class EncapsulateSubgraphsPass : public GraphOptimizationPass {
+ public:
+  Status Run(const GraphOptimizationPassOptions& options) override;
+};
+
 // A rewriting function to apply to each subgraph during encapsulation.
 // 'arg_source_tensors' are the tensors corresponding to the arguments in the
 // original source graph (*not* 'graph').
@@ -52,16 +61,6 @@ typedef std::function<Status(
 // 'group_attribute' must be a string valued-attribute that names the new
 // functions to introduce.
 //
-// 'outside_compilation_attribute' must be a string-valued attribute that is
-// used to tag nodes within a subgraph to be part of an 'outside_compilation'
-// cluster within the subgraph. A cluster is formed from the set of nodes with
-// the same value of outside_compilation_subgraph and group_attribute. The nodes
-// in an outside_compilation cluster are left in the original graph. Edges
-// crossing from the subgraph to an outside_compilation cluster nested in the
-// subgraph are lifted into a SendToHost/RecvAtHost pair of nodes, and edges
-// crossing from an outside_compilation cluster into its enclosing subgraph are
-// lifted into a SendFromHost/RecvFromHost pair of nodes.
-//
 // If 'rewrite_subgraph_fn' is set, it is applied to each subgraph before
 // function conversion.
 //
@@ -74,10 +73,9 @@ typedef std::function<Status(
 // dep from B. Originally D must run after C, post-transformation this
 // dependency is lost.
 Status EncapsulateSubgraphsInFunctions(
-    string group_attribute, string outside_compilation_attribute,
-    const Graph& graph_in, const RewriteSubgraphFn& rewrite_subgraph_fn,
-    bool reuse_existing_functions, std::unique_ptr<Graph>* graph_out,
-    FunctionLibraryDefinition* library);
+    string group_attribute, const Graph& graph_in,
+    const RewriteSubgraphFn& rewrite_subgraph_fn, bool reuse_existing_functions,
+    std::unique_ptr<Graph>* graph_out, FunctionLibraryDefinition* library);
 
 // The attribute that marks function calls produced by the encapsulate
 // subgraphs pass and that should in turn be compiled via XlaLaunch operators.
@@ -102,16 +100,14 @@ extern const char* const kXlaNumConstantArgsAttr;
 // Name of the attribute containing the number of resource variable arguments.
 extern const char* const kXlaNumResourceArgsAttr;
 
+// Name of the attribute defining whether the cluster has reference variables.
+extern const char* const kXlaHasReferenceVarsAttr;
+
 // Sorts each node's control inputs by their names. This guarantees that for two
-// structually equivalent GraphDefs, we get the same traversal ordering on
+// structurally equivalent GraphDefs, we get the same traversal ordering on
 // node's control input fields.
 // TODO(hpucha): Move the utilities to a more appropriate place.
 void SortControlInputs(GraphDef* gdef);
-
-class EncapsulateSubgraphsPass : public GraphOptimizationPass {
- public:
-  Status Run(const GraphOptimizationPassOptions& options) override;
-};
 
 }  // namespace tensorflow
 

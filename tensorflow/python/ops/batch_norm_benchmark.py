@@ -48,7 +48,7 @@ def batch_norm_op(tensor, mean, variance, beta, gamma, scale):
 
 
 # Note that the naive implementation is much slower:
-# batch_norm = (tensor - mean) * tf.rsqrt(variance + 0.001)
+# batch_norm = (tensor - mean) * tf.math.rsqrt(variance + 0.001)
 # if scale:
 #   batch_norm *= gamma
 # return batch_norm + beta

@@ -13,13 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/variant_op_registry.h"
+
 #include <string>
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/framework/variant.h"
-#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
@@ -28,13 +30,6 @@ std::unordered_set<string>* UnaryVariantOpRegistry::PersistentStringStorage() {
   static std::unordered_set<string>* string_storage =
       new std::unordered_set<string>();
   return string_storage;
-}
-
-// static
-UnaryVariantOpRegistry* UnaryVariantOpRegistry::Global() {
-  static UnaryVariantOpRegistry* global_unary_variant_op_registry =
-      new UnaryVariantOpRegistry;
-  return global_unary_variant_op_registry;
 }
 
 UnaryVariantOpRegistry::VariantDecodeFn* UnaryVariantOpRegistry::GetDecodeFn(
@@ -56,6 +51,18 @@ void UnaryVariantOpRegistry::RegisterDecodeFn(
 }
 
 bool DecodeUnaryVariant(Variant* variant) {
+  CHECK_NOTNULL(variant);
+  if (variant->TypeName().empty()) {
+    VariantTensorDataProto* t = variant->get<VariantTensorDataProto>();
+    if (t == nullptr || !t->metadata().empty() || !t->tensors().empty()) {
+      // Malformed variant.
+      return false;
+    } else {
+      // Serialization of an empty Variant.
+      variant->clear();
+      return true;
+    }
+  }
   UnaryVariantOpRegistry::VariantDecodeFn* decode_fn =
       UnaryVariantOpRegistry::Global()->GetDecodeFn(variant->TypeName());
   if (decode_fn == nullptr) {
@@ -87,28 +94,6 @@ REGISTER_VARIANT_DECODE_TYPE(bool);
 REGISTER_VARIANT_DECODE_TYPE(double);
 
 #undef REGISTER_VARIANT_DECODE_TYPE
-
-UnaryVariantOpRegistry::AsyncVariantDeviceCopyFn*
-UnaryVariantOpRegistry::GetDeviceCopyFn(
-    const VariantDeviceCopyDirection direction, const TypeIndex& type_index) {
-  auto found = device_copy_fns.find(std::make_pair(direction, type_index));
-  if (found == device_copy_fns.end()) return nullptr;
-  return &found->second;
-}
-
-void UnaryVariantOpRegistry::RegisterDeviceCopyFn(
-    const VariantDeviceCopyDirection direction, const TypeIndex& type_index,
-    const AsyncVariantDeviceCopyFn& device_copy_fn) {
-  AsyncVariantDeviceCopyFn* existing = GetDeviceCopyFn(direction, type_index);
-  CHECK_EQ(existing, nullptr)
-      << "UnaryVariantDeviceCopy for direction: " << direction
-      << " and type_index: " << port::MaybeAbiDemangle(type_index.name())
-      << " already registered";
-  device_copy_fns.insert(
-      std::pair<std::pair<VariantDeviceCopyDirection, TypeIndex>,
-                AsyncVariantDeviceCopyFn>(std::make_pair(direction, type_index),
-                                          device_copy_fn));
-}
 
 Status VariantDeviceCopy(
     const VariantDeviceCopyDirection direction, const Variant& from,
@@ -157,26 +142,6 @@ REGISTER_VARIANT_DEVICE_COPY_TYPE(bool);
 
 #undef REGISTER_VARIANT_DEVICE_COPY_TYPE
 
-// Special casing UnaryOpFn per op and per device.
-UnaryVariantOpRegistry::VariantUnaryOpFn* UnaryVariantOpRegistry::GetUnaryOpFn(
-    VariantUnaryOp op, StringPiece device, const TypeIndex& type_index) {
-  auto found = unary_op_fns.find({op, device, type_index});
-  if (found == unary_op_fns.end()) return nullptr;
-  return &found->second;
-}
-
-void UnaryVariantOpRegistry::RegisterUnaryOpFn(
-    VariantUnaryOp op, const string& device, const TypeIndex& type_index,
-    const VariantUnaryOpFn& unary_op_fn) {
-  VariantUnaryOpFn* existing = GetUnaryOpFn(op, device, type_index);
-  CHECK_EQ(existing, nullptr)
-      << "Unary VariantUnaryOpFn for type_index: "
-      << port::MaybeAbiDemangle(type_index.name())
-      << " already registered for device type: " << device;
-  unary_op_fns.insert(std::pair<FuncTuple<VariantUnaryOp>, VariantUnaryOpFn>(
-      {op, GetPersistentStringPiece(device), type_index}, unary_op_fn));
-}
-
 namespace {
 template <typename T>
 Status ZerosLikeVariantPrimitiveType(OpKernelContext* ctx, const T& t,
@@ -198,27 +163,6 @@ REGISTER_VARIANT_ZEROS_LIKE_TYPE(double);
 REGISTER_VARIANT_ZEROS_LIKE_TYPE(bool);
 
 #undef REGISTER_VARIANT_ZEROS_LIKE_TYPE
-
-// Special casing BinaryOpFn per op and per device.
-UnaryVariantOpRegistry::VariantBinaryOpFn*
-UnaryVariantOpRegistry::GetBinaryOpFn(VariantBinaryOp op, StringPiece device,
-                                      const TypeIndex& type_index) {
-  auto found = binary_op_fns.find({op, device, type_index});
-  if (found == binary_op_fns.end()) return nullptr;
-  return &found->second;
-}
-
-void UnaryVariantOpRegistry::RegisterBinaryOpFn(
-    VariantBinaryOp op, const string& device, const TypeIndex& type_index,
-    const VariantBinaryOpFn& add_fn) {
-  VariantBinaryOpFn* existing = GetBinaryOpFn(op, device, type_index);
-  CHECK_EQ(existing, nullptr)
-      << "Unary VariantBinaryOpFn for type_index: "
-      << port::MaybeAbiDemangle(type_index.name())
-      << " already registered for device type: " << device;
-  binary_op_fns.insert(std::pair<FuncTuple<VariantBinaryOp>, VariantBinaryOpFn>(
-      {op, GetPersistentStringPiece(device), type_index}, add_fn));
-}
 
 namespace {
 template <typename T>

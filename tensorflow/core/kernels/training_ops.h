@@ -72,6 +72,15 @@ struct ApplyAdagrad {
 };
 
 template <typename Device, typename T>
+struct ApplyAdagradV2 {
+  void operator()(const Device& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat accum,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar epsilon,
+                  typename TTypes<T>::ConstFlat grad, bool update_slots);
+};
+
+template <typename Device, typename T>
 struct ApplyAdagradDA {
   void operator()(const Device& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat gradient_accum,
@@ -105,7 +114,32 @@ struct ApplyFtrl {
 };
 
 template <typename Device, typename T>
+struct ApplyFtrlMultiplyLinearByLr {
+  void operator()(const Device& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat accum,
+                  typename TTypes<T>::Flat linear,
+                  typename TTypes<T>::ConstFlat grad,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar l1,
+                  typename TTypes<T>::ConstScalar l2,
+                  typename TTypes<T>::ConstScalar lr_power);
+};
+
+template <typename Device, typename T>
 struct ApplyFtrlV2 {
+  void operator()(const Device& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat accum,
+                  typename TTypes<T>::Flat linear,
+                  typename TTypes<T>::ConstFlat grad,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar l1,
+                  typename TTypes<T>::ConstScalar l2,
+                  typename TTypes<T>::ConstScalar l2_shrinkage,
+                  typename TTypes<T>::ConstScalar lr_power);
+};
+
+template <typename Device, typename T>
+struct ApplyFtrlV2MultiplyLinearByLr {
   void operator()(const Device& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat accum,
                   typename TTypes<T>::Flat linear,
@@ -133,6 +167,17 @@ struct ApplyKerasMomentum {
                   typename TTypes<T>::ConstScalar lr,
                   typename TTypes<T>::ConstFlat grad,
                   typename TTypes<T>::ConstScalar momentum, bool use_nesterov);
+};
+
+template <typename Device, typename T, typename Tindex>
+struct SparseApplyKerasMomentum {
+  Tindex operator()(const Device& d, typename TTypes<T>::Matrix var,
+                    typename TTypes<T>::Matrix accum,
+                    typename TTypes<T>::ConstScalar lr,
+                    typename TTypes<T>::ConstMatrix grad,
+                    typename TTypes<Tindex>::ConstFlat indices,
+                    typename TTypes<T>::ConstScalar momentum,
+                    bool use_nesterov);
 };
 
 template <typename Device, typename T>

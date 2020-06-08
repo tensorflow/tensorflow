@@ -22,12 +22,13 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <vector>
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
+
 #include "tensorflow/core/platform/cloud/file_block_cache.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/notification.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -96,13 +97,13 @@ class RamFileBlockCache : public FileBlockCache {
   // the new one and remove the file from cache.
   bool ValidateAndUpdateFileSignature(const string& filename,
                                       int64 file_signature) override
-      LOCKS_EXCLUDED(mu_);
+      TF_LOCKS_EXCLUDED(mu_);
 
   /// Remove all cached blocks for `filename`.
-  void RemoveFile(const string& filename) override LOCKS_EXCLUDED(mu_);
+  void RemoveFile(const string& filename) override TF_LOCKS_EXCLUDED(mu_);
 
   /// Remove all cached data.
-  void Flush() override LOCKS_EXCLUDED(mu_);
+  void Flush() override TF_LOCKS_EXCLUDED(mu_);
 
   /// Accessors for cache parameters.
   size_t block_size() const override { return block_size_; }
@@ -110,7 +111,7 @@ class RamFileBlockCache : public FileBlockCache {
   uint64 max_staleness() const override { return max_staleness_; }
 
   /// The current size (in bytes) of the cache.
-  size_t CacheSize() const override LOCKS_EXCLUDED(mu_);
+  size_t CacheSize() const override TF_LOCKS_EXCLUDED(mu_);
 
   // Returns true if the cache is enabled. If false, the BlockFetcher callback
   // is always executed during Read.
@@ -177,7 +178,7 @@ class RamFileBlockCache : public FileBlockCache {
     /// Mutex to guard state variable
     mutex mu;
     /// The state of the block.
-    FetchState state GUARDED_BY(mu) = FetchState::CREATED;
+    FetchState state TF_GUARDED_BY(mu) = FetchState::CREATED;
     /// Wait on cond_var if state is FETCHING.
     condition_variable cond_var;
   };
@@ -188,30 +189,31 @@ class RamFileBlockCache : public FileBlockCache {
   typedef std::map<Key, std::shared_ptr<Block>> BlockMap;
 
   /// Prune the cache by removing files with expired blocks.
-  void Prune() LOCKS_EXCLUDED(mu_);
+  void Prune() TF_LOCKS_EXCLUDED(mu_);
 
   bool BlockNotStale(const std::shared_ptr<Block>& block)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Look up a Key in the block cache.
-  std::shared_ptr<Block> Lookup(const Key& key) LOCKS_EXCLUDED(mu_);
+  std::shared_ptr<Block> Lookup(const Key& key) TF_LOCKS_EXCLUDED(mu_);
 
   Status MaybeFetch(const Key& key, const std::shared_ptr<Block>& block)
-      LOCKS_EXCLUDED(mu_);
+      TF_LOCKS_EXCLUDED(mu_);
 
   /// Trim the block cache to make room for another entry.
-  void Trim() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void Trim() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Update the LRU iterator for the block at `key`.
   Status UpdateLRU(const Key& key, const std::shared_ptr<Block>& block)
-      LOCKS_EXCLUDED(mu_);
+      TF_LOCKS_EXCLUDED(mu_);
 
   /// Remove all blocks of a file, with mu_ already held.
-  void RemoveFile_Locked(const string& filename) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void RemoveFile_Locked(const string& filename)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Remove the block `entry` from the block map and LRU list, and update the
   /// cache size accordingly.
-  void RemoveBlock(BlockMap::iterator entry) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void RemoveBlock(BlockMap::iterator entry) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// The cache pruning thread that removes files with expired blocks.
   std::unique_ptr<Thread> pruning_thread_;
@@ -223,24 +225,24 @@ class RamFileBlockCache : public FileBlockCache {
   mutable mutex mu_;
 
   /// The block map (map from Key to Block).
-  BlockMap block_map_ GUARDED_BY(mu_);
+  BlockMap block_map_ TF_GUARDED_BY(mu_);
 
   /// The LRU list of block keys. The front of the list identifies the most
   /// recently accessed block.
-  std::list<Key> lru_list_ GUARDED_BY(mu_);
+  std::list<Key> lru_list_ TF_GUARDED_BY(mu_);
 
   /// The LRA (least recently added) list of block keys. The front of the list
   /// identifies the most recently added block.
   ///
   /// Note: blocks are added to lra_list_ only after they have successfully been
   /// fetched from the underlying block store.
-  std::list<Key> lra_list_ GUARDED_BY(mu_);
+  std::list<Key> lra_list_ TF_GUARDED_BY(mu_);
 
   /// The combined number of bytes in all of the cached blocks.
-  size_t cache_size_ GUARDED_BY(mu_) = 0;
+  size_t cache_size_ TF_GUARDED_BY(mu_) = 0;
 
   // A filename->file_signature map.
-  std::map<string, int64> file_signature_map_ GUARDED_BY(mu_);
+  std::map<string, int64> file_signature_map_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

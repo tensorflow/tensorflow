@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'int\'>"
   }
   member {
+    name: "AutoShardPolicy"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
     name: "CheckpointInputPipelineHook"
     mtype: "<type \'type\'>"
   }
@@ -13,7 +17,7 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "DatasetStructure"
+    name: "DistributeOptions"
     mtype: "<type \'type\'>"
   }
   member {
@@ -21,7 +25,7 @@ tf_module {
     mtype: "<type \'int\'>"
   }
   member {
-    name: "NestedStructure"
+    name: "MapVectorizationOptions"
     mtype: "<type \'type\'>"
   }
   member {
@@ -33,19 +37,11 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "OptionalStructure"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "RandomDataset"
     mtype: "<type \'type\'>"
   }
   member {
     name: "Reducer"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "SparseTensorStructure"
     mtype: "<type \'type\'>"
   }
   member {
@@ -61,15 +57,7 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "Structure"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "TFRecordWriter"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "TensorStructure"
     mtype: "<type \'type\'>"
   }
   member {
@@ -80,13 +68,25 @@ tf_module {
     name: "UNKNOWN_CARDINALITY"
     mtype: "<type \'int\'>"
   }
+  member {
+    name: "service"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "Counter"
     argspec: "args=[\'start\', \'step\', \'dtype\'], varargs=None, keywords=None, defaults=[\'0\', \'1\', \"<dtype: \'int64\'>\"], "
   }
   member_method {
+    name: "assert_cardinality"
+    argspec: "args=[\'expected_cardinality\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "bucket_by_sequence_length"
     argspec: "args=[\'element_length_func\', \'bucket_boundaries\', \'bucket_batch_sizes\', \'padded_shapes\', \'padding_values\', \'pad_to_bucket_boundary\', \'no_padding\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'False\', \'False\'], "
+  }
+  member_method {
+    name: "bytes_produced_stats"
+    argspec: "args=[\'tag\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "cardinality"
@@ -101,6 +101,10 @@ tf_module {
     argspec: "args=[\'target_device\', \'source_device\'], varargs=None, keywords=None, defaults=[\'/cpu:0\'], "
   }
   member_method {
+    name: "dense_to_ragged_batch"
+    argspec: "args=[\'batch_size\', \'drop_remainder\', \'row_splits_dtype\'], varargs=None, keywords=None, defaults=[\'False\', \"<dtype: \'int64\'>\"], "
+  }
+  member_method {
     name: "dense_to_sparse_batch"
     argspec: "args=[\'batch_size\', \'row_shape\'], varargs=None, keywords=None, defaults=None"
   }
@@ -109,8 +113,8 @@ tf_module {
     argspec: "args=[\'start\'], varargs=None, keywords=None, defaults=[\'0\'], "
   }
   member_method {
-    name: "filter_for_shard"
-    argspec: "args=[\'num_shards\', \'shard_index\'], varargs=None, keywords=None, defaults=None"
+    name: "from_variant"
+    argspec: "args=[\'variant\', \'structure\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_next_as_optional"
@@ -119,6 +123,10 @@ tf_module {
   member_method {
     name: "get_single_element"
     argspec: "args=[\'dataset\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_structure"
+    argspec: "args=[\'dataset_or_iterator\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "group_by_reducer"
@@ -138,15 +146,15 @@ tf_module {
   }
   member_method {
     name: "make_batched_features_dataset"
-    argspec: "args=[\'file_pattern\', \'batch_size\', \'features\', \'reader\', \'label_key\', \'reader_args\', \'num_epochs\', \'shuffle\', \'shuffle_buffer_size\', \'shuffle_seed\', \'prefetch_buffer_size\', \'reader_num_threads\', \'parser_num_threads\', \'sloppy_ordering\', \'drop_final_batch\'], varargs=None, keywords=None, defaults=[\"<class \'tensorflow.python.data.ops.readers.TFRecordDatasetV1\'>\", \'None\', \'None\', \'None\', \'True\', \'10000\', \'None\', \'-1\', \'1\', \'2\', \'False\', \'False\'], "
+    argspec: "args=[\'file_pattern\', \'batch_size\', \'features\', \'reader\', \'label_key\', \'reader_args\', \'num_epochs\', \'shuffle\', \'shuffle_buffer_size\', \'shuffle_seed\', \'prefetch_buffer_size\', \'reader_num_threads\', \'parser_num_threads\', \'sloppy_ordering\', \'drop_final_batch\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'True\', \'10000\', \'None\', \'None\', \'None\', \'None\', \'False\', \'False\'], "
   }
   member_method {
     name: "make_csv_dataset"
-    argspec: "args=[\'file_pattern\', \'batch_size\', \'column_names\', \'column_defaults\', \'label_name\', \'select_columns\', \'field_delim\', \'use_quote_delim\', \'na_value\', \'header\', \'num_epochs\', \'shuffle\', \'shuffle_buffer_size\', \'shuffle_seed\', \'prefetch_buffer_size\', \'num_parallel_reads\', \'sloppy\', \'num_rows_for_inference\', \'compression_type\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \',\', \'True\', \'\', \'True\', \'None\', \'True\', \'10000\', \'None\', \'-1\', \'1\', \'False\', \'100\', \'None\'], "
+    argspec: "args=[\'file_pattern\', \'batch_size\', \'column_names\', \'column_defaults\', \'label_name\', \'select_columns\', \'field_delim\', \'use_quote_delim\', \'na_value\', \'header\', \'num_epochs\', \'shuffle\', \'shuffle_buffer_size\', \'shuffle_seed\', \'prefetch_buffer_size\', \'num_parallel_reads\', \'sloppy\', \'num_rows_for_inference\', \'compression_type\', \'ignore_errors\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \',\', \'True\', \'\', \'True\', \'None\', \'True\', \'10000\', \'None\', \'None\', \'None\', \'False\', \'100\', \'None\', \'False\'], "
   }
   member_method {
     name: "make_saveable_from_iterator"
-    argspec: "args=[\'iterator\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'iterator\', \'external_state_policy\'], varargs=None, keywords=None, defaults=[\'fail\'], "
   }
   member_method {
     name: "map_and_batch"
@@ -158,7 +166,7 @@ tf_module {
   }
   member_method {
     name: "parse_example_dataset"
-    argspec: "args=[\'features\', \'num_parallel_calls\'], varargs=None, keywords=None, defaults=[\'1\'], "
+    argspec: "args=[\'features\', \'num_parallel_calls\', \'deterministic\'], varargs=None, keywords=None, defaults=[\'1\', \'None\'], "
   }
   member_method {
     name: "prefetch_to_device"
@@ -181,8 +189,16 @@ tf_module {
     argspec: "args=[\'buffer_size\', \'count\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
+    name: "snapshot"
+    argspec: "args=[\'path\', \'compression\', \'reader_func\', \'shard_func\'], varargs=None, keywords=None, defaults=[\'AUTO\', \'None\', \'None\'], "
+  }
+  member_method {
     name: "take_while"
     argspec: "args=[\'predicate\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "to_variant"
+    argspec: "args=[\'dataset\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "unbatch"

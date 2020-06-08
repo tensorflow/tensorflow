@@ -46,8 +46,8 @@ def make_all(module_name, doc_string_modules=None):
   """
   if doc_string_modules is None:
     doc_string_modules = [_sys.modules[module_name]]
-  cur_members = set([name for name, _
-                     in _tf_inspect.getmembers(_sys.modules[module_name])])
+  cur_members = set(
+      name for name, _ in _tf_inspect.getmembers(_sys.modules[module_name]))
 
   results = set()
   for doc_module in doc_string_modules:

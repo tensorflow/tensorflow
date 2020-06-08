@@ -73,7 +73,7 @@ class LSTMTest(test.TestCase):
 
   def _RunLSTMCell(self, basename, init_weights, m_prev_scalar, c_prev_scalar,
                    pad_scalar):
-    with self.cached_session() as sess:
+    with self.session() as sess:
       num_inputs = 1
       num_nodes = 1
 
@@ -156,7 +156,7 @@ class LSTMTest(test.TestCase):
 
   def _RunLSTMLayer(self, basename, init_weights, m_init_scalar, c_init_scalar,
                     pad_scalar):
-    with self.cached_session() as sess:
+    with self.session() as sess:
       num_inputs = 1
       num_nodes = 1
       seq_length = 3
@@ -321,4 +321,7 @@ if __name__ == '__main__':
   )
   global FLAGS  # pylint:disable=global-at-module-level
   FLAGS, unparsed = parser.parse_known_args()
+  # This test is using Tensorflow sessions which are not compatible with eager
+  # mode.
+  ops.disable_eager_execution()
   test.main(argv=[sys.argv[0]] + unparsed)

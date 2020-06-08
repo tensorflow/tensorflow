@@ -124,7 +124,7 @@ def _l2_loss_flops(graph, node):
 @ops.RegisterStatistics("Softmax", "flops")
 def _softmax_flops(graph, node):
   """Compute flops for Softmax operation."""
-  # Softmax implenetation:
+  # Softmax implemetation:
   #
   # Approximate flops breakdown:
   #   2*n          -- compute shifted logits
@@ -313,7 +313,7 @@ def _pool_flops(graph, node):
   #     - padding
   #     - data_format
   #
-  # Pooling implenetation:
+  # Pooling implemetation:
   out_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
   out_shape.assert_is_fully_defined()
   kernel_shape = list(node.attr["ksize"].list.i)

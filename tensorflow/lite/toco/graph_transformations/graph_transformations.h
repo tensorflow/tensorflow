@@ -102,8 +102,16 @@ class GraphTransformationsSet {
 // construct GraphTransformation objects by using 'new', pass us
 // the resulting raw pointers, and this RunGraphTransformations
 // takes care of delete'ing these pointers.
-void RunGraphTransformations(Model* model, const string& message,
-                             const GraphTransformationsSet& transformations);
+tensorflow::Status RunGraphTransformationsWithStatus(
+    Model* model, const string& msg,
+    const GraphTransformationsSet& transformations);
+
+inline void RunGraphTransformations(
+    Model* model, const string& msg,
+    const GraphTransformationsSet& transformations) {
+  auto s = RunGraphTransformationsWithStatus(model, msg, transformations);
+  CHECK(s.ok()) << s.error_message();
+}
 
 #define DECLARE_GRAPH_TRANSFORMATION(GTName)                     \
   class GTName : public GraphTransformation {                    \
@@ -115,13 +123,15 @@ void RunGraphTransformations(Model* model, const string& message,
 
 // List of all graph transformations
 DECLARE_GRAPH_TRANSFORMATION(ConvertExpandDimsToReshape)
+DECLARE_GRAPH_TRANSFORMATION(ConvertMatrixSetDiagV2OrV3ToV1)
+DECLARE_GRAPH_TRANSFORMATION(ConvertMatrixDiagV2OrV3ToV1)
 DECLARE_GRAPH_TRANSFORMATION(ConvertPureConvToDepthwise)
+DECLARE_GRAPH_TRANSFORMATION(ConvertReorderAxes)
 DECLARE_GRAPH_TRANSFORMATION(ConvertSqueezeToReshape)
 DECLARE_GRAPH_TRANSFORMATION(ConvertTrivialAddNToAdd)
 DECLARE_GRAPH_TRANSFORMATION(ConvertTrivialPackToReshape)
 DECLARE_GRAPH_TRANSFORMATION(ConvertTrivialTileToConcat)
 DECLARE_GRAPH_TRANSFORMATION(ConvertTrivialTransposeToReshape)
-DECLARE_GRAPH_TRANSFORMATION(ConvertReorderAxes)
 DECLARE_GRAPH_TRANSFORMATION(EnsureBiasVectors)
 DECLARE_GRAPH_TRANSFORMATION(FuseActivationFunctions)
 DECLARE_GRAPH_TRANSFORMATION(FuseBinaryIntoFollowingAffine)
@@ -129,9 +139,12 @@ DECLARE_GRAPH_TRANSFORMATION(FuseBinaryIntoPrecedingAffine)
 DECLARE_GRAPH_TRANSFORMATION(FuseBroadcastIntoFollowingBinary)
 DECLARE_GRAPH_TRANSFORMATION(GroupBidirectionalSequenceLstm)
 DECLARE_GRAPH_TRANSFORMATION(GroupBidirectionalSequenceRnn)
+DECLARE_GRAPH_TRANSFORMATION(GroupDynamicBidirectionalSequenceLstm)
+DECLARE_GRAPH_TRANSFORMATION(GroupDynamicBidirectionalSequenceRnn)
 DECLARE_GRAPH_TRANSFORMATION(IdentifyL2Normalization)
 DECLARE_GRAPH_TRANSFORMATION(IdentifyL2Pool)
 DECLARE_GRAPH_TRANSFORMATION(IdentifyLstmCell)
+DECLARE_GRAPH_TRANSFORMATION(IdentifyHardSwish)
 DECLARE_GRAPH_TRANSFORMATION(SplitLstmCellInputs)
 DECLARE_GRAPH_TRANSFORMATION(MergeLstmCellInputs)
 DECLARE_GRAPH_TRANSFORMATION(MergeReshapeIntoPrecedingTranspose)
@@ -146,6 +159,7 @@ DECLARE_GRAPH_TRANSFORMATION(PropagateFixedSizes)
 DECLARE_GRAPH_TRANSFORMATION(HardcodeMinMax)
 DECLARE_GRAPH_TRANSFORMATION(Quantize)
 DECLARE_GRAPH_TRANSFORMATION(RemoveFinalDequantizeOp)
+DECLARE_GRAPH_TRANSFORMATION(RemoveSuccessiveTranspose)
 DECLARE_GRAPH_TRANSFORMATION(RemoveTensorFlowAssert)
 DECLARE_GRAPH_TRANSFORMATION(RemoveTensorFlowIdentity)
 DECLARE_GRAPH_TRANSFORMATION(RemoveTrivialBinaryOperator)
@@ -201,6 +215,7 @@ DECLARE_GRAPH_TRANSFORMATION(UnpartitionEmbeddingLookup)
 DECLARE_GRAPH_TRANSFORMATION(ShuffleFCWeights)
 DECLARE_GRAPH_TRANSFORMATION(ResolveFakeQuantArgsFromVars)
 DECLARE_GRAPH_TRANSFORMATION(ResolveGatherAttributes)
+DECLARE_GRAPH_TRANSFORMATION(IdentifyNearestUpsample)
 
 class PropagateDefaultMinMax : public GraphTransformation {
  public:

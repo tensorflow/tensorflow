@@ -58,7 +58,7 @@ def inner_product(u, v):
 
 
 def exact_gaussian_kernel(x, y, stddev):
-  """Computes exact Gaussian kernel value(s) for tensors x and y and stddev.
+  r"""Computes exact Gaussian kernel value(s) for tensors x and y and stddev.
 
   The Gaussian kernel for vectors u, v is defined as follows:
        K(u, v) = exp(-||u-v||^2 / (2* stddev^2))
@@ -79,7 +79,7 @@ def exact_gaussian_kernel(x, y, stddev):
       all (u,v) pairs where u, v are rows from x and y respectively.
 
   Raises:
-    InvalidShapeError: if the shapes of x, y are not compatible.
+    ValueError: if the shapes of x, y are not compatible.
   """
   x_aligned, y_aligned = _align_matrices(x, y)
   diff_squared_l2_norm = math_ops.reduce_sum(
@@ -88,7 +88,7 @@ def exact_gaussian_kernel(x, y, stddev):
 
 
 def exact_laplacian_kernel(x, y, stddev):
-  """Computes exact Laplacian kernel value(s) for tensors x and y using stddev.
+  r"""Computes exact Laplacian kernel value(s) for tensors x and y using stddev.
 
   The Laplacian kernel for vectors u, v is defined as follows:
        K(u, v) = exp(-||u-v|| / stddev)
@@ -109,7 +109,7 @@ def exact_laplacian_kernel(x, y, stddev):
     all (u,v) pairs where u, v are rows from x and y respectively.
 
   Raises:
-    InvalidShapeError: if the shapes of x, y are not compatible.
+    ValueError: if the shapes of x, y are not compatible.
   """
   x_aligned, y_aligned = _align_matrices(x, y)
   diff_l1_norm = math_ops.reduce_sum(

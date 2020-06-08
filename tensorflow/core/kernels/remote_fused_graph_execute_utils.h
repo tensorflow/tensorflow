@@ -19,8 +19,8 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/kernels/i_remote_fused_graph_executor.h"
 #include "tensorflow/core/kernels/i_remote_fused_graph_ops_definitions.h"
 #include "tensorflow/core/lib/core/status.h"

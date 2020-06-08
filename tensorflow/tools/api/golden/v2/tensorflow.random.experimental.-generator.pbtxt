@@ -1,0 +1,84 @@
+path: "tensorflow.random.experimental.Generator"
+tf_class {
+  is_instance: "<class \'tensorflow.python.ops.stateful_random_ops.Generator\'>"
+  is_instance: "<class \'tensorflow.python.training.tracking.tracking.AutoTrackable\'>"
+  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "algorithm"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "key"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "state"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'copy_from\', \'state\', \'alg\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "binomial"
+    argspec: "args=[\'self\', \'shape\', \'counts\', \'probs\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "from_key_counter"
+    argspec: "args=[\'cls\', \'key\', \'counter\', \'alg\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_non_deterministic_state"
+    argspec: "args=[\'cls\', \'alg\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "from_seed"
+    argspec: "args=[\'cls\', \'seed\', \'alg\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "from_state"
+    argspec: "args=[\'cls\', \'state\', \'alg\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "make_seeds"
+    argspec: "args=[\'self\', \'count\'], varargs=None, keywords=None, defaults=[\'1\'], "
+  }
+  member_method {
+    name: "normal"
+    argspec: "args=[\'self\', \'shape\', \'mean\', \'stddev\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0\', \'1.0\', \"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "reset"
+    argspec: "args=[\'self\', \'state\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "reset_from_key_counter"
+    argspec: "args=[\'self\', \'key\', \'counter\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "reset_from_seed"
+    argspec: "args=[\'self\', \'seed\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "skip"
+    argspec: "args=[\'self\', \'delta\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "split"
+    argspec: "args=[\'self\', \'count\'], varargs=None, keywords=None, defaults=[\'1\'], "
+  }
+  member_method {
+    name: "truncated_normal"
+    argspec: "args=[\'self\', \'shape\', \'mean\', \'stddev\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0\', \'1.0\', \"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "uniform"
+    argspec: "args=[\'self\', \'shape\', \'minval\', \'maxval\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\', \"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "uniform_full_int"
+    argspec: "args=[\'self\', \'shape\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'uint64\'>\", \'None\'], "
+  }
+}

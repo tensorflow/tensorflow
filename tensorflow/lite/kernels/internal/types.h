@@ -16,7 +16,9 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_TYPES_H_
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
+#include <initializer_list>
 
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 
@@ -28,6 +30,12 @@ enum class PaddingType : uint8 { kNone, kSame, kValid };
 struct PaddingValues {
   int16 width;
   int16 height;
+  // offset is used for calculating "remaining" padding, for example, `width`
+  // is 1 and `width_offset` is 1, so padding_left is 1 while padding_right is
+  // 1 + 1 = 2.
+  int16 width_offset;
+  // Same as width_offset except it's over the height dimension.
+  int16 height_offset;
 };
 
 // This enumeration allows for non-default formats for the weights array
@@ -120,9 +128,9 @@ struct Dims {
 
 class RuntimeShape {
  public:
-  // Shapes with dimensions up to 4 are stored directly in the structure, while
+  // Shapes with dimensions up to 5 are stored directly in the structure, while
   // larger shapes are separately allocated.
-  static constexpr int kMaxSmallSize = 4;
+  static constexpr int kMaxSmallSize = 5;
 
   RuntimeShape& operator=(RuntimeShape const&) = delete;
 
@@ -199,8 +207,8 @@ class RuntimeShape {
   inline const int32* DimsData() const {
     return size_ > kMaxSmallSize ? dims_pointer_ : dims_;
   }
-  // The caller must ensure that the shape is no bigger than 4-D.
-  inline const int32* DimsDataUpTo4D() const { return dims_; }
+  // The caller must ensure that the shape is no bigger than 5-D.
+  inline const int32* DimsDataUpTo5D() const { return dims_; }
 
   inline void Resize(int dimensions_count) {
     if (size_ > kMaxSmallSize) {
@@ -256,11 +264,9 @@ class RuntimeShape {
   // vector.
   inline int FlatSize() const {
     int buffer_size = 1;
-    const int* dims_data = DimsData();
+    const int* dims_data = reinterpret_cast<const int*>(DimsData());
     for (int i = 0; i < size_; i++) {
-      const int dim = dims_data[i];
-      TFLITE_DCHECK_GE(dim, 1);
-      buffer_size *= dim;
+      buffer_size *= dims_data[i];
     }
     return buffer_size;
   }
@@ -372,7 +378,7 @@ inline size_t ReducedOutputOffset(const int num_dims, const int* dims,
 
 inline int Offset(const RuntimeShape& shape, int i0, int i1, int i2, int i3) {
   TFLITE_DCHECK_EQ(shape.DimensionsCount(), 4);
-  const int* dims_data = shape.DimsDataUpTo4D();
+  const int* dims_data = reinterpret_cast<const int*>(shape.DimsDataUpTo5D());
   TFLITE_DCHECK(i0 >= 0 && i0 < dims_data[0]);
   TFLITE_DCHECK(i1 >= 0 && i1 < dims_data[1]);
   TFLITE_DCHECK(i2 >= 0 && i2 < dims_data[2]);
@@ -449,6 +455,25 @@ inline int FlatSize(const Dims<N>& dims) {
 TFLITE_DEPRECATED("Prefer FlatSize.")
 inline int RequiredBufferSizeForDims(const Dims<4>& dims) {
   return FlatSize(dims);
+}
+
+inline int MatchingElementsSize(const RuntimeShape& shape,
+                                const RuntimeShape& check_shape_0) {
+  const int size_1 = shape.FlatSize();
+  const int size_2 = check_shape_0.FlatSize();
+  TFLITE_CHECK_EQ(size_1, size_2);
+  return size_1;
+}
+
+inline int MatchingElementsSize(const RuntimeShape& shape,
+                                const RuntimeShape& check_shape_0,
+                                const RuntimeShape& check_shape_1) {
+  const int size_1 = shape.FlatSize();
+  const int size_2 = check_shape_0.FlatSize();
+  const int size_3 = check_shape_1.FlatSize();
+  TFLITE_CHECK_EQ(size_1, size_2);
+  TFLITE_CHECK_EQ(size_2, size_3);
+  return size_1;
 }
 
 // Flat size calculation, checking that dimensions match with one or more other
@@ -709,6 +734,13 @@ struct ActivationParams {
   int32 quantized_activation_max;
 };
 
+struct ReluParams : public ActivationParams {
+  int32 input_offset;
+  int32 output_offset;
+  int32 output_multiplier;
+  int32 output_shift;
+};
+
 // Styles of resizing op usages. For example, kImageStyle can be used with a Pad
 // op for pattern-specific optimization.
 enum class ResizingCategory : uint8 {
@@ -822,11 +854,19 @@ struct DepthwiseParams {
   // float activation params.
   float float_activation_min;
   float float_activation_max;
+  const int32* output_multiplier_per_channel;
+  const int32* output_shift_per_channel;
 };
 
 struct DequantizationParams {
   double scale;
   int32 zero_point;
+};
+
+struct PerChannelDequantizationParams {
+  const float* scale;
+  const int32* zero_point;
+  int32 quantized_dimension;
 };
 
 struct FakeQuantParams {
@@ -848,6 +888,9 @@ struct FullyConnectedParams {
   // float activation params.
   float float_activation_min;
   float float_activation_max;
+  // Mark the operands as cacheable if they are unchanging, e.g. weights.
+  bool lhs_cacheable;
+  bool rhs_cacheable;
   FullyConnectedWeightsFormat weights_format;
 };
 
@@ -865,6 +908,27 @@ struct LocalResponseNormalizationParams {
   double bias;
   double alpha;
   double beta;
+};
+
+struct HardSwishParams {
+  // zero_point of the input activations.
+  int16_t input_zero_point;
+  // zero_point of the output activations.
+  int16_t output_zero_point;
+  // 16bit fixed-point component of the multiplier to apply to go from the
+  // "high-res input scale", which is the input scale multiplied by 2^7, to the
+  // "relu-ish scale", which 3.0/32768.
+  // See the implementation of HardSwishPrepare.
+  int16_t reluish_multiplier_fixedpoint_int16;
+  // exponent/bit-shift component of the aforementioned multiplier.
+  int reluish_multiplier_exponent;
+  // 16bit fixed-point component of the multiplier to apply to go from the
+  // "high-res input scale", which is the input scale multiplied by 2^7, to the
+  // output scale.
+  // See the implementation of HardSwishPrepare.
+  int16_t output_multiplier_fixedpoint_int16;
+  // exponent/bit-shift component of the aforementioned multiplier.
+  int output_multiplier_exponent;
 };
 
 struct LogisticParams {
@@ -908,8 +972,10 @@ struct PreluParams {
   int32 input_offset;
   int32 alpha_offset;
   int32 output_offset;
-  int32 output_multiplier;
-  int output_shift;
+  int32 output_multiplier_1;
+  int32 output_shift_1;
+  int32 output_multiplier_2;
+  int32 output_shift_2;
 };
 
 struct PoolParams {
@@ -935,10 +1001,15 @@ struct ReshapeParams {
 
 struct ResizeBilinearParams {
   bool align_corners;
+  // half_pixel_centers assumes pixels are of half the actual dimensions, and
+  // yields more accurate resizes. Corresponds to the same argument for the
+  // original TensorFlow op in TF2.0.
+  bool half_pixel_centers;
 };
 
 struct ResizeNearestNeighborParams {
   bool align_corners;
+  bool half_pixel_centers;
 };
 
 struct SliceParams {
@@ -959,6 +1030,11 @@ struct SoftmaxParams {
   int32 reverse_scaling_divisor;
   int32 reverse_scaling_right_shift;
   int diff_min;
+  int32_t zero_point;
+  float scale;
+  float* table;
+  int16_t* exp_lut;
+  int16_t* one_over_one_plus_x_lut;
 };
 
 struct SpaceToBatchParams {
@@ -984,11 +1060,11 @@ struct SqueezeParams {
 
 struct StridedSliceParams {
   int8 start_indices_count;
-  int16 start_indices[4];
+  int32 start_indices[5];
   int8 stop_indices_count;
-  int16 stop_indices[4];
+  int32 stop_indices[5];
   int8 strides_count;
-  int16 strides[4];
+  int32 strides[5];
 
   int16 begin_mask;
   int16 ellipsis_mask;
@@ -1006,7 +1082,7 @@ struct TanhParams {
 
 struct TransposeParams {
   int8 perm_count;
-  int32 perm[4];
+  int32 perm[5];
 };
 
 struct UnpackParams {
@@ -1016,6 +1092,12 @@ struct UnpackParams {
 
 struct LeakyReluParams {
   float alpha;
+  int32 input_offset;
+  int32 output_offset;
+  int32 output_multiplier_alpha;
+  int32 output_shift_alpha;
+  int32 output_multiplier_identity;
+  int32 output_shift_identity;
 };
 
 template <typename P>

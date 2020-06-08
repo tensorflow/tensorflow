@@ -52,15 +52,15 @@ class ReaderBase : public ReaderInterface {
   //  d) If there was an error producing (e.g. an error reading the file,
   //     data corruption), return a non-OK() status.  ReadLocked may be
   //     called again if the user reruns this part of the graph.
-  virtual Status ReadLocked(string* key, string* value, bool* produced,
+  virtual Status ReadLocked(tstring* key, tstring* value, bool* produced,
                             bool* at_end) = 0;
 
   // Descendants may optionally implement these -------------------------------
 
   // Produce up to num_records next key/value pairs from the current
   // work item, in the same manner of ReadLocked.
-  virtual Status ReadUpToLocked(int64 num_records, std::vector<string>* keys,
-                                std::vector<string>* values, int64* num_read,
+  virtual Status ReadUpToLocked(int64 num_records, std::vector<tstring>* keys,
+                                std::vector<tstring>* values, int64* num_read,
                                 bool* at_end);
 
   // Called when work starts / finishes.
@@ -72,8 +72,8 @@ class ReaderBase : public ReaderInterface {
 
   // Default implementation generates an Unimplemented error.
   // See the protected helper methods below.
-  virtual Status SerializeStateLocked(string* state);
-  virtual Status RestoreStateLocked(const string& state);
+  virtual Status SerializeStateLocked(tstring* state);
+  virtual Status RestoreStateLocked(const tstring& state);
 
   // Accessors ----------------------------------------------------------------
 
@@ -83,13 +83,13 @@ class ReaderBase : public ReaderInterface {
   // Returns the name of the current work item (valid if
   // work_in_progress() returns true).  May change between calls to
   // ReadLocked().
-  const string& current_work() const { return work_; }
+  const tstring& current_work() const { return work_; }
 
   // What was passed to the constructor.
   const string& name() const { return name_; }
 
   // Produce the key name (from current_work and the actual key).
-  string KeyName(const string& key) const;
+  tstring KeyName(const tstring& key) const;
 
  protected:
   // For descendants wishing to implement serialize & restore state.
@@ -110,27 +110,27 @@ class ReaderBase : public ReaderInterface {
 
   // Implementations of ReaderInterface methods.  These ensure thread-safety
   // and call the methods above to do the work.
-  void Read(QueueInterface* queue, string* key, string* value,
+  void Read(QueueInterface* queue, tstring* key, tstring* value,
             OpKernelContext* context) override;
 
   // Produces up to num_records.
   // In this implementation all the records come from the same work unit.
   int64 ReadUpTo(const int64 num_records, QueueInterface* queue,
-                 std::vector<string>* keys, std::vector<string>* value,
+                 std::vector<tstring>* keys, std::vector<tstring>* value,
                  OpKernelContext* context) override;
 
   Status Reset() override;
   int64 NumRecordsProduced() override;
   int64 NumWorkUnitsCompleted() override;
-  Status SerializeState(string* state) override;
-  Status RestoreState(const string& state) override;
+  Status SerializeState(tstring* state) override;
+  Status RestoreState(const tstring& state) override;
 
   mutable mutex mu_;
   const string name_;
   int64 work_started_ = 0;
   int64 work_finished_ = 0;
   int64 num_records_produced_ = 0;
-  string work_;
+  tstring work_;
 };
 
 }  // namespace tensorflow

@@ -18,6 +18,7 @@ cc_library(
         "//tensorflow:android": [],
         "//conditions:default": ["."],
     }),
+    visibility = ["//visibility:public"],
 )
 
 # Silly rules to make
@@ -39,7 +40,7 @@ genrule(
 genrule(
     name = "copy_jni_md_h",
     srcs = select({
-        "//tensorflow:darwin": ["@bazel_tools//tools/jdk:jni_md_header-darwin"],
+        "//tensorflow:macos": ["@bazel_tools//tools/jdk:jni_md_header-darwin"],
         "//conditions:default": ["@bazel_tools//tools/jdk:jni_md_header-linux"],
     }),
     outs = ["jni_md.h"],

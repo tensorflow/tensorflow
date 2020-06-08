@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 
+#include <optional>
 #include <random>
 #include <unordered_set>
 #include <vector>
@@ -479,19 +480,21 @@ TEST_F(GraphCyclesTest, ContractEdge) {
   ASSERT_TRUE(AddEdge(2, 4));
   ASSERT_TRUE(AddEdge(3, 4));
 
-  EXPECT_FALSE(g_.ContractEdge(1, 3));
+  EXPECT_FALSE(g_.ContractEdge(1, 3).has_value());
   CHECK(g_.CheckInvariants());
   EXPECT_TRUE(g_.HasEdge(1, 3));
 
-  EXPECT_TRUE(g_.ContractEdge(1, 2));
+  // Node (2) has more edges.
+  EXPECT_EQ(g_.ContractEdge(1, 2).value(), 2);
   CHECK(g_.CheckInvariants());
-  EXPECT_TRUE(g_.HasEdge(1, 3));
-  EXPECT_TRUE(g_.HasEdge(1, 4));
+  EXPECT_TRUE(g_.HasEdge(2, 3));
+  EXPECT_TRUE(g_.HasEdge(2, 4));
   EXPECT_TRUE(g_.HasEdge(3, 4));
 
-  EXPECT_TRUE(g_.ContractEdge(1, 3));
+  // Node (2) has more edges.
+  EXPECT_EQ(g_.ContractEdge(2, 3).value(), 2);
   CHECK(g_.CheckInvariants());
-  EXPECT_TRUE(g_.HasEdge(1, 4));
+  EXPECT_TRUE(g_.HasEdge(2, 4));
 }
 
 TEST_F(GraphCyclesTest, CanContractEdge) {
@@ -527,3 +530,26 @@ static void BM_StressTest(int iters, int num_nodes) {
   }
 }
 BENCHMARK(BM_StressTest)->Range(2048, 1048576);
+
+static void BM_ContractEdge(int iters, int num_nodes) {
+  while (iters-- > 0) {
+    tensorflow::testing::StopTiming();
+    tensorflow::GraphCycles g;
+    std::vector<int32> nodes;
+    nodes.reserve(num_nodes);
+    for (int i = 0; i < num_nodes; i++) {
+      nodes.push_back(g.NewNode());
+    }
+    // All edges point toward the last one.
+    for (int i = 0; i < num_nodes - 1; ++i) {
+      g.InsertEdge(nodes[i], nodes[num_nodes - 1]);
+    }
+
+    tensorflow::testing::StartTiming();
+    int node = num_nodes - 1;
+    for (int i = 0; i < num_nodes - 1; ++i) {
+      node = g.ContractEdge(nodes[i], node).value();
+    }
+  }
+}
+BENCHMARK(BM_ContractEdge)->Arg(1000)->Arg(10000);

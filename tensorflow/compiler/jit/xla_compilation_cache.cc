@@ -17,25 +17,35 @@ limitations under the License.
 
 #include <numeric>
 
+#include "absl/base/call_once.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/compiler/tf2xla/dump_graph.h"
+#include "tensorflow/compiler/jit/xla_activity.pb.h"
+#include "tensorflow/compiler/jit/xla_activity_listener.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/kernels/variable_ops.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 
@@ -120,6 +130,7 @@ XlaCompilationCache::BuildSignature(
     absl::Span<const XlaCompiler::Argument> args) {
   Signature signature;
   signature.name = Canonicalize(function.name(), AttrSlice(&function.attr()));
+
   for (const XlaCompiler::Argument& arg : args) {
     switch (arg.kind) {
       case XlaCompiler::Argument::kConstant:
@@ -127,7 +138,8 @@ XlaCompilationCache::BuildSignature(
         break;
       case XlaCompiler::Argument::kParameter:
       case XlaCompiler::Argument::kResource:
-        signature.arg_shapes.emplace_back(arg.type, arg.DimensionSizes());
+        signature.arg_shapes.emplace_back(arg.type,
+                                          arg.DimensionSizesAsInlinedVector());
         break;
       default:
         return errors::InvalidArgument(
@@ -155,13 +167,13 @@ Status XlaCompilationCache::BuildExecutable(
                                        : client_->default_device_ordinal());
   build_options.set_result_layout(result.xla_output_shape);
   build_options.set_device_allocator(options.device_allocator);
+  build_options.set_alias_passthrough_params(options.alias_passthrough_params);
 
-  auto compile_result =
-      client_->Compile(*result.computation, argument_layouts, build_options);
-  if (!compile_result.ok()) {
-    return compile_result.status();
-  }
-  *executable = std::move(compile_result.ValueOrDie());
+  TF_ASSIGN_OR_RETURN(
+      auto executables,
+      client_->Compile(*result.computation, argument_layouts, build_options));
+  TF_RET_CHECK(executables.size() == 1);
+  *executable = std::move(executables[0]);
   return Status::OK();
 }
 
@@ -185,7 +197,7 @@ Status XlaCompilationCache::Compile(
                      out_compilation_result, out_executable);
 }
 
-static bool IsMegamorphic(int64 compile_count, int64 execution_count) {
+static bool ShouldBeMegamorphic(int64 compile_count, int64 execution_count) {
   const int64 kCompileThreshold = 10;
   const int64 kMinExecutionsPerCompile = 50;
 
@@ -194,6 +206,52 @@ static bool IsMegamorphic(int64 compile_count, int64 execution_count) {
   // "pay off"?
   return compile_count > kCompileThreshold &&
          execution_count < kMinExecutionsPerCompile * compile_count;
+}
+
+// Creates a simple graph using the specified op as the only op apart from the
+// arg and retval nodes.
+static xla::StatusOr<std::unique_ptr<Graph>> CreateGraph(
+    const NodeDef& node_def, absl::Span<const XlaCompiler::Argument> args,
+    absl::Span<const DataType> result_types) {
+  // TODO(b/74182462): We implement this by creating a new dummy Graph including
+  // _Arg nodes, and let CompileGraph walk it. This could be optimized.
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+
+  Status status;
+  // First create the actual node we care about computing.
+  Node* main_node = graph->AddNode(node_def, &status);
+  TF_RETURN_IF_ERROR(status);
+
+  // Create dummy _Arg nodes. Link these to `node` and also via a control
+  // dependency edge to the _SOURCE node.
+  for (int64 i = 0; i < args.size(); ++i) {
+    Node* node;
+    string arg_name = absl::StrCat("_arg", i);
+    Status status =
+        NodeBuilder(arg_name, FunctionLibraryDefinition::kArgOp)
+            .ControlInput(graph->source_node())
+            .Attr("T", args[i].kind == XlaCompiler::Argument::kResource
+                           ? DT_RESOURCE
+                           : args[i].type)
+            .Attr("index", i)
+            .Finalize(graph.get(), &node);
+    TF_RETURN_IF_ERROR(status);
+    graph->AddEdge(node, 0, main_node, i);
+  }
+
+  // Similarly with return values, create dummy _Retval nodes fed by `node`.
+  for (int64 i = 0; i < result_types.size(); ++i) {
+    Node* node;
+    string retval_name = absl::StrCat("_retval", i);
+    Status status = NodeBuilder(retval_name, FunctionLibraryDefinition::kRetOp)
+                        .Input(main_node, i)
+                        .Attr("T", result_types[i])
+                        .Attr("index", i)
+                        .Finalize(graph.get(), &node);
+    TF_RETURN_IF_ERROR(status);
+  }
+  FixupSourceAndSinkEdges(graph.get());
+  return graph;
 }
 
 Status XlaCompilationCache::CompileSingleOp(
@@ -206,19 +264,58 @@ Status XlaCompilationCache::CompileSingleOp(
   NameAttrList name;
   name.set_name(def.op());
   *name.mutable_attr() = def.attr();
+  // Remove the "_class" attribute from the attribute set used to create the
+  // compilation cache key. This attribute is information for the colocator
+  // and causes false uniqueness between nodes.
+  name.mutable_attr()->erase("_class");
   auto compile_op = [&](XlaCompiler* compiler,
                         XlaCompiler::CompilationResult* result) {
     std::vector<DataType> result_dtypes(ctx->num_outputs());
     for (int i = 0; i < result_dtypes.size(); ++i) {
       result_dtypes[i] = ctx->expected_output_dtype(i);
     }
-    return compiler->CompileSingleOp(compile_options, ctx->op_kernel().def(),
-                                     args, result_dtypes, result);
+
+    const NodeDef& node_def = ctx->op_kernel().def();
+    TF_ASSIGN_OR_RETURN(auto graph, CreateGraph(node_def, args, result_dtypes));
+
+    bool are_args_supported =
+        absl::c_all_of(args, [](const XlaCompiler::Argument arg) {
+          return arg.kind == XlaCompiler::Argument::kConstant ||
+                 arg.kind == XlaCompiler::Argument::kParameter;
+        });
+    const ConfigProto* config = ctx->function_library()->config_proto();
+    bool use_mlir = config && config->experimental().enable_mlir_bridge();
+    // TODO(b/155596779): Understand the source of other argument types and
+    // depending on the source either support those or avoid these codepath.
+    if (!use_mlir || !are_args_supported) {
+      return compiler->CompileGraph(compile_options, node_def.name(),
+                                    std::move(graph), args, result);
+    }
+
+    GraphDebugInfo debug_info;
+    return CompileGraphToXlaHlo(
+        *graph, {args.data(), args.size()}, options.device_type.type_string(),
+        compile_options.use_tuple_arg, *options.flib_def, debug_info,
+        options.shape_representation_fn, result);
   };
   return CompileImpl(options, name, args, compile_op,
                      /*compile_threshold=*/absl::nullopt,
                      out_compilation_result, out_executable);
 }
+
+namespace {
+// Print something that users can search for to definitively ascertain that XLA
+// was used for their TF model.
+//
+// Prints only once to avoid spamming LOG(INFO).
+void LogOnceXlaCompiledFirstCluster() {
+  static absl::once_flag log_once;
+  absl::call_once(log_once, [] {
+    LOG(INFO) << "Compiled cluster using XLA!  This line is logged at most "
+                 "once for the lifetime of the process.";
+  });
+}
+}  // namespace
 
 Status XlaCompilationCache::CompileImpl(
     const XlaCompiler::Options& options, const NameAttrList& function,
@@ -234,7 +331,7 @@ Status XlaCompilationCache::CompileImpl(
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "num_inputs=" << args.size();
     for (int i = 0; i < args.size(); i++) {
-      VLOG(2) << i << ": " << args[i].HumanString();
+      VLOG(3) << i << ": " << args[i].HumanString();
     }
   }
 
@@ -274,9 +371,15 @@ Status XlaCompilationCache::CompileImpl(
 
     // The is_megamorphic bit is "sticky".  We assume clusters that have been
     // observed to be megamorphic once stay megamorphic forever.
-    it->second.is_megamorphic |=
-        IsMegamorphic(/*compile_count=*/it->second.compile_count,
-                      /*execution_count=*/it->second.execution_count);
+    if (!it->second.is_megamorphic &&
+        ShouldBeMegamorphic(/*compile_count=*/it->second.compile_count,
+                            /*execution_count=*/it->second.execution_count)) {
+      VLOG(1) << "Marking " << function.name()
+              << " as megamorphic, compile_count=" << it->second.compile_count
+              << " execution_count=" << it->second.execution_count;
+      it->second.is_megamorphic = true;
+    }
+
     is_megamorphic = it->second.is_megamorphic;
   }
 
@@ -290,6 +393,7 @@ Status XlaCompilationCache::CompileImpl(
           << current_request_count << " and compile threshold "
           << compile_threshold.value_or(0);
   if (!entry->compiled) {
+    XLA_SCOPED_LOGGING_TIMER("Compilation of XLA executable");
     const bool should_compile = [&] {
       if (!compile_threshold.has_value()) {
         // Lazy compilation is disabled.
@@ -297,6 +401,9 @@ Status XlaCompilationCache::CompileImpl(
       }
 
       if (is_megamorphic) {
+        BroadcastOptimizationRemark(XlaOptimizationRemark::MEGAMORPHIC_FUNCTION,
+                                    function.name())
+            .IgnoreError();
         VLOG(3) << "Not compiling cluster " << function.name()
                 << " because it is megamorphic.";
         return false;
@@ -342,11 +449,13 @@ Status XlaCompilationCache::CompileImpl(
 
     const uint64 compile_end_us = env->NowMicros();
     const uint64 compile_time_us = compile_end_us - compile_start_us;
+    metrics::UpdateXlaCompilationTime(compile_time_us);
     {
       mutex_lock lock(cluster_compile_stats_mu_);
       auto it = cluster_compile_stats_.find(function.name());
       it->second.compile_count++;
       it->second.cumulative_compile_time_us += compile_time_us;
+      LogOnceXlaCompiledFirstCluster();
       VLOG(1) << "compiled " << function.name() << " "
               << it->second.compile_count
               << " times, compile time: " << compile_time_us
@@ -358,6 +467,16 @@ Status XlaCompilationCache::CompileImpl(
               << tensorflow::strings::HumanReadableElapsedTime(
                      it->second.cumulative_compile_time_us / 1.0e6)
               << ")";
+
+      XlaJitCompilationActivity jit_compilation_activity;
+      jit_compilation_activity.set_cluster_name(function.name());
+      jit_compilation_activity.set_compile_count(it->second.compile_count);
+      jit_compilation_activity.set_compile_time_us(compile_time_us);
+      jit_compilation_activity.set_cumulative_compile_time_us(
+          it->second.cumulative_compile_time_us);
+
+      TF_RETURN_IF_ERROR(
+          BroadcastXlaActivity(std::move(jit_compilation_activity)));
     }
   }
   TF_RETURN_IF_ERROR(entry->compilation_status);

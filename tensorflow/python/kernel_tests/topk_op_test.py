@@ -108,6 +108,10 @@ class TopKTest(test.TestCase):
     values = -np.sort(-inputs)[:k]
     self._validateTopK(inputs, k, values, indices)
 
+  def testTop1AllNan(self):
+    inputs = [[np.NaN, np.NaN], [np.NaN, np.NaN]]
+    self._validateTopK(inputs, 1, [[np.NaN], [np.NaN]], [[0], [0]])
+
   def _testLargeSort(self, dtype):
     b = 10
     n = 5000
@@ -181,6 +185,11 @@ class TopKTest(test.TestCase):
     inputs = [3, 6, 15, 18, 6, 12, 1, 17, 3, 0, 4, 19, 1, 6]
     k = constant_op.constant(3)
     self._validateTopK(inputs, k, [19, 18, 17], [11, 3, 7])
+
+  def testTop3ZeroRows(self):
+    inputs = np.zeros([0, 10], dtype=np.float32)
+    self._validateTopK(inputs, 3, np.zeros([0, 3], dtype=np.float32),
+                       np.zeros([0, 3], dtype=np.int32))
 
   @test_util.run_deprecated_v1
   def testKNegative(self):

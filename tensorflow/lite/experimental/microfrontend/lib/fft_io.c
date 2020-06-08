@@ -23,7 +23,7 @@ void FftWriteMemmapPreamble(FILE* fp, const struct FftState* state) {
 }
 
 void FftWriteMemmap(FILE* fp, const struct FftState* state,
-                       const char* variable) {
+                    const char* variable) {
   fprintf(fp, "%s->input = fft_input;\n", variable);
   fprintf(fp, "%s->output = fft_output;\n", variable);
   fprintf(fp, "%s->fft_size = %zu;\n", variable, state->fft_size);

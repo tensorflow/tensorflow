@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/status.h"
 
 namespace xla {
@@ -45,6 +44,33 @@ class HloInstructionSequence {
   void push_back(HloInstruction* instruction) {
     instruction_sequence_.push_back(instruction);
     id_sequence_.push_back(instruction->unique_id());
+  }
+
+  // Removes the instruction from the sequence.
+  void remove_instruction(HloInstruction* instruction) {
+    auto instruction_it = std::find(instruction_sequence_.begin(),
+                                    instruction_sequence_.end(), instruction);
+    if (instruction_it != instruction_sequence_.end()) {
+      auto id_it = std::find(id_sequence_.begin(), id_sequence_.end(),
+                             instruction->unique_id());
+      instruction_sequence_.erase(instruction_it);
+      id_sequence_.erase(id_it);
+    }
+  }
+
+  // Replaces the old instruction with the new instruction in the sequence.
+  void replace_instruction(HloInstruction* old_instruction,
+                           HloInstruction* new_instruction) {
+    auto instruction_it =
+        std::find(instruction_sequence_.begin(), instruction_sequence_.end(),
+                  old_instruction);
+    auto id_it = std::find(id_sequence_.begin(), id_sequence_.end(),
+                           old_instruction->unique_id());
+    CHECK(instruction_it != instruction_sequence_.end())
+        << "Do not find instruction id " << old_instruction->unique_id();
+    CHECK(id_it != id_sequence_.end());
+    *instruction_it = new_instruction;
+    *id_it = new_instruction->unique_id();
   }
 
   // Clears the sequence of all instructions.
@@ -111,6 +137,28 @@ class HloSchedule {
   // Returns true if the schedule has a sequence for the given computation.
   bool is_computation_scheduled(const HloComputation* computation) const {
     return sequences_.contains(computation->unique_id());
+  }
+
+  // Removes the computation from the sequences.
+  void remove_computation(const HloComputation* computation) {
+    auto it = sequences_.find(computation->unique_id());
+    CHECK(it != sequences_.end());
+    sequences_.erase(it);
+  }
+
+  // Removes the instruction from the computation's sequence.
+  void remove_instruction(const HloComputation* computation,
+                          HloInstruction* instruction) {
+    sequences_[computation->unique_id()].remove_instruction(instruction);
+  }
+
+  // Replaces the old instruction with the new instruction in the computation's
+  // sequence.
+  void replace_instruction(const HloComputation* computation,
+                           HloInstruction* old_instruction,
+                           HloInstruction* new_instruction) {
+    sequences_[computation->unique_id()].replace_instruction(old_instruction,
+                                                             new_instruction);
   }
 
   // Updates the schedule such that it is (again) a valid schedule for the

@@ -14,7 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cmath>
-#include "tensorflow/lite/c/c_api_internal.h"
+
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -83,6 +84,10 @@ TfLiteStatus SinEval(TfLiteContext* context, TfLiteNode* node) {
   return EvalNumeric(context, node, std::sin);
 }
 
+TfLiteStatus CosEval(TfLiteContext* context, TfLiteNode* node) {
+  return EvalNumeric(context, node, std::cos);
+}
+
 TfLiteStatus LogEval(TfLiteContext* context, TfLiteNode* node) {
   return EvalNumeric(context, node, std::log);
 }
@@ -119,6 +124,14 @@ TfLiteRegistration* Register_SIN() {
       /*init=*/nullptr, /*free=*/nullptr,
       elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
       elementwise::SinEval};
+  return &r;
+}
+
+TfLiteRegistration* Register_COS() {
+  static TfLiteRegistration r = {
+      /*init=*/nullptr, /*free=*/nullptr,
+      elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
+      elementwise::CosEval};
   return &r;
 }
 

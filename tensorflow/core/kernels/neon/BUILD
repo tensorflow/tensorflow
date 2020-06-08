@@ -1,15 +1,14 @@
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_kernel_library",
+)
+
 # Description:
 # Kernel implementations using Neon intrinsics.
 #
 package(
     default_visibility = ["//visibility:public"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_kernel_library",
+    licenses = ["notice"],  # Apache 2.0
 )
 
 tf_kernel_library(

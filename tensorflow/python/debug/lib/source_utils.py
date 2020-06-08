@@ -21,7 +21,9 @@ from __future__ import print_function
 import collections
 import os
 import re
+import zipfile
 
+import absl
 import numpy as np
 
 from tensorflow.python.debug.lib import profiling
@@ -30,6 +32,9 @@ from tensorflow.python.debug.lib import profiling
 _TENSORFLOW_BASEDIR = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.dirname(
         os.path.normpath(os.path.abspath(__file__))))))
+
+_ABSL_BASEDIR = os.path.dirname(absl.__file__)
+
 
 UNCOMPILED_SOURCE_SUFFIXES = (".py")
 COMPILED_SOURCE_SUFFIXES = (".pyc", ".pyo")
@@ -68,7 +73,7 @@ def guess_is_tensorflow_py_library(py_file_path):
 
   Raises:
     ValueError: if the extension name of py_file_path does not indicate a Python
-      source file (compiled or uncomplied).
+      source file (compiled or uncompiled).
   """
   if (not is_extension_uncompiled_python_source(py_file_path) and
       not is_extension_compiled_python_source(py_file_path)):
@@ -76,18 +81,81 @@ def guess_is_tensorflow_py_library(py_file_path):
         "Input file path (%s) is not a Python source file." % py_file_path)
   py_file_path = _norm_abs_path(py_file_path)
 
-  return (py_file_path.startswith(_TENSORFLOW_BASEDIR) and
+  return ((py_file_path.startswith(_TENSORFLOW_BASEDIR) or
+           py_file_path.startswith(_ABSL_BASEDIR)) and
           not py_file_path.endswith("_test.py") and
-          not os.path.dirname(py_file_path).endswith(
-              os.path.normpath("python/debug/examples")))
+          (os.path.normpath("tensorflow/python/debug/examples") not in
+           os.path.normpath(py_file_path)))
 
 
 def load_source(source_file_path):
-  with open(source_file_path, "rU") as f:
-    source_text = f.read()
-  source_lines = source_text.split("\n")
+  """Load the content of a Python source code file.
+
+  This function covers the following case:
+    1. source_file_path points to an existing Python (.py) file on the
+       file system.
+    2. source_file_path is a path within a .par file (i.e., a zip-compressed,
+       self-contained Python executable).
+
+  Args:
+    source_file_path: Path to the Python source file to read.
+
+  Returns:
+    A length-2 tuple:
+      - Lines of the source file, as a `list` of `str`s.
+      - The width of the string needed to show the line number in the file.
+        This is calculated based on the number of lines in the source file.
+
+  Raises:
+    IOError: if loading is unsuccessful.
+  """
+  if os.path.isfile(source_file_path):
+    with open(source_file_path, "rb") as f:
+      source_text = f.read().decode("utf-8")
+    source_lines = source_text.split("\n")
+  else:
+    # One possible reason why the file doesn't exist is that it's a path
+    # inside a .par file. Try that possibility.
+    source_lines = _try_load_par_source(source_file_path)
+    if source_lines is None:
+      raise IOError(
+          "Source path neither exists nor can be loaded as a .par file: %s" %
+          source_file_path)
   line_num_width = int(np.ceil(np.log10(len(source_lines)))) + 3
   return source_lines, line_num_width
+
+
+def _try_load_par_source(source_file_path):
+  """Try loading the source code inside a .par file.
+
+  A .par file is a zip-compressed, self-contained Python executable.
+  It contains the content of individual Python source files that can
+  be read only through extracting from the zip file.
+
+  Args:
+    source_file_path: The full path to the file inside the .par file. This
+      path should include the path to the .par file itself, followed by the
+      intra-par path, e.g.,
+      "/tmp/my_executable.par/org-tensorflow/tensorflow/python/foo/bar.py".
+
+  Returns:
+    If successful, lines of the source file as a `list` of `str`s.
+    Else, `None`.
+  """
+  prefix_path = source_file_path
+  while True:
+    prefix_path, basename = os.path.split(prefix_path)
+    if not basename:
+      break
+    suffix_path = os.path.normpath(
+        os.path.relpath(source_file_path, start=prefix_path))
+    if prefix_path.endswith(".par") and os.path.isfile(prefix_path):
+      with zipfile.ZipFile(prefix_path) as z:
+        norm_names = [os.path.normpath(name) for name in z.namelist()]
+        if suffix_path in norm_names:
+          with z.open(z.namelist()[norm_names.index(suffix_path)]) as zf:
+            source_text = zf.read().decode("utf-8")
+            return source_text.split("\n")
 
 
 def annotate_source(dump,

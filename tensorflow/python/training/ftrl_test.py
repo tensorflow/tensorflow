@@ -37,6 +37,7 @@ from tensorflow.python.training import gradient_descent
 class FtrlOptimizerTest(test.TestCase):
 
   def doTestFtrlwithoutRegularization(self, use_resource=False):
+
     for dtype in [dtypes.half, dtypes.float32]:
       with self.cached_session() as sess:
         if use_resource:
@@ -65,7 +66,7 @@ class FtrlOptimizerTest(test.TestCase):
 
         v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllCloseAccordingToType(
-            np.array([-2.60260963, -4.29698515]), v0_val)
+            np.array([-2.60260963, -4.29698515]), v0_val, half_rtol=1e-2)
         self.assertAllCloseAccordingToType(
             np.array([-0.28432083, -0.56694895]), v1_val)
 
@@ -363,8 +364,8 @@ class FtrlOptimizerTest(test.TestCase):
         val2, val3 = self.applyOptimizer(
             adagrad.AdagradOptimizer(3.0, initial_accumulator_value=0.1), dtype)
 
-      self.assertAllCloseAccordingToType(val0, val2)
-      self.assertAllCloseAccordingToType(val1, val3)
+      self.assertAllCloseAccordingToType(val0, val2, half_rtol=2e-3)
+      self.assertAllCloseAccordingToType(val1, val3, half_rtol=2e-3)
 
   @test_util.run_deprecated_v1
   def testEquivSparseAdagradwithoutRegularization(self):

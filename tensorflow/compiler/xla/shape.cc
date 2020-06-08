@@ -34,8 +34,12 @@ Shape::Shape(const ShapeProto& shape_proto) {
   // instead of a constructor.
   if (shape_proto.dimensions_size() !=
       shape_proto.is_dynamic_dimension_size()) {
-    LOG(ERROR) << "Malformed shape proto: number of is_dynamic_dimension "
-                  "fields does not match number of dimension fields";
+    if (shape_proto.is_dynamic_dimension_size() != 0) {
+      LOG(ERROR) << "Malformed shape proto: number of is_dynamic_dimension "
+                    "fields does not match number of dimension fields";
+    } else {
+      LOG(WARNING) << "Malformed shape proto: is_dynamic_dimension is empty";
+    }
   }
   int64 num_dynamic_dimension_fields = std::min(
       shape_proto.dimensions_size(), shape_proto.is_dynamic_dimension_size());
@@ -44,7 +48,7 @@ Shape::Shape(const ShapeProto& shape_proto) {
   }
   tuple_shapes_.reserve(shape_proto.tuple_shapes_size());
   for (const ShapeProto& element_shape : shape_proto.tuple_shapes()) {
-    *add_tuple_shapes() = Shape(element_shape);
+    tuple_shapes_.emplace_back(element_shape);
   }
   if (shape_proto.has_layout()) {
     *mutable_layout() = Layout::CreateFromProto(shape_proto.layout());
@@ -137,40 +141,32 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
     }
   }
 
+  if (!ShapeUtil::SameDimensions(lhs, rhs)) {
+    VLOG(3) << "CompareShapes: lhs dimensions != rhs dimensions";
+    return false;
+  }
+
   if (!ignore_layout_) {
     if (lhs.layout().format() != rhs.layout().format()) {
       VLOG(3) << "CompareShapes: lhs layout format != rhs layout format";
       return false;
     }
     if (LayoutUtil::IsDenseArray(lhs)) {
-      if (!absl::c_equal(LayoutUtil::MinorToMajor(lhs),
-                         LayoutUtil::MinorToMajor(rhs))) {
+      Layout::Equal equal;
+      if (ignore_tiles_in_layout_) {
+        equal.IgnoreTiles();
+      }
+      if (ignore_element_size_in_layout_) {
+        equal.IgnoreElementSize();
+      }
+      if (ignore_memory_space_in_layout_) {
+        equal.IgnoreMemorySpace();
+      }
+      if (!equal(lhs.layout(), rhs.layout())) {
         VLOG(3) << "CompareShapes: lhs layout != rhs layout";
         return false;
       }
-
-      const auto& lhs_tiles = lhs.layout().tiles();
-      const auto& rhs_tiles = rhs.layout().tiles();
-      if (lhs_tiles.size() != rhs_tiles.size()) {
-        return false;
-      }
-      for (int64 i = 0; i < lhs_tiles.size(); i++) {
-        if (!absl::c_equal(lhs_tiles[i].dimensions(),
-                           rhs_tiles[i].dimensions())) {
-          return false;
-        }
-      }
-
-      if (lhs.layout().element_size_in_bits() !=
-          rhs.layout().element_size_in_bits()) {
-        return false;
-      }
     }
-  }
-
-  if (!ShapeUtil::SameDimensions(lhs, rhs)) {
-    VLOG(3) << "CompareShapes: lhs dimensions != rhs dimensions";
-    return false;
   }
 
   if (!ignore_dynamic_dimension_) {

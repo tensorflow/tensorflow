@@ -64,7 +64,9 @@ CallContext GetInstructionCallContext(HloOpcode opcode) {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
+    case HloOpcode::kSort:
     case HloOpcode::kFusion:
+    case HloOpcode::kCustomCall:
       return CallContext::kParallel;
     default:
       return CallContext::kNone;
@@ -92,6 +94,8 @@ const CallSite* CallGraphNode::GetCallSite(
   }
   return &callsites_[it->second];
 }
+
+std::string CallGraphNode::ToString() const { return computation_->name(); }
 
 void CallGraphNode::AddCallerCallSite(const CallSite& caller_callsite) {
   caller_callsites_.push_back(caller_callsite);
@@ -276,8 +280,8 @@ std::unique_ptr<CallGraph> CallGraph::Build(const HloModule* module) {
   // Constructor for CallGraph is private so absl::make_unique can't be used.
   auto call_graph = absl::WrapUnique<CallGraph>(new CallGraph(module));
 
-  VLOG(2) << "Building call graph for:";
-  XLA_VLOG_LINES(2, module->ToString());
+  VLOG(3) << "Building call graph for:";
+  XLA_VLOG_LINES(3, module->ToString());
 
   // Construct nodes of the call graph and populate the callsites.
   for (HloComputation* computation : module->computations()) {
@@ -308,7 +312,7 @@ std::unique_ptr<CallGraph> CallGraph::Build(const HloModule* module) {
   call_graph->SetCallContexts();
   call_graph->SetNodeDepths();
 
-  XLA_VLOG_LINES(1, call_graph->ToString());
+  XLA_VLOG_LINES(2, call_graph->ToString());
 
   return call_graph;
 }
@@ -365,7 +369,7 @@ bool CallGraph::IsFlattened() const {
 std::vector<HloInstruction*> CallGraph::GetComputationCallers(
     HloComputation* c) {
   std::vector<HloInstruction*> callers;
-  for (auto callsite : GetNode(c).caller_callsites()) {
+  for (const auto& callsite : GetNode(c).caller_callsites()) {
     callers.push_back(callsite.instruction());
   }
   return callers;

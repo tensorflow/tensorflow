@@ -1,0 +1,29 @@
+op {
+  graph_op_name: "SparseMatrixAdd"
+  visibility: HIDDEN
+  in_arg {
+    name: "a"
+    description: "A CSRSparseMatrix."
+  }
+  in_arg {
+    name: "b"
+    description: "A CSRSparseMatrix."
+  }
+  in_arg {
+    name: "alpha"
+    description: "A constant scalar."
+  }
+  in_arg {
+    name: "beta"
+    description: "A constant scalar."
+  }
+  out_arg {
+    name: "c"
+    description: "A CSRSparseMatrix."
+  }
+  summary: "Sparse addition of two CSR matrices, C = alpha * A + beta * B."
+  description: <<END
+The gradients of SparseMatrixAdd outputs with respect to alpha and beta are not
+currently defined (TensorFlow will return zeros for these entries).
+END
+}

@@ -20,9 +20,10 @@ limitations under the License.
 
 // Include appropriate platform-dependent implementation.
 #if defined(PLATFORM_GOOGLE)
-#include "tensorflow/core/platform/google/build_config/dynamic_annotations.h"
-#elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) || \
-    defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_WINDOWS)
+#include "tensorflow/core/platform/google/dynamic_annotations.h"
+#elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) ||    \
+    defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_POSIX_IOS) || \
+    defined(PLATFORM_GOOGLE_IOS) || defined(PLATFORM_WINDOWS)
 #include "tensorflow/core/platform/default/dynamic_annotations.h"
 #else
 #error Define the appropriate PLATFORM_<foo> macro for this platform

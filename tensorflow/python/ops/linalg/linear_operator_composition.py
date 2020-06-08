@@ -73,18 +73,18 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
   ==> Shape [2, 4] Tensor
 
   # Create a [2, 3] batch of 4 x 5 linear operators.
-  matrix_45 = tf.random_normal(shape=[2, 3, 4, 5])
+  matrix_45 = tf.random.normal(shape=[2, 3, 4, 5])
   operator_45 = LinearOperatorFullMatrix(matrix)
 
   # Create a [2, 3] batch of 5 x 6 linear operators.
-  matrix_56 = tf.random_normal(shape=[2, 3, 5, 6])
+  matrix_56 = tf.random.normal(shape=[2, 3, 5, 6])
   operator_56 = LinearOperatorFullMatrix(matrix_56)
 
   # Compose to create a [2, 3] batch of 4 x 6 operators.
   operator_46 = LinearOperatorComposition([operator_45, operator_56])
 
   # Create a shape [2, 3, 6, 2] vector.
-  x = tf.random_normal(shape=[2, 3, 6, 2])
+  x = tf.random.normal(shape=[2, 3, 6, 2])
   operator.matmul(x)
   ==> Shape [2, 3, 4, 2] Tensor
   ```
@@ -177,12 +177,14 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
     with ops.name_scope(name, values=graph_parents):
       super(LinearOperatorComposition, self).__init__(
           dtype=dtype,
-          graph_parents=graph_parents,
+          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
           name=name)
+    # TODO(b/143910018) Remove graph_parents in V3.
+    self._set_graph_parents(graph_parents)
 
   @property
   def operators(self):

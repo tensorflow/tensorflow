@@ -31,9 +31,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-void Reshape(OpKernelContext *context, const Tensor &input_indices_in,
-             const Tensor &input_shape_in, const Tensor &target_shape_in,
-             int output_indices_idx, int output_shape_idx) {
+void ReshapeSparseTensor(OpKernelContext *context,
+                         const Tensor &input_indices_in,
+                         const Tensor &input_shape_in,
+                         const Tensor &target_shape_in, int output_indices_idx,
+                         int output_shape_idx) {
   OP_REQUIRES(context, TensorShapeUtils::IsMatrix(input_indices_in.shape()),
               errors::InvalidArgument(
                   "Input indices should be a matrix but received shape ",
@@ -89,7 +91,8 @@ void Reshape(OpKernelContext *context, const Tensor &input_indices_in,
         errors::InvalidArgument(
             "Input to reshape is a SparseTensor with ", dense_size,
             " dense values, but the requested shape requires a multiple of ",
-            product));
+            product, ". input_shape=", input_shape.DebugString(),
+            " output_shape=", output_shape.DebugString()));
     output_shape.set_dim(unknown_index, missing);
   }
 
@@ -97,7 +100,9 @@ void Reshape(OpKernelContext *context, const Tensor &input_indices_in,
       context, output_shape.num_elements() == dense_size,
       errors::InvalidArgument("Input to reshape is a tensor with ", dense_size,
                               " dense values, but the requested shape has ",
-                              output_shape.num_elements()));
+                              output_shape.num_elements(),
+                              ". input_shape=", input_shape.DebugString(),
+                              " output_shape=", output_shape.DebugString()));
 
   // Optimize for reshaping to the same shape.
   if (input_shape == output_shape) {

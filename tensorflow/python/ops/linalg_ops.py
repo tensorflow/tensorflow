@@ -32,6 +32,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.gen_linalg_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 # Names below are lower_case.
@@ -80,7 +81,71 @@ def _RegularizedGramianCholesky(matrix, l2_regularizer, first_kind):
 
 
 @tf_export(
+    'linalg.triangular_solve',
+    v1=['linalg.triangular_solve', 'matrix_triangular_solve'])
+@dispatch.add_dispatch_support
+def matrix_triangular_solve(matrix, rhs, lower=True, adjoint=False, name=None):
+  """Solve systems of linear equations with upper or lower triangular matrices.
+
+  `matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions form
+  square matrices. If `lower` is `True` then the strictly upper triangular part
+  of each inner-most matrix is assumed to be zero and not accessed. If `lower`
+  is `False` then the strictly lower triangular part of each inner-most matrix
+  is assumed to be zero and not accessed. `rhs` is a tensor of shape
+  `[..., M, N]`.
+
+  The output is a tensor of shape `[..., M, N]`. If `adjoint` is `True` then the
+  innermost matrices in output satisfy matrix equations `
+  sum_k matrix[..., i, k] * output[..., k, j] = rhs[..., i, j]`.
+  If `adjoint` is `False` then the
+  innermost matrices in output satisfy matrix equations
+  `sum_k adjoint(matrix[..., i, k]) * output[..., k, j] = rhs[..., i, j]`.
+
+  Example:
+
+  >>> a = tf.constant([[3,  0,  0,  0],
+  ...   [2,  1,  0,  0],
+  ...   [1,  0,  1,  0],
+  ...   [1,  1,  1,  1]], dtype=tf.float32)
+
+  >>> b = tf.constant([[4], [2], [4], [2]], dtype=tf.float32)
+  >>> x = tf.linalg.triangular_solve(a, b, lower=True)
+  >>> x
+  <tf.Tensor: shape=(4, 1), dtype=float32, numpy=
+  array([[ 1.3333334 ],
+         [-0.66666675],
+         [ 2.6666665 ],
+         [-1.3333331 ]], dtype=float32)>
+  >>> tf.matmul(a, x)
+  <tf.Tensor: shape=(4, 1), dtype=float32, numpy=
+  array([[4.],
+         [2.],
+         [4.],
+         [2.]], dtype=float32)>
+
+  Args:
+    matrix: A `Tensor`. Must be one of the following types: `float64`,
+      `float32`, `half`, `complex64`, `complex128`. Shape is `[..., M, M]`.
+    rhs: A `Tensor`. Must have the same type as `matrix`. Shape is `[..., M,
+      N]`.
+    lower: An optional `bool`. Defaults to `True`. Boolean indicating whether
+      the innermost matrices in matrix are lower or upper triangular.
+    adjoint: An optional `bool`. Defaults to `False`. Boolean indicating whether
+      to solve with matrix or its (block-wise) adjoint.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as matrix, and shape is `[..., M, N]`.
+
+  """
+  with ops.name_scope(name, 'triangular_solve', [matrix, rhs]):
+    return gen_linalg_ops.matrix_triangular_solve(
+        matrix, rhs, lower=lower, adjoint=adjoint)
+
+
+@tf_export(
     'linalg.cholesky_solve', v1=['linalg.cholesky_solve', 'cholesky_solve'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('cholesky_solve')
 def cholesky_solve(chol, rhs, name=None):
   """Solves systems of linear eqns `A X = RHS`, given Cholesky factorizations.
@@ -89,8 +154,8 @@ def cholesky_solve(chol, rhs, name=None):
   # Solve 10 separate 2x2 linear systems:
   A = ... # shape 10 x 2 x 2
   RHS = ... # shape 10 x 2 x 1
-  chol = tf.cholesky(A)  # shape 10 x 2 x 2
-  X = tf.cholesky_solve(chol, RHS)  # shape 10 x 2 x 1
+  chol = tf.linalg.cholesky(A)  # shape 10 x 2 x 2
+  X = tf.linalg.cholesky_solve(chol, RHS)  # shape 10 x 2 x 1
   # tf.matmul(A, X) ~ RHS
   X[3, :, 0]  # Solution to the linear system A[3, :, :] x = RHS[3, :, 0]
 
@@ -103,7 +168,7 @@ def cholesky_solve(chol, rhs, name=None):
 
   Args:
     chol:  A `Tensor`.  Must be `float32` or `float64`, shape is `[..., M, M]`.
-      Cholesky factorization of `A`, e.g. `chol = tf.cholesky(A)`.
+      Cholesky factorization of `A`, e.g. `chol = tf.linalg.cholesky(A)`.
       For that reason, only the lower triangular parts (including the diagonal)
       of the last two dimensions of `chol` are used.  The strictly upper part is
       assumed to be zero and not accessed.
@@ -125,6 +190,7 @@ def cholesky_solve(chol, rhs, name=None):
 
 
 @tf_export('eye', 'linalg.eye')
+@dispatch.add_dispatch_support
 def eye(num_rows,
         num_columns=None,
         batch_shape=None,
@@ -132,13 +198,15 @@ def eye(num_rows,
         name=None):
   """Construct an identity matrix, or a batch of matrices.
 
+  See also `tf.ones`, `tf.zeros`, `tf.fill`, `tf.one_hot`.
+
   ```python
   # Construct one identity matrix.
   tf.eye(2)
   ==> [[1., 0.],
        [0., 1.]]
 
-  # Construct a batch of 3 identity matricies, each 2 x 2.
+  # Construct a batch of 3 identity matrices, each 2 x 2.
   # batch_identity[i, :, :] is a 2 x 2 identity matrix, i = 0, 1, 2.
   batch_identity = tf.eye(2, batch_shape=[3])
 
@@ -170,6 +238,7 @@ def eye(num_rows,
 
 
 @tf_export('linalg.lstsq', v1=['linalg.lstsq', 'matrix_solve_ls'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('matrix_solve_ls')
 def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
   r"""Solves one or more linear least-squares problems.
@@ -306,7 +375,66 @@ def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
         matrix, rhs, l2_regularizer, fast=fast, name=name)
 
 
+@tf_export('linalg.eig', 'eig', v1=[])
+@dispatch.add_dispatch_support
+def eig(tensor, name=None):
+  """Computes the eigen decomposition of a batch of matrices.
+
+  The eigenvalues
+  and eigenvectors for a non-Hermitian matrix in general are complex. The
+  eigenvectors are not guaranteed to be linearly independent.
+
+  Computes the eigenvalues and right eigenvectors of the innermost
+  N-by-N matrices in `tensor` such that
+  `tensor[...,:,:] * v[..., :,i] = e[..., i] * v[...,:,i]`, for i=0...N-1.
+
+  Args:
+    tensor: `Tensor` of shape `[..., N, N]`. Only the lower triangular part of
+      each inner inner matrix is referenced.
+    name: string, optional name of the operation.
+
+  Returns:
+    e: Eigenvalues. Shape is `[..., N]`. Sorted in non-decreasing order.
+    v: Eigenvectors. Shape is `[..., N, N]`. The columns of the inner most
+      matrices contain eigenvectors of the corresponding matrices in `tensor`
+  """
+  if tensor.dtype == dtypes.float32 or tensor.dtype == dtypes.complex64:
+    out_dtype = dtypes.complex64
+  elif tensor.dtype == dtypes.float64 or tensor.dtype == dtypes.complex128:
+    out_dtype = dtypes.complex128
+  e, v = gen_linalg_ops.eig(tensor, Tout=out_dtype, compute_v=True, name=name)
+  return e, v
+
+
+@tf_export('linalg.eigvals', 'eigvals', v1=[])
+@dispatch.add_dispatch_support
+def eigvals(tensor, name=None):
+  """Computes the eigenvalues of one or more matrices.
+
+  Note: If your program backpropagates through this function, you should replace
+  it with a call to tf.linalg.eig (possibly ignoring the second output) to
+  avoid computing the eigen decomposition twice. This is because the
+  eigenvectors are used to compute the gradient w.r.t. the eigenvalues. See
+  _SelfAdjointEigV2Grad in linalg_grad.py.
+
+  Args:
+    tensor: `Tensor` of shape `[..., N, N]`.
+    name: string, optional name of the operation.
+
+  Returns:
+    e: Eigenvalues. Shape is `[..., N]`. The vector `e[..., :]` contains the `N`
+      eigenvalues of `tensor[..., :, :]`.
+  """
+  if tensor.dtype == dtypes.float32 or tensor.dtype == dtypes.complex64:
+    out_dtype = dtypes.complex64
+  elif tensor.dtype == dtypes.float64 or tensor.dtype == dtypes.complex128:
+    out_dtype = dtypes.complex128
+  e, _ = gen_linalg_ops.eig(tensor, Tout=out_dtype, compute_v=False, name=name)
+  return e
+
+
 @tf_export('linalg.eigh', v1=['linalg.eigh', 'self_adjoint_eig'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('self_adjoint_eig')
 def self_adjoint_eig(tensor, name=None):
   """Computes the eigen decomposition of a batch of self-adjoint matrices.
@@ -330,12 +458,13 @@ def self_adjoint_eig(tensor, name=None):
 
 
 @tf_export('linalg.eigvalsh', v1=['linalg.eigvalsh', 'self_adjoint_eigvals'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('self_adjoint_eigvals')
 def self_adjoint_eigvals(tensor, name=None):
   """Computes the eigenvalues of one or more self-adjoint matrices.
 
   Note: If your program backpropagates through this function, you should replace
-  it with a call to tf.linalg.eigvalsh (possibly ignoring the second output) to
+  it with a call to tf.linalg.eigh (possibly ignoring the second output) to
   avoid computing the eigen decomposition twice. This is because the
   eigenvectors are used to compute the gradient w.r.t. the eigenvalues. See
   _SelfAdjointEigV2Grad in linalg_grad.py.
@@ -353,6 +482,7 @@ def self_adjoint_eigvals(tensor, name=None):
 
 
 @tf_export('linalg.svd', v1=['linalg.svd', 'svd'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('svd')
 def svd(tensor, full_matrices=False, compute_uv=True, name=None):
   r"""Computes the singular value decompositions of one or more matrices.
@@ -424,6 +554,7 @@ def svd(tensor, full_matrices=False, compute_uv=True, name=None):
 
 # pylint: disable=redefined-builtin
 @tf_export('norm', 'linalg.norm', v1=[])
+@dispatch.add_dispatch_support
 def norm_v2(tensor,
             ord='euclidean',
             axis=None,
@@ -437,13 +568,13 @@ def norm_v2(tensor,
 
   Args:
     tensor: `Tensor` of types `float32`, `float64`, `complex64`, `complex128`
-    ord: Order of the norm. Supported values are 'fro', 'euclidean',
+    ord: Order of the norm. Supported values are `'fro'`, `'euclidean'`,
       `1`, `2`, `np.inf` and any positive real number yielding the corresponding
-      p-norm. Default is 'euclidean' which is equivalent to Frobenius norm if
+      p-norm. Default is `'euclidean'` which is equivalent to Frobenius norm if
       `tensor` is a matrix and equivalent to 2-norm for vectors.
       Some restrictions apply:
-        a) The Frobenius norm `fro` is not defined for vectors,
-        b) If axis is a 2-tuple (matrix norm), only 'euclidean', 'fro', `1`,
+        a) The Frobenius norm `'fro'` is not defined for vectors,
+        b) If axis is a 2-tuple (matrix norm), only `'euclidean'`, '`fro'`, `1`,
            `2`, `np.inf` are supported.
       See the description of `axis` on how to compute norms for a batch of
       vectors or matrices stored in a tensor.
@@ -495,6 +626,7 @@ def norm_v2(tensor,
 
 # pylint: disable=redefined-builtin
 @tf_export(v1=['norm', 'linalg.norm'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(
     None, 'keep_dims is deprecated, use keepdims instead', 'keep_dims')
 def norm(tensor,
@@ -605,7 +737,7 @@ def norm(tensor,
         perm_after = map_fn.map_fn(
             lambda i: math_ops.cast(
                 array_ops.squeeze(
-                    array_ops.where(math_ops.equal(perm_before, i))),
+                    array_ops.where_v2(math_ops.equal(perm_before, i))),
                 dtype=dtypes.int32), axes)
         permed = array_ops.transpose(tensor, perm=perm_before)
         matrix_2_norm = array_ops.expand_dims(
@@ -619,6 +751,8 @@ def norm(tensor,
         result = math_ops.sqrt(
             math_ops.reduce_sum(
                 tensor * math_ops.conj(tensor), axis, keepdims=True))
+        # TODO(rmlarsen): Replace with the following, once gradients are defined
+        # result = math_ops.reduce_euclidean_norm(tensor, axis, keepdims=True)
     else:
       result = math_ops.abs(tensor)
       if ord == 1:

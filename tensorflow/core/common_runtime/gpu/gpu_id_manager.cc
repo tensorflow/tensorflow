@@ -35,7 +35,7 @@ class TfToPlatformGpuIdMap {
   }
 
   Status Insert(TfGpuId tf_gpu_id, PlatformGpuId platform_gpu_id)
-      LOCKS_EXCLUDED(mu_) {
+      TF_LOCKS_EXCLUDED(mu_) {
     std::pair<IdMapType::iterator, bool> result;
     {
       mutex_lock lock(mu_);
@@ -58,8 +58,10 @@ class TfToPlatformGpuIdMap {
   }
 
   bool Find(TfGpuId tf_gpu_id, PlatformGpuId* platform_gpu_id) const
-      LOCKS_EXCLUDED(mu_) {
-    mutex_lock lock(mu_);
+      TF_LOCKS_EXCLUDED(mu_) {
+    // TODO(mrry): Consider replacing this with an atomic `is_initialized` bit,
+    // to avoid writing to a shared cache line in the tf_shared_lock.
+    tf_shared_lock lock(mu_);
     auto result = id_map_.find(tf_gpu_id.value());
     if (result == id_map_.end()) return false;
     *platform_gpu_id = result->second;
@@ -69,14 +71,14 @@ class TfToPlatformGpuIdMap {
  private:
   TfToPlatformGpuIdMap() = default;
 
-  void TestOnlyReset() LOCKS_EXCLUDED(mu_) {
+  void TestOnlyReset() TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock lock(mu_);
     id_map_.clear();
   }
 
   using IdMapType = std::unordered_map<int32, int32>;
   mutable mutex mu_;
-  IdMapType id_map_ GUARDED_BY(mu_);
+  IdMapType id_map_ TF_GUARDED_BY(mu_);
 
   friend class ::tensorflow::GpuIdManager;
   TF_DISALLOW_COPY_AND_ASSIGN(TfToPlatformGpuIdMap);

@@ -18,15 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.signal import dct_ops
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export('signal.mfccs_from_log_mel_spectrograms')
+@dispatch.add_dispatch_support
 def mfccs_from_log_mel_spectrograms(log_mel_spectrograms, name=None):
   """Computes [MFCCs][mfcc] of `log_mel_spectrograms`.
 
@@ -45,9 +46,9 @@ def mfccs_from_log_mel_spectrograms(log_mel_spectrograms, name=None):
   For example:
 
   ```python
-  sample_rate = 16000.0
+  batch_size, num_samples, sample_rate = 32, 32000, 16000.0
   # A Tensor of [batch_size, num_samples] mono PCM samples in the range [-1, 1].
-  pcm = tf.placeholder(tf.float32, [None, None])
+  pcm = tf.random.normal([batch_size, num_samples], dtype=tf.float32)
 
   # A 1024-point STFT with frames of 64 ms and 75% overlap.
   stfts = tf.signal.stft(pcm, frame_length=1024, frame_step=256,
@@ -66,7 +67,7 @@ def mfccs_from_log_mel_spectrograms(log_mel_spectrograms, name=None):
     linear_to_mel_weight_matrix.shape[-1:]))
 
   # Compute a stabilized log to get log-magnitude mel-scale spectrograms.
-  log_mel_spectrograms = tf.log(mel_spectrograms + 1e-6)
+  log_mel_spectrograms = tf.math.log(mel_spectrograms + 1e-6)
 
   # Compute MFCCs from log_mel_spectrograms and take the first 13.
   mfccs = tf.signal.mfccs_from_log_mel_spectrograms(
@@ -74,11 +75,11 @@ def mfccs_from_log_mel_spectrograms(log_mel_spectrograms, name=None):
   ```
 
   Args:
-    log_mel_spectrograms: A `[..., num_mel_bins]` `float32` `Tensor` of
-      log-magnitude mel-scale spectrograms.
+    log_mel_spectrograms: A `[..., num_mel_bins]` `float32`/`float64` `Tensor`
+      of log-magnitude mel-scale spectrograms.
     name: An optional name for the operation.
   Returns:
-    A `[..., num_mel_bins]` `float32` `Tensor` of the MFCCs of
+    A `[..., num_mel_bins]` `float32`/`float64` `Tensor` of the MFCCs of
     `log_mel_spectrograms`.
 
   Raises:
@@ -95,8 +96,7 @@ def mfccs_from_log_mel_spectrograms(log_mel_spectrograms, name=None):
     # the true orthogonal DCT (as implemented by scipy) scales by sqrt(1/N). For
     # this reason, we don't apply orthogonal normalization and scale the DCT by
     # `0.5 * sqrt(2/N)` manually.
-    log_mel_spectrograms = ops.convert_to_tensor(log_mel_spectrograms,
-                                                 dtype=dtypes.float32)
+    log_mel_spectrograms = ops.convert_to_tensor(log_mel_spectrograms)
     if (log_mel_spectrograms.shape.ndims and
         log_mel_spectrograms.shape.dims[-1].value is not None):
       num_mel_bins = log_mel_spectrograms.shape.dims[-1].value
@@ -107,4 +107,5 @@ def mfccs_from_log_mel_spectrograms(log_mel_spectrograms, name=None):
       num_mel_bins = array_ops.shape(log_mel_spectrograms)[-1]
 
     dct2 = dct_ops.dct(log_mel_spectrograms, type=2)
-    return dct2 * math_ops.rsqrt(math_ops.to_float(num_mel_bins) * 2.0)
+    return dct2 * math_ops.rsqrt(
+        math_ops.cast(num_mel_bins, dct2.dtype) * 2.0)

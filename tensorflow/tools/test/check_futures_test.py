@@ -57,7 +57,7 @@ OLD_DIVISION = [
 def check_file(path, old_division):
   futures = set()
   count = 0
-  for line in open(path, encoding='utf-8') if six.PY3 else open(path):
+  for line in open(path) if six.PY2 else open(path, encoding='utf-8'):
     count += 1
     m = FUTURES_PATTERN.match(line)
     if not m:

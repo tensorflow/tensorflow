@@ -124,8 +124,7 @@ class ScatterUpdateOp : public OpKernel {
       auto indices_flat = indices.flat<Index>();
       auto params_flat = params.flat_outer_dims<T>();
 
-      if (TensorShapeUtils::IsScalar(updates.shape()) ||
-          IsLegacyScalar(updates.shape())) {
+      if (TensorShapeUtils::IsScalar(updates.shape())) {
         const auto update = updates.scalar<T>();
         functor::ScatterScalarFunctor<Device, T, Index, op> functor;
         const Index bad_i = functor(c, c->template eigen_device<Device>(),
@@ -279,7 +278,7 @@ TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ARITHMETIC_CPU);
 TF_CALL_ALL_TYPES(REGISTER_SCATTER_UPDATE_CPU);
 
 // Registers GPU kernels.
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_SCATTER_ARITHMETIC_GPU(type) \
   REGISTER_SCATTER_ARITHMETIC(type, GPU);
 
@@ -291,7 +290,7 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ARITHMETIC_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_MINMAX_GPU);
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_UPDATE_GPU);
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Registers GPU kernels.
 #if TENSORFLOW_USE_SYCL

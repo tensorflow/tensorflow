@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/string.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
@@ -101,9 +101,9 @@ TEST(UtilTest, CopyShapeAndType) {
 
   EXPECT_EQ(
       CopyShapeAndType(&context, Tensor(tensorflow::DT_HALF, {1, 2}), &dst),
-      kTfLiteError);
-  EXPECT_EQ(context.error,
-            "TF Lite does not support TensorFlow data type: half");
+      kTfLiteOk);
+  EXPECT_THAT(context.new_size, ElementsAre(1, 2));
+  EXPECT_EQ(dst.type, kTfLiteFloat16);
 }
 
 TEST(UtilTest, TypeConversionsFromTFLite) {

@@ -48,11 +48,11 @@ class CollectiveParamResolverDistributed : public CollectiveParamResolverLocal {
  protected:
   // Returns true iff there's an entry for this group_key in the
   // local group_table_.
-  bool GroupIsCached(int32 group_key) LOCKS_EXCLUDED(group_mu_);
+  bool GroupIsCached(int32 group_key) TF_LOCKS_EXCLUDED(group_mu_);
 
   // Updates group_table_ with contents of resp.
   Status UpdateGroupCache(const CompleteGroupResponse& resp)
-      LOCKS_EXCLUDED(group_mu_);
+      TF_LOCKS_EXCLUDED(group_mu_);
 
   // Finds the GroupRec that corresponds to cp->group_key and also
   // populates cp->group from that GroupRec.
@@ -65,13 +65,13 @@ class CollectiveParamResolverDistributed : public CollectiveParamResolverLocal {
 
   // Returns true iff there's an entry for this instance_key in the
   // local instance_table_.
-  bool InstanceIsCached(int32 instance_key) LOCKS_EXCLUDED(instance_mu_);
+  bool InstanceIsCached(int32 instance_key) TF_LOCKS_EXCLUDED(instance_mu_);
 
   // Updates instance_table_ with contents of resp.
   void UpdateInstanceCache(const GroupRec* gr, CollectiveParams* cp,
                            const CompleteInstanceResponse& resp,
                            const StatusCallback& done)
-      LOCKS_EXCLUDED(instance_mu_, gr->mu, group_mu_);
+      TF_LOCKS_EXCLUDED(instance_mu_, gr->mu, group_mu_);
 
   // Finish populating *cp.  Semantics are like those of
   // CompleteInstanceLocal but will make a remote call to the group
@@ -80,7 +80,7 @@ class CollectiveParamResolverDistributed : public CollectiveParamResolverLocal {
                                    CollectiveParams* cp,
                                    CancellationManager* cancel_mgr,
                                    const StatusCallback& done)
-      LOCKS_EXCLUDED(instance_mu_, gr->mu, group_mu_);
+      TF_LOCKS_EXCLUDED(instance_mu_, gr->mu, group_mu_);
 
   WorkerCacheInterface* worker_cache_;  // Not owned
   const string group_leader_;

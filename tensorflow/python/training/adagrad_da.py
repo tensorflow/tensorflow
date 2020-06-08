@@ -30,8 +30,6 @@ from tensorflow.python.util.tf_export import tf_export
 class AdagradDAOptimizer(optimizer.Optimizer):
   """Adagrad Dual Averaging algorithm for sparse linear models.
 
-  See this [paper](http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf).
-
   This optimizer takes care of regularization of unseen features in a mini batch
   by updating them when they are seen with a closed form update rule that is
   equivalent to having updated them on every mini-batch.
@@ -40,6 +38,11 @@ class AdagradDAOptimizer(optimizer.Optimizer):
   trained model. This optimizer only guarantees sparsity for linear models. Be
   careful when using AdagradDA for deep networks as it will require careful
   initialization of the gradient accumulators for it to train.
+
+  References:
+    Adaptive Subgradient Methods for Online Learning and Stochastic Optimization
+      :[Duchi et al., 2011](http://jmlr.org/papers/v12/duchi11a.html)
+      ([pdf](http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf))
   """
 
   def __init__(self,

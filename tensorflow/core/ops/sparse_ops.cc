@@ -97,7 +97,6 @@ REGISTER_OP("SparseTensorDenseMatMul")
       ShapeHandle unused;
       ShapeHandle b;
       ShapeHandle a_shape;
-      ShapeHandle a_shape_shape;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &unused));  // a_indices
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));  // a_values
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &a_shape));
@@ -266,6 +265,46 @@ REGISTER_OP("SparseCross")
     .Attr("dense_types: list({int64, string}) >= 0")
     .Attr("out_type: {int64, string}")
     .Attr("internal_type: {int64, string}")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Matrix(c->UnknownDim(), 2));
+      c->set_output(1, c->Vector(c->UnknownDim()));
+      c->set_output(2, c->Vector(2));
+      return Status::OK();
+    });
+
+REGISTER_OP("SparseCrossV2")
+    .Input("indices: N * int64")
+    .Input("values: sparse_types")
+    .Input("shapes: N * int64")
+    .Input("dense_inputs: dense_types")
+    .Input("sep: string")
+    .Output("output_indices: int64")
+    .Output("output_values: string")
+    .Output("output_shape: int64")
+    .Attr("N: int >= 0")
+    .Attr("sparse_types: list({int64, string}) >= 0")
+    .Attr("dense_types: list({int64, string}) >= 0")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Matrix(c->UnknownDim(), 2));
+      c->set_output(1, c->Vector(c->UnknownDim()));
+      c->set_output(2, c->Vector(2));
+      return Status::OK();
+    });
+
+REGISTER_OP("SparseCrossHashed")
+    .Input("indices: N * int64")
+    .Input("values: sparse_types")
+    .Input("shapes: N * int64")
+    .Input("dense_inputs: dense_types")
+    .Input("num_buckets: int64")
+    .Input("strong_hash: bool")
+    .Input("salt: int64")
+    .Output("output_indices: int64")
+    .Output("output_values: int64")
+    .Output("output_shape: int64")
+    .Attr("N: int >= 0")
+    .Attr("sparse_types: list({int64, string}) >= 0")
+    .Attr("dense_types: list({int64, string}) >= 0")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Matrix(c->UnknownDim(), 2));
       c->set_output(1, c->Vector(c->UnknownDim()));

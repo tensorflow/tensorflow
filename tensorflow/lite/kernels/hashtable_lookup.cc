@@ -40,7 +40,7 @@ limitations under the License.
 #include <limits>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 #include "tensorflow/lite/string_util.h"
@@ -92,7 +92,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
     status = context->ResizeTensor(context, output, outputSize);
   }
-  if (context->ResizeTensor(context, hits, hitSize) == kTfLiteError) {
+  if (context->ResizeTensor(context, hits, hitSize) != kTfLiteOk) {
     status = kTfLiteError;
   }
   return status;

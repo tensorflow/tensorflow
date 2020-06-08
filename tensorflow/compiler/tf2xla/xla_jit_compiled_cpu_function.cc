@@ -24,18 +24,23 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/buffer_info_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
+#include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/platform.h"
 
 namespace tensorflow {
 
 namespace {
+constexpr char kHostPlatform[] = "Host";
+
 // Returns the index of the result in the temp buffers.
 xla::StatusOr<size_t> ComputeResultIndex(
     const xla::BufferAssignment& buffer_assignment) {
@@ -44,9 +49,9 @@ xla::StatusOr<size_t> ComputeResultIndex(
   return result_slice.index();
 }
 
-// Collect names from `entries`, where T is one of tf2xla::{Feed,Fetch}. We hold
-// the actual strings in nonempty_names, and hold arrays of pointers in
-// name_ptrs, terminated by a nullptr entry.
+// Collect names from `entries`, where T is one of
+// tf2xla::{Feed,Fetch,Variable}. We hold the actual strings in nonempty_names,
+// and hold arrays of pointers in name_ptrs, terminated by a nullptr entry.
 template <typename T>
 void CollectNames(const T& entries, std::vector<string>* nonempty_names,
                   std::vector<const char*>* name_ptrs) {
@@ -80,8 +85,10 @@ XlaJitCompiledCpuFunction::Compile(
     const GraphDef& graph_def, const tf2xla::Config& config,
     const xla::ExecutableBuildOptions& build_options) {
   // Convert the graph_def into an xla::XlaComputation.
+  TF_ASSIGN_OR_RETURN(se::Platform * platform,
+                      xla::PlatformUtil::GetPlatform(kHostPlatform));
   TF_ASSIGN_OR_RETURN(xla::LocalClient * client,
-                      xla::ClientLibrary::GetOrCreateLocalClient());
+                      xla::ClientLibrary::GetOrCreateLocalClient(platform));
   xla::XlaComputation computation;
   TF_RETURN_IF_ERROR(tensorflow::ConvertGraphDefToXla(graph_def, config, client,
                                                       &computation));
@@ -110,8 +117,10 @@ XlaJitCompiledCpuFunction::Compile(
   // Compile the executable. The static_cast to the CpuExecutable subclass is
   // necessary since the raw function and buffer assignments are only available
   // there.
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::LocalExecutable> executable,
+  TF_ASSIGN_OR_RETURN(auto executables,
                       client->Compile(computation, arg_shapes, build_options));
+  TF_RET_CHECK(executables.size() == 1);
+  std::unique_ptr<xla::LocalExecutable> executable = std::move(executables[0]);
   const xla::cpu::CpuExecutable* cpu_executable =
       static_cast<xla::cpu::CpuExecutable*>(executable->executable());
   XlaCompiledCpuFunction::RawFunction raw_function =
@@ -120,7 +129,7 @@ XlaJitCompiledCpuFunction::Compile(
       cpu_executable->buffer_assignment();
 
   // Compute buffer infos and the result index, needed to run the raw function.
-  std::vector<cpu_function_runtime::BufferInfo> buffer_infos =
+  std::vector<xla::cpu_function_runtime::BufferInfo> buffer_infos =
       xla::cpu::CreateBufferInfosFromBufferAssignment(buffer_assignment);
   std::vector<int32> arg_index_table =
       xla::cpu::CreateArgIndexTableFromBufferInfos(buffer_infos);
@@ -145,14 +154,28 @@ XlaJitCompiledCpuFunction::Compile(
       &jit->static_data_, jit->arg_index_table_.data());
   XlaCompiledCpuFunction::set_static_data_num_args(
       &jit->static_data_, jit->arg_index_table_.size());
+  XlaCompiledCpuFunction::set_static_data_num_variables(&jit->static_data_,
+                                                        config.variable_size());
   XlaCompiledCpuFunction::set_static_data_result_index(&jit->static_data_,
                                                        result_index);
   // Optional metadata is collected and set below.
   CollectNames(config.feed(), &jit->nonempty_arg_names_, &jit->arg_names_);
+
+  auto variable_copy = config.variable();
+  for (auto& var : variable_copy) {
+    if (var.name().empty()) {
+      var.set_name(var.node_name());
+    }
+  }
+  CollectNames(variable_copy, &jit->nonempty_variable_names_,
+               &jit->variable_names_);
+
   CollectNames(config.fetch(), &jit->nonempty_result_names_,
                &jit->result_names_);
   XlaCompiledCpuFunction::set_static_data_arg_names(&jit->static_data_,
                                                     jit->arg_names_.data());
+  XlaCompiledCpuFunction::set_static_data_variable_names(
+      &jit->static_data_, jit->variable_names_.data());
   XlaCompiledCpuFunction::set_static_data_result_names(
       &jit->static_data_, jit->result_names_.data());
   XlaCompiledCpuFunction::set_static_data_program_shape(

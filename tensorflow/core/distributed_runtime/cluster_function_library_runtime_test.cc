@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_testlib.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_cache.h"
+#include "tensorflow/core/distributed_runtime/worker_session.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -35,34 +36,38 @@ class ClusterFunctionLibraryRuntimeTest : public ::testing::Test {
     TF_CHECK_OK(spec.AddHostPortsJob("localhost", cluster_->targets()));
     ChannelCreationFunction channel_func =
         ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
+    grpc_worker_env_.reset(CreateGrpcWorkerEnv());
+    std::shared_ptr<GrpcChannelCache> channel_cache(
+        NewGrpcChannelCache(spec, channel_func));
     std::unique_ptr<WorkerCacheInterface> worker_cache(
-        NewGrpcWorkerCache(std::shared_ptr<GrpcChannelCache>(
-            NewGrpcChannelCache(spec, channel_func))));
+        NewGrpcWorkerCache(channel_cache, grpc_worker_env_.get()));
 
     worker_session_.reset(new WorkerSession(
         "cluster_test_session", "/job:localhost/replica:0/task:0",
         std::move(worker_cache), std::unique_ptr<DeviceMgr>(),
-        std::unique_ptr<GraphMgr>()));
+        std::unique_ptr<GraphMgr>(), nullptr));
 
-    cluster_flr_.reset(
-        new ClusterFunctionLibraryRuntime(worker_session_.get(), true));
+    cluster_flr_.reset(new ClusterFunctionLibraryRuntime(worker_session_.get(),
+                                                         true, nullptr));
   }
 
   Status ConstructFunctionGraphHelper(
       const OpDef& sig, test::function::Attrs attrs,
-      const FunctionLibraryRuntime::InstantiateOptions& options, GraphDef* g,
+      const FunctionLibraryRuntime::InstantiateOptions& options,
+      const FunctionLibraryDefinition& lib_def, GraphDef* g,
       std::vector<string>* send_keys, std::vector<string>* recv_keys) {
     return ClusterFunctionLibraryRuntime::ConstructFunctionGraph(
-        sig, attrs, options, g, send_keys, recv_keys);
+        sig, attrs, options, lib_def, g, send_keys, recv_keys);
   }
 
-  Status Instantiate(const string& function_name,
-                     const FunctionLibraryDefinition& lib_def,
-                     test::function::Attrs attrs,
-                     const FunctionLibraryRuntime::InstantiateOptions& options,
-                     FunctionLibraryRuntime::LocalHandle* local_handle) {
-    return cluster_flr_->Instantiate(function_name, lib_def, attrs, options,
-                                     local_handle);
+  void Instantiate(const string& function_name,
+                   const FunctionLibraryDefinition& lib_def,
+                   test::function::Attrs attrs,
+                   const FunctionLibraryRuntime::InstantiateOptions& options,
+                   FunctionLibraryRuntime::LocalHandle* local_handle,
+                   FunctionLibraryRuntime::DoneCallback done) {
+    cluster_flr_->Instantiate(function_name, lib_def, attrs, options,
+                              local_handle, done);
   }
 
   Status InstantiateAndRun(
@@ -71,13 +76,21 @@ class ClusterFunctionLibraryRuntimeTest : public ::testing::Test {
       const FunctionLibraryRuntime::InstantiateOptions& options,
       const std::vector<Tensor>& args, std::vector<Tensor*> rets) {
     FunctionLibraryRuntime::LocalHandle handle;
-    TF_RETURN_IF_ERROR(cluster_flr_->Instantiate(function_name, lib_def, attrs,
-                                                 options, &handle));
+    Status status;
+    Notification instantiate_done;
+    cluster_flr_->Instantiate(function_name, lib_def, attrs, options, &handle,
+                              [&status, &instantiate_done](const Status& s) {
+                                status = s;
+                                instantiate_done.Notify();
+                              });
+    instantiate_done.WaitForNotification();
+    if (!status.ok()) {
+      return status;
+    }
 
     Notification done;
     FunctionLibraryRuntime::Options opts;
     std::vector<Tensor> out;
-    Status status;
     cluster_flr_->Run(opts, handle, args, &out,
                       [&status, &done](const Status& s) {
                         status = s;
@@ -99,16 +112,21 @@ class ClusterFunctionLibraryRuntimeTest : public ::testing::Test {
   std::unique_ptr<test::TestCluster> cluster_;
   std::unique_ptr<WorkerSession> worker_session_;
   std::unique_ptr<ClusterFunctionLibraryRuntime> cluster_flr_;
+  std::unique_ptr<GrpcWorkerEnv> grpc_worker_env_;
 };
 
 TEST_F(ClusterFunctionLibraryRuntimeTest, ConstructFunctionGraph) {
   GraphDef actual;
   std::vector<string> send_keys, recv_keys;
+  FunctionDefLibrary proto;
+  *(proto.add_function()) = test::function::Swap();
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), proto);
+
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
   instantiate_opts.target = "/job:a/replica:0/task:0/device:CPU:0";
-  TF_CHECK_OK(ConstructFunctionGraphHelper(test::function::Swap().signature(),
-                                           {{"T", DT_FLOAT}}, instantiate_opts,
-                                           &actual, &send_keys, &recv_keys));
+  TF_CHECK_OK(ConstructFunctionGraphHelper(
+      test::function::Swap().signature(), {{"T", DT_FLOAT}}, instantiate_opts,
+      lib_def, &actual, &send_keys, &recv_keys));
   GraphDef expected;
   protobuf::TextFormat::ParseFromString(R"(
 node {
@@ -194,9 +212,20 @@ node {
   }
 }
 node {
-  name: "Swap"
-  op: "Swap"
+  name: "Func/Swap/input/_0"
+  op: "Identity"
   input: "_recv_i0_0"
+  device: "/job:a/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "Func/Swap/input/_1"
+  op: "Identity"
   input: "_recv_i1_1"
   device: "/job:a/replica:0/task:0/device:CPU:0"
   attr {
@@ -205,17 +234,59 @@ node {
       type: DT_FLOAT
     }
   }
+}
+node {
+  name: "Swap/o0"
+  op: "Identity"
+  input: "Func/Swap/input/_1"
+  device: "/job:a/replica:0/task:0/device:CPU:0"
   attr {
-    key: "_target"
+    key: "T"
     value {
-      s: "/job:a/replica:0/task:0/device:CPU:0"
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "Swap/o1"
+  op: "Identity"
+  input: "Func/Swap/input/_0"
+  device: "/job:a/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "Func/Swap/output/_2"
+  op: "Identity"
+  input: "Swap/o0"
+  device: "/job:a/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "Func/Swap/output/_3"
+  op: "Identity"
+  input: "Swap/o1"
+  device: "/job:a/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
     }
   }
 }
 node {
   name: "_send_o0_0"
   op: "_Send"
-  input: "Swap"
+  input: "Func/Swap/output/_2"
   device: "/job:a/replica:0/task:0/device:CPU:0"
   attr {
     key: "T"
@@ -257,7 +328,7 @@ node {
 node {
   name: "_send_o1_1"
   op: "_Send"
-  input: "Swap:1"
+  input: "Func/Swap/output/_3"
   device: "/job:a/replica:0/task:0/device:CPU:0"
   attr {
     key: "T"

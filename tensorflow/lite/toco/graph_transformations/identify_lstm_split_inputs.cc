@@ -163,13 +163,7 @@ namespace toco {
   model->operators.emplace(op_it, std::move(lstm_cell_op));
   AddMessageF("Creating extended LstmCell replacing previous lstm cell");
 
-  // Delete arrays and operators replaced by the LSTM cell operator. Order is
-  // important - DeleteArrayIfUnused() only succeeds if dependent operators
-  // have been removed first. Start at the output and work towards the input.
-  // Erase curr lstm op being replaced.
-  DeleteArrayIfUnused(curr_op->inputs[LstmCellOperator::WEIGHTS_INPUT], model);
-  DeleteArrayIfUnused(curr_op->inputs[LstmCellOperator::BIASES_INPUT], model);
-  model->operators.erase(FindOp(*model, curr_op));
+  DeleteOpAndArrays(model, curr_op);
 
   *modified = true;
   return ::tensorflow::Status::OK();

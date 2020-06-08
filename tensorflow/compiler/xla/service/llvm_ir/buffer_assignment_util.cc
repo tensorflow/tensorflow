@@ -23,7 +23,7 @@ static const HloInstruction& InstrForConstantBufferAllocation(
   CHECK(allocation.is_constant());
   HloInstruction* const_instr = nullptr;
   for (const auto& buffer_offset_pair : allocation.assigned_buffers()) {
-    const LogicalBuffer* buffer = buffer_offset_pair.first;
+    const BufferValue* buffer = buffer_offset_pair.first;
     // BufferAssignment may have assigned non-constant instructions to this
     // allocation too so we can't CHECK this condition.  E.g. for
     //

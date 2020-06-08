@@ -28,8 +28,8 @@ GpuEvent::GpuEvent(GpuExecutor* parent)
 GpuEvent::~GpuEvent() {}
 
 port::Status GpuEvent::Init() {
-  return GpuDriver::CreateEvent(parent_->gpu_context(), &gpu_event_,
-                                GpuDriver::EventFlags::kDisableTiming);
+  return GpuDriver::InitEvent(parent_->gpu_context(), &gpu_event_,
+                              GpuDriver::EventFlags::kDisableTiming);
 }
 
 port::Status GpuEvent::Destroy() {

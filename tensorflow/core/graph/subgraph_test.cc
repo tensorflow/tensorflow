@@ -18,12 +18,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/common_runtime/graph_def_builder_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
-#include "tensorflow/core/graph/graph_def_builder_util.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -75,7 +75,7 @@ class SubgraphTest : public ::testing::Test {
     }
     std::sort(actual_nodes.begin(), actual_nodes.end());
 
-    LOG(INFO) << "Nodes present: " << str_util::Join(actual_nodes, " ");
+    LOG(INFO) << "Nodes present: " << absl::StrJoin(actual_nodes, " ");
 
     std::vector<string> expected_nodes = str_util::Split(nodes, ',');
     std::sort(expected_nodes.begin(), expected_nodes.end());
@@ -88,8 +88,8 @@ class SubgraphTest : public ::testing::Test {
     }
 
     EXPECT_TRUE(actual_nodes.size() == expected_nodes.size())
-        << "\nActual:   " << str_util::Join(actual_nodes, ",")
-        << "\nExpected: " << str_util::Join(expected_nodes, ",");
+        << "\nActual:   " << absl::StrJoin(actual_nodes, ",")
+        << "\nExpected: " << absl::StrJoin(expected_nodes, ",");
   }
 
   bool HasEdge(const string& src, int src_out, const string& dst, int dst_in) {
@@ -313,7 +313,7 @@ TEST_F(SubgraphTest, ChainOfFools) {
 }
 
 static bool HasSubstr(StringPiece base, StringPiece substr) {
-  bool ok = str_util::StrContains(base, substr);
+  bool ok = absl::StrContains(base, substr);
   EXPECT_TRUE(ok) << base << ", expected substring " << substr;
   return ok;
 }

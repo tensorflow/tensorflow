@@ -15,11 +15,19 @@ tf_class {
     mtype: "<type \'str\'>"
   }
   member {
+    name: "CHILDREN_INPUTS_MAPPINGS"
+    mtype: "<type \'str\'>"
+  }
+  member {
     name: "FUNCTION_AGGREGATE_ATTR"
     mtype: "<type \'str\'>"
   }
   member {
     name: "FUNCTION_INPUT_INDEX_ATTR"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "FUNCTION_LEVEL_ATTR"
     mtype: "<type \'str\'>"
   }
   member {
@@ -48,7 +56,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'function_name\'], varargs=None, keywords=kwargs, defaults=None"
+    argspec: "args=[\'self\', \'function_name\', \'level\', \'children_inputs_mappings\'], varargs=None, keywords=kwargs, defaults=[\'1\', \'None\'], "
   }
   member_method {
     name: "add_input"

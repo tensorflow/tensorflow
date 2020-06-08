@@ -19,30 +19,28 @@ package tflite.evaluation;
 
 import "tensorflow/lite/tools/evaluation/proto/evaluation_stages.proto";
 
-// Next ID: 6
+option cc_enable_arenas = true;
+option java_multiple_files = true;
+option java_package = "tflite.evaluation";
+
+// Contains parameters that define how an EvaluationStage will be executed.
+// This would typically be validated only once during initialization, so should
+// not contain any variables that change with each run.
+//
+// Next ID: 3
 message EvaluationStageConfig {
   optional string name = 1;
 
   // Specification defining what this stage does, and any required parameters.
   optional ProcessSpecification specification = 2;
-
-  // initializers, inputs and outputs are strings that define colon-separated
-  // mappings between TAGs and their corresponding names.
-  // These names help EvaluationStages communicate with each other during runs.
-  // Format for TAGs: [A-Z0-9_]+ (Uppercase letters, numbers, "_")
-  // Format for names: [a-z0-9_]+ (Lowercase letters, numbers, "_")
-  // Example mapping: "BITMAP1:image_in"
-  // It is up to individual EvaluationStage sub-classes to specify the
-  // initializer/input TAGs they require, and outputs TAGs they provide.
-  repeated string initializers = 3;
-  repeated string inputs = 4;
-  repeated string outputs = 5;
 }
 
+// Metrics returned from EvaluationStage.LatestMetrics() need not have all
+// fields set.
 message EvaluationStageMetrics {
-  // Total latency in ms.
-  optional double total_latency_ms = 1;
+  // Total number of times the EvaluationStage is run.
+  optional int32 num_runs = 1;
 
-  // Process-specific numbers such as accuracy, step-latencies, etc.
+  // Process-specific numbers such as latencies, accuracy, etc.
   optional ProcessMetrics process_metrics = 2;
 }

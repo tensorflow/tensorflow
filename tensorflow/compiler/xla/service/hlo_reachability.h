@@ -103,6 +103,11 @@ class HloReachabilityMap {
     return indices_.contains(GetKey(a));
   }
 
+  // Replace the instruction "original" with "replacement" in the reachability
+  // map.
+  void Replace(const HloInstruction* original,
+               const HloInstruction* replacement);
+
  private:
   // A bit-vector implementation specialized for this use case which provides a
   // fast bitwise OR operation not available in tensorflow::gtl::BitMap.
@@ -143,7 +148,7 @@ class HloReachabilityMap {
 
    private:
     using Word = uint64;
-    static const size_t kBits = 64;
+    static constexpr size_t kBits = 64;
 
     // Number of bits in the bitvector.
     size_t size_;

@@ -28,12 +28,10 @@ RecentRequestIds::RecentRequestIds(int num_tracked_request_ids)
   set_.reserve(num_tracked_request_ids);
 }
 
-Status RecentRequestIds::TrackUnique(int64 request_id,
-                                     const string& method_name,
-                                     const protobuf::Message& request) {
+bool RecentRequestIds::Insert(int64 request_id) {
   if (request_id == 0) {
     // For backwards compatibility, allow all requests with request_id 0.
-    return Status::OK();
+    return true;
   }
 
   mutex_lock l(mu_);
@@ -43,9 +41,7 @@ Status RecentRequestIds::TrackUnique(int64 request_id,
     // request_id's age in the circular_buffer_ if it's tracked again. Strict
     // LRU is not useful here because returning this error will close the
     // current Session.
-    return errors::Aborted("The same ", method_name,
-                           " request was received twice. ",
-                           request.ShortDebugString());
+    return false;
   }
 
   // Remove the oldest request_id from the set_. circular_buffer_ is
@@ -54,7 +50,19 @@ Status RecentRequestIds::TrackUnique(int64 request_id,
   set_.erase(circular_buffer_[next_index_]);
   circular_buffer_[next_index_] = request_id;
   next_index_ = (next_index_ + 1) % circular_buffer_.size();
-  return Status::OK();
+  return true;
+}
+
+Status RecentRequestIds::TrackUnique(int64 request_id,
+                                     const string& method_name,
+                                     const protobuf::Message& request) {
+  if (Insert(request_id)) {
+    return Status::OK();
+  } else {
+    return errors::Aborted("The same ", method_name,
+                           " request was received twice. ",
+                           request.ShortDebugString());
+  }
 }
 
 }  // namespace tensorflow

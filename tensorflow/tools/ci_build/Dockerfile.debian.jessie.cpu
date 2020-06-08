@@ -5,7 +5,7 @@ LABEL maintainer="Jan Prach <jendap@google.com>"
 # Copy and run the install scripts.
 COPY install/*.sh /install/
 RUN /install/install_bootstrap_deb_packages.sh
-RUN echo "deb http://www.debian.net/debian jessie-backports main" | \
+RUN echo "deb [check-valid-until=no] http://archive.debian.org/debian jessie-backports main" | \
     tee -a /etc/apt/sources.list
 # Workaround bug in Jessie backport repository deb packages
 # http://serverfault.com/questions/830636/cannot-install-openjdk-8-jre-headless-on-debian-jessie

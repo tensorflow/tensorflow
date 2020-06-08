@@ -27,7 +27,8 @@ CostAnalyzer::CostAnalyzer(const GrapplerItem& item, Cluster* cluster,
                            const string& suffix)
     : item_(&item),
       measure_estimator_(cluster, 10, 0),
-      analytical_estimator_(cluster, false),
+      analytical_estimator_(cluster, /*use_static_shapes=*/false,
+                            /*use_aggressive_shape_inference=*/true),
       suffix_(suffix) {}
 
 Status CostAnalyzer::GenerateReport(std::ostream& os, bool per_node_report,
@@ -109,7 +110,7 @@ void CostAnalyzer::PreprocessCosts() {
 
     double analytical_compute_cost = analytical.compute_time();
     if (analytical_compute_cost == 0) {
-      // Negative infinity indidates unavailable data.
+      // Negative infinity indicates unavailable data.
       perf->set_compute_efficiency(-INFINITY);
     } else {
       perf->set_compute_efficiency(analytical_compute_cost / measured_cost);
@@ -117,14 +118,13 @@ void CostAnalyzer::PreprocessCosts() {
 
     double analytical_memory_cost = analytical.memory_time();
     if (analytical_memory_cost == 0) {
-      // Negative infinity indidates unavailable data.
+      // Negative infinity indicates unavailable data.
       perf->set_memory_efficiency(-INFINITY);
     } else {
       perf->set_memory_efficiency(analytical_memory_cost / measured_cost);
     }
   }
 }
-
 
 void CostAnalyzer::SortOpsByTime(std::map<string, OpPerfSummary> ops) {
   for (const auto& op : ops) {

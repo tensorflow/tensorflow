@@ -18,9 +18,11 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 
@@ -56,7 +58,7 @@ class ResizeBicubicOpTest : public OpsTestBase {
   }
 
  private:
-  static const int64 kTableSize = (1 << 10);
+  static constexpr int64 kTableSize = (1 << 10);
 
   const float* InitCoeffsTable() {
     // Allocate and initialize coefficients table using Bicubic
@@ -81,7 +83,7 @@ class ResizeBicubicOpTest : public OpsTestBase {
 
   // Used in the baseline implementation
   inline int64 Bound(int64 val, int64 limit) {
-    return std::min(limit - 1ll, std::max(int64{0}, val));
+    return std::min(limit - 1, std::max(int64{0}, val));
   }
 
   // Used in the baseline implementation
@@ -219,7 +221,7 @@ TEST_F(ResizeBicubicOpTest, TestBicubic2x2To0x0) {
   AddInputFromArray<int32>(TensorShape({2}), {0, 0});
 
   Status s = RunOpKernel();
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       s.ToString(), "Invalid argument: output dimensions must be positive"))
       << s;
 }

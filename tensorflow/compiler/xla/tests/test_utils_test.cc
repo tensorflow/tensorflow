@@ -47,35 +47,17 @@ XLA_TEST_F(TestUtilsTest, UnusedParam) {
   computation_status = builder.Build();
   TF_ASSERT_OK(computation_status.status());
 
-  auto executable_status = local_client_->Compile(
-      computation_status.ValueOrDie(), {&pair_float, &single_float},
-      ExecutableBuildOptions());
-  TF_ASSERT_OK(executable_status.status());
-  HloModule& module = const_cast<HloModule&>(
-      executable_status.ValueOrDie()->executable()->module());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executables, local_client_->Compile(computation_status.ValueOrDie(),
+                                               {&pair_float, &single_float},
+                                               ExecutableBuildOptions()));
+  HloModule& module =
+      const_cast<HloModule&>(executables[0]->executable()->module());
   TF_ASSERT_OK(MakeFakeArguments(&module).status());
 }
 
-XLA_TEST_F(TestUtilsTest, Token) {
-  auto module = ParseHloString(
-                    R"(HloModule outfeed_module
-
-    ENTRY InfeedToOutfeed {
-      token0 = token[] parameter(0)
-      infeed = ((u32[3]{0}, pred[]), token[]) infeed(token0)
-      infeed.data = (u32[3]{0}, pred[]) get-tuple-element(infeed), index=0
-      outfeed = token[] outfeed(infeed.data, token0)
-      ROOT infeed.1 = ((u32[3]{0}, pred[]), token[]) infeed(token0)
-      infeed.1.data = (u32[3]{0}, pred[]) get-tuple-element(infeed.1), index=0
-      infeed.1.token = token[] get-tuple-element(infeed.1), index=1
-      outfeed.1 = token[] outfeed(infeed.1.data, infeed.1.token)
-    })")
-                    .ValueOrDie();
-  TF_ASSERT_OK(MakeFakeArguments(module.get()).status());
-}
-
 XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicSlices) {
-  auto module = ParseHloString(
+  auto module = ParseAndReturnVerifiedModule(
                     R"(HloModule index_space_module
 
     ENTRY IndexSpace {
@@ -92,17 +74,18 @@ XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicSlices) {
                           MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 5);
 
-  EXPECT_EQ(args[0].Get<int32>({}), 0);
+  EXPECT_GE(args[0].Get<int32>({}), -1);
+  EXPECT_LE(args[0].Get<int32>({}), 1);
 
-  EXPECT_GE(args[1].Get<int32>({}), 0);
-  EXPECT_LE(args[0].Get<int32>({}), 2);
+  EXPECT_GE(args[1].Get<int32>({}), -1);
+  EXPECT_LE(args[1].Get<int32>({}), 2);
 
-  EXPECT_GE(args[2].Get<int32>({}), 0);
+  EXPECT_GE(args[2].Get<int32>({}), -1);
   EXPECT_LE(args[2].Get<int32>({}), 3);
 }
 
 XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicUpdateSlices) {
-  auto module = ParseHloString(
+  auto module = ParseAndReturnVerifiedModule(
                     R"(HloModule index_space_module
 
     ENTRY IndexSpace {
@@ -122,24 +105,33 @@ XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicUpdateSlices) {
                           MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 7);
 
-  EXPECT_EQ(args[0].Get<int32>({}), 0);
+  EXPECT_GE(args[0].Get<int32>({}), -1);
+  EXPECT_LE(args[0].Get<int32>({}), 1);
 
-  EXPECT_GE(args[1].Get<int32>({}), 0);
-  EXPECT_LE(args[0].Get<int32>({}), 2);
+  EXPECT_GE(args[1].Get<int32>({}), -1);
+  EXPECT_LE(args[1].Get<int32>({}), 2);
 
-  EXPECT_GE(args[2].Get<int32>({}), 0);
+  EXPECT_GE(args[2].Get<int32>({}), -1);
   EXPECT_LE(args[2].Get<int32>({}), 3);
 }
 
 XLA_TEST_F(TestUtilsTest, NoDuplicatesFloats) {
   // Inputs which are sort keys in key/value sorts should have no duplicates.
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
 HloModule sort.148.1589
+
+compare {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  p.1.lhs = s32[] parameter(2)
+  p.1.rhs = s32[] parameter(3)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+}
 
 ENTRY %sort.148.1589 (parameter.0: f32[1048576], parameter.1: s32[1048576]) -> (f32[1048576], s32[1048576]) {
   %parameter.0 = f32[1048576]{0} parameter(0)
   %parameter.1 = s32[1048576]{0} parameter(1)
-  ROOT %sort.148.1589 = (f32[1048576]{0}, s32[1048576]{0}) sort(f32[1048576]{0} %parameter.0, s32[1048576]{0} %parameter.1), dimensions={0}
+  ROOT %sort.148.1589 = (f32[1048576]{0}, s32[1048576]{0}) sort(f32[1048576]{0} %parameter.0, s32[1048576]{0} %parameter.1), dimensions={0}, to_apply=compare
 }
 )")
                     .ValueOrDie();
@@ -156,13 +148,21 @@ ENTRY %sort.148.1589 (parameter.0: f32[1048576], parameter.1: s32[1048576]) -> (
 
 XLA_TEST_F(TestUtilsTest, NoDuplicatesInt32) {
   // Inputs which are sort keys in key/value sorts should have no duplicates.
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
 HloModule sort.148.1589
+
+compare {
+  p.0.lhs = s32[] parameter(0)
+  p.0.rhs = s32[] parameter(1)
+  p.1.lhs = s32[] parameter(2)
+  p.1.rhs = s32[] parameter(3)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+}
 
 ENTRY %sort.148.1589 (parameter.0: s32[1048576], parameter.1: s32[1048576]) -> (s32[1048576], s32[1048576]) {
   %parameter.0 = s32[1048576]{0} parameter(0)
   %parameter.1 = s32[1048576]{0} parameter(1)
-  ROOT %sort.148.1589 = (s32[1048576]{0}, s32[1048576]{0}) sort(s32[1048576]{0} %parameter.0, s32[1048576]{0} %parameter.1), dimensions={0}
+  ROOT %sort.148.1589 = (s32[1048576]{0}, s32[1048576]{0}) sort(s32[1048576]{0} %parameter.0, s32[1048576]{0} %parameter.1), dimensions={0}, to_apply=compare
 }
 )")
                     .ValueOrDie();
@@ -179,13 +179,21 @@ ENTRY %sort.148.1589 (parameter.0: s32[1048576], parameter.1: s32[1048576]) -> (
 
 XLA_TEST_F(TestUtilsTest, NoDuplicatesBfloat16) {
   // Inputs which are sort keys in key/value sorts should have no duplicates.
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
 HloModule sort, is_scheduled=true
+
+compare {
+  p.0.lhs = bf16[] parameter(0)
+  p.0.rhs = bf16[] parameter(1)
+  p.1.lhs = s32[] parameter(2)
+  p.1.rhs = s32[] parameter(3)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+}
 
 ENTRY %sort. (parameter.0: bf16[2,1452], parameter.1: s32[2,1452]) -> (bf16[2,1452], s32[2,1452]) {
   %parameter.0 = bf16[2,1452]{1,0} parameter(0)
   %parameter.1 = s32[2,1452]{1,0} parameter(1)
-  ROOT %sort = (bf16[2,1452]{1,0}, s32[2,1452]{1,0}) sort(bf16[2,1452]{1,0} %parameter.0, s32[2,1452]{1,0} %parameter.1), dimensions={1}
+  ROOT %sort = (bf16[2,1452]{1,0}, s32[2,1452]{1,0}) sort(bf16[2,1452]{1,0} %parameter.0, s32[2,1452]{1,0} %parameter.1), dimensions={1}, to_apply=compare
 }
 )")
                     .ValueOrDie();
@@ -201,7 +209,7 @@ ENTRY %sort. (parameter.0: bf16[2,1452], parameter.1: s32[2,1452]) -> (bf16[2,14
 }
 
 XLA_TEST_F(TestUtilsTest, MakeFakeArgumentsR0InputToDynamicSlice) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
 HloModule Test
 
 ENTRY %module (parameter.0: s32[], parameter.1: f32[20,20]) -> f32[] {
@@ -226,6 +234,78 @@ ENTRY %module (parameter.0: s32[], parameter.1: f32[20,20]) -> f32[] {
   EXPECT_TRUE(
       ShapeUtil::Equal(args[1].shape(), ShapeUtil::MakeShape(F32, {20, 20})))
       << ShapeUtil::HumanString(args[1].shape());
+}
+
+XLA_TEST_F(TestUtilsTest, MakeFakeArgumentsForGather) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule Test
+
+ENTRY %module(parameter.0: f32[200,100,300], parameter.1: s32[10,2]) ->
+                                                          f32[10,300] {
+  %parameter.0 = f32[200,100,300] parameter(0)
+  %parameter.1 = s32[10,2] parameter(1)
+  ROOT gather = f32[10,300] gather(f32[200,100,300] %parameter.0,
+                                   s32[10,2] %parameter.1),
+      offset_dims={1},
+      collapsed_slice_dims={0,1},
+      start_index_map={0,1},
+      index_vector_dim=1,
+      slice_sizes={1,1,300}
+}
+)")
+                    .ValueOrDie();
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                          MakeFakeArguments(module.get()));
+  ASSERT_EQ(args.size(), 2);
+
+  const Shape& indices_shape = args[1].shape();
+  EXPECT_TRUE(
+      ShapeUtil::Equal(indices_shape, ShapeUtil::MakeShape(S32, {10, 2})))
+      << ShapeUtil::HumanString(indices_shape);
+  auto indices = args[1].data<int32>();
+  for (const auto index : indices) {
+    EXPECT_GE(index, -1);
+    EXPECT_LE(index, 100);
+  }
+}
+
+XLA_TEST_F(TestUtilsTest, MakeFakeArgumentsForScatter) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule Test
+
+scatter_update (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  ROOT rhs = f32[] parameter(1)
+}
+
+ENTRY main {
+  operand = f32[200,100,300] parameter(0)
+  indices = s32[10,2] parameter(1)
+  updates = f32[10,300] parameter(2)
+  ROOT scatter = f32[200,100,300] scatter(operand, indices, updates),
+    to_apply=scatter_update,
+    update_window_dims={1},
+    inserted_window_dims={0,1},
+    scatter_dims_to_operand_dims={0,1},
+    index_vector_dim=1
+  }
+)")
+                    .ValueOrDie();
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                          MakeFakeArguments(module.get()));
+  ASSERT_EQ(args.size(), 3);
+
+  const Shape& indices_shape = args[1].shape();
+  EXPECT_TRUE(
+      ShapeUtil::Equal(indices_shape, ShapeUtil::MakeShape(S32, {10, 2})))
+      << ShapeUtil::HumanString(indices_shape);
+  auto indices = args[1].data<int32>();
+  for (const auto index : indices) {
+    EXPECT_GE(index, -1);
+    EXPECT_LE(index, 100);
+  }
 }
 
 }  // namespace

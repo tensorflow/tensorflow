@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_UTIL_TENSOR_SLICE_UTIL_H_
-#define TENSORFLOW_UTIL_TENSOR_SLICE_UTIL_H_
+#ifndef TENSORFLOW_CORE_UTIL_TENSOR_SLICE_UTIL_H_
+#define TENSORFLOW_CORE_UTIL_TENSOR_SLICE_UTIL_H_
 
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
@@ -55,7 +55,7 @@ struct CopyThatWorksWithStringPointer {
 // Eigen makes it extremely difficult to dereference a tensor of string* into
 // string, so we roll our own loop instead.
 template <>
-struct CopyThatWorksWithStringPointer<string> {
+struct CopyThatWorksWithStringPointer<tstring> {
   template <typename SrcTensor, typename DstTensor, typename Shape>
   static void Copy(const SrcTensor& s, Shape s_start, Shape len, DstTensor& d,
                    Shape d_start) {
@@ -188,4 +188,4 @@ static bool CopyDataFromTensorSliceToTensorSlice(const TensorShape& shape,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_TENSOR_SLICE_UTIL_H_
+#endif  // TENSORFLOW_CORE_UTIL_TENSOR_SLICE_UTIL_H_

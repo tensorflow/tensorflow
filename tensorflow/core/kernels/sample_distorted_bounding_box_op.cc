@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 // See docs in ../ops/image_ops.cc.
 #include <math.h>
+#include <cmath>
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -122,14 +123,22 @@ bool GenerateRandomCrop(int original_width, int original_height,
   const float max_area =
       max_relative_crop_area * original_width * original_height;
 
-  int height = static_cast<int>(lrintf(sqrt(min_area / aspect_ratio)));
-  int max_height = static_cast<int>(lrintf(sqrt(max_area / aspect_ratio)));
+  int height = static_cast<int>(lrintf(std::sqrt(min_area / aspect_ratio)));
+  int max_height = static_cast<int>(lrintf(std::sqrt(max_area / aspect_ratio)));
 
+  // TODO(b/140767341): Rewrite the generation logic to be more tolerant
+  // of floating point behavior.
   if (lrintf(max_height * aspect_ratio) > original_width) {
     // We must find the smallest max_height satisfying
     // round(max_height * aspect_ratio) <= original_width:
     const float kEps = 0.0000001;
     max_height = static_cast<int>((original_width + 0.5 - kEps) / aspect_ratio);
+    // If due some precision issues, we still cannot guarantee
+    // round(max_height * aspect_ratio) <= original_width, subtract 1 from
+    // max height.
+    if (lrintf(max_height * aspect_ratio) > original_width) {
+      max_height -= 1;
+    }
   }
 
   if (max_height > original_height) {

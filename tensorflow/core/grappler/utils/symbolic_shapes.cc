@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/utils/symbolic_shapes.h"
+
+#include <unordered_map>
+
 #include "tensorflow/core/util/bcast.h"
 
 namespace tensorflow {

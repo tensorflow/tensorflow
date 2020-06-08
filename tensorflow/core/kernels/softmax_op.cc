@@ -56,7 +56,7 @@ template <typename Device, typename T>
 class SoftmaxOp : public OpKernel {
  public:
   explicit SoftmaxOp(OpKernelConstruction* context) : OpKernel(context) {
-    log_ = str_util::StartsWith(type_string(), "Log");
+    log_ = absl::StartsWith(type_string(), "Log");
   }
 
   void Compute(OpKernelContext* context) override {
@@ -82,18 +82,16 @@ class SoftmaxOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(                                       \
       Name("Softmax").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       SoftmaxOp<CPUDevice, T>);
-TF_CALL_half(REGISTER_CPU);
-TF_CALL_float(REGISTER_CPU);
-TF_CALL_double(REGISTER_CPU);
+TF_CALL_FLOAT_TYPES(REGISTER_CPU);
 
 #undef REGISTER_CPU
 #define REGISTER_CPU(T)                                             \
   REGISTER_KERNEL_BUILDER(                                          \
       Name("LogSoftmax").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       SoftmaxOp<CPUDevice, T>);
-TF_CALL_half(REGISTER_CPU);
-TF_CALL_float(REGISTER_CPU);
-TF_CALL_double(REGISTER_CPU);
+TF_CALL_FLOAT_TYPES(REGISTER_CPU);
+
+#undef REGISTER_CPU
 
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(

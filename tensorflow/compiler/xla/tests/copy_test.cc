@@ -45,7 +45,7 @@ class CopyOpTest : public HloTestBase {
     builder.AddInstruction(HloInstruction::CreateUnary(
         constant->shape(), HloOpcode::kCopy, constant));
     auto computation = builder.Build();
-    auto module = CreateNewUnverifiedModule();
+    auto module = CreateNewVerifiedModule();
     module->AddEntryComputation(std::move(computation));
 
     Literal result = ExecuteAndTransfer(std::move(module), {});
@@ -98,7 +98,7 @@ XLA_TEST_F(CopyOpTest, CopyParameterScalar) {
 
   auto computation = builder.Build();
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(std::move(computation));
 
   Literal result = ExecuteAndTransfer(std::move(module), {&literal});
@@ -119,7 +119,7 @@ XLA_TEST_F(CopyOpTest, CopyConstantR2Twice) {
 
   auto computation = builder.Build();
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(std::move(computation));
   Literal result = ExecuteAndTransfer(std::move(module), {});
   LiteralTestUtil::ExpectR2Near<float>({{1.0, 2.0}, {3.0, 4.0}}, result,
@@ -145,7 +145,7 @@ XLA_TEST_F(CopyOpTest, CopyConstantR2DifferentLayouts) {
 
   std::unique_ptr<HloComputation> computation = builder.Build();
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(std::move(computation));
   Literal result = ExecuteAndTransfer(std::move(module), {});
 
@@ -177,7 +177,7 @@ void CopyOpTest::TestCopyConstantLayout021(size_t n1, size_t n2, size_t n3) {
 
   std::unique_ptr<HloComputation> computation = builder.Build();
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(std::move(computation));
   ForceResultLayout(module.get(), LayoutUtil::MakeLayout({1, 2, 0}));
   Literal result = ExecuteAndTransfer(std::move(module), {});
@@ -211,7 +211,7 @@ void CopyOpTest::TestCopyConstantLayoutR4(size_t n1, size_t n2, size_t n3,
 
   std::unique_ptr<HloComputation> computation = builder.Build();
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(std::move(computation));
   ForceResultLayout(module.get(), LayoutUtil::MakeLayout(permutation));
   Literal result = ExecuteAndTransfer(std::move(module), {});

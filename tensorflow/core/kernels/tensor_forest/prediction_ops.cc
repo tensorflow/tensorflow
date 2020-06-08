@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/tensor_forest/resources.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -29,12 +30,10 @@ class TensorForestTreePredictOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
-    TensorForestTreeResource* decision_tree_resource;
+    core::RefCountPtr<TensorForestTreeResource> decision_tree_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &decision_tree_resource));
     mutex_lock l(*decision_tree_resource->get_mutex());
-    core::ScopedUnref unref_me(decision_tree_resource);
-
     const Tensor* dense_features_t = nullptr;
     OP_REQUIRES_OK(context,
                    context->input("dense_features", &dense_features_t));
@@ -60,7 +59,7 @@ class TensorForestTreePredictOp : public OpKernel {
     //  We will need to run it on a number of trees of diff depth
     //  and see the num of cpu cycles
     const int64 cost_per_traverse = 500;
-    auto traverse = [this, &out, &dense_features, decision_tree_resource,
+    auto traverse = [this, &out, &dense_features, &decision_tree_resource,
                      batch_size](int64 start, int64 end) {
       DCHECK_LE(start, end) << "Start exceeding End";
       DCHECK_LE(end, batch_size) << "End exceeding batch size";
@@ -74,9 +73,10 @@ class TensorForestTreePredictOp : public OpKernel {
           traverse);
   };
 
-  void set_output_value(const int32 example_id, const int32 leaf_id,
-                        const TensorForestTreeResource* decision_tree_resource,
-                        TTypes<float>::Matrix* out) const {
+  void set_output_value(
+      const int32 example_id, const int32 leaf_id,
+      const core::RefCountPtr<TensorForestTreeResource>& decision_tree_resource,
+      TTypes<float>::Matrix* out) const {
     for (int j = 0; j < logits_dimension_; ++j) {
       const float logit = decision_tree_resource->get_prediction(leaf_id, j);
       (*out)(example_id, j) = logit;

@@ -1,0 +1,46 @@
+# RUN: tf-mlir-translate -graphdef-to-splatted-mlir %s -o - | FileCheck %s
+
+# CHECK: tf.Const
+# CHECK-SAME: value = dense<""> : tensor<3x!tf.string>
+
+node {
+  name: "save/SaveV2/shape_and_slices"
+  op: "Const"
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 3
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+            size: 3
+          }
+        }
+        string_val: ""
+        string_val: ""
+        string_val: ""
+      }
+    }
+  }
+}
+versions {
+  producer: 74
+}

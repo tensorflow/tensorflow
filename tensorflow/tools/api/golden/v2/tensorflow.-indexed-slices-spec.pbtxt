@@ -1,0 +1,22 @@
+path: "tensorflow.IndexedSlicesSpec"
+tf_class {
+  is_instance: "<class \'tensorflow.python.framework.indexed_slices.IndexedSlicesSpec\'>"
+  is_instance: "<class \'tensorflow.python.framework.type_spec.TypeSpec\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "value_type"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'shape\', \'dtype\', \'indices_dtype\', \'dense_shape_dtype\', \'indices_shape\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\", \"<dtype: \'int64\'>\", \'None\', \'None\'], "
+  }
+  member_method {
+    name: "is_compatible_with"
+    argspec: "args=[\'self\', \'spec_or_value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "most_specific_compatible_type"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+}

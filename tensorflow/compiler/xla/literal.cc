@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -38,13 +39,13 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
 
 using absl::StrCat;
-using absl::StrFormat;
 
 constexpr bool kLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
 
@@ -72,6 +73,16 @@ T GetRawValue(T val) {
   return val;
 }
 uint16 GetRawValue(Eigen::half val) { return val.x; }
+
+bool LiteralProtoHasValues(const LiteralProto& proto) {
+  return proto.preds_size() || !proto.s8s().empty() || !proto.u8s().empty() ||
+         proto.s32s_size() || proto.s64s_size() || proto.u32s_size() ||
+         proto.u64s_size() || proto.f32s_size() || proto.f64s_size() ||
+         proto.c64s_size() || proto.c128s_size() ||
+         proto.tuple_literals_size() || !proto.f16s().empty() ||
+         !proto.bf16s().empty() || !proto.u16s().empty() ||
+         !proto.s16s().empty();
+}
 
 }  // namespace
 
@@ -122,19 +133,12 @@ void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays) {
     }
   } else if (shape.IsArray()) {
     if (allocate_arrays) {
-      if (LayoutUtil::IsSparseArray(shape)) {
-        // For sparse arrays, the buffer must be of the size of the maximum
-        // number of sparse elements possible.
-        const int64 max_sparse_elements =
-            LayoutUtil::MaxSparseElements(shape.layout());
-        piece->set_buffer(
-            new char[max_sparse_elements *
-                     ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type())]);
-        piece->set_sparse_indices(
-            new SparseIndexArray(max_sparse_elements, shape.rank()));
-      } else {
-        piece->set_buffer(new char[piece->size_bytes()]);
-      }
+      // Literals can be used as DMA targets, which can require alignment. We
+      // force a tensorflow::Allocator::kAllocatorAlignment-byte minimum
+      // alignment.
+      constexpr int kMinimumAlignment = 64;
+      piece->set_buffer(static_cast<char*>(tensorflow::port::AlignedMalloc(
+          piece->size_bytes(), kMinimumAlignment)));
     }
   } else {
     // If the shape is neither an array nor tuple, then it must be
@@ -165,8 +169,7 @@ void Literal::DeallocateBuffers() {
   root_piece_->ForEachMutableSubpiece(
       [&](const ShapeIndex& index, Piece* piece) {
         if (piece->buffer() != nullptr) {
-          delete[] piece->buffer();
-          delete piece->sparse_indices();
+          tensorflow::port::AlignedFree(piece->buffer());
         }
       });
 }
@@ -196,14 +199,32 @@ Literal LiteralBase::CreateFromShape(const Shape& shape) {
   return literal;
 }
 
-const SparseIndexArray* LiteralBase::sparse_indices(
-    const ShapeIndex& shape_index) const {
-  return piece(shape_index).sparse_indices();
-}
-
-SparseIndexArray* MutableLiteralBase::sparse_indices(
-    const ShapeIndex& shape_index) {
-  return piece(shape_index).sparse_indices();
+absl::optional<int64> LiteralBase::GetFirstInteger() const {
+  switch (shape().element_type()) {
+    case U8:
+      return GetFirstElement<uint8>();
+    case U16:
+      return GetFirstElement<uint16>();
+    case U32:
+      return GetFirstElement<uint32>();
+    case U64: {
+      int64 v = GetFirstElement<uint64>();
+      if (v < 0) {
+        return absl::nullopt;
+      }
+      return v;
+    }
+    case S8:
+      return GetFirstElement<int8>();
+    case S16:
+      return GetFirstElement<int16>();
+    case S32:
+      return GetFirstElement<int32>();
+    case S64:
+      return GetFirstElement<int64>();
+    default:
+      return absl::nullopt;
+  }
 }
 
 template <typename NativeT>
@@ -233,7 +254,7 @@ Status MutableLiteralBase::CopySliceFromInternal(
     TF_RET_CHECK(src_base.size() == copy_size.size());
 
     // Scan the source from minor, stepping in copy size blocks, then within
-    // the index enumaration functor, do a strided copy advancing source index
+    // the index enumeration functor, do a strided copy advancing source index
     // by one (walking through the minor dimension), and destination index by
     // proper stride size at the matching dimension.
     DimensionVector src_indexes(src_base.size(), 0);
@@ -289,13 +310,14 @@ Status MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
 }
 
 /* static */ StatusOr<Literal> MutableLiteralBase::CreateFromProto(
-    const LiteralProto& proto) {
+    const LiteralProto& proto, bool prohibit_empty_literal) {
   if (!proto.has_shape()) {
     return InvalidArgument("LiteralProto has no shape");
   }
   Shape shape(proto.shape());
-  if (ShapeUtil::HasPrimitiveType(shape, OPAQUE)) {
-    return InvalidArgument("Literal shape cannot include OPAQUE sub-shape");
+  if (ShapeUtil::HasPrimitiveType(shape, OPAQUE_TYPE)) {
+    return InvalidArgument(
+        "Literal shape cannot include OPAQUE_TYPE sub-shape");
   }
   if (!LayoutUtil::HasLayout(shape)) {
     return InvalidArgument("LiteralProto has no layout");
@@ -328,7 +350,13 @@ Status MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
         }
 
         CHECK(piece->subshape().IsArray());
-        TF_RETURN_IF_ERROR(piece->CopyFromProto(*proto_element));
+
+        // When prohibit_empty_literal is false (allowing literal with no
+        // values), only copy from proto if the literal proto has values. This
+        // mode is used for a learned cost model.
+        if (prohibit_empty_literal || LiteralProtoHasValues(*proto_element)) {
+          TF_RETURN_IF_ERROR(piece->CopyFromProto(*proto_element));
+        }
 
         return Status::OK();
       }));
@@ -351,12 +379,9 @@ std::vector<Literal> Literal::DecomposeTuple() {
           }
           Piece& src_piece = piece(src_index);
 
-          // Move the respective buffer and sparse indices over to the element
-          // Literal.
+          // Move the respective buffer over to the element Literal.
           dest_piece->set_buffer(src_piece.buffer());
           src_piece.set_buffer(nullptr);
-          dest_piece->set_sparse_indices(src_piece.sparse_indices());
-          src_piece.set_sparse_indices(nullptr);
         });
   }
   // Set this literal to be nil-shaped.
@@ -488,10 +513,8 @@ Status Literal::MoveFrom(Literal&& src_literal,
           dest_index.push_back(i);
         }
         Piece& dest_piece = piece(dest_index);
-        delete[] dest_piece.buffer();
+        tensorflow::port::AlignedFree(dest_piece.buffer());
         dest_piece.set_buffer(src_piece.buffer());
-        delete dest_piece.sparse_indices();
-        dest_piece.set_sparse_indices(src_piece.sparse_indices());
       });
 
   src_literal.shape_ = absl::make_unique<Shape>(ShapeUtil::MakeNil());
@@ -716,14 +739,14 @@ Literal LiteralBase::SliceInternal(
     const Shape& result_shape, absl::Span<const int64> start_indices) const {
   Literal result_literal(result_shape);
   DimensionVector new_indices(result_shape.rank());
-  result_literal.EachCell<NativeT>(
-      [&](absl::Span<const int64> indices, NativeT /*value*/) {
-        for (int64 i = 0; i < result_shape.rank(); ++i) {
-          new_indices[i] = indices[i] + start_indices[i];
-        }
-        NativeT value = Get<NativeT>(new_indices);
-        result_literal.Set<NativeT>(indices, value);
-      });
+  CHECK(result_literal
+            .Populate<NativeT>([&](absl::Span<const int64> indices) {
+              for (int64 i = 0; i < result_shape.rank(); ++i) {
+                new_indices[i] = indices[i] + start_indices[i];
+              }
+              return Get<NativeT>(new_indices);
+            })
+            .ok());
   return result_literal;
 }
 
@@ -810,88 +833,29 @@ string LiteralBase::GetAsString(absl::Span<const int64> multi_index,
     case U64:
       return StrCat(Get<uint64>(multi_index, shape_index));
     case F16:
-      return StrCat(static_cast<float>(Get<half>(multi_index, shape_index)));
+      return RoundTripFpToString(Get<half>(multi_index, shape_index));
     case F32:
-      return StrCat(Get<float>(multi_index, shape_index));
+      return RoundTripFpToString(Get<float>(multi_index, shape_index));
     case BF16:
-      return StrCat(
-          static_cast<float>(Get<bfloat16>(multi_index, shape_index)));
+      return RoundTripFpToString(Get<bfloat16>(multi_index, shape_index));
     case F64:
-      return StrCat(Get<double>(multi_index, shape_index));
+      return RoundTripFpToString(Get<double>(multi_index, shape_index));
     case C64: {
       complex64 c = Get<complex64>(multi_index, shape_index);
-      return StrCat("(", c.real(), ", ", c.imag(), ")");
+      return StrCat("(", RoundTripFpToString(c.real()), ", ",
+                    RoundTripFpToString(c.imag()), ")");
     }
     case C128: {
       complex128 c = Get<complex128>(multi_index, shape_index);
-      return StrCat("(", c.real(), ", ", c.imag(), ")");
+      return StrCat("(", RoundTripFpToString(c.real()), ", ",
+                    RoundTripFpToString(c.imag()), ")");
     }
     default:
       LOG(FATAL) << PrimitiveType_Name(subshape.element_type());
   }
 }
 
-string LiteralBase::GetSparseElementAsString(
-    int64 sparse_element_number, const ShapeIndex& shape_index) const {
-  const Shape& subshape = ShapeUtil::GetSubshape(shape(), shape_index);
-  CHECK(LayoutUtil::IsSparseArray(subshape));
-  switch (subshape.element_type()) {
-    case PRED:
-      return GetSparseElement<bool>(sparse_element_number, shape_index)
-                 ? "true"
-                 : "false";
-    case S8:
-      return StrCat(GetSparseElement<int8>(sparse_element_number, shape_index));
-    case S16:
-      return StrCat(
-          GetSparseElement<int16>(sparse_element_number, shape_index));
-    case S32:
-      return StrCat(
-          GetSparseElement<int32>(sparse_element_number, shape_index));
-    case S64:
-      return StrCat(
-          GetSparseElement<int64>(sparse_element_number, shape_index));
-    case U8:
-      return StrCat(
-          GetSparseElement<uint8>(sparse_element_number, shape_index));
-    case U16:
-      return StrCat(
-          GetSparseElement<uint16>(sparse_element_number, shape_index));
-    case U32:
-      return StrCat(
-          GetSparseElement<uint32>(sparse_element_number, shape_index));
-    case U64:
-      return StrCat(
-          GetSparseElement<uint64>(sparse_element_number, shape_index));
-    case F16:
-      return StrCat(static_cast<float>(
-          GetSparseElement<half>(sparse_element_number, shape_index)));
-    case F32:
-      return StrCat(
-          GetSparseElement<float>(sparse_element_number, shape_index));
-    case BF16:
-      return StrCat(static_cast<float>(
-          GetSparseElement<bfloat16>(sparse_element_number, shape_index)));
-    case F64:
-      return StrCat(
-          GetSparseElement<double>(sparse_element_number, shape_index));
-    case C64: {
-      complex64 c =
-          GetSparseElement<complex64>(sparse_element_number, shape_index);
-      return StrCat("(", c.real(), ", ", c.imag(), ")");
-    }
-    case C128: {
-      complex128 c =
-          GetSparseElement<complex128>(sparse_element_number, shape_index);
-      return StrCat("(", c.real(), ", ", c.imag(), ")");
-    }
-    default:
-      LOG(FATAL) << "Invalid element type for sparse arrays: "
-                 << PrimitiveType_Name(subshape.element_type());
-  }
-}
-
-StatusOr<int64> LiteralBase::GetIntegralAsS64(
+absl::optional<int64> LiteralBase::GetIntegralAsS64(
     absl::Span<const int64> multi_index) const {
   CHECK(LayoutUtil::IsDenseArray(shape()));
   switch (shape().element_type()) {
@@ -908,8 +872,46 @@ StatusOr<int64> LiteralBase::GetIntegralAsS64(
     case U64:
       return Get<uint64>(multi_index);
     default:
-      return FailedPrecondition("Array element type is not integral: %s",
-                                PrimitiveType_Name(shape().element_type()));
+      return absl::nullopt;
+  }
+}
+
+absl::optional<double> LiteralBase::GetAsDouble(
+    absl::Span<const int64> multi_index) const {
+  CHECK(LayoutUtil::IsDenseArray(shape()));
+  switch (shape().element_type()) {
+    case F16:
+      return static_cast<double>(Get<half>(multi_index));
+    case F32:
+      return static_cast<double>(Get<float>(multi_index));
+    case F64:
+      return Get<double>(multi_index);
+    case BF16:
+      return static_cast<double>(Get<bfloat16>(multi_index));
+    default:
+      return absl::nullopt;
+  }
+}
+
+absl::optional<complex128> LiteralBase::GetAsComplex128(
+    absl::Span<const int64> multi_index) const {
+  switch (shape().element_type()) {
+    case BF16:
+      return {{static_cast<double>(Get<bfloat16>(multi_index)), 0}};
+    case F16:
+      return {{static_cast<double>(Get<Eigen::half>(multi_index)), 0}};
+    case F32:
+      return {{Get<float>(multi_index), 0}};
+    case F64:
+      return {{Get<double>(multi_index), 0}};
+    case C64:
+      return {Get<complex64>(multi_index)};
+    case C128:
+      return {Get<complex128>(multi_index)};
+    case S8:
+      return {Get<int8>(multi_index)};
+    default:
+      return absl::nullopt;
   }
 }
 
@@ -963,79 +965,27 @@ Status MutableLiteralBase::SetIntegralAsS64(absl::Span<const int64> multi_index,
   return Status::OK();
 }
 
-absl::Span<const int64> LiteralBase::GetSparseIndex(
-    int64 sparse_element_number, const ShapeIndex& shape_index) const {
-  const Piece& p = piece(shape_index);
-  CHECK_GE(sparse_element_number, 0);
-  CHECK_LT(sparse_element_number, p.sparse_indices()->index_count());
-  return p.sparse_indices()->At(sparse_element_number);
-}
-
-void MutableLiteralBase::SortSparseElements(const ShapeIndex& shape_index) {
-  piece(shape_index).SortSparseElements();
-}
-
-void LiteralBase::Piece::SortSparseElements() {
-  switch (subshape().element_type()) {
-    case PRED:
-      SortSparseElementsInternal<bool>();
-      break;
-    case S8:
-      SortSparseElementsInternal<int8>();
-      break;
-    case U8:
-      SortSparseElementsInternal<uint8>();
-      break;
-    case S16:
-      SortSparseElementsInternal<int16>();
-      break;
-    case U16:
-      SortSparseElementsInternal<uint16>();
-      break;
-    case S32:
-      SortSparseElementsInternal<int32>();
-      break;
-    case U32:
-      SortSparseElementsInternal<uint32>();
-      break;
-    case S64:
-      SortSparseElementsInternal<int64>();
-      break;
-    case U64:
-      SortSparseElementsInternal<uint64>();
+Status MutableLiteralBase::SetFromDouble(absl::Span<const int64> multi_index,
+                                         double value) {
+  CHECK(LayoutUtil::IsDenseArray(shape()));
+  switch (shape().element_type()) {
+    case F16:
+      Set<half>(multi_index, Eigen::half(value));
       break;
     case F32:
-      SortSparseElementsInternal<float>();
+      Set<float>(multi_index, value);
       break;
     case F64:
-      SortSparseElementsInternal<double>();
-      break;
-    case C64:
-      SortSparseElementsInternal<complex64>();
-      break;
-    case C128:
-      SortSparseElementsInternal<complex128>();
-      break;
-    case F16:
-      SortSparseElementsInternal<half>();
+      Set<double>(multi_index, value);
       break;
     case BF16:
-      SortSparseElementsInternal<bfloat16>();
+      Set<bfloat16>(multi_index, static_cast<bfloat16>(value));
       break;
     default:
-      LOG(FATAL) << "Element type not valid for sparse array: "
-                 << PrimitiveType_Name(subshape().element_type());
+      return FailedPrecondition("Array element type is not floating: %s",
+                                PrimitiveType_Name(shape().element_type()));
   }
-}
-
-template <typename NativeT>
-void LiteralBase::Piece::SortSparseElementsInternal() {
-  CHECK(LayoutUtil::IsSparseArray(subshape()));
-  int64 num_elements = sparse_indices()->index_count();
-  auto values = data<NativeT>();
-  CHECK_LE(num_elements, values.size());
-  sparse_indices()->SortWithValues(
-      absl::Span<NativeT>(values.data(), num_elements));
+  return Status::OK();
 }
 
 namespace {
@@ -1065,32 +1015,6 @@ void TupleToStringHelper(const LiteralBase& literal,
   }
   pieces->push_back(absl::StrJoin(tuple_pieces, ",\n"));
   pieces->push_back("\n)");
-}
-
-void SparseArrayToStringHelper(const LiteralBase& literal,
-                               const Shape& subshape, bool print_shape,
-                               bool print_layout, std::vector<string>* pieces) {
-  if (print_shape) {
-    pieces->push_back(ShapeToString(print_layout, subshape));
-  }
-  pieces->push_back("{");
-  int64 rank = subshape.rank();
-  int64 num_elements = literal.sparse_element_count();
-  for (int64 i = 0; i < num_elements; ++i) {
-    if (i > 0) {
-      pieces->push_back(", ");
-    }
-    if (rank == 1) {
-      pieces->push_back(StrCat(literal.GetSparseIndex(i)[0]));
-      pieces->push_back(": ");
-    } else {
-      pieces->push_back("[");
-      pieces->push_back(absl::StrJoin(literal.GetSparseIndex(i), ", "));
-      pieces->push_back("]: ");
-    }
-    pieces->push_back(literal.GetSparseElementAsString(i));
-  }
-  pieces->push_back("}");
 }
 
 void DenseArrayToStringHelper(const LiteralBase& literal,
@@ -1177,9 +1101,6 @@ void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
                         pieces);
   } else if (subshape.IsToken()) {
     pieces->push_back("token");
-  } else if (LayoutUtil::IsSparseArray(subshape)) {
-    SparseArrayToStringHelper(literal, subshape, print_shape, print_layout,
-                              pieces);
   } else {
     CHECK(LayoutUtil::IsDenseArray(subshape));
     DenseArrayToStringHelper(literal, shape_index, print_shape, print_layout,
@@ -1188,11 +1109,6 @@ void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
 }
 
 }  // namespace
-
-int64 LiteralBase::sparse_element_count() const {
-  CHECK(LayoutUtil::IsSparseArray(shape()));
-  return sparse_indices()->index_count();
-}
 
 string LiteralBase::ToString() const {
   std::vector<string> pieces;
@@ -1628,26 +1544,20 @@ bool LiteralBase::IsAllFloat(float value) const {
           return true;
         }
 
-        auto piece_is_all = [&]() {
-          switch (shape().element_type()) {
-            case F32:
-              return AllElementsEqualValue<float>(piece.data<float>(), value);
-            case F64:
-              return AllElementsEqualValue<double>(piece.data<double>(), value);
-            case F16:
-              return AllElementsEqualValue<half>(piece.data<half>(),
-                                                 static_cast<half>(value));
-            case BF16:
-              return AllElementsEqualValue<bfloat16>(
-                  piece.data<bfloat16>(), static_cast<bfloat16>(value));
-            default:
-              return false;
-          }
-        };
-        if (!piece_is_all()) {
-          return false;
+        switch (shape().element_type()) {
+          case F32:
+            return AllElementsEqualValue<float>(piece.data<float>(), value);
+          case F64:
+            return AllElementsEqualValue<double>(piece.data<double>(), value);
+          case F16:
+            return AllElementsEqualValue<half>(piece.data<half>(),
+                                               static_cast<half>(value));
+          case BF16:
+            return AllElementsEqualValue<bfloat16>(
+                piece.data<bfloat16>(), static_cast<bfloat16>(value));
+          default:
+            return false;
         }
-        return true;
       });
 }
 
@@ -1794,9 +1704,7 @@ bool LiteralBase::IsR1Iota() const {
         return Get<complex64>({idx}) == complex64(idx, 0.0f);
       case C128:
         return Get<complex128>({idx}) == complex128(idx, 0.0f);
-      case PRED:
-        return Get<bool>({idx}) == idx;
-      // token, opaque, tuple, etc. are all not iota.
+      // pred, token, opaque, tuple, etc. are all not iota.
       default:
         return false;
     }
@@ -1977,22 +1885,6 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
   TF_RET_CHECK(LayoutUtil::HasLayout(shape));
   TF_RET_CHECK(ShapeUtil::Equal(shape, subshape()));
 
-  if (LayoutUtil::IsSparseArray(subshape())) {
-    // Compute the number of elements (indices) in the sparse shape and reserve
-    // the necessary space in spare_indices.
-    TF_RET_CHECK(subshape().rank() != 0) << "Scalar shapes cannot be sparse";
-    TF_RET_CHECK(proto.sparse_indices_size() % subshape().rank() == 0)
-        << "Unexpected number of indices in proto ("
-        << proto.sparse_indices_size() << ") for shape of rank "
-        << subshape().rank();
-    const int64 index_count = proto.sparse_indices_size() / subshape().rank();
-    sparse_indices()->Resize(index_count);
-
-    // Copy the indices from the proto into the SparseIndexArray object.
-    TF_RETURN_IF_ERROR(CopyFromRepeatedField(sparse_indices()->mutable_data(),
-                                             proto.sparse_indices()));
-  }
-
   switch (subshape().element_type()) {
     case PRED:
       TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<bool>(), proto.preds()));
@@ -2099,11 +1991,6 @@ LiteralProto LiteralBase::ToProto() const {
         piece.WriteToProto(proto_piece);
       });
 
-  if (LayoutUtil::IsSparseArray(shape())) {
-    CopyToRepeatedField(proto.mutable_sparse_indices(),
-                        sparse_indices()->data());
-  }
-
   return proto;
 }
 
@@ -2182,18 +2069,6 @@ MutableBorrowingLiteral& MutableBorrowingLiteral::operator=(
   return *this;
 }
 
-MutableBorrowingLiteral::MutableBorrowingLiteral(
-    const MutableLiteralBase& literal)
-    : MutableLiteralBase() {
-  shape_ = absl::make_unique<Shape>(literal.shape());
-  CHECK(LayoutUtil::HasLayout(*shape_));
-
-  root_piece_ = new Piece();
-  root_piece_->set_subshape(shape_.get());
-
-  CopyPieceSubtree(*shape_, &literal.root_piece(), root_piece_);
-}
-
 MutableBorrowingLiteral::MutableBorrowingLiteral(MutableLiteralBase* literal)
     : MutableLiteralBase() {
   shape_ = absl::make_unique<Shape>(literal->shape());
@@ -2229,14 +2104,34 @@ MutableBorrowingLiteral::MutableBorrowingLiteral(const char* src_buf_ptr,
   root_piece_->set_subshape(shape_.get());
 }
 
+MutableBorrowingLiteral::MutableBorrowingLiteral(absl::Span<char*> src_buf_ptrs,
+                                                 const Shape& shape)
+    : MutableLiteralBase() {
+  shape_ = absl::make_unique<Shape>(shape);
+  if (!shape_->IsTuple()) {
+    CHECK_EQ(src_buf_ptrs.size(), 1);
+    root_piece_ = new Piece();
+    root_piece_->set_buffer(const_cast<char*>(src_buf_ptrs[0]));
+    root_piece_->set_subshape(shape_.get());
+  } else {
+    CHECK(!ShapeUtil::IsNestedTuple(*shape_));
+    CHECK_EQ(src_buf_ptrs.size(), ShapeUtil::TupleElementCount(*shape_));
+    root_piece_ = new Piece();
+    root_piece_->set_subshape(shape_.get());
+
+    for (int i = 0; i < src_buf_ptrs.size(); ++i) {
+      Piece child_piece;
+      const auto& src_shape = shape_->tuple_shapes(i);
+      CHECK(src_shape.IsArray());
+      child_piece.set_subshape(&src_shape);
+      child_piece.set_buffer(src_buf_ptrs[i]);
+      root_piece_->emplace_back(std::move(child_piece));
+    }
+  }
+}
+
 MutableBorrowingLiteral::~MutableBorrowingLiteral() {
   if (root_piece_ != nullptr) {
-    root_piece_->ForEachMutableSubpiece(
-        [&](const ShapeIndex& index, Piece* piece) {
-          if (piece->buffer() != nullptr) {
-            delete piece->sparse_indices();
-          }
-        });
     delete root_piece_;
   }
 }

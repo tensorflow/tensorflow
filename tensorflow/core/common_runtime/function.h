@@ -19,9 +19,14 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/function_body.h"
+#include "tensorflow/core/common_runtime/function_def_utils.h"
+#include "tensorflow/core/common_runtime/function_utils.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
+#include "tensorflow/core/common_runtime/inline_function_utils.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
@@ -29,16 +34,18 @@ limitations under the License.
 
 namespace tensorflow {
 
-static constexpr const char* const kNoInlineAttr = "_noinline";
+// Get default customizable kernel creator if set
+const CustomKernelCreator* GetDefaultCustomKernelCreator();
 
 // Registers a default customizable kernel creator for a function call.
 //
-// If 'cb()' returns a non-OK, we still fall back to an executor-based
-// interpreter op kernel to execute a function. If 'cb()' returns OK,
-// takes ownership of the returned OpKernel.
+// If c->CanCreateKernel returns false, we still fall back to an executor-based
+// interpreter op kernel to execute a function. Else c->CreateKernel() can be
+// used to create a kernel that will compile the function with XLA and run the
+// resulting program.
 //
 // TODO(zhifengc/phawkins): b/32379046
-void RegisterDefaultCustomKernelCreator(CustomKernelCreator cb);
+void RegisterDefaultCustomKernelCreator(CustomKernelCreator* c);
 
 // Creates a FunctionLibraryRuntime, which instantiates functions
 // defined in "lib_def" and executes functions on the "device".
@@ -54,95 +61,13 @@ void RegisterDefaultCustomKernelCreator(CustomKernelCreator cb);
 // typically owns the created FunctionLibraryRuntime object. The parent pointer
 // is not owned by the FunctionLibraryRuntime object.
 std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
-    const DeviceMgr* device_mgr, Env* env, Device* device,
-    int graph_def_version, const FunctionLibraryDefinition* lib_def,
-    thread::ThreadPool* thread_pool, const OptimizerOptions& optimizer_options,
-    CustomKernelCreator custom_kernel_creator,
+    const DeviceMgr* device_mgr, Env* env, const ConfigProto* config,
+    Device* device, int graph_def_version,
+    const FunctionLibraryDefinition* lib_def, thread::ThreadPool* thread_pool,
+    const OptimizerOptions& optimizer_options,
+    const CustomKernelCreator* custom_kernel_creator,
+    const SessionMetadata* session_metadata,
     ProcessFunctionLibraryRuntime* parent);
-
-// Same as above except that the returned runtime consults with the
-// global default custom kernel creator registered by
-// RegisterDefaultCustomKernelCreator.
-std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
-    const DeviceMgr* device_mgr, Env* env, Device* device,
-    int graph_def_version, const FunctionLibraryDefinition* lib_def,
-    thread::ThreadPool* thread_pool, const OptimizerOptions& optimizer_options,
-    ProcessFunctionLibraryRuntime* parent);
-
-// FunctionLibraryRuntime::GetFunctionBody returns a description of an
-// instantiated function that is represented as a Graph with arg/ret
-// nodes annotated.
-struct FunctionBody {
-  FunctionDef fdef;
-  Graph* graph = nullptr;  // owned.
-  DataTypeVector arg_types;
-  DataTypeVector ret_types;
-  gtl::InlinedVector<Node*, 4> arg_nodes;
-  gtl::InlinedVector<Node*, 4> ret_nodes;
-
-  FunctionBody() {}
-  FunctionBody(const FunctionDef& f, DataTypeSlice arg_types,
-               DataTypeSlice ret_types, Graph* g);
-  ~FunctionBody();
-};
-
-// Debugging facility.  Returns a debug string for a graph
-// representing an instantiated function.
-string DebugString(const Graph* instantiated_func_graph);
-
-// A few hand-crafted optimization on the instantiated function body
-// (a Graph*).
-
-// Removes nodes that are
-//   1. not stateful; and
-//   2. not _Arg; and
-//   3. not reachable from _Retval.
-// Returns true iff any node is removed from "g".
-bool RemoveDeadNodes(Graph* g);
-
-// Find a pattern:
-//   src -(in)-> node -(out)-> dst, where
-// 1) node is an identity node;
-// 2) in is the only incoming data edge;
-// 3) out is the only outgoing data edge;
-//
-// Rewrites the above pattern with src->dst and relevant data
-// dependencies updated. Repeat the process until no such pattern
-// left.
-bool RemoveIdentityNodes(Graph* g);
-
-// Rewrites _ListToArray and _ArrayToList to a set of Identity nodes.
-bool RemoveListArrayConverter(Graph* g);
-
-// For each node in "graph", if "lib" indicates that the node is a
-// function call, inline the function body.  Returns true if at least
-// one node is inlined.
-//
-// This routine goes through "graph" nodes once and applies the
-// inlining.  The caller may decide to apply the inlining on "graph"
-// multiple times by calling ExpandInlineFunctions a few times.
-bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph);
-
-// Dump the contents of the "graph" to log files if the logging level is
-// sufficiently high.
-void DumpGraph(StringPiece label, const Graph* g);
-
-// Applies graph rewrite optimization such as inlining, dead code
-// removal, etc.
-//
-// **g is a graph constructed based on the runtime library 'lib'.
-// OptimizeGraph mutates **g extensively and replaces '*g' with a
-// complete copy. Therefore, the caller should not keep any references
-// to nodes *g.
-void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g,
-                   const GraphOptimizer::Options& graph_optimizer_options);
-void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g);
-
-// Convert the Graph of a function to a GraphDef.
-//
-// Handles renaming of nodes to avoid duplicate names which may
-// be present after various rewriting operations.
-void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty = false);
 
 // Given a numerical function "f", returns another numerical function
 // "g", such that if "f" takes N inputs and produces M outputs, "g"
@@ -154,25 +79,8 @@ void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty = false);
 // where L is a scalar-value function of (...x_i...).
 //
 // TODO(zhifengc): Asks math expert to say the comment again.
-FunctionBody* SymbolicGradient(const FunctionBody& f);
+std::unique_ptr<FunctionBody> SymbolicGradient(const FunctionBody& f);
 
-// Given a "caller" in graph "g", which is a function call of a function
-// to "fbody". Replaces the "caller" with fbody->graph and connects
-// edges properly. "override_device" specifies whether inlining should replace
-// explicitly specified devices inside fbody with the callee's device.
-//
-// TODO(ezhulenev): Return Status::error if function inlining failed.
-void InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
-                        Node* caller, const FunctionBody* fbody,
-                        bool override_device = true);
-
-// Instantiates FunctionDef into a graph. Set *fbody to point to the
-// FunctionBody that holds the instantiated FunctionDef.
-Status FunctionDefToBodyHelper(
-    const FunctionDef& fdef, const AttrSlice& attrs,
-    const FunctionLibraryDefinition* const lib_def,
-    const std::function<Status(const string&, const OpDef**)>& get_func_sig,
-    FunctionBody** fbody);
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_FUNCTION_H_

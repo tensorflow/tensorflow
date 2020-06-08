@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -38,6 +38,7 @@ TfLiteStatus ResizeOutputImpl(TfLiteContext* context, const TfLiteTensor* dims,
   for (int i = 0; i < output_shape->size; ++i) {
     T data = GetTensorData<T>(dims)[i];
     if (data < 0) {
+      TfLiteIntArrayFree(output_shape);
       context->ReportError(context, "Fill dimensions must be >= 0", dims->type);
       return kTfLiteError;
     }
@@ -93,6 +94,20 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
+TfLiteStatus FillString(const TfLiteTensor* value, TfLiteTensor* output) {
+  DynamicBuffer buffer;
+  const auto string_ref = GetString(value, 0);
+  int n = 1;
+  for (int i = 0; i < output->dims->size; ++i) {
+    n *= output->dims->data[i];
+  }
+  for (int i = 0; i < n; ++i) {
+    buffer.AddString(string_ref.str, string_ref.len);
+  }
+  buffer.WriteToTensor(output, /*new_shape=*/nullptr);
+  return kTfLiteOk;
+}
+
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* value = GetInput(context, node, kValueTensor);
 
@@ -116,11 +131,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteFloat32:
       TF_LITE_FILL(float);
       break;
+    case kTfLiteBool:
+      TF_LITE_FILL(bool);
+      break;
+    case kTfLiteString:
+      FillString(value, output);
+      break;
     default:
       context->ReportError(
           context,
-          "Fill only currently supports int32, int64, float32 for input 1,"
-          "got %d.",
+          "Fill only currently supports int32, int64, float32, bool, string "
+          "for input 1, got %d.",
           value->type);
       return kTfLiteError;
   }

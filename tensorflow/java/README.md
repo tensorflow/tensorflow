@@ -3,11 +3,7 @@
 > *WARNING*: The TensorFlow Java API is not currently covered by the TensorFlow
 > [API stability guarantees](https://www.tensorflow.org/guide/version_compat).
 >
-> For using TensorFlow on Android refer instead to
-> [contrib/android](https://www.tensorflow.org/code/tensorflow/contrib/android),
-> [makefile](https://www.tensorflow.org/code/tensorflow/contrib/makefile#android)
-> and/or the
-> [Android demo](https://www.tensorflow.org/code/tensorflow/examples/android).
+> For using TensorFlow on Android refer instead to [TensorFlow Lite](https://www.tensorflow.org/code/tensorflow/lite/).
 
 ## Quickstart
 

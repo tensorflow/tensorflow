@@ -1,0 +1,11 @@
+path: "tensorflow.xla.experimental"
+tf_module {
+  member_method {
+    name: "compile"
+    argspec: "args=[\'computation\', \'inputs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "jit_scope"
+    argspec: "args=[], varargs=args, keywords=kwds, defaults=None"
+  }
+}

@@ -99,7 +99,8 @@ REGISTER_KERNEL(float);
 REGISTER_KERNEL(double);
 #undef REGISTER_KERNEL
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 // Forward declarations of the function specializations for GPU (to prevent
 // building the GPU versions here, they will be built compiling _gpu.cu.cc).
 namespace functor {
@@ -136,7 +137,7 @@ REGISTER_GPU_KERNEL(float);
 REGISTER_GPU_KERNEL(double);
 #undef REGISTER_GPU_KERNEL
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 class AdjustContrastOpV2Base : public OpKernel {
  protected:
@@ -272,7 +273,7 @@ class AdjustContrastOpv2<CPUDevice, float> : public AdjustContrastOpV2Base {
       //
       // The algorithm itself can handle size that is not power-of-two. Note
       // that in each round we sum up elements that are contiguous. So we can
-      // use their flattened structure to gain vectorinization efficiency.
+      // use their flattened structure to gain vectorization efficiency.
       do {
         int64 right_size = remaining_size / 2;
         int64 left_size = remaining_size - right_size;
@@ -323,7 +324,7 @@ class AdjustContrastOpv2<CPUDevice, float> : public AdjustContrastOpV2Base {
     // Similar to the reduction case, a straightforward implementation of this
     // does not utilize vectorization well because of the small channel size.
     // This algorithm repeatedly increases the area to be copied, and leads to
-    // much better vectorinizations in the copy.
+    // much better vectorizations in the copy.
     for (int64 i = 0; i < batch; i++) {
       // Copy over the inputs into outputs in this batch. Effectively:
       // outputs(i, :, k) = inputs(i, k). An example of how this algorithm
@@ -353,7 +354,7 @@ class AdjustContrastOpv2<CPUDevice, float> : public AdjustContrastOpV2Base {
       int64 copied = 1;
       while (copied < image_size) {
         // Repeatedly increases the number of elements to copy so they have
-        // better vectorinizations. However, the source of the copy has to be
+        // better vectorizations. However, the source of the copy has to be
         // not too large to stay in the cache.
         const int64 kMaxToCopy = 1024;
         int64 to_copy = std::min({copied, image_size - copied, kMaxToCopy});
@@ -382,7 +383,8 @@ REGISTER_KERNEL_BUILDER(
     Name("AdjustContrastv2").Device(DEVICE_CPU).TypeConstraint<float>("T"),
     AdjustContrastOpv2<CPUDevice, float>);
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 // Forward declarations of the function specializations for GPU (to prevent
 // building the GPU versions here, they will be built compiling _gpu.cu.cc).
 namespace functor {
@@ -428,7 +430,7 @@ REGISTER_GPU(Eigen::half)
 
 #undef REGISTER_GPU
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 template <>

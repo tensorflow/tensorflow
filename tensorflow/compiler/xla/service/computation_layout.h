@@ -87,6 +87,10 @@ class ComputationLayout {
   // within this object.
   ProgramShape ComputeProgramShape() const;
 
+  bool operator==(const ComputationLayout& other) const;
+  bool operator!=(const ComputationLayout& other) const;
+  uint64 Hash() const;
+
  private:
   std::vector<ShapeLayout> parameter_layouts_;
   ShapeLayout result_layout_;

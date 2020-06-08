@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/test_util.h"
-#include "tensorflow/lite/string.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 namespace {
@@ -61,7 +61,8 @@ void RunSoftmaxFloatReference(const uint8* input_data,
   }
 }
 
-void CheckOutputData(const uint8* test_output, const uint8* reference_output,
+template <typename T>
+void CheckOutputData(const T* test_output, const T* reference_output,
                      const RuntimeShape& shape_common,
                      const string& check_label, bool be_exacting) {
   const int buffer_size = shape_common.FlatSize();
@@ -85,14 +86,18 @@ void CheckOutputData(const uint8* test_output, const uint8* reference_output,
   // We either check for bit exactness (against the reference quantized version)
   // or for general accuracy, allowing off-by-one (against the float reference).
   if (be_exacting) {
-    ASSERT_TRUE(std::abs(min_diff) == 0 && std::abs(max_diff) == 0);
+    ASSERT_EQ(std::abs(min_diff), 0);
+    ASSERT_EQ(std::abs(max_diff), 0);
   } else {
     // For small numbers of samples, the estimates of the means vary more.
     // Rather than widen the tolerances, we skip the smaller tests.
-    ASSERT_TRUE(((std::abs(mean_diff) < 2e-2f && mean_abs_diff < 3e-2f) ||
-                 buffer_size < 10000) &&
-                std::abs(median_diff) == 0 && std::abs(min_diff) <= 1 &&
-                std::abs(max_diff) <= 1);
+    if (buffer_size >= 10000) {
+      ASSERT_LT(std::abs(mean_diff), 2e-2f);
+      ASSERT_LT(mean_abs_diff, 3e-2f);
+    }
+    ASSERT_EQ(std::abs(median_diff), 0);
+    ASSERT_LE(std::abs(min_diff), 1);
+    ASSERT_LE(std::abs(max_diff), 1);
   }
 }
 
@@ -121,23 +126,28 @@ void RunOneSoftmaxTest(const uint8* input_data,
                                                      input_beta_left_shift);
 
   SoftmaxParams params;
+  float table[256];
   params.input_multiplier = input_beta_multiplier;
   params.input_left_shift = input_beta_left_shift;
   params.diff_min = diff_min;
+  params.scale = 1.0f / 256;
+  params.zero_point = 0;
+  params.table = table;
+  optimized_ops::PopulateSoftmaxLookupTable(&params, input_scale, beta);
   optimized_ops::Softmax(params, shape_common, input_data, shape_common,
                          optimized_softmax_output.data());
   reference_ops::Softmax(params, shape_common, input_data, shape_common,
                          reference_quant_softmax_output.data());
 
-  CheckOutputData(optimized_softmax_output.data(),
-                  reference_float_softmax_output.data(), shape_common,
-                  "Optimized vs float reference", false);
-  CheckOutputData(optimized_softmax_output.data(),
-                  reference_quant_softmax_output.data(), shape_common,
-                  "Optimized vs quant reference", true);
-  CheckOutputData(reference_quant_softmax_output.data(),
-                  reference_float_softmax_output.data(), shape_common,
-                  "Quant reference vs float reference", false);
+  CheckOutputData<uint8_t>(optimized_softmax_output.data(),
+                           reference_float_softmax_output.data(), shape_common,
+                           "Optimized vs float reference", false);
+  CheckOutputData<uint8_t>(optimized_softmax_output.data(),
+                           reference_quant_softmax_output.data(), shape_common,
+                           "Optimized vs quant reference", false);
+  CheckOutputData<uint8_t>(reference_quant_softmax_output.data(),
+                           reference_float_softmax_output.data(), shape_common,
+                           "Quant reference vs float reference", false);
 }
 
 // This function picks some random Softmax params, which are checked for

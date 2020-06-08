@@ -36,7 +36,7 @@ from tensorflow.python.platform import googletest
 class Conv3DBackpropFilterV2GradTest(xla_test.XLATestCase):
 
   def testGradient(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       for padding in ["SAME", "VALID"]:
         for stride in [1, 2]:
           np.random.seed(1)
@@ -69,7 +69,7 @@ class Conv3DBackpropFilterV2GradTest(xla_test.XLATestCase):
 class Conv3DTransposeTest(xla_test.XLATestCase):
 
   def testConv3DTransposeSingleStride(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       strides = [1, 1, 1, 1, 1]
 
       # Input, output: [batch, depth, height, width, channel]
@@ -119,7 +119,7 @@ class Conv3DTransposeTest(xla_test.XLATestCase):
                 self.assertAllClose(target, value[n, d, h, w, k])
 
   def testConv3DTransposeSame(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       strides = [1, 2, 2, 2, 1]
 
       # Input, output: [batch, depth, height, width, depth]
@@ -157,7 +157,7 @@ class Conv3DTransposeTest(xla_test.XLATestCase):
                 self.assertAllClose(target, value[n, d, h, w, k])
 
   def testConv3DTransposeValid(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       strides = [1, 2, 2, 2, 1]
 
       # Input, output: [batch, depth, height, width, depth]
@@ -217,7 +217,7 @@ class Conv3DTransposeTest(xla_test.XLATestCase):
     np.random.seed(1)  # Make it reproducible.
     x_val = np.random.random_sample(x_shape).astype(np.float64)
     f_val = np.random.random_sample(f_shape).astype(np.float64)
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       x = constant_op.constant(x_val, name="x", dtype=dtypes.float32)
       f = constant_op.constant(f_val, name="f", dtype=dtypes.float32)
       output = nn_ops.conv3d_transpose(

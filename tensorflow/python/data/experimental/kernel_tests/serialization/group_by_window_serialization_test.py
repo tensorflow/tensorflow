@@ -17,40 +17,35 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
 from tensorflow.python.data.experimental.ops import grouping
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
 class GroupByWindowSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
+    dataset_serialization_test_base.DatasetSerializationTestBase,
+    parameterized.TestCase):
 
   def _build_dataset(self, components):
     return dataset_ops.Dataset.from_tensor_slices(components).repeat(-1).apply(
         grouping.group_by_window(lambda x: x % 3, lambda _, xs: xs.batch(4), 4))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testCoreGroupByWindow(self):
     components = np.array(
         [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 0, 0, 2, 2, 0, 0], dtype=np.int64)
     self.verify_unused_iterator(
         lambda: self._build_dataset(components), 12, verify_exhausted=False)
-    self.verify_init_before_restore(
-        lambda: self._build_dataset(components), 12, verify_exhausted=False)
     self.verify_multiple_breaks(
         lambda: self._build_dataset(components), 12, verify_exhausted=False)
     self.verify_reset_restored_iterator(
         lambda: self._build_dataset(components), 12, verify_exhausted=False)
-    self.verify_restore_in_empty_graph(
-        lambda: self._build_dataset(components), 12, verify_exhausted=False)
-    diff_components = np.array([0, 0, 0, 1, 1, 1], dtype=np.int64)
-    self.verify_restore_in_modified_graph(
-        lambda: self._build_dataset(components),
-        lambda: self._build_dataset(diff_components),
-        12,
-        verify_exhausted=False)
 
 
 if __name__ == '__main__':

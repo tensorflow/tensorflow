@@ -14,7 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include <functional>
 #include <type_traits>
-#include "tensorflow/lite/c/c_api_internal.h"
+
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -37,25 +38,7 @@ struct OpData {
   bool requires_broadcast;
 };
 
-struct FloatMod {
-  float operator()(const float lhs, const float rhs) const {
-    return std::fmod(lhs, rhs);
-  }
-};
-
-// TODO(b/117912007): Move the implementation to reference_ops.h
 // TODO(b/117912880): Support quantization.
-template <typename T>
-T FloorMod(T input1, T input2) {
-  using ModFunc = typename std::conditional<std::is_integral<T>::value,
-                                            std::modulus<T>, FloatMod>::type;
-
-  ModFunc mod_func;
-  T trunc_mod = mod_func(input1, input2);
-  return (input1 < T(0)) == (input2 < T(0))
-             ? trunc_mod
-             : mod_func(trunc_mod + input2, input2);
-}
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   auto* data = new OpData;
@@ -121,12 +104,13 @@ TfLiteStatus EvalImpl(TfLiteContext* context, bool requires_broadcast,
     reference_ops::BroadcastBinaryFunction4DSlow<T, T, T>(
         GetTensorShape(input1), GetTensorData<T>(input1),
         GetTensorShape(input2), denominator_data, GetTensorShape(output),
-        GetTensorData<T>(output), FloorMod<T>);
+        GetTensorData<T>(output), reference_ops::FloorMod<T>);
   } else {
     reference_ops::BinaryFunction<T, T, T>(
         GetTensorShape(input1), GetTensorData<T>(input1),
         GetTensorShape(input2), GetTensorData<T>(input2),
-        GetTensorShape(output), GetTensorData<T>(output), FloorMod<T>);
+        GetTensorShape(output), GetTensorData<T>(output),
+        reference_ops::FloorMod<T>);
   }
 
   return kTfLiteOk;

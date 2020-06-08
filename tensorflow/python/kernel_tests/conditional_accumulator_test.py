@@ -39,46 +39,11 @@ from tensorflow.python.platform import test
 
 class ConditionalAccumulatorTest(test.TestCase):
 
-  def testConstructor(self):
-    with ops.Graph().as_default():
-      q = data_flow_ops.ConditionalAccumulator(dtypes_lib.float32, name="Q")
-    self.assertTrue(isinstance(q.accumulator_ref, ops.Tensor))
-    self.assertProtoEquals(
-        """
-      name:'Q' op:'ConditionalAccumulator'
-      attr { key: 'dtype' value { type: DT_FLOAT } }
-      attr { key: 'shape' value { shape { unknown_rank: true} } }
-      attr { key: 'container' value { s: '' } }
-      attr { key: 'shared_name' value { s: '' } }
-      attr { key: 'reduction_type' value {s: 'MEAN'} }
-      """, q.accumulator_ref.op.node_def)
-
   def testConstructorWithInvalidArg(self):
     with ops.Graph().as_default():
       with self.assertRaises(ValueError):
         data_flow_ops.ConditionalAccumulator(
             dtypes_lib.float32, name="Q", reduction_type="Invalid")
-
-  def testConstructorWithShape(self):
-    with ops.Graph().as_default():
-      q = data_flow_ops.ConditionalAccumulator(
-          dtypes_lib.float32,
-          name="Q",
-          shape=tensor_shape.TensorShape([1, 5, 2, 8]))
-    self.assertTrue(isinstance(q.accumulator_ref, ops.Tensor))
-    self.assertProtoEquals(
-        """
-      name:'Q' op:'ConditionalAccumulator'
-      attr { key: 'dtype' value { type: DT_FLOAT } }
-      attr { key: 'shape' value { shape { dim {size: 1 }
-                                          dim {size: 5 }
-                                          dim {size: 2 }
-                                          dim {size: 8 }
-      } } }
-      attr { key: 'container' value { s: '' } }
-      attr { key: 'shared_name' value { s: '' } }
-      attr { key: 'reduction_type' value {s: 'MEAN'} }
-      """, q.accumulator_ref.op.node_def)
 
   @test_util.run_deprecated_v1
   def testAccumulatorSizeEmpty(self):
@@ -437,6 +402,9 @@ class ConditionalAccumulatorTest(test.TestCase):
 
   @test_util.run_v1_only("b/120545219")
   def testParallelApplyGrad(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.ConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=tensor_shape.TensorShape([1]))
@@ -463,6 +431,9 @@ class ConditionalAccumulatorTest(test.TestCase):
 
   @test_util.run_v1_only("b/120545219")
   def testParallelTakeGrad(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.ConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=tensor_shape.TensorShape([1]))
@@ -496,6 +467,9 @@ class ConditionalAccumulatorTest(test.TestCase):
 
   @test_util.run_v1_only("b/120545219")
   def testAccumulatorApplyAndBlockingTake(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.ConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=tensor_shape.TensorShape([1]))

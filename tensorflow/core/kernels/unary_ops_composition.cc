@@ -100,7 +100,7 @@ class UnaryOpsComposition : public OpKernel {
     OP_REQUIRES_OK(context,
                    support_.ExportComputeFns(op_names_, &fns_, &cost_));
 
-    VLOG(2) << "Composed unary op: [" << str_util::Join(op_names_, ", ")
+    VLOG(2) << "Composed unary op: [" << absl::StrJoin(op_names_, ", ")
             << "]; cost=" << cost_;
   }
 
@@ -137,7 +137,8 @@ class UnaryOpsComposition : public OpKernel {
   }
 
  private:
-  static const int kPacketSize = Eigen::internal::unpacket_traits<Packet>::size;
+  static constexpr int kPacketSize =
+      Eigen::internal::unpacket_traits<Packet>::size;
 
   static inline int64 AlignBlockSize(int64 block_size) {
     // Align block size to packet size and account for unrolling in run above.

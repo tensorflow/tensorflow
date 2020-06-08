@@ -1,11 +1,13 @@
 # Description:
 # Example TensorFlow models for MNIST used in tutorials
 
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
+
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
     name = "package",
@@ -27,7 +29,6 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/contrib/learn/python/learn/datasets",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -50,6 +51,7 @@ py_binary(
     srcs = [
         "fully_connected_feed.py",
     ],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = ["optonly"],
     deps = [
@@ -64,6 +66,7 @@ py_binary(
     srcs = [
         "mnist_with_summaries.py",
     ],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":input_data",
@@ -82,6 +85,7 @@ py_binary(
     srcs = [
         "mnist_softmax_xla.py",
     ],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":input_data",
@@ -89,9 +93,8 @@ py_binary(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "fully_connected_feed_test",
-    size = "medium",
     srcs = [
         "fully_connected_feed.py",
     ],
@@ -100,7 +103,7 @@ py_test(
         "--max_steps=10",
     ],
     main = "fully_connected_feed.py",
-    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
         ":input_data",
         ":mnist",
@@ -108,7 +111,7 @@ py_test(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "mnist_with_summaries_test",
     size = "small",
     srcs = [
@@ -120,8 +123,11 @@ py_test(
         "--learning_rate=0.00",
     ],
     main = "mnist_with_summaries.py",
-    srcs_version = "PY2AND3",
-    tags = ["notsan"],  # http://b/29184009
+    tags = [
+        "no_pip",
+        "noasan",  # http://b/146080738
+        "notsan",  # http://b/29184009
+    ],
     deps = [
         ":input_data",
         "//tensorflow:tensorflow_py",

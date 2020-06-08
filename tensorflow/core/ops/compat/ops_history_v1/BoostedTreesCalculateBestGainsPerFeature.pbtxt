@@ -1,0 +1,65 @@
+op {
+  name: "BoostedTreesCalculateBestGainsPerFeature"
+  input_arg {
+    name: "node_id_range"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "stats_summary_list"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "l1"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "l2"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "tree_complexity"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min_node_weight"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "node_ids_list"
+    type: DT_INT32
+    number_attr: "num_features"
+  }
+  output_arg {
+    name: "gains_list"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  output_arg {
+    name: "thresholds_list"
+    type: DT_INT32
+    number_attr: "num_features"
+  }
+  output_arg {
+    name: "left_node_contribs_list"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  output_arg {
+    name: "right_node_contribs_list"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  attr {
+    name: "max_splits"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_features"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+}

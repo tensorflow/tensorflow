@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/base/casts.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/numbers.h"
@@ -74,14 +75,6 @@ absl::string_view HloLexer::StringPieceFromPointers(const char* begin,
   CHECK(begin == buf_.end() || CanDereference(begin));
   CHECK(end == buf_.end() || CanDereference(end));
   return absl::string_view(begin, end - begin);
-}
-
-tensorflow::RegexpStringPiece HloLexer::RegexpStringPieceFromPointers(
-    const char* begin, const char* end) const {
-  CHECK(begin <= end);
-  CHECK(begin == buf_.end() || CanDereference(begin));
-  CHECK(end == buf_.end() || CanDereference(end));
-  return tensorflow::RegexpStringPiece(begin, end - begin);
 }
 
 TokKind HloLexer::LookAhead() {
@@ -153,6 +146,8 @@ TokKind HloLexer::LexToken() {
         return LexPercent();
       case ':':
         return TokKind::kColon;
+      case '*':
+        return TokKind::kAsterisk;
       case '[':
         return TokKind::kLsquare;
       case ']':
@@ -212,6 +207,15 @@ TokKind HloLexer::LexToken() {
         // A lone '/' is an error.
         return TokKind::kError;
       }
+      case '.':
+        if (PeekCurrentChar() == '.') {
+          current_ptr_++;
+          if (PeekCurrentChar() == '.') {
+            current_ptr_++;
+            return TokKind::kDots;
+          }
+        }
+        return TokKind::kError;
       case '"':
         return LexString();
     }
@@ -277,13 +281,12 @@ TokKind HloLexer::LexIdentifier() {
   KEYWORD(ROOT);
   KEYWORD(maximal);
   KEYWORD(replicated);
-  KEYWORD(sparse);
 
 #undef KEYWORD
 
   {
-    auto consumable =
-        RegexpStringPieceFromPointers(token_state_.token_start, buf_.end());
+    absl::string_view consumable =
+        StringPieceFromPointers(token_state_.token_start, buf_.end());
     static LazyRE2 dim_labels_pattern = {
         R"([0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,})"};
     if (RE2::Consume(&consumable, *dim_labels_pattern)) {
@@ -325,8 +328,8 @@ TokKind HloLexer::LexPercent() {
 // int ::=  [-]?[0-9]+
 // negative inf ::= '-inf'
 TokKind HloLexer::LexNumberOrPattern() {
-  auto consumable =
-      RegexpStringPieceFromPointers(token_state_.token_start, buf_.end());
+  absl::string_view consumable =
+      StringPieceFromPointers(token_state_.token_start, buf_.end());
   static LazyRE2 float_pattern = {
       R"([-]?((\d+|\d+[.]\d*|\d*[.]\d+)([eE][+-]?\d+))|[-]?(\d+[.]\d*|\d*[.]\d+))"};
   if (RE2::Consume(&consumable, *float_pattern)) {
@@ -366,6 +369,11 @@ TokKind HloLexer::LexNumberOrPattern() {
     auto slice =
         StringPieceFromPointers(token_state_.token_start, current_ptr_);
     if (absl::SimpleAtoi(slice, &token_state_.int64_val)) {
+      return TokKind::kInt;
+    }
+    uint64 uint64_val;
+    if (absl::SimpleAtoi(slice, &uint64_val)) {
+      token_state_.int64_val = absl::bit_cast<int64>(uint64_val);
       return TokKind::kInt;
     }
     LOG(ERROR) << "Failed to parse int literal: " << slice;
@@ -426,8 +434,8 @@ absl::string_view HloLexer::GetLine(LocTy loc) const {
 // Lexes quoted string with escaping characters. If matched, the quoted string
 // will be unescaped and stored to token_state_.str_val.
 TokKind HloLexer::LexString() {
-  auto consumable =
-      RegexpStringPieceFromPointers(token_state_.token_start, buf_.end());
+  absl::string_view consumable =
+      StringPieceFromPointers(token_state_.token_start, buf_.end());
   static LazyRE2 escaping_pattern = {R"("([^"\\]|\\.)*")"};
   if (RE2::Consume(&consumable, *escaping_pattern)) {
     current_ptr_ = consumable.begin();
@@ -455,6 +463,8 @@ string TokKindToString(TokKind kind) {
       return "kComma";
     case TokKind::kColon:
       return "kColon";
+    case TokKind::kAsterisk:
+      return "kAsterisk";
     case TokKind::kLsquare:
       return "kLsquare";
     case TokKind::kRsquare:
@@ -491,8 +501,6 @@ string TokKindToString(TokKind kind) {
       return "kw_inf";
     case TokKind::kNegInf:
       return "kNegInf";
-    case TokKind::kw_sparse:
-      return "kw_sparse";
     case TokKind::kPrimitiveType:
       return "kPrimitiveType";
     case TokKind::kName:
@@ -513,6 +521,8 @@ string TokKindToString(TokKind kind) {
       return "kInt";
     case TokKind::kDecimal:
       return "kDecimal";
+    case TokKind::kDots:
+      return "kDots";
   }
 }
 

@@ -13,22 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/kernels/function_ops.h"
+
 #include <deque>
 #include <vector>
-
-#include "tensorflow/core/kernels/function_ops.h"
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/gradients.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/gradients.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -43,13 +44,28 @@ ArgOp::ArgOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
 void ArgOp::Compute(OpKernelContext* ctx) {
   auto frame = ctx->call_frame();
   OP_REQUIRES(ctx, frame != nullptr, errors::Internal("no call frame"));
-  Tensor val;
-  OP_REQUIRES_OK(ctx, frame->GetArg(index_, &val));
-  OP_REQUIRES(ctx, val.dtype() == dtype_,
-              errors::InvalidArgument("Type mismatch: actual ",
-                                      DataTypeString(val.dtype()),
-                                      " vs. expect ", DataTypeString(dtype_)));
-  ctx->set_output(0, val);
+  const Tensor* val;
+
+  auto validate_type = [this](const Tensor& val) {
+    if (val.dtype() == dtype_) {
+      return Status::OK();
+    } else {
+      return errors::InvalidArgument("Type mismatch: actual ",
+                                     DataTypeString(val.dtype()),
+                                     " vs. expect ", DataTypeString(dtype_));
+    }
+  };
+
+  if (frame->CanConsumeArg(index_)) {
+    Tensor val;
+    frame->ConsumeArg(index_, &val);
+    OP_REQUIRES_OK(ctx, validate_type(val));
+    ctx->set_output(0, std::move(val));
+  } else {
+    OP_REQUIRES_OK(ctx, frame->GetArg(index_, &val));
+    OP_REQUIRES_OK(ctx, validate_type(*val));
+    ctx->set_output(0, *val);
+  }
 }
 
 RetvalOp::RetvalOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -119,7 +135,7 @@ REGISTER_KERNEL_BUILDER(Name(kArgOp)
 REGISTER_KERNEL_BUILDER(Name(kArgOp)
                             .Device(DEVICE_GPU)
                             .HostMemory("output")
-                            .TypeConstraint<string>("T"),
+                            .TypeConstraint<tstring>("T"),
                         ArgOp);
 
 REGISTER_KERNEL_BUILDER(
@@ -147,7 +163,7 @@ REGISTER_KERNEL_BUILDER(Name(kRetOp)
 
 REGISTER_KERNEL_BUILDER(Name(kRetOp)
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<string>("T")
+                            .TypeConstraint<tstring>("T")
                             .HostMemory("input"),
                         RetvalOp);
 #undef REGISTER
@@ -174,8 +190,8 @@ class PassOn : public OpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("_ListToArray").Device(DEVICE_CPU), PassOn);
-REGISTER_KERNEL_BUILDER(Name("_ArrayToList").Device(DEVICE_CPU), PassOn);
+REGISTER_SYSTEM_KERNEL_BUILDER(Name("_ListToArray").Device(DEVICE_CPU), PassOn);
+REGISTER_SYSTEM_KERNEL_BUILDER(Name("_ArrayToList").Device(DEVICE_CPU), PassOn);
 
 #define REGISTER_GPU_KERNELS(type)                                       \
   REGISTER_KERNEL_BUILDER(                                               \
@@ -249,10 +265,10 @@ class SymbolicGradientOp : public AsyncOpKernel {
         ctx, lib->Instantiate(kGradientOp, AttrSlice(def()), &handle), done);
 
     FunctionLibraryRuntime::Options opts;
-    opts.step_id = ctx->step_id();
     opts.rendezvous = ctx->rendezvous();
     opts.cancellation_manager = ctx->cancellation_manager();
     opts.runner = ctx->runner();
+    opts.run_all_kernels_inline = ctx->run_all_kernels_inline();
     opts.stats_collector = ctx->stats_collector();
     opts.step_container = ctx->step_container();
     opts.collective_executor = ctx->collective_executor();
@@ -262,6 +278,13 @@ class SymbolicGradientOp : public AsyncOpKernel {
       args.push_back(ctx->input(i));
     }
     std::vector<Tensor>* rets = new std::vector<Tensor>;
+    profiler::TraceMe trace_me(
+        [&] {
+          return absl::StrCat(
+              "SymbolicGradientOp #parent_step_id=", ctx->step_id(),
+              ",function_step_id=", opts.step_id, "#");
+        },
+        profiler::TraceMeLevel::kInfo);
     lib->Run(opts, handle, args, rets, [ctx, done, rets](const Status& status) {
       if (!status.ok()) {
         ctx->SetStatus(status);
@@ -271,7 +294,7 @@ class SymbolicGradientOp : public AsyncOpKernel {
             " tensor(s), but get ", rets->size(), " tensor(s) instead."));
       } else {
         for (size_t i = 0; i < rets->size(); ++i) {
-          ctx->set_output(i, (*rets)[i]);
+          ctx->set_output(i, std::move((*rets)[i]));
         }
       }
       delete rets;
@@ -308,18 +331,17 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   const string& source_device = lib->device()->name();
   const Tensor* target;
   OP_REQUIRES_OK_ASYNC(ctx, ctx->input("target", &target), done);
-  string target_device;
+
+  FunctionTarget function_target;
   OP_REQUIRES_OK_ASYNC(
       ctx,
-      DeviceNameUtils::CanonicalizeDeviceName(target->scalar<string>()(),
-                                              source_device, &target_device),
+      DeviceNameUtils::CanonicalizeDeviceName(
+          target->scalar<tstring>()(), source_device, &function_target.first),
       done);
+  function_target.second = lib;
 
-  AttrValueMap attr_values = func_.attr();
-  FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
-  instantiate_opts.target = target_device;
-
-  FunctionTarget function_target = {target_device, lib};
+  const string& target_device = function_target.first;
+  const string& func_name = func_.name();
 
   FunctionLibraryRuntime::Handle handle;
   {
@@ -328,17 +350,28 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     if (cached_entry != handle_cache_.end()) {
       handle = cached_entry->second;
     } else {
-      VLOG(1) << "Instantiating " << func_.name() << " on " << target_device;
-      tracing::ScopedActivity activity(strings::StrCat(
-          "RemoteCall: Instantiate: ", func_.name(), " on ", target_device));
-      OP_REQUIRES_OK_ASYNC(
-          ctx,
-          lib->Instantiate(func_.name(), AttrSlice(&attr_values),
-                           instantiate_opts, &handle),
-          done);
+      VLOG(1) << "Instantiating " << func_name << " on " << target_device;
+      profiler::TraceMe activity(
+          [&] {
+            return strings::StrCat("RemoteCall: Instantiate: ", func_name,
+                                   " on ", target_device);
+          },
+          profiler::TraceMeLevel::kInfo);
+      FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
+      const auto* config = (ctx->function_library())
+                               ? ctx->function_library()->config_proto()
+                               : nullptr;
+      if (config) {
+        instantiate_opts.config_proto = *config;
+      }
+      instantiate_opts.target = target_device;
+      OP_REQUIRES_OK_ASYNC(ctx,
+                           lib->Instantiate(func_name, AttrSlice(&func_.attr()),
+                                            instantiate_opts, &handle),
+                           done);
       auto insert_result = handle_cache_.insert({function_target, handle});
       CHECK(insert_result.second) << "Insert unsuccessful.";
-      VLOG(1) << "Instantiated " << func_.name() << " on " << target_device
+      VLOG(1) << "Instantiated " << func_name << " on " << target_device
               << ", resulting in handle: " << handle << " flr: " << lib;
     }
   }
@@ -347,50 +380,69 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   OP_REQUIRES_OK_ASYNC(ctx, ctx->input_list("args", &arguments), done);
 
   FunctionLibraryRuntime::Options opts;
-  opts.step_id = ctx->step_id();
-  opts.runner = ctx->runner();
+  opts.runner = nullptr;  // Use default runner at remote device.
+  opts.run_all_kernels_inline = ctx->run_all_kernels_inline();
   opts.source_device = source_device;
   if (opts.source_device != target_device) {
     opts.remote_execution = true;
   }
   opts.create_rendezvous = true;
-  std::vector<Tensor> args;
-  args.reserve(arguments.size());
-  for (const Tensor& argument : arguments) {
-    args.push_back(argument);
-  }
+  std::vector<Tensor> args(arguments.begin(), arguments.end());
+  opts.args_alloc_attrs.reserve(input_dtypes_.size());
   for (const auto& dtype : input_dtypes_) {
     AllocatorAttributes arg_alloc_attrs;
-    if (DataTypeAlwaysOnHost(dtype)) {
-      arg_alloc_attrs.set_on_host(true);
-    }
+    arg_alloc_attrs.set_on_host(DataTypeAlwaysOnHost(dtype));
     opts.args_alloc_attrs.push_back(arg_alloc_attrs);
   }
+  opts.rets_alloc_attrs.reserve(output_dtypes_.size());
   for (const auto& dtype : output_dtypes_) {
     AllocatorAttributes ret_alloc_attrs;
-    if (DataTypeAlwaysOnHost(dtype)) {
-      ret_alloc_attrs.set_on_host(true);
-    }
+    ret_alloc_attrs.set_on_host(DataTypeAlwaysOnHost(dtype));
     opts.rets_alloc_attrs.push_back(ret_alloc_attrs);
   }
   auto* rets = new std::vector<Tensor>;
-  auto* activity = new tracing::ScopedActivity(strings::StrCat(
-      "RemoteCall: Run: ", func_.name(), " on ", target_device));
-  VLOG(1) << "Running " << func_.name() << " on " << target_device
+  VLOG(1) << "Running " << func_name << " on " << target_device
           << " with handle: " << handle;
-  lib->Run(opts, handle, args, rets,
-           [rets, activity, done, ctx](const Status& status) {
-             if (!status.ok()) {
-               ctx->SetStatus(status);
-             } else {
-               for (size_t i = 0; i < rets->size(); ++i) {
-                 ctx->set_output(i, (*rets)[i]);
-               }
-             }
-             delete rets;
-             delete activity;
-             done();
-           });
+  profiler::TraceMe trace_me(
+      [&] {
+        return absl::StrCat("RemoteCallOp#func_name=", func_name,
+                            ",parent_step_id=", ctx->step_id(),
+                            ",function_step_id=", opts.step_id,
+                            ",device=", target_device, "#");
+      },
+      profiler::TraceMeLevel::kInfo);
+  lib->Run(
+      opts, handle, args, rets,
+      [rets, done = std::move(done), func_name, ctx,
+       function_step_id = opts.step_id,
+       target_device = std::move(function_target.first)](const Status& status) {
+        profiler::TraceMe activity(
+            [&] {
+              return absl::StrCat("RemoteCallOpDone#func_name=", func_name,
+                                  ",parent_step_id=", ctx->step_id(),
+                                  ",function_step_id=", function_step_id,
+                                  ",device=", target_device, "#");
+            },
+            profiler::TraceMeLevel::kInfo);
+        if (!status.ok()) {
+          ctx->SetStatus(status);
+        } else {
+          for (size_t i = 0; i < rets->size(); ++i) {
+            ctx->set_output(i, std::move((*rets)[i]));
+          }
+        }
+        delete rets;
+        done();
+      });
+}
+
+string RemoteCallOp::TraceString(OpKernelContext* ctx, bool verbose) {
+  string trace_string =
+      strings::StrCat(name_view(), "__", func_.name(), ":", type_string_view());
+  if (!verbose) return trace_string;
+  string trace_args = GetTraceArgument(ctx);
+  if (trace_args.empty()) return trace_string;
+  return strings::StrCat(trace_string, "#", trace_args, "#");
 }
 
 REGISTER_KERNEL_BUILDER(

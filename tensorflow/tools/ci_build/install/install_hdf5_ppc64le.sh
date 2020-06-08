@@ -19,12 +19,7 @@
 #It has to be compiled from source during the install
 apt-get update
 apt-get install -y libhdf5-dev
+apt-get clean
+rm -rf /var/lib/apt/lists/*
 
-#h5py is not expecting the shared libraries to have _serial in the name.
-ln -s /usr/lib/powerpc64le-linux-gnu/libhdf5_serial.so /usr/lib/powerpc64le-linux-gnu/libhdf5.so
-ln -s /usr/lib/powerpc64le-linux-gnu/libhdf5_serial_hl.so /usr/lib/powerpc64le-linux-gnu/libhdf5_hl.so
-
-#pip is not installed yet, so use easy_install
-#CPATH is the location of hdf5.h
-CPATH=/usr/include/hdf5/serial/ easy_install -U h5py
-CPATH=/usr/include/hdf5/serial/ easy_install3 -U h5py
+#h5py will then be installed from the install_pip_packages.sh script

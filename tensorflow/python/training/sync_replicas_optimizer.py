@@ -45,7 +45,7 @@ from tensorflow.python.util.tf_export import tf_export
 class SyncReplicasOptimizer(optimizer.Optimizer):
   """Class to synchronize, aggregate gradients and pass them to the optimizer.
 
-  This class is deprecated. For synchrononous training, please use [Distribution
+  This class is deprecated. For synchronous training, please use [Distribution
   Strategies](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/distribute).
 
   In a typical asynchronous training environment, it's common to have some
@@ -110,7 +110,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
   # Note that if you want to have 2 backup replicas, you can change
   # total_num_replicas=52 and make sure this number matches how many physical
   # replicas you started in your job.
-  opt = tf.train.SyncReplicasOptimizer(opt, replicas_to_aggregate=50,
+  opt = tf.compat.v1.train.SyncReplicasOptimizer(opt, replicas_to_aggregate=50,
                                  total_num_replicas=50)
 
   # Some models have startup_delays to help stabilize the model but when using
@@ -145,8 +145,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
   """
 
   @deprecation.deprecated(
-      None,
-      "The `SyncReplicaOptimizer` class is deprecated. For synchrononous "
+      None, "The `SyncReplicaOptimizer` class is deprecated. For synchronous "
       "training, please use [Distribution Strategies](https://github.com/"
       "tensorflow/tensorflow/tree/master/tensorflow/contrib/distribute).",
       warn_once=True)

@@ -20,7 +20,7 @@ limitations under the License.
 namespace tensorflow {
 
 Status SendTensorsToRendezvous(
-    Rendezvous* rendezvous, DeviceContext* device_context,
+    RendezvousInterface* rendezvous, DeviceContext* device_context,
     const std::vector<AllocatorAttributes>& alloc_attrs,
     const std::vector<string>& keys, gtl::ArraySlice<Tensor> tensors_to_send) {
   if (keys.size() != tensors_to_send.size()) {
@@ -54,7 +54,7 @@ Status SendTensorsToRendezvous(
 }
 
 void RecvOutputsFromRendezvousAsync(
-    Rendezvous* rendezvous, DeviceContext* device_context,
+    RendezvousInterface* rendezvous, DeviceContext* device_context,
     const std::vector<AllocatorAttributes>& alloc_attrs,
     const std::vector<string>& keys, std::vector<Tensor>* received_tensors,
     StatusCallback done) {
@@ -118,7 +118,8 @@ void RecvOutputsFromRendezvousAsync(
   status_cb->Unref();
 }
 
-Status RecvOutputsFromRendezvous(Rendezvous* rendezvous, NamedTensors* out,
+Status RecvOutputsFromRendezvous(RendezvousInterface* rendezvous,
+                                 NamedTensors* out,
                                  const Rendezvous::Args& args) {
   // Receives values requested by the caller.
   Rendezvous::ParsedKey parsed;

@@ -129,7 +129,7 @@ void TestWriteAppends(T first, U second) {
   string encoded_first_only = encoded;
   OCWriteToString<U>(&encoded, second);
   EXPECT_NE(encoded, encoded_first_only);
-  EXPECT_TRUE(str_util::StartsWith(encoded, encoded_first_only));
+  EXPECT_TRUE(absl::StartsWith(encoded, encoded_first_only));
 }
 
 template <typename T>
@@ -396,7 +396,6 @@ void BM_WriteNum(int n, T multiplier) {
 
 template <typename T>
 void BM_ReadNum(int n, T multiplier) {
-  string x;
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);
   // Use enough distinct values to confuse the branch predictor

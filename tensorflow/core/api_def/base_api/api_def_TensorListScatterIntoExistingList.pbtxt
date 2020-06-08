@@ -1,0 +1,13 @@
+op {
+  graph_op_name: "TensorListScatterIntoExistingList"
+  summary: "Scatters tensor at indices in an input list."
+  description: <<END
+Each member of the TensorList corresponds to one row of the input tensor,
+specified by the given index (see `tf.gather`).
+
+input_handle: The list to scatter into.
+tensor: The input tensor.
+indices: The indices used to index into the list.
+output_handle: The TensorList.
+END
+}

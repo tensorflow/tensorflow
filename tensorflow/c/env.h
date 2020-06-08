@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef TENSORFLOW_C_ENV_H_
+#define TENSORFLOW_C_ENV_H_
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
-#ifndef TENSORFLOW_C_ENV_H_
-#define TENSORFLOW_C_ENV_H_
-
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/c/tf_file_statistics.h"
 
 // --------------------------------------------------------------------------
 // C API for tensorflow::Env.
@@ -32,15 +33,6 @@ extern "C" {
 typedef struct TF_WritableFileHandle TF_WritableFileHandle;
 typedef struct TF_StringStream TF_StringStream;
 typedef struct TF_Thread TF_Thread;
-
-typedef struct TF_FileStatistics {
-  // The length of the file in bytes.
-  int64_t length;
-  // The last modified time in nanoseconds.
-  int64_t mtime_nsec;
-  // Whether the name refers to a directory.
-  bool is_directory;
-} TF_FileStatistics;
 
 typedef struct TF_ThreadOptions {
   // Thread stack size to use (in bytes), zero implies that the system default

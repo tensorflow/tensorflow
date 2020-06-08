@@ -82,30 +82,34 @@ class MklSmallSizeAllocator : public Allocator {
     port::AlignedFree(ptr);
   }
 
-  void GetStats(AllocatorStats* stats) override {
+  absl::optional<AllocatorStats> GetStats() override {
     mutex_lock l(mutex_);
-    *stats = stats_;
+    return stats_;
   }
 
   void ClearStats() override {
     mutex_lock l(mutex_);
-    stats_.Clear();
+    stats_.num_allocs = 0;
+    stats_.peak_bytes_in_use = 0;
+    stats_.largest_alloc_size = 0;
+    stats_.bytes_in_use = 0;
+    stats_.bytes_limit = 0;
   }
 
  private:
   // Increment statistics for the allocator handling small allocations.
-  inline void IncrementStats(size_t alloc_size) LOCKS_EXCLUDED(mutex_) {
+  inline void IncrementStats(size_t alloc_size) TF_LOCKS_EXCLUDED(mutex_) {
     mutex_lock l(mutex_);
     ++stats_.num_allocs;
     stats_.bytes_in_use += alloc_size;
-    stats_.max_bytes_in_use =
-        std::max(stats_.max_bytes_in_use, stats_.bytes_in_use);
-    stats_.max_alloc_size =
-        std::max(alloc_size, static_cast<size_t>(stats_.max_alloc_size));
+    stats_.peak_bytes_in_use =
+        std::max(stats_.peak_bytes_in_use, stats_.bytes_in_use);
+    stats_.largest_alloc_size =
+        std::max(alloc_size, static_cast<size_t>(stats_.largest_alloc_size));
   }
 
   // Decrement statistics for the allocator handling small allocations.
-  inline void DecrementStats(size_t dealloc_size) LOCKS_EXCLUDED(mutex_) {
+  inline void DecrementStats(size_t dealloc_size) TF_LOCKS_EXCLUDED(mutex_) {
     mutex_lock l(mutex_);
     stats_.bytes_in_use -= dealloc_size;
   }
@@ -119,7 +123,7 @@ class MklSmallSizeAllocator : public Allocator {
   string name_;
 
   // Allocator stats for small allocs
-  AllocatorStats stats_ GUARDED_BY(mutex_);
+  AllocatorStats stats_ TF_GUARDED_BY(mutex_);
 };
 
 /// CPU allocator for MKL that wraps BFC allocator and intercepts
@@ -195,19 +199,20 @@ class MklCPUAllocator : public Allocator {
 
   inline string Name() override { return kName; }
   inline bool IsSmallSizeAllocation(const void* ptr) const
-      LOCKS_EXCLUDED(mutex_) {
+      TF_LOCKS_EXCLUDED(mutex_) {
     mutex_lock l(mutex_);
     return large_allocations_map_.find(ptr) == large_allocations_map_.end();
   }
   // AddLargeAllocMap and RemoveLargeAllocMap are always called with a lock held
   inline void AddLargeAllocMap(void* ptr, size_t num_bytes)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
     if (ptr != nullptr) {
       std::pair<void*, size_t> map_val(ptr, num_bytes);
       large_allocations_map_.insert(map_val);
     }
   }
-  inline void RemoveLargeAllocMap(void* ptr) EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+  inline void RemoveLargeAllocMap(void* ptr)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
     auto map_iter = large_allocations_map_.find(ptr);
     if (map_iter != large_allocations_map_.end()) {
       large_allocations_map_.erase(map_iter);
@@ -244,22 +249,23 @@ class MklCPUAllocator : public Allocator {
     }
   }
 
-  void GetStats(AllocatorStats* stats) override {
-    AllocatorStats l_stats, s_stats;
-    small_size_allocator_->GetStats(&s_stats);
-    large_size_allocator_->GetStats(&l_stats);
+  absl::optional<AllocatorStats> GetStats() override {
+    auto s_stats = small_size_allocator_->GetStats();
+    auto l_stats = large_size_allocator_->GetStats();
 
     // Combine statistics from small-size and large-size allocator.
-    stats->num_allocs = l_stats.num_allocs + s_stats.num_allocs;
-    stats->bytes_in_use = l_stats.bytes_in_use + s_stats.bytes_in_use;
-    stats->max_bytes_in_use =
-        l_stats.max_bytes_in_use + s_stats.max_bytes_in_use;
+    mutex_lock l(mutex_);
+    stats_.num_allocs = l_stats->num_allocs + s_stats->num_allocs;
+    stats_.bytes_in_use = l_stats->bytes_in_use + s_stats->bytes_in_use;
+    stats_.peak_bytes_in_use =
+        l_stats->peak_bytes_in_use + s_stats->peak_bytes_in_use;
 
     // Since small-size allocations go to MklSmallSizeAllocator,
     // max_alloc_size from large_size_allocator would be the maximum
     // size allocated by MklCPUAllocator.
-    stats->max_alloc_size = l_stats.max_alloc_size;
-    stats->bytes_limit = std::max(s_stats.bytes_limit, l_stats.bytes_limit);
+    stats_.largest_alloc_size = l_stats->largest_alloc_size;
+    stats_.bytes_limit = std::max(s_stats->bytes_limit, l_stats->bytes_limit);
+    return stats_;
   }
 
   void ClearStats() override {
@@ -308,11 +314,12 @@ class MklCPUAllocator : public Allocator {
 
   SubAllocator* sub_allocator_;  // not owned by this class
   mutable mutex mutex_;
+  AllocatorStats stats_ TF_GUARDED_BY(mutex_);
 
   // Hash map to keep track of "BFC" allocations
   // We do not use BFC allocator for small allocations.
   std::unordered_map<const void*, size_t> large_allocations_map_
-      GUARDED_BY(mutex_);
+      TF_GUARDED_BY(mutex_);
 
   // Size in bytes that defines the upper-bound for "small" allocations.
   // Any allocation below this threshold is "small" allocation.

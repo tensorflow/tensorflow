@@ -167,7 +167,7 @@ class BasicBatchScheduler : public BatchScheduler<TaskType> {
 
     // The number of threads to use to process batches.
     // Must be >= 1, and should be tuned carefully.
-    int num_batch_threads = port::NumSchedulableCPUs();
+    int num_batch_threads = port::MaxParallelism();
 
     // The maximum allowable number of enqueued (accepted by Schedule() but
     // not yet being processed on a batch thread) tasks in terms of batches.

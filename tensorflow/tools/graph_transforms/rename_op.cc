@@ -13,14 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/tools/graph_transforms/fold_constants_lib.h"
-
 #include "tensorflow/core/common_runtime/constant_folding.h"
-#include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/tools/graph_transforms/fold_constants_lib.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
 namespace tensorflow {
@@ -35,7 +34,7 @@ Status RenameOp(const GraphDef& input_graph_def,
       !context.params.count("new_op_name") ||
       (context.params.at("new_op_name").size() != 1)) {
     return errors::InvalidArgument(
-        "remove_nodes expects exactly one 'old_op_name' and 'new_op_name' "
+        "rename_op expects exactly one 'old_op_name' and 'new_op_name' "
         "argument, e.g. rename_op(old_op_name=Mul, new_op_name=Multiply)");
   }
 

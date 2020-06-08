@@ -16,8 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_FINGERPRINT_H_
 #define TENSORFLOW_CORE_PLATFORM_FINGERPRINT_H_
 
-#include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
+
+// The following line is used by copybara to set or unset the USE_OSS_FARMHASH
+// preprocessor symbol as needed. Please do not remove.
+#define USE_OSS_FARMHASH
+
+#ifdef USE_OSS_FARMHASH
+#include <farmhash.h>
+#else
+#include "util/hash/farmhash_fingerprint.h"
+#endif
 
 namespace tensorflow {
 
@@ -36,13 +46,6 @@ struct Fprint128Hasher {
     return static_cast<size_t>(v.low64);
   }
 };
-
-// This is a portable fingerprint interface for strings that will never change.
-// However, it is not suitable for cryptography.
-uint64 Fingerprint64(StringPiece s);
-
-// 128-bit variant of Fingerprint64 above (same properties and caveats apply).
-Fprint128 Fingerprint128(StringPiece s);
 
 namespace internal {
 // Mixes some of the bits that got propagated to the high bits back into the
@@ -72,12 +75,33 @@ inline uint64 FingerprintCat64(const uint64 fp1, const uint64 fp2) {
   return result;
 }
 
-}  // namespace tensorflow
-
-#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID)
-#include "tensorflow/core/platform/google/fingerprint.h"
+// This is a portable fingerprint interface for strings that will never change.
+// However, it is not suitable for cryptography.
+inline uint64 Fingerprint64(const StringPiece s) {
+#ifdef USE_OSS_FARMHASH
+  return ::util::Fingerprint64(s.data(), s.size());
 #else
-#include "tensorflow/core/platform/default/fingerprint.h"
+  // Fingerprint op depends on the fact that Fingerprint64() is implemented by
+  // Farmhash. If the implementation ever changes, Fingerprint op should be
+  // modified to keep using Farmhash.
+  // LINT.IfChange
+  return farmhash::Fingerprint64(s.data(), s.size());
+  // LINT.ThenChange(//third_party/tensorflow/core/kernels/fingerprint_op.cc)
 #endif
+}
+
+// 128-bit variant of Fingerprint64 above (same properties and caveats apply).
+inline Fprint128 Fingerprint128(const StringPiece s) {
+#ifdef USE_OSS_FARMHASH
+  const auto fingerprint = ::util::Fingerprint128(s.data(), s.size());
+  return {::util::Uint128Low64(fingerprint),
+          ::util::Uint128High64(fingerprint)};
+#else
+  const auto fingerprint = farmhash::Fingerprint128(s.data(), s.size());
+  return {absl::Uint128Low64(fingerprint), absl::Uint128High64(fingerprint)};
+#endif
+}
+
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PLATFORM_FINGERPRINT_H_

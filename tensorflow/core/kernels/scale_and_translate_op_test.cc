@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/sampling_kernels.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/png/png_io.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -90,11 +89,11 @@ inline const T& Clamp(const T& low, const T& high, const T& value) {
 
 // Samples from the image at the passed batch at pixel location sample_f with a
 // kernel scaled by scale.
-void Sample(const DynamicKernel& kernel, TTypes<float, 4>::Tensor images,
-            int batch, const Vector2f& scale, const Vector2f& sample_f,
-            float* dest) {
-  const Vector2f kernel_scale(std::max(scale.x(), 1.0f),
-                              std::max(scale.y(), 1.0f));
+void Sample(const DynamicKernel& kernel, const bool antialias,
+            TTypes<float, 4>::Tensor images, const int batch,
+            const Vector2f& scale, const Vector2f& sample_f, float* dest) {
+  const Vector2f kernel_scale(antialias ? std::max(scale.x(), 1.0f) : 1.0,
+                              antialias ? std::max(scale.y(), 1.0f) : 1.0);
 
   const int64 in_height = images.dimension(1);
   const int64 in_width = images.dimension(2);
@@ -120,7 +119,8 @@ void Sample(const DynamicKernel& kernel, TTypes<float, 4>::Tensor images,
       1;
 
   std::fill(dest, dest + channels, 0.0f);
-  if (y_span_end <= y_span_start || x_span_end <= x_span_start) {
+  if (sample_f.x() < 0.0f || sample_f.y() < 0.0f || sample_f.x() > in_width ||
+      sample_f.y() > in_height) {
     return;
   }
   const Vector2f one_over_kernel_scale(1.0f / kernel_scale.x(),
@@ -153,6 +153,7 @@ void Sample(const DynamicKernel& kernel, TTypes<float, 4>::Tensor images,
 // only difference will be small floating point differences, since this version
 // does not to separable passes in x and y dimensions.
 void ScaleAndTranslateBaseline(const DynamicKernel& kernel,
+                               const bool antialias,
                                TTypes<float, 4>::Tensor images,
                                const Vector2f& orig_scale,
                                const Vector2f& orig_translate,
@@ -169,6 +170,8 @@ void ScaleAndTranslateBaseline(const DynamicKernel& kernel,
 
   const int64 out_height = output.dimension(1);
   const int64 out_width = output.dimension(2);
+  const int64 in_height = images.dimension(1);
+  const int64 in_width = images.dimension(2);
 
   for (int b = 0; b < batch; ++b) {
     for (int64 y = 0; y < out_height; ++y) {
@@ -177,8 +180,13 @@ void ScaleAndTranslateBaseline(const DynamicKernel& kernel,
       for (int64 x = 0; x < out_width; ++x) {
         const float out_x_f = static_cast<float>(x) + 0.5;
         const float in_x_f = out_x_f * scale.x() + translate.x();
-        Sample(kernel, images, b, scale, Vector2f(in_x_f, in_y_f),
-               &output(b, y, x, 0));
+        if (in_x_f < 0.0f || in_y_f < 0.0f || in_x_f > in_width ||
+            in_y_f > in_height) {
+          std::fill(&output(b, y, x, 0), &output(b, y, x + 1, 0), 0.0f);
+        } else {
+          Sample(kernel, antialias, images, b, scale, Vector2f(in_x_f, in_y_f),
+                 &output(b, y, x, 0));
+        }
       }
     }
   }
@@ -186,16 +194,18 @@ void ScaleAndTranslateBaseline(const DynamicKernel& kernel,
 
 class ScaleAndTranslateOpTest : public OpsTestBase {
  protected:
-  void CreateOp(const string& kernel_type_str = "lanczos3") {
+  void CreateOp(const string& kernel_type_str, const bool antialias) {
     TF_EXPECT_OK(NodeDefBuilder("scale_and_translate_op", "ScaleAndTranslate")
                      .Input(FakeInput(DT_FLOAT))
                      .Input(FakeInput(DT_INT32))
                      .Input(FakeInput(DT_FLOAT))
                      .Input(FakeInput(DT_FLOAT))
                      .Attr("kernel_type", kernel_type_str)
+                     .Attr("antialias", antialias)
                      .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
     kernel_type_ = functor::SamplingKernelTypeFromString(kernel_type_str);
+    antialias_ = antialias;
   }
 
   void SetCheckerboardImageInput(int batch_size, int num_row_squares,
@@ -247,17 +257,19 @@ class ScaleAndTranslateOpTest : public OpsTestBase {
                                  output_image_width, channels}));
 
     std::unique_ptr<const DynamicKernel> kernel = Create(kernel_type_);
-    ScaleAndTranslateBaseline(*kernel, mutable_input(0)->tensor<float, 4>(),
-                              scale, translate, expected.tensor<float, 4>());
+    ScaleAndTranslateBaseline(*kernel, antialias_,
+                              mutable_input(0)->tensor<float, 4>(), scale,
+                              translate, expected.tensor<float, 4>());
     constexpr double kAbs = 1e-2f;
     test::ExpectTensorNear<float>(expected, *GetOutput(0), kAbs);
   }
 
   functor::SamplingKernelType kernel_type_;
+  bool antialias_;
 };
 
 TEST_F(ScaleAndTranslateOpTest, IdentityTest) {
-  CreateOp();
+  CreateOp("lanczos3", true);
   constexpr int64 kBatchSize = 2;
   constexpr int64 kNumRowSquares = 16;
   constexpr int64 kNumColSquares = 13;
@@ -273,7 +285,7 @@ TEST_F(ScaleAndTranslateOpTest, IdentityTest) {
 }
 
 TEST_F(ScaleAndTranslateOpTest, UpsampleTest) {
-  CreateOp();
+  CreateOp("lanczos3", true);
   constexpr int64 kBatchSize = 2;
   constexpr int64 kNumRowSquares = 16;
   constexpr int64 kNumColSquares = 13;
@@ -289,7 +301,7 @@ TEST_F(ScaleAndTranslateOpTest, UpsampleTest) {
 }
 
 TEST_F(ScaleAndTranslateOpTest, DownsampleTest) {
-  CreateOp();
+  CreateOp("lanczos3", true);
   constexpr int64 kBatchSize = 2;
   constexpr int64 kNumRowSquares = 16;
   constexpr int64 kNumColSquares = 13;
@@ -304,8 +316,25 @@ TEST_F(ScaleAndTranslateOpTest, DownsampleTest) {
   RunTest(kOutputImageHeight, kOutputImageWidth, kScale, kTranslate);
 }
 
-TEST_F(ScaleAndTranslateOpTest, DownsampleToASinglePixelTest) {
-  CreateOp();
+TEST_F(ScaleAndTranslateOpTest, AntiAliasedDownsampleToASinglePixelTest) {
+  CreateOp("lanczos3", true);
+  constexpr int64 kBatchSize = 2;
+  constexpr int64 kNumRowSquares = 16;
+  constexpr int64 kNumColSquares = 13;
+  constexpr int64 kSquareSize = 12;
+  constexpr int64 kNumChannels = 3;
+  SetCheckerboardImageInput(kBatchSize, kNumRowSquares, kNumColSquares,
+                            kSquareSize, kNumChannels);
+  constexpr int kOutputImageHeight = 1;
+  constexpr int kOutputImageWidth = 1;
+  const Vector2f kScale(1.0f / (kNumRowSquares * kSquareSize),
+                        1.0f / (kNumColSquares * kSquareSize));
+  const Vector2f kTranslate(0.0f, 0.0f);
+  RunTest(kOutputImageHeight, kOutputImageWidth, kScale, kTranslate);
+}
+
+TEST_F(ScaleAndTranslateOpTest, NonAntiAliasedDownsampleToASinglePixelTest) {
+  CreateOp("lanczos3", false);
   constexpr int64 kBatchSize = 2;
   constexpr int64 kNumRowSquares = 16;
   constexpr int64 kNumColSquares = 13;
@@ -322,7 +351,7 @@ TEST_F(ScaleAndTranslateOpTest, DownsampleToASinglePixelTest) {
 }
 
 TEST_F(ScaleAndTranslateOpTest, UsampleFromASinglePixelTest) {
-  CreateOp();
+  CreateOp("lanczos3", true);
   constexpr int64 kBatchSize = 2;
   constexpr int64 kNumRowSquares = 1;
   constexpr int64 kNumColSquares = 1;
@@ -337,8 +366,27 @@ TEST_F(ScaleAndTranslateOpTest, UsampleFromASinglePixelTest) {
   RunTest(kOutputImageHeight, kOutputImageWidth, kScale, kTranslate);
 }
 
-TEST_F(ScaleAndTranslateOpTest, ScaleAndTranslationTest) {
-  CreateOp();
+TEST_F(ScaleAndTranslateOpTest, NonAntialiasedUsampleFromASinglePixelTest) {
+  CreateOp("lanczos3", false);
+  constexpr int64 kBatchSize = 2;
+  constexpr int64 kNumRowSquares = 1;
+  constexpr int64 kNumColSquares = 1;
+  constexpr int64 kSquareSize = 1;
+  constexpr int64 kNumChannels = 3;
+  SetCheckerboardImageInput(kBatchSize, kNumRowSquares, kNumColSquares,
+                            kSquareSize, kNumChannels);
+  constexpr int kOutputImageHeight = 10;
+  constexpr int kOutputImageWidth = 17;
+  const Vector2f kScale(17.0f, 10.0f);
+  const Vector2f kTranslate(0.0f, 0.0f);
+  // Anti-aliasing shouldn't have any effect here, verify by comparing with the
+  // ground truth with anti-aliasing turned on.
+  antialias_ = true;
+  RunTest(kOutputImageHeight, kOutputImageWidth, kScale, kTranslate);
+}
+
+TEST_F(ScaleAndTranslateOpTest, AntialiasedScaleAndTranslationTest) {
+  CreateOp("lanczos3", true);
   constexpr int64 kBatchSize = 2;
   constexpr int64 kNumRowSquares = 11;
   constexpr int64 kNumColSquares = 7;
@@ -348,7 +396,23 @@ TEST_F(ScaleAndTranslateOpTest, ScaleAndTranslationTest) {
                             kSquareSize, kNumChannels);
   constexpr int kOutputImageHeight = 49;
   constexpr int kOutputImageWidth = 51;
-  const Vector2f kScale(1.1f, 0.9f);
+  const Vector2f kScale(1.25f, 0.6f);
+  const Vector2f kTranslate(4.1f, -3.1f);
+  RunTest(kOutputImageHeight, kOutputImageWidth, kScale, kTranslate);
+}
+
+TEST_F(ScaleAndTranslateOpTest, NonAntialiasedScaleAndTranslationTest) {
+  CreateOp("lanczos3", false);
+  constexpr int64 kBatchSize = 2;
+  constexpr int64 kNumRowSquares = 11;
+  constexpr int64 kNumColSquares = 7;
+  constexpr int64 kSquareSize = 5;
+  constexpr int64 kNumChannels = 3;
+  SetCheckerboardImageInput(kBatchSize, kNumRowSquares, kNumColSquares,
+                            kSquareSize, kNumChannels);
+  constexpr int kOutputImageHeight = 49;
+  constexpr int kOutputImageWidth = 51;
+  const Vector2f kScale(1.25f, 0.6f);
   const Vector2f kTranslate(4.1f, -3.1f);
   RunTest(kOutputImageHeight, kOutputImageWidth, kScale, kTranslate);
 }
@@ -358,7 +422,7 @@ TEST_F(ScaleAndTranslateOpTest, TestKernelTypes) {
       "lanczos1", "lanczos3",  "lanczos5",     "box",
       "triangle", "keyscubic", "mitchellcubic"};
   for (const string& kernel_type : kKernelTypes) {
-    CreateOp(kernel_type);
+    CreateOp(kernel_type, true);
     constexpr int64 kBatchSize = 2;
     constexpr int64 kNumRowSquares = 10;
     constexpr int64 kNumColSquares = 11;

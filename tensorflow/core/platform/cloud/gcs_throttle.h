@@ -70,7 +70,7 @@ class GcsThrottle {
   /**
    * Constructs a GcsThrottle.
    */
-  explicit GcsThrottle(EnvTime* env_time = EnvTime::Default());
+  explicit GcsThrottle(EnvTime* env_time = nullptr);
 
   /**
    * AdmitRequest updates the GcsThrottle to record a request will be made.
@@ -109,7 +109,7 @@ class GcsThrottle {
    * purpose of this function is to make available to monitoring or other
    * instrumentation the number of available tokens in the pool.
    */
-  inline int64 available_tokens() LOCKS_EXCLUDED(mu_) {
+  inline int64 available_tokens() TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     UpdateState();
     return available_tokens_;
@@ -122,7 +122,7 @@ class GcsThrottle {
    * throttle, call SetConfig passing in a configuration that has enabled set to
    * true.
    */
-  bool is_enabled() LOCKS_EXCLUDED(mu_) {
+  bool is_enabled() TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     return config_.enabled;
   }
@@ -134,7 +134,7 @@ class GcsThrottle {
    * UpdateState should be called in order to mark the passage of time, and
    * therefore add tokens to the available_tokens_ pool.
    */
-  void UpdateState() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void UpdateState() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   inline uint64 request_bytes_to_tokens(size_t num_bytes) {
     return num_bytes >> 10;
@@ -147,7 +147,7 @@ class GcsThrottle {
    * the internal state of the GcsThrottle was updated. This is important when
    * determining the number of tokens to add to the available_tokens_ pool.
    */
-  uint64 last_updated_secs_ GUARDED_BY(mu_) = 0;
+  uint64 last_updated_secs_ TF_GUARDED_BY(mu_) = 0;
 
   /**
    * available_tokens_ records how many tokens are available to be consumed.
@@ -156,10 +156,10 @@ class GcsThrottle {
    * response comes back that consumes more than the available tokens, the count
    * will go negative, and block future requests until we have available tokens.
    */
-  int64 available_tokens_ GUARDED_BY(mu_) = 0;
+  int64 available_tokens_ TF_GUARDED_BY(mu_) = 0;
 
   EnvTime* const env_time_;
-  GcsThrottleConfig config_ GUARDED_BY(mu_);
+  GcsThrottleConfig config_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

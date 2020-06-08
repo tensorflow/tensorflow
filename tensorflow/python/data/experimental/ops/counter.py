@@ -17,8 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import scan_ops
-
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -60,6 +60,7 @@ def CounterV1(start=0, step=1, dtype=dtypes.int64):
   return dataset_ops.DatasetV1Adapter(CounterV2(start, step, dtype))
 CounterV1.__doc__ = CounterV2.__doc__
 
-# TODO(b/119044825): Until all `tf.data` unit tests are converted to V2, keep
-# this alias in place.
-Counter = CounterV1  # pylint: disable=invalid-name
+if tf2.enabled():
+  Counter = CounterV2
+else:
+  Counter = CounterV1

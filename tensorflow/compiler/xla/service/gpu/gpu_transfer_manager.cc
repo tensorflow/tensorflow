@@ -23,14 +23,13 @@ limitations under the License.
 #include "llvm/IR/DataLayout.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/outfeed_manager.h"
+#include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/logging.h"
@@ -97,7 +96,8 @@ Status GpuTransferManager::EnqueueBuffersToInfeed(
 StatusOr<InfeedBuffer> GpuTransferManager::TransferBufferToInfeedInternal(
     se::StreamExecutor* executor, int64 size, const void* source) {
   if (size > std::numeric_limits<int32>::max()) {
-    return InvalidArgument("Infeed shape is too large: needs %d bytes", size);
+    return InvalidArgument("GPU infeed of %d bytes exceeds maximum of %d bytes",
+                           size, std::numeric_limits<int32>::max());
   }
 
   if (size == 0) {
@@ -166,7 +166,7 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
             absl::make_unique<MutableBorrowingLiteral>(literal, index));
       });
 
-  // Give the tree of buffers to the outfeed mananger. The device will fill it
+  // Give the tree of buffers to the outfeed manager. The device will fill it
   // while we're waiting for it below.
   gpu::OutfeedManager* outfeed_manager = gpu::GetOrCreateOutfeedManager();
   outfeed_manager->EnqueueDestination(&outfeed_buffers);
@@ -182,13 +182,22 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
 static std::unique_ptr<xla::TransferManager> CreateNVPTXTransferManager() {
   return absl::make_unique<xla::gpu::GpuTransferManager>(
       /*id=*/stream_executor::cuda::kCudaPlatformId,
-      /*pointer_size=*/llvm::DataLayout(xla::gpu::NVPTXCompiler::kDataLayout)
+      /*pointer_size=*/llvm::DataLayout(xla::gpu::nvptx::kDataLayout)
+          .getPointerSize(0 /* default address space */));
+}
+
+static std::unique_ptr<xla::TransferManager> CreateAMDGPUTransferManager() {
+  return absl::make_unique<xla::gpu::GpuTransferManager>(
+      /*id=*/stream_executor::rocm::kROCmPlatformId,
+      /*pointer_size=*/llvm::DataLayout(xla::gpu::amdgpu::kDataLayout)
           .getPointerSize(0 /* default address space */));
 }
 
 static bool InitModule() {
   xla::TransferManager::RegisterTransferManager(
       stream_executor::cuda::kCudaPlatformId, &CreateNVPTXTransferManager);
+  xla::TransferManager::RegisterTransferManager(
+      stream_executor::rocm::kROCmPlatformId, &CreateAMDGPUTransferManager);
   return true;
 }
 static bool module_initialized = InitModule();

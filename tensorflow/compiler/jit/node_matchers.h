@@ -187,7 +187,7 @@ impl::NodeMatcherProperties Op(string op);
 // Matches a node with assigned device `assigned_device`.
 impl::NodeMatcherProperties AssignedDevice(string assigned_device);
 
-// Matches a node with a boolean typed attrbute named `name` and with value
+// Matches a node with a boolean typed attribute named `name` and with value
 // `value`.
 template <typename ValueTy>
 impl::NodeMatcherProperties Attr(const string& name, ValueTy value) {

@@ -17,9 +17,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_VERIFIER_H_
 
 #include <memory>
-#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 #include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 
 namespace xla {
@@ -29,9 +29,11 @@ namespace xla {
 // TODO(b/26024837): Check output shape for all instruction types.
 class ShapeVerifier : public DfsHloVisitor {
  public:
-  ShapeVerifier(bool layout_sensitive, bool allow_mixed_precision)
+  ShapeVerifier(bool layout_sensitive, bool allow_mixed_precision,
+                std::function<int64(const Shape&)> shape_size_function)
       : layout_sensitive_(layout_sensitive),
-        allow_mixed_precision_(allow_mixed_precision) {}
+        allow_mixed_precision_(allow_mixed_precision),
+        shape_size_function_(shape_size_function) {}
 
   // Verifies that entry computation layout matches parameters and root shape of
   // the module's entry computation.
@@ -52,14 +54,22 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleDot(HloInstruction* dot) override;
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleFft(HloInstruction* fft) override;
+  Status HandleCholesky(HloInstruction* hlo) override;
+  Status HandleTriangularSolve(HloInstruction* hlo) override;
+  Status HandleAllGather(HloInstruction* hlo) override;
   Status HandleAllReduce(HloInstruction* crs) override;
   Status HandleAllToAll(HloInstruction* hlo) override;
   Status HandleCollectivePermute(HloInstruction* hlo) override;
+  Status HandleCollectivePermuteStart(HloInstruction* hlo) override;
+  Status HandleCollectivePermuteDone(HloInstruction* hlo) override;
+  Status HandlePartitionId(HloInstruction* hlo) override;
   Status HandleReplicaId(HloInstruction* hlo) override;
   Status HandleReducePrecision(HloInstruction* reduce_precision) override;
   Status HandleInfeed(HloInstruction*) override;
   Status HandleOutfeed(HloInstruction*) override;
   Status HandleRng(HloInstruction*) override;
+  Status HandleRngBitGenerator(HloInstruction*) override;
+  Status HandleRngGetAndUpdateState(HloInstruction*) override;
   Status HandleReverse(HloInstruction* reverse) override;
   Status HandleSort(HloInstruction* sort) override;
   Status HandleConstant(HloInstruction* constant) override;
@@ -84,6 +94,8 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleWhile(HloInstruction* xla_while) override;
   Status HandleConditional(HloInstruction* conditional) override;
   Status HandlePad(HloInstruction* pad) override;
+  Status HandleCopyStart(HloInstruction* copy_start) override;
+  Status HandleCopyDone(HloInstruction* copy_done) override;
   Status HandleSend(HloInstruction* send) override;
   Status HandleSendDone(HloInstruction* send_done) override;
   Status HandleRecv(HloInstruction* recv) override;
@@ -96,6 +108,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleScatter(HloInstruction* scatter) override;
   Status HandleAfterAll(HloInstruction* token) override;
   Status HandleGetDimensionSize(HloInstruction* get_size) override;
+  Status HandleSetDimensionSize(HloInstruction* set_size) override;
   Status HandleAddDependency(HloInstruction* add_dependency) override;
 
   Status FinishVisit(HloInstruction*) override { return Status::OK(); }
@@ -104,7 +117,8 @@ class ShapeVerifier : public DfsHloVisitor {
   // Check the instruction's shape against the shape given by ShapeInference
   // and return an appropriate error if there is a mismatch.
   Status CheckShape(const HloInstruction* instruction,
-                    const Shape& inferred_shape);
+                    const Shape& inferred_shape,
+                    bool only_compare_minor_to_major_in_layout = false);
 
   // Overload which takes a StatusOr to reduce boilerplate in the caller.
   Status CheckShape(const HloInstruction* instruction,
@@ -118,14 +132,35 @@ class ShapeVerifier : public DfsHloVisitor {
 
  private:
   // Helpers that switch on layout_sensitive_.
-  bool ShapesSame(const Shape& a, const Shape& b) {
-    return layout_sensitive_ ? ShapeUtil::Equal(a, b)
-                             : ShapeUtil::Compatible(a, b);
+  bool ShapesSame(const Shape& a, const Shape& b,
+                  bool minor_to_major_only = false,
+                  bool ignore_memory_space = false) {
+    if (!layout_sensitive_) {
+      return ShapeUtil::Compatible(a, b);
+    }
+    Shape::Equal equal;
+    if (ignore_memory_space) {
+      equal.IgnoreMemorySpaceInLayout();
+    }
+    if (minor_to_major_only) {
+      equal.MinorToMajorOnlyInLayout();
+    }
+    return equal(a, b);
   }
-  bool ShapesSameIgnoringFpPrecision(const Shape& a, const Shape& b) {
-    return layout_sensitive_ ? ShapeUtil::EqualIgnoringFpPrecision(a, b)
-                             : ShapeUtil::CompatibleIgnoringFpPrecision(a, b);
+
+  bool ShapesSameIgnoringFpPrecision(const Shape& a, const Shape& b,
+                                     bool minor_to_major_only = false) {
+    if (!layout_sensitive_) {
+      return ShapeUtil::CompatibleIgnoringFpPrecision(a, b);
+    }
+    Shape::Equal equal;
+    if (minor_to_major_only) {
+      equal.MinorToMajorOnlyInLayout();
+    }
+    equal.IgnoreFpPrecision();
+    return equal(a, b);
   }
+
   string StringifyShape(const Shape& s) {
     return layout_sensitive_ ? ShapeUtil::HumanStringWithLayout(s)
                              : ShapeUtil::HumanString(s);
@@ -164,6 +199,9 @@ class ShapeVerifier : public DfsHloVisitor {
   // BF16s. Tuples that include both F32s and BF16s are allowed regardless of
   // this flag.
   bool allow_mixed_precision_;
+
+  // Returns a target-specific shape size.
+  std::function<int64(const Shape&)> shape_size_function_;
 };
 
 // An interface used to encapsulate target-specific verification quirks.
@@ -179,13 +217,15 @@ class TargetVerifierMetadata {
 
   virtual std::unique_ptr<ShapeVerifier> GetVerifier() const = 0;
 
+  virtual bool IsLayoutSensitive() const = 0;
+
   TargetVerifierMetadata() {}
   virtual ~TargetVerifierMetadata() {}
 
   TargetVerifierMetadata(const TargetVerifierMetadata&) = delete;
   TargetVerifierMetadata& operator=(const TargetVerifierMetadata&) = delete;
 
- private:
+ protected:
   // Returns a target-specific shape size.
   std::function<int64(const Shape&)> shape_size_function_;
 };
@@ -206,9 +246,11 @@ class DefaultVerifierMetadata : public TargetVerifierMetadata {
   // being a DfsHloVisitor, is stateful. We want a clean object for each run of
   // the verifier.
   std::unique_ptr<ShapeVerifier> GetVerifier() const override {
-    return absl::make_unique<ShapeVerifier>(layout_sensitive_,
-                                            allow_mixed_precision_);
+    return absl::make_unique<ShapeVerifier>(
+        layout_sensitive_, allow_mixed_precision_, shape_size_function_);
   }
+
+  bool IsLayoutSensitive() const override { return layout_sensitive_; }
 
  private:
   bool layout_sensitive_;

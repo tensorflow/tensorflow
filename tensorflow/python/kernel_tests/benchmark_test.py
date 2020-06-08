@@ -126,7 +126,7 @@ class BenchmarkTest(test.TestCase):
     self.assertFalse(_ran_somebenchmark_2[0])
     self.assertFalse(_ran_somebenchmark_but_shouldnt[0])
 
-  @test_util.disable_xla("This test never passed for XLA")
+  @test_util.disable_xla("b/123744455")  # GPU memory is incorrect
   def testReportingBenchmark(self):
     tempdir = test.get_temp_dir()
     try:

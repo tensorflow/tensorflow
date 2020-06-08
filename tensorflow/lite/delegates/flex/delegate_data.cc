@@ -16,13 +16,16 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tflite {
 namespace flex {
 DelegateData::DelegateData() {}
 
-DelegateData::~DelegateData() {}
+DelegateData::~DelegateData() {
+  if (eager_context_) eager_context_->Unref();
+}
 
 tensorflow::Status DelegateData::Prepare(
     const tensorflow::SessionOptions& session_options) {
@@ -35,15 +38,17 @@ tensorflow::Status DelegateData::Prepare(
   TF_RETURN_IF_ERROR(tensorflow::DeviceFactory::AddDevices(
       session_options, "/job:localhost/replica:0/task:0", &devices));
 
-  std::unique_ptr<tensorflow::DeviceMgr> device_mgr =
-      absl::make_unique<tensorflow::DeviceMgr>(std::move(devices));
+  auto device_mgr =
+      absl::make_unique<tensorflow::StaticDeviceMgr>(std::move(devices));
   // Note that Rendezvous is ref-counted so it will be automatically deleted.
   tensorflow::Rendezvous* rendezvous =
       new tensorflow::IntraProcessRendezvous(device_mgr.get());
-  eager_context_.reset(new tensorflow::EagerContext(
+  eager_context_ = new tensorflow::EagerContext(
       session_options,
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      /*async=*/false, std::move(device_mgr), rendezvous));
+      tensorflow::ContextMirroringPolicy::MIRRORING_NONE,
+      /*async=*/false, /*lazy_copy_function_remote_inputs=*/false,
+      device_mgr.release(), /*device_mgr_owned*/ true, rendezvous, nullptr);
   return tensorflow::Status();
 }
 

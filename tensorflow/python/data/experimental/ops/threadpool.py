@@ -46,7 +46,7 @@ class PrivateThreadPool(object):
     """Creates a `PrivateThreadPool` with the given number of threads."""
     if context.executing_eagerly():
       shared_name = _generate_shared_name("privatethreadpool")
-      self._resource = ged_ops.experimental_thread_pool_handle(
+      self._resource = ged_ops.thread_pool_handle(
           num_threads=num_threads,
           max_intra_op_parallelism=max_intra_op_parallelism,
           display_name=display_name,
@@ -54,7 +54,7 @@ class PrivateThreadPool(object):
       self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
           handle=self._resource, handle_device=context.context().device_name)
     else:
-      self._resource = ged_ops.experimental_thread_pool_handle(
+      self._resource = ged_ops.thread_pool_handle(
           num_threads=num_threads,
           max_intra_op_parallelism=max_intra_op_parallelism,
           display_name=display_name)
@@ -66,10 +66,10 @@ class _ThreadPoolDataset(dataset_ops.UnaryUnchangedStructureDataset):
   def __init__(self, input_dataset, thread_pool):
     self._input_dataset = input_dataset
     self._thread_pool = thread_pool
-    variant_tensor = ged_ops.experimental_thread_pool_dataset(
+    variant_tensor = ged_ops.thread_pool_dataset(
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._thread_pool._resource,  # pylint: disable=protected-access
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(_ThreadPoolDataset, self).__init__(input_dataset, variant_tensor)
 
 

@@ -1,0 +1,31 @@
+path: "tensorflow.random.experimental"
+tf_module {
+  member {
+    name: "Algorithm"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
+    name: "Generator"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "create_rng_state"
+    argspec: "args=[\'seed\', \'alg\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_global_generator"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_global_generator"
+    argspec: "args=[\'generator\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "stateless_fold_in"
+    argspec: "args=[\'seed\', \'data\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "stateless_split"
+    argspec: "args=[\'seed\', \'num\'], varargs=None, keywords=None, defaults=[\'2\'], "
+  }
+}

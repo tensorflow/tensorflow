@@ -1,10 +1,4 @@
 op {
   graph_op_name: "Ceil"
-  endpoint {
-    name: "math.ceil"
-  }
-  endpoint {
-    name: "ceil"
-    deprecation_version: 2
-  }
+  visibility: HIDDEN
 }

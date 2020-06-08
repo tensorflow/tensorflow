@@ -30,7 +30,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
@@ -66,94 +66,95 @@ class LuOpTest(test.TestCase):
 
   def _verifyLu(self, x, output_idx_type=dtypes.int64):
     # Verify that Px = LU.
-    with test_util.use_gpu():
+    lu, perm = linalg_ops.lu(x, output_idx_type=output_idx_type)
 
-      lu, perm = linalg_ops.lu(x, output_idx_type=output_idx_type)
+    # Prepare the lower factor of shape num_rows x num_rows
+    lu_shape = np.array(lu.shape.as_list())
+    batch_shape = lu_shape[:-2]
+    num_rows = lu_shape[-2]
+    num_cols = lu_shape[-1]
 
-      # Prepare the lower factor of shape num_rows x num_rows
-      lu_shape = np.array(lu.shape.as_list())
-      batch_shape = lu_shape[:-2]
-      num_rows = lu_shape[-2]
-      num_cols = lu_shape[-1]
+    lower = array_ops.matrix_band_part(lu, -1, 0)
 
-      lower = array_ops.matrix_band_part(lu, -1, 0)
+    if num_rows > num_cols:
+      eye = linalg_ops.eye(
+          num_rows, batch_shape=batch_shape, dtype=lower.dtype)
+      lower = array_ops.concat([lower, eye[..., num_cols:]], axis=-1)
+    elif num_rows < num_cols:
+      lower = lower[..., :num_rows]
 
-      if num_rows > num_cols:
-        eye = linalg_ops.eye(
-            num_rows, batch_shape=batch_shape, dtype=lower.dtype)
-        lower = array_ops.concat([lower, eye[..., num_cols:]], axis=-1)
-      elif num_rows < num_cols:
-        lower = lower[..., :num_rows]
+    # Fill the diagonal with ones.
+    ones_diag = array_ops.ones(
+        np.append(batch_shape, num_rows), dtype=lower.dtype)
+    lower = array_ops.matrix_set_diag(lower, ones_diag)
 
-      # Fill the diagonal with ones.
-      ones_diag = array_ops.ones(
-          np.append(batch_shape, num_rows), dtype=lower.dtype)
-      lower = array_ops.matrix_set_diag(lower, ones_diag)
+    # Prepare the upper factor.
+    upper = array_ops.matrix_band_part(lu, 0, -1)
 
-      # Prepare the upper factor.
-      upper = array_ops.matrix_band_part(lu, 0, -1)
+    verification = math_ops.matmul(lower, upper)
 
-      verification = math_ops.matmul(lower, upper)
+    # Permute the rows of product of the Cholesky factors.
+    if num_rows > 0:
+      # Reshape the product of the triangular factors and permutation indices
+      # to a single batch dimension. This makes it easy to apply
+      # invert_permutation and gather_nd ops.
+      perm_reshaped = array_ops.reshape(perm, [-1, num_rows])
+      verification_reshaped = array_ops.reshape(verification,
+                                                [-1, num_rows, num_cols])
+      # Invert the permutation in each batch.
+      inv_perm_reshaped = map_fn.map_fn(array_ops.invert_permutation,
+                                        perm_reshaped)
+      batch_size = perm_reshaped.shape.as_list()[0]
+      # Prepare the batch indices with the same shape as the permutation.
+      # The corresponding batch index is paired with each of the `num_rows`
+      # permutation indices.
+      batch_indices = math_ops.cast(
+          array_ops.broadcast_to(
+              math_ops.range(batch_size)[:, None], perm_reshaped.shape),
+          dtype=output_idx_type)
+      permuted_verification_reshaped = array_ops.gather_nd(
+          verification_reshaped,
+          array_ops.stack([batch_indices, inv_perm_reshaped], axis=-1))
 
-      # Permute the rows of product of the Cholesky factors.
-      if num_rows > 0:
-        # Reshape the product of the triangular factors and permutation indices
-        # to a single batch dimension. This makes it easy to apply
-        # invert_permutation and gather_nd ops.
-        perm_reshaped = array_ops.reshape(perm, [-1, num_rows])
-        verification_reshaped = array_ops.reshape(verification,
-                                                  [-1, num_rows, num_cols])
-        # Invert the permutation in each batch.
-        inv_perm_reshaped = map_fn.map_fn(array_ops.invert_permutation,
-                                          perm_reshaped)
-        batch_size = perm_reshaped.shape.as_list()[0]
-        # Prepare the batch indices with the same shape as the permutation.
-        # The corresponding batch index is paired with each of the `num_rows`
-        # permutation indices.
-        batch_indices = math_ops.cast(
-            array_ops.broadcast_to(
-                math_ops.range(batch_size)[:, None], perm_reshaped.shape),
-            dtype=output_idx_type)
-        permuted_verification_reshaped = array_ops.gather_nd(
-            verification_reshaped,
-            array_ops.stack([batch_indices, inv_perm_reshaped], axis=-1))
+      # Reshape the verification matrix back to the original shape.
+      verification = array_ops.reshape(permuted_verification_reshaped,
+                                       lu_shape)
 
-        # Reshape the verification matrix back to the original shape.
-        verification = array_ops.reshape(permuted_verification_reshaped,
-                                         lu_shape)
-
-      self._verifyLuBase(x, lower, upper, perm, verification,
-                         output_idx_type)
+    self._verifyLuBase(x, lower, upper, perm, verification,
+                       output_idx_type)
 
   def testBasic(self):
     data = np.array([[4., -1., 2.], [-1., 6., 0], [10., 0., 5.]])
 
     for dtype in (np.float32, np.float64):
       for output_idx_type in (dtypes.int32, dtypes.int64):
-        self._verifyLu(data.astype(dtype), output_idx_type=output_idx_type)
+        with self.subTest(dtype=dtype, output_idx_type=output_idx_type):
+          self._verifyLu(data.astype(dtype), output_idx_type=output_idx_type)
 
     for dtype in (np.complex64, np.complex128):
       for output_idx_type in (dtypes.int32, dtypes.int64):
-        complex_data = np.tril(1j * data, -1).astype(dtype)
-        complex_data += np.triu(-1j * data, 1).astype(dtype)
-        complex_data += data
-        self._verifyLu(complex_data, output_idx_type=output_idx_type)
+        with self.subTest(dtype=dtype, output_idx_type=output_idx_type):
+          complex_data = np.tril(1j * data, -1).astype(dtype)
+          complex_data += np.triu(-1j * data, 1).astype(dtype)
+          complex_data += data
+          self._verifyLu(complex_data, output_idx_type=output_idx_type)
 
   def testPivoting(self):
-    with test_util.use_gpu():
-      # This matrix triggers partial pivoting because the first diagonal entry
-      # is small.
-      data = np.array([[1e-9, 1., 0.], [1., 0., 0], [0., 1., 5]])
-      self._verifyLu(data.astype(np.float32))
+    # This matrix triggers partial pivoting because the first diagonal entry
+    # is small.
+    data = np.array([[1e-9, 1., 0.], [1., 0., 0], [0., 1., 5]])
+    self._verifyLu(data.astype(np.float32))
 
-      for dtype in (np.float32, np.float64):
+    for dtype in (np.float32, np.float64):
+      with self.subTest(dtype=dtype):
         self._verifyLu(data.astype(dtype))
         _, p = linalg_ops.lu(data)
         p_val = self.evaluate([p])
         # Make sure p_val is not the identity permutation.
         self.assertNotAllClose(np.arange(3), p_val)
 
-      for dtype in (np.complex64, np.complex128):
+    for dtype in (np.complex64, np.complex128):
+      with self.subTest(dtype=dtype):
         complex_data = np.tril(1j * data, -1).astype(dtype)
         complex_data += np.triu(-1j * data, 1).astype(dtype)
         complex_data += data
@@ -167,8 +168,8 @@ class LuOpTest(test.TestCase):
     # LU factorization gives an error when the input is singular.
     # Note: A singular matrix may return without error but it won't be a valid
     # factorization.
-    with test_util.use_gpu():
-      for dtype in self.float_types:
+    for dtype in self.float_types:
+      with self.subTest(dtype=dtype):
         with self.assertRaises(errors.InvalidArgumentError):
           self.evaluate(
               linalg_ops.lu(
@@ -213,21 +214,25 @@ class LuOpTest(test.TestCase):
     data = np.random.rand(n, n) + 1j * np.random.rand(n, n)
     self._verifyLu(data)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testEmpty(self):
     self._verifyLu(np.empty([0, 2, 2]))
     self._verifyLu(np.empty([2, 0, 0]))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testConcurrentExecutesWithoutError(self):
-    with test_util.use_gpu():
-      matrix1 = random_ops.random_normal([5, 5], seed=42)
-      matrix2 = random_ops.random_normal([5, 5], seed=42)
-      lu1, p1 = linalg_ops.lu(matrix1)
-      lu2, p2 = linalg_ops.lu(matrix2)
-      lu1_val, p1_val, lu2_val, p2_val = self.evaluate([lu1, p1, lu2, p2])
-      self.assertAllEqual(lu1_val, lu2_val)
-      self.assertAllEqual(p1_val, p2_val)
+    matrix_shape = [5, 5]
+    seed = [42, 24]
+    matrix1 = stateless_random_ops.stateless_random_normal(
+        shape=matrix_shape, seed=seed)
+    matrix2 = stateless_random_ops.stateless_random_normal(
+        shape=matrix_shape, seed=seed)
+    self.assertAllEqual(matrix1, matrix2)
+    lu1, p1 = linalg_ops.lu(matrix1)
+    lu2, p2 = linalg_ops.lu(matrix2)
+    lu1_val, p1_val, lu2_val, p2_val = self.evaluate([lu1, p1, lu2, p2])
+    self.assertAllEqual(lu1_val, lu2_val)
+    self.assertAllEqual(p1_val, p2_val)
 
 
 class LuBenchmark(test.Benchmark):

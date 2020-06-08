@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -37,6 +38,29 @@ using absl::StrAppend;
 using absl::StrCat;
 
 namespace xla {
+
+StatusOr<int> DeviceAssignment::ReplicaIdForDeviceOrdinal(
+    int device_ordinal) const {
+  absl::optional<int> replica_id;
+  for (int64 r = 0; r < replica_count(); ++r) {
+    for (int64 c = 0; c < computation_count(); ++c) {
+      if ((*this)(r, c) == device_ordinal) {
+        if (replica_id.has_value()) {
+          return InternalError(
+              "Device ordinal %d appears twice in DeviceAssignment? %s",
+              device_ordinal, ToString());
+        }
+        replica_id = r;
+      }
+    }
+  }
+  if (!replica_id.has_value()) {
+    return InternalError(
+        "Device ordinal %d doesn't appear in DeviceAssignment %s",
+        device_ordinal, ToString());
+  }
+  return *replica_id;
+}
 
 Status DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {
   proto->set_replica_count(replica_count());
@@ -164,6 +188,8 @@ static bool InitModule() {
       stream_executor::host::kHostPlatformId, &CreateComputationPlacer);
   xla::ComputationPlacer::RegisterComputationPlacer(
       stream_executor::cuda::kCudaPlatformId, &CreateComputationPlacer);
+  xla::ComputationPlacer::RegisterComputationPlacer(
+      stream_executor::rocm::kROCmPlatformId, &CreateComputationPlacer);
   return true;
 }
 static bool module_initialized = InitModule();

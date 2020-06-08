@@ -5,6 +5,10 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
+    name: "FLOAT16"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
     name: "GRAPHVIZ_DOT"
     mtype: "<type \'int\'>"
   }
@@ -14,6 +18,10 @@ tf_module {
   }
   member {
     name: "INT64"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "INT8"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {

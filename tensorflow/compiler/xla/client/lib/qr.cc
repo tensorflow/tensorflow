@@ -101,7 +101,7 @@ Status House(XlaOp x, XlaOp k, absl::Span<const int64> batch_dims,
 
   auto sigma_is_zero = Eq(sigma, zero);
 
-  *beta = Select(sigma_is_zero, alpha, -Sign(alpha) * mu);
+  *beta = Select(sigma_is_zero, alpha, Select(Lt(alpha, zero), one, -one) * mu);
   *tau = Select(sigma_is_zero, Broadcast(zero, batch_dims),
                 (*beta - alpha) / *beta);
   auto divisor =
@@ -192,7 +192,7 @@ StatusOr<QRBlockResult> QRBlock(XlaOp a, PrecisionConfig::Precision precision) {
     // a[:, :] -= tau * np.dot(v[:, np.newaxis],
     //                          np.dot(v[np.newaxis, :], a[:, :]))
     auto vva = BatchDot(v_broadcast, a, precision);
-    vva = BatchDot(TransposeInMinorDims(v_broadcast), vva, precision);
+    vva = BatchDot(v_broadcast, true, vva, false, precision);
     a = a - Mul(tau, vva,
                 /*broadcast_dimensions=*/batch_dim_indices);
 
@@ -207,14 +207,39 @@ StatusOr<QRBlockResult> QRBlock(XlaOp a, PrecisionConfig::Precision precision) {
     auto new_x = Mul(x, predecessor_mask,
                      /*broadcast_dimensions=*/{num_dims - 2, num_dims - 1}) +
                  Mul(beta, mask, /*broadcast_dimensions=*/batch_dim_indices);
-    a = DynamicUpdateSliceInMinorDims(a, new_x, {j});
+    // Update a[:,j]
+    std::vector<int64> dim_ids(num_dims);
+    std::iota(dim_ids.begin(), dim_ids.end(), 0);
+    new_x = BroadcastInDim(new_x, ConcatVectors(batch_dims, {m, n}),
+                           /*broadcast_dimensions=*/dim_ids);
+    const int64 minor_dim = batch_dims.size();
+    auto iota_mn = Iota(
+        builder, ShapeUtil::MakeShape(S32, ConcatVectors(batch_dims, {m, n})),
+        minor_dim + 1);
+    a = Select(Eq(iota_mn, j), new_x, a);
 
     // vs[:, j] = v
-    vs = DynamicUpdateSliceInMinorDims(
-        vs, Reshape(v, ConcatVectors(batch_dims, {m, 1})), {j});
+    std::vector<int64> vs_broadcast_dims(batch_dims.size() + 1);
+    std::iota(vs_broadcast_dims.begin(), vs_broadcast_dims.end(), 0);
+    auto vs_zeros = ZerosLike(vs);
+    auto vs_update = Select(
+        Eq(iota_mn, j),
+        Add(vs_zeros, v, /*broadcast_dimensions=*/vs_broadcast_dims), vs_zeros);
+    vs = vs + vs_update;
+
     // taus[j] = tau
-    taus = DynamicUpdateSliceInMinorDims(
-        taus, Reshape(tau, ConcatVectors(batch_dims, {1})), {j});
+    std::vector<int64> tau_broadcast_dims(batch_dims.size());
+    std::iota(tau_broadcast_dims.begin(), tau_broadcast_dims.end(), 0);
+
+    auto iota_n =
+        Iota(builder, ShapeUtil::MakeShape(S32, ConcatVectors(batch_dims, {n})),
+             minor_dim);
+    auto taus_zeros = ZerosLike(taus);
+    auto taus_update = Select(
+        Eq(iota_n, j),
+        Add(taus_zeros, tau, /*broadcast_dimensions=*/tau_broadcast_dims),
+        taus_zeros);
+    taus = taus + taus_update;
     return std::vector<XlaOp>{a, vs, taus};
   };
 
@@ -258,10 +283,10 @@ StatusOr<XlaOp> ComputeWYRepresentation(PrimitiveType type,
 
   auto body_fn = [&](XlaOp j, absl::Span<const XlaOp> values,
                      XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
+    // w has shape [..., m, n]
     auto w = values[0];
-    auto y = values[1];
-    const auto vs = values[2];
-    const auto taus = values[3];
+    const auto vs = values[1];
+    const auto taus = values[2];
 
     // Want j values in range [1, ... n).
     j = j + ConstantR0<int32>(builder, 1);
@@ -270,8 +295,15 @@ StatusOr<XlaOp> ComputeWYRepresentation(PrimitiveType type,
     // beta has shape [..., 1]
     auto beta = DynamicSliceInMinorDims(taus, {j}, {1});
 
+    auto iota_mn = Iota(
+        builder, ShapeUtil::MakeShape(S32, ConcatVectors(batch_dims, {m, n})),
+        n_index);
+
+    // y has shape [..., m, n]
+    auto y = Select(Ge(iota_mn, j), ZerosLike(vs), vs);
+
     // yv has shape [..., n, 1]
-    auto yv = BatchDot(TransposeInMinorDims(y), v, precision);
+    auto yv = BatchDot(y, true, v, false, precision);
     // wyv has shape [..., m, 1]
     auto wyv = BatchDot(w, yv, precision);
 
@@ -280,26 +312,22 @@ StatusOr<XlaOp> ComputeWYRepresentation(PrimitiveType type,
         /*broadcast_dimensions=*/ConcatVectors(batch_dim_indices, {n_index}));
 
     w = DynamicUpdateSliceInMinorDims(w, z, {j});
-    y = DynamicUpdateSliceInMinorDims(y, v, {j});
 
-    return std::vector<XlaOp>{w, y, vs, taus};
+    return std::vector<XlaOp>{w, vs, taus};
   };
 
   XlaBuilder* builder = vs.builder();
   auto w = Zeros(builder,
                  ShapeUtil::MakeShape(type, ConcatVectors(batch_dims, {m, n})));
-  auto y = w;
   auto v = SliceInMinorDims(vs, {0}, {1});
   auto beta = SliceInMinorDims(taus, {0}, {1});
-  y = UpdateSliceInMinorDims(y, v, {0});
   auto bv =
       Mul(-beta, v,
           /*broadcast_dimensions=*/ConcatVectors(batch_dim_indices, {n_index}));
   w = UpdateSliceInMinorDims(w, bv, {0});
 
-  TF_ASSIGN_OR_RETURN(
-      auto values,
-      ForEachIndex(n - 1, S32, body_fn, {w, y, vs, taus}, "wy", builder));
+  TF_ASSIGN_OR_RETURN(auto values, ForEachIndex(n - 1, S32, body_fn,
+                                                {w, vs, taus}, "wy", builder));
   return values[0];
 }
 
@@ -365,7 +393,7 @@ StatusOr<QRDecompositionResult> QRDecomposition(
 
     // a[i:, i+k:] += np.dot(Y, np.dot(W.T, a[i:, i+k:]))
     auto a_panel = SliceInMinorDims(a, {i, i + k}, {m, n});
-    auto a_update = BatchDot(TransposeInMinorDims(w), a_panel, precision);
+    auto a_update = BatchDot(w, true, a_panel, false, precision);
     a_update = BatchDot(y, a_update, precision);
     a_panel = a_panel + a_update;
     a = UpdateSliceInMinorDims(a, a_panel, {i, i + k});
@@ -373,7 +401,7 @@ StatusOr<QRDecompositionResult> QRDecomposition(
     // q[:, i:] += np.dot(np.dot(q[:, i:], W), Y.T))
     auto q_panel = SliceInMinorDims(q, {0, i}, {m, m});
     auto q_update = BatchDot(q_panel, w, precision);
-    q_update = BatchDot(q_update, TransposeInMinorDims(y), precision);
+    q_update = BatchDot(q_update, false, y, true, precision);
     q_panel = q_panel + q_update;
     q = UpdateSliceInMinorDims(q, q_panel, {0, i});
   }

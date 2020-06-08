@@ -30,6 +30,13 @@ REGISTER_OP("Invert")
   Input("x: T")                                                              \
       .Input("y: T")                                                         \
       .Output("z: T")                                                        \
+      .Attr("T: {int8, int16, int32, int64, uint8, uint16, uint32, uint64}") \
+      .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
+
+#define BINARY_BITWISE_COMMUTATIVE()                                         \
+  Input("x: T")                                                              \
+      .Input("y: T")                                                         \
+      .Output("z: T")                                                        \
       .SetIsCommutative()                                                    \
       .Attr("T: {int8, int16, int32, int64, uint8, uint16, uint32, uint64}") \
       .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
@@ -40,11 +47,11 @@ REGISTER_OP("PopulationCount")
     .Attr("T: {int8, int16, int32, int64, uint8, uint16, uint32, uint64}")
     .SetShapeFn(shape_inference::UnchangedShape);
 
-REGISTER_OP("BitwiseAnd").BINARY_BITWISE();
+REGISTER_OP("BitwiseAnd").BINARY_BITWISE_COMMUTATIVE();
 
-REGISTER_OP("BitwiseOr").BINARY_BITWISE();
+REGISTER_OP("BitwiseOr").BINARY_BITWISE_COMMUTATIVE();
 
-REGISTER_OP("BitwiseXor").BINARY_BITWISE();
+REGISTER_OP("BitwiseXor").BINARY_BITWISE_COMMUTATIVE();
 
 REGISTER_OP("LeftShift").BINARY_BITWISE();
 

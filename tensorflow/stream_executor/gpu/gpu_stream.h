@@ -19,8 +19,8 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_STREAM_H_
 #define TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_STREAM_H_
 
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/gpu/gpu_driver.h"
-#include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
 namespace stream_executor {
@@ -48,6 +48,8 @@ class GpuStream : public internal::StreamInterface {
   // Explicitly initialize the CUDA resources associated with this stream, used
   // by StreamExecutor::AllocateStream().
   bool Init();
+  void SetPriority(int priority) { priority_ = priority; }
+  int priority() const { return priority_; }
 
   // Explicitly destroy the CUDA resources associated with this stream, used by
   // StreamExecutor::DeallocateStream().
@@ -78,6 +80,7 @@ class GpuStream : public internal::StreamInterface {
  private:
   GpuExecutor* parent_;         // Executor that spawned this stream.
   GpuStreamHandle gpu_stream_;  // Wrapped CUDA stream handle.
+  int priority_ = 0;
 
   // Event that indicates this stream has completed.
   GpuEventHandle completed_event_ = nullptr;

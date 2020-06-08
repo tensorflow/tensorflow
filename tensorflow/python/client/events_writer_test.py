@@ -22,7 +22,7 @@ import os.path
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.core.util import event_pb2
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import _pywrap_events_writer
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import tf_record
@@ -34,7 +34,7 @@ class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
 
   def testWriteEvents(self):
     file_prefix = os.path.join(self.get_temp_dir(), "events")
-    writer = pywrap_tensorflow.EventsWriter(compat.as_bytes(file_prefix))
+    writer = _pywrap_events_writer.EventsWriter(compat.as_bytes(file_prefix))
     filename = compat.as_text(writer.FileName())
     event_written = event_pb2.Event(
         wall_time=123.45,
@@ -74,7 +74,7 @@ class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
         return "Invalid"
 
     with self.assertRaisesRegexp(TypeError, "Invalid"):
-      pywrap_tensorflow.EventsWriter(b"foo").WriteEvent(_Invalid())
+      _pywrap_events_writer.EventsWriter(b"foo").WriteEvent(_Invalid())
 
 
 if __name__ == "__main__":

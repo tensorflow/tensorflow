@@ -111,12 +111,17 @@ class MultiPlatformManager {
   // Ownership of the platform is NOT transferred to the caller --
   // the MultiPlatformManager owns the platforms in a singleton-like fashion.
   static port::StatusOr<Platform*> InitializePlatformWithName(
-      absl::string_view target, const std::map<string, string>& options);
+      absl::string_view target,
+      const std::map<std::string, std::string>& options);
 
   static port::StatusOr<Platform*> InitializePlatformWithId(
-      const Platform::Id& id, const std::map<string, string>& options);
+      const Platform::Id& id,
+      const std::map<std::string, std::string>& options);
 
-  static std::vector<Platform*> AllPlatforms();
+  // Retrieves the platforms satisfying the given filter, i.e. returns true.
+  // Returned Platforms are always initialized.
+  static port::StatusOr<std::vector<Platform*>> PlatformsWithFilter(
+      const std::function<bool(const Platform*)>& filter);
 
   // Although the MultiPlatformManager "owns" its platforms, it holds them as
   // undecorated pointers to prevent races during program exit (between this
@@ -131,7 +136,7 @@ class MultiPlatformManager {
   // during allocation of such Platforms, to avoid spurious reporting at program
   // exit.
 
-  // Interface for a listener that gets notfied at certain events.
+  // Interface for a listener that gets notified at certain events.
   class Listener {
    public:
     virtual ~Listener() = default;

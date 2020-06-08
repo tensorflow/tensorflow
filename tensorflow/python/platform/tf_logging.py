@@ -57,9 +57,21 @@ def _get_caller(offset=3):
     f = f.f_back
   return None, None
 
+# The definition of `findCaller` changed in Python 3.2,
+# and further changed in Python 3.8
+if _sys.version_info.major >= 3 and _sys.version_info.minor >= 8:
 
-# The definition of `findCaller` changed in Python 3.2
-if _sys.version_info.major >= 3 and _sys.version_info.minor >= 2:
+  def _logger_find_caller(stack_info=False, stacklevel=1):  # pylint: disable=g-wrong-blank-lines
+    code, frame = _get_caller(4)
+    sinfo = None
+    if stack_info:
+      sinfo = '\n'.join(_traceback.format_stack())
+    if code:
+      return (code.co_filename, frame.f_lineno, code.co_name, sinfo)
+    else:
+      return '(unknown file)', 0, '(unknown function)', sinfo
+elif _sys.version_info.major >= 3 and _sys.version_info.minor >= 2:
+
   def _logger_find_caller(stack_info=False):  # pylint: disable=g-wrong-blank-lines
     code, frame = _get_caller(4)
     sinfo = None
@@ -158,7 +170,7 @@ def info(msg, *args, **kwargs):
 
 @tf_export(v1=['logging.warn'])
 def warn(msg, *args, **kwargs):
-  get_logger().warn(msg, *args, **kwargs)
+  get_logger().warning(msg, *args, **kwargs)
 
 
 @tf_export(v1=['logging.warning'])

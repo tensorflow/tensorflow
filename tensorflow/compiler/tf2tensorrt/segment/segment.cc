@@ -21,22 +21,32 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/tf2tensorrt/segment/union_find.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/env_var.h"
+
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
 
 namespace tensorflow {
 namespace tensorrt {
 namespace segment {
+namespace {
 using absl::StrAppend;
+using absl::StrAppendFormat;
 using absl::StrCat;
+using absl::StrJoin;
 
-// A simple graph representation to mirror tensorflow::Graph. This structure
+// A simple graph representation to mirror Graph. This structure
 // helps saving memory since segmenter modifies the graph in place, preventing
 // the need to create a copy of the graph. It is composed of edges and nodes.
 // Nodes keep pointers to original TF nodes.
@@ -72,7 +82,7 @@ class SimpleEdge {
 
 class SimpleNode {
  public:
-  SimpleNode(const tensorflow::Node* node, const int id);
+  SimpleNode(const Node* node, const int id);
 
   const std::vector<SimpleEdge*>& in_edges() const { return in_edges_; }
   const std::vector<SimpleEdge*>& out_edges() const { return out_edges_; }
@@ -96,11 +106,11 @@ class SimpleNode {
   }
 
   const string& name() const { return node_->name(); }
-  const tensorflow::Node* tf_node() const { return node_; }
+  const Node* tf_node() const { return node_; }
   int id() const { return id_; }
 
  private:
-  const tensorflow::Node* node_;
+  const Node* node_;
   std::vector<SimpleEdge*> in_edges_;
   std::vector<SimpleEdge*> out_edges_;
   int id_;
@@ -110,7 +120,7 @@ class SimpleNode {
 
 class SimpleGraph {
  public:
-  explicit SimpleGraph(const tensorflow::Graph* g);
+  explicit SimpleGraph(const Graph* g);
   ~SimpleGraph();
 
   void AddControlEdge(SimpleNode* src, SimpleNode* dst);
@@ -123,15 +133,11 @@ class SimpleGraph {
     return nodes_[node_id];
   }
   int num_node_ids() const { return nodes_.size(); }
-  const SimpleNode* source_node() const {
-    return nodes_[tensorflow::Graph::kSourceId];
-  }
-  const SimpleNode* sink_node() const {
-    return nodes_[tensorflow::Graph::kSinkId];
-  }
+  const SimpleNode* source_node() const { return nodes_[Graph::kSourceId]; }
+  const SimpleNode* sink_node() const { return nodes_[Graph::kSinkId]; }
 
  private:
-  const tensorflow::Graph* g_;
+  const Graph* g_;
   std::vector<SimpleNode*> nodes_;
   std::vector<SimpleEdge*> edges_;
   // free_edge_ids_ and free_node_ids_ contain freed indices.
@@ -139,15 +145,14 @@ class SimpleGraph {
   std::set<int> free_node_ids_;
 };
 
-SimpleNode::SimpleNode(const tensorflow::Node* node, const int id)
-    : node_(node), id_(id) {
+SimpleNode::SimpleNode(const Node* node, const int id) : node_(node), id_(id) {
   if (node_) {
     in_edges_.reserve(node_->in_edges().size());
     out_edges_.reserve(node_->out_edges().size());
   }
 }
 
-SimpleGraph::SimpleGraph(const tensorflow::Graph* g) : g_(g) {
+SimpleGraph::SimpleGraph(const Graph* g) : g_(g) {
   int n_nodes = g_->num_node_ids();
   nodes_.resize(n_nodes, nullptr);
   nodes_[g->kSourceId] = new SimpleNode(g->source_node(), g->kSourceId);
@@ -191,8 +196,8 @@ void SimpleGraph::AddEdge(SimpleNode* src, int out_port, SimpleNode* dst,
   } else {
     edges_.push_back(nullptr);
   }
-  bool is_control = (out_port == tensorflow::Graph::kControlSlot);
-  is_control |= (in_port == tensorflow::Graph::kControlSlot);
+  bool is_control = (out_port == Graph::kControlSlot);
+  is_control |= (in_port == Graph::kControlSlot);
   auto edge = new SimpleEdge(i, src, out_port, dst, in_port, is_control);
   edges_[i] = edge;
   src->out_edges_.push_back(edge);
@@ -200,8 +205,7 @@ void SimpleGraph::AddEdge(SimpleNode* src, int out_port, SimpleNode* dst,
 }
 
 void SimpleGraph::AddControlEdge(SimpleNode* src, SimpleNode* dst) {
-  AddEdge(src, tensorflow::Graph::kControlSlot, dst,
-          tensorflow::Graph::kControlSlot);
+  AddEdge(src, Graph::kControlSlot, dst, Graph::kControlSlot);
 }
 
 void SimpleGraph::RemoveEdge(const SimpleEdge* edge) {
@@ -238,15 +242,12 @@ struct SimpleEdgePtrCompare {
 };
 
 struct NodePtrCompare {
-  bool operator()(const tensorflow::Node* lhs,
-                  const tensorflow::Node* rhs) const {
+  bool operator()(const Node* lhs, const Node* rhs) const {
     return lhs->name() < rhs->name();
   }
 };
 
-namespace {
-
-// Copied from TF ReverseDFS, which only works for tensorflow::Graph.
+// Copied from TF ReverseDFS, which only works for Graph.
 void StableDFS(const SimpleGraph& g, bool reverse,
                const std::vector<const SimpleNode*>& start,
                const std::function<bool(const SimpleNode*)>& enter,
@@ -345,7 +346,236 @@ bool CanContractEdge(const SimpleEdge* edge,
             });
   return !has_cycle;
 }
-}  // namespace
+
+// TODO(bixia): put this to a common utility file.
+string TensorPropertiesToString(const OpInfo::TensorProperties& prop) {
+  string s = StrCat(DataTypeString(prop.dtype()), ": ");
+  StrAppend(&s, "[");
+  if (prop.shape().unknown_rank()) {
+    StrAppend(&s, "?");
+  } else {
+    StrAppend(&s, StrJoin(prop.shape().dim(), ",",
+                          [](string* out, const TensorShapeProto_Dim& d) {
+                            StrAppendFormat(out, "%d", d.size());
+                          }));
+  }
+  StrAppend(&s, "]");
+  return s;
+}
+
+string TensorPropertiesToString(
+    const std::vector<OpInfo::TensorProperties>& properties) {
+  return StrJoin(properties, "; ",
+                 [](string* out, const OpInfo::TensorProperties& prop) {
+                   StrAppend(out, TensorPropertiesToString(prop));
+                 });
+}
+
+// From the given list of input properties, returns the leading shape, which is
+// the shape that determines the batch size of the operation. The leading shape
+// is selected from the group of input shapes with the highest rank as follows:
+//  . If all of those shapes have non-negative values for the batch dimension,
+//    the leading shape is the one with the largest value for the batch
+//    dimension.
+//  . If some or all of those shapes have negative values for the batch
+//    dimension, and the rest of those shapes have 1 for the batch dimension,
+//    the leading shape is the first of those shapes with a negative value for
+//    the batch dimension.
+//  . Otherwise, we can't determine the leading shape for the operation and
+//    have to exclude the operation from TRT.
+//
+// Examples:
+//    case-1: a[1,3,4] + b[2,3,4] => leading shape [2,3,4]
+//    case-2: a[2,3,4] + b[scalar] => leading shape [2,3,4]
+//    case-3: a[-1,3,4] + b[1,3,4] => leading shape [-1,3,4]
+//    case-4: a[-1,3,4] + b[2,3,4] => no leading shape
+//
+// We have to return "no leading shape" for case-4 to exclude such operation
+// from being translated for this reason:
+//   The actually input for "a" have to be in the shape of [2,3,4] for the
+//   operation to be valid. On the other hand, if we translate the operation
+//   to implicit batch mode, it will becomes a[3,4]+b[3,4] which is valid for
+//   any input shape of "a".
+//
+// This routine assumes the input program is valid. For example, we shouldn't
+// see invalid operation like a[2,3,4] + b[3,3,4]. It also assumes the input
+// properties is not empty and all input have known shapes.
+//
+// TODO(bixia): find a way to share this knowledge with the converter.
+// TODO(bixia): investigate the use of symbolic shape analysis to improve
+//   segmentation, such as by requiring the dynamic dimensions to have the same
+//   negative value.
+absl::optional<const TensorShapeProto*> FindLeadingShape(
+    absl::Span<const OpInfo::TensorProperties> properties) {
+  DCHECK(!properties.empty());
+  const TensorShapeProto* result;
+  int max_batch_dim_value;
+  auto choose_shape_with_higher_rank = [&](const TensorShapeProto* s) {
+    result = s;
+    max_batch_dim_value = s->dim_size() < 1 ? 1 : s->dim(0).size();
+  };
+
+  DCHECK(!properties[0].shape().unknown_rank());
+  choose_shape_with_higher_rank(&properties[0].shape());
+
+  for (const OpInfo::TensorProperties& p : properties.subspan(1)) {
+    DCHECK(!p.shape().unknown_rank());
+    if (p.shape().dim_size() < result->dim_size()) continue;
+
+    if (p.shape().dim_size() > result->dim_size()) {
+      choose_shape_with_higher_rank(&p.shape());
+      continue;
+    }
+
+    // Among the shapes with the same rank, choose the one with a dynamic batch
+    // size. If no shapes have a dynamic batch size, choose the one with the
+    // largest size.
+    if (result->dim_size() < 1) continue;
+
+    if (p.shape().dim(0).size() < 0 || result->dim(0).size() < 0) {
+      if (p.shape().dim(0).size() < 0 && result->dim(0).size() >= 0) {
+        result = &p.shape();
+      } else {
+        max_batch_dim_value =
+            std::max<int>(max_batch_dim_value, p.shape().dim(0).size());
+      }
+
+      continue;
+    }
+
+    if (p.shape().dim(0).size() > result->dim(0).size()) {
+      result = &p.shape();
+      max_batch_dim_value = result->dim(0).size();
+    }
+  }
+
+  if (result->dim_size() > 0 && result->dim(0).size() < 0) {
+    // dynamic batch size
+    if (max_batch_dim_value <= 1) {
+      return result;
+    } else {
+      return absl::nullopt;
+    }
+  }
+
+  return result;
+}
+
+// Returns the inputs that are relevant to determinate the batch size of the
+// operation. This routine handles the following cases:
+//   . Operations that support implicit boradcasting, such as operation mul.
+//     In this case, we need to inspect all the inputs in order to determine the
+//     batch size of the operation.
+//   . Special cases. Such as "Conv2DBackpropInput", "Conv3DBackpropInputV2".
+//   . The batch size of a operation is determined by the first input of the
+//     operation.
+absl::Span<const OpInfo::TensorProperties> GetInputsToDeterminateBatchSize(
+    const Node* node, const std::vector<OpInfo::TensorProperties>& all_inputs) {
+  // TODO(bixia): Find a way to share this knowledge with the converter.
+  static std::set<string> broadcast_supporting_ops = {
+      // ops corresponding to ConvertBinary in the converter
+      "Add",
+      "AddV2",
+      "Mul",
+      "Sub"
+      "Div",
+      "FloorDiv",
+      "RealDiv",
+      "Minimum",
+      "Maximum",
+      "Pow",
+      // other ops that need to need GetTrtBroadcastShape to convert
+      "BiasAdd",
+      "SquaredDifference",
+      "BatchMatMul",
+      "BatchMatMulV2",
+  };
+  const string& op = node->def().op();
+
+  if (op == "Conv2DBackpropInput" || op == "Conv3DBackpropInputV2") {
+    DCHECK_EQ(all_inputs.size(), 3);
+    return absl::MakeSpan(all_inputs).subspan(2, 1);
+  }
+
+  if (broadcast_supporting_ops.count(op)) {
+    return absl::MakeSpan(all_inputs);
+  }
+
+  // This is the common case for the operations that don't support implicit
+  // broadcasting: the first operand determines its batch size. All otherwise
+  // cases are handled before reaching here.
+  return absl::MakeSpan(all_inputs).subspan(0, 1);
+}
+
+// Returns true if the operation we can remove the implicit batch of the
+// operation.
+//
+// In particular, if the input shape has dynamic rank or the input shape rank
+// is less than 2, we can't remove the implicit batch dimension and generate
+// a new operation for TRT translation.
+bool OperationCanBeTranslatedToImplicitBatch(
+    const grappler::GraphProperties* graph_properties, const Node* node) {
+  VLOG(3) << "process node " << node->name();
+  if (node->num_inputs() == 0) return true;
+  if (!graph_properties || !graph_properties->HasInputProperties(node->name()))
+    return false;
+
+  VLOG(3) << "input shapes "
+          << TensorPropertiesToString(
+                 graph_properties->GetInputProperties(node->name()));
+
+  const std::vector<OpInfo::TensorProperties>& all_input_properties =
+      graph_properties->GetInputProperties(node->name());
+  absl::Span<const OpInfo::TensorProperties> input_properties =
+      GetInputsToDeterminateBatchSize(node, all_input_properties);
+  if (absl::c_any_of(input_properties, [](const OpInfo::TensorProperties& p) {
+        return p.shape().unknown_rank();
+      })) {
+    return false;
+  }
+
+  absl::optional<const TensorShapeProto*> leading_shape =
+      FindLeadingShape(input_properties);
+  return leading_shape.has_value() && leading_shape.value()->dim_size() >= 2;
+}
+
+// Returns true if we can't be sure that the operand with the given properties
+// won't have negative values for non-batch dimensions.
+//
+bool HasDynamicNonBatchDimension(const OpInfo::TensorProperties& prop) {
+  const TensorShapeProto& shape = prop.shape();
+  if (shape.unknown_rank()) return true;
+
+  // Scalar is a well specified shape, and TRT supports implicit broadcasting
+  // from scalar to other shapes.
+  if (shape.dim_size() == 0) return false;
+  for (int i = 1; i < shape.dim_size(); ++i) {
+    // The value of a dynamic dimension can be other negative values besides
+    // -1, representing the symbolic group of the dimension.
+    if (shape.dim(i).size() <= -1) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Returns true if we can't be sure that the operation won't have dynamic
+// non-batch dimension involved. We only check the shape of the first output
+// assuming shape inference already propagates the shapes.
+bool OperationHasDynamicNonBatchDimension(
+    const grappler::GraphProperties* graph_properties, const Node* node) {
+  VLOG(3) << "process node " << node->name();
+  // If the node doesn't have any input or output, not computation is involved.
+  if (node->num_inputs() == 0 || node->num_outputs() == 0) return false;
+
+  // If the node doesn't have output properties, return true to be conservative.
+  if (!graph_properties->HasOutputProperties(node->name())) return true;
+  VLOG(3) << "output shapes "
+          << TensorPropertiesToString(
+                 graph_properties->GetOutputProperties(node->name()));
+  return HasDynamicNonBatchDimension(
+      graph_properties->GetOutputProperties(node->name()).at(0));
+}
 
 void ContractEdge(SimpleEdge* edge, SimpleGraph* graph,
                   std::vector<const SimpleEdge*>* remove_edges) {
@@ -368,8 +598,7 @@ void ContractEdge(SimpleEdge* edge, SimpleGraph* graph,
       if (in_edge->src() != src) {
         SimpleEdge* e = const_cast<SimpleEdge*>(in_edge);
         if (e->src() == graph->source_node()) {
-          graph->AddEdge(e->src(), e->src_output(), src,
-                         tensorflow::Graph::kControlSlot);
+          graph->AddEdge(e->src(), e->src_output(), src, Graph::kControlSlot);
         } else {
           graph->AddEdge(e->src(), e->src_output(), src, 0 /* input index */);
         }
@@ -388,8 +617,7 @@ void ContractEdge(SimpleEdge* edge, SimpleGraph* graph,
       if (e->dst() == graph->sink_node()) {
         VLOG(1) << " edge to sink node " << src->name() << " -> "
                 << e->dst()->name();
-        graph->AddEdge(src, tensorflow::Graph::kControlSlot, e->dst(),
-                       e->dst_input());
+        graph->AddEdge(src, Graph::kControlSlot, e->dst(), e->dst_input());
       } else {
         graph->AddEdge(src, 0 /* output index */, e->dst(), e->dst_input());
       }
@@ -407,12 +635,61 @@ void ContractEdge(SimpleEdge* edge, SimpleGraph* graph,
   }
 }
 
-tensorflow::Status SegmentGraph(
-    const tensorflow::Graph* tf_graph,
-    const std::function<Status(const tensorflow::Node*)>& candidate_fn,
-    const std::function<bool(const tensorflow::Edge*)>& input_candidate_fn,
-    const std::function<bool(const tensorflow::Edge*)>& output_candidate_fn,
-    const SegmentOptions& options, SegmentNodesVector* segments) {
+// Returns a batch size representation for a segment that only contains the
+// given node.
+ClusterBatchSize GetClusterBatchSizeForNode(
+    const grappler::GraphProperties* graph_properties, const Node* node,
+    bool use_implicit_batch) {
+  ClusterBatchSize cluster_batch_size;
+  if (!use_implicit_batch || !node || node->num_inputs() == 0) {
+    return cluster_batch_size;
+  }
+
+  if (!graph_properties ||
+      !graph_properties->HasInputProperties(node->name())) {
+    VLOG(3) << "doesn't have input property";
+    return cluster_batch_size.SetBatchSizeValue(-1);
+  }
+
+  const std::vector<OpInfo::TensorProperties>& input_properties =
+      graph_properties->GetInputProperties(node->name());
+  absl::optional<const TensorShapeProto*> optional_leading_shape =
+      FindLeadingShape(GetInputsToDeterminateBatchSize(node, input_properties));
+  DCHECK(optional_leading_shape.has_value());
+  const TensorShapeProto* leading_shape = optional_leading_shape.value();
+
+  DCHECK(!leading_shape->unknown_rank() && leading_shape->dim_size() >= 2);
+  return cluster_batch_size.SetBatchSizeValue(leading_shape->dim(0).size());
+}
+
+void AddSegmentForNode(const grappler::GraphProperties* graph_properties,
+                       std::vector<UnionFind<SimpleNode*>>* segments,
+                       SimpleNode* node, bool use_implicit_batch) {
+  segments->emplace_back(
+      node, GetClusterBatchSizeForNode(
+                graph_properties, node == nullptr ? nullptr : node->tf_node(),
+                use_implicit_batch));
+}
+
+}  // namespace
+
+Status SegmentGraph(const Graph* tf_graph,
+                    const grappler::GraphProperties* graph_properties,
+                    const std::function<Status(const Node*)>& candidate_fn,
+                    const std::function<bool(const Edge*)>& input_candidate_fn,
+                    const std::function<bool(const Edge*)>& output_candidate_fn,
+                    const SegmentOptions& options,
+                    SegmentNodesVector* segments) {
+  if (!options.use_implicit_batch && !options.allow_dynamic_non_batch_dim) {
+    return errors::Internal(
+        "Explicit batch mode should allow dynamic non-batch dimensions");
+  }
+
+  if (!options.allow_dynamic_non_batch_dim && !graph_properties) {
+    return errors::Internal(
+        "Need graph propertities to disallow dynamic non-batch dimensions");
+  }
+
   // Steps:
   // 1. run the segmentation algorithm to find all the segments, which uses
   //    candidate_fn to determine the candidates segment nodes;
@@ -428,30 +705,61 @@ tensorflow::Status SegmentGraph(
   // for TRT.
   std::unordered_set<string> unsupported_ops;
   int num_unsupported_ops = 0;
+
+  // Getting the operations blacklisted for conversion
+  string tftrt_op_blacklist_str;
+  TF_CHECK_OK(
+      ReadStringFromEnvVar("TF_TRT_OP_BLACKLIST", "", &tftrt_op_blacklist_str));
+
+  auto tftrt_op_blacklist = gtl::FlatSet<string>{};  // non-absl ok
+
+  for (const auto& x : str_util::Split(tftrt_op_blacklist_str, ",")) {
+    tftrt_op_blacklist.insert(x);
+  }
+
+  // Parsing each node of the graph
   std::vector<UnionFind<SimpleNode*>> node_segments;
   for (int i = 0; i < graph->num_node_ids(); ++i) {
     SimpleNode* node = graph->FindNodeId(i);
-    if (options.exclude_node_list.count(node->name()) != 0) {
+    auto exclude_node = [&](absl::string_view reason) {
       VLOG(1) << "Not a TF-TRT candidate, "
               << "(Op type: " << node->tf_node()->type_string() << "), "
               << "(Op name: " << node->name() << "), "
-              << "(Reason: excluded by segmenter option)";
+              << "(Reason: " << reason << ")";
       unsupported_ops.emplace(node->tf_node()->type_string());
       num_unsupported_ops++;
       node = nullptr;
+    };
+    if (options.exclude_node_list.count(node->name()) != 0) {
+      exclude_node("excluded by segmenter option");
+    } else if (options.use_implicit_batch &&
+               !OperationCanBeTranslatedToImplicitBatch(graph_properties,
+                                                        node->tf_node())) {
+      exclude_node(
+          "implicit batch mode requires input shape with at least two "
+          "dimensions");
+    } else if (!options.allow_dynamic_non_batch_dim &&
+               OperationHasDynamicNonBatchDimension(graph_properties,
+                                                    node->tf_node())) {
+      exclude_node("dynamic non-batch dimensions not allowed");
     } else {
       const Status status = candidate_fn(node->tf_node());
       if (!status.ok()) {
-        VLOG(1) << "Not a TF-TRT candidate, "
+        exclude_node(status.error_message());
+      } else if (tftrt_op_blacklist.count(node->tf_node()->type_string())) {
+        // WARNING verbosity since the user explicitly requests this behavior.
+        LOG(WARNING) << "Blacklisted as TF-TRT candidate, "
+                     << "(Op type: " << node->tf_node()->type_string() << "), "
+                     << "(Op name: " << node->name() << ")";
+        exclude_node("Blacklisted with the env var TF_TRT_OP_BLACKLIST");
+      } else {
+        VLOG(2) << "Accepted as a TF-TRT candidate, "
                 << "(Op type: " << node->tf_node()->type_string() << "), "
-                << "(Op name: " << node->name() << "), "
-                << "(Reason: " << status << ")";
-        unsupported_ops.emplace(node->tf_node()->type_string());
-        num_unsupported_ops++;
-        node = nullptr;
+                << "(Op name: " << node->name();
       }
     }
-    node_segments.emplace_back(node);
+    AddSegmentForNode(graph_properties, &node_segments, node,
+                      options.use_implicit_batch);
   }
   string msg = StrCat(
       "There are ", num_unsupported_ops, " ops of ", unsupported_ops.size(),
@@ -461,14 +769,14 @@ tensorflow::Status SegmentGraph(
   }
   LOG(INFO) << msg << "(For more information see "
             << "https://docs.nvidia.com/deeplearning"
-            << "/dgx/integrate-tf-trt/index.html#support-ops).";
+            << "/frameworks/tf-trt-user-guide/index.html#supported-ops).";
 
   // The segmentation algorithm below visits nodes in reverse topological order
   // and attempts to merge nodes along output edges. That means that subgraphs
   // grow from the output-side of the network towards the inputs.
   //
   // In general this is not guaranteed to produce a globally optimal
-  // segmentation. For exaample, consider graph with node {A, B, C, D} and edges
+  // segmentation. For example, consider graph with node {A, B, C, D} and edges
   // {A->B, A->C, B->D, C->D), where A, B, D are trt compatible but C is not, so
   // in theory we can choose to contract either A, B or B, D but not both, but
   // here it always choose to contract B, D.
@@ -484,18 +792,23 @@ tensorflow::Status SegmentGraph(
               return true;
             });
   for (const SimpleNode* node : order) {
-    // All output nodes of 'node' have been visited...
+    // All output nodes of 'node' have been visited.
     VLOG(3) << "Trying node " << node->name() << " id=" << node->id();
-    // 'node' must be a TRT candidate...
+    // 'node' must be a TRT candidate.
     if (node_segments[node->id()].Value() == nullptr) {
       VLOG(3) << "... not a TRT candidate";
       continue;
     }
-    // Contract output edges to combine 'node' with output
-    // nodes. Iterate since combining two nodes may unblock other
-    // combining.
+    // Contract output edges to combine 'node' with output nodes. Repeat this
+    // step until no output edges can be further contracted. This is because
+    // contracting an output edge may unblock new edges for contracting.
+    ClusterBatchSize expected_batch_size =
+        node_segments[node->id()].BatchSize();
+    VLOG(3) << "batch size " << expected_batch_size;
     while (true) {
       std::set<const SimpleEdge*, SimpleEdgePtrCompare> contract_edges;
+      // TODO(bixia): consider merging the loop to find the edges and the loop
+      // to contract the edges.
       for (const SimpleEdge* out_edge : node->out_edges()) {
         VLOG(3) << "... out node " << out_edge->dst()->name() << " ( "
                 << out_edge->dst()->id() << " <- " << node->id() << " )";
@@ -503,14 +816,26 @@ tensorflow::Status SegmentGraph(
           VLOG(3) << "... ... Control Edge, Skipping";
           continue;
         }
-        // Out node must be TRT candidate...
+        // Out node must be a TRT candidate.
         if (node_segments[out_edge->dst()->id()].Value() == nullptr) {
           VLOG(3) << "... ... not a TRT candidate";
           continue;
         }
+        // Out node must have compatible batch size.
+        ClusterBatchSize out_batch_size =
+            node_segments[out_edge->dst()->id()].BatchSize();
+        ClusterBatchSize merged_batch_size = expected_batch_size;
+        if (!merged_batch_size.MergeIfCompatible(out_batch_size)) {
+          VLOG(3) << "... ... incompatible batch size "
+                  << expected_batch_size.ToString() << " "
+                  << out_batch_size.ToString();
+          continue;
+        }
         if (CanContractEdge(out_edge, graph)) {
-          VLOG(3) << "... ... can contract";
+          VLOG(3) << "... ... can contract. new batch size "
+                  << merged_batch_size.ToString();
           contract_edges.insert(out_edge);
+          expected_batch_size = merged_batch_size;
         } else {
           VLOG(3) << "... ... cannot contract, would form cycle";
         }
@@ -527,7 +852,8 @@ tensorflow::Status SegmentGraph(
 
         VLOG(3) << "Merge " << src->name() << " <- " << dst->name() << " ("
                 << src->id() << " <- " << dst->id();
-        node_segments[src->id()].Merge(&node_segments[dst->id()]);
+        TF_RETURN_IF_ERROR(
+            node_segments[src->id()].Merge(&node_segments[dst->id()]));
 
         // Contracting the edge leaves disconnected graph edges.
         // Remove these from the graph and from 'contract_edges' so we
@@ -541,6 +867,12 @@ tensorflow::Status SegmentGraph(
           graph->RemoveEdge(r);
         }
       }
+      ClusterBatchSize actual_batch_size =
+          node_segments[node->id()].BatchSize();
+      if (expected_batch_size != actual_batch_size) {
+        return errors::Internal(
+            "expected batch size is not the same as the actual batch size");
+      }
     }
   }
 
@@ -549,7 +881,7 @@ tensorflow::Status SegmentGraph(
 
   // A map from the segment identifier (currently the name of the root node of
   // the segment tree) to the segment nodes set.
-  std::map<string, std::set<const tensorflow::Node*, NodePtrCompare>> sg_map;
+  std::map<string, std::set<const Node*, NodePtrCompare>> sg_map;
 
   // A map from the segment identifier (currently the name of the root node of
   // the segment tree) to the device names that the nodes in the segment are
@@ -575,7 +907,7 @@ tensorflow::Status SegmentGraph(
         device_maps[u.ParentValue()->name()].insert(
             tf_node->requested_device());
       } else {
-        VLOG(1) << "Node " << tf_node->name()
+        VLOG(2) << "Node " << tf_node->name()
                 << " has no device assigned requested device is: "
                 << tf_node->requested_device();
       }
@@ -585,17 +917,16 @@ tensorflow::Status SegmentGraph(
   // --------------------------------- Step 2 ---------------------------------
   // Remove ineligible input/output nodes.
   for (auto& itr : sg_map) {
-    std::set<const tensorflow::Node*, NodePtrCompare>& segment_nodes =
-        itr.second;
+    std::set<const Node*, NodePtrCompare>& segment_nodes = itr.second;
     VLOG(1) << "Segment original size: " << segment_nodes.size();
     while (true) {
-      std::deque<const tensorflow::Node*> in_nodes_que, out_nodes_que;
+      std::deque<const Node*> in_nodes_que, out_nodes_que;
       // Find an input node that is not eligible and add it to the queue.
       // Nodes that has no incoming edges should not be treated as "input",
       // as there are really no inputs to them. Similar for output nodes.
       for (auto node : segment_nodes) {
         bool added = false;
-        for (const tensorflow::Edge* edge : node->in_edges()) {
+        for (const Edge* edge : node->in_edges()) {
           if (!edge->IsControlEdge() && !edge->src()->IsSource() &&
               !segment_nodes.count(edge->src())) {  // 'node' is an input node.
             if (!input_candidate_fn(edge)) {
@@ -606,7 +937,7 @@ tensorflow::Status SegmentGraph(
           }
         }
         if (added) continue;  // Only adding the node once to either queue.
-        for (const tensorflow::Edge* edge : node->out_edges()) {
+        for (const Edge* edge : node->out_edges()) {
           if (!edge->dst()->IsSink() && !edge->IsControlEdge() &&
               !segment_nodes.count(edge->dst())) {  // 'node' is an output node.
             if (!output_candidate_fn(edge)) {
@@ -634,13 +965,11 @@ tensorflow::Status SegmentGraph(
       // remove all their inputs, and for non-const output nodes remove all
       // their outputs. In this way, for common cases the number of removed
       // nodes should be minimum.
-      auto remove_nodes = [&segment_nodes](
-                              bool is_input_nodes,
-                              std::deque<const tensorflow::Node*>* que) {
+      auto remove_nodes = [&segment_nodes](bool is_input_nodes,
+                                           std::deque<const Node*>* que) {
         // Run a BFS on the queue to find all the input/output nodes.
-        std::set<const tensorflow::Node*, NodePtrCompare> visited;
-        std::set<const tensorflow::Node*, NodePtrCompare> logged(que->begin(),
-                                                                 que->end());
+        std::set<const Node*, NodePtrCompare> visited;
+        std::set<const Node*, NodePtrCompare> logged(que->begin(), que->end());
         while (!que->empty()) {
           auto node = que->front();
           que->pop_front();
@@ -677,37 +1006,42 @@ tensorflow::Status SegmentGraph(
     const string& segment_root = itr.first;
     // Return format does not require set comparator.
     std::set<const Node*> segment_nodes(itr.second.begin(), itr.second.end());
-    if (VLOG_IS_ON(1)) {
-      string s = "parent=" + segment_root + ":";
-      for (auto node : segment_nodes) s += " " + node->name();
-      VLOG(1) << "Segment " << segments->size() << ": " << s;
+    if (VLOG_IS_ON(1) && !segment_nodes.empty()) {
+      string s;
+      for (auto node : segment_nodes) {
+        StrAppend(&s, "\n[Op type: ", node->type_string(), "] ", node->name());
+      }
+      VLOG(1) << "Nodes in segment " << segments->size()
+              << " with parent=" << segment_root << ":" << s;
     }
 
-    // Don't use small segments.
-    if (static_cast<int>(segment_nodes.size()) < options.minimum_segment_size) {
+    const int num_effective_nodes = std::count_if(
+        segment_nodes.begin(), segment_nodes.end(), [](const Node* node) {
+          static auto noops =
+              new std::set<string>{"Identity", "Snapshot", "StopGradient"};
+          return noops->count(node->type_string()) == 0;
+        });
+
+    // Don't use segments whose number of effective nodes is small.
+    if (num_effective_nodes < options.minimum_segment_size) {
       VLOG(1) << "Segment " << segments->size() << " has only "
-              << segment_nodes.size() << " nodes, dropping";
+              << num_effective_nodes << " effective nodes, dropping";
       continue;
     }
 
-    // TODO(sami): Make segmenter placement aware once trtscopes are in place
     const auto& dev_itr = device_maps.find(segment_root);
     if (dev_itr == device_maps.end() || dev_itr->second.empty()) {
       VLOG(1) << "No device assigned to segment " << segments->size();
-      segments->emplace_back(std::make_pair(segment_nodes, string()));
     } else if (dev_itr->second.size() > 1) {
-      string s("Segment ");
-      StrAppend(&s, segments->size(), " has multiple devices attached: ");
+      string s = StrCat("Segment ", segments->size(),
+                        " has multiple devices attached: ");
       for (const auto& dev : dev_itr->second) {
         StrAppend(&s, dev, ", ");
       }
-      LOG(WARNING) << s << " choosing " << *(dev_itr->second.begin());
-      segments->emplace_back(
-          std::make_pair(segment_nodes, *(dev_itr->second.begin())));
-    } else {
-      segments->emplace_back(
-          std::make_pair(segment_nodes, *(dev_itr->second.begin())));
+      LOG(WARNING) << s;
     }
+
+    segments->emplace_back(segment_nodes);
   }
   if (VLOG_IS_ON(1)) {
     for (const auto& d : device_maps) {
@@ -719,9 +1053,12 @@ tensorflow::Status SegmentGraph(
       VLOG(1) << "Devices " << s;
     }
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 }  // namespace segment
 }  // namespace tensorrt
 }  // namespace tensorflow
+
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA

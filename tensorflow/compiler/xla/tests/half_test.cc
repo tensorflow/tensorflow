@@ -34,7 +34,7 @@ class HalfTestBase : public ClientLibraryTestBase {
  protected:
   const ErrorSpec error_spec_{0.001, 0.001};
   // Number of elements in the input buffers.
-  static const int kNumElements = 4;
+  static constexpr int kNumElements = 4;
 };
 
 using UnaryBuildFuncTy = std::function<void(const xla::XlaOp& src)>;
@@ -73,7 +73,7 @@ half sign_imp(half value) {
 }
 
 half round_imp(half value) {
-  return half(round(static_cast<float>(std::move(value))));
+  return half(std::round(static_cast<float>(std::move(value))));
 }
 
 INSTANTIATE_TEST_CASE_P(
@@ -163,8 +163,8 @@ XLA_TEST_P(BinaryOpTest, Ops) {
 }
 
 half atan2_imp(half x, half y) {
-  return half(atan2(static_cast<float>(std::move(x)),
-                    static_cast<float>(std::move(y))));
+  return half(std::atan2(static_cast<float>(std::move(x)),
+                         static_cast<float>(std::move(y))));
 }
 
 INSTANTIATE_TEST_CASE_P(

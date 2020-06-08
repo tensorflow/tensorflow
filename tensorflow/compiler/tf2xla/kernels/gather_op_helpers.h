@@ -39,6 +39,13 @@ Status XlaGather(const xla::XlaOp& input, const TensorShape& input_shape,
                  DataType index_type, xla::XlaBuilder* builder,
                  xla::XlaOp* gather_output);
 
+// The implementation of Gather and ResourceGather through XLA. Uses `input` as
+// the input instead of context->input(0) in order to allow ResourceGather to
+// handle obtaining the data from the ResourceVariable.
+Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
+                                    const xla::XlaOp input,
+                                    const TensorShape& input_shape,
+                                    int batch_dims, xla::XlaOp* gather_output);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_KERNELS_GATHER_OP_HELPERS_H_

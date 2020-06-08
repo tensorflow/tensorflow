@@ -62,21 +62,23 @@ namespace toco {
   string shape_array_name =
       AvailableArrayName(*model, pack_op->outputs[0] + "_shape");
   Array& shape_array = model->GetOrCreateArray(shape_array_name);
-  *(shape_array.mutable_shape()->mutable_dims()) = {
-      1 + input_array.shape().dimensions_count()};
+  const int shape_array_dims = 1 + input_array.shape().dimensions_count();
+  *(shape_array.mutable_shape()->mutable_dims()) = {shape_array_dims};
   reshape_op->inputs.push_back(shape_array_name);
   shape_array.data_type = ArrayDataType::kInt32;
   auto& shape_buffer = shape_array.GetMutableBuffer<ArrayDataType::kInt32>();
-  shape_buffer.data.push_back(1);
-  for (int dim : input_array.shape().dims()) {
-    shape_buffer.data.push_back(dim);
+
+  // Insert '1' at the 'axis' dimension of the output shape.
+  int index = 0;
+  for (int dim = 0; dim < shape_array_dims; ++dim) {
+    dim == pack_op->axis
+        ? shape_buffer.data.push_back(1)
+        : shape_buffer.data.push_back(input_array.shape().dims(index++));
   }
 
   // Replace the operator in the graph.
-  const auto reshape_it = model->operators.emplace(pack_it, reshape_op);
-  pack_it = reshape_it + 1;
-  CHECK_EQ(pack_it->get(), pack_op);
-  model->operators.erase(pack_it);
+  model->operators.emplace(pack_it, reshape_op);
+  DeleteOpAndArrays(model, pack_op);
 
   *modified = true;
   return ::tensorflow::Status::OK();

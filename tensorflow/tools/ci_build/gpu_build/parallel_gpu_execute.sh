@@ -68,6 +68,7 @@ for j in `seq 0 $((TF_TESTS_PER_GPU-1))`; do
         # This export only works within the brackets, so it is isolated to one
         # single command.
         export CUDA_VISIBLE_DEVICES=$i
+        export HIP_VISIBLE_DEVICES=$i
         echo "Running test $TEST_BINARY $* on GPU $CUDA_VISIBLE_DEVICES"
         "$TEST_BINARY" $@
       )

@@ -20,13 +20,14 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/executor.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -58,17 +59,18 @@ class ExecutorTest : public ::testing::Test {
     const int version = graph->versions().producer();
     LocalExecutorParams params;
     params.device = device_.get();
-    params.create_kernel = [this, version](const NodeDef& ndef,
-                                           OpKernel** kernel) {
-      return CreateNonCachedKernel(device_.get(), nullptr, ndef, version,
-                                   kernel);
-    };
+    params.create_kernel =
+        [this, version](const std::shared_ptr<const NodeProperties>& props,
+                        OpKernel** kernel) {
+          return CreateNonCachedKernel(device_.get(), nullptr, props, version,
+                                       kernel);
+        };
     params.delete_kernel = [](OpKernel* kernel) {
       DeleteNonCachedKernel(kernel);
     };
     delete exec_;
-    TF_CHECK_OK(NewSingleThreadedExecutor(params, std::move(graph), &exec_));
-    runner_ = [](std::function<void()> fn) { fn(); };
+    TF_CHECK_OK(NewSingleThreadedExecutor(params, *graph, &exec_));
+    runner_ = [](const std::function<void()>& fn) { fn(); };
     rendez_ = NewLocalRendezvous();
   }
 
@@ -139,19 +141,28 @@ Rendezvous::ParsedKey Key(const string& sender, const uint64 incarnation,
 
 TEST_F(ExecutorTest, SimpleAdd) {
   // c = a + b
-  std::unique_ptr<Graph> g = absl::make_unique<Graph>(OpRegistry::Global());
+  auto g = absl::make_unique<Graph>(OpRegistry::Global());
   auto in0 = test::graph::Arg(g.get(), 0, DT_FLOAT);
-  auto in1 = test::graph::Arg(g.get(), 0, DT_FLOAT);
+  auto in1 = test::graph::Arg(g.get(), 1, DT_FLOAT);
   auto tmp = test::graph::Add(g.get(), in0, in1);
-  test::graph::Retval(g.get(), 0, tmp);
+  auto ret = test::graph::Retval(g.get(), 0, tmp);
+  g->AddControlEdge(in1, ret);
   FixupSourceAndSinkEdges(g.get());
   Create(std::move(g));
   FunctionCallFrame call_frame({DT_FLOAT, DT_FLOAT}, {DT_FLOAT});
-  TF_ASSERT_OK(call_frame.SetArgs({V(1.0), V(1.0)}));
+  TF_ASSERT_OK(call_frame.SetArgs({V(1.0), V(2.0)}));
   TF_ASSERT_OK(Run(&call_frame));
   std::vector<Tensor> retvals;
   TF_ASSERT_OK(call_frame.ConsumeRetvals(&retvals, false));
-  EXPECT_EQ(2.0, V(retvals[0]));  // out = 1.0 + 1.0 = 2.0
+  EXPECT_EQ(3.0, V(retvals[0]));  // out = 1.0 + 2.0 = 3.0
+
+  // Verify that the argument values are unchanged.
+  const Tensor* arg_0;
+  TF_ASSERT_OK(call_frame.GetArg(0, &arg_0));
+  EXPECT_EQ(1.0, V(*arg_0));
+  const Tensor* arg_1;
+  TF_ASSERT_OK(call_frame.GetArg(1, &arg_1));
+  EXPECT_EQ(2.0, V(*arg_1));
 }
 
 TEST_F(ExecutorTest, SelfAdd) {
@@ -163,7 +174,7 @@ TEST_F(ExecutorTest, SelfAdd) {
   //
   // b <- v10
   // All nodes are executed by one thread.
-  std::unique_ptr<Graph> g = absl::make_unique<Graph>(OpRegistry::Global());
+  auto g = absl::make_unique<Graph>(OpRegistry::Global());
   auto v = test::graph::Arg(g.get(), 0, DT_FLOAT);
   const int N = 10;
   for (int i = 1; i <= N; ++i) {
@@ -219,7 +230,7 @@ void BuildTree(int N, Graph* g) {
 }
 
 TEST_F(ExecutorTest, RandomTree) {
-  std::unique_ptr<Graph> g = absl::make_unique<Graph>(OpRegistry::Global());
+  auto g = absl::make_unique<Graph>(OpRegistry::Global());
   BuildTree(4096, g.get());
   Create(std::move(g));
   FunctionCallFrame call_frame({DT_FLOAT}, {DT_FLOAT});
@@ -231,7 +242,7 @@ TEST_F(ExecutorTest, RandomTree) {
 }
 
 TEST_F(ExecutorTest, OpError) {
-  std::unique_ptr<Graph> g = absl::make_unique<Graph>(OpRegistry::Global());
+  auto g = absl::make_unique<Graph>(OpRegistry::Global());
   auto zero = test::graph::Constant(g.get(), V(0.0));
   auto inf = test::graph::Unary(g.get(), "Reciprocal", zero);
   auto check = test::graph::CheckNumerics(g.get(), inf, "message");
@@ -242,6 +253,24 @@ TEST_F(ExecutorTest, OpError) {
   FunctionCallFrame call_frame({}, {});
   // Fails due to invalid dtype.
   EXPECT_TRUE(errors::IsInvalidArgument(Run(&call_frame)));
+}
+
+TEST_F(ExecutorTest, ControlDependenciesFromSpecialNodes) {
+  auto g = absl::make_unique<Graph>(OpRegistry::Global());
+  auto in0 = test::graph::Arg(g.get(), 0, DT_FLOAT);
+  auto one = test::graph::Constant(g.get(), V(2.0));
+  auto add = test::graph::Add(g.get(), in0, one);
+  auto ret = test::graph::Retval(g.get(), 0, add);
+  g->AddControlEdge(in0, add);
+  g->AddControlEdge(one, ret);
+  FixupSourceAndSinkEdges(g.get());
+  Create(std::move(g));
+  FunctionCallFrame call_frame({DT_FLOAT}, {DT_FLOAT});
+  TF_ASSERT_OK(call_frame.SetArgs({V(1.0)}));
+  TF_ASSERT_OK(Run(&call_frame));
+  std::vector<Tensor> retvals;
+  TF_ASSERT_OK(call_frame.ConsumeRetvals(&retvals, false));
+  EXPECT_EQ(3.0, V(retvals[0]));  // out = 1.0 + 2.0 = 3.0
 }
 
 static void BM_executor(int iters, int width, int depth) {
@@ -258,8 +287,10 @@ static void BM_executor(int iters, int width, int depth) {
     ready_nodes.push_back(test::graph::NoOp(g, {}));
     ++cur;
   }
+  std::random_device random_device;
+  std::mt19937 rng(random_device());
   for (int i = 0; i < depth; ++i) {
-    std::random_shuffle(ready_nodes.begin(), ready_nodes.end());
+    std::shuffle(ready_nodes.begin(), ready_nodes.end(), rng);
     r = 1 + rand.Rand32() % (ready_nodes.size());
     std::vector<Node*> control_inputs;
     for (int j = 0; j < r; ++j) {
@@ -294,6 +325,36 @@ BENCHMARK(BM_executor)->ArgPair(8192, 32);
 
 // Tall fat graph
 BENCHMARK(BM_executor)->ArgPair(1024, 1024);
+
+static void BM_const_identity(int iters, int width, int outputs_per_const) {
+#ifdef PLATFORM_GOOGLE
+  BenchmarkUseRealTime();
+#endif  // PLATFORM_GOOGLE
+  Graph* g = new Graph(OpRegistry::Global());
+  for (int i = 0; i < width; ++i) {
+    Tensor i_t(i);
+    Node* const_node = test::graph::Constant(g, i_t);
+    for (int j = 0; j < outputs_per_const; ++j) {
+      test::graph::Identity(g, const_node);
+    }
+  }
+  FixupSourceAndSinkEdges(g);
+#ifdef PLATFORM_GOOGLE
+  SetBenchmarkLabel(
+      strings::StrCat("Nodes = ", (1 + outputs_per_const) * width));
+  SetBenchmarkItemsProcessed((1 + outputs_per_const) * width *
+                             static_cast<int64>(iters));
+#endif  // PLATFORM_GOOGLE
+  test::Benchmark("cpu", g, nullptr, nullptr, nullptr,
+                  "SINGLE_THREADED_EXECUTOR")
+      .Run(iters);
+}
+
+// Graph with actual op execution.
+BENCHMARK(BM_const_identity)->ArgPair(1, 1);
+BENCHMARK(BM_const_identity)->ArgPair(1, 100);
+BENCHMARK(BM_const_identity)->ArgPair(100, 1);
+BENCHMARK(BM_const_identity)->ArgPair(100, 100);
 
 // TODO(mrry): This benchmark currently crashes with a use-after free, because
 // test::Benchmark::RunWithArgs() assumes that the executor will take ownership

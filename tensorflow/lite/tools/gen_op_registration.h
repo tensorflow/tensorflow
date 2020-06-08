@@ -16,7 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_TOOLS_GEN_OP_REGISTRATION_H_
 
 #include "tensorflow/lite/model.h"
-#include "tensorflow/lite/string.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 
@@ -27,12 +27,15 @@ namespace tflite {
 // Note "Register_" suffix will be added later in the tool.
 string NormalizeCustomOpName(const string& op);
 
+// A map from op name to {min_version, max_version}.
+typedef std::map<string, std::pair<int, int>> RegisteredOpMap;
+
 // Read ops from the TFLite model.
-// Enum name of builtin ops will be stored, such as "CONV_2D".
-// Custom op name will be stored as it is.
+// The builtin ops key is the enum name of builtin ops, such as "CONV_2D".
+// The custom ops key is stored as it is.
 void ReadOpsFromModel(const ::tflite::Model* model,
-                      std::vector<string>* builtin_ops,
-                      std::vector<string>* custom_ops);
+                      RegisteredOpMap* builtin_ops,
+                      RegisteredOpMap* custom_ops);
 
 }  // namespace tflite
 

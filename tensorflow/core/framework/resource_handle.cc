@@ -33,6 +33,14 @@ void ResourceHandle::AsProto(ResourceHandleProto* proto) const {
   proto->set_name(name());
   proto->set_hash_code(hash_code());
   proto->set_maybe_type_name(maybe_type_name());
+  for (const auto& dtype_and_shape_pair : dtypes_and_shapes_) {
+    auto dtype_and_shape = proto->add_dtypes_and_shapes();
+    dtype_and_shape->set_dtype(dtype_and_shape_pair.dtype);
+    dtype_and_shape_pair.shape.AsProto(dtype_and_shape->mutable_shape());
+  }
+  for (const string& device : allowed_devices_) {
+    *proto->add_allowed_devices() = device;
+  }
 }
 
 void ResourceHandle::FromProto(const ResourceHandleProto& proto) {
@@ -41,6 +49,16 @@ void ResourceHandle::FromProto(const ResourceHandleProto& proto) {
   set_name(proto.name());
   set_hash_code(proto.hash_code());
   set_maybe_type_name(proto.maybe_type_name());
+  std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes;
+  for (const auto& dtype_and_shape : proto.dtypes_and_shapes()) {
+    DataType dtype = dtype_and_shape.dtype();
+    PartialTensorShape shape(dtype_and_shape.shape());
+    dtypes_and_shapes.push_back(DtypeAndPartialTensorShape{dtype, shape});
+  }
+  dtypes_and_shapes_ = std::move(dtypes_and_shapes);
+  for (const string& device : proto.allowed_devices()) {
+    allowed_devices_.push_back(device);
+  }
 }
 
 string ResourceHandle::SerializeAsString() const {

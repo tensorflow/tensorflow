@@ -23,12 +23,12 @@ namespace tensorflow {
 #if !defined(__ANDROID_TYPES_SLIM__)
 
 REGISTER6(BinaryOp, CPU, "NotEqual", functor::not_equal_to, int32, int64,
-          complex64, complex128, string, bool);
-#if GOOGLE_CUDA
+          complex64, complex128, tstring, bool);
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER6(BinaryOp, GPU, "NotEqual", functor::not_equal_to, int8, int16, int64,
           complex64, complex128, bool);
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #endif  // !defined(__ANDROID_TYPES_SLIM__)
 }  // namespace tensorflow

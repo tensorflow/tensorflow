@@ -20,13 +20,14 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 
@@ -221,8 +222,8 @@ void AllocationTracker::AddAllocationOrIncrementRefCount(
   auto it = allocation_map.find(device_memory.opaque());
   if (it == allocation_map.end()) {
     allocation_map[device_memory.opaque()] = {
-        OwningDeviceMemory(device_memory, device_ordinal,
-                           backend_->memory_allocator()),
+        se::OwningDeviceMemory(device_memory, device_ordinal,
+                               backend_->memory_allocator()),
         /*ref_count=*/1};
   } else {
     it->second.ref_count++;
@@ -237,7 +238,7 @@ Status AllocationTracker::DecrementRefCount(se::DeviceMemoryBase device_memory,
   Allocation& allocation = it->second;
   TF_RET_CHECK(allocation.ref_count >= 1);
   if (allocation.ref_count == 1) {
-    allocation.device_memory.Free();
+    TF_RETURN_IF_ERROR(allocation.device_memory.Free());
     allocation_map.erase(it);
   } else {
     allocation.ref_count--;

@@ -79,11 +79,19 @@ class IrBuilderMixin {
     return mixin_builder()->CreateBr(std::forward<Args>(args)...);
   }
 
-  llvm::CallInst* Call(llvm::Value* callee,
+  llvm::CallInst* Call(llvm::FunctionCallee func_callee,
                        llvm::ArrayRef<llvm::Value*> args = llvm::None,
                        const llvm::Twine& name = "",
                        llvm::MDNode* fp_math_tag = nullptr) {
-    return mixin_builder()->CreateCall(callee, args, name, fp_math_tag);
+    return mixin_builder()->CreateCall(func_callee, args, name, fp_math_tag);
+  }
+
+  llvm::CallInst* Call(llvm::FunctionType* func_type, llvm::Value* callee,
+                       llvm::ArrayRef<llvm::Value*> args = llvm::None,
+                       const llvm::Twine& name = "",
+                       llvm::MDNode* fp_math_tag = nullptr) {
+    return mixin_builder()->CreateCall(func_type, callee, args, name,
+                                       fp_math_tag);
   }
 
   template <class... Args>
@@ -250,8 +258,23 @@ class IrBuilderMixin {
   }
 
   template <class... Args>
+  llvm::Value* FCmpOGT(Args&&... args) {
+    return mixin_builder()->CreateFCmpOGT(std::forward<Args>(args)...);
+  }
+
+  template <class... Args>
+  llvm::Value* FCmpOGE(Args&&... args) {
+    return mixin_builder()->CreateFCmpOGE(std::forward<Args>(args)...);
+  }
+
+  template <class... Args>
   llvm::Value* FCmpOLT(Args&&... args) {
     return mixin_builder()->CreateFCmpOLT(std::forward<Args>(args)...);
+  }
+
+  template <class... Args>
+  llvm::Value* FCmpULT(Args&&... args) {
+    return mixin_builder()->CreateFCmpULT(std::forward<Args>(args)...);
   }
 
   template <class... Args>
@@ -267,6 +290,11 @@ class IrBuilderMixin {
   template <class... Args>
   llvm::Value* FCmpUNE(Args&&... args) {
     return mixin_builder()->CreateFCmpUNE(std::forward<Args>(args)...);
+  }
+
+  template <class... Args>
+  llvm::Value* FCmpUNO(Args&&... args) {
+    return mixin_builder()->CreateFCmpUNO(std::forward<Args>(args)...);
   }
 
   template <class... Args>

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tensorflow.ops.math_ops.matrix_inverse."""
+"""Tests for tensorflow.ops.linalg_ops.self_adjoint_eig."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -104,7 +104,7 @@ def EquilibrateEigenVectorPhases(x, y):
   """Equilibrate the phase of the Eigenvectors in the columns of `x` and `y`.
 
   Eigenvectors are only unique up to an arbitrary phase. This function rotates x
-  such that it matches y. Precondition: The coluns of x and y differ by a
+  such that it matches y. Precondition: The columns of x and y differ by a
   multiplicative complex phase factor only.
 
   Args:
@@ -240,9 +240,12 @@ def _GetSelfAdjointEigGradTest(dtype_, shape_, compute_v_):
 
 
 if __name__ == "__main__":
+  dtypes_to_test = [
+      dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.complex64,
+      dtypes_lib.complex128
+  ]
   for compute_v in True, False:
-    for dtype in (dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.complex64,
-                  dtypes_lib.complex128):
+    for dtype in dtypes_to_test:
       for size in 1, 2, 5, 10:
         for batch_dims in [(), (3,)] + [(3, 2)] * (max(size, size) < 10):
           shape = batch_dims + (size, size)

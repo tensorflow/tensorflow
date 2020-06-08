@@ -1,0 +1,69 @@
+{
+  "version": 3,
+  "operator_codes": [{"builtin_code": "CUSTOM", "custom_code": "FakeOp"}],
+  "subgraphs": [
+    {
+      "tensors": [
+        {
+          "shape": [
+            4,
+            4
+          ],
+          "name": "sparse_tensor",
+          "buffer": 1,
+          "type": "INT8",
+          "quantization": {
+          },
+          "is_variable": "false",
+          "sparsity": {
+            "traversal_order": [0, 1, 2, 3],
+            "block_map": [0, 1],
+            "dim_metadata": [
+              {
+                "format": "DENSE",
+                "dense_size": 2
+              },
+              {
+                "format": "SPARSE_CSR",
+                "array_segments_type": "Uint8Vector",
+                "array_segments": {"values": [0, 2, 3]},
+                "array_indices_type": "Uint8Vector",
+                "array_indices": {"values": [0, 1, 1]}
+              },
+              {
+                "format": "DENSE",
+                "dense_size": 2
+              },
+              {
+                "format": "DENSE",
+                "dense_size": 2
+              }
+            ]
+          }
+        },
+        {
+          "shape": [
+            4,
+            4
+          ],
+          "name": "output_tensor",
+          "type": "INT8"
+        }
+      ],
+      "inputs": [0],
+      "outputs": [0],
+      "operators": [{"inputs":[-1], "outputs":[1]}]
+    }
+  ],
+  "buffers": [
+    {
+    },
+    {
+      "data": [
+        1, 0, 0, 4,
+        2, 3, 0, 0,
+        5, 0, 0, 6
+      ]
+    }
+  ]
+}

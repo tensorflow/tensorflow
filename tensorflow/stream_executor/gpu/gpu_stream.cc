@@ -23,11 +23,12 @@ namespace stream_executor {
 namespace gpu {
 
 bool GpuStream::Init() {
-  if (!GpuDriver::CreateStream(parent_->gpu_context(), &gpu_stream_)) {
+  if (!GpuDriver::CreateStream(parent_->gpu_context(), &gpu_stream_,
+                               priority_)) {
     return false;
   }
-  return GpuDriver::CreateEvent(parent_->gpu_context(), &completed_event_,
-                                GpuDriver::EventFlags::kDisableTiming)
+  return GpuDriver::InitEvent(parent_->gpu_context(), &completed_event_,
+                              GpuDriver::EventFlags::kDisableTiming)
       .ok();
 }
 

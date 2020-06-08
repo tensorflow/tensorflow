@@ -25,22 +25,39 @@ namespace {
 
 using ::testing::ElementsAreArray;
 
+enum class TestType {
+  kConst = 0,
+  kDynamic = 1,
+};
+
+template <typename InputType>
 class ExpandDimsOpModel : public SingleOpModel {
  public:
-  ExpandDimsOpModel(std::initializer_list<int> input_shape,
-                    TensorType input_type) {
-    input_ = AddInput(input_type);
-    axis_ = AddInput(TensorType_INT32);
-    output_ = AddOutput(input_type);
+  ExpandDimsOpModel(int axis, std::initializer_list<int> input_shape,
+                    std::initializer_list<InputType> input_data,
+                    TestType input_tensor_types) {
+    if (input_tensor_types == TestType::kDynamic) {
+      input_ = AddInput(GetTensorType<InputType>());
+      axis_ = AddInput(TensorType_INT32);
+    } else {
+      input_ =
+          AddConstInput(GetTensorType<InputType>(), input_data, input_shape);
+      axis_ = AddConstInput(TensorType_INT32, {axis}, {1});
+    }
+    output_ = AddOutput(GetTensorType<InputType>());
     SetBuiltinOp(BuiltinOperator_EXPAND_DIMS, BuiltinOptions_ExpandDimsOptions,
                  0);
+
     BuildInterpreter({input_shape, {1}});
+
+    if (input_tensor_types == TestType::kDynamic) {
+      PopulateTensor<InputType>(input_, input_data);
+      PopulateTensor<int32_t>(axis_, {axis});
+    }
   }
-  void SetInputFloat(std::initializer_list<float> data) {
-    PopulateTensor<float>(input_, data);
+  std::vector<InputType> GetValues() {
+    return ExtractVector<InputType>(output_);
   }
-  void SetAxis(int axis) { PopulateTensor<int32_t>(axis_, {axis}); }
-  std::vector<float> GetValuesFloat() { return ExtractVector<float>(output_); }
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
 
  protected:
@@ -49,35 +66,60 @@ class ExpandDimsOpModel : public SingleOpModel {
   int output_;
 };
 
-TEST(ExpandDimsOpTest, DifferentAxis) {
-  ExpandDimsOpModel m({2, 2}, TensorType_FLOAT32);
-  std::initializer_list<float> values = {-1.f, 1.f, -2.f, 2.f};
-  m.SetInputFloat(values);
-  m.SetAxis(0);
-  m.Invoke();
-  EXPECT_THAT(m.GetValuesFloat(), ElementsAreArray(values));
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 2}));
+template <typename T>
+class ExpandDimsOpTest : public ::testing::Test {
+ public:
+  static std::vector<TestType> range_;
+};
 
-  m.SetAxis(1);
-  m.Invoke();
-  EXPECT_THAT(m.GetValuesFloat(), ElementsAreArray(values));
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 2}));
+template <>
+std::vector<TestType> ExpandDimsOpTest<TestType>::range_{TestType::kConst,
+                                                         TestType::kDynamic};
 
-  m.SetAxis(2);
-  m.Invoke();
-  EXPECT_THAT(m.GetValuesFloat(), ElementsAreArray(values));
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 1}));
+using DataTypes = ::testing::Types<float, int8_t, int16_t, int32_t>;
+TYPED_TEST_SUITE(ExpandDimsOpTest, DataTypes);
 
-  m.SetAxis(-1);
-  m.Invoke();
-  EXPECT_THAT(m.GetValuesFloat(), ElementsAreArray(values));
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 1}));
+TYPED_TEST(ExpandDimsOpTest, PositiveAxis) {
+  for (TestType test_type : ExpandDimsOpTest<TestType>::range_) {
+    std::initializer_list<TypeParam> values = {-1, 1, -2, 2};
+
+    ExpandDimsOpModel<TypeParam> axis_0(0, {2, 2}, values, test_type);
+    axis_0.Invoke();
+    EXPECT_THAT(axis_0.GetValues(), ElementsAreArray(values));
+    EXPECT_THAT(axis_0.GetOutputShape(), ElementsAreArray({1, 2, 2}));
+
+    ExpandDimsOpModel<TypeParam> axis_1(1, {2, 2}, values, test_type);
+    axis_1.Invoke();
+    EXPECT_THAT(axis_1.GetValues(), ElementsAreArray(values));
+    EXPECT_THAT(axis_1.GetOutputShape(), ElementsAreArray({2, 1, 2}));
+
+    ExpandDimsOpModel<TypeParam> axis_2(2, {2, 2}, values, test_type);
+    axis_2.Invoke();
+    EXPECT_THAT(axis_2.GetValues(), ElementsAreArray(values));
+    EXPECT_THAT(axis_2.GetOutputShape(), ElementsAreArray({2, 2, 1}));
+  }
 }
+
+TYPED_TEST(ExpandDimsOpTest, NegativeAxis) {
+  for (TestType test_type : ExpandDimsOpTest<TestType>::range_) {
+    std::initializer_list<TypeParam> values = {-1, 1, -2, 2};
+
+    ExpandDimsOpModel<TypeParam> m(-1, {2, 2}, values, test_type);
+    m.Invoke();
+    EXPECT_THAT(m.GetValues(), ElementsAreArray(values));
+    EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 1}));
+  }
+}
+
+TEST(ExpandDimsOpTest, StrTensor) {
+  std::initializer_list<std::string> values = {"abc", "de", "fghi"};
+
+  // this test will fail on TestType::CONST
+  ExpandDimsOpModel<std::string> m(0, {3}, values, TestType::kDynamic);
+  m.Invoke();
+  EXPECT_THAT(m.GetValues(), ElementsAreArray(values));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3}));
+}
+
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

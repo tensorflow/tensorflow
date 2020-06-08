@@ -44,6 +44,17 @@ Status TensorShapeToXLAShape(DataType dtype, const TensorShape& tensor_shape,
 xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
                                  const TensorShape& tensor_shape);
 
+// Convert a PartialTensorShape into the equivalent XLA Shape proto. An shape
+// with unknown rank is represented by an r1 with empty dimension.
+Status TensorShapeToXLAShape(DataType dtype,
+                             const PartialTensorShape& tensor_shape,
+                             xla::Shape* shape);
+
+// Convert a PartialTensorShape into the equivalent XLA Shape proto. An shape
+// with unknown rank is represented by an r1 with empty dimension.
+xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
+                                 const PartialTensorShape& tensor_shape);
+
 // Given an XLA shape with layouts, builds a layout vector in the form able to
 // be fed to ops like InfeedEnqueue/InfeedEnqueueTuple/XRTAllocateV2/....
 // THe returned vector is a linearized sequence of the minor-to-major values of
@@ -51,7 +62,7 @@ xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
 // In case the input shape is a tuple, the minor-to-major values will be in the
 // order of the tuple elements within the tuple shape.
 // If a shape (or a subshape of a tuple shape) has missing layout, a rank long
-// sequence of -1 values will be emittted.
+// sequence of -1 values will be emitted.
 xla::StatusOr<std::vector<int>> GetShapeLayoutVector(const xla::Shape& shape);
 
 // Given the input shape and a linearized sequence of the minor-to-major values

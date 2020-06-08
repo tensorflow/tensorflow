@@ -44,6 +44,13 @@ tf_proto {
       type: TYPE_MESSAGE
       type_name: ".tensorflow.AssetFileDef"
     }
+    field {
+      name: "object_graph_def"
+      number: 7
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.SavedObjectGraph"
+    }
     nested_type {
       name: "MetaInfoDef"
       field {
@@ -89,6 +96,31 @@ tf_proto {
         number: 7
         label: LABEL_OPTIONAL
         type: TYPE_BOOL
+      }
+      field {
+        name: "function_aliases"
+        number: 8
+        label: LABEL_REPEATED
+        type: TYPE_MESSAGE
+        type_name: ".tensorflow.MetaGraphDef.MetaInfoDef.FunctionAliasesEntry"
+      }
+      nested_type {
+        name: "FunctionAliasesEntry"
+        field {
+          name: "key"
+          number: 1
+          label: LABEL_OPTIONAL
+          type: TYPE_STRING
+        }
+        field {
+          name: "value"
+          number: 2
+          label: LABEL_OPTIONAL
+          type: TYPE_STRING
+        }
+        options {
+          map_entry: true
+        }
       }
     }
     nested_type {

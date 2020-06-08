@@ -15,11 +15,15 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TESTING_SPLIT_H_
 #define TENSORFLOW_LITE_TESTING_SPLIT_H_
 
+#include <algorithm>
+#include <complex>
 #include <cstdlib>
+#include <iostream>
 #include <string>
 #include <utility>
 #include <vector>
-#include "tensorflow/lite/string.h"
+
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 namespace testing {
@@ -81,11 +85,40 @@ inline std::vector<uint8_t> Split(const string& s, const string& delimiter) {
 }
 
 template <>
+inline std::vector<int8_t> Split(const string& s, const string& delimiter) {
+  std::vector<int8_t> fields;
+  for (const auto& p : SplitToPos(s, delimiter)) {
+    fields.push_back(strtol(s.data() + p.first, nullptr, 10));
+  }
+  return fields;
+}
+
+template <>
 inline std::vector<bool> Split(const string& s, const string& delimiter) {
   std::vector<bool> fields;
   for (const auto& p : SplitToPos(s, delimiter)) {
     fields.push_back(
         static_cast<bool>(strtol(s.data() + p.first, nullptr, 10)));
+  }
+  return fields;
+}
+
+template <>
+inline std::vector<std::complex<float>> Split(const string& s,
+                                              const string& delimiter) {
+  std::vector<std::complex<float>> fields;
+  for (const auto& p : SplitToPos(s, delimiter)) {
+    std::string sc = s.substr(p.first, p.second - p.first);
+    std::string::size_type sz_real, sz_img;
+    float real = std::stof(sc, &sz_real);
+    float img = std::stof(sc.substr(sz_real), &sz_img);
+    if (sz_real + sz_img + 1 != sc.length()) {
+      std::cerr << "There were errors in parsing string, " << sc
+                << ", to complex value." << std::endl;
+      return fields;
+    }
+    std::complex<float> c(real, img);
+    fields.push_back(c);
   }
   return fields;
 }

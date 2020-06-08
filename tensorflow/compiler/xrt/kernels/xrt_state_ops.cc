@@ -16,15 +16,46 @@ limitations under the License.
 // Classes for allocating XLA literals in device memory and managing handles
 // that refer to them.
 
+#include "tensorflow/compiler/xrt/kernels/xrt_state_ops.h"
+
 #include <memory>
 #include <string>
 
-#include "tensorflow/compiler/xrt/kernels/xrt_state_ops.h"
-
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xrt/xrt_metrics.h"
 
 namespace tensorflow {
+namespace {
+
+class XRTMetricsCollectOp : public OpKernel {
+ public:
+  explicit XRTMetricsCollectOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    VLOG(1) << "XRTMetricsCollectOp::Compute";
+
+    const Tensor& metrics_proto = ctx->input(0);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(metrics_proto.shape()),
+                errors::Internal("request input should be a string scalar"));
+    xrt::XRTMetricsCollect metrics;
+    OP_REQUIRES(ctx,
+                ParseFromTString(metrics_proto.scalar<tstring>()(), &metrics),
+                errors::InvalidArgument(
+                    "Unable to parse request input to XRTMetricsCollect"));
+
+    xla::StatusOr<xrt::MetricsReport> collected_metrics_or =
+        CollectMetrics(metrics);
+    OP_REQUIRES_OK(ctx, collected_metrics_or.status());
+    xrt::MetricsReport collected_metrics =
+        collected_metrics_or.ConsumeValueOrDie();
+    Tensor output(DT_STRING, TensorShape({}));
+    output.scalar<tstring>()() = collected_metrics.SerializeAsString();
+    ctx->set_output(0, output);
+  }
+};
+
+}  // namespace
 
 REGISTER_KERNEL_BUILDER(Name("XRTAllocate")
                             .Device(DEVICE_XLA_GPU)
@@ -36,6 +67,15 @@ REGISTER_KERNEL_BUILDER(Name("XRTAllocate")
                             .HostMemory("allocation")
                             .HostMemory("handle"),
                         XRTAllocateOp<XRTGenericDeviceAccessor>);
+
+REGISTER_KERNEL_BUILDER(Name("XRTAllocateUninitialized")
+                            .Device(DEVICE_XLA_GPU)
+                            .HostMemory("handle"),
+                        XRTAllocateUninitializedOp<XRTGenericDeviceAccessor>);
+REGISTER_KERNEL_BUILDER(Name("XRTAllocateUninitialized")
+                            .Device(DEVICE_XLA_CPU)
+                            .HostMemory("handle"),
+                        XRTAllocateUninitializedOp<XRTGenericDeviceAccessor>);
 
 REGISTER_KERNEL_BUILDER(Name("XRTAllocateFromTensor")
                             .Device(DEVICE_XLA_GPU)
@@ -121,6 +161,17 @@ REGISTER_KERNEL_BUILDER(Name("XRTReadLiteralAndRelease")
                             .HostMemory("handle")
                             .HostMemory("literal"),
                         XRTReadLiteralOp<true, XRTGenericDeviceAccessor>);
+
+REGISTER_KERNEL_BUILDER(Name("XRTReadToTensor")
+                            .Device(DEVICE_XLA_GPU)
+                            .HostMemory("handles")
+                            .HostMemory("tensors"),
+                        XRTReadToTensorOp<XRTGenericDeviceAccessor>);
+REGISTER_KERNEL_BUILDER(Name("XRTReadToTensor")
+                            .Device(DEVICE_XLA_CPU)
+                            .HostMemory("handles")
+                            .HostMemory("tensors"),
+                        XRTReadToTensorOp<XRTGenericDeviceAccessor>);
 
 REGISTER_KERNEL_BUILDER(Name("XRTReleaseAllocationHandle")
                             .Device(DEVICE_XLA_GPU)
@@ -135,5 +186,13 @@ REGISTER_KERNEL_BUILDER(Name("XRTReleaseAllAllocations").Device(DEVICE_XLA_GPU),
                         XRTReleaseAllAllocationsOp<XRTGenericDeviceAccessor>);
 REGISTER_KERNEL_BUILDER(Name("XRTReleaseAllAllocations").Device(DEVICE_XLA_CPU),
                         XRTReleaseAllAllocationsOp<XRTGenericDeviceAccessor>);
+
+REGISTER_KERNEL_BUILDER(Name("XRTCompactAllocations").Device(DEVICE_XLA_GPU),
+                        XRTCompactAllocationsOp<XRTGenericDeviceAccessor>);
+REGISTER_KERNEL_BUILDER(Name("XRTCompactAllocations").Device(DEVICE_XLA_CPU),
+                        XRTCompactAllocationsOp<XRTGenericDeviceAccessor>);
+
+REGISTER_KERNEL_BUILDER(Name("XRTMetricsCollect").Device(DEVICE_CPU),
+                        XRTMetricsCollectOp);
 
 }  // namespace tensorflow

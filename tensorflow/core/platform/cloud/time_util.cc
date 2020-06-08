@@ -21,7 +21,7 @@ limitations under the License.
 #ifdef _WIN32
 #define timegm _mkgmtime
 #endif
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
@@ -41,14 +41,14 @@ Status ParseRfc3339Time(const string& time, int64* mtime_nsec) {
     return errors::Internal(
         strings::StrCat("Unrecognized RFC 3339 time format: ", time));
   }
-  const int int_seconds = floor(seconds);
+  const int int_seconds = std::floor(seconds);
   parsed.tm_year -= 1900;  // tm_year expects years since 1900.
   parsed.tm_mon -= 1;      // month is zero-based.
   parsed.tm_sec = int_seconds;
 
   *mtime_nsec = timegm(&parsed) * kNanosecondsPerSecond +
-                static_cast<int64>(
-                    floor((seconds - int_seconds) * kNanosecondsPerSecond));
+                static_cast<int64>(std::floor((seconds - int_seconds) *
+                                              kNanosecondsPerSecond));
 
   return Status::OK();
 }

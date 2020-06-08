@@ -16,8 +16,31 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_RESOURCE_VARIABLE_OPS_H_
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 
 namespace tensorflow {
+
+class VarHandleOp : public OpKernel {
+ public:
+  explicit VarHandleOp(OpKernelConstruction* c);
+  void Compute(OpKernelContext* ctx) override;
+  const Tensor* const_tensor() const override {
+    return name_ != ResourceHandle::ANONYMOUS_NAME ? &resource_ : nullptr;
+  }
+
+ private:
+  // Same fields as in ResourceHandleOp.
+  bool is_anonymous_;
+  string container_;
+  string name_;
+  Tensor resource_;
+
+  DtypeAndPartialTensorShape dtype_and_shape_;
+
+  // A set of devices containing the resource variable. Set when the output
+  // ResourceHandle represents a per-replica/partitioned resource variable.
+  std::vector<string> allowed_devices_;
+};
 
 class ReadVariableOp : public OpKernel {
  public:

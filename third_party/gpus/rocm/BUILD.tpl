@@ -1,3 +1,5 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+
 licenses(["restricted"])  # MPL2, portions GPL v3, LGPL v3, BSD-like
 
 package(default_visibility = ["//visibility:public"])
@@ -85,6 +87,18 @@ cc_library(
 )
 
 cc_library(
+    name = "rccl",
+    srcs = ["rocm/lib/%{rccl_lib}"],
+    data = ["rocm/lib/%{rccl_lib}"],
+    includes = [
+        ".",
+        "rocm/include",
+    ],
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "rocm",
     visibility = ["//visibility:public"],
     deps = [
@@ -95,6 +109,39 @@ cc_library(
         ":hiprand",
         ":miopen",
     ],
+)
+
+bzl_library(
+    name = "build_defs_bzl",
+    srcs = ["build_defs.bzl"],
+)
+
+cc_library(
+    name = "rocprim",
+    srcs = [
+        "rocm/include/hipcub/hipcub_version.hpp",
+        "rocm/include/rocprim/rocprim_version.hpp",
+    ],
+    hdrs = glob([
+        "rocm/include/hipcub/**",
+        "rocm/include/rocprim/**",
+    ]),
+    includes = [
+        ".",
+        "rocm/include/hipcub",
+        "rocm/include/rocprim",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@local_config_rocm//rocm:rocm_headers",
+    ],
+)
+
+cc_import(
+    name = "hipsparse",
+    hdrs = glob(["rocm/include/hipsparse/**",]),
+    shared_library = "rocm/lib/%{hipsparse_lib}",
+    visibility = ["//visibility:public"],
 )
 
 %{copy_rules}

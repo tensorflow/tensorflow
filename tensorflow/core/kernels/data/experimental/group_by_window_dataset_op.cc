@@ -15,26 +15,32 @@ limitations under the License.
 #include <map>
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/window_dataset.h"
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
 class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit GroupByWindowDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("key_func", &key_func_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("reduce_func", &reduce_func_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("window_size_func", &window_size_func_));
+    OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, "key_func", /*params=*/{},
+                                                 &key_func_metadata_));
+    OP_REQUIRES_OK(ctx,
+                   FunctionMetadata::Create(ctx, "reduce_func", /*params=*/{},
+                                            &reduce_func_metadata_));
+    OP_REQUIRES_OK(
+        ctx, FunctionMetadata::Create(ctx, "window_size_func", /*params=*/{},
+                                      &window_size_func_metadata_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
   }
@@ -42,31 +48,31 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
     std::unique_ptr<CapturedFunction> captured_key_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(key_func_, ctx,
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(ctx, key_func_metadata_,
                                                  "key_func_other_arguments",
                                                  &captured_key_func));
+
     std::unique_ptr<CapturedFunction> captured_reduce_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(reduce_func_, ctx,
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(ctx, reduce_func_metadata_,
                                                  "reduce_func_other_arguments",
                                                  &captured_reduce_func));
+
     std::unique_ptr<CapturedFunction> captured_window_size_func;
     OP_REQUIRES_OK(ctx,
-                   CapturedFunction::Create(window_size_func_, ctx,
+                   CapturedFunction::Create(ctx, window_size_func_metadata_,
                                             "window_size_func_other_arguments",
                                             &captured_window_size_func));
 
-    *output = new Dataset(
-        ctx, input, key_func_, reduce_func_, window_size_func_,
-        std::move(captured_key_func), std::move(captured_reduce_func),
-        std::move(captured_window_size_func), output_types_, output_shapes_);
+    *output = new Dataset(ctx, input, std::move(captured_key_func),
+                          std::move(captured_reduce_func),
+                          std::move(captured_window_size_func), output_types_,
+                          output_shapes_);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            const NameAttrList& key_func, const NameAttrList& reduce_func,
-            const NameAttrList& window_size_func,
             std::unique_ptr<CapturedFunction> captured_key_func,
             std::unique_ptr<CapturedFunction> captured_reduce_func,
             std::unique_ptr<CapturedFunction> captured_window_size_func,
@@ -74,9 +80,6 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
             const std::vector<PartialTensorShape>& output_shapes)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
-          key_func_(key_func),
-          reduce_func_(reduce_func),
-          window_size_func_(window_size_func),
           captured_key_func_(std::move(captured_key_func)),
           captured_reduce_func_(std::move(captured_reduce_func)),
           captured_window_size_func_(std::move(captured_window_size_func)),
@@ -104,41 +107,44 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       return "GroupByWindowDatasetOp::Dataset";
     }
 
+    Status CheckExternalState() const override {
+      TF_RETURN_IF_ERROR(captured_key_func_->CheckExternalState());
+      TF_RETURN_IF_ERROR(captured_reduce_func_->CheckExternalState());
+      TF_RETURN_IF_ERROR(captured_window_size_func_->CheckExternalState());
+      return input_->CheckExternalState();
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, key_func_.name()));
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, reduce_func_.name()));
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, window_size_func_.name()));
       Node* input_graph_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
       std::vector<Node*> key_func_other_arguments_node;
       DataTypeVector key_func_other_arguments_types;
-      TF_RETURN_IF_ERROR(OtherArgumentsNodeAndType(
-          ctx, b, captured_key_func_, &key_func_other_arguments_node,
-          &key_func_other_arguments_types));
+      TF_RETURN_IF_ERROR(
+          captured_key_func_->AddToGraph(ctx, b, &key_func_other_arguments_node,
+                                         &key_func_other_arguments_types));
 
       std::vector<Node*> reduce_func_other_arguments_node;
       DataTypeVector reduce_func_other_arguments_types;
-      TF_RETURN_IF_ERROR(OtherArgumentsNodeAndType(
-          ctx, b, captured_reduce_func_, &reduce_func_other_arguments_node,
+      TF_RETURN_IF_ERROR(captured_reduce_func_->AddToGraph(
+          ctx, b, &reduce_func_other_arguments_node,
           &reduce_func_other_arguments_types));
 
       std::vector<Node*> window_size_func_other_arguments_node;
       DataTypeVector window_size_func_other_arguments_types;
-      TF_RETURN_IF_ERROR(
-          OtherArgumentsNodeAndType(ctx, b, captured_window_size_func_,
-                                    &window_size_func_other_arguments_node,
-                                    &window_size_func_other_arguments_types));
+      TF_RETURN_IF_ERROR(captured_window_size_func_->AddToGraph(
+          ctx, b, &window_size_func_other_arguments_node,
+          &window_size_func_other_arguments_types));
 
       AttrValue key_func;
-      b->BuildAttrValue(key_func_, &key_func);
+      b->BuildAttrValue(captured_key_func_->func(), &key_func);
       AttrValue reduce_func;
-      b->BuildAttrValue(reduce_func_, &reduce_func);
+      b->BuildAttrValue(captured_reduce_func_->func(), &reduce_func);
       AttrValue window_size_func;
-      b->BuildAttrValue(window_size_func_, &window_size_func);
+      b->BuildAttrValue(captured_window_size_func_->func(), &window_size_func);
 
       AttrValue key_func_other_arguments_types_attr;
       b->BuildAttrValue(key_func_other_arguments_types,
@@ -175,7 +181,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
 
       Status Initialize(IteratorContext* ctx) override {
         TF_RETURN_IF_ERROR(
-            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+            dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
         TF_RETURN_IF_ERROR(dataset()->captured_key_func_->Instantiate(
             ctx, &instantiated_key_func_));
         TF_RETURN_IF_ERROR(dataset()->captured_reduce_func_->Instantiate(
@@ -288,9 +294,16 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
         return model::MakeUnknownRatioNode(std::move(args));
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
+        TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
+            dataset()->captured_key_func_->CheckExternalState()));
+        TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
+            dataset()->captured_reduce_func_->CheckExternalState()));
+        TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
+            dataset()->captured_window_size_func_->CheckExternalState()));
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
 
         if (end_of_input_) {
           TF_RETURN_IF_ERROR(
@@ -331,7 +344,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
         }
 
         if (current_group_iterator_) {
-          TF_RETURN_IF_ERROR(SaveInput(writer, current_group_iterator_));
+          TF_RETURN_IF_ERROR(SaveInput(ctx, writer, current_group_iterator_));
 
           // Saving current_key_
           TF_RETURN_IF_ERROR(
@@ -340,7 +353,8 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
           TF_RETURN_IF_ERROR(writer->WriteScalar(
               full_name("current_iterator_not_initialized"), ""));
         }
-
+        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("group_counter"),
+                                               group_counter_ - 1));
         return Status::OK();
       }
 
@@ -351,7 +365,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
 
         if (reader->Contains(full_name("end_of_input"))) end_of_input_ = true;
 
-        // Restoring groups
+        // Restoring groups_
         if (reader->Contains(full_name("groups_size"))) {
           int64 size;
           TF_RETURN_IF_ERROR(
@@ -368,7 +382,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
           }
         }
 
-        // Restoring Windows
+        // Restoring window_sizes_
         if (reader->Contains(full_name("window_sizes_size"))) {
           int64 size;
           TF_RETURN_IF_ERROR(
@@ -383,6 +397,10 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
                 &window_sizes_[key]));
           }
         }
+
+        // Group counter needs to be restored before current group iterator.
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(full_name("group_counter"), &group_counter_));
 
         if (reader->Contains(full_name("current_iterator_not_initialized"))) {
           current_group_iterator_.reset();
@@ -403,7 +421,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
      private:
       Status SaveGroup(IteratorStateWriter* writer, const string& name,
                        const std::vector<std::vector<Tensor>>& group)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(strings::StrCat(name, "_size"), group.size()));
         for (int i = 0; i < group.size(); i++) {
@@ -419,7 +437,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
 
       Status RestoreGroup(IteratorStateReader* reader, const string& name,
                           std::vector<std::vector<Tensor>>* group)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         int64 group_size;
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(strings::StrCat(name, "_size"), &group_size));
@@ -438,7 +456,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       }
 
       Status StartFlushingGroup(IteratorContext* ctx, int64 key)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         DatasetBase* group_dataset;
         TF_RETURN_IF_ERROR(NewWindowDataset(
             groups_[key], dataset()->input_->output_dtypes(),
@@ -472,50 +490,28 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
             GetDatasetFromVariantTensor(return_values[0], &returned_dataset));
 
         // Create an iterator for the dataset that was returned by `f`.
-        return returned_dataset->MakeIterator(ctx, prefix(),
-                                              &current_group_iterator_);
+        return returned_dataset->MakeIterator(
+            ctx, this, strings::StrCat(prefix(), "[", group_counter_++, "]"),
+            &current_group_iterator_);
       }
 
       mutex mu_;
-      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+      int64 group_counter_ TF_GUARDED_BY(mu_) = 0;
+      std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
       // TODO(mrry): Optimize for dense key space if appropriate.
-      bool end_of_input_ GUARDED_BY(mu_) = false;
-      int64 current_key_ GUARDED_BY(mu_);
-      std::map<int64, std::vector<std::vector<Tensor>>> groups_ GUARDED_BY(mu_);
-      std::unique_ptr<IteratorBase> current_group_iterator_ GUARDED_BY(mu_);
-      std::map<int64, int64> window_sizes_ GUARDED_BY(mu_);
+      bool end_of_input_ TF_GUARDED_BY(mu_) = false;
+      int64 current_key_ TF_GUARDED_BY(mu_);
+      std::map<int64, std::vector<std::vector<Tensor>>> groups_
+          TF_GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> current_group_iterator_ TF_GUARDED_BY(mu_);
+      std::map<int64, int64> window_sizes_ TF_GUARDED_BY(mu_);
       std::unique_ptr<InstantiatedCapturedFunction> instantiated_key_func_;
       std::unique_ptr<InstantiatedCapturedFunction> instantiated_reduce_func_;
       std::unique_ptr<InstantiatedCapturedFunction>
           instantiated_window_size_func_;
     };
 
-    Status OtherArgumentsNodeAndType(
-        SerializationContext* ctx, DatasetGraphDefBuilder* b,
-        const std::unique_ptr<CapturedFunction>& captured_func,
-        std::vector<Node*>* other_arguments_node,
-        DataTypeVector* other_arguments_types) const {
-      other_arguments_node->reserve(captured_func->captured_inputs().size());
-      other_arguments_types->reserve(captured_func->captured_inputs().size());
-      for (const Tensor& t : captured_func->captured_inputs()) {
-        Node* node;
-        DatasetBase* input;
-        Status s = GetDatasetFromVariantTensor(t, &input);
-        if (s.ok()) {
-          TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &node));
-        } else {
-          TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
-        }
-        other_arguments_node->emplace_back(node);
-        other_arguments_types->emplace_back(t.dtype());
-      }
-      return Status::OK();
-    }
-
     const DatasetBase* const input_;
-    const NameAttrList key_func_;
-    const NameAttrList reduce_func_;
-    const NameAttrList window_size_func_;
     const std::unique_ptr<CapturedFunction> captured_key_func_;
     const std::unique_ptr<CapturedFunction> captured_reduce_func_;
     const std::unique_ptr<CapturedFunction> captured_window_size_func_;
@@ -523,17 +519,23 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
     const std::vector<PartialTensorShape> output_shapes_;
   };
 
+  std::shared_ptr<FunctionMetadata> key_func_metadata_ = nullptr;
+  std::shared_ptr<FunctionMetadata> reduce_func_metadata_ = nullptr;
+  std::shared_ptr<FunctionMetadata> window_size_func_metadata_ = nullptr;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-  NameAttrList key_func_;
-  NameAttrList reduce_func_;
-  NameAttrList window_size_func_;
 };
 
+REGISTER_KERNEL_BUILDER(Name("GroupByWindowDataset").Device(DEVICE_CPU),
+                        GroupByWindowDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalGroupByWindowDataset").Device(DEVICE_CPU),
     GroupByWindowDatasetOp);
 
+REGISTER_INPUT_COLOCATION_EXEMPTION("GroupByWindowDataset");
+REGISTER_INPUT_COLOCATION_EXEMPTION("ExperimentalGroupByWindowDataset");
+
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

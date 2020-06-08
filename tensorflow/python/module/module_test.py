@@ -18,18 +18,27 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import abc
 import collections
+import itertools
 
 from absl.testing import parameterized
+import six
 
-from tensorflow.python.compat import v2_compat
+from tensorflow.python import tf2
+from tensorflow.python.distribute import ps_values
+from tensorflow.python.distribute import tpu_values
+from tensorflow.python.distribute import values as distributed_values
+from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.module import module
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-class TestModuleNaming(test.TestCase):
+class TestModuleNaming(test_util.TensorFlowTestCase):
 
   def test_single_name(self):
     mod = module.Module(name="simple")
@@ -37,7 +46,7 @@ class TestModuleNaming(test.TestCase):
     self.assertEqual(mod.name_scope.name, "simple/")
 
   def test_construct_in_scope(self):
-    with ops.name_scope("foo"):
+    with ops.name_scope("foo", skip_on_eager=False):
       mod = module.Module(name="bar")
     self.assertEqual(mod.name, "bar")
     self.assertEqual(mod.name_scope.name, "foo/bar/")
@@ -78,35 +87,56 @@ class TestModuleNaming(test.TestCase):
     self.assertEqual(mod.alternative_forward(), mod.name_scope.name)
 
   def test_patched_callable(self):
-    with ops.name_scope("foo"):
+    with ops.name_scope("foo", skip_on_eager=False):
       mod = module.Module(name="bar")
     mod.foo = get_name_scope
     # `foo` is not a method so we do not re-enter the name scope.
     self.assertEqual(mod.foo(), "")
+
+  def test_property(self):
+    mod = PropertyModule()
+    mod.some_property = None, None  # None, None for the linter.
+    getter_scope_name, setter_scope_name = mod.some_property
+    self.assertEqual(getter_scope_name, "property_module/")
+    self.assertEqual(setter_scope_name, "property_module/")
+
+  def test_property_no_name_scope(self):
+    mod = PropertyModule()
+    mod.no_name_scope_property = None, None  # None, None for the linter.
+    getter_scope_name, setter_scope_name = mod.no_name_scope_property
+    self.assertEqual(getter_scope_name, "")
+    self.assertEqual(setter_scope_name, "")
 
   def test_invalid_name(self):
     msg = ".* is not a valid module name"
     with self.assertRaisesRegexp(ValueError, msg):
       module.Module(name="$Foo")
 
+  @test_util.run_in_graph_and_eager_modes
   def test_modules_not_numbered_in_eager(self):
-    mod = RecursiveModule(2)
-    self.assertEqual(mod.name_scope.name, "badger/")
-    self.assertEqual(mod.child.name_scope.name, "badger/badger/")
+    if not context.executing_eagerly():
+      self.skipTest("Eager specific")
 
     mod = RecursiveModule(2)
     self.assertEqual(mod.name_scope.name, "badger/")
     self.assertEqual(mod.child.name_scope.name, "badger/badger/")
 
+    mod = RecursiveModule(2)
+    self.assertEqual(mod.name_scope.name, "badger/")
+    self.assertEqual(mod.child.name_scope.name, "badger/badger/")
+
+  @test_util.run_in_graph_and_eager_modes
   def test_module_numbering_in_graph(self):
-    with ops.Graph().as_default():
-      mod = RecursiveModule(2)
-      self.assertEqual(mod.name_scope.name, "badger/")
-      self.assertEqual(mod.child.name_scope.name, "badger/badger/")
+    if context.executing_eagerly():
+      self.skipTest("Graph specific")
 
-      mod = RecursiveModule(2)
-      self.assertEqual(mod.name_scope.name, "badger_1/")
-      self.assertEqual(mod.child.name_scope.name, "badger_1/badger/")
+    mod = RecursiveModule(2)
+    self.assertEqual(mod.name_scope.name, "badger/")
+    self.assertEqual(mod.child.name_scope.name, "badger/badger/")
+
+    mod = RecursiveModule(2)
+    self.assertEqual(mod.name_scope.name, "badger_1/")
+    self.assertEqual(mod.child.name_scope.name, "badger_1/badger/")
 
   def test_ctor_error_closes_name_scope(self):
     with self.assertRaises(ErrorModuleError):
@@ -121,7 +151,7 @@ class TestModuleNaming(test.TestCase):
     with self.assertRaises(ErrorModuleError):
       # If super ctor is not called then the name scope isn't opened. We need to
       # ensure that this doesn't trigger an exception (e.g. the metaclass trying
-      # to __exit__ a non-existant name scope).
+      # to __exit__ a non-existent name scope).
       ErrorModule(call_super=False)
 
     self.assertEqual("", get_name_scope())
@@ -133,8 +163,36 @@ class TestModuleNaming(test.TestCase):
 
     self.assertEqual("", get_name_scope())
 
+  def test_get_attr_doesnt_enter_name_scope(self):
+    scope_names = []
 
-class VariableNamingTest(test.TestCase):
+    class GetAttrModule(module.Module):
+
+      def __getattr__(self, name):
+        scope_names.append((name, get_name_scope()))
+        return super(GetAttrModule, self).__getattr__(name)
+
+    mod = GetAttrModule()
+    with self.assertRaises(AttributeError):
+      mod.does_not_exist  # pylint: disable=pointless-statement
+    self.assertIn(("does_not_exist", ""), scope_names)
+
+  def test_get_attribute_doesnt_enter_name_scope(self):
+    scope_names = []
+
+    class GetAttributeModule(module.Module):
+
+      def __getattribute__(self, name):
+        scope_names.append((name, get_name_scope()))
+        return super(GetAttributeModule, self).__getattribute__(name)
+
+    mod = GetAttributeModule()
+    with self.assertRaises(AttributeError):
+      mod.does_not_exist  # pylint: disable=pointless-statement
+    self.assertIn(("does_not_exist", ""), scope_names)
+
+
+class VariableNamingTest(test_util.TensorFlowTestCase):
 
   def test_variable_names(self):
     mod = RecursiveModule(3)
@@ -143,19 +201,36 @@ class VariableNamingTest(test.TestCase):
     self.assertEqual(mod.child.child.w.name, "badger/badger/badger/mushroom:0")
 
 
-class VariableTrackingTest(test.TestCase):
+class NameScopeTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_deprecated_v1
+  def test_not_memoized_in_tf1(self):
+    if tf2.enabled():
+      self.skipTest("Requires TF1")
+
+    mod = module.Module(name="name")
+    name_scope_1 = mod.name_scope
+    name_scope_2 = mod.name_scope
+    self.assertIsNot(name_scope_1, name_scope_2)
+    self.assertEqual(name_scope_1.name, name_scope_2.name)
+
+  def test_memoized_in_tf2(self):
+    if not tf2.enabled():
+      self.skipTest("Requires TF2")
+
+    mod = module.Module(name="name")
+    name_scope_1 = mod.name_scope
+    name_scope_2 = mod.name_scope
+    self.assertIs(name_scope_1, name_scope_2)
+
+
+class VariableTrackingTest(test_util.TensorFlowTestCase):
 
   def test_variables(self):
     m = RecursiveModule(3)
     self.assertEqual(m.variables, (m.w, m.child.w, m.child.child.w))
     self.assertEqual(m.child.variables, (m.child.w, m.child.child.w))
     self.assertEqual(m.child.child.variables, (m.child.child.w,))
-
-  def test_owned_variables(self):
-    m = RecursiveModule(3)
-    self.assertEqual(m.owned_variables, (m.w,))
-    self.assertEqual(m.child.owned_variables, (m.child.w,))
-    self.assertEqual(m.child.child.owned_variables, (m.child.child.w,))
 
   def test_trainable_variables(self):
     m = RecursiveModule(3)
@@ -171,27 +246,22 @@ class VariableTrackingTest(test.TestCase):
     self.assertEqual(len(m.child.trainable_variables), 0)
     self.assertEqual(len(m.child.child.trainable_variables), 0)
 
-  def test_owned_trainable_variables(self):
-    m = RecursiveModule(3)
-    self.assertEqual(m.owned_trainable_variables, (m.w,))
-    self.assertEqual(m.child.owned_trainable_variables, (m.child.w,))
-    self.assertEqual(m.child.child.owned_trainable_variables,
-                     (m.child.child.w,))
+  def test_supports_distributed_variables(self):
+    mirrored = distributed_values.MirroredVariable(
+        None, [variables.Variable(1.)], variables.VariableAggregation.SUM)
+    tpu = tpu_values.TPUMirroredVariable(
+        strategy=None, values=[variables.Variable(42.)], aggregation=None)
+    aggregating = ps_values.AggregatingVariable(
+        strategy=None, v=variables.Variable(1.), aggregation=None)
 
-  def test_owned_trainable_variables_ignores_non_trainable(self):
-    m = RecursiveModule(3, trainable=False)
-    self.assertEqual(len(m.owned_trainable_variables), 0)
-    self.assertEqual(len(m.child.owned_trainable_variables), 0)
-    self.assertEqual(len(m.child.child.owned_trainable_variables), 0)
+    m = module.Module()
+    m.a = mirrored
+    m.b = tpu
+    m.c = aggregating
+    self.assertEqual(m.variables, (mirrored, tpu, aggregating))
 
 
-class ModuleTrackingTest(test.TestCase):
-
-  def test_owned_submodules(self):
-    m = RecursiveModule(3)
-    self.assertEqual(list(m.owned_submodules), [m.child])
-    self.assertEqual(list(m.child.owned_submodules), [m.child.child])
-    self.assertEqual(list(m.child.child.owned_submodules), [])
+class ModuleTrackingTest(test_util.TensorFlowTestCase):
 
   def test_submodules(self):
     m = RecursiveModule(3)
@@ -207,27 +277,47 @@ class ModuleTrackingTest(test.TestCase):
     self.assertEqual(set(m.submodules), {leaf1, leaf2})
 
 
-class CommonErrorsTest(test.TestCase):
+class ForwardMethodsTest(test_util.TensorFlowTestCase):
 
-  def test_not_calling_super_constructor(self):
-    msg = ("Constructing a tf.Module without calling the super constructor is "
-           "not supported")
-    with self.assertRaisesRegexp(ValueError, msg):
-      DoesNotCallSuperConstructorModule()
+  def testFunctionType(self):
+    mod = ModuleWithFunctionAnnotatedCall()
+    self.assertIsInstance(mod.forward, def_function.Function)
+    self.assertIsInstance(mod.forward_ag, def_function.Function)
 
-  def test_calls_method_before_super(self):
-    msg = "super constructor must be called before any other methods"
-    with self.assertRaisesRegexp(AttributeError, msg):
-      CallsMethodBeforeSuperConstructorModule(allowed_method=False)
+  def testEntersNameScope_call(self):
+    mod = ModuleWithFunctionAnnotatedCall()
+    self.assertEqual(self.evaluate(mod.forward()),
+                     b"module_with_function_annotated_call/")
+    self.assertEqual(self.evaluate(mod.forward_ag()),
+                     b"module_with_function_annotated_call/")
 
-  def test_annotated_method_is_allowed(self):
-    self.assertIsNotNone(
-        CallsMethodBeforeSuperConstructorModule(allowed_method=True))
+  def testEntersNameScope_concreteFunction(self):
+    mod = ModuleWithFunctionAnnotatedCall()
+    self.assertEqual(self.evaluate(mod.forward.get_concrete_function()()),
+                     b"module_with_function_annotated_call/")
+    self.assertEqual(self.evaluate(mod.forward_ag.get_concrete_function()()),
+                     b"module_with_function_annotated_call/")
+
+
+class AbcTest(test_util.TensorFlowTestCase):
+
+  def testAbstract(self):
+    msg = "Can't instantiate .* abstract methods"
+    with self.assertRaisesRegexp(TypeError, msg):
+      AbstractModule()  # pylint: disable=abstract-class-instantiated
+
+  def testConcrete(self):
+    mod = ConcreteModule()
+    x, scope_name = mod(2.)
+    self.assertEqual(x, 4.)
+    self.assertEqual(scope_name, "concrete_module/")
+    self.assertEqual(get_name_scope(), "")
 
 
 def get_name_scope():
-  with ops.name_scope("x") as ns:
-    return ns[:-2]
+  with ops.name_scope("x", skip_on_eager=False) as ns:
+    ns = "/".join(ns.split("/")[:-2])
+    return ns + "/" if ns else ""
 
 
 class ErrorModuleError(Exception):
@@ -250,10 +340,26 @@ class RecursiveModule(module.Module):
 
   def __init__(self, depth, trainable=True):
     super(RecursiveModule, self).__init__(name="badger")
-    self.child = None
-    if depth > 1:
-      self.child = RecursiveModule(depth - 1, trainable=trainable)
-    self.w = variables.Variable(1.0, trainable=trainable, name="mushroom")
+    with self.name_scope:
+      self.child = None
+      if depth > 1:
+        self.child = RecursiveModule(depth - 1, trainable=trainable)
+      self.w = variables.Variable(1.0, trainable=trainable, name="mushroom")
+
+
+@six.add_metaclass(abc.ABCMeta)
+class AbstractModule(module.Module):
+
+  @abc.abstractmethod
+  def __call__(self, x):
+    pass
+
+
+class ConcreteModule(AbstractModule):
+
+  @module.Module.with_name_scope
+  def __call__(self, x):
+    return x ** 2, get_name_scope()
 
 
 class TreeModule(module.Module):
@@ -262,6 +368,7 @@ class TreeModule(module.Module):
     super(TreeModule, self).__init__(name=name)
     self._leaves = []
 
+  @module.Module.with_name_scope
   def new_leaf(self, name=None):
     leaf = TreeModule(name=name)
     self._leaves.append(leaf)
@@ -270,15 +377,18 @@ class TreeModule(module.Module):
 
 class ReturnsNameScopeModule(module.Module):
 
+  @module.Module.with_name_scope
   def alternative_forward(self):
     return get_name_scope()
 
+  @module.Module.with_name_scope
   def __call__(self):
     return get_name_scope()
 
 
 class SubclassedReturnsNameScopeModule(ReturnsNameScopeModule):
 
+  @module.Module.with_name_scope
   def alternative_alternative_forward(self):
     return get_name_scope()
 
@@ -294,50 +404,146 @@ class ModuleOverridingNameScope(ReturnsNameScopeModule):
 
   @property
   def name_scope(self):
-    return ops.name_scope("yolo/")
+    return ops.name_scope("yolo/", skip_on_eager=False)
 
 
-class DoesNotCallSuperConstructorModule(module.Module):
+class ModuleWithFunctionAnnotatedCall(module.Module):
+
+  @def_function.function(autograph=False)
+  @module.Module.with_name_scope
+  def forward(self):
+    return get_name_scope()
+
+  @def_function.function(autograph=True)
+  @module.Module.with_name_scope
+  def forward_ag(self):
+    return get_name_scope()
+
+
+class PropertyModule(module.Module):
 
   def __init__(self):
-    # NOTE: Intentionally does not call super constructor.
-    pass
+    super(PropertyModule, self).__init__()
+    self._setter_scope_name = None
 
+  @property
+  @module.Module.with_name_scope
+  def some_property(self):
+    getter_scope_name = get_name_scope()
+    return getter_scope_name, self._setter_scope_name
 
-class CallsMethodBeforeSuperConstructorModule(module.Module):
+  @some_property.setter
+  @module.Module.with_name_scope
+  def some_property(self, my_property):
+    self._setter_scope_name = get_name_scope()
 
-  def __init__(self, allowed_method):
-    if allowed_method:
-      self.no_name_scope()
-    else:
-      self.with_name_scope()
-    super(CallsMethodBeforeSuperConstructorModule, self).__init__()
+  @property
+  def no_name_scope_property(self):
+    getter_scope_name = get_name_scope()
+    return getter_scope_name, self._setter_scope_name
 
-  @module.Module.no_name_scope
-  def no_name_scope(self):
-    pass
-
-  def with_name_scope(self):
-    pass
+  @no_name_scope_property.setter
+  def no_name_scope_property(self, my_property):
+    self._setter_scope_name = get_name_scope()
 
 NamedPair = collections.namedtuple("NamedPair", ("first", "second"))
 mk_index_dict = lambda v: dict(enumerate(v))
 
 
-class WalkTest(parameterized.TestCase, test.TestCase):
+class FlattenTest(parameterized.TestCase, test_util.TensorFlowTestCase):
 
   @parameterized.parameters(lambda v: NamedPair(*v), list, tuple, mk_index_dict)
-  def test_walk(self, container_type):
+  def test_flatten(self, container_type):
     parent = SimpleModule(container_type=container_type)
     child = parent.c
 
     self.assertEqual(
-        list(module.walk(parent, predicate=IS_MEMBER)),
+        list(parent._flatten(recursive=False, predicate=is_member)),
         [parent.a[0], parent.a[1], parent.z])
 
     self.assertEqual(
-        list(module.walk(parent, recurse_if=IS_MODULE, predicate=IS_MEMBER)),
+        list(parent._flatten(predicate=is_member)),
         [parent.a[0], parent.a[1], parent.z, child.a[0], child.a[1], child.z])
+
+  def test_attribute_traversal_key(self):
+    mod = LayerModule()
+    self.assertEqual(
+        mod.variables,
+        mod._trainable_variables + mod._non_trainable_variables + [mod._bonus])
+
+  def test_attributes_to_ignore(self):
+    class DangerousModule(module.Module):
+      _TF_MODULE_IGNORED_PROPERTIES = frozenset(itertools.chain(
+          ("dangerous_submodule", "dangerous_variable"),
+          module.Module._TF_MODULE_IGNORED_PROPERTIES
+      ))
+
+    mod = DangerousModule()
+    mod.dangerous_submodule = module.Module()
+    mod.dangerous_variable = variables.Variable(1.)
+    mod.normal_variable = variables.Variable(2.)
+
+    self.assertEmpty(mod.submodules)
+    self.assertLen(mod.variables, 1)
+    self.assertEqual(mod.variables[0], mod.normal_variable)
+
+  def test_with_path(self):
+    mod = module.Module()
+    mod.w = variables.Variable(1.)
+    mod.encoder = module.Module()
+    mod.encoder.w = [({"k": mod.w}, {"k": mod.w})]
+    mod.decoder = mod.encoder
+
+    state_dict = dict(
+        mod._flatten(with_path=True, predicate=module._is_variable))
+
+    self.assertEqual(state_dict,
+                     {("w",): mod.w,
+                      ("encoder", "w", 0, 0, "k"): mod.encoder.w[0][0]["k"],
+                      ("encoder", "w", 0, 1, "k"): mod.encoder.w[0][1]["k"],
+                      ("decoder", "w", 0, 0, "k"): mod.decoder.w[0][0]["k"],
+                      ("decoder", "w", 0, 1, "k"): mod.decoder.w[0][1]["k"]},)
+
+  def test_raises_error_with_path(self):
+    if six.PY2:
+      class NonOrderable(object):
+        __lt__ = None
+
+      non_orderable = NonOrderable
+    else:
+      non_orderable = object
+
+    m = module.Module()
+    m.layers = {non_orderable(): None, non_orderable(): None}
+    with self.assertRaisesRegex(ValueError,
+                                "Error processing property 'layers'"):
+      m.variables  # pylint: disable=pointless-statement
+
+
+class LayerModule(module.Module):
+
+  def __init__(self):
+    super(LayerModule, self).__init__()
+    self._trainable_variables = [
+        variables.Variable(1., name="a"),
+        variables.Variable(2., name="b"),
+    ]
+    self._non_trainable_variables = [
+        variables.Variable(3., name="c"),
+        variables.Variable(4., name="d"),
+    ]
+    self._bonus = variables.Variable(5., name="e")
+
+  @property
+  def variables(self):
+    def key_function(name):
+      indexes = {"_trainable_variables": 0, "_non_trainable_variables": 1}
+      return indexes.get(name, 2), name
+
+    return list(
+        self._flatten(
+            predicate=module._is_variable,
+            attribute_traversal_key=key_function))
 
 
 class MemberType(object):
@@ -354,10 +560,7 @@ class SimpleModule(module.Module):
     if create_child:
       self.c = SimpleModule(create_child=False)
 
-
-IS_MEMBER = lambda v: isinstance(v, MemberType)
-IS_MODULE = lambda v: isinstance(v, module.Module)
+is_member = lambda v: isinstance(v, MemberType)
 
 if __name__ == "__main__":
-  v2_compat.enable_v2_behavior()
   test.main()

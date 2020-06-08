@@ -35,7 +35,7 @@ class HloDomainIsolator : public HloModulePass {
   // Creates a new kDomain instruction for the edge between the use instruction
   // (the first HloInstruction argument), and the operand instruction (the
   // third HloInstruction argument) if the interesting attribute of the
-  // instruction differes from the attribute of the root (the second
+  // instruction differences from the attribute of the root (the second
   // HloInstruction argument).
   // Returns nullptr in case no domain separation is necessary.
   using DomainCreator = std::function<HloInstruction*(

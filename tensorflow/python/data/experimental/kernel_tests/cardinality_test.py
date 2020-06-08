@@ -17,21 +17,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import test_util
+from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class NumElementsTest(test_base.DatasetTestBase, parameterized.TestCase):
-  """Tests for `tf.data.experimental.cardinality()`."""
-
-  @parameterized.named_parameters(
-      # pylint: disable=g-long-lambda
+def _test_combinations():
+  # pylint: disable=g-long-lambda
+  cases = [
       ("Batch1",
        lambda: dataset_ops.Dataset.range(5).batch(2, drop_remainder=True), 2),
       ("Batch2",
@@ -49,8 +48,7 @@ class NumElementsTest(test_base.DatasetTestBase, parameterized.TestCase):
        lambda: dataset_ops.Dataset.range(5).filter(lambda _: True).concatenate(
            dataset_ops.Dataset.range(5)), cardinality.UNKNOWN),
       ("Concatenate3", lambda: dataset_ops.Dataset.range(5).repeat().
-       concatenate(dataset_ops.Dataset.range(5)),
-       cardinality.INFINITE),
+       concatenate(dataset_ops.Dataset.range(5)), cardinality.INFINITE),
       ("Concatenate4", lambda: dataset_ops.Dataset.range(5).concatenate(
           dataset_ops.Dataset.range(5).filter(lambda _: True)),
        cardinality.UNKNOWN),
@@ -70,17 +68,15 @@ class NumElementsTest(test_base.DatasetTestBase, parameterized.TestCase):
        lambda: dataset_ops.Dataset.range(5).repeat().concatenate(
            dataset_ops.Dataset.range(5).repeat()), cardinality.INFINITE),
       ("FlatMap", lambda: dataset_ops.Dataset.range(5).flat_map(
-          lambda _: dataset_ops.Dataset.from_tensors(0)),
-       cardinality.UNKNOWN),
+          lambda _: dataset_ops.Dataset.from_tensors(0)), cardinality.UNKNOWN),
       ("Filter", lambda: dataset_ops.Dataset.range(5).filter(lambda _: True),
        cardinality.UNKNOWN),
       ("FromTensors1", lambda: dataset_ops.Dataset.from_tensors(0), 1),
       ("FromTensors2", lambda: dataset_ops.Dataset.from_tensors((0, 1)), 1),
       ("FromTensorSlices1",
        lambda: dataset_ops.Dataset.from_tensor_slices([0, 0, 0]), 3),
-      ("FromTensorSlices2",
-       lambda: dataset_ops.Dataset.from_tensor_slices(([0, 0, 0], [1, 1, 1])),
-       3),
+      ("FromTensorSlices2", lambda: dataset_ops.Dataset.from_tensor_slices(
+          ([0, 0, 0], [1, 1, 1])), 3),
       ("Interleave1", lambda: dataset_ops.Dataset.range(5).interleave(
           lambda _: dataset_ops.Dataset.from_tensors(0), cycle_length=1),
        cardinality.UNKNOWN),
@@ -117,6 +113,13 @@ class NumElementsTest(test_base.DatasetTestBase, parameterized.TestCase):
        cardinality.INFINITE),
       ("Shuffle", lambda: dataset_ops.Dataset.range(5).shuffle(buffer_size=1),
        5),
+      ("Shard1", lambda: dataset_ops.Dataset.range(5).shard(2, 0), 3),
+      ("Shard2", lambda: dataset_ops.Dataset.range(5).shard(8, 7), 0),
+      ("Shard3",
+       lambda: dataset_ops.Dataset.range(5).filter(lambda _: True).shard(2, 0),
+       cardinality.UNKNOWN),
+      ("Shard4", lambda: dataset_ops.Dataset.range(5).repeat().shard(2, 0),
+       cardinality.INFINITE),
       ("Skip1", lambda: dataset_ops.Dataset.range(5).skip(2), 3),
       ("Skip2", lambda: dataset_ops.Dataset.range(5).skip(8), 0),
       ("Skip3",
@@ -130,6 +133,19 @@ class NumElementsTest(test_base.DatasetTestBase, parameterized.TestCase):
        lambda: dataset_ops.Dataset.range(5).filter(lambda _: True).take(2),
        cardinality.UNKNOWN),
       ("Take4", lambda: dataset_ops.Dataset.range(5).repeat().take(2), 2),
+      ("Unbatch1", lambda: dataset_ops.Dataset.range(5).batch(
+          2, drop_remainder=True).unbatch(), 4),
+      ("Unbatch2", lambda: dataset_ops.Dataset.range(5).batch(
+          2, drop_remainder=False).unbatch(), cardinality.UNKNOWN),
+      ("Unbatch3", lambda: dataset_ops.Dataset.range(5).batch(
+          2, drop_remainder=True).filter(lambda _: True).unbatch(),
+       cardinality.UNKNOWN),
+      ("Unbatch4", lambda: dataset_ops.Dataset.range(5).batch(
+          2, drop_remainder=True).repeat().unbatch(), cardinality.INFINITE),
+      ("Unbatch5", lambda: dataset_ops.Dataset.zip((
+          dataset_ops.Dataset.range(4).batch(2, drop_remainder=False),
+          dataset_ops.Dataset.range(5).batch(2, drop_remainder=True),
+      )).unbatch(), 4),
       ("Window1", lambda: dataset_ops.Dataset.range(5).window(
           size=2, shift=2, drop_remainder=True), 2),
       ("Window2", lambda: dataset_ops.Dataset.range(5).window(
@@ -138,22 +154,34 @@ class NumElementsTest(test_base.DatasetTestBase, parameterized.TestCase):
        5),
       ("Zip2", lambda: dataset_ops.Dataset.zip(
           (dataset_ops.Dataset.range(5), dataset_ops.Dataset.range(3))), 3),
-      ("Zip3", lambda: dataset_ops.Dataset.zip(
-          (dataset_ops.Dataset.range(5),
-           dataset_ops.Dataset.range(3).repeat())), 5),
+      ("Zip3", lambda: dataset_ops.Dataset.zip((dataset_ops.Dataset.range(
+          5), dataset_ops.Dataset.range(3).repeat())), 5),
       ("Zip4", lambda: dataset_ops.Dataset.zip(
-          (dataset_ops.Dataset.range(5).repeat(),
-           dataset_ops.Dataset.range(3).repeat())), cardinality.INFINITE),
+          (dataset_ops.Dataset.range(5).repeat(), dataset_ops.Dataset.range(3).
+           repeat())), cardinality.INFINITE),
       ("Zip5", lambda: dataset_ops.Dataset.zip(
-          (dataset_ops.Dataset.range(5),
-           dataset_ops.Dataset.range(3).filter(lambda _: True))),
-       cardinality.UNKNOWN),
-      # pylint: enable=g-long-lambda
-  )
-  def testNumElements(self, dataset_fn, expected_result):
-    with self.cached_session() as sess:
-      self.assertEqual(
-          sess.run(cardinality.cardinality(dataset_fn())), expected_result)
+          (dataset_ops.Dataset.range(5), dataset_ops.Dataset.range(3).filter(
+              lambda _: True))), cardinality.UNKNOWN),
+  ]
+
+  def reduce_fn(x, y):
+    name, dataset_fn, expected_result = y
+    return x + combinations.combine(
+        dataset_fn=combinations.NamedObject(name, dataset_fn),
+        expected_result=expected_result)
+
+  return functools.reduce(reduce_fn, cases, [])
+
+
+class CardinalityTest(test_base.DatasetTestBase, parameterized.TestCase):
+  """Tests for `tf.data.experimental.cardinality()`."""
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         _test_combinations()))
+  def testCardinality(self, dataset_fn, expected_result):
+    self.assertEqual(
+        self.evaluate(cardinality.cardinality(dataset_fn())), expected_result)
 
 
 if __name__ == "__main__":

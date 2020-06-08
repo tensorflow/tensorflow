@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_JIT_XLA_COMPILATION_CACHE_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -63,11 +64,11 @@ class XlaCompilationCache : public ResourceBase {
   // and `out_executable`.  If `compile_mode` is `kStrict` then the compilation
   // cache always attempts the compilation on a cache miss.
   //
-  // The result of compilation is written to `*compilation_result`, which must
-  // be non-null. If `executable` is non-null, also builds an
-  // xla::LocalExecutable and sets `executable` to point to it. The resulting
-  // executable pointer may be null if the computation has no non-constant
-  // outputs.
+  // The result of compilation is written to `*out_compilation_result`, which
+  // must be non-null. If `out_executable` is non-null, also builds an
+  // xla::LocalExecutable and sets `out_executable` to point to it. The
+  // resulting executable pointer may be null if the computation has no
+  // non-constant outputs.
   Status Compile(const XlaCompiler::Options& options,
                  const NameAttrList& function,
                  absl::Span<const XlaCompiler::Argument> args,
@@ -77,7 +78,9 @@ class XlaCompilationCache : public ResourceBase {
                  xla::LocalExecutable** out_executable);
 
   // As above, but calls XlaCompiler::CompileSingleOp instead of
-  // XlaCompiler::CompileFunction.
+  // XlaCompiler::CompileFunction. If MLIR bridge is enabled through ConfigProto
+  // in OpKernelContext, then uses MLIR bridge for compilation instead of
+  // XlaCompiler, if possible.
   Status CompileSingleOp(
       const XlaCompiler::Options& options,
       absl::Span<const XlaCompiler::Argument> args, OpKernelContext* ctx,
@@ -97,11 +100,12 @@ class XlaCompilationCache : public ResourceBase {
 
     // List of Tensor types & shapes for compile-time constant arguments to the
     // compilation, ordered by argument number.
-    std::vector<std::pair<DataType, std::vector<int64>>> arg_shapes;
+    absl::InlinedVector<std::pair<DataType, absl::InlinedVector<int64, 4>>, 4>
+        arg_shapes;
 
     // List of Tensor values for compile-time constant arguments to the
     // compilation, ordered by argument number. Tensors must be in host memory.
-    std::vector<Tensor> arg_values;
+    absl::InlinedVector<Tensor, 4> arg_values;
 
     bool operator==(const Signature& other) const;
 
@@ -149,19 +153,19 @@ class XlaCompilationCache : public ResourceBase {
     int64 request_count = 0;
 
     // Did compilation succeed?
-    Status compilation_status GUARDED_BY(mu);
+    Status compilation_status TF_GUARDED_BY(mu);
 
     // Output of the XlaCompiler.
-    XlaCompiler::CompilationResult compilation_result GUARDED_BY(mu);
+    XlaCompiler::CompilationResult compilation_result TF_GUARDED_BY(mu);
 
     // The XLA executable compiled from <computation>. May be null if no
     // executable has been built.
-    std::unique_ptr<xla::LocalExecutable> executable GUARDED_BY(mu);
+    std::unique_ptr<xla::LocalExecutable> executable TF_GUARDED_BY(mu);
   };
 
   mutex compile_cache_mu_;
   absl::flat_hash_map<Signature, std::unique_ptr<Entry>, Signature::Hash> cache_
-      GUARDED_BY(compile_cache_mu_);
+      TF_GUARDED_BY(compile_cache_mu_);
 
   struct ClusterCompileStats {
     // Number of times the cluster has been (re-)compiled.
@@ -183,7 +187,7 @@ class XlaCompilationCache : public ResourceBase {
 
   // Maps cluster names to compilation statistics for said cluster.
   absl::flat_hash_map<string, ClusterCompileStats> cluster_compile_stats_
-      GUARDED_BY(cluster_compile_stats_mu_);
+      TF_GUARDED_BY(cluster_compile_stats_mu_);
 
   // The number of times a lazy compilation must be requested for a specific
   // signature before  we attempt to compile it.

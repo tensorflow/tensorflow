@@ -17,20 +17,26 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import readers as core_readers
+from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
 class TextLineDatasetSerializationTest(
     reader_dataset_ops_test_base.TextLineDatasetTestBase,
-    dataset_serialization_test_base.DatasetSerializationTestBase):
+    dataset_serialization_test_base.DatasetSerializationTestBase,
+    parameterized.TestCase):
 
   def _build_iterator_graph(self, test_filenames, compression_type=None):
     return core_readers.TextLineDataset(
         test_filenames, compression_type=compression_type, buffer_size=10)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testTextLineCore(self):
     compression_types = [None, "GZIP", "ZLIB"]
     num_files = 5
@@ -45,7 +51,7 @@ class TextLineDatasetSerializationTest(
       # pylint: disable=cell-var-from-loop
       self.run_core_tests(
           lambda: self._build_iterator_graph(test_filenames, compression_type),
-          lambda: self._build_iterator_graph(test_filenames), num_outputs)
+          num_outputs)
       # pylint: enable=cell-var-from-loop
 
 

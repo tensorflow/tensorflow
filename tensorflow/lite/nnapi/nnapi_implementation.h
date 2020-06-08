@@ -695,6 +695,25 @@ struct NnApi {
       const ANeuralNetworksDevice* device, int64_t* featureLevel);
 
   /**
+   * Get the type of a given device.
+   *
+   * The device type can be used to help application developers to distribute
+   * Machine Learning workloads and other workloads such as graphical rendering.
+   * E.g., for an app which renders AR scenes based on real time object
+   * detection results, the developer could choose an ACCELERATOR type device
+   * for ML workloads, and reserve GPU for graphical rendering.
+   *
+   * @param device The representation of the specified device.
+   * @param type The returned {@link DeviceTypeCode} of the specified device.
+   *
+   * @return ANEURALNETWORKS_NO_ERROR if successful.
+   *
+   * Available since API level 29.
+   */
+  int (*ANeuralNetworksDevice_getType)(const ANeuralNetworksDevice* device,
+                                       int32_t* type);
+
+  /**
    * Get the supported operations for a specified set of devices. If multiple
    * devices are selected, the supported operation list is a union of supported
    * operations of all selected devices.
@@ -771,6 +790,76 @@ struct NnApi {
       const uint8_t* token);
 
   /**
+   * Set the maximum expected duration for compiling the model.
+   *
+   * If the device is not able to complete the compilation within the specified
+   * duration, the compilation may be aborted. The timeout duration begins at
+   * the call to {@link ANeuralNetworksCompilation_finish}.
+   *
+   * This timeout duration acts as a hint to drivers, and can be used to both
+   * free up compute resources within the driver and return control back to the
+   * application quicker than is possible without the hint. It enables drivers
+   * that are able to estimate how long a compilation will take to abort the
+   * compilation before it has even started if the driver believes the
+   * compilation cannot be completed within the timeout duration. Similarly, it
+   * enables drivers to abort an ongoing compilation if it is taking too long.
+   * However, this call does not guarantee that the compilation will complete or
+   * abort within the timeout duration.
+   *
+   * By default (i.e., unless ANeuralNetworksCompilation_setTimeout is called),
+   * the timeout duration for compiling the model is considered infinite.
+   *
+   * The {@link ANeuralNetworksCompilation} must have been created with
+   * {@link ANeuralNetworksCompilation_createForDevices} with numDevices = 1,
+   * otherwise this function will fail with ANEURALNETWORKS_BAD_DATA. If the
+   * device has a feature level reported by
+   * {@link ANeuralNetworksDevice_getFeatureLevel} that is lower than 30, then
+   * the timeout duration hint will be ignored.
+   *
+   * See {@link ANeuralNetworksCompilation} for information on multithreaded
+   * usage.
+   *
+   * @param compilation The compilation to be modified.
+   * @param duration The maximum amount of time in nanoseconds that is expected
+   * to be spent finishing a compilation. If this duration is exceeded, the
+   *     compilation may be aborted. If set to 0, the timeout duration is
+   *     considered infinite.
+   *
+   * @return ANEURALNETWORKS_NO_ERROR if successful.
+   *
+   * Available since API level 30.
+   */
+  int (*ANeuralNetworksCompilation_setTimeout)(
+      ANeuralNetworksCompilation* compilation, uint64_t duration);
+
+  /**
+   * Set the execution priority.
+   *
+   * Execution priorities are relative to other executions created by the same
+   * application (specifically same uid) for the same device. Specifically,
+   * priorities of executions from one application will not affect executions
+   * from another application. Similarly, priorities of executions on one device
+   * will not affect executions on another device.
+   *
+   * Higher priority executions may use more compute resources than lower
+   * priority executions, and may preempt or starve lower priority executions.
+   *
+   * See {@link ANeuralNetworksCompilation} for information on multithreaded
+   * usage.
+   *
+   * Available since API level 30.
+   *
+   * @param compilation The compilation to be modified.
+   * @param priority The relative priority of the execution compared to other
+   *     executions created by the application. Must be one of
+   *     ANEURALNETWORKS_PRIORITY_*.
+   *
+   * @return ANEURALNETWORKS_NO_ERROR if successful.
+   */
+  int (*ANeuralNetworksCompilation_setPriority)(
+      ANeuralNetworksCompilation* compilation, int priority);
+
+  /**
    * Schedule synchronous evaluation of the execution.
    *
    * <p>Schedules synchronous evaluation of the execution. Returns once the
@@ -793,6 +882,84 @@ struct NnApi {
    *         cannot be properly mapped.
    */
   int (*ANeuralNetworksExecution_compute)(ANeuralNetworksExecution* execution);
+
+  /**
+   * Set the maximum expected duration of the specified execution.
+   *
+   * If the device is not able to complete the execution within the specified
+   * duration, the execution may be aborted. The timeout duration begins at a
+   * call to one of:
+   * - {@link ANeuralNetworksExecution_burstCompute}
+   * - {@link ANeuralNetworksExecution_compute}
+   * - {@link ANeuralNetworksExecution_startCompute}
+   * - {@link ANeuralNetworksExecution_startComputeWithDependencies}
+   *
+   * This timeout duration acts as a hint to drivers, and can be used to both
+   * free up compute resources within the driver and return control back to the
+   * application quicker than is possible without the hint. It enables drivers
+   * that are able to estimate how long an execution will take to abort the
+   * execution before it has even started if the driver believes the execution
+   * cannot be completed within the timeout duration. Similarly, it enables
+   * drivers to abort an ongoing execution if it is taking too long. However,
+   * this call does not guarantee that the execution will complete or abort
+   * within the timeout duration.
+   *
+   * By default (i.e., unless ANeuralNetworksExecution_setTimeout is called),
+   * the timeout duration for execution is considered infinite.
+   *
+   * The {@link ANeuralNetworksExecution} must have been created from an
+   * {@link ANeuralNetworksCompilation} which in turn was created from
+   * {@link ANeuralNetworksCompilation_createForDevices} with numDevices = 1,
+   * otherwise this function will fail with ANEURALNETWORKS_BAD_DATA. If the
+   * device has a feature level reported by
+   * {@link ANeuralNetworksDevice_getFeatureLevel} that is lower than 30, then
+   * the timeout duration hint will be ignored.
+   *
+   * See {@link ANeuralNetworksExecution} for information on multithreaded
+   * usage.
+   *
+   * @param execution The execution to be modified.
+   * @param duration The maximum amount of time in nanoseconds that is expected
+   * to be spent executing a model. If this duration is exceeded, the execution
+   *     may be aborted. If set to 0, the timeout duration is considered
+   * infinite.
+   *
+   * @return ANEURALNETWORKS_NO_ERROR if successful.
+   *
+   * Available since API level 30.
+   */
+  int (*ANeuralNetworksExecution_setTimeout)(
+      ANeuralNetworksExecution* execution, uint64_t duration);
+
+  /**
+   * Set the maximum duration of WHILE loops in the specified execution.
+   *
+   * This is a fuzzy per-loop timeout intended to prevent infinite loops.
+   *
+   * If a WHILE loop condition model does not output false within the specified
+   * duration, the execution will be aborted.
+   *
+   * See {@link ANeuralNetworks_getDefaultLoopTimeout} and
+   * {@link ANeuralNetworks_getMaximumLoopTimeout} for the default
+   * and maximum timeout values.
+   *
+   * See {@link ANeuralNetworksExecution} for information on multithreaded
+   * usage.
+   *
+   * @param execution The execution to be modified.
+   * @param duration The maximum amount of time in nanoseconds that can be spent
+   *     executing a WHILE loop. If the specified duration value exceeds the
+   * value produced by {@link ANeuralNetworks_getMaximumLoopTimeout}, it will be
+   *     overridden by that value.
+   *
+   * @return ANEURALNETWORKS_NO_ERROR if successful.
+   *         ANEURALNETWORKS_BAD_STATE if execution has started.
+   *         ANEURALNETWORKS_UNEXPECTED_NULL if execution is NULL.
+   *
+   * Available since API level 30.
+   */
+  int (*ANeuralNetworksExecution_setLoopTimeout)(
+      ANeuralNetworksExecution* execution, uint64_t duration);
 
   /**
    * Get the dimensional information of the specified output operand of the
@@ -984,6 +1151,79 @@ struct NnApi {
   int (*ANeuralNetworksExecution_getDuration)(
       const ANeuralNetworksExecution* execution, int32_t durationCode,
       uint64_t* duration);
+
+  /**
+   * Queries whether an extension is supported by the driver implementation of
+   * the specified device.
+   *
+   * @param device The representation of the specified device.
+   * @param extension The extension name.
+   * @param isExtensionSupported The boolean value indicating whether the
+   * extension is supported.
+   *
+   * @return ANEURALNETWORKS_NO_ERROR if successful.
+   *
+   * Available since API level 29.
+   */
+  int (*ANeuralNetworksDevice_getExtensionSupport)(
+      const ANeuralNetworksDevice* device, const char* extensionName,
+      bool* isExtensionSupported);
+
+  /**
+   * Creates an operand type from an extension name and an extension operand
+   * code.
+   *
+   * See {@link ANeuralNetworksModel} for information on multithreaded usage.
+   *
+   * Available since API level 29.
+   *
+   * @param model The model to contain the operand.
+   * @param extensionName The extension name.
+   * @param operandCodeWithinExtension The extension operand code.
+   * @param type The operand type.
+   *
+   * @return ANEURALNETWORKS_NO_ERROR if successful.
+   */
+  int (*ANeuralNetworksModel_getExtensionOperandType)(
+      ANeuralNetworksModel* model, const char* extensionName,
+      uint16_t operandCodeWithinExtension, int32_t* type);
+
+  /**
+   * Creates an operation type from an extension name and an extension operation
+   * code.
+   *
+   * See {@link ANeuralNetworksModel} for information on multithreaded usage.
+   *
+   * Available since API level 29.
+   *
+   * @param model The model to contain the operation.
+   * @param extensionName The extension name.
+   * @param operationCodeWithinExtension The extension operation code.
+   * @param type The operation type.
+   *
+   * @return ANEURALNETWORKS_NO_ERROR if successful.
+   */
+  int (*ANeuralNetworksModel_getExtensionOperationType)(
+      ANeuralNetworksModel* model, const char* extensionName,
+      uint16_t operationCodeWithinExtension,
+      ANeuralNetworksOperationType* type);
+
+  /**
+   * Sets extension operand parameters.
+   *
+   * Available since API level 29.
+   *
+   * @param model The model to be modified.
+   * @param index The index of the model operand we're setting.
+   * @param data A pointer to the extension operand data.
+   *             The data does not have to outlive the call to this function.
+   * @param length The size in bytes of the data value.
+   *
+   * @return ANEURALNETWORKS_NO_ERROR if successful.
+   */
+  int (*ANeuralNetworksModel_setOperandExtensionData)(
+      ANeuralNetworksModel* model, int32_t index, const void* data,
+      size_t length);
 
   /**/
 };

@@ -16,8 +16,7 @@ limitations under the License.
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/conv_2d.h"
-#include "tensorflow/core/kernels/conv_3d.h"
+#include "tensorflow/core/kernels/conv_ops_3d.h"
 
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -25,6 +24,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
+#include "tensorflow/core/kernels/conv_2d.h"
+#include "tensorflow/core/kernels/conv_3d.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -32,160 +33,34 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/protobuf/autotuning.pb.h"
+#include "tensorflow/core/util/proto/proto_utils.h"
 using stream_executor::dnn::DimIndex;
-#endif
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
+#include "tensorflow/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
+#include "tensorflow/stream_executor/tf_allocator_adapter.h"
+#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
-template <typename Device, typename T>
-struct LaunchConvOp;
-
-template <typename T>
-struct LaunchConvOp<CPUDevice, T> {
-  static void launch(OpKernelContext* context, bool cudnn_use_autotune,
-                     const Tensor& input, const Tensor& filter,
-                     const std::array<int64, 3>& dilations,
-                     const std::array<int64, 3>& strides, const Padding padding,
-                     TensorFormat data_format, Tensor* output) {
-    OP_REQUIRES(context, data_format == FORMAT_NHWC,
-                errors::InvalidArgument("CPU implementation of Conv3D "
-                                        "currently only supports the NHWC "
-                                        "tensor format."));
-    OP_REQUIRES(context,
-                dilations[0] == 1 && dilations[1] == 1 && dilations[2] == 1,
-                errors::InvalidArgument("CPU implementation of Conv3D "
-                                        "currently only supports dilated rates "
-                                        "of 1."));
-    functor::CuboidConvolution<CPUDevice, T>()(
-        context->eigen_device<CPUDevice>(), output->tensor<T, 5>(),
-        input.tensor<T, 5>(), filter.tensor<T, 5>(), strides[2], strides[1],
-        strides[0], BrainPadding2EigenPadding(padding));
-  }
-};
-
-template <typename Device, typename T>
-class Conv3DOp : public BinaryOp<T> {
- public:
-  explicit Conv3DOp(OpKernelConstruction* context) : BinaryOp<T>(context) {
-    string data_format;
-    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
-    OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
-    OP_REQUIRES(context, stride_.size() == 5,
-                errors::InvalidArgument("Sliding window strides field must "
-                                        "specify 5 dimensions"));
-    OP_REQUIRES(
-        context,
-        (GetTensorDim(stride_, data_format_, 'N') == 1 &&
-         GetTensorDim(stride_, data_format_, 'C') == 1),
-        errors::InvalidArgument("Current implementation does not yet support "
-                                "strides in the batch and depth dimensions."));
-    OP_REQUIRES(
-        context,
-        (GetTensorDim(stride_, data_format_, '0') > 0 &&
-         GetTensorDim(stride_, data_format_, '1') > 0 &&
-         GetTensorDim(stride_, data_format_, '2') > 0),
-        errors::InvalidArgument("Spatial strides should be larger than 0."));
-    OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilation_));
-    OP_REQUIRES(context, dilation_.size() == 5,
-                errors::InvalidArgument("Dilation rates field must "
-                                        "specify 5 dimensions"));
-    OP_REQUIRES(context,
-                (GetTensorDim(dilation_, data_format_, 'N') == 1 &&
-                 GetTensorDim(dilation_, data_format_, 'C') == 1),
-                errors::InvalidArgument(
-                    "Current implementation does not yet support "
-                    "dilation rates in the batch and depth dimensions."));
-    OP_REQUIRES(
-        context,
-        (GetTensorDim(dilation_, data_format_, '0') > 0 &&
-         GetTensorDim(dilation_, data_format_, '1') > 0 &&
-         GetTensorDim(dilation_, data_format_, '2') > 0),
-        errors::InvalidArgument("Dilated rates should be larger than 0."));
-    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
-    cudnn_use_autotune_ = CudnnUseAutotune();
-  }
-
-  void Compute(OpKernelContext* context) override {
-    // Input tensor is of the following dimensions:
-    // [ batch, in_z, in_y, in_x, in_channels ]
-    const Tensor& input = context->input(0);
-
-    // Input filter is of the following dimensions:
-    // [ filter_z, filter_y, filter_x, in_channels, out_channels]
-    const Tensor& filter = context->input(1);
-
-    // NOTE: The ordering of the spatial dimensions is arbitrary, but has to be
-    // kept consistent between input/filter/output.
-    OP_REQUIRES(context, input.dims() == 5,
-                errors::InvalidArgument("input must be 5-dimensional"));
-    OP_REQUIRES(context, filter.dims() == 5,
-                errors::InvalidArgument("filter must be 5-dimensional"));
-
-    const int64 in_depth = GetTensorDim(input, data_format_, 'C');
-    const int64 in_batch = GetTensorDim(input, data_format_, 'N');
-
-    const int64 out_depth = filter.dim_size(4);
-    OP_REQUIRES(
-        context, in_depth == filter.dim_size(3),
-        errors::InvalidArgument("input and filter must have the same depth"));
-
-    // Dimension order for these arrays is: z, y, x.
-    std::array<int64, 3> input_size = {
-        {GetTensorDim(input, data_format_, '0'),
-         GetTensorDim(input, data_format_, '1'),
-         GetTensorDim(input, data_format_, '2')}};
-    std::array<int64, 3> filter_size = {
-        {filter.dim_size(0), filter.dim_size(1), filter.dim_size(2)}};
-    std::array<int64, 3> dilations = {
-        {GetTensorDim(dilation_, data_format_, '0'),
-         GetTensorDim(dilation_, data_format_, '1'),
-         GetTensorDim(dilation_, data_format_, '2')}};
-    std::array<int64, 3> strides = {{GetTensorDim(stride_, data_format_, '0'),
-                                     GetTensorDim(stride_, data_format_, '1'),
-                                     GetTensorDim(stride_, data_format_, '2')}};
-    std::array<int64, 3> out, padding;
-
-    OP_REQUIRES_OK(
-        context, Get3dOutputSizeV2(input_size, filter_size, dilations, strides,
-                                   padding_, &out, &padding));
-    TensorShape out_shape = ShapeFromFormat(
-        data_format_, in_batch, {{out[0], out[1], out[2]}}, out_depth);
-    Tensor* output;
-    OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
-
-    // Return early if nothing to do.
-    if (out_shape.num_elements() == 0) return;
-
-    LaunchConvOp<Device, T>::launch(context, cudnn_use_autotune_, input, filter,
-                                    dilations, strides, padding_, data_format_,
-                                    output);
-  }
-
- private:
-  std::vector<int32> dilation_;
-  std::vector<int32> stride_;
-  Padding padding_;
-  TensorFormat data_format_;
-  bool cudnn_use_autotune_;
-};
-
 #define REGISTER_CPU_KERNEL(T)                                  \
   REGISTER_KERNEL_BUILDER(                                      \
       Name("Conv3D").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
-      Conv3DOp<CPUDevice, T>);
+      Conv3DOp<CPUDevice, T, OpKernel, OpKernelConstruction,    \
+               OpKernelContext>);
 TF_CALL_half(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // A dummy type to group forward convolution autotune results together.
 struct Conv3dAutoTuneGroup {
@@ -197,7 +72,7 @@ typedef AutoTuneSingleton<Conv3dAutoTuneGroup, ConvParameters,
 
 // TODO(mjanusz): Share logic with 2d implementation as much as possible.
 template <typename T>
-struct LaunchConvOp<GPUDevice, T> {
+struct LaunchConvOp<GPUDevice, T, OpKernelContext> {
   static void launch(OpKernelContext* ctx, bool cudnn_use_autotune,
                      const Tensor& input_param, const Tensor& filter,
                      const std::array<int64, 3>& dilations,
@@ -217,6 +92,7 @@ struct LaunchConvOp<GPUDevice, T> {
     const int64 filter_planes = filter.dim_size(0);
     const int64 filter_rows = filter.dim_size(1);
     const int64 filter_cols = filter.dim_size(2);
+    const int64 filter_depth = filter.dim_size(3);
     const int64 out_depth = filter.dim_size(4);
 
     int64 pad_planes = 0, pad_rows = 0, pad_cols = 0;
@@ -233,11 +109,13 @@ struct LaunchConvOp<GPUDevice, T> {
           0, (out_cols - 1) * strides[2] + filter_cols - in_cols);
     }
 
+    bool is_grouped_convolution = filter_depth != in_depth;
+
     // NOTE: This only works in NHWC.
-    if (filter_planes == 1 && filter_rows == 1 && filter_cols == 1 &&
-        dilations[0] == 1 && dilations[1] == 1 && dilations[2] == 1 &&
-        strides[0] == 1 && strides[1] == 1 && strides[2] == 1 &&
-        data_format == FORMAT_NHWC) {
+    if (!is_grouped_convolution && filter_planes == 1 && filter_rows == 1 &&
+        filter_cols == 1 && dilations[0] == 1 && dilations[1] == 1 &&
+        dilations[2] == 1 && strides[0] == 1 && strides[1] == 1 &&
+        strides[2] == 1 && data_format == FORMAT_NHWC) {
       // 1x1 filter, so call cublas directly.
       const uint64 m = in_batch * in_planes * in_rows * in_cols;
       const uint64 k = in_depth;
@@ -261,9 +139,9 @@ struct LaunchConvOp<GPUDevice, T> {
                                         ", n=", n, ", k=", k));
       }
       return;
-    } else if (filter_planes == in_planes && filter_rows == in_rows &&
-               filter_cols == in_cols && padding == Padding::VALID &&
-               data_format == FORMAT_NHWC) {
+    } else if (!is_grouped_convolution && filter_planes == in_planes &&
+               filter_rows == in_rows && filter_cols == in_cols &&
+               padding == Padding::VALID && data_format == FORMAT_NHWC) {
       // The input data and filter have the same planes/height/width, so call
       // cublas directly.
       const uint64 m = in_batch;
@@ -364,7 +242,7 @@ struct LaunchConvOp<GPUDevice, T> {
     filter_desc.set_spatial_dim(DimIndex::X, filter_cols)
         .set_spatial_dim(DimIndex::Y, filter_rows)
         .set_spatial_dim(DimIndex::Z, filter_planes)
-        .set_input_feature_map_count(in_depth)
+        .set_input_feature_map_count(filter_depth)
         .set_output_feature_map_count(out_depth);
     se::dnn::ConvolutionDescriptor conv_desc(3);
     conv_desc.set_dilation_rate(DimIndex::X, dilations[2])
@@ -375,7 +253,8 @@ struct LaunchConvOp<GPUDevice, T> {
         .set_filter_stride(DimIndex::Z, strides[0])
         .set_zero_padding(DimIndex::X, pad_cols / 2)
         .set_zero_padding(DimIndex::Y, pad_rows / 2)
-        .set_zero_padding(DimIndex::Z, pad_planes / 2);
+        .set_zero_padding(DimIndex::Z, pad_planes / 2)
+        .set_group_count(in_depth / filter_depth);
 
     Tensor transformed_filter;
     OP_REQUIRES_OK(
@@ -424,16 +303,29 @@ struct LaunchConvOp<GPUDevice, T> {
         {{pad_planes, pad_rows, pad_cols}},
         dtype,
         device_id,
-    };
+        conv_desc.group_count()};
 
     using se::dnn::AlgorithmConfig;
     using se::dnn::AlgorithmDesc;
     using se::dnn::ProfileResult;
 
+#if TENSORFLOW_USE_ROCM
+    // cudnn_use_autotune is applicable only the CUDA flow
+    // for ROCm/MIOpen, we need to call GetMIOpenConvolveAlgorithms explicitly
+    // if we do not have a cached algorithm_config for this conv_parameters
+    cudnn_use_autotune = true;
+#endif
     AlgorithmConfig algorithm_config;
 
     if (cudnn_use_autotune && !AutoTuneConv3d::GetInstance()->Find(
                                   conv_parameters, &algorithm_config)) {
+#if GOOGLE_CUDA
+      se::TfAllocatorAdapter tf_allocator_adapter(
+          ctx->device()->GetAllocator({}), stream);
+      se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
+                                        se::GpuAsmOpts());
+      se::DeviceMemory<T> output_ptr_rz(
+          WrapRedzoneBestEffort(&rz_allocator, output_ptr));
       std::vector<AlgorithmDesc> algorithms;
       OP_REQUIRES(ctx,
                   stream->parent()->GetConvolveAlgorithms(
@@ -445,44 +337,106 @@ struct LaunchConvOp<GPUDevice, T> {
                       "because cuDNN failed to initialize, so try looking to "
                       "see if a warning log message was printed above."));
 
-      ProfileResult best_result;
-      ProfileResult best_result_no_scratch;
-      for (auto profile_algorithm : algorithms) {
+      std::vector<tensorflow::AutotuneResult> results;
+      for (const auto& profile_algorithm : algorithms) {
         // TODO(zhengxq): profile each algorithm multiple times to better
         // accuracy.
         DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+        se::RedzoneAllocator rz_scratch_allocator(
+            stream, &tf_allocator_adapter, se::GpuAsmOpts(),
+            /*memory_limit=*/ConvolveScratchSize);
+        se::ScratchAllocator* allocator_used =
+            !RedzoneCheckDisabled()
+                ? static_cast<se::ScratchAllocator*>(&rz_scratch_allocator)
+                : static_cast<se::ScratchAllocator*>(&scratch_allocator);
         ProfileResult profile_result;
         bool cudnn_launch_status =
             stream
                 ->ThenConvolveWithAlgorithm(
                     input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
-                    output_desc, &output_ptr, &scratch_allocator,
+                    output_desc, &output_ptr_rz, allocator_used,
                     AlgorithmConfig(profile_algorithm), &profile_result)
                 .ok();
         if (cudnn_launch_status) {
           if (profile_result.is_valid()) {
-            if (profile_result.elapsed_time_in_ms() <
-                best_result.elapsed_time_in_ms()) {
-              best_result = profile_result;
-            }
-            if (scratch_allocator.TotalByteSize() == 0 &&
-                profile_result.elapsed_time_in_ms() <
-                    best_result_no_scratch.elapsed_time_in_ms()) {
-              best_result_no_scratch = profile_result;
+            results.emplace_back();
+            auto& result = results.back();
+            result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
+            result.mutable_conv()->set_tensor_ops_enabled(
+                profile_algorithm.tensor_ops_enabled());
+            result.set_scratch_bytes(
+                !RedzoneCheckDisabled()
+                    ? rz_scratch_allocator
+                          .TotalAllocatedBytesExcludingRedzones()
+                    : scratch_allocator.TotalByteSize());
+            *result.mutable_run_time() = proto_utils::ToDurationProto(
+                absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+            CheckRedzones(rz_scratch_allocator, &result);
+            CheckRedzones(rz_allocator, &result);
+          }
+        }
+      }
+#elif TENSORFLOW_USE_ROCM
+      DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+
+      std::vector<ProfileResult> algorithms;
+      OP_REQUIRES(ctx,
+                  stream->parent()->GetMIOpenConvolveAlgorithms(
+                      se::dnn::ConvolutionKind::FORWARD,
+                      se::dnn::ToDataType<T>::value, stream, input_desc,
+                      input_ptr, filter_desc, filter_ptr, output_desc,
+                      output_ptr, conv_desc, &scratch_allocator, &algorithms),
+                  errors::Unknown(
+                      "Failed to get convolution algorithm. This is probably "
+                      "because MIOpen failed to initialize, so try looking to "
+                      "see if a warning log message was printed above."));
+      std::vector<tensorflow::AutotuneResult> results;
+      if (algorithms.size() == 1) {
+        auto profile_result = algorithms[0];
+        results.emplace_back();
+        auto& result = results.back();
+        result.mutable_conv()->set_algorithm(
+            profile_result.algorithm().algo_id());
+        result.mutable_conv()->set_tensor_ops_enabled(
+            profile_result.algorithm().tensor_ops_enabled());
+
+        result.set_scratch_bytes(profile_result.scratch_size());
+        *result.mutable_run_time() = proto_utils::ToDurationProto(
+            absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+      } else {
+        for (auto miopen_algorithm : algorithms) {
+          auto profile_algorithm = miopen_algorithm.algorithm();
+          ProfileResult profile_result;
+          bool miopen_launch_status =
+              stream
+                  ->ThenConvolveWithAlgorithm(
+                      input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
+                      output_desc, &output_ptr, &scratch_allocator,
+                      AlgorithmConfig(profile_algorithm,
+                                      miopen_algorithm.scratch_size()),
+                      &profile_result)
+                  .ok();
+          if (miopen_launch_status) {
+            if (profile_result.is_valid()) {
+              results.emplace_back();
+              auto& result = results.back();
+              result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
+              result.mutable_conv()->set_tensor_ops_enabled(
+                  profile_algorithm.tensor_ops_enabled());
+              result.set_scratch_bytes(scratch_allocator.TotalByteSize());
+              *result.mutable_run_time() = proto_utils::ToDurationProto(
+                  absl::Milliseconds(profile_result.elapsed_time_in_ms()));
             }
           }
         }
       }
-      OP_REQUIRES(ctx,
-                  best_result.is_valid() || best_result_no_scratch.is_valid(),
-                  errors::NotFound("No algorithm worked!"));
-      if (best_result.is_valid()) {
-        algorithm_config.set_algorithm(best_result.algorithm());
-      }
-      if (best_result_no_scratch.is_valid()) {
-        algorithm_config.set_algorithm_no_scratch(
-            best_result_no_scratch.algorithm());
-      }
+#endif
+
+      LogConvAutotuneResults(se::dnn::ConvolutionKind::FORWARD,
+                             se::dnn::ToDataType<T>::value, input_ptr,
+                             filter_ptr, output_ptr, input_desc, filter_desc,
+                             output_desc, conv_desc, stream->parent(), results);
+      OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
       AutoTuneConv3d::GetInstance()->Insert(conv_parameters, algorithm_config);
     }
 
@@ -526,7 +480,8 @@ namespace functor {
       typename TTypes<T, 5, int>::Tensor out);                        \
   template <>                                                         \
   void ReverseTransformFilter<GPUDevice, T, 5>::operator()(           \
-      const GPUDevice& d, typename TTypes<T, 5>::ConstTensor in,      \
+      const GPUDevice& d, FilterTensorFormat src_filter_format,       \
+      typename TTypes<T, 5>::ConstTensor in,                          \
       typename TTypes<T, 5>::Tensor out);                             \
   template <>                                                         \
   void PadInput<GPUDevice, T, int, 5>::operator()(                    \
@@ -553,13 +508,16 @@ DECLARE_GPU_SPEC(double);
 // Registration of the GPU implementations.
 REGISTER_KERNEL_BUILDER(
     Name("Conv3D").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
-    Conv3DOp<GPUDevice, Eigen::half>);
+    Conv3DOp<GPUDevice, Eigen::half, OpKernel, OpKernelConstruction,
+             OpKernelContext>);
 REGISTER_KERNEL_BUILDER(
     Name("Conv3D").Device(DEVICE_GPU).TypeConstraint<float>("T"),
-    Conv3DOp<GPUDevice, float>);
+    Conv3DOp<GPUDevice, float, OpKernel, OpKernelConstruction,
+             OpKernelContext>);
 REGISTER_KERNEL_BUILDER(
     Name("Conv3D").Device(DEVICE_GPU).TypeConstraint<double>("T"),
-    Conv3DOp<GPUDevice, double>);
-#endif  // GOOGLE_CUDA
+    Conv3DOp<GPUDevice, double, OpKernel, OpKernelConstruction,
+             OpKernelContext>);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/fill_functor.h"
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 
 namespace tensorflow {
 
@@ -173,8 +174,9 @@ REGISTER_KERNELS_CPU(double);
 REGISTER_KERNELS_CPU(int32);
 REGISTER_KERNELS_CPU(complex64);
 REGISTER_KERNELS_CPU(complex128);
+REGISTER_KERNELS_CPU(bfloat16);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace functor {
 #define DECLARE_GPU_SPEC(T, Tindices, ADJ_A, ADJ_B)                       \
@@ -221,7 +223,7 @@ DECLARE_ADJOINT_GPU_SPEC(float);
 REGISTER_KERNELS_GPU(float);
 #undef REGISTER_GPU
 #undef REGISTER_KERNELS_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace functor {
 
@@ -242,7 +244,7 @@ Status MOutOfBoundsError(int64 m, std::size_t i, int lhs_index_a,
 template <typename T, typename Tindices, bool ADJ_A, bool ADJ_B>
 struct SparseTensorDenseMatMulFunctor<CPUDevice, T, Tindices, ADJ_A, ADJ_B> {
   // Vectorize certain operations above this size.
-  static const std::size_t kNumVectorize = 32;
+  static constexpr std::size_t kNumVectorize = 32;
 
   static Status Compute(const CPUDevice& d, typename TTypes<T>::Matrix out,
                         typename TTypes<Tindices>::ConstMatrix a_indices,

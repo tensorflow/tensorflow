@@ -67,6 +67,14 @@ class BoostedTreesQuantileStreamResource : public ResourceBase {
     are_buckets_ready_ = are_buckets_ready;
   }
 
+  void ResetStreams() {
+    streams_.clear();
+    streams_.reserve(num_streams_);
+    for (int64 idx = 0; idx < num_streams_; ++idx) {
+      streams_.push_back(QuantileStream(epsilon_, max_elements_));
+    }
+  }
+
  private:
   ~BoostedTreesQuantileStreamResource() override {}
 

@@ -90,10 +90,10 @@ class OptionalVariant {
   string DebugString() const {
     if (values_) {
       return strings::StrCat("OptionalVariant<", "values: (",
-                             str_util::Join(*values_, ", ",
-                                            [](string* s, const Tensor& elem) {
-                                              *s = elem.DebugString();
-                                            }),
+                             absl::StrJoin(*values_, ", ",
+                                           [](string* s, const Tensor& elem) {
+                                             *s = elem.DebugString();
+                                           }),
                              ")>");
     } else {
       return strings::StrCat("OptionalVariant<None>");
@@ -151,6 +151,47 @@ Status OptionalBinaryAdd(OpKernelContext* ctx, const OptionalVariant& a,
   *out = OptionalVariant(out_tensors);
   return Status::OK();
 }
+
+class OptionalNoneOp : public OpKernel {
+ public:
+  explicit OptionalNoneOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override;
+};
+
+class OptionalFromValueOp : public OpKernel {
+ public:
+  explicit OptionalFromValueOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override;
+};
+
+class OptionalHasValueOp : public OpKernel {
+ public:
+  explicit OptionalHasValueOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override;
+};
+
+class OptionalGetValueOp : public OpKernel {
+ public:
+  explicit OptionalGetValueOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
+    OP_REQUIRES(
+        ctx, output_shapes_.size() == output_types_.size(),
+        errors::InvalidArgument(
+            "output_types and output_shapes must be same length, got:\n",
+            "output_types: ", output_types_.size(), "\n",
+            "output_shapes: ", output_shapes_.size()));
+  }
+
+  void Compute(OpKernelContext* ctx) override;
+
+ private:
+  DataTypeVector output_types_;
+  std::vector<PartialTensorShape> output_shapes_;
+};
 
 }  // namespace data
 }  // namespace tensorflow

@@ -119,7 +119,7 @@ class ScatterNdTest(xla_test.XLATestCase):
         self._VariableRankTest(np_scatter, tf_scatter, vtype, itype)
 
   def _runScatterNd(self, indices, updates, shape):
-    with self.cached_session():
+    with self.session():
       updates_placeholder = array_ops.placeholder(updates.dtype)
       indices_placeholder = array_ops.placeholder(indices.dtype)
       with self.test_scope():
@@ -133,6 +133,12 @@ class ScatterNdTest(xla_test.XLATestCase):
     updates = np.array([9, 10, 11, 12], dtype=np.float32)
     expected = np.array([0, 11, 0, 10, 9, 0, 0, 12], dtype=np.int32)
     self.assertAllEqual(expected, self._runScatterNd(indices, updates, [8]))
+
+  def testRepeatedIndices(self):
+    indices = np.array([[0], [1], [0], [1]], dtype=np.int32)
+    updates = np.array([9, 10, 11, 12], dtype=np.float32)
+    expected = np.array([20, 22], dtype=np.int32)
+    self.assertAllEqual(expected, self._runScatterNd(indices, updates, [2]))
 
   def testSimple2(self):
     indices = np.array([[1, 0], [1, 1]], dtype=np.int32)
@@ -182,6 +188,35 @@ class ScatterNdTest(xla_test.XLATestCase):
     self._runScatterNd(indices, updates, [6])
     indices = np.array([[2], [0], [6]], dtype=np.int32)
     self._runScatterNd(indices, updates, [6])
+
+
+class ScatterNdTensorTest(xla_test.XLATestCase):
+
+  def _runScatter(self, op):
+    indices_np = np.array([[4], [3], [1], [7]], dtype=np.int32)
+    updates_np = np.array([9, 10, 11, 12], dtype=np.float32)
+    with self.session() as sess, self.test_scope():
+      indices = array_ops.placeholder(indices_np.dtype, shape=indices_np.shape)
+      updates = array_ops.placeholder(updates_np.dtype, shape=updates_np.shape)
+      t = array_ops.ones([8], dtype=np.float32)
+
+      out = op(t, indices, updates)
+      return sess.run(out, feed_dict={indices: indices_np, updates: updates_np})
+
+  def testAdd(self):
+    self.assertAllEqual(
+        self._runScatter(array_ops.tensor_scatter_add),
+        np.array([1, 12, 1, 11, 10, 1, 1, 13], dtype=np.float32))
+
+  def testSub(self):
+    self.assertAllEqual(
+        self._runScatter(array_ops.tensor_scatter_sub),
+        np.array([1, -10, 1, -9, -8, 1, 1, -11], dtype=np.float32))
+
+  def testUpdate(self):
+    self.assertAllEqual(
+        self._runScatter(array_ops.tensor_scatter_update),
+        np.array([1, 11, 1, 10, 9, 1, 1, 12], dtype=np.float32))
 
 
 if __name__ == "__main__":

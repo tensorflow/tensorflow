@@ -173,7 +173,7 @@ class GemvConfig {
 //   |         C            | D |
 //   +----------------------+---+
 //
-// where A is the largest submatrix of the LHS that can be evenly dividied into
+// where A is the largest submatrix of the LHS that can be evenly divided into
 // tiles.  For each tile in A, assuming tile_rows_ == tile_cols_ == 4, we have:
 //
 //   +---+---+---+---+       +--+--+--+--+
@@ -212,7 +212,7 @@ class GemvConfig {
 // Where R is the starting row for the tile.
 //
 // We have an inner epilogue loop to deal with the "C" submatrix and an outer
-// epilogue loop to deal with the B,D submarix.
+// epilogue loop to deal with the B,D submatrix.
 //
 // TODO(sanjoy): We should investigate if using gather loads and scatter stores
 // can be used here have the same inner loop for both column-major and row-major
@@ -410,7 +410,7 @@ void ColumnMajorMatrixVectorProductEmitter::EmitInnerLoopEpilogue(
 //   |         C            | D |
 //   +----------------------+---+
 //
-// where A is the largest submatrix of the LHS that can be evenly dividied into
+// where A is the largest submatrix of the LHS that can be evenly divided into
 // tiles.  For each tile in A, assuming tile_rows_ == tile_cols_ == 4, we have:
 //
 //   +---+---+---+---+
@@ -938,24 +938,76 @@ void TiledSmallGemmEmitter::EmitTiledGemm(
   });
 }
 
+llvm::Type* GetPointerToElementType(llvm::Type* pointer_type) {
+  llvm::Type* type =
+      llvm::cast<llvm::PointerType>(pointer_type)->getElementType();
+  while (auto* array_type = llvm::dyn_cast<llvm::ArrayType>(type)) {
+    type = array_type->getElementType();
+  }
+
+  return type->getPointerTo();
+}
+
+struct GemvBuffersWithCanonicalType {
+  llvm::Value* lhs_canonicalized;
+  llvm::Value* rhs_canonicalized;
+  llvm::Value* addend_canonicalized;
+  llvm::Value* result_canonicalized;
+};
+
+GemvBuffersWithCanonicalType GetGemvBuffersWithCanonicalType(
+    llvm::Value* lhs, llvm::Value* rhs, llvm::Value* addend,
+    llvm::Value* result, llvm::IRBuilder<>* b) {
+  // We characterize a GEMV operation via M and K, since N is implicitly 1.
+  // This means the GEMV that multiplies (say) [5,6] with [6,1] is implemented
+  // by the same GEMV that multiplies [5,6] with [1,6].  However, the
+  // `llvm::Types` for the inputs to the two GEMVs don't match (in a trivial
+  // sense -- the in memory representations are the same) since they're computed
+  // from the `xla::Shape`s.  Since we want to be able to call the same
+  // `llvm::Function` for the two GEMVs we canonicalize the types of the GEMV
+  // inputs here into the same type.
+  GemvBuffersWithCanonicalType buffers_with_canonical_type;
+  llvm::Type* lhs_type = lhs->getType();
+  llvm::Type* rhs_type = rhs->getType();
+  llvm::Type* addend_type = addend ? addend->getType() : nullptr;
+  llvm::Type* result_type = result->getType();
+
+  buffers_with_canonical_type.lhs_canonicalized =
+      b->CreateBitCast(lhs, GetPointerToElementType(lhs_type));
+  buffers_with_canonical_type.rhs_canonicalized =
+      b->CreateBitCast(rhs, GetPointerToElementType(rhs_type));
+  buffers_with_canonical_type.addend_canonicalized =
+      addend ? b->CreateBitCast(addend, GetPointerToElementType(addend_type))
+             : nullptr;
+  buffers_with_canonical_type.result_canonicalized =
+      b->CreateBitCast(result, GetPointerToElementType(result_type));
+
+  return buffers_with_canonical_type;
+}
+
 }  // namespace
 
 void EmitRowMajorGemv(PrimitiveType scalar_type, int64 tile_rows,
                       int64 tile_cols, int64 m, int64 k, llvm::Value* lhs,
                       llvm::Value* rhs, llvm::Value* addend,
                       llvm::Value* result, llvm::IRBuilder<>* b,
-                      bool enable_fast_math, bool optimize_for_size) {
+                      const HloModuleConfig& module_config) {
   RowMajorMatrixVectorProductEmitter::Config config(
       /*scalar_type=*/scalar_type,
       /*tile_rows=*/tile_rows, /*tile_cols=*/tile_cols,
       /*m=*/m, /*k=*/k, /*has_addend=*/addend != nullptr);
 
+  GemvBuffersWithCanonicalType canonical_inputs =
+      GetGemvBuffersWithCanonicalType(lhs, rhs, addend, result, b);
+
   KernelSupportLibrary::EmitAndCallOutlinedKernel(
-      /*enable_fast_math=*/enable_fast_math,
-      /*optimize_for_size=*/optimize_for_size, b, config.GetCacheKey(), lhs,
-      rhs, addend, result,
-      [&](llvm::Value* lhs, llvm::Value* rhs, llvm::Value* addend,
-          llvm::Value* result) {
+      module_config, b, config.GetCacheKey(),
+      canonical_inputs.lhs_canonicalized, canonical_inputs.rhs_canonicalized,
+      canonical_inputs.addend_canonicalized,
+      canonical_inputs.result_canonicalized,
+      [&config, b, &canonical_inputs](llvm::Value* lhs, llvm::Value* rhs,
+                                      llvm::Value* addend,
+                                      llvm::Value* result) {
         RowMajorMatrixVectorProductEmitter emitter(config, lhs, rhs, addend,
                                                    result, b);
         emitter.Emit();
@@ -966,18 +1018,23 @@ void EmitColumnMajorGemv(PrimitiveType scalar_type, int64 tile_rows,
                          int64 tile_cols, int64 m, int64 k, llvm::Value* lhs,
                          llvm::Value* rhs, llvm::Value* addend,
                          llvm::Value* result, llvm::IRBuilder<>* b,
-                         bool enable_fast_math, bool optimize_for_size) {
+                         const HloModuleConfig& module_config) {
   ColumnMajorMatrixVectorProductEmitter::Config config(
       /*scalar_type=*/scalar_type,
       /*tile_rows=*/tile_rows, /*tile_cols=*/tile_cols,
       /*m=*/m, /*k=*/k, /*has_addend=*/addend != nullptr);
 
+  GemvBuffersWithCanonicalType canonical_inputs =
+      GetGemvBuffersWithCanonicalType(lhs, rhs, addend, result, b);
+
   KernelSupportLibrary::EmitAndCallOutlinedKernel(
-      /*enable_fast_math=*/enable_fast_math,
-      /*optimize_for_size=*/optimize_for_size, b, config.GetCacheKey(), lhs,
-      rhs, addend, result,
-      [&](llvm::Value* lhs, llvm::Value* rhs, llvm::Value* addend,
-          llvm::Value* result) {
+      module_config, b, config.GetCacheKey(),
+      canonical_inputs.lhs_canonicalized, canonical_inputs.rhs_canonicalized,
+      canonical_inputs.addend_canonicalized,
+      canonical_inputs.result_canonicalized,
+      [&config, b, &canonical_inputs](llvm::Value* lhs, llvm::Value* rhs,
+                                      llvm::Value* addend,
+                                      llvm::Value* result) {
         ColumnMajorMatrixVectorProductEmitter emitter(config, lhs, rhs, addend,
                                                       result, b);
         emitter.Emit();
@@ -989,7 +1046,7 @@ void EmitSmallGemm(PrimitiveType scalar_type, int64 m, int64 k, int64 n,
                    int64 min_vectorization_width, int64 tile_size_m,
                    int64 tile_size_k, llvm::Value* lhs, llvm::Value* rhs,
                    llvm::Value* result, llvm::IRBuilder<>* b,
-                   bool enable_fast_math, bool optimize_for_size) {
+                   const HloModuleConfig& module_config) {
   TiledSmallGemmEmitter::Config config(
       /*scalar_type=*/scalar_type,
       TiledSmallGemmEmitter::Dimensions{/*m=*/m, /*k=*/k, /*n=*/n},
@@ -999,9 +1056,7 @@ void EmitSmallGemm(PrimitiveType scalar_type, int64 m, int64 k, int64 n,
       /*tile_size_m=*/tile_size_m, /*tile_size_k=*/tile_size_k);
 
   KernelSupportLibrary::EmitAndCallOutlinedKernel(
-      /*enable_fast_math=*/enable_fast_math,
-      /*optimize_for_size=*/optimize_for_size, b, config.GetCacheKey(), lhs,
-      rhs, result,
+      module_config, b, config.GetCacheKey(), lhs, rhs, result,
       [&](llvm::Value* lhs, llvm::Value* rhs, llvm::Value* result) {
         TiledSmallGemmEmitter small_gemm_emitter(config, /*lhs=*/lhs,
                                                  /*rhs=*/rhs,

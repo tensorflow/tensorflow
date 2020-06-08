@@ -6,7 +6,7 @@ tf_module {
   }
   member_method {
     name: "gather_nd"
-    argspec: "args=[\'params\', \'indices\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'params\', \'indices\', \'name\', \'batch_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'0\'], "
   }
   member_method {
     name: "reshape"
@@ -18,7 +18,7 @@ tf_module {
   }
   member_method {
     name: "roll"
-    argspec: "args=[\'input\', \'shift\', \'axis\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'shift\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "scatter_nd"

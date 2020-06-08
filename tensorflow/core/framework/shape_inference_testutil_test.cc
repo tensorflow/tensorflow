@@ -26,11 +26,10 @@ namespace shape_inference {
 
 namespace {
 
-#define EXPECT_CONTAINS(str, substr)                            \
-  do {                                                          \
-    string s = (str);                                           \
-    EXPECT_TRUE(::tensorflow::str_util::StrContains(s, substr)) \
-        << "String: " << s;                                     \
+#define EXPECT_CONTAINS(str, substr)                              \
+  do {                                                            \
+    string s = (str);                                             \
+    EXPECT_TRUE(absl::StrContains(s, substr)) << "String: " << s; \
   } while (false)
 
 static OpShapeInferenceFn* global_fn_ptr = nullptr;
@@ -100,7 +99,7 @@ TEST(ShapeInferenceTestutilTest, Failures) {
                            ShapeInferenceTestOp("NoSuchOp"), "", "")
                            .error_message();
   EXPECT_TRUE(
-      str_util::StartsWith(error_message, "Op type not registered 'NoSuchOp'"));
+      absl::StartsWith(error_message, "Op type not registered 'NoSuchOp'"));
 
   // Wrong shape error messages.
   EXPECT_CONTAINS(RunInferShapes(op, "[1];[2];[1]", "?", fn_copy_input_0),

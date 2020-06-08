@@ -17,10 +17,11 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_CLOUD_OAUTH_CLIENT_H_
 
 #include <memory>
+
 #include "include/json/json.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/cloud/http_request.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 

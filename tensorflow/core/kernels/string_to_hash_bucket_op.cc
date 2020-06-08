@@ -33,7 +33,7 @@ class LegacyStringToHashBucketOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor* input_tensor;
     OP_REQUIRES_OK(context, context->input("string_tensor", &input_tensor));
-    const auto& input_flat = input_tensor->flat<string>();
+    const auto& input_flat = input_tensor->flat<tstring>();
 
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(context,

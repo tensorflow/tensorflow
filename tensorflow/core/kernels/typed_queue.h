@@ -41,7 +41,7 @@ class TypedQueue : public QueueBase {
   int64 MemoryUsed() const override;
 
  protected:
-  std::vector<SubQueue> queues_ GUARDED_BY(mu_);
+  std::vector<SubQueue> queues_ TF_GUARDED_BY(mu_);
 };  // class TypedQueue
 
 template <typename SubQueue>

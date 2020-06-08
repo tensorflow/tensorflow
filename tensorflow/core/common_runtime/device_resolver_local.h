@@ -30,15 +30,18 @@ class DeviceResolverLocal : public DeviceResolverInterface {
 
   virtual ~DeviceResolverLocal() {}
 
-  void GetDeviceLocalitiesAsync(const CollInstanceParams& ci_params,
-                                std::vector<DeviceLocality>* localities,
+  void GetAllDeviceAttributesAsync(const std::vector<string>& devices,
+                                   const std::vector<string>& tasks,
+                                   std::vector<DeviceAttributes>* attributes,
+                                   const StatusCallback& done) override;
+
+  void GetDeviceAttributesAsync(const string& device, const string& task,
+                                DeviceAttributes* attributes,
                                 const StatusCallback& done) override;
 
-  void GetLocalityAsync(const string& device, const string& task,
-                        DeviceLocality* locality,
-                        const StatusCallback& done) override;
-
   void ClearTask(const string& task) override {}
+
+  void ClearCache() override {}
 
  protected:
   const DeviceMgr* dev_mgr_;

@@ -15,16 +15,13 @@ exports_files(["LICENSE"])
 #
 # First, download, build, and install ICU. This installs tools such as makeconv.
 # Then, run the following from your icu4c/source directory:
-#   $ cd data/mappings
-#   $ rm *.cnv  # there shouldn't be any .cnv files here to begin with
-#   $ grep \.ucm ucmcore.mk | \
-#     sed 's/\(UCM_SOURCE_CORE=\)\?\([^ ]\+\.ucm\)\\\?/\2/g' | \
-#     tr '\n' ' ' | xargs makeconv
-#   $ ls *.cnv > filelist.lst
-#   $ pkgdata -m common -p ucmcore filelist.lst
-#   $ genccode -f custom_conversion_data ucmcore.dat
-# This creates custom_conversion_data.c. You will need to change the target
-# :conversion_data to depend on your custom source instead of :conversion_data.c
+#   $ cp [path to filters.json] .
+#   $ ICU_DATA_FILTER_FILE=filters.json ./runConfigureICU Linux
+#   $ make clean && make
+#   $ cd data/out/tmp
+#   $ genccode icudt64l.dat
+#   $ echo 'U_CAPI const void * U_EXPORT2 uprv_getICUData_conversion() { return icudt64l_dat.bytes; }' >> icudt64l_dat.c
+# This creates icudt64l_dat.c, which you can move, rename, gzip, then split.
 filegroup(
     name = "conversion_files",
     srcs = glob(["icu_conversion_data.c.gz.*"]),
@@ -43,4 +40,5 @@ cc_library(
     name = "conversion_data",
     srcs = [":conversion_data.c"],
     deps = ["@icu//:headers"],
+    alwayslink = 1,
 )

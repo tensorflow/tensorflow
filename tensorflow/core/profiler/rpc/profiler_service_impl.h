@@ -15,16 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_RPC_PROFILER_SERVICE_IMPL_H_
 #define TENSORFLOW_CORE_PROFILER_RPC_PROFILER_SERVICE_IMPL_H_
 
-#include "grpcpp/grpcpp.h"
-#include "grpcpp/server_context.h"
-#include "grpcpp/support/status.h"
-#include "tensorflow/contrib/tpu/profiler/tpu_profiler.grpc.pb.h"
-#include "tensorflow/core/common_runtime/eager/context.h"
-#include "tensorflow/core/profiler/lib/eager_profiler.h"
+#include <memory>
+
+#include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
 
 namespace tensorflow {
-std::unique_ptr<TPUProfiler::Service> CreateProfilerService(
-    EagerContext* const eager_context);
+
+std::unique_ptr<grpc::ProfilerService::Service> CreateProfilerService();
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PROFILER_RPC_PROFILER_SERVICE_IMPL_H_

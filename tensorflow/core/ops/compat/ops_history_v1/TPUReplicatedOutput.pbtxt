@@ -1,0 +1,22 @@
+op {
+  name: "TPUReplicatedOutput"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "outputs"
+    type_attr: "T"
+    number_attr: "num_replicas"
+  }
+  attr {
+    name: "num_replicas"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}

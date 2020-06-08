@@ -67,7 +67,8 @@ limitations under the License.
 #define TF_CALL_int16(m) m(::tensorflow::int16)
 
 #define TF_CALL_int8(m) m(::tensorflow::int8)
-#define TF_CALL_string(m) m(string)
+#define TF_CALL_string(m) m(::tensorflow::tstring)
+#define TF_CALL_tstring(m) m(::tensorflow::tstring)
 #define TF_CALL_resource(m) m(::tensorflow::ResourceHandle)
 #define TF_CALL_variant(m) m(::tensorflow::Variant)
 #define TF_CALL_complex64(m) m(::tensorflow::complex64)
@@ -98,7 +99,8 @@ limitations under the License.
 #define TF_CALL_int16(m)
 
 #define TF_CALL_int8(m)
-#define TF_CALL_string(m) m(string)
+#define TF_CALL_string(m) m(::tensorflow::tstring)
+#define TF_CALL_tstring(m) m(::tensorflow::tstring)
 #define TF_CALL_resource(m)
 #define TF_CALL_variant(m)
 #define TF_CALL_complex64(m)
@@ -129,6 +131,7 @@ limitations under the License.
 
 #define TF_CALL_int8(m)
 #define TF_CALL_string(m)
+#define TF_CALL_tstring(m)
 #define TF_CALL_resource(m)
 #define TF_CALL_variant(m)
 #define TF_CALL_complex64(m)
@@ -188,10 +191,10 @@ limitations under the License.
 
 // Call "m" on all types.
 #define TF_CALL_ALL_TYPES(m) \
-  TF_CALL_POD_TYPES(m) TF_CALL_string(m) TF_CALL_resource(m) TF_CALL_variant(m)
+  TF_CALL_POD_TYPES(m) TF_CALL_tstring(m) TF_CALL_resource(m) TF_CALL_variant(m)
 
 // Call "m" on POD and string types.
-#define TF_CALL_POD_STRING_TYPES(m) TF_CALL_POD_TYPES(m) TF_CALL_string(m)
+#define TF_CALL_POD_STRING_TYPES(m) TF_CALL_POD_TYPES(m) TF_CALL_tstring(m)
 
 // Call "m" on all number types supported on GPU.
 #define TF_CALL_GPU_NUMBER_TYPES(m) \
@@ -213,7 +216,7 @@ limitations under the License.
 #define TF_CALL_SAVE_RESTORE_TYPES(m)                                     \
   TF_CALL_INTEGRAL_TYPES(m)                                               \
   TF_CALL_half(m) TF_CALL_float(m) TF_CALL_double(m) TF_CALL_complex64(m) \
-      TF_CALL_complex128(m) TF_CALL_bool(m) TF_CALL_string(m)             \
+      TF_CALL_complex128(m) TF_CALL_bool(m) TF_CALL_tstring(m)            \
           TF_CALL_QUANTIZED_TYPES(m)
 
 #ifdef TENSORFLOW_SYCL_NO_DOUBLE

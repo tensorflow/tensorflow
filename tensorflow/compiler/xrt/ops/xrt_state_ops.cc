@@ -32,6 +32,21 @@ Reads a literal proto and transfers it to device memory.
 'handle' is an id that can be used in other ops to refer to the allocation.
 )");
 
+REGISTER_OP("XRTAllocateUninitialized")
+    .Output("handle: int64")
+    .Attr("dtype: type")
+    .Attr("shape: shape")
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
+    .Doc(
+        R"(
+Allocates a tensor to hold the specified shape in device memory.  The values
+in the tensor are left uninitialized.
+
+shape: The shapes which the tensor should have on device.
+
+handle: An id that can be used in other ops to refer to the allocation.
+)");
+
 REGISTER_OP("XRTAllocateFromTensor")
     .Input("inputs: dtypes")
     .Output("handle: int64")
@@ -53,7 +68,7 @@ The shapes can differ from the corresponding input one, as long as the total
 number of elements matches. In other words, it is possible to feed an input
 tensor with shape {8} and have a corresponding shape {2,2,2}.
 layouts: A vector holding the requested layout in minor-to-major sequence.
-If empty, the default layout wil be used.
+If empty, the default layout will be used.
 For a tuple, the layouts vector holds a linearized minor-to-major numbers
 for all the tuple leaves, in the order they appear within the tuple.
 The elements within the layouts sequence corresponding to a given tuple
@@ -151,6 +166,27 @@ releases the handle.
 'literal' is a serialized xla::LiteralProto proto.
 )");
 
+REGISTER_OP("XRTReadToTensor")
+    .Input("handles: int64")
+    .Attr("release_handles: bool = False")
+    .Attr("dtypes: list(type)")
+    .Output("tensors: dtypes")
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape)
+    .Doc(
+        R"(
+Copies allocated values from device memory and returns them as zero or more
+Tensors. If a handle refers to a non-tuple buffer, a single tensor is returned.
+In general, the tensors returned for a handle correspond to an in-order traversal
+of a the tuple-tree value referenced by the handle.
+
+'handles' contains ids returned from Ops that produced on-device allocations.
+At present, only a single (scalar) handle is supported.
+'dtypes' are the expected types for each `Tensor` to be returned. If the
+expected and actual tensor types do not match, an error is returned.
+'release_handles': if True, `handles` are released.
+'tensors' are the output Tensors.
+)");
+
 REGISTER_OP("XRTReleaseAllocationHandle")
     .Input("handle: int64")
     .SetShapeFn(tensorflow::shape_inference::NoOutputs)
@@ -168,6 +204,28 @@ REGISTER_OP("XRTReleaseAllAllocations")
     .Doc(
         R"(
 Discards all the XRT allocations. All the client held handles will be invalid.
+)");
+
+REGISTER_OP("XRTCompactAllocations")
+    .SetShapeFn(tensorflow::shape_inference::NoOutputs)
+    .Doc(
+        R"(
+Runs a device memory compaction cycle. This copies the device data behind the
+currently alive allocation handles into host memory, releases the device memory
+backing the handles, and re-allocate and send back the data to the device.
+This operation helps with device memory fragmentation.
+)");
+
+REGISTER_OP("XRTMetricsCollect")
+    .Input("request: string")
+    .Output("result: string")
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
+    .Doc(
+        R"(
+Reads the selected metric values from the metrics collection registry.
+
+'request' is a serialized xrt::XRTMetricsCollect proto.
+'result' is a serialized xrt::MetricsReport proto.
 )");
 
 }  // namespace tensorflow

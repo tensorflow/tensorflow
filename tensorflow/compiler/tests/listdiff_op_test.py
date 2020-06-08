@@ -33,7 +33,7 @@ class ListDiffTest(xla_test.XLATestCase):
   def _testListDiff(self, x, y, out, idx):
     for dtype in [dtypes.int32, dtypes.int64]:
       for index_dtype in [dtypes.int32, dtypes.int64]:
-        with self.cached_session():
+        with self.session():
           x_tensor = ops.convert_to_tensor(x, dtype=dtype)
           y_tensor = ops.convert_to_tensor(y, dtype=dtype)
           with self.test_scope():

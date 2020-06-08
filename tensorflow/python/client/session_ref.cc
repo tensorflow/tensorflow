@@ -53,7 +53,8 @@ struct RunCounter {
 };
 
 std::string SessionToHandle(Session* session) {
-  return strings::Printf("%llu", reinterpret_cast<uint64>(session));
+  return strings::Printf("%llu", static_cast<unsigned long long>(
+                                     reinterpret_cast<uintptr_t>(session)));
 }
 
 // The Session interface has many methods of the form:
@@ -474,6 +475,13 @@ Status SessionRef::RunCallable(CallableHandle handle,
 }
 
 Status SessionRef::ReleaseCallable(CallableHandle handle) {
+  {
+    mutex_lock l(run_lock_);
+    if (session_ == nullptr) {
+      // Session already closed. Do nothing.
+      return Status::OK();
+    }
+  }
   LOG_AND_RUN_OPERATION(ReleaseCallable, handle);
 }
 

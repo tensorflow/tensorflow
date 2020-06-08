@@ -41,5 +41,6 @@ cc_library(
         "lib/libiomp5md.lib",
         "lib/mklml.lib",
     ],
+    linkopts = ["/FORCE:MULTIPLE"],
     visibility = ["//visibility:public"],
 )

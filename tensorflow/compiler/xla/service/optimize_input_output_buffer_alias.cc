@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <queue>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
@@ -45,44 +46,42 @@ StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
   VLOG(1) << "input_shape:" << input_shape.ToString();
   VLOG(1) << "output_shape:" << output_shape.ToString();
 
-  // For all buffers defined by the parameter, build a map from the byte
-  // size to the list of the buffers of that size.
-  absl::flat_hash_map<int64, std::queue<ShapeIndex>> size_to_input_index;
+  // Tracks all buffers defined by the parameter in a flatten list.
+  struct Entry {
+    Shape shape;
+    ShapeIndex index;
+    bool used;
+  };
+  std::vector<Entry> parameter_entries;
   ShapeUtil::ForEachSubshape(
       input_shape, [&](const Shape& subshape, const ShapeIndex& index) {
         if (subshape.IsTuple()) {
           return;
         }
-        int64 bytes = size_func_(subshape);
-        size_to_input_index[bytes].push(index);
+        parameter_entries.emplace_back(Entry{subshape, index, false});
       });
 
   // For each result buffer shape index, take the first unused parameter
-  // buffer that matches the size.
+  // buffer that matches the shape.
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       output_shape, [&](const Shape& subshape, const ShapeIndex& index) {
         if (subshape.IsTuple()) {
           return Status::OK();
         }
-        int64 bytes = size_func_(subshape);
-
-        auto it = size_to_input_index.find(bytes);
-        if (it != size_to_input_index.end() && !it->second.empty()) {
-          changed = true;
-          const ShapeIndex& input_index = it->second.front();
-          const ShapeIndex& output_index = index;
-          if (!alias_config->ParameterHasAlias(0, input_index) &&
-              !alias_config->OutputHasAlias(output_index)) {
-            TF_RETURN_IF_ERROR(alias_config->SetUpAlias(
-                output_index, 0, input_index,
-                HloInputOutputAliasConfig::AliasKind::kSystemAlias));
+        for (Entry& entry : parameter_entries) {
+          if (Shape::Equal()(entry.shape, subshape) && !entry.used) {
+            changed = true;
+            const ShapeIndex& input_index = entry.index;
+            const ShapeIndex& output_index = index;
+            if (!alias_config->ParameterHasAlias(0, input_index) &&
+                !alias_config->OutputHasAlias(output_index)) {
+              TF_RETURN_IF_ERROR(alias_config->SetUpAlias(
+                  output_index, 0, input_index,
+                  HloInputOutputAliasConfig::AliasKind::kSystemAlias));
+            }
+            entry.used = true;
+            break;
           }
-          VLOG(3) << "Set up alias from with param index "
-                  << it->second.front().ToString() << ", shape size " << bytes
-                  << " and result subshape "
-                  << ShapeUtil::HumanStringWithLayout(subshape) << " at index "
-                  << index.ToString();
-          it->second.pop();
         }
         return Status::OK();
       }));

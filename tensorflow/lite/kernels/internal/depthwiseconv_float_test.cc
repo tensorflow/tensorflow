@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/types.h"
 
 #define ALLOW_SLOW_GENERIC_DEPTHWISECONV_FALLBACK
+#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_float.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_float.h"
 
@@ -40,9 +41,11 @@ void TestOneDepthwiseConv(
   reference_ops::DepthwiseConv(params, input_shape, input_data, filter_shape,
                                filter_data, bias_shape, bias_data, output_shape,
                                reference_output_data.data());
-  optimized_ops::DepthwiseConv(params, input_shape, input_data, filter_shape,
-                               filter_data, bias_shape, bias_data, output_shape,
-                               output_data.data());
+  optimized_ops::DepthwiseConvImpl(
+      params, input_shape, input_data, filter_shape, filter_data, bias_shape,
+      bias_data, output_shape, output_data.data(), CpuFlags(),
+      /*thread_start=*/0,
+      /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
 
   double sum_abs_diff = 0;
   float max_abs_val = 0;
@@ -68,7 +71,7 @@ bool TryTestOneDepthwiseConv() {
   // cases in optimized implementations, and secondarily because they allow
   // tests to run fast, which means we can run more tests and get more
   // coverage.
-  const int batch = ExponentialRandomPositiveInt(0.9f, 3, 20);
+  const int batch = UniformRandomInt(1, 2);
   const int input_depth = ExponentialRandomPositiveInt(0.9f, 6, 50);
   const int input_width = ExponentialRandomPositiveInt(0.9f, 20, 200);
   const int input_height = ExponentialRandomPositiveInt(0.9f, 20, 200);
@@ -148,7 +151,7 @@ void TestOneDepthwiseConv() {
 }
 
 TEST(TestDepthwiseConv, TestDepthwiseConv) {
-  const int kTestsToRun = 100 * 1000;
+  const int kTestsToRun = 10 * 1000;
   for (int i = 0; i < kTestsToRun; i++) {
     TestOneDepthwiseConv();
   }

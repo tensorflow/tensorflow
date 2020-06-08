@@ -16,10 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_UTILS_FRAME_H_
 #define TENSORFLOW_CORE_GRAPPLER_UTILS_FRAME_H_
 
-#include <unordered_map>
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/grappler/graph_view.h"
+#include "tensorflow/core/grappler/utils/graph_view.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -29,7 +28,7 @@ namespace grappler {
 // any) the given node can be running in. It's constructed from an immutable
 // GraphView, and any modification of the underlying graph might invalidate it.
 //
-// All execution frames assigned an unique integer id, but they do not have any
+// All execution frames assigned a unique integer id, but they do not have any
 // meaning whatsoever, it's just a sequence number.
 //
 // See the paper "Dynamic Control Flow in Large-Scale Machine Learning" for
@@ -40,7 +39,10 @@ class FrameView {
 
   // Infers nodes execution frames from the GraphView. Returns an error if
   // called multiple times.
-  Status InferFromGraphView(const GraphView& graph_view);
+  Status InferFromGraphView(const utils::GraphView& graph_view);
+  // Infers nodes execution frames from the MutableGraphView. Returns an error
+  // if called multiple times.
+  Status InferFromGraphView(const utils::MutableGraphView& graph_view);
   // Infers nodes execution by constructing temporary GraphView and passing it
   // to InferFromGraphView.
   Status InferFromGraph(const GraphDef& graph);
@@ -56,6 +58,9 @@ class FrameView {
   bool is_inferred() const { return is_inferred_; }
 
  private:
+  template <typename GraphViewT>
+  inline Status InferFromGraphViewT(const GraphViewT& graph_view);
+
   bool is_inferred_;  // true if it was inferred from the graph
   int num_frames_;    // number of frames present in a graph
   absl::flat_hash_map<const NodeDef*, std::vector<int>> node_to_frames_;

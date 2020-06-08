@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -29,6 +30,12 @@ limitations under the License.
 
 namespace tensorflow {
 class DeviceMgr;
+
+namespace thread {
+
+struct ThreadPoolOptions;
+
+}
 
 /// \brief A Session instance lets a caller drive a TensorFlow graph
 /// computation.
@@ -91,6 +98,9 @@ class Session {
   /// graph. To re-use the session with a different graph, the caller
   /// must Close() the session first.
   virtual Status Create(const GraphDef& graph) = 0;
+#ifndef SWIG
+  virtual Status Create(GraphDef&& graph) { return Create(graph); }
+#endif
 
   /// \brief Adds operations to the graph that is already registered with the
   /// Session.
@@ -98,6 +108,9 @@ class Session {
   /// The names of new operations in "graph" must not exist in the
   /// graph that is already registered.
   virtual Status Extend(const GraphDef& graph) = 0;
+#ifndef SWIG
+  virtual Status Extend(GraphDef&& graph) { return Extend(graph); }
+#endif
 
   /// \brief Runs the graph with the provided input tensors and fills
   /// `outputs` for the endpoints specified in `output_tensor_names`.
@@ -136,6 +149,14 @@ class Session {
         "Extend(const RunOptions& run_options, const GraphDef& graph) is not "
         "supported for this session.");
   }
+#ifndef SWIG
+  virtual Status Create(const RunOptions& run_options, GraphDef&& graph) {
+    return Create(run_options, graph);
+  }
+  virtual Status Extend(const RunOptions& run_options, GraphDef&& graph) {
+    return Extend(run_options, graph);
+  }
+#endif
   virtual Status Close(const RunOptions& run_options) {
     return errors::Unimplemented(
         "Close(const RunOptions& run_options) is not supported for this "
@@ -152,6 +173,19 @@ class Session {
                      const std::vector<string>& output_tensor_names,
                      const std::vector<string>& target_node_names,
                      std::vector<Tensor>* outputs, RunMetadata* run_metadata);
+
+  /// \brief Like `Run` with `RunOptions` proto, but allows user to provide
+  /// custom threadpool implementation via ThreadPoolOptions.
+  /// NOTE: This API is still experimental and may change.
+  virtual Status Run(const RunOptions& run_options,
+                     const std::vector<std::pair<string, Tensor> >& inputs,
+                     const std::vector<string>& output_tensor_names,
+                     const std::vector<string>& target_node_names,
+                     std::vector<Tensor>* outputs, RunMetadata* run_metadata,
+                     const thread::ThreadPoolOptions& threadpool_options) {
+    return errors::Unimplemented(
+        "Run with threadpool is not supported for this session.");
+  }
 
   /// \brief Sets up a graph for partial execution. All future feeds and
   /// fetches are specified by `input_names` and `output_names`. Returns
@@ -223,12 +257,50 @@ class Session {
         "RunCallable is not supported for this session.");
   }
 
+  /// \brief Invokes the subgraph named by `handle` with the given options and
+  /// input tensors. User can provide custom threadpool implementation via
+  /// threadpool_options.
+  ///
+  /// The order of tensors in `feed_tensors` must and `fetch_tensors` will
+  /// match the order of names in `CallableOptions::feed()` and
+  /// `CallableOptions::fetch()` when this subgraph was created.
+  /// NOTE: This API is still experimental and may change.
+  virtual Status RunCallable(
+      CallableHandle handle, const std::vector<Tensor>& feed_tensors,
+      std::vector<Tensor>* fetch_tensors, RunMetadata* run_metadata,
+      const thread::ThreadPoolOptions& threadpool_options) {
+    return errors::Unimplemented(
+        "RunCallable with threadpool is not supported for this session.");
+  }
+
   /// \brief Releases resources associated with the given `handle` in this
   /// session.
   /// NOTE: This API is still experimental and may change.
   virtual Status ReleaseCallable(CallableHandle handle) {
     return errors::Unimplemented(
         "ReleaseCallable is not supported for this session.");
+  }
+
+  /// \brief Release global graph-related state in this session.
+  ///
+  /// After calling `this->Finalize()`, calls to `this->Run()` with previously
+  /// unseen feeds and fetches, and calls to `this->MakeCallable()` will fail.
+  /// Using `MakeCallable()` and `RunCallable()` is recommended, because
+  /// explicit callable creation makes it clearer where the `Finalize()` call
+  /// should be placed.
+  ///
+  /// This API can be used in conjunction with a "warmup" phase to reduce the
+  /// memory consumed by the session:
+  ///
+  /// 1. Call `Session::Create()`.
+  /// 2. Call `Session::MakeCallable()` for all subgraphs that you will execute
+  ///    in the session.
+  /// 3. Call `Session::Finalize()` to release global graph-related state.
+  /// 4. Call `Session::RunCallable()` with the handle(s) created in step 2.
+  ///
+  /// NOTE: This API is still experimental and may change.
+  virtual Status Finalize() {
+    return errors::Unimplemented("Finalize is not supported for this session.");
   }
 };
 

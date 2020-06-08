@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/bfloat16_propagation.h"
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -22,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -203,6 +205,33 @@ void BFloat16Propagation::DetermineWhileComputationsPrecision(
   computations_visited_in_backward_pass_.insert(condition);
 }
 
+void BFloat16Propagation::DetermineConditionalComputationsPrecision(
+    HloInstruction* cond) {
+  CHECK_EQ(cond->opcode(), HloOpcode::kConditional);
+  for (int64 i = 0; i < cond->branch_count(); ++i) {
+    auto branch = cond->branch_computation(i);
+    auto root = branch->root_instruction();
+    ShapeUtil::ForEachSubshape(
+        root->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+          if (subshape.element_type() != F32) {
+            return;
+          }
+          if (OutputTypeAfterChange(cond, index) == BF16) {
+            AddToOrRemoveFromBF16ChangeSet(root, index, BF16);
+            VLOG(2) << "Conditional branch " << i << " root "
+                    << root->ToString() << " at shape index " << index
+                    << " changed to BF16 precision for conditional "
+                    << cond->ToString();
+          }
+        });
+    auto insts = branch->MakeInstructionPostOrder();
+    for (auto inst_it = insts.rbegin(); inst_it != insts.rend(); ++inst_it) {
+      DetermineInstructionPrecision(*inst_it, /*skip_parameters=*/false);
+    }
+    computations_visited_in_backward_pass_.insert(branch);
+  }
+}
+
 bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
                                               const ShapeIndex& index) const {
   // If the subshape isn't floating point then none of the users will be BF16.
@@ -265,6 +294,14 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
           return false;
         }
         continue;
+      } else if (use.instruction->opcode() == HloOpcode::kConditional) {
+        auto* cond_parameter =
+            use.instruction->branch_computation(use.operand_number - 1)
+                ->parameter_instruction(0);
+        if (OutputTypeAfterChange(cond_parameter, use.operand_index) != BF16) {
+          return false;
+        }
+        continue;
       }
       if (bfloat16_support_->EffectiveOperandPrecisionIsBF16(
               *use.instruction, use.operand_number)) {
@@ -308,11 +345,33 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
   return true;
 }
 
+namespace {
+
+// Returns whether we should avoid changing the precision of inst regardless of
+// the producers and users.
+bool ShouldKeepPrecisionUnchanged(const HloInstruction* inst) {
+  if (inst->opcode() == HloOpcode::kFusion &&
+      inst->fusion_kind() == HloInstruction::FusionKind::kCustom) {
+    return ShouldKeepPrecisionUnchanged(
+        inst->fused_instructions_computation()->root_instruction());
+  }
+  // Do not change precision for side-effecting instructions, control flow, and
+  // bitcast-convert, because this pass might break the interfaces or
+  // assumptions for them.
+  return inst->opcode() == HloOpcode::kCustomCall ||      //
+         inst->opcode() == HloOpcode::kCall ||            //
+         inst->opcode() == HloOpcode::kBitcastConvert ||  //
+         inst->HasSideEffectNoRecurse();
+}
+
+}  // namespace
+
 void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
                                                         bool skip_parameters) {
-  // We handle any fusion computation or while body/condition after the
-  // instruction is handled, because we need to know the output shape of a
-  // fusion or while before propagating inside its  computations.
+  // We handle any fusion computation, while body/condition or conditional
+  // branches after the instruction is handled, because we need to know the
+  // output shape of a fusion or while before propagating inside its
+  // computations.
   bool postpone_processing_called_computations = false;
   auto cleaner = tensorflow::gtl::MakeCleanup(
       [this, hlo, &postpone_processing_called_computations] {
@@ -321,6 +380,8 @@ void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
             DetermineFusionComputationPrecision(hlo);
           } else if (hlo->opcode() == HloOpcode::kWhile) {
             DetermineWhileComputationsPrecision(hlo);
+          } else if (hlo->opcode() == HloOpcode::kConditional) {
+            DetermineConditionalComputationsPrecision(hlo);
           }
         }
         instructions_visited_in_backward_pass_.insert(hlo);
@@ -329,6 +390,14 @@ void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
   if (hlo->opcode() == HloOpcode::kWhile &&
       (caller_counts_[hlo->while_condition()] > 1 ||
        caller_counts_[hlo->while_body()] > 1)) {
+    postpone_processing_called_computations = true;
+    return;
+  }
+
+  if (hlo->opcode() == HloOpcode::kConditional &&
+      absl::c_any_of(hlo->branch_computations(), [&](const HloComputation* c) {
+        return caller_counts_[c] > 1;
+      })) {
     postpone_processing_called_computations = true;
     return;
   }
@@ -354,13 +423,7 @@ void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
     return;
   }
 
-  // Do not change precision for instructions related to entry and exit of a
-  // computation, side-effecting instructions, and control flow, because this
-  // pass might break the interfaces or assumptions for them.
-  if (hlo->opcode() == HloOpcode::kCustomCall ||   //
-      hlo->opcode() == HloOpcode::kCall ||         //
-      hlo->opcode() == HloOpcode::kConditional ||  //
-      hlo->HasSideEffectNoRecurse() ||             //
+  if (ShouldKeepPrecisionUnchanged(hlo) ||
       (hlo->opcode() == HloOpcode::kParameter && skip_parameters)) {
     return;
   }
@@ -443,6 +506,12 @@ void BFloat16Propagation::AdjustCalledComputationParameters(
       adjust_computation(hlo->while_condition(), hlo->operands());
       adjust_computation(hlo->while_body(), hlo->operands());
       break;
+    case HloOpcode::kConditional:
+      for (int64 i = 0; i < hlo->branch_count(); ++i) {
+        adjust_computation(hlo->branch_computation(i),
+                           {hlo->mutable_operand(i + 1)});
+      }
+      break;
     default:
       break;
   }
@@ -492,6 +561,11 @@ void BFloat16Propagation::AdjustCalledComputationRoot(HloInstruction* hlo) {
       break;
     case HloOpcode::kWhile:
       adjust_computation(hlo->while_body(), hlo);
+      break;
+    case HloOpcode::kConditional:
+      for (auto* branch : hlo->branch_computations()) {
+        adjust_computation(branch, hlo);
+      }
       break;
     default:
       break;
@@ -574,6 +648,11 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
     } else if (hlo->opcode() == HloOpcode::kFusion) {
       ResolveInconsistencyOfAliasingBuffersHelper(
           hlo->fused_instructions_computation(), visited_computations);
+    } else if (hlo->opcode() == HloOpcode::kConditional) {
+      for (auto* branch : hlo->branch_computations()) {
+        ResolveInconsistencyOfAliasingBuffersHelper(branch,
+                                                    visited_computations);
+      }
     }
   }
   // Now adjust parameters of called computations.
@@ -674,11 +753,13 @@ Status BFloat16Propagation::ResolveConvertedConstants(HloModule* module) {
       if (hlo->opcode() != HloOpcode::kConstant) {
         continue;
       }
-      if (!ShapeUtil::Equal(hlo->literal().shape(), hlo->shape())) {
+      if (!Shape::Equal().MinorToMajorOnlyInLayout()(hlo->literal().shape(),
+                                                     hlo->shape())) {
         TF_ASSIGN_OR_RETURN(auto converted_literal,
                             hlo->literal().ConvertToShape(hlo->shape()));
         auto new_constant = computation->AddInstruction(
             HloInstruction::CreateConstant(std::move(converted_literal)));
+        UpdateLayout(new_constant->mutable_shape());
         TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(new_constant));
       }
     }
@@ -793,10 +874,44 @@ StatusOr<bool> BFloat16Propagation::Run(HloModule* module) {
 
   // Apply the changes in changes_to_bf16_.
   for (auto& change : changes_to_bf16_) {
+    auto inst = change.first;
+    // It is possible that we marked inst to change precision even if it is an
+    // unsupported change, when inst is the root of a fusion computation and it
+    // has to match the fusion node's output precision. We do a convert instead
+    // of in-place change for such cases.
+    if (ShouldKeepPrecisionUnchanged(inst)) {
+      auto users = inst->users();
+      bool is_root = inst == inst->parent()->root_instruction();
+      TF_ASSIGN_OR_RETURN(
+          HloInstruction * copy,
+          inst->parent()->DeepCopyInstructionWithCustomCopier(
+              inst, [&](HloInstruction* leaf, const ShapeIndex& leaf_index,
+                        HloComputation* comp) {
+                if (!ContainsKey(change.second,
+                                 ShapeUtil::GetMutableSubshape(
+                                     inst->mutable_shape(), leaf_index))) {
+                  return leaf;
+                }
+                auto converted_shape =
+                    ShapeUtil::ChangeElementType(leaf->shape(), BF16);
+                UpdateLayout(&converted_shape);
+                return comp->AddInstruction(
+                    HloInstruction::CreateConvert(converted_shape, leaf));
+              }));
+      for (auto user : users) {
+        TF_RETURN_IF_ERROR(inst->ReplaceUseWithDifferentShape(user, copy));
+      }
+      if (is_root) {
+        inst->parent()->set_root_instruction(copy,
+                                             /*accept_different_shape=*/true);
+      }
+      continue;
+    }
     for (const auto& entry : change.second) {
       auto subshape = entry.first;
       CHECK_EQ(subshape->element_type(), F32);
       subshape->set_element_type(BF16);
+      UpdateLayout(subshape);
       changed_ = true;
     }
   }

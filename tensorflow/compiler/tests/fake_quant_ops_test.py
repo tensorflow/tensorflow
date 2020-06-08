@@ -107,7 +107,7 @@ class FakeQuantWithMinMaxArgsTest(xla_test.XLATestCase):
         ],
         dtype=np.float32)
 
-    with self.cached_session() as session:
+    with self.session() as session:
       with self.test_scope():
         input_placeholder = array_ops.placeholder(
             dtypes.float32, inputs.shape, name="inputs")
@@ -198,7 +198,7 @@ class FakeQuantWithMinMaxArgsGradientTest(xla_test.XLATestCase):
         [0.0, 0.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 0.0, 0.0],
         dtype=np.float32)
 
-    with self.cached_session() as session:
+    with self.session() as session:
       with self.test_scope():
         gradient_placeholder = array_ops.placeholder(
             dtypes.float32, gradients.shape, name="gradients")
@@ -306,7 +306,7 @@ class FakeQuantWithMinMaxVarsTest(xla_test.XLATestCase):
         ],
         dtype=np.float32)
 
-    with self.cached_session() as session:
+    with self.session() as session:
       with self.test_scope():
         input_placeholder = array_ops.placeholder(
             dtypes.float32, inputs.shape, name="inputs")
@@ -406,7 +406,7 @@ class FakeQuantWithMinMaxVarsGradientTest(xla_test.XLATestCase):
     expected_backprops_wrt_min = 1.0 + 2.0
     expected_backprops_wrt_max = 10.0 + 11.0
 
-    with self.cached_session() as session:
+    with self.session() as session:
       with self.test_scope():
         gradient_placeholder = array_ops.placeholder(
             dtypes.float32, gradients.shape, name="gradients")

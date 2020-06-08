@@ -17,20 +17,28 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_ENV_H_
 
 #include <stdint.h>
+
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
+
 #include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/numa.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
+
+// Delete the definition of CopyFile as the linker gets confused.
+#ifdef PLATFORM_WINDOWS
+#undef CopyFile
+#endif
 
 namespace tensorflow {
 
@@ -64,14 +72,25 @@ class Env {
   /// for the file system related (non-virtual) functions that follow.
   /// Returned FileSystem object is still owned by the Env object and will
   // (might) be destroyed when the environment is destroyed.
-  virtual Status GetFileSystemForFile(const string& fname, FileSystem** result);
+  virtual Status GetFileSystemForFile(const std::string& fname,
+                                      FileSystem** result);
 
   /// \brief Returns the file system schemes registered for this Env.
-  virtual Status GetRegisteredFileSystemSchemes(std::vector<string>* schemes);
+  virtual Status GetRegisteredFileSystemSchemes(
+      std::vector<std::string>* schemes);
 
   /// \brief Register a file system for a scheme.
-  virtual Status RegisterFileSystem(const string& scheme,
+  virtual Status RegisterFileSystem(const std::string& scheme,
                                     FileSystemRegistry::Factory factory);
+
+  /// \brief Register a modular file system for a scheme.
+  ///
+  /// Same as `RegisterFileSystem` but for filesystems provided by plugins.
+  ///
+  /// TODO(mihaimaruseac): After all filesystems are converted, make this be the
+  /// canonical registration function.
+  virtual Status RegisterFileSystem(const std::string& scheme,
+                                    std::unique_ptr<FileSystem> filesystem);
 
   /// \brief Flush filesystem caches for all registered filesystems.
   Status FlushFileSystemCaches();
@@ -154,7 +173,8 @@ class Env {
 
   /// \brief Returns true if the path matches the given pattern. The wildcards
   /// allowed in pattern are described in FileSystem::GetMatchingPaths.
-  virtual bool MatchPath(const string& path, const string& pattern) = 0;
+  virtual bool MatchPath(const std::string& path,
+                         const std::string& pattern) = 0;
 
   /// \brief Given a pattern, stores in *results the set of paths that matches
   /// that pattern. *results is cleared.
@@ -221,6 +241,18 @@ class Env {
   ///  * UNIMPLEMENTED - The file factory doesn't support directories.
   Status IsDirectory(const string& fname);
 
+  /// \brief Returns whether the given path is on a file system
+  /// that has atomic move capabilities. This can be used
+  /// to determine if there needs to be a temp location to safely write objects.
+  /// The second boolean argument has_atomic_move contains this information.
+  ///
+  /// Returns one of the following status codes (not guaranteed exhaustive):
+  ///  * OK - The path is on a recognized file system,
+  ///         so has_atomic_move holds the above information.
+  ///  * UNIMPLEMENTED - The file system of the path hasn't been implemented in
+  ///  TF
+  Status HasAtomicMove(const string& path, bool* has_atomic_move);
+
   /// Stores the size of `fname` in `*file_size`.
   Status GetFileSize(const string& fname, uint64* file_size);
 
@@ -233,31 +265,31 @@ class Env {
 
   /// \brief Returns the absolute path of the current executable. It resolves
   /// symlinks if there is any.
-  string GetExecutablePath();
+  std::string GetExecutablePath();
 
   /// Creates a local unique temporary file name. Returns true if success.
-  bool LocalTempFilename(string* filename);
+  bool LocalTempFilename(std::string* filename);
 
   /// Creates a local unique file name that starts with |prefix| and ends with
   /// |suffix|. Returns true if success.
-  bool CreateUniqueFileName(string* prefix, const string& suffix);
+  bool CreateUniqueFileName(std::string* prefix, const std::string& suffix);
 
   /// \brief Return the runfiles directory if running under bazel. Returns
   /// the directory the executable is located in if not running under bazel.
-  virtual string GetRunfilesDir() = 0;
+  virtual std::string GetRunfilesDir() = 0;
 
   // TODO(jeff,sanjay): Add back thread/thread-pool support if needed.
   // TODO(jeff,sanjay): if needed, tighten spec so relative to epoch, or
   // provide a routine to get the absolute time.
 
   /// \brief Returns the number of nano-seconds since the Unix epoch.
-  virtual uint64 NowNanos() { return envTime->NowNanos(); }
+  virtual uint64 NowNanos() const { return EnvTime::NowNanos(); }
 
   /// \brief Returns the number of micro-seconds since the Unix epoch.
-  virtual uint64 NowMicros() { return envTime->NowMicros(); }
+  virtual uint64 NowMicros() const { return EnvTime::NowMicros(); }
 
   /// \brief Returns the number of seconds since the Unix epoch.
-  virtual uint64 NowSeconds() { return envTime->NowSeconds(); }
+  virtual uint64 NowSeconds() const { return EnvTime::NowSeconds(); }
 
   /// Sleeps/delays the thread for the prescribed number of micro-seconds.
   virtual void SleepForMicroseconds(int64 micros) = 0;
@@ -268,7 +300,7 @@ class Env {
   /// Caller takes ownership of the result and must delete it eventually
   /// (the deletion will block until fn() stops running).
   virtual Thread* StartThread(const ThreadOptions& thread_options,
-                              const string& name,
+                              const std::string& name,
                               std::function<void()> fn) TF_MUST_USE_RESULT = 0;
 
   // Returns the thread id of calling thread.
@@ -278,7 +310,7 @@ class Env {
   virtual int32 GetCurrentThreadId() = 0;
 
   // Copies current thread name to "name". Returns true if success.
-  virtual bool GetCurrentThreadName(string* name) = 0;
+  virtual bool GetCurrentThreadName(std::string* name) = 0;
 
   // \brief Schedules the given closure on a thread-pool.
   //
@@ -318,8 +350,8 @@ class Env {
   // "name" should be name of the library.
   // "version" should be the version of the library or NULL
   // returns the name that LoadLibrary() can use
-  virtual string FormatLibraryFileName(const string& name,
-                                       const string& version) = 0;
+  virtual std::string FormatLibraryFileName(const std::string& name,
+                                            const std::string& version) = 0;
 
   // Returns a possible list of local temporary directories.
   virtual void GetLocalTempDirectories(std::vector<string>* list) = 0;
@@ -327,7 +359,6 @@ class Env {
  private:
   std::unique_ptr<FileSystemRegistry> file_system_registry_;
   TF_DISALLOW_COPY_AND_ASSIGN(Env);
-  EnvTime* envTime = EnvTime::Default();
 };
 
 /// \brief An implementation of Env that forwards all calls to another Env.
@@ -338,7 +369,7 @@ class EnvWrapper : public Env {
  public:
   /// Initializes an EnvWrapper that delegates all calls to *t
   explicit EnvWrapper(Env* t) : target_(t) {}
-  virtual ~EnvWrapper();
+  ~EnvWrapper() override;
 
   /// Returns the target to which this Env forwards all calls
   Env* target() const { return target_; }
@@ -357,20 +388,21 @@ class EnvWrapper : public Env {
     return target_->RegisterFileSystem(scheme, factory);
   }
 
-  bool MatchPath(const string& path, const string& pattern) override {
+  bool MatchPath(const std::string& path, const std::string& pattern) override {
     return target_->MatchPath(path, pattern);
   }
 
-  uint64 NowMicros() override { return target_->NowMicros(); }
+  uint64 NowMicros() const override { return target_->NowMicros(); }
   void SleepForMicroseconds(int64 micros) override {
     target_->SleepForMicroseconds(micros);
   }
-  Thread* StartThread(const ThreadOptions& thread_options, const string& name,
+  Thread* StartThread(const ThreadOptions& thread_options,
+                      const std::string& name,
                       std::function<void()> fn) override {
     return target_->StartThread(thread_options, name, fn);
   }
   int32 GetCurrentThreadId() override { return target_->GetCurrentThreadId(); }
-  bool GetCurrentThreadName(string* name) override {
+  bool GetCurrentThreadName(std::string* name) override {
     return target_->GetCurrentThreadName(name);
   }
   void SchedClosure(std::function<void()> closure) override {
@@ -386,12 +418,12 @@ class EnvWrapper : public Env {
                               void** symbol) override {
     return target_->GetSymbolFromLibrary(handle, symbol_name, symbol);
   }
-  string FormatLibraryFileName(const string& name,
-                               const string& version) override {
+  std::string FormatLibraryFileName(const std::string& name,
+                                    const std::string& version) override {
     return target_->FormatLibraryFileName(name, version);
   }
 
-  string GetRunfilesDir() override { return target_->GetRunfilesDir(); }
+  std::string GetRunfilesDir() override { return target_->GetRunfilesDir(); }
 
  private:
   void GetLocalTempDirectories(std::vector<string>* list) override {
@@ -401,7 +433,7 @@ class EnvWrapper : public Env {
   Env* target_;
 };
 
-/// Represents a thread used to run a Tensorflow function.
+/// Represents a thread used to run a TensorFlow function.
 class Thread {
  public:
   Thread() {}
@@ -412,6 +444,15 @@ class Thread {
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(Thread);
 };
+
+/// \brief Cross-platform setenv.
+///
+/// Since setenv() is not available on windows, we provide an
+/// alternative with platform specific implementations here.
+int setenv(const char* name, const char* value, int overwrite);
+
+/// Cross-platform unsetenv.
+int unsetenv(const char* name);
 
 /// \brief Options to configure a Thread.
 ///
@@ -440,29 +481,42 @@ Status WriteStringToFile(Env* env, const string& fname,
 
 /// Write binary representation of "proto" to the named file.
 Status WriteBinaryProto(Env* env, const string& fname,
-                        const ::tensorflow::protobuf::MessageLite& proto);
+                        const protobuf::MessageLite& proto);
 
 /// Reads contents of named file and parse as binary encoded proto data
 /// and store into `*proto`.
 Status ReadBinaryProto(Env* env, const string& fname,
-                       ::tensorflow::protobuf::MessageLite* proto);
+                       protobuf::MessageLite* proto);
 
 /// Write the text representation of "proto" to the named file.
 Status WriteTextProto(Env* env, const string& fname,
-                      const ::tensorflow::protobuf::Message& proto);
+                      const protobuf::Message& proto);
 
 /// Read contents of named file and parse as text encoded proto data
 /// and store into `*proto`.
-Status ReadTextProto(Env* env, const string& fname,
-                     ::tensorflow::protobuf::Message* proto);
+inline Status ReadTextProto(Env* /* env */, const string& /* fname */,
+                            protobuf::MessageLite* /* proto */) {
+  return errors::Unimplemented("Can't parse text protos with protolite.");
+}
+Status ReadTextProto(Env* env, const string& fname, protobuf::Message* proto);
+
+/// Read contents of named file and parse as either text or binary encoded proto
+/// data and store into `*proto`.
+Status ReadTextOrBinaryProto(Env* env, const string& fname,
+                             protobuf::Message* proto);
+Status ReadTextOrBinaryProto(Env* env, const string& fname,
+                             protobuf::MessageLite* proto);
 
 // START_SKIP_DOXYGEN
 
+// The following approach to register filesystems is deprecated and will be
+// replaced with modular filesystem plugins registration.
+// TODO(mihaimaruseac): After all filesystems are converted, remove this.
 namespace register_file_system {
 
 template <typename Factory>
 struct Register {
-  Register(Env* env, const string& scheme) {
+  Register(Env* env, const std::string& scheme) {
     // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
     env->RegisterFileSystem(scheme, []() -> FileSystem* { return new Factory; })
         .IgnoreError();

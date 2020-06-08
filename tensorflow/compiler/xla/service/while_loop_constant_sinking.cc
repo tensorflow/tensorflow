@@ -112,7 +112,7 @@ StatusOr<bool> WhileLoopConstantSinking::Run(HloModule* module) {
   bool changed = false;
   std::vector<HloInstruction*> while_instrs;
   for (auto* comp : module->MakeNonfusionComputations()) {
-    // Right now we don't particulary care about optimizing while-of-while
+    // Right now we don't particularly care about optimizing while-of-while
     // patterns.  If/When we do, we'll want to visit the outer while (while_0)
     // before we visit the inner while (while_1):
     //

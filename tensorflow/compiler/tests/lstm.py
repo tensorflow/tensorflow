@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,6 +24,8 @@ The GNMT paper has more details: https://arxiv.org/abs/1609.08144
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+from six.moves import range
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops

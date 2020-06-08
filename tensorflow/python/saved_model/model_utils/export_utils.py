@@ -30,21 +30,32 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model.model_utils import export_output as export_output_lib
-from tensorflow.python.training import mode_keys
+from tensorflow.python.saved_model.model_utils import mode_keys
+from tensorflow.python.saved_model.model_utils.mode_keys import KerasModeKeys as ModeKeys
 from tensorflow.python.util import compat
 
 
 # Mapping of the modes to appropriate MetaGraph tags in the SavedModel.
-EXPORT_TAG_MAP = {
-    mode_keys.ModeKeys.PREDICT: [tag_constants.SERVING],
-    mode_keys.ModeKeys.TRAIN: [tag_constants.TRAINING],
-    mode_keys.ModeKeys.TEST: [tag_constants.EVAL],
-}
+EXPORT_TAG_MAP = mode_keys.ModeKeyMap(**{
+    ModeKeys.PREDICT: [tag_constants.SERVING],
+    ModeKeys.TRAIN: [tag_constants.TRAINING],
+    ModeKeys.TEST: [tag_constants.EVAL]})
 
+# For every exported mode, a SignatureDef map should be created using the
+# functions `export_outputs_for_mode` and `build_all_signature_defs`. By
+# default, this map will contain a single Signature that defines the input
+# tensors and output predictions, losses, and/or metrics (depending on the mode)
+# The default keys used in the SignatureDef map are defined below.
+SIGNATURE_KEY_MAP = mode_keys.ModeKeyMap(**{
+    ModeKeys.PREDICT: signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
+    ModeKeys.TRAIN: signature_constants.DEFAULT_TRAIN_SIGNATURE_DEF_KEY,
+    ModeKeys.TEST: signature_constants.DEFAULT_EVAL_SIGNATURE_DEF_KEY})
 
-_SINGLE_FEATURE_DEFAULT_NAME = 'feature'
-_SINGLE_RECEIVER_DEFAULT_NAME = 'input'
-_SINGLE_LABEL_DEFAULT_NAME = 'label'
+# Default names used in the SignatureDef input map, which maps strings to
+# TensorInfo protos.
+SINGLE_FEATURE_DEFAULT_NAME = 'feature'
+SINGLE_RECEIVER_DEFAULT_NAME = 'input'
+SINGLE_LABEL_DEFAULT_NAME = 'label'
 
 ### Below utilities are specific to SavedModel exports.
 
@@ -68,7 +79,7 @@ def build_all_signature_defs(receiver_tensors,
       additional serving signatures, which may be used to feed inputs at
       different points within the input receiver subgraph.  A typical usage is
       to allow feeding raw feature `Tensor`s *downstream* of the
-      tf.parse_example() op.  Defaults to None.
+      tf.io.parse_example() op.  Defaults to None.
     serving_only: boolean; if true, resulting signature defs will only include
       valid serving signatures. If false, all requested signatures will be
       returned.
@@ -80,7 +91,7 @@ def build_all_signature_defs(receiver_tensors,
     ValueError: if export_outputs is not a dict
   """
   if not isinstance(receiver_tensors, dict):
-    receiver_tensors = {_SINGLE_RECEIVER_DEFAULT_NAME: receiver_tensors}
+    receiver_tensors = {SINGLE_RECEIVER_DEFAULT_NAME: receiver_tensors}
   if export_outputs is None or not isinstance(export_outputs, dict):
     raise ValueError('export_outputs must be a dict and not'
                      '{}'.format(type(export_outputs)))
@@ -100,7 +111,7 @@ def build_all_signature_defs(receiver_tensors,
         six.iteritems(receiver_tensors_alternatives)):
       if not isinstance(receiver_tensors_alt, dict):
         receiver_tensors_alt = {
-            _SINGLE_RECEIVER_DEFAULT_NAME: receiver_tensors_alt
+            SINGLE_RECEIVER_DEFAULT_NAME: receiver_tensors_alt
         }
       for output_key, export_output in export_outputs.items():
         signature_name = '{}:{}'.format(receiver_name or 'None', output_key or
@@ -211,7 +222,7 @@ def get_timestamped_export_dir(export_dir_base):
     time.sleep(1)
     attempts += 1
     logging.warn('Directory {} already exists; retrying (attempt {}/{})'.format(
-        result_dir, attempts, MAX_DIRECTORY_CREATION_ATTEMPTS))
+        compat.as_str(result_dir), attempts, MAX_DIRECTORY_CREATION_ATTEMPTS))
   raise RuntimeError('Failed to obtain a unique export directory name after '
                      '{} attempts.'.format(MAX_DIRECTORY_CREATION_ATTEMPTS))
 
@@ -231,7 +242,8 @@ def get_temp_export_dir(timestamped_export_dir):
   """
   (dirname, basename) = os.path.split(timestamped_export_dir)
   temp_export_dir = os.path.join(
-      compat.as_bytes(dirname), compat.as_bytes('temp-{}'.format(basename)))
+      compat.as_bytes(dirname),
+      compat.as_bytes('temp-{}'.format(six.ensure_text(basename))))
   return temp_export_dir
 
 
@@ -262,18 +274,21 @@ def export_outputs_for_mode(
   Raises:
     ValueError: if an appropriate ExportOutput cannot be found for the mode.
   """
-  # TODO(b/113185250): move all model export helper functions into an util file.
-  if mode == mode_keys.ModeKeys.PREDICT:
+  if mode not in SIGNATURE_KEY_MAP:
+    raise ValueError(
+        'Export output type not found for mode: {}. Expected one of: {}.\n'
+        'One likely error is that V1 Estimator Modekeys were somehow passed to '
+        'this function. Please ensure that you are using the new ModeKeys.'
+        .format(mode, SIGNATURE_KEY_MAP.keys()))
+  signature_key = SIGNATURE_KEY_MAP[mode]
+  if mode_keys.is_predict(mode):
     return get_export_outputs(serving_export_outputs, predictions)
-  elif mode == mode_keys.ModeKeys.TRAIN:
-    return {mode: export_output_lib.TrainOutput(
-        loss=loss, predictions=predictions, metrics=metrics)}
-  elif mode == mode_keys.ModeKeys.TEST:
-    return {mode: export_output_lib.EvalOutput(
+  elif mode_keys.is_train(mode):
+    return {signature_key: export_output_lib.TrainOutput(
         loss=loss, predictions=predictions, metrics=metrics)}
   else:
-    raise ValueError(
-        'Export output type not found for mode: {}'.format(mode))
+    return {signature_key: export_output_lib.EvalOutput(
+        loss=loss, predictions=predictions, metrics=metrics)}
 
 
 def get_export_outputs(export_outputs, predictions):

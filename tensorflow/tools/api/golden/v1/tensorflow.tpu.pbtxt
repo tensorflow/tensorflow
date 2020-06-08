@@ -1,0 +1,55 @@
+path: "tensorflow.tpu"
+tf_module {
+  member {
+    name: "CrossShardOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "PaddingSpec"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "batch_parallel"
+    argspec: "args=[\'computation\', \'inputs\', \'num_shards\', \'infeed_queue\', \'device_assignment\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'1\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "bfloat16_scope"
+    argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "core"
+    argspec: "args=[\'num\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "cross_replica_sum"
+    argspec: "args=[\'x\', \'group_assignment\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "initialize_system"
+    argspec: "args=[\'embedding_config\', \'job\', \'compilation_failure_closes_chips\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\'], "
+  }
+  member_method {
+    name: "outside_compilation"
+    argspec: "args=[\'computation\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "replicate"
+    argspec: "args=[\'computation\', \'inputs\', \'infeed_queue\', \'device_assignment\', \'name\', \'maximum_shapes\', \'padding_spec\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "rewrite"
+    argspec: "args=[\'computation\', \'inputs\', \'infeed_queue\', \'device_assignment\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "shard"
+    argspec: "args=[\'computation\', \'inputs\', \'num_shards\', \'input_shard_axes\', \'outputs_from_all_shards\', \'output_shard_axes\', \'infeed_queue\', \'device_assignment\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'1\', \'None\', \'True\', \'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "shutdown_system"
+    argspec: "args=[\'job\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

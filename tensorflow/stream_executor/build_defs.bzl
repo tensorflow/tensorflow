@@ -7,9 +7,11 @@ def stream_executor_friends():
 def tf_additional_cuda_platform_deps():
     return []
 
-# Use dynamic loading, therefore should be empty.
 def tf_additional_cuda_driver_deps():
-    return []
+    return [":cuda_stub"]
+
+def tf_additional_cupti_deps():
+    return ["//tensorflow/stream_executor/cuda:cupti_stub"]
 
 def tf_additional_cudnn_plugin_deps():
     return []
@@ -17,5 +19,8 @@ def tf_additional_cudnn_plugin_deps():
 # Returns whether any GPU backend is configuered.
 def if_gpu_is_configured(x):
     if cuda_is_configured() or rocm_is_configured():
-      return x
+        return x
     return []
+
+def if_cuda_or_rocm(x):
+    return if_gpu_is_configured(x)
