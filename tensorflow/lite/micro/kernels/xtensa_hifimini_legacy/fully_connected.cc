@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/micro/kernels/xtensa_hifimini/fixedpoint_utils.h"
+#include "tensorflow/lite/micro/kernels/xtensa_hifimini_legacy/fixedpoint_utils.h"
 
 namespace tflite {
 namespace ops {
