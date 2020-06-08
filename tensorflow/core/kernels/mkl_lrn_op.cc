@@ -88,7 +88,6 @@ class MklLRNOp : public OpKernel {
     workspace_enabled_ = false;
     OP_REQUIRES_OK(context,
                    context->GetAttr("workspace_enabled", &workspace_enabled_));
-    fwd_stream_.reset(new CPU_STREAM(cpu_engine_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -169,6 +168,7 @@ class MklLRNOp : public OpKernel {
           lrn_prim_desc.PRIMITIVE_DESC_SRC, cpu_engine_));
 
       std::vector<primitive> net;
+      fwd_stream_.reset(CreateStream(context, cpu_engine_));
 #ifdef ENABLE_MKLDNN_V1
       net.push_back(lrn_forward(lrn_prim_desc));
       std::vector<std::unordered_map<int, memory>> net_args;

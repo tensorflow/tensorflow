@@ -308,7 +308,8 @@ RUN_FUNCTIONS_EAGERLY = False
 
 @deprecation.deprecated(
     None,
-    "Use tf.config.run_functions_eagerly instead of the experimental version.")
+    "Use `tf.config.run_functions_eagerly` instead of the experimental "
+    "version.")
 @tf_export("config.experimental_run_functions_eagerly")
 def experimental_run_functions_eagerly(run_eagerly):
   """Enables / disables eager execution of `tf.function`s.

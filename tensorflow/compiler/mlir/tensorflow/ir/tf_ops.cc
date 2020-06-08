@@ -59,6 +59,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/platform/logging.h"
@@ -752,6 +753,15 @@ static LogicalResult Verify(BiasAddGradOp op) {
   }
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// BiasAddV1Op
+//===----------------------------------------------------------------------===//
+
+void BiasAddV1Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                              MLIRContext *context) {
+  results.insert<BiasAddV1ToBiasAdd>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1937,6 +1947,10 @@ static LogicalResult Verify(IfRegionOp op) {
     return failure();
   if (failed(VerifyRegionResults(op, op.else_branch(), "else")))
     return failure();
+  if (op.then_branch().front().getNumArguments() != 0)
+    return op.emitOpError() << "then region cannot have any arguments";
+  if (op.else_branch().front().getNumArguments() != 0)
+    return op.emitOpError() << "else region cannot have any arguments";
   return success();
 }
 

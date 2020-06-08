@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
+#include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/lib/io/snappy/snappy_inputbuffer.h"
 #include "tensorflow/core/lib/io/snappy/snappy_outputbuffer.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
@@ -43,33 +44,112 @@ namespace tensorflow {
 namespace data {
 namespace snapshot_util {
 
-/* static */ constexpr const int64 Reader::kSnappyReaderInputBufferSizeBytes;
-/* static */ constexpr const int64 Reader::kSnappyReaderOutputBufferSizeBytes;
+/* static */ constexpr const int64
+    CustomReader::kSnappyReaderInputBufferSizeBytes;
+/* static */ constexpr const int64
+    CustomReader::kSnappyReaderOutputBufferSizeBytes;
 
-std::string GetCurrentCheckpointFile(const std::string& shard_directory,
-                                     const uint64 current_checkpoint_id) {
-  return io::JoinPath(shard_directory,
-                      absl::StrFormat("%08d.snapshot", current_checkpoint_id));
+std::string HashDirectory(const std::string& path, uint64 hash) {
+  return io::JoinPath(path, absl::StrFormat("%d", hash));
 }
 
-Writer::Writer(const std::string& filename, const std::string& compression_type,
-               int version, const DataTypeVector& dtypes)
-    : filename_(filename),
-      compression_type_(compression_type),
-      version_(version),
-      dtypes_(dtypes) {}
+std::string RunDirectory(const std::string& hash_directory, uint64 run_id) {
+  return RunDirectory(hash_directory, absl::StrFormat("%d", run_id));
+}
+
+std::string RunDirectory(const std::string& hash_directory,
+                         const std::string& run_id) {
+  return io::JoinPath(hash_directory, run_id);
+}
+
+std::string ShardDirectory(const std::string& run_directory, int64 shard_id) {
+  return io::JoinPath(run_directory, absl::StrFormat("%08d%s", shard_id,
+                                                     kShardDirectorySuffix));
+}
+std::string GetCheckpointFileName(const std::string& shard_directory,
+                                  uint64 checkpoint_id) {
+  return io::JoinPath(shard_directory,
+                      absl::StrFormat("%08d.snapshot", checkpoint_id));
+}
 
 Status Writer::Create(Env* env, const std::string& filename,
                       const std::string& compression_type, int version,
                       const DataTypeVector& dtypes,
                       std::unique_ptr<Writer>* out_writer) {
-  *out_writer =
-      absl::WrapUnique(new Writer(filename, compression_type, version, dtypes));
+  switch (version) {
+    case 1:
+      *out_writer =
+          absl::make_unique<CustomWriter>(filename, compression_type, dtypes);
+      break;
+    case 2:
+      *out_writer =
+          absl::make_unique<TFRecordWriter>(filename, compression_type);
+      break;
+    default:
+      return errors::InvalidArgument("Snapshot writer version: ", version,
+                                     " is not supported.");
+  }
 
   return (*out_writer)->Initialize(env);
 }
 
-Status Writer::Initialize(tensorflow::Env* env) {
+TFRecordWriter::TFRecordWriter(const std::string& filename,
+                               const std::string& compression_type)
+    : filename_(filename), compression_type_(compression_type) {}
+
+Status TFRecordWriter::Initialize(tensorflow::Env* env) {
+  TF_RETURN_IF_ERROR(env->NewAppendableFile(filename_, &dest_));
+
+  record_writer_ = absl::make_unique<io::RecordWriter>(
+      dest_.get(), io::RecordWriterOptions::CreateRecordWriterOptions(
+                       /*compression_type=*/compression_type_));
+  return Status::OK();
+}
+
+Status TFRecordWriter::WriteTensors(const std::vector<Tensor>& tensors) {
+  for (const auto& tensor : tensors) {
+    TensorProto proto;
+    tensor.AsProtoTensorContent(&proto);
+#if defined(PLATFORM_GOOGLE)
+    TF_RETURN_IF_ERROR(record_writer_->WriteRecord(proto.SerializeAsCord()));
+#else   // PLATFORM_GOOGLE
+    TF_RETURN_IF_ERROR(record_writer_->WriteRecord(proto.SerializeAsString()));
+#endif  // PLATFORM_GOOGLE
+  }
+  return Status::OK();
+}
+
+Status TFRecordWriter::Sync() {
+  TF_RETURN_IF_ERROR(record_writer_->Flush());
+  return dest_->Flush();
+}
+
+Status TFRecordWriter::Close() {
+  if (record_writer_ != nullptr) {
+    TF_RETURN_IF_ERROR(Sync());
+    TF_RETURN_IF_ERROR(record_writer_->Close());
+    TF_RETURN_IF_ERROR(dest_->Close());
+    record_writer_ = nullptr;
+    dest_ = nullptr;
+  }
+  return Status::OK();
+}
+
+TFRecordWriter::~TFRecordWriter() {
+  Status s = Close();
+  if (!s.ok()) {
+    LOG(ERROR) << "Failed to close snapshot file " << filename_ << ": " << s;
+  }
+}
+
+CustomWriter::CustomWriter(const std::string& filename,
+                           const std::string& compression_type,
+                           const DataTypeVector& dtypes)
+    : filename_(filename),
+      compression_type_(compression_type),
+      dtypes_(dtypes) {}
+
+Status CustomWriter::Initialize(tensorflow::Env* env) {
   TF_RETURN_IF_ERROR(env->NewAppendableFile(filename_, &dest_));
 #if defined(IS_SLIM_BUILD)
   if (compression_type_ != io::compression::kNone) {
@@ -103,7 +183,7 @@ Status Writer::Initialize(tensorflow::Env* env) {
   return Status::OK();
 }
 
-Status Writer::WriteTensors(const std::vector<Tensor>& tensors) {
+Status CustomWriter::WriteTensors(const std::vector<Tensor>& tensors) {
   if (compression_type_ != io::compression::kSnappy) {
     experimental::SnapshotRecord record;
     for (const auto& tensor : tensors) {
@@ -117,12 +197,9 @@ Status Writer::WriteTensors(const std::vector<Tensor>& tensors) {
 #endif  // PLATFORM_GOOGLE
   }
 
-  if (version_ != 1) {
-    return errors::InvalidArgument("Version: ", version_, " is not supported.");
-  }
   if (compression_type_ != io::compression::kSnappy) {
-    return errors::InvalidArgument(
-        "Version 1 is only compatible with snappy compression");
+    return errors::InvalidArgument("Compression ", compression_type_,
+                                   " is not supported.");
   }
 
   std::vector<const TensorBuffer*> tensor_buffers;
@@ -184,9 +261,9 @@ Status Writer::WriteTensors(const std::vector<Tensor>& tensors) {
   return Status::OK();
 }
 
-Status Writer::Sync() { return dest_->Sync(); }
+Status CustomWriter::Sync() { return dest_->Sync(); }
 
-Status Writer::Close() {
+Status CustomWriter::Close() {
   if (dest_ != nullptr) {
     TF_RETURN_IF_ERROR(dest_->Close());
     dest_ = nullptr;
@@ -198,14 +275,14 @@ Status Writer::Close() {
   return Status::OK();
 }
 
-Writer::~Writer() {
+CustomWriter::~CustomWriter() {
   Status s = Close();
   if (!s.ok()) {
     LOG(ERROR) << "Could not finish writing file: " << s;
   }
 }
 
-Status Writer::WriteRecord(const StringPiece& data) {
+Status CustomWriter::WriteRecord(const StringPiece& data) {
   char header[kHeaderSize];
   core::EncodeFixed64(header, data.size());
   TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
@@ -213,7 +290,7 @@ Status Writer::WriteRecord(const StringPiece& data) {
 }
 
 #if defined(PLATFORM_GOOGLE)
-Status Writer::WriteRecord(const absl::Cord& data) {
+Status CustomWriter::WriteRecord(const absl::Cord& data) {
   char header[kHeaderSize];
   core::EncodeFixed64(header, data.size());
   TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
@@ -225,10 +302,34 @@ Status Reader::Create(Env* env, const std::string& filename,
                       const string& compression_type, int version,
                       const DataTypeVector& dtypes,
                       std::unique_ptr<Reader>* out_reader) {
-  *out_reader =
-      absl::WrapUnique(new Reader(filename, compression_type, version, dtypes));
+  switch (version) {
+    // CustomReader is able to read a legacy snapshot file format (v0) though
+    // custom writer doesn't have the ability to write it any more since it is
+    // strictly worse than V1.
+    case 0:
+    case 1:
+      *out_reader = absl::make_unique<CustomReader>(filename, compression_type,
+                                                    version, dtypes);
+      break;
+    case 2:
+      *out_reader =
+          absl::make_unique<TFRecordReader>(filename, compression_type, dtypes);
+      break;
+    default:
+      return errors::InvalidArgument("Snapshot reader version: ", version,
+                                     " is not supported.");
+  }
 
   return (*out_reader)->Initialize(env);
+}
+
+Status Reader::SkipRecords(int64 num_records) {
+  // TODO(frankchn): Optimize to not parse the entire Tensor and actually skip.
+  for (int i = 0; i < num_records; ++i) {
+    std::vector<Tensor> unused_tensors;
+    TF_RETURN_IF_ERROR(ReadTensors(&unused_tensors));
+  }
+  return Status::OK();
 }
 
 class Reader::Dataset : public DatasetBase {
@@ -273,13 +374,6 @@ class Reader::Dataset : public DatasetBase {
   }
 
  private:
-  const std::string shard_dir_;
-  const std::string compression_;
-  const int64 version_;
-  const DataTypeVector dtypes_;
-  const std::vector<PartialTensorShape> shapes_;
-  const int64 start_index_;
-
   class Iterator : public DatasetIterator<Dataset> {
    public:
     explicit Iterator(const Params& params)
@@ -333,16 +427,9 @@ class Reader::Dataset : public DatasetBase {
     }
 
    private:
-    std::unique_ptr<Reader> reader_;
-
-    // Stores the id current checkpoint file that we are in the process of
-    // reading (e.g. if the file is currently 00000001.snapshot, then this will
-    // be 1).
-    uint64 current_checkpoint_id_;
-
     std::string GetCurrentFilename() {
-      return GetCurrentCheckpointFile(dataset()->shard_dir_,
-                                      current_checkpoint_id_);
+      return GetCheckpointFileName(dataset()->shard_dir_,
+                                   current_checkpoint_id_);
     }
 
     Status AdvanceToNextFile(Env* env) {
@@ -351,7 +438,21 @@ class Reader::Dataset : public DatasetBase {
       return Reader::Create(env, GetCurrentFilename(), dataset()->compression_,
                             dataset()->version_, dataset()->dtypes_, &reader_);
     }
+
+    std::unique_ptr<Reader> reader_;
+
+    // Stores the id current checkpoint file that we are in the process of
+    // reading (e.g. if the file is currently 00000001.snapshot, then this will
+    // be 1).
+    uint64 current_checkpoint_id_;
   };
+
+  const std::string shard_dir_;
+  const std::string compression_;
+  const int64 version_;
+  const DataTypeVector dtypes_;
+  const std::vector<PartialTensorShape> shapes_;
+  const int64 start_index_;
 };
 
 class Reader::NestedDataset : public DatasetBase {
@@ -478,15 +579,52 @@ Status Reader::MakeNestedDataset(Env* env,
   return Status::OK();
 }
 
-Reader::Reader(const std::string& filename, const string& compression_type,
-               int version, const DataTypeVector& dtypes)
+TFRecordReader::TFRecordReader(const std::string& filename,
+                               const string& compression_type,
+                               const DataTypeVector& dtypes)
+    : filename_(filename),
+      offset_(0),
+      compression_type_(compression_type),
+      dtypes_(dtypes) {}
+
+Status TFRecordReader::Initialize(Env* env) {
+  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename_, &file_));
+
+  record_reader_ = absl::make_unique<io::RecordReader>(
+      file_.get(), io::RecordReaderOptions::CreateRecordReaderOptions(
+                       /*compression_type=*/compression_type_));
+  return Status::OK();
+}
+
+Status TFRecordReader::ReadTensors(std::vector<Tensor>* read_tensors) {
+  read_tensors->reserve(dtypes_.size());
+  for (int i = 0; i < dtypes_.size(); ++i) {
+    tstring record;
+    TF_RETURN_IF_ERROR(record_reader_->ReadRecord(&offset_, &record));
+
+    TensorProto proto;
+    proto.ParseFromArray(record.data(), record.size());
+
+    Tensor tensor;
+    if (!tensor.FromProto(proto)) {
+      return errors::DataLoss("Unable to parse tensor from stored proto.");
+    }
+
+    read_tensors->push_back(std::move(tensor));
+  }
+  return Status::OK();
+}
+
+CustomReader::CustomReader(const std::string& filename,
+                           const string& compression_type, const int version,
+                           const DataTypeVector& dtypes)
     : filename_(filename),
       compression_type_(compression_type),
       version_(version),
       dtypes_(dtypes) {}
 
-Status Reader::Initialize(Env* env) {
-  TF_RETURN_IF_ERROR(Env::Default()->NewRandomAccessFile(filename_, &file_));
+Status CustomReader::Initialize(Env* env) {
+  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename_, &file_));
   input_stream_ = std::make_unique<io::RandomAccessInputStream>(file_.get());
 
 #if defined(IS_SLIM_BUILD)
@@ -527,16 +665,7 @@ Status Reader::Initialize(Env* env) {
   return Status::OK();
 }
 
-Status Reader::SkipRecords(int64 num_records) {
-  // TODO(frankchn): Optimize to not parse the entire Tensor and actually skip.
-  for (int i = 0; i < num_records; ++i) {
-    std::vector<Tensor> unused_tensors;
-    TF_RETURN_IF_ERROR(ReadTensors(&unused_tensors));
-  }
-  return Status::OK();
-}
-
-Status Reader::ReadTensors(std::vector<Tensor>* read_tensors) {
+Status CustomReader::ReadTensors(std::vector<Tensor>* read_tensors) {
   profiler::TraceMe activity(
       [&]() { return absl::StrCat(kClassName, kSeparator, "ReadTensors"); },
       profiler::TraceMeLevel::kInfo);
@@ -547,7 +676,8 @@ Status Reader::ReadTensors(std::vector<Tensor>* read_tensors) {
     return errors::InvalidArgument("Version: ", version_, " is not supported.");
   }
   if (compression_type_ != io::compression::kSnappy) {
-    return errors::InvalidArgument("Version 1 only supports snappy.");
+    return errors::InvalidArgument("Compression ", compression_type_,
+                                   " is not supported.");
   }
 
   experimental::SnapshotTensorMetadata metadata;
@@ -599,7 +729,7 @@ Status Reader::ReadTensors(std::vector<Tensor>* read_tensors) {
   return Status::OK();
 }
 
-Status Reader::ReadTensorsV0(std::vector<Tensor>* read_tensors) {
+Status CustomReader::ReadTensorsV0(std::vector<Tensor>* read_tensors) {
   experimental::SnapshotRecord record;
 #if defined(PLATFORM_GOOGLE)
   absl::Cord c;
@@ -620,7 +750,7 @@ Status Reader::ReadTensorsV0(std::vector<Tensor>* read_tensors) {
   return Status::OK();
 }
 
-Status Reader::SnappyUncompress(
+Status CustomReader::SnappyUncompress(
     const experimental::SnapshotTensorMetadata* metadata,
     std::vector<Tensor>* simple_tensors,
     std::vector<std::pair<std::unique_ptr<char[]>, size_t>>*
@@ -669,7 +799,7 @@ Status Reader::SnappyUncompress(
   return Status::OK();
 }
 
-Status Reader::ReadRecord(tstring* record) {
+Status CustomReader::ReadRecord(tstring* record) {
   tstring header;
   TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(kHeaderSize, &header));
   uint64 length = core::DecodeFixed64(header.data());
@@ -677,7 +807,7 @@ Status Reader::ReadRecord(tstring* record) {
 }
 
 #if defined(PLATFORM_GOOGLE)
-Status Reader::ReadRecord(absl::Cord* record) {
+Status CustomReader::ReadRecord(absl::Cord* record) {
   tstring header;
   TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(kHeaderSize, &header));
   uint64 length = core::DecodeFixed64(header.data());
@@ -694,31 +824,31 @@ Status Reader::ReadRecord(absl::Cord* record) {
 }
 #endif
 
-Status WriteMetadataFile(const string& hash_dir,
+Status WriteMetadataFile(Env* env, const string& dir,
                          const experimental::SnapshotMetadataRecord* metadata) {
-  string metadata_filename = io::JoinPath(hash_dir, kMetadataFilename);
-  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(hash_dir));
+  string metadata_filename = io::JoinPath(dir, kMetadataFilename);
+  TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(dir));
   std::string tmp_filename =
       absl::StrCat(metadata_filename, "-tmp-", random::New64());
-  TF_RETURN_IF_ERROR(WriteBinaryProto(Env::Default(), tmp_filename, *metadata));
-  return Env::Default()->RenameFile(tmp_filename, metadata_filename);
+  TF_RETURN_IF_ERROR(WriteBinaryProto(env, tmp_filename, *metadata));
+  return env->RenameFile(tmp_filename, metadata_filename);
 }
 
-Status ReadMetadataFile(const string& hash_dir,
+Status ReadMetadataFile(Env* env, const string& dir,
                         experimental::SnapshotMetadataRecord* metadata,
                         bool* file_exists) {
-  string metadata_filename = io::JoinPath(hash_dir, kMetadataFilename);
-  Status s = Env::Default()->FileExists(metadata_filename);
+  string metadata_filename = io::JoinPath(dir, kMetadataFilename);
+  Status s = env->FileExists(metadata_filename);
   *file_exists = s.ok();
 
   if (*file_exists) {
-    return ReadBinaryProto(Env::Default(), metadata_filename, metadata);
+    return ReadBinaryProto(env, metadata_filename, metadata);
   } else {
     return Status::OK();
   }
 }
 
-Status DumpDatasetGraph(const std::string& path, uint64 hash,
+Status DumpDatasetGraph(Env* env, const std::string& path, uint64 hash,
                         const GraphDef* graph) {
   std::string hash_hex =
       strings::StrCat(strings::Hex(hash, strings::kZeroPad16));
@@ -726,8 +856,8 @@ Status DumpDatasetGraph(const std::string& path, uint64 hash,
       io::JoinPath(path, absl::StrCat(hash_hex, "-graph.pbtxt"));
 
   LOG(INFO) << "Graph hash is " << hash_hex << ", writing to " << graph_file;
-  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(path));
-  return WriteTextProto(Env::Default(), graph_file, *graph);
+  TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(path));
+  return WriteTextProto(env, graph_file, *graph);
 }
 
 Status DetermineOpState(const std::string& mode_string, bool file_exists,
@@ -778,6 +908,68 @@ Status DetermineOpState(const std::string& mode_string, bool file_exists,
     *mode = WRITER;
     return Status::OK();
   }
+}
+
+AsyncWriter::AsyncWriter(Env* env, int64 file_index,
+                         const std::string& shard_directory,
+                         uint64 checkpoint_id, const std::string& compression,
+                         int64 version, const DataTypeVector& output_types,
+                         std::function<void(Status)> done) {
+  thread_ = absl::WrapUnique(env->StartThread(
+      ThreadOptions(), absl::StrCat("writer_thread_", file_index),
+      [this, env, shard_directory, checkpoint_id, compression, version,
+       &output_types, done = std::move(done)] {
+        done(WriterThread(env, shard_directory, checkpoint_id, compression,
+                          version, output_types));
+      }));
+}
+
+void AsyncWriter::Write(const std::vector<Tensor>& tensors) {
+  mutex_lock l(mu_);
+  ElementOrEOF element;
+  element.value = tensors;
+  deque_.push_back(std::move(element));
+}
+
+void AsyncWriter::SignalEOF() {
+  mutex_lock l(mu_);
+  ElementOrEOF be;
+  be.end_of_sequence = true;
+  deque_.push_back(std::move(be));
+}
+
+void AsyncWriter::Consume(ElementOrEOF* be) {
+  mutex_lock l(mu_);
+  mu_.Await(tensorflow::Condition(this, &AsyncWriter::ElementAvailable));
+  *be = deque_.front();
+  deque_.pop_front();
+}
+
+bool AsyncWriter::ElementAvailable() { return !deque_.empty(); }
+
+Status AsyncWriter::WriterThread(Env* env, const std::string& shard_directory,
+                                 uint64 checkpoint_id,
+                                 const std::string& compression, int64 version,
+                                 DataTypeVector output_types) {
+  std::unique_ptr<snapshot_util::Writer> writer;
+  TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(shard_directory));
+
+  TF_RETURN_IF_ERROR(snapshot_util::Writer::Create(
+      env, GetCheckpointFileName(shard_directory, checkpoint_id), compression,
+      version, std::move(output_types), &writer));
+
+  while (true) {
+    ElementOrEOF be;
+    Consume(&be);
+
+    if (be.end_of_sequence) {
+      TF_RETURN_IF_ERROR(writer->Close());
+      break;
+    }
+
+    TF_RETURN_IF_ERROR(writer->WriteTensors(be.value));
+  }
+  return Status::OK();
 }
 
 }  // namespace snapshot_util

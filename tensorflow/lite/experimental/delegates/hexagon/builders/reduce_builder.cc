@@ -29,20 +29,15 @@ namespace hexagon {
 TfLiteStatus ReduceOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
                                                const TfLiteIntArray* outputs,
                                                TfLiteContext* context) {
-  static int quant_bound_shape[] = {1, 1, 1, 1};
-  int tensor_id;
-
   // Input data tensor.
-  tensor_id = inputs->data[0];
+  int tensor_id = inputs->data[0];
   const auto& input_tensor = context->tensors[tensor_id];
   AddInput(graph_builder_->GetHexagonTensorId(tensor_id));
   ComputeMinAndMaxQuantValues(input_tensor, &input_min_, &input_max_);
   auto* input_min_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&input_min_),
-      sizeof(input_min_));
+      kScalarShape, reinterpret_cast<char*>(&input_min_), sizeof(input_min_));
   auto* input_max_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&input_max_),
-      sizeof(input_max_));
+      kScalarShape, reinterpret_cast<char*>(&input_max_), sizeof(input_max_));
 
   // Min/max values for input tensor.
   AddInput(TensorID(input_min_const->GetID(), 0));
@@ -71,11 +66,9 @@ TfLiteStatus ReduceOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   float output_min = -1, output_max = -1;
   ComputeMinAndMaxQuantValues(output_tensor, &output_min, &output_max);
   auto* output_min_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&output_min),
-      sizeof(output_min));
+      kScalarShape, reinterpret_cast<char*>(&output_min), sizeof(output_min));
   auto* output_max_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&output_max),
-      sizeof(output_max));
+      kScalarShape, reinterpret_cast<char*>(&output_max), sizeof(output_max));
   // Min/max values for output tensor.
   AddInput(TensorID(output_min_const->GetID(), 0));
   AddInput(TensorID(output_max_const->GetID(), 0));
@@ -87,8 +80,8 @@ TfLiteStatus ReduceOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   auto mean_output = AddOutput(output_element_size, 4,
                                {output_batch_size, output_height_size,
                                 output_width_size, output_depth_size});
-  auto mean_out_min = AddOutput(output_element_size, 4, {1, 1, 1, 1});
-  auto mean_out_max = AddOutput(output_element_size, 4, {1, 1, 1, 1});
+  auto mean_out_min = AddOutput(output_element_size, 4, kScalarShape);
+  auto mean_out_max = AddOutput(output_element_size, 4, kScalarShape);
   // Mean op doesn't honor the passed min/max for output, so we need
   // to add requantize.
   auto* requantize_op = graph_builder_->AddNode(GetTFLiteNodeID());
@@ -102,8 +95,8 @@ TfLiteStatus ReduceOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
       requantize_op->AddOutput(sizeof(uint8_t), 4,
                                {output_batch_size, output_height_size,
                                 output_width_size, output_depth_size});
-  requantize_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-  requantize_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+  requantize_op->AddOutput(sizeof(float), 4, kScalarShape);
+  requantize_op->AddOutput(sizeof(float), 4, kScalarShape);
 
   return kTfLiteOk;
 }

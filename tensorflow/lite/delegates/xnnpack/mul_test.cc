@@ -679,6 +679,35 @@ TEST(Mul, 2DByStatic0D) {
       .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 }
 
+TEST(Mul, FP16Weights) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto height = shape_rng();
+  const auto width = shape_rng();
+  const auto channels = shape_rng();
+
+  BinaryElementwiseTester()
+      .Input1Shape({batch, height, width, channels})
+      .Input2Shape({batch, height, width, channels})
+      .Input1Static(true)
+      .FP16Weights()
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
+
+  BinaryElementwiseTester()
+      .Input1Shape({batch, height, width, channels})
+      .Input2Shape({batch, height, width, channels})
+      .Input2Static(true)
+      .FP16Weights()
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
+}
+
 TEST(Mul, ReluActivation) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),

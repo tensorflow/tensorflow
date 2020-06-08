@@ -54,14 +54,14 @@ struct BinaryOpConverter : public OpRewritePattern<LhloOpTy> {
       induction_vars.push_back(forOp.getInductionVar());
       rewriter.setInsertionPointToStart(forOp.getBody());
     }
-    auto l = rewriter.create<LoadOp>(loc, lhs, induction_vars);
-    auto r = rewriter.create<LoadOp>(loc, rhs, induction_vars);
+    auto l = rewriter.create<AffineLoadOp>(loc, lhs, induction_vars);
+    auto r = rewriter.create<AffineLoadOp>(loc, rhs, induction_vars);
     Value opResult = xla_lhlo::XlaOpToStdScalarOp::map<LhloOpTy>(
         op, element_type, {l, r}, &rewriter);
     if (opResult == nullptr) {
       return failure();
     }
-    rewriter.create<StoreOp>(loc, opResult, op.out(), induction_vars);
+    rewriter.create<AffineStoreOp>(loc, opResult, op.out(), induction_vars);
     rewriter.eraseOp(op);
     return success();
   }

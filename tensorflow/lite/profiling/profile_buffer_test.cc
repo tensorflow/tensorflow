@@ -12,12 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/profiling/profile_buffer.h"
+
+#include <cstdint>
 #include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/profiling/profile_buffer.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
@@ -43,7 +45,7 @@ TEST(ProfileBufferTest, AddEvent) {
   EXPECT_EQ(0, buffer.Size());
   auto event_handle =
       buffer.BeginEvent("hello", ProfileEvent::EventType::DEFAULT,
-                        /*event_metadata*/ 42, /*event_subgraph_index*/ 0);
+                        /*event_metadata1*/ 42, /*event_metadata2*/ 0);
 
   EXPECT_GE(event_handle, 0);
   EXPECT_EQ(1, buffer.Size());
@@ -55,6 +57,28 @@ TEST(ProfileBufferTest, AddEvent) {
   EXPECT_EQ(event->event_metadata, 42);
 
   buffer.EndEvent(event_handle);
+  EXPECT_EQ(1, buffer.Size());
+  EXPECT_GE(event->end_timestamp_us, event->begin_timestamp_us);
+}
+
+TEST(ProfileBufferTest, EndEventWithMetadata) {
+  ProfileBuffer buffer(/*max_size*/ 10, /*enabled*/ true);
+  EXPECT_EQ(0, buffer.Size());
+  auto event_handle =
+      buffer.BeginEvent("hello", ProfileEvent::EventType::DEFAULT,
+                        /*event_metadata1*/ 42, /*event_metadata2*/ 0);
+  const int64_t kEventMetadata1 = 18;
+  const int64_t kEventMetadata2 = 36;
+  buffer.EndEvent(event_handle, &kEventMetadata1, &kEventMetadata2);
+
+  EXPECT_GE(event_handle, 0);
+  EXPECT_EQ(1, buffer.Size());
+  auto event = GetProfileEvents(buffer)[0];
+  EXPECT_EQ(event->tag, "hello");
+  EXPECT_GT(event->begin_timestamp_us, 0);
+  EXPECT_EQ(event->event_type, ProfileEvent::EventType::DEFAULT);
+  EXPECT_EQ(event->event_metadata, kEventMetadata1);
+  EXPECT_EQ(event->extra_event_metadata, kEventMetadata2);
   EXPECT_EQ(1, buffer.Size());
   EXPECT_GE(event->end_timestamp_us, event->begin_timestamp_us);
 }
@@ -83,13 +107,13 @@ TEST(ProfileBufferTest, Enable) {
   EXPECT_EQ(0, buffer.Size());
   auto event_handle =
       buffer.BeginEvent("hello", ProfileEvent::EventType::DEFAULT,
-                        /*event_metadata*/ 42, /*event_subgraph_index*/ 0);
+                        /*event_metadata1*/ 42, /*event_metadata2*/ 0);
   EXPECT_EQ(kInvalidEventHandle, event_handle);
   EXPECT_EQ(0, buffer.Size());
   buffer.SetEnabled(true);
   event_handle =
       buffer.BeginEvent("hello", ProfileEvent::EventType::DEFAULT,
-                        /*event_metadata*/ 42, /*event_subgraph_index*/ 0);
+                        /*event_metadata1*/ 42, /*event_metadata2*/ 0);
   EXPECT_GE(event_handle, 0);
   EXPECT_EQ(1, buffer.Size());
 }

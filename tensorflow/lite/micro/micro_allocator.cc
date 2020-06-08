@@ -24,11 +24,14 @@ limitations under the License.
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/api/tensor_utils.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/micro/compatibility.h"
 #include "tensorflow/lite/micro/memory_helpers.h"
 #include "tensorflow/lite/micro/memory_planner/greedy_memory_planner.h"
 #include "tensorflow/lite/micro/memory_planner/memory_planner.h"
+#include "tensorflow/lite/micro/micro_op_resolver.h"
 #include "tensorflow/lite/micro/simple_memory_allocator.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 
@@ -45,6 +48,15 @@ struct AllocationInfo {
 // We align tensor buffers to 16-byte boundaries, since this is a common
 // requirement for SIMD extensions.
 constexpr int kBufferAlignment = 16;
+
+// Instance of a zero-length int to pass as tensor dims for a flatbuffer
+// Tensor with no shape. Note that the second member of a TfLiteArray is a
+// flexible array member, which is not strictly valid C++. However it is
+// supported by both GCC and clang, as long as the flexible array element is not
+// initialized, which is ok in this case as it should never be accessed.
+// Declaring this as constexpr causes build errors with clang, as it requires
+// the flexible array element to be initialized.
+const TfLiteIntArray kZeroLengthIntArray = {0};
 
 class MicroBuiltinDataAllocator : public BuiltinDataAllocator {
  public:
@@ -311,11 +323,17 @@ TfLiteStatus InitializeTfLiteTensorFromFlatbuffer(
       flatbuffer_tensor, &result->bytes, &type_size, error_reporter));
 
   // TFLM doesn't allow reshaping the tensor which requires dynamic memory
-  // allocation so it is safe to drop the const qualifier. In the future, if we
-  // really want to update the tensor shape, we can always pass in a new
+  // allocation so it is safe to drop the const qualifier. In the future, if
+  // we really want to update the tensor shape, we can always pass in a new
   // TfLiteIntArray - especially we have to do so if the dimension is changed.
-  result->dims = const_cast<TfLiteIntArray*>(
-      reinterpret_cast<const TfLiteIntArray*>(flatbuffer_tensor.shape()));
+  if (flatbuffer_tensor.shape() == nullptr) {
+    // flatbuffer_tensor.shape() can return a nullptr in the case of a scalar
+    // tensor.
+    result->dims = const_cast<TfLiteIntArray*>(&kZeroLengthIntArray);
+  } else {
+    result->dims = const_cast<TfLiteIntArray*>(
+        reinterpret_cast<const TfLiteIntArray*>(flatbuffer_tensor.shape()));
+  }
 
   // Copy the quantization information from the serialized data.
   const auto* src_quantization = flatbuffer_tensor.quantization();
@@ -386,7 +404,10 @@ TfLiteStatus InitializeTfLiteTensorFromFlatbuffer(
 MicroAllocator::MicroAllocator(TfLiteContext* context, const Model* model,
                                uint8_t* tensor_arena, size_t arena_size,
                                ErrorReporter* error_reporter)
-    : model_(model), error_reporter_(error_reporter), context_(context) {
+    : model_(model),
+      context_(context),
+      error_reporter_(error_reporter),
+      active_(false) {
   uint8_t* aligned_arena = AlignPointerUp(tensor_arena, kBufferAlignment);
   if (aligned_arena != tensor_arena) {
     TF_LITE_REPORT_ERROR(
@@ -399,9 +420,22 @@ MicroAllocator::MicroAllocator(TfLiteContext* context, const Model* model,
   // Creates a root memory allocator managing the arena. The allocator itself
   // also locates in the arena buffer. This allocator doesn't need to be
   // destructed as it's the root allocator.
-  memory_allocator_ = CreateInPlaceSimpleMemoryAllocator(
+  memory_allocator_ = SimpleMemoryAllocator::Create(
       error_reporter, aligned_arena, aligned_arena_size);
+}
 
+MicroAllocator::MicroAllocator(TfLiteContext* context, const Model* model,
+                               SimpleMemoryAllocator* memory_allocator,
+                               ErrorReporter* error_reporter)
+    : memory_allocator_(memory_allocator),
+      model_(model),
+      context_(context),
+      error_reporter_(error_reporter),
+      active_(false) {}
+
+MicroAllocator::~MicroAllocator() {}
+
+TfLiteStatus MicroAllocator::Init() {
   TfLiteStatus status = InitGraphAndContextTensorData();
   // TODO(b/147871299): Consider improving this code. A better way of handling
   // failures in the constructor is to have a static function that returns a
@@ -413,10 +447,11 @@ MicroAllocator::MicroAllocator(TfLiteContext* context, const Model* model,
   } else {
     active_ = true;
   }
+  return status;
 }
 
-TfLiteStatus MicroAllocator::InitializeFromFlatbuffer(
-    const OpResolver& op_resolver,
+TfLiteStatus MicroAllocator::PrepareFromFlatbuffer(
+    const MicroOpResolver& op_resolver,
     NodeAndRegistration** node_and_registrations) {
   if (!active_) {
     return kTfLiteError;
@@ -562,12 +597,6 @@ size_t MicroAllocator::used_bytes() const {
   if (active_) {
     return 0;
   }
-  TF_LITE_REPORT_ERROR(error_reporter_, "Total buffer usage: %d bytes",
-                       memory_allocator_->GetUsedBytes());
-  TF_LITE_REPORT_ERROR(error_reporter_, "Head usage: %d bytes",
-                       memory_allocator_->GetHeadUsedBytes());
-  TF_LITE_REPORT_ERROR(error_reporter_, "Tail usage: %d bytes",
-                       memory_allocator_->GetTailUsedBytes());
   return memory_allocator_->GetUsedBytes();
 }
 
@@ -634,7 +663,7 @@ TfLiteStatus MicroAllocator::AllocateNodeAndRegistrations(
 }
 
 TfLiteStatus MicroAllocator::PrepareNodeAndRegistrationDataFromFlatbuffer(
-    const OpResolver& op_resolver,
+    const MicroOpResolver& op_resolver,
     NodeAndRegistration* node_and_registrations) {
   TfLiteStatus status = kTfLiteOk;
   auto* opcodes = model_->operator_codes();
@@ -666,25 +695,38 @@ TfLiteStatus MicroAllocator::PrepareNodeAndRegistrationDataFromFlatbuffer(
     BuiltinOperator op_type =
         static_cast<BuiltinOperator>(registration->builtin_code);
 
-    if (op_type != BuiltinOperator_CUSTOM && op->custom_options()) {
-      TF_LITE_REPORT_ERROR(
-          error_reporter_,
-          "Unsupported behavior: found builtin operator %s with custom "
-          "options.\n",
-          EnumNameBuiltinOperator(op_type));
-      return kTfLiteError;
-    }
-
     const char* custom_data = nullptr;
     size_t custom_data_size = 0;
     unsigned char* builtin_data = nullptr;
-    if (op->custom_options()) {
-      custom_data = reinterpret_cast<const char*>(op->custom_options()->data());
-      custom_data_size = op->custom_options()->size();
+
+    if (op_type == BuiltinOperator_CUSTOM) {
+      // Custom Ops may or may not have a non-null custom_options field.
+      if (op->custom_options() != nullptr) {
+        custom_data =
+            reinterpret_cast<const char*>(op->custom_options()->data());
+        custom_data_size = op->custom_options()->size();
+      }
     } else {
-      TF_LITE_ENSURE_STATUS(ParseOpData(op, op_type, error_reporter_,
-                                        &builtin_data_allocator,
-                                        (void**)(&builtin_data)));
+      if (op->custom_options() != nullptr) {
+        TF_LITE_REPORT_ERROR(
+            error_reporter_,
+            "Unsupported behavior: found builtin operator %s with custom "
+            "options.\n",
+            EnumNameBuiltinOperator(op_type));
+        return kTfLiteError;
+      }
+
+      MicroOpResolver::BuiltinParseFunction parser =
+          op_resolver.GetOpDataParser(op_type);
+      if (parser == nullptr) {
+        TF_LITE_REPORT_ERROR(error_reporter_, "Did not find a parser for %s",
+                             EnumNameBuiltinOperator(op_type));
+
+        return kTfLiteError;
+      }
+      TF_LITE_ENSURE_STATUS(parser(op, op_type, error_reporter_,
+                                   &builtin_data_allocator,
+                                   (void**)(&builtin_data)));
     }
 
     // Disregard const qualifier to workaround with existing API.
@@ -703,6 +745,16 @@ TfLiteStatus MicroAllocator::PrepareNodeAndRegistrationDataFromFlatbuffer(
   }
 
   return kTfLiteOk;
+}  // namespace tflite
+
+size_t MicroAllocator::GetTensorsCount() const {
+  return context_->tensors_size;
 }
+
+size_t MicroAllocator::GetOperatorsCount() const {
+  return subgraph_->operators()->size();
+}
+
+ErrorReporter* MicroAllocator::error_reporter() { return error_reporter_; }
 
 }  // namespace tflite

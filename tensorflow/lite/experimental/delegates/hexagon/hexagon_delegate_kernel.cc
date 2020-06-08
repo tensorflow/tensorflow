@@ -28,34 +28,6 @@ limitations under the License.
 namespace tflite {
 
 namespace {
-
-// Used to convert int8 <-> uint8.
-constexpr int kSameScaleEffectiveMultiplier = 1 << 30;
-constexpr int kSameScaleEffectiveShift = 1;
-constexpr int kInt8Uint8ZeroPointDiff = 128;
-
-inline const char* StateToString(
-    HexagonDelegateKernel::HexagonKernelState state) {
-  switch (state) {
-    case HexagonDelegateKernel::HexagonKernelState::HEALTHY:
-      return "HEALTHY";
-    case HexagonDelegateKernel::HexagonKernelState::FAST_RPC_SETUP_FAILED:
-      return "FAST_RPC_SETUP_FAILED";
-    case HexagonDelegateKernel::HexagonKernelState::FAILED_TO_INIT_GRAPH:
-      return "FAILED_TO_INIT_GRAPH";
-    case HexagonDelegateKernel::HexagonKernelState::FAILED_TO_PREPARE_GRAPH:
-      return "FAILED_TO_PREPARE_GRAPH";
-    case HexagonDelegateKernel::HexagonKernelState::MULTIPLE_INPUTS:
-      return "MULTIPLE_INPUTS";
-    case HexagonDelegateKernel::HexagonKernelState::INPUT_RANK_NOT_SUPPORTED:
-      return "INPUT_RANK_NOT_SUPPORTED";
-    case HexagonDelegateKernel::HexagonKernelState::MULTIPLE_OUTPUTS:
-      return "MULTIPLE_OUTPUTS";
-    case HexagonDelegateKernel::HexagonKernelState::FAILED_TO_EXECUTE_GRAPH:
-      return "FAILED_TO_EXECUTE_GRAPH";
-  }
-}
-
 // Returns uint64 representing total cycles in 'perf_info' by
 // combining lo and hi counters.
 inline uint64_t GetCycles(const hexagon_nn_perfinfo& perf_info) {
@@ -67,18 +39,16 @@ inline uint64_t GetCycles(const hexagon_nn_perfinfo& perf_info) {
 }  // namespace
 
 void HexagonDelegateKernel::ReportError(TfLiteContext* context,
-                                        HexagonKernelState state,
                                         const std::string& msg) {
   PrintLog();
-  context->ReportError(context, "Failed: %s. STATE: %s", msg.c_str(),
-                       StateToString(state));
+  TF_LITE_KERNEL_LOG(context, "Failed: %s.", msg.c_str());
 }
 
 TfLiteStatus HexagonDelegateKernel::Init(TfLiteContext* context,
                                          const TfLiteDelegateParams* params) {
   hexagon_nn_ = HexagonNNImplementation();
   if (hexagon_nn_ == nullptr) {
-    context->ReportError(context, "Hexagon interface not available.");
+    TF_LITE_KERNEL_LOG(context, "Hexagon interface not available.");
     return kTfLiteError;
   }
   if (params != nullptr && params->delegate != nullptr) {
@@ -92,28 +62,26 @@ TfLiteStatus HexagonDelegateKernel::Init(TfLiteContext* context,
   // Ensure Hexagon NNLib is ready to start working.
   int error = hexagon_nn_->hexagon_nn_config();
   if (error != 0) {
-    context->ReportError(context, "hexagon_nn_config failed. Error: %d", error);
+    TF_LITE_KERNEL_LOG(context, "hexagon_nn_config failed. Error: %d", error);
     return kTfLiteError;
   }
 
   // Initialize an empty graph.
   error = hexagon_nn_->hexagon_nn_init(&graph_id_);
   if (error != 0) {
-    state_ = HexagonKernelState::FAILED_TO_INIT_GRAPH;
-    ReportError(context, state_, "failed to init");
+    ReportError(context, "failed to init");
     return kTfLiteError;
   }
   error =
       hexagon_nn_->hexagon_nn_set_debug_level(graph_id_, params_.debug_level);
   if (error != 0) {
-    context->ReportError(context, "Failed to set debug level, error: %d",
-                         error);
+    TF_LITE_KERNEL_LOG(context, "Failed to set debug level, error: %d", error);
     return kTfLiteError;
   }
   error = hexagon_nn_->hexagon_nn_set_powersave_level(params_.powersave_level);
   if (error != 0) {
-    context->ReportError(context, "Failed to set powersave level, error %d",
-                         error);
+    TF_LITE_KERNEL_LOG(context, "Failed to set powersave level, error %d",
+                       error);
     return kTfLiteError;
   }
 
@@ -129,7 +97,7 @@ TfLiteStatus HexagonDelegateKernel::Init(TfLiteContext* context,
 TfLiteStatus HexagonDelegateKernel::Invoke(TfLiteContext* context,
                                            TfLiteNode* node) {
   if (hexagon_nn_ == nullptr) {
-    context->ReportError(context, "Hexagon interface not available.");
+    TF_LITE_KERNEL_LOG(context, "Hexagon interface not available.");
     return kTfLiteError;
   }
   // Allocate inputs.
@@ -145,8 +113,7 @@ TfLiteStatus HexagonDelegateKernel::Invoke(TfLiteContext* context,
       char* data_ptr = tensor->data.raw;
 
       if (tensor->dims->size > 4) {
-        ReportError(context, HexagonKernelState::INPUT_RANK_NOT_SUPPORTED,
-                    "Only up to 4d tensor are supported.");
+        ReportError(context, "Only up to 4d tensor are supported.");
         return kTfLiteError;
       }
       input_tensors.emplace_back();
@@ -169,8 +136,7 @@ TfLiteStatus HexagonDelegateKernel::Invoke(TfLiteContext* context,
     TfLiteTensor* tensor = &context->tensors[tensor_index];
     if (tensor->allocation_type != kTfLiteMmapRo) {
       if (tensor->dims->size > 4) {
-        ReportError(context, HexagonKernelState::INPUT_RANK_NOT_SUPPORTED,
-                    "Only up to 4d tensor are supported.");
+        ReportError(context, "Only up to 4d tensor are supported.");
         return kTfLiteError;
       }
       output_tensors.emplace_back();
@@ -189,8 +155,7 @@ TfLiteStatus HexagonDelegateKernel::Invoke(TfLiteContext* context,
       graph_id_, input_tensors.data(), input_tensors.size(),
       output_tensors.data(), output_tensors.size());
   if (error != 0) {
-    ReportError(context, HexagonKernelState::FAILED_TO_EXECUTE_GRAPH,
-                "Failed to execute graph.");
+    ReportError(context, "Failed to execute graph.");
     return kTfLiteError;
   }
 
@@ -240,13 +205,12 @@ TfLiteStatus HexagonDelegateKernel::Prepare(TfLiteContext* context,
     return ResizeOutputTensors(context, node);
   }
   if (hexagon_nn_ == nullptr) {
-    context->ReportError(context, "Hexagon interface not available. prepare");
+    ReportError(context, "Hexagon interface not available. prepare");
     return kTfLiteError;
   }
   int status = hexagon_nn_->hexagon_nn_prepare(graph_id_);
   if (status != 0) {
-    state_ = HexagonKernelState::FAILED_TO_PREPARE_GRAPH;
-    ReportError(context, state_, "Failed to prepare graph.\n");
+    ReportError(context, "Failed to prepare graph.\n");
     return kTfLiteError;
   }
 
@@ -265,8 +229,7 @@ TfLiteStatus HexagonDelegateKernel::Prepare(TfLiteContext* context,
     TfLiteTensor* tensor = &context->tensors[tensor_index];
     // Const tensors should be added as const nodes during graph construction.
     if (tensor->allocation_type != kTfLiteMmapRo && tensor->dims->size > 4) {
-      ReportError(context, HexagonKernelState::INPUT_RANK_NOT_SUPPORTED,
-                  "Only up to 4d tensor are supported.");
+      ReportError(context, "Only up to 4d tensor are supported.");
       return kTfLiteError;
     }
   }
@@ -300,6 +263,19 @@ TfLiteStatus HexagonDelegateKernel::BuildGraph(
   for (int node_index : nodes_) {
     TF_LITE_ENSURE_STATUS(
         context->GetNodeAndRegistration(context, node_index, &node, &reg));
+    // Const inputs needs to be added to the hexagon graph as const nodes.
+    // Adding them earlier here to the graph
+    // - Simplifies separate builders
+    // - Simplifies int8 vs uint8 cases, builders don't need to handle them.
+    for (int i = 0; i < node->inputs->size; ++i) {
+      const int tensor_id = node->inputs->data[i];
+      if (tensor_id == -1) continue;
+      const auto& input_tensor = context->tensors[tensor_id];
+      if (input_tensor.allocation_type == kTfLiteMmapRo) {
+        builder_->AddConstNodeWithData(tensor_id, input_tensor,
+                                       /*int8_to_uint8*/ true);
+      }
+    }
     auto* op_builder =
         builder_->AddNodeFromTfLiteOp(reg->builtin_code, node, node_index);
     TF_LITE_ENSURE_STATUS(

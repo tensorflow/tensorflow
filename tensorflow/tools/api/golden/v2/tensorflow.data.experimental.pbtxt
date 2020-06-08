@@ -68,6 +68,10 @@ tf_module {
     name: "UNKNOWN_CARDINALITY"
     mtype: "<type \'int\'>"
   }
+  member {
+    name: "service"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "Counter"
     argspec: "args=[\'start\', \'step\', \'dtype\'], varargs=None, keywords=None, defaults=[\'0\', \'1\', \"<dtype: \'int64\'>\"], "
@@ -183,6 +187,10 @@ tf_module {
   member_method {
     name: "shuffle_and_repeat"
     argspec: "args=[\'buffer_size\', \'count\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "snapshot"
+    argspec: "args=[\'path\', \'compression\', \'reader_func\', \'shard_func\'], varargs=None, keywords=None, defaults=[\'AUTO\', \'None\', \'None\'], "
   }
   member_method {
     name: "take_while"

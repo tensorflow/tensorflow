@@ -43,16 +43,16 @@ cc_library(
         "@llvm-project//llvm:analysis",
         "@llvm-project//llvm:bit_reader",
         "@llvm-project//llvm:bit_writer",
-        "@llvm-project//llvm:code_gen",
-        "@llvm-project//llvm:core",
-        "@llvm-project//llvm:ipo",
+        "@llvm-project//llvm:codegen",
+        "@llvm-project//llvm:ipo_transforms",
+        "@llvm-project//llvm:ir",
         "@llvm-project//llvm:ir_reader",
         "@llvm-project//llvm:linker",
-        "@llvm-project//llvm:nvptx_code_gen",  # buildcleaner: keep
-        "@llvm-project//llvm:objc_arc",  # buildcleaner: keep
-        "@llvm-project//llvm:scalar",
+        "@llvm-project//llvm:nvptx_target",  # buildcleaner: keep
+        "@llvm-project//llvm:objcarc_transforms",  # buildcleaner: keep
+        "@llvm-project//llvm:scalar_transforms",
         "@llvm-project//llvm:support",
-        "@llvm-project//llvm:target",
+        "@llvm-project//llvm:target_base",
     ],
 )
 
@@ -70,7 +70,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:resource_loader",
-        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:ir",
         "@llvm-project//llvm:support",
     ],
 )

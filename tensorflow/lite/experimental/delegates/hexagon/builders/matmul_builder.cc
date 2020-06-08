@@ -76,13 +76,13 @@ TfLiteStatus AddFullyConnectedHelper(const TfLiteIntArray* inputs,
   GetDims(&output_batch_size, &output_height_size, &output_width_size,
           &output_depth_size, context->tensors[outputs->data[0]].dims);
   const auto& matmul_out =
-      matmul_op->AddOutput(sizeof(int32_t), 4,
+      matmul_op->AddOutput(sizeof(int), 4,
                            {output_batch_size, output_height_size,
                             output_width_size, output_depth_size});
   const auto& matmul_out_min =
-      matmul_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+      matmul_op->AddOutput(sizeof(float), 4, scalar_shape);
   const auto& matmul_out_max =
-      matmul_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+      matmul_op->AddOutput(sizeof(float), 4, scalar_shape);
 
   // Bias tensor.
   int bias_tensor_id = inputs->data[2];
@@ -91,10 +91,7 @@ TfLiteStatus AddFullyConnectedHelper(const TfLiteIntArray* inputs,
                       matmul_and_bias_out_max = matmul_out_max;
   if (bias_tensor_id != -1) {
     const auto& bias_tensor = context->tensors[bias_tensor_id];
-    auto* const_bias_node =
-        graph_builder->AddConstNodeWithData(bias_tensor_id, bias_tensor);
     float bias_min, bias_max;
-    graph_builder->AddTensorWithID(bias_tensor_id, const_bias_node->GetID(), 0);
     OpBuilder::ComputeMinAndMaxQuantValues(bias_tensor, &bias_min, &bias_max);
     auto* bias_min_const = graph_builder->AddConstNodeWithData(
         scalar_shape, reinterpret_cast<char*>(&bias_min), sizeof(bias_min));
@@ -111,13 +108,13 @@ TfLiteStatus AddFullyConnectedHelper(const TfLiteIntArray* inputs,
     bias_add_op->AddInput(OpBuilder::TensorID(bias_min_const->GetID(), 0));
     bias_add_op->AddInput(OpBuilder::TensorID(bias_max_const->GetID(), 0));
     matmul_and_bias_out =
-        bias_add_op->AddOutput(sizeof(int32_t), 4,
+        bias_add_op->AddOutput(sizeof(int), 4,
                                {output_batch_size, output_height_size,
                                 output_width_size, output_depth_size});
     matmul_and_bias_out_min =
-        bias_add_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+        bias_add_op->AddOutput(sizeof(float), 4, scalar_shape);
     matmul_and_bias_out_max =
-        bias_add_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+        bias_add_op->AddOutput(sizeof(float), 4, scalar_shape);
   }
 
   float output_min, output_max;
@@ -142,8 +139,8 @@ TfLiteStatus AddFullyConnectedHelper(const TfLiteIntArray* inputs,
       quantize_biasadd_op->AddOutput(sizeof(uint8_t), 4,
                                      {output_batch_size, output_height_size,
                                       output_width_size, output_depth_size});
-  quantize_biasadd_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-  quantize_biasadd_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+  quantize_biasadd_op->AddOutput(sizeof(float), 4, scalar_shape);
+  quantize_biasadd_op->AddOutput(sizeof(float), 4, scalar_shape);
   return kTfLiteOk;
 }
 
@@ -158,8 +155,6 @@ TfLiteStatus AddFullyConnectedHelper(const TfLiteIntArray* inputs,
 TfLiteStatus MatMulWithConstWeightsOpBuilder::PopulateSubGraph(
     const TfLiteIntArray* inputs, const TfLiteIntArray* outputs,
     TfLiteContext* context) {
-  static int quant_bound_shape[] = {1, 1, 1, 1};
-
   // Weights vector.
   int weights_tensor_id = inputs->data[1];
   const auto& weights_tensor = context->tensors[weights_tensor_id];
@@ -202,13 +197,13 @@ TfLiteStatus MatMulWithConstWeightsOpBuilder::PopulateSubGraph(
       weights_shape_.data(), reinterpret_cast<char*>(nhcw.data()),
       weights_tensor.bytes);
   graph_builder_->AddTensorWithID(weights_tensor_id,
-                                  const_weights_node->GetID(), 0);
+                                  const_weights_node->GetID(), 0, true);
   ComputeMinAndMaxQuantValues(weights_tensor, &weights_min_, &weights_max_);
   auto* weights_min_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&weights_min_),
+      kScalarShape, reinterpret_cast<char*>(&weights_min_),
       sizeof(weights_min_));
   auto* weights_max_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&weights_max_),
+      kScalarShape, reinterpret_cast<char*>(&weights_max_),
       sizeof(weights_max_));
 
   return AddFullyConnectedHelper(
@@ -229,7 +224,6 @@ TfLiteStatus MatMulWithConstWeightsOpBuilder::RegisterOutputs(
 TfLiteStatus MatMulOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
                                                const TfLiteIntArray* outputs,
                                                TfLiteContext* context) {
-  static int scalar_shape[] = {1, 1, 1, 1};
   const int weights_tensor_id = inputs->data[1];
   const auto& weights_tensor = context->tensors[weights_tensor_id];
   int batch_size, height_size, width_size, depth_size;
@@ -247,17 +241,17 @@ TfLiteStatus MatMulOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
 
   ComputeMinAndMaxQuantValues(weights_tensor, &weights_min_, &weights_max_);
   auto* weights_min_const = graph_builder_->AddConstNodeWithData(
-      scalar_shape, reinterpret_cast<char*>(&weights_min_),
+      kScalarShape, reinterpret_cast<char*>(&weights_min_),
       sizeof(weights_min_));
   auto* weights_max_const = graph_builder_->AddConstNodeWithData(
-      scalar_shape, reinterpret_cast<char*>(&weights_max_),
+      kScalarShape, reinterpret_cast<char*>(&weights_max_),
       sizeof(weights_max_));
   AddInput(TensorID(weights_min_const->GetID(), 0));
   AddInput(TensorID(weights_max_const->GetID(), 0));
 
   auto transposed_weights = AddOutput(sizeof(uint8_t), 4, weights_shape_);
-  auto transposed_weights_min = AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-  auto transposed_weights_max = AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+  auto transposed_weights_min = AddOutput(sizeof(float), 4, kScalarShape);
+  auto transposed_weights_max = AddOutput(sizeof(float), 4, kScalarShape);
 
   auto* matmul_op = graph_builder_->AddNode(GetTFLiteNodeID());
   matmul_op->SetOpType(OP_QuantizedMatMul_8x8to32);

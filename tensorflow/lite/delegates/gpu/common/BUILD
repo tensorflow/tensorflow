@@ -203,6 +203,30 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "quantization_util",
+    srcs = ["quantization_util.cc"],
+    hdrs = ["quantization_util.h"],
+    deps = [
+        ":status",
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels/internal:optimized_base",
+        "//tensorflow/lite/kernels/internal:types",
+    ],
+)
+
+cc_test(
+    name = "quantization_util_test",
+    srcs = ["quantization_util_test.cc"],
+    deps = [
+        ":quantization_util",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/micro/testing:micro_test",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 # TODO(impjdi): Add unit test for operations.
 
 cc_library(

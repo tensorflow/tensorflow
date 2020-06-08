@@ -216,13 +216,13 @@ cc_library(
         "ir/tfl_ops.h",
         "transforms/passes.h",
         "utils/attribute_utils.h",
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_traits.h",
         "@llvm-project//mlir:include/mlir/Transforms/InliningUtils.h",
     ],
     deps = [
         ":tensorflow_lite_ops_inc_gen",
         ":validators",
         "//tensorflow/compiler/mlir/lite/experimental/estimators:cost_estimators",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/lite/schema:schema_fbs",
         "@llvm-project//llvm:support",
@@ -272,22 +272,6 @@ cc_library(
     deps = [
         ":tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
-        "@llvm-project//llvm:support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
-    ],
-)
-
-tf_cc_test(
-    name = "tftext_utils_test",
-    size = "small",
-    srcs = ["utils/lstm_utils_test.cc"],
-    deps = [
-        ":lstm_utils",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",

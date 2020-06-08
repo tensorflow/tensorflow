@@ -30,26 +30,6 @@ namespace {
 
 using ::tensorflow::string;
 
-tensorflow::ServerDef GetServerDef(const string& job_name, int num_tasks) {
-  tensorflow::ServerDef server_def;
-  server_def.set_protocol("grpc");
-  server_def.set_job_name(job_name);
-  server_def.set_task_index(0);
-  tensorflow::ClusterDef* cluster_def = server_def.mutable_cluster();
-  tensorflow::JobDef* job_def = cluster_def->add_job();
-  job_def->set_name(job_name);
-  for (int i = 0; i < num_tasks; i++) {
-    int port = tensorflow::testing::PickUnusedPortOrDie();
-    job_def->mutable_tasks()->insert(
-        {i, tensorflow::strings::StrCat("localhost", ":", port)});
-  }
-  return server_def;
-}
-
-tensorflow::ServerDef GetServerDef(int num_tasks) {
-  return GetServerDef("localhost", num_tasks);
-}
-
 void ReplaceTaskInServerDef(tensorflow::ServerDef* server_def, int task_index) {
   tensorflow::JobDef* job_def = server_def->mutable_cluster()->mutable_job(0);
   int port = tensorflow::testing::PickUnusedPortOrDie();

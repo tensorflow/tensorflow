@@ -20,10 +20,13 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import tf_utils
@@ -114,6 +117,10 @@ class InputLayer(base_layer.Layer):
     if kwargs:
       raise ValueError('Unrecognized keyword arguments:', kwargs.keys())
 
+    if sparse and ragged:
+      raise ValueError(
+          'Cannot set both sparse and ragged to True in a Keras input.')
+
     if not name:
       prefix = 'input'
       name = prefix + '_' + str(backend.get_uid(prefix))
@@ -155,7 +162,14 @@ class InputLayer(base_layer.Layer):
       self.is_placeholder = True
       self._batch_input_shape = batch_input_shape
     else:
-      if not tf_utils.is_symbolic_tensor(input_tensor):
+      raise_eager_tensor_error = False
+      if keras_tensor.keras_tensors_enabled():
+        if not isinstance(input_tensor, keras_tensor.keras_tensors_enabled()):
+          raise_eager_tensor_error = True
+      else:
+        if not tf_utils.is_symbolic_tensor(input_tensor):
+          raise_eager_tensor_error = True
+      if raise_eager_tensor_error:
         raise ValueError('You should not pass an EagerTensor to `Input`. '
                          'For example, instead of creating an '
                          'InputLayer, you should instantiate your model and '
@@ -169,6 +183,14 @@ class InputLayer(base_layer.Layer):
     # Create an input node.
     input_tensor._keras_mask = None
     node_module.Node(layer=self, outputs=input_tensor)
+
+    # Store type spec
+    if isinstance(input_tensor, (
+        composite_tensor.CompositeTensor, keras_tensor.KerasTensor)):
+      self._type_spec = input_tensor._type_spec  # pylint: disable=protected-access
+    else:
+      self._type_spec = tensor_spec.TensorSpec(
+          shape=input_tensor.shape, dtype=input_tensor.dtype, name=self.name)
 
   def get_config(self):
     config = {

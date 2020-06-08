@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
-import os
 
 import numpy as np
 
@@ -1018,7 +1017,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
           math_ops.matmul,
           np.array([[3.1415926535897932]], dtype=dtype),
           np.array([[2.7182818284590452]], dtype=dtype),
-          expected=np.array([[8.5397342226735668]], dtype=dtype))
+          expected=np.array([[8.5397342226735668]], dtype=dtype),
+          rtol=1e-14)
 
       # Edge case with a large range of exponent. Not supported by float16.
       if dtype != np.float16:
@@ -1026,7 +1026,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
             math_ops.matmul,
             np.array([[9.4039548065783000e-38]], dtype=dtype),
             np.array([[4.5070591730234615e37]], dtype=dtype),
-            expected=np.array([[4.2384180773686798]], dtype=dtype))
+            expected=np.array([[4.2384180773686798]], dtype=dtype),
+            rtol=1e-14)
 
   # TODO(phawkins): failing on GPU, no registered kernel.
   def DISABLED_testSparseMatMul(self):
@@ -1412,7 +1413,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
             ],
             equality_test=self.ListsAreClose)
 
-  @test_util.disable_mlir_bridge("TODO(b/155097657): Debug incorrect answer")
   def testTile(self):
     for dtype in self.numeric_types:
       self._testBinary(
@@ -1609,8 +1609,4 @@ class BinaryOpsTest(xla_test.XLATestCase):
 
 
 if __name__ == "__main__":
-  # TODO(b/130689556): XLA CPU does not honor inf/nan which causes problems
-  os.environ[
-      "XLA_FLAGS"] = "--xla_cpu_enable_fast_math=false " + os.environ.get(
-          "XLA_FLAGS", "")
   googletest.main()

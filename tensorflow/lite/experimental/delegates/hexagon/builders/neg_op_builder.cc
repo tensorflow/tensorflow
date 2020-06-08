@@ -22,18 +22,15 @@ namespace hexagon {
 TfLiteStatus NegOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
                                             const TfLiteIntArray* outputs,
                                             TfLiteContext* context) {
-  static int scalar_shape[] = {1, 1, 1, 1};
-  int tensor_id;
-
   // Input data tensor.
-  tensor_id = inputs->data[0];
+  int tensor_id = inputs->data[0];
   const auto& input_tensor = context->tensors[tensor_id];
   AddInput(graph_builder_->GetHexagonTensorId(tensor_id));
   ComputeMinAndMaxQuantValues(input_tensor, &input_min_, &input_max_);
   auto* input_min_const = graph_builder_->AddConstNodeWithData(
-      scalar_shape, reinterpret_cast<char*>(&input_min_), sizeof(input_min_));
+      kScalarShape, reinterpret_cast<char*>(&input_min_), sizeof(input_min_));
   auto* input_max_const = graph_builder_->AddConstNodeWithData(
-      scalar_shape, reinterpret_cast<char*>(&input_max_), sizeof(input_max_));
+      kScalarShape, reinterpret_cast<char*>(&input_max_), sizeof(input_max_));
   AddInput(TensorID(input_min_const->GetID(), 0));
   AddInput(TensorID(input_max_const->GetID(), 0));
 
@@ -45,8 +42,8 @@ TfLiteStatus NegOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   node_output_ = AddOutput(sizeof(uint8_t), 4,
                            {output_batch_size, output_height_size,
                             output_width_size, output_depth_size});
-  AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-  AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+  AddOutput(sizeof(float), 4, kScalarShape);
+  AddOutput(sizeof(float), 4, kScalarShape);
 
   return kTfLiteOk;
 }

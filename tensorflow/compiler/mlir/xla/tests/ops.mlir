@@ -545,22 +545,6 @@ func @rng_uniform_invalid_type(%mu: tensor<complex<f32>>, %sigma: tensor<f32>) -
 
 // -----
 
-// CHECK-LABEL: @scalars_to_dimension_tensor
-func @scalars_to_dimension_tensor(%arg0: i32, %arg1: i32) -> tensor<2xi32> {
-  %0 = "xla_hlo.scalars_to_dimension_tensor"(%arg0, %arg1) : (i32, i32) -> tensor<2xi32>
-  return %0 : tensor<2xi32>
-}
-
-// -----
-
-// CHECK-LABEL: @scalars_to_dimension_tensor_index
-func @scalars_to_dimension_tensor_index(%arg0: index, %arg1: index) -> tensor<2xindex> {
-  %0 = "xla_hlo.scalars_to_dimension_tensor"(%arg0, %arg1) : (index, index) -> tensor<2xindex>
-  return %0 : tensor<2xindex>
-}
-
-// -----
-
 // CHECK-LABEL: func @select
 func @select(%arg0: tensor<2x3xi1>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xi32>) -> tensor<2x3xi32> {
   %0 = "xla_hlo.select"(%arg0, %arg1, %arg2) : (tensor<2x3xi1>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
@@ -842,6 +826,13 @@ func @tuple_type_mismatch(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tuple<tenso
 func @get_tuple_element(%arg0: tuple<tensor<f32>, tensor<i32>>) -> tensor<f32> {
   %0 = "xla_hlo.get_tuple_element"(%arg0) {index = 0 : i32} : (tuple<tensor<f32>, tensor<i32>>) -> tensor<f32>
   return %0 : tensor<f32>
+}
+
+// -----
+
+func @get_tuple_element_token(%arg0: tuple<tensor<f32>, !xla_hlo.token>) -> !xla_hlo.token {
+  %0 = "xla_hlo.get_tuple_element"(%arg0) {index = 1 : i32} : (tuple<tensor<f32>, !xla_hlo.token>) -> !xla_hlo.token
+  return %0 : !xla_hlo.token
 }
 
 // -----

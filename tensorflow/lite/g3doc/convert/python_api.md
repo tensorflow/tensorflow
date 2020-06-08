@@ -42,7 +42,7 @@ root.v1 = tf.Variable(3.)
 root.v2 = tf.Variable(2.)
 root.f = tf.function(lambda x: root.v1 * root.v2 * x)
 
-# Save the model.
+# Save the model in SavedModel format.
 export_dir = "/tmp/test_saved_model"
 input_data = tf.constant(1., shape=[1, 1])
 to_save = root.f.get_concrete_function(input_data)
@@ -51,6 +51,10 @@ tf.saved_model.save(root, export_dir, to_save)
 # Convert the model.
 converter = tf.lite.TFLiteConverter.from_saved_model(export_dir)
 tflite_model = converter.convert()
+
+# Save the TF Lite model.
+with tf.gfile.GFile('model.tflite', 'wb') as f:
+  f.write(tflite_model)
 ```
 
 This API does not have the option of specifying the input shape of any input
@@ -87,6 +91,10 @@ model.fit(x, y, epochs=50)
 # Convert the model.
 converter = tf.lite.TFLiteConverter.from_keras_model(model)
 tflite_model = converter.convert()
+
+# Save the TF Lite model.
+with tf.io.gfile.GFile('model.tflite', 'wb') as f:
+  f.write(tflite_model)
 ```
 
 ### Converting a concrete function <a name="concrete_function"></a>
@@ -115,6 +123,10 @@ concrete_func = root.f.get_concrete_function(input_data)
 # functions is under development.
 converter = tf.lite.TFLiteConverter.from_concrete_functions([concrete_func])
 tflite_model = converter.convert()
+
+# Save the TF Lite model.
+with tf.gfile.GFile('model.tflite', 'wb') as f:
+  f.write(tflite_model)
 ```
 
 ### End-to-end MobileNet conversion <a name="mobilenet"></a>
@@ -180,7 +192,7 @@ specific wrapper code. For more information, please refer to the
 
 The TensorFlow nightly can be installed using the following command:
 
-```
+```sh
 pip install tf-nightly
 ```
 
@@ -196,13 +208,13 @@ either install the nightly build with
 
 There is a behavior change in how models containing
 [custom ops](https://www.tensorflow.org/lite/guide/ops_custom) (those for which
-users use to set allow\_custom\_ops before) are handled in the
+users previously set `allow_custom_ops` before) are handled in the
 [new converter](https://github.com/tensorflow/tensorflow/blob/917ebfe5fc1dfacf8eedcc746b7989bafc9588ef/tensorflow/lite/python/lite.py#L81).
 
 **Built-in TensorFlow op**
 
 If you are converting a model with a built-in TensorFlow op that does not exist
-in TensorFlow Lite, you should set allow\_custom\_ops attribute (same as
+in TensorFlow Lite, you should set the `allow_custom_ops` attribute (same as
 before), explained [here](https://www.tensorflow.org/lite/guide/ops_custom).
 
 **Custom op in TensorFlow**
@@ -211,27 +223,27 @@ If you are converting a model with a custom TensorFlow op, it is recommended
 that you write a [TensorFlow kernel](https://www.tensorflow.org/guide/create_op)
 and [TensorFlow Lite kernel](https://www.tensorflow.org/lite/guide/ops_custom).
 This ensures that the model is working end-to-end, from TensorFlow and
-TensorFlow Lite. This also requires setting the allow\_custom\_ops attribute.
+TensorFlow Lite. This also requires setting the `allow_custom_ops` attribute.
 
 **Advanced custom op usage (not recommended)**
 
 If the above is not possible, you can still convert a TensorFlow model
 containing a custom op without a corresponding kernel. You will need to pass the
 [OpDef](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/op_def.proto)
-of the custom op in TensorFlow using --custom\_opdefs flag, as long as you have
+of the custom op in TensorFlow using `--custom_opdefs` flag, as long as you have
 the corresponding OpDef registered in the TensorFlow global op registry. This
 ensures that the TensorFlow model is valid (i.e. loadable by the TensorFlow
 runtime).
 
 If the custom op is not part of the global TensorFlow op registry, then the
-corresponding OpDef needs to be specified via the --custom\_opdefs flag. This is
-a list of an OpDef proto in string that needs to be additionally registered.
-Below is an example of an TFLiteAwesomeCustomOp with 2 inputs, 1 output, and 2
+corresponding OpDef needs to be specified via the `--custom_opdefs` flag. This
+is a list of an OpDef proto in string that needs to be additionally registered.
+Below is an example of a TFLiteAwesomeCustomOp with 2 inputs, 1 output, and 2
 attributes:
 
-```
-converter.custom\_opdefs="name: 'TFLiteAwesomeCustomOp' input\_arg: { name: 'InputA'
-type: DT\_FLOAT } input\_arg: { name: ‘InputB' type: DT\_FLOAT }
-output\_arg: { name: 'Output' type: DT\_FLOAT } attr : { name: 'Attr1' type:
-'float'} attr : { name: 'Attr2' type: 'list(float)'}"
+```python
+converter.custom_opdefs="""name: 'TFLiteAwesomeCustomOp' input_arg: { name: 'InputA'
+type: DT_FLOAT } input_arg: { name: ‘InputB' type: DT_FLOAT }
+output_arg: { name: 'Output' type: DT_FLOAT } attr : { name: 'Attr1' type:
+'float'} attr : { name: 'Attr2' type: 'list(float)'}"""
 ```

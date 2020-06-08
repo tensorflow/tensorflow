@@ -97,6 +97,7 @@ bool CheckOpVersion(const TfLiteRegistration* registration) {
     case kTfLiteBuiltinSoftmax:
     case kTfLiteBuiltinSpaceToDepth:
     case kTfLiteBuiltinSplit:
+    case kTfLiteBuiltinStridedSlice:
     case kTfLiteBuiltinSub:
     case kTfLiteBuiltinTanh:
     case kTfLiteBuiltinTranspose:
@@ -152,7 +153,7 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
       const TfLiteMulParams* mul_params =
           reinterpret_cast<const TfLiteMulParams*>(node->builtin_data);
       // TODO(b/129276536): Add support for activation on Mul node.
-      return mul_params->activation == kTfLiteActNone;
+      return IsActivationReluOrNone(mul_params->activation);
     }
     case kTfLiteBuiltinSub: {
       if (!InputsWithCorrectTypes(
@@ -212,7 +213,7 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
           reinterpret_cast<const TfLiteFullyConnectedParams*>(
               node->builtin_data);
       return (bias_const_or_no_bias &&
-              matmul_params->activation == kTfLiteActNone &&
+              IsActivationReluOrNone(matmul_params->activation) &&
               matmul_params->keep_num_dims == false &&
               matmul_params->weights_format ==
                   kTfLiteFullyConnectedWeightsFormatDefault);
@@ -405,6 +406,24 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
           return false;
       }
       return true;
+    }
+    case kTfLiteBuiltinStridedSlice: {
+      if (!InputsWithCorrectTypes(node, context,
+                                  {{kTfLiteUInt8, kTfLiteInt8},
+                                   {kTfLiteInt32},
+                                   {kTfLiteInt32},
+                                   {kTfLiteInt32}}))
+        return false;
+      const auto& begins_tensor = context->tensors[node->inputs->data[1]];
+      const auto& ends_tensor = context->tensors[node->inputs->data[2]];
+      const auto& step_tensor = context->tensors[node->inputs->data[3]];
+      if (!IsConstantTensor(&begins_tensor) ||
+          !IsConstantTensor(&ends_tensor) || !IsConstantTensor(&step_tensor))
+        return false;
+      const TfLiteStridedSliceParams* params =
+          reinterpret_cast<const TfLiteStridedSliceParams*>(node->builtin_data);
+      // Hexagon doesn't support ellipsis/new-axis masks.
+      return (params->ellipsis_mask == 0 && params->new_axis_mask == 0);
     }
     default:
       return false;

@@ -477,10 +477,11 @@ Status GetOrCreateKernelAndDevice(
           SupportedDeviceTypesForNode(*device_type_list, ndef, &supported_devs,
                                       &ctx.HostCPU()->parsed_name()));
       if (supported_devs.empty()) {
-        return errors::NotFound("Could not find valid device for node.\nNode:",
-                                FormatNodeDefForError(ndef),
-                                "\nAll kernels registered for op ", ndef.op(),
-                                " :\n", KernelsRegisteredForOp(ndef.op()));
+        return errors::NotFound(
+            "Could not find device for node: ",
+            errors::FormatNodeNameForError(ndef.name()), " = ", ndef.op(), "[",
+            SummarizeAttrs(ndef), "]", "\nAll kernels registered for op ",
+            ndef.op(), ":\n", KernelsRegisteredForOp(ndef.op()));
       }
       TF_RETURN_IF_ERROR(ctx.SelectDevice(op->GetDeviceParsedName(),
                                           supported_devs, DT_INVALID, &device));
@@ -537,7 +538,8 @@ Status GetOrCreateKernelAndDevice(
           ctx.GetCollectiveExecutorHandle(), ctx.HostCPU()));
     }
 
-    TF_RETURN_IF_ERROR(kernel->Init(ndef, graph_collector));
+    TF_RETURN_IF_ERROR(
+        kernel->Init({ctx.LogDevicePlacement()}, ndef, graph_collector));
 
     if (op->is_function()) {
       ctx.AddKernelToCache(cache_key, kernel.get());
@@ -1459,7 +1461,7 @@ void EagerLocalExecuteAsync(EagerOperation* op, TensorHandle** retvals,
   EagerKernelExecuteAsync(
       &ctx, op->Inputs(), op->remote_func_params(), std::move(kernel),
       graph_collector, op->GetCancellationManager(), retvals, num_outputs,
-      [op, num_outputs, &retvals, done = std::move(done)](const Status& s) {
+      [op, num_outputs, retvals, done = std::move(done)](const Status& s) {
         op->Clear();
         // Since the operation failed, we need to Unref any outputs if they were
         // allocated.

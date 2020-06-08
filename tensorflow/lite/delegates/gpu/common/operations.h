@@ -81,7 +81,8 @@ std::string ToString(enum OperationType op);
 
 OperationType OperationTypeFromString(const std::string& name);
 
-typedef absl::variant<absl::monostate, Tensor<Linear, DataType::FLOAT32>, float>
+typedef absl::variant<absl::monostate, Tensor<HWC, DataType::FLOAT32>,
+                      Tensor<Linear, DataType::FLOAT32>, float>
     TensorOrScalar;
 
 struct Padding2D {

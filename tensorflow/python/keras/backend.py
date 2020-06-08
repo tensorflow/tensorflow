@@ -49,8 +49,10 @@ from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend_config
+from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
@@ -1070,6 +1072,8 @@ def is_keras_tensor(x):
   True
 
   """
+  if keras_tensor.keras_tensors_enabled():
+    return isinstance(x, keras_tensor.KerasTensor)
   if not isinstance(x,
                     (ops.Tensor, variables_module.Variable,
                      sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor)):
@@ -1120,35 +1124,56 @@ def placeholder(shape=None,
     raise ValueError(
         'Cannot set both sparse and ragged to True when creating a placeholder.'
     )
-
   if dtype is None:
     dtype = floatx()
   if not shape:
     if ndim:
       shape = (None,) * ndim
-  with get_graph().as_default():
+  if keras_tensor.keras_tensors_enabled():
+    spec = tensor_spec.TensorSpec(
+        shape=shape, dtype=dtype, name=name)
     if sparse:
-      x = array_ops.sparse_placeholder(dtype, shape=shape, name=name)
+      spec = sparse_tensor.SparseTensorSpec(
+          shape=shape, dtype=dtype)
     elif ragged:
       ragged_rank = 0
       for i in range(1, len(shape)):
-        if shape[i] is None:
+        # Hacky because could be tensorshape or tuple maybe?
+        # Or just tensorshape?
+        if shape[i] is None or (
+            hasattr(shape[i], 'value') and
+            shape[i].value is None):
           ragged_rank = i
-      type_spec = ragged_tensor.RaggedTensorSpec(
+      spec = ragged_tensor.RaggedTensorSpec(
           shape=shape, dtype=dtype, ragged_rank=ragged_rank)
-      def tensor_spec_to_placeholder(tensorspec):
-        return array_ops.placeholder(tensorspec.dtype, tensorspec.shape)
-      x = nest.map_structure(tensor_spec_to_placeholder, type_spec,
-                             expand_composites=True)
-    else:
-      x = array_ops.placeholder(dtype, shape=shape, name=name)
+
+    x = keras_tensor.KerasTensor(spec, name=name)
+  else:
+    with get_graph().as_default():
+      if sparse:
+        x = array_ops.sparse_placeholder(dtype, shape=shape, name=name)
+      elif ragged:
+        ragged_rank = 0
+        for i in range(1, len(shape)):
+          if shape[i] is None:
+            ragged_rank = i
+        type_spec = ragged_tensor.RaggedTensorSpec(
+            shape=shape, dtype=dtype, ragged_rank=ragged_rank)
+        def tensor_spec_to_placeholder(tensorspec):
+          return array_ops.placeholder(tensorspec.dtype, tensorspec.shape)
+        x = nest.map_structure(tensor_spec_to_placeholder, type_spec,
+                               expand_composites=True)
+      else:
+        x = array_ops.placeholder(dtype, shape=shape, name=name)
 
   if context.executing_eagerly():
     # Add keras_history connectivity information to the placeholder
     # when the placeholder is built in a top-level eager context
     # (intended to be used with keras.backend.function)
     from tensorflow.python.keras.engine import input_layer  # pylint: disable=g-import-not-at-top
-    return input_layer.Input(tensor=x)
+    x = input_layer.Input(tensor=x)
+    if keras_tensor.keras_tensors_enabled():
+      x._is_backend_placeholder = True
 
   return x
 
@@ -1163,6 +1188,8 @@ def is_placeholder(x):
       Boolean.
   """
   try:
+    if keras_tensor.keras_tensors_enabled():
+      return hasattr(x, '_is_backend_placeholder')
     if isinstance(x, composite_tensor.CompositeTensor):
       flat_components = nest.flatten(x, expand_composites=True)
       return py_any(is_placeholder(c) for c in flat_components)
@@ -1644,15 +1671,41 @@ def update_sub(x, decrement):
 
 @keras_export('keras.backend.moving_average_update')
 def moving_average_update(x, value, momentum):
-  """Compute the moving average of a variable.
+  """Compute the exponential moving average of a value.
+
+  The moving average 'x' is updated with 'value' following:
+
+  ```
+  x = x * momentum + value * (1 - momentum)
+  ```
+
+  For example:
+
+  >>> x = tf.Variable(0.0)
+  >>> momentum=0.9
+  >>> moving_average_update(x, value = 2.0, momentum=momentum).numpy()
+  >>> x.numpy()
+  0.2
+
+  The result will be biased towards the initial value of the variable.
+
+  If the variable was initialized to zero, you can divide by
+  `1 - momentum ** num_updates` to debias it (Section 3 of
+  [Kingma et al., 2015](https://arxiv.org/abs/1412.6980)):
+
+  >>> num_updates = 1.0
+  >>> x_zdb = x/(1 - momentum**num_updates)
+  >>> x_zdb.numpy()
+  2.0
 
   Arguments:
-      x: A Variable.
-      value: A tensor with the same shape as `variable`.
+      x: A Variable, the moving average.
+      value: A tensor with the same shape as `x`, the new value to be
+        averaged in.
       momentum: The moving average momentum.
 
   Returns:
-      An Operation to update the variable.
+      The updated variable.
   """
   zero_debias = not tf2.enabled()
   return moving_averages.assign_moving_average(
@@ -3817,10 +3870,10 @@ def function(inputs, outputs, updates=None, name=None, **kwargs):
   """
   if ops.executing_eagerly_outside_functions():
     if kwargs:
-      raise ValueError('Session keyword arguments are not support during '
+      raise ValueError('Session keyword arguments are not supported during '
                        'eager execution. You passed: %s' % (kwargs,))
     if updates:
-      raise ValueError('`updates` argument is not support during '
+      raise ValueError('`updates` argument is not supported during '
                        'eager execution. You passed: %s' % (updates,))
     from tensorflow.python.keras import models  # pylint: disable=g-import-not-at-top
     from tensorflow.python.keras.utils import tf_utils  # pylint: disable=g-import-not-at-top
@@ -4578,6 +4631,9 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
   [0. 0. 0.]
 
   """
+  target = ops.convert_to_tensor_v2(target)
+  output = ops.convert_to_tensor_v2(output)
+
   target.shape.assert_is_compatible_with(output.shape)
   if from_logits:
     return nn.softmax_cross_entropy_with_logits_v2(
@@ -4625,6 +4681,9 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
   Raises:
       ValueError: if `axis` is neither -1 nor one of the axes of `output`.
   """
+  target = ops.convert_to_tensor_v2(target)
+  output = ops.convert_to_tensor_v2(output)
+
   if not from_logits and not isinstance(
       output, (ops.EagerTensor, variables_module.Variable)):
     output = _backtrack_identity(output)
@@ -4700,6 +4759,9 @@ def binary_crossentropy(target, output, from_logits=False):
   Returns:
       A tensor.
   """
+  target = ops.convert_to_tensor_v2(target)
+  output = ops.convert_to_tensor_v2(output)
+
   if from_logits:
     return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
 
@@ -5939,10 +6001,13 @@ def ctc_decode(y_pred, input_length, greedy=True, beam_width=100, top_paths=1):
               contains the decoded sequence.
               If `false`, returns the `top_paths` most probable
               decoded sequences.
+              Each decoded sequence has shape (samples, time_steps).
               Important: blank labels are returned as `-1`.
           Tensor `(top_paths, )` that contains
               the log probability of each decoded sequence.
   """
+  input_shape = shape(y_pred)
+  samples, steps = input_shape[0], input_shape[1]
   y_pred = math_ops.log(array_ops.transpose(y_pred, perm=[1, 0, 2]) + epsilon())
   input_length = math_ops.cast(input_length, dtypes_module.int32)
 
@@ -5957,7 +6022,7 @@ def ctc_decode(y_pred, input_length, greedy=True, beam_width=100, top_paths=1):
         top_paths=top_paths)
   decoded_dense = [
       sparse_ops.sparse_to_dense(
-          st.indices, st.dense_shape, st.values, default_value=-1)
+          st.indices, (samples, steps), st.values, default_value=-1)
       for st in decoded
   ]
   return (decoded_dense, log_prob)

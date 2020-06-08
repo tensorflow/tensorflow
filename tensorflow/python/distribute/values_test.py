@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import copy
 import itertools
 import os
 
@@ -335,6 +336,20 @@ class DistributedDelegateTest(test.TestCase):
     self.assertEqual(7, abs(v))
     with self.assertRaises(TypeError):
       _ = v[2]
+
+  @test_util.run_in_graph_and_eager_modes
+  def testCopy(self):
+
+    class Foo(object):
+
+      def __init__(self, x):
+        self.x = x
+
+    v = values.DistributedDelegate((Foo(7), Foo(8)))
+    v_shallow_copy = copy.copy(v)
+    self.assertEqual(v.x, v_shallow_copy.x)
+    v_deep_copy = copy.deepcopy(v)
+    self.assertEqual(v.x, v_deep_copy.x)
 
 
 def _device_str(d):
@@ -2006,38 +2021,6 @@ class SyncOnReadScatterReplicaTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaises(NotImplementedError):
       self.evaluate(distribution.run(v.scatter_min, args=(delta,)))
-
-
-@combinations.generate(
-    combinations.combine(
-        distribution=[
-            strategy_combinations.central_storage_strategy_with_two_gpus
-        ],
-        mode=["graph", "eager"]))
-class AggregatingVariableTest(test.TestCase, parameterized.TestCase):
-
-  def testAssignOutOfScope(self, distribution):
-    with distribution.scope():
-      aggregating = variables_lib.Variable(1.)
-    self.assertIsInstance(aggregating, values.AggregatingVariable)
-    self.evaluate(aggregating.assign(3.))
-    self.assertEqual(self.evaluate(aggregating.read_value()), 3.)
-    self.assertEqual(self.evaluate(aggregating._v.read_value()), 3.)
-
-  def testAssignAdd(self, distribution):
-    with distribution.scope():
-      v = variable_scope.variable(
-          1, aggregation=variables_lib.VariableAggregation.MEAN)
-    self.evaluate(variables_lib.global_variables_initializer())
-
-    @def_function.function
-    def assign():
-      return v.assign_add(2)
-
-    per_replica_results = self.evaluate(
-        distribution.experimental_local_results(
-            distribution.experimental_run_v2(assign)))
-    self.assertAllEqual([3], per_replica_results)
 
 
 class MirroredTest(test.TestCase):

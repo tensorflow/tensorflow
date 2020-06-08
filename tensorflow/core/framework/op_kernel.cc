@@ -1497,6 +1497,13 @@ Status SupportedDeviceTypesForNode(
         }
       }
     }
+
+    // If we were unable to find any valid devices let's validate if the node is
+    // even valid.
+    if (prioritized_device_types->empty()) {
+      TF_RETURN_IF_ERROR(ValidateNodeDef(def, op_reg_data->op_def));
+    }
+
     std::sort(prioritized_device_types->begin(),
               prioritized_device_types->end(),
               [](const std::pair<DeviceType, int32>& a,

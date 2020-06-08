@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
@@ -44,9 +44,9 @@ void TestPreluFloat(std::initializer_list<int> input_dims_data,
   };
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  ::tflite::ops::micro::AllOpsResolver resolver;
+  ::tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_PRELU, 1);
+      resolver.FindOp(tflite::BuiltinOperator_PRELU);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   size_t init_data_size = 0;
@@ -111,9 +111,9 @@ void TestPreluQuantized(std::initializer_list<int> input_dims_data,
   };
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  ::tflite::ops::micro::AllOpsResolver resolver;
+  ::tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_PRELU, 1);
+      resolver.FindOp(tflite::BuiltinOperator_PRELU);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   size_t init_data_size = 0;
@@ -156,14 +156,14 @@ TF_LITE_MICRO_TESTS_BEGIN
 TF_LITE_MICRO_TEST(FloatPreluActivationsOpTest) {
   const int output_dims_count = 12;
   float output_data[output_dims_count];
-  tflite::testing::TestPreluFloat({1, 2, 2, 3},  // input shape
+  tflite::testing::TestPreluFloat({3, 2, 2, 3},  // input shape
                                   {
                                       0.0f, 0.0f, 0.0f,     // Row 1, Column 1
                                       1.0f, 1.0f, 1.0f,     // Row 1, Column 2
                                       -1.0f, -1.0f, -1.0f,  // Row 2, Column 1
                                       -2.0f, -2.0f, -2.0f,  // Row 1, Column 2
                                   },
-                                  {1, 1, 1, 3},        // alpha shape
+                                  {3, 1, 1, 3},        // alpha shape
                                   {0.0f, 1.0f, 2.0f},  // alpha values
                                   {
                                       0.0f, 0.0f, 0.0f,    // Row 1, Column 1
@@ -171,26 +171,26 @@ TF_LITE_MICRO_TEST(FloatPreluActivationsOpTest) {
                                       0.0f, -1.0f, -2.0f,  // Row 2, Column 1
                                       0.0f, -2.0f, -4.0f,  // Row 1, Column 2
                                   },
-                                  {1, 2, 2, 3},  // output shape
+                                  {3, 2, 2, 3},  // output shape
                                   output_data);
 }
 
 TF_LITE_MICRO_TEST(QuantizedUint8PreluActivationsOpTest) {
   using tflite::testing::F2Q;
-  const float kMin = -1;
-  const float kMax = 127.f / 128.f;
+  const float kMin = -4;
+  const float kMax = 127.f / 32.f;
   const float kAlphaMin = -0.5f;
   const float kAlphaMax = 0.5f;
   const int output_dims_count = 12;
   uint8_t output_data[output_dims_count];
   tflite::testing::TestPreluQuantized(
-      {1, 2, 2, 3},  // input shape
+      {3, 2, 2, 3},  // input shape
       {F2Q(0.0f, kMin, kMax), F2Q(0.0f, kMin, kMax), F2Q(0.0f, kMin, kMax),
        F2Q(0.5f, kMin, kMax), F2Q(0.5f, kMin, kMax), F2Q(0.5f, kMin, kMax),
        F2Q(-1.0f, kMin, kMax), F2Q(-1.0f, kMin, kMax), F2Q(-1.0f, kMin, kMax),
        F2Q(-0.25f, kMin, kMax), F2Q(-0.25f, kMin, kMax),
        F2Q(-0.25f, kMin, kMax)},
-      kMin, kMax, {1, 1, 1, 3},  // alpha shape
+      kMin, kMax, {3, 1, 1, 3},  // alpha shape
       {F2Q(0.0f, kMin, kMax), F2Q(0.5f, kMin, kMax), F2Q(-0.5f, kMin, kMax)},
       kMin, kMax,
       {F2Q(0.0f, kMin, kMax), F2Q(0.0f, kMin, kMax), F2Q(0.0f, kMin, kMax),
@@ -198,7 +198,7 @@ TF_LITE_MICRO_TEST(QuantizedUint8PreluActivationsOpTest) {
        F2Q(0.0f, kMin, kMax), F2Q(-0.5f, kMin, kMax), F2Q(0.5f, kMin, kMax),
        F2Q(0.0f, kMin, kMax), F2Q(-0.125f, kMin, kMax),
        F2Q(0.125f, kMin, kMax)},
-      {1, 2, 2, 3},  // output shape
+      {3, 2, 2, 3},  // output shape
       kMin, kMax, output_data);
 }
 
@@ -211,13 +211,13 @@ TF_LITE_MICRO_TEST(QuantizedInt8PreluActivationsOpTest) {
   const int output_dims_count = 12;
   int8_t output_data[output_dims_count];
   tflite::testing::TestPreluQuantized(
-      {1, 2, 2, 3},  // input shape
+      {3, 2, 2, 3},  // input shape
       {F2QS(0.0f, kMin, kMax), F2QS(0.0f, kMin, kMax), F2QS(0.0f, kMin, kMax),
        F2QS(0.5f, kMin, kMax), F2QS(0.5f, kMin, kMax), F2QS(0.5f, kMin, kMax),
        F2QS(-1.0f, kMin, kMax), F2QS(-1.0f, kMin, kMax),
        F2QS(-1.0f, kMin, kMax), F2QS(-0.25f, kMin, kMax),
        F2QS(-0.25f, kMin, kMax), F2QS(-0.25f, kMin, kMax)},
-      kMin, kMax, {1, 1, 1, 3},  // alpha shape
+      kMin, kMax, {3, 1, 1, 3},  // alpha shape
       {F2QS(0.0f, kMin, kMax), F2QS(0.5f, kMin, kMax), F2QS(-0.5f, kMin, kMax)},
       kMin, kMax,
       {F2QS(0.0f, kMin, kMax), F2QS(0.0f, kMin, kMax), F2QS(0.0f, kMin, kMax),
@@ -225,7 +225,7 @@ TF_LITE_MICRO_TEST(QuantizedInt8PreluActivationsOpTest) {
        F2QS(0.0f, kMin, kMax), F2QS(-0.5f, kMin, kMax), F2QS(0.5f, kMin, kMax),
        F2QS(0.0f, kMin, kMax), F2QS(-0.125f, kMin, kMax),
        F2QS(0.125f, kMin, kMax)},
-      {1, 2, 2, 3},  // output shape
+      {3, 2, 2, 3},  // output shape
       kMin, kMax, output_data);
 }
 TF_LITE_MICRO_TESTS_END

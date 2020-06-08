@@ -141,6 +141,64 @@ llvm::SmallSetVector<Value, 4> GetExternalOperands(
   return external_values;
 }
 
+// Extracts all externally used outputs of `cluster_ops`.
+llvm::SmallVector<Value, 4> GetExternalOutputs(
+    const llvm::SmallVector<Operation*, 8>& cluster_ops) {
+  llvm::SmallSetVector<Value, 4> external_outputs;
+
+  for (Operation* op : cluster_ops) {
+    for (Operation* user : op->getUsers()) {
+      bool is_external = llvm::none_of(cluster_ops, [&](Operation* cluster_op) {
+        return user == cluster_op;
+      });
+      if (!is_external) continue;
+      for (Value v : user->getOperands()) {
+        if (v.getDefiningOp() == op) external_outputs.insert(v);
+      }
+    }
+  }
+
+  return external_outputs.takeVector();
+}
+
+// Sets the insertion point on `builder` for HostCompute op.  Sets insertion
+// point to the first op in `cluster_ops` that has one of `external_inputs`
+// as an operand.  If there are no external_inputs, set insertion point to first
+// cluster_op.
+void SetHostComputeInsertion(
+    OpBuilder* builder, const llvm::SmallVector<Operation*, 8>& cluster_ops,
+    const llvm::SmallSetVector<Value, 4>& external_inputs) {
+  if (external_inputs.empty()) builder->setInsertionPoint(cluster_ops.front());
+  for (const auto& cluster_op : cluster_ops) {
+    for (Value v : cluster_op->getOperands()) {
+      if (external_inputs.count(v)) {
+        builder->setInsertionPoint(cluster_op);
+        return;
+      }
+    }
+  }
+}
+
+// Creates the HostCompute with `inputs` and `outputs`
+// using `communication_key`.
+TF::_HostComputeMlirOp CreateHostCompute(
+    OpBuilder* builder, tf_device::ClusterOp tpu_cluster,
+    const llvm::SmallVector<Operation*, 8>& cluster_ops,
+    const llvm::SmallSetVector<Value, 4>& inputs, llvm::ArrayRef<Value> outputs,
+    const std::string& communication_key) {
+  llvm::SmallVector<Type, 4> device_output_types;
+  for (const auto& output : outputs)
+    device_output_types.push_back(output.getType());
+  SetHostComputeInsertion(builder, cluster_ops, inputs);
+  auto host_compute = builder->create<TF::_HostComputeMlirOp>(
+      tpu_cluster.getLoc(), device_output_types, inputs.getArrayRef(),
+      llvm::ArrayRef<NamedAttribute>{});
+  host_compute.setAttr(kAncestorsAttr, builder->getArrayAttr({}));
+  host_compute.setAttr(kShapesAttr, builder->getArrayAttr({}));
+  host_compute.setAttr(kKeyAttr, builder->getStringAttr(communication_key));
+  return host_compute;
+}
+
 void MoveOutsideCompiledOps(
     tf_device::ClusterOp tpu_cluster, llvm::StringRef outside_cluster_name,
     tf_device::LaunchOp host_launch_op,
@@ -185,19 +243,25 @@ void MoveOutsideCompiledOps(
       builder.getStringAttr(communication_key),
       builder.getIntegerAttr(builder.getIntegerType(64), 0));
 
-  // TODO(b/156006200): Handle host->device outputs.
-  builder.setInsertionPoint(cluster_ops.front());
-  auto host_compute = builder.create<TF::_HostComputeMlirOp>(
-      tpu_cluster.getLoc(), llvm::ArrayRef<Type>{},
-      external_inputs.getArrayRef(), llvm::ArrayRef<NamedAttribute>{});
-  host_compute.setAttr(kAncestorsAttr, builder.getArrayAttr({}));
-  host_compute.setAttr(kShapesAttr, builder.getArrayAttr({}));
-  host_compute.setAttr(kKeyAttr, builder.getStringAttr(communication_key));
+  auto host_compute =
+      CreateHostCompute(&builder, tpu_cluster, cluster_ops, external_inputs,
+                        external_outputs, communication_key);
   MoveOutsideClusterOpsToLaunchOp(host_launch_op, cluster_ops);
+
+  builder.setInsertionPoint(host_launch_op.GetBody().getTerminator());
+  builder.create<TF::_XlaSendFromHostOp>(
+      tpu_cluster.getLoc(), external_outputs,
+      /*dynamic_key=*/compile_op.getResult(1),
+      builder.getStringAttr(communication_key),
+      /*device_ordinal=*/builder.getIntegerAttr(builder.getIntegerType(64), 0));
 
   for (auto result : llvm::zip(external_inputs, recv_at_host.getResults()))
     mlir::replaceAllUsesInRegionWith(std::get<0>(result), std::get<1>(result),
                                      host_launch_op.body());
+
+  for (auto result : llvm::zip(external_outputs, host_compute.getResults()))
+    mlir::replaceAllUsesInRegionWith(std::get<0>(result), std::get<1>(result),
+                                     tpu_cluster.body());
 }
 
 // Creates a `parallel_execute` op in place of launch with 'clusters` and
@@ -223,17 +287,13 @@ void CreateParallelExecuteFromOutsideClusters(
 
     // Determine if there are any inputs that are provided out of cluster.
     auto external_inputs = GetExternalOperands(cluster_ops);
-    llvm::SmallVector<Value, 4> external_outputs;
-    // TODO(b/156006200): Compute the external outputs.
+    auto external_outputs = GetExternalOutputs(cluster_ops);
 
     MoveOutsideCompiledOps(tpu_cluster, cluster.value().getFirst(),
                            host_launch_op, cluster_ops, external_inputs,
                            external_outputs);
 
     builder.setInsertionPointToEnd(&outside_block);
-    // TODO(b/154363171): Handle returns from OutsideCompiled parallel_execute
-    // regions either through communication with TPU parallel_execute regions
-    // or modifying parallel_execute returns.
     builder.create<tf_device::ReturnOp>(tpu_cluster.getLoc(),
                                         ArrayRef<Value>{});
   }
@@ -248,9 +308,6 @@ void CreateParallelExecuteFromOutsideClusters(
       parallel_execute_tpu_block.getTerminator());
 
   PropagateParallelExecuteReturnToReplicate(parallel_execute_op);
-  // TODO(b/154363171): Handle returns from OutsideCompiled parallel_execute
-  // regions either through communication with TPU parallel_execute regions
-  // or modifying parallel_execute returns.
 }
 
 void TPUExtractOutsideCompilation::runOnFunction() {

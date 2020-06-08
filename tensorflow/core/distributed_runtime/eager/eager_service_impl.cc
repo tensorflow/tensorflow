@@ -411,7 +411,7 @@ Status EagerServiceImpl::CreateMasterContext(
 }
 
 void EagerServiceImpl::RunComponentFunction(
-    const RunComponentFunctionRequest* request,
+    CallOptions* call_opts, const RunComponentFunctionRequest* request,
     RunComponentFunctionResponse* response, StatusCallback done) {
   ServerContext* context = nullptr;
   Status s = GetServerContext(request->context_id(), &context);
@@ -451,11 +451,17 @@ void EagerServiceImpl::RunComponentFunction(
   VLOG(3) << "ServerContext: Calling EagerLocalExecuteAsync for op "
           << operation.id();
 
+  auto cm = std::make_shared<CancellationManager>();
+  op->SetCancellationManager(cm.get());
+  call_opts->SetCancelCallback([cm] { cm->StartCancel(); });
+
   context->Ref();
   EagerLocalExecuteAsync(
       op, retvals->data(), num_retvals,
-      [op, op_id = operation.id(), num_retvals, retvals, response,
-       eager_context, context, done = std::move(done)](const Status& status) {
+      [op, op_id = operation.id(), num_retvals, retvals, cm, call_opts,
+       response, eager_context, context,
+       done = std::move(done)](const Status& status) {
+        call_opts->ClearCancelCallback();
         auto wrapped_done = [&](const Status& status) {
           context->Unref();
           done(status);

@@ -1,4 +1,4 @@
-// RUN: xla-opt -hlo-legalize-to-lhlo -buffer-placement %s -o - | FileCheck %s --dump-input-on-failure
+// RUN: xla-opt -hlo-legalize-to-lhlo -buffer-placement -split-input-file %s -o - | FileCheck %s --dump-input-on-failure
 
 // CHECK-LABEL: func @attrs
 func @attrs_copy(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
@@ -157,13 +157,16 @@ func @broadcast(%operand: memref<5xf32>, %result: memref<10x5xf32>) {
 
 func @external_func() -> tensor<3xi64>
 
+// CHECK: #[[MAP:.*]] = affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>
+
 // CHECK-LABEL: func @dyn_broadcast
 func @dyn_broadcast(%operand: memref<?x?xf32>) {
+  // CHECK-SAME: (%[[OPERAND:.*]]: memref<?x?xf32>)
   %tensor_operand = tensor_load %operand : memref<?x?xf32>
   %shape = call @external_func() : () -> tensor<3xi64>
-  %tensor_result = "xla_hlo.dynamic_broadcast_in_dim"(%tensor_operand, %shape)
-      {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>}
-        : (tensor<?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
+  %tensor_result = "xla_hlo.dynamic_broadcast_in_dim"(%tensor_operand, %shape) {
+    broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>
+  } : (tensor<?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
   // CHECK: %[[SHAPE:.*]] = call @external_func()
   // CHECK: %[[C0:.*]] = constant 0 : index
   // CHECK: %[[EL0:.*]] = extract_element %[[SHAPE]][%[[C0]]] : tensor<3xi64>
@@ -175,7 +178,33 @@ func @dyn_broadcast(%operand: memref<?x?xf32>) {
   // CHECK: %[[EL2:.*]] = extract_element %[[SHAPE]][%[[C2]]] : tensor<3xi64>
   // CHECK: %[[IC2:.*]]  = index_cast %[[EL2]] : i64 to index
   // CHECK: %[[RESULT:.*]] = alloc(%[[IC0]], %[[IC1]], %[[IC2]])
-  // CHECK-NEXT: "xla_lhlo.broadcast_in_dim"(%{{.*}}, %[[RESULT]]) {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>}
+
+  // CHECK: %[[C0_:.*]] = constant 0 : index
+  // CHECK: %[[C1_:.*]] = constant 1 : index
+
+  // CHECK: %[[C1__:.*]] = constant 1 : index
+  // CHECK: %[[EL1_:.*]] = extract_element %[[SHAPE]]{{\[}}%[[C1__]]] : tensor<3xi64>
+  // CHECK: %[[OPERAND_DIM_0:.*]] = dim %[[OPERAND]], 0 : memref<?x?xf32>
+  // CHECK: %[[RESULT_DIM_1:.*]] = index_cast %[[EL1_]] : i64 to index
+  // CHECK: %[[EXPAND_0:.*]] = cmpi "slt", %[[OPERAND_DIM_0]], %[[RESULT_DIM_1]]
+  // CHECK: %[[STRIDE_0:.*]] = select %[[EXPAND_0]], %[[C0_]], %[[C1_]] : index
+
+  // CHECK: %[[C2_:.*]] = constant 2 : index
+  // CHECK: %[[EL2_:.*]] = extract_element %[[SHAPE]]{{\[}}%[[C2_]]] : tensor<3xi64>
+  // CHECK: %[[OPERAND_DIM_1:.*]] = dim %[[OPERAND]], 1 : memref<?x?xf32>
+  // CHECK: %[[RESULT_DIM_2:.*]] = index_cast %[[EL2_]] : i64 to index
+  // CHECK: %[[EXPAND_1:.*]] = cmpi "slt", %[[OPERAND_DIM_1]], %[[RESULT_DIM_2]]
+  // CHECK: %[[STRIDE_1:.*]] = select %[[EXPAND_1]], %[[C0_]], %[[C1_]] : index
+
+  // CHECK: %[[TRANSFORMED_MEMREF:.*]] = xla_lhlo.dynamic_memref_cast
+  // CHECK-SAME: %[[OPERAND]](%[[RESULT_DIM_1]], %[[RESULT_DIM_2]])
+  // CHECK-SAME: {{\[}}%[[STRIDE_0]], %[[STRIDE_1]]]
+  // CHECK-SAME: : memref<?x?xf32> -> memref<?x?xf32, #map0>
+
+  // CHECK: "xla_lhlo.broadcast_in_dim"(%[[TRANSFORMED_MEMREF]], %[[RESULT]]) {
+  // CHECK-SAME:   broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>
+  // CHECK-SAME: } : (memref<?x?xf32, #[[MAP]]>, memref<?x?x?xf32>) -> ()
+
   // Do not store the value back to avoid the tensor-store being rewritten to
   // a copy into the pre-allocated argument.
   return
@@ -363,7 +392,7 @@ func @add_dyn(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) {
   // CHECK: %[[IC0:.*]] = index_cast %[[DIM0]] : index to i64
   // CHECK: %[[DIM1:.*]] = dim %arg0, 1 : memref<?x?xf32>
   // CHECK: %[[IC1:.*]] = index_cast %[[DIM1]] : index to i64
-  // CHECK: %[[SHAPE:.*]] = "xla_hlo.scalars_to_dimension_tensor"(%[[IC0]], %[[IC1]]) : (i64, i64) -> tensor<2xi64>
+  // CHECK: %[[SHAPE:.*]] = tensor_from_elements(%[[IC0]], %[[IC1]]) : tensor<2xi64>
   // CHECK: %[[C0:.*]] = constant 0 : index
   // CHECK: %[[EE0:.*]] = extract_element %[[SHAPE]][%[[C0]]] : tensor<2xi64>
   // CHECK: %[[ICS0:.*]] = index_cast %[[EE0]] : i64 to index
@@ -385,7 +414,7 @@ func @tanh_dyn(%arg0: tensor<?x?xf32>) {
   // CHECK: %[[IC0:.*]] = index_cast %[[DIM0]] : index to i64
   // CHECK: %[[DIM1:.*]] = dim %arg0, 1 : memref<?x?xf32>
   // CHECK: %[[IC1:.*]] = index_cast %[[DIM1]] : index to i64
-  // CHECK: %[[SHAPE:.*]] = "xla_hlo.scalars_to_dimension_tensor"(%[[IC0]], %[[IC1]]) : (i64, i64) -> tensor<2xi64>
+  // CHECK: %[[SHAPE:.*]] = tensor_from_elements(%[[IC0]], %[[IC1]]) : tensor<2xi64>
   // CHECK: %[[C0:.*]] = constant 0 : index
   // CHECK: %[[EE0:.*]] = extract_element %[[SHAPE]][%[[C0]]] : tensor<2xi64>
   // CHECK: %[[ICS0:.*]] = index_cast %[[EE0]] : i64 to index

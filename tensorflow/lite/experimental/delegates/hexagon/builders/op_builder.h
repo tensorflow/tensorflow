@@ -32,6 +32,7 @@ namespace tflite {
 namespace delegates {
 namespace hexagon {
 
+// Wrapper that holds all data representing a single node in the Hexagon graph.
 struct OpNode {
   std::vector<hexagon_nn_input> inputs;
   std::vector<hexagon_nn_output> outputs;
@@ -48,8 +49,20 @@ struct OpNode {
 
 class GraphBuilder;
 
+// Represents a single Op in the TFLite graph.
+// For each op in TFLite there should be an OpBuidler, this builder is
+// responsible for constructing equivalent node(s) in the hexagon graph. A
+// single builder can create one or more ops in the hexagon graph. When adding
+// new op* users should inherit from this class and implement
+// - PopulateSubgraph: which given inputs/outputs should construct the
+// equivalent hexagon nodes.
+// - RegisterOutputs: Which should have logic that maps final outputs from a
+// given node to the equivalent in Hexagon graph.
 class OpBuilder {
  public:
+  // Const representing the shape of a scalar value.
+  static constexpr int kScalarShape[] = {1, 1, 1, 1};
+
   OpBuilder(GraphBuilder* graph_builder, int hexagon_op_type)
       : graph_builder_(graph_builder) {
     op_node_.op_type = hexagon_op_type;
@@ -62,56 +75,83 @@ class OpBuilder {
 
   virtual ~OpBuilder() {}
 
-  // TODO(karimnosseir): Do we need to have builder pattern, or they are few not
-  // worth it ?
+  // Sets the op type in the hexagon graph.
   void SetOpType(int op_type) { op_node_.op_type = op_type; }
 
+  // Sets the node id in the hexagon graph.
   void SetNodeId(int node_id) { op_node_.node_id = node_id; }
 
+  // Sets the TfLite node index in the TfLite graph.
   void SetTFLiteNodeId(int node_index) {
     op_node_.tflite_node_index = node_index;
   }
 
+  // Marks this node as Const node.
   void SetConstNode() { op_node_.op_type = OP_Const; }
 
+  // Sets the padding type of the current node.
   void SetPaddingType(hexagon_nn_padding_type padding_type) {
     op_node_.padding_type = padding_type;
   }
 
+  // Sets the builtin_data of TFLite node that this Builder is responsible for.
   void SetBuiltinData(void* builtin_data) { builtin_data_ = builtin_data; }
 
+  // Returns true if the current op is a const Op.
   bool IsConstNode() const { return op_node_.op_type == OP_Const; }
 
-  void print() {}
-
-  const OpNode* Build();
-
-  void AddInput(const TensorID& tensor_id) { input_ids_.push_back(tensor_id); }
-
-  TensorID AddOutput(const TfLiteIntArray* dims);
-
-  TensorID AddOutput(int elementsize, int rank,
-                     const std::vector<int>& max_sizes);
-
-  int GetID() const { return op_node_.node_id; }
-
-  int GetTFLiteNodeID() const { return op_node_.tflite_node_index; }
-
-  int GetOpType() const { return op_node_.op_type; }
-
-  void SetTfLiteNode(const TfLiteNode* node) { tflite_node_ = node; }
-
+  // Subclasses should override it and have logic which handles initializing
+  // hexagon node(s) for the current op, given 'inputs' 'outputs'
   virtual TfLiteStatus PopulateSubGraph(const TfLiteIntArray* inputs,
                                         const TfLiteIntArray* outputs,
                                         TfLiteContext* context) {
     return kTfLiteOk;
   }
 
+  // Subclasses should override it and register the final output(s) from the
+  // node to the equivalent in hexagon graph.
   virtual TfLiteStatus RegisterOutputs(const TfLiteIntArray* outputs,
                                        TfLiteContext* context) {
     return kTfLiteOk;
   }
 
+  // Constructs OpNode which represents a node in the Hexagon graph.
+  const OpNode* Build();
+
+  // Returns the Node index in TFLite graph.
+  int GetTFLiteNodeID() const { return op_node_.tflite_node_index; }
+
+  // Returns the Op type of the current Op (in Hexagon graph)
+  int GetOpType() const { return op_node_.op_type; }
+
+  // Returns the node id in the hexagon graph.
+  int GetID() const { return op_node_.node_id; }
+
+  // Adds tensor identified by 'tensor_id' as input to the current Op.
+  void AddInput(const TensorID& tensor_id) { input_ids_.push_back(tensor_id); }
+
+  // Adds Output to the current node, the output has shape defined in 'dims'.
+  // This assumes the data type is uint8.
+  // Returns the TensorID identifying this output in the graph.
+  TensorID AddOutput(const TfLiteIntArray* dims);
+
+  // Adds Output to the current node, each element in the output has
+  // size 'elementsize' and rank 'rank' and for each dimension in the output
+  // the maximum size is max_sizes[i].
+  // Returns the TensorID identifying this output in the graph.
+  TensorID AddOutput(int elementsize, int rank,
+                     const std::vector<int>& max_sizes);
+
+  // Same as above but accepts pointer instead of std::vector.
+  TensorID AddOutput(int elementsize, int rank, const int* max_sizes_vect);
+
+  // Sets the node that corresponds to this builder in TFLite graph.
+  void SetTfLiteNode(const TfLiteNode* node) { tflite_node_ = node; }
+
+  // Static
+  // Computes the min/max values of 'tensor' and sets the values in
+  // the out params 'min' and 'max'.
+  // Returns kTfLiteOk on success.
   static TfLiteStatus ComputeMinAndMaxQuantValues(const TfLiteTensor& tensor,
                                                   float* min, float* max) {
     if (tensor.type == kTfLiteUInt8) {
@@ -124,8 +164,8 @@ class OpBuilder {
                                          std::numeric_limits<int8_t>::max());
     } else if (tensor.type == kTfLiteInt32) {
       return ComputeMinAndMaxQuantValues(tensor, min, max,
-                                         std::numeric_limits<int32_t>::min(),
-                                         std::numeric_limits<int32_t>::max());
+                                         std::numeric_limits<int>::min(),
+                                         std::numeric_limits<int>::max());
     }
     return kTfLiteError;
   }
@@ -192,7 +232,10 @@ class GraphBuilder {
   OpBuilder* AddNode(int tflite_node_index = -1);
 
   // Add const node that provides the data held by 'tensor'.
-  OpBuilder* AddConstNodeWithData(int tensor_id, const TfLiteTensor& tensor);
+  // If `int8_to_uint8` is true, then the data will be casted to uint8 from
+  // int8.
+  OpBuilder* AddConstNodeWithData(int tensor_id, const TfLiteTensor& tensor,
+                                  bool int8_to_uint8 = false);
 
   // Same as above but takes shape of the tensor that will holds the data.
   OpBuilder* AddConstNodeWithData(const int shape[], char* data, int data_size);
@@ -217,7 +260,6 @@ class GraphBuilder {
   // Returns tensor id inside Hexagon graph.
   OpBuilder::TensorID GetHexagonTensorId(int tflite_tensor_index) {
     if (!HasTensor(tflite_tensor_index)) {
-      printf("Could not find tensor id: %d\n", tflite_tensor_index);
       // Return invalid ID.
       return OpBuilder::TensorID(-1, -1);
     }
@@ -310,8 +352,7 @@ class GraphBuilder {
   }
 
   // Adds a Cast op to convert a tensor from int8 to uint8 (or vice versa).
-  TfLiteStatus AddCastOp(TfLiteContext* context, int op_type, int tensor_id,
-                         OpBuilder::TensorID hexagon_input);
+  TfLiteStatus AddCastOp(TfLiteContext* context, int op_type, int tensor_id);
 
   const HexagonNN* hexagon_nn_ = nullptr;
   TfLiteContext* context_ = nullptr;

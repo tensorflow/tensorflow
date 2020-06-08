@@ -40,8 +40,7 @@ class MatMulWithConstWeightsOpBuilder : public OpBuilder {
   TensorID node_output_;
   std::vector<int> weights_shape_, bias_shape_;
   std::vector<float> transposed_weights_;
-  float data_min_, data_max_, weights_min_, weights_max_, bias_min_, bias_max_,
-      output_min_, output_max_;
+  float weights_min_, weights_max_;
 };
 
 // Builder for FullyConnected op in Hexagon with non const weights.
@@ -68,8 +67,7 @@ class MatMulOpBuilder : public OpBuilder {
   TensorID node_output_;
   std::vector<int> weights_shape_, bias_shape_;
   std::vector<float> transposed_weights_;
-  float data_min_, data_max_, weights_min_, weights_max_, bias_min_, bias_max_,
-      output_min_, output_max_;
+  float weights_min_, weights_max_;
 };
 
 }  // namespace hexagon

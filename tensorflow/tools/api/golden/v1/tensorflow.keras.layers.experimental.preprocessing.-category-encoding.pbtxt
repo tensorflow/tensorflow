@@ -92,6 +92,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "supports_masking"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "trainable"
     mtype: "<type \'property\'>"
   }
@@ -117,7 +121,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'max_tokens\', \'output_mode\', \'sparse\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'count\', \'False\'], "
+    argspec: "args=[\'self\', \'max_tokens\', \'output_mode\', \'sparse\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'binary\', \'False\'], "
   }
   member_method {
     name: "adapt"
@@ -153,7 +157,7 @@ tf_class {
   }
   member_method {
     name: "call"
-    argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'inputs\', \'count_weights\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "compute_mask"

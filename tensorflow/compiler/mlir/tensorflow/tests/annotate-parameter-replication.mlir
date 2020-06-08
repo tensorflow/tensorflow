@@ -19,7 +19,7 @@ module attributes {tf.versions = {producer = 888 : i32}} {
 
   // CHECK-LABEL: func @_func
   // CHECK-SAME: %[[ARG0:.*]]: tensor<?xi32>,
-  // CHECK-SAME: %[[ARG1:.*]]: tensor<?xi32> {tf_device.is_same_data_across_replicas = true}
+  // CHECK-SAME: %[[ARG1:.*]]: tensor<?xi32> {xla_hlo.is_same_data_across_replicas}
   // CHECK-SAME: %[[ARG2:.*]]: tensor<?xi32>)
   func @_func(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>, %arg2: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf._D"(%arg0, %arg1) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
@@ -54,9 +54,9 @@ module attributes {tf.versions = {producer = 888 : i32}} {
   }
 
   // CHECK-LABEL: func @_func
-  // CHECK-SAME: %[[ARG0:.*]]: tensor<?xi32> {tf_device.is_same_data_across_replicas = true},
+  // CHECK-SAME: %[[ARG0:.*]]: tensor<?xi32> {xla_hlo.is_same_data_across_replicas},
   // CHECK-SAME: %[[ARG1:.*]]: tensor<?xi32>,
-  // CHECK-SAME: %[[ARG2:.*]]: tensor<!tf.resource<tensor<?xi32>>> {tf_device.is_same_data_across_replicas = true}
+  // CHECK-SAME: %[[ARG2:.*]]: tensor<!tf.resource<tensor<?xi32>>> {xla_hlo.is_same_data_across_replicas}
   func @_func(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>, %arg2: tensor<!tf.resource<tensor<?xi32>>>) -> tensor<?xi32> {
     %0 = "tf._D"(%arg0, %arg1) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
     return %0 : tensor<?xi32>
@@ -78,7 +78,7 @@ module attributes {tf.versions = {producer = 888 : i32}} {
   }
 
   // CHECK-LABEL: func @_func
-  // CHECK-NOT: tf_device.is_same_data_across_replicas
+  // CHECK-NOT: xla_hlo.is_same_data_across_replicas
   func @_func(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf._D"(%arg0, %arg1) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
     return %0 : tensor<?xi32>

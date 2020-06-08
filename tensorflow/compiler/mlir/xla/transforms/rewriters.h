@@ -23,6 +23,8 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 
 namespace mlir {
+class LLVMTypeConverter;
+class OwningRewritePatternList;
 class BufferAssignmentPlacer;
 namespace xla_hlo {
 
@@ -55,6 +57,15 @@ void SetupMaterializeBroadcastsLegality(MLIRContext *context,
 void PopulateMaterializeBroadcastsPatterns(MLIRContext *context,
                                            OwningRewritePatternList *patterns);
 
+// Sets up legality definitions for element-wise operations on ranked tensors.
+void SetupTransformUnrankedHloLegality(MLIRContext *context,
+                                       ConversionTarget *conversionTarget);
+
+// Populates a collection of rewrite patterns to realize element-wise operations
+// on ranked tensors where possible.
+void PopulateTransformUnrankedHloPatterns(MLIRContext *context,
+                                          OwningRewritePatternList *patterns);
+
 // Populate a collection of conversion patterns for un-fusing
 // batch_norm_inference and batch_norm_training into constituent HLO ops.
 // TODO(laurenzo): Implement un-fusing of batch_norm_training.
@@ -62,6 +73,14 @@ void PopulateUnfuseBatchNormPatterns(MLIRContext *context,
                                      OwningRewritePatternList *patterns);
 
 }  // namespace xla_hlo
+
+namespace xla_lhlo {
+
+/// Collect a set of patterns to convert from the LHLO dialect to LLVM.
+void PopulateLhloToLLVMConversionPatterns(LLVMTypeConverter *converter,
+                                          OwningRewritePatternList *patterns);
+
+}  // namespace xla_lhlo
 
 namespace xla_chlo {
 

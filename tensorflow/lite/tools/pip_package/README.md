@@ -93,6 +93,30 @@ CI_DOCKER_EXTRA_PARAMS="-e CI_BUILD_PYTHON=python3 -e CROSSTOOL_PYTHON_INCLUDE_P
   tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh aarch64
 ```
 
+## Enable TF OP support (Flex delegate)
+
+If you want to use TF ops with Python API, you need to enable flex support.
+You can build TFLite interpreter with flex ops support by providing
+"--define=tflite_pip_with_flex=true" to Bazel.
+
+Here are some examples.
+
+### Native build with Flex for your workstation
+
+```sh
+CUSTOM_BAZEL_FLAGS=--define=tflite_pip_with_flex=true \
+  tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh
+```
+
+### Cross build with Flex for armhf Python 3.5
+
+```sh
+CI_DOCKER_EXTRA_PARAMS="-e CUSTOM_BAZEL_FLAGS=--define=tflite_pip_with_flex=true \
+  -e CI_BUILD_PYTHON=python3 -e CROSSTOOL_PYTHON_INCLUDE_PATH=/usr/include/python3.5" \
+  tensorflow/tools/ci_build/ci_build.sh PI-PYTHON3 \
+  tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh armhf
+```
+
 ## Usage
 
 Note, unlike tensorflow this will be installed to a tflite_runtime namespace.
