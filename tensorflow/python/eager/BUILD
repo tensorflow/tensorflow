@@ -803,6 +803,7 @@ cuda_py_test(
     name = "def_function_test",
     srcs = ["def_function_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":def_function",
         "//tensorflow/python:client_testlib",

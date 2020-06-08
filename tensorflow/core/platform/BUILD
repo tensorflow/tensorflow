@@ -675,6 +675,7 @@ cc_library(
 cc_library(
     name = "strong_hash",
     hdrs = ["strong_hash.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":platform",
         ":types",

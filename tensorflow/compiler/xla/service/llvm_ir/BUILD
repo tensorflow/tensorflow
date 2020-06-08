@@ -42,7 +42,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:ir",
     ],
 )
 
@@ -79,9 +79,9 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:ir",
         "@llvm-project//llvm:support",
-        "@llvm-project//llvm:target",
+        "@llvm-project//llvm:target_base",
         "@llvm-project//llvm:transform_utils",
     ],
 )
@@ -101,7 +101,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:ir",
     ],
 )
 
@@ -119,7 +119,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:ir",
     ],
 )
 
@@ -137,7 +137,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings:str_format",
-        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:ir",
     ],
 )
 
@@ -162,7 +162,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:ir",
     ],
 )
 
@@ -201,7 +201,7 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:ir",
         "@llvm-project//llvm:support",
     ],
 )
@@ -218,7 +218,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:ir",
     ],
 )
 
@@ -230,7 +230,7 @@ cc_library(
         ":llvm_loop",
         ":llvm_util",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:ir",
     ],
 )
 
@@ -250,7 +250,7 @@ cc_library(
     hdrs = ["math_ops.h"],
     deps = [
         ":llvm_util",
-        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:ir",
     ],
 )
 
@@ -259,6 +259,6 @@ cc_library(
     srcs = [],
     hdrs = ["ir_builder_mixin.h"],
     deps = [
-        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:ir",
     ],
 )

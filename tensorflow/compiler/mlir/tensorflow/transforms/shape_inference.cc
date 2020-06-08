@@ -114,12 +114,22 @@ Optional<SmallVector<Type, 4>> InferShapeForFunctionReturnType(FuncOp func) {
 
 // Returns if the shape inference pass supports an op outside the TF dialect.
 bool IsSupportedNonTFOp(Operation* op) {
-  return isa<tf_executor::YieldOp>(op) || isa<tf_executor::IslandOp>(op) ||
+  return isa<ReturnOp>(op) || isa<tf_device::ReturnOp>(op) ||
+         isa<tf_executor::EnterOp>(op) || isa<tf_executor::ExitOp>(op) ||
          isa<tf_executor::FetchOp>(op) || isa<tf_executor::GraphOp>(op) ||
-         isa<tf_executor::NextIterationSinkOp>(op) || isa<ReturnOp>(op) ||
-         isa<tf_device::ReturnOp>(op) || isa<tf_executor::MergeOp>(op) ||
-         isa<tf_executor::SwitchOp>(op) || isa<tf_executor::SwitchNOp>(op) ||
-         isa<tf_executor::EnterOp>(op) || isa<tf_executor::ExitOp>(op);
+         isa<tf_executor::IslandOp>(op) || isa<tf_executor::LoopCondOp>(op) ||
+         isa<tf_executor::MergeOp>(op) ||
+         isa<tf_executor::NextIterationSinkOp>(op) ||
+         isa<tf_executor::SwitchNOp>(op) || isa<tf_executor::SwitchOp>(op) ||
+         isa<tf_executor::YieldOp>(op);
+}
+
+// Returns whether a cast back would need to be inserted, e.g., whether the
+// operation of which use is an operand allows for shape refinement without
+// a cast.
+bool NeedsCastBack(OpOperand& use, Dialect* tf_dialect) {
+  return use.getOwner()->getDialect() != tf_dialect &&
+         !IsSupportedNonTFOp(use.getOwner());
 }
 
 // Inserts tf.Cast operation when changing the type of a result if the user is
@@ -139,9 +149,7 @@ void AddCastBackForUnsupportedNonTFUses(Operation* op, Value result,
     return Value(cast_op);
   };
   for (OpOperand& use : make_early_inc_range(result.getUses())) {
-    if (use.getOwner()->getDialect() != tf_dialect &&
-        !IsSupportedNonTFOp(use.getOwner()))
-      use.set(get_cast_op());
+    if (NeedsCastBack(use, tf_dialect)) use.set(get_cast_op());
   }
 }
 
@@ -314,6 +322,34 @@ bool InferShapeForCall(Operation* op) {
     changed = true;
   }
   return changed;
+}
+
+bool InferShapeForCast(CastOp op, Dialect* tf_dialect) {
+  Value result = op.getResult();
+  if (!CanBeRefined(result.getType())) return false;
+
+  Type operand_type = op.getOperand().getType();
+  auto ranked_op_type = operand_type.dyn_cast<RankedTensorType>();
+  if (!ranked_op_type) return false;
+  auto ranked_res_type = result.getType().dyn_cast<RankedTensorType>();
+  if (ranked_res_type &&
+      ranked_op_type.getShape() == ranked_res_type.getShape())
+    return false;
+
+  // Avoid inserting a cast where no users types could be refined (e.g., where
+  // there would need to be a cast inserted for every user again).
+  if (llvm::all_of(result.getUses(), [tf_dialect](OpOperand& use) {
+        return NeedsCastBack(use, tf_dialect);
+      }))
+    return false;
+
+  auto new_type = RankedTensorType::get(
+      ranked_op_type.getShape(),
+      result.getType().cast<ShapedType>().getElementType());
+  auto old_type = result.getType();
+  result.setType(new_type);
+  AddCastBackForUnsupportedNonTFUses(op, op.getResult(), tf_dialect, old_type);
+  return true;
 }
 
 bool RefineWithInferTypeOpInterface(InferTypeOpInterface infer_ti,
@@ -670,18 +706,11 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
   if (isa<PartitionedCallOp>(op) || isa<StatefulPartitionedCallOp>(op))
     return InferShapeForCall(op);
 
-  // tf.Cast are only inferred if they have at least one user in the tf dialect.
-  // This is necessary to avoid reprocessing the tf.Cast that are inserted at
-  // the end of this function.
-  if (isa<CastOp>(op) &&
-      all_of(op->getResult(0).getUsers(), [&](Operation* user) {
-        return user->getDialect() != tf_dialect_;
-      })) {
-    LLVM_DEBUG(llvm::dbgs() << "Skipping inference for tf.Cast with no TF "
-                               "dialect operation users '"
-                            << *op << "'.\n");
-    return false;
-  }
+  // tf.Cast are only inferred if they have at least one user in the TF dialect
+  // or feeding into the function return. This is necessary to avoid inserting
+  // casts which cannot be refined.
+  if (auto cast_op = dyn_cast<CastOp>(op))
+    return InferShapeForCast(cast_op, tf_dialect_);
 
   StringRef op_name = op->getName().getStringRef();
   // Drop the `tf.` prefix to query TF registry.
@@ -857,7 +886,7 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
     auto new_type = get_tensor_type(shape_handle, new_element_type);
     if (result.getType() == new_type) continue;
     // Inserts a cast back to the original type if any user is not in the TF
-    // dialect.
+    // dialect or a return.
     AddCastBackForUnsupportedNonTFUses(op, result, tf_dialect_,
                                        result.getType());
     // Finally we inferred the shape and replace the type for this result.

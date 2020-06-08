@@ -887,17 +887,6 @@ class ResourceScatterUpdateOp : public OpKernel {
     const Tensor& indices = c->input(1);
     const Tensor& updates = c->input(2);
 
-    // Check that rank(updates.shape) = rank(indices.shape + params.shape[1:])
-    OP_REQUIRES(c,
-                updates.dims() == 0 ||
-                    updates.dims() == indices.dims() + params->dims() - 1,
-                errors::InvalidArgument(
-                    "Must have updates.shape = indices.shape + "
-                    "params.shape[1:] or updates.shape = [], got ",
-                    "updates.shape ", updates.shape().DebugString(),
-                    ", indices.shape ", indices.shape().DebugString(),
-                    ", params.shape ", params->shape().DebugString()));
-
     // Check that we have enough index space
     const int64 N_big = indices.NumElements();
     OP_REQUIRES(

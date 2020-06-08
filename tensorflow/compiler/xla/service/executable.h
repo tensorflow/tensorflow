@@ -318,7 +318,7 @@ class Executable {
   // not supported by the executable.
   //
   // Does not include the size of used libraries (e.g. cuDNN, Eigen, etc.).
-  virtual int64 SizeOfGeneratedCodeInBytes();
+  virtual int64 SizeOfGeneratedCodeInBytes() const;
 
   // Dumping helpers.
   void set_hlo_proto(std::unique_ptr<xla::HloProto> hlo_proto) {

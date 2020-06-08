@@ -19,10 +19,13 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -662,6 +665,209 @@ absl::optional<HloInstruction*> ExchangeHaloAndGetValidData(
                                       is_valid, valid_slice, masking_value));
   }
   return valid_slice;
+}
+
+HloInstruction* HaloExchangeToPadOnLeft(PartitionedHlo& original,
+                                        absl::Span<const int64> dims) {
+  if (original.sharding().IsTileMaximal()) {
+    return original.hlo();
+  }
+  // Create a window config to halo exchange for unevenly partitioned reverse
+  // dimensions.
+  Window window;
+  for (int64 i = 0; i < original.base_shape().rank(); ++i) {
+    WindowDimension* dim = window.add_dimensions();
+    dim->set_size(1);
+    dim->set_stride(1);
+    dim->set_window_dilation(1);
+    dim->set_window_reversal(false);
+    int64 low_padding = 0;
+    if (absl::c_linear_search(dims, i)) {
+      low_padding =
+          RoundUpToNearest(original.base_shape().dimensions(i),
+                           original.sharding().tile_assignment().dim(i)) -
+          original.base_shape().dimensions(i);
+    }
+    dim->set_padding_low(low_padding);
+    dim->set_padding_high(0);
+    dim->set_base_dilation(1);
+  }
+
+  auto reshard_window = original.ReshardAsWindowedInput(
+      window, original.sharding(),
+      CreateZero(ShapeUtil::MakeShape(original.base_shape().element_type(), {}),
+                 original.state().b),
+      /*mask_invalid_region=*/false);
+  if (!reshard_window.has_value()) {
+    return nullptr;
+  }
+  CHECK(!reshard_window->dynamic_slice_index_on_output.has_value());
+  return reshard_window->sharded_input;
+}
+
+bool IsNanSafeGt(HloComputation* comp) {
+  namespace m = match;
+  auto match_bitcast_f32 = [](int64 parameter_number) {
+    auto param = m::Parameter(parameter_number)
+                     .WithShape(m::Shape().WithElementType(F32));
+    auto param_s32 =
+        m::BitcastConvert(param).WithShape(m::Shape().WithElementType(S32));
+    auto param_u32 =
+        m::BitcastConvert(param).WithShape(m::Shape().WithElementType(U32));
+    return m::Select(
+        m::Lt(param_s32, m::ConstantScalar(0)),
+        m::BitcastConvert(
+            m::Subtract(m::ConstantScalar(std::numeric_limits<int32>::max()),
+                        param_u32))
+            .WithShape(m::Shape().WithElementType(S32)),
+        param_s32);
+  };
+  auto match_bitcast_bf16 = [](int64 parameter_number) {
+    auto param = m::Convert(m::Parameter(parameter_number)
+                                .WithShape(m::Shape().WithElementType(BF16)))
+                     .WithShape(m::Shape().WithElementType(F32));
+    auto param_s32 =
+        m::BitcastConvert(param).WithShape(m::Shape().WithElementType(S32));
+    auto param_u32 =
+        m::BitcastConvert(param).WithShape(m::Shape().WithElementType(U32));
+    return m::Select(
+        m::Lt(param_s32, m::ConstantScalar(0)),
+        m::BitcastConvert(
+            m::Subtract(m::ConstantScalar(std::numeric_limits<int32>::max()),
+                        param_u32))
+            .WithShape(m::Shape().WithElementType(S32)),
+        param_s32);
+  };
+  // If root instruction is kSelect and compares indices if values are equal.
+  if (comp->root_instruction()->opcode() == HloOpcode::kSelect) {
+    return Match(comp->root_instruction()->operand(2),
+                 m::Gt(match_bitcast_f32(0), match_bitcast_f32(1))) ||
+           Match(comp->root_instruction()->operand(2),
+                 m::Gt(match_bitcast_bf16(0), match_bitcast_bf16(1)));
+  }
+  return Match(comp->root_instruction(),
+               m::Gt(match_bitcast_f32(0), match_bitcast_f32(1))) ||
+         Match(comp->root_instruction(),
+               m::Gt(match_bitcast_bf16(0), match_bitcast_bf16(1)));
+}
+
+absl::optional<int64> GetKValueInTopKWhenPartitionSortDim(HloInstruction* hlo) {
+  HloSortInstruction* sort = DynCast<HloSortInstruction>(hlo);
+  if (sort == nullptr || sort->operand_count() != 2) {
+    return absl::nullopt;
+  }
+  if (!IsNanSafeGt(sort->to_apply())) {
+    return absl::nullopt;
+  }
+  HloInstruction* data = sort->mutable_operand(0);
+  HloIotaInstruction* iota =
+      DynCast<HloIotaInstruction>(sort->mutable_operand(1));
+  const PrimitiveType element_type = data->shape().element_type();
+  if (iota == nullptr || iota->shape().element_type() != S32 ||
+      iota->opcode() != HloOpcode::kIota ||
+      iota->iota_dimension() != sort->sort_dimension()) {
+    return absl::nullopt;
+  }
+
+  const int64 sort_dim = sort->sort_dimension();
+
+  if (element_type != F32 && element_type != BF16 && element_type != S32 &&
+      element_type != U32) {
+    return absl::nullopt;
+  }
+
+  bool supported = true;
+  absl::optional<int64> k;
+  for (HloInstruction* gte : sort->users()) {
+    if (gte->opcode() != HloOpcode::kGetTupleElement) {
+      supported = false;
+      break;
+    }
+
+    const HloInstruction* slice = gte->users()[0];
+    if (slice->opcode() != HloOpcode::kSlice) {
+      // Non-slice user means we are not doing a TopK
+      supported = false;
+      break;
+    }
+    if (absl::c_any_of(slice->slice_starts(), [](int x) { return x != 0; }) ||
+        absl::c_any_of(slice->slice_strides(), [](int x) { return x != 1; })) {
+      // Strided slice or slicing at the beginning isn't supported.
+      supported = false;
+      break;
+    }
+    for (int64 dim = 0; dim < data->shape().dimensions_size(); dim++) {
+      if (dim == sort_dim) {
+        continue;
+      }
+      if (slice->slice_limits(dim) !=
+          slice->operand(0)->shape().dimensions(dim)) {
+        // Slicing along the other dimension isn't supported.
+        supported = false;
+        break;
+      }
+    }
+    if (!k.has_value()) {
+      k = slice->slice_limits(sort_dim);
+    } else if (k != slice->slice_limits(sort_dim)) {
+      // Different k for the different operands isn't supported.
+      supported = false;
+      break;
+    }
+  }
+  if (k == absl::nullopt || !supported) {
+    return absl::nullopt;
+  }
+
+  // Only support when sort dim is sharded.
+  if (!data->has_sharding()) {
+    return absl::nullopt;
+  }
+  const HloSharding& sharding = sort->operand(0)->sharding();
+
+  if (sharding.IsTileMaximal()) {
+    return absl::nullopt;
+  }
+
+  // Check if partitioned at sort dimension.
+  for (int64 dim : sort->dimensions()) {
+    if (sharding.tile_assignment().dim(dim) > 1) {
+      if (dim != sort_dim) {
+        return absl::nullopt;
+      }
+    }
+  }
+
+  // Checks if partition size is smaller than k.
+  const int64 shard_count = sharding.tile_assignment().dim(sort_dim);
+
+  if (shard_count <= 1) {
+    return absl::nullopt;
+  }
+
+  const int64 input_size = hlo->operand(0)->shape().dimensions(sort_dim);
+  const int64 per_partition_size = CeilOfRatio(input_size, shard_count);
+
+  if (k.value() >= per_partition_size) {
+    return absl::nullopt;
+  }
+
+  return k;
+}
+
+// Slice first k elements from sort_dim.
+HloInstruction* SliceFirstK(HloInstruction* hlo, SpmdBuilder* builder,
+                            int64 slice_dim, int64 k) {
+  const Shape& hlo_shape = hlo->shape();
+  auto hlo_dims = hlo_shape.dimensions();
+  std::vector<int64> start_indices(hlo_shape.dimensions_size(), 0);
+  std::vector<int64> limit_indices(hlo_dims.begin(), hlo_dims.end());
+  std::vector<int64> strides(hlo_shape.dimensions_size(), 1);
+  limit_indices[slice_dim] = k;
+  auto output_shape = hlo_shape;
+  output_shape.set_dimensions(slice_dim, k);
+  return builder->AddInstruction(HloInstruction::CreateSlice(
+      output_shape, hlo, start_indices, limit_indices, strides));
 }
 
 }  // namespace spmd

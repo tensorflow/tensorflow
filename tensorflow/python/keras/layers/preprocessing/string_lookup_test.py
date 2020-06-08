@@ -36,6 +36,7 @@ from tensorflow.python.keras.layers.preprocessing import string_lookup
 from tensorflow.python.keras.layers.preprocessing import string_lookup_v1
 from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 
@@ -155,7 +156,7 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
 
   def test_get_vocab_returns_str(self):
     vocab_data = ["earth", "wind", "and", "fire"]
-    expected_vocab = ["", "[OOV]", "earth", "wind", "and", "fire"]
+    expected_vocab = ["", "[UNK]", "earth", "wind", "and", "fire"]
     layer = get_layer_class()(vocabulary=vocab_data)
     layer_vocab = layer.get_vocabulary()
     self.assertAllEqual(expected_vocab, layer_vocab)
@@ -205,7 +206,7 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
     input_array = np.array([["earth", "wind", "and", "fire"],
                             ["fire", "and", "earth", "michigan"]])
     expected_output = np.array([["earth", "wind", "and", "fire"],
-                                ["fire", "and", "earth", "[OOV]"]])
+                                ["fire", "and", "earth", "[UNK]"]])
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
     layer = get_layer_class()(vocabulary=vocab_data)
@@ -214,6 +215,21 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
     int_data = layer(input_data)
     out_data = invert_layer(int_data)
     model = keras.Model(inputs=input_data, outputs=out_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_ragged_string_input_multi_bucket(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = ragged_factory_ops.constant([["earth", "wind", "fire"],
+                                               ["fire", "and", "earth",
+                                                "ohio"]])
+    expected_output = [[3, 4, 6], [6, 5, 3, 2]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string, ragged=True)
+    layer = get_layer_class()(num_oov_indices=2)
+    layer.set_vocabulary(vocab_data)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
 

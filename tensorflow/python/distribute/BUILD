@@ -416,6 +416,7 @@ py_library(
 tf_py_test(
     name = "mirrored_function_strategy_test",
     srcs = ["mirrored_function_strategy_test.py"],
+    python_version = "PY3",
     tags = ["no_pip"],
     deps = [
         ":distribute_lib",
@@ -447,6 +448,7 @@ cuda_py_test(
     srcs = [
         "multi_worker_continuous_run_test.py",
     ],
+    python_version = "PY3",
     tags = [
         "notsan",  # TODO(b/151841995)
     ],
@@ -528,6 +530,7 @@ py_library(
 cuda_py_test(
     name = "input_ops_test",
     srcs = ["input_ops_test.py"],
+    python_version = "PY3",
     deps = [
         ":input_ops",
         "//tensorflow/python:client_testlib",
@@ -764,6 +767,7 @@ py_library(
 py_test(
     name = "combinations_test",
     srcs = ["combinations_test.py"],
+    python_version = "PY3",
     tags = [
         "notap",  # TODO(b/153646955): flaky
     ],
@@ -856,6 +860,7 @@ cuda_py_test(
     name = "checkpoint_utils_test",
     size = "medium",
     srcs = ["checkpoint_utils_test.py"],
+    python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
     ],
@@ -953,6 +958,7 @@ distribute_py_test(
 cuda_py_test(
     name = "cross_device_utils_test",
     srcs = ["cross_device_utils_test.py"],
+    python_version = "PY3",
     deps = [
         ":combinations",
         ":cross_device_utils",
@@ -971,6 +977,7 @@ cuda_py_test(
 cuda_py_test(
     name = "cross_device_ops_test",
     srcs = ["cross_device_ops_test.py"],
+    python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
     ],
@@ -997,6 +1004,7 @@ cuda_py_test(
     name = "one_device_strategy_test",
     srcs = ["one_device_strategy_test.py"],
     grpc_enabled = True,
+    python_version = "PY3",
     deps = [
         ":combinations",
         ":strategy_combinations",
@@ -1350,6 +1358,7 @@ cuda_py_test(
     name = "warm_starting_util_test",
     size = "medium",
     srcs = ["warm_starting_util_test.py"],
+    python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
     ],
@@ -1367,7 +1376,10 @@ cuda_py_test(
 cuda_py_test(
     name = "remote_mirrored_strategy_eager_test",
     srcs = ["remote_mirrored_strategy_eager_test.py"],
-    tags = ["no_oss"],  # b/154743849
+    python_version = "PY3",
+    tags = [
+        "no_oss",  # b/154743849
+    ],
     deps = [
         ":combinations",
         ":distribute_lib",
@@ -1390,6 +1402,7 @@ cuda_py_test(
 cuda_py_test(
     name = "mirrored_strategy_test",
     srcs = ["mirrored_strategy_test.py"],
+    python_version = "PY3",
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
@@ -1421,6 +1434,7 @@ cuda_py_test(
 cuda_py_test(
     name = "mirrored_variable_test",
     srcs = ["mirrored_variable_test.py"],
+    python_version = "PY3",
     tags = [
         "guitar",
         "multi_and_single_gpu",
@@ -1599,6 +1613,7 @@ distribute_py_test(
 cuda_py_test(
     name = "collective_all_reduce_strategy_test",
     srcs = ["collective_all_reduce_strategy_test.py"],
+    python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
     ],
@@ -1633,6 +1648,7 @@ cuda_py_test(
 cuda_py_test(
     name = "parameter_server_strategy_test",
     srcs = ["parameter_server_strategy_test.py"],
+    python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
         "no_windows",  # TODO(b/156428279): reenable this test once the image is updated.
@@ -1751,6 +1767,7 @@ py_test(
 cuda_py_test(
     name = "strategy_common_test",
     srcs = ["strategy_common_test.py"],
+    python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
         # TODO(b/155301154): Enable this test on multi-gpu guitar once multi process
@@ -1772,5 +1789,21 @@ cuda_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:def_function",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "tf_function_test",
+    srcs = ["tf_function_test.py"],
+    main = "tf_function_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        ":combinations",
+        ":strategy_combinations",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
     ],
 )

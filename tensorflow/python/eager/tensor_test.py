@@ -545,6 +545,13 @@ class TFETensorUtilTest(test_util.TensorFlowTestCase):
         ValueError, "non-rectangular Python sequence"):
       constant_op.constant(l)
 
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testFloatAndIntAreConvertibleToComplex(self):
+    a = [[1., 1], [1j, 2j]]
+    np_value = np.array(a, dtype=np.complex128)
+    tf_value = ops.convert_to_tensor(a, dtype=dtypes.complex128)
+    self.assertAllEqual(tf_value.numpy(), np_value)
+
 
 if __name__ == "__main__":
   test.main()

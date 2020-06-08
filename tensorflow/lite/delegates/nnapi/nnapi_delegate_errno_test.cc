@@ -31,10 +31,7 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
  public:
   explicit SingleOpModelWithNNAPI(const NnApi* nnapi) {
     stateful_delegate_.reset(new StatefulNnApiDelegate(nnapi));
-    auto* delegate = stateful_delegate_.get();
-    this->SetApplyDelegate([delegate](Interpreter* interpreter) {
-      interpreter->ModifyGraphWithDelegate(delegate);
-    });
+    this->SetDelegate(stateful_delegate_.get());
   }
 
   StatefulNnApiDelegate* GetDelegate() { return stateful_delegate_.get(); }
@@ -77,8 +74,8 @@ class FloatAddOpModel : public SingleOpModelWithNNAPI {
     output_ = AddOutput(output);
     SetBuiltinOp(BuiltinOperator_ADD, BuiltinOptions_AddOptions,
                  CreateAddOptions(builder_, activation_type).Union());
-    BuildInterpreter({GetShape(input1_), GetShape(input2_)},
-                     allow_fp32_relax_to_fp16);
+    BuildInterpreter({GetShape(input1_), GetShape(input2_)}, /*num_threads=*/-1,
+                     allow_fp32_relax_to_fp16, /*apply_delegate=*/true);
   }
 };
 

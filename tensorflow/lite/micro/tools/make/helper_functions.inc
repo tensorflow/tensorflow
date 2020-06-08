@@ -74,6 +74,14 @@ $(PRJDIR)$(3)/$(1)/%: % third_party_downloads
 	@mkdir -p $$(dir $$@)
 	@cp $$< $$@
 
+$(PRJDIR)$(3)/cmake/boards/%: tensorflow/lite/micro/examples/$(3)/zephyr_riscv/boards/%
+	@mkdir -p $$(dir $$@)
+	@cp $$< $$@
+
+$(PRJDIR)$(3)/cmake/%: tensorflow/lite/micro/examples/$(3)/zephyr_riscv/%
+	@mkdir -p $$(dir $$@)
+	@cp $$< $$@
+
 $(PRJDIR)$(3)/$(1)/third_party/%: tensorflow/lite/micro/tools/make/downloads/% third_party_downloads
 	@mkdir -p $$(dir $$@)
 	@cp $$< $$@

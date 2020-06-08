@@ -1287,7 +1287,7 @@ class ModelCheckpoint(Callback):
         self._maybe_remove_file()
       except IOError as e:
         # `e.errno` appears to be `None` so checking the content of `e.args[0]`.
-        if 'is a directory' in six.ensure_str(e.args[0]):
+        if 'is a directory' in six.ensure_str(e.args[0]).lower():
           raise IOError('Please specify a non-directory filepath for '
                         'ModelCheckpoint. Filepath used is an existing '
                         'directory: {}'.format(filepath))
@@ -1627,6 +1627,7 @@ class EarlyStopping(Callback):
       self.best = self.baseline
     else:
       self.best = np.Inf if self.monitor_op == np.less else -np.Inf
+    self.best_weights = None
 
   def on_epoch_end(self, epoch, logs=None):
     current = self.get_monitor_value(logs)
@@ -1999,7 +2000,10 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     for layer in self.model.layers:
       if isinstance(layer, embeddings.Embedding):
         embedding = config.embeddings.add()
-        embedding.tensor_name = layer.name + '/.ATTRIBUTES/VARIABLE_VALUE'
+        # Embeddings are always the first layer, so this naming should be
+        # consistent in any keras models checkpoints.
+        name = 'layer_with_weights-0/embeddings/.ATTRIBUTES/VARIABLE_VALUE'
+        embedding.tensor_name = name
 
         if self.embeddings_metadata is not None:
           if isinstance(self.embeddings_metadata, str):

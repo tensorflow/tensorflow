@@ -983,7 +983,7 @@ def _slice_helper(tensor, slice_spec, var=None):
   with ops.name_scope(
       None,
       "strided_slice", [tensor] + begin + end + strides,
-      skip_on_eager=False):
+      skip_on_eager=False) as name:
     if begin:
       packed_begin, packed_end, packed_strides = (stack(begin), stack(end),
                                                   stack(strides))
@@ -1009,7 +1009,8 @@ def _slice_helper(tensor, slice_spec, var=None):
         shrink_axis_mask=shrink_axis_mask,
         new_axis_mask=new_axis_mask,
         ellipsis_mask=ellipsis_mask,
-        var=var)
+        var=var,
+        name=name)
 
 
 # pylint: disable=undefined-variable,protected-access,redefined-outer-name
@@ -1193,7 +1194,7 @@ def strided_slice(input_,
       if var is None:
         raise ValueError("Sliced assignment is only supported for variables")
       else:
-        if name is None and parent_name:
+        if name is None:
           name = parent_name + "_assign"
 
         return var._strided_slice_assign(
@@ -4399,7 +4400,7 @@ def where_v2(condition, x=None, y=None, name=None):
 
   The `condition` tensor acts as a mask that chooses whether the corresponding
   element / row in the output should be taken from `x`
-  (if the elemment in `condition is True) or `y` (if it is false).
+  (if the element in `condition is True) or `y` (if it is false).
 
   >>> tf.where([True, False, False, True], [1,2,3,4], [100,200,300,400])
   <tf.Tensor: shape=(4,), dtype=int32, numpy=array([  1, 200, 300,   4],

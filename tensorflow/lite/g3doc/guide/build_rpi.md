@@ -14,23 +14,22 @@ or
 
 ## Cross-compile for Raspberry Pi
 
-Instruction has been tested on Ubuntu 16.04.3 64-bit PC (AMD64) and TensorFlow
-devel docker image
+The following instructions have been tested on Ubuntu 16.04.3 64-bit PC (AMD64)
+and TensorFlow devel docker image
 [tensorflow/tensorflow:nightly-devel](https://hub.docker.com/r/tensorflow/tensorflow/tags/).
 
 To cross compile TensorFlow Lite follow the steps:
 
 1.  Clone official Raspberry Pi cross-compilation toolchain:
 
-    ```bash
+    ```sh
     git clone https://github.com/raspberrypi/tools.git rpi_tools
     ```
 
 2.  Clone TensorFlow repository:
 
-    ```bash
+    ```sh
     git clone https://github.com/tensorflow/tensorflow.git tensorflow_src
-
     ```
 
     **Note:** If you're using the TensorFlow Docker image, the repo is already
@@ -39,7 +38,7 @@ To cross compile TensorFlow Lite follow the steps:
 3.  Run following script at the root of the TensorFlow repository to download
     all the build dependencies:
 
-    ```bash
+    ```sh
     cd tensorflow_src && ./tensorflow/lite/tools/make/download_dependencies.sh
     ```
 
@@ -47,7 +46,7 @@ To cross compile TensorFlow Lite follow the steps:
 
 4.  To build ARMv7 binary for Raspberry Pi 2, 3 and 4 execute:
 
-    ```bash
+    ```sh
     PATH=../rpi_tools/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/bin:$PATH ./tensorflow/lite/tools/make/build_rpi_lib.sh
     ```
 
@@ -56,7 +55,7 @@ To cross compile TensorFlow Lite follow the steps:
 
 5.  To build ARMv6 binary for Raspberry Pi Zero execute:
 
-    ```bash
+    ```sh
     PATH=../rpi_tools/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/bin:$PATH ./tensorflow/lite/tools/make/build_rpi_lib.sh TARGET_ARCH=armv6
     ```
 
@@ -65,28 +64,27 @@ To cross compile TensorFlow Lite follow the steps:
 
 ## Compile natively on Raspberry Pi
 
-Instruction has been tested on Raspberry Pi Zero, Raspbian GNU/Linux 10
-(buster), gcc version 8.3.0 (Raspbian 8.3.0-6+rpi1):
+The following instructions have been tested on Raspberry Pi Zero, Raspbian
+GNU/Linux 10 (buster), gcc version 8.3.0 (Raspbian 8.3.0-6+rpi1):
 
 To natively compile TensorFlow Lite follow the steps:
 
 1.  Log in to your Raspberry Pi and install the toolchain:
 
-    ```bash
+    ```sh
     sudo apt-get install build-essential
     ```
 
 2.  Clone TensorFlow repository:
 
-    ```bash
+    ```sh
     git clone https://github.com/tensorflow/tensorflow.git tensorflow_src
-
     ```
 
 3.  Run following script at the root of the TensorFlow repository to download
     all the build dependencies:
 
-    ```bash
+    ```sh
     cd tensorflow_src && ./tensorflow/lite/tools/make/download_dependencies.sh
     ```
 
@@ -94,7 +92,7 @@ To natively compile TensorFlow Lite follow the steps:
 
 4.  You should then be able to compile TensorFlow Lite with:
 
-    ```bash
+    ```sh
     ./tensorflow/lite/tools/make/build_rpi_lib.sh
     ```
 

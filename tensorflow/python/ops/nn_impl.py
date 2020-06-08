@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import math
 
-from tensorflow.python.compat import compat
 from tensorflow.python.distribute import distribution_strategy_context as ds
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -1507,7 +1506,7 @@ def batch_normalization(x,
       `tf.nn.moments(..., keepdims=False)` during training, or running averages
       thereof during inference.
 
-  See equation 11 in Algorithm 2 of source: 
+  See equation 11 in Algorithm 2 of source:
   [Batch Normalization: Accelerating Deep Network Training by
   Reducing Internal Covariate Shift; S. Ioffe, C. Szegedy]
   (http://arxiv.org/abs/1502.03167).
@@ -1639,31 +1638,18 @@ def fused_batch_norm(
   min_epsilon = 1.001e-5
   epsilon = epsilon if epsilon > min_epsilon else min_epsilon
 
-  if compat.forward_compatible(2020, 3, 6):
-    y, running_mean, running_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
-        x,
-        scale,
-        offset,
-        mean,
-        variance,
-        epsilon=epsilon,
-        exponential_avg_factor=exponential_avg_factor,
-        data_format=data_format,
-        is_training=is_training,
-        name=name)
-    return y, running_mean, running_var
-  else:
-    y, running_mean, running_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
-        x,
-        scale,
-        offset,
-        mean,
-        variance,
-        epsilon=epsilon,
-        data_format=data_format,
-        is_training=is_training,
-        name=name)
-    return y, running_mean, running_var
+  y, running_mean, running_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
+      x,
+      scale,
+      offset,
+      mean,
+      variance,
+      epsilon=epsilon,
+      exponential_avg_factor=exponential_avg_factor,
+      data_format=data_format,
+      is_training=is_training,
+      name=name)
+  return y, running_mean, running_var
 
 
 @tf_export(v1=["nn.batch_norm_with_global_normalization"])

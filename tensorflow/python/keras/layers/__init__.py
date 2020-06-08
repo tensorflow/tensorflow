@@ -47,19 +47,31 @@ if tf2.enabled():
   from tensorflow.python.keras.layers.preprocessing.category_encoding import CategoryEncoding
   from tensorflow.python.keras.layers.preprocessing.category_encoding_v1 import CategoryEncoding as CategoryEncodingV1
   CategoryEncodingV2 = CategoryEncoding
+  from tensorflow.python.keras.layers.preprocessing.integer_lookup import IntegerLookup
+  from tensorflow.python.keras.layers.preprocessing.integer_lookup_v1 import IntegerLookup as IntegerLookupV1
+  IntegerLookupV2 = IntegerLookup
   from tensorflow.python.keras.layers.preprocessing.normalization import Normalization
   from tensorflow.python.keras.layers.preprocessing.normalization_v1 import Normalization as NormalizationV1
   NormalizationV2 = Normalization
+  from tensorflow.python.keras.layers.preprocessing.string_lookup import StringLookup
+  from tensorflow.python.keras.layers.preprocessing.string_lookup_v1 import StringLookup as StringLookupV1
+  StringLookupV2 = StringLookup
   from tensorflow.python.keras.layers.preprocessing.text_vectorization import TextVectorization
   from tensorflow.python.keras.layers.preprocessing.text_vectorization_v1 import TextVectorization as TextVectorizationV1
   TextVectorizationV2 = TextVectorization
 else:
+  from tensorflow.python.keras.layers.preprocessing.integer_lookup_v1 import IntegerLookup
+  from tensorflow.python.keras.layers.preprocessing.integer_lookup import IntegerLookup as IntegerLookupV2
+  IntegerLookupV1 = IntegerLookup
   from tensorflow.python.keras.layers.preprocessing.category_encoding_v1 import CategoryEncoding
   from tensorflow.python.keras.layers.preprocessing.category_encoding import CategoryEncoding as CategoryEncodingV2
   CategoryEncodingV1 = CategoryEncoding
   from tensorflow.python.keras.layers.preprocessing.normalization_v1 import Normalization
   from tensorflow.python.keras.layers.preprocessing.normalization import Normalization as NormalizationV2
   NormalizationV1 = Normalization
+  from tensorflow.python.keras.layers.preprocessing.string_lookup_v1 import StringLookup
+  from tensorflow.python.keras.layers.preprocessing.string_lookup import StringLookup as StringLookupV2
+  StringLookupV1 = StringLookup
   from tensorflow.python.keras.layers.preprocessing.text_vectorization_v1 import TextVectorization
   from tensorflow.python.keras.layers.preprocessing.text_vectorization import TextVectorization as TextVectorizationV2
   TextVectorizationV1 = TextVectorization

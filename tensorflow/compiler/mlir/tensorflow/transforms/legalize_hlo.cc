@@ -18,12 +18,16 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -94,6 +98,106 @@ static bool AreBroadcastCompatible(Value x, Value y) {
                                             y_ranked.getShape(), resultShape);
 }
 
+// Returns the shape of the given value in a Constant Op.
+ConstantOp ShapeToConst(PatternRewriter &rewriter, Value value) {
+  ArrayRef<int64_t> shape = value.getType().cast<ShapedType>().getShape();
+  auto attr_type = RankedTensorType::get({static_cast<int64_t>(shape.size())},
+                                         rewriter.getIntegerType(64));
+  auto attr = DenseElementsAttr::get(attr_type, shape);
+  return rewriter.create<ConstantOp>(value.getLoc(), attr_type, attr);
+}
+
+// Converts xla_hlo.dot to tf.MatMul. Reshape ops will be inserted when
+// necessary.
+Value ConvertDotOp(PatternRewriter &rewriter, Operation *old_op) {
+  auto dot_op = cast<xla_hlo::DotOp>(old_op);
+  const mlir::Location loc = dot_op.getLoc();
+  // Normalizes a ShapedType to 2d if the ShapedType is less than 2d by
+  // inserting dummy 1-element dimensions in the begining. Does nothing if the
+  // old shape is already 2d or higher. This is necessary because tf.MatMul
+  // requires input tensors to be at least 2d.
+  const auto normalize_rank = [](ShapedType type) -> ShapedType {
+    if (type.getRank() >= 2) {
+      return type;
+    }
+
+    const int rank = type.getRank();
+    llvm::SmallVector<int64_t, 2> shape_2d(type.getShape().begin(),
+                                           type.getShape().end());
+    for (int i = 0; i < 2 - rank; ++i) {
+      shape_2d.insert(shape_2d.begin(), 1);
+    }
+    return RankedTensorType::get(shape_2d, type.getElementType());
+  };
+
+  // Reshapes a tensor value to 2d if it is 1d or scalar. Otherwise does
+  // nothing.
+  const auto reshape_to_2d = [&rewriter, &loc,
+                              &normalize_rank](mlir::Value input) {
+    const auto input_type = input.getType().cast<ShapedType>();
+    if (input_type.getRank() >= 2) {
+      return input;
+    }
+
+    auto reshape = rewriter.create<xla_hlo::ReshapeOp>(
+        loc, normalize_rank(input_type), input);
+    return reshape.getResult();
+  };
+
+  // Reshapes both operand to be 2d for tf.MatMul op.
+  auto a = reshape_to_2d(dot_op.lhs());
+  auto b = reshape_to_2d(dot_op.rhs());
+  // Operand `b` needs to be transposed if it is 1d. This is because dot op will
+  // contract on the only dimension if rhs is 1d.
+  auto b_old_type = dot_op.rhs().getType().cast<ShapedType>();
+  BoolAttr transpose_b = rewriter.getBoolAttr(b_old_type.getRank() == 1);
+  auto output_type = dot_op.getResult().getType().cast<ShapedType>();
+  auto matmul = rewriter.create<TF::MatMulOp>(
+      loc, normalize_rank(output_type), a, b,
+      /*transpose_a=*/rewriter.getBoolAttr(false), transpose_b);
+  auto reshape =
+      rewriter.create<xla_hlo::ReshapeOp>(loc, output_type, matmul.product());
+  return reshape.getResult();
+}
+
+// Returns true if broadcast_dimensions obey Tensorflow convention, as in new
+// dimensions are added as prefix.
+bool IsTFStyleBroadcast(DenseIntElementsAttr broadcast_dimensions,
+                        Value output) {
+  // broadcast_dimensions is an increasing list by definition, thus it suffices
+  // to check the first element.
+  int64_t input_rank = broadcast_dimensions.getNumElements();
+  int64_t output_rank = output.getType().cast<ShapedType>().getRank();
+  return input_rank == 0 ||
+         (broadcast_dimensions.getValue({0}).cast<IntegerAttr>().getInt() ==
+          output_rank - input_rank);
+}
+
+// Returns the intermediate shape that input tensor should be reshaped to during
+// legalization of BroadcastInDimOp.
+ConstantOp ExpandedShape(PatternRewriter &rewriter, Value input,
+                         DenseIntElementsAttr broadcast_dimensions,
+                         Value output) {
+  // Initialize expanded shape with output rank and dimensions of 1.
+  SmallVector<Attribute, 4> expanded_shape(
+      output.getType().cast<ShapedType>().getRank(),
+      /*Value=*/rewriter.getI64IntegerAttr(1));
+
+  // Set dimension sizes specified by broadcast_dimensions.
+  ArrayRef<int64_t> input_shape = input.getType().cast<ShapedType>().getShape();
+  for (auto x : llvm::enumerate(broadcast_dimensions)) {
+    expanded_shape[x.value().getSExtValue()] =
+        rewriter.getI64IntegerAttr(input_shape[x.index()]);
+  }
+
+  // Create the expanded type wrapped in a ConstantOp.
+  auto attr_type =
+      RankedTensorType::get({static_cast<int64_t>(expanded_shape.size())},
+                            rewriter.getIntegerType(64));
+  auto attr = DenseElementsAttr::get(attr_type, expanded_shape);
+  return rewriter.create<ConstantOp>(output.getLoc(), attr_type, attr);
+}
+
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_legalize_hlo.inc"
 
 /// Performs the lowering to XLA dialect.
@@ -107,9 +211,11 @@ void LegalizeHloToTf::runOnFunction() {
 
   ConversionTarget target(context);
   target.addLegalDialect<TensorFlowDialect>();
-  target.addLegalOp<CallOp>();
-  if (failed(applyPartialConversion(getFunction(), target, patterns)))
+  target.addLegalOp<CallOp, ConstantOp>();
+  if (failed(applyPartialConversion(getFunction(), target, patterns))) {
+    getFunction().emitError("xla_hlo to TF legalization failed.");
     signalPassFailure();
+  }
 }
 
 static PassRegistration<LegalizeHloToTf> pass(

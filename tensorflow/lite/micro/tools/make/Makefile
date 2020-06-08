@@ -116,6 +116,7 @@ MICROLITE_CC_BASE_SRCS := \
 $(wildcard tensorflow/lite/micro/*.cc) \
 $(wildcard tensorflow/lite/micro/kernels/*.cc) \
 $(wildcard tensorflow/lite/micro/memory_planner/*.cc) \
+$(wildcard tensorflow/lite/micro/testing/*model.cc) \
 tensorflow/lite/c/common.c \
 tensorflow/lite/core/api/error_reporter.cc \
 tensorflow/lite/core/api/flatbuffer_conversions.cc \
@@ -185,6 +186,8 @@ tensorflow/lite/kernels/internal/reference/logistic.h \
 tensorflow/lite/kernels/internal/reference/strided_slice.h \
 tensorflow/lite/kernels/internal/reference/tanh.h \
 tensorflow/lite/kernels/internal/cppmath.h \
+tensorflow/lite/kernels/internal/max.h \
+tensorflow/lite/kernels/internal/min.h \
 tensorflow/lite/kernels/internal/strided_slice_logic.h \
 tensorflow/lite/kernels/internal/tensor.h \
 tensorflow/lite/kernels/internal/tensor_ctypes.h \

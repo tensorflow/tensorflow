@@ -36,16 +36,30 @@ class Arguments {
  public:
   Arguments() = default;
   void AddFloat(const std::string& name, float value = 0.0f);
+  void AddHalf(const std::string& name, half value = half(0.0f));
   void AddInt(const std::string& name, int value = 0);
   void AddBuffer(const std::string& name, const GPUBufferDescriptor& desc);
   void AddImage2D(const std::string& name, const GPUImage2DDescriptor& desc);
+  void AddImage2DArray(const std::string& name,
+                       const GPUImage2DArrayDescriptor& desc);
+  void AddImage3D(const std::string& name, const GPUImage3DDescriptor& desc);
+  void AddImageBuffer(const std::string& name,
+                      const GPUImageBufferDescriptor& desc);
 
-  void AddObject(const std::string& name, GPUObjectPtr&& object);
+  void AddObjectRef(const std::string& name, AccessType access_type,
+                    GPUObjectDescriptorPtr&& descriptor_ptr);
+  void AddObject(const std::string& name, AccessType access_type,
+                 GPUObjectPtr&& object);
 
   absl::Status SetInt(const std::string& name, int value);
   absl::Status SetFloat(const std::string& name, float value);
+  absl::Status SetHalf(const std::string& name, half value);
   absl::Status SetImage2D(const std::string& name, cl_mem memory);
   absl::Status SetBuffer(const std::string& name, cl_mem memory);
+  absl::Status SetImage2DArray(const std::string& name, cl_mem memory);
+  absl::Status SetImage3D(const std::string& name, cl_mem memory);
+  absl::Status SetImageBuffer(const std::string& name, cl_mem memory);
+  absl::Status SetObjectRef(const std::string& name, const GPUObject* object);
 
   std::string GetListOfArgs();
 
@@ -69,6 +83,19 @@ class Arguments {
   absl::Status AddObjectArgs();
 
   void ResolveArgsPass(std::string* code);
+  absl::Status ResolveSelectorsPass(std::string* code);
+
+  absl::Status ResolveSelector(const std::string& object_name,
+                               const std::string& selector,
+                               const std::vector<std::string>& args,
+                               const std::vector<std::string>& template_args,
+                               std::string* result);
+
+  void ResolveObjectNames(const std::string& object_name,
+                          const std::vector<std::string>& member_names,
+                          std::string* code);
+
+  static constexpr char kArgsPrefix[] = "args.";
 
   struct IntValue {
     int value;
@@ -96,8 +123,30 @@ class Arguments {
   std::map<std::string, FloatValue> float_values_;
   std::vector<float> shared_float4s_data_;
 
+  struct HalfValue {
+    half value;
+
+    // many uniforms generated automatically and not used
+    // to reduce amount of data transferred we adding this optimization
+    bool active = false;
+
+    // offset to shared uniform storage.
+    uint32_t offset = -1;
+  };
+  std::map<std::string, HalfValue> half_values_;
+  std::vector<half> shared_half4s_data_;
+
   std::map<std::string, GPUBufferDescriptor> buffers_;
   std::map<std::string, GPUImage2DDescriptor> images2d_;
+  std::map<std::string, GPUImage2DArrayDescriptor> image2d_arrays_;
+  std::map<std::string, GPUImage3DDescriptor> images3d_;
+  std::map<std::string, GPUImageBufferDescriptor> image_buffers_;
+
+  struct ObjectRefArg {
+    AccessType access_type;
+    GPUObjectDescriptorPtr descriptor;
+  };
+  std::map<std::string, ObjectRefArg> object_refs_;
 
   struct ObjectArg {
     AccessType access_type;

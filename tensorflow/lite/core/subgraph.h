@@ -567,19 +567,7 @@ class Subgraph {
   // capacity. Calling this function may invalidate existing pointers to
   // tensors. After calling this function, adding `kTensorsCapacityHeadroom`
   // more tensors won't invalidate the pointer to existing tensors.
-  void EnsureTensorsVectorCapacity() {
-    const size_t required_capacity = tensors_.size() + kTensorsCapacityHeadroom;
-    if (required_capacity > tensors_.capacity()) {
-      // Whenever it's required to increase the vector capacity, make it at
-      // least twice bigger. The behavior is consistent with the default
-      // behavior of GCC STL's `std::vector::resize()`. This avoids frequently
-      // allocating and copying the underlying buffer.
-      size_t reserved_capacity =
-          std::max(required_capacity, tensors_.capacity() * 2);
-      tensors_.reserve(reserved_capacity);
-      context_.tensors = tensors_.data();
-    }
-  }
+  void EnsureTensorsVectorCapacity();
 
   // Ensures the memory required is planned and allocated.
   TfLiteStatus EnsureMemoryAllocations();

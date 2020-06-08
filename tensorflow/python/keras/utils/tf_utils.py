@@ -481,11 +481,15 @@ def dataset_is_infinite(dataset):
 
 def get_tensor_spec(t, dynamic_batch=False, name=None):
   """Returns a `TensorSpec` given a single `Tensor` or `TensorSpec`."""
+  # pylint: disable=protected-access
   if isinstance(t, type_spec.TypeSpec):
     spec = t
   elif isinstance(t, composite_tensor.CompositeTensor):
     # TODO(b/148821952): Should these specs have a name attr?
-    spec = t._type_spec  # pylint: disable=protected-access
+    spec = t._type_spec
+  elif (hasattr(t, '_keras_history') and
+        hasattr(t._keras_history[0], '_type_spec')):
+    return t._keras_history[0]._type_spec
   elif hasattr(t, 'shape') and hasattr(t, 'dtype'):
     spec = tensor_spec.TensorSpec(shape=t.shape, dtype=t.dtype, name=name)
   else:
@@ -496,11 +500,12 @@ def get_tensor_spec(t, dynamic_batch=False, name=None):
 
   dynamic_batch_spec = copy.deepcopy(spec)
   # RaggedTensorSpec only has a private _shape.
-  shape = dynamic_batch_spec._shape.as_list()  # pylint: disable=protected-access
+  shape = dynamic_batch_spec._shape.as_list()
   if shape:
     shape[0] = None
-    dynamic_batch_spec._shape = tensor_shape.TensorShape(shape)  # pylint: disable=protected-access
+    dynamic_batch_spec._shape = tensor_shape.TensorShape(shape)
   return dynamic_batch_spec
+  # pylint: enable=protected-access
 
 
 def to_numpy_or_python_type(tensors):

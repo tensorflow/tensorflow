@@ -206,6 +206,28 @@ DenseElementsAttr GetShape(Value output_val) {
       llvm::makeArrayRef(shape));
 }
 
+static Type GetShapeStrippedType(TypeAttr type_attr) {
+  auto type = type_attr.getValue();
+  auto shaped_type = type.dyn_cast<ShapedType>();
+  if (shaped_type) {
+    return shaped_type.getElementType();
+  } else {
+    return type;
+  }
+}
+
+bool NotFromQuantOpDifferentQuant(Value val, TypeAttr qtype_attr) {
+  auto val_defn_op = val.getDefiningOp();
+  TFL::QuantizeOp q_op = llvm::dyn_cast_or_null<TFL::QuantizeOp>(val_defn_op);
+  if (!q_op) return true;
+
+  // Ignore shape details - weŕe really only trying to
+  // check if quantization is the same.
+  auto stripped_src_qtype = GetShapeStrippedType(q_op.qtypeAttr());
+  auto stripped_qtype = GetShapeStrippedType(qtype_attr);
+  return stripped_src_qtype == stripped_qtype;
+}
+
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
 
 // Fuse Add with proceeding FullyConnected.
@@ -641,8 +663,8 @@ struct ConvertTrivialTransposeOpToReshapeOp
 
   LogicalResult matchAndRewrite(TFL::TransposeOp transpose_op,
                                 PatternRewriter &rewriter) const override {
-    auto input_type = transpose_op.x().getType().cast<ShapedType>();
-    auto output_type = transpose_op.y().getType().cast<ShapedType>();
+    auto input_type = transpose_op.input().getType().cast<ShapedType>();
+    auto output_type = transpose_op.output().getType().cast<ShapedType>();
     // It's possible to know if the transformation is safe only if the input
     // & output shapes are fully known and permutation is a constant.
     if (!input_type.hasStaticShape() || !output_type.hasStaticShape())
@@ -691,7 +713,8 @@ struct ConvertTrivialTransposeOpToReshapeOp
     auto new_shape = rewriter.create<TF::ConstOp>(loc, new_shape_attr);
 
     rewriter.replaceOpWithNewOp<TFL::ReshapeOp>(
-        transpose_op, transpose_op.y().getType(), transpose_op.x(), new_shape);
+        transpose_op, transpose_op.output().getType(), transpose_op.input(),
+        new_shape);
 
     return success();
   }

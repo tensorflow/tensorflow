@@ -22,13 +22,9 @@ namespace hexagon {
 TfLiteStatus MinMaxOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
                                                const TfLiteIntArray* outputs,
                                                TfLiteContext* context) {
-  static int scalar_shape[] = {1, 1, 1, 1};
-  int a_tensor_id;
-  int b_tensor_id;
-
   // Input tensors a and b.
-  a_tensor_id = inputs->data[0];
-  b_tensor_id = inputs->data[1];
+  int a_tensor_id = inputs->data[0];
+  int b_tensor_id = inputs->data[1];
   const auto& a_tensor = context->tensors[a_tensor_id];
   const auto& b_tensor = context->tensors[b_tensor_id];
   if (a_tensor.allocation_type == kTfLiteMmapRo)
@@ -42,10 +38,10 @@ TfLiteStatus MinMaxOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   TF_LITE_ENSURE_STATUS(
       ComputeMinAndMaxQuantValues(a_tensor, &a_input_min_, &a_input_max_));
   auto* a_input_min_const = graph_builder_->AddConstNodeWithData(
-      scalar_shape, reinterpret_cast<char*>(&a_input_min_),
+      kScalarShape, reinterpret_cast<char*>(&a_input_min_),
       sizeof(a_input_min_));
   auto* a_input_max_const = graph_builder_->AddConstNodeWithData(
-      scalar_shape, reinterpret_cast<char*>(&a_input_max_),
+      kScalarShape, reinterpret_cast<char*>(&a_input_max_),
       sizeof(a_input_max_));
   AddInput(TensorID(a_input_min_const->GetID(), 0));
   AddInput(TensorID(a_input_max_const->GetID(), 0));
@@ -53,10 +49,10 @@ TfLiteStatus MinMaxOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   TF_LITE_ENSURE_STATUS(
       ComputeMinAndMaxQuantValues(b_tensor, &b_input_min_, &b_input_max_));
   auto* b_input_min_const = graph_builder_->AddConstNodeWithData(
-      scalar_shape, reinterpret_cast<char*>(&b_input_min_),
+      kScalarShape, reinterpret_cast<char*>(&b_input_min_),
       sizeof(b_input_min_));
   auto* b_input_max_const = graph_builder_->AddConstNodeWithData(
-      scalar_shape, reinterpret_cast<char*>(&b_input_max_),
+      kScalarShape, reinterpret_cast<char*>(&b_input_max_),
       sizeof(b_input_max_));
   AddInput(TensorID(b_input_min_const->GetID(), 0));
   AddInput(TensorID(b_input_max_const->GetID(), 0));
@@ -68,9 +64,9 @@ TfLiteStatus MinMaxOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   TF_LITE_ENSURE_STATUS(
       ComputeMinAndMaxQuantValues(output_tensor, &output_min, &output_max));
   auto* output_min_const = graph_builder_->AddConstNodeWithData(
-      scalar_shape, reinterpret_cast<char*>(&output_min), sizeof(output_min));
+      kScalarShape, reinterpret_cast<char*>(&output_min), sizeof(output_min));
   auto* output_max_const = graph_builder_->AddConstNodeWithData(
-      scalar_shape, reinterpret_cast<char*>(&output_max), sizeof(output_max));
+      kScalarShape, reinterpret_cast<char*>(&output_max), sizeof(output_max));
   AddInput(TensorID(output_min_const->GetID(), 0));
   AddInput(TensorID(output_max_const->GetID(), 0));
 
@@ -82,8 +78,8 @@ TfLiteStatus MinMaxOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   node_output_ = AddOutput(sizeof(uint8_t), 4,
                            {output_batch_size, output_height_size,
                             output_width_size, output_depth_size});
-  AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-  AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+  AddOutput(sizeof(float), 4, kScalarShape);
+  AddOutput(sizeof(float), 4, kScalarShape);
 
   return kTfLiteOk;
 }

@@ -31,18 +31,31 @@ const int kWhileExecutionCount = 5;
 }  // namespace
 
 float MemorySpaceAssignmentCostAnalysis::GetAlternateMemoryBenefit(
-    const HloInstruction& instruction,
-    float elapsed_time_due_to_alternate_mem) const {
+    const HloInstruction& instruction, float elapsed_time_due_to_alternate_mem,
+    MemorySpaceAssignmentCostAnalysis::Cache* cache) const {
   float elapsed_time_due_to_compute =
       GetInstructionElapsedDueToCompute(instruction);
   float elapsed_time_due_to_memory =
       GetInstructionElapsedDueToMemory(instruction);
   if (elapsed_time_due_to_memory > elapsed_time_due_to_compute) {
     // Memory bound, return how much alternate memory is better.
-    int while_nest_level = CalculateWhileLoopNestLevel(&instruction);
+    float while_nest_multiplier;
+    if (cache) {
+      // If there is a cache provided, memoize the while nest multiplier.
+      auto it = cache->while_nest_multiplier.find(&instruction);
+      if (it != cache->while_nest_multiplier.end()) {
+        while_nest_multiplier = it->second;
+      } else {
+        while_nest_multiplier = tensorflow::MathUtil::IPow<float>(
+            kWhileExecutionCount, CalculateWhileLoopNestLevel(&instruction));
+        cache->while_nest_multiplier[&instruction] = while_nest_multiplier;
+      }
+    } else {
+      while_nest_multiplier = tensorflow::MathUtil::IPow<float>(
+          kWhileExecutionCount, CalculateWhileLoopNestLevel(&instruction));
+    }
     return (elapsed_time_due_to_memory - elapsed_time_due_to_alternate_mem) *
-           tensorflow::MathUtil::IPow<float>(kWhileExecutionCount,
-                                             while_nest_level);
+           while_nest_multiplier;
   } else {
     // Compute bound, return how far off are we to memory boundedness.
     return elapsed_time_due_to_memory - elapsed_time_due_to_compute;
@@ -50,18 +63,21 @@ float MemorySpaceAssignmentCostAnalysis::GetAlternateMemoryBenefit(
 }
 
 float MemorySpaceAssignmentCostAnalysis::GetMemoryBoundedness(
-    const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval) const {
+    const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval,
+    MemorySpaceAssignmentCostAnalysis::Cache* cache) const {
   const HloInstruction& defining_instruction =
       *interval.buffer->defining_instruction();
   float alternate_mem_benefit = GetAlternateMemoryBenefit(
       defining_instruction,
       GetInstructionElapsedDueToMemory(defining_instruction,
                                        /*operand_in_alternate_mem=*/{},
-                                       /*output_in_alternate_mem=*/true));
+                                       /*output_in_alternate_mem=*/true),
+      cache);
   for (const HloUse& use : interval.buffer->uses()) {
     float use_alternate_mem_benefit = GetAlternateMemoryBenefit(
         *use.instruction,
-        GetInstructionElapsedDueToMemory(*use.instruction, use.operand_number));
+        GetInstructionElapsedDueToMemory(*use.instruction, use.operand_number),
+        cache);
     // If the benefit is positive (memory bound), add it to this buffer's
     // benefit. If the benefit is negative (compute bound), calculate the
     // maximum.
@@ -221,9 +237,7 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
     const MemorySpaceAssignmentCostAnalysis& cost_analysis,
     float min_async_copy_to_overlap_ratio,
     float max_async_copy_to_overlap_ratio)
-    : elapsed_time_(
-          cost_analysis.hlo_live_range().instruction_schedule().size(), 0.0),
-      while_nest_level_(
+    : while_nest_level_(
           cost_analysis.hlo_live_range().instruction_schedule().size(), 0),
       cost_analysis_(cost_analysis),
       min_async_copy_to_overlap_ratio_(min_async_copy_to_overlap_ratio),
@@ -232,19 +246,46 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
       &cost_analysis_.hlo_live_range().instruction_schedule();
 
   // Create a vector of elapsed times and while nesting levels of HLO
-  // instructions.
+  // instructions. The elapsed times are multiplied by pow(kWhileExecutionCount,
+  // nest_level) to account for executing the HLOs multiple times in while
+  // loops.
+  std::vector<float> instructions_elapsed_time(instruction_schedule_->size(),
+                                               0.0);
   for (const auto& instruction_and_logical_time : *instruction_schedule_) {
     float elapsed_time = cost_analysis_.cost_analysis().optimal_seconds(
         *instruction_and_logical_time.first);
     int64 logical_time = instruction_and_logical_time.second;
-    if (logical_time >= elapsed_time_.size()) {
-      elapsed_time_.resize(logical_time + 1, 0.0);
+    if (logical_time >= instructions_elapsed_time.size()) {
+      instructions_elapsed_time.resize(logical_time + 1, 0.0);
       while_nest_level_.resize(logical_time + 1, 0);
     }
-    elapsed_time_[logical_time] = elapsed_time;
-    while_nest_level_[logical_time] =
-        cost_analysis_.CalculateWhileLoopNestLevel(
-            instruction_and_logical_time.first);
+    int nest_level = cost_analysis_.CalculateWhileLoopNestLevel(
+        instruction_and_logical_time.first);
+    while_nest_level_[logical_time] = nest_level;
+    instructions_elapsed_time[logical_time] =
+        elapsed_time *
+        tensorflow::MathUtil::IPow<float>(kWhileExecutionCount, nest_level);
+  }
+  // As an optimization, create a cumulative sum vector of elapsed time.
+  float cumsum = 0.0;
+  elapsed_time_cumsum_.reserve(instructions_elapsed_time.size());
+  for (float elapsed_time : instructions_elapsed_time) {
+    cumsum += elapsed_time;
+    elapsed_time_cumsum_.push_back(cumsum);
+  }
+  // To be able to accurately determine the minimum nest level between a start
+  // time and an end time efficiently, populate a data structure that stores the
+  // closest nest level change index.
+  int prev_nest_level = 0;
+  int change_idx = -1;
+  while_nest_level_change_.reserve(instructions_elapsed_time.size());
+  for (int i = 0; i < while_nest_level_.size(); ++i) {
+    int nest_level = while_nest_level_[i];
+    if (nest_level != prev_nest_level) {
+      prev_nest_level = nest_level;
+      change_idx = i - 1;
+    }
+    while_nest_level_change_.push_back(change_idx);
   }
 }
 
@@ -256,7 +297,8 @@ bool CostAnalysisPrefetchIntervalPicker::CanAllocateInAlternateMemoryNoCopy(
   float async_copy_elapsed = cost_analysis_.GetAsyncCopyElapsed(shape);
   float logical_interval_elapsed =
       GetLogicalIntervalElapsed(start_time, end_time);
-  return max_async_copy_to_overlap_ratio_ * async_copy_elapsed >
+  return max_async_copy_to_overlap_ratio_ * max_overlap_multiplier_ *
+             async_copy_elapsed >
          logical_interval_elapsed;
 }
 
@@ -291,10 +333,19 @@ void CostAnalysisPrefetchIntervalPicker::Begin(const HloUse& use,
   // Find the earliest time we're allowed to start prefetching.
   for (current_logical_prefetch_time_ = start_time;
        current_logical_prefetch_time_ < end_logical_time_ &&
-       max_async_copy_to_overlap_ratio_ * async_copy_elapsed_ <
+       max_async_copy_to_overlap_ratio_ * max_overlap_multiplier_ *
+               async_copy_elapsed_ <
            GetLogicalIntervalElapsed(current_logical_prefetch_time_,
                                      end_logical_time_);
        ++current_logical_prefetch_time_) {
+  }
+  // If the first prefetch interval violates the min overlap (this can happen if
+  // there is an HLO that has a very long estimated execution time), we go
+  // earlier in time until we no longer violate the min overlap (we start
+  // prefetching before the HLO that has the very long estimated execution
+  // time).
+  while (Done() && current_logical_prefetch_time_ > start_time) {
+    --current_logical_prefetch_time_;
   }
 }
 
@@ -316,19 +367,37 @@ bool CostAnalysisPrefetchIntervalPicker::Done() const {
          logical_interval_elapsed + inst_elapsed_reduction_;
 }
 
+void CostAnalysisPrefetchIntervalPicker::SetRetryNumber(int retry_number) {
+  // Use twice as large max overlap limit in each retry.
+  max_overlap_multiplier_ = 1 << retry_number;
+}
+
+int CostAnalysisPrefetchIntervalPicker::GetMinWhileNestLevel(
+    int64 start_time, int64 end_time) const {
+  int min_nest_level =
+      std::min(while_nest_level_[start_time], while_nest_level_[end_time]);
+  int change_idx = while_nest_level_change_[end_time];
+  while (change_idx >= start_time) {
+    min_nest_level = std::min(min_nest_level, while_nest_level_[change_idx]);
+    change_idx = while_nest_level_change_[change_idx];
+  }
+  return min_nest_level;
+}
+
 float CostAnalysisPrefetchIntervalPicker::GetLogicalIntervalElapsed(
     int64 start_time, int64 end_time) const {
-  int interval_nest_level =
-      std::min(while_nest_level_[start_time], while_nest_level_[end_time]);
-  float total_elapsed = 0;
-  for (int i = start_time + 1; i < end_time; ++i) {
-    total_elapsed +=
-        elapsed_time_[i] *
-        tensorflow::MathUtil::IPow<float>(
-            kWhileExecutionCount,
-            std::max(0, while_nest_level_[i] - interval_nest_level));
+  CHECK_LE(start_time, end_time);
+  if (start_time == end_time) {
+    return 0.0;
   }
-  return total_elapsed;
+  // Since elapsed_time_cumsum_ is already weighed by the while loop nesting
+  // level, normalize the elapsed time by dividing with the nesting factor of
+  // the interval (start and end times).
+  int interval_nest_level = GetMinWhileNestLevel(start_time, end_time);
+  return (elapsed_time_cumsum_[end_time - 1] -
+          elapsed_time_cumsum_[start_time]) /
+         tensorflow::MathUtil::IPow<float>(kWhileExecutionCount,
+                                           interval_nest_level);
 }
 
 std::string CostAnalysisPrefetchIntervalPicker::ToDebugString() const {
@@ -337,7 +406,9 @@ std::string CostAnalysisPrefetchIntervalPicker::ToDebugString() const {
   return absl::StrCat(
       "Async copy elapsed (s) = ", async_copy_elapsed_,
       ", inst elapsed reduction (s) = ", inst_elapsed_reduction_,
-      ", logical interval elapsed (s) = ", logical_interval_elapsed);
+      ", logical interval elapsed (s) = ", logical_interval_elapsed,
+      ", interval = (", current_logical_prefetch_time_, ", ", end_logical_time_,
+      ")");
 }
 
 std::string CostAnalysisPrefetchIntervalPicker::ToNoCopyDebugString(
@@ -521,6 +592,20 @@ bool AlternateMemoryBestFitHeap::IsIntervalAllowedInAlternateMemory(
         return false;
       }
     }
+
+    if ((position.instruction->opcode() == HloOpcode::kCollectivePermuteStart ||
+         position.instruction->opcode() == HloOpcode::kCollectivePermuteDone)) {
+      // Disable memory space allocation for these for now.
+      if (position.index == ShapeIndex({0})) {
+        VLOG(4) << "Keeping value " << interval.buffer->ToShortString()
+                << " in default mem because it is a collective-permute buffer.";
+        return false;
+      } else if (position.index == ShapeIndex({1})) {
+        VLOG(4) << "Keeping value " << interval.buffer->ToShortString()
+                << " in default mem because it is a collective-permute buffer.";
+        return false;
+      }
+    }
   }
 
   return true;
@@ -543,11 +628,12 @@ bool AlternateMemoryBestFitHeap::IsUseAllowedInAlternateMemory(
     int64 root_time = instruction_schedule.at(while_body->root_instruction());
     int64 min_use_time = root_time;
     for (const HloUse& parameter_use : parameter_value->uses()) {
+      int64 use_time = instruction_schedule.at(parameter_use.instruction);
       if (parameter_use.instruction->opcode() != HloOpcode::kGetTupleElement &&
           parameter_use.instruction->opcode() != HloOpcode::kTuple &&
-          parameter_use.instruction->opcode() != HloOpcode::kBitcast) {
-        min_use_time = std::min(
-            min_use_time, instruction_schedule.at(parameter_use.instruction));
+          parameter_use.instruction->opcode() != HloOpcode::kBitcast &&
+          use_time > parameter_time) {
+        min_use_time = std::min(min_use_time, use_time);
       }
     }
     // If there is no use of this buffer inside the while loop, there is no need
@@ -557,21 +643,13 @@ bool AlternateMemoryBestFitHeap::IsUseAllowedInAlternateMemory(
               << "use time = " << min_use_time << ", root time = " << root_time;
       return false;
     }
-    HloValue* root_value =
-        &alias_analysis_.dataflow_analysis().GetUniqueValueAt(
-            while_body->root_instruction(), use.operand_index);
-    int64 root_definition_time =
-        instruction_schedule.at(root_value->defining_instruction());
-    const Shape& shape = root_value->shape();
+    const Shape& shape = parameter_value->shape();
     // Allow the buffer in alternate memory if the buffer has a short live range
     // either at the beginning or end of the while loop body.
     if (!options_.prefetch_interval_picker->CanAllocateInAlternateMemoryNoCopy(
-            shape, parameter_time, min_use_time) &&
-        !options_.prefetch_interval_picker->CanAllocateInAlternateMemoryNoCopy(
-            shape, root_definition_time, root_time)) {
+            shape, parameter_time, min_use_time)) {
       VLOG(4) << "While allocation not allowed in alternate memory. "
               << "use time = " << min_use_time
-              << ", def time = " << root_definition_time
               << ", root time = " << root_time;
       return false;
     }
@@ -726,14 +804,12 @@ void AlternateMemoryBestFitHeap::AppendAllocationInfoDebugString(
   }
 }
 
-void AlternateMemoryBestFitHeap::DumpIfEnabled(
-    absl::string_view buffer_info_str,
-    absl::string_view allocation_info_str) const {
+void AlternateMemoryBestFitHeap::DumpDebugStringsIfEnabled() const {
   if (!options_.dump_fn) {
     return;
   }
-  options_.dump_fn("bufferinfo", buffer_info_str);
-  options_.dump_fn("allocinfo", allocation_info_str);
+  options_.dump_fn("bufferinfo", buffer_info_str_);
+  options_.dump_fn("allocinfo", allocation_info_str_);
 }
 
 HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
@@ -754,9 +830,6 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
               << " " << instruction_sequence[i]->name();
     }
   }
-
-  std::string buffer_info_str;
-  std::string allocation_info_str;
 
   for (auto& interval : sorted_buffer_intervals) {
     if (!interval.need_allocation) {
@@ -781,12 +854,6 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
     }
 
     auto colocated_intervals = GetSortedColocatedIntervals(interval);
-    // Create AllocationValues for all the
-    // colocated intervals.
-    std::vector<AllocationValue> allocation_values;
-    for (const auto& colocated_interval : colocated_intervals) {
-      CreateAllocationValues(colocated_interval->buffer, &allocation_values);
-    }
 
     if (AreIntervalsReservedInAlternateMemory(colocated_intervals)) {
       VLOG(3) << "Interval " << interval.buffer->ToShortString()
@@ -829,211 +896,232 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
       continue;
     }
 
-    const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
+    AppendBufferInfoDebugString(interval, &buffer_info_str_);
 
-    // TODO(berkin): For now, place the phi values due to conditionals in
-    // default memory.
-    for (const BufferInterval* colocated_interval : colocated_intervals) {
-      const HloValue* value = colocated_interval->buffer;
-      for (const auto& position : value->positions()) {
-        if (position.instruction->opcode() == HloOpcode::kConditional) {
-          VLOG(3) << "Adding required assignment for condition output: "
-                  << value->ToShortString();
-          AddRequiredAssignment(position.instruction, position.index,
-                                MemorySpace::kDefault);
-          for (const HloComputation* called_computation :
-               position.instruction->called_computations()) {
-            AddRequiredAssignment(called_computation->root_instruction(),
-                                  position.index, MemorySpace::kDefault);
-          }
-        }
-      }
-    }
-
-    AppendBufferInfoDebugString(interval, &buffer_info_str);
-
-    // Data structure to contain the preferred offset for a given computation.
-    // We ensure that the same offset will be allocated outside the while loop
-    // as well as inside the while loop.
-    absl::flat_hash_map<const HloComputation*, int64>
-        preferred_offset_for_computation;
-    bool allocation_success = true;
-    for (auto& allocation_value : allocation_values) {
-      int64 definition_time =
-          instruction_schedule.at(allocation_value.defining_instruction());
-
-      absl::optional<int64> preferred_offset;
-      auto preferred_offset_it =
-          preferred_offset_for_computation.find(allocation_value.computation());
-      if (preferred_offset_it != preferred_offset_for_computation.end()) {
-        preferred_offset = preferred_offset_it->second;
-      }
-
-      // Iterate over the uses.
-      for (int use_idx = 0; use_idx < allocation_value.uses().size();
-           ++use_idx) {
-        const HloUse& use = allocation_value.uses().at(use_idx);
-        int64 use_time = instruction_schedule.at(use.instruction);
-        int64 latest_prefetch_time = use_time;
-        bool allow_no_copy_alternate_mem_allocation = true;
-        absl::optional<int64> earliest_prefetch_time = absl::nullopt;
-
-        // Sequential calls include kWhile, kCall, and kConditional opcodes.
-        bool is_sequential_call =
-            (GetInstructionCallContext(use.instruction->opcode()) ==
-             CallContext::kSequential);
-        if (is_sequential_call) {
-          for (const HloComputation* called_computation :
-               use.instruction->called_computations()) {
-            const HloLiveRange::TimeBound& computation_span =
-                hlo_live_range_.computation_span_times().at(called_computation);
-            latest_prefetch_time =
-                std::min(computation_span.start, latest_prefetch_time);
-          }
-          if (use.instruction->opcode() == HloOpcode::kWhile) {
-            // Given an example while loop and flattened schedule (logical times
-            // shown on the left):
-            //
-            // 0:  a = ...
-            // 1:  ...
-            //     cond {
-            // 2:   p = param(0)
-            // 3:   ...
-            //     }
-            //     body {
-            // 4:   p = param(0)
-            // 5:   ...
-            // 6:   ROOT ...
-            //     }
-            // 7:  w = while(a), body=body, cond=cond
-            //
-            // When processing "a" (time 0) and its while use (time 7), we
-            // update the interval to time 0-4. This is so that the remaining
-            // interval (5-6) can be allocated separately and this buffer
-            // doesn't waste alternate memory space within the while loop body.
-            HloComputation* while_body = use.instruction->while_body();
-            // We require while body ROOTs to be the last in the schedule.
-            CHECK_EQ(
-                instruction_schedule.at(while_body->root_instruction()) + 1,
-                instruction_schedule.at(use.instruction))
-                << "While body ROOTs need to be the last in the schedule!  "
-                   "Please run RootInstructionSinker.";
-            // Replace the use time with the parameter time so that we can
-            // decide on alternate memory allocations within the while loop body
-            // when we look at uses within the while loop body.
-            use_time =
-                instruction_schedule.at(while_body->parameter_instruction(0));
-          } else if (use.instruction->opcode() == HloOpcode::kConditional) {
-            // Replace the use time with the earliest parameter of called
-            // computations.
-            for (const HloComputation* called_computation :
-                 use.instruction->called_computations()) {
-              use_time = std::min(
-                  use_time, instruction_schedule.at(
-                                called_computation->parameter_instruction(0)));
-            }
-          }
-        }
-
-        // Add a required assignment in default memory if the use not allowed in
-        // alternate memory.
-        if (!IsUseAllowedInAlternateMemory(allocation_value, use)) {
-          AddRequiredAssignment(allocation_value.value(), use.instruction,
-                                MemorySpace::kDefault, use_time);
-        } else if (use_idx > 0) {
-          // We allow buffers in alternate memory that are passed into
-          // conditionals to give up their alternate memory allocation inside
-          // the called computation. This means that if a conditional operator
-          // has an alternate memory allocation, subsequent uses cannot use the
-          // same alternate memory allocation in order not to clobber data. So
-          // we force default memory allocation for these subsequent uses.
-          const HloUse& previous_use = allocation_value.uses().at(use_idx - 1);
-          if (previous_use.instruction->opcode() == HloOpcode::kConditional &&
-              previous_use.instruction != use.instruction) {
-            allow_no_copy_alternate_mem_allocation = false;
-            earliest_prefetch_time =
-                instruction_schedule.at(previous_use.instruction);
-            VLOG(3) << "Previous use (" << previous_use.ToString()
-                    << ") of use (" << use.ToString()
-                    << ") is a conditional, so this use will need to evict. "
-                    << "Earliest prefetch time = " << *earliest_prefetch_time;
-          }
-        }
-
-        // Bitcasts don't define buffers and don't directly consume buffers.
-        // Skip allocating buffers for bitcast uses. The uses that feed from
-        // bitcasts will be handled specially.
-        if (use.instruction->opcode() != HloOpcode::kBitcast) {
-          AllocationRequest request;
-          // Rarely, (e.g., when conditional true and false parameters are the
-          // same), definition time can be the time of the conditional and use
-          // time is the parameter use, which is less.
-          request.start_time = std::min(definition_time, use_time);
-          request.end_time = use_time;
-          request.latest_prefetch_time = latest_prefetch_time;
-          request.size = interval.size;
-          request.allow_no_copy_alternate_mem_allocation =
-              allow_no_copy_alternate_mem_allocation;
-          request.earliest_prefetch_time = earliest_prefetch_time;
-          request.preferred_offset = preferred_offset;
-          request.use = use;
-          request.allocation_value = &allocation_value;
-          if (!FindAllocation(request)) {
-            // If the allocation finding failed (e.g., due to running out of
-            // asynchronous copies), then fall back to allocating the buffer
-            // entirely in the default memory.
-            UncommitPendingChunks();
-            allocation_success = false;
-            break;
-          }
-
-          // If there are multiple uses, they can try using the memory
-          // allocation already at the alternate memory.
-          definition_time = instruction_schedule.at(use.instruction);
-        }
-
-        // If the use has been a sequential call (e.g. a while loop), the other
-        // colocated intervals must alias with this allocation.
-        if (is_sequential_call) {
-          MemorySpaceAssignment::Allocation* aliased_allocation =
-              GetLiveAllocationAt(*allocation_value.allocation_sequence(),
-                                  use_time);
-          AddAliasedRequiredAssignmentsForSequentialCall(use,
-                                                         aliased_allocation);
-          // Remember the preferred offset to be used inside while loop body
-          // computations.
-          if (aliased_allocation->memory_space() == MemorySpace::kAlternate &&
-              use.instruction->opcode() == HloOpcode::kWhile) {
-            preferred_offset_for_computation[use.instruction->while_body()] =
-                aliased_allocation->chunk().offset;
-          }
-        }
-      }
-      if (!allocation_success) {
+    // Retry allocating this value with larger limits if allocation fails.
+    for (int retry_number = 0; retry_number < options_.max_retries;
+         retry_number++) {
+      final_retry_ = (retry_number == options_.max_retries - 1);
+      options_.prefetch_interval_picker->SetRetryNumber(retry_number);
+      bool success = AllocateColocatedIntervals(colocated_intervals);
+      if (success) {
         break;
       }
+      VLOG(2) << "Couldn't allocate. Retry number " << retry_number;
     }
-    if (allocation_success) {
-      for (AllocationValue& allocation_value : allocation_values) {
-        for (auto& allocation : *allocation_value.allocation_sequence()) {
-          AppendAllocationInfoDebugString(interval, *allocation,
-                                          &allocation_info_str);
-          allocations_->push_back(std::move(allocation));
-        }
-      }
-    }
-
-    pending_chunks_.clear();
-    pending_async_copies_.clear();
   }
 
   VLOG(3) << "Debug buffer info: ";
-  VLOG(3) << buffer_info_str;
+  VLOG(3) << buffer_info_str_;
   VLOG(3) << "Debug allocation info: ";
-  VLOG(3) << allocation_info_str;
-  DumpIfEnabled(buffer_info_str, allocation_info_str);
+  VLOG(3) << allocation_info_str_;
+  DumpDebugStringsIfEnabled();
 
   return result_;
+}
+
+bool AlternateMemoryBestFitHeap::AllocateColocatedIntervals(
+    const std::vector<const AlternateMemoryBestFitHeap::BufferInterval*>&
+        colocated_intervals) {
+  // TODO(berkin): For now, place the phi values due to conditionals in
+  // default memory.
+  for (const BufferInterval* colocated_interval : colocated_intervals) {
+    const HloValue* value = colocated_interval->buffer;
+    for (const auto& position : value->positions()) {
+      if (position.instruction->opcode() == HloOpcode::kConditional) {
+        VLOG(3) << "Adding required assignment for condition output: "
+                << value->ToShortString();
+        AddRequiredAssignment(position.instruction, position.index,
+                              MemorySpace::kDefault);
+        for (const HloComputation* called_computation :
+             position.instruction->called_computations()) {
+          AddRequiredAssignment(called_computation->root_instruction(),
+                                position.index, MemorySpace::kDefault);
+        }
+      }
+    }
+  }
+
+  // Create AllocationValues for all the colocated intervals.
+  std::vector<AllocationValue> allocation_values;
+  for (const auto& colocated_interval : colocated_intervals) {
+    CreateAllocationValues(colocated_interval->buffer, &allocation_values);
+  }
+  const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
+
+  // Data structure to contain the preferred offset for a given computation.
+  // We ensure that the same offset will be allocated outside the while loop
+  // as well as inside the while loop.
+  absl::flat_hash_map<const HloComputation*, int64>
+      preferred_offset_for_computation;
+
+  bool allocation_success = true;
+  for (auto& allocation_value : allocation_values) {
+    int64 definition_time =
+        instruction_schedule.at(allocation_value.defining_instruction());
+
+    absl::optional<int64> preferred_offset;
+    auto preferred_offset_it =
+        preferred_offset_for_computation.find(allocation_value.computation());
+    if (preferred_offset_it != preferred_offset_for_computation.end()) {
+      preferred_offset = preferred_offset_it->second;
+    }
+
+    // Iterate over the uses.
+    for (int use_idx = 0; use_idx < allocation_value.uses().size(); ++use_idx) {
+      const HloUse& use = allocation_value.uses().at(use_idx);
+      int64 use_time = instruction_schedule.at(use.instruction);
+      int64 latest_prefetch_time = use_time;
+      bool allow_no_copy_alternate_mem_allocation = true;
+      absl::optional<int64> earliest_prefetch_time = absl::nullopt;
+
+      // Sequential calls include kWhile, kCall, and kConditional opcodes.
+      bool is_sequential_call =
+          (GetInstructionCallContext(use.instruction->opcode()) ==
+           CallContext::kSequential);
+      if (is_sequential_call) {
+        for (const HloComputation* called_computation :
+             use.instruction->called_computations()) {
+          const HloLiveRange::TimeBound& computation_span =
+              hlo_live_range_.computation_span_times().at(called_computation);
+          latest_prefetch_time =
+              std::min(computation_span.start, latest_prefetch_time);
+        }
+        if (use.instruction->opcode() == HloOpcode::kWhile) {
+          // Given an example while loop and flattened schedule (logical times
+          // shown on the left):
+          //
+          // 0:  a = ...
+          // 1:  ...
+          //     cond {
+          // 2:   p = param(0)
+          // 3:   ...
+          //     }
+          //     body {
+          // 4:   p = param(0)
+          // 5:   ...
+          // 6:   ROOT ...
+          //     }
+          // 7:  w = while(a), body=body, cond=cond
+          //
+          // When processing "a" (time 0) and its while use (time 7), we update
+          // the interval to time 0-4. This is so that the remaining interval
+          // (5-6) can be allocated separately and this buffer doesn't waste
+          // alternate memory space within the while loop body.
+          HloComputation* while_body = use.instruction->while_body();
+          // We require while body ROOTs to be the last in the schedule.
+          CHECK_EQ(instruction_schedule.at(while_body->root_instruction()) + 1,
+                   instruction_schedule.at(use.instruction))
+              << "While body ROOTs need to be the last in the schedule!  "
+                 "Please run RootInstructionSinker.";
+          // Replace the use time with the parameter time so that we can decide
+          // on alternate memory allocations within the while loop body when we
+          // look at uses within the while loop body.
+          use_time =
+              instruction_schedule.at(while_body->parameter_instruction(0));
+        } else if (use.instruction->opcode() == HloOpcode::kConditional) {
+          // Replace the use time with the earliest parameter of called
+          // computations.
+          for (const HloComputation* called_computation :
+               use.instruction->called_computations()) {
+            use_time = std::min(
+                use_time, instruction_schedule.at(
+                              called_computation->parameter_instruction(0)));
+          }
+        }
+      }
+
+      // Add a required assignment in default memory if the use not allowed in
+      // alternate memory.
+      if (!IsUseAllowedInAlternateMemory(allocation_value, use)) {
+        AddRequiredAssignment(allocation_value.value(), use.instruction,
+                              MemorySpace::kDefault, use_time);
+      } else if (use_idx > 0) {
+        // We allow buffers in alternate memory that are passed into
+        // conditionals to give up their alternate memory allocation inside the
+        // called computation. This means that if a conditional operator has an
+        // alternate memory allocation, subsequent uses cannot use the same
+        // alternate memory allocation in order not to clobber data. So we force
+        // default memory allocation for these subsequent uses.
+        const HloUse& previous_use = allocation_value.uses().at(use_idx - 1);
+        if (previous_use.instruction->opcode() == HloOpcode::kConditional &&
+            previous_use.instruction != use.instruction) {
+          allow_no_copy_alternate_mem_allocation = false;
+          earliest_prefetch_time =
+              instruction_schedule.at(previous_use.instruction);
+          VLOG(3) << "Previous use (" << previous_use.ToString() << ") of use ("
+                  << use.ToString()
+                  << ") is a conditional, so this use will need to evict. "
+                  << "Earliest prefetch time = " << *earliest_prefetch_time;
+        }
+      }
+
+      // Bitcasts don't define buffers and don't directly consume buffers.  Skip
+      // allocating buffers for bitcast uses. The uses that feed from bitcasts
+      // will be handled specially.
+      if (use.instruction->opcode() != HloOpcode::kBitcast) {
+        AllocationRequest request;
+        // Rarely, (e.g., when conditional true and false parameters are the
+        // same), definition time can be the time of the conditional and use
+        // time is the parameter use, which is less.
+        request.start_time = std::min(definition_time, use_time);
+        request.end_time = use_time;
+        request.latest_prefetch_time = latest_prefetch_time;
+        request.size = colocated_intervals[0]->size;
+        request.allow_no_copy_alternate_mem_allocation =
+            allow_no_copy_alternate_mem_allocation;
+        request.earliest_prefetch_time = earliest_prefetch_time;
+        request.preferred_offset = preferred_offset;
+        request.use = use;
+        request.allocation_value = &allocation_value;
+        if (!AllocateSegment(request)) {
+          // If the allocation finding failed (e.g., due to running out of
+          // asynchronous copies), then fall back to allocating the buffer
+          // entirely in the default memory.
+          UncommitPendingChunks();
+          allocation_success = false;
+          break;
+        }
+
+        // If there are multiple uses, they can try using the memory allocation
+        // already at the alternate memory.
+        definition_time = instruction_schedule.at(use.instruction);
+      }
+
+      // If the use has been a sequential call (e.g. a while loop), the other
+      // colocated intervals must alias with this allocation.
+      if (is_sequential_call) {
+        MemorySpaceAssignment::Allocation* aliased_allocation =
+            GetLiveAllocationAt(*allocation_value.allocation_sequence(),
+                                use_time);
+        AddAliasedRequiredAssignmentsForSequentialCall(use, aliased_allocation);
+        // Remember the preferred offset to be used inside while loop body
+        // computations.
+        if (aliased_allocation->memory_space() == MemorySpace::kAlternate &&
+            use.instruction->opcode() == HloOpcode::kWhile) {
+          preferred_offset_for_computation[use.instruction->while_body()] =
+              aliased_allocation->chunk().offset;
+        }
+      }
+    }
+    if (!allocation_success) {
+      break;
+    }
+  }
+  if (allocation_success) {
+    for (AllocationValue& allocation_value : allocation_values) {
+      for (auto& allocation : *allocation_value.allocation_sequence()) {
+        AppendAllocationInfoDebugString(*colocated_intervals[0], *allocation,
+                                        &allocation_info_str_);
+        allocations_->push_back(std::move(allocation));
+      }
+    }
+  }
+
+  pending_chunks_.clear();
+  pending_async_copies_.clear();
+  pending_required_assignments_.clear();
+  return allocation_success;
 }
 
 bool operator<(const AsynchronousCopy& a, const AsynchronousCopy& b) {
@@ -1121,6 +1209,7 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
 
   pending_chunks_.clear();
   pending_async_copies_.clear();
+  pending_required_assignments_.clear();
 }
 
 void AlternateMemoryBestFitHeap::AddAliasedRequiredAssignmentsForSequentialCall(
@@ -1183,7 +1272,9 @@ void AlternateMemoryBestFitHeap::AddRequiredAssignment(
     VLOG(3) << "Adding required assignment: " << value->ToShortString()
             << " at " << time << " at "
             << (memory_space == MemorySpace::kDefault ? "def" : "alt");
-    required_assignments_[value].push_back({memory_space, time, chunk});
+    RequiredMemoryAssignment required_assignment{memory_space, time, chunk};
+    required_assignments_[value].push_back(required_assignment);
+    pending_required_assignments_.push_back({value, required_assignment});
   }
 }
 
@@ -1302,8 +1393,30 @@ void AlternateMemoryBestFitHeap::UncommitPendingChunks() {
                                      kDummyChunk);
     }
   }
+  for (const auto& value_and_required_assignment :
+       pending_required_assignments_) {
+    auto& required_assignment_vector =
+        required_assignments_[value_and_required_assignment.first];
+    const RequiredMemoryAssignment& required_assignment =
+        value_and_required_assignment.second;
+    VLOG(3) << "Removing required assignment: "
+            << (required_assignment.memory_space == MemorySpace::kDefault
+                    ? "def"
+                    : "alt")
+            << " time = " << required_assignment.time << " off = "
+            << (required_assignment.chunk ? required_assignment.chunk->offset
+                                          : -1);
+    for (auto it = required_assignment_vector.begin();
+         it != required_assignment_vector.end(); ++it) {
+      if (*it == value_and_required_assignment.second) {
+        required_assignment_vector.erase(it);
+        break;
+      }
+    }
+  }
   pending_chunks_.clear();
   pending_async_copies_.clear();
+  pending_required_assignments_.clear();
 }
 
 void AlternateMemoryBestFitHeap::AddToPendingChunks(
@@ -1334,7 +1447,7 @@ AlternateMemoryBestFitHeap::RequiredMemoryAssignmentAt(const HloValue* buffer,
   return required_assignment_at_time;
 }
 
-bool AlternateMemoryBestFitHeap::FindAllocation(
+bool AlternateMemoryBestFitHeap::AllocateSegment(
     const AllocationRequest& request) {
   auto allocation_sequence = request.allocation_value->allocation_sequence();
   // start_time == end_time is a special case where the value is consumed
@@ -1447,6 +1560,12 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
   // Finally, try to prefetch the buffer into alternate memory.
   if (Prefetch(request, **prev_allocation_in_default_mem_it)) {
     return true;
+  }
+  if (!final_retry_ && prefetch_failed_due_to_async_copy_) {
+    // If prefetching failed due to asynchronous copy and we're not in our final
+    // try, return false (failure) so that we can retry this interval with
+    // larger limits.
+    return false;
   }
 
   // If the end assignment was required to be in alternate memory but that
@@ -1759,6 +1878,10 @@ bool AlternateMemoryBestFitHeap::Prefetch(
   BufferInterval alternate_mem_interval;
   alternate_mem_interval.buffer = request.allocation_value->value();
   alternate_mem_interval.size = request.size;
+  // If any of the prefetch intervals couldn't be used due to number of
+  // outstanding async copy limit or async copy ordering, set
+  // prefetch_failed_due_to_async_copy_.
+  prefetch_failed_due_to_async_copy_ = false;
   while (!options_.prefetch_interval_picker->Done()) {
     alternate_mem_interval.start = options_.prefetch_interval_picker->Next();
     CHECK_LT(alternate_mem_interval.start, request.latest_prefetch_time);
@@ -1766,15 +1889,17 @@ bool AlternateMemoryBestFitHeap::Prefetch(
             << alternate_mem_interval.start << ", " << request.end_time << ")";
     // If this additional asynchronous copy would violate the limit, try a
     // different interval.
+    if (ViolatesAsyncCopyOrdering(alternate_mem_interval.start,
+                                  request.latest_prefetch_time)) {
+      VLOG(4) << "This would violate asynchronous copy ordering.";
+      prefetch_failed_due_to_async_copy_ = true;
+      continue;
+    }
     if (ViolatesMaximumOutstandingAsyncCopies(alternate_mem_interval.start,
                                               request.latest_prefetch_time,
                                               /*is_prefetch=*/true)) {
       VLOG(4) << "This would violate the outstanding async copy limit.";
-      continue;
-    }
-    if (ViolatesAsyncCopyOrdering(alternate_mem_interval.start,
-                                  request.latest_prefetch_time)) {
-      VLOG(4) << "This would violate asynchronous copy ordering.";
+      prefetch_failed_due_to_async_copy_ = true;
       continue;
     }
 
@@ -1798,6 +1923,7 @@ bool AlternateMemoryBestFitHeap::Prefetch(
 
       request.allocation_value->allocation_sequence()->back()->AddUse(
           request.use);
+      prefetch_failed_due_to_async_copy_ = false;
       return true;
     }
   }
@@ -1876,10 +2002,12 @@ MemorySpaceAssignment::CalculateAsyncCopyStats() const {
 
 /*static*/ MemorySpaceAssignment::BufferIntervalCompare
 MemorySpaceAssignment::GetMemoryBoundednessBufferIntervalCompare(
-    const MemorySpaceAssignmentCostAnalysis& cost_analysis) {
-  return [&](const BufferInterval& x, const BufferInterval& y) {
-    float x_memory_boundedness = cost_analysis.GetMemoryBoundedness(x);
-    float y_memory_boundedness = cost_analysis.GetMemoryBoundedness(y);
+    const MemorySpaceAssignmentCostAnalysis& cost_analysis,
+    MemorySpaceAssignmentCostAnalysis::Cache* cache) {
+  return [cost_analysis, cache](const BufferInterval& x,
+                                const BufferInterval& y) {
+    float x_memory_boundedness = cost_analysis.GetMemoryBoundedness(x, cache);
+    float y_memory_boundedness = cost_analysis.GetMemoryBoundedness(y, cache);
     if (x_memory_boundedness != y_memory_boundedness) {
       return x_memory_boundedness > y_memory_boundedness;
     }
@@ -1913,6 +2041,8 @@ bool LooksLikeAnActivation(const HloInstruction* inst) {
           }
         }
         break;
+      case HloOpcode::kBitcast:
+        return LooksLikeAnActivation(user);
       default:
         return true;
     }
@@ -1929,10 +2059,20 @@ bool IsCrossProgramPrefetchCandidate(
          !value.uses().empty() &&
          options.size_fn(value) <= options.max_size_in_bytes &&
          absl::c_all_of(value.uses(), [&](const HloUse& use) {
-           const HloInstruction* gte =
+           const HloInstruction* inst =
                use.instruction->operand(use.operand_number);
-           return gte->opcode() == HloOpcode::kGetTupleElement &&
-                  !LooksLikeAnActivation(gte);
+
+           // Skip the LooksLikeAnActivation test since we're testing the
+           // parent GTE and its children below.
+           if (inst->opcode() == HloOpcode::kBitcast &&
+               inst->operand(0)->opcode() == HloOpcode::kGetTupleElement &&
+               inst->operand(0)->operand(0)->opcode() ==
+                   HloOpcode::kParameter) {
+             return true;
+           }
+
+           return inst->opcode() == HloOpcode::kGetTupleElement &&
+                  !LooksLikeAnActivation(inst);
          });
 }
 

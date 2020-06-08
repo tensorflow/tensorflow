@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_debug_info_manager.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
@@ -36,6 +37,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -176,7 +179,6 @@ Status GpuExecutable::ExecuteThunks(
     // module, we won't get any data, but that's probably an OK trade-off.
     ScopedAnnotation annotation([&] { return thunk->profile_annotation(); });
 
-    TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
     int32 stream_no =
         thunk_schedule_->StreamNumberForHlo(*thunk->hlo_instruction());
     se::Stream* stream =
@@ -318,6 +320,86 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   return &module_globals_.emplace(executor, std::move(globals)).first->second;
 }
 
+StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
+    absl::Span<ExecutionInput const> arguments,
+    const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
+    const BufferAllocation& allocation,
+    se::DeviceMemoryAllocator* const memory_allocator, int device_ordinal,
+    int64 arg_idx) {
+  if (allocation.is_thread_local()) {
+    return se::DeviceMemoryBase{};
+  } else if (allocation.is_entry_computation_parameter()) {
+    auto param_no = allocation.parameter_number();
+    se::DeviceMemoryBase registered_buffer =
+        arguments[param_no]
+            .Buffer(allocation.param_shape_index())
+            .AsDeviceMemoryBase();
+    if (registered_buffer.is_null() && registered_buffer.size() > 0) {
+      return FailedPrecondition(
+          "Cannot run XLA computation because pointer to (sub-)buffer at "
+          "index %s of parameter %d was null.  All pointers to "
+          "(sub-)buffers must not be null, unless the (sub-)buffer has "
+          "zero elements.",
+          allocation.param_shape_index().ToString(), param_no);
+    }
+    return registered_buffer;
+  } else if (allocation.is_constant()) {
+    return FindOrDie(*globals, arg_idx);
+  } else {
+    // Allocate each allocation that might escape, or is the temp buffer.
+    CHECK(allocation.maybe_live_out() || allocation.IsPreallocatedTempBuffer());
+    const int64 buffer_size = allocation.size();
+    se::DeviceMemoryBase buffer_address;
+    if (buffer_size > 0) {
+      TF_ASSIGN_OR_RETURN(
+          se::OwningDeviceMemory buffer,
+          memory_allocator->Allocate(device_ordinal, buffer_size));
+      buffer_address = buffer.Release();
+    }
+    return buffer_address;
+  }
+}
+
+StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
+    absl::Span<ExecutionInput const> arguments,
+    const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
+    se::DeviceMemoryAllocator* const memory_allocator,
+    se::StreamExecutor* executor) {
+  tensorflow::profiler::TraceMe hlo_module_activity(
+      [&] { return std::string("Build buffer allocations"); },
+      tensorflow::profiler::TraceMeLevel::kInfo);
+
+  const int64 num_buffers = assignment_->Allocations().size();
+  std::vector<se::DeviceMemoryBase> buffers;
+  buffers.reserve(num_buffers);
+  for (int64 i = 0; i < num_buffers; ++i) {
+    const BufferAllocation& allocation = assignment_->GetAllocation(i);
+    TF_ASSIGN_OR_RETURN(
+        se::DeviceMemoryBase buffer,
+        BufferForAllocation(arguments, globals, allocation, memory_allocator,
+                            executor->device_ordinal(), i));
+    const int64 expected_alignment = [&] {
+      if (allocation.is_entry_computation_parameter()) {
+        return kEntryParameterAlignBytes;
+      } else if (allocation.is_constant()) {
+        return kConstantBufferAlignBytes;
+      } else {
+        return kXlaAllocatedBufferAlignBytes;
+      }
+    }();
+    if (!buffer.is_null() &&
+        reinterpret_cast<uintptr_t>(buffer.opaque()) % expected_alignment !=
+            0) {
+      return InternalError(
+          "Address of buffer %d must be a multiple of %x, but "
+          "was %p",
+          i, expected_alignment, buffer.opaque());
+    }
+    buffers.push_back(buffer);
+  }
+  return {{buffers, executor->device_ordinal(), memory_allocator}};
+}
+
 StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     std::vector<ExecutionInput> arguments,
@@ -333,7 +415,6 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
     return Unimplemented("Points-to set of root instruction is ambiguous");
   }
 
-  BufferAllocations::Builder buffer_allocations_builder;
   const GpuExecutable::BufferAllocToDeviceMemoryMap* globals;
   {
     tensorflow::profiler::TraceMe hlo_module_activity(
@@ -344,110 +425,73 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
   }
 
   se::StreamExecutor* executor = run_options->stream()->parent();
+  TF_ASSIGN_OR_RETURN(BufferAllocations buffer_allocations,
+                      GenerateBufferAllocations(arguments, globals,
+                                                memory_allocator, executor));
 
-  std::unique_ptr<BufferAllocations> buffer_allocations;
-
-  {
-    tensorflow::profiler::TraceMe hlo_module_activity(
-        [&] { return std::string("Build buffer allocations"); },
-        tensorflow::profiler::TraceMeLevel::kInfo);
-
-    for (BufferAllocation::Index i = 0; i < assignment_->Allocations().size();
-         ++i) {
-      const BufferAllocation& allocation = assignment_->GetAllocation(i);
-      if (allocation.is_entry_computation_parameter()) {
-        auto param_no = allocation.parameter_number();
-        se::DeviceMemoryBase buffer =
-            arguments[param_no]
-                .Buffer(allocation.param_shape_index())
-                .AsDeviceMemoryBase();
-
-        // All top-level buffers and sub-buffers must have an explicit, non-null
-        // pointer, except for zero-sized buffers, which may be null.
-        if (buffer.is_null() && buffer.size() > 0) {
-          return FailedPrecondition(
-              "Cannot run XLA computation because pointer to (sub-)buffer at "
-              "index %s of parameter %d was null.  All pointers to "
-              "(sub-)buffers must not be null, unless the (sub-)buffer has "
-              "zero elements.",
-              allocation.param_shape_index().ToString(), param_no);
-        }
-
-        buffer_allocations_builder.RegisterBuffer(i, buffer);
-      }
-
-      if (allocation.is_constant()) {
-        buffer_allocations_builder.RegisterBuffer(i, FindOrDie(*globals, i));
-      }
-    }
-
-    TF_ASSIGN_OR_RETURN(
-        buffer_allocations,
-        buffer_allocations_builder.Build(
-            assignment_.get(), executor->device_ordinal(), memory_allocator));
+  for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
+    TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
   }
-
-  TF_RETURN_IF_ERROR(ExecuteThunks(run_options, *buffer_allocations,
+  VLOG(2) << buffer_allocations.ToString();
+  TF_RETURN_IF_ERROR(ExecuteThunks(run_options, buffer_allocations,
                                    block_host_until_done,
                                    hlo_execution_profile));
 
   HloInstruction* root = hlo_module_->entry_computation()->root_instruction();
   auto device_ordinal = executor->device_ordinal();
-  ScopedShapedBuffer shaped_buffer(root->shape(), root->shape(),
-                                   memory_allocator, device_ordinal);
+  ExecutionOutput result(root->shape(), root->shape(), memory_allocator,
+                         device_ordinal);
 
-  // Copy DeviceMemoryBase values which contain the array(s) of the result into
-  // the respective location in ShapedBuffer.
   std::set<se::DeviceMemoryBase> buffers_in_result;
-  TF_RETURN_IF_ERROR(shaped_buffer.buffers().ForEachMutableElementWithStatus(
-      [&buffer_allocations, &buffers_in_result, this](
-          const ShapeIndex& index, se::DeviceMemoryBase* device_memory) {
-        const auto& sources = this->GetRootValueSet().element(index);
-        // The points-to set is unambiguous so the set should be a
-        // singleton. That is, we know exactly which instruction
-        // produced the array at this element.
-        CHECK_EQ(1, sources.values().size());
-        auto src_hlo = sources.values()[0]->instruction();
+  for (auto& p : result.MutableResult()->buffers()) {
+    const ShapeIndex& index = p.first;
+    se::DeviceMemoryBase& device_memory = p.second;
+    const auto& sources = GetRootValueSet().element(index);
+    // The points-to set is unambiguous so the set should be a
+    // singleton. That is, we know exactly which instruction
+    // produced the array at this element.
+    CHECK_EQ(1, sources.values().size());
+    auto src_hlo = sources.values()[0]->instruction();
 
-        VLOG(4) << "Looking at: " << sources.values()[0];
+    VLOG(4) << "Looking at: " << sources.values()[0];
 
-        // The source instruction should have a non-parameter buffer
-        // assigned.
-        TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
-                            this->assignment_->GetUniqueSlice(
-                                src_hlo, sources.values()[0]->index()));
+    // The source instruction should have a non-parameter buffer
+    // assigned.
+    TF_ASSIGN_OR_RETURN(
+        const BufferAllocation::Slice slice,
+        assignment_->GetUniqueSlice(src_hlo, sources.values()[0]->index()));
 
-        se::DeviceMemoryBase src_base =
-            buffer_allocations->GetDeviceAddress(slice.index());
-        CHECK(!src_base.is_null() || src_base.size() == 0);
-        if (!slice.allocation()->is_entry_computation_parameter()) {
-          // If the buffer coming out of the result is from a parameter, it
-          // means the caller aliased some parameter buffer to an output one
-          // (via the HloInputOutputAliasConfig API). If that is the case, the
-          // caller will receive a partially complete scoped shaped buffer,
-          // which they will have to fill up on return.
-          // Unfortunately the interface to the execute APIs are ShapedBuffer
-          // pointer based, which assumes caller ownership, and hence a buffer
-          // coming from there cannot be part of the new ScopedShapedBuffer we
-          // create for the result (which assumes ownership).
-          *device_memory = src_base;
-        } else {
-          const HloInputOutputAliasConfig& input_output_alias =
-              module().input_output_alias_config();
-          auto output_alias = input_output_alias.GetAliasedOutput(
-              slice.allocation()->parameter_number(),
-              slice.allocation()->param_shape_index());
-          CHECK(output_alias)
-              << "Output buffer is coming from parameter "
-              << slice.allocation()->parameter_number() << " at index "
-              << slice.allocation()->param_shape_index()
-              << ", but no alias exists";
-          CHECK_EQ(*output_alias, index);
-        }
-        buffers_in_result.insert(src_base);
-        return Status::OK();
-      }));
-  TF_RETURN_IF_ERROR(buffer_allocations->TearDown(buffers_in_result));
+    se::DeviceMemoryBase src_base =
+        buffer_allocations.GetDeviceAddress(slice.index());
+    CHECK(!src_base.is_null() || src_base.size() == 0);
+    if (!slice.allocation()->is_entry_computation_parameter()) {
+      // If the buffer coming out of the result is from a parameter, it
+      // means the caller aliased some parameter buffer to an output one
+      // (via the HloInputOutputAliasConfig API). If that is the case, the
+      // caller will receive a partially complete scoped shaped buffer,
+      // which they will have to fill up on return.
+      // Unfortunately the interface to the execute APIs are ShapedBuffer
+      // pointer based, which assumes caller ownership, and hence a buffer
+      // coming from there cannot be part of the new ScopedShapedBuffer we
+      // create for the result (which assumes ownership).
+      device_memory = src_base;
+    } else {
+      const HloInputOutputAliasConfig& input_output_alias =
+          module().input_output_alias_config();
+      auto output_alias = input_output_alias.GetAliasedOutput(
+          slice.allocation()->parameter_number(),
+          slice.allocation()->param_shape_index());
+      CHECK(output_alias) << "Output buffer is coming from parameter "
+                          << slice.allocation()->parameter_number()
+                          << " at index "
+                          << slice.allocation()->param_shape_index()
+                          << ", but no alias exists";
+      CHECK_EQ(*output_alias, index);
+    }
+    buffers_in_result.insert(src_base);
+  }
+  TF_RETURN_IF_ERROR(
+      buffer_allocations.TearDown(buffers_in_result, assignment_.get()));
 
   std::vector<se::OwningDeviceMemory> buffers_to_free;
   for (auto& argument : arguments) {
@@ -458,7 +502,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
       }
     }
   }
-  return ExecutionOutput(std::move(shaped_buffer), std::move(buffers_to_free));
+  return result;
 }
 
 const InstructionValueSet& GpuExecutable::GetRootValueSet() const {
@@ -466,13 +510,21 @@ const InstructionValueSet& GpuExecutable::GetRootValueSet() const {
       module().entry_computation()->root_instruction());
 }
 
-int64 GpuExecutable::SizeOfGeneratedCodeInBytes() {
+int64 GpuExecutable::SizeOfGeneratedCodeInBytes() const {
   // Non-empty PTX but empty cubin: compilation must have failed, return
   // "unknown".
   if (binary().empty() && !text_.empty()) {
     return -1;
   }
-  return binary().size();
+  int64 size = binary().size();
+  for (BufferAllocation::Index i = 0; i < assignment_->Allocations().size();
+       ++i) {
+    const BufferAllocation& allocation = assignment_->GetAllocation(i);
+    if (allocation.is_constant()) {
+      size += allocation.size();
+    }
+  }
+  return size;
 }
 
 }  // namespace gpu

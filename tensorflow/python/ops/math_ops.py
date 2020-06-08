@@ -70,6 +70,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
 import numpy as np
 import six
 from six.moves import builtins
@@ -82,6 +84,7 @@ from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_data_flow_ops
@@ -167,6 +170,11 @@ def linspace_nd(start, stop, num, name=None, axis=0):
     num_int = array_ops.convert_to_int_tensor(num, name="num")
     num = cast(num_int, dtype=start.dtype)
 
+    broadcast_shape = array_ops.broadcast_dynamic_shape(
+        array_ops.shape(start), array_ops.shape(stop))
+    start = array_ops.broadcast_to(start, broadcast_shape)
+    stop = array_ops.broadcast_to(stop, broadcast_shape)
+
     expanded_start = array_ops.expand_dims(start, axis=axis)
     expanded_stop = array_ops.expand_dims(stop, axis=axis)
 
@@ -175,39 +183,38 @@ def linspace_nd(start, stop, num, name=None, axis=0):
 
     axis = array_ops.where_v2(axis >= 0, axis, ndims + axis)
 
-    # to avoid having negative values in the range or zero division
-    # The result is sliced in the end so a correct result is returned for
-    # num == 1.
-    n_steps = gen_math_ops.maximum(num - 1., 1.)
-    delta = (expanded_stop - expanded_start) / n_steps
+    # The purpose is to avoid having negative values when repeating.
+    num_fill = gen_math_ops.maximum(num_int - 2, 0)
+    # To avoid having negative values in the range or zero division
+    # the result is sliced in the end so a correct result is returned for
+    # num == 1, and num == 0.
+    n_steps = gen_math_ops.maximum(num_int - 1, 1)
+    delta = (expanded_stop - expanded_start) / cast(n_steps,
+                                                    expanded_stop.dtype)
+    # Re-cast tensors as delta.
+    expanded_start = cast(expanded_start, delta.dtype)
+    expanded_stop = cast(expanded_stop, delta.dtype)
     # If num < 0, we will throw exception in the range
     # otherwise use the same div for delta
-    range_end = array_ops.where_v2(num_int > 0, n_steps, -1)
-    num_range = range(1., range_end, dtype=start.dtype)
-    shape_range = range(ndims)
-    ones_like_shape_range = array_ops.ones_like(shape_range)
-    axis_tiled = ones_like_shape_range * axis
-    # the purpose is to avoid having negative values when repeating
-    num_fill = gen_math_ops.maximum(num_int - 2, 0)
-    num_tiled = array_ops.ones_like(shape_range) * num_fill
-    ones = array_ops.ones_like(num_tiled)
-    mask = gen_math_ops.equal(axis_tiled, shape_range)
-    # reshape_target is [1. 1. 1. ... 1. num 1. 1. ... 1.], where the index
-    # of num is equal to axis
-    reshape_target = array_ops.where_v2(mask, num_fill, shape)
-    delta_expanded = array_ops.reshape(delta, shape)
-    delta_repeated = array_ops.broadcast_to(delta_expanded, reshape_target)
-    start_repeated = array_ops.broadcast_to(expanded_start, reshape_target)
+    range_end = array_ops.where_v2(num_int >= 0, n_steps, -1)
+    # Even though range supports an output dtype, its limited
+    # (e.g. doesn't support half at the moment).
+    desired_range = cast(range(1, range_end, dtype=dtypes.int64), delta.dtype)
+    mask = gen_math_ops.equal(axis, range(ndims))
+    # desired_range_shape is [1. 1. 1. ... 1. num_fill 1. 1. ... 1.], where the
+    # index of num_fill is equal to axis.
+    desired_range_shape = array_ops.where_v2(mask, num_fill, 1)
+    desired_range = array_ops.reshape(desired_range, desired_range_shape)
 
-    expanded_shape = array_ops.where_v2(mask, num_fill, ones)
-    range_indices = array_ops.reshape(num_range, expanded_shape)
-    tiled_range_indices = array_ops.tile(range_indices, shape)
-    res = start_repeated + delta_repeated * tiled_range_indices
+    res = expanded_start + delta * desired_range
+
+    # Add the start and endpoints to the result, and slice out the desired
+    # portion.
     all_tensors = (expanded_start, res, expanded_stop)
     concatenated = array_ops.concat(all_tensors, axis=axis)
     begin = array_ops.zeros_like(shape)
-    num_slice = ones_like_shape_range * num_int
-    size = array_ops.where_v2(mask, num_slice, shape)
+    size = array_ops.where_v2(mask, num_int, shape)
+
     return array_ops.slice(concatenated, begin, size)
 
 
@@ -446,6 +453,10 @@ def divide(x, y, name=None):
     # override names. Use a dummy class to track the runtime division behavior
     return DivideDelegateWithName(x, name) / y
   else:
+    # We do conversion here to make sure at least x is a tensor.
+    if not tensor_util.is_tensor(x):
+      dtype = y.dtype.base_dtype if tensor_util.is_tensor(y) else None
+      x = ops.convert_to_tensor(x, dtype=dtype)
     return x / y
 
 
@@ -2246,15 +2257,16 @@ def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
 
   For example:
 
-  ```python
-  x = tf.constant([[1., 2.], [3., 4.]])
-  tf.reduce_variance(x)  # 1.25
-  tf.reduce_variance(x, 0)  # [1., 1.]
-  tf.reduce_variance(x, 1)  # [0.25,  0.25]
-  ```
+  >>> x = tf.constant([[1., 2.], [3., 4.]])
+  >>> tf.math.reduce_variance(x)
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.25>
+  >>> tf.math.reduce_variance(x, 0)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([1., 1.], ...)>
+  >>> tf.math.reduce_variance(x, 1)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([0.25, 0.25], ...)>
 
   Args:
-    input_tensor: The tensor to reduce. Should have numeric type.
+    input_tensor: The tensor to reduce. Should have real or complex type.
     axis: The dimensions to reduce. If `None` (the default), reduces all
       dimensions. Must be in the range `[-rank(input_tensor),
       rank(input_tensor))`.
@@ -2262,21 +2274,32 @@ def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
     name: A name scope for the associated operations (optional).
 
   Returns:
-    The reduced tensor, of the same dtype as the input_tensor.
+    The reduced tensor, of the same dtype as the input_tensor. Note,  for
+    `complex64` or `complex128` input, the returned `Tensor` will be of type
+    `float32` or `float64`, respectively.
 
   @compatibility(numpy)
   Equivalent to np.var
 
-  Please note that `np.var` has a `dtype` parameter that could be used to
-  specify the output type. By default this is `dtype=float64`. On the other
-  hand, `tf.reduce_variance` has an aggressive type inference from
-  `input_tensor`,
+  Please note `np.var` has a `dtype` parameter that could be used to specify the
+  output type. By default this is `dtype=float64`. On the other hand,
+  `tf.math.reduce_variance` has aggressive type inference from `input_tensor`.
   @end_compatibility
   """
   name = name if name else "reduce_variance"
   with ops.name_scope(name):
     means = reduce_mean(input_tensor, axis=axis, keepdims=True)
-    squared_deviations = gen_math_ops.square(input_tensor - means)
+    if means.dtype.is_integer:
+      raise TypeError("Input must be either real or complex")
+    diff = input_tensor - means
+    if diff.dtype.is_complex:
+      # For complex values we need to take the absolute value before squaring.
+      # This is achieved by multiplying with the conjugate.
+      real_dtype = diff.dtype.real_dtype
+      squared_deviations = gen_math_ops.real(
+          gen_math_ops.mul(gen_math_ops.conj(diff), diff), Tout=real_dtype)
+    else:
+      squared_deviations = gen_math_ops.square(diff)
     return reduce_mean(squared_deviations, axis=axis, keepdims=keepdims)
 
 
@@ -2295,15 +2318,16 @@ def reduce_std(input_tensor, axis=None, keepdims=False, name=None):
 
   For example:
 
-  ```python
-  x = tf.constant([[1., 2.], [3., 4.]])
-  tf.reduce_std(x)  # 1.1180339887498949
-  tf.reduce_std(x, 0)  # [1., 1.]
-  tf.reduce_std(x, 1)  # [0.5,  0.5]
-  ```
+  >>> x = tf.constant([[1., 2.], [3., 4.]])
+  >>> tf.math.reduce_std(x)
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.118034>
+  >>> tf.math.reduce_std(x, 0)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([1., 1.], dtype=float32)>
+  >>> tf.math.reduce_std(x, 1)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([0.5, 0.5], dtype=float32)>
 
   Args:
-    input_tensor: The tensor to reduce. Should have numeric type.
+    input_tensor: The tensor to reduce. Should have real or complex type.
     axis: The dimensions to reduce. If `None` (the default), reduces all
       dimensions. Must be in the range `[-rank(input_tensor),
       rank(input_tensor))`.
@@ -2311,14 +2335,16 @@ def reduce_std(input_tensor, axis=None, keepdims=False, name=None):
     name: A name scope for the associated operations (optional).
 
   Returns:
-    The reduced tensor, of the same dtype as the input_tensor.
+    The reduced tensor, of the same dtype as the input_tensor. Note,  for
+    `complex64` or `complex128` input, the returned `Tensor` will be of type
+    `float32` or `float64`, respectively.
 
   @compatibility(numpy)
   Equivalent to np.std
 
-  Please note that `np.std` has a `dtype` parameter that could be used to
-  specify the output type. By default this is `dtype=float64`. On the other
-  hand, `tf.reduce_std` has an aggressive type inference from `input_tensor`,
+  Please note `np.std` has a `dtype` parameter that could be used to specify the
+  output type. By default this is `dtype=float64`. On the other hand,
+  `tf.math.reduce_std` has aggressive type inference from `input_tensor`.
   @end_compatibility
   """
   name = name if name else "reduce_std"
@@ -3397,12 +3423,12 @@ def add_n(inputs, name=None):
     ValueError: If `inputs` don't all have same shape and dtype or the shape
     cannot be inferred.
   """
-  if not inputs or not isinstance(inputs, (list, tuple)):
-    raise ValueError("inputs must be a list of at least one "
+  if not inputs or not isinstance(inputs, collections.Iterable):
+    raise ValueError("inputs must be an iterable of at least one "
                      "Tensor/IndexedSlices with the same dtype and shape")
   inputs = ops.convert_n_to_tensor_or_indexed_slices(inputs)
   if not all(isinstance(x, (ops.Tensor, ops.IndexedSlices)) for x in inputs):
-    raise ValueError("inputs must be a list of at least one "
+    raise ValueError("inputs must be an iterable of at least one "
                      "Tensor/IndexedSlices with the same dtype and shape")
 
   if len(inputs) == 1:

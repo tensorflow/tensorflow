@@ -110,6 +110,18 @@ message GPUOptions {
       // For the concept of "visible" and "virtual" GPU, see the comments for
       // "visible_device_list" above for more information.
       repeated float memory_limit_mb = 1;
+
+      // Priority values to use with the virtual devices. Use the cuda function
+      // cudaDeviceGetStreamPriorityRange to query for valid range of values for
+      // priority.
+      //
+      // On a P4000 GPU with cuda 10.1, the priority range reported was 0 for
+      // least priority and -1 for greatest priority.
+      //
+      // If this field is not specified, then the virtual devices will be
+      // created with the default. If this field has values set, then the size
+      // of this must match with the above memory_limit_mb.
+      repeated int32 priority = 2;
     }
 
     // The multi virtual device settings. If empty (not set), it will create

@@ -1066,8 +1066,8 @@ class RandomContrast(Layer):
     else:
       self.lower = self.upper = factor
     if self.lower < 0. or self.upper < 0. or self.lower > 1.:
-      raise ValueError('Factor cannot have negative values, '
-                       'got {}'.format(factor))
+      raise ValueError('Factor cannot have negative values or greater than 1.0,'
+                       ' got {}'.format(factor))
     self.seed = seed
     self.input_spec = InputSpec(ndim=4)
     super(RandomContrast, self).__init__(name=name, **kwargs)

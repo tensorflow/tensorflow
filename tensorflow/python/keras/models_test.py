@@ -79,7 +79,7 @@ def _get_model(input_shape=(4,)):
 
 class TestModelCloning(keras_parameterized.TestCase):
 
-  @keras_parameterized.run_all_keras_modes
+  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
   @parameterized.named_parameters([
       {'testcase_name': 'has_input_layer',
        'input_shape': (4,),
@@ -142,7 +142,7 @@ class TestModelCloning(keras_parameterized.TestCase):
       self.assertIsInstance(new_model._layers[0], keras.layers.InputLayer)
       self.assertTrue(new_model._is_graph_network)
 
-  @keras_parameterized.run_all_keras_modes
+  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
   @parameterized.named_parameters([
       {'testcase_name': 'clone_weights', 'share_weights': False},
       {'testcase_name': 'share_weights', 'share_weights': True},

@@ -58,15 +58,6 @@ TEST(StateOpsTest, ScatterUpdate_ShapeFn) {
 
   // Resolve shape on first updates dimension.
   INFER_OK(op, "[1,2];[3];[?,2]", "in0");
-
-  // Allow the update to be a scalar.
-  INFER_OK(op, "[1,2];[3];?", "in0");
-
-  // Allow a scalar index.
-  INFER_OK(op, "[1,2];[];[2]", "in0");
-
-  // Check the requirement updates.shape = indices.shape + ref.shape[1:].
-  INFER_ERROR("Shapes must be equal rank, but are 1 and 0", op, "[2];[];[2]");
 }
 
 TEST(StateOpsTest, TemporaryVariable_ShapeFn) {

@@ -87,8 +87,7 @@ namespace functor {
   extern template struct MatrixBandPartFunctor<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
-TF_CALL_complex64(DECLARE_GPU_SPEC);
-TF_CALL_complex128(DECLARE_GPU_SPEC);
+TF_CALL_COMPLEX_TYPES(DECLARE_GPU_SPEC);
 }  // namespace functor
 
 template <class Scalar>

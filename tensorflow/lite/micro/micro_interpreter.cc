@@ -21,9 +21,10 @@ limitations under the License.
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/micro/micro_allocator.h"
+#include "tensorflow/lite/micro/micro_op_resolver.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -71,7 +72,7 @@ void ContextHelper::ReportOpError(struct TfLiteContext* context,
 }  // namespace internal
 
 MicroInterpreter::MicroInterpreter(const Model* model,
-                                   const OpResolver& op_resolver,
+                                   const MicroOpResolver& op_resolver,
                                    uint8_t* tensor_arena,
                                    size_t tensor_arena_size,
                                    ErrorReporter* error_reporter)
@@ -87,6 +88,12 @@ MicroInterpreter::MicroInterpreter(const Model* model,
   if (subgraphs->size() != 1) {
     TF_LITE_REPORT_ERROR(error_reporter,
                          "Only 1 subgraph is currently supported.\n");
+    initialization_status_ = kTfLiteError;
+    return;
+  }
+  if (allocator_.Init() != kTfLiteOk) {
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Failed to initialize the allocator.\n");
     initialization_status_ = kTfLiteError;
     return;
   }
@@ -165,7 +172,7 @@ void MicroInterpreter::CorrectTensorDataEndianness(T* data, int32_t size) {
 }
 
 TfLiteStatus MicroInterpreter::AllocateTensors() {
-  TF_LITE_ENSURE_OK(&context_, allocator_.InitializeFromFlatbuffer(
+  TF_LITE_ENSURE_OK(&context_, allocator_.PrepareFromFlatbuffer(
                                    op_resolver_, &node_and_registrations_));
 
   // Only allow AllocatePersistentBuffer in Init stage.

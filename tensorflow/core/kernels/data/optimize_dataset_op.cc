@@ -60,6 +60,10 @@ void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   if (errors::IsDeadlineExceeded(s)) {
     // Ignore DeadlineExceeded as it implies that the attempted rewrite took too
     // long which should not prevent further computation.
+    LOG(WARNING) << s.ToString();
+
+    *output = input;
+    input->Ref();
     return;
   }
   OP_REQUIRES_OK(ctx, s);

@@ -79,6 +79,25 @@ def HLO_IotaOp : HLO_Op<"iota", [NoSideEffect]>, BASE_HLO_IotaOp {
   let hasCustomHLOConverter = 1;
 }
 
+def HLO_DynamicIotaOp: HLO_Op<"dynamic_iota", [NoSideEffect]> {
+  let summary = "Create linear increasing values from 0 to length -1.";
+  let description = [{
+    Produces an HLO Tensor of the specified shape, with an incremental set of
+    values along the specified dimension starting at 0.
+
+    Requires:
+    - The output length of the tensor result.
+  }];
+
+  let arguments = (ins HLO_DimensionTensor:$output_shape, I64Attr:$iota_dimension);
+  let results = (outs HLO_Tensor:$result);
+
+  let hasCanonicalizer = 1;
+  // Cannot be exported to legacy formats.
+  let hasCustomHLOConverter = 1;
+}
+
+
 def HLO_CreateTokenOp : HLO_Op<"create_token", [NoSideEffect]> {
   string summary = "Create Token operator";
 
@@ -284,14 +303,17 @@ def HLO_ComplexOp: HLO_Op<"complex",
 
 def HLO_DivOp : HLO_BinaryElementwiseOp<"divide",
       [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_DivOp {
+  let hasFolder = 1;
 }
 
 def HLO_MaxOp : HLO_BinaryElementwiseOp<"maximum",
       [Commutative, NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_MaxOp {
+  let hasFolder = 1;
 }
 
 def HLO_MinOp : HLO_BinaryElementwiseOp<"minimum",
       [Commutative, NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_MinOp {
+  let hasFolder = 1;
 }
 
 def HLO_MulOp : HLO_BinaryElementwiseOp<"multiply",
@@ -612,7 +634,7 @@ def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]>, BASE_HLO
     I32Attr:$index
   );
 
-  let results = (outs HLO_TensorOrTuple);
+  let results = (outs HLO_TensorOrTokenOrTuple);
 
   let hasFolder = 1;
 
@@ -787,23 +809,6 @@ def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
   let hasFolder = 1;
   // Only handles a static subset of the legacy format.
   let hasCustomHLOConverter = 1;
-}
-
-def HLO_ScalarsToDimensionTensorOp : HLO_Op<"scalars_to_dimension_tensor",
-    [SameOperandsElementType, NoSideEffect]> {
-  string summary = "Converts a sequence of scalars into a 1d tensor.";
-
-  string description = [{
-    This is a useful operation that is currently missing in Standard. Used to
-    compute shape arguments to dynamic operations.
-  }];
-
-  let arguments = (ins Variadic<HLO_DimensionValue>:$scalars);
-  let results = (outs HLO_DimensionTensor);
-
-  // Cannot be exported to legacy formats.
-  let hasCustomHLOConverter = 1;
-  let hasCanonicalizer = 1;
 }
 
 def HLO_DynamicBroadcastInDimOp : HLO_Op<"dynamic_broadcast_in_dim",

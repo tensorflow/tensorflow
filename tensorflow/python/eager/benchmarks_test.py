@@ -53,6 +53,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.layers import core as core_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
@@ -462,6 +463,15 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     func = lambda: f(m, m, transpose_b=transpose_b)
     self._run(func, num_iters, execution_mode=execution_mode)
 
+  def _benchmark_defun_args_matmul(self, m, num_iters, execution_mode=None):
+
+    @def_function.function
+    def defun_matmul(m):
+      return math_ops.matmul(m, m)
+
+    func = lambda: defun_matmul(m)
+    self._run(func, num_iters, execution_mode=execution_mode)
+
   def _benchmark_nested_defun_matmul(self, m, transpose_b, num_iters):
     inner = function.defun(math_ops.matmul)
 
@@ -629,6 +639,14 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       self._benchmark_defun_matmul(
           m, transpose_b=False, num_iters=self._num_iters_2_by_2)
 
+  @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
+  def benchmark_defun_args_matmul_2_by_2_GPU(self):
+    if not context.num_gpus():
+      return
+    with context.device(GPU):
+      m = self._m_2_by_2.gpu()
+      self._benchmark_defun_args_matmul(m, num_iters=self._num_iters_2_by_2)
+
   @test_util.disable_tfrt("async not supported")
   def benchmark_defun_matmul_2_by_2_GPU_async(self):
     if not context.num_gpus():
@@ -689,7 +707,6 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       self._benchmark_tfe_py_execute_matmul(
           m, transpose_b=True, num_iters=self._num_iters_100_by_784)
 
-  @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
   def benchmark_defun_matmul_100_by_784_CPU(self):
     with context.device(CPU):
       m = self._m_100_by_784.cpu()
@@ -1231,6 +1248,14 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
 
     self._run(fn, 10000)
 
+  def benchmark_convert_tensor(self):
+    value = ops.convert_to_tensor(42)
+
+    def fn():
+      return ops.convert_to_tensor(value)
+
+    self._run(fn, 10000)
+
   def _benchmark_convert_constant(self, value, cached):
     global GLOBAL_TEST_VALUE
     GLOBAL_TEST_VALUE = value
@@ -1396,7 +1421,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     self._run(fn, 10000)
 
   # TODO(b/157587712): Move to keras when benchmarks are setup.
-  def benchmark_tf_keras_layer_call(self):
+  def benchmark_tf_keras_layer_call_overhead(self):
 
     class OnlyOverheadLayer(base_layer.Layer):
 
@@ -1405,6 +1430,30 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
 
     layer = OnlyOverheadLayer()
     x = ops.convert_to_tensor([[1.]])
+
+    def fn():
+      layer(x)
+
+    self._run(fn, 10000)
+
+  # TODO(b/157587712): Move to keras when benchmarks are setup.
+  def benchmark_tf_keras_dense_overhead(self):
+
+    layer = core_layers.Dense(1)
+    x = ops.convert_to_tensor([[1.]])
+    layer(x)  # Warmup call to `build` layer.
+
+    def fn():
+      layer(x)
+
+    self._run(fn, 10000)
+
+  # TODO(b/157587712): Move to keras when benchmarks are setup.
+  def benchmark_tf_keras_flatten_overhead(self):
+
+    layer = core_layers.Flatten()
+    x = ops.convert_to_tensor([[[1.]]])
+    layer(x)  # Warmup call to `build` layer.
 
     def fn():
       layer(x)

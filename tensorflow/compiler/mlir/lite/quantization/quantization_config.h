@@ -19,7 +19,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_CONFIG_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_CONFIG_H_
 
-#include <optional>
 #include <string>
 #include <vector>
 
