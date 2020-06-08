@@ -227,9 +227,9 @@ PyNumberMethods PyBfloat16_AsNumber = {
     nullptr,              // nb_and
     nullptr,              // nb_xor
     nullptr,              // nb_or
-    PyBfloat16_Int,  // nb_int
-    nullptr,  // reserved
-    PyBfloat16_Float,  // nb_float
+    PyBfloat16_Int,       // nb_int
+    nullptr,              // reserved
+    PyBfloat16_Float,     // nb_float
 
     nullptr,  // nb_inplace_add
     nullptr,  // nb_inplace_subtract
@@ -1213,7 +1213,44 @@ struct LogicalXor {
   }
 };
 
-// TODO(phawkins): implement nextafter, spacing
+struct NextAfter {
+  bfloat16 operator()(bfloat16 from, bfloat16 to) {
+    uint16_t from_as_int, to_as_int;
+    const uint16_t sign_mask = 1 << 15;
+    float from_as_float(from), to_as_float(to);
+    memcpy(&from_as_int, &from, sizeof(bfloat16));
+    memcpy(&to_as_int, &to, sizeof(bfloat16));
+    if (std::isnan(from_as_float) || std::isnan(to_as_float)) {
+      return bfloat16(std::numeric_limits<float>::quiet_NaN());
+    }
+    if (from_as_int == to_as_int) {
+      return to;
+    }
+    if (from_as_float == 0) {
+      if (to_as_float == 0) {
+        return to;
+      } else {
+        // Smallest subnormal signed like `to`.
+        uint16_t out_int = (to_as_int & sign_mask) | 1;
+        bfloat16 out;
+        memcpy(&out, &out_int, sizeof(bfloat16));
+        return out;
+      }
+    }
+    uint16_t from_sign = from_as_int & sign_mask;
+    uint16_t to_sign = to_as_int & sign_mask;
+    uint16_t from_abs = from_as_int & ~sign_mask;
+    uint16_t to_abs = to_as_int & ~sign_mask;
+    uint16_t magnitude_adjustment =
+        (from_abs > to_abs || from_sign != to_sign) ? 0xFFFF : 0x0001;
+    uint16_t out_int = from_as_int + magnitude_adjustment;
+    bfloat16 out;
+    memcpy(&out, &out_int, sizeof(bfloat16));
+    return out;
+  }
+};
+
+// TODO(phawkins): implement spacing
 
 }  // namespace ufuncs
 
@@ -1467,7 +1504,9 @@ bool Initialize() {
       RegisterUFunc<UnaryUFunc<bfloat16, bfloat16, ufuncs::Ceil>>(numpy.get(),
                                                                   "ceil") &&
       RegisterUFunc<UnaryUFunc<bfloat16, bfloat16, ufuncs::Trunc>>(numpy.get(),
-                                                                   "trunc");
+                                                                   "trunc") &&
+      RegisterUFunc<BinaryUFunc<bfloat16, bfloat16, ufuncs::NextAfter>>(
+          numpy.get(), "nextafter");
 
   return ok;
 }
