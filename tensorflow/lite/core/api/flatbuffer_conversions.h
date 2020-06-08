@@ -69,6 +69,35 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
 TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
                                ErrorReporter* error_reporter);
 
+// TODO(b/149408647): The (unnecessary) op_type parameter in the functions below
+// is to keep the same signature as ParseOpData. This allows for a gradual
+// transfer to selective registration of the parse function, but should be
+// removed once we are no longer using ParseOpData for the OpResolver
+// implementation in micro.
+
+TfLiteStatus ParseDequantize(const Operator* op, BuiltinOperator op_type,
+                             ErrorReporter* error_reporter,
+                             BuiltinDataAllocator* allocator,
+                             void** builtin_data);
+
+TfLiteStatus ParseFullyConnected(const Operator* op, BuiltinOperator op_type,
+                                 ErrorReporter* error_reporter,
+                                 BuiltinDataAllocator* allocator,
+                                 void** builtin_data);
+
+TfLiteStatus ParseQuantize(const Operator* op, BuiltinOperator op_type,
+                           ErrorReporter* error_reporter,
+                           BuiltinDataAllocator* allocator,
+                           void** builtin_data);
+
+TfLiteStatus ParseSoftmax(const Operator* op, BuiltinOperator op_type,
+                          ErrorReporter* error_reporter,
+                          BuiltinDataAllocator* allocator, void** builtin_data);
+
+TfLiteStatus ParseSvdf(const Operator* op, BuiltinOperator op_type,
+                       ErrorReporter* error_reporter,
+                       BuiltinDataAllocator* allocator, void** builtin_data);
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_CORE_API_FLATBUFFER_CONVERSIONS_H_

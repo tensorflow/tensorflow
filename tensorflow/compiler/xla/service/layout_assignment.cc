@@ -952,7 +952,11 @@ Status LayoutAssignment::CheckLayouts(HloModule* module) {
                          .IgnoreDynamicDimension()
                          .MinorToMajorOnlyInLayout()(instruction_subshape,
                                                      buffer->shape()) &&
-                    instruction->opcode() != HloOpcode::kBitcast) {
+                    // TODO(mingyao): Use explicit linear layout tiling to
+                    // detect and allow special bitcast.
+                    instruction->opcode() != HloOpcode::kBitcast &&
+                    instruction->opcode() != HloOpcode::kGetTupleElement &&
+                    instruction->opcode() != HloOpcode::kTuple) {
                   return InternalError(
                       "Layout of instruction %s at index {%s} does not match "
                       "source LogicalBuffer %s: %s vs %s",

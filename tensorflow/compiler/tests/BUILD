@@ -1162,7 +1162,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "scan_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["scan_ops_test.py"],
     python_version = "PY3",
     tags = [

@@ -63,7 +63,7 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
   Examples:
 
   >>> layer = tf.keras.layers.experimental.preprocessing.CategoryEncoding(
-  ...           max_tokens=4)
+  ...           max_tokens=4, output_mode="count")
   >>> layer([[0, 1], [0, 0], [1, 2], [3, 1]])
   <tf.Tensor: shape=(4, 4), dtype=float32, numpy=
     array([[1., 1., 0., 0.],
@@ -75,7 +75,7 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
   Examples with weighted inputs:
 
   >>> layer = tf.keras.layers.experimental.preprocessing.CategoryEncoding(
-  ...           max_tokens=4)
+  ...           max_tokens=4, output_mode="count")
   >>> count_weights = np.array([[.1, .2], [.1, .1], [.2, .3], [.4, .2]])
   >>> layer([[0, 1], [0, 0], [1, 2], [3, 1]], count_weights=count_weights)
   <tf.Tensor: shape=(4, 4), dtype=float64, numpy=
@@ -88,7 +88,8 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
   Attributes:
     max_tokens: The maximum size of the vocabulary for this layer. If None,
       there is no cap on the size of the vocabulary.
-    output_mode: Optional specification for the output of the layer. Values can
+    output_mode: Specification for the output of the layer.
+      Defaults to "binary". Values can
       be "binary", "count" or "tf-idf", configuring the layer as follows:
         "binary": Outputs a single int array per batch, of either vocab_size or
           max_tokens size, containing 1s in all elements where the token mapped
@@ -109,7 +110,7 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
 
   def __init__(self,
                max_tokens=None,
-               output_mode=COUNT,
+               output_mode=BINARY,
                sparse=False,
                **kwargs):
     # 'output_mode' must be one of (COUNT, BINARY, TFIDF)

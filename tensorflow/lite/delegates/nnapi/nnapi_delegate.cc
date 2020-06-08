@@ -43,8 +43,6 @@ limitations under the License.
 #include <unistd.h>
 #endif
 
-#include "absl/memory/memory.h"
-#include "absl/types/optional.h"
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/builtin_ops.h"
@@ -3361,7 +3359,7 @@ TfLiteStatus NNAPIDelegateKernel::GetOperationsSupportedByTargetNnApiDevices(
   const auto nnapi_model_size = nnapi_to_tflite_op_mapping_.size();
 
   // Determine the list of operations the device actually supports
-  auto nnapi_ops_support_flags = absl::make_unique<bool[]>(nnapi_model_size);
+  std::unique_ptr<bool[]> nnapi_ops_support_flags(new bool[nnapi_model_size]);
 
   RETURN_TFLITE_ERROR_IF_NN_ERROR(
       context,
@@ -4152,17 +4150,16 @@ void StatefulNnApiDelegate::Data::CacheDelegateKernel(
   delegate_state_cache.emplace(cache_key, delegate_state);
 }
 
-absl::optional<NNAPIDelegateKernel*>
-StatefulNnApiDelegate::Data::GetCachedDelegateKernel(
+NNAPIDelegateKernel* StatefulNnApiDelegate::Data::MaybeGetCachedDelegateKernel(
     const TfLiteDelegateParams* delegate_params) {
   const int cache_key = delegate_params->nodes_to_replace->data[0];
   const auto cached_state = delegate_state_cache.find(cache_key);
   if (cached_state != std::end(delegate_state_cache)) {
-    auto result = absl::optional<NNAPIDelegateKernel*>(cached_state->second);
+    auto result = cached_state->second;
     delegate_state_cache.erase(cached_state);
     return result;
   } else {
-    return absl::nullopt;
+    return nullptr;
   }
 }
 
@@ -4302,7 +4299,8 @@ TfLiteStatus StatefulNnApiDelegate::GetNodesSupportedByAccelerator(
   delegate_data->delegate_state_cache.clear();
   for (int idx = 0; idx < *num_partitions; idx++) {
     const auto& partition_params = (*params_array)[idx];
-    auto kernel_state = absl::make_unique<NNAPIDelegateKernel>(nnapi);
+    std::unique_ptr<NNAPIDelegateKernel> kernel_state(
+        new NNAPIDelegateKernel(nnapi));
     TfLiteDelegateParams params_with_delegate = partition_params;
     params_with_delegate.delegate = delegate;
     TF_LITE_ENSURE_STATUS(
@@ -4471,13 +4469,9 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
         auto* delegate_data = static_cast<Data*>(params->delegate->data_);
         int* nnapi_errno = &(delegate_data->nnapi_errno);
 
-        auto delegate_state_maybe =
-            delegate_data->GetCachedDelegateKernel(params);
-
-        NNAPIDelegateKernel* kernel_state;
-        if (delegate_state_maybe.has_value()) {
-          kernel_state = *delegate_state_maybe;
-        } else {
+        NNAPIDelegateKernel* kernel_state =
+            delegate_data->MaybeGetCachedDelegateKernel(params);
+        if (!kernel_state) {
           kernel_state = new NNAPIDelegateKernel(delegate_data->nnapi);
           kernel_state->Init(context, params, nnapi_errno);
         }

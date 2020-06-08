@@ -275,7 +275,7 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
 
   // Add the given `fdef` to the local FunctionLibraryDefinition. And add an
   // entry to the KernelAndDevice cache for it if it's not exist.
-  Status AddFunctionDef(const FunctionDef& fdef);
+  Status AddFunctionDef(const FunctionDef& fdef) override;
   // `library` contains all FunctionDefs and GradientDefs to expand `fdef`. Add
   // it to the local FunctionLibraryDefinition as well, but no need to add it
   // to the KernelAndDevice cache since they won't be executed as
@@ -286,7 +286,7 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
 
   const FunctionDef* GetFunctionDef(const string& function_name);
 
-  Status RemoveFunction(const string& func);
+  Status RemoveFunction(const string& func) override;
 
   // Wait for pending nodes to be finished in local executors (including context
   // default executor and thread executors) and executors on remote workers.

@@ -229,11 +229,6 @@ REGISTER_OP("ExperimentalCSVDataset")
       return shape_inference::ScalarShape(c);
     });
 
-REGISTER_OP("DatasetCardinality")
-    .Input("input_dataset: variant")
-    .Output("cardinality: int64")
-    .SetShapeFn(shape_inference::ScalarShape);
-
 REGISTER_OP("ExperimentalDatasetCardinality")
     .Input("input_dataset: variant")
     .Output("cardinality: int64")

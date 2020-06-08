@@ -88,6 +88,7 @@ class Arguments {
   absl::Status ResolveSelector(const std::string& object_name,
                                const std::string& selector,
                                const std::vector<std::string>& args,
+                               const std::vector<std::string>& template_args,
                                std::string* result);
 
   void ResolveObjectNames(const std::string& object_name,

@@ -83,3 +83,5 @@ ZEPHYR_MD5 := "755622eb4812fde918a6382b65d50c3b"
 XTENSA_HIFI4_URL :="https://github.com/foss-xtensa/nnlib-hifi4/raw/master/archive/xa_nnlib_04_07.zip"
 XTENSA_HIFI4_MD5 :="f234764928f9a42901df33a27e118c8b"
 
+ETHOSU_URL := "https://git.mlplatform.org/ml/ethos-u/ethos-u-core-driver.git/snapshot/ethos-u-core-driver-bcb5aaa99756f1b5c1295b079ebdd60996bc75a5.tar.gz"
+ETHOSU_MD5 := "d2073c8d88fc167fd5c46b5dcda58ea1"

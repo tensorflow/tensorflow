@@ -281,11 +281,11 @@ class TfLiteConvertV1Test(TestModels):
                                                 self._input_shapes,
                                                 custom_opdefs_str))
 
-    # Ensure --experimental_new_converter.
+    # Ensure --allow_custom_ops.
     flags_str_final = ('{} --allow_custom_ops').format(flags_str)
     self._run(flags_str_final, should_succeed=False)
 
-    # Ensure --allow_custom_ops.
+    # Ensure --experimental_new_converter.
     flags_str_final = ('{} --experimental_new_converter').format(flags_str)
     self._run(flags_str_final, should_succeed=False)
 
@@ -344,15 +344,18 @@ class ArgParserTest(test_util.TensorFlowTestCase):
         '--output_file=/tmp/output.tflite',
     ]
 
+    # Note that when the flag parses to None, the converter uses the default
+    # value, which is True.
+
     # V1 parser.
-    parser = tflite_convert._get_parser(False)
+    parser = tflite_convert._get_parser(use_v2_converter=False)
     parsed_args = parser.parse_args(args)
-    self.assertFalse(parsed_args.experimental_new_converter)
+    self.assertIsNone(parsed_args.experimental_new_converter)
 
     # V2 parser.
-    parser = tflite_convert._get_parser(True)
+    parser = tflite_convert._get_parser(use_v2_converter=True)
     parsed_args = parser.parse_args(args)
-    self.assertFalse(parsed_args.experimental_new_converter)
+    self.assertIsNone(parsed_args.experimental_new_converter)
 
   def test_experimental_new_converter(self):
     args = [
@@ -362,12 +365,12 @@ class ArgParserTest(test_util.TensorFlowTestCase):
     ]
 
     # V1 parser.
-    parser = tflite_convert._get_parser(False)
+    parser = tflite_convert._get_parser(use_v2_converter=False)
     parsed_args = parser.parse_args(args)
     self.assertTrue(parsed_args.experimental_new_converter)
 
     # V2 parser.
-    parser = tflite_convert._get_parser(True)
+    parser = tflite_convert._get_parser(use_v2_converter=True)
     parsed_args = parser.parse_args(args)
     self.assertTrue(parsed_args.experimental_new_converter)
 
@@ -396,12 +399,12 @@ class ArgParserTest(test_util.TensorFlowTestCase):
     ]
 
     # V1 parser.
-    parser = tflite_convert._get_parser(False)
+    parser = tflite_convert._get_parser(use_v2_converter=False)
     parsed_args = parser.parse_args(args)
     self.assertFalse(parsed_args.experimental_new_converter)
 
     # V2 parser.
-    parser = tflite_convert._get_parser(True)
+    parser = tflite_convert._get_parser(use_v2_converter=True)
     parsed_args = parser.parse_args(args)
     self.assertFalse(parsed_args.experimental_new_converter)
 

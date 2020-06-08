@@ -271,6 +271,16 @@ TEST(PadOpTest, SimpleDynamicTest) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
 }
 
+TEST(PadOpTest, DynamicUnequalDimensions) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  PadOpDynamicModel m({TensorType_FLOAT32, {}}, {3, 2}, {TensorType_FLOAT32});
+  m.SetInput({1, 2, 3, 4});
+  m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
+  ASSERT_NE(m.InvokeUnchecked(), kTfLiteOk) << "Unequal dimensions.";
+}
+
 TEST(PadOpTest, AdvancedConstTest) {
   PadOpConstModel m({TensorType_FLOAT32, {1, 2, 3, 1}}, {4, 2},
                     {1, 0, 0, 2, 0, 3, 0, 0}, {TensorType_FLOAT32});
@@ -526,6 +536,17 @@ TEST(PadV2OpTest, SimpleDynamicTest) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 4,
                                                0, 0, 0, 0, 0}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST(PadV2OpTest, DynamicUnequalDimensions) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  PadV2OpDynamicModel<float> m({TensorType_FLOAT32, {}}, {4, 2}, 0.0,
+                               {TensorType_FLOAT32});
+  m.SetInput({1, 2, 3, 4});
+  m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
+  ASSERT_NE(m.InvokeUnchecked(), kTfLiteOk) << "Unequal dimensions";
 }
 
 TEST(PadV2OpTest, SimpleDynamicValuedTest) {

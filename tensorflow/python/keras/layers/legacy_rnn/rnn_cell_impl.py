@@ -245,8 +245,8 @@ class RNNCell(base_layer.Layer):
 
   def _rnn_get_variable(self, getter, *args, **kwargs):
     variable = getter(*args, **kwargs)
-    if context.executing_eagerly():
-      trainable = variable._trainable  # pylint: disable=protected-access
+    if ops.executing_eagerly_outside_functions():
+      trainable = variable.trainable
     else:
       trainable = (
           variable in tf_variables.trainable_variables() or

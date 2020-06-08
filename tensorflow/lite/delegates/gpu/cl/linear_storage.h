@@ -57,6 +57,7 @@ struct TensorLinearDescriptor : public GPUObjectDescriptor {
 
   absl::Status PerformSelector(const std::string& selector,
                                const std::vector<std::string>& args,
+                               const std::vector<std::string>& template_args,
                                std::string* result) const override;
 
   GPUResources GetGPUResources(AccessType access_type) const override;

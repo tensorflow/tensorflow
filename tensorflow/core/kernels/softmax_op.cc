@@ -82,19 +82,16 @@ class SoftmaxOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(                                       \
       Name("Softmax").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       SoftmaxOp<CPUDevice, T>);
-TF_CALL_bfloat16(REGISTER_CPU);
-TF_CALL_half(REGISTER_CPU);
-TF_CALL_float(REGISTER_CPU);
-TF_CALL_double(REGISTER_CPU);
+TF_CALL_FLOAT_TYPES(REGISTER_CPU);
 
 #undef REGISTER_CPU
 #define REGISTER_CPU(T)                                             \
   REGISTER_KERNEL_BUILDER(                                          \
       Name("LogSoftmax").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       SoftmaxOp<CPUDevice, T>);
-TF_CALL_half(REGISTER_CPU);
-TF_CALL_float(REGISTER_CPU);
-TF_CALL_double(REGISTER_CPU);
+TF_CALL_FLOAT_TYPES(REGISTER_CPU);
+
+#undef REGISTER_CPU
 
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(

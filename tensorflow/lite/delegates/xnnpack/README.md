@@ -116,6 +116,12 @@ Below is the list of current operators and limitations:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
+### `DIV`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
+
 ### `FULLY_CONNECTED`
 
 * Inputs and outputs must be in 32-bit floating-point format.
@@ -138,6 +144,14 @@ Below is the list of current operators and limitations:
 * 1x1 pooling is not supported.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
+
+### `MAXIMUM`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
+### `MINIMUM`
+
+* Inputs and outputs must be in 32-bit floating-point format.
 
 ### `MUL`
 
@@ -175,6 +189,16 @@ Below is the list of current operators and limitations:
 
 * Inputs and outputs must be in 32-bit floating-point format.
 * Only `beta = 1.0` is supported.
+
+### `SQUARED_DIFFERENCE`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
+### `SUB`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
 
 ### Other limitations
 

@@ -177,9 +177,9 @@ ifeq ($(BUILD_TYPE),windows)
 	BUILD_WITH_MMAP=false
 endif
 ifeq ($(BUILD_WITH_MMAP),true)
-	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/mmap_allocation.cc
-else
 	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/mmap_allocation_disabled.cc
+else
+	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/mmap_allocation.cc
 endif
 
 BUILD_WITH_RUY ?= false
@@ -187,7 +187,7 @@ ifeq ($(TARGET_ARCH),aarch64)
 	BUILD_WITH_RUY=true
 endif
 ifeq ($(BUILD_WITH_RUY),true)
-  CXXFLAGS += -DTFLITE_WITH_RUY
+  CXXFLAGS += -DTFLITE_WITH_RUY_ONLY
 endif
 
 BUILD_WITH_RUY_PROFILER ?= false

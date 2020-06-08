@@ -1975,12 +1975,12 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         callbacks=[tb_cbk])
 
     with open(os.path.join(self.logdir, 'projector_config.pbtxt')) as f:
-      self.assertEqual(
-          f.readlines(), [
-              'embeddings {\n',
-              '  tensor_name: "test_embedding/.ATTRIBUTES/VARIABLE_VALUE"\n',
-              '  metadata_path: "metadata.tsv"\n',
-              '}\n'])
+      self.assertEqual(f.readlines(), [
+          'embeddings {\n',
+          ('  tensor_name: '
+           '"layer_with_weights-0/embeddings/.ATTRIBUTES/VARIABLE_VALUE"\n'),
+          '  metadata_path: "metadata.tsv"\n', '}\n'
+      ])
 
   def test_custom_summary(self):
     if not context.executing_eagerly():

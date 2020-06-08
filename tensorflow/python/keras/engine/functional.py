@@ -32,6 +32,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_layer as input_layer_module
+from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.engine import training as training_lib
 from tensorflow.python.keras.engine import training_utils
@@ -994,7 +995,8 @@ def _map_subgraph_network(inputs, outputs):
   Returns:
     A tuple of List{Node] and List[Layer].
   """
-  base_layer_utils.create_keras_history(outputs)
+  if not keras_tensor.keras_tensors_enabled():
+    base_layer_utils.create_keras_history(outputs)
   # Keep only nodes and layers in the topology between inputs and outputs.
   _, nodes_by_depth, layers, _ = _map_graph_network(inputs, outputs)
   return nest.flatten([nodes for nodes in nodes_by_depth.values()]), layers

@@ -331,6 +331,7 @@ java_test(
     ],
 )
 
+# portable_tests includes files for running TFLite interpreter tests.
 filegroup(
     name = "portable_tests",
     srcs = [
@@ -342,10 +343,20 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
+# portable_flex_tests includes files for testing interpreter with Flex delegate.
 filegroup(
     name = "portable_flex_tests",
     srcs = [
         "src/test/java/org/tensorflow/lite/InterpreterFlexTest.java",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# portable_test_utils include utilities for loading files and processing images.
+filegroup(
+    name = "portable_test_utils",
+    srcs = [
+        "src/test/java/org/tensorflow/lite/TestUtils.java",
     ],
     visibility = ["//visibility:public"],
 )
@@ -355,6 +366,7 @@ filegroup(
     srcs = [
         "src/test/java/org/tensorflow/lite/InterpreterTestHelper.java",
         "src/test/java/org/tensorflow/lite/gpu/GpuDelegateTest.java",
+        "src/test/java/org/tensorflow/lite/gpu/WhitelistTest.java",
     ],
     visibility = ["//visibility:public"],
 )

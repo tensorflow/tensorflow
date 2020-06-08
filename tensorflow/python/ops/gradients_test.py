@@ -431,6 +431,63 @@ class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           ValueError, "Unknown value for unconnected_gradients: 'nonsense'"):
         gradients.gradients([y], [x], unconnected_gradients="nonsense")
 
+  @parameterized.parameters(unconnected_gradients.UnconnectedGradients.ZERO,
+                            unconnected_gradients.UnconnectedGradients.NONE)
+  def testUnconnectedOpWithMultipleOutputs(self, unconnected_gradients_val):
+    with ops.Graph().as_default():
+      #  a    b
+      #  |    |
+      # IdentityN
+      #  |    |
+      #  c    d
+      #  |
+      # Identity
+      #  |
+      #  e
+      a = constant_op.constant(1.0)
+      b = constant_op.constant(1.0)
+      c, d = array_ops.identity_n([a, b])
+      e = array_ops.identity(c)
+      # The aggregated grads for the IdentityN node would look like
+      # [Tensor, None]. We expect this None to be converted to zeros.
+      output = gradients.gradients(
+          e, d, unconnected_gradients=unconnected_gradients_val)
+      if (unconnected_gradients_val ==
+          unconnected_gradients.UnconnectedGradients.ZERO):
+        self.assertIsNotNone(output[0])
+      else:
+        self.assertIsNone(output[0])
+
+  @parameterized.parameters(unconnected_gradients.UnconnectedGradients.ZERO,
+                            unconnected_gradients.UnconnectedGradients.NONE)
+  def testUnconnectedOpWithMultipleOutputsStopGradient(
+      self, unconnected_gradients_val):
+    with ops.Graph().as_default():
+      #  a    b
+      #  |    |
+      # IdentityN
+      #  |    |
+      #  c    d
+      #  |    |
+      #  SG   |
+      #  |    |
+      #   \  /
+      #    +
+      #    e
+      a = constant_op.constant(1.0)
+      b = constant_op.constant(1.0)
+      c, d = array_ops.identity_n([a, b])
+      e = array_ops.stop_gradient(c) + d
+      # The aggregated grads for the IdentityN node would look like
+      # [None, Tensor]. We expect this None to be converted to zeros.
+      output = gradients.gradients(
+          e, c, unconnected_gradients=unconnected_gradients_val)
+      if (unconnected_gradients_val ==
+          unconnected_gradients.UnconnectedGradients.ZERO):
+        self.assertIsNotNone(output[0])
+      else:
+        self.assertIsNone(output[0])
+
 
 class FunctionGradientsTest(test_util.TensorFlowTestCase):
 
