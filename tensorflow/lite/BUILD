@@ -508,8 +508,7 @@ cc_test(
         ":util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
-        "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
