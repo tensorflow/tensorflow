@@ -389,18 +389,15 @@ void PromoteResourcesToArgsPass::runOnOperation() {
     return signalPassFailure();
 }
 
-// This pass is for promoting Varhandle ops to tf_saved_model.bound_input
-// attributes, which are required for TensorFlowSavedModelDialect.
-class PromoteVarHandlesToSavedModelArgsPass
-    : public PassWrapper<PromoteVarHandlesToSavedModelArgsPass,
-                         OperationPass<ModuleOp>> {
+class PromoteVarHandlesToArgsPass
+    : public PassWrapper<PromoteVarHandlesToArgsPass, OperationPass<ModuleOp>> {
  public:
   void runOnOperation() override;
 };
 
-void PromoteVarHandlesToSavedModelArgsPass::runOnOperation() {
+void PromoteVarHandlesToArgsPass::runOnOperation() {
   ModuleOp module = getOperation();
-
+  MLIRContext* context = module.getContext();
   for (auto function : module.getOps<FuncOp>()) {
     if (failed(CheckSingleBlockFunction(function))) return signalPassFailure();
 
@@ -409,15 +406,13 @@ void PromoteVarHandlesToSavedModelArgsPass::runOnOperation() {
                                  &var_handle_shared_names);
 
     // Add resource names for each `tf.VarHandleOp` that were promoted to
-    // saved model arguments.
+    // resource arguments.
     const int var_handle_args_offset =
         function.getNumArguments() - var_handle_shared_names.size();
-    for (auto var_name_and_index : llvm::enumerate(var_handle_shared_names)) {
-      auto symbol_ref =
-          SymbolRefAttr::get(var_name_and_index.value(), &getContext());
+    for (auto var_name_and_index : llvm::enumerate(var_handle_shared_names))
       function.setArgAttr(var_name_and_index.index() + var_handle_args_offset,
-                          "tf_saved_model.bound_input", symbol_ref);
-    }
+                          kResourceNameArgAttr,
+                          StringAttr::get(var_name_and_index.value(), context));
   }
 }
 
@@ -427,19 +422,17 @@ std::unique_ptr<OperationPass<ModuleOp>> CreatePromoteResourcesToArgsPass() {
   return std::make_unique<PromoteResourcesToArgsPass>();
 }
 
-std::unique_ptr<OperationPass<ModuleOp>>
-CreatePromoteVarHandlesToSavedModelArgsPass() {
-  return std::make_unique<PromoteVarHandlesToSavedModelArgsPass>();
+std::unique_ptr<OperationPass<ModuleOp>> CreatePromoteVarHandlesToArgsPass() {
+  return std::make_unique<PromoteVarHandlesToArgsPass>();
 }
 
 static PassRegistration<PromoteResourcesToArgsPass> pass(
     "tf-promote-resources-to-args",
     "Promote resources reads/writes to function inputs/outputs.");
 
-static PassRegistration<PromoteVarHandlesToSavedModelArgsPass> saved_model_pass(
-    "tf-saved-model-promote-var-handles-to-args",
-    "Promote tf.VarHandleOps to function arguments in a format of "
-    "TensorFlowSavedModelDialect.");
+static PassRegistration<PromoteVarHandlesToArgsPass> var_handle_pass(
+    "tf-promote-var-handles-to-args",
+    "Promote tf.VarHandleOps to function arguments.");
 
 }  // namespace TF
 }  // namespace mlir

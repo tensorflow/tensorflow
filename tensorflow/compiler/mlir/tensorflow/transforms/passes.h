@@ -95,11 +95,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateResourceDeviceInferencePass();
 // of their aliasing output arguments.
 std::unique_ptr<OperationPass<ModuleOp>> CreatePromoteResourcesToArgsPass();
 
-// Creates a pass that promotes tf.VarHandleOp to to resource arguments of where
-// resource names are `tf_saved_model.bound_input` symbol argument attributes
-// for all functions.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreatePromoteVarHandlesToSavedModelArgsPass();
+// Creates a pass that promotes tf.VarHandleOp to resource arguments for all
+// functions.
+std::unique_ptr<OperationPass<ModuleOp>> CreatePromoteVarHandlesToArgsPass();
 
 // Creates a pass that converts readonly reference variables to the
 // corresponding resource variables.
