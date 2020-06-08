@@ -65,6 +65,7 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/platform/random.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace xla {
 namespace gpu {
@@ -633,11 +634,21 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
   std::string tempdir_name = tempdir_vector.front();
   VLOG(1) << "Compile-time artifacts located at: " << tempdir_name;
 
+  bool keep_tempfiles = false;
+  TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_ROCM_XLA_TEMPFILES",
+                                             /*default_val=*/false,
+                                             &keep_tempfiles));
   // Prepare filenames for all stages of compilation:
   // IR, binary ISA, and HSACO.
   std::string random_number = std::to_string(tensorflow::random::New64());
-  std::string ir_filename = absl::StrCat(module->getModuleIdentifier(), random_number + ".ll");
+  std::string ir_filename =
+      absl::StrCat(module->getModuleIdentifier(), random_number + ".ll");
   std::string ir_path = tensorflow::io::JoinPath(tempdir_name, ir_filename);
+
+  std::string ir_opt_filename =
+      absl::StrCat(module->getModuleIdentifier(), random_number + "_opt.ll");
+  std::string ir_opt_path =
+      tensorflow::io::JoinPath(tempdir_name, ir_opt_filename);
 
   std::string isabin_filename =
       absl::StrCat(module->getModuleIdentifier(), random_number + ".o");
@@ -677,6 +688,12 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
   codegen_passes.run(*module);
   isabin_fs->flush();
 
+  if (keep_tempfiles) {
+    std::unique_ptr<llvm::raw_fd_ostream> ir_fs(
+        new llvm::raw_fd_ostream(ir_opt_path, ec, llvm::sys::fs::F_None));
+    module->print(*ir_fs, nullptr);
+    ir_fs->flush();
+  }
   // Locate lld.
   // TODO(whchung@gmail.com): change to tensorflow::ROCmRoot() after
   // ROCm-Device-Libs PR.
@@ -714,9 +731,11 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
   hsaco_file.seekg(0, std::ios::beg);
   hsaco_file.read(reinterpret_cast<char*>(&hsaco[0]), hsaco_file_size);
   hsaco_file.close();
-  remove(ir_path.c_str());
-  remove(isabin_path.c_str());
-  remove(hsaco_path.c_str());
+  if (!keep_tempfiles) {
+    remove(ir_path.c_str());
+    remove(isabin_path.c_str());
+    remove(hsaco_path.c_str());
+  }
   return hsaco;
 }
 
