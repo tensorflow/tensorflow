@@ -219,6 +219,12 @@ class Bfloat16Test(parameterized.TestCase):
     numpy_assert_allclose(
         a, b, rtol=0.1, atol=0.1, equal_nan=True, err_msg="", verbose=True)
 
+  def testSort(self):
+    values_to_sort = np.float32(FLOAT_VALUES)
+    sorted_f32 = np.sort(values_to_sort)
+    sorted_bf16 = np.sort(values_to_sort.astype(bfloat16))
+    np.testing.assert_equal(sorted_f32, np.float32(sorted_bf16))
+
 
 BinaryOp = collections.namedtuple("BinaryOp", ["op"])
 
