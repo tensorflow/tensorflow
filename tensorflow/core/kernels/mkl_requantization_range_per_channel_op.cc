@@ -77,7 +77,7 @@ class MklRequantizationRangePerChannelOp : public OpKernel {
 
 #ifndef ENABLE_MKLDNN_THREADPOOL
 #pragma omp parallel for reduction(max : out_min_max)
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_MKLDNN_THREADPOOL
     // TODO: Add eigen parallel_for
     for (size_t i = 0; i < depth; ++i) {
       Eigen::Tensor<qint32, 0, Eigen::RowMajor> min =
