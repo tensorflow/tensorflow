@@ -41,6 +41,7 @@ from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.compat import compat
 
 _ACCEPTABLE_CSV_TYPES = (dtypes.float32, dtypes.float64, dtypes.int32,
                          dtypes.int64, dtypes.string)
@@ -661,7 +662,9 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
         column if it is optional, or `DType` or empty `Tensor` if required. If
         both this and `select_columns` are specified, these must have the same
         lengths, and `column_defaults` is assumed to be sorted in order of
-        increasing column index.
+        increasing column index. If both this and 'exclude_cols' are specified,
+        the sum of lengths of record_defaults and exclude_cols should equal
+        the total number of columns in the CSV file.
       compression_type: (Optional.) A `tf.string` scalar evaluating to one of
         `""` (no compression), `"ZLIB"`, or `"GZIP"`. Defaults to no
         compression.
@@ -683,6 +686,13 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
       exclude_cols:(Optional.) A sorted list of column indices to exclude from
         the input data. If specified, only the complement of this set of column
         will be parsed. Defaults to parsing all columns.
+
+    Raises:
+       InvalidArgumentError: If exclude_cols is not None and
+           len(exclude_cols) + len(record_defaults) does not match the total
+           number of columns in the file(s)
+
+
     """
     self._filenames = ops.convert_to_tensor(
         filenames, dtype=dtypes.string, name="filenames")
@@ -722,18 +732,31 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
     )
     self._element_spec = tuple(
         tensor_spec.TensorSpec([], d.dtype) for d in self._record_defaults)
-    variant_tensor = gen_experimental_dataset_ops.csv_dataset(
-        filenames=self._filenames,
-        record_defaults=self._record_defaults,
-        buffer_size=self._buffer_size,
-        header=self._header,
-        output_shapes=self._flat_shapes,
-        field_delim=self._field_delim,
-        use_quote_delim=self._use_quote_delim,
-        na_value=self._na_value,
-        select_cols=self._select_cols,
-        exclude_cols=self._exclude_cols,
-        compression_type=self._compression_type)
+    if compat.forward_compatible(2020, 6, 25):
+      variant_tensor = gen_experimental_dataset_ops.csv_dataset_v2(
+          filenames=self._filenames,
+          record_defaults=self._record_defaults,
+          buffer_size=self._buffer_size,
+          header=self._header,
+          output_shapes=self._flat_shapes,
+          field_delim=self._field_delim,
+          use_quote_delim=self._use_quote_delim,
+          na_value=self._na_value,
+          select_cols=self._select_cols,
+          exclude_cols=self._exclude_cols,
+          compression_type=self._compression_type)
+    else:
+      variant_tensor = gen_experimental_dataset_ops.csv_dataset(
+          filenames=self._filenames,
+          record_defaults=self._record_defaults,
+          buffer_size=self._buffer_size,
+          header=self._header,
+          output_shapes=self._flat_shapes,
+          field_delim=self._field_delim,
+          use_quote_delim=self._use_quote_delim,
+          na_value=self._na_value,
+          select_cols=self._select_cols,
+          compression_type=self._compression_type)
     super(CsvDatasetV2, self).__init__(variant_tensor)
 
   @property

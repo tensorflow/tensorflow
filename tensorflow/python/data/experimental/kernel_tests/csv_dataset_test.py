@@ -425,6 +425,37 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         exclude_cols=[1, 2])
 
   @combinations.generate(test_base.default_test_combinations())
+  def testCsvDataset_withSelectandExcludeCol(self):
+    record_defaults = [['']]
+    inputs = [['1,2,3', '5,6,7']]
+    self._test_dataset(
+        inputs,
+        expected_err_re='Either select_cols or exclude_cols should be empty',
+        record_defaults=record_defaults,
+        select_cols=[0],
+        exclude_cols=[1, 2])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCsvDataset_withExcludeColandRecordDefaultsTooLow(self):
+    record_defaults = [['']]
+    inputs = [['1,2,3', '5,6,7']]
+    self._test_dataset(
+        inputs,
+        expected_err_re='Expect 1 fields but have more in record',
+        record_defaults=record_defaults,
+        exclude_cols=[0])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCsvDataset_withExcludeColandRecordDefaultsTooHigh(self):
+    record_defaults = [['']]*3
+    inputs = [['1,2,3', '5,6,7']]
+    self._test_dataset(
+        inputs,
+        expected_err_re='Expect 3 fields but have 2 in record',
+        record_defaults=record_defaults,
+        exclude_cols=[0])
+
+  @combinations.generate(test_base.default_test_combinations())
   def testCsvDataset_withMultipleNewLines(self):
     # In this case, we expect it to behave differently from
     # TextLineDataset->map(decode_csv) since that flow has bugs

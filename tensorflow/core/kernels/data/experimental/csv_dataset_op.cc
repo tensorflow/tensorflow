@@ -28,7 +28,9 @@ namespace {
 
 class CSVDatasetOp : public DatasetOpKernel {
  public:
-  explicit CSVDatasetOp(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {
+  explicit CSVDatasetOp(OpKernelConstruction* ctx)
+      : DatasetOpKernel(ctx),
+        op_version_(ctx->def().op() == "CSVDataset" ? 1 : 2) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
   }
@@ -62,8 +64,11 @@ class CSVDatasetOp : public DatasetOpKernel {
     OP_REQUIRES(ctx, select_cols_tensor->dims() == 1,
                 errors::InvalidArgument("`select_cols` must be a vector."));
 
-    const Tensor* exclude_cols_tensor;
-    OP_REQUIRES_OK(ctx, ctx->input("exclude_cols", &exclude_cols_tensor));
+    const Tensor* exclude_cols_tensor = new const Tensor();
+    if (op_version_ > 1) {
+      OP_REQUIRES_OK(ctx, ctx->input("exclude_cols", &exclude_cols_tensor));
+    }
+
     OP_REQUIRES(ctx, exclude_cols_tensor->dims() == 1,
                 errors::InvalidArgument("`exclude_cols` must be a vector"));
 
@@ -138,7 +143,7 @@ class CSVDatasetOp : public DatasetOpKernel {
     }
     OP_REQUIRES(ctx, select_cols.empty() || exclude_cols.empty(),
                 errors::InvalidArgument(
-                    "Either select_cols or exlcude_cols should be empty"));
+                    "Either select_cols or exclude_cols should be empty"));
     for (int i = 1; i < exclude_cols.size(); i++) {
       OP_REQUIRES(ctx, exclude_cols[i - 1] < exclude_cols[i],
                   errors::InvalidArgument(
@@ -238,8 +243,8 @@ class CSVDatasetOp : public DatasetOpKernel {
            std::make_pair(2, buffer_size), std::make_pair(3, header),
            std::make_pair(4, delim), std::make_pair(5, use_quote_delim),
            std::make_pair(6, na_value), std::make_pair(7, select_cols),
-           std::make_pair(8, exclude_cols)},     // Single tensor inputs
-          {std::make_pair(9, record_defaults)},  // Tensor list inputs
+           std::make_pair(9, exclude_cols)},     // Single tensor inputs
+          {std::make_pair(8, record_defaults)},  // Tensor list inputs
           {},
           output));
       return Status::OK();
@@ -386,12 +391,12 @@ class CSVDatasetOp : public DatasetOpKernel {
         Status result;
 
         while (!end_of_record) {  // Read till we reach \n, \r or EOF
-          bool exclude = num_excluded_parsed < excluded.size() &&
-                         excluded[num_excluded_parsed] == num_parsed;
+          bool explicit_exclude = num_excluded_parsed < excluded.size() &&
+                                  excluded[num_excluded_parsed] == num_parsed;
           bool include = select_all ||
                          (num_selected_parsed < selected.size() &&
                           selected[num_selected_parsed] == num_parsed) ||
-                         (!excluded.empty() && !exclude);
+                         (!excluded.empty() && !explicit_exclude);
 
           // Don't fail fast, so that the next call to GetNext may still return
           // a valid record
@@ -400,7 +405,7 @@ class CSVDatasetOp : public DatasetOpKernel {
 
           num_parsed++;
           if (include) num_selected_parsed++;
-          if (exclude) num_excluded_parsed++;
+          if (explicit_exclude) num_excluded_parsed++;
         }
 
         return result;
@@ -894,6 +899,8 @@ class CSVDatasetOp : public DatasetOpKernel {
     const io::ZlibCompressionOptions options_;
   };  // class Dataset
 
+  const int op_version_;
+
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
 };  // class CSVDatasetOp
@@ -901,6 +908,7 @@ class CSVDatasetOp : public DatasetOpKernel {
 REGISTER_KERNEL_BUILDER(Name("CSVDataset").Device(DEVICE_CPU), CSVDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("ExperimentalCSVDataset").Device(DEVICE_CPU),
                         CSVDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("CSVDatasetV2").Device(DEVICE_CPU), CSVDatasetOp);
 
 }  // namespace
 }  // namespace experimental
