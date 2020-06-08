@@ -68,7 +68,7 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     return AssignMemorySpace(
         module, /*max_outstanding_async_copies=*/-1,
         MemorySpaceAssignment::GetMemoryBoundednessBufferIntervalCompare(
-            cost_analysis),
+            cost_analysis, &cache_),
         &prefetch_interval_picker);
   }
 
@@ -285,6 +285,8 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     TF_CHECK_OK(module->set_schedule(schedule));
     return module;
   }
+
+  MemorySpaceAssignmentCostAnalysis::Cache cache_;
 };
 
 TEST_P(MemorySpaceAssignmentTest, ParameterOnly) {

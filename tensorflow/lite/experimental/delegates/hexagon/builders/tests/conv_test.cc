@@ -109,7 +109,7 @@ class QuantizedConvolutionOpModel : public SingleOpModelWithHexagon {
   }
 
   void SetBias(std::initializer_list<float> data) {
-    QuantizeAndPopulate<int32_t>(bias_, data);
+    QuantizeAndPopulate<int>(bias_, data);
   }
 
   template <typename T>

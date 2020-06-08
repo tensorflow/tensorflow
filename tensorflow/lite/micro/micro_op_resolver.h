@@ -46,30 +46,24 @@ class MicroOpResolver : public OpResolver {
 
   // Registers a Builtin Operator with the MicroOpResolver.
   //
-  // Note that the version parameter is ignored and only a first call for a
-  // given BuiltinOperator enum will be successful. i.e. if this function is
-  // called again for a previously added BuiltinOperator (even with a different
-  // version parameter), the MicroOpResolver will be unchanged and this function
+  // Only the first call for a given BuiltinOperator enum will be successful.
+  // i.e. if this function is called again for a previously added
+  // BuiltinOperator, the MicroOpResolver will be unchanged and this function
   // will return kTfLiteError.
   //
-  // TODO(b/151245712): The version param is kept to avoid breaking the legacy
-  // API but it should be removed eventually.
+  // TODO(b/149408647): remove this API once the templated AddBuiltin API in
+  // MicroMutableOpResolver is properly implemented.
   virtual TfLiteStatus AddBuiltin(tflite::BuiltinOperator op,
-                                  TfLiteRegistration* registration,
-                                  int version) = 0;
+                                  TfLiteRegistration* registration) = 0;
 
   // Registers a Custom Operator with the MicroOpResolver.
   //
-  // Note that the version parameter is ignored and only a first call for a
-  // given name will be successful. i.e. if this function is called again for a
-  // previously added Custom Operator (even with a different version parameter),
-  // the MicroOpResolver will be unchanged and this function will return
+  // Only the first call for a given name will be successful. i.e. if this
+  // function is called again for a previously added Custom Operator, the
+  // MicroOpResolver will be unchanged and this function will return
   // kTfLiteError.
-  //
-  // TODO(b/151245712): The version param is kept to avoid breaking the legacy
-  // API but it should be removed eventually.
-  TfLiteStatus AddCustom(const char* name, TfLiteRegistration* registration,
-                         int version);
+  virtual TfLiteStatus AddCustom(const char* name,
+                                 TfLiteRegistration* registration) = 0;
 
   // Returns the Op registration struct corresponding to the enum code from the
   // flatbuffer schema. Returns nullptr if the op is not found or if op ==

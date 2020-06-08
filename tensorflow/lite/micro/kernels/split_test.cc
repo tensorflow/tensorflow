@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/debug_log.h"
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
@@ -63,7 +63,7 @@ void TestSplitTwoOutputsFloat(
 
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  tflite::ops::micro::AllOpsResolver resolver;
+  tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
       resolver.FindOp(tflite::BuiltinOperator_SPLIT);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
@@ -166,7 +166,7 @@ void TestSplitFourOutputsFloat(
 
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  tflite::ops::micro::AllOpsResolver resolver;
+  tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
       resolver.FindOp(tflite::BuiltinOperator_SPLIT);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
@@ -264,7 +264,7 @@ void TestSplitTwoOutputsQuantized(
 
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  tflite::ops::micro::AllOpsResolver resolver;
+  tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
       resolver.FindOp(tflite::BuiltinOperator_SPLIT);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
@@ -353,7 +353,7 @@ void TestSplitTwoOutputsQuantized32(
 
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  tflite::ops::micro::AllOpsResolver resolver;
+  tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
       resolver.FindOp(tflite::BuiltinOperator_SPLIT);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);

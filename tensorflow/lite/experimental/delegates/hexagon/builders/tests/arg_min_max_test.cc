@@ -28,8 +28,8 @@ class ArgBaseOpModel : public SingleOpModelWithHexagon {
 
   int input() const { return input_; }
 
-  std::vector<int32_t> GetInt32Output() const {
-    return ExtractVector<int32_t>(output_);
+  std::vector<int> GetInt32Output() const {
+    return ExtractVector<int>(output_);
   }
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
 

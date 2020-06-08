@@ -65,6 +65,7 @@ struct TensorDescriptor : public GPUObjectDescriptor {
 
   absl::Status PerformSelector(const std::string& selector,
                                const std::vector<std::string>& args,
+                               const std::vector<std::string>& template_args,
                                std::string* result) const override;
 
   GPUResources GetGPUResources(AccessType access_type) const override;
@@ -79,14 +80,56 @@ struct TensorDescriptor : public GPUObjectDescriptor {
       Layout::UNKNOWN;  // Supported layouts is HWC, BHWC, HWDC, BHWDC
 
  private:
-  absl::Status PerformReadSelector(const std::vector<std::string>& args,
-                                   std::string* result) const;
+  absl::Status PerformReadSelector(
+      const std::vector<std::string>& args,
+      const std::vector<std::string>& template_args, std::string* result) const;
 
-  std::string Read(const std::string& global_address) const;
+  absl::Status PerformGetAddressSelector(const std::vector<std::string>& args,
+                                         std::string* result) const;
+
+  std::string DeclareAddress(const std::string& var_name,
+                             const std::string& address) const;
+
+  std::string StorageTypeToAddressType() const;
+
+  absl::Status PerformWriteSelector(const std::vector<std::string>& args,
+                                    std::string* result) const;
+
+  std::string Read(DataType read_as_type,
+                   const std::string& global_address) const;
+  std::string Write(const std::string& var_name,
+                    const std::string& global_address) const;
+
+  absl::Status GetDataTypeFromTemplateArgs(const std::string& template_arg,
+                                           DataType* result) const;
+
+  std::string GetGlobalAddressNoDeclarationWHS(const std::string& x,
+                                               const std::string& y,
+                                               const std::string& s) const;
+  std::string GetGlobalAddressNoDeclarationWHSB(const std::string& x,
+                                                const std::string& y,
+                                                const std::string& s,
+                                                const std::string& b) const;
+  std::string GetGlobalAddressNoDeclarationWHDS(const std::string& x,
+                                                const std::string& y,
+                                                const std::string& z,
+                                                const std::string& s) const;
+  std::string GetGlobalAddressNoDeclarationWHDSB(const std::string& x,
+                                                 const std::string& y,
+                                                 const std::string& z,
+                                                 const std::string& s,
+                                                 const std::string& b) const;
+  std::string GetGlobalAddressNoDeclaration(const std::string& xc,
+                                            const std::string& yc,
+                                            const std::string& zc,
+                                            const std::string& sc,
+                                            const std::string& bc) const;
 
   bool ParseCoordsFromArgs(const std::vector<std::string>& args, int offset,
                            std::string* xc, std::string* yc, std::string* zc,
                            std::string* sc, std::string* bc) const;
+
+  bool IsBatchedWidth() const;
 };
 
 std::string ToString(TensorStorageType type);

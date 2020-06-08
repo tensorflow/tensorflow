@@ -83,7 +83,7 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
     self.assertEqual(len(model.losses), 1)
     model.fit(x_train, y_train, batch_size=10, epochs=1, verbose=0)
 
-  @keras_parameterized.run_all_keras_modes
+  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
   @parameterized.named_parameters([
       ('l1', regularizers.l1()),
       ('l2', regularizers.l2()),
@@ -126,7 +126,7 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
         model.get_config(), custom_objects={'my_regularizer': my_regularizer})
     self.assertEqual(model2.layers[1].kernel_regularizer, my_regularizer)
 
-  @keras_parameterized.run_all_keras_modes
+  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
   @parameterized.named_parameters([
       ('l1', regularizers.l1()),
       ('l2', regularizers.l2()),
@@ -144,7 +144,7 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
         run_eagerly=testing_utils.should_run_eagerly())
     self.assertLen(model.losses, 5)
 
-  @keras_parameterized.run_all_keras_modes
+  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
   @parameterized.named_parameters([
       ('l1', regularizers.l1()),
       ('l2', regularizers.l2()),
@@ -166,7 +166,7 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
         run_eagerly=testing_utils.should_run_eagerly())
     self.assertLen(model.losses, 6)
 
-  @keras_parameterized.run_all_keras_modes
+  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
   @parameterized.named_parameters([
       ('l1', regularizers.l1()),
       ('l2', regularizers.l2()),

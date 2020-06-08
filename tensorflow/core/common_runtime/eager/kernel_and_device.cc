@@ -99,7 +99,7 @@ KernelAndDeviceFunc::~KernelAndDeviceFunc() {
   }
 }
 
-Status KernelAndDeviceOp::Init(const NodeDef& ndef,
+Status KernelAndDeviceOp::Init(const Context& ctx, const NodeDef& ndef,
                                GraphCollector* graph_collector) {
   OpKernel* k = nullptr;
   if (flr_ == nullptr) {
@@ -131,7 +131,8 @@ Status KernelAndDeviceOp::Init(const NodeDef& ndef,
   return Status::OK();
 }
 
-Status KernelAndDeviceFunc::InstantiateFunc(const NodeDef& ndef,
+Status KernelAndDeviceFunc::InstantiateFunc(const Context& ctx,
+                                            const NodeDef& ndef,
                                             GraphCollector* graph_collector) {
   const OpDef* op_def = nullptr;
   const FunctionDef* function_def;
@@ -209,14 +210,16 @@ Status KernelAndDeviceFunc::InstantiateFunc(const NodeDef& ndef,
       ->mutable_optimizer_options()
       ->set_do_function_inlining(true);
 
+  options.config_proto.set_log_device_placement(ctx.log_device_placement);
+
   TF_RETURN_IF_ERROR(
       pflr_->Instantiate(ndef.op(), AttrSlice(ndef), options, &handle_));
   return pflr_->IsCrossProcess(handle_, &is_cross_process_);
 }
 
-Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
+Status KernelAndDeviceFunc::Init(const Context& ctx, const NodeDef& ndef,
                                  GraphCollector* graph_collector) {
-  TF_RETURN_IF_ERROR(InstantiateFunc(ndef, graph_collector));
+  TF_RETURN_IF_ERROR(InstantiateFunc(ctx, ndef, graph_collector));
   return pflr_->GetOutputDevices(handle_, &output_devices_);
 }
 

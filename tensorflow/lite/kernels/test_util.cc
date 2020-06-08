@@ -199,15 +199,16 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
   if (apply_delegate) ApplyDelegate();
 }
 
-void SingleOpModel::ApplyDelegate() {
+TfLiteStatus SingleOpModel::ApplyDelegate() {
   if (force_use_nnapi) {
-    interpreter_->ModifyGraphWithDelegate(TestNnApiDelegate());
+    delegate_ = TestNnApiDelegate();
   }
 
-  // Modify delegate with function.
-  if (apply_delegate_fn_) {
-    apply_delegate_fn_(interpreter_.get());
+  if (delegate_) {
+    return interpreter_->ModifyGraphWithDelegate(delegate_);
   }
+
+  return kTfLiteOk;
 }
 
 void SingleOpModel::Invoke() { ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk); }
@@ -217,20 +218,6 @@ TfLiteStatus SingleOpModel::InvokeUnchecked() { return interpreter_->Invoke(); }
 void SingleOpModel::BuildInterpreter(
     std::vector<std::vector<int>> input_shapes) {
   BuildInterpreter(input_shapes, /*num_threads=*/-1,
-                   /*allow_fp32_relax_to_fp16=*/false,
-                   /*apply_delegate=*/true);
-}
-
-void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
-                                     bool allow_fp32_relax_to_fp16,
-                                     bool apply_delegate) {
-  BuildInterpreter(input_shapes, /*num_threads=*/-1, allow_fp32_relax_to_fp16,
-                   apply_delegate);
-}
-
-void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
-                                     int num_threads) {
-  BuildInterpreter(input_shapes, num_threads,
                    /*allow_fp32_relax_to_fp16=*/false,
                    /*apply_delegate=*/true);
 }

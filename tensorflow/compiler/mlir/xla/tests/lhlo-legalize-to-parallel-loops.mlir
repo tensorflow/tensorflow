@@ -150,7 +150,7 @@ func @reduce_window(%arg: memref<112x112xf32>,
 // CHECK-SAME:      [[OPERAND_BUF:%.*]]: memref<112x112xf32>,
 // CHECK-SAME:      [[INIT_BUF:%.*]]: memref<f32>,
 // CHECK-SAME:      [[RESULT_BUF:%.*]]: memref<56x56xf32>) {
-// CHECK-DAG:  [[IN_BOUNDS:%.*]] = constant 1 : i1
+// CHECK-DAG:  [[IN_BOUNDS:%.*]] = constant true
 // CHECK-DAG:  [[C0:%.*]] = constant 0 : index
 // CHECK-DAG:  [[C1:%.*]] = constant 1 : index
 // CHECK-DAG:  [[C2:%.*]] = constant 2 : index

@@ -33,6 +33,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import layers
 from tensorflow.python.keras import models
 from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.optimizer_v2 import adadelta as adadelta_v2
 from tensorflow.python.keras.optimizer_v2 import adagrad as adagrad_v2
 from tensorflow.python.keras.optimizer_v2 import adam as adam_v2
@@ -329,6 +330,29 @@ def run_eagerly_scope(value):
   finally:
     # Restore model type to initial value.
     _thread_local_data.run_eagerly = previous_value
+
+
+@tf_contextlib.contextmanager
+def use_keras_tensors_scope(value):
+  """Provides a scope within which we use KerasTensors in the func. API or not.
+
+  The boolean gets restored to its original value upon exiting the scope.
+
+  Arguments:
+     value: Bool specifying if we should build functional models
+      using KerasTensors in the active test.
+     Should be True or False.
+
+  Yields:
+    The provided value.
+  """
+  previous_value = keras_tensor._KERAS_TENSORS_ENABLED  # pylint: disable=protected-access
+  try:
+    keras_tensor._KERAS_TENSORS_ENABLED = value  # pylint: disable=protected-access
+    yield value
+  finally:
+    # Restore KerasTensor usage to initial value.
+    keras_tensor._KERAS_TENSORS_ENABLED = previous_value  # pylint: disable=protected-access
 
 
 def should_run_eagerly():

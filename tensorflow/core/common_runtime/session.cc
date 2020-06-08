@@ -78,7 +78,7 @@ Status NewSession(const SessionOptions& options, Session** out_session) {
   Status s = SessionFactory::GetFactory(options, &factory);
   if (!s.ok()) {
     *out_session = nullptr;
-    LOG(ERROR) << s;
+    LOG(ERROR) << "Failed to get session factory: " << s;
     return s;
   }
   // Starts exporting metrics through a platform-specific monitoring API (if
@@ -88,6 +88,7 @@ Status NewSession(const SessionOptions& options, Session** out_session) {
   s = factory->NewSession(options, out_session);
   if (!s.ok()) {
     *out_session = nullptr;
+    LOG(ERROR) << "Failed to create session: " << s;
   }
   return s;
 }

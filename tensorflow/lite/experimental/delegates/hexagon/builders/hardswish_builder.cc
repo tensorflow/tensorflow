@@ -27,8 +27,6 @@ namespace hexagon {
 TfLiteStatus HardSwishOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
                                                   const TfLiteIntArray* outputs,
                                                   TfLiteContext* context) {
-  static int quant_bound_shape[] = {1, 1, 1, 1};
-
   // input data tensor.
   int tensor_id = inputs->data[0];
   const auto& input1_tensor = context->tensors[tensor_id];
@@ -36,11 +34,9 @@ TfLiteStatus HardSwishOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   TF_LITE_ENSURE_STATUS(
       ComputeMinAndMaxQuantValues(input1_tensor, &input_min_, &input_max_));
   auto* input_min_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&input_min_),
-      sizeof(input_min_));
+      kScalarShape, reinterpret_cast<char*>(&input_min_), sizeof(input_min_));
   auto* input_max_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&input_max_),
-      sizeof(input_max_));
+      kScalarShape, reinterpret_cast<char*>(&input_max_), sizeof(input_max_));
   AddInput(TensorID(input_min_const->GetID(), 0));
   AddInput(TensorID(input_max_const->GetID(), 0));
 
@@ -48,11 +44,9 @@ TfLiteStatus HardSwishOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   TF_LITE_ENSURE_STATUS(ComputeMinAndMaxQuantValues(
       context->tensors[outputs->data[0]], &output_min_, &output_max_));
   auto* output_min_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&output_min_),
-      sizeof(output_min_));
+      kScalarShape, reinterpret_cast<char*>(&output_min_), sizeof(output_min_));
   auto* output_max_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&output_max_),
-      sizeof(output_max_));
+      kScalarShape, reinterpret_cast<char*>(&output_max_), sizeof(output_max_));
   AddInput(TensorID(output_min_const->GetID(), 0));
   AddInput(TensorID(output_max_const->GetID(), 0));
 
@@ -64,8 +58,8 @@ TfLiteStatus HardSwishOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   node_output_ = AddOutput(sizeof(uint8_t), 4,
                            {output_batch_size, output_height_size,
                             output_width_size, output_depth_size});
-  AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-  AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+  AddOutput(sizeof(float), 4, kScalarShape);
+  AddOutput(sizeof(float), 4, kScalarShape);
 
   return kTfLiteOk;
 }

@@ -46,28 +46,68 @@ namespace mlir {
 #include "tensorflow/compiler/mlir/lite/ir/tfl_structs.cc.inc"
 namespace TFL {
 
-// Returns true when the given two types have the same shape or broadcastable
-// shape within the given rank. If any given shapes are non-static, this method
-// returns true.
-bool IsBinaryOperandsHaveSameShapesOrBroadcastableShape(Type lhs, Type rhs,
-                                                        int max_bcast_rank) {
-  // Ignore shape checking on the non-static shapes for model compatibility.
-  auto lhs_shaped_type = lhs.dyn_cast<ShapedType>();
-  if (!lhs_shaped_type || !lhs_shaped_type.hasStaticShape()) return true;
-  auto rhs_shaped_type = rhs.dyn_cast<ShapedType>();
-  if (!rhs_shaped_type || !rhs_shaped_type.hasStaticShape()) return true;
+// Returns true when the given operand arguments have the same shape or
+// broadcastable shape within the given rank. If any given shapes are
+// non-static and maximum rank is within the given rank, this method returns
+// true.
+bool IsOperandsHaveSameShapesOrBroadcastableShape(Operation *op,
+                                                  ArrayRef<unsigned> indices,
+                                                  int max_bcast_rank) {
+  if (indices.empty()) return true;
 
-  if (lhs_shaped_type.getShape().equals(rhs_shaped_type.getShape()))
-    return true;
+  // First, it checks there are any inputs that has unknown rank.
+  bool has_unknown_shape_input = false;
+  bool has_same_shape = true;
+  bool reach_first_known_shape = false;
+  int64_t max_rank = -1;
 
+  ArrayRef<int64_t> pivot_shape;
+  SmallVector<int64_t, 4> current_shape;
   SmallVector<int64_t, 4> result_shape;
-  if (!OpTrait::util::getBroadcastedShape(lhs_shaped_type.getShape(),
-                                          rhs_shaped_type.getShape(),
-                                          result_shape)) {
-    return false;
+
+  for (unsigned index : indices) {
+    ShapedType shaped_type =
+        op->getOperand(index).getType().dyn_cast<ShapedType>();
+    if (!shaped_type || !shaped_type.hasRank()) {
+      // Marks that we have an unknown rank input.
+      has_unknown_shape_input = true;
+      continue;
+    }
+    max_rank = std::max(max_rank, shaped_type.getRank());
+    if (!shaped_type.hasStaticShape()) {
+      // Marks that we have an unknown shape input.
+      has_unknown_shape_input = true;
+      continue;
+    }
+
+    ArrayRef<int64_t> shape = shaped_type.getShape();
+    if (!reach_first_known_shape) {
+      pivot_shape = shape;
+      current_shape.assign(shape.begin(), shape.end());
+      reach_first_known_shape = true;
+      continue;
+    }
+
+    if (!pivot_shape.equals(shape)) {
+      has_same_shape = false;
+    }
+    //  Checks if all the inputs are broadcastable since they have not all the
+    //  same shapes.
+    if (!OpTrait::util::getBroadcastedShape(current_shape, shape,
+                                            result_shape)) {
+      return false;
+    }
+    current_shape = result_shape;
   }
-  return lhs_shaped_type.getRank() <= max_bcast_rank &&
-         rhs_shaped_type.getRank() <= max_bcast_rank;
+
+  // It will treat the unknown shape inputs as acceptable inputs for model
+  // compatibility unless there is an known rank that is bigger than the allowed
+  // broadcast maximum rank.
+  if (has_unknown_shape_input) return max_rank <= max_bcast_rank;
+
+  // If all the shape is known and same, CPU kernels are able to handle inputs
+  // regardless of dimension size.
+  return has_same_shape || max_rank <= max_bcast_rank;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1882,7 +1922,7 @@ static LogicalResult Verify(TransposeConvOp op) {
 
   auto expected_output_type =
       RankedTensorType::get(output_shape, output_type.getElementType());
-  if (output_type != expected_output_type) {
+  if (failed(mlir::verifyCompatibleShape(output_type, expected_output_type))) {
     return op.emitOpError(llvm::formatv("expect output type {0}, got {1}",
                                         expected_output_type, output_type));
   }
@@ -2004,7 +2044,8 @@ static LogicalResult Verify(TransposeOp op) {
     }
     auto expected_output_type =
         RankedTensorType::get(transposed_shape, input_type.getElementType());
-    if (output_type != expected_output_type) {
+    if (failed(
+            mlir::verifyCompatibleShape(output_type, expected_output_type))) {
       return op.emitOpError(llvm::formatv("expect output type {0}, got {1}",
                                           expected_output_type, output_type));
     }

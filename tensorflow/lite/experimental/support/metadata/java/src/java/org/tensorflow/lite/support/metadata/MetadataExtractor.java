@@ -55,7 +55,7 @@ public class MetadataExtractor {
   // TODO(b/156539454): remove the hardcode versioning number and populate the version through
   // genrule.
   /** The version of the metadata parser that this {@link MetadataExtractor} library depends on. */
-  public static final String METADATA_PARSER_VERSION = "1.0.0";
+  public static final String METADATA_PARSER_VERSION = "1.0.1";
 
   /** The helper class to load metadata from TFLite model FlatBuffer. */
   private final ModelInfo modelInfo;

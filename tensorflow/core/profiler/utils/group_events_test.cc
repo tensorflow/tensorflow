@@ -68,13 +68,16 @@ TEST(GroupEventsTest, GroupGpuTraceTest) {
   EXPECT_EQ(event_group_name_map[0], "123");
 }
 
-TEST(GroupEventsTest, GroupHostTrainingLoopTest) {
+TEST(GroupEventsTest, GroupTensorFlowLoopTest) {
   XSpace space;
   XPlaneBuilder host_plane_builder(space.add_planes());
   host_plane_builder.SetName(kHostThreads);
   host_plane_builder.ReserveLines(1);
 
   auto tf_executor_thread = host_plane_builder.GetOrCreateLine(0);
+  CreateXEvent(&host_plane_builder, &tf_executor_thread,
+               HostEventType::kExecutorStateProcess, 5, 10,
+               {{StatType::kStepId, 0}, {StatType::kIterNum, 10}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 20, 80,
                {{StatType::kStepId, 0}, {StatType::kIterNum, 10}});
@@ -96,8 +99,45 @@ TEST(GroupEventsTest, GroupHostTrainingLoopTest) {
   EXPECT_EQ(device_plane_visitor.GetStatType(
                 device_plane->lines(0).events(0).stats(1)),
             StatType::kGroupId);
+  EXPECT_EQ(device_plane->lines(0).events(0).stats(1).int64_value(), 10);
   EXPECT_EQ(event_group_name_map.size(), 1);
-  EXPECT_EQ(event_group_name_map[0], "10");
+  EXPECT_EQ(event_group_name_map[10], "10");
+}
+
+// When there are multiple TF loops, group_id is assigned in the order of TF
+// loops' start times and iter_num. In this test case, the profile captures the
+// last two iterations (iter_num=10,11) of the first TF loop (step_id=0) and the
+// first two iterations (iter_num=0,1) of the second TF loop (step_id=1).
+// group_id is initialized to the first TF loop's first iter_num (10) and then
+// monotonically increased.
+TEST(GroupEventsTest, GroupMultipleTensorFlowLoopsTest) {
+  XSpace space;
+  XPlaneBuilder host_plane_builder(space.add_planes());
+  host_plane_builder.SetName(kHostThreads);
+  host_plane_builder.ReserveLines(2);
+
+  auto first_tf_executor_thread = host_plane_builder.GetOrCreateLine(0);
+  CreateXEvent(&host_plane_builder, &first_tf_executor_thread,
+               HostEventType::kExecutorStateProcess, 220, 80,
+               {{StatType::kStepId, 1}, {StatType::kIterNum, 0}});
+  CreateXEvent(&host_plane_builder, &first_tf_executor_thread,
+               HostEventType::kExecutorStateProcess, 320, 80,
+               {{StatType::kStepId, 1}, {StatType::kIterNum, 1}});
+  auto second_tf_executor_thread = host_plane_builder.GetOrCreateLine(1);
+  CreateXEvent(&host_plane_builder, &second_tf_executor_thread,
+               HostEventType::kExecutorStateProcess, 20, 80,
+               {{StatType::kStepId, 0}, {StatType::kIterNum, 10}});
+  CreateXEvent(&host_plane_builder, &second_tf_executor_thread,
+               HostEventType::kExecutorStateProcess, 120, 80,
+               {{StatType::kStepId, 0}, {StatType::kIterNum, 11}});
+
+  EventGroupNameMap event_group_name_map;
+  GroupTfEvents(&space, &event_group_name_map);
+  EXPECT_EQ(event_group_name_map.size(), 4);
+  EXPECT_TRUE(event_group_name_map.count(10));
+  EXPECT_TRUE(event_group_name_map.count(11));
+  EXPECT_TRUE(event_group_name_map.count(12));
+  EXPECT_TRUE(event_group_name_map.count(13));
 }
 
 TEST(GroupEventsTest, GroupFunctionalOp) {

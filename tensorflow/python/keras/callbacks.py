@@ -2000,7 +2000,10 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     for layer in self.model.layers:
       if isinstance(layer, embeddings.Embedding):
         embedding = config.embeddings.add()
-        embedding.tensor_name = layer.name + '/.ATTRIBUTES/VARIABLE_VALUE'
+        # Embeddings are always the first layer, so this naming should be
+        # consistent in any keras models checkpoints.
+        name = 'layer_with_weights-0/embeddings/.ATTRIBUTES/VARIABLE_VALUE'
+        embedding.tensor_name = name
 
         if self.embeddings_metadata is not None:
           if isinstance(self.embeddings_metadata, str):

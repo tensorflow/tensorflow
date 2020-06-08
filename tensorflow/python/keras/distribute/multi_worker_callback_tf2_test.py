@@ -195,6 +195,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
         if 'Interrupting!' not in str(e):
           raise
 
+      multi_process_runner.barrier().wait()
       backup_filepath = os.path.join(bar_dir, 'checkpoint')
       test_obj.assertTrue(file_io.file_exists(backup_filepath))
       test_obj.assertTrue(file_io.file_exists(saving_filepath))
@@ -208,7 +209,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
               callbacks.BackupAndRestore(backup_dir=bar_dir),
               AssertCallback()
           ])
-      multi_process_runner.barrier()
+      multi_process_runner.barrier().wait()
       test_obj.assertFalse(file_io.file_exists(backup_filepath))
       test_obj.assertTrue(file_io.file_exists(saving_filepath))
 
@@ -344,4 +345,4 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
 
 
 if __name__ == '__main__':
-  multi_process_runner.test_main()
+  multi_process_runner.test_main(barrier_parties=2)

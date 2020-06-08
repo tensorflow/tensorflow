@@ -642,7 +642,11 @@ struct ConverterTraits<complex128> {
       *out = complex128(as_complex.real, as_complex.imag);
       return nullptr;
     }
-    return ErrorMixedTypes;
+    double as_double;
+    auto error = ConvertOneFloat<double>(v, &as_double);
+    if (error != nullptr) return error;
+    *out = complex128(as_double, 0.0);
+    return nullptr;
   }
 };
 

@@ -49,6 +49,21 @@ class Conv1DTest(keras_parameterized.TestCase):
           input_shape=(num_samples, length, stack_size),
           expected_output_shape=expected_output_shape)
 
+  def _run_test_extra_batch_dim(self, kwargs, expected_output_shape):
+    batch_shape = (2, 11)
+    stack_size = 3
+    length = 7
+
+    with self.cached_session(use_gpu=True):
+      if expected_output_shape is not None:
+        expected_output_shape = (None,) + expected_output_shape
+
+      testing_utils.layer_test(
+          keras.layers.Conv1D,
+          kwargs=kwargs,
+          input_shape=batch_shape + (length, stack_size),
+          expected_output_shape=expected_output_shape)
+
   @parameterized.named_parameters(
       ('padding_valid', {
           'padding': 'valid'
@@ -85,6 +100,7 @@ class Conv1DTest(keras_parameterized.TestCase):
     kwargs['kernel_size'] = 3
     if not requires_gpu or test.is_gpu_available(cuda_only=True):
       self._run_test(kwargs, expected_output_shape)
+      self._run_test_extra_batch_dim(kwargs, expected_output_shape)
 
   def test_conv1d_regularizers(self):
     kwargs = {
@@ -171,6 +187,21 @@ class Conv2DTest(keras_parameterized.TestCase):
           input_shape=(num_samples, num_row, num_col, stack_size),
           expected_output_shape=expected_output_shape)
 
+  def _run_test_extra_batch_dim(self, kwargs, expected_output_shape):
+    batch_shape = (2, 11)
+    stack_size = 3
+    num_row = 7
+    num_col = 6
+
+    with self.cached_session(use_gpu=True):
+      if expected_output_shape is not None:
+        expected_output_shape = (None,) + expected_output_shape
+      testing_utils.layer_test(
+          keras.layers.Conv2D,
+          kwargs=kwargs,
+          input_shape=batch_shape + (num_row, num_col, stack_size),
+          expected_output_shape=expected_output_shape)
+
   @parameterized.named_parameters(
       ('padding_valid', {
           'padding': 'valid'
@@ -205,6 +236,20 @@ class Conv2DTest(keras_parameterized.TestCase):
     kwargs['kernel_size'] = (3, 3)
     if not requires_gpu or test.is_gpu_available(cuda_only=True):
       self._run_test(kwargs, expected_output_shape)
+      self._run_test_extra_batch_dim(kwargs, expected_output_shape)
+
+  def test_conv2d_op_not_recreated_on_different_batch_shape(self):
+    layer = keras.layers.Conv2D(2, 3)
+    layer(np.ones((1, 28, 28, 2)))
+    # pylint: disable=protected-access
+    old_conv_op = layer._convolution_op
+    # Expand batch to rank-2 shape (5, 5)
+    layer(np.ones((5, 5, 28, 28, 2)))
+    self.assertEqual(old_conv_op, layer._convolution_op)
+    layer(np.ones((1, 30, 30, 2)))
+    # 'HW' changed, so the conv object is rebuilt
+    self.assertNotEqual(old_conv_op, layer._convolution_op)
+    # pylint: enable=protected-access
 
   def test_conv2d_regularizers(self):
     kwargs = {
@@ -265,6 +310,27 @@ class Conv3DTest(keras_parameterized.TestCase):
           expected_output_shape=expected_output_shape,
           validate_training=validate_training)
 
+  def _run_test_extra_batch_dim(self,
+                                kwargs,
+                                expected_output_shape,
+                                validate_training=True):
+    batch_shape = (2, 11)
+    stack_size = 3
+    num_row = 7
+    num_col = 6
+    depth = 5
+
+    with self.cached_session(use_gpu=True):
+      if expected_output_shape is not None:
+        expected_output_shape = (None,) + expected_output_shape
+
+      testing_utils.layer_test(
+          keras.layers.Conv3D,
+          kwargs=kwargs,
+          input_shape=batch_shape + (depth, num_row, num_col, stack_size),
+          expected_output_shape=expected_output_shape,
+          validate_training=validate_training)
+
   @parameterized.named_parameters(
       ('padding_valid', {
           'padding': 'valid'
@@ -297,6 +363,8 @@ class Conv3DTest(keras_parameterized.TestCase):
     test_training = 'groups' not in kwargs or not test_util.is_xla_enabled()
     if not requires_gpu or test.is_gpu_available(cuda_only=True):
       self._run_test(kwargs, expected_output_shape, test_training)
+      self._run_test_extra_batch_dim(kwargs, expected_output_shape,
+                                     test_training)
 
   def test_conv3d_regularizers(self):
     kwargs = {
@@ -378,7 +446,7 @@ class GroupedConvTest(keras_parameterized.TestCase):
       ('Conv2D', keras.layers.Conv2D, (32, 12, 12, 32)),
       ('Conv3D', keras.layers.Conv3D, (32, 12, 12, 12, 32)),
   )
-  def test_group_conv(self, layer_cls, input_shape):
+  def disable_test_group_conv(self, layer_cls, input_shape):
     if test.is_gpu_available(cuda_only=True):
       with test_util.use_gpu():
         inputs = random_ops.random_uniform(shape=input_shape)

@@ -21,6 +21,7 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:TargetNVVMIR",
         "@llvm-project//mlir:Transforms",
+        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/xla:hlo",
         "//tensorflow/compiler/mlir/xla:lhlo",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",

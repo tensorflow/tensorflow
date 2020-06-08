@@ -364,7 +364,7 @@ py_test(
     name = "multi_worker_callback_tf2_test",
     srcs = ["multi_worker_callback_tf2_test.py"],
     python_version = "PY3",
-    shard_count = 5,
+    shard_count = 10,
     deps = [
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:combinations",

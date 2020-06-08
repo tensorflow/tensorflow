@@ -40,23 +40,28 @@ namespace tflite;
 // New fields and types will have associated comments with the schema version for
 // which they were added.
 //
-// Schema Semantic version: 1.0.0
+// Schema Semantic version: 1.0.1
 
 // This indicates the flatbuffer compatibility. The number will bump up when a
 // break change is applied to the schema, such as removing fields or adding new
 // fields to the middle of a table.
 file_identifier "M001";
+
+// History:
+// 1.0.1 - Added VOCABULARY type to AssociatedFileType.
+
 // File extension of any written files.
 file_extension "tflitemeta";
 
 // LINT.ThenChange(//tensorflow/lite/experimental/\
-//     /supportmetadata/java/src/java/org/tensorflow/lite/support/metadata/\
+//     /support/metadata/java/src/java/org/tensorflow/lite/support/metadata/\
 //     MetadataExtractor.java)
 
 // LINT.IfChange
 enum AssociatedFileType : byte {
   UNKNOWN = 0,
-  // Files such as readme.txt
+
+  // Files such as readme.txt.
   DESCRIPTIONS = 1,
 
   // Contains labels that annotate certain axis of the tensor. For example,
@@ -98,6 +103,11 @@ enum AssociatedFileType : byte {
   //
   // [1]: https://en.cppreference.com/w/c/string/byte/strtof
   TENSOR_AXIS_SCORE_CALIBRATION = 4,
+
+  // Contains a list of unique words (characters separated by "\n" or in lines)
+  // that help to convert natural language words to embedding vectors.
+  // Added in: 1.0.1
+  VOCABULARY = 5,
 }
 
 table AssociatedFile {

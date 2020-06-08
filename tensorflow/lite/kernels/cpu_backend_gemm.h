@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_ruy.h"
 
-#ifndef TFLITE_WITH_RUY
+#ifndef TFLITE_WITH_RUY_ONLY
 #include "tensorflow/lite/kernels/cpu_backend_gemm_eigen.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_gemmlowp.h"
 #endif
@@ -41,7 +41,7 @@ template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
 struct GemmImpl : detail::GemmImplUsingRuy<LhsScalar, RhsScalar, AccumScalar,
                                            DstScalar, quantization_flavor> {};
 
-#ifndef TFLITE_WITH_RUY
+#ifndef TFLITE_WITH_RUY_ONLY
 
 /* Specializations using gemmlowp */
 
@@ -81,7 +81,7 @@ template <>
 struct GemmImpl<float, float, float, float, QuantizationFlavor::kFloatingPoint>
     : detail::GemmImplUsingEigen {};
 
-#endif  // not TFLITE_WITH_RUY
+#endif  // not TFLITE_WITH_RUY_ONLY
 
 /* Public entry point */
 
@@ -94,12 +94,17 @@ void Gemm(const MatrixParams<LhsScalar>& lhs_params, const LhsScalar* lhs_data,
           CpuBackendContext* context) {
   ruy::profiler::ScopeLabel label("cpu_backend_gemm::Gemm");
   ValidateParams(lhs_params, rhs_params, dst_params, params);
-  bool do_custom_gemv = dst_params.cols == 1;
-#ifdef TFLITE_WITH_RUY_GEMV
-  // Prefer a Ruy GEMM to Custom GEMV unless we are doing float math.
-  // TODO(b/148692500): Add float GEMV kernels to Ruy.
-  do_custom_gemv = do_custom_gemv && std::is_floating_point<DstScalar>::value;
-#endif
+  if (context->use_caching()) {
+    // Dispatch to backend that supports caching of prepacked weights
+    // matrices.
+    detail::GemmImplUsingRuy<LhsScalar, RhsScalar, AccumScalar, DstScalar,
+                             quantization_flavor>::Run(lhs_params, lhs_data,
+                                                       rhs_params, rhs_data,
+                                                       dst_params, dst_data,
+                                                       params, context);
+    return;
+  }
+  const bool do_custom_gemv = (dst_params.cols == 1);
   if (do_custom_gemv) {
     // GEMV case: try a custom fast GEMV path.
     if (detail::CustomGemv(lhs_params, lhs_data, rhs_params, rhs_data,

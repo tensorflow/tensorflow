@@ -123,9 +123,10 @@ class GPUObjectDescriptor {
     return "";
   }
 
-  virtual absl::Status PerformSelector(const std::string& selector,
-                                       const std::vector<std::string>& args,
-                                       std::string* result) const {
+  virtual absl::Status PerformSelector(
+      const std::string& selector, const std::vector<std::string>& args,
+      const std::vector<std::string>& template_args,
+      std::string* result) const {
     *result = "";
     return absl::OkStatus();
   }
