@@ -94,7 +94,7 @@ TfLiteStatus AllocateVariables(
   return kTfLiteOk;
 }
 
-
+#if !defined(__clang__)
 // Helper function to check flatbuffer metadata correctness. This function is
 // not called by default. Hence it's not linked in to the final binary code.
 TfLiteStatus CheckOfflinePlannedOffsets(const Model* model,
@@ -157,6 +157,7 @@ TfLiteStatus CheckOfflinePlannedOffsets(const Model* model,
   }
   return kTfLiteOk;
 }
+#endif
 
 // A helper class to construct AllocationInfo array. This array contains the
 // lifetime of tensors / scratch_buffer and will be used to calculate the memory

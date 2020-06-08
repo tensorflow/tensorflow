@@ -238,7 +238,7 @@ TF_LITE_MICRO_TEST(TestFinishComplexTensorAllocation) {
 TF_LITE_MICRO_TEST(OfflinePlannerBranchesAllOnline) {
   int version = 1;
   int subgraph = 0;
-  int nbr_tensors = 4;
+  constexpr int nbr_tensors = 4;
   const int32_t metadata_buffer[tflite::testing::kOfflinePlannerHeaderSize +
                                 nbr_tensors] = {version, subgraph,
                                                 nbr_tensors,  // header
@@ -283,7 +283,7 @@ TF_LITE_MICRO_TEST(OfflinePlannerBranchesAllOnline) {
 }
 
 TF_LITE_MICRO_TEST(OfflinePlannerBasic) {
-  int nbr_tensors = 4;
+  constexpr int nbr_tensors = 4;
   const int32_t metadata_buffer[tflite::testing::kOfflinePlannerHeaderSize +
                                 nbr_tensors] = {1,  0, nbr_tensors,
                                                 0,    // t0
@@ -328,7 +328,7 @@ TF_LITE_MICRO_TEST(OfflinePlannerBasic) {
 }
 
 TF_LITE_MICRO_TEST(OfflinePlannerOverlappingAllocation) {
-  int nbr_tensors = 4;
+  constexpr int nbr_tensors = 4;
   const int32_t metadata_buffer[tflite::testing::kOfflinePlannerHeaderSize +
                                 nbr_tensors] = {
       1, 0, nbr_tensors,  // header: version, subgraph, nbr tensors
@@ -374,7 +374,7 @@ TF_LITE_MICRO_TEST(OfflinePlannerOverlappingAllocation) {
 }
 
 TF_LITE_MICRO_TEST(OfflinePlannerOfflineOnline) {
-  int nbr_tensors = 5;
+  constexpr int nbr_tensors = 5;
   const int32_t metadata_buffer[tflite::testing::kOfflinePlannerHeaderSize +
                                 nbr_tensors] = {
       1, 0, nbr_tensors,  // header: version, subgraph, nbr tensors
