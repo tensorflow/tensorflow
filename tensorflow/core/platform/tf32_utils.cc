@@ -14,14 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/tf32_utils.h"
+#include <atomic>
 
 namespace tensorflow {
 
-// TODO(nluehr): enable tf32 execution by default after TF32 Ampere testing.
-static bool tf32_enabled = false;
+// Whether TensorFloat-32 should be used where supported.
+// TODO(nluehr): Maybe enable by default after TF32 Ampere testing.
+static std::atomic<bool> tf32_allowed{false};
 
-void allow_tf32_execution(bool allow) { tf32_enabled = allow; }
+void allow_tf32_execution(bool allowed) { tf32_allowed = allowed; }
 
-bool tf32_execution_allowed() { return tf32_enabled; }
+bool tf32_execution_allowed() { return tf32_allowed; }
 
 }  // namespace tensorflow
