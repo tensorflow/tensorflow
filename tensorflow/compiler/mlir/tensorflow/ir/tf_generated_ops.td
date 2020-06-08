@@ -6926,6 +6926,21 @@ operation.
   let hasCanonicalizer = 1;
 }
 
+def TF_VarIsInitializedOp : TF_Op<"VarIsInitializedOp", []> {
+  let summary = "Checks if a variable is initialized";
+
+  let description = [{
+This operation checks whether a resource handle-based variable has been
+initialized.
+  }];
+
+  let arguments = (ins TF_ResourceTensor : $resource);
+
+  let results = (outs TF_Tensor : $value);
+
+  let hasCanonicalizer = 1;
+}
+
 def TF_RealOp : TF_Op<"Real", [NoSideEffect, SameOperandsAndResultShape]> {
   let summary = "Returns the real part of a complex number.";
 
