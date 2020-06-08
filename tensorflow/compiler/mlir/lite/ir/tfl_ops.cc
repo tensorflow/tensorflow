@@ -1922,7 +1922,7 @@ static LogicalResult Verify(TransposeConvOp op) {
 
   auto expected_output_type =
       RankedTensorType::get(output_shape, output_type.getElementType());
-  if (output_type != expected_output_type) {
+  if (failed(mlir::verifyCompatibleShape(output_type, expected_output_type))) {
     return op.emitOpError(llvm::formatv("expect output type {0}, got {1}",
                                         expected_output_type, output_type));
   }
@@ -2044,7 +2044,8 @@ static LogicalResult Verify(TransposeOp op) {
     }
     auto expected_output_type =
         RankedTensorType::get(transposed_shape, input_type.getElementType());
-    if (output_type != expected_output_type) {
+    if (failed(
+            mlir::verifyCompatibleShape(output_type, expected_output_type))) {
       return op.emitOpError(llvm::formatv("expect output type {0}, got {1}",
                                           expected_output_type, output_type));
     }
