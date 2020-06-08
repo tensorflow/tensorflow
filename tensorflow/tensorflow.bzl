@@ -2633,8 +2633,8 @@ def tf_py_build_info_genrule(name, out):
                 "msvcp_dll_names": "msvcp140.dll,msvcp140_1.dll",
             }), "") + if_windows_cuda(_dict_to_kv({
                 "nvcuda_dll_name": "nvcuda.dll",
-                "cudart_dll_name": "cudart64_$$(echo $${TF_CUDA_VERSION:-} | sed \"s/\\.//\").dll",
-                "cudnn_dll_name": "cudnn64_$${TF_CUDNN_VERSION:-}.dll",
+                "cudart_dll_name": "cudart{cuda_version}.dll",
+                "cudnn_dll_name": "cudnn{cudnn_version}.dll",
             }), ""),
     )
 
