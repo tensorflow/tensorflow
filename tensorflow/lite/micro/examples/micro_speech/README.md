@@ -19,6 +19,7 @@ kilobytes of Flash.
 -   [Deploy to ARC EM SDP](#deploy-to-arc-em-sdp)
 -   [Deploy to Arduino](#deploy-to-arduino)
 -   [Deploy to ESP32](#deploy-to-esp32)
+-   [Deploy to Silicon Labs STK3701A](#deploy-to-silicon-labs-stk3701a)
 -   [Deploy to SparkFun Edge](#deploy-to-sparkfun-edge)
 -   [Deploy to STM32F746](#deploy-to-STM32F746)
 -   [Deploy to NXP FRDM K66F](#deploy-to-nxp-frdm-k66f)
@@ -226,6 +227,74 @@ Use `Ctrl+]` to exit.
 
 The previous two commands can be combined: `idf.py --port /dev/ttyUSB0 flash
 monitor`
+
+
+
+## Deploy to Silicon Labs STK3701A
+
+The following describes how to deploy to the Silicon Labs [SLSTK3701A](https://www.silabs.com/products/development-tools/mcu/32-bit/efm32-giant-gecko-gg11-starter-kit) development board:
+- 2MB flash
+- 512kB RAM
+- 72MHz clock
+
+
+### Initial Setup
+
+While Linux and MacOS may also work, the [Ubuntu Subsystem](https://docs.microsoft.com/en-us/windows/wsl/install-win10) for Windows 10 is the recommended development environment.  
+(Hint: Follow these [instructions](https://superuser.com/a/1134645/864689) to set the Ubuntu home directory to your Windows home directory).
+
+1 ) Install [Simplicity Studio](https://www.silabs.com/products/development-tools/software/simplicity-studio). Note, registration is not required. This step just ensures you have the [Segger JLink drivers](https://www.segger.com/downloads/jlink/#J-LinkSoftwareAndDocumentationPack) installed.  
+2 ) Open a terminal and navigate to the root of the cloned Tensorflow repository directory  
+3 ) Ensure GNU `make` is found on PATH. On Ubuntu, issue this command to install `make`:
+
+```
+sudo apt-get install build-essential
+```
+
+4 ) Additional third-party software needs to be downloaded before building the example.  
+    From the Tensorflow repo root, issue the following command:
+
+```
+make -j4 -f tensorflow/lite/micro/tools/make/Makefile TARGET=stk3701a third_party_downloads
+```
+
+5 ) Plug the STK3701A development board in via USB. Ensure the board switch on the bottom-left is set to `AEM`.  
+    Issue the following command to ensure the build scripts are able to communicate with the board:  
+
+```
+cd <Tensorflow repo root directory>
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=stk3701a reset
+```
+
+You should see something like the following on the command output:
+
+```
+Resetting chip...
+DONE
+```
+
+If this doesn't work, ensure you have correctly installed the J-Link driver. Note that the build scripts
+are using the [Standalone Simplicity Commander](https://www.silabs.com/mcu/programming-options). Refer to the [Reference Guide](https://www.silabs.com/documents/public/user-guides/ug162-simplicity-commander-reference-guide.pdf) for more details.
+
+
+
+### Build & Download
+
+To build and download the Micro Speech example to the STK3701A, issue the following commands:
+
+```
+cd <Tensorflow repo root directory>
+make -j4 -f tensorflow/lite/micro/tools/make/Makefile TARGET=stk3701a micro_speech download
+```
+
+This will build the example executable and download it to the development board.  
+Once the firmware is downloaded:
+- Saying `Yes` will turn LED1 on
+- Saying `No` will turn LED2 on
+
+
+
+
 
 ## Deploy to SparkFun Edge
 
