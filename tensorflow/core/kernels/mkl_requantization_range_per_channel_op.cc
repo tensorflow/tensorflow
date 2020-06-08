@@ -74,27 +74,11 @@ class MklRequantizationRangePerChannelOp : public OpKernel {
 
     // Find the ranges of each channel in parallel.
     float out_min_max = std::numeric_limits<float>::min();
-#ifdef ENABLE_MKLDNN_THREADPOOL
-    // TODO: Add eigen parallel_for
-    for(size_t i = 0; i < depth; ++i) {
-      Eigen::Tensor<qint32, 0, Eigen::RowMajor> min =
-          transposed_input.chip<0>(i).minimum();
-      Eigen::Tensor<qint32, 0, Eigen::RowMajor> max =
-          transposed_input.chip<0>(i).maximum();
-      const int32_t min_per_channel = min();
-      const int32_t max_per_channel = max();
-      const int32_t abs_max =
-          std::max(std::abs(min_per_channel), std::abs(max_per_channel));
-      float scale =
-          std::max(std::abs(input_min_data[i]), std::abs(input_max_data[i]));
-      ranges[i] =
-          scale * static_cast<float>(abs_max) / static_cast<float>(1L << 31);
-      if (min_per_channel < 0) is_non_negative = false;
 
-      out_min_max = std::max(out_min_max, ranges[i]);
-    }
-#else
+#ifndef ENABLE_MKLDNN_THREADPOOL
 #pragma omp parallel for reduction(max : out_min_max)
+#endif  // ENABLE_MKLDNN_THREADPOOL
+    // TODO: Add eigen parallel_for
     for (size_t i = 0; i < depth; ++i) {
       Eigen::Tensor<qint32, 0, Eigen::RowMajor> min =
           transposed_input.chip<0>(i).minimum();
@@ -113,7 +97,7 @@ class MklRequantizationRangePerChannelOp : public OpKernel {
       // Thread-local out_min_max.
       out_min_max = std::max(out_min_max, ranges[i]);
     }
-#endif  // ENABLE_MKLDNN_THREADPOOL
+
     // All local out_min_max gets max-reduced into one global out_min_max at
     // the end of the loop by specifying reduction(max:out_min_max) along with
     // omp parallel for.
