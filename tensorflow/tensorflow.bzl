@@ -2283,7 +2283,7 @@ def tf_py_test(
             kernels = kernels,
             main = main,
             shard_count = shard_count,
-            tags = tags,
+            tags = tags + ["tfrt"],
             visibility = [clean_dep("//tensorflow:internal")] +
                          additional_visibility,
             deps = depset(deps + xla_test_true_list + ["//tensorflow/python:is_tfrt_test_true"]),
