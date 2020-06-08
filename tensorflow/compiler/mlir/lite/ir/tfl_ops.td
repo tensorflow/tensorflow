@@ -212,10 +212,19 @@ class TFL_OperandIsRankedAndHasDimPred<int n, int dim> : And<[
   CPred<"$_op.getOperand(" # n # ").getType().cast<ShapedType>().getRank() > "
   # dim>]>;
 
+// Returns true if the n-th operand is ranked and has a dimension length = size
+// at the rank dim.
 class TFL_OperandDimEquals<int n, int dim, int size> : And<[
   TFL_OperandIsRankedAndHasDimPred<n, dim>,
   CPred<"$_op.getOperand(" # n # ").getType().cast<ShapedType>()"
       ".getShape()[" # dim # " ] == " # size>]>;
+
+// Returns true if the n-th operand is ranked and has a dimension length <=
+// size at the rank dim.
+class TFL_OperandDimIsAtMost<int n, int dim, int size> : And<[
+  TFL_OperandIsRankedAndHasDimPred<n, dim>,
+  CPred<"$_op.getOperand(" # n # ").getType().cast<ShapedType>()"
+      ".getShape()[" # dim # " ] <= " # size>]>;
 
 // Returns true if the n-th operand has unknown rank or at least rank m.
 class TFL_OperandHasAtleastRank<int n, int m> :
@@ -2267,6 +2276,9 @@ def TFL_PadOp : TFL_Op<"pad", [
     TFL_OperandHasRankAtMost<0, 4>,
     TFL_OperandHasRank<1, 2>,
     TFL_OperandRankEquals1DimOfOperand<0, 1>,
+    PredOpTrait<"the first dim size of the padding argument must be at most 4",
+      Or<[TFL_OperandIsUnrankedPred<1>,
+          TFL_OperandDimIsAtMost<1, 0, 4>]>>,
     TFL_GpuTargetOp]> {
   let summary = "Padding operator";
 
@@ -2312,6 +2324,9 @@ def TFL_PadV2Op : TFL_Op<"padv2", [
     TFL_OperandHasRank<1, 2>,
     TFL_OperandHasRank<2, 0>,
     TFL_OperandRankEquals1DimOfOperand<0, 1>,
+    PredOpTrait<"the first dim size of the padding argument must be at most 4",
+      Or<[TFL_OperandIsUnrankedPred<1>,
+          TFL_OperandDimIsAtMost<1, 0, 4>]>>,
     PredOpTrait<"input and constant value operands must have same element type",
       TFL_TCopVTEtAreSameAt<0, 2>>]> {
   let summary = "Padding operator v2";
