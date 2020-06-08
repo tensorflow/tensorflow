@@ -225,23 +225,9 @@ class tstring {
   friend bool operator==(const std::string& a, const tstring& b);
   friend tstring operator+(const tstring& a, const tstring& b);
   friend std::ostream& operator<<(std::ostream& o, const tstring& str);
-  //#if !defined(__APPLE__)
+  #if !(defined(__APPLE__) && GOOGLE_CUDA)
       friend std::hash<tstring>;
-  //#endif
-  // Tom: The above hash declaration causes the following compilation error on macOS
-  /**
-   ./tensorflow/core/platform/tstring.h:228:15: error: no template named 'hash'; did you mean 'std::hash'?
-friend hash< tstring> ; 
-              ^~~~
-              std::hash
-/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include/c++/v1/type_traits:400:29: note: 'std::hash' declared here
-template< class _Tp> hash; 
-                            ^
-1 error generated.
-ERROR: /Volumes/Data/libraries/tensorflow/tensorflow/core/kernels/BUILD:384:1: output 'tensorflow/core/kernels/_objs/fill_functor_gpu/fill_functor.cu.pic.o' was not created
-   */
-  // I tried adding 'struct' keyword before std::hash, and adding '#include <functional>' without luck. The only workaround availabe now is to remove the 
-  // declaration. However, I do not know if the change breaks anything.
+  #endif
 };
 
 // Non-member function overloads
