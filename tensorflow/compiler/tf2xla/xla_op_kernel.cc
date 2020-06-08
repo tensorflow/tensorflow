@@ -352,6 +352,12 @@ Status XlaOpKernelContext::ConstantInputAsShape(int index, TensorShape* shape) {
   TF_RETURN_IF_ERROR(ConstantInput(index, &literal));
   std::vector<int64> dims;
   TF_RETURN_IF_ERROR(LiteralToInt64Vector(literal, &dims));
+  for (size_t i = 0; i < dims.size(); i ++) {
+    if (dims[i] < 0) {
+      return errors::InvalidArgument(
+          "Dimension[", i, "] ", dims[i], " must be >= 0");
+    }
+  }
   *shape = TensorShape(dims);
   return Status::OK();
 }

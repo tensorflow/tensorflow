@@ -200,6 +200,16 @@ class BroadcastToTest(test_util.TensorFlowTestCase):
       v = array_ops.broadcast_to(constant_op.constant(x), output_shape)
       self.evaluate(v)
 
+  # Test case for GitHub issue 40138.
+  def testBroadcastToOverflow(self):
+    for dtype in [np.uint32, np.uint64]:
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "must be >= 0"):
+        with self.session():
+          x = np.array([1, 2], dtype=dtype)
+          shape = np.array([1e18, 2]).astype('int64')
+          self.evaluate(array_ops.broadcast_to(x, shape))
+
 
 if __name__ == "__main__":
   test_lib.main()
