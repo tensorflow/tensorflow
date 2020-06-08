@@ -112,14 +112,11 @@ StepEvents ConvertHostThreadsXPlaneToStepEvents(
 StepEvents ConvertDeviceStepInfoToStepMarkers(const XLineVisitor& line) {
   StepEvents result;
   line.ForEachEvent([&](const XEventVisitor& event) {
-    event.ForEachStat([&](const XStatVisitor& stat) {
-      if (stat.Type() == StatType::kGroupId) {
-        result[stat.IntValue()].AddMarker(
-            StepMarker(StepMarkerType::kDeviceStepMarker, event.Name(),
-                       Timespan(event.TimestampPs(), event.DurationPs())));
-        return;
-      }
-    });
+    if (absl::optional<XStatVisitor> stat = event.GetStat(StatType::kGroupId)) {
+      result[stat->IntValue()].AddMarker(
+          StepMarker(StepMarkerType::kDeviceStepMarker, event.Name(),
+                     Timespan(event.TimestampPs(), event.DurationPs())));
+    }
   });
   return result;
 }

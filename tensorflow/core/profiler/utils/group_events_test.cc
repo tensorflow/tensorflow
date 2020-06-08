@@ -174,12 +174,10 @@ TEST(GroupEventsTest, GroupFunctionalOp) {
         line.ForEachEvent(
             [&](const tensorflow::profiler::XEventVisitor& event) {
               absl::optional<int64> group_id;
-              event.ForEachStat(
-                  [&](const tensorflow::profiler::XStatVisitor& stat) {
-                    if (stat.Type() == StatType::kGroupId) {
-                      group_id = stat.IntValue();
-                    }
-                  });
+              if (absl::optional<XStatVisitor> stat =
+                      event.GetStat(StatType::kGroupId)) {
+                group_id = stat->IntValue();
+              }
               EXPECT_TRUE(group_id.has_value());
               EXPECT_EQ(*group_id, 0);
             });
@@ -305,12 +303,10 @@ TEST(GroupEventsTest, SemanticArgTest) {
         line.ForEachEvent(
             [&](const tensorflow::profiler::XEventVisitor& event) {
               absl::optional<int64> group_id;
-              event.ForEachStat(
-                  [&](const tensorflow::profiler::XStatVisitor& stat) {
-                    if (stat.Type() == StatType::kGroupId) {
-                      group_id = stat.IntValue();
-                    }
-                  });
+              if (absl::optional<XStatVisitor> stat =
+                      event.GetStat(StatType::kGroupId)) {
+                group_id = stat->IntValue();
+              }
               EXPECT_TRUE(group_id.has_value());
               EXPECT_EQ(*group_id, 0);
             });
@@ -339,12 +335,10 @@ TEST(GroupEventsTest, AsyncEventTest) {
         line.ForEachEvent(
             [&](const tensorflow::profiler::XEventVisitor& event) {
               absl::optional<int64> group_id;
-              event.ForEachStat(
-                  [&](const tensorflow::profiler::XStatVisitor& stat) {
-                    if (stat.Type() == StatType::kGroupId) {
-                      group_id = stat.IntValue();
-                    }
-                  });
+              if (absl::optional<XStatVisitor> stat =
+                      event.GetStat(StatType::kGroupId)) {
+                group_id = stat->IntValue();
+              }
               if (event.Name() == kAsync) {
                 EXPECT_FALSE(group_id.has_value());
               } else {
