@@ -216,8 +216,7 @@ static inline bool IsMklNameChangeOp(const string& op_name, DataType T) {
     isTypeAllowed = (T == DT_COMPLEX128 || T == DT_COMPLEX64 ||
                      T == DT_DOUBLE || T == DT_FLOAT);
 #ifdef ENABLE_INTEL_MKL_BFLOAT16
-    isTypeAllowed =
-        (isTypeAllowed || CheckBfloat16Support(T));
+    isTypeAllowed = (isTypeAllowed || CheckBfloat16Support(T));
 #endif
     return isTypeAllowed;
   }
