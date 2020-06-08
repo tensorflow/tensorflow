@@ -329,7 +329,8 @@ def NASNetMobile(input_shape=None,
                  weights='imagenet',
                  input_tensor=None,
                  pooling=None,
-                 classes=1000):
+                 classes=1000,
+                 classifier_activation='softmax'):
   """Instantiates a Mobile NASNet model in ImageNet mode.
 
   Optionally loads weights pre-trained on ImageNet.
@@ -365,6 +366,9 @@ def NASNetMobile(input_shape=None,
       classes: Optional number of classes to classify images
           into, only to be specified if `include_top` is True, and
           if no `weights` argument is specified.
+      classifier_activation: A `str` or callable. The activation function to use
+          on the "top" layer. Ignored unless `include_top=True`. Set
+          `classifier_activation=None` to return the logits of the "top" layer.
 
   Returns:
       A Keras model instance.
@@ -387,7 +391,8 @@ def NASNetMobile(input_shape=None,
       input_tensor=input_tensor,
       pooling=pooling,
       classes=classes,
-      default_size=224)
+      default_size=224,
+      classifier_activation=classifier_activation)
 
 
 @keras_export('keras.applications.nasnet.NASNetLarge',
@@ -397,7 +402,8 @@ def NASNetLarge(input_shape=None,
                 weights='imagenet',
                 input_tensor=None,
                 pooling=None,
-                classes=1000):
+                classes=1000,
+                classifier_activation='softmax'):
   """Instantiates a NASNet model in ImageNet mode.
 
   Optionally loads weights pre-trained on ImageNet.
@@ -433,6 +439,9 @@ def NASNetLarge(input_shape=None,
       classes: Optional number of classes to classify images
           into, only to be specified if `include_top` is True, and
           if no `weights` argument is specified.
+      classifier_activation: A `str` or callable. The activation function to use
+          on the "top" layer. Ignored unless `include_top=True`. Set
+          `classifier_activation=None` to return the logits of the "top" layer.
 
   Returns:
       A Keras model instance.
@@ -455,7 +464,8 @@ def NASNetLarge(input_shape=None,
       input_tensor=input_tensor,
       pooling=pooling,
       classes=classes,
-      default_size=331)
+      default_size=331,
+      classifier_activation=classifier_activation)
 
 
 def _separable_conv_block(ip,
