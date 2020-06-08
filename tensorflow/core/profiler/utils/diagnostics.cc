@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/utils/errors.h"
+#include "tensorflow/core/profiler/utils/diagnostics.h"
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -37,6 +39,27 @@ const absl::string_view kNoDeviceTraceCollected =
     "No device trace was collected. This might happen if your job hadn't been "
     "run on the device when sampling was turned on. You could try the sampling"
     " again later.";
+
+void PopulateStepDiagnostics(const OpStats& op_stats, Diagnostics* diag) {
+  if (op_stats.step_db().use_incomplete_step()) {
+    *diag->add_warnings() = std::string(kErrorIncompleteStep);
+  } else if (op_stats.step_db().step_sequence().empty()) {
+    *diag->add_warnings() = std::string(kErrorNoStepMarker);
+  }
+}
+
+void PopulateOverviewDiagnostics(const OpStats& op_stats, Diagnostics* diag) {
+  *diag->mutable_errors() = op_stats.errors();
+  absl::c_sort(*diag->mutable_errors());
+  if (diag->errors().empty()) {
+    // Shows run-environment error only if there is no other existing error.
+    if (op_stats.run_environment().device_type() != "CPU" &&
+        op_stats.run_environment().device_core_count() <= 0) {
+      *diag->add_errors() = std::string(kNoDeviceTraceCollected);
+    }
+  }
+  PopulateStepDiagnostics(op_stats, diag);
+}
 
 }  // namespace profiler
 }  // namespace tensorflow

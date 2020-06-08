@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_UTILS_ERRORS_H_
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/profiler/protobuf/diagnostics.pb.h"
+#include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -29,6 +31,10 @@ ABSL_CONST_INIT extern const absl::string_view kErrorIncompleteStep;
 ABSL_CONST_INIT extern const absl::string_view kErrorNoStepMarker;
 
 ABSL_CONST_INIT extern const absl::string_view kNoDeviceTraceCollected;
+
+void PopulateStepDiagnostics(const OpStats& op_stats, Diagnostics* diag);
+
+void PopulateOverviewDiagnostics(const OpStats& op_stats, Diagnostics* diag);
 
 }  // namespace profiler
 }  // namespace tensorflow
