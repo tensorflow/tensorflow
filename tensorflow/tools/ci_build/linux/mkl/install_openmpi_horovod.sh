@@ -55,7 +55,18 @@ echo 'OpenMPI version:'
 mpirun --version
 
 # Install OpenSSH for MPI to communicate between containers
-apt-get install -y --no-install-recommends --fix-missing openssh-client openssh-server libnuma-dev
+( apt-get update && apt-get install -y --no-install-recommends --fix-missing \
+        libnuma-dev \
+        openssh-server \
+        openssh-client \        
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* ) || \
+    ( yum -y update && yum -y install \
+            numactl-devel \
+            openssh-server \
+            openssh-clients \            
+    yum clean all ) || \
+    ( echo "Unsupported Linux distribution. Aborting!" && exit 1 )
 mkdir -p /var/run/sshd
 # Allow OpenSSH to talk to containers without asking for confirmation
 cat /etc/ssh/ssh_config | grep -v StrictHostKeyChecking > /etc/ssh/ssh_config.new
