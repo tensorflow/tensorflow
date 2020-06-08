@@ -287,7 +287,10 @@ message DebugOptions {
   // memory, or have bugs.
   bool xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found = 138;
 
-  // Next id: 141
+  // Extra parameters to pass the GPU assembler.
+  string xla_gpu_gpuasm_extra_flags = 141;
+
+  // Next id: 142
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
