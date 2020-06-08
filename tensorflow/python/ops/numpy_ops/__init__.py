@@ -42,3 +42,5 @@ max = amax
 min = amin
 round = around
 # pylint: enable=redefined-builtin,undefined-variable
+
+from tensorflow.python.ops.array_ops import newaxis
