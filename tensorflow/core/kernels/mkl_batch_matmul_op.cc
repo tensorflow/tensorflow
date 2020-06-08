@@ -157,9 +157,7 @@ class BatchMatMulMkl : public OpKernel {
     std::vector<MKL_INT> ldb_array(batch_size, adj_y_ ? K : N);
     std::vector<MKL_INT> ldc_array(batch_size, N);
     std::vector<MKL_INT> group_size(1, batch_size);
-    const Scalar* a = nullptr;
-    const Scalar* b = nullptr;
-    Scalar* c = nullptr;
+
     bool threadpool_enabled = false;
 #ifdef ENABLE_MKLDNN_THREADPOOL
     threadpool_enabled = true;
@@ -167,6 +165,9 @@ class BatchMatMulMkl : public OpKernel {
     if (std::is_same<Scalar, bfloat16>::value || threadpool_enabled) {
       // DNNL bfloat16 API requires a, b, and c as pointers to tensors
       // represented as flat-byte array.
+      const Scalar* a = nullptr;
+      const Scalar* b = nullptr;
+      Scalar* c = nullptr;
       a = &lhs_reshaped(0, 0, 0);
       b = &rhs_reshaped(0, 0, 0);
       OP_REQUIRES(ctx, !bcast.IsBroadcastingRequired(),
@@ -289,8 +290,8 @@ class BatchMatMulMkl : public OpKernel {
                           BatchMatMulMkl<CPUDevice, TYPE, true>)
 
 #ifdef ENABLE_MKL
-TF_CALL_float(REGISTER_BATCH_MATMUL_MKL_V2);
 TF_CALL_float(REGISTER_BATCH_MATMUL_MKL);
+TF_CALL_float(REGISTER_BATCH_MATMUL_MKL_V2);
 #if defined(ENABLE_MKLDNN_V1) && defined(ENABLE_INTEL_MKL_BFLOAT16)
 TF_CALL_bfloat16(REGISTER_BATCH_MATMUL_MKL);
 TF_CALL_bfloat16(REGISTER_BATCH_MATMUL_MKL_V2);
