@@ -140,18 +140,15 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddDequantize() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function once cl/313453102 lands.
     return AddBuiltin(BuiltinOperator_DEQUANTIZE,
-                      *tflite::ops::micro::Register_DEQUANTIZE(), ParseOpData);
+                      *tflite::ops::micro::Register_DEQUANTIZE(),
+                      ParseDequantize);
   }
 
   TfLiteStatus AddFullyConnected() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function once cl/313453102 lands.
     return AddBuiltin(BuiltinOperator_FULLY_CONNECTED,
                       *tflite::ops::micro::Register_FULLY_CONNECTED(),
-                      ParseOpData);
+                      ParseFullyConnected);
   }
 
   TfLiteStatus AddLogistic() {
@@ -162,10 +159,8 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddQuantize() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function once cl/313453102 lands.
     return AddBuiltin(BuiltinOperator_QUANTIZE,
-                      *tflite::ops::micro::Register_QUANTIZE(), ParseOpData);
+                      *tflite::ops::micro::Register_QUANTIZE(), ParseQuantize);
   }
 
   TfLiteStatus AddReshape() {
@@ -176,17 +171,13 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddSoftmax() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function once cl/313453102 lands.
     return AddBuiltin(BuiltinOperator_SOFTMAX,
-                      *tflite::ops::micro::Register_SOFTMAX(), ParseOpData);
+                      *tflite::ops::micro::Register_SOFTMAX(), ParseSoftmax);
   }
 
   TfLiteStatus AddSvdf() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function once cl/313453102 lands.
     return AddBuiltin(BuiltinOperator_SVDF,
-                      *tflite::ops::micro::Register_SVDF(), ParseOpData);
+                      *tflite::ops::micro::Register_SVDF(), ParseSvdf);
   }
 
   unsigned int GetRegistrationLength() { return registrations_len_; }
