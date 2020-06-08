@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -op-fusion | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt %s -tf-op-fusion | FileCheck %s --dump-input-on-failure
 
 //===----------------------------------------------------------------------===//
 // Conv2D + BiasAdd + <Activation> fusions.

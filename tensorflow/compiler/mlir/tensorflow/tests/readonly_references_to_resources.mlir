@@ -1,4 +1,4 @@
-// RUN: tf-opt -verify-diagnostics -readonly-references-to-resources -split-input-file %s | FileCheck %s --dump-input=fail
+// RUN: tf-opt -verify-diagnostics -tf-readonly-references-to-resources -split-input-file %s | FileCheck %s --dump-input=fail
 
 // Test case: Basic converting.
 
