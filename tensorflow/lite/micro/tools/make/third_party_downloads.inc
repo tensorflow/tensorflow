@@ -93,3 +93,6 @@ ETHOSU_MD5 := "d2073c8d88fc167fd5c46b5dcda58ea1"
 
 HIMAX_WE1_SDK_URL ="https://www.himax.com.tw/we-i/himax_we1_sdk_v03.zip"
 HIMAX_WE1_SDK_MD5 ="1cd9b17f3fdb3e9a1dfd1cc356694325"
+SILABS_EFX32_LIB_URL := "https://www.dropbox.com/s/g3lxy03br939opl/efx32_tflite_micro-1.0.tar.gz?dl=1"
+SILABS_EFX32_LIB_MD5 := "85b62ae1d3761a4437d2ea61063cc431"
+SILABS_EFX32_LIB_DEST := efx32_tflite_micro-1.0
