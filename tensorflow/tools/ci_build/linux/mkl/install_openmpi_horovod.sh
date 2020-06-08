@@ -58,7 +58,7 @@ mpirun --version
 ( apt-get update && apt-get install -y --no-install-recommends --fix-missing \
         libnuma-dev \
         openssh-server \
-        openssh-client && \        
+        openssh-clients && \        
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* ) || \
     ( yum -y update && yum -y install \
