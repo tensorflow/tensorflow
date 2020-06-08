@@ -2068,5 +2068,18 @@ class CacheCorrectnessTest(keras_parameterized.TestCase):
     # `None` value passed during construction is overridden.
     self.assertAllEqual(network(x, training=False), x * 0.0)
 
+  def test_keras_history_propagation_(self):
+    for input_shape in [(1,), (1, 1)]:
+      sub_in = input_layer_lib.Input((1,))
+      relu_layer = layers.ReLU()
+      sub_out = relu_layer(sub_in)
+      submodel = functional.Functional(sub_in, sub_out)
+      self.assertLen(relu_layer._inbound_nodes, 1)
+
+      inp = input_layer_lib.Input(input_shape)
+      submodel(inp)
+      self.assertLen(relu_layer._inbound_nodes, 2)
+
+
 if __name__ == '__main__':
   test.main()
