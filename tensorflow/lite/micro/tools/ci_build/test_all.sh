@@ -52,4 +52,7 @@ tensorflow/lite/micro/tools/ci_build/test_x86.sh
 echo "Running stm32f4 tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_stm32f4.sh
 
+echo "Running silabs tests at `date`"
+tensorflow/lite/micro/tools/ci_build/test_silabs.sh
+
 echo "Finished all micro tests at `date`"
