@@ -58,13 +58,13 @@ mpirun --version
 ( apt-get update && apt-get install -y --no-install-recommends --fix-missing \
         libnuma-dev \
         openssh-server \
-        openssh-client \        
+        openssh-client && \        
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* ) || \
     ( yum -y update && yum -y install \
             numactl-devel \
             openssh-server \
-            openssh-clients \            
+            openssh-clients && \            
     yum clean all ) || \
     ( echo "Unsupported Linux distribution. Aborting!" && exit 1 )
 mkdir -p /var/run/sshd
