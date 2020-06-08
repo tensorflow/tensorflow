@@ -10,7 +10,6 @@ RUN apt-get update && apt-get install -y \
 RUN apt-get update && apt-get install -y \
     python3-pil \
     python3-h5py \
-    python3-keras-preprocessing \
     python3-matplotlib \
     python3-mock \
     python3-numpy \
@@ -20,6 +19,7 @@ RUN apt-get update && apt-get install -y \
     python3-portpicker
 
 RUN python3 -m pip --no-cache-dir install \
+    keras_preprocessing \
     enum34
 
 # Build and install bazel
