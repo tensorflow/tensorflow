@@ -55,10 +55,9 @@ void StatefulNnApiDelegate::Data::CacheDelegateKernel(
     const TfLiteDelegateParams* delegate_params,
     NNAPIDelegateKernel* delegate_state) {}
 
-absl::optional<NNAPIDelegateKernel*>
-StatefulNnApiDelegate::Data::GetCachedDelegateKernel(
+NNAPIDelegateKernel* StatefulNnApiDelegate::Data::MaybeGetCachedDelegateKernel(
     const TfLiteDelegateParams* delegate_params) {
-  return absl::nullopt;
+  return nullptr;
 }
 
 }  // namespace tflite

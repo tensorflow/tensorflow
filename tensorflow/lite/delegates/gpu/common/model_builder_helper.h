@@ -69,10 +69,11 @@ void ConvertFloat16ToFloat32(size_t num_elements, const uint16_t* src,
                              float* dst);
 
 template <typename T>
-void DequantizeConstantTensor(const TfLiteTensor& tensor, const T* source_data,
-                              float* dequantized_data) {
+inline void DequantizeConstantTensor(const TfLiteTensor& tensor,
+                                     const T* source_data,
+                                     float* dequantized_data) {
   TfLiteAffineQuantization* quant_params =
-      reinterpret_cast<TfLiteAffineQuantization*>(tensor.quantization.params);
+      static_cast<TfLiteAffineQuantization*>(tensor.quantization.params);
   if (quant_params->scale->size > 1) {
     // Tensor is per-channel quantized.
     PerChannelDequantizationParams op_params;

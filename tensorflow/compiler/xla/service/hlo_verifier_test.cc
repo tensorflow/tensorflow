@@ -1201,7 +1201,8 @@ TEST_F(HloVerifierTest, CollectivePermuteDoneNoCollectivePermuteStart) {
     p0 = f32[2,3]{1,0:S(1)} parameter(0)
     p1 = f32[2,3]{1,0:S(1)} parameter(1)
     p2 = u32[] parameter(2)
-    tuple.1 = (f32[2,3], f32[2,3], u32[], u32[]) tuple(p0, p1, p2)
+    p3 = u32[] parameter(3)
+    tuple.1 = (f32[2,3], f32[2,3], u32[], u32[]) tuple(p0, p1, p2, p3)
     ROOT collective-permute-done.1 = f32[2,3]{1,0:S(1)} collective-permute-done(tuple.1)
   }
   )";

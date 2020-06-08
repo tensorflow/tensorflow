@@ -93,6 +93,8 @@ cc_library(
 alias(
     name = "schema_fbs_version",
     actual = ":version",
+    # avoid_dep tells build_cleaner to not use schema_fbs_version.
+    tags = ["avoid_dep"],
 )
 
 cc_library(
@@ -506,8 +508,7 @@ cc_test(
         ":util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
-        "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

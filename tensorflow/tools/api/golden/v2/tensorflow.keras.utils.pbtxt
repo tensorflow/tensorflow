@@ -73,6 +73,10 @@ tf_module {
     argspec: "args=[\'x\', \'axis\', \'order\'], varargs=None, keywords=None, defaults=[\'-1\', \'2\'], "
   }
   member_method {
+    name: "pack_x_y_sample_weight"
+    argspec: "args=[\'x\', \'y\', \'sample_weight\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
     name: "plot_model"
     argspec: "args=[\'model\', \'to_file\', \'show_shapes\', \'show_layer_names\', \'rankdir\', \'expand_nested\', \'dpi\'], varargs=None, keywords=None, defaults=[\'model.png\', \'False\', \'True\', \'TB\', \'False\', \'96\'], "
   }
@@ -87,5 +91,9 @@ tf_module {
   member_method {
     name: "to_categorical"
     argspec: "args=[\'y\', \'num_classes\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \'float32\'], "
+  }
+  member_method {
+    name: "unpack_x_y_sample_weight"
+    argspec: "args=[\'data\'], varargs=None, keywords=None, defaults=None"
   }
 }

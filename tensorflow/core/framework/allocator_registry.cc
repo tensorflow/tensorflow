@@ -113,7 +113,7 @@ SubAllocator* AllocatorFactoryRegistry::GetSubAllocator(int numa_node) {
       CHECK_LE(numa_node, port::NUMANumNodes());
       index = 1 + numa_node;
     }
-    if (best_entry->sub_allocators.size() < (index + 1)) {
+    if (best_entry->sub_allocators.size() < static_cast<size_t>(index + 1)) {
       best_entry->sub_allocators.resize(index + 1);
     }
     if (!best_entry->sub_allocators[index].get()) {

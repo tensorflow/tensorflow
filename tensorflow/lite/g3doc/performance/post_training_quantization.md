@@ -2,9 +2,9 @@
 
 Post-training quantization is a conversion technique that can reduce model size
 while also improving CPU and hardware accelerator latency, with little
-degradation in model accuracy. You can perform these techniques using an
-already-trained float TensorFlow model when you convert it to TensorFlow Lite
-format using the [TensorFlow Lite Converter](../convert/).
+degradation in model accuracy. You can quantize an already-trained float
+TensorFlow model when you convert it to TensorFlow Lite format using the
+[TensorFlow Lite Converter](../convert/).
 
 Note: The procedures on this page require TensorFlow 1.15 or higher.
 
@@ -22,8 +22,8 @@ summary table of the choices and the benefits they provide:
 | Float16 quantization | 2x smaller, potential GPU | CPU, GPU         |
 :                      : acceleration              :                  :
 
-This decision tree can help determine which post-training quantization method is
-best for your use case:
+The following decision tree can help determine which post-training quantization
+method is best for your use case:
 
 ![post-training optimization options](images/optimization.jpg)
 
@@ -47,9 +47,9 @@ To further improve latency, "dynamic-range" operators dynamically quantize
 activations based on their range to 8-bits and perform computations with 8-bit
 weights and activations. This optimization provides latencies close to fully
 fixed-point inference. However, the outputs are still stored using floating
-point, so that the speedup with dynamic-range ops is less than a full
-fixed-point computation. Dynamic-range ops are available for the most
-compute-intensive operators in a network:
+point so that the speedup with dynamic-range ops is less than a full fixed-point
+computation. Dynamic-range ops are available for the most compute-intensive
+operators in a network:
 
 *   `tf.keras.layers.Dense`
 *   `tf.keras.layers.Conv2D`
@@ -62,12 +62,12 @@ compute-intensive operators in a network:
 ### Full integer quantization
 
 You can get further latency improvements, reductions in peak memory usage, and
-access to integer only hardware devices or accelerators by making sure all model
-math is integer quantized.
+compatibility with integer only hardware devices or accelerators by making sure
+all model math is integer quantized.
 
-To do this, you need to measure the dynamic range of activations and inputs by
-supplying sample input data to the converter. Refer to the
-`representative_dataset_gen()` function used in the following code.
+For full integer quantization, you need to measure the dynamic range of
+activations and inputs by supplying sample input data to the converter. Refer to
+the `representative_dataset_gen()` function used in the following code.
 
 #### Integer with float fallback (using default float input/output)
 
@@ -87,14 +87,14 @@ converter.representative_dataset = representative_dataset_gen</b>
 tflite_quant_model = converter.convert()
 </pre>
 
-Note: This won't be compatible with integer only devices (such as 8-bit
-microcontrollers) and accelerators (such as the Coral Edge TPU). For convenience
-during inference, the input and output still remain float in order to have the
-same interface as the original float only model.
+Note: This `tflite_quant_model` won't be compatible with integer only devices
+(such as 8-bit microcontrollers) and accelerators (such as the Coral Edge TPU)
+because the input and output still remain float in order to have the same
+interface as the original float only model.
 
 #### Integer only
 
-*This is a common use case for
+*Creating integer only models is a common use case for
 [TensorFlow Lite for Microcontrollers](https://www.tensorflow.org/lite/microcontrollers)
 and [Coral Edge TPUs](https://coral.ai/).*
 
@@ -135,18 +135,18 @@ converter.target_spec.supported_types = [tf.lite.constants.FLOAT16]</b>
 tflite_quant_model = converter.convert()
 </pre>
 
-The advantages of this quantization are as follows:
+The advantages of float16 quantization are as follows:
 
-*   Reduce model size by up to half (since all weights are now half the original
-    size).
-*   Minimal loss in accuracy.
-*   Supports some delegates (e.g. the GPU delegate) can operate directly on
-    float16 data, which results in faster execution than float32 computations.
+*   It reduces model size by up to half (since all weights become half of their
+    original size).
+*   It causes minimal loss in accuracy.
+*   It supports some delegates (e.g. the GPU delegate) which can operate
+    directly on float16 data, resulting in faster execution than float32
+    computations.
 
-The disadvantages of this quantization are as follows:
+The disadvantages of float16 quantization are as follows:
 
-*   Not a good choice for maximum performance (a quantization to fixed point
-    math would be better in that case).
+*   It does not reduce latency as much as a quantization to fixed point math.
 *   By default, a float16 quantized model will "dequantize" the weights values
     to float32 when run on the CPU. (Note that the GPU delegate will not perform
     this dequantization, since it can operate on float16 data.)

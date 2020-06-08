@@ -45,6 +45,7 @@ size_t FindEnclosingBracket(const std::string& text, size_t first_pos,
       {'(', ')'},
       {'{', '}'},
       {'[', ']'},
+      {'<', '>'},
   };
   char b_open = bracket;
   auto it = brackets.find(b_open);
@@ -68,6 +69,28 @@ size_t FindEnclosingBracket(const std::string& text, size_t first_pos,
   } else {
     return -1;
   }
+}
+
+absl::Status ParseArgsInsideBrackets(const std::string& text,
+                                     size_t open_bracket_pos,
+                                     size_t* close_bracket_pos,
+                                     std::vector<std::string>* args) {
+  *close_bracket_pos =
+      FindEnclosingBracket(text, open_bracket_pos + 1, text[open_bracket_pos]);
+  if (*close_bracket_pos == -1) {
+    return absl::NotFoundError("Not found enclosing bracket");
+  }
+  std::string str_args = text.substr(open_bracket_pos + 1,
+                                     *close_bracket_pos - open_bracket_pos - 2);
+  std::vector<absl::string_view> words = absl::StrSplit(str_args, ',');
+  args->reserve(words.size());
+  for (const auto& word : words) {
+    absl::string_view arg = absl::StripAsciiWhitespace(word);
+    if (!arg.empty()) {
+      args->push_back(std::string(arg));
+    }
+  }
+  return absl::OkStatus();
 }
 
 void ReplaceAllWords(const std::string& old_word, const std::string& new_word,
@@ -94,13 +117,29 @@ void AppendArgument(const std::string& arg, std::string* args) {
   absl::StrAppend(args, arg);
 }
 
+std::string GetImageModifier(AccessType access) {
+  switch (access) {
+    case AccessType::READ:
+      return "__read_only";
+    case AccessType::WRITE:
+      return "__write_only";
+    case AccessType::READ_WRITE:
+      return "__read_write";
+  }
+}
+
 }  // namespace
+
+// Static
+constexpr char Arguments::kArgsPrefix[];
 
 Arguments::Arguments(Arguments&& args)
     : int_values_(std::move(args.int_values_)),
       shared_int4s_data_(std::move(args.shared_int4s_data_)),
       float_values_(std::move(args.float_values_)),
       shared_float4s_data_(std::move(args.shared_float4s_data_)),
+      half_values_(std::move(args.half_values_)),
+      shared_half4s_data_(std::move(args.shared_half4s_data_)),
       buffers_(std::move(args.buffers_)),
       images2d_(std::move(args.images2d_)),
       image2d_arrays_(std::move(args.image2d_arrays_)),
@@ -114,6 +153,8 @@ Arguments& Arguments::operator=(Arguments&& args) {
     shared_int4s_data_ = std::move(args.shared_int4s_data_);
     float_values_ = std::move(args.float_values_);
     shared_float4s_data_ = std::move(args.shared_float4s_data_);
+    half_values_ = std::move(args.half_values_);
+    shared_half4s_data_ = std::move(args.shared_half4s_data_);
     buffers_ = std::move(args.buffers_);
     images2d_ = std::move(args.images2d_);
     image2d_arrays_ = std::move(args.image2d_arrays_);
@@ -127,6 +168,9 @@ Arguments& Arguments::operator=(Arguments&& args) {
 
 void Arguments::AddFloat(const std::string& name, float value) {
   float_values_[name].value = value;
+}
+void Arguments::AddHalf(const std::string& name, half value) {
+  half_values_[name].value = value;
 }
 void Arguments::AddInt(const std::string& name, int value) {
   int_values_[name].value = value;
@@ -155,13 +199,14 @@ void Arguments::AddImageBuffer(const std::string& name,
   image_buffers_[name] = desc;
 }
 
-void Arguments::AddObjectRef(const std::string& name,
+void Arguments::AddObjectRef(const std::string& name, AccessType access_type,
                              GPUObjectDescriptorPtr&& descriptor_ptr) {
-  object_refs_[name] = {AccessType::READ, std::move(descriptor_ptr)};
+  object_refs_[name] = {access_type, std::move(descriptor_ptr)};
 }
 
-void Arguments::AddObject(const std::string& name, GPUObjectPtr&& object) {
-  objects_[name] = {AccessType::READ, std::move(object)};
+void Arguments::AddObject(const std::string& name, AccessType access_type,
+                          GPUObjectPtr&& object) {
+  objects_[name] = {access_type, std::move(object)};
 }
 
 void Arguments::AddGPUResources(const std::string& name,
@@ -190,27 +235,40 @@ void Arguments::AddGPUResources(const std::string& name,
 }
 
 absl::Status Arguments::SetInt(const std::string& name, int value) {
-  auto ii = int_values_.find(name);
-  if (ii == int_values_.end()) {
+  auto it = int_values_.find(name);
+  if (it == int_values_.end()) {
     return absl::NotFoundError(
         absl::StrCat("No int argument with name - ", name));
   }
-  ii->second.value = value;
-  if (ii->second.active) {
-    shared_int4s_data_[ii->second.offset] = value;
+  it->second.value = value;
+  if (it->second.active) {
+    shared_int4s_data_[it->second.offset] = value;
   }
   return absl::OkStatus();
 }
 
 absl::Status Arguments::SetFloat(const std::string& name, float value) {
-  auto fi = float_values_.find(name);
-  if (fi == float_values_.end()) {
+  auto it = float_values_.find(name);
+  if (it == float_values_.end()) {
     return absl::NotFoundError(
         absl::StrCat("No float argument with name - ", name));
   }
-  fi->second.value = value;
-  if (fi->second.active) {
-    shared_float4s_data_[fi->second.offset] = value;
+  it->second.value = value;
+  if (it->second.active) {
+    shared_float4s_data_[it->second.offset] = value;
+  }
+  return absl::OkStatus();
+}
+
+absl::Status Arguments::SetHalf(const std::string& name, half value) {
+  auto it = half_values_.find(name);
+  if (it == half_values_.end()) {
+    return absl::NotFoundError(
+        absl::StrCat("No half argument with name - ", name));
+  }
+  it->second.value = value;
+  if (it->second.active) {
+    shared_half4s_data_[it->second.offset] = value;
   }
   return absl::OkStatus();
 }
@@ -273,7 +331,7 @@ absl::Status Arguments::SetObjectRef(const std::string& name,
     return absl::NotFoundError(
         absl::StrCat("No object ref with name - ", name));
   }
-  return SetGPUResources(name, object->GetGPUResources());
+  return SetGPUResources(name, object->GetGPUResources(it->second.access_type));
 }
 
 absl::Status Arguments::SetGPUResources(
@@ -320,24 +378,33 @@ std::string Arguments::GetListOfArgs() {
                    &result);
   }
   for (auto& t : image_buffers_) {
-    AppendArgument(absl::StrCat("__read_only image1d_buffer_t ", t.first),
+    AppendArgument(absl::StrCat(GetImageModifier(t.second.access_type),
+                                " image1d_buffer_t ", t.first),
                    &result);
   }
   for (auto& t : images2d_) {
-    AppendArgument(absl::StrCat("__read_only image2d_t ", t.first), &result);
+    AppendArgument(absl::StrCat(GetImageModifier(t.second.access_type),
+                                " image2d_t ", t.first),
+                   &result);
   }
   for (auto& t : image2d_arrays_) {
-    AppendArgument(absl::StrCat("__read_only image2d_array_t ", t.first),
+    AppendArgument(absl::StrCat(GetImageModifier(t.second.access_type),
+                                " image2d_array_t ", t.first),
                    &result);
   }
   for (auto& t : images3d_) {
-    AppendArgument(absl::StrCat("__read_only image3d_t ", t.first), &result);
+    AppendArgument(absl::StrCat(GetImageModifier(t.second.access_type),
+                                " image3d_t ", t.first),
+                   &result);
   }
   for (int i = 0; i < shared_int4s_data_.size() / 4; ++i) {
     AppendArgument(absl::StrCat("int4 shared_int4_", i), &result);
   }
   for (int i = 0; i < shared_float4s_data_.size() / 4; ++i) {
     AppendArgument(absl::StrCat("float4 shared_float4_", i), &result);
+  }
+  for (int i = 0; i < shared_half4s_data_.size() / 4; ++i) {
+    AppendArgument(absl::StrCat("half4 shared_half4_", i), &result);
   }
   return result;
 }
@@ -445,6 +512,20 @@ std::string Arguments::AddActiveArgument(const std::string& arg_name) {
     std::string postfixes[4] = {"x", "y", "z", "w"};
     return "shared_float4_" + index + "." + postfixes[float_index % 4];
   }
+  if (auto it = half_values_.find(arg_name); it != half_values_.end()) {
+    int half_index;
+    if (it->second.active) {
+      half_index = it->second.offset;
+    } else {
+      it->second.active = true;
+      it->second.offset = shared_half4s_data_.size();
+      half_index = it->second.offset;
+      shared_half4s_data_.push_back(it->second.value);
+    }
+    std::string index = std::to_string(half_index / 4);
+    std::string postfixes[4] = {"x", "y", "z", "w"};
+    return "shared_half4_" + index + "." + postfixes[half_index % 4];
+  }
   return arg_name;
 }
 
@@ -466,6 +547,8 @@ void Arguments::ResolveArgsPass(std::string* code) {
   shared_int4s_data_.resize(shared_int4s_aligned_size);
   int shared_float4s_aligned_size = AlignByN(shared_float4s_data_.size(), 4);
   shared_float4s_data_.resize(shared_float4s_aligned_size);
+  int shared_half4s_aligned_size = AlignByN(shared_half4s_data_.size(), 4);
+  shared_half4s_data_.resize(shared_half4s_aligned_size);
 }
 
 void Arguments::ResolveObjectNames(const std::string& object_name,
@@ -477,10 +560,10 @@ void Arguments::ResolveObjectNames(const std::string& object_name,
   }
 }
 
-absl::Status Arguments::ResolveSelector(const std::string& object_name,
-                                        const std::string& selector,
-                                        const std::vector<std::string>& args,
-                                        std::string* result) {
+absl::Status Arguments::ResolveSelector(
+    const std::string& object_name, const std::string& selector,
+    const std::vector<std::string>& args,
+    const std::vector<std::string>& template_args, std::string* result) {
   const GPUObjectDescriptor* desc_ptr;
   AccessType access_type;
   if (auto it = object_refs_.find(object_name); it != object_refs_.end()) {
@@ -493,8 +576,9 @@ absl::Status Arguments::ResolveSelector(const std::string& object_name,
     return absl::NotFoundError(
         absl::StrCat("No object with name - ", object_name));
   }
-  RETURN_IF_ERROR(desc_ptr->PerformSelector(selector, args, result));
-  auto names = desc_ptr->GetGPUResources().GetNames();
+  RETURN_IF_ERROR(
+      desc_ptr->PerformSelector(selector, args, template_args, result));
+  auto names = desc_ptr->GetGPUResources(access_type).GetNames();
   ResolveObjectNames(object_name, names, result);
   return absl::OkStatus();
 }
@@ -513,32 +597,26 @@ absl::Status Arguments::ResolveSelectorsPass(std::string* code) {
       std::string selector_name = GetNextWord(*code, next_position);
       next_position += selector_name.size();
       next = (*code)[next_position];
+      std::vector<std::string> template_args;
+      if (next == '<') {
+        size_t close_bracket_pos;
+        RETURN_IF_ERROR(ParseArgsInsideBrackets(
+            *code, next_position, &close_bracket_pos, &template_args));
+        next_position = close_bracket_pos;
+        next = (*code)[next_position];
+      }
       if (next != '(') {
         return absl::NotFoundError(
             absl::StrCat("Expected ( after function ", selector_name, " call"));
       }
-      next_position += 1;
-      size_t bracket_pos = FindEnclosingBracket(*code, next_position, '(');
-      if (bracket_pos == -1) {
-        return absl::NotFoundError(
-            absl::StrCat("Not found enclosing bracket for function ",
-                         selector_name, " call"));
-      }
-      std::string str_args =
-          code->substr(next_position, bracket_pos - next_position - 1);
-      std::vector<absl::string_view> words = absl::StrSplit(str_args, ',');
       std::vector<std::string> args;
-      args.reserve(words.size());
-      for (const auto& word : words) {
-        absl::string_view arg = absl::StripAsciiWhitespace(word);
-        if (!arg.empty()) {
-          args.push_back(std::string(arg));
-        }
-      }
+      size_t close_bracket_pos;
+      RETURN_IF_ERROR(ParseArgsInsideBrackets(*code, next_position,
+                                              &close_bracket_pos, &args));
       std::string patch;
-      RETURN_IF_ERROR(
-          ResolveSelector(object_name, selector_name, args, &patch));
-      code->replace(arg_pos, bracket_pos - arg_pos, patch);
+      RETURN_IF_ERROR(ResolveSelector(object_name, selector_name, args,
+                                      template_args, &patch));
+      code->replace(arg_pos, close_bracket_pos - arg_pos, patch);
       position = arg_pos + patch.size();
     } else {
       position = arg_pos + strlen(kArgsPrefix);
@@ -551,12 +629,14 @@ absl::Status Arguments::ResolveSelectorsPass(std::string* code) {
 absl::Status Arguments::AddObjectArgs() {
   for (auto& t : objects_) {
     AddGPUResources(t.first,
-                    t.second.obj_ptr->GetGPUDescriptor()->GetGPUResources());
-    RETURN_IF_ERROR(
-        SetGPUResources(t.first, t.second.obj_ptr->GetGPUResources()));
+                    t.second.obj_ptr->GetGPUDescriptor()->GetGPUResources(
+                        t.second.access_type));
+    RETURN_IF_ERROR(SetGPUResources(
+        t.first, t.second.obj_ptr->GetGPUResources(t.second.access_type)));
   }
   for (auto& t : object_refs_) {
-    AddGPUResources(t.first, t.second.descriptor->GetGPUResources());
+    AddGPUResources(t.first,
+                    t.second.descriptor->GetGPUResources(t.second.access_type));
   }
   return absl::OkStatus();
 }

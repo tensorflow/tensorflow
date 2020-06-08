@@ -329,6 +329,7 @@ cc_library(
     hdrs = ["gpu_object.h"],
     deps = [
         ":opencl_wrapper",
+        "//tensorflow/lite/delegates/gpu/common:access_type",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:status",
     ],
@@ -457,6 +458,7 @@ cc_library(
         ":cl_device",
         ":cl_image_format",
         ":cl_memory",
+        ":gpu_object",
         ":tensor_type",
         ":util",
         "//tensorflow/lite/delegates/gpu/common:data_type",
@@ -493,8 +495,10 @@ cc_library(
     srcs = ["tensor_type.cc"],
     hdrs = ["tensor_type.h"],
     deps = [
+        ":gpu_object",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:shape",
+        "@com_google_absl//absl/strings",
     ],
 )
 

@@ -70,24 +70,18 @@ TF_LITE_MICRO_TEST(TestOperations) {
 
   MicroMutableOpResolver<2> micro_op_resolver;
   TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, micro_op_resolver.AddBuiltin(BuiltinOperator_CONV_2D, &r, 1));
+      kTfLiteOk, micro_op_resolver.AddBuiltin(BuiltinOperator_CONV_2D, &r));
 
-  // Only one AddBuiltin per operator should return kTfLiteOk, regardless of
-  // what the version parameter is.
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteError, micro_op_resolver.AddBuiltin(
-                                            BuiltinOperator_CONV_2D, &r, 1));
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteError, micro_op_resolver.AddBuiltin(
-                                            BuiltinOperator_CONV_2D, &r, 2));
+  // Only one AddBuiltin per operator should return kTfLiteOk.
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteError, micro_op_resolver.AddBuiltin(BuiltinOperator_CONV_2D, &r));
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
-                          micro_op_resolver.AddCustom("mock_custom", &r, 2));
+                          micro_op_resolver.AddCustom("mock_custom", &r));
 
-  // Only one AddCustom per operator should return kTfLiteOk, regardless of
-  // what the version parameter is.
+  // Only one AddCustom per operator should return kTfLiteOk.
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteError,
-                          micro_op_resolver.AddCustom("mock_custom", &r, 2));
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteError,
-                          micro_op_resolver.AddCustom("mock_custom", &r, 1));
+                          micro_op_resolver.AddCustom("mock_custom", &r));
 
   tflite::MicroOpResolver* resolver = &micro_op_resolver;
 

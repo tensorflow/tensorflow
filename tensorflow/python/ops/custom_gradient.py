@@ -175,20 +175,23 @@ def custom_gradient(f=None):
 
   Args:
     f: function `f(*x)` that returns a tuple `(y, grad_fn)` where:
-       - `x` is a sequence of `Tensor` inputs to the function.
-       - `y` is a `Tensor` or sequence of `Tensor` outputs of applying
-         TensorFlow operations in `f` to `x`.
+       - `x` is a sequence of (nested structures of) `Tensor` inputs to the
+         function.
+       - `y` is a (nested structure of) `Tensor` outputs of applying TensorFlow
+         operations in `f` to `x`.
        - `grad_fn` is a function with the signature `g(*grad_ys)` which returns
-         a list of `Tensor`s - the derivatives of `Tensor`s in `y` with respect
-         to the `Tensor`s in `x`.  `grad_ys` is a `Tensor` or sequence of
-         `Tensor`s the same size as `y` holding the initial value gradients for
-         each `Tensor` in `y`. In a pure mathematical sense, a vector-argument
-         vector-valued function `f`'s derivatives should be its Jacobian matrix
-         `J`. Here we are expressing the Jacobian `J` as a function `grad_fn`
-         which defines how `J` will transform a vector `grad_ys` when
-         left-multiplied with it (`grad_ys * J`). This functional representation
-         of a matrix is convenient to use for chain-rule calculation
-         (in e.g. the back-propagation algorithm).
+         a list of `Tensor`s the same size as (flattened) `x` - the derivatives
+         of `Tensor`s in `y` with respect to the `Tensor`s in `x`.  `grad_ys` is
+         a sequence of `Tensor`s the same size as (flattened) `y` holding the
+         initial value gradients for each `Tensor` in `y`.
+
+         In a pure mathematical sense, a vector-argument vector-valued function
+         `f`'s derivatives should be its Jacobian matrix `J`. Here we are
+         expressing the Jacobian `J` as a function `grad_fn` which defines how
+         `J` will transform a vector `grad_ys` when left-multiplied with it
+         (`grad_ys * J`, the vector-Jacobian product, or VJP). This functional
+         representation of a matrix is convenient to use for chain-rule
+         calculation (in e.g. the back-propagation algorithm).
 
          If `f` uses `Variable`s (that are not part of the
          inputs), i.e. through `get_variable`, then `grad_fn` should have
@@ -209,6 +212,8 @@ def custom_gradient(f=None):
   @Bind.decorator
   def decorated(wrapped, args, kwargs):
     """Decorated function with custom gradient."""
+    # raise ValueError("PW: trap")
+
     if context.executing_eagerly():
       return _eager_mode_decorator(wrapped, args, kwargs)
     else:
@@ -307,7 +312,7 @@ def _graph_mode_decorator(f, args, kwargs):
         "The custom_gradient decorator currently supports keywords "
         "arguments only when eager execution is enabled.")
   name = "CustomGradient-%s" % ops.uid()
-  args = [ops.convert_to_tensor(x) for x in args]
+  args = nest.map_structure(ops.convert_to_tensor, args)
 
   # Checking global and local variables attempts to ensure that no non-resource
   # Variables are added to the graph.
@@ -318,6 +323,7 @@ def _graph_mode_decorator(f, args, kwargs):
   ])
   with tape_lib.VariableWatcher() as variable_watcher:
     result, grad_fn = f(*args)
+  args = nest.flatten(args)
   after_vars = set([
       v.ref() for v in current_var_scope.global_variables() +
       current_var_scope.local_variables()
@@ -404,6 +410,7 @@ def _eager_mode_decorator(f, args, kwargs):
   """Implement custom gradient decorator for eager mode."""
   with tape_lib.VariableWatcher() as variable_watcher:
     result, grad_fn = f(*args, **kwargs)
+  args = nest.flatten(args)
   all_inputs = list(args) + list(kwargs.values())
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
@@ -443,7 +450,7 @@ def _eager_mode_decorator(f, args, kwargs):
       raise ValueError(
           "custom_gradient function expected to return", arg_count,
           "gradients but returned", len(flat_grads), "instead.")
-    return nest.flatten(input_grads) + variable_grads
+    return flat_grads + variable_grads
 
   tape_lib.record_operation(f.__name__, flat_result, recorded_inputs,
                             actual_grad_fn)

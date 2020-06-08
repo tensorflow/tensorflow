@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -964,6 +965,45 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     # Check that second input was correctly added to first.
     self.assertEqual(history.history['loss'][0], 0.0)
 
+  @combinations.generate(combinations.times(
+      combinations.keras_mode_combinations(),
+      combinations.keras_tensor_combinations()))
+  def test_call_kwarg_derived_from_keras_layer_and_first_arg_is_constant(self):
+
+    class MaybeAdd(layers.Layer):
+
+      def call(self, x1, x2=None):
+        if x2 is not None:
+          return x1 + x2
+        return x1
+
+    input2 = input_layer_lib.Input(10)
+    outputs = MaybeAdd()(3., x2=input2)
+    model = training_lib.Model([input2], outputs)
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(
+        x=7 * np.ones((10, 10)),
+        y=10 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that second input was correctly added to first.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
+    model = training_lib.Model.from_config(
+        model.get_config(), custom_objects={'MaybeAdd': MaybeAdd})
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(
+        x=7 * np.ones((10, 10)),
+        y=10 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that second input was correctly added to first.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
   @combinations.generate(combinations.keras_mode_combinations())
   def test_composite_call_kwarg_derived_from_keras_layer(self):
 
@@ -1003,6 +1043,58 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly())
     history = model.fit(x=input_data, y=expected_data)
     # Check that second input was correctly added to first.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
+  @combinations.generate(combinations.times(
+      combinations.keras_mode_combinations(mode='eager'),
+      combinations.keras_tensor_combinations()))
+  def test_call_some_not_all_nested_in_first_arg_derived_from_keras_layer(self):
+    # This functionality is unsupported in v1 graphs
+
+    class AddAll(layers.Layer):
+
+      def call(self, x1_x2, x3):
+        x1, x2 = x1_x2
+        out = x1 + x2
+        if x3 is not None:
+          for t in x3.values():
+            out += t
+        return out
+
+    input1 = input_layer_lib.Input(10)
+    input2 = input_layer_lib.Input(10)
+    input3 = input_layer_lib.Input(10)
+
+    outputs = AddAll()(
+        [input1, 4 * array_ops.ones((1, 10))],
+        x3={
+            'a': input2,
+            'b': input3,
+            'c': 5 * array_ops.ones((1, 10))
+        })
+    model = training_lib.Model([input1, input2, input3], outputs)
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(
+        x=[np.ones((10, 10)), 2 * np.ones((10, 10)), 3 * np.ones((10, 10))],
+        y=15 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that all inputs were correctly added.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
+    model = training_lib.Model.from_config(
+        model.get_config(), custom_objects={'AddAll': AddAll})
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(
+        x=[np.ones((10, 10)), 2 * np.ones((10, 10)), 3 * np.ones((10, 10))],
+        y=15 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that all inputs were correctly added.
     self.assertEqual(history.history['loss'][0], 0.0)
 
   @combinations.generate(combinations.keras_mode_combinations())
@@ -1167,6 +1259,28 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     model.trackable = Checkpoint()
     self.assertIn('trackable', model._unconditional_dependency_names)
     self.assertEqual(model.trackable, model._lookup_dependency('trackable'))
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_model_construction_in_tf_function(self):
+
+    d = {'model': None}
+
+    @def_function.function
+    def fn(x):
+      if d['model'] is None:
+        # Check that Functional can be built in a `tf.function`.
+        inputs = input_layer_lib.Input(10)
+        outputs = layers.Dense(1)(inputs)
+        model = functional.Functional(inputs, outputs)
+        d['model'] = model
+      else:
+        model = d['model']
+
+      return model(x)
+
+    x = array_ops.ones((10, 10))
+    y = fn(x)
+    self.assertEqual(y.shape.as_list(), [10, 1])
 
 
 class DeferredModeTest(keras_parameterized.TestCase):

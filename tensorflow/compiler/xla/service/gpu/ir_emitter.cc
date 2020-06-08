@@ -236,12 +236,25 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
   if (root_opcode == HloOpcode::kAdd) {
     llvm::Triple target_triple = llvm::Triple(module_->getTargetTriple());
     // NVPTX supports atomicAdd on F32 and integer types.
-    if (target_triple.isNVPTX() && element_type == F32) {
-      // F32 + F32
-      AtomicRMW(llvm::AtomicRMWInst::FAdd, output_address, source,
-                llvm::AtomicOrdering::SequentiallyConsistent);
-      return true;
+    if (target_triple.isNVPTX()) {
+      // "atom.add.f64 requires sm_60 or higher."
+      // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-atom
+      int cc_major = 0, cc_minor = 0;
+      ir_emitter_context_->device_description().cuda_compute_capability(
+          &cc_major, &cc_minor);
+
+      bool f64_atomic_add_supported = cc_major >= 6;
+
+      bool atomic_add_supported =
+          element_type == F32 ||
+          (f64_atomic_add_supported && element_type == F64);
+      if (atomic_add_supported) {
+        AtomicRMW(llvm::AtomicRMWInst::FAdd, output_address, source,
+                  llvm::AtomicOrdering::SequentiallyConsistent);
+        return true;
+      }
     }
+
     if (is_atomic_integral) {
       // integral + integral
       AtomicRMW(llvm::AtomicRMWInst::Add, output_address, source,

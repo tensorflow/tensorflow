@@ -205,7 +205,7 @@ std::string PostProcess(const std::vector<ElementwiseOperation*>& linked_ops,
                         const LinkingContext& context) {
   std::string code;
   for (auto linked_op : linked_ops) {
-    code += linked_op->GetCoreCode(context);
+    code += "{" + linked_op->GetCoreCode(context) + "}";
   }
   return code;
 }

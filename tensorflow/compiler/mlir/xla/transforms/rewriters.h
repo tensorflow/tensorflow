@@ -23,6 +23,8 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 
 namespace mlir {
+class LLVMTypeConverter;
+class OwningRewritePatternList;
 class BufferAssignmentPlacer;
 namespace xla_hlo {
 
@@ -71,6 +73,14 @@ void PopulateUnfuseBatchNormPatterns(MLIRContext *context,
                                      OwningRewritePatternList *patterns);
 
 }  // namespace xla_hlo
+
+namespace xla_lhlo {
+
+/// Collect a set of patterns to convert from the LHLO dialect to LLVM.
+void PopulateLhloToLLVMConversionPatterns(LLVMTypeConverter *converter,
+                                          OwningRewritePatternList *patterns);
+
+}  // namespace xla_lhlo
 
 namespace xla_chlo {
 

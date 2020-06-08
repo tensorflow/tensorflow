@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "ruy/profiler/profiler.h"  // from @ruy
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
@@ -600,11 +601,24 @@ TfLiteStatus BenchmarkTfLiteModel::ResetInputsAndOutputs() {
 TfLiteStatus BenchmarkTfLiteModel::InitInterpreter() {
   auto resolver = GetOpResolver();
   const int32_t num_threads = params_.Get<int32_t>("num_threads");
+  const bool use_caching = params_.Get<bool>("use_caching");
   tflite::InterpreterBuilder(*model_, *resolver)(&interpreter_, num_threads);
   if (!interpreter_) {
     TFLITE_LOG(ERROR) << "Failed to initialize the interpreter";
     return kTfLiteError;
   }
+  // Manually enable caching behavior in TF Lite interpreter.
+  if (use_caching) {
+    external_context_.reset(new tflite::ExternalCpuBackendContext());
+    std::unique_ptr<tflite::CpuBackendContext> cpu_backend_context(
+        new tflite::CpuBackendContext());
+    cpu_backend_context->SetUseCaching(true);
+    external_context_->set_internal_backend_context(
+        std::move(cpu_backend_context));
+    interpreter_->SetExternalContext(kTfLiteCpuBackendContext,
+                                     external_context_.get());
+  }
+
   return kTfLiteOk;
 }
 

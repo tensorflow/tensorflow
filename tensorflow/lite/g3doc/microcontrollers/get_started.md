@@ -95,14 +95,14 @@ To use the TensorFlow Lite for Microcontrollers library, we must include the
 following header files:
 
 ```C++
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 ```
 
--   [`all_ops_resolver.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/kernels/all_ops_resolver.h)
+-   [`all_ops_resolver.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/all_ops_resolver.h)
     provides the operations used by the interpreter to run the model.
 -   [`micro_error_reporter.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/micro_error_reporter.h)
     outputs debug information.
@@ -182,12 +182,12 @@ if (model->version() != TFLITE_SCHEMA_VERSION) {
 ### 6. Instantiate operations resolver
 
 An
-[`AllOpsResolver`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/kernels/all_ops_resolver.h)
+[`AllOpsResolver`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/all_ops_resolver.h)
 instance is declared. This will be used by the interpreter to access the
 operations that are used by the model:
 
 ```C++
-tflite::ops::micro::AllOpsResolver resolver;
+tflite::AllOpsResolver resolver;
 ```
 
 The `AllOpsResolver` loads all of the operations available in TensorFlow Lite
@@ -372,5 +372,5 @@ applications on GitHub</a>
 To learn how to use the library in your own project, read
 [Understand the C++ library](library.md).
 
-For information about training and convert models for deployment on
+For information about training and converting models for deployment on
 microcontrollers, read [Build and convert models](build_convert.md).

@@ -23,6 +23,7 @@ import os
 import numpy as np
 
 from tensorflow.core.protobuf import debug_event_pb2
+from tensorflow.python.compat import compat
 from tensorflow.python.debug.lib import debug_events_reader
 from tensorflow.python.debug.lib import debug_events_writer
 from tensorflow.python.debug.lib import dumping_callback_test_lib
@@ -40,6 +41,12 @@ from tensorflow.python.platform import googletest
 
 
 class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
+  """Tests for DebugIdentityV2Op: when DebugEventsWriter is initialized.
+
+  DebugEventsWriter being initialized prior to DebugIdentityV2 ops being invoked
+  for the first time is the typical case (e.g., tfdbg2 running on a local
+  machine with only local devices.)
+  """
 
   def setUp(self):
     super(DebugIdentityV2OpTest, self).setUp()
@@ -57,8 +64,6 @@ class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
 
     @def_function.function
     def write_debug_trace(x):
-      # DebugIdentityV2 is a stateful op. It ought to be included by auto
-      # control dependency.
       square = math_ops.square(x)
       gen_debug_ops.debug_identity_v2(
           square,
@@ -222,6 +227,64 @@ class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
 
         with self.assertRaises(StopIteration):
           next(graph_trace_iter)
+
+
+class DebugIdentityV2OpUninitializedWriterTest(
+    dumping_callback_test_lib.DumpingCallbackTestBase):
+  """Tests for DebugIdentityV2Op: when DebugEventsWriter is not initialized.
+
+  This case can occur when DebugIdentityV2Ops are running on a remote
+  TensorFlow server (e.g., a TPU worker).
+  """
+
+  @test_util.run_in_graph_and_eager_modes
+  def testInvokingDebugIdentityV2OpBeforeCreatingDebugEventsWriterWorks(self):
+    if not compat.forward_compatible(2020, 6, 24):
+      self.skipTest("Functionality currently not supported.")
+    circular_buffer_size = 3
+
+    @def_function.function
+    def write_debug_trace(x):
+      # DebugIdentityV2 is a stateful op. It ought to be included by auto
+      # control dependency.
+      square = math_ops.square(x)
+      gen_debug_ops.debug_identity_v2(
+          square,
+          tfdbg_context_id="deadbeaf",
+          op_name="Square",
+          output_slot=0,
+          tensor_debug_mode=debug_event_pb2.TensorDebugMode.FULL_TENSOR,
+          debug_urls=["file://%s" % self.dump_root],
+          circular_buffer_size=circular_buffer_size)
+      return square
+
+    # The DebugIdentityV2 ops are invokes *before* a DebugEventsWriter at the
+    # same dump root is created.
+    for i in range(circular_buffer_size * 2):
+      self.assertAllClose(
+          write_debug_trace(np.array([i]).astype(np.float32)), [i**2.0])
+    writer = debug_events_writer.DebugEventsWriter(self.dump_root,
+                                                   circular_buffer_size)
+    writer.FlushNonExecutionFiles()
+    writer.FlushExecutionFiles()
+
+    with debug_events_reader.DebugEventsReader(self.dump_root) as reader:
+      graph_trace_iter = reader.graph_execution_traces_iterator()
+      graph_execution_traces = []
+      while True:
+        try:
+          graph_execution_traces.append(
+              next(graph_trace_iter).debug_event.graph_execution_trace)
+        except StopIteration:
+          break
+      self.assertLen(graph_execution_traces, circular_buffer_size)
+      for i in range(circular_buffer_size):
+        self.assertAllClose(
+            tensor_util.MakeNdarray(graph_execution_traces[i].tensor_proto),
+            [(i + circular_buffer_size)**2.0])
+
+
+class DebugNumericSummaryV2Test(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testDebugNumericSummaryV2OpReduceInfNanThreeSlots(self):

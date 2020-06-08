@@ -917,6 +917,30 @@ the feature dimension is the third-to-last.
   }];
 }
 
+def TF_BiasAddV1Op : TF_Op<"BiasAddV1", [NoSideEffect]> {
+  let summary = "Adds `bias` to `value`.";
+
+  let description = [{
+This is a deprecated version of BiasAdd and will be soon removed.
+
+This is a special case of `tf.add` where `bias` is restricted to be 1-D.
+Broadcasting is supported, so `value` may have any number of dimensions.
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$value,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$bias
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
+}
+
 def TF_BitcastOp : TF_Op<"Bitcast", [NoSideEffect]> {
   let summary = [{
 Bitcasts a tensor from one type to another without copying data.
@@ -1382,29 +1406,6 @@ Mutually accumulates multiple tensors of identical type and shape.
 
   let results = (outs
     TensorOf<[F16, F32, F64, I32, I64]>:$data
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-}
-
-def TF_CollectivePermuteOp : TF_Op<"CollectivePermute", [NoSideEffect, SameOperandsAndResultShape]> {
-  let summary = "An Op to permute tensors across replicated TPU instances.";
-
-  let description = [{
-Each instance supplies its own input.
-
-For example, suppose there are 4 TPU instances: `[A, B, C, D]`. Passing
-source_target_pairs=`[[0,1],[1,2],[2,3],[3,0]]` gets the outputs:
-`[D, A, B, C]`.
-  }];
-
-  let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
-    I32Tensor:$source_target_pairs
-  );
-
-  let results = (outs
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -2969,19 +2970,23 @@ Fake-quantize the 'inputs' tensor, type float to 'outputs' tensor of same type.
   }];
 
   let description = [{
-Attributes `[min; max]` define the clamping range for the `inputs` data.
-`inputs` values are quantized into the quantization range (`[0; 2^num_bits - 1]`
-when `narrow_range` is false and `[1; 2^num_bits - 1]` when it is true) and
-then de-quantized and output as floats in `[min; max]` interval.
-`num_bits` is the bitwidth of the quantization; between 2 and 16, inclusive.
+Attributes
+
+*   `[min; max]` define the clamping range for the `inputs` data.
+*   `inputs` values are quantized into the quantization range (
+`[0; 2^num_bits - 1]` when `narrow_range` is false and `[1; 2^num_bits - 1]`
+when it is true) and then de-quantized and output as floats in `[min; max]`
+interval.
+*   `num_bits` is the bitwidth of the quantization; between 2 and 16, inclusive.
 
 Before quantization, `min` and `max` values are adjusted with the following
 logic.
 It is suggested to have `min <= 0 <= max`. If `0` is not in the range of values,
 the behavior can be unexpected:
-If `0 < min < max`: `min_adj = 0` and `max_adj = max - min`.
-If `min < max < 0`: `min_adj = min - max` and `max_adj = 0`.
-If `min <= 0 <= max`: `scale = (max - min) / (2^num_bits - 1) `,
+
+*   If `0 < min < max`: `min_adj = 0` and `max_adj = max - min`.
+*   If `min < max < 0`: `min_adj = min - max` and `max_adj = 0`.
+*   If `min <= 0 <= max`: `scale = (max - min) / (2^num_bits - 1) `,
 `min_adj = scale * round(min / scale)` and `max_adj = max + min_adj - min`.
 
 Quantization is called fake since the output is still in floating point.
@@ -3007,25 +3012,30 @@ Quantization is called fake since the output is still in floating point.
 
 def TF_FakeQuantWithMinMaxVarsOp : TF_Op<"FakeQuantWithMinMaxVars", [NoSideEffect]> {
   let summary = [{
-Fake-quantize the 'inputs' tensor of type float via global float scalars `min`
+Fake-quantize the 'inputs' tensor of type float via global float scalars
   }];
 
   let description = [{
-and `max` to 'outputs' tensor of same shape as `inputs`.
+Fake-quantize the `inputs` tensor of type float via global float scalars
+`min` and `max` to `outputs` tensor of same shape as `inputs`.
 
-`[min; max]` define the clamping range for the `inputs` data.
-`inputs` values are quantized into the quantization range (`[0; 2^num_bits - 1]`
-when `narrow_range` is false and `[1; 2^num_bits - 1]` when it is true) and
-then de-quantized and output as floats in `[min; max]` interval.
-`num_bits` is the bitwidth of the quantization; between 2 and 16, inclusive.
+Attributes
+
+*   `[min; max]` define the clamping range for the `inputs` data.
+*   `inputs` values are quantized into the quantization range (
+`[0; 2^num_bits - 1]` when `narrow_range` is false and `[1; 2^num_bits - 1]`
+when it is true) and then de-quantized and output as floats in `[min; max]`
+interval.
+*   `num_bits` is the bitwidth of the quantization; between 2 and 16, inclusive.
 
 Before quantization, `min` and `max` values are adjusted with the following
 logic.
 It is suggested to have `min <= 0 <= max`. If `0` is not in the range of values,
 the behavior can be unexpected:
-If `0 < min < max`: `min_adj = 0` and `max_adj = max - min`.
-If `min < max < 0`: `min_adj = min - max` and `max_adj = 0`.
-If `min <= 0 <= max`: `scale = (max - min) / (2^num_bits - 1) `,
+
+*   If `0 < min < max`: `min_adj = 0` and `max_adj = max - min`.
+*   If `min < max < 0`: `min_adj = min - max` and `max_adj = 0`.
+*   If `min <= 0 <= max`: `scale = (max - min) / (2^num_bits - 1) `,
 `min_adj = scale * round(min / scale)` and `max_adj = max + min_adj - min`.
 
 This operation has a gradient and thus allows for training `min` and `max`
@@ -3052,26 +3062,31 @@ values.
 
 def TF_FakeQuantWithMinMaxVarsPerChannelOp : TF_Op<"FakeQuantWithMinMaxVarsPerChannel", [NoSideEffect]> {
   let summary = [{
-Fake-quantize the 'inputs' tensor of type float and one of the shapes: `[d]`,
+Fake-quantize the 'inputs' tensor of type float via per-channel floats
   }];
 
   let description = [{
-`[b, d]` `[b, h, w, d]` via per-channel floats `min` and `max` of shape `[d]`
-to 'outputs' tensor of same shape as `inputs`.
+Fake-quantize the `inputs` tensor of type float per-channel and one of the
+shapes: `[d]`, `[b, d]` `[b, h, w, d]` via per-channel floats `min` and `max`
+of shape `[d]` to `outputs` tensor of same shape as `inputs`.
 
-`[min; max]` define the clamping range for the `inputs` data.
-`inputs` values are quantized into the quantization range (`[0; 2^num_bits - 1]`
-when `narrow_range` is false and `[1; 2^num_bits - 1]` when it is true) and
-then de-quantized and output as floats in `[min; max]` interval.
-`num_bits` is the bitwidth of the quantization; between 2 and 16, inclusive.
+Attributes
+
+*   `[min; max]` define the clamping range for the `inputs` data.
+*   `inputs` values are quantized into the quantization range (
+`[0; 2^num_bits - 1]` when `narrow_range` is false and `[1; 2^num_bits - 1]`
+when it is true) and then de-quantized and output as floats in `[min; max]`
+interval.
+*   `num_bits` is the bitwidth of the quantization; between 2 and 16, inclusive.
 
 Before quantization, `min` and `max` values are adjusted with the following
 logic.
 It is suggested to have `min <= 0 <= max`. If `0` is not in the range of values,
 the behavior can be unexpected:
-If `0 < min < max`: `min_adj = 0` and `max_adj = max - min`.
-If `min < max < 0`: `min_adj = min - max` and `max_adj = 0`.
-If `min <= 0 <= max`: `scale = (max - min) / (2^num_bits - 1) `,
+
+*   If `0 < min < max`: `min_adj = 0` and `max_adj = max - min`.
+*   If `min < max < 0`: `min_adj = min - max` and `max_adj = 0`.
+*   If `min <= 0 <= max`: `scale = (max - min) / (2^num_bits - 1) `,
 `min_adj = scale * round(min / scale)` and `max_adj = max + min_adj - min`.
 
 This operation has a gradient and thus allows for training `min` and `max`
@@ -6497,7 +6512,7 @@ operation.
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$resource
+    Arg<TF_ResourceTensor, "", [TF_VariableRead]>:$resource
   );
 
   let results = (outs
@@ -10822,6 +10837,38 @@ def TF_ZerosLikeOp : TF_Op<"ZerosLike", [NoSideEffect, SameOperandsAndResultType
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF__FusedConv2DOp : TF_Op<"_FusedConv2D", [NoSideEffect]> {
+  let summary = [{
+*NOTE*: Do not invoke this operator directly in Python. Grappler is
+  }];
+
+  let description = [{
+expected to create these operators.
+  }];
+
+  let arguments = (ins
+    TF_F32OrF64Tensor:$input,
+    TF_F32OrF64Tensor:$filter,
+    Variadic<TF_F32OrF64Tensor>:$args,
+
+    I64ArrayAttr:$strides,
+    TF_AnyStrAttrOf<["SAME", "VALID", "EXPLICIT"]>:$padding,
+    DefaultValuedAttr<I64ArrayAttr, "{}">:$explicit_paddings,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
+    DefaultValuedAttr<I64ArrayAttr, "{1, 1, 1, 1}">:$dilations,
+    DefaultValuedAttr<BoolAttr, "true">:$use_cudnn_on_gpu,
+    DefaultValuedAttr<StrArrayAttr, "{}">:$fused_ops,
+    DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon
+  );
+
+  let results = (outs
+    TF_F32OrF64Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandSizeAttr num_args = TF_DerivedOperandSizeAttr<2>;
 }
 
 def TF__HostComputeMlirOp : TF_Op<"_HostComputeMlir", []> {

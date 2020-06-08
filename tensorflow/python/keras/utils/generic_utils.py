@@ -296,6 +296,15 @@ def class_and_config_for_serialized_keras_object(
     raise ValueError('Unknown ' + printable_module_name + ': ' + class_name)
 
   cls_config = config['config']
+  # Check if `cls_config` is a list. If it is a list, return the class and the
+  # associated class configs for recursively deserialization. This case will
+  # happen on the old version of sequential model (e.g. `keras_version` ==
+  # "2.0.6"), which is serialized in a different structure, for example
+  # "{'class_name': 'Sequential',
+  #   'config': [{'class_name': 'Embedding', 'config': ...}, {}, ...]}".
+  if isinstance(cls_config, list):
+    return (cls, cls_config)
+
   deserialized_objects = {}
   for key, item in cls_config.items():
     if isinstance(item, dict) and '__passive_serialization__' in item:

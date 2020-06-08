@@ -845,7 +845,19 @@ func @infeed_dequeue_tuple() -> (tensor<3xi32>, tensor<4xf32>) {
 func @infeed_dequeue_tuple_sharding() -> tensor<8xi32> {
   // CHECK: "xla_hlo.infeed"
   // An additional sharding is added at the end to account for token result.
-  // CHECK-SAME: xla_hlo.sharding = "type: TUPLE\0Atuple_shardings {\0A type: MAXIMAL\0A tile_assignment_dimensions: 1\0A tile_assignment_devices: 0\0A}\0Atuple_shardings {\0A type: MAXIMAL\0A tile_assignment_dimensions: 1\0A tile_assignment_devices: 0\0A}\0A"
+  // Proto debug string:
+  //   type: TUPLE
+  //   tuple_shardings {
+  //     type: MAXIMAL
+  //     tile_assignment_dimensions: 1
+  //     tile_assignment_devices: 0
+  //   }
+  //   tuple_shardings {
+  //     type: MAXIMAL
+  //     tile_assignment_dimensions: 1
+  //     tile_assignment_devices: 0
+  //   }
+  // CHECK-SAME: xla_hlo.sharding = "\08\02*\08\08\01\1A\01\01\22\01\00*\08\08\01\1A\01\01\22\01\00"
   %0 = "tf.InfeedDequeueTuple"() {_XlaSharding = "\08\02*\08\08\01\1A\01\01\22\01\00"} : () -> tensor<8xi32>
   return %0 : tensor<8xi32>
 }
@@ -1524,6 +1536,67 @@ func @rfft_1D(%arg0: tensor<8xf32>) -> tensor<8xcomplex<f32>> {
   // CHECK: "xla_hlo.fft"(%arg0) {fft_length = dense<8> : tensor<1xi64>, fft_type = "RFFT"} : (tensor<8xf32>
   %0 = "tf.RFFT"(%arg0, %fftlength) : (tensor<8xf32>, tensor<1xi32>) -> tensor<8xcomplex<f32>>
   return %0 : tensor<8xcomplex<f32>>
+}
+
+//===----------------------------------------------------------------------===//
+// Shape op legalization.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @shape_1D
+func @shape_1D(%arg0: tensor<?xf32>) -> tensor<1xi32> {
+  // CHECK-DAG: [[SHAPE:%.+]] = shape.shape_of %arg0
+  // CHECK-DAG: [[EXTENT:%.+]] = shape.get_extent [[SHAPE]], 0
+  // CHECK-DAG: [[TO_INDEX:%.+]] = shape.size_to_index [[EXTENT]]
+  // CHECK-DAG: [[CAST:%.+]] = index_cast [[TO_INDEX]]
+  // CHECK-DAG: [[TENSOR:%.+]] = tensor_from_elements([[CAST]])
+  // CHECK-DAG: [[RESHAPE:%.+]] = "xla_hlo.reshape"([[TENSOR]])
+  // CHECK-DAG: [[CONCAT:%.+]] = "xla_hlo.concatenate"([[RESHAPE]]) {dimension = 0 : i64}
+  %0 = "tf.Shape"(%arg0) : (tensor<?xf32>) -> tensor<1xi32>
+
+  // CHECK: return [[CONCAT]]
+  return %0 : tensor<1xi32>
+}
+
+// CHECK-LABEL: func @shape_2D
+func @shape_2D(%arg0: tensor<?x?xf32>) -> tensor<2xi32> {
+  // CHECK-DAG: [[SHAPE:%.+]] = shape.shape_of %arg0
+  // CHECK-DAG: [[EXTENT0:%.+]] = shape.get_extent [[SHAPE]], 0
+  // CHECK-DAG: [[EXTENT1:%.+]] = shape.get_extent [[SHAPE]], 1
+  // CHECK-DAG: [[TO_INDEX0:%.+]] = shape.size_to_index [[EXTENT0]]
+  // CHECK-DAG: [[TO_INDEX1:%.+]] = shape.size_to_index [[EXTENT1]]
+  // CHECK-DAG: [[CAST0:%.+]] = index_cast [[TO_INDEX0]]
+  // CHECK-DAG: [[CAST1:%.+]] = index_cast [[TO_INDEX1]]
+  // CHECK-DAG: [[TENSOR0:%.+]] = tensor_from_elements([[CAST0]])
+  // CHECK-DAG: [[TENSOR1:%.+]] = tensor_from_elements([[CAST1]])
+  // CHECK-DAG: [[RESHAPE0:%.+]] = "xla_hlo.reshape"([[TENSOR0]])
+  // CHECK-DAG: [[RESHAPE1:%.+]] = "xla_hlo.reshape"([[TENSOR1]])
+  // CHECK-DAG: [[CONCAT:%.+]] = "xla_hlo.concatenate"([[RESHAPE0]], [[RESHAPE1]]) {dimension = 0 : i64}
+  %0 = "tf.Shape"(%arg0) : (tensor<?x?xf32>) -> tensor<2xi32>
+
+  // CHECK: return [[CONCAT]]
+  return %0 : tensor<2xi32>
+}
+
+// CHECK-LABEL: func @shape_with_const
+func @shape_with_const(%arg0: tensor<?x3xf32>) -> tensor<2xi32> {
+  // CHECK-DAG: [[SHAPE:%.+]] = shape.shape_of %arg0
+  // CHECK-DAG: [[EXTENT:%.+]] = shape.get_extent [[SHAPE]], 0
+  // CHECK-DAG: [[TO_INDEX:%.+]] = shape.size_to_index [[EXTENT]]
+  // CHECK-DAG: [[CAST:%.+]] = index_cast [[TO_INDEX]]
+  // CHECK-DAG: [[TENSOR:%.+]] = tensor_from_elements([[CAST]])
+  // CHECK-DAG: [[RESHAPE:%.+]] = "xla_hlo.reshape"([[TENSOR]])
+  // CHECK-DAG: [[CONST:%.+]] = xla_hlo.constant dense<3>
+  // CHECK-DAG: [[CONCAT:%.+]] = "xla_hlo.concatenate"([[RESHAPE]], [[CONST]]) {dimension = 0 : i64}
+  %0 = "tf.Shape"(%arg0) : (tensor<?x3xf32>) -> tensor<2xi32>
+
+  // CHECK: return [[CONCAT]]
+  return %0 : tensor<2xi32>
+}
+
+// CHECK-LABEL: func @shape_rankless
+func @shape_rankless(%arg0: tensor<*xf32>) -> tensor<?xi32> {
+  %0 = "tf.Shape"(%arg0) : (tensor<*xf32>) -> tensor<?xi32>
+  return %0 : tensor<?xi32>
 }
 
 //===----------------------------------------------------------------------===//
@@ -2746,8 +2819,8 @@ func @any_dynamic(%input: tensor<4x?xi1>) -> tensor<4x1xi1> {
 
 // CHECK-LABEL: func @tile_by_reshape
 func @tile_by_reshape(%arg0: tensor<4x8xf32>) -> tensor<28x24xf32> {
-  // CHECK: %[[BROADCASTED:.*]] = "xla_hlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0, 2]> : tensor<2xi64>} : (tensor<4x8xf32>) -> tensor<4x7x8x3xf32>
-  // CHECK: %[[RESULT:.*]] = "xla_hlo.reshape"(%[[BROADCASTED]]) : (tensor<4x7x8x3xf32>) -> tensor<28x24xf32>
+  // CHECK: %[[BROADCASTED:.*]] = "xla_hlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[1, 3]> : tensor<2xi64>} : (tensor<4x8xf32>) -> tensor<7x4x3x8xf32>
+  // CHECK: %[[RESULT:.*]] = "xla_hlo.reshape"(%[[BROADCASTED]]) : (tensor<7x4x3x8xf32>) -> tensor<28x24xf32>
   // CHECK: return %[[RESULT]] : tensor<28x24xf32>
   %multiples = "tf.Const"() { value = dense<[7,3]> : tensor<2xi64> } : () -> tensor<2xi64>
   %0 = "tf.Tile"(%arg0, %multiples) : (tensor<4x8xf32>, tensor<2xi64>) -> tensor<28x24xf32>
@@ -2859,6 +2932,50 @@ func @range(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<5xf32> {
   // CHECK: xla_chlo.broadcast_add [[MUL]], [[START]] {broadcast_dimensions = dense<[]> : tensor<0xi64>}
   %3 = "tf.Range"(%arg0, %1, %arg1) {Tidx = "tfdtype$DT_FLOAT", device = "", name = "range"} : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<5xf32>
   return %3 : tensor<5xf32>
+}
+
+// CHECK-LABEL: func @range_dynamic
+// CHECK-SAME: [[START:%.*]]: tensor<f32>, [[DELTA:%.*]]: tensor<f32>
+func @range_dynamic(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<?xf32> {
+  // CHECK-DAG: [[SUB:%.+]] = xla_hlo.subtract %arg1, %arg0
+  // CHECK-DAG: [[ABS1:%.+]] = "xla_hlo.abs"([[SUB]])
+  // CHECK-DAG: [[CONVERT1:%.+]] = "xla_hlo.convert"([[ABS1]])
+  // CHECK-DAG: [[CONVERT2:%.+]] = "xla_hlo.convert"(%arg2)
+  // CHECK-DAG: [[DIV:%.+]] = xla_hlo.divide [[CONVERT1]], [[CONVERT2]]
+  // CHECK-DAG: [[CEIL:%.+]] = "xla_hlo.ceil"([[DIV]])
+  // CHECK-DAG: [[CONVERT3:%.+]] = "xla_hlo.convert"([[CEIL]])
+  // CHECK-DAG: [[RESHAPE:%.+]] = "xla_hlo.reshape"([[CONVERT3]])
+  // CHECK-DAG: [[IOTA:%.+]] = "xla_hlo.dynamic_iota"([[RESHAPE]]) {iota_dimension = 0 : i64}
+  // CHECK-DAG: [[CONVERT3:%.+]] = "xla_hlo.convert"(%arg0)
+  // CHECK-DAG: [[CONVERT4:%.+]] = "xla_hlo.convert"(%arg2)
+  // CHECK-DAG: [[MUL:%.+]] = xla_chlo.broadcast_multiply [[IOTA]], [[CONVERT4]] {broadcast_dimensions = dense<[]> : tensor<0xi64>}
+  // CHECK-DAG: [[ADD:%.+]] = xla_chlo.broadcast_add [[MUL]], [[CONVERT3]] {broadcast_dimensions = dense<[]> : tensor<0xi64>}
+  %2 = "tf.Range"(%arg0, %arg1, %arg2) {Tidx = "tfdtype$DT_FLOAT", device = "", name = "range"} : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<?xf32>
+
+  // CHECK: return [[ADD]]
+  return %2 : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @range_int_dynamic
+// CHECK-SAME: [[START:%.*]]: tensor<i32>, [[DELTA:%.*]]: tensor<i32>
+func @range_int_dynamic(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> tensor<?xi32> {
+  // CHECK-DAG: [[SUB:%.+]] = xla_hlo.subtract %arg1, %arg0
+  // CHECK-DAG: [[ABS1:%.+]] = "xla_hlo.abs"([[SUB]])
+  // CHECK-DAG: [[CONVERT1:%.+]] = "xla_hlo.convert"([[ABS1]])
+  // CHECK-DAG: [[CONVERT2:%.+]] = "xla_hlo.convert"(%arg2)
+  // CHECK-DAG: [[DIV:%.+]] = xla_hlo.divide [[CONVERT1]], [[CONVERT2]]
+  // CHECK-DAG: [[CEIL:%.+]] = "xla_hlo.ceil"([[DIV]])
+  // CHECK-DAG: [[CONVERT3:%.+]] = "xla_hlo.convert"([[CEIL]])
+  // CHECK-DAG: [[RESHAPE:%.+]] = "xla_hlo.reshape"([[CONVERT3]])
+  // CHECK-DAG: [[IOTA:%.+]] = "xla_hlo.dynamic_iota"([[RESHAPE]]) {iota_dimension = 0 : i64}
+  // CHECK-DAG: [[CONVERT3:%.+]] = "xla_hlo.convert"(%arg0)
+  // CHECK-DAG: [[CONVERT4:%.+]] = "xla_hlo.convert"(%arg2)
+  // CHECK-DAG: [[MUL:%.+]] = xla_chlo.broadcast_multiply [[IOTA]], [[CONVERT4]] {broadcast_dimensions = dense<[]> : tensor<0xi64>}
+  // CHECK-DAG: [[ADD:%.+]] = xla_chlo.broadcast_add [[MUL]], [[CONVERT3]] {broadcast_dimensions = dense<[]> : tensor<0xi64>}
+  %2 = "tf.Range"(%arg0, %arg1, %arg2) {Tidx = "tfdtype$DT_FLOAT", device = "", name = "range"} : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<?xi32>
+
+  // CHECK: return [[ADD]]
+  return %2 : tensor<?xi32>
 }
 
 // CHECK-LABEL: func @linspace_static

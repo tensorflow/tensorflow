@@ -105,6 +105,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["adam_test.py"],
     shard_count = 4,
+    tags = ["no_rocm"],
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",

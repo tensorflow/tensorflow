@@ -218,4 +218,9 @@ bzl_library(
     ],
 )
 
+py_library(
+    name = "cuda_config_py",
+    srcs = ["cuda/cuda_config.py"]
+)
+
 %{copy_rules}

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <initializer_list>
 #include <string>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -27,19 +28,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace profiler {
-
-// An argument passed to TraceMeEncode.
-struct TraceMeArg {
-  // This constructor is required because absl::AlphaNum is non-copyable.
-  template <typename Value>
-  TraceMeArg(absl::string_view k, Value v) : key(k), value(v) {}
-
-  TF_DISALLOW_COPY_AND_ASSIGN(TraceMeArg);
-
-  absl::string_view key;
-  absl::AlphaNum value;
-};
-
 namespace traceme_internal {
 
 // Copies the contents of str to the address pointed by out.
@@ -57,21 +45,23 @@ TF_ATTRIBUTE_ALWAYS_INLINE inline char* Append(char* out,
 
 // Appends args encoded as TraceMe metadata to name.
 TF_ATTRIBUTE_ALWAYS_INLINE inline std::string AppendArgs(
-    std::string name, std::initializer_list<TraceMeArg> args) {
+    std::string name,
+    const std::initializer_list<std::pair<absl::string_view, absl::AlphaNum>>&
+        args) {
   if (TF_PREDICT_TRUE(args.size() > 0)) {
     const auto old_size = name.size();
     auto new_size = old_size + args.size() * 2 + 1;
     for (const auto& arg : args) {
-      new_size += arg.key.size() + arg.value.size();
+      new_size += arg.first.size() + arg.second.size();
     }
     name.resize(new_size);
     char* const begin = &name[0];
     char* out = begin + old_size;
     *out++ = '#';
     for (const auto& arg : args) {
-      out = Append(out, arg.key);
+      out = Append(out, arg.first);
       *out++ = '=';
-      out = Append(out, arg.value.Piece());
+      out = Append(out, arg.second.Piece());
       *out++ = ',';
     }
     *(out - 1) = '#';
@@ -102,16 +92,19 @@ TF_ATTRIBUTE_ALWAYS_INLINE inline void AppendMetadata(
 //   TraceMe trace_me([value1]() {
 //     return TraceMeEncode("my_trace", {{"key1", value1}, {"key2", 42}});
 //   });
-TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeEncode(
-    std::string name, std::initializer_list<TraceMeArg> args) {
+inline std::string TraceMeEncode(
+    std::string name,
+    std::initializer_list<std::pair<absl::string_view, absl::AlphaNum>> args) {
   return traceme_internal::AppendArgs(std::move(name), args);
 }
-TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeEncode(
-    absl::string_view name, std::initializer_list<TraceMeArg> args) {
+inline std::string TraceMeEncode(
+    absl::string_view name,
+    std::initializer_list<std::pair<absl::string_view, absl::AlphaNum>> args) {
   return traceme_internal::AppendArgs(std::string(name), args);
 }
-TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeEncode(
-    const char* name, std::initializer_list<TraceMeArg> args) {
+inline std::string TraceMeEncode(
+    const char* name,
+    std::initializer_list<std::pair<absl::string_view, absl::AlphaNum>> args) {
   return traceme_internal::AppendArgs(std::string(name), args);
 }
 
@@ -123,8 +116,8 @@ TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeEncode(
 //   trace_me.AppendMetadata([value1]() {
 //     return TraceMeEncode({{"key1", value1}, {"key2", 42}});
 //   });
-TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeEncode(
-    std::initializer_list<TraceMeArg> args) {
+inline std::string TraceMeEncode(
+    std::initializer_list<std::pair<absl::string_view, absl::AlphaNum>> args) {
   return traceme_internal::AppendArgs(std::string(), args);
 }
 

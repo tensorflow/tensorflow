@@ -376,5 +376,9 @@ const InstructionValueSet& CpuExecutable::GetRootValueSet() const {
       module().entry_computation()->root_instruction());
 }
 
+int64 CpuExecutable::SizeOfGeneratedCodeInBytes() const {
+  return jit_->SizeOfGeneratedCodeInBytes();
+}
+
 }  // namespace cpu
 }  // namespace xla
