@@ -77,17 +77,19 @@ RUN apt-get update && apt-get install -y \
     virtualenv \
     swig
 
+RUN apt-get update && apt-get install -y \
+    python3-pil \
+    python3-h5py \
+    python3-keras-preprocessing \
+    python3-matplotlib \
+    python3-mock \
+    python3-numpy \
+    python3-scipy \
+    python3-sklearn \
+    python3-pandas \
+    python3-portpicker
+
 RUN python3 -m pip --no-cache-dir install \
-    Pillow \
-    h5py \
-    keras_preprocessing \
-    matplotlib \
-    mock \
-    numpy \
-    scipy \
-    sklearn \
-    pandas \
-    portpicker \
     enum34
 
 # Build and install bazel
