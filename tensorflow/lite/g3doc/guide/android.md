@@ -262,9 +262,24 @@ Note that the `0.1.100` version here is purely for the sake of
 testing/development. With the local AAR installed, you can use the standard
 [TensorFlow Lite Java inference APIs](../guide/inference.md) in your app code.
 
-##### Build C++ libraries
+## Build Android app using C++
 
-If you want to use TFLite through C++ libraries, you can build the shared
+There are two ways to use TFLite through C++ if you build your app with the NDK:
+
+### Use TFLite C API
+
+This is the *recommended* approach. Download the
+[TensorFlow Lite AAR hosted at JCenter](https://bintray.com/google/tensorflow/tensorflow-lite),
+rename it to `tensorflow-lite-*.zip`, and unzip it. You must include the three
+header files in `headers/tensorflow/lite/c/` folder and the relevant
+`libtensorflowlite_jni.so` dynamic library in `jni/` folder in your NDK project.
+
+The `c_api.h` header file contains basic documentation about using the TFLite C
+API.
+
+### Use TFLite C++ API
+
+If you want to use TFLite through C++ API, you can build the C++ shared
 libraries:
 
 32bit armeabi-v7a:
@@ -278,3 +293,9 @@ bazel build -c opt --config=android_arm //tensorflow/lite:libtensorflowlite.so
 ```sh
 bazel build -c opt --config=android_arm64 //tensorflow/lite:libtensorflowlite.so
 ```
+
+Currently, there is no straightforward way to extract all header files needed,
+so you must include all header files in `tensorflow/lite/` from the TensorFlow
+repository. Additionally, you will need header files from
+[FlatBUffers](https://github.com/google/flatbuffers) and
+[Abseil](https://github.com/abseil/abseil-cpp).
