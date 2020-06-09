@@ -79,8 +79,8 @@ $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/$(SF_BSPS_DEST): $(MAKEFILE_DIR)/downlo
     -Wl,--start-group -lm -lc -lgcc -Wl,--end-group \
     -fno-exceptions \
     -nostdlib --specs=nano.specs -t -lstdc++ -lc -lnosys -lm \
-    -Wl,-T,$(TENSORFLOW_ROOT)$$(APOLLO3_SDK)/boards/apollo3_evb/examples/hello_world/gcc_patched/apollo3evb.ld \
-    -Wl,-Map=$(TENSORFLOW_ROOT)$$(MAKEFILE_DIR)/gen/$(TARGET).map,--cref
+    -Wl,-T,$(TENSORFLOW_ROOT)$(APOLLO3_SDK)/boards/apollo3_evb/examples/hello_world/gcc_patched/apollo3evb.ld \
+    -Wl,-Map=$(TENSORFLOW_ROOT)$(MAKEFILE_DIR)/gen/$(TARGET).map,--cref
   BUILD_TYPE := micro
   ifeq ($(TARGET), apollo3evb)
     BOARD_BSP_PATH := $(APOLLO3_SDK)/boards/apollo3_evb/bsp
