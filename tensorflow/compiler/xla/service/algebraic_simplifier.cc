@@ -2973,6 +2973,7 @@ Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
     // slice instruction should all have the same layout.
     TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
         pad->shape(), nonzero_pad->mutable_shape()));
+    simplifier_->UpdateLayout(nonzero_pad->mutable_shape());
 
     // Second, construct the slice instruction to perform the negative padding.
     std::vector<int64> start_indices;
@@ -2999,9 +3000,14 @@ Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
         MakeSliceHlo(nonzero_pad, start_indices, end_indices, strides));
     TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
         pad->shape(), slice->mutable_shape()));
+    simplifier_->UpdateLayout(slice->mutable_shape());
 
     // Verify that the slice shape matches the pad shape.
-    TF_RET_CHECK(ShapeUtil::Equal(slice->shape(), pad->shape()));
+    auto equal = Shape::Equal();
+    if (!options_.is_layout_sensitive()) {
+      equal.IgnoreTilesInLayout();
+    }
+    TF_RET_CHECK(equal(slice->shape(), pad->shape()));
 
     return ReplaceInstruction(pad, slice);
   }
