@@ -376,7 +376,6 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   def _RunGraphV2(self, saved_model_dir, inputs_data, graph_state, num_runs=2):
     """Run given graphdef multiple times using TF 2.0 runtime."""
-
     params = self._GetParamsCached()
     root = load.load(saved_model_dir)
     func = root.signatures[
@@ -431,7 +430,6 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
                        conversion_params):
     """Return a TrtGraphConverter."""
     if run_params.is_v2:
-
       return trt_convert.TrtGraphConverterV2(
           input_saved_model_dir=saved_model_dir,
           conversion_params=conversion_params)
