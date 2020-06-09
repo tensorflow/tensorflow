@@ -124,7 +124,7 @@ cc_library(
     ],
     deps = [
         ":tpu_executable_info_proto_cc",
-        ":tpu_program",
+        ":tpu_program_group",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core/lib/core:refcount",
     ],
@@ -167,14 +167,24 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_program",
-    srcs = ["tpu_program.cc"],
-    hdrs = ["tpu_program.h"],
+    name = "tpu_program_group_interface",
+    hdrs = ["tpu_program_group_interface.h"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:host_compute_metadata_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "tpu_program_group",
+    srcs = ["tpu_program_group.cc"],
+    hdrs = ["tpu_program_group.h"],
     deps = [
         ":tpu_compile_c_api_hdrs",
         ":tpu_compile_op_support",
         ":tpu_compile_proto_cc",
         ":tpu_executable_info_proto_cc",
+        ":tpu_program_group_interface",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/client:compile_only_client",
@@ -205,7 +215,7 @@ cc_library(
         ":tpu_compile_c_api_hdrs",
         ":tpu_compile_op_support",
         ":tpu_mesh_state_interface",
-        ":tpu_program",
+        ":tpu_program_group",
         ":tpu_util",
         ":trace_util_hdrs",
         "//tensorflow/compiler/xla/service",

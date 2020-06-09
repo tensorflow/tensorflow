@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef EXPERIMENTAL_BRAIN_TPU_1VM_MINIEXECUTOR_TPU_COMPILATION_CACHE_INTERFACE_H_
-#define EXPERIMENTAL_BRAIN_TPU_1VM_MINIEXECUTOR_TPU_COMPILATION_CACHE_INTERFACE_H_
+#ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_EXTERNAL_H_
+#define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_EXTERNAL_H_
 
 #include <functional>
 #include <memory>
@@ -34,7 +34,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compile_c_api.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
-#include "tensorflow/core/tpu/kernels/tpu_program.h"
+#include "tensorflow/core/tpu/kernels/tpu_program_group.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -122,7 +122,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
     string cache_entry_debug_string;
 
     // Compiled Tpu program.
-    std::unique_ptr<TpuProgram> tpu_program;
+    std::unique_ptr<TpuProgramGroup> tpu_program;
   };
 
   explicit TpuCompilationCacheInterface(int64_t max_cache_size);
@@ -137,7 +137,8 @@ class TpuCompilationCacheInterface : public ResourceBase {
       TpuCompilationRefHolder* per_step_ref_holder, int64* uid,
       std::vector<string>* proto_key, std::vector<bool>* may_modify_variables,
       std::vector<std::shared_ptr<const xla::HloProto>>* hlo_metadata,
-      const std::function<tensorflow::Status(TpuProgram*)>& compile_function);
+      const std::function<tensorflow::Status(TpuProgramGroup*)>&
+          compile_function);
 
   static TpuCompilationCacheKey CreateCompilationCacheKey(
       absl::string_view function_name, uint64 function_library_fingerprint,
@@ -266,7 +267,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
       std::vector<string>* proto_key, std::vector<bool>* may_modify_variables,
       std::vector<CompilationEntry*>* removed_entries,
       std::vector<std::shared_ptr<const xla::HloProto>>* hlo_metadata,
-      const std::function<Status(TpuProgram*)>& compile_function);
+      const std::function<Status(TpuProgramGroup*)>& compile_function);
 
   // This is called by the cache when entry is marked for eviction; by
   // a RefHolder (via DiscardEntryRefs) when a step completes; and by
@@ -330,9 +331,9 @@ class TpuCompilationCacheInterface : public ResourceBase {
   //
   // **InitializeEntry releases mu_ during the call to initialize_programs.**
   CompilationEntry* InitializeEntry(
-    const string& key,
-    const std::function<Status(TpuProgram*)>& initialize_program,
-    const TpuCompilationCacheKey& subgraph_key)
+      const string& key,
+      const std::function<Status(TpuProgramGroup*)>& initialize_program,
+      const TpuCompilationCacheKey& subgraph_key)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Unloads the program associated with the entry from all local devices
@@ -391,4 +392,4 @@ class TpuCompilationCacheInterface : public ResourceBase {
 }  // namespace tpu
 }  // namespace tensorflow
 
-#endif  // EXPERIMENTAL_BRAIN_TPU_1VM_MINIEXECUTOR_TPU_COMPILATION_CACHE_INTERFACE_H_
+#endif  // TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_EXTERNAL_H_

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef EXPERIMENTAL_BRAIN_TPU_1VM_MINIEXECUTOR_TPU_PROGRAM_H_
-#define EXPERIMENTAL_BRAIN_TPU_1VM_MINIEXECUTOR_TPU_PROGRAM_H_
+#ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_PROGRAM_GROUP_H_
+#define TENSORFLOW_CORE_TPU_KERNELS_TPU_PROGRAM_GROUP_H_
 
 #include <vector>
 
@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compile_c_api.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
+#include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
 
 namespace tensorflow {
@@ -78,12 +79,9 @@ class TpuAotCompilationOptions : public xla::AotCompilationOptions {
       shardable_value_update_pairs_;
 };
 
-// An executable capable of being fed to a TPU device.
-class TpuProgram {
+class TpuProgramGroup : public TpuProgramGroupInterface {
  public:
   using Status = ::stream_executor::port::Status;
-
-  virtual ~TpuProgram() = default;
 
   static Status Build(
       const TPUCompileMetadataProto& metadata,
@@ -91,19 +89,17 @@ class TpuProgram {
       const std::vector<ShardingAndIndex>& arg_core_mapping,
       const std::vector<std::vector<xla::Shape>>& per_core_arg_shapes,
       const absl::optional<xla::DeviceAssignment>& xla_device_assignment,
-      TpuProgram* tpu_program);
+      TpuProgramGroup* tpu_program);
 
-  size_t program_count() const {
-    return tpu_programs_.size();
-  }
+  size_t program_count() const override { return tpu_programs_.size(); }
 
-  int64_t program_size() const;
+  int64_t program_size() const override;
 
-  bool LogProgramMemorySummary();
+  bool LogProgramMemorySummary() override;
 
-  void UnloadAndDestroyPrograms();
+  void UnloadAndDestroyPrograms() override;
 
-  const std::vector<bool>& may_modify_variables() const {
+  const std::vector<bool>& may_modify_variables() const override {
     return may_modify_variables_;
   }
   void set_may_modify_variables(const std::vector<bool>& may_modify_variables) {
@@ -145,6 +141,10 @@ class TpuProgram {
     hlo_metadata_ = hlo_metadata;
   }
 
+  xla::HloProto hlo_metadata(int core_index) const;
+  std::vector<std::shared_ptr<const xla::HloProto>> hlo_metadatas()
+      const override;
+
  private:
   std::vector<bool> may_modify_variables_;
   tf2xla::HostComputeMetadata host_compute_metadata_;
@@ -158,4 +158,4 @@ class TpuProgram {
 }  // namespace tpu
 }  // namespace tensorflow
 
-#endif  // EXPERIMENTAL_BRAIN_TPU_1VM_MINIEXECUTOR_TPU_PROGRAM_H_
+#endif  // TENSORFLOW_CORE_TPU_KERNELS_TPU_PROGRAM_GROUP_H_

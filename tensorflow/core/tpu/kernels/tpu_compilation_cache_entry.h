@@ -12,13 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef EXPERIMENTAL_BRAIN_TPU_1VM_MINIEXECUTOR_TPU_COMPILATION_CACHE_ENTRY_H_
-#define EXPERIMENTAL_BRAIN_TPU_1VM_MINIEXECUTOR_TPU_COMPILATION_CACHE_ENTRY_H_
+#ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_ENTRY_H_
+#define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_ENTRY_H_
 
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
-#include "tensorflow/core/tpu/kernels/tpu_program.h"
+#include "tensorflow/core/tpu/kernels/tpu_program_group.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -26,7 +26,7 @@ namespace tpu {
 class CompilationCacheEntry {
  public:
   explicit CompilationCacheEntry(
-      std::unique_ptr<const TpuProgram> tpu_program)
+      std::unique_ptr<const TpuProgramGroup> tpu_program)
       : tpu_program_(std::move(tpu_program)) {}
 
   // Constructor for an empty entry.
@@ -53,7 +53,7 @@ class CompilationCacheEntry {
   }
 
  private:
-  std::unique_ptr<const TpuProgram> tpu_program_;
+  std::unique_ptr<const TpuProgramGroup> tpu_program_;
 };
 
 // Base class for a reference to a cached proto. A unique_ptr to a
@@ -81,4 +81,4 @@ class CompilationRefHolder : public ResourceBase {
 }  // namespace tpu
 }  // namespace tensorflow
 
-#endif  // EXPERIMENTAL_BRAIN_TPU_1VM_MINIEXECUTOR_TPU_COMPILATION_CACHE_ENTRY_H_
+#endif  // TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_ENTRY_H_

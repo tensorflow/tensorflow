@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/tpu/kernels/tpu_program.h"
+#include "tensorflow/core/tpu/kernels/tpu_program_group.h"
 
 #include "tensorflow/compiler/xla/service/hlo_module_group.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
@@ -99,7 +99,7 @@ StatusOr<std::vector<XLA_TpuProgram*>> CompileAheadOfTime(
 
 }  // namespace
 
-int64_t TpuProgram::program_size() const {
+int64_t TpuProgramGroup::program_size() const {
   int64_t total_size = 0;
   for (XLA_TpuProgram* tpu_program : tpu_programs_) {
     total_size += TpuProgram_GetProgramSize(tpu_program);
@@ -107,7 +107,7 @@ int64_t TpuProgram::program_size() const {
   return total_size;
 }
 
-bool TpuProgram::LogProgramMemorySummary() {
+bool TpuProgramGroup::LogProgramMemorySummary() {
   bool success = true;
   for (const XLA_TpuProgram* tpu_program : tpu_programs_) {
     success &= TpuProgram_LogProgramMemorySummary(tpu_program);
@@ -115,25 +115,25 @@ bool TpuProgram::LogProgramMemorySummary() {
   return success;
 }
 
-void TpuProgram::UnloadAndDestroyPrograms() {
+void TpuProgramGroup::UnloadAndDestroyPrograms() {
   for (XLA_TpuProgram* tpu_program : tpu_programs_) {
     StatusHelper status;
     TpuProgram_UnloadAndDestroy(tpu_program, status.c_status);
     auto s = status.status();
     if (!s.ok()) {
-      LOG(ERROR) << "TpuProgram::UnloadPrograms(): " << s.ToString();
+      LOG(ERROR) << "TpuProgramGroup::UnloadPrograms(): " << s.ToString();
     }
   }
   tpu_programs_.clear();
 }
 
-/*static*/ Status TpuProgram::Build(
+/*static*/ Status TpuProgramGroup::Build(
     const TPUCompileMetadataProto& metadata,
     const tensorflow::XlaCompiler::CompilationResult& compilation_result,
     const std::vector<ShardingAndIndex>& arg_core_mapping,
     const std::vector<std::vector<xla::Shape>>& per_core_arg_shapes,
     const absl::optional<xla::DeviceAssignment>& xla_device_assignment,
-    TpuProgram* tpu_program) {
+    TpuProgramGroup* tpu_program_group) {
   std::vector<std::vector<xla::Shape>> per_core_output_shapes(
       metadata.num_cores_per_replica());
   TF_RETURN_IF_ERROR(ComputeOutputShapesForEachCore(
@@ -149,7 +149,7 @@ void TpuProgram::UnloadAndDestroyPrograms() {
   TF_RET_CHECK(per_core_output_shapes.size() == per_core_arg_shapes.size());
   TF_RET_CHECK(per_core_output_shapes.size() ==
                per_core_variable_indices.size());
-  tpu_program->set_may_modify_variables(may_modify_variables);
+  tpu_program_group->set_may_modify_variables(may_modify_variables);
 
   // With shardable input/output pairs, XLA could generate separate
   // sharding/unsharding programs along with the main program. The
@@ -164,7 +164,7 @@ void TpuProgram::UnloadAndDestroyPrograms() {
   // SPMD could return 1 result for all partitions.
   TF_RET_CHECK(xla_tpu_programs.size() == 1 ||
                xla_tpu_programs.size() == metadata.num_cores_per_replica());
-  tpu_program->set_tpu_programs(xla_tpu_programs);
+  tpu_program_group->set_tpu_programs(xla_tpu_programs);
 
   // TODO(jiawenhao): Handle the case of xla_tpu_programs.size() > 1.
   TpuSerializedProto serialized_executable_info;
@@ -173,7 +173,7 @@ void TpuProgram::UnloadAndDestroyPrograms() {
   TPUExecutableInfoProto executable_info =
       se_tpu::DeserializeProto<TPUExecutableInfoProto>(
           serialized_executable_info);
-  tpu_program->set_executable_info(executable_info);
+  tpu_program_group->set_executable_info(executable_info);
   StreamExecutor_Tpu_FreeSerializedProto(&serialized_executable_info);
 
   TPUHostTransferInfoProto host_transfer_info;
@@ -185,16 +185,39 @@ void TpuProgram::UnloadAndDestroyPrograms() {
         serialized_host_transfer_info);
     StreamExecutor_Tpu_FreeSerializedProto(&serialized_host_transfer_info);
   }
-  tpu_program->set_host_transfer_info(host_transfer_info);
+  tpu_program_group->set_host_transfer_info(host_transfer_info);
 
   TpuSerializedProto serialized_hlo_metadata;
   TpuProgram_GetHloMetadata(xla_tpu_programs[0], &serialized_hlo_metadata);
   xla::HloProto hlo_metadata =
       se_tpu::DeserializeProto<xla::HloProto>(serialized_hlo_metadata);
-  tpu_program->set_hlo_metadata(hlo_metadata);
+  tpu_program_group->set_hlo_metadata(hlo_metadata);
   StreamExecutor_Tpu_FreeSerializedProto(&serialized_hlo_metadata);
 
   return Status::OK();
+}
+
+xla::HloProto TpuProgramGroup::hlo_metadata(int core_index) const {
+  CHECK_GE(core_index, 0);
+  CHECK_LT(core_index, program_count());
+  TpuSerializedProto serialized_hlo_proto;
+  auto cleanup = gtl::MakeCleanup([serialized_hlo_proto]() {
+    StreamExecutor_Tpu_FreeSerializedProto(&serialized_hlo_proto);
+  });
+  TpuProgram_GetHloMetadata(tpu_programs_[core_index], &serialized_hlo_proto);
+  return stream_executor::tpu::DeserializeProto<xla::HloProto>(
+      serialized_hlo_proto);
+}
+
+std::vector<std::shared_ptr<const xla::HloProto>>
+TpuProgramGroup::hlo_metadatas() const {
+  const size_t metadata_count = program_count();
+  std::vector<std::shared_ptr<const xla::HloProto>> hlo_metadatas;
+  hlo_metadatas.resize(metadata_count);
+  for (size_t i = 0; i < metadata_count; ++i) {
+    hlo_metadatas[i] = std::make_shared<const xla::HloProto>(hlo_metadata(i));
+  }
+  return hlo_metadatas;
 }
 
 }  // namespace tpu

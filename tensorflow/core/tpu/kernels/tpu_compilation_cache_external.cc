@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_metrics.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_c_api.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
-#include "tensorflow/core/tpu/kernels/tpu_program.h"
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
 #include "tensorflow/core/tpu/kernels/trace_util.h"
 
@@ -42,7 +41,7 @@ int64 get_uid() {
 }
 
 void PopulateEntry(const std::string& key, CompilationEntry* entry,
-                   std::unique_ptr<TpuProgram> tpu_program) {
+                   std::unique_ptr<TpuProgramGroup> tpu_program) {
   // Make the unique keys for each cached proto.
   for (int i = 0; i < tpu_program->program_count(); ++i) {
     entry->proto_key.push_back(ProtoKeyForComputation(key, i));
@@ -202,7 +201,7 @@ void TpuCompilationCacheInterface::InsertEntry(
 
 CompilationEntry* TpuCompilationCacheInterface::InitializeEntry(
     const string& key,
-    const std::function<Status(TpuProgram*)>& initialize_program,
+    const std::function<Status(TpuProgramGroup*)>& initialize_program,
     const TpuCompilationCacheKey& subgraph_key) {
   CompilationEntry* main_entry = new CompilationEntry();
 
@@ -221,7 +220,7 @@ CompilationEntry* TpuCompilationCacheInterface::InitializeEntry(
   // can proceed during the (potentially lengthy) initialization.
   Status initialization_status;
 
-  auto tpu_program = absl::make_unique<TpuProgram>();
+  auto tpu_program = absl::make_unique<TpuProgramGroup>();
   {
     mu_.Unlock();
     {
@@ -637,7 +636,7 @@ Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
     std::vector<string>* proto_key, std::vector<bool>* may_modify_variables,
     std::vector<CompilationEntry*>* removed_entries,
     std::vector<std::shared_ptr<const xla::HloProto>>* hlo_metadata,
-    const std::function<Status(TpuProgram*)>& compile_function) {
+    const std::function<Status(TpuProgramGroup*)>& compile_function) {
   profiler::TraceMe subgraph_lookup_traceme(
       "TPU compilation cache subgraph lookup",
       /*level=*/2);
@@ -776,7 +775,8 @@ tensorflow::Status TpuCompilationCacheInterface::CompileIfKeyAbsent(
     TpuCompilationRefHolder* per_step_ref_holder, int64* uid,
     std::vector<string>* proto_key, std::vector<bool>* may_modify_variables,
     std::vector<std::shared_ptr<const xla::HloProto>>* hlo_metadata,
-    const std::function<tensorflow::Status(TpuProgram*)>& compile_function) {
+    const std::function<tensorflow::Status(TpuProgramGroup*)>&
+        compile_function) {
   std::vector<CompilationEntry*> removed_entries;
   auto status = CompileIfKeyAbsentHelper(
       cache_key, session_metadata, per_step_ref_holder, uid, proto_key,
