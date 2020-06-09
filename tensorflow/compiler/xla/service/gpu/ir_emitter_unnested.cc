@@ -981,8 +981,10 @@ Status IrEmitterUnnested::EmitScatter(
     llvm::Value* output_address =
         GetIrArray(*output_hlo, *output_hlo)
             .EmitArrayElementAddress(input_window_index, &b_);
-    llvm::Value* input_address = Alloca(llvm_ir::PrimitiveTypeToIrType(
-        updates->shape().element_type(), module_));
+    llvm::Value* input_address = llvm_ir::EmitAllocaAtFunctionEntry(
+        llvm_ir::PrimitiveTypeToIrType(updates->shape().element_type(),
+                                       module_),
+        "input_address", &b_);
     TF_ASSIGN_OR_RETURN(llvm::Value* const input_ir_value, updates_gen(index));
     Store(input_ir_value, input_address);
 
