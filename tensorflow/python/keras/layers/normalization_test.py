@@ -139,6 +139,27 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
     np.testing.assert_allclose(np.std(out, axis=(0, 1, 2)), 1.0, atol=1e-1)
 
   @keras_parameterized.run_all_keras_modes
+  def test_batchnorm_convnet_channel_last_3d_fused(self):
+    model = keras.models.Sequential()
+    norm = keras.layers.BatchNormalization(
+        axis=-1, input_shape=(4, 4, 4, 3), momentum=0.8, fused=True)
+    model.add(norm)
+    model.compile(
+        loss='mse',
+        optimizer=gradient_descent.GradientDescentOptimizer(0.01),
+        run_eagerly=testing_utils.should_run_eagerly())
+
+    # centered on 5.0, variance 10.0
+    x = np.random.normal(loc=5.0, scale=10.0, size=(1000, 4, 4, 4, 3))
+    model.fit(x, x, epochs=4, verbose=0)
+    out = model.predict(x)
+    out -= np.reshape(keras.backend.eval(norm.beta), (1, 1, 1, 3))
+    out /= np.reshape(keras.backend.eval(norm.gamma), (1, 1, 1, 3))
+
+    np.testing.assert_allclose(np.mean(out, axis=(0, 1, 2)), 0.0, atol=1e-1)
+    np.testing.assert_allclose(np.std(out, axis=(0, 1, 2)), 1.0, atol=1e-1)
+
+  @keras_parameterized.run_all_keras_modes
   def test_batchnorm_correctness(self):
     _run_batchnorm_correctness_test(
         normalization.BatchNormalization, dtype='float32')
@@ -213,7 +234,7 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
       model = MyModel()
 
       for _ in range(10):
-        x = constant_op.constant(0.5, shape=[1, 1])
+        x = constant_op.constant(0.5, shape=[2, 1])
         model(x, training=True)
 
       # Make sure the moving mean and variance have been updated
@@ -255,20 +276,28 @@ class BatchNormalizationV2Test(keras_parameterized.TestCase):
         normalization_v2.BatchNormalization,
         kwargs={'fused': None},
         input_shape=(3, 3, 3))
+    testing_utils.layer_test(
+        normalization_v2.BatchNormalization,
+        kwargs={'fused': True},
+        input_shape=(3, 3, 3, 3, 3))
+    testing_utils.layer_test(
+        normalization_v2.BatchNormalization,
+        kwargs={'fused': True},
+        input_shape=(3, 3))
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_v2_fused_attribute(self):
     norm = normalization_v2.BatchNormalization()
-    self.assertEqual(norm.fused, None)
+    self.assertEqual(norm.fused, True)
     inp = keras.layers.Input(shape=(4, 4, 4))
     norm(inp)
     self.assertEqual(norm.fused, True)
 
     norm = normalization_v2.BatchNormalization()
-    self.assertEqual(norm.fused, None)
+    self.assertEqual(norm.fused, True)
     inp = keras.layers.Input(shape=(4, 4))
     norm(inp)
-    self.assertEqual(norm.fused, False)
+    self.assertEqual(norm.fused, True)
 
     norm = normalization_v2.BatchNormalization(virtual_batch_size=2)
     self.assertEqual(norm.fused, False)
@@ -291,10 +320,7 @@ class BatchNormalizationV2Test(keras_parameterized.TestCase):
     with self.assertRaisesRegexp(ValueError, 'fused.*renorm'):
       normalization_v2.BatchNormalization(fused=True, renorm=True)
 
-    with self.assertRaisesRegexp(ValueError, 'fused.*when axis is 1 or 3'):
-      normalization_v2.BatchNormalization(fused=True, axis=2)
-
-    with self.assertRaisesRegexp(ValueError, 'fused.*when axis is 1 or 3'):
+    with self.assertRaisesRegexp(ValueError, 'fused.*over a single axis'):
       normalization_v2.BatchNormalization(fused=True, axis=[1, 3])
 
     with self.assertRaisesRegexp(ValueError, 'fused.*virtual_batch_size'):
@@ -303,12 +329,6 @@ class BatchNormalizationV2Test(keras_parameterized.TestCase):
     with self.assertRaisesRegexp(ValueError, 'fused.*adjustment'):
       normalization_v2.BatchNormalization(fused=True,
                                           adjustment=lambda _: (1, 0))
-
-    norm = normalization_v2.BatchNormalization(fused=True)
-    self.assertEqual(norm.fused, True)
-    inp = keras.layers.Input(shape=(4, 4))
-    with self.assertRaisesRegexp(ValueError, '4D input tensors'):
-      norm(inp)
 
   def test_updates_in_wrap_function(self):
     with context.eager_mode():

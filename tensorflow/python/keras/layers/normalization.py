@@ -198,10 +198,8 @@ class BatchNormalizationBase(Layer):
     if self._USE_V2_BEHAVIOR:
       if fused:
         self._raise_if_fused_cannot_be_used()
-      # We leave fused as None if self._fused_can_be_used()==True, since we
-      # still may set it to False in self.build() if the input rank is not 4.
-      elif fused is None and not self._fused_can_be_used():
-        fused = False
+      elif fused is None:
+        fused = self._fused_can_be_used()
     elif fused is None:
       fused = True
     self.supports_masking = True
@@ -221,26 +219,20 @@ class BatchNormalizationBase(Layer):
 
   def _raise_if_fused_cannot_be_used(self):
     """Raises a ValueError if fused implementation cannot be used.
-
-    In addition to the checks done in this function, the input tensors rank must
-    be 4. The input rank check can only be done once the input shape is known.
     """
     # Note the ValueErrors in this function are caught and not reraised in
     # _fused_can_be_used(). No other exception besides ValueError should be
     # raised here.
 
     # Currently fused batch norm doesn't support renorm. It also only supports a
-    # channel dimension on axis 1 or 3, when no virtual batch size or adjustment
-    # is used.
+    # single axis, when no virtual batch size or adjustment is used.
     if self.renorm:
       raise ValueError('Passing both fused=True and renorm=True is '
                        'unsupported')
     axis = [self.axis] if isinstance(self.axis, int) else self.axis
-    # Axis -3 is equivalent to 1, and axis -1 is equivalent to 3, because the
-    # input rank is required to be 4 (which is checked later).
-    if len(axis) > 1 or axis[0] not in (-3, -1, 1, 3):
-      raise ValueError('Passing fused=True is only supported when axis is 1 '
-                       'or 3')
+    if len(axis) > 1:
+      raise ValueError('Passing fused=True is only supported when operating '
+                       'over a single axis.')
     if self.virtual_batch_size is not None:
       raise ValueError('Passing fused=True is unsupported when '
                        'virtual_batch_size is specified.')
@@ -281,6 +273,51 @@ class BatchNormalizationBase(Layer):
         distribution_strategy_context.get_strategy().extended,
         'experimental_enable_get_next_as_optional', False)
 
+  def _get_shape_and_axis_for_fused(self, nd_shape, nd_axis):
+    '''Returns a 4D shape and axis (1 or 3) to which nd_shape and nd_axis can
+    be changed without changing the result of the batch normalization operation.
+    '''
+    assert(isinstance(nd_axis, int))
+    ndims = len(nd_shape)
+    shape = nd_shape[:]
+    axis = nd_shape + nd_axis if nd_axis < 0 else nd_axis
+    # First check if the axis needs to be moved.
+    if axis not in (1, ndims - 1):
+      # Move axis to dim 1.
+      if axis == 0:
+        # Transform [C, ...] to [1, C, ...].
+        shape.insert(0, 1)
+        ndims += 1
+      else:
+        # Merge excess pre-axis dims into first dim.
+        # Transform [N, ..., C, ...] to [product(N, ...), C, ...].
+        for dim in range(axis - 1, 0, -1):
+          shape[0] *= shape[dim]
+          del shape[dim]
+          ndims -= 1
+      axis = 1
+    # Now change shape to 4D.
+    is_channels_last = axis == ndims - 1
+    if ndims < 4:
+      # Insert new dims after existing spatial dim or before channel dim.
+      new_dims = [1] * (4 - ndims)
+      if is_channels_last:
+        # Transform [..., C] to [..., 1..., C] (ndims=4).
+        shape = shape[:-1] + new_dims + shape[-1:]
+      else:
+        # Transform [N, C, ...] to [N, C, ..., 1...] (ndims=4).
+        shape += new_dims
+    elif ndims > 4:
+      # Merge excess spatial dims into the second spatial dim.
+      # Transform [N, C, H, W, ...] to [N, C, H, product(W, ...)].
+      # Or        [N, H, W, ..., C] to [N, H, product(W, ...), C].
+      merge_dim = 2 if is_channels_last else 3
+      for dim in range(merge_dim + (ndims - 4), merge_dim, -1):
+        shape[merge_dim] *= shape[dim]
+        del shape[dim]
+    axis = 3 if is_channels_last else 1
+    return shape, axis
+
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
     if not input_shape.ndims:
@@ -315,18 +352,22 @@ class BatchNormalizationBase(Layer):
         raise ValueError('When using virtual_batch_size, adjustment cannot '
                          'be specified')
 
+    fused_axis = self.axis
+    self._input_fused_shape = None
     if self.fused in (None, True):
-      # TODO(yaozhang): if input is not 4D, reshape it to 4D and reshape the
-      # output back to its original shape accordingly.
-      if self._USE_V2_BEHAVIOR:
-        if self.fused is None:
-          self.fused = (ndims == 4)
-        elif self.fused and ndims != 4:
-          raise ValueError('Batch normalization layers with fused=True only '
-                           'support 4D input tensors.')
-      else:
+      if len(self.axis) == 1 and (self.axis[0] not in (1, ndims - 1) or
+                                  ndims != 4):
+        # The fused implementation only supports NCHW or NHWC, so we will
+        # reshape the input/output tensor to/from an equivalent 4D shape.
+        fused_shape, fused_axis = self._get_shape_and_axis_for_fused(
+            input_shape.dims, self.axis[0])
+        fused_shape = tensor_shape.TensorShape(fused_shape)
+        self._input_fused_shape = [-1] + fused_shape.as_list()[1:]
+        fused_axis = [fused_axis]
+
+      if not self._USE_V2_BEHAVIOR:
         assert self.fused is not None
-        self.fused = (ndims == 4 and self._fused_can_be_used())
+        self.fused = self._fused_can_be_used()
       # TODO(chrisying): fused batch norm is currently not supported for
       # multi-axis batch norm and by extension virtual batches. In some cases,
       # it might be possible to use fused batch norm but would require reshaping
@@ -335,9 +376,9 @@ class BatchNormalizationBase(Layer):
       # common use case (turning 5D w/ virtual batch to NCHW)
 
     if self.fused:
-      if self.axis == [1]:
+      if fused_axis == [1]:
         self._data_format = 'NCHW'
-      elif self.axis == [3]:
+      elif fused_axis == [3]:
         self._data_format = 'NHWC'
       else:
         raise ValueError('Unsupported axis, fused batch norm only supports '
@@ -499,6 +540,10 @@ class BatchNormalizationBase(Layer):
     beta = self.beta if self.center else self._beta_const
     gamma = self.gamma if self.scale else self._gamma_const
 
+    original_shape = [-1] + inputs.shape.as_list()[1:]
+    if self._input_fused_shape is not None:
+      inputs = array_ops.reshape(inputs, self._input_fused_shape)
+
     # TODO(b/129279393): Support zero batch input in non DistributionStrategy
     # code as well.
     if self._support_zero_size_input():
@@ -575,8 +620,11 @@ class BatchNormalizationBase(Layer):
 
     output, mean, variance = tf_utils.smart_cond(training, train_op,
                                                  _fused_batch_norm_inference)
-    variance = _maybe_add_or_remove_bessels_correction(variance, remove=True)
 
+    if self._input_fused_shape is not None:
+      output = array_ops.reshape(output, original_shape)
+
+    variance = _maybe_add_or_remove_bessels_correction(variance, remove=True)
     training_value = tf_utils.constant_value(training)
     if training_value or training_value is None:
       if not use_fused_avg_updates:
