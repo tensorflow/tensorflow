@@ -78,7 +78,8 @@ class Calibrator(object):
                    computation, useful when targeting an integer-only backend.
                    If False, an error will be thrown if an operation cannot be
                    quantized, otherwise the model will fallback to float ops.
-      activations_type: A tf.dtype representing the desired type for activations.
+      activations_type: A tf.dtype representing the desired type for
+                   activations.
       resize_input: A boolean. True if the shape of the sample data is different
         from the input.
     """

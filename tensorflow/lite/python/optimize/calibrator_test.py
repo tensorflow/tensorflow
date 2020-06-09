@@ -96,7 +96,8 @@ class CalibratorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       ('UseActivationTypeInt8 - EnableMlirQuantizer', constants.INT8),
       # Activation type Int16 
       ('UseActivationTypeInt16 - DisableEnableMlirQuantizer', constants.INT16))
-  def test_calibration_with_quantization_multiple_inputs(self, activations_type):
+  def test_calibration_with_quantization_multiple_inputs(self,
+                                                         activations_type):
     # Load multi add model from test data.
     # This model has 4 inputs of size (1, 8, 8, 3).
     model_path = resource_loader.get_path_to_datafile(

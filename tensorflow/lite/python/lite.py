@@ -251,7 +251,8 @@ class QuantizationMode(object):
                 self.post_training_fp16())
 
   def activations_type(self):
-    return constants.INT16 if self._is_int16x8_target_required() else constants.INT8
+    return constants.INT16 if self._is_int16x8_target_required() \
+      else constants.INT8
 
   def converter_flags(self, inference_ty=None, inference_input_ty=None):
     """Flags to the converter."""
@@ -262,7 +263,8 @@ class QuantizationMode(object):
 
     if self.training_time_int8_allow_float():
       return {
-          "inference_type": inference_ty if inference_ty else self.activations_type(),
+          "inference_type": inference_ty if inference_ty else \
+            self.activations_type(),
           "inference_input_type":
               inference_input_ty if inference_input_ty else constants.FLOAT,
           "post_training_quantize": False,  # disable dynamic range quantization
@@ -359,15 +361,15 @@ class QuantizationMode(object):
 
   def _is_int16x8_target_required(self):
     return bool(
-          set(self._target_spec.supported_ops).intersection([
-            OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
-        ]))
+      set(self._target_spec.supported_ops).intersection([
+        OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+      ]))
 
   def _is_allow_float(self):
     return bool(
-          set(self._target_spec.supported_ops).intersection([
-            OpsSet.TFLITE_BUILTINS
-        ]))
+      set(self._target_spec.supported_ops).intersection([
+        OpsSet.TFLITE_BUILTINS
+      ]))
 
   def _any_optimization_enabled(self):
     return bool(
@@ -441,7 +443,8 @@ class TFLiteConverterBase(object):
     return _get_grappler_config(optimizers)
 
   def _calibrate_quantize_model(self, result, inference_input_type,
-                                inference_output_type, activations_type, allow_float):
+                                inference_output_type, activations_type,
+                                allow_float):
     """Calibrate and quantize the model."""
     if not isinstance(self.representative_dataset, RepresentativeDataset):
       self.representative_dataset = RepresentativeDataset(
@@ -458,8 +461,8 @@ class TFLiteConverterBase(object):
       return _mlir_quantize(calibrated)
     else:
       return calibrate_quantize.calibrate_and_quantize(
-        self.representative_dataset.input_gen, inference_input_type,
-        inference_output_type, allow_float, activations_type)
+          self.representative_dataset.input_gen, inference_input_type,
+          inference_output_type, allow_float, activations_type)
 
   def _is_unknown_shapes_allowed(self):
     # Unknown dimensions are only allowed with the new converter.
@@ -1992,7 +1995,7 @@ class TocoConverter(object):
 
   @classmethod
   @_deprecation.deprecated(
-    None, "Use `lite.TFLiteConverter.from_keras_model_file` instead.")
+      None, "Use `lite.TFLiteConverter.from_keras_model_file` instead.")
   def from_keras_model_file(cls,
                             model_file,
                             input_arrays=None,

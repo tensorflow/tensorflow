@@ -103,7 +103,8 @@ class OpsSet(enum.Enum):
   # significantly, but only slightly increases the model size.   
   # WARNING: These ops are currently experimental and have not yet been finalized.
   # They are only compatible with CPU execution, and have not been optimized for production.
-  EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8 = "EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8"
+  EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8 = \
+    "EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8"
 
   def __str__(self):
     return self.value
