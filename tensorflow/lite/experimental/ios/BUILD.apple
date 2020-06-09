@@ -11,16 +11,13 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-TFL_FRAMEWORK_HDRS = [
-    "//tensorflow/lite/delegates/gpu:metal_delegate.h",
-    "//tensorflow/lite/c:c_api.h",
-    "//tensorflow/lite/c:common.h",
-]
-
 # bazel build -c opt --config=ios_fat //tensorflow/lite/experimental/ios:TensorFlowLiteC_framework
 ios_static_framework(
     name = "TensorFlowLiteC_framework",
-    hdrs = TFL_FRAMEWORK_HDRS,
+    hdrs = [
+        "//tensorflow/lite/c:c_api.h",
+        "//tensorflow/lite/c:common.h",
+    ],
     bundle_name = "TensorFlowLiteC",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
     deps = [

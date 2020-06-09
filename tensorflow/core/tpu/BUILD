@@ -1,11 +1,23 @@
 # Description: Utilities for TPU Operations
 
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_windows",
+)
+
 package(
     default_visibility = [
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/stream_executor/tpu:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
+)
+
+cc_library(
+    name = "libtftpu_header",
+    hdrs = ["libtftpu.h"],
+    visibility = ["//visibility:public"],
+    deps = [],
 )
 
 cc_library(
@@ -88,14 +100,23 @@ cc_library(
     name = "tpu_config_c_api",
     hdrs = ["tpu_config_c_api.h"],
     deps = [
+        ":libtftpu_header",
         "//tensorflow/c:tf_status",
     ],
 )
 
 cc_library(
     name = "tpu_library_loader",
-    srcs = ["tpu_library_loader.cc"],
+    srcs = if_windows(
+        ["tpu_library_loader_windows.cc"],
+        otherwise = ["tpu_library_loader.cc"],
+    ),
     hdrs = ["tpu_library_loader.h"],
-    visibility = ["//tensorflow:__subpackages__"],
-    deps = ["//tensorflow/core/platform:status"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":libtftpu_header",
+        ":tpu_config_c_api",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+    ],
 )

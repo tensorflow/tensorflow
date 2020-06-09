@@ -468,17 +468,6 @@ py_library(
     ],
 )
 
-py_library(
-    name = "tpu_embedding_v2_test_lib",
-    srcs = ["tpu_embedding_v2_test_lib.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":tpu_embedding_v2_utils",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:init_ops_v2",
-    ],
-)
-
 tpu_py_test(
     name = "tpu_embedding_v2_test",
     srcs = [
@@ -491,7 +480,6 @@ tpu_py_test(
     deps = [
         ":tpu_embedding",
         ":tpu_embedding_v2",
-        ":tpu_embedding_v2_test_lib",
         ":tpu_strategy_util",
         "//tensorflow/python:init_ops_v2",
         "//tensorflow/python:tensor_spec",
@@ -520,11 +508,27 @@ tf_py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":tpu_embedding_v2",
-        ":tpu_embedding_v2_test_lib",
         "//tensorflow/python:init_ops_v2",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//third_party/py/numpy",
+    ],
+)
+
+tpu_py_test(
+    name = "tpu_outside_compilation_test",
+    srcs = [
+        "tpu_outside_compilation_test.py",
+    ],
+    disable_experimental = True,
+    python_version = "PY3",
+    tags = ["no_oss"],
+    deps = [
+        ":tpu_lib",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/eager:test",
     ],
 )
 

@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <new>
 
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/micro/memory_helpers.h"
 
 namespace tflite {
@@ -40,6 +42,7 @@ SimpleMemoryAllocator::SimpleMemoryAllocator(ErrorReporter* error_reporter,
 /* static */
 SimpleMemoryAllocator* SimpleMemoryAllocator::Create(
     ErrorReporter* error_reporter, uint8_t* buffer_head, size_t buffer_size) {
+  TFLITE_DCHECK(buffer_head != nullptr);
   SimpleMemoryAllocator tmp =
       SimpleMemoryAllocator(error_reporter, buffer_head, buffer_size);
 
@@ -48,8 +51,8 @@ SimpleMemoryAllocator* SimpleMemoryAllocator::Create(
   // allocator instance.
   uint8_t* allocator_buffer = tmp.AllocateFromTail(
       sizeof(SimpleMemoryAllocator), alignof(SimpleMemoryAllocator));
-  return new (allocator_buffer)
-      SimpleMemoryAllocator(error_reporter, tmp.head_, tmp.tail_);
+  // Use the default copy constructor to populate internal states.
+  return new (allocator_buffer) SimpleMemoryAllocator(tmp);
 }
 
 SimpleMemoryAllocator::~SimpleMemoryAllocator() {}

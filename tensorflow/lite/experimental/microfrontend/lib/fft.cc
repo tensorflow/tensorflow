@@ -27,7 +27,7 @@ void FftCompute(struct FftState* state, const int16_t* input,
 
   int16_t* fft_input = state->input;
   // First, scale the input by the given shift.
-  int i;
+  size_t i;
   for (i = 0; i < input_size; ++i) {
     fft_input[i] = static_cast<int16_t>(static_cast<uint16_t>(input[i])
                                         << input_scale_shift);

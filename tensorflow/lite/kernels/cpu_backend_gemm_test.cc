@@ -363,7 +363,8 @@ void TestSomeGemm(int rows, int depth, int cols,
   CpuBackendContext cpu_backend_context;
   std::default_random_engine random_engine;
   cpu_backend_context.SetMaxNumThreads(1 + (random_engine() % 8));
-
+  bool use_caching = static_cast<bool>(random_engine() % 2);
+  cpu_backend_context.SetUseCaching(use_caching);
   const bool use_golden = !golden.empty();
 
   std::vector<LhsScalar> lhs_data;

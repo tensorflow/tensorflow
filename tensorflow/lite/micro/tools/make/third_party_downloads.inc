@@ -56,8 +56,8 @@ SIFIVE_FE310_LIB_MD5 := "06ee24c4956f8e21670ab3395861fe64"
 KISSFFT_URL="https://github.com/mborgerding/kissfft/archive/v130.zip"
 KISSFFT_MD5="438ba1fef5783cc5f5f201395cc477ca"
 
-RUY_URL="https://github.com/google/ruy/archive/1b313682ef8b8fc8ed08719c610d1c3503b016bf.zip"
-RUY_MD5="2d54f058f8f7120dfc1ecee79dbf259e"
+RUY_URL="https://github.com/google/ruy/archive/c347b02c23cfc459678db6d7c230d76fac00f76d.zip"
+RUY_MD5="1a0d9c5e5217d6776ea6d9af494da527"
 
 CIFAR10_DATASET_URL="https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz"
 CIFAR10_DATASET_MD5="c32a1d4ab5d03f1284b67883e8d87530"
@@ -83,3 +83,5 @@ ZEPHYR_MD5 := "755622eb4812fde918a6382b65d50c3b"
 XTENSA_HIFI4_URL :="https://github.com/foss-xtensa/nnlib-hifi4/raw/master/archive/xa_nnlib_04_07.zip"
 XTENSA_HIFI4_MD5 :="f234764928f9a42901df33a27e118c8b"
 
+ETHOSU_URL := "https://git.mlplatform.org/ml/ethos-u/ethos-u-core-driver.git/snapshot/ethos-u-core-driver-bcb5aaa99756f1b5c1295b079ebdd60996bc75a5.tar.gz"
+ETHOSU_MD5 := "d2073c8d88fc167fd5c46b5dcda58ea1"

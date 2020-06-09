@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <iterator>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
@@ -25,7 +26,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -111,6 +111,8 @@ void SetGroupId(const XPlaneVisitor& visitor, int64 group_id, XEvent* event) {
 void SetContextGroup(EventNode* event, ContextGroupMap* context_groups) {
   auto producer = event->GetProducerContext();
   if (producer.has_value()) {
+    DCHECK_EQ(((*context_groups)[producer->type][producer->id]).producer,
+              nullptr);
     ((*context_groups)[producer->type][producer->id]).producer = event;
   }
   auto consumer = event->GetConsumerContext();
@@ -124,17 +126,14 @@ void ConnectContextGroups(const ContextGroupMap& context_groups) {
   for (auto& type_id_group : context_groups) {
     for (auto& id_group : type_id_group.second) {
       const ContextGroup& group = id_group.second;
-      EventNode* parent = group.producer;
-      for (EventNode* child : group.consumers) {
-        parent->AddChild(child);
+      if (EventNode* parent = group.producer) {
+        for (EventNode* child : group.consumers) {
+          parent->AddChild(child);
+        }
       }
     }
   }
 }
-
-using VirtualEventNodeMap =
-    absl::flat_hash_map<int64 /*step_id*/,
-                        absl::flat_hash_map<int64 /*iter_num*/, EventNode*>>;
 
 std::unique_ptr<XEvent> CreateVirtualEvent(const XStat& step_id_stat,
                                            const XStat& iter_num_stat) {
@@ -142,13 +141,6 @@ std::unique_ptr<XEvent> CreateVirtualEvent(const XStat& step_id_stat,
   *virtual_event->add_stats() = step_id_stat;
   *virtual_event->add_stats() = iter_num_stat;
   return virtual_event;
-}
-
-bool NeedsVirtualEventsForHostTrainingLoop(
-    const std::vector<int64 /*EventType*/>& root_event_types) {
-  return std::find(root_event_types.begin(), root_event_types.end(),
-                   HostEventType::kHostTrainingLoopIteration) !=
-         root_event_types.end();
 }
 
 bool NeedsVirtualEventsForAsyncExecutor(
@@ -176,6 +168,16 @@ void ProcessRootEvent(int64 group_id, EventNode* root_event,
   event_group_name_map->emplace(group_id, std::move(group_name));
 }
 
+bool IsTfDataEvent(const EventNode& event_node) {
+  return event_node.FindParent(HostEventType::kTfDataCapturedFunctionRun) ||
+         event_node.FindParent(
+             HostEventType::kTfDataCapturedFunctionRunAsync) ||
+         event_node.FindParent(
+             HostEventType::kTfDataCapturedFunctionRunInstantiated) ||
+         event_node.FindParent(
+             HostEventType::kTfDataCapturedFunctionRunWithBorrowedArgs);
+}
+
 }  // namespace
 
 EventNode::EventNode(const XPlaneVisitor* plane, XLine* raw_line,
@@ -195,13 +197,13 @@ EventNode::EventNode(const XPlaneVisitor* plane, XLine* raw_line,
         producer_type = stat.IntValue();
         break;
       case StatType::kProducerId:
-        producer_id = stat.IntValue();
+        producer_id = stat.UintValue();
         break;
       case StatType::kConsumerType:
         consumer_type = stat.IntValue();
         break;
       case StatType::kConsumerId:
-        consumer_id = stat.IntValue();
+        consumer_id = stat.UintValue();
         break;
       case StatType::kIsRoot:
         is_root_ = stat.IntValue();
@@ -225,30 +227,30 @@ EventNode::EventNode(const EventNode& event_node)
     : EventNode(event_node.plane_, event_node.raw_line_,
                 event_node.raw_event_) {}
 
-const XStat* EventNode::GetContextStat(int64 stat_type) const {
-  if (const XStat* stat = visitor_.GetStats(stat_type)) {
-    return stat;
-  } else if (parent_) {
-    return parent_->GetContextStat(stat_type);
+absl::optional<XStatVisitor> EventNode::GetContextStat(int64 stat_type) const {
+  for (const EventNode* node = this; node != nullptr; node = node->parent_) {
+    if (absl::optional<XStatVisitor> stat = node->visitor_.GetStat(stat_type)) {
+      return stat;
+    }
   }
-  return nullptr;
+  return absl::nullopt;
 }
 
 std::string EventNode::GetGroupName() const {
-  std::vector<std::string> name_parts;
-  if (const XStat* graph_type_stat = GetContextStat(StatType::kGraphType)) {
-    XStatVisitor stat(plane_, graph_type_stat);
-    name_parts.push_back(stat.ToString());
+  std::string name;
+  if (absl::optional<XStatVisitor> stat =
+          GetContextStat(StatType::kGraphType)) {
+    absl::StrAppend(&name, stat->StrOrRefValue(), " ");
   }
   int64 step_num = group_id_.value_or(0);
-  if (const XStat* step_num_stat = GetContextStat(StatType::kStepNum)) {
-    step_num = step_num_stat->int64_value();
+  if (absl::optional<XStatVisitor> stat = GetContextStat(StatType::kIterNum)) {
+    step_num = stat->IntValue();
+  } else if (absl::optional<XStatVisitor> stat =
+                 GetContextStat(StatType::kStepNum)) {
+    step_num = stat->IntValue();
   }
-  if (const XStat* iter_num_stat = GetContextStat(StatType::kIterNum)) {
-    step_num = iter_num_stat->int64_value();
-  }
-  name_parts.push_back(absl::StrCat(step_num));
-  return absl::StrJoin(name_parts, " ");
+  absl::StrAppend(&name, step_num);
+  return name;
 }
 
 void EventNode::PropagateGroupId(int64 group_id) {
@@ -282,7 +284,7 @@ bool EventNode::IsEager() {
          FindParent(HostEventType::kEagerKernelExecute) != nullptr;
 }
 
-EventNode* EventNode::FindParent(int64 event_type) {
+EventNode* EventNode::FindParent(int64 event_type) const {
   if (parent_) {
     if (parent_->GetEventVisitor().Type() == event_type) {
       return parent_;
@@ -290,6 +292,11 @@ EventNode* EventNode::FindParent(int64 event_type) {
     return parent_->FindParent(event_type);
   }
   return nullptr;
+}
+
+bool EventNode::StartsBefore(const EventNode& other) const {
+  return GetEventVisitor().TimestampPs() <=
+         other.GetEventVisitor().TimestampPs();
 }
 
 void EventForest::ConnectIntraThread(const XPlaneVisitor& visitor,
@@ -326,7 +333,7 @@ void EventForest::ConnectIntraThread(const XPlaneVisitor& visitor,
 void EventForest::ConnectInterThread(
     const std::vector<InterThreadConnectInfo>& connect_info_list) {
   for (const auto& connect_info : connect_info_list) {
-    absl::flat_hash_map<std::vector<int64>, EventNode*> connect_map;
+    absl::flat_hash_map<std::vector<uint64>, EventNode*> connect_map;
     const std::vector<int64>& parent_stat_types =
         connect_info.parent_stat_types;
     const std::vector<int64>* child_stat_types = &connect_info.child_stat_types;
@@ -336,13 +343,12 @@ void EventForest::ConnectInterThread(
     if (auto parent_event_node_list =
             gtl::FindOrNull(event_node_map_, connect_info.parent_event_type)) {
       for (const auto& parent_event_node : *parent_event_node_list) {
-        std::vector<int64> stats;
+        std::vector<uint64> stats;
         for (auto stat_type : parent_stat_types) {
-          const XStat* stat = parent_event_node->GetContextStat(stat_type);
+          absl::optional<XStatVisitor> stat =
+              parent_event_node->GetContextStat(stat_type);
           if (!stat) break;
-          stats.push_back(stat->value_case() == stat->kInt64Value
-                              ? stat->int64_value()
-                              : stat->uint64_value());
+          stats.push_back(stat->IntOrUintValue());
         }
         if (stats.size() == parent_stat_types.size()) {
           connect_map[stats] = parent_event_node.get();
@@ -352,13 +358,12 @@ void EventForest::ConnectInterThread(
     if (auto child_event_node_list =
             gtl::FindOrNull(event_node_map_, connect_info.child_event_type)) {
       for (const auto& child_event_node : *child_event_node_list) {
-        std::vector<int64> stats;
+        std::vector<uint64> stats;
         for (auto stat_type : *child_stat_types) {
-          const XStat* stat = child_event_node->GetContextStat(stat_type);
+          absl::optional<XStatVisitor> stat =
+              child_event_node->GetContextStat(stat_type);
           if (!stat) break;
-          stats.push_back(stat->value_case() == stat->kInt64Value
-                              ? stat->int64_value()
-                              : stat->uint64_value());
+          stats.push_back(stat->IntOrUintValue());
         }
         if (stats.size() == child_stat_types->size()) {
           if (auto parent_event_node = gtl::FindPtrOrNull(connect_map, stats)) {
@@ -372,16 +377,18 @@ void EventForest::ConnectInterThread(
 
 void EventForest::CreateEventGroup(
     const std::vector<int64 /*EventType*/>& root_event_types) {
-  int64 next_group_id = 0;
+  for (EventNode* root_event : tf_loop_root_events_) {
+    ProcessRootEvent(next_group_id_++, root_event, &event_group_name_map_);
+  }
   for (EventNode* root_event : root_events_) {
-    ProcessRootEvent(next_group_id++, root_event, &event_group_name_map_);
+    ProcessRootEvent(next_group_id_++, root_event, &event_group_name_map_);
   }
   for (int64 root_event_type : root_event_types) {
     if (auto root_events = gtl::FindOrNull(event_node_map_, root_event_type)) {
       for (const auto& root_event : *root_events) {
         // Skip if it already belongs to a group.
         if (root_event->GetGroupId()) continue;
-        ProcessRootEvent(next_group_id++, root_event.get(),
+        ProcessRootEvent(next_group_id_++, root_event.get(),
                          &event_group_name_map_);
       }
       // Only use the first root event type found.
@@ -408,33 +415,69 @@ void EventForest::MarkEagerlyExecutedCpuTfOps() {
   }
 }
 
-void EventForest::CreateVirtualEventsForHostTrainingLoop() {
-  VirtualEventNodeMap virtual_event_node_map;
-  auto executor_event_node_list =
+void EventForest::ProcessTensorFlowLoop() {
+  struct TensorFlowLoopIteration {
+    EventNode* first_event = nullptr;
+    std::vector<EventNode*> events;
+  };
+  using TensorFlowLoop = std::map<int64 /*iter_num*/, TensorFlowLoopIteration>;
+  absl::flat_hash_map<int64 /*step_id*/, TensorFlowLoop> tf_loops;
+
+  // Sort the TF executor events by TF function/session (step_id) and iter_num.
+  auto executor_event_list =
       gtl::FindOrNull(event_node_map_, HostEventType::kExecutorStateProcess);
-  if (!executor_event_node_list) return;
-  for (auto& executor_event_node : *executor_event_node_list) {
-    const XStat* step_id_stat =
-        executor_event_node->GetContextStat(StatType::kStepId);
-    const XStat* iter_num_stat =
-        executor_event_node->GetContextStat(StatType::kIterNum);
+  if (!executor_event_list) return;
+  for (auto& executor_event : *executor_event_list) {
+    if (IsTfDataEvent(*executor_event)) continue;
+    absl::optional<XStatVisitor> step_id_stat =
+        executor_event->GetContextStat(StatType::kStepId);
+    absl::optional<XStatVisitor> iter_num_stat =
+        executor_event->GetContextStat(StatType::kIterNum);
     if (!step_id_stat || !iter_num_stat) continue;
-    int64 step_id = step_id_stat->int64_value();
-    int64 iter_num = iter_num_stat->int64_value();
-    // Process the event with nonzero iter_num only to filter out the events
-    // related to tf.data.
-    // TODO(jihochoi): Filter out tf.data events more reliably.
-    if (!iter_num) continue;
-    EventNode*& virtual_event_node = virtual_event_node_map[step_id][iter_num];
-    if (!virtual_event_node) {
-      auto new_virtual_event_node =
-          absl::make_unique<EventNode>(*executor_event_node);
-      virtual_event_node = new_virtual_event_node.get();
-      // event_node_map_ keeps new_virtual_event_node alive.
-      event_node_map_[HostEventType::kHostTrainingLoopIteration].push_back(
-          std::move(new_virtual_event_node));
+    int64 step_id = step_id_stat->IntValue();
+    TensorFlowLoop& tf_loop = tf_loops[step_id];
+    TensorFlowLoopIteration& iteration = tf_loop[iter_num_stat->IntValue()];
+    if (!iteration.first_event ||
+        executor_event->StartsBefore(*iteration.first_event)) {
+      iteration.first_event = executor_event.get();
     }
-    virtual_event_node->AddChild(executor_event_node.get());
+    iteration.events.push_back(executor_event.get());
+  }
+
+  // Sort the TF loops by start time.
+  std::map<int64 /*start_time*/, int64 /*step_id*/> sorted_tf_loops;
+  for (const auto& step_id_and_tf_loop : tf_loops) {
+    auto& iterations = step_id_and_tf_loop.second;
+    // Filter out TF function/session without loops.
+    if (iterations.size() == 1 && iterations.count(0)) continue;
+    int64 start_time = iterations.cbegin()
+                           ->second.first_event->GetEventVisitor()
+                           .TimestampPs();
+    DCHECK_EQ(sorted_tf_loops.count(start_time), 0);
+    sorted_tf_loops[start_time] = step_id_and_tf_loop.first;
+  }
+
+  // Register the first event of each iteration as a root event. Also, add the
+  // other events of the iteration as child to the root event.
+  bool next_group_id_updated = false;
+  for (const auto& start_time_and_step_id : sorted_tf_loops) {
+    TensorFlowLoop& tf_loop = tf_loops[start_time_and_step_id.second];
+    for (auto& iter_num_and_iteration : tf_loop) {
+      if (!next_group_id_updated) {
+        // Set next_group_id_ to the first iter_num of the first TF loop. This
+        // is necessary later when selecting the intersection of the steps from
+        // multiple hosts.
+        next_group_id_ = iter_num_and_iteration.first;
+        next_group_id_updated = true;
+      }
+      TensorFlowLoopIteration& iteration = iter_num_and_iteration.second;
+      EventNode* root_event = iteration.first_event;
+      tf_loop_root_events_.push_back(root_event);
+      for (EventNode* event : iteration.events) {
+        if (event == root_event) continue;
+        root_event->AddChild(event);
+      }
+    }
   }
 }
 
@@ -473,9 +516,7 @@ EventForest::EventForest(
   }
   ConnectInterThread(connect_info_list);
   ConnectContextGroups(context_groups);
-  if (NeedsVirtualEventsForHostTrainingLoop(root_event_types)) {
-    CreateVirtualEventsForHostTrainingLoop();
-  }
+  ProcessTensorFlowLoop();
   if (NeedsVirtualEventsForAsyncExecutor(root_event_types)) {
     CreateVirtualEventsForAsyncExecutor();
   }
@@ -538,8 +579,7 @@ void GroupTfEvents(XSpace* space, EventGroupNameMap* event_group_name_map) {
       CreateInterThreadConnectInfoList();
   const std::vector<int64 /*EventType*/> root_event_types(
       {HostEventType::kTraceContext, HostEventType::kFunctionRun,
-       HostEventType::kSessionRun, HostEventType::kRunGraph,
-       HostEventType::kHostTrainingLoopIteration});
+       HostEventType::kSessionRun, HostEventType::kRunGraph});
   EventForest event_forest(connect_info_list, root_event_types,
                            CreateTfXPlaneVisitor, space);
   if (event_group_name_map) {

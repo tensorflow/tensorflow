@@ -89,6 +89,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "supports_masking"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "thresholds"
     mtype: "<type \'property\'>"
   }

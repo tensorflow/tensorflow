@@ -19,8 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -40,8 +42,8 @@ class CategoryCrossing(Layer):
   output (similar to Cartesian product). The output dtype is string.
 
   Usage:
-  >>> inp_1 = tf.constant([['a'], ['b'], ['c']])
-  >>> inp_2 = tf.constant([['d'], ['e'], ['f']])
+  >>> inp_1 = ['a', 'b', 'c']
+  >>> inp_2 = ['d', 'e', 'f']
   >>> layer = tf.keras.layers.experimental.preprocessing.CategoryCrossing()
   >>> layer([inp_1, inp_2])
   <tf.Tensor: shape=(3, 1), dtype=string, numpy=
@@ -50,8 +52,8 @@ class CategoryCrossing(Layer):
            [b'c_X_f']], dtype=object)>
 
 
-  >>> inp_1 = tf.constant([['a'], ['b'], ['c']])
-  >>> inp_2 = tf.constant([['d'], ['e'], ['f']])
+  >>> inp_1 = ['a', 'b', 'c']
+  >>> inp_2 = ['d', 'e', 'f']
   >>> layer = tf.keras.layers.experimental.preprocessing.CategoryCrossing(
   ...    separator='-')
   >>> layer([inp_1, inp_2])
@@ -137,7 +139,15 @@ class CategoryCrossing(Layer):
       return sparse_ops.sparse_tensor_to_dense(
           sparse_ops.sparse_cross(partial_inputs, separator=self.separator))
 
+  def _preprocess_input(self, inp):
+    if isinstance(inp, (list, tuple, np.ndarray)):
+      inp = ops.convert_to_tensor(inp)
+    if inp.shape.rank == 1:
+      inp = array_ops.expand_dims(inp, axis=-1)
+    return inp
+
   def call(self, inputs):
+    inputs = [self._preprocess_input(inp) for inp in inputs]
     depth_tuple = self._depth_tuple if self.depth else (len(inputs),)
     ragged_out = sparse_out = False
     if any(ragged_tensor.is_ragged(inp) for inp in inputs):

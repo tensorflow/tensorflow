@@ -505,6 +505,7 @@ cc_library(
         ":common",
         ":compatibility",
         ":cppmath",
+        ":portable_tensor_utils",
         ":quantization_util",
         ":strided_slice_logic",
         ":tensor",

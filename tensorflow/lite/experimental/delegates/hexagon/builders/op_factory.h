@@ -59,6 +59,7 @@ OpBuilder* CreateMinMaxBuilder(GraphBuilder* graph_builder, int op_type);
 OpBuilder* CreateSliceOpBuilder(GraphBuilder* graph_builder, int op_type);
 OpBuilder* CreatePackBuilder(GraphBuilder* graph_builder, int op_type);
 OpBuilder* CreateMatMulOpBuilder(GraphBuilder* graph_builder, int op_type);
+OpBuilder* CreateStridedSliceBuilder(GraphBuilder* graph_builder, int op_type);
 
 }  // namespace hexagon
 }  // namespace delegates

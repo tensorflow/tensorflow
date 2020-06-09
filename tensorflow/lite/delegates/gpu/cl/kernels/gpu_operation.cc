@@ -122,6 +122,7 @@ GPUOperation::GPUOperation(GPUOperation&& operation)
     : definition_(std::move(operation.definition_)),
       src_(std::move(operation.src_)),
       dst_(std::move(operation.dst_)),
+      args_(std::move(operation.args_)),
       linked_operations_(std::move(operation.linked_operations_)) {}
 
 GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
@@ -129,6 +130,7 @@ GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
     definition_ = std::move(operation.definition_);
     src_ = std::move(operation.src_);
     dst_ = std::move(operation.dst_);
+    args_ = std::move(operation.args_);
     linked_operations_ = std::move(operation.linked_operations_);
   }
   return *this;
@@ -205,7 +207,7 @@ std::string PostProcess(const std::vector<ElementwiseOperation*>& linked_ops,
                         const LinkingContext& context) {
   std::string code;
   for (auto linked_op : linked_ops) {
-    code += linked_op->GetCoreCode(context);
+    code += "{" + linked_op->GetCoreCode(context) + "}";
   }
   return code;
 }

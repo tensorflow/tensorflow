@@ -130,6 +130,18 @@ class SoftmaxTest(test_lib.TestCase, parameterized.TestCase):
     self.assertAllClose(x_neg_axis_tf, y_pos_axis_tf, eps)
     self.assertAllClose(y_pos_axis_tf, z_gt_axis_tf, eps)
 
+  def testSoftmaxExtendType(self):
+    x_shape = [5, 10]
+    x_np = np.random.randn(*x_shape).astype(np.float32)
+
+    x_f32_tf = constant_op.constant(x_np)
+    x_bf16_tf = math_ops.cast(x_f32_tf, dtypes.bfloat16)
+    y_f32_tf = self.evaluate(nn_ops.softmax(x_f32_tf))
+    y_bf16_tf = self.evaluate(nn_ops.softmax(x_bf16_tf))
+    expected = math_ops.cast(y_f32_tf, dtypes.bfloat16)
+    tol = x_shape[1] * 1e-3
+    self.assertAllClose(y_bf16_tf, expected, rtol=tol, atol=tol)
+
   @parameterized.parameters(((5, 10),), ((2, 3, 4),))
   @test_util.run_deprecated_v1
   def testGradient(self, x_shape):

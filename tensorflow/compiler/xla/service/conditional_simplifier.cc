@@ -142,6 +142,10 @@ StatusOr<bool> TryRemoveConditional(HloInstruction* conditional) {
   };
   std::function<HloInstruction*(HloInstruction*, HloInstruction*)> select =
       [&](HloInstruction* t, HloInstruction* f) {
+        if (f->shape().IsToken()) {
+          return computation->AddInstruction(
+              HloInstruction::CreateAfterAll({t, f}));
+        }
         if (f->shape().IsArray()) {
           return computation->AddInstruction(HloInstruction::CreateTernary(
               f->shape(), HloOpcode::kSelect, condition_broadcast(f->shape()),

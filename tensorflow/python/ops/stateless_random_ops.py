@@ -124,9 +124,9 @@ def stateless_random_uniform(shape,
   """Outputs deterministic pseudorandom values from a uniform distribution.
 
   This is a stateless version of `tf.random.uniform`: if run twice with the
-  same seeds, it will produce the same pseudorandom numbers.  The output is
-  consistent across multiple runs on the same hardware (and between CPU
-  and GPU), but may change between versions of TensorFlow or on non-CPU/GPU
+  same seeds and shapes, it will produce the same pseudorandom numbers.  The
+  output is consistent across multiple runs on the same hardware (and between
+  CPU and GPU), but may change between versions of TensorFlow or on non-CPU/GPU
   hardware.
 
   The generated values follow a uniform distribution in the range
@@ -222,10 +222,10 @@ def stateless_random_binomial(shape,
   probability of success parameters.
 
   This is a stateless version of `tf.random.Generator.binomial`: if run twice
-  with the same seeds, it will produce the same pseudorandom numbers. The
-  output is consistent across multiple runs on the same hardware (and between
-  CPU and GPU), but may change between versions of TensorFlow or on non-CPU/GPU
-  hardware.
+  with the same seeds and shapes, it will produce the same pseudorandom numbers.
+  The output is consistent across multiple runs on the same hardware (and
+  between CPU and GPU), but may change between versions of TensorFlow or on
+  non-CPU/GPU hardware.
 
   Example:
 
@@ -292,9 +292,10 @@ def stateless_random_gamma(shape,
   (`alpha`) and inverse scale (`beta`) parameters.
 
   This is a stateless version of `tf.random.gamma`: if run twice with the same
-  seeds, it will produce the same pseudorandom numbers. The output is consistent
-  across multiple runs on the same hardware (and between CPU and GPU), but may
-  change between versions of TensorFlow or on non-CPU/GPU hardware.
+  seeds and shapes, it will produce the same pseudorandom numbers. The output is
+  consistent across multiple runs on the same hardware (and between CPU and
+  GPU),
+  but may change between versions of TensorFlow or on non-CPU/GPU hardware.
 
   A slight difference exists in the interpretation of the `shape` parameter
   between `stateless_gamma` and `gamma`: in `gamma`, the `shape` is always
@@ -390,9 +391,9 @@ def stateless_random_poisson(shape,
   parameter.
 
   This is a stateless version of `tf.random.poisson`: if run twice with the same
-  seeds, it will produce the same pseudorandom numbers. The output is consistent
-  across multiple runs on the same hardware, but may change between versions of
-  TensorFlow or on non-CPU/GPU hardware.
+  seeds and shapes, it will produce the same pseudorandom numbers. The output is
+  consistent across multiple runs on the same hardware, but may change between
+  versions of TensorFlow or on non-CPU/GPU hardware.
 
   A slight difference exists in the interpretation of the `shape` parameter
   between `stateless_poisson` and `poisson`: in `poisson`, the `shape` is always
@@ -451,9 +452,9 @@ def stateless_random_normal(shape,
   """Outputs deterministic pseudorandom values from a normal distribution.
 
   This is a stateless version of `tf.random.normal`: if run twice with the
-  same seeds, it will produce the same pseudorandom numbers.  The output is
-  consistent across multiple runs on the same hardware (and between CPU
-  and GPU), but may change between versions of TensorFlow or on non-CPU/GPU
+  same seeds and shapes, it will produce the same pseudorandom numbers.  The
+  output is consistent across multiple runs on the same hardware (and between
+  CPU and GPU), but may change between versions of TensorFlow or on non-CPU/GPU
   hardware.
 
   Args:
@@ -492,10 +493,9 @@ def stateless_truncated_normal(shape,
   """Outputs deterministic pseudorandom values, truncated normally distributed.
 
   This is a stateless version of `tf.random.truncated_normal`: if run twice with
-  the
-  same seeds, it will produce the same pseudorandom numbers.  The output is
-  consistent across multiple runs on the same hardware (and between CPU
-  and GPU), but may change between versions of TensorFlow or on non-CPU/GPU
+  the same seeds and shapes, it will produce the same pseudorandom numbers.  The
+  output is consistent across multiple runs on the same hardware (and between
+  CPU and GPU), but may change between versions of TensorFlow or on non-CPU/GPU
   hardware.
 
   The generated values follow a normal distribution with specified mean and
@@ -540,9 +540,9 @@ def stateless_multinomial(logits,
   """Draws deterministic pseudorandom samples from a multinomial distribution.
 
   This is a stateless version of `tf.random.categorical`: if run twice with the
-  same seeds, it will produce the same pseudorandom numbers.  The output is
-  consistent across multiple runs on the same hardware (and between CPU
-  and GPU), but may change between versions of TensorFlow or on non-CPU/GPU
+  same seeds and shapes, it will produce the same pseudorandom numbers.  The
+  output is consistent across multiple runs on the same hardware (and between
+  CPU and GPU), but may change between versions of TensorFlow or on non-CPU/GPU
   hardware.
 
   Example:
@@ -581,10 +581,11 @@ def stateless_categorical(logits,
   """Draws deterministic pseudorandom samples from a categorical distribution.
 
   This is a stateless version of `tf.categorical`: if run twice with the
-  same seeds, it will produce the same pseudorandom numbers.  The output is
-  consistent across multiple runs on the same hardware (and between CPU
-  and GPU), but may change between versions of TensorFlow or on non-CPU/GPU
+  same seeds and shapes, it will produce the same pseudorandom numbers.  The
+  output is consistent across multiple runs on the same hardware (and between
+  CPU and GPU), but may change between versions of TensorFlow or on non-CPU/GPU
   hardware.
+
 
   Example:
 

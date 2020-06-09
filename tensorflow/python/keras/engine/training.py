@@ -628,8 +628,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       if self.compiled_metrics is not None:
         metrics += self.compiled_metrics.metrics
 
-    all_layers = self._gather_unique_layers()
-    for l in all_layers:
+    for l in self._flatten_layers():
       metrics.extend(l._metrics)  # pylint: disable=protected-access
     return metrics
 
@@ -1031,9 +1030,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       # Create the validation data using the training data. Only supported for
       # `Tensor` and `NumPy` input.
       (x, y, sample_weight), validation_data = (
-          data_adapter.train_validation_split((x, y, sample_weight),
-                                              validation_split=validation_split,
-                                              shuffle=False))
+          data_adapter.train_validation_split(
+              (x, y, sample_weight), validation_split=validation_split))
 
     with self.distribute_strategy.scope(), \
          training_utils.RespectCompiledTrainableState(self):
@@ -1233,15 +1231,21 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     Computation is done in batches (see the `batch_size` arg.)
 
     Arguments:
-        x: Input data. It could be: - A Numpy array (or array-like), or a list
-          of arrays (in case the model has multiple inputs). - A TensorFlow
-          tensor, or a list of tensors (in case the model has multiple inputs).
-          - A dict mapping input names to the corresponding array/tensors, if
-          the model has named inputs. - A `tf.data` dataset. - A generator or
-          `keras.utils.Sequence` instance. A more detailed description of
-          unpacking behavior for iterator types (Dataset, generator, Sequence)
-          is given in the `Unpacking behavior for iterator-like inputs` section
-          of `Model.fit`.
+        x: Input data. It could be:
+          - A Numpy array (or array-like), or a list of arrays
+            (in case the model has multiple inputs).
+          - A TensorFlow tensor, or a list of tensors
+            (in case the model has multiple inputs).
+          - A dict mapping input names to the corresponding array/tensors,
+            if the model has named inputs.
+          - A `tf.data` dataset. Should return a tuple
+            of either `(inputs, targets)` or
+            `(inputs, targets, sample_weights)`.
+          - A generator or `keras.utils.Sequence` returning `(inputs, targets)`
+            or `(inputs, targets, sample_weights)`.
+          A more detailed description of unpacking behavior for iterator types
+          (Dataset, generator, Sequence) is given in the `Unpacking behavior
+          for iterator-like inputs` section of `Model.fit`.
         y: Target data. Like the input data `x`, it could be either Numpy
           array(s) or TensorFlow tensor(s). It should be consistent with `x`
           (you cannot have Numpy inputs and tensor targets, or inversely). If
@@ -2310,7 +2314,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
   @property
   def layers(self):
-    return self._unique_sublayers()
+    return list(self._flatten_layers(include_self=False, recursive=False))
 
   def get_layer(self, name=None, index=None):
     """Retrieves a layer based on either its name (unique) or index.

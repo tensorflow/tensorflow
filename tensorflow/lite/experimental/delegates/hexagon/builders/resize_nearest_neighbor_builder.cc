@@ -28,21 +28,16 @@ namespace hexagon {
 TfLiteStatus ResizeNearestNeighborOpBuilder::PopulateSubGraph(
     const TfLiteIntArray* inputs, const TfLiteIntArray* outputs,
     TfLiteContext* context) {
-  static int quant_bound_shape[] = {1, 1, 1, 1};
-  int tensor_id;
-
   // Input data tensor.
-  tensor_id = inputs->data[0];
+  int tensor_id = inputs->data[0];
   const auto& input_tensor = context->tensors[tensor_id];
   AddInput(graph_builder_->GetHexagonTensorId(tensor_id));
   TF_LITE_ENSURE_STATUS(
       ComputeMinAndMaxQuantValues(input_tensor, &input_min_, &input_max_));
   auto* input_min_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&input_min_),
-      sizeof(input_min_));
+      kScalarShape, reinterpret_cast<char*>(&input_min_), sizeof(input_min_));
   auto* input_max_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&input_max_),
-      sizeof(input_max_));
+      kScalarShape, reinterpret_cast<char*>(&input_max_), sizeof(input_max_));
 
   // Output dimensions tensor.
   tensor_id = inputs->data[1];
@@ -66,7 +61,7 @@ TfLiteStatus ResizeNearestNeighborOpBuilder::PopulateSubGraph(
       reinterpret_cast<const TfLiteResizeNearestNeighborParams*>(builtin_data_);
   align_corners_ = params->align_corners;
   auto* align_corners_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&align_corners_),
+      kScalarShape, reinterpret_cast<char*>(&align_corners_),
       sizeof(align_corners_));
   AddInput(TensorID(align_corners_const->GetID(), 0));
 
@@ -78,8 +73,8 @@ TfLiteStatus ResizeNearestNeighborOpBuilder::PopulateSubGraph(
   node_output_ = AddOutput(sizeof(uint8_t), 4,
                            {output_batch_size, output_height_size,
                             output_width_size, output_depth_size});
-  AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-  AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+  AddOutput(sizeof(float), 4, kScalarShape);
+  AddOutput(sizeof(float), 4, kScalarShape);
 
   return kTfLiteOk;
 }

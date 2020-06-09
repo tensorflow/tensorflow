@@ -1791,3 +1791,19 @@ cuda_py_test(
         "@absl_py//absl/testing:parameterized",
     ],
 )
+
+distribute_py_test(
+    name = "tf_function_test",
+    srcs = ["tf_function_test.py"],
+    main = "tf_function_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        ":combinations",
+        ":strategy_combinations",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+    ],
+)

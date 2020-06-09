@@ -109,6 +109,7 @@ tf_py_test(
     python_version = "PY3",
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/feature_column:feature_column_v2",
         "//tensorflow/python/keras",
         "//tensorflow/python/keras:combinations",
         "//third_party/py/numpy",
@@ -146,6 +147,7 @@ tf_py_test(
     ],
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/keras",
         "//tensorflow/python/keras:combinations",
@@ -175,6 +177,9 @@ tf_py_test(
     srcs = ["saved_model/revive_test.py"],
     python_version = "PY3",
     shard_count = 4,
+    tags = [
+        "no_windows",  # b/158005583
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",

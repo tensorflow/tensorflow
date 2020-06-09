@@ -47,6 +47,8 @@ limitations under the License.
 
 namespace xla {
 
+class PjRtClient;
+
 class Device {
  public:
   explicit Device(int id, std::unique_ptr<LocalDeviceState> local_device_state,
@@ -86,12 +88,17 @@ class Device {
 
   virtual std::string DebugString() const;
 
+  PjRtClient* client() const { return client_; }
+
  private:
+  friend class PjRtClient;
+
   const int id_;
   const std::unique_ptr<LocalDeviceState> local_device_state_;
   const int host_id_;
   const std::string platform_name_;
   const std::string device_kind_;
+  PjRtClient* client_ = nullptr;
 };
 
 // Forward declaration.
@@ -113,7 +120,7 @@ using PjRtCrossHostRecvNotifier =
 //
 // It is the responsibility of the client of this API to keep the PjRtClient
 // alive as long as any of the other runtime objects are alive.
-class PjRtClient : public std::enable_shared_from_this<PjRtClient> {
+class PjRtClient {
  public:
   // `allocator` may null, in which case the platform default allocator is used.
   explicit PjRtClient(

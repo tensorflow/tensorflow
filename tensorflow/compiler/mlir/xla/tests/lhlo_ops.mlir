@@ -199,3 +199,52 @@ func @case_memref(%index: memref<i32>, %operand_1: memref<f32>, %operand_2: memr
   ) : (memref<i32>, memref<f32>, memref<f32>, memref<f32>, memref<f32>) -> ()
   return
 }
+
+// -----
+
+func @static_memref_cast(%in: memref<10x1xf32>) {
+  %out = xla_lhlo.static_memref_cast %in
+           : memref<10x1xf32> -> memref<10xf32, offset: 0, strides: [1]>
+  return
+}
+// CHECK-LABEL: func @static_memref_cast
+
+// -----
+
+func @static_memref_cast_dynamic_operand(%in: memref<10x?xf32>) {
+  // expected-error @+1 {{operand must have static shape}}
+  %out = xla_lhlo.static_memref_cast %in
+           : memref<10x?xf32> -> memref<10x1xf32, offset: 0, strides: [10, 1]>
+  return
+}
+
+// -----
+
+func @static_memref_cast_dynamic_result(%in: memref<10x1xf32>) {
+  // expected-error @+1 {{result must have static shape}}
+  %out = xla_lhlo.static_memref_cast %in
+           : memref<10x1xf32> -> memref<10x?xf32, offset: 0, strides: [?, ?]>
+  return
+}
+
+// -----
+
+func @dynamic_memref_cast(%in: memref<?xf32>) {
+  %size = constant 10 : index
+  %step = constant 1 : index
+  %out = xla_lhlo.dynamic_memref_cast %in(%size)[%step]
+           : memref<?xf32> -> memref<?xf32, offset: 0, strides: [?]>
+  return
+}
+// CHECK-LABEL: func @dynamic_memref_cast
+
+// -----
+
+func @dynamic_memref_cast_incompatible_result_type(%in: memref<?xf32>) {
+  // expected-error @+3 {{`sizes` args count must be equal to the rank of the output memref}}
+  %size = constant 10 : index
+  %step = constant 1 : index
+  %out = xla_lhlo.dynamic_memref_cast %in(%size)[%step]
+           : memref<?xf32> -> memref<?x?xf32, offset: 0, strides: [?, ?]>
+  return
+}

@@ -274,12 +274,12 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   EXPECT_EQ(device_plane->event_metadata_size(), 4);
   // Check if device capacity is serialized.
   XPlaneVisitor plane = CreateTfXPlaneVisitor(device_plane);
-  EXPECT_NE(plane.GetStats(kDevCapClockRateKHz), nullptr);
-  EXPECT_NE(plane.GetStats(kDevCapCoreCount), nullptr);
-  EXPECT_NE(plane.GetStats(kDevCapMemoryBandwidth), nullptr);
-  EXPECT_NE(plane.GetStats(kDevCapMemorySize), nullptr);
-  EXPECT_NE(plane.GetStats(kDevCapComputeCapMajor), nullptr);
-  EXPECT_NE(plane.GetStats(kDevCapComputeCapMinor), nullptr);
+  EXPECT_TRUE(plane.GetStat(kDevCapClockRateKHz).has_value());
+  EXPECT_TRUE(plane.GetStat(kDevCapCoreCount).has_value());
+  EXPECT_TRUE(plane.GetStat(kDevCapMemoryBandwidth).has_value());
+  EXPECT_TRUE(plane.GetStat(kDevCapMemorySize).has_value());
+  EXPECT_TRUE(plane.GetStat(kDevCapComputeCapMajor).has_value());
+  EXPECT_TRUE(plane.GetStat(kDevCapComputeCapMinor).has_value());
 
   // Check if the device events timestamps are set.
   int total_events = 0;

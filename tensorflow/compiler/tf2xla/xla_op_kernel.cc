@@ -413,8 +413,10 @@ Status ReadVariableInputTensor(const Tensor& tensor, DataType type,
   TF_RET_CHECK(variable != nullptr);
   TF_RET_CHECK(variable->kind() == XlaResource::kVariable);
   if (!variable->initialized()) {
-    return errors::FailedPrecondition("Read of uninitialized variable ",
-                                      variable->name());
+    return errors::FailedPrecondition(
+        "Read variable failure ", variable->name(),
+        ". It could mean the variable is not initialized or the variable is on "
+        "another device ");
   }
   if (variable->type() != type) {
     return errors::InvalidArgument(
@@ -464,8 +466,10 @@ Status XlaOpKernelContext::GetVariableTypeAndShape(int index, DataType* type,
   TF_RET_CHECK(variable != nullptr);
   TF_RET_CHECK(variable->kind() == XlaResource::kVariable);
   if (!variable->initialized()) {
-    return errors::InvalidArgument("Read of uninitialized variable ",
-                                   variable->name());
+    return errors::InvalidArgument(
+        "Read variable failure ", variable->name(),
+        ". It could mean the variable is not initialized or the variable is on "
+        "another device ");
   }
   *type = variable->type();
   *shape = variable->shape();

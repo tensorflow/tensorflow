@@ -3334,6 +3334,9 @@ Status SavedModelSignatureDefImporter::ConvertSignature(
       graphdef, &sub_graph_def,
       /*terminal_nodes=*/{specs.outputs.begin(), specs.outputs.end()}));
 
+  // Set the function library definitions in the pruned graphdef.
+  *sub_graph_def.mutable_library() = flib_def.ToProto();
+
   // Convert sub-graphdef to sub-graph.
   GraphConstructorOptions options;
   options.allow_internal_ops = true;
@@ -3567,6 +3570,24 @@ StatusOr<mlir::OwningModuleRef> ConvertGraphToMlir(
   }
   return GraphDefImporter::Convert(context, graph, debug_info, flib_def, specs,
                                    /*func_name=*/"main");
+}
+
+stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertFunctionToMlir(
+    mlir::StringRef name, const FunctionLibraryDefinition& flib_def,
+    mlir::MLIRContext* context) {
+  const tensorflow::FunctionDef* fdef = flib_def.Find(name.str());
+  if (fdef == nullptr)
+    return tensorflow::errors::NotFound("Cannot find function ", name.str());
+
+  std::unique_ptr<tensorflow::FunctionBody> fbody;
+  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fdef, tensorflow::AttrSlice(),
+                                             &flib_def, &fbody));
+
+  tensorflow::GraphDebugInfo dummy_debug_info;
+  tensorflow::GraphImportConfig specs;
+  specs.graph_as_function = true;
+  return GraphDefImporter::Convert(context, *fbody->graph, dummy_debug_info,
+                                   flib_def, specs, name);
 }
 
 StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(

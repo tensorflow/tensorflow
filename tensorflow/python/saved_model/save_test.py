@@ -44,6 +44,7 @@ from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -116,6 +117,24 @@ class SaveTest(test.TestCase):
     self.assertEqual(
         {"output_0": 2.},
         _import_and_infer(save_dir, {"x": 1.}))
+
+  def test_method_save_list_func(self):
+    root = tracking.AutoTrackable()
+
+    @def_function.function
+    def case_fn(x):
+      branch_index = constant_op.constant(1)
+      branches = [lambda: x, lambda: x + 1]
+      case_out = control_flow_ops.switch_case(branch_index, branches)
+      return case_out
+
+    root.f = def_function.function(
+        lambda x: 2. * case_fn(x),
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    root.f(constant_op.constant(1.))
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(root, save_dir, root.f)
+    self.assertEqual({"output_0": 4.}, _import_and_infer(save_dir, {"x": 1.}))
 
   def test_method_save_concrete(self):
     root = tracking.AutoTrackable()

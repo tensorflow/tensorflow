@@ -81,6 +81,8 @@ class CpuExecutable : public Executable {
 
   const BufferAssignment& buffer_assignment() const { return *assignment_; }
 
+  int64 SizeOfGeneratedCodeInBytes() const override;
+
  private:
   // Creates an array suitable for passing as the "buffer_table" argument to the
   // JIT compiled function pointer.
@@ -100,10 +102,10 @@ class CpuExecutable : public Executable {
   //  - buffers_to_free: buffers whose ownership was donated by the caller that
   //    are to be freed by the caller.
   StatusOr<std::tuple<std::vector<se::DeviceMemoryBase>,
-                      std::vector<se::OwningDeviceMemory>,
                       std::vector<se::OwningDeviceMemory>>>
   CreateBufferTable(se::DeviceMemoryAllocator* memory_allocator,
-                    int device_ordinal, std::vector<ExecutionInput> arguments);
+                    int device_ordinal,
+                    absl::Span<ExecutionInput const> arguments);
 
   // Calls the generated function performing the computation with the given
   // arguments using the supplied buffers.
@@ -111,12 +113,13 @@ class CpuExecutable : public Executable {
                                 absl::Span<const se::DeviceMemoryBase> buffers,
                                 HloExecutionProfile* hlo_execution_profile);
 
-  // Creates a ScopedShapedBuffer for holding the result of the computation,
-  // moving buffers out of allocated_buffers and into the result as appropriate.
-  // The addresses are set according to buffer assignment.
-  StatusOr<ScopedShapedBuffer> CreateResultShapedBuffer(
+  // Creates an Execution output holding ScopedShapedBuffer for holding the
+  // result of the computation, moving buffers out of allocated_buffers and into
+  // the result as appropriate.  The addresses are set according to buffer
+  // assignment.
+  StatusOr<ExecutionOutput> CreateResultShapedBuffer(
       const ServiceExecutableRunOptions* run_options,
-      absl::Span<se::OwningDeviceMemory> buffers);
+      absl::Span<se::OwningDeviceMemory> owning_buffers);
 
   // Returns the instruction value set of the root instruction of the entry
   // computation. Uses dataflow analysis from buffer assignment.

@@ -172,13 +172,6 @@ class MockOpResolver : public MicroOpResolver {
     // ParseOpData.
     return ParseOpData;
   }
-
-  TfLiteStatus AddBuiltin(tflite::BuiltinOperator op,
-                          TfLiteRegistration* registration,
-                          int version) override {
-    // This function is currently not used in the tests.
-    return kTfLiteError;
-  }
 };
 
 }  // namespace

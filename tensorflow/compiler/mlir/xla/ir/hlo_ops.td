@@ -26,6 +26,7 @@ include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops_base.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_utils.td"
+include "tensorflow/compiler/mlir/xla/ir/infer_fusibility_op_interface.td"
 
 def HLO_Dialect : Dialect {
   let name = "xla_hlo";
@@ -117,7 +118,7 @@ def HLO_CreateTokenOp : HLO_Op<"create_token", [NoSideEffect]> {
 
 class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
       Type TensorType>: HLO_Op<mnemonic,
-        !listconcat(traits, [InferShapedTypeOpInterface])> {
+        !listconcat(traits, [InferShapedTypeOpInterface, InferFusibilityOpInterface])> {
     let arguments = (ins TensorType:$operand);
     let results = (outs TensorType);
     let extraClassDeclaration = [{
@@ -131,6 +132,12 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
           OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
         return deriveShapeFromFirstOperand(&builder, getOperation(),
                                            &reifiedReturnShapes);
+      }
+      bool inferInputOutputShapeEquality(int input, int output) {
+        return true;
+      }
+      llvm::Optional<Value> inferEffectiveWorkloadShape() {
+        return getOperation()->getResult(0);
       }
     }];
 }
@@ -257,7 +264,7 @@ def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 
 class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
-        HLO_Op<mnemonic, !listconcat(traits, [InferShapedTypeOpInterface])> {
+        HLO_Op<mnemonic, !listconcat(traits, [InferShapedTypeOpInterface, InferFusibilityOpInterface])> {
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs
@@ -274,6 +281,15 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
         OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
       return deriveShapeFromFirstOperand(&builder, getOperation(),
                                          &reifiedReturnShapes);
+    }
+    bool inferInputsShapeEquality(int lhs, int rhs) {
+      return true;
+    }
+    bool inferInputOutputShapeEquality(int input, int output) {
+      return true;
+    }
+    llvm::Optional<Value> inferEffectiveWorkloadShape() {
+      return getOperation()->getResult(0);
     }
   }];
 
@@ -598,7 +614,8 @@ def HLO_AllToAllOp : HLO_Op<"all_to_all",
 def HLO_ReduceOp: HLO_Op<"reduce", [
       RecursiveSideEffects,
       SameVariadicOperandSize,
-      SingleBlockImplicitTerminator<"ReturnOp">
+      SingleBlockImplicitTerminator<"ReturnOp">,
+      InferFusibilityOpInterface
     ]>, BASE_HLO_ReduceOp {
   let arguments = (ins
     Variadic<HLO_TensorOrTuple>:$operands,
@@ -612,6 +629,15 @@ def HLO_ReduceOp: HLO_Op<"reduce", [
     "OpBuilder &, OperationState &state, ValueRange operands, "
     "ValueRange init_values, DenseIntElementsAttr dimensions"
   >];
+
+  let extraClassDeclaration = [{
+    bool isFusibleWithConsumer() {
+      return false;
+    }
+    llvm::Optional<Value> inferEffectiveWorkloadShape() {
+      return getOperation()->getOperand(0);
+    }
+  }];
 
   let hasFolder = 1;
 
@@ -634,7 +660,7 @@ def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]>, BASE_HLO
     I32Attr:$index
   );
 
-  let results = (outs HLO_TensorOrTuple);
+  let results = (outs HLO_TensorOrTokenOrTuple);
 
   let hasFolder = 1;
 
@@ -1357,6 +1383,29 @@ def HLO_DequantizeOp : HLO_Op<"dequantize", [NoSideEffect]>,
 
   let results = (outs TensorOf<[BF16]>:$output);
 
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_FusionOp : HLO_Op<"fusion", []> {
+  let summary = "Fusion operator";
+  let description = [{
+    Models the fusion instruction.
+
+    A fusion op is consists of a group of basic ops (represented as a region
+    attached to it). It serves as a hint to the backend that it is beneficial
+    to emit the contained ops into a single loop nest or kernel.
+  }];
+  let regions = (region SizedRegion<1>:$fused_computation);
+
+  let arguments = (ins
+    Variadic<HLO_TensorOrTuple>:$operands
+  );
+
+  let results = (outs
+    Variadic<HLO_TensorOrTuple>:$results
+  );
+
+  // FusionOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
 }
 

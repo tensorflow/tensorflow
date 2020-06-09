@@ -311,18 +311,17 @@ class BatchNormalizationV2Test(keras_parameterized.TestCase):
       norm(inp)
 
   def test_updates_in_wrap_function(self):
-    with context.eager_mode():
-      layer = keras.layers.BatchNormalization()
+    layer = normalization.BatchNormalization()
 
-      def my_func():
-        x = array_ops.ones((10, 1))
-        return layer(x, training=True)
+    def my_func():
+      x = array_ops.ones((10, 1))
+      return layer(x, training=True)
 
-      wrapped_fn = wrap_function.wrap_function(my_func, [])
-      wrapped_fn()
+    wrapped_fn = wrap_function.wrap_function(my_func, [])
+    wrapped_fn()
 
-      # Updates should be tracked in a `wrap_function`.
-      self.assertLen(layer.updates, 2)
+    # Updates should be tracked in a `wrap_function`.
+    self.assertLen(layer.updates, 2)
 
   @keras_parameterized.run_all_keras_modes
   def test_basic_batchnorm_v2_none_shape_and_virtual_batch_size(self):

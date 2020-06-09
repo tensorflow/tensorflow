@@ -337,10 +337,7 @@ TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
       break;
     case DelegateType::kFlex:
 #if !defined(__APPLE__)
-      delegate_ = Interpreter::TfLiteDelegatePtr(
-          FlexDelegate::Create().release(), [](TfLiteDelegate* delegate) {
-            delete static_cast<tflite::FlexDelegate*>(delegate);
-          });
+      delegate_ = FlexDelegate::Create();
 #endif
       break;
   }

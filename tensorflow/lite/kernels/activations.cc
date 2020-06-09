@@ -60,13 +60,18 @@ struct OpData {
 
 struct SoftmaxOpData {
   struct SoftmaxParams params = {};
-  float table[256]{};
-  const int size_of_lut = 513;
-  int16_t exp_lut[513]{};  // int16 LUT for exp(x), where x uniform distributed
-                           // between [-10.0 , 0.0]
-  int16_t one_over_one_plus_x_lut[513]{};  // int16 LUT for 1 / (1 + x), where
-                                           // x uniform distributed between
-                                           // [0.0 , 1.0]
+  float table[256];
+#ifdef TFLITE_SOFTMAX_USE_UINT16_LUT
+  uint8_t uint8_table1[256];
+  uint8_t uint8_table2[256];
+#endif
+  static constexpr int kInt16LUTArraySize = 513;
+  int16_t exp_lut[kInt16LUTArraySize];  // int16 LUT for exp(x), where x uniform
+                                        // distributed between [-10.0 , 0.0]
+  int16_t one_over_one_plus_x_lut[kInt16LUTArraySize];  // int16 LUT for 1 /
+                                                        // (1 + x), where x
+                                                        // uniform distributed
+                                                        // between [0.0 , 1.0]
 };
 
 struct LogSoftmaxOpData : public OpData {
@@ -134,29 +139,6 @@ void PopulateLookupTable(struct OpData* data, const TfLiteTensor* input,
   }
 }
 
-#if __aarch64__ && __clang__
-namespace {
-// Looks up each element of <indices> in <table>, returns them in a vector.
-inline uint8x16_t aarch64_lookup_vector(const uint8x16x4_t table[4],
-                                        uint8x16_t indices) {
-  // Look up in 1st quarter of the table: top 2 bits of indices == 00
-  uint8x16_t output1 = vqtbl4q_u8(table[0], indices);
-  // Look up in 2nd quarter of the table: top 2 bits of indices == 01
-  uint8x16_t output2 =
-      vqtbl4q_u8(table[1], veorq_u8(indices, vdupq_n_u8(0x40)));
-  // Look up in 3rd quarter of the table: top 2 bits of indices == 10
-  uint8x16_t output3 =
-      vqtbl4q_u8(table[2], veorq_u8(indices, vdupq_n_u8(0x80)));
-  // Look up in 4th quarter of the table: top 2 bits of indices == 11
-  uint8x16_t output4 =
-      vqtbl4q_u8(table[3], veorq_u8(indices, vdupq_n_u8(0xc0)));
-
-  // Combine result of the 4 lookups.
-  return vorrq_u8(vorrq_u8(output1, output2), vorrq_u8(output3, output4));
-}
-}  // namespace
-#endif
-
 // TODO(b/143696793): move this to optimized_ops.
 void EvalUsingLookupTable(struct OpData* data, const TfLiteTensor* input,
                           TfLiteTensor* output) {
@@ -182,7 +164,7 @@ void EvalUsingLookupTable(struct OpData* data, const TfLiteTensor* input,
       size / vectorized_16_loop_step * vectorized_16_loop_step;
   for (; i < vectorized_16_loop_end; i += vectorized_16_loop_step) {
     uint8x16_t input = vld1q_u8(input_data + i);
-    uint8x16_t output = aarch64_lookup_vector(table, input);
+    uint8x16_t output = optimized_ops::aarch64_lookup_vector(table, input);
     vst1q_u8(output_data + i, output);
   }
   // Postamble and non-ARM64 code: simple for loop.
@@ -583,9 +565,26 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, NumDimensions(input) >= 1);
 
   if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
-    data->params.table = data->table;
-    optimized_ops::PopulateSoftmaxLookupTable(
-        &data->params, input->params.scale, params->beta);
+    switch (output->type) {
+      case kTfLiteUInt8:
+      case kTfLiteInt8:
+#ifdef TFLITE_SOFTMAX_USE_UINT16_LUT
+        // Only apply when both input & output are uint8/int8 & build with clang
+        // on aarch64.
+        // TODO(b/143709993): Port to ARMv7 and other platforms.
+        data->params.uint8_table1 = data->uint8_table1;
+        data->params.uint8_table2 = data->uint8_table2;
+        optimized_ops::PopulateSoftmaxUInt8LookupTable(
+            &data->params, input->params.scale, params->beta);
+        break;
+#endif
+      case kTfLiteInt16:
+      default:
+        data->params.table = data->table;
+        optimized_ops::PopulateSoftmaxLookupTable(
+            &data->params, input->params.scale, params->beta);
+    }
+
     data->params.zero_point = output->params.zero_point;
     data->params.scale = output->params.scale;
   }
@@ -597,10 +596,10 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
     // exp LUT only used on nagative values
     // we consider exp(-10.0) is insignificant to accumulation
     gen_lut([](double value) { return std::exp(value); }, -10.0, 0.0,
-            data->params.exp_lut, data->size_of_lut);
+            data->params.exp_lut, data->kInt16LUTArraySize);
     data->params.one_over_one_plus_x_lut = data->one_over_one_plus_x_lut;
     gen_lut([](double value) { return 1.0 / (1.0 + value); }, 0.0, 1.0,
-            data->params.one_over_one_plus_x_lut, data->size_of_lut);
+            data->params.one_over_one_plus_x_lut, data->kInt16LUTArraySize);
     data->params.zero_point = output->params.zero_point;
     data->params.scale = output->params.scale;
 
@@ -1016,6 +1015,40 @@ TfLiteStatus SoftmaxQuantized(TfLiteContext* context, const TfLiteTensor* input,
   optimized_ops::Softmax(data->params, GetTensorShape(input),
                          GetTensorData<In>(input), GetTensorShape(output),
                          GetTensorData<Out>(output));
+  return kTfLiteOk;
+}
+
+template <>
+TfLiteStatus SoftmaxQuantized<int8_t, int8_t>(TfLiteContext* context,
+                                              const TfLiteTensor* input,
+                                              TfLiteTensor* output,
+                                              SoftmaxOpData* data) {
+#ifdef TFLITE_SOFTMAX_USE_UINT16_LUT
+  optimized_ops::SoftmaxInt8LUT(
+      data->params, GetTensorShape(input), GetTensorData<int8_t>(input),
+      GetTensorShape(output), GetTensorData<int8_t>(output));
+#else
+  optimized_ops::Softmax(data->params, GetTensorShape(input),
+                         GetTensorData<int8_t>(input), GetTensorShape(output),
+                         GetTensorData<int8_t>(output));
+#endif
+  return kTfLiteOk;
+}
+
+template <>
+TfLiteStatus SoftmaxQuantized<uint8_t, uint8_t>(TfLiteContext* context,
+                                                const TfLiteTensor* input,
+                                                TfLiteTensor* output,
+                                                SoftmaxOpData* data) {
+#ifdef TFLITE_SOFTMAX_USE_UINT16_LUT
+  optimized_ops::SoftmaxInt8LUT(
+      data->params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+      GetTensorShape(output), GetTensorData<uint8_t>(output));
+#else
+  optimized_ops::Softmax(data->params, GetTensorShape(input),
+                         GetTensorData<uint8_t>(input), GetTensorShape(output),
+                         GetTensorData<uint8_t>(output));
+#endif
   return kTfLiteOk;
 }
 

@@ -1,6 +1,7 @@
 # TensorFlow Lite delegates
 
 Note: Delegate API is still experimental and is subject to change.
+
 ## What is a TensorFlow Lite delegate?
 
 A TensorFlow Lite delegate is a way to delegate part or all of graph execution
@@ -51,9 +52,9 @@ If a delegate was provided for specific operations, then TensorFlow Lite will
 split the graph into multiple subgraphs where each subgraph will be handled by a
 delegate.
 
-Let's assume that there is a delegate "MyDelegate," which has a faster
-implementation for Conv2D and Mean operations. The resulting main graph will be
-updated to look like below.
+Let's assume that a delegate, `MyDelegate`, has a faster implementation for
+Conv2D and Mean operations. The resulting main graph will be updated to look
+like below.
 
 ![Graph with delegate](../images/performance/tflite_delegate_graph_2.png "Graph with delegate")
 
@@ -74,16 +75,16 @@ _Note that the API used below is experimental and is subject to change._
 Based on the previous section, to add a delegate, we need to do the following:
 
 1.  Define a kernel node that is responsible for evaluating the delegate
-    subgraph
+    subgraph.
 1.  Create an instance of
     [TfLiteDelegate](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/c/common.h#L611),
     which is responsible for registering the kernel node and claiming the nodes
-    that the delegate can execute
+    that the delegate can execute.
 
-To see it in code, let's define a delegate and call it "MyDelegate," which can
+To see it in code, let's define a delegate and call it `MyDelegate`, which can
 execute Conv2D and Mean operations faster.
 
-```
+```c++
 // This is where the execution of the operations or whole graph happens.
 // The class below has an empty implementation just as a guideline
 // on the structure.
@@ -113,9 +114,9 @@ class MyDelegate {
 // the subgraph in the main TfLite graph.
 TfLiteRegistration GetMyDelegateNodeRegistration() {
   // This is the registration for the Delegate Node that gets added to
-  // the TFLite graph instead of the subGraph it replaces.
-  // It is treated as a an OP node. But in our case
-  // Init will initialize the delegate
+  // the TFLite graph instead of the subgraph it replaces.
+  // It is treated as an OP node. But in our case
+  // Init will initialize the delegate.
   // Invoke will run the delegate graph.
   // Prepare for preparing the delegate.
   // Free for any cleaning needed by the delegate.
@@ -232,6 +233,4 @@ if (interpreter->ModifyGraphWithDelegate(my_delegate) !=
 ...
 // Don't forget to delete your delegate
 delete my_delegate;
-
-
 ```

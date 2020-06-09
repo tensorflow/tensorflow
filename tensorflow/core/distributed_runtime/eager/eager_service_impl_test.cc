@@ -920,7 +920,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
 
   // Instantiate MatMulFunction on remote_device.
   const NodeDef node_def = MatMulFunctionNodeDef();
-  TF_ASSERT_OK(kernel->InstantiateFunc(node_def, nullptr));
+  TF_ASSERT_OK(kernel->InstantiateFunc({}, node_def, nullptr));
 
   // Run MatMulFunction on remote_device.
   gtl::InlinedVector<TensorValue, 4> input_tensors = {TensorValue()};
@@ -967,7 +967,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
 
   // Instantiate MatMulFunction on remote_device.
   const NodeDef node_def = MatMulFunctionNodeDef();
-  TF_ASSERT_OK(kernel->InstantiateFunc(node_def, nullptr));
+  TF_ASSERT_OK(kernel->InstantiateFunc({}, node_def, nullptr));
 
   // Run MatMulFunction on remote_device.
   gtl::InlinedVector<TensorValue, 4> input_tensors = {TensorValue()};

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
@@ -43,7 +43,7 @@ void TestSoftmaxFloat(std::initializer_list<int> input_dims_data,
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
-  ::tflite::ops::micro::AllOpsResolver resolver;
+  ::tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
       resolver.FindOp(tflite::BuiltinOperator_SOFTMAX);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
@@ -109,7 +109,7 @@ void TestSoftmaxQuantized(std::initializer_list<int> input_dims_data,
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
-  ::tflite::ops::micro::AllOpsResolver resolver;
+  ::tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
       resolver.FindOp(tflite::BuiltinOperator_SOFTMAX);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
@@ -175,7 +175,7 @@ void TestSoftmaxQuantizedSigned(
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
-  ::tflite::ops::micro::AllOpsResolver resolver;
+  ::tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
       resolver.FindOp(tflite::BuiltinOperator_SOFTMAX);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);

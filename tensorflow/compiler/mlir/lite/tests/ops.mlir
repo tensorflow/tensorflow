@@ -794,6 +794,41 @@ func @testSelectWithUnsupportedType(%cond : tensor<?xi1>, %arg0 : tensor<?xi32>,
 
 // -----
 
+// CHECK-LABEL: testSelectV2
+func @testSelectV2(%cond : tensor<*xi1>, %arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK: "tfl.select_v2"(%arg0, %arg1, %arg2)
+  %0 = "tfl.select_v2"(%cond, %arg0, %arg1): (tensor<*xi1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// -----
+
+// CHECK-LABEL: testSelectV2WithHighDimInputs
+func @testSelectV2WithHighDimInputs(%cond : tensor<1x2x3x4x5x6xi1>, %arg0 : tensor<1x2x3x4x5x6xf32>, %arg1 : tensor<1x2x3x4x5x6xf32>) -> tensor<1x2x3x4x5x6xf32> {
+  // CHECK: "tfl.select_v2"(%arg0, %arg1, %arg2)
+  %0 = "tfl.select_v2"(%cond, %arg0, %arg1): (tensor<1x2x3x4x5x6xi1>, tensor<1x2x3x4x5x6xf32>, tensor<1x2x3x4x5x6xf32>) -> tensor<1x2x3x4x5x6xf32>
+  return %0 : tensor<1x2x3x4x5x6xf32>
+}
+
+// -----
+
+// CHECK-LABEL: testSelectV2With4DBroadcasting
+func @testSelectV2With4DBroadcasting(%cond : tensor<1x1x3x1xi1>, %arg0 : tensor<1x1x1x4xf32>, %arg1 : tensor<1x2x1x1xf32>) -> tensor<1x2x3x4xf32> {
+  // CHECK: "tfl.select_v2"(%arg0, %arg1, %arg2)
+  %0 = "tfl.select_v2"(%cond, %arg0, %arg1): (tensor<1x1x3x1xi1>, tensor<1x1x1x4xf32>, tensor<1x2x1x1xf32>) -> tensor<1x2x3x4xf32>
+  return %0 : tensor<1x2x3x4xf32>
+}
+
+// -----
+
+func @testSelectV2WithWrongBroadcastableArguments(%cond : tensor<3x4xi1>, %arg0 : tensor<2x3x4xf32>, %arg1 : tensor<4x3xf32>) -> tensor<2x3x4xf32> {
+  // expected-error @+1 {{'tfl.select_v2' op operands don't have broadcast-compatible shapes}}
+  %0 = "tfl.select_v2"(%cond, %arg0, %arg1): (tensor<3x4xi1>, tensor<2x3x4xf32>, tensor<4x3xf32>) -> tensor<2x3x4xf32>
+  return %0 : tensor<2x3x4xf32>
+}
+
+// -----
+
 // CHECK-LABEL: topk
 func @topk(%arg0: tensor<8xf32>, %arg1: tensor<i32>) -> (tensor<?xf32>, tensor<?xi32>) {
   %0, %1 = "tfl.topk_v2"(%arg0, %arg1) : (tensor<8xf32>, tensor<i32>) -> (tensor<?xf32>, tensor<?xi32>)
@@ -888,6 +923,27 @@ func @testPadWithInvalidPaddingsRank(tensor<2x1x3xf32>, tensor<1x3x2xi32>) -> te
 
 // -----
 
+func @testPadUnknownPaddings(tensor<2x1x3xf32>, tensor<*xi32>) -> tensor<? x f32> {
+^bb0(%arg0: tensor<2x1x3xf32>, %arg1: tensor<*xi32>):
+  %0 = "tfl.pad"(%arg0, %arg1) : (tensor<2x1x3xf32>, tensor<*xi32>) -> tensor<? x f32>
+  return %0#0 : tensor<? x f32>
+
+  // CHECK-LABEL: testPadUnknownPaddings
+  // CHECK:  "tfl.pad"(%arg0, %arg1) : (tensor<2x1x3xf32>, tensor<*xi32>) -> tensor<?xf32>
+  // CHECK:  return
+}
+
+// -----
+
+func @testPadUnsupportedPaddings(tensor<*xf32>, tensor<5x3xi32>) -> tensor<? x f32> {
+^bb0(%arg0: tensor<*xf32>, %arg1: tensor<5x3xi32>):
+  // expected-error @+1 {{'tfl.pad' op failed to verify that the first dim size of the padding argument must be at most 4}}
+  %0 = "tfl.pad"(%arg0, %arg1) : (tensor<*xf32>, tensor<5x3xi32>) -> tensor<? x f32>
+  return %0#0 : tensor<? x f32>
+}
+
+// -----
+
 // CHECK-LABEL: testPadQuantizedU8
 func @testPadQuantizedU8(%arg0: tensor<2x1x3x!quant.uniform<u8:f32, 0.1>>, %arg1: tensor<3x2xi32>) -> tensor<? x !quant.uniform<u8:f32, 0.1>> {
   // CHECK: "tfl.pad"(%arg0, %arg1)
@@ -953,6 +1009,29 @@ func @testPadV2WithInvalidConstantScalar(tensor<2x1x3xf32>, tensor<3x2xi32>) -> 
   %cst = constant dense<2> : tensor<i32>
   //// expected-error @+1 {{'tfl.padv2' op failed to verify that input and constant value operands must have same element type}}
   %0 = "tfl.padv2"(%arg0, %arg1, %cst) : (tensor<2x1x3xf32>, tensor<3x2xi32>, tensor<i32>) -> tensor<? x f32>
+  return %0#0 : tensor<? x f32>
+}
+
+// -----
+
+func @testPadV2UnknownPaddings(tensor<2x1x3xf32>, tensor<*xi32>) -> tensor<? x f32> {
+^bb0(%arg0: tensor<2x1x3xf32>, %arg1: tensor<*xi32>):
+  %cst = constant dense<2.0> : tensor<f32>
+  %0 = "tfl.padv2"(%arg0, %arg1, %cst) : (tensor<2x1x3xf32>, tensor<*xi32>, tensor<f32>) -> tensor<? x f32>
+  return %0#0 : tensor<? x f32>
+
+  // CHECK-LABEL: testPadV2UnknownPaddings
+  // CHECK:  "tfl.padv2"(%arg0, %arg1, %cst) : (tensor<2x1x3xf32>, tensor<*xi32>, tensor<f32>) -> tensor<?xf32>
+  // CHECK:  return
+}
+
+// -----
+
+func @testPadV2UnsupportedPaddings(tensor<*xf32>, tensor<5x3xi32>) -> tensor<? x f32> {
+^bb0(%arg0: tensor<*xf32>, %arg1: tensor<5x3xi32>):
+  %cst = constant dense<2.0> : tensor<f32>
+  // expected-error @+1 {{'tfl.padv2' op failed to verify that the first dim size of the padding argument must be at most 4}}
+  %0 = "tfl.padv2"(%arg0, %arg1, %cst) : (tensor<*xf32>, tensor<5x3xi32>, tensor<f32>) -> tensor<? x f32>
   return %0#0 : tensor<? x f32>
 }
 
@@ -1322,6 +1401,14 @@ func @transpose(%arg0 : tensor<2x2xi32>, %arg1 : tensor<2xi32>) -> tensor<2x2xi3
   return %0 : tensor<2x2xi32>
 }
 
+// -----
+
+// CHECK-LABEL: transpose_with_output_that_has_dynamic_sizes
+func @transpose_with_output_that_has_dynamic_sizes(%arg0 : tensor<2x2xi32>, %arg1 : tensor<2xi32>) -> tensor<?x?xi32> {
+  // CHECK: "tfl.transpose"(%arg0, %arg1)
+  %0 = "tfl.transpose"(%arg0, %arg1) : (tensor<2x2xi32>, tensor<2xi32>) -> tensor<?x?xi32>
+  return %0 : tensor<?x?xi32>
+}
 
 // -----
 
@@ -2066,6 +2153,16 @@ func @testTransposeConv(%arg0: tensor<4xi32>, %arg1: tensor<32x4x4x128xf32>, %ar
   %cst = constant unit
   %0 = "tfl.transpose_conv"(%arg0, %arg1, %arg2, %cst) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<1x64x84x32xf32>
   return %0 : tensor<1x64x84x32xf32>
+}
+
+// -----
+
+// CHECK-LABEL: testTransposeConvWithOutputThatHasDynamicSizes
+func @testTransposeConvWithOutputThatHasDynamicSizes(%arg0: tensor<4xi32>, %arg1: tensor<32x4x4x128xf32>, %arg2: tensor<1x32x42x128xf32>) -> tensor<?x?x?x?xf32> {
+  // CHECK: "tfl.transpose_conv"(%arg0, %arg1, %arg2, %cst)
+  %cst = constant unit
+  %0 = "tfl.transpose_conv"(%arg0, %arg1, %arg2, %cst) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<?x?x?x?xf32>
+  return %0 : tensor<?x?x?x?xf32>
 }
 
 // -----
