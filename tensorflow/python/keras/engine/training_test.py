@@ -690,7 +690,7 @@ class TrainingTest(keras_parameterized.TestCase):
         metrics=['accuracy'],
         run_eagerly=testing_utils.should_run_eagerly())
 
-  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
+  @keras_parameterized.run_all_keras_modes
   def test_that_trainable_disables_updates(self):
     val_a = np.random.random((10, 4))
     val_out = np.random.random((10, 4))
@@ -701,13 +701,15 @@ class TrainingTest(keras_parameterized.TestCase):
     model = training_module.Model(a, b)
 
     model.trainable = False
-    assert not model.updates
+    if not ops.executing_eagerly_outside_functions():
+      self.assertEmpty(model.updates)
 
     model.compile(
         'sgd',
         'mse',
         run_eagerly=testing_utils.should_run_eagerly())
-    assert not model.updates
+    if not ops.executing_eagerly_outside_functions():
+      self.assertEmpty(model.updates)
 
     x1 = model.predict(val_a)
     model.train_on_batch(val_a, val_out)
@@ -719,7 +721,8 @@ class TrainingTest(keras_parameterized.TestCase):
         'sgd',
         'mse',
         run_eagerly=testing_utils.should_run_eagerly())
-    assert model.updates
+    if not ops.executing_eagerly_outside_functions():
+      self.assertAllGreater(len(model.updates), 0)
 
     model.train_on_batch(val_a, val_out)
     x2 = model.predict(val_a)
@@ -730,7 +733,8 @@ class TrainingTest(keras_parameterized.TestCase):
         'sgd',
         'mse',
         run_eagerly=testing_utils.should_run_eagerly())
-    assert not model.updates
+    if not ops.executing_eagerly_outside_functions():
+      self.assertEmpty(model.updates)
 
     x1 = model.predict(val_a)
     model.train_on_batch(val_a, val_out)

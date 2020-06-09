@@ -107,7 +107,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
       network.add_update(state_ops.assign_add(layer.b, x4), inputs=True)
       self.assertEqual(len(network.updates), 7)
 
-  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  @combinations.generate(combinations.combine(mode=['graph']))
   def test_get_updates_bn(self):
     x1 = input_layer_lib.Input(shape=(1,))
     layer = layers.BatchNormalization()
@@ -1593,9 +1593,9 @@ class GraphUtilsTest(test.TestCase):
           tf_utils.get_reachable_from_inputs([x_3]), {x_3, x_5, x_5.op})
 
 
-@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class NestedNetworkTest(keras_parameterized.TestCase):
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_nested_inputs_network(self):
     inputs = {
         'x1': input_layer_lib.Input(shape=(1,)),
@@ -1620,6 +1620,7 @@ class NestedNetworkTest(keras_parameterized.TestCase):
     })
     self.assertListEqual(output_shape.as_list(), [None, 1])
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_nested_outputs_network(self):
     inputs = input_layer_lib.Input(shape=(1,))
     outputs = {
@@ -1640,6 +1641,7 @@ class NestedNetworkTest(keras_parameterized.TestCase):
     self.assertListEqual(output_shape['x+x'].as_list(), [None, 1])
     self.assertListEqual(output_shape['x*x'].as_list(), [None, 1])
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_nested_network_inside_network(self):
     inner_inputs = {
         'x1': input_layer_lib.Input(shape=(1,)),
@@ -1672,6 +1674,7 @@ class NestedNetworkTest(keras_parameterized.TestCase):
     output_shape = network.compute_output_shape([(None, 1), (None, 1)])
     self.assertListEqual(output_shape.as_list(), [None, 1])
 
+  @combinations.generate(combinations.combine(mode=['graph']))
   def test_updates_with_direct_call(self):
     inputs = input_layer_lib.Input(shape=(10,))
     x = layers.BatchNormalization()(inputs)
@@ -1683,6 +1686,7 @@ class NestedNetworkTest(keras_parameterized.TestCase):
 
     self.assertLen(model.updates, 4)
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_dict_mapping_input(self):
 
     class ReturnFirst(layers.Layer):
@@ -1708,6 +1712,7 @@ class NestedNetworkTest(keras_parameterized.TestCase):
     res = reversed_model({'a': a_val, 'b': b_val})
     self.assertAllClose(self.evaluate(res), self.evaluate(b_val))
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_dict_mapping_single_input(self):
     b = input_layer_lib.Input(shape=(1,), name='b')
     outputs = b * 2

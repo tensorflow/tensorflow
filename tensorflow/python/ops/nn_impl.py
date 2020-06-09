@@ -427,6 +427,7 @@ def compute_average_loss(per_example_loss,
 
   with losses_util.check_per_example_loss_rank(per_example_loss):
     if sample_weight is not None:
+      sample_weight = ops.convert_to_tensor(sample_weight)
       per_example_loss = losses_util.scale_losses_by_sample_weight(
           per_example_loss, sample_weight)
     per_example_loss = math_ops.cast(per_example_loss, input_dtype)

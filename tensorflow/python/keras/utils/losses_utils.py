@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.losses import loss_reduction
@@ -101,8 +102,12 @@ def compute_weighted_loss(losses,
     # to multiple replicas. Used only for estimator + v1 optimizer flow.
     ops.get_default_graph()._last_loss_reduction = reduction  # pylint: disable=protected-access
 
-    losses = ops.convert_to_tensor_v2(losses)
+    if not isinstance(losses, keras_tensor.KerasTensor):
+      losses = ops.convert_to_tensor_v2(losses)
     input_dtype = losses.dtype
+
+    if not isinstance(sample_weight, keras_tensor.KerasTensor):
+      sample_weight = ops.convert_to_tensor_v2(sample_weight)
     weighted_losses = tf_losses_utils.scale_losses_by_sample_weight(
         losses, sample_weight)
     # Apply reduction function to the individual weighted losses.
