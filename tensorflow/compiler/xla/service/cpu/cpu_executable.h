@@ -101,17 +101,16 @@ class CpuExecutable : public Executable {
   //
   //  - buffers_to_free: buffers whose ownership was donated by the caller that
   //    are to be freed by the caller.
-  StatusOr<std::tuple<std::vector<se::DeviceMemoryBase>,
-                      std::vector<se::OwningDeviceMemory>>>
-  CreateBufferTable(se::DeviceMemoryAllocator* memory_allocator,
-                    int device_ordinal,
-                    absl::Span<ExecutionInput const> arguments);
+  StatusOr<std::vector<MaybeOwningDeviceMemory>> CreateBufferTable(
+      se::DeviceMemoryAllocator* memory_allocator, int device_ordinal,
+      absl::Span<ExecutionInput const> arguments);
 
   // Calls the generated function performing the computation with the given
   // arguments using the supplied buffers.
-  Status ExecuteComputeFunction(const ExecutableRunOptions* run_options,
-                                absl::Span<const se::DeviceMemoryBase> buffers,
-                                HloExecutionProfile* hlo_execution_profile);
+  Status ExecuteComputeFunction(
+      const ExecutableRunOptions* run_options,
+      absl::Span<MaybeOwningDeviceMemory const> buffers,
+      HloExecutionProfile* hlo_execution_profile);
 
   // Creates an Execution output holding ScopedShapedBuffer for holding the
   // result of the computation, moving buffers out of allocated_buffers and into
@@ -119,7 +118,7 @@ class CpuExecutable : public Executable {
   // assignment.
   StatusOr<ExecutionOutput> CreateResultShapedBuffer(
       const ServiceExecutableRunOptions* run_options,
-      absl::Span<se::OwningDeviceMemory> owning_buffers);
+      absl::Span<MaybeOwningDeviceMemory> buffers);
 
   // Returns the instruction value set of the root instruction of the entry
   // computation. Uses dataflow analysis from buffer assignment.
