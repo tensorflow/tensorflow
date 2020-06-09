@@ -126,10 +126,28 @@ bazel build -c opt --config android_arm64 tensorflow/lite/delegates/gpu:gl_deleg
 bazel build -c opt --config android_arm64 tensorflow/lite/delegates/gpu:libtensorflowlite_gpu_gl.so  # for dynamic library
 ```
 
-### iOS (ObjC++)
+### iOS (Swift)
 
-To use TensorFlow Lite on GPU, get the GPU delegate via `NewGpuDelegate()` and
-then pass it to `Interpreter::ModifyGraphWithDelegate()` (instead of calling
+Initialize TensorFlow Lite interpreter with the GPU delegate.
+
+```swift
+import TensorFlowLite
+
+let delegate = MetalDelegate()
+if let interpreter = try Interpreter(modelPath: modelPath,
+                                     delegates: [delegate]) {
+
+  // Run inference ...
+}
+
+```
+
+### iOS (Objective-C)
+
+Note: For Objective-C, GPU delegate is provided via C API.
+
+To use TensorFlow Lite on GPU, get the GPU delegate via `TFLGpuDelegateCreate()`
+and then pass it to `Interpreter::ModifyGraphWithDelegate()` (instead of calling
 `Interpreter::AllocateTensors()`).
 
 ```c++
@@ -142,12 +160,7 @@ InterpreterBuilder(*model, op_resolver)(&interpreter);
 
 // NEW: Prepare GPU delegate.
 
-const GpuDelegateOptions options = {
-  .allow_precision_loss = false,
-  .wait_type = kGpuDelegateOptions::WaitType::Passive,
-};
-
-auto* delegate = NewGpuDelegate(options);
+auto* delegate = TFLGpuDelegateCreate(/*default options=*/nullptr);
 if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) return false;
 
 // Run inference.
@@ -156,7 +169,7 @@ if (interpreter->Invoke() != kTfLiteOk) return false;
 ReadFromOutputTensor(interpreter->typed_output_tensor<float>(0));
 
 // Clean up.
-DeleteGpuDelegate(delegate);
+TFLGpuDelegateDelete(delegate);
 ```
 
 Note: When calling `Interpreter::ModifyGraphWithDelegate()` or
@@ -169,7 +182,54 @@ called.
 
 ## Advanced usage
 
-### Running quantized models (Experimental, Android only)
+### Delegate Options for iOS
+
+`TFLGpuDelegateCreate()` accepts a `struct` of options.
+([C API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/gpu/metal_delegate.h),
+[Swift API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/swift/Sources/MetalDelegate.swift))
+
+Passing `nullptr`(C API) or nothing (Swift API) to the initializer sets the
+default options (which are explicated in the Basic Usage example above).
+
+**Swift API**
+
+```swift
+
+// THIS:
+var options = MetalDelegate.Options()
+options.allowsPrecisionLoss = false
+options.waitType = .passive
+options.isQuantizationEnabled = false
+let delegate = MetalDelegate(options: options)
+
+// IS THE SAME AS THIS:
+let delegate = MetalDelegate()
+
+```
+
+**C API (also used for Objective-C)**
+
+```c++
+
+// THIS:
+const TFLGpuDelegateOptions options = {
+  .allow_precision_loss = false,
+  .wait_type = TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypePassive,
+  .enable_quantization = false,
+};
+
+auto* delegate = TFLGpuDelegateCreate(options);
+
+// IS THE SAME AS THIS:
+auto* delegate = TFLGpuDelegateCreate(nullptr);
+
+```
+
+While it is convenient to use `nullptr`, we recommend that you explicitly set
+the options, to avoid any unexpected behavior if default values are changed in
+the future.
+
+### Running quantized models (Experimental)
 
 The GPU delegate already supports
 [float16 quantized](https://www.tensorflow.org/lite/performance/post_training_float16_quant)
@@ -185,6 +245,8 @@ To optimize performance, use models that have floating-point input & output
 tensors.
 
 This feature can be enabled using delegate options as follows:
+
+#### Android
 
 **C++ API**
 
@@ -206,50 +268,29 @@ GpuDelegate delegate = new GpuDelegate(new GpuDelegate.Options().setQuantizedMod
 Interpreter.Options options = (new Interpreter.Options()).addDelegate(delegate);
 ```
 
-### Delegate Options for iOS
+#### iOS
 
-`NewGpuDelegate()` accepts a `struct` of options.
+**Swift API**
 
-```c++
-struct GpuDelegateOptions {
-  // Allows to quantify tensors, downcast values, process in float16 etc.
-  bool allow_precision_loss;
-
-  enum class WaitType {
-    // waitUntilCompleted
-    kPassive,
-    // Minimize latency. It uses active spinning instead of mutex and consumes
-    // additional CPU resources.
-    kActive,
-    // Useful when the output is used with GPU pipeline then or if external
-    // command encoder is set
-    kDoNotWait,
-  };
-  WaitType wait_type;
-};
+```swift
+// NEW: Prepare custom options with feature enabled.
+var options = MetalDelegate.Options()
+options.isQuantizationEnabled = true
+let delegate = MetalDelegate(options: options)
 ```
 
-Passing `nullptr` into `NewGpuDelegate()` sets the default options (which are
-explicated in the Basic Usage example above).
+**C API (also used for Objective-C)**
 
-```c++
+```c
 
 // THIS:
-const GpuDelegateOptions options = {
-  .allow_precision_loss = false,
-  .wait_type = kGpuDelegateOptions::WaitType::Passive,
+// NEW: Prepare custom options with feature enabled.
+const TFLGpuDelegateOptions options = {
+  .enable_quantization = true,
 };
 
-auto* delegate = NewGpuDelegate(options);
-
-// IS THE SAME AS THIS:
-auto* delegate = NewGpuDelegate(nullptr);
-
+auto* delegate = TFLGpuDelegateCreate(options);
 ```
-
-While it is convenient to use `nullptr`, we recommend that you explicitly set
-the options, to avoid any unexpected behavior if default values are changed in
-the future.
 
 ### Input/Output Buffers (iOS only)
 
@@ -280,8 +321,13 @@ off by calling `Interpreter::SetAllowBufferHandleOutput(true)` during
 initialization.
 
 ```c++
+#include "tensorflow/lite/delegates/gpu/metal_delegate.h"
+#include "tensorflow/lite/delegates/gpu/metal_delegate_internal.h"
+
+// ...
+
 // Prepare GPU delegate.
-auto* delegate = NewGpuDelegate(nullptr);
+auto* delegate = TFLGpuDelegateCreate(nullptr);
 interpreter->SetAllowBufferHandleOutput(true);  // disable default gpu->cpu copy
 if (!TFLGpuDelegateBindMetalBufferToTensor(delegate, interpreter->inputs()[0], user_provided_input_buffer)) return false;
 if (!TFLGpuDelegateBindMetalBufferToTensor(delegate, interpreter->outputs()[0], user_provided_output_buffer)) return false;
