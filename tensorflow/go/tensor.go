@@ -76,7 +76,7 @@ func NewTensor(value interface{}) (*Tensor, error) {
 		return nil, err
 	}
 	nflattened := numElements(shape)
-	nbytes := typeOf(dataType, nil).Size() * uintptr(nflattened)
+	nbytes := TypeOf(dataType, nil).Size() * uintptr(nflattened)
 	if dataType == String {
 		// TF_STRING tensors are encoded as an array of 8-byte offsets
 		// followed by string data. See c_api.h.
@@ -120,7 +120,7 @@ func ReadTensor(dataType DataType, shape []int64, r io.Reader) (*Tensor, error) 
 	if err := isTensorSerializable(dataType); err != nil {
 		return nil, err
 	}
-	nbytes := typeOf(dataType, nil).Size() * uintptr(numElements(shape))
+	nbytes := TypeOf(dataType, nil).Size() * uintptr(numElements(shape))
 	var shapePtr *C.int64_t
 	if len(shape) > 0 {
 		shapePtr = (*C.int64_t)(unsafe.Pointer(&shape[0]))
@@ -168,7 +168,7 @@ func (t *Tensor) Shape() []int64 { return t.shape }
 // Tensor(int64, 0): int64
 // Tensor(float64, 3): [][][]float64
 func (t *Tensor) Value() interface{} {
-	typ := typeOf(t.DataType(), t.Shape())
+	typ := TypeOf(t.DataType(), t.Shape())
 	val := reflect.New(typ)
 	raw := tensorData(t.c)
 	if t.DataType() != String {
@@ -261,8 +261,8 @@ func shapeAndDataTypeOf(val reflect.Value) (shape []int64, dt DataType, err erro
 	return shape, dt, fmt.Errorf("unsupported type %v", typ)
 }
 
-// typeOf converts from a DataType and Shape to the equivalent Go type.
-func typeOf(dt DataType, shape []int64) reflect.Type {
+// TypeOf converts from a DataType and Shape to the equivalent Go type.
+func TypeOf(dt DataType, shape []int64) reflect.Type {
 	var ret reflect.Type
 	for _, t := range types {
 		if dt == DataType(t.dataType) {
@@ -460,7 +460,7 @@ func (d *stringDecoder) decode(ptr reflect.Value, shape []int64) error {
 		return nil
 	}
 	val := reflect.Indirect(ptr)
-	val.Set(reflect.MakeSlice(typeOf(String, shape), int(shape[0]), int(shape[0])))
+	val.Set(reflect.MakeSlice(TypeOf(String, shape), int(shape[0]), int(shape[0])))
 	for i := 0; i < val.Len(); i++ {
 		if err := d.decode(val.Index(i).Addr(), shape[1:]); err != nil {
 			return err
