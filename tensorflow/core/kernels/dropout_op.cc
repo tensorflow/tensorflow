@@ -15,16 +15,16 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/random_op.h"
+#include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
 #include "tensorflow/core/util/tensor_format.h"
-#include "tensorflow/stream_executor/temporary_device_memory.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
 #include "dropout_op.h"
 
 namespace tensorflow {
@@ -111,7 +111,10 @@ class DropoutOp : public OpKernel {
     else
       seed = in3.scalar<int64>()();
     // don't reset the seed for every call unless it is explicitly non-0
-    if (seed != 0) generator_.ResetSeeds(seed, 0);
+    if (seed != 0) 
+      generator_.ResetSeeds(seed, 0);
+    else
+      generator_.ResetSeeds(random::New64(), 0);
 
     typedef random::UniformDistribution<random::PhiloxRandom, float>
         Distribution;
@@ -171,8 +174,7 @@ TF_CALL_half(REGISTER_DROPOUT_GPU);
 template <typename Device, typename T>
 class DropoutGradOp : public OpKernel {
  public:
-  explicit DropoutGradOp(OpKernelConstruction* context) : OpKernel(context) {
-  }
+  explicit DropoutGradOp(OpKernelConstruction* context) : OpKernel(context) {}
 
   ~DropoutGradOp() override {}
   void Compute(OpKernelContext* ctx) override {

@@ -15,6 +15,7 @@
 #include "tensorflow/stream_executor/temporary_device_memory.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
 #include "dropout_op.h"
 
 #if TENSORFLOW_USE_ROCM
@@ -170,20 +171,10 @@ void ApplyDropout<GPUDevice, T>::operator()(const GPUDevice& d, T* out,
       std::is_same<T, Eigen::half>::value && !(num_elements & 1) && !seeded;
   if (do_half2) num_elements /= 2;
   int64 kThreadInBlock = 256;
-  // int64 kMaxBlock = do_half2 ? 1024 : 128;  // experimental best
-  // int64 kMaxBlock = 128;
-  //(void)ReadInt64FromEnvVar("TF_DROPOUT_THREADS", 256, &kThreadInBlock);
-  //(void)ReadInt64FromEnvVar("TF_DROPOUT_MAX_BLOCKS", 0, &kMaxBlock);
   // we process 4 half2 in half2 mode and 16 in other cases
   int group_size = do_half2 ? 8 : 16;
   uint64 num_groups = (num_elements + group_size - 1) / group_size;
   uint64 num_blocks = (num_groups + kThreadInBlock - 1) / kThreadInBlock;
-  // num_blocks = min(kMaxBlock, num_blocks);
-  // if(kMaxBlock>0)
-  //  num_blocks = kMaxBlock;
-  // else if(kMaxBlock==-1)
-  //  num_blocks = (num_blocks+63) & ~63;
-
   // for FP32, it's optimal to run at 256x256
   if (std::is_same<T, float>::value && num_blocks > 256) num_blocks = 256;
 
