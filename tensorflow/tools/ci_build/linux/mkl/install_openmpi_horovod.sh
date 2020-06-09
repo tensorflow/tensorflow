@@ -14,15 +14,14 @@
 # limitations under the License.
 # ==============================================================================
 # Install OpenMPI, OpenSSH and Horovod during Intel(R) MKL container build
-# Usage: install_openmpi_horovod.sh [OPENMPI_VERSION=<openmpi version>] [OPENMPI_DOWNLOAD_URL=<openmpi download url>] [HOROVOD_VERSION=<horovod version>]
+# Usage: install_openmpi_horovod.sh [OPENMPI_VERSION=<openmpi version>] [OPENMPI_DOWNLOAD_URL=<openmpi download url>] 
+# [HOROVOD_VERSION=<horovod version>]
 
 set -e
 
-apt-get clean && apt-get update -y
-
 # Set default
 OPENMPI_VERSION=${OPENMPI_VERSION:-openmpi-2.1.1}
-OPENMPI_DOWNLOAD_URL=${OPENMPI_DOWNLOAD_URL:-https://www.open-mpi.org/software/ompi/v2.1/downloads/${OPENMPI_VERSION}.tar.gz}
+OPENMPI_DOWNLOAD_URL=${OPENMPI_DOWNLOAD_URL:-https://www.open-mpi.org/software/ompi/v2.1/downloads/openmpi-2.1.1.tar.gz}
 HOROVOD_VERSION=${HOROVOD_VERSION:-0.19.1}
 
 # Install Open MPI
@@ -55,18 +54,20 @@ echo 'OpenMPI version:'
 mpirun --version
 
 # Install OpenSSH for MPI to communicate between containers
-( apt-get update && apt-get install -y --no-install-recommends --fix-missing \
-        libnuma-dev \
-        openssh-server \
-        openssh-clients && \        
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/* ) || \
-    ( yum -y update && yum -y install \
-            numactl-devel \
-            openssh-server \
-            openssh-clients && \            
-    yum clean all ) || \
-    ( echo "Unsupported Linux distribution. Aborting!" && exit 1 )
+apt-get clean && apt-get update && apt-get install -y --no-install-recommends --fix-missing \
+    openssh-client openssh-server libnuma-dev && \
+    rm -rf /var/lib/apt/lists/*
+if [[ $?  == "0" ]]; then
+    echo "PASS: OpenSSH installation"
+else
+    yum -y update && yum -y install numactl-devel openssh-server openssh-clients && \
+        yum clean all
+    if [[ $?  == "0" ]]; then
+        echo "PASS: OpenSSH installation"
+    else
+        echo "Unsupported Linux distribution. Aborting!" && exit 1
+    fi
+fi
 mkdir -p /var/run/sshd
 # Allow OpenSSH to talk to containers without asking for confirmation
 cat /etc/ssh/ssh_config | grep -v StrictHostKeyChecking > /etc/ssh/ssh_config.new
