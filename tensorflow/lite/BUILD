@@ -93,6 +93,8 @@ cc_library(
 alias(
     name = "schema_fbs_version",
     actual = ":version",
+    # avoid_dep tells build_cleaner to not use schema_fbs_version.
+    tags = ["avoid_dep"],
 )
 
 cc_library(
@@ -383,6 +385,7 @@ cc_test(
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     tags = [
         "tflite_not_portable_ios",  # TODO(b/117786830)
+        "tflite_smoke_test",
     ],
     deps = [
         ":external_cpu_backend_context",
@@ -451,6 +454,7 @@ cc_test(
     ],
     tags = [
         "tflite_not_portable",
+        "tflite_smoke_test",
     ],
     deps = [
         ":framework",
@@ -499,6 +503,7 @@ cc_test(
         "no_windows",  # No weak symbols with MSVC.
         "tflite_not_portable_android",
         "tflite_not_portable_ios",
+        "tflite_smoke_test",
     ],
     deps = [
         ":framework",
@@ -506,8 +511,7 @@ cc_test(
         ":util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
-        "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -565,6 +569,9 @@ cc_library(
         ],
         "//tensorflow:ios": [
             "minimal_logging_ios.cc",
+        ],
+        "//tensorflow:macos": [
+            "minimal_logging_default.cc",
         ],
         "//conditions:default": [
             "minimal_logging_default.cc",

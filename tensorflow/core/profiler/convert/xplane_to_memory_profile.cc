@@ -146,38 +146,55 @@ MemoryProfile GenerateMemoryProfile(const XPlane* host_trace) {
       ActivityMetadata metadata;
       std::string memory_id;
       event.ForEachStat([&](const XStatVisitor& stat) {
-        if (stat.Type() == StatType::kIndexOnHost ||
-            stat.Type() == StatType::kDeviceOrdinal) {
-          memory_id = absl::StrFormat("%d", stat.IntValue());
-        } else if (stat.Type() == StatType::kAllocatorName) {
-          memory_id = stat.ToString();
-        } else if (stat.Type() == StatType::kBytesReserved) {
-          stats.bytes_reserved = stat.IntValue();
-        } else if (stat.Type() == StatType::kBytesAllocated) {
-          stats.bytes_allocated = stat.IntValue();
-        } else if (stat.Type() == StatType::kBytesAvailable) {
-          stats.bytes_available = stat.IntValue();
-        } else if (stat.Type() == StatType::kFragmentation) {
-          stats.fragmentation = stat.DoubleValue();
-        } else if (stat.Type() == StatType::kPeakBytesInUse) {
-          stats.peak_bytes_in_use = stat.IntValue();
-        } else if (stat.Type() == StatType::kRequestedBytes) {
-          metadata.requested_bytes = stat.IntValue();
-        } else if (stat.Type() == StatType::kAllocationBytes) {
-          metadata.allocation_bytes = stat.IntValue();
-        } else if (stat.Type() == StatType::kAddress) {
-          metadata.address = stat.IntValue();
-        } else if (stat.Type() == StatType::kTfOp) {
-          metadata.tf_op_name = stat.StrOrRefValue();
-        } else if (stat.Type() == StatType::kStepId) {
-          metadata.step_id = stat.IntValue();
-          if (metadata.step_id != 0) (*step_count)[metadata.step_id]++;
-        } else if (stat.Type() == StatType::kRegionType) {
-          metadata.region_type = stat.StrOrRefValue();
-        } else if (stat.Type() == StatType::kDataType) {
-          metadata.data_type = stat.IntValue();
-        } else if (stat.Type() == StatType::kTensorShapes) {
-          metadata.tensor_shape = stat.StrOrRefValue();
+        if (!stat.Type().has_value()) return;
+        switch (stat.Type().value()) {
+          case StatType::kIndexOnHost:
+          case StatType::kDeviceOrdinal:
+            memory_id = absl::StrFormat("%d", stat.IntValue());
+            break;
+          case StatType::kAllocatorName:
+            memory_id = std::string(stat.StrOrRefValue());
+            break;
+          case StatType::kBytesReserved:
+            stats.bytes_reserved = stat.IntValue();
+            break;
+          case StatType::kBytesAllocated:
+            stats.bytes_allocated = stat.IntValue();
+            break;
+          case StatType::kBytesAvailable:
+            stats.bytes_available = stat.IntValue();
+            break;
+          case StatType::kFragmentation:
+            stats.fragmentation = stat.DoubleValue();
+            break;
+          case StatType::kPeakBytesInUse:
+            stats.peak_bytes_in_use = stat.IntValue();
+            break;
+          case StatType::kRequestedBytes:
+            metadata.requested_bytes = stat.IntValue();
+            break;
+          case StatType::kAllocationBytes:
+            metadata.allocation_bytes = stat.IntValue();
+            break;
+          case StatType::kAddress:
+            metadata.address = stat.IntValue();
+            break;
+          case StatType::kTfOp:
+            metadata.tf_op_name = stat.StrOrRefValue();
+            break;
+          case StatType::kStepId:
+            metadata.step_id = stat.IntValue();
+            if (metadata.step_id != 0) (*step_count)[metadata.step_id]++;
+            break;
+          case StatType::kRegionType:
+            metadata.region_type = stat.StrOrRefValue();
+            break;
+          case StatType::kDataType:
+            metadata.data_type = stat.IntValue();
+            break;
+          case StatType::kTensorShapes:
+            metadata.tensor_shape = stat.StrOrRefValue();
+            break;
         }
       });
 

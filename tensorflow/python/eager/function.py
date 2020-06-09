@@ -86,6 +86,7 @@ ag_ctx = lazy_loader.LazyLoader(
 FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
 BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
 IMPLEMENTS_ATTRIBUTE_NAME = "_implements"
+SHARED_RENDEZVOUS_ATTRIBUTE_NAME = "shared_rendezvous"
 
 
 def _make_input_signature_hashable(elem, variable_map=None):

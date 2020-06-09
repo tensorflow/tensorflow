@@ -103,6 +103,22 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   absl::Status GetDataTypeFromTemplateArgs(const std::string& template_arg,
                                            DataType* result) const;
 
+  std::string GetGlobalAddressNoDeclarationWHS(const std::string& x,
+                                               const std::string& y,
+                                               const std::string& s) const;
+  std::string GetGlobalAddressNoDeclarationWHSB(const std::string& x,
+                                                const std::string& y,
+                                                const std::string& s,
+                                                const std::string& b) const;
+  std::string GetGlobalAddressNoDeclarationWHDS(const std::string& x,
+                                                const std::string& y,
+                                                const std::string& z,
+                                                const std::string& s) const;
+  std::string GetGlobalAddressNoDeclarationWHDSB(const std::string& x,
+                                                 const std::string& y,
+                                                 const std::string& z,
+                                                 const std::string& s,
+                                                 const std::string& b) const;
   std::string GetGlobalAddressNoDeclaration(const std::string& xc,
                                             const std::string& yc,
                                             const std::string& zc,
@@ -112,6 +128,8 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   bool ParseCoordsFromArgs(const std::vector<std::string>& args, int offset,
                            std::string* xc, std::string* yc, std::string* zc,
                            std::string* sc, std::string* bc) const;
+
+  bool IsBatchedWidth() const;
 };
 
 std::string ToString(TensorStorageType type);

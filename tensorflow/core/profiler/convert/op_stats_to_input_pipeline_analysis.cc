@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
-#include "tensorflow/core/profiler/utils/errors.h"
+#include "tensorflow/core/profiler/utils/diagnostics.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
 #include "tensorflow/core/profiler/utils/html_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
@@ -552,23 +552,12 @@ StepSummary ComputeStepTimeSummaryInMs(
   return GetStepSummaryForSampleStats(total_step_stats_in_ms);
 }
 
-void AddErrorMessages(const OpStats& op_stats,
-                      InputPipelineAnalysisResult* result) {
-  if (op_stats.step_db().use_incomplete_step()) {
-    *result->add_error_messages() =
-        absl::StrCat("WARNING: ", kErrorIncompleteStep);
-  } else if (op_stats.step_db().step_sequence().empty()) {
-    *result->add_error_messages() =
-        absl::StrCat("WARNING: ", kErrorNoStepMarker);
-  }
-}
-
 InputPipelineAnalysisResult ConvertOpStatsToInputPipelineAnalysis(
     const OpStats& op_stats, const HardwareType& hardware_type) {
   InputPipelineAnalysisResult result =
       ComputeGenericInputPipelineAnalysisResult(
           op_stats.step_db().step_sequence());
-  AddErrorMessages(op_stats, &result);
+  PopulateStepDiagnostics(op_stats, result.mutable_diagnostics());
   result.set_hardware_type(HardwareType_Name(hardware_type));
   GenerateHostResult(op_stats.host_op_metrics_db(), &result);
 

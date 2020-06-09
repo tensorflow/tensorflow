@@ -10853,6 +10853,13 @@ op {
       }
     }
   }
+  attr {
+    name: "circular_buffer_size"
+    type: "int"
+    default_value {
+      i: 1000
+    }
+  }
   is_stateful: true
 }
 op {

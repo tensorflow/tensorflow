@@ -187,6 +187,7 @@ PjRtClient::PjRtClient(
       CHECK(local_devices_[idx] == nullptr) << idx;
       local_devices_[idx] = device.get();
     }
+    device->client_ = this;
   }
   for (int idx = 0; idx < local_devices_.size(); ++idx) {
     CHECK(local_devices_[idx] != nullptr) << idx;

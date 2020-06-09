@@ -19,8 +19,8 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/python/types.h"
+#include "tensorflow/compiler/xla/python/py_client.h"
+#include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 
@@ -31,18 +31,18 @@ namespace xla {
 // b) to add Python-specific functionality.
 class PyBuffer {
  public:
-  PyBuffer(std::shared_ptr<PjRtClient> client,
-           std::unique_ptr<PjRtBuffer> buffer);
+  PyBuffer(std::shared_ptr<PyClient> client, std::unique_ptr<PjRtBuffer> buffer,
+           std::unique_ptr<Traceback> traceback);
 
-  std::shared_ptr<PjRtClient> client() const { return client_; }
+  std::shared_ptr<PyClient> client() const { return client_; }
   PjRtBuffer* buffer() const { return buffer_.get(); }
 
-  ClientAndPtr<Device> Device() const;
+  ClientAndPtr<Device> device() const;
   const std::string& platform_name() const { return buffer_->platform_name(); }
   bool is_deleted() const { return buffer_->IsDeleted(); }
 
   StatusOr<std::unique_ptr<PyBuffer>> CopyToDevice(
-      const ClientAndPtr<xla::Device>& dst_device) const;
+      const ClientAndPtr<Device>& dst_device) const;
 
   void Delete() { return buffer_->Delete(); }
 
@@ -60,9 +60,12 @@ class PyBuffer {
   // PEP 3118 Python buffer protocol implementation.
   static PyBufferProcs* BufferProtocol();
 
+  Traceback* traceback() { return traceback_.get(); }
+
  private:
-  std::shared_ptr<PjRtClient> client_;
+  std::shared_ptr<PyClient> client_;
   std::unique_ptr<PjRtBuffer> buffer_;
+  std::unique_ptr<Traceback> traceback_;
 };
 
 }  // namespace xla

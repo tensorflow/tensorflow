@@ -78,7 +78,7 @@ class EventNode {
 
   const XEventVisitor& GetEventVisitor() const { return visitor_; }
 
-  const XStat* GetContextStat(int64 stat_type) const;
+  absl::optional<XStatVisitor> GetContextStat(int64 stat_type) const;
 
   void AddStepName(absl::string_view step_name);
 
@@ -90,7 +90,7 @@ class EventNode {
   bool IsNestedIn(EventNode* parent);
 
   // Returns the closest parent of the given event type.
-  EventNode* FindParent(int64 event_type);
+  EventNode* FindParent(int64 event_type) const;
 
   absl::optional<ContextInfo> GetProducerContext() const {
     return producer_context_;
@@ -103,6 +103,8 @@ class EventNode {
   bool IsRoot() const { return is_root_; }
 
   bool IsAsync() const { return is_async_; }
+
+  bool StartsBefore(const EventNode& other) const;
 
  private:
   const XPlaneVisitor* plane_;
@@ -175,13 +177,11 @@ class EventForest {
   // Sets the is_eager stat to true for the eagerly executed CPU TF op events.
   void MarkEagerlyExecutedCpuTfOps();
 
-  // Create virtual events of HostEventType::kHostTrainingLoopIteration. A
-  // virtual event is created for each iteration of the host training loop and
-  // connected to the HostEventType::kExecutorStateProcess events of the
-  // iteration.
-  void CreateVirtualEventsForHostTrainingLoop();
+  // Processes the TF loops and registers the first TF executor event of each
+  // iteraton to `tf_loop_root_events_`.
+  void ProcessTensorFlowLoop();
 
-  // Create virutal events of HostEventType::kAsyncExecutorTraceContext. A
+  // Creates virtual events of HostEventType::kAsyncExecutorTraceContext. A
   // virtual event is created for every FunctionRun and the following eager ops
   // (e.g., for Keras callback).
   void CreateVirtualEventsForAsyncExecutor();
@@ -190,6 +190,8 @@ class EventForest {
   std::vector<XPlaneVisitor> visitors_;
   EventGroupNameMap event_group_name_map_;
   EventList root_events_;
+  EventList tf_loop_root_events_;
+  int64 next_group_id_ = 0;
 };
 
 std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList();

@@ -15,28 +15,35 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
+#include "tensorflow/compiler/xla/python/types.h"
 
 namespace xla {
 
 namespace py = pybind11;
 
-PyBuffer::PyBuffer(std::shared_ptr<PjRtClient> client,
-                   std::unique_ptr<PjRtBuffer> buffer)
-    : client_(std::move(client)), buffer_(std::move(buffer)) {}
+PyBuffer::PyBuffer(std::shared_ptr<PyClient> client,
+                   std::unique_ptr<PjRtBuffer> buffer,
+                   std::unique_ptr<Traceback> traceback)
+    : client_(std::move(client)),
+      buffer_(std::move(buffer)),
+      traceback_(std::move(traceback)) {}
 
-ClientAndPtr<Device> PyBuffer::Device() const {
+ClientAndPtr<Device> PyBuffer::device() const {
   return WrapWithClient(client_, buffer_->device());
 }
 
 StatusOr<std::unique_ptr<PyBuffer>> PyBuffer::CopyToDevice(
-    const ClientAndPtr<xla::Device>& dst_device) const {
+    const ClientAndPtr<Device>& dst_device) const {
   CHECK(dst_device.get() != nullptr);
   GlobalPyRefManager()->CollectGarbage();
+  auto traceback = Traceback::Get();
   py::gil_scoped_release gil_release;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> out,
                       buffer_->CopyToDevice(dst_device.get()));
-  return std::make_unique<PyBuffer>(dst_device.client, std::move(out));
+  return std::make_unique<PyBuffer>(dst_device.client, std::move(out),
+                                    std::move(traceback));
 }
 
 Status PyBuffer::BlockHostUntilReady() {

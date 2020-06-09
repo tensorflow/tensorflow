@@ -59,9 +59,8 @@ class InterleaveMany : public Node {
       (*input_times)[long_name()] = old_input_time;
       return;
     }
-    double new_input_time =
-        old_input_time +
-        SelfProcessingTimeLocked() * static_cast<double>(num_inputs() - 1);
+    double new_input_time = (old_input_time + SelfProcessingTimeLocked()) *
+                            static_cast<double>(num_inputs() - 1);
     (*input_times)[long_name()] = new_input_time;
   }
 

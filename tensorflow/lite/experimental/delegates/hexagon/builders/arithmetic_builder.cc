@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <limits>
 
+#include "hexagon/hexagon_nn_ops.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/experimental/delegates/hexagon/hexagon_nn/hexagon_nn.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -78,8 +79,8 @@ TfLiteStatus ArithmeticOpBuilder::PopulateSubGraph(
     const auto& math_out = AddOutput(sizeof(int), 4,
                                      {output_batch_size, output_height_size,
                                       output_width_size, output_depth_size});
-    const auto& math_out_min = AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-    const auto& math_out_max = AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+    const auto& math_out_min = AddOutput(sizeof(float), 4, kScalarShape);
+    const auto& math_out_max = AddOutput(sizeof(float), 4, kScalarShape);
 
     auto* requantize_op = graph_builder_->AddNode(GetTFLiteNodeID());
     requantize_op->SetOpType(OP_Requantize_32to8);
@@ -92,14 +93,28 @@ TfLiteStatus ArithmeticOpBuilder::PopulateSubGraph(
         requantize_op->AddOutput(sizeof(uint8_t), 4,
                                  {output_batch_size, output_height_size,
                                   output_width_size, output_depth_size});
-    requantize_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-    requantize_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+    requantize_op->AddOutput(sizeof(float), 4, kScalarShape);
+    requantize_op->AddOutput(sizeof(float), 4, kScalarShape);
   } else {
-    node_output_ = AddOutput(sizeof(uint8_t), 4,
-                             {output_batch_size, output_height_size,
-                              output_width_size, output_depth_size});
-    AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-    AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+    auto result_out = AddOutput(sizeof(uint8_t), 4,
+                                {output_batch_size, output_height_size,
+                                 output_width_size, output_depth_size});
+    auto result_min = AddOutput(sizeof(float), 4, kScalarShape);
+    auto result_max = AddOutput(sizeof(float), 4, kScalarShape);
+
+    auto* requantize_op = graph_builder_->AddNode(GetTFLiteNodeID());
+    requantize_op->SetOpType(OP_Requantize_8to8);
+    requantize_op->AddInput(result_out);
+    requantize_op->AddInput(result_min);
+    requantize_op->AddInput(result_max);
+    requantize_op->AddInput(TensorID(output_min_const->GetID(), 0));
+    requantize_op->AddInput(TensorID(output_max_const->GetID(), 0));
+    node_output_ =
+        requantize_op->AddOutput(sizeof(uint8_t), 4,
+                                 {output_batch_size, output_height_size,
+                                  output_width_size, output_depth_size});
+    requantize_op->AddOutput(sizeof(float), 4, kScalarShape);
+    requantize_op->AddOutput(sizeof(float), 4, kScalarShape);
   }
 
   return kTfLiteOk;

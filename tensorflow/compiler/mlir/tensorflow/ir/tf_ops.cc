@@ -756,6 +756,15 @@ static LogicalResult Verify(BiasAddGradOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// BiasAddV1Op
+//===----------------------------------------------------------------------===//
+
+void BiasAddV1Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                              MLIRContext *context) {
+  results.insert<BiasAddV1ToBiasAdd>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // BitcastOp
 //===----------------------------------------------------------------------===//
 

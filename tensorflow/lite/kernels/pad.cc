@@ -76,9 +76,7 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
                     op_context->dims);
   TF_LITE_ENSURE_EQ(context, SizeOfDimension(op_context->paddings, 1), 2);
 
-  // Determines the size of the output tensor.
-  TfLiteIntArray* input_size = op_context->input->dims;
-  TfLiteIntArray* output_size = TfLiteIntArrayCopy(input_size);
+  // Ensures all the elements of the paddings is non-negative.
   const int32* paddings_data = GetTensorData<int32>(op_context->paddings);
 
   for (int idx = 0; idx < op_context->dims; ++idx) {
@@ -87,6 +85,16 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
 
     TF_LITE_ENSURE_MSG(context, (before_padding >= 0 && after_padding >= 0),
                        "Pad value has to be greater than equal to 0.");
+  }
+
+  // Determines the size of the output tensor.
+  TfLiteIntArray* input_size = op_context->input->dims;
+  TfLiteIntArray* output_size = TfLiteIntArrayCopy(input_size);
+  paddings_data = GetTensorData<int32>(op_context->paddings);
+
+  for (int idx = 0; idx < op_context->dims; ++idx) {
+    int before_padding = *paddings_data++;
+    int after_padding = *paddings_data++;
 
     output_size->data[idx] =
         (input_size->data[idx] + before_padding + after_padding);
@@ -110,9 +118,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(
       context, op_context.dims <= reference_ops::PadKernelMaxDimensionCount());
 
-  // Exit early if paddings is a non-const tensor. Set output tensor to
-  // dynamic so output size can be determined in Eval.
-  if (!IsConstantTensor(op_context.paddings)) {
+  // Exit early if paddings is a non-const tensor or the given input is an
+  // unranked input. Set output tensor to dynamic so output size can be
+  // determined in Eval.
+  if (NumDimensions(op_context.input) == 0 ||
+      !IsConstantTensor(op_context.paddings)) {
     SetTensorToDynamic(op_context.output);
     return kTfLiteOk;
   }

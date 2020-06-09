@@ -2764,6 +2764,86 @@ class ConvertRangeOp : public OpRewritePattern<TF::RangeOp> {
   }
 };
 
+// Converts RangeOp for cases with the length is a dynamic value. The shape of
+// the resulting tensor computed, then the start and delta is used with the
+// dynamic_iota value to compute the final range value.
+//
+// For example, the resulting range op value:
+//   %range = "tf.range"(%start, %limit, %delta)
+//
+// Is converted to the following.
+//   %start + %delta * iota(ceil(abs((%limit - %start) / %delta))
+//
+// Implementation is defined in C++ due to the complicated type behavior.
+class ConvertDynamicRangeOp : public OpRewritePattern<TF::RangeOp> {
+  using OpRewritePattern<TF::RangeOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::RangeOp op,
+                                PatternRewriter &rewriter) const override {
+    auto result = op.getResult();
+    auto result_type = result.getType().cast<ShapedType>();
+    if (result_type.hasStaticShape()) {
+      return failure();
+    }
+
+    Value start = op.start();
+    Value delta = op.delta();
+    Value limit = op.limit();
+
+    // To compute the length we need to use floating point calculations so that
+    // ceil can be computed for the number of steps.
+    auto compute_element_type =
+        getElementTypeOrSelf(start.getType()).isa<FloatType>()
+            ? getElementTypeOrSelf(start.getType())
+            : rewriter.getF64Type();
+    auto compute_type = RankedTensorType::get(
+        limit.getType().cast<ShapedType>().getShape(), compute_element_type);
+
+    // Compute the length of the sequence we are going to need. This includes
+    // some conversion to float for the operations.
+    //
+    // %size = ceil(abs((%limit - %start) / %delta))
+    auto range = rewriter.create<xla_hlo::SubOp>(op.getLoc(), limit, start);
+    auto abs = rewriter.create<xla_hlo::AbsOp>(op.getLoc(), range);
+
+    // Delta is not necessarily the same type as start and limit.
+    auto abs_cast =
+        rewriter.create<xla_hlo::ConvertOp>(op.getLoc(), compute_type, abs);
+    auto delta_cast =
+        rewriter.create<xla_hlo::ConvertOp>(op.getLoc(), compute_type, delta);
+
+    // Compute the total number of integer steps and convert to the HLO
+    // dimension tensor.
+    auto normalized =
+        rewriter.create<xla_hlo::DivOp>(op.getLoc(), abs_cast, delta_cast);
+    auto ceil = rewriter.create<xla_hlo::CeilOp>(op.getLoc(), normalized);
+    auto steps = rewriter.create<xla_hlo::ConvertOp>(
+        op.getLoc(), RankedTensorType::get({}, rewriter.getI64Type()), ceil);
+    auto reshape = rewriter.create<xla_hlo::ReshapeOp>(
+        op.getLoc(), RankedTensorType::get({1}, rewriter.getI64Type()), steps);
+
+    // Using the resulting length compute the correct range value:
+    //
+    // %range = %start + %delta * iota(%size)
+    auto out_scalar_type =
+        RankedTensorType::get({}, getElementTypeOrSelf(result_type));
+    auto start_out_cast = rewriter.create<xla_hlo::ConvertOp>(
+        op.getLoc(), out_scalar_type, start);
+    auto delta_out_cast = rewriter.create<xla_hlo::ConvertOp>(
+        op.getLoc(), out_scalar_type, delta);
+
+    auto iota = rewriter.create<DynamicIotaOp>(
+        op.getLoc(), result_type, reshape, rewriter.getI64IntegerAttr(0));
+    auto scaled = rewriter.create<xla_chlo::BroadcastMulOp>(
+        op.getLoc(), result_type, iota, delta_out_cast,
+        xla::getBroadcastDimensionsAttr(&rewriter, iota, delta_cast));
+    rewriter.replaceOpWithNewOp<xla_chlo::BroadcastAddOp>(
+        op, result_type, scaled, start_out_cast,
+        xla::getBroadcastDimensionsAttr(&rewriter, scaled, start_out_cast));
+    return success();
+  }
+};
+
 ElementsAttr ConvertAxisAttr(Value val, ElementsAttr attr, Builder *builder) {
   auto int_attr = attr.cast<DenseIntElementsAttr>();
   auto type = val.getType().cast<ShapedType>();
@@ -3806,17 +3886,15 @@ class ConvertInfeedDequeueTupleOp
 
       // Token is a control signal and not a real data, so arbitrarily assign
       // the token to device 0.
-      if (sharding_proto.type() == ::xla::OpSharding::TUPLE)
+      if (sharding_proto.type() == ::xla::OpSharding::TUPLE) {
         *sharding_proto.add_tuple_shardings() =
             ::xla::sharding_builder::AssignDevice(0);
-
-      std::string sharding_str;
-      if (!::tensorflow::protobuf::TextFormat::PrintToString(sharding_proto,
-                                                             &sharding_str))
-        return failure();
-
-      data_and_token.setAttr(kShardingAttr,
-                             rewriter.getStringAttr(sharding_str));
+        data_and_token.setAttr(
+            kShardingAttr,
+            rewriter.getStringAttr(sharding_proto.SerializeAsString()));
+      } else {
+        data_and_token.setAttr(kShardingAttr, op._XlaShardingAttr());
+      }
     }
 
     // The infeed instruction produces a tuple of the infeed data and a token
@@ -4359,21 +4437,12 @@ class ConvertXlaShardingOp : public OpRewritePattern<TF::XlaShardingOp> {
     // using a string.
     if (!op._XlaSharding().hasValue()) return failure();
 
-    // _XlaSharding attribute in TF is a serialized string of the OpSharding
-    // proto, so convert to a text form here.
-    ::xla::OpSharding sharding_proto;
-    std::string sharding_str;
-    if (!sharding_proto.ParseFromString(op._XlaSharding().getValue().str()) ||
-        !::tensorflow::protobuf::TextFormat::PrintToString(sharding_proto,
-                                                           &sharding_str))
-      return failure();
-
     auto custom_call = rewriter.create<xla_hlo::CustomCallOp>(
         op.getLoc(), op.getType(), op.input(),
         /*call_target_name=*/rewriter.getStringAttr("Sharding"),
         /*has_side_effect=*/rewriter.getBoolAttr(false),
         /*backend_config=*/rewriter.getStringAttr(""));
-    custom_call.setAttr(kShardingAttr, rewriter.getStringAttr(sharding_str));
+    custom_call.setAttr(kShardingAttr, op._XlaShardingAttr());
     rewriter.replaceOp(op, custom_call.getResult());
 
     return success();
@@ -4537,6 +4606,60 @@ class ConvertCumsumOp : public OpRewritePattern<TF::CumsumOp> {
         rewriter.create<ConvertOp>(op.getLoc(), result, input_element_type);
 
     rewriter.replaceOp(op, result);
+    return success();
+  }
+};
+
+// Converts the Tensorflow ShapeOp to a sequence of Shape dialect and Standard
+// dialect lowerings. This involves extracting the shape type, extracting and
+// converting each dimension to a known integer type, and repacking into a final
+// tensor.
+class ConvertShapeOp : public OpRewritePattern<TF::ShapeOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::ShapeOp op,
+                                PatternRewriter &rewriter) const override {
+    Value input = op.input();
+    auto input_ty = input.getType().dyn_cast<RankedTensorType>();
+    // If the shape is static it can be canonicalized.
+    if (!input_ty || input_ty.hasStaticShape()) {
+      return failure();
+    }
+
+    auto result_ty = op.getResult().getType().cast<RankedTensorType>();
+    auto element_ty = result_ty.getElementType();
+
+    int64_t rank = input_ty.getRank();
+    auto shape_op = rewriter.create<shape::ShapeOfOp>(op.getLoc(), input);
+
+    auto index_ty = RankedTensorType::get({1}, element_ty);
+    llvm::SmallVector<Value, 4> dim_values;
+    for (int64_t i = 0; i < rank; ++i) {
+      if (!input_ty.isDynamicDim(i)) {
+        auto dim_attr = DenseElementsAttr::get(
+            index_ty,
+            rewriter.getIntegerAttr(element_ty, input_ty.getDimSize(i)));
+        auto index = rewriter.create<xla_hlo::ConstOp>(op.getLoc(), dim_attr);
+        dim_values.push_back(index);
+        continue;
+      }
+
+      auto extent_op = rewriter.create<shape::GetExtentOp>(
+          op.getLoc(), shape_op, rewriter.getI64IntegerAttr(i));
+      auto index_op = rewriter.create<shape::SizeToIndexOp>(
+          op.getLoc(), rewriter.getIndexType(), extent_op);
+      auto int_op =
+          rewriter.create<IndexCastOp>(op.getLoc(), element_ty, index_op);
+      auto from_tensor = rewriter.create<TensorFromElementsOp>(
+          op.getLoc(), int_op.getResult());
+      auto reshape_op =
+          rewriter.create<ReshapeOp>(op.getLoc(), index_ty, from_tensor);
+      dim_values.push_back(reshape_op);
+    }
+
+    rewriter.replaceOpWithNewOp<ConcatenateOp>(op, result_ty, dim_values,
+                                               rewriter.getI64IntegerAttr(0));
     return success();
   }
 };
@@ -5119,8 +5242,9 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
       ConvertMaxOp, ConvertMinOp, ConvertAvgPoolOp, ConvertMaxPool2DOp,
       ConvertMaxPool3DOp, ConvertMaxPool2DGradOp, ConvertMaxPool3DGradOp,
       ConvertMeanOp, ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp,
-      ConvertProdOp, ConvertQrOp, ConvertRangeOp, ConvertSelectV2Op,
-      ConvertSigmoidOp, ConvertSizeOp, ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
+      ConvertProdOp, ConvertQrOp, ConvertDynamicRangeOp, ConvertRangeOp,
+      ConvertSelectV2Op, ConvertSigmoidOp, ConvertShapeOp, ConvertSizeOp,
+      ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,
       ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,

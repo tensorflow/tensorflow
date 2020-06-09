@@ -223,6 +223,7 @@ py_library(
         "//tensorflow/python/ops/linalg",
         "//tensorflow/python/ops/linalg/sparse",
         "//tensorflow/python/ops/losses",
+        "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/ops/parallel_for",
         "//tensorflow/python/ops/ragged",
         "//tensorflow/python/ops/signal",
@@ -284,6 +285,7 @@ py_library(
     deps = [
         ":_pywrap_util_port",
         ":lib",
+        ":platform_build_info",
         ":pywrap_tfe",
         ":util",
         "//tensorflow/core:protos_all_py",
@@ -336,6 +338,24 @@ tf_py_test(
     srcs = ["platform/resource_loader_test.py"],
     data = [
         "platform/resource_loader.py",
+    ],
+    python_version = "PY3",
+    tags = [
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
+        ":platform",
+        ":platform_test",
+    ],
+)
+
+tf_py_test(
+    name = "sysconfig_test",
+    size = "small",
+    srcs = ["platform/sysconfig_test.py"],
+    data = [
+        "platform/sysconfig.py",
     ],
     python_version = "PY3",
     tags = [
@@ -3042,6 +3062,7 @@ tf_gen_op_wrapper_private_py(name = "rnn_ops_gen")
 
 tf_gen_op_wrapper_private_py(
     name = "sendrecv_ops_gen",
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core:sendrecv_ops_op_lib",
     ],

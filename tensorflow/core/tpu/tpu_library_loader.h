@@ -17,13 +17,21 @@ limitations under the License.
 #define TENSORFLOW_CORE_TPU_TPU_LIBRARY_LOADER_H_
 
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/tpu/libtftpu.h"
+#include "tensorflow/core/tpu/tpu_config_c_api.h"
 
+// LINT.IfChange
 namespace tensorflow {
 namespace tpu {
 
-Status InitializeTPULibrary(void* library);
+Status InitializeTpuLibrary(void* library_handle);
+
+TfTpu_BaseFn* InitializeApiFn();
+
+TfTpu_ConfigApiFn* ConfigApiFn();
 
 }  // namespace tpu
 }  // namespace tensorflow
+// LINT.ThenChange(//tensorflow/core/tpu/tpu_library_loader_windows.cc)
 
 #endif  // TENSORFLOW_CORE_TPU_TPU_LIBRARY_LOADER_H_

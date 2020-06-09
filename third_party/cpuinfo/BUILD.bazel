@@ -125,7 +125,11 @@ cc_library(
         "-Iexternal/cpuinfo/include",
         "-Iexternal/cpuinfo/src",
     ],
-    linkstatic = True,
+    linkstatic = select({
+        # https://github.com/bazelbuild/bazel/issues/11552
+        ":macos_x86_64": False,
+        "//conditions:default": True,
+    }),
     # Headers must be in textual_hdrs to allow us to set the standard to C99
     textual_hdrs = [
         "include/cpuinfo.h",
@@ -155,6 +159,16 @@ cc_library(
         "include/cpuinfo.h",
     ],
     strip_include_prefix = "include",
+    deps = [
+        ":cpuinfo_impl",
+    ],
+)
+
+cc_library(
+    name = "cpuinfo_with_unstripped_include_path",
+    hdrs = [
+        "include/cpuinfo.h",
+    ],
     deps = [
         ":cpuinfo_impl",
     ],

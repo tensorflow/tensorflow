@@ -199,7 +199,7 @@ class Conv(Layer):
     self.input_spec = InputSpec(min_ndim=self.rank + 2,
                                 axes={channel_axis: input_channel})
 
-    self._build_conv_op_input_shape = input_shape
+    self._build_conv_op_data_shape = input_shape[-(self.rank + 1):]
     self._build_input_channel = input_channel
     self._padding_op = self._get_padding_op()
     self._conv_op_data_format = conv_utils.convert_data_format(
@@ -224,11 +224,11 @@ class Conv(Layer):
           padding=self._padding_op,
           data_format=self._conv_op_data_format,
           num_spatial_dims=self.rank)
-      self._build_conv_op_input_shape = inputs.get_shape()
+      self._build_conv_op_data_shape = inputs.shape[-(self.rank + 1):]
 
     # Apply causal padding to inputs for Conv1D.
     if self.padding == 'causal' and self.__class__.__name__ == 'Conv1D':
-      inputs = array_ops.pad(inputs, self._compute_causal_padding())
+      inputs = array_ops.pad(inputs, self._compute_causal_padding(inputs))
 
     outputs = self._convolution_op(inputs, self.kernel)
 
@@ -324,13 +324,17 @@ class Conv(Layer):
     base_config = super(Conv, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
-  def _compute_causal_padding(self):
+  def _compute_causal_padding(self, inputs):
     """Calculates padding for 'causal' option for 1-d conv layers."""
     left_pad = self.dilation_rate[0] * (self.kernel_size[0] - 1)
-    if self.data_format == 'channels_last':
-      causal_padding = [[0, 0], [left_pad, 0], [0, 0]]
+    if getattr(inputs.shape, 'ndims', None) is None:
+      batch_rank = 1
     else:
-      causal_padding = [[0, 0], [0, 0], [left_pad, 0]]
+      batch_rank = len(inputs.shape) - 2
+    if self.data_format == 'channels_last':
+      causal_padding = [[0, 0]] * batch_rank + [[left_pad, 0], [0, 0]]
+    else:
+      causal_padding = [[0, 0]] * batch_rank + [[0, 0], [left_pad, 0]]
     return causal_padding
 
   def _get_channel_axis(self):
@@ -369,11 +373,12 @@ class Conv(Layer):
     Returns:
       `True` or `False` to indicate whether to recreate the conv_op.
     """
-    call_input_shape = inputs.shape
-    # If the most specific compatible shape between _build_input_shape and
-    # call_input_shape is not _build_input_shape then we must re-build.
-    return self._build_conv_op_input_shape.most_specific_compatible_shape(
-        call_input_shape) != self._build_conv_op_input_shape
+    call_data_shape = inputs.shape[-(self.rank + 1):]
+    # If the most specific compatible shape between _build_data_shape and
+    # call_data_shape is not _build_data_shape then we must re-build.
+    return (self._build_conv_op_data_shape
+            != self._build_conv_op_data_shape.most_specific_compatible_shape(
+                call_data_shape))
 
 
 @keras_export('keras.layers.Conv1D', 'keras.layers.Convolution1D')
@@ -403,6 +408,16 @@ class Conv1D(Conv):
   ... 32, 3, activation='relu',input_shape=input_shape[1:])(x)
   >>> print(y.shape)
   (4, 8, 32)
+
+  >>> # With extended batch shape [4, 7] (e.g. weather data where batch
+  >>> # dimensions correspond to spatial location and the third dimension
+  >>> # corresponds to time.)
+  >>> input_shape = (4, 7, 10, 128)
+  >>> x = tf.random.normal(input_shape)
+  >>> y = tf.keras.layers.Conv1D(
+  ... 32, 3, activation='relu', input_shape=input_shape[2:])(x)
+  >>> print(y.shape)
+  (4, 7, 8, 32)
 
   Arguments:
     filters: Integer, the dimensionality of the output space
@@ -451,10 +466,10 @@ class Conv1D(Conv):
       see `keras.constraints`).
 
   Input shape:
-    3D tensor with shape: `(batch_size, steps, input_dim)`
+    3+D tensor with shape: `batch_shape + (steps, input_dim)`
 
   Output shape:
-    3D tensor with shape: `(batch_size, new_steps, filters)`
+    3+D tensor with shape: `batch_shape + (new_steps, filters)`
       `steps` value might have changed due to padding or strides.
 
   Returns:
@@ -462,7 +477,7 @@ class Conv1D(Conv):
     `activation(conv1d(inputs, kernel) + bias)`.
 
   Raises:
-    ValueError: when both `strides` > 1 and `dilation_rate` > 1.
+    ValueError: when both `strides > 1` and `dilation_rate > 1`.
   """
 
   def __init__(self,
@@ -702,6 +717,15 @@ class Conv3D(Conv):
   >>> print(y.shape)
   (4, 26, 26, 26, 2)
 
+  >>> # With extended batch shape [4, 7], e.g. a batch of 4 videos of 3D frames,
+  >>> # with 7 frames per video.
+  >>> input_shape = (4, 7, 28, 28, 28, 1)
+  >>> x = tf.random.normal(input_shape)
+  >>> y = tf.keras.layers.Conv3D(
+  ... 2, 3, activation='relu', input_shape=input_shape[2:])(x)
+  >>> print(y.shape)
+  (4, 7, 26, 26, 26, 2)
+
   Arguments:
     filters: Integer, the dimensionality of the output space
       (i.e. the number of output filters in the convolution).
@@ -721,9 +745,9 @@ class Conv3D(Conv):
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch_size, spatial_dim1, spatial_dim2, spatial_dim3, channels)`
+      `batch_shape + (spatial_dim1, spatial_dim2, spatial_dim3, channels)`
       while `channels_first` corresponds to inputs with shape
-      `(batch_size, channels, spatial_dim1, spatial_dim2, spatial_dim3)`.
+      `batch_shape + (channels, spatial_dim1, spatial_dim2, spatial_dim3)`.
       It defaults to the `image_data_format` value found in your
       Keras config file at `~/.keras/keras.json`.
       If you never set it, then it will be "channels_last".
@@ -760,30 +784,30 @@ class Conv3D(Conv):
       see `keras.constraints`).
 
   Input shape:
-    5D tensor with shape:
-    `(batch_size, channels, conv_dim1, conv_dim2, conv_dim3)` if
+    5+D tensor with shape:
+    `batch_shape + (channels, conv_dim1, conv_dim2, conv_dim3)` if
       data_format='channels_first'
-    or 5D tensor with shape:
-    `(batch_size, conv_dim1, conv_dim2, conv_dim3, channels)` if
+    or 5+D tensor with shape:
+    `batch_shape + (conv_dim1, conv_dim2, conv_dim3, channels)` if
       data_format='channels_last'.
 
   Output shape:
-    5D tensor with shape:
-    `(batch_size, filters, new_conv_dim1, new_conv_dim2, new_conv_dim3)` if
+    5+D tensor with shape:
+    `batch_shape + (filters, new_conv_dim1, new_conv_dim2, new_conv_dim3)` if
       data_format='channels_first'
-    or 5D tensor with shape:
-    `(batch_size, new_conv_dim1, new_conv_dim2, new_conv_dim3, filters)` if
+    or 5+D tensor with shape:
+    `batch_shape + (new_conv_dim1, new_conv_dim2, new_conv_dim3, filters)` if
       data_format='channels_last'.
     `new_conv_dim1`, `new_conv_dim2` and `new_conv_dim3` values might have
       changed due to padding.
 
   Returns:
-    A tensor of rank 5 representing
+    A tensor of rank 5+ representing
     `activation(conv3d(inputs, kernel) + bias)`.
 
   Raises:
     ValueError: if `padding` is "causal".
-    ValueError: when both `strides` > 1 and `dilation_rate` > 1.
+    ValueError: when both `strides > 1` and `dilation_rate > 1`.
   """
 
   def __init__(self,

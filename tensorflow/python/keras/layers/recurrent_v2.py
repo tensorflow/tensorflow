@@ -603,7 +603,7 @@ def gpu_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask, time_major,
   # (6 * units)
   bias = array_ops.split(K.flatten(bias), 6)
 
-  if build_info.is_cuda_build:
+  if build_info.build_info['is_cuda_build']:
     # Note that the gate order for CuDNN is different from the canonical format.
     # canonical format is [z, r, h], whereas CuDNN is [r, z, h]. The swap need
     # to be done for kernel, recurrent_kernel, input_bias, recurrent_bias.
@@ -1365,7 +1365,7 @@ def gpu_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
   # so that mathematically it is same as the canonical LSTM implementation.
   full_bias = array_ops.concat((array_ops.zeros_like(bias), bias), 0)
 
-  if build_info.is_rocm_build:
+  if build_info.build_info['is_rocm_build']:
     # ROCm MIOpen's weight sequence for LSTM is different from both canonical
     # and Cudnn format
     # MIOpen: [i, f, o, c] Cudnn/Canonical: [i, f, c, o]

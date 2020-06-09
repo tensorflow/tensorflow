@@ -60,9 +60,11 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gen_resource_variable_ops
+from tensorflow.python.ops import gen_sendrecv_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import list_ops
@@ -857,6 +859,60 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # `pool.map` below instantiates 100 functions, one for each object.
     pool.map(stateful, [object() for _ in range(100)])
     self.assertEqual(float(v.read_value()), 0.0)
+
+  def testShareRendezvous(self):
+
+    # Disable grappler from inlining the functions. Note we run the send & recv
+    # in graph mode since with eager mode the function should automatically be
+    # inlined.
+    context.context().set_optimizer_experimental_options(
+        {'disable_meta_optimizer': True})
+
+    cpu = '/device:CPU:0'
+
+    signature = [tensor_spec.TensorSpec([], dtypes.int32)]
+
+    @def_function.function
+    def send():
+      x = constant_op.constant(1)
+      gen_sendrecv_ops.send(x, 'x', cpu, 0, cpu)
+      return x
+
+    send._shared_rendezvous = True  # pylint: disable=protected-access
+
+    @def_function.function(input_signature=signature)
+    def send_body(n):
+      send()
+      return n - 1
+
+    @def_function.function
+    def recv():
+      return gen_sendrecv_ops.recv(dtypes.int32, 'x', cpu, 0, cpu)
+
+    recv._shared_rendezvous = True  # pylint: disable=protected-access
+
+    @def_function.function(input_signature=signature)
+    def recv_body(n):
+      recv()
+      return n - 1
+
+    @def_function.function(input_signature=signature)
+    def cond(n):
+      return n > 0
+
+    # Instead of calling the send & recv functions directly we want to call them
+    # through a functional while to ensure the rendezvous is shared across the
+    # while boundary.
+    @def_function.function
+    def fn(n):
+      functional_ops.While([n], cond.get_concrete_function(),
+                           send_body.get_concrete_function())
+      return functional_ops.While([n], cond.get_concrete_function(),
+                                  recv_body.get_concrete_function())
+
+    # Use a graph context since functions will not be automatically inlined
+    with context.graph_mode(), self.cached_session():
+      self.evaluate(fn(2))
 
   def disabled_testRandomSeed(self):
 

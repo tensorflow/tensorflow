@@ -137,6 +137,7 @@ class GrpcServer : public ServerInterface {
 
   const ServerDef& server_def() const { return server_def_; }
   GrpcWorker* worker_impl() const { return worker_impl_.get(); }
+  GrpcWorkerEnv* grpc_worker_env() const { return grpc_worker_env_.get(); }
 
  private:
   Env* env_;

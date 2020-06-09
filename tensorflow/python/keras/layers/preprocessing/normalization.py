@@ -177,7 +177,7 @@ class _NormalizingCombiner(Combiner):
       reduction_counts = np.delete(values.shape, self.axis)
     # We get the number of elements that will be reduced by multiplying all
     # values of 'shape' corresponding to the reduced axes.
-    count = np.prod(reduction_counts, dtype=np.int32)
+    count = np.prod(reduction_counts, dtype=np.int64)
 
     # We want to reduce across dimensions except those specified in 'axis'
     # when using np.mean or np.variance; create the tuple of axes to reduce

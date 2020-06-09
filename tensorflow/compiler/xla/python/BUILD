@@ -124,6 +124,25 @@ cc_library(
 )
 
 cc_library(
+    name = "traceback",
+    srcs = ["traceback.cc"],
+    hdrs = ["traceback.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        ":python_ref_manager",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@pybind11",
+    ],
+)
+
+cc_library(
     name = "bfloat16",
     srcs = ["bfloat16.cc"],
     hdrs = ["bfloat16.h"],
@@ -160,9 +179,17 @@ py_test(
 )
 
 cc_library(
-    name = "py_buffer",
-    srcs = ["py_buffer.cc"],
-    hdrs = ["py_buffer.h"],
+    name = "py_client",
+    srcs = [
+        "py_buffer.cc",
+        "py_client.cc",
+        "py_executable.cc",
+    ],
+    hdrs = [
+        "py_buffer.h",
+        "py_client.h",
+        "py_executable.h",
+    ],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
@@ -170,30 +197,15 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":python_ref_manager",
-        ":types",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
-    ],
-)
-
-cc_library(
-    name = "py_executable",
-    srcs = ["py_executable.cc"],
-    hdrs = ["py_executable.h"],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
-    deps = [
-        ":py_buffer",
+        ":traceback",
         ":types",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@pybind11",
     ],
 )
 
@@ -207,7 +219,8 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
-        ":py_buffer",
+        ":py_client",
+        ":traceback",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
@@ -272,7 +285,7 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "cpu_outfeed_receiver_test",
+    name = "outfeed_receiver_test_cpu",
     size = "small",
     srcs = ["outfeed_receiver_test.cc"],
     deps = [
@@ -300,9 +313,11 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":outfeed_receiver",
+        ":py_client",
         ":types",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
         "@pybind11",
@@ -329,10 +344,10 @@ pybind_extension(
         ":bfloat16",
         ":dlpack",
         ":ops",
-        ":py_buffer",
-        ":py_executable",
+        ":py_client",
         ":python_ref_manager",
         ":outfeed_receiver_py",
+        ":traceback",
         ":types",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/hash",

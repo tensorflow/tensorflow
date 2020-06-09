@@ -107,7 +107,7 @@ Status LoadLibrary(const char* library_filename, void** result,
   if (env->GetSymbolFromLibrary(library.handle, "TfTpu_Initialize",
                                 &unused_symbol)
           .ok()) {
-    TF_RETURN_IF_ERROR(tensorflow::tpu::InitializeTPULibrary(library.handle));
+    TF_RETURN_IF_ERROR(tensorflow::tpu::InitializeTpuLibrary(library.handle));
   }
 #endif  // IS_MOBILE_PLATFORM
 

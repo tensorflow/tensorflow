@@ -148,11 +148,10 @@ void CollectTfActivities(const XLineVisitor& line,
     if (tf_op != nullptr) {
       ++tf_op_id;
       bool is_eager = false;
-      event.ForEachStat([&](const XStatVisitor& stat) {
-        if (stat.Type() == StatType::kIsEager) {
-          is_eager = stat.IntValue();
-        }
-      });
+      if (absl::optional<XStatVisitor> stat =
+              event.GetStat(StatType::kIsEager)) {
+        is_eager = stat->IntValue();
+      }
       Timespan span(event.TimestampPs(), event.DurationPs());
       tf_activities->push_back(
           {span.begin_ps(), tf_op_id, kTfOpBegin, *tf_op, is_eager});

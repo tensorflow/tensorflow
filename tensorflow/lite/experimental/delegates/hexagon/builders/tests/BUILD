@@ -49,6 +49,7 @@ hexagon_op_tests(
         "softmax_test.cc",
         "space_to_depth_test.cc",
         "split_test.cc",
+        "strided_slice_test.cc",
         "transpose_conv_test.cc",
         "transpose_test.cc",
     ],
