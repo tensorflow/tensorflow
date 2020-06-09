@@ -302,9 +302,9 @@ std::unique_ptr<tflite::ModelT> CreateMutableModelFromFile(
   return copied_model;
 }
 
-int GetOriginalNumberOfTensors(ModelT* model, ErrorReporter* error_reporter) {
-  std::vector<TensorOpTensor> outputs = GetOutputTensors(model, error_reporter);
-  std::vector<TensorOpTensor> inputs = GetInputTensors(model, error_reporter);
+int GetOriginalNumberOfTensors(ModelT* model, ErrorReporter* error_reporter, const TensorType& input_type, const TensorType& output_type) {
+  std::vector<TensorOpTensor> outputs = GetOutputTensors(model, error_reporter, output_type);
+  std::vector<TensorOpTensor> inputs = GetInputTensors(model, error_reporter, input_type);
   return model->subgraphs[0]->tensors.size() - outputs.size() - inputs.size();
 }
 
@@ -315,7 +315,7 @@ TfLiteStatus ModifyModelInterface(flatbuffers::FlatBufferBuilder* builder,
                                   const TensorType& output_type) {
   tflite::StderrReporter error_reporter;
   const int original_number_tensors =
-      GetOriginalNumberOfTensors(model, &error_reporter);
+      GetOriginalNumberOfTensors(model, &error_reporter, input_type, output_type);
   // Finds float tensors that are model output and are consumed by a float to int8/int16
   // quantize Op.
   // Do output first since the tensors are added into input first.,
@@ -327,7 +327,7 @@ TfLiteStatus ModifyModelInterface(flatbuffers::FlatBufferBuilder* builder,
       break;
     case TensorType_INT8:
     case TensorType_INT16:
-      RemoveOutputTensor(model, outputs);
+      RemoveOutputTensor(model, outputs, original_number_tensors);
       break;
     default:
       return kTfLiteError;
@@ -342,7 +342,7 @@ TfLiteStatus ModifyModelInterface(flatbuffers::FlatBufferBuilder* builder,
       break;
     case TensorType_INT8:
     case TensorType_INT16:
-      RemoveInputTensor(model, inputs);
+      RemoveInputTensor(model, inputs, original_number_tensors);
       break;
     default:
       return kTfLiteError;
