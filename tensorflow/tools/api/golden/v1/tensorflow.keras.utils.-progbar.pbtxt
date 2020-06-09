@@ -4,7 +4,7 @@ tf_class {
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'target\', \'width\', \'verbose\', \'interval\', \'stateful_metrics\', \'unit_name\'], varargs=None, keywords=None, defaults=[\'30\', \'1\', \'0.05\', \'None\', \'step\'], "
+    argspec: "args=[\'self\', \'target\', \'width\', \'verbose\', \'interval\', \'stateful_metrics\', \'unit_name\', \'ignore_first\'], varargs=None, keywords=None, defaults=[\'30\', \'1\', \'0.05\', \'None\', \'step\', \'True\'], "
   }
   member_method {
     name: "add"
