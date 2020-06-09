@@ -111,6 +111,8 @@ void SetGroupId(const XPlaneVisitor& visitor, int64 group_id, XEvent* event) {
 void SetContextGroup(EventNode* event, ContextGroupMap* context_groups) {
   auto producer = event->GetProducerContext();
   if (producer.has_value()) {
+    DCHECK_EQ(((*context_groups)[producer->type][producer->id]).producer,
+              nullptr);
     ((*context_groups)[producer->type][producer->id]).producer = event;
   }
   auto consumer = event->GetConsumerContext();
@@ -124,9 +126,10 @@ void ConnectContextGroups(const ContextGroupMap& context_groups) {
   for (auto& type_id_group : context_groups) {
     for (auto& id_group : type_id_group.second) {
       const ContextGroup& group = id_group.second;
-      EventNode* parent = group.producer;
-      for (EventNode* child : group.consumers) {
-        parent->AddChild(child);
+      if (EventNode* parent = group.producer) {
+        for (EventNode* child : group.consumers) {
+          parent->AddChild(child);
+        }
       }
     }
   }
@@ -194,13 +197,13 @@ EventNode::EventNode(const XPlaneVisitor* plane, XLine* raw_line,
         producer_type = stat.IntValue();
         break;
       case StatType::kProducerId:
-        producer_id = stat.IntValue();
+        producer_id = stat.UintValue();
         break;
       case StatType::kConsumerType:
         consumer_type = stat.IntValue();
         break;
       case StatType::kConsumerId:
-        consumer_id = stat.IntValue();
+        consumer_id = stat.UintValue();
         break;
       case StatType::kIsRoot:
         is_root_ = stat.IntValue();
@@ -330,7 +333,7 @@ void EventForest::ConnectIntraThread(const XPlaneVisitor& visitor,
 void EventForest::ConnectInterThread(
     const std::vector<InterThreadConnectInfo>& connect_info_list) {
   for (const auto& connect_info : connect_info_list) {
-    absl::flat_hash_map<std::vector<int64>, EventNode*> connect_map;
+    absl::flat_hash_map<std::vector<uint64>, EventNode*> connect_map;
     const std::vector<int64>& parent_stat_types =
         connect_info.parent_stat_types;
     const std::vector<int64>* child_stat_types = &connect_info.child_stat_types;
@@ -340,14 +343,12 @@ void EventForest::ConnectInterThread(
     if (auto parent_event_node_list =
             gtl::FindOrNull(event_node_map_, connect_info.parent_event_type)) {
       for (const auto& parent_event_node : *parent_event_node_list) {
-        std::vector<int64> stats;
+        std::vector<uint64> stats;
         for (auto stat_type : parent_stat_types) {
           absl::optional<XStatVisitor> stat =
               parent_event_node->GetContextStat(stat_type);
           if (!stat) break;
-          stats.push_back((stat->ValueCase() == XStat::kInt64Value)
-                              ? stat->IntValue()
-                              : stat->UintValue());
+          stats.push_back(stat->IntOrUintValue());
         }
         if (stats.size() == parent_stat_types.size()) {
           connect_map[stats] = parent_event_node.get();
@@ -357,14 +358,12 @@ void EventForest::ConnectInterThread(
     if (auto child_event_node_list =
             gtl::FindOrNull(event_node_map_, connect_info.child_event_type)) {
       for (const auto& child_event_node : *child_event_node_list) {
-        std::vector<int64> stats;
+        std::vector<uint64> stats;
         for (auto stat_type : *child_stat_types) {
           absl::optional<XStatVisitor> stat =
               child_event_node->GetContextStat(stat_type);
           if (!stat) break;
-          stats.push_back((stat->ValueCase() == XStat::kInt64Value)
-                              ? stat->IntValue()
-                              : stat->UintValue());
+          stats.push_back(stat->IntOrUintValue());
         }
         if (stats.size() == child_stat_types->size()) {
           if (auto parent_event_node = gtl::FindPtrOrNull(connect_map, stats)) {

@@ -102,6 +102,9 @@ TEST(DerivedTimelineTest, TfOpLineTest) {
 // Checks that the dependency between the step line and the TF op line prevents
 // TF op events from being expanded.
 TEST(DerivedTimelineTest, DependencyTest) {
+  constexpr int64 kFirstGroupId = 0;
+  constexpr int64 kSecondGroupId = 1;
+
   const absl::string_view kTfOpName = "mul:Mul";
   const absl::string_view kKernelDetails = "kernel_details";
   XSpace space;
@@ -110,11 +113,11 @@ TEST(DerivedTimelineTest, DependencyTest) {
   XPlaneBuilder plane_builder(plane);
   auto line_builder = plane_builder.GetOrCreateLine(0);
   CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100,
-               {{StatType::kGroupId, 0},
+               {{StatType::kGroupId, kFirstGroupId},
                 {StatType::kLevel0, kTfOpName},
                 {StatType::kKernelDetails, kKernelDetails}});
   CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300,
-               {{StatType::kGroupId, 1},
+               {{StatType::kGroupId, kSecondGroupId},
                 {StatType::kLevel0, kTfOpName},
                 {StatType::kKernelDetails, kKernelDetails}});
   GenerateDerivedTimeLines(event_group_name_map, &space);

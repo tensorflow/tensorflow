@@ -53,6 +53,11 @@ class XStatVisitor {
 
   uint64 UintValue() const { return stat_->uint64_value(); }
 
+  uint64 IntOrUintValue() const {
+    return ValueCase() == XStat::kUint64Value ? UintValue()
+                                              : static_cast<uint64>(IntValue());
+  }
+
   double DoubleValue() const { return stat_->double_value(); }
 
   // Returns a string view.
