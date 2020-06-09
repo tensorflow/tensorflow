@@ -295,7 +295,15 @@ def array(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=redefined-out
 
     # Handles lists of ndarrays
     result_t = nest.map_structure(maybe_data, result_t)
-    result_t = np_arrays.convert_to_tensor(result_t)
+    # EagerTensor conversion complains about "mixed types" when converting
+    # tensors with no dtype information. This is because it infers types based
+    # on one selected item in the list. So e.g. when converting [2., 2j]
+    # to a tensor, it will select float32 as the inferred type and not be able
+    # to convert the list to a float 32 tensor.
+    # Since we have some information about the final dtype we care about, we
+    # supply that information so that convert_to_tensor will do best-effort
+    # conversion to that dtype first.
+    result_t = np_arrays.convert_to_tensor(result_t, dtype_hint=dtype)
     result_t = math_ops.cast(result_t, dtype=dtype)
   elif dtype:
     result_t = math_ops.cast(result_t, dtype)
