@@ -288,7 +288,7 @@ message DebugOptions {
   bool xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found = 138;
 
   // Extra parameters to pass the GPU assembler.
-  string xla_gpu_gpuasm_extra_flags = 141;
+  string xla_gpu_asm_extra_flags = 141;
 
   // Next id: 142
 
