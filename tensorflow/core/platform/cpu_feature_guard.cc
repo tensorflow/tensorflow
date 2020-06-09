@@ -138,8 +138,16 @@ void InfoAboutUnusedCPUFeatures() {
     CheckIfFeatureUnused(CPUFeature::FMA, "FMA", missing_instructions);
 #endif  // __FMA__
 #endif  // else of if defined(_MSC_VER) && !defined(__clang__)
-    if (!missing_instructions.empty()) {
-      LOG(INFO) << "This TensorFlow binary is optimized with Intel(R) MKL-DNN "
+
+    string intel_library_official_name(
+        "Intel(R) oneAPI Deep Neural Network Library (oneDNN) ");
+#ifndef INTEL_MKL
+    intel_library_official_name = "oneAPI Deep Neural Network Library (oneDNN) ";
+#endif
+
+        if (!missing_instructions.empty()) {
+      LOG(INFO) << "This TensorFlow binary is optimized with "
+                << intel_library_official_name
                 << "to use the following CPU instructions in performance-"
                 << "critical operations: " << missing_instructions << std::endl
                 << "To enable them in other operations, rebuild TensorFlow "
