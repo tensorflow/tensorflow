@@ -61,12 +61,17 @@ StepEvents ConvertHostThreadsXLineToStepEvents(
     int64 group_id = -1;
     absl::string_view step_name;
     event.ForEachStat([&](const XStatVisitor& stat) {
-      if (stat.Type() == StatType::kCorrelationId) {
-        correlation_id = stat.IntValue();
-      } else if (stat.Type() == StatType::kGroupId) {
-        group_id = stat.IntValue();
-      } else if (stat.Type() == StatType::kStepName) {
-        step_name = stat.StrOrRefValue();
+      if (!stat.Type().has_value()) return;
+      switch (stat.Type().value()) {
+        case StatType::kCorrelationId:
+          correlation_id = stat.IntValue();
+          break;
+        case StatType::kGroupId:
+          group_id = stat.IntValue();
+          break;
+        case StatType::kStepName:
+          step_name = stat.StrOrRefValue();
+          break;
       }
     });
     if (group_id < 0) return;
@@ -126,14 +131,19 @@ StepEvents ConvertDeviceTraceXLineToStepEvents(const XLineVisitor& line) {
   line.ForEachEvent([&](const XEventVisitor& event) {
     int64 correlation_id = -1;
     int64 group_id = -1;
-    absl::string_view tensor_shapes = "";
+    absl::string_view tensor_shapes;
     event.ForEachStat([&](const XStatVisitor& stat) {
-      if (stat.Type() == StatType::kCorrelationId) {
-        correlation_id = stat.IntValue();
-      } else if (stat.Type() == StatType::kGroupId) {
-        group_id = stat.IntValue();
-      } else if (stat.Type() == StatType::kTensorShapes) {
-        tensor_shapes = stat.StrOrRefValue();
+      if (!stat.Type().has_value()) return;
+      switch (stat.Type().value()) {
+        case StatType::kCorrelationId:
+          correlation_id = stat.IntValue();
+          break;
+        case StatType::kGroupId:
+          group_id = stat.IntValue();
+          break;
+        case StatType::kTensorShapes:
+          tensor_shapes = stat.StrOrRefValue();
+          break;
       }
     });
 
