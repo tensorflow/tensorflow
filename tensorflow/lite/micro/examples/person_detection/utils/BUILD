@@ -19,15 +19,16 @@ py_library(
     ],
 )
 
-py_test(
-    name = "raw_to_bitmap_test",
-    srcs = ["raw_to_bitmap_test.py"],
-    data = glob(["testdata/**"]),
-    python_version = "PY3",
-    tags = ["noubsan"],  # TODO(b/144512025): Fix raw_to_bitmap_test to fix ubsan failure.
-    deps = [
-        ":raw_to_bitmap_lib",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-    ],
-)
+# TODO(b/158529664): Re-enable this test by removing the TF python test lib dependency.
+# py_test(
+#     name = "raw_to_bitmap_test",
+#     srcs = ["raw_to_bitmap_test.py"],
+#     data = glob(["testdata/**"]),
+#     python_version = "PY3",
+#     tags = ["noubsan"],  # TODO(b/144512025): Fix raw_to_bitmap_test to fix ubsan failure.
+#     deps = [
+#         ":raw_to_bitmap_lib",
+#         "//third_party/py/numpy",
+#         "//tensorflow/python:client_testlib",
+#     ],
+# )

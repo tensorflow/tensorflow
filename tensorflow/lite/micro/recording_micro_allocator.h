@@ -44,14 +44,17 @@ typedef struct RecordedAllocation {
 
 // Utility subclass of MicroAllocator that records all allocations
 // inside the arena. A summary of allocations can be logged through the
-// ErrorReporter by invoking LogAllocations(). Individual allocation recordings
-// can be retrieved by type through the GetRecordedAllocation() function. This
-// class should only be used for auditing memory usage or integration testing.
+// ErrorReporter by invoking LogAllocations(). This special allocator requires
+// an instance of RecordingSimpleMemoryAllocator to capture allocations in the
+// head and tail. Arena allocation recording can be retrieved by type through
+// the GetRecordedAllocation() function. This class should only be used for
+// auditing memory usage or integration testing.
 class RecordingMicroAllocator : public MicroAllocator {
  public:
-  RecordingMicroAllocator(TfLiteContext* context, const Model* model,
-                          RecordingSimpleMemoryAllocator* memory_allocator,
-                          ErrorReporter* error_reporter);
+  static RecordingMicroAllocator* Create(
+      TfLiteContext* context, const Model* model,
+      RecordingSimpleMemoryAllocator* memory_allocator,
+      ErrorReporter* error_reporter);
 
   // Returns the recorded allocations information for a given allocation type.
   RecordedAllocation GetRecordedAllocation(
@@ -74,6 +77,10 @@ class RecordingMicroAllocator : public MicroAllocator {
   void RecordAllocationUsage(RecordedAllocation& recorded_allocation);
 
  private:
+  RecordingMicroAllocator(TfLiteContext* context, const Model* model,
+                          RecordingSimpleMemoryAllocator* memory_allocator,
+                          ErrorReporter* error_reporter);
+
   void PrintRecordedAllocation(RecordedAllocationType allocation_type,
                                const char* allocation_name);
 

@@ -193,6 +193,7 @@ cc_library(
         ":micro_compatibility",
         ":micro_framework",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/kernels/internal:compatibility",
     ],
 )
 

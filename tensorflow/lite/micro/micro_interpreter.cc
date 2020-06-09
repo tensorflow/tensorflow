@@ -79,21 +79,45 @@ MicroInterpreter::MicroInterpreter(const Model* model,
     : model_(model),
       op_resolver_(op_resolver),
       error_reporter_(error_reporter),
-      allocator_(&context_, model_, tensor_arena, tensor_arena_size,
-                 error_reporter_),
-      tensors_allocated_(false),
+      allocator_(*MicroAllocator::Create(&context_, model, tensor_arena,
+                                         tensor_arena_size, error_reporter)),
       context_helper_(error_reporter_, &allocator_) {
-  const flatbuffers::Vector<flatbuffers::Offset<SubGraph>>* subgraphs =
-      model->subgraphs();
-  if (subgraphs->size() != 1) {
-    TF_LITE_REPORT_ERROR(error_reporter,
-                         "Only 1 subgraph is currently supported.\n");
-    initialization_status_ = kTfLiteError;
-    return;
+  Init();
+}
+
+MicroInterpreter::MicroInterpreter(const Model* model,
+                                   const MicroOpResolver* op_resolver,
+                                   MicroAllocator* allocator,
+                                   ErrorReporter* error_reporter)
+    : model_(model),
+      op_resolver_(*op_resolver),
+      error_reporter_(error_reporter),
+      allocator_(*allocator),
+      context_helper_(error_reporter_, &allocator_) {
+  Init();
+}
+
+MicroInterpreter::~MicroInterpreter() {
+  if (node_and_registrations_ != nullptr) {
+    for (size_t i = 0; i < subgraph_->operators()->size(); ++i) {
+      TfLiteNode* node = &(node_and_registrations_[i].node);
+      const TfLiteRegistration* registration =
+          node_and_registrations_[i].registration;
+      // registration is allocated outside the interpreter, so double check to
+      // make sure it's not nullptr;
+      if (registration != nullptr && registration->free != nullptr) {
+        registration->free(&context_, node->user_data);
+      }
+    }
   }
-  if (allocator_.Init() != kTfLiteOk) {
-    TF_LITE_REPORT_ERROR(error_reporter,
-                         "Failed to initialize the allocator.\n");
+}
+
+void MicroInterpreter::Init() {
+  const flatbuffers::Vector<flatbuffers::Offset<SubGraph>>* subgraphs =
+      model_->subgraphs();
+  if (subgraphs->size() != 1) {
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Only 1 subgraph is currently supported.\n");
     initialization_status_ = kTfLiteError;
     return;
   }
@@ -117,21 +141,6 @@ MicroInterpreter::MicroInterpreter(const Model* model,
   }
 
   initialization_status_ = kTfLiteOk;
-}
-
-MicroInterpreter::~MicroInterpreter() {
-  if (node_and_registrations_ != nullptr) {
-    for (size_t i = 0; i < subgraph_->operators()->size(); ++i) {
-      TfLiteNode* node = &(node_and_registrations_[i].node);
-      const TfLiteRegistration* registration =
-          node_and_registrations_[i].registration;
-      // registration is allocated outside the interpreter, so double check to
-      // make sure it's not nullptr;
-      if (registration != nullptr && registration->free != nullptr) {
-        registration->free(&context_, node->user_data);
-      }
-    }
-  }
 }
 
 void MicroInterpreter::CorrectTensorEndianness(TfLiteTensor* tensorCorr) {
