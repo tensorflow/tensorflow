@@ -905,14 +905,14 @@ def _tf_sysroot(repository_ctx):
     return get_host_environ(repository_ctx, _TF_SYSROOT, "")
 
 def _compute_cuda_extra_copts(repository_ctx, compute_capabilities):
-    capability_flags = ["--no-cuda-include-ptx=all"]
+    copts = []
     for capability in compute_capabilities:
         if capability.startswith("compute_"):
             capability = capability.replace("compute_", "sm_")
-            capability_flags.append("--cuda-include-ptx=%s" % capability)
-        capability_flags.append("--cuda-gpu-arch=%s" % capability)
+            copts.append("--cuda-include-ptx=%s" % capability)
+        copts.append("--cuda-gpu-arch=%s" % capability)
 
-    return str(capability_flags)
+    return str(copts)
 
 def _tpl_path(repository_ctx, filename):
     return repository_ctx.path(Label("//third_party/gpus/%s.tpl" % filename))
