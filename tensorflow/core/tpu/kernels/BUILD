@@ -119,6 +119,7 @@ cc_library(
 
 cc_library(
     name = "tpu_compilation_cache_entry",
+    srcs = ["tpu_compilation_cache_entry.cc"],
     hdrs = [
         "tpu_compilation_cache_entry.h",
     ],
@@ -167,6 +168,16 @@ cc_library(
 )
 
 cc_library(
+    name = "compiled_subgraph",
+    hdrs = ["compiled_subgraph.h"],
+    deps = [
+        ":tpu_program_group_interface",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:refcount",
+    ],
+)
+
+cc_library(
     name = "tpu_program_group_interface",
     hdrs = ["tpu_program_group_interface.h"],
     deps = [
@@ -207,6 +218,7 @@ cc_library(
         "tpu_compilation_cache_external.h",
     ],
     deps = [
+        ":compiled_subgraph",
         ":tpu_compilation_cache_entry",
         ":tpu_compilation_cache_key",
         ":tpu_compilation_cache_metrics",  # buildcleaner: keep

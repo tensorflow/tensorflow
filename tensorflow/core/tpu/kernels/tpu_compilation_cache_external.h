@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
+#include "tensorflow/core/tpu/kernels/compiled_subgraph.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_entry.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
@@ -52,84 +53,15 @@ class TpuCompilationRefHolder : public ResourceBase {
   ~TpuCompilationRefHolder() override = default;
 };
 
-class TpuCompilationCacheInterface : public ResourceBase {
+class TpuCompilationCacheExternal : public ResourceBase {
  public:
   using Status = ::stream_executor::port::Status;
 
-  // An entry in the compilation cache. The entry is deleted once it has been
-  // marked for eviction from the cache _and_ all steps that use it have
-  // completed. When the entry is first created, it is uninitialized and a
-  // client-supplied compilation function is run outside the cache's lock to
-  // generate the programs to be stored in the entry. Any other client that
-  // requests the entry will block until it has been initialized. Each entry has
-  // a last_use value that set from a monotonically-increasing counter in the
-  // cache whenever the entry is referenced. When the cache becomes full,
-  // entries are marked for eviction in LRU order.
-  //
-  // The bridge can request XLA to generate separate sharding and unsharding
-  // programs along with the main program; we use nested fields sharding_entry,
-  // unsharding_entry to store them under the main entry, and these two fields
-  // must be either both present or both absent. They have a back pointer
-  // main_entry to refer to the main program. These nested entries share the
-  // same cache key and the same lifetime as the main entry, so we use the
-  // refcount on the main entry to track the access to any of them.
-  //             /-------------------------------\
-  //             v                                \
-  //   main_entry (refcount) -> sharding_entry -> main_entry
-  //             ^           \
-  //             |            \-> unsharding_entry -> main_entry
-  //             \--------------------------------------/
-  struct CompilationEntry : public core::RefCounted  {
-    TpuCompilationCacheInterface* parent = nullptr;  // Not owned.
-    bool initialized = false;
-
-    // The Status returned by the compilation function when the entry is
-    // initialized. This status will be returned to any client that requests the
-    // entry.
-    Status initialization_status;
-
-    // The uid describing this entry.
-    int64 uid;
-    std::vector<string> proto_key;
-
-    // Counter to keep track of LRU entries for the eviction policy.
-    int64 last_use = -1;
-
-    // The unique key describing this entry.
-    std::string subgraph_key;
-
-    // Entries representing the associated sharding and unsharding programs,
-    // which share the same life time of the owning main entry, so we always use
-    // the main entry's ref count.
-    std::unique_ptr<CompilationEntry> sharding_entry;
-    std::unique_ptr<CompilationEntry> unsharding_entry;
-
-    // The number of 'external' client-held references to the entry.
-    int external_references = 0;
-
-    std::vector<std::shared_ptr<const xla::HloProto>> hlo_metadata;
-
-    // The sum of the SpaceUsed of each of the elements of programs; an estimate
-    // of how much RAM the entry consumes, used to determine when entries must
-    // be marked for eviction.
-    int64 total_size = 0;
-
-    // Only used for the nested sharding/unsharding entries to point to the
-    // owning main entry.
-    CompilationEntry* main_entry = nullptr;
-
-    // Debug info in case we miss.
-    string cache_entry_debug_string;
-
-    // Compiled Tpu program.
-    std::unique_ptr<TpuProgramGroup> tpu_program;
-  };
-
-  explicit TpuCompilationCacheInterface(int64_t max_cache_size);
-  ~TpuCompilationCacheInterface() override;
-  TpuCompilationCacheInterface(const TpuCompilationCacheInterface&) = delete;
-  TpuCompilationCacheInterface& operator=(const TpuCompilationCacheInterface&)
-      = delete;
+  explicit TpuCompilationCacheExternal(int64_t max_cache_size);
+  ~TpuCompilationCacheExternal() override;
+  TpuCompilationCacheExternal(const TpuCompilationCacheExternal&) = delete;
+  TpuCompilationCacheExternal& operator=(const TpuCompilationCacheExternal&) =
+      delete;
 
   Status CompileIfKeyAbsent(
       const TpuCompilationCacheKey& cache_key,
@@ -148,7 +80,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
       const tensorflow::tpu::TPUCompileMetadataProto& metadata,
       const TpuMeshStateInterface& mesh_state);
 
-  string DebugString() const override { return "TpuCompilationCacheInterface"; }
+  string DebugString() const override { return "TpuCompilationCacheExternal"; }
 
   // Makes a reference holder for this cache, that can be stored in the per-step
   // resource manager and will ensure that compiled entries persist until the
@@ -201,13 +133,13 @@ class TpuCompilationCacheInterface : public ResourceBase {
   // Wrapper for a cache entry that holds a reference to the entry until the
   // wrapper is deleted. This wrapper is the concrete type of
   // CompilationCacheEntryRef returned by Lookup.
-  class EntryRefImpl : public CompilationCacheEntryRef {
+  class TpuEntryRefImpl : public CompilationCacheEntryRef {
    public:
-    EntryRefImpl(TpuCompilationCacheInterface* parent, CompilationEntry* entry,
-                 int index);
-    ~EntryRefImpl() override;
+    TpuEntryRefImpl(TpuCompilationCacheExternal* parent,
+                    CompiledSubgraph* entry, int index);
+    ~TpuEntryRefImpl() override;
 
-    CompilationCacheEntry get() override;
+    TpuCompilationCacheEntry get() override;
 
     // Mutates this ref to point to the entry's subentry (for
     // sharding/unsharding) or main entry (unchanged) as specified by
@@ -220,10 +152,10 @@ class TpuCompilationCacheInterface : public ResourceBase {
     Status ToSubEntryRef(CompilationCacheFetchTarget fetch_target);
 
    private:
-    TpuCompilationCacheInterface* parent_;  // Not owned.
+    TpuCompilationCacheExternal* parent_;  // Not owned.
     // A reference to entry_ is acquired in the constructor and released via
     // parent->DiscardEntryRefs in the destructor.
-    CompilationEntry* entry_;
+    CompiledSubgraph* entry_;
     // The program in entry_ that is returned by the get method.
     int index_;
   };
@@ -232,7 +164,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
   // CompiledSubgraph entries.
   class RefHolder : public TpuCompilationRefHolder {
    public:
-    explicit RefHolder(TpuCompilationCacheInterface* parent) : parent_(parent) {
+    explicit RefHolder(TpuCompilationCacheExternal* parent) : parent_(parent) {
       parent_->Ref();
     }
     ~RefHolder() override {
@@ -243,17 +175,15 @@ class TpuCompilationCacheInterface : public ResourceBase {
     // Adds entry to the list of entries that will be released when the
     // RefHolder is destroyed. Each entry is released via a call to
     // parent_->DiscardEntryRefs.
-    void AddRef(CompilationEntry* entry) {
-      entries_.push_back(entry);
-    }
+    void AddRef(CompiledSubgraph* entry) { entries_.push_back(entry); }
 
     string DebugString() const override {
-      return "TpuCompilationCacheInterface::RefHolder";
+      return "TpuCompilationCacheExternal::RefHolder";
     }
 
    private:
-    TpuCompilationCacheInterface* parent_;  // Not owned.
-    std::vector<CompilationEntry*> entries_;
+    TpuCompilationCacheExternal* parent_;  // Not owned.
+    std::vector<CompiledSubgraph*> entries_;
   };
 
   // The bulk of implementation of CompileIfKeyAbsent() with the exception
@@ -265,7 +195,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
       const SessionMetadata* session_metadata,
       TpuCompilationRefHolder* per_step_ref_holder, int64* uid,
       std::vector<string>* proto_key, std::vector<bool>* may_modify_variables,
-      std::vector<CompilationEntry*>* removed_entries,
+      std::vector<CompiledSubgraph*>* removed_entries,
       std::vector<std::shared_ptr<const xla::HloProto>>* hlo_metadata,
       const std::function<Status(TpuProgramGroup*)>& compile_function);
 
@@ -276,18 +206,17 @@ class TpuCompilationCacheInterface : public ResourceBase {
   // from cache_ and is returned to the caller; which must eventually call
   // UnloadAndDestroy(). We do not call UnloadAndDestroy within DiscardEntryRef
   // to avoid holding the lock during program unloading.
-  ABSL_MUST_USE_RESULT CompilationEntry* DiscardEntryRef(
-      CompilationEntry* entry) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  ABSL_MUST_USE_RESULT CompiledSubgraph* DiscardEntryRef(
+      CompiledSubgraph* entry) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Convenience method called by ~RefHolder without mu_ held. Calls
   // DiscardEntryRef on every element of entries.
-  void DiscardEntryRefs(
-    gtl::ArraySlice<CompilationEntry*> entries);
+  void DiscardEntryRefs(gtl::ArraySlice<CompiledSubgraph*> entries);
 
   // Marks the oldest unmarked entry for eviction. Requires that there is at
   // least one such entry. In case the evicted entry had only 1 reference it
   // is removed from the cache and returned to the caller which must eventually
   // call UnloadAndDestroy.
-  CompilationEntry* MarkOldestEntryForEviction()
+  CompiledSubgraph* MarkOldestEntryForEviction()
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Updates datastructures to indicate that entry, which had been marked for
@@ -309,7 +238,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
   // removed_entries. The caller must eventually delete them by calling
   // UnloadAndDestroy.
   void LookupEntryMarkedForEviction(
-    CompilationEntry* entry, std::vector<CompilationEntry*>* removed_entries)
+      CompiledSubgraph* entry, std::vector<CompiledSubgraph*>* removed_entries)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Removes the entry with given key from cache.
@@ -318,7 +247,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
   // Inserts the given key and entry to cache.
   void InsertEntry(const std::string& key,
                    const TpuCompilationCacheKey& subgraph_key,
-                   CompilationEntry* entry) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+                   CompiledSubgraph* entry) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Returns the cache key matching given subgraph_key.
   std::string FindCacheKey(const TpuCompilationCacheKey& subgraph_key) const
@@ -330,7 +259,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
   // call LookupEntryMarkedForEviction after InitializeEntry.
   //
   // **InitializeEntry releases mu_ during the call to initialize_programs.**
-  CompilationEntry* InitializeEntry(
+  CompiledSubgraph* InitializeEntry(
       const string& key,
       const std::function<Status(TpuProgramGroup*)>& initialize_program,
       const TpuCompilationCacheKey& subgraph_key)
@@ -340,7 +269,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
   // and deletes the entry itself. It is assumed no one else has a reference
   // to it and all related keys had already been removed from the cache.
   // The call can perform device IO so no locks should be held while calling it.
-  void UnloadAndDestroy(CompilationEntry* entry) ABSL_LOCKS_EXCLUDED(mu_);
+  void UnloadAndDestroy(CompiledSubgraph* entry) ABSL_LOCKS_EXCLUDED(mu_);
 
   // The maximum size of entries that are stored in the cache before entries are
   // marked for eviction.
@@ -369,24 +298,24 @@ class TpuCompilationCacheInterface : public ResourceBase {
   // All the subgraph entries that can be looked up in the cache. An entry is
   // marked for eviction iff it is present in cache_ and not in
   // entries_by_last_use_.
-  std::unordered_map<string, CompilationEntry*> cache_store_
+  std::unordered_map<string, CompiledSubgraph*> cache_store_
       ABSL_GUARDED_BY(mu_);
 
   // All the subgraph entries that can be looked up in the cache, indexed by
   // uid.
-  absl::node_hash_map<int64, CompilationEntry*> entries_by_uid_
+  absl::node_hash_map<int64, CompiledSubgraph*> entries_by_uid_
       ABSL_GUARDED_BY(mu_);
 
   // All the protos that can be looked up in the cache, indexed by proto
   // key. The value of the map is a subgraph and the index of the proto compiled
   // for that subgraph.
-  std::unordered_map<string, std::pair<CompilationEntry*, int>>
+  std::unordered_map<string, std::pair<CompiledSubgraph*, int>>
       entries_by_proto_key_ ABSL_GUARDED_BY(mu_);
 
   // Map from last_use to entry, used to mark entries for eviction in LRU
   // order. If an entry's last_use counter is not present as a key in
   // entries_by_last_use_ then the entry has been marked for eviction.
-  std::map<int64, CompilationEntry*> entries_by_last_use_ ABSL_GUARDED_BY(mu_);
+  std::map<int64, CompiledSubgraph*> entries_by_last_use_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace tpu

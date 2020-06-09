@@ -23,37 +23,23 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 
-class CompilationCacheEntry {
+// A version of `CompilationCacheEntry` that exposes Tpu binary program
+// `XLA_TpuProgram`.
+class TpuCompilationCacheEntry {
  public:
-  explicit CompilationCacheEntry(
-      std::unique_ptr<const TpuProgramGroup> tpu_program)
-      : tpu_program_(std::move(tpu_program)) {}
-
+  explicit TpuCompilationCacheEntry(
+      const TpuProgramGroupInterface* tpu_program_group, int core_index);
   // Constructor for an empty entry.
-  CompilationCacheEntry()
-      : tpu_program_(nullptr) {}
-
-  const TPUExecutableInfoProto* get_executable_info() const {
-    return &tpu_program_->executable_info();
-  }
-
-  const TPUHostTransferInfoProto* get_host_transfer_info() const {
-    return &tpu_program_->host_transfer_info();
-  }
-
-  const xla::HloProto* get_hlo_metadata() const {
-    return &tpu_program_->hlo_metadata();
-  }
-
-  // TODO(henrytan,jiawenhao): When should we expect more than one
-  // XLA_TpuProgram* per TpuProgram? Remove the program_count CHECK below then.
-  const XLA_TpuProgram* get_tpu_program() const {
-    CHECK_EQ(tpu_program_->program_count(), 1);
-    return tpu_program_->tpu_programs()[0];
-  }
+  TpuCompilationCacheEntry();
+  const TPUExecutableInfoProto* get_executable_info() const;
+  const TPUHostTransferInfoProto* get_host_transfer_info() const;
+  const xla::HloProto* get_hlo_metadata() const;
+  // TODO(henrytan): maybe nicer to return C++ wrapper of `XLA_TpuProgram`
+  const XLA_TpuProgram* get_tpu_program() const;
 
  private:
-  std::unique_ptr<const TpuProgramGroup> tpu_program_;
+  const TpuProgramGroup* tpu_program_group_;
+  int core_index_;
 };
 
 // Base class for a reference to a cached proto. A unique_ptr to a
@@ -66,7 +52,7 @@ class CompilationCacheEntryRef {
 
   // Returns a CompilationCacheEntry that should not be used beyond the lifetime
   // of the CompilationCacheEntryRef.
-  virtual CompilationCacheEntry get() = 0;
+  virtual TpuCompilationCacheEntry get() = 0;
 };
 
 // Base class that holds references to compiled protos so that the protos are
