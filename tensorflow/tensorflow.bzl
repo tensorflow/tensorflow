@@ -327,7 +327,7 @@ def tf_copts(
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
         if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML"]) +
         if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) +
-        if_mkl_v1_open_source_only(["-DENABLE_MKLDNN_V1"]) +
+        if_mkl_v1_open_source_only(["-DENABLE_MKLDNN_V1", "-DENABLE_INTEL_MKL_BFLOAT16"]) +
         if_mkldnn_threadpool([
             "-DENABLE_MKLDNN_THREADPOOL",
             "-DENABLE_MKLDNN_V1",
