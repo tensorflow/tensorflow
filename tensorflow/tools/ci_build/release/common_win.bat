@@ -73,7 +73,7 @@ SET PATH=%CUDNN_INSTALL_PATH%\bin;%PATH%
 @REM Setup Bazel
 @REM
 :: Download Bazel from github and make sure its found in PATH.
-SET BAZEL_VERSION=2.0.0
+SET BAZEL_VERSION=3.1.0
 md C:\tools\bazel\
 wget -q https://github.com/bazelbuild/bazel/releases/download/%BAZEL_VERSION%/bazel-%BAZEL_VERSION%-windows-x86_64.exe -O C:/tools/bazel/bazel.exe
 SET PATH=C:\tools\bazel;%PATH%
