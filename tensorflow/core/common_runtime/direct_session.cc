@@ -666,10 +666,7 @@ Status DirectSession::RunInternal(
 
   std::unique_ptr<ProfilerSession> profiler_session;
   if (run_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
-    ProfileOptions options = ProfilerSession::DefaultOptions();
-    options.set_host_tracer_level(0);
-    options.set_device_type(ProfileOptions::GPU);
-    profiler_session = ProfilerSession::Create(options);
+    profiler_session = ProfilerSession::Create();
   }
 
   // Register this step with session's cancellation manager, so that
