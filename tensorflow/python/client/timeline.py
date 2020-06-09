@@ -449,7 +449,7 @@ class Timeline(object):
     else:
       _, op, inputs = self._parse_op_label(nodestats.timeline_label)
     args = {'name': node_name, 'op': op}
-    if build_info.is_rocm_build:
+    if build_info.build_info['is_rocm_build']:
       args["kernel"] = nodestats.timeline_label.split("@@")[0]
     for i, iname in enumerate(inputs):
       args['input%d' % i] = iname

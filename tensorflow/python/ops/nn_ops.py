@@ -5042,7 +5042,7 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
     # Should there be ROCm support, use it. Otherwise fallback to generic
     # implementation
     def_dropout = os.environ.get("TF_ROCM_OLD_DROPOUT")
-    if build_info.is_rocm_build and \
+    if build_info.build_info['is_rocm_build'] and \
        (x.dtype == dtypes.float64 or x.dtype == dtypes.float32 \
         or x.dtype == dtypes.float16) and def_dropout!="1" \
         and null_noise_shape:
