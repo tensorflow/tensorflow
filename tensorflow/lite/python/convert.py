@@ -98,9 +98,9 @@ class OpsSet(enum.Enum):
   # int16 activations and int64 bias.
   # Specifying this will throw an error for operations that do not yet have
   # quantized implementations.
-  # This quantization mode should be used in models for super-resolution,
+  # This quantization mode may be used in models for super-resolution,
   # audio signal processing or image de-noising. It improves accuracy
-  # significantly, but only slightly increases the model size.   
+  # significantly, but only slightly increases the model size.
   # WARNING: These ops are currently experimental and have not yet been finalized.
   # They are only compatible with CPU execution, and have not been optimized for production.
   EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8 = \
