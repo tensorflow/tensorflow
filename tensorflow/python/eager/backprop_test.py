@@ -1455,9 +1455,6 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testMaxPooling3DGradient(self):
 
-    if test.is_built_with_rocm():
-      self.skipTest('Pooling with 3D tensors is not supported in ROCm')
-
     def forward(a):
       r = max_pooling3d(a, pool_size=pool_size, strides=strides, padding='SAME')
       return r
