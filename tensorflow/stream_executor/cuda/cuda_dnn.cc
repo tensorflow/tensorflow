@@ -723,7 +723,7 @@ class CudnnConvolutionDescriptor {
 #if CUDNN_VERSION >= 7000
     cudnnMathType_t math_type =
 #if CUDNN_VERSION >= 8000
-        (use_tensor_op_math ? CUDNN_DEFAULT_MATH : CUDNN_FMA_MATH);
+        (use_tensor_op_math ? CUDNN_TENSOR_OP_MATH : CUDNN_FMA_MATH);
 #else
         (use_tensor_op_math ? CUDNN_TENSOR_OP_MATH : CUDNN_DEFAULT_MATH);
 #endif
@@ -1179,8 +1179,7 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
 
     cudnnMathType_t math_type;
     if (use_tensor_ops) {
-      math_type =
-          CUDNN_VERSION >= 8000 ? CUDNN_DEFAULT_MATH : CUDNN_TENSOR_OP_MATH;
+      math_type = CUDNN_TENSOR_OP_MATH;
     } else {
       math_type = CUDNN_VERSION >= 8000 ? CUDNN_FMA_MATH : CUDNN_DEFAULT_MATH;
     }
