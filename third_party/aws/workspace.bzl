@@ -9,11 +9,11 @@ def repo():
     third_party_http_archive(
         name = "aws",
         urls = [
-            "https://mirror.bazel.build/github.com/aws/aws-sdk-cpp/archive/1.7.266.tar.gz",
-            "https://github.com/aws/aws-sdk-cpp/archive/1.7.266.tar.gz",
+            "https://mirror.bazel.build/github.com/aws/aws-sdk-cpp/archive/1.7.336.tar.gz",
+            "https://github.com/aws/aws-sdk-cpp/archive/1.7.336.tar.gz",
         ],
-        sha256 = "39fd8a2999260d2b8fcbc8187f1ed5299972c2b8bd14adb7850fd674fea67fb7",
-        strip_prefix = "aws-sdk-cpp-1.7.266",
+        sha256 = "758174f9788fed6cc1e266bcecb20bf738bd5ef1c3d646131c9ed15c2d6c5720",
+        strip_prefix = "aws-sdk-cpp-1.7.336",
         build_file = "//third_party/aws:BUILD.bazel",
     )
 

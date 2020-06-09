@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_SUBGRAPH_H_
 #define TENSORFLOW_LITE_CORE_SUBGRAPH_H_
 
+#include <cstdint>
 #include <cstdlib>
 #include <map>
 #include <utility>
@@ -221,6 +222,15 @@ class Subgraph {
   TfLiteStatus ResizeInputTensor(int tensor_index,
                                  const std::vector<int>& dims);
 
+  // WARNING: Experimental interface, subject to change
+  // Change the dimensionality of a given tensor. This is only acceptable for
+  // tensor indices that are inputs or variables. Only unknown dimensions can be
+  // resized with this function. Unknown dimensions are indicated as `-1` in the
+  // `dims_signature` attribute of a `TfLiteTensor`. Returns status of failure
+  // or success.
+  TfLiteStatus ResizeInputTensorStrict(int tensor_index,
+                                       const std::vector<int>& dims);
+
   // This releases memory held by non-persistent tensors. It does NOT re-perform
   // memory planning.
   // AllocateTensors needs to be called before next invocation.
@@ -329,21 +339,16 @@ class Subgraph {
   class SubgraphAwareProfiler : public Profiler {
    public:
     // Constructor should be called with the non-nullptr profiler argument.
-    SubgraphAwareProfiler(Profiler* profiler, uint32_t subgraph_index)
+    SubgraphAwareProfiler(Profiler* profiler, int64_t subgraph_index)
         : profiler_(profiler), subgraph_index_(subgraph_index) {}
     ~SubgraphAwareProfiler() override {}
 
     uint32_t BeginEvent(const char* tag, EventType event_type,
-                        uint32_t event_metadata,
-                        uint32_t subgraph_index) override {
+                        int64_t event_metadata1,
+                        int64_t event_metadata2) override {
       if (!profiler_) return 0;
-      return profiler_->BeginEvent(tag, event_type, event_metadata,
-                                   subgraph_index);
-    }
-
-    uint32_t BeginEvent(const char* tag, EventType event_type,
-                        uint32_t event_metadata) override {
-      return BeginEvent(tag, event_type, event_metadata, subgraph_index_);
+      return profiler_->BeginEvent(tag, event_type, event_metadata1,
+                                   subgraph_index_);
     }
 
     void EndEvent(uint32_t event_handle) override {
@@ -351,17 +356,24 @@ class Subgraph {
       profiler_->EndEvent(event_handle);
     }
 
-    void AddEvent(const char* tag, EventType event_type,
-                  uint32_t event_metadata, uint64_t start,
-                  uint64_t end) override {
+    void EndEvent(uint32_t event_handle, int64_t event_metadata1,
+                  int64_t event_metadata2) override {
       if (!profiler_) return;
-      profiler_->AddEvent(tag, event_type, event_metadata, start, end);
+      profiler_->EndEvent(event_handle, event_metadata1, event_metadata2);
+    }
+
+    void AddEvent(const char* tag, EventType event_type, uint64_t start,
+                  uint64_t end, int64_t event_metadata1,
+                  int64_t event_metadata2) override {
+      if (!profiler_) return;
+      profiler_->AddEvent(tag, event_type, start, end, event_metadata1,
+                          subgraph_index_);
     }
 
    private:
     // Not own the memory.
     Profiler* const profiler_;
-    const uint32_t subgraph_index_;
+    const int64_t subgraph_index_;
   };
 
   // Prevent 'context_' from accessing functions that are only available to
@@ -522,6 +534,12 @@ class Subgraph {
   // be reallocated if the graph was modified (i.e., the caller does *not* need
   // to explicitly call |AllocateTensors()| again). If tensors were unallocated,
   // they will remain unallocated after delegate application.
+  // Returns one of the following three status codes:
+  // 1. kTfLiteOk: Delegation succeeded
+  // 2. kTfLiteDelegateError: Delegation failed due to an error in the
+  // delegate. The Subgraph has been restored to its pre-delegation state.
+  // NOTE: This reverts all delegates previously applied to the Subgraph.
+  // 3. kTfLiteError: Unexpected/runtime failure.
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
 
   // This un-applies all delegates that have been applied till now, but retains
@@ -533,6 +551,14 @@ class Subgraph {
   // Does nothing if UndoAllDelegates wasn't previously called.
   TfLiteStatus RedoAllDelegates();
 
+  // This removes all delegates.
+  // The old execution plan and nodes are restored. The graph is invokable
+  // afterwards.
+  TfLiteStatus RemoveAllDelegates();
+
+  // Returns true if the subgraph has delegates applied.
+  bool HasDelegates();
+
   // Cleanups up data reserved for the given node. Does not remove the {node,
   // registration} pair from nodes_and_registrations_.
   void CleanupNode(int node_index);
@@ -541,16 +567,13 @@ class Subgraph {
   // capacity. Calling this function may invalidate existing pointers to
   // tensors. After calling this function, adding `kTensorsCapacityHeadroom`
   // more tensors won't invalidate the pointer to existing tensors.
-  void EnsureTensorsVectorCapacity() {
-    const size_t required_capacity = tensors_.size() + kTensorsCapacityHeadroom;
-    if (required_capacity > tensors_.capacity()) {
-      tensors_.reserve(required_capacity);
-      context_.tensors = tensors_.data();
-    }
-  }
+  void EnsureTensorsVectorCapacity();
 
   // Ensures the memory required is planned and allocated.
   TfLiteStatus EnsureMemoryAllocations();
+
+  // Returns true if cancellation function returns true.
+  bool IsCancelled();
 
   // The state of the Interpreter.
   enum State {

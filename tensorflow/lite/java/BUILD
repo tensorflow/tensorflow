@@ -14,6 +14,7 @@ package(
 exports_files([
     "src/testdata/add.bin",
     "src/testdata/add_unknown_dimensions.bin",
+    "src/testdata/grace_hopper_224.jpg",
 ])
 
 JAVA_SRCS = glob([
@@ -100,6 +101,15 @@ android_library(
     name = "tensorflowlite_java",
     srcs = JAVA_SRCS,
     proguard_specs = ["proguard.flags"],
+    deps = [
+        "@org_checkerframework_qual",
+    ],
+)
+
+java_library(
+    name = "tensorflowlite_javalib",
+    srcs = JAVA_SRCS,
+    javacopts = JAVACOPTS,
     deps = [
         "@org_checkerframework_qual",
     ],
@@ -202,6 +212,8 @@ java_test(
         "src/testdata/int64.bin",
         "src/testdata/invalid_model.bin",
         "src/testdata/string.bin",
+        # Takes a scalar string and reshapes to a rank-1, single element string.
+        "src/testdata/string_scalar.bin",
         "src/testdata/uint8.bin",
         "src/testdata/with_custom_op.lite",
     ],
@@ -229,6 +241,7 @@ java_test(
     data = [
         "src/testdata/add.bin",
         "src/testdata/add_unknown_dimensions.bin",
+        "//tensorflow/lite:testdata/dynamic_shapes.bin",
         "//tensorflow/lite:testdata/multi_add.bin",
         "//tensorflow/lite:testdata/multi_add_flex.bin",
     ],
@@ -318,6 +331,7 @@ java_test(
     ],
 )
 
+# portable_tests includes files for running TFLite interpreter tests.
 filegroup(
     name = "portable_tests",
     srcs = [
@@ -329,10 +343,30 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
+# portable_flex_tests includes files for testing interpreter with Flex delegate.
 filegroup(
     name = "portable_flex_tests",
     srcs = [
         "src/test/java/org/tensorflow/lite/InterpreterFlexTest.java",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# portable_test_utils include utilities for loading files and processing images.
+filegroup(
+    name = "portable_test_utils",
+    srcs = [
+        "src/test/java/org/tensorflow/lite/TestUtils.java",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "portable_gpu_tests",
+    srcs = [
+        "src/test/java/org/tensorflow/lite/InterpreterTestHelper.java",
+        "src/test/java/org/tensorflow/lite/gpu/GpuDelegateTest.java",
+        "src/test/java/org/tensorflow/lite/gpu/WhitelistTest.java",
     ],
     visibility = ["//visibility:public"],
 )

@@ -70,8 +70,8 @@ class FullyConnected : public GPUOperation {
 template <DataType T>
 absl::Status FullyConnected::UploadWeights(
     const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
-  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
-  const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
 
   const int elements_count = src_depth * dst_depth * 4;
   const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
@@ -94,8 +94,8 @@ absl::Status FullyConnected::UploadWeights(
 template <DataType T, typename S>
 void FullyConnected::RearrangeWeights(
     const tflite::gpu::Tensor<OHWI, T>& weights, absl::Span<S> dst) {
-  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
-  const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
   int counter = 0;
 
   for (int s = 0; s < src_depth; ++s) {

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/metrics.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_partition.h"
 #include "tensorflow/core/graph/validate.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -55,7 +55,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-GraphMgr::GraphMgr(const WorkerEnv* worker_env, DeviceMgr* device_mgr)
+GraphMgr::GraphMgr(const WorkerEnv* worker_env, const DeviceMgr* device_mgr)
     : worker_env_(worker_env), device_mgr_(device_mgr), table_(5) {
   // The default value of sync_on_finish will be flipped soon and this
   // environment variable will be removed as well.

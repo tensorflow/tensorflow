@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
 #include "tensorflow/core/common_runtime/function_testlib.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/function.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/versions.pb.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -392,6 +392,100 @@ TEST_F(FunctionLibraryRuntimeTest, XTimesTwo) {
   TF_CHECK_OK(InstantiateAndRunViaCallFrameInterface(
       flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, {x}, {&y}));
   test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
+}
+
+TEST_F(FunctionLibraryRuntimeTest, XTimesTwo_MultiDeviceBacked) {
+  Init({test::function::XTimesTwo()});
+  auto x = test::AsTensor<float>({1, 2, 3, 4});
+  Tensor y;
+
+  FunctionLibraryRuntime::InstantiateOptions options;
+  options.is_multi_device_function = true;
+
+  TF_CHECK_OK(InstantiateAndRun(flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, options,
+                                {x}, {&y}));
+  test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
+}
+
+class ConsumeArgumentCallFrame : public CallFrameInterface {
+ public:
+  ConsumeArgumentCallFrame(Tensor* arg, Tensor* retval)
+      : arg_(arg), retval_(retval) {}
+
+  size_t num_args() const override { return 1; }
+  size_t num_retvals() const override { return 1; }
+
+  Status GetArg(int index, const Tensor** val) override {
+    LOG(FATAL) << "Should not be called.";
+  }
+
+  bool CanConsumeArg(int index) const override { return index == 0; }
+
+  void ConsumeArg(int index, Tensor* val) override { *val = std::move(*arg_); }
+
+  Status SetRetval(int index, const Tensor& val) override {
+    CHECK_EQ(index, 0);
+    *retval_ = val;
+    return Status::OK();
+  }
+
+ private:
+  Tensor* const arg_;
+  Tensor* const retval_;
+};
+
+TEST_F(FunctionLibraryRuntimeTest, XTimesTwo_ConsumeArgument_DefaultExecutor) {
+  Init({test::function::XTimesTwo()});
+  FunctionLibraryRuntime::Handle handle;
+  TF_CHECK_OK(flr0_->Instantiate(
+      "XTimesTwo", test::function::Attrs({{"T", DT_FLOAT}}), &handle));
+
+  auto x = test::AsTensor<float>({1, 2, 3, 4});
+  float* x_base_ptr = &x.flat<float>()(0);
+  Tensor y;
+  ConsumeArgumentCallFrame frame(&x, &y);
+
+  FunctionLibraryRuntime::Options opts;
+  TF_CHECK_OK(Run(flr0_, handle, opts, &frame));
+
+  test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
+
+  // Expect that the buffer for `x` has been forwarded to and used as the buffer
+  // for `y`.
+  float* y_base_ptr = &y.flat<float>()(0);
+  EXPECT_EQ(x_base_ptr, y_base_ptr);
+  EXPECT_FALSE(x.IsInitialized());
+
+  TF_CHECK_OK(flr0_->ReleaseHandle(handle));
+}
+
+TEST_F(FunctionLibraryRuntimeTest,
+       XTimesTwo_ConsumeArgument_SingleThreadedExecutor) {
+  Init({test::function::XTimesTwo()});
+  FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
+  instantiate_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
+  FunctionLibraryRuntime::Handle handle;
+  TF_CHECK_OK(flr0_->Instantiate("XTimesTwo",
+                                 test::function::Attrs({{"T", DT_FLOAT}}),
+                                 instantiate_opts, &handle));
+
+  auto x = test::AsTensor<float>({1, 2, 3, 4});
+  float* x_base_ptr = &x.flat<float>()(0);
+  Tensor y;
+  ConsumeArgumentCallFrame frame(&x, &y);
+
+  FunctionLibraryRuntime::Options opts;
+  TF_CHECK_OK(Run(flr0_, handle, opts, &frame, /* add_runner= */ false));
+
+  test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
+
+  // Expect that the buffer for `x` has been forwarded to and used as the buffer
+  // for `y`.
+  float* y_base_ptr = &y.flat<float>()(0);
+  EXPECT_EQ(x_base_ptr, y_base_ptr);
+  EXPECT_FALSE(x.IsInitialized());
+
+  TF_CHECK_OK(flr0_->ReleaseHandle(handle));
 }
 
 TEST_F(FunctionLibraryRuntimeTest, XTimesN) {

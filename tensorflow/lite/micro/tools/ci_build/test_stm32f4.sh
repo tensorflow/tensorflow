@@ -22,7 +22,7 @@ TARGET=stm32f4
 TAGS=cmsis-nn
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR=${SCRIPT_DIR}/../../../../..
-cd ${ROOT_DIR}
+cd "${ROOT_DIR}"
 pwd
 
 source tensorflow/lite/micro/tools/ci_build/helper_functions.sh
@@ -35,6 +35,7 @@ readable_run make -f tensorflow/lite/micro/tools/make/Makefile TAGS=${TAGS} TARG
 # Build test binaries first
 readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TAGS=${TAGS} TARGET=${TARGET} build
 
+# TODO(b/149597202): Disabled until we can get Docker running inside Docker.
 # Parallell builds doesn't work very well with this
-readable_run make -f tensorflow/lite/micro/tools/make/Makefile TAGS=${TAGS} TARGET=${TARGET} test
+#readable_run make -f tensorflow/lite/micro/tools/make/Makefile TAGS=${TAGS} TARGET=${TARGET} test
 

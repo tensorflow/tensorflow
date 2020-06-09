@@ -80,6 +80,12 @@ class AlgebraicSimplifierOptions {
     return enable_conv_simplification_;
   }
 
+  // Enable convolution operand swapping on platforms where it is supported.
+  void set_enable_conv_operand_swap(bool enable_conv_operand_swap) {
+    enable_conv_operand_swap_ = enable_conv_operand_swap;
+  }
+  bool enable_conv_operand_swap() const { return enable_conv_operand_swap_; }
+
   // If enable_window_reduce_replacement is true, the kReduceWindow instruction
   // can be optimized by replacement with simpler operations.
   void set_enable_window_reduce_to_reduce_replacement(
@@ -139,6 +145,7 @@ class AlgebraicSimplifierOptions {
   bool enable_dot_strength_reduction_{true};
   bool enable_dot_to_multiply_rewrite_{true};
   bool enable_conv_simplification_{true};
+  bool enable_conv_operand_swap_{true};
   bool enable_window_reduce_to_reduce_replacement_{true};
   bool enable_reduce_of_reshape_{true};
   bool replace_transpose_with_bitcast_{true};

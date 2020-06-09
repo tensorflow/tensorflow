@@ -54,7 +54,7 @@ namespace gpu {
 //   H  - height
 //   W  - width
 //   C  - channels
-//   D  - depth := IntegralDivideRoundUp(C, 4)
+//   D  - depth := DivideRoundUp(C, 4)
 //   C4 - is the constant = 4.
 enum class DataLayout {
   UNKNOWN,
@@ -71,6 +71,8 @@ enum class ObjectType {
   CPU_MEMORY,
   OPENCL_TEXTURE,
   OPENCL_BUFFER,
+  VULKAN_BUFFER,
+  VULKAN_TEXTURE
 };
 
 struct OpenGlBuffer {
@@ -104,11 +106,37 @@ struct OpenClTexture {
   // TODO(akulik): should it specify texture format?
 };
 
+struct VulkanBuffer {
+  VulkanBuffer() = default;
+  explicit VulkanBuffer(VkBuffer buffer_, VkDeviceSize size_,
+                        VkDeviceMemory memory_, VkDeviceSize offset_)
+      : buffer(buffer_), size(size_), memory(memory_), offset(offset_) {}
+
+  VkBuffer buffer;
+  VkDeviceSize size;
+  VkDeviceMemory memory;
+  VkDeviceSize offset;
+};
+
+struct VulkanTexture {
+  VulkanTexture() = default;
+  explicit VulkanTexture(VkDeviceMemory new_memory) : memory(new_memory) {}
+
+  VkImage image;
+  VkImageView image_view;
+  VkFormat format;
+  VkExtent3D extent;
+  VkDeviceMemory memory;
+  VkDeviceSize offset;
+};
+
 struct VulkanMemory {
   VulkanMemory() = default;
   explicit VulkanMemory(VkDeviceMemory new_memory) : memory(new_memory) {}
 
   VkDeviceMemory memory;
+  VkDeviceSize size;
+  VkDeviceSize offset;
 };
 
 struct CpuMemory {
@@ -164,7 +192,7 @@ struct Dimensions {
   Dimensions(int32_t batch, int32_t height, int32_t width, int32_t channels)
       : b(batch), h(height), w(width), c(channels) {}
 
-  int32_t d() const { return IntegralDivideRoundUp(c, 4); }
+  int32_t d() const { return DivideRoundUp(c, 4); }
 
   int32_t product() const { return b * h * w * c; }
 
@@ -195,8 +223,9 @@ bool IsValid(const TensorObjectDef& def);
 // @return the number of elements in a tensor object.
 uint32_t NumElements(const TensorObjectDef& def);
 
-using TensorObject = absl::variant<absl::monostate, OpenGlBuffer, OpenGlTexture,
-                                   CpuMemory, OpenClBuffer, OpenClTexture>;
+using TensorObject =
+    absl::variant<absl::monostate, OpenGlBuffer, OpenGlTexture, CpuMemory,
+                  OpenClBuffer, OpenClTexture, VulkanBuffer, VulkanTexture>;
 
 // @return true if object is set and corresponding values are defined.
 bool IsValid(const TensorObjectDef& def, const TensorObject& object);

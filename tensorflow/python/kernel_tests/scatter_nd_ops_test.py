@@ -96,6 +96,14 @@ def _NumpyDiv(ref, indices, updates):
   return _NumpyScatterNd(ref, indices, updates, lambda p, u: p / u)
 
 
+def _NumpyMin(ref, indices, updates):
+  return _NumpyScatterNd(ref, indices, updates, np.minimum)
+
+
+def _NumpyMax(ref, indices, updates):
+  return _NumpyScatterNd(ref, indices, updates, np.maximum)
+
+
 class StatefulScatterNdTest(test.TestCase):
 
   def _VariableRankTest(self,
@@ -156,16 +164,18 @@ class StatefulScatterNdTest(test.TestCase):
 
   def testSimple(self):
     indices = constant_op.constant([[4], [3], [1], [7]], dtype=dtypes.int32)
-    updates = constant_op.constant([9, 10, 11, 12], dtype=dtypes.float32)
-    ref = variables.Variable([0, 0, 0, 0, 0, 0, 0, 0], dtype=dtypes.float32)
-    expected = np.array([0, 11, 0, 10, 9, 0, 0, 12])
-    scatter = state_ops.scatter_nd_update(ref, indices, updates)
-    init = variables.global_variables_initializer()
+    for dtype in (dtypes.int64, dtypes.float32, dtypes.float64,
+                  dtypes.complex64, dtypes.complex128):
+      updates = constant_op.constant([9, 10, 11, 12], dtype=dtype)
+      ref = variables.Variable([0, 0, 0, 0, 0, 0, 0, 0], dtype=dtype)
+      expected = np.array([0, 11, 0, 10, 9, 0, 0, 12])
+      scatter = state_ops.scatter_nd_update(ref, indices, updates)
+      init = variables.global_variables_initializer()
 
-    with self.session(use_gpu=True) as sess:
-      self.evaluate(init)
-      result = self.evaluate(scatter)
-      self.assertAllClose(result, expected)
+      with test_util.use_gpu():
+        self.evaluate(init)
+        result = self.evaluate(scatter)
+        self.assertAllClose(result, expected)
 
   @test_util.run_in_graph_and_eager_modes
   def testString(self):
@@ -251,6 +261,8 @@ class StatefulScatterNdTest(test.TestCase):
     """This tests scatter_add using indices that repeat."""
     self._ScatterRepeatIndicesTest(_NumpyAdd, state_ops.scatter_nd_add)
     self._ScatterRepeatIndicesTest(_NumpySub, state_ops.scatter_nd_sub)
+    self._ScatterRepeatIndicesTest(_NumpyMin, state_ops.scatter_nd_min)
+    self._ScatterRepeatIndicesTest(_NumpyMax, state_ops.scatter_nd_max)
     # TODO(ebrevdo): Re-enable when we need ScatterNdMul and ScatterNdDiv.
     # self._ScatterRepeatIndicesTest(_NumpyMul, state_ops.scatter_nd_mul)
     # self._ScatterRepeatIndicesTest(_NumpyDiv, state_ops.scatter_nd_div)
@@ -274,6 +286,7 @@ class StatefulScatterNdTest(test.TestCase):
     # scatter_nd ops is under control.
     #  tf.scatter_nd_mul, tf.scatter_nd_div,
     for op in (state_ops.scatter_nd_add, state_ops.scatter_nd_sub,
+               state_ops.scatter_nd_min, state_ops.scatter_nd_max,
                state_ops.scatter_nd_update):
       params = np.array([1, 2, 3, 4, 5, 6]).astype(np.float32)
       updates = np.array([-3, -4, -5]).astype(np.float32)
@@ -760,6 +773,22 @@ class ScatterNdTensorTest(test.TestCase):
       self.assertLess(err_assigned_wrt_updates, 2e-4)
       self.assertLess(err_added_wrt_updates, 2e-4)
       self.assertLess(err_subbed_wrt_updates, 2e-4)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testUpdateMinMax(self):
+    indices = constant_op.constant([[4], [3], [1], [7]])
+    updates = constant_op.constant([0, 2, -1, 1.2], dtype=dtypes.float32)
+    t = array_ops.ones([8], dtype=dtypes.float32)
+    assigned = array_ops.tensor_scatter_update(t, indices, updates)
+    min_result = array_ops.tensor_scatter_min(t, indices, updates)
+    max_result = array_ops.tensor_scatter_max(t, indices, updates)
+
+    self.assertAllEqual(assigned,
+                        constant_op.constant([1, -1, 1, 2, 0, 1, 1, 1.2]))
+    self.assertAllEqual(min_result,
+                        constant_op.constant([1, -1, 1, 1, 0, 1, 1, 1]))
+    self.assertAllEqual(max_result,
+                        constant_op.constant([1, 1, 1, 2, 1, 1, 1, 1.2]))
 
   def testTensorScatterUpdateWithForwarding(self):
     @def_function.function

@@ -86,3 +86,10 @@ func @einsum_illegal_no_match(%arg0: tensor<4x5xf32>, %arg1: tensor<5xf32>) -> t
 // CHECK: %[[v0:.*]] = "tf.Einsum"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", equation = "ij,?zw->kq->i"} : (tensor<4x5xf32>, tensor<5xf32>) -> tensor<4xf32>
 // CHECK: return %[[v0]]
 }
+func @einsum_no_match5D(%arg0: tensor<4x5xf32>, %arg1: tensor<2x4x7x3x5xf32>) -> tensor<4xf32> {
+  %0 = "tf.Einsum"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", equation = "ij,j->i"}: (tensor<4x5xf32>, tensor<2x4x7x3x5xf32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+// CHECK-LABEL: einsum_no_match5D 
+// CHECK: %[[v0:.*]] = "tf.Einsum"
+// CHECK: return %[[v0]]
+}

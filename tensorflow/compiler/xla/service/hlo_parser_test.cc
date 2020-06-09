@@ -42,6 +42,7 @@ using absl::string_view;
 struct TestData {
   string test_name;
   string module_string;
+  int64 replica_count = 1;
   bool enable_verification = true;
 };
 
@@ -1439,7 +1440,8 @@ ENTRY AllReduceWithSubgroups {
   ROOT all-reduce = f32[128,32]{0,1} all-reduce(input), replica_groups={{0,1},{2,3}}, to_apply=add
 }
 
-)"
+)",
+/*replica_count=*/4,
 },
 // all-reduce with constrained layout
 {
@@ -1478,6 +1480,43 @@ ENTRY CRS {
 
 )"
 },
+// all-gather
+{
+"AllGather",
+R"(HloModule AllGather
+
+ENTRY AllGather {
+  input = f32[128,32]{0,1} parameter(0)
+  ROOT ag = f32[128,128]{0,1} all-gather(input), replica_groups={}, dimensions={1}
+}
+
+)"
+},
+// all-gather with constrained layout
+{
+"AllGatherWithLayout",
+R"(HloModule AllGather
+
+ENTRY AllGather {
+  input = f32[128,32]{0,1} parameter(0)
+  ROOT ag = f32[128,128]{0,1} all-gather(input), replica_groups={}, constrain_layout=true, dimensions={1}
+}
+
+)"
+},
+// all-gather with subgroups
+{
+"AllGatherWithSubgroups",
+R"(HloModule AllGatherWithSubgroups
+
+ENTRY AllGatherWithSubgroups {
+  input = f32[128,32]{0,1} parameter(0)
+  ROOT ag = f32[128,64]{0,1} all-gather(input), replica_groups={{0,1},{2,3}}, dimensions={1}
+}
+
+)",
+/*replica_count=*/4,
+},
 // all-to-all
 {
 "AllToAll",
@@ -1501,7 +1540,8 @@ ENTRY AllToAllWithSubgroups {
   ROOT a2a = (f32[128,32]{0,1}, f32[128,32]{0,1}) all-to-all(p0, p1), replica_groups={{1,2},{3,0}}
 }
 
-)"
+)",
+/*replica_count=*/4,
 },
 // collective-permute
 {
@@ -1513,7 +1553,22 @@ ENTRY CollectivePermute {
   ROOT root = f32[128,32]{0,1} collective-permute(input), source_target_pairs={{0,1},{1,2},{2,3}}
 }
 
-)"
+)",
+/*replica_count=*/4
+},
+// collective-permute-start and -done
+{
+"CollectivePermuteStartAndDone",
+R"(HloModule CollectivePermuteStartAndDone
+
+ENTRY CollectivePermuteStartAndDone {
+  input = f32[128,32]{0,1} parameter(0)
+  collective-permute-start.1 = (f32[128,32]{0,1}, f32[128,32]{0,1}, u32[], u32[]) collective-permute-start(input), source_target_pairs={{0,1},{1,2},{2,3}}
+  ROOT collective-permute-done.1 = f32[128,32]{0,1} collective-permute-done(collective-permute-start.1)
+}
+
+)",
+/*replica_count=*/4
 },
 // replica-id
 {
@@ -1686,16 +1741,19 @@ class HloParameterizedParserTest
   void ExpectEqual() {
     std::unique_ptr<HloModule> module;
     const string& original = GetParam().module_string;
+    HloModuleConfig config;
+    config.set_replica_count(GetParam().replica_count);
     if (GetParam().enable_verification) {
       auto verified_module = absl::make_unique<VerifiedHloModule>(
-          GetParam().test_name, HloModuleConfig(),
+          GetParam().test_name, config,
           /*verifier_layout_sensitive=*/false,
           /*allow_mixed_precision_in_hlo_verifier=*/true,
           ShapeUtil::ByteSizeOfElements);
       TF_ASSERT_OK(verified_module->ParseHloStringAndVerifyModule(original));
       module = std::move(verified_module);
     } else {
-      TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnUnverifiedModule(original));
+      TF_ASSERT_OK_AND_ASSIGN(module,
+                              ParseAndReturnUnverifiedModule(original, config));
     }
     if (proto_round_trip) {
       TF_ASSERT_OK_AND_ASSIGN(module, HloModule::CreateFromProto(
@@ -1956,9 +2014,7 @@ TEST_F(HloParserTest, ConstantUnsignedUnderflow) {
         ROOT %constant = u64[] constant(-1)
       })";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
-  ExpectHasSubstr(result.status().error_message(),
-                  "is out of range for literal's primitive type U64");
+  EXPECT_EQ(Status::OK(), result.status());
 }
 
 TEST_F(HloParserTest, ConstantUnsignedOverflow) {
@@ -1980,7 +2036,7 @@ TEST_F(HloParserTest, ConstantUnsignedInt64Overflow) {
         ROOT %constant = u64[] constant(9223372036854775808)
       })";
   auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_EQ(Status::OK(), result.status());
 }
 
 TEST_F(HloParserTest, ConstantC64Overflow) {
@@ -2415,7 +2471,8 @@ TEST_F(HloParserTest, ParseSharding) {
 }
 
 TEST_F(HloParserTest, ParseFrontendAttributes) {
-  const string original = "{attr_a=test_a,attr_b=b}";
+  const string original =
+      R"({attr_a="test_a",attr_b="b",attr_c="s64",attr_d="a/b"})";
   TF_ASSERT_OK_AND_ASSIGN(FrontendAttributes frontend_attributes,
                           ParseFrontendAttributes(original));
   EXPECT_EQ(FrontendAttributesToString(frontend_attributes), original);

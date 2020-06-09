@@ -18,7 +18,6 @@ limitations under the License.
 // TODO(ghodrat): Remove this header file and the dependency to internal data
 // structure.
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/reference/portable_tensor_utils_impl.h"
 
 #if defined(_MSC_VER)
@@ -99,14 +98,12 @@ void MatrixBatchVectorMultiplyAccumulate(const int8_t* __restrict__ matrix,
                                               scaling_factors, n_batch, result);
 }
 
-void MatrixBatchVectorMultiplyAccumulate(
-    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
-    const int8_t* __restrict__ vectors, const float* scaling_factors,
-    int n_batch, float* __restrict__ result, const float* per_channel_scale,
-    const int32_t* input_offset) {
-  PortableMatrixBatchVectorMultiplyAccumulate(matrix, m_rows, m_cols, vectors,
-                                              scaling_factors, n_batch, result,
-                                              per_channel_scale, input_offset);
+void SparseMatrixBatchVectorMultiplyAccumulate1x4(
+    const float* __restrict__ matrix, const int32_t* __restrict__ segments,
+    const int32_t* __restrict__ indices, int m_rows, int m_cols,
+    const float* __restrict__ vector, int n_batch, float* __restrict__ result) {
+  PortableSparseMatrixBatchVectorMultiplyAccumulate1x4(
+      matrix, segments, indices, m_rows, m_cols, vector, n_batch, result);
 }
 
 void SparseMatrixBatchVectorMultiplyAccumulate(

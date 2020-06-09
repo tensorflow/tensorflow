@@ -99,7 +99,60 @@ example, you may be building a custom binary that includes
 [operations selected from TensorFlow](https://www.tensorflow.org/lite/guide/ops_select),
 or you may wish to make local changes to TensorFlow Lite.
 
-#### Install Bazel and Android Prerequisites
+#### Set up build environment using Docker
+
+*   Download the Docker file. By downloading the Docker file, you agree that the
+    following terms of service govern your use thereof:
+
+*By clicking to accept, you hereby agree that all use of the Android Studio and
+Android Native Development Kit will be governed by the Android Software
+Development Kit License Agreement available at
+https://developer.android.com/studio/terms (such URL may be updated or changed
+by Google from time to time).*
+
+{% dynamic if 'tflite-android-tos' in user.acknowledged_walls and request.tld !=
+'cn' %} You can download the Docker file
+<a href="https://raw.githubusercontent.com/tensorflow/tensorflow/master/tensorflow/tools/dockerfiles/tflite-android.Dockerfile">here</a>
+{% dynamic else %} You must acknowledge the terms of service to download the
+file.
+<a class="button button-blue devsite-acknowledgement-link" data-globally-unique-wall-id="tflite-android-tos">Acknowledge</a>
+{% dynamic endif %}
+
+*   You can optionally change the Android SDK or NDK version. Put the downloaded
+    Docker file in an empty folder and build your docker image by running:
+
+```shell
+docker build . -t tflite-builder -f tflite-android.Dockerfile
+```
+
+*   Start the docker container interactively by mounting your current folder to
+    /tmp inside the container (note that /tensorflow_src is the TensorFlow
+    repository inside the container):
+
+```shell
+docker run -it -v $PWD:/tmp tflite-builder bash
+```
+
+If you use PowerShell on Windows, replace "$PWD" with "pwd".
+
+If you would like to use a TensorFlow repository on the host, mount that host
+directory instead (-v hostDir:/tmp).
+
+*   Once you are inside the container, you can run the following to download
+    additional Android tools and libraries (note that you may need to accept the
+    license):
+
+```shell
+android update sdk --no-ui -a --filter tools,platform-tools,android-${ANDROID_API_LEVEL},build-tools-${ANDROID_BUILD_TOOLS_VERSION}’
+```
+
+You can now proceed to the "Build and Install" section. After you are finished
+building the libraries, you can copy them to /tmp inside the container so that
+you can access them on the host.
+
+#### Set up build environment without Docker
+
+##### Install Bazel and Android Prerequisites
 
 Bazel is the primary build system for TensorFlow. To build with it, you must
 have it and the Android NDK and SDK installed on your system.
@@ -114,7 +167,7 @@ have it and the Android NDK and SDK installed on your system.
     [Android Studio](https://developer.android.com/studio/index.html). Build
     tools API >= 23 is the recommended version for building TensorFlow Lite.
 
-#### Configure WORKSPACE and .bazelrc
+##### Configure WORKSPACE and .bazelrc
 
 Run the `./configure` script in the root TensorFlow checkout directory, and
 answer "Yes" when the script asks to interactively configure the `./WORKSPACE`
@@ -138,7 +191,7 @@ build --action_env ANDROID_SDK_API_LEVEL="23"
 build --action_env ANDROID_SDK_HOME="/usr/local/android/android-sdk-linux"
 ```
 
-#### Build and Install
+#### Build and install
 
 Once Bazel is properly configured, you can build the TensorFlow Lite AAR from
 the root checkout directory as follows:
@@ -208,3 +261,41 @@ dependencies {
 Note that the `0.1.100` version here is purely for the sake of
 testing/development. With the local AAR installed, you can use the standard
 [TensorFlow Lite Java inference APIs](../guide/inference.md) in your app code.
+
+## Build Android app using C++
+
+There are two ways to use TFLite through C++ if you build your app with the NDK:
+
+### Use TFLite C API
+
+This is the *recommended* approach. Download the
+[TensorFlow Lite AAR hosted at JCenter](https://bintray.com/google/tensorflow/tensorflow-lite),
+rename it to `tensorflow-lite-*.zip`, and unzip it. You must include the three
+header files in `headers/tensorflow/lite/c/` folder and the relevant
+`libtensorflowlite_jni.so` dynamic library in `jni/` folder in your NDK project.
+
+The `c_api.h` header file contains basic documentation about using the TFLite C
+API.
+
+### Use TFLite C++ API
+
+If you want to use TFLite through C++ API, you can build the C++ shared
+libraries:
+
+32bit armeabi-v7a:
+
+```sh
+bazel build -c opt --config=android_arm //tensorflow/lite:libtensorflowlite.so
+```
+
+64bit arm64-v8a:
+
+```sh
+bazel build -c opt --config=android_arm64 //tensorflow/lite:libtensorflowlite.so
+```
+
+Currently, there is no straightforward way to extract all header files needed,
+so you must include all header files in `tensorflow/lite/` from the TensorFlow
+repository. Additionally, you will need header files from
+[FlatBUffers](https://github.com/google/flatbuffers) and
+[Abseil](https://github.com/abseil/abseil-cpp).

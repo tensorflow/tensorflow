@@ -40,17 +40,6 @@ namespace tflite {
 // delegated.
 class HexagonDelegateKernel {
  public:
-  enum class HexagonKernelState {
-    HEALTHY = 0,
-    FAST_RPC_SETUP_FAILED = 1,
-    FAILED_TO_INIT_GRAPH = 2,
-    FAILED_TO_PREPARE_GRAPH = 3,
-    MULTIPLE_INPUTS = 4,
-    INPUT_RANK_NOT_SUPPORTED = 5,
-    MULTIPLE_OUTPUTS = 6,
-    FAILED_TO_EXECUTE_GRAPH = 7,
-  };
-
   // Initialize the Hexagon graph and add required nodes.
   TfLiteStatus Init(TfLiteContext* context, const TfLiteDelegateParams* params);
 
@@ -75,8 +64,11 @@ class HexagonDelegateKernel {
                           const TfLiteIntArray* input_tensors,
                           const TfLiteIntArray* output_tensors);
 
-  void ReportError(TfLiteContext* context, HexagonKernelState state,
-                   const std::string& msg);
+  void ReportError(TfLiteContext* context, const std::string& msg);
+
+  // Resizes output tensors in case the delegate has dynamic batch enabled.
+  // Returns Error otherwise or if the requested size is invalid.
+  TfLiteStatus ResizeOutputTensors(TfLiteContext* context, TfLiteNode* node);
 
   void PrintLog();
 
@@ -88,7 +80,6 @@ class HexagonDelegateKernel {
   // Amount of information can be increased with debug level.
   void PrintDebuggingGraph();
 
-  HexagonKernelState state_ = HexagonKernelState::HEALTHY;
   const HexagonNN* hexagon_nn_ = nullptr;  // Not owned.
   std::unique_ptr<delegates::hexagon::GraphBuilder> builder_;
   hexagon_nn_nn_id graph_id_ = -1;
@@ -96,11 +87,8 @@ class HexagonDelegateKernel {
   std::vector<int> nodes_;
   ::TfLiteHexagonDelegateOptions params_;
 
-  // Used to support int8 TFLite *input* tensors.
-  // This vector, for every node-input, contains:
-  // 1. Pointer to Uint8 version if tensor is non-constant & type is Int8.
-  // 2. nullptr otherwise.
-  std::vector<TfLiteTensor*> int8_to_uint8_tensors_;
+  // Whether the Hexagon graph is prepared or not.
+  bool graph_prepared_ = false;
 };
 
 }  // namespace tflite

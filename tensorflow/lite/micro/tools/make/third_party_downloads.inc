@@ -3,12 +3,20 @@
 GEMMLOWP_URL := "https://github.com/google/gemmlowp/archive/719139ce755a0f31cbf1c37f7f98adcc7fc9f425.zip"
 GEMMLOWP_MD5 := "7e8191b24853d75de2af87622ad293ba"
 
-FLATBUFFERS_URL := "https://github.com/google/flatbuffers/archive/v1.12.0.tar.gz"
-FLATBUFFERS_MD5 := "c62ffefb3d4548b127cca14ce047f16c"
+ifeq ($(HOST_OS),windows)
+  FLATBUFFERS_URL := "https://github.com/google/flatbuffers/archive/v1.12.0.zip"
+  FLATBUFFERS_MD5 := "a1afdbf114dec01a861c1b8c917d0fc7"
+else
+  FLATBUFFERS_URL := "https://github.com/google/flatbuffers/archive/v1.12.0.tar.gz"
+  FLATBUFFERS_MD5 := "c62ffefb3d4548b127cca14ce047f16c"
+endif
 
 ifeq ($(HOST_OS),osx)
   GCC_EMBEDDED_URL := "https://developer.arm.com/-/media/Files/downloads/gnu-rm/7-2018q2/gcc-arm-none-eabi-7-2018-q2-update-mac.tar.bz2"
   GCC_EMBEDDED_MD5 := "a66be9828cf3c57d7d21178e07cd8904"
+else ifeq ($(HOST_OS),windows)
+  GCC_EMBEDDED_URL := "https://developer.arm.com/-/media/Files/downloads/gnu-rm/7-2018q2/gcc-arm-none-eabi-7-2018-q2-update-win32.zip"
+  GCC_EMBEDDED_MD5 := "bc8ae26d7c429f30d583a605a4bcf9bc"
 else
   GCC_EMBEDDED_URL := "https://developer.arm.com/-/media/Files/downloads/gnu-rm/7-2018q2/gcc-arm-none-eabi-7-2018-q2-update-linux.tar.bz2"
   GCC_EMBEDDED_MD5 := "299ebd3f1c2c90930d28ab82e5d8d6c0"
@@ -20,8 +28,8 @@ LEON_BCC2_MD5 := "cdf78082be4882da2a92c9baa82fe765"
 TSIM_URL := "https://www.gaisler.com/anonftp/tsim/tsim-eval-2.0.63.tar.gz"
 TSIM_MD5 := "afa0095d3ed989a949e1467f94e41d2f"
 
-CMSIS_URL := "https://github.com/ARM-software/CMSIS_5/archive/b2937134bd2047bd569c4408391ae20d7677d35c.zip"
-CMSIS_MD5 := "04cb3a2cb4834284767a01e8f1c6f834"
+CMSIS_URL := "https://github.com/ARM-software/CMSIS_5/archive/1150e71e07c79b538efd842aba5b210a31827ae5.zip"
+CMSIS_MD5 := "e05f4222ef58825193910b41a0871dcb"
 
 AM_SDK_URL := "http://s3.asia.ambiqmicro.com/downloads/AmbiqSuite-Rel2.2.0.zip"
 AM_SDK_MD5 := "7605fa2d4d97e6bb7a1190c92b66b597"
@@ -48,21 +56,32 @@ SIFIVE_FE310_LIB_MD5 := "06ee24c4956f8e21670ab3395861fe64"
 KISSFFT_URL="https://github.com/mborgerding/kissfft/archive/v130.zip"
 KISSFFT_MD5="438ba1fef5783cc5f5f201395cc477ca"
 
-RUY_URL="https://github.com/google/ruy/archive/91d62808498cea7ccb48aa59181e218b4ad05701.zip"
-RUY_MD5="5e653ae8863408ede2a0ca104fea5b1e"
+RUY_URL="https://github.com/google/ruy/archive/1b313682ef8b8fc8ed08719c610d1c3503b016bf.zip"
+RUY_MD5="2d54f058f8f7120dfc1ecee79dbf259e"
 
-PERSON_MODEL_URL := "https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_grayscale_2019_11_21.zip"
-PERSON_MODEL_MD5 := "fe2934bd0788f1dcc7af3f0a954542ab"
+CIFAR10_DATASET_URL="https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz"
+CIFAR10_DATASET_MD5="c32a1d4ab5d03f1284b67883e8d87530"
 
-PERSON_MODEL_INT8_URL := "https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_int8_grayscale_2020_01_13.zip"
-PERSON_MODEL_INT8_MD5 := "8a7d2c70325f53136faea6dde517b8cc"
+IMAGE_RECOGNITION_MODEL_URL := "https://storage.googleapis.com/download.tensorflow.org/models/tflite/cifar_image_recognition_model_2020_05_27.zip"
+IMAGE_RECOGNITION_MODEL_MD5 := "1f4607b05ac45b8a6146fb883dbc2d7b"
 
-EMBARC_OSP_URL := "https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_osp/archive/embarc_mli.zip"
-EMBARC_OSP_MD5 := "9eaf7b3a1ed05872a03da9796672a776"
+PERSON_MODEL_URL := "https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_grayscale_2020_05_27.zip"
+PERSON_MODEL_MD5 := "55b85f76e2995153e660391d4a209ef1"
 
-EMBARC_MLI_URL := "https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_mli/archive/6316034d421cbbb59756239908d7c9a99075a3bb.zip"
-EMBARC_MLI_MD5 := "db0910cf0e07e43f74ae7a31de485d56"
+PERSON_MODEL_INT8_URL := "https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_int8_grayscale_2020_05_27.zip"
+PERSON_MODEL_INT8_MD5 := "a0ede2d058aa2a1d413893455dd55352"
 
-XTENSA_HIFI4_URL :="https://github.com/foss-xtensa/nnlib-hifi4/raw/master/archive/xa_nnlib.zip"
-XTENSA_HIFI4_MD5 :="a517b653a75b96d0271e1b99ee2a8c14"
+EMBARC_MLI_URL := "https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_mli/archive/58284867ca52d1f43b25045e8601999d7359d986.zip"
+EMBARC_MLI_MD5 := "2bf4982a327fdaa9d475803ce014d1ef"
 
+EMBARC_MLI_PRE_COMPILED_URL := "https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_mli/releases/download/Release_1.1_RC2/embARC_MLI_package.zip"
+EMBARC_MLI_PRE_COMPILED_MD5 := "a95ff9e0370434484f14e7e4114327f6"
+
+ZEPHYR_URL := "https://github.com/antmicro/zephyr/archive/55e36b9.zip"
+ZEPHYR_MD5 := "755622eb4812fde918a6382b65d50c3b"
+
+XTENSA_HIFI4_URL :="https://github.com/foss-xtensa/nnlib-hifi4/raw/master/archive/xa_nnlib_04_07.zip"
+XTENSA_HIFI4_MD5 :="f234764928f9a42901df33a27e118c8b"
+
+ETHOSU_URL := "https://git.mlplatform.org/ml/ethos-u/ethos-u-core-driver.git/snapshot/ethos-u-core-driver-bcb5aaa99756f1b5c1295b079ebdd60996bc75a5.tar.gz"
+ETHOSU_MD5 := "d2073c8d88fc167fd5c46b5dcda58ea1"

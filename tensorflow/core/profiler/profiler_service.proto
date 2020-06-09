@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package tensorflow;
 
+import "tensorflow/core/profiler/profiler_options.proto";
 import "tensorflow/core/profiler/profiler_service_monitor_result.proto";
 
 // The ProfilerService service retrieves performance information about
@@ -9,42 +10,12 @@ import "tensorflow/core/profiler/profiler_service_monitor_result.proto";
 service ProfilerService {
   // Starts a profiling session, blocks until it completes, and returns data.
   rpc Profile(ProfileRequest) returns (ProfileResponse) {}
+  // Signal to terminate the Profile rpc for a on-going profiling session,
+  // The Profile rpc will return successfully and prematurely without timeout.
+  // This is used by programmatic mode to end the session in workers.
+  rpc Terminate(TerminateRequest) returns (TerminateResponse) {}
   // Collects profiling data and returns user-friendly metrics.
   rpc Monitor(MonitorRequest) returns (MonitorResponse) {}
-}
-
-message ProfileOptions {
-  // Some default value of option are not proto3 default value. Use this version
-  // to determine if we should use default option value instead of proto3
-  // default value.
-  uint32 version = 5;
-
-  // We don't collect the dataset ops by default for better trace-viewer
-  // scalability. The caller can mannually set this field to include the ops.
-  bool include_dataset_ops = 1;
-
-  // Levels of host tracing: (version >= 1)
-  // - Level 0 is used to disable host traces.
-  // - Level 1 enables tracing of only user instrumented (or default) TraceMe.
-  // - Level 2 enables tracing of all level 1 TraceMe(s) and instrumented high
-  //           level program execution details (expensive TF ops, XLA ops, etc).
-  //           This is the default.
-  // - Level 3 enables tracing of all level 2 TraceMe(s) and more verbose
-  //           (low-level) program execution details (cheap TF ops, etc).
-  uint32 host_tracer_level = 2;
-
-  // Levels of device tracing: (version >= 1)
-  // - Level 0 is used to disable device traces.
-  // - Level 1 is used to enable device traces.
-  // - More levels might be defined for specific device for controlling the
-  //   verbosity of the trace.
-  uint32 device_tracer_level = 3;
-
-  // Whether enable python function calls tracing. Runtime overhead ensues if
-  // enabled. Default off. (version >= 1)
-  uint32 python_tracer_level = 4;
-
-  // next-field: 6
 }
 
 message ToolRequestOptions {
@@ -113,6 +84,13 @@ message ProfileResponse {
   reserved 1, 2, 3, 4, 5;
   // next-field: 8
 }
+
+message TerminateRequest {
+  // Which session id to terminate.
+  string session_id = 1;
+}
+
+message TerminateResponse {}
 
 message MonitorRequest {
   // Duration for which to profile between each update.

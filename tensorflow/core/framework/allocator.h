@@ -32,6 +32,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+class TensorShape;
+
 // Attributes for a single allocation call. Different calls to the same
 // allocator could potentially have different allocation attributes.
 struct AllocationAttributes {
@@ -62,31 +64,80 @@ struct AllocationAttributes {
   TF_DISALLOW_COPY_AND_ASSIGN(AllocationAttributes);
 };
 
-// The runtime will cache Op names in thread-local memory and some allocators
-// will try to tag allocations with the requesting Op.
-extern thread_local const char* pending_op_name;
-extern thread_local int64 pending_step_id;
+// Annotations for memory profiling and debugging purpose. The runtime will
+// cache the annotations in thread-local memory, and some allocators will try to
+// tag allocations with the annotations.
+struct MemoryDebugAnnotation {
+  const char* pending_op_name = nullptr;
+  int64 pending_step_id = 0;
+  const char* pending_region_type = nullptr;
+  int32 pending_data_type = 0;
+  const TensorShape* pending_shape = nullptr;
+};
 
-// Wrapper class of pending_op_name and pending_step_id for RAII.
+// Wrapper class of MemoryDebugAnnotation for RAII.
 class ScopedMemoryDebugAnnotation {
  public:
+  static const MemoryDebugAnnotation& CurrentAnnotation() {
+    return annotation_;
+  }
+
   explicit ScopedMemoryDebugAnnotation(const char* op_name) {
-    last_op_name_ = pending_op_name;
-    pending_op_name = op_name;
+    last_annotation_ = annotation_;
+    CleanupAnnotation();
+    annotation_.pending_op_name = op_name;
   }
 
   explicit ScopedMemoryDebugAnnotation(const char* op_name, int64 step_id) {
-    last_op_name_ = pending_op_name;
-    pending_op_name = op_name;
-    pending_step_id = step_id;
+    last_annotation_ = annotation_;
+    CleanupAnnotation();
+    annotation_.pending_op_name = op_name;
+    annotation_.pending_step_id = step_id;
   }
 
-  ~ScopedMemoryDebugAnnotation() { pending_op_name = last_op_name_; }
+  // This constructor keeps the pending_op_name and pending_step_id from parent
+  // (if any).  Otherwise it overwrites with op_name.
+  explicit ScopedMemoryDebugAnnotation(const char* op_name,
+                                       const char* region_type, int32 data_type,
+                                       const TensorShape* shape) {
+    last_annotation_ = annotation_;
+    if (!annotation_.pending_op_name) {
+      annotation_.pending_op_name = op_name;
+    }
+    annotation_.pending_region_type = region_type;
+    annotation_.pending_data_type = data_type;
+    annotation_.pending_shape = shape;
+  }
+
+  explicit ScopedMemoryDebugAnnotation(const char* op_name, int64 step_id,
+                                       const char* region_type, int32 data_type,
+                                       const TensorShape* shape) {
+    last_annotation_ = annotation_;
+    annotation_.pending_op_name = op_name;
+    annotation_.pending_step_id = step_id;
+    annotation_.pending_region_type = region_type;
+    annotation_.pending_data_type = data_type;
+    annotation_.pending_shape = shape;
+  }
+
+  ~ScopedMemoryDebugAnnotation() { annotation_ = last_annotation_; }
 
  private:
-  // Stores the previous value of pending_op_name in case the annotations are
-  // nested.
-  const char* last_op_name_ = nullptr;
+  void CleanupAnnotation() {
+    annotation_.pending_op_name = nullptr;
+    annotation_.pending_step_id = 0;
+    annotation_.pending_region_type = nullptr;
+    annotation_.pending_data_type = 0;
+    annotation_.pending_shape = nullptr;
+  }
+
+  // Stores the current annotations.
+  static thread_local MemoryDebugAnnotation annotation_;
+
+  // Stores the previous values in case the annotations are nested.
+  MemoryDebugAnnotation last_annotation_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(ScopedMemoryDebugAnnotation);
 };
 
 // Runtime statistics collected by an allocator. Exactly the same as
@@ -109,13 +160,16 @@ struct AllocatorStats {
   // if such a limit is known.
   absl::optional<int64> bytes_reservable_limit;
 
+  int64 largest_free_block_bytes;  // Largest free block's size in heap.
+
   AllocatorStats()
       : num_allocs(0),
         bytes_in_use(0),
         peak_bytes_in_use(0),
         largest_alloc_size(0),
         bytes_reserved(0),
-        peak_bytes_reserved(0) {}
+        peak_bytes_reserved(0),
+        largest_free_block_bytes(0) {}
 
   std::string DebugString() const;
 };

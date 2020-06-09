@@ -28,7 +28,7 @@ namespace xla_hlo {
 namespace {
 
 struct TestMaterializeBroadcastsPass
-    : public FunctionPass<TestMaterializeBroadcastsPass> {
+    : public PassWrapper<TestMaterializeBroadcastsPass, FunctionPass> {
   void runOnFunction() override {
     ConversionTarget conversionTarget(getContext());
     OwningRewritePatternList conversionPatterns;

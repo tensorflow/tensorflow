@@ -863,7 +863,7 @@ XLA_TEST_F(WhileTest, WhileWithDynamicUpdateSlice) {
     // Starts = iteration * 2;
     auto starts = Mul(iteration, ConstantR0<int32>(&builder, 2));
     // UpdateSlice.
-    auto out1 = DynamicUpdateSlice(input, update, starts);
+    auto out1 = DynamicUpdateSlice(input, update, {starts});
 
     Tuple(&builder, {out0, out1});
     body = builder.Build().ConsumeValueOrDie();

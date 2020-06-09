@@ -31,7 +31,7 @@ class DataServiceWorkerImpl {
  public:
   explicit DataServiceWorkerImpl(const std::string& master_address,
                                  const std::string& protocol);
-  virtual ~DataServiceWorkerImpl() {}
+  ~DataServiceWorkerImpl();
 
   // Starts the worker. The worker needs to know its own address so that it can
   // register with the master.
@@ -48,10 +48,16 @@ class DataServiceWorkerImpl {
                     GetElementResponse* response);
 
  private:
+  // Sets master_stub_ if it isn't already set.
+  Status EnsureMasterStubInitialized();
   // Registers the worker with the master.
   Status Register();
+  // Sends task status to the master.
+  Status SendTaskUpdate();
   // Creates an iterator to process a task.
   Status ProcessTaskInternal(const TaskDef& task);
+  // A thread for updating the master with worker status.
+  void HeartbeatThread();
 
   typedef struct Task {
     int64 id;
@@ -68,9 +74,16 @@ class DataServiceWorkerImpl {
   std::string worker_address_;
 
   mutex mu_;
+  int64 worker_id_ TF_GUARDED_BY(mu_);
   std::unique_ptr<MasterService::Stub> master_stub_ TF_GUARDED_BY(mu_);
   // Information about tasks, keyed by task ids.
   absl::flat_hash_map<int64, Task> tasks_ TF_GUARDED_BY(mu_);
+  // List of completed tasks which haven't yet been communicated to the master.
+  std::vector<int64> pending_completed_tasks_ TF_GUARDED_BY(mu_);
+  bool cancelled_ TF_GUARDED_BY(mu_) = false;
+  // Condition variable for notifying the heartbeat thread.
+  condition_variable heartbeat_cv_ TF_GUARDED_BY(mu_);
+  std::unique_ptr<Thread> heartbeat_thread_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DataServiceWorkerImpl);
 };

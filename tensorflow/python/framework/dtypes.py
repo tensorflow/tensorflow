@@ -630,7 +630,8 @@ def as_dtype(type_value):
 
   try:
     return _ANY_TO_TF[type_value]
-  except KeyError:
+  except (KeyError, TypeError):
+    # TypeError indicates that type_value is not hashable.
     pass
 
   if hasattr(type_value, "dtype"):
@@ -638,6 +639,9 @@ def as_dtype(type_value):
       return _NP_TO_TF[np.dtype(type_value.dtype).type]
     except (KeyError, TypeError):
       pass
+
+  if isinstance(type_value, _dtypes.DType):
+    return _INTERN_TABLE[type_value.as_datatype_enum]
 
   raise TypeError("Cannot convert value %r to a TensorFlow DType." %
                   (type_value,))

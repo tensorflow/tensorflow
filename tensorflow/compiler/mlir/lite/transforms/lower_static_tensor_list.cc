@@ -49,7 +49,6 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
-#include "mlir/Support/Functional.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
@@ -76,13 +75,11 @@ class TensorListPatternRewriter : public PatternRewriter {
  public:
   explicit TensorListPatternRewriter(FuncOp fn)
       : PatternRewriter(fn.getContext()) {}
-
-  Operation *insert(Operation *op) override { return OpBuilder::insert(op); }
 };
 
 /// Lower TensorList ops in functions for subsequent legalization.
 struct LowerStaticTensorListPass
-    : public OperationPass<LowerStaticTensorListPass, ModuleOp> {
+    : public PassWrapper<LowerStaticTensorListPass, OperationPass<ModuleOp>> {
   void runOnOperation() override;
 
   // Apply type and op changes within a function.
@@ -580,7 +577,6 @@ struct ConvertTensorListResize
         ArrayRef<Value>({input_handle, input_shape, size_diff, size}),
         /*then_branch=*/rewriter.getSymbolRefAttr(then_branch_op),
         /*else_branch=*/rewriter.getSymbolRefAttr(else_branch_op),
-        /*output_shapes=*/rewriter.getStrArrayAttr({"{}"}),
         /*is_stateless=*/rewriter.getBoolAttr(true));
     return success();
   }
@@ -720,7 +716,7 @@ struct ConvertTensorListStack
         RankedTensorType::get({-1}, rewriter.getIntegerType(32));
     auto new_shape = rewriter.create<TF::ShapeOp>(loc, shape_type, input);
     SmallVector<int64_t, 8> output_shape = {op.num_elements().getSExtValue()};
-    for (auto dim : dense_elem_attr.getIntValues())
+    for (const auto &dim : dense_elem_attr.getIntValues())
       output_shape.push_back(dim.getSExtValue());
     RankedTensorType result_type =
         RankedTensorType::get(output_shape, getElementTypeOrSelf(input));
@@ -841,7 +837,8 @@ LogicalResult LowerStaticTensorListPass::RewriteFunction(
   // TensorFlow operations that doesn't have operands and results of type
   // variant are legal. Here, we don't distinguish between variants encoding
   // TensorList or some other type as that information is not available here.
-  // This constraint should be relaxed to support other variant types in TFLite.
+  // Partial legalization is used below to still allow ops with variant types
+  // still.
   auto is_legal = [](Operation *op) {
     auto is_not_variant = [](Type ty) {
       return !ty.cast<ShapedType>().getElementType().isa<TF::VariantType>();
@@ -862,6 +859,7 @@ LogicalResult LowerStaticTensorListPass::RewriteFunction(
   target.addLegalOp<ConstantOp>();
   target.addLegalOp<FuncOp>();
   target.addLegalOp<ReturnOp>();
+  target.addLegalOp<TFL::CustomOp>();
   // Register fused LSTM/RNN ops as legal.
   target.addLegalOp<TFL::LSTMOp>();
   target.addLegalOp<TFL::UnidirectionalSequenceLSTMOp>();
@@ -875,7 +873,7 @@ LogicalResult LowerStaticTensorListPass::RewriteFunction(
                   ConvertTensorListPushBack, ConvertTensorListReserve,
                   ConvertTensorListSetItem, ConvertTensorListStack,
                   ConvertTensorListResize, ConvertWhile>(context);
-  return applyFullConversion(func, target, patterns);
+  return applyPartialConversion(func, target, patterns);
 }
 
 void LowerStaticTensorListPass::runOnOperation() {
@@ -906,7 +904,8 @@ void LowerStaticTensorListPass::runOnOperation() {
 
 /// Creates an instance of the TensorFlow Lite dialect LowerStaticTensorList
 /// pass.
-std::unique_ptr<OpPassBase<ModuleOp>> TFL::CreateLowerStaticTensorListPass() {
+std::unique_ptr<OperationPass<ModuleOp>>
+TFL::CreateLowerStaticTensorListPass() {
   return std::make_unique<LowerStaticTensorListPass>();
 }
 

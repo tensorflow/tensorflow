@@ -36,7 +36,8 @@ struct PassConfig {
         form_clusters(false),
         unfold_batch_matmul(true),
         legalize_tf_while(true),
-        shape_inference(true) {}
+        shape_inference(true),
+        runtime_verification(true) {}
 
   // If `emit_builtin_tflite_ops` is true, TF Lite legalization passes will be
   // added, which produces TF Lite ops.
@@ -65,6 +66,8 @@ struct PassConfig {
   bool legalize_tf_while;
   // Whether to do shape inference.
   bool shape_inference;
+  // Whether to do TFLite runtime verification.
+  bool runtime_verification;
 };
 
 }  // namespace TFL

@@ -481,37 +481,31 @@ Status WriteStringToFile(Env* env, const string& fname,
 
 /// Write binary representation of "proto" to the named file.
 Status WriteBinaryProto(Env* env, const string& fname,
-                        const ::tensorflow::protobuf::MessageLite& proto);
+                        const protobuf::MessageLite& proto);
 
 /// Reads contents of named file and parse as binary encoded proto data
 /// and store into `*proto`.
 Status ReadBinaryProto(Env* env, const string& fname,
-                       ::tensorflow::protobuf::MessageLite* proto);
+                       protobuf::MessageLite* proto);
 
 /// Write the text representation of "proto" to the named file.
 Status WriteTextProto(Env* env, const string& fname,
-                      const ::tensorflow::protobuf::Message& proto);
+                      const protobuf::Message& proto);
 
 /// Read contents of named file and parse as text encoded proto data
 /// and store into `*proto`.
-template <typename T, typename std::enable_if<!std::is_base_of<
-                          protobuf::Message, T>::value>::type* = nullptr>
-Status ReadTextProto(Env* env, const string& fname, T* proto) {
+inline Status ReadTextProto(Env* /* env */, const string& /* fname */,
+                            protobuf::MessageLite* /* proto */) {
   return errors::Unimplemented("Can't parse text protos with protolite.");
 }
-
-Status ReadTextProto(Env* env, const string& fname,
-                     ::tensorflow::protobuf::Message* proto);
+Status ReadTextProto(Env* env, const string& fname, protobuf::Message* proto);
 
 /// Read contents of named file and parse as either text or binary encoded proto
 /// data and store into `*proto`.
 Status ReadTextOrBinaryProto(Env* env, const string& fname,
-#if !defined(TENSORFLOW_LITE_PROTOS)
-                             ::tensorflow::protobuf::Message* proto
-#else
-                             ::tensorflow::protobuf::MessageLite* proto
-#endif
-);
+                             protobuf::Message* proto);
+Status ReadTextOrBinaryProto(Env* env, const string& fname,
+                             protobuf::MessageLite* proto);
 
 // START_SKIP_DOXYGEN
 

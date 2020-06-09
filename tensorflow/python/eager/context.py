@@ -263,7 +263,8 @@ class LogicalDevice(
 @tf_export("config.LogicalDeviceConfiguration",
            "config.experimental.VirtualDeviceConfiguration")
 class LogicalDeviceConfiguration(
-    collections.namedtuple("LogicalDeviceConfiguration", ["memory_limit"])):
+    collections.namedtuple("LogicalDeviceConfiguration",
+                           ["memory_limit", "experimental_priority"])):
   """Configuration class for a logical devices.
 
   The class specifies the parameters to configure a `tf.config.PhysicalDevice`
@@ -276,10 +277,15 @@ class LogicalDeviceConfiguration(
   Fields:
     memory_limit: (optional) Maximum memory (in MB) to allocate on the virtual
       device. Currently only supported for GPUs.
+    experimental_priority: (optional) Priority to assign to a virtual device.
+      Lower values have higher priorities and 0 is the default.
+      Within a physical GPU, the GPU scheduler will prioritize ops on virtual
+      devices with higher priority. Currently only supported for Nvidia GPUs.
   """
 
-  def __new__(cls, memory_limit=None):
-    return super(LogicalDeviceConfiguration, cls).__new__(cls, memory_limit)
+  def __new__(cls, memory_limit=None, experimental_priority=None):
+    return super(LogicalDeviceConfiguration,
+                 cls).__new__(cls, memory_limit, experimental_priority)
 
 
 @tf_export("config.PhysicalDevice")
@@ -1019,12 +1025,19 @@ class Context(object):
       if self._virtual_device_map:
         vdevs = self._virtual_device_map.get(dev, [])
         device_limits = []
+        priority = []
         for virt_dev in vdevs:
           device_limits.append(virt_dev.memory_limit)
+          if virt_dev.experimental_priority is not None:
+            priority.append(virt_dev.experimental_priority)
+        # If priority is specified, it must be specified for all virtual
+        # devices.
+        if priority and len(device_limits) != len(priority):
+          raise ValueError("priority must be specified for all virtual devices")
 
         virtual_devices.append(
             config_pb2.GPUOptions.Experimental.VirtualDevices(
-                memory_limit_mb=device_limits))
+                memory_limit_mb=device_limits, priority=priority))
 
     # Only compute growth if virtual devices have not been configured and we
     # have GPUs
@@ -1115,6 +1128,29 @@ class Context(object):
     function_def.ParseFromString(proto_data)
 
     return function_def
+
+  def register_custom_device(self, device_capsule, device_name,
+                             device_info_capsule):
+    """Calls TFE_RegisterCustomDevice. See the non-member function."""
+    self.ensure_initialized()
+    pywrap_tfe.TFE_Py_RegisterCustomDevice(self._handle, device_capsule,
+                                           device_name, device_info_capsule)
+
+  def pack_eager_tensors(self, tensors):
+    """Pack multiple `EagerTensor`s of the same dtype and shape.
+
+    Args:
+      tensors: a list of EagerTensors to pack.
+
+    Returns:
+      A packed EagerTensor.
+    """
+    self.ensure_initialized()
+    if self._lazy_remote_inputs_copy is not None and (
+        not self._lazy_remote_inputs_copy):
+      raise ValueError("Packing eager tensors is not supported when "
+                       "lazy_remote_inputs_copy is disabled.")
+    return pywrap_tfe.TFE_Py_PackEagerTensors(self._handle, tensors)
 
   def remove_function(self, name):
     """Remove a function from the context.
@@ -1371,6 +1407,9 @@ class Context(object):
         if vdev.memory_limit is not None:
           raise ValueError("Setting memory limit on CPU virtual devices is "
                            "currently not supported")
+        if vdev.experimental_priority is not None:
+          raise ValueError("Setting experimental_priority on CPU virtual "
+                           " devices is currently not supported")
     elif dev.device_type == "GPU":
       for vdev in virtual_devices:
         if vdev.memory_limit is None:
@@ -1502,9 +1541,11 @@ class Context(object):
     return self.config.allow_soft_placement
 
   @soft_device_placement.setter
-  def soft_device_placement(self, enabled):
-    self._soft_device_placement = enabled
+  def soft_device_placement(self, enable):
+    if self._context_handle is not None:
+      pywrap_tfe.TFE_ContextSetSoftDevicePlacement(self._handle, enable)
 
+    self._soft_device_placement = enable
     self._thread_local_data.function_call_options = None
 
   @property
@@ -1512,15 +1553,11 @@ class Context(object):
     return self.config.log_device_placement
 
   @log_device_placement.setter
-  def log_device_placement(self, enabled):
-    if self._log_device_placement == enabled:
-      return
-
+  def log_device_placement(self, enable):
     if self._context_handle is not None:
-      raise RuntimeError(
-          "Device placement logging must be set at program startup")
+      pywrap_tfe.TFE_ContextSetLogDevicePlacement(self._handle, enable)
 
-    self._log_device_placement = enabled
+    self._log_device_placement = enable
     self._thread_local_data.function_call_options = None
 
   @property
@@ -1786,7 +1823,7 @@ def executing_eagerly():
   cases.
 
   *  Executing inside `tf.function`, unless under `tf.init_scope` or
-     `tf.config.experimental_run_functions_eagerly(True)` is previously called.
+     `tf.config.run_functions_eagerly(True)` is previously called.
   *  Executing inside a transformation function for `tf.dataset`.
   *  `tf.compat.v1.disable_eager_execution()` is called.
 
@@ -1808,8 +1845,8 @@ def executing_eagerly():
 
   Inside `tf.function` after
 
-  `tf.config.experimental_run_functions_eagerly(True)` is called:
-  >>> tf.config.experimental_run_functions_eagerly(True)
+  `tf.config.run_functions_eagerly(True)` is called:
+  >>> tf.config.run_functions_eagerly(True)
   >>> @tf.function
   ... def fn():
   ...   with tf.init_scope():
@@ -1818,7 +1855,7 @@ def executing_eagerly():
   >>> fn()
   True
   True
-  >>> tf.config.experimental_run_functions_eagerly(False)
+  >>> tf.config.run_functions_eagerly(False)
 
   Inside a transformation function for `tf.dataset`:
 
@@ -1851,7 +1888,7 @@ def executing_eagerly_v1():
   this API might return `False` in the following use cases.
 
   *  Executing inside `tf.function`, unless under `tf.init_scope` or
-     `tf.config.experimental_run_functions_eagerly(True)` is previously called.
+     `tf.config.run_functions_eagerly(True)` is previously called.
   *  Executing inside a transformation function for `tf.dataset`.
   *  `tf.compat.v1.disable_eager_execution()` is called.
 
@@ -1874,9 +1911,9 @@ def executing_eagerly_v1():
   False
 
   Inside `tf.function`
-  after  `tf.config.experimental_run_functions_eagerly(True)` is called:
+  after  `tf.config.run_functions_eagerly(True)` is called:
 
-  >>> tf.config.experimental_run_functions_eagerly(True)
+  >>> tf.config.run_functions_eagerly(True)
   >>> @tf.function
   ... def fn():
   ...   with tf.init_scope():
@@ -1885,7 +1922,7 @@ def executing_eagerly_v1():
   >>> fn()
   True
   True
-  >>> tf.config.experimental_run_functions_eagerly(False)
+  >>> tf.config.run_functions_eagerly(False)
 
   Inside a transformation function for `tf.dataset`:
 
@@ -2285,6 +2322,32 @@ def remove_function(name):
 
 def get_function_def(name):
   return context().get_function_def(name)
+
+
+def register_custom_device(device_capsule, device_name, device_info_capsule):
+  """Calls TFE_RegisterCustomDevice to register a custom device with Python.
+
+  Enables using C extensions specifying a custom device from Python. See the
+  experimental eager C API in tensorflow/c/eager/c_api_experimental.h for
+  details.
+
+  Note that custom devices are not currently supported inside `tf.function`s.
+
+  Args:
+    device_capsule: A PyCapsule with the name set to 'TFE_CustomDevice'
+      containing a pointer to a TFE_CustomDevice struct. The capsule retains
+      ownership of the memory.
+    device_name: A string indicating the name to register the custom device
+      under, e.g. '/job:localhost/replica:0/task:0/device:CUSTOM:0'. It may
+      subsequently be passed to `with tf.device(...):`.
+    device_info_capsule: A PyCapsule with the name set to
+      'TFE_CustomDevice_DeviceInfo' containing a pointer to a device-specific
+      struct with the initial state of the custom device (the void* device_info
+      argument to TFE_RegisterCustomDevice). This method takes ownership of the
+      memory and clears the capsule destructor.
+  """
+  context().register_custom_device(device_capsule, device_name,
+                                   device_info_capsule)
 
 
 # Not every user creates a Context via context.context()

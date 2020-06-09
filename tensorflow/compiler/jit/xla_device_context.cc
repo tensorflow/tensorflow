@@ -69,6 +69,7 @@ absl::optional<AllocatorStats> XlaDeviceAllocator::GetStats() {
   tf_stats.bytes_reserved = se_stats->bytes_reserved;
   tf_stats.peak_bytes_reserved = se_stats->peak_bytes_reserved;
   tf_stats.bytes_reservable_limit = se_stats->bytes_reservable_limit;
+  tf_stats.largest_free_block_bytes = se_stats->largest_free_block_bytes;
   return tf_stats;
 }
 

@@ -202,7 +202,7 @@ class StridedSliceOp : public XlaOpKernel {
           ctx, output_elements == input_elements_sliced,
           errors::InvalidArgument(
               "The number of output elements ", output_elements,
-              "  has to equal to number of input elements that are sliced ",
+              " has to equal to number of input elements that are sliced ",
               input_elements_sliced, " when input indices are not constant."));
 
       for (int64 i = 0; i < ctx->InputShape("begin").dims(); ++i) {

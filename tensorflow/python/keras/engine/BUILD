@@ -21,9 +21,8 @@ py_library(
     srcs = [
         "__init__.py",
         "compile_utils.py",
+        "functional.py",
         "input_layer.py",
-        "network.py",
-        "node.py",
         "partial_batch_padding_handler.py",
         "saving.py",
         "sequential.py",
@@ -41,6 +40,8 @@ py_library(
         ":base_preprocessing_layer",
         ":data_adapter",
         ":input_spec",
+        ":keras_tensor",
+        ":node",
         "//tensorflow/python:composite_tensor_utils",
         "//tensorflow/python:py_checkpoint_reader",
         "//tensorflow/python/data",
@@ -110,30 +111,56 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":base_layer_utils",
-        "//tensorflow/core:protos_all_py",
+        ":input_spec",
+        ":node",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:auto_control_deps",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:func_graph",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:tensor_util",
         "//tensorflow/python:tf2",
-        "//tensorflow/python/data",
-        "//tensorflow/python/distribute:distribute_coordinator",
+        "//tensorflow/python:tf_export",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/autograph/core",
+        "//tensorflow/python/autograph/impl",
         "//tensorflow/python/distribute:distribute_lib",
-        "//tensorflow/python/distribute:input_lib",
-        "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/distribute:sharded_variable",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:execute",
+        "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:constraints",
+        "//tensorflow/python/keras:initializers",
+        # TODO(keras-team): Fix the cyclar deps between layer and metrics.
+        # "//tensorflow/python/keras:metrics",
         "//tensorflow/python/keras:regularizers",
-        "//tensorflow/python/keras/distribute",
         "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
         "//tensorflow/python/keras/mixed_precision/experimental:loss_scale_optimizer",
         "//tensorflow/python/keras/mixed_precision/experimental:policy",
+        "//tensorflow/python/keras/saving",
         "//tensorflow/python/keras/utils:generic_utils",
         "//tensorflow/python/keras/utils:layer_utils",
         "//tensorflow/python/keras/utils:tf_utils",
         "//tensorflow/python/keras/utils:version_utils",
         "//tensorflow/python/module",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/training/tracking",
+        "//tensorflow/python/training/tracking:base",
         "//tensorflow/python/training/tracking:data_structures",
+        "//tensorflow/python/training/tracking:layer_utils",
         "//tensorflow/tools/docs:doc_controls",
-        "@six_archive//:six",
     ],
 )
 
@@ -164,6 +191,18 @@ py_library(
 )
 
 py_library(
+    name = "keras_tensor",
+    srcs = ["keras_tensor.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:tensor_spec",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
     name = "base_preprocessing_layer",
     srcs = [
         "base_preprocessing_layer.py",
@@ -177,6 +216,22 @@ py_library(
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/module",
+    ],
+)
+
+py_library(
+    name = "node",
+    srcs = ["node.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":base_layer_utils",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:util",
+        "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras/utils:tf_utils",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -292,7 +347,6 @@ tf_py_test(
         "manual",
         "no_rocm",
         "nomac",  # TODO(mihaimaruseac): b/127695564
-        "notap",  # TODO(b/152990697)
         "notsan",
     ],
     deps = [
@@ -479,9 +533,9 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "network_test",
+    name = "functional_test",
     size = "medium",
-    srcs = ["network_test.py"],
+    srcs = ["functional_test.py"],
     python_version = "PY3",
     shard_count = 8,
     tags = [
@@ -511,6 +565,23 @@ tf_py_test(
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//tensorflow/python/training/tracking:util",
         "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "node_test",
+    size = "medium",
+    srcs = ["node_test.py"],
+    python_version = "PY3",
+    shard_count = 3,
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
+    deps = [
+        ":base_layer",
+        ":engine",
+        "//tensorflow/python/keras:testing_utils",
+        "//tensorflow/python/keras/utils:layer_utils",
     ],
 )
 
@@ -585,6 +656,23 @@ tf_py_test(
     ],
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "deferred_sequential_test",
+    size = "small",
+    srcs = ["deferred_sequential_test.py"],
+    python_version = "PY3",
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",

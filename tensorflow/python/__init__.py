@@ -30,51 +30,14 @@ import importlib
 import sys
 import traceback
 
-# TODO(drpng): write up instructions for editing this file in a doc and point to
-# the doc instead.
-# If you want to edit this file to expose modules in public tensorflow API, you
-# need to follow these steps:
-# 1. Consult with tensorflow team and get approval for adding a new API to the
-#    public interface.
-# 2. Document the module in the gen_docs_combined.py.
-# 3. Import the module in the main tensorflow namespace by adding an import
-#    statement in this file.
-# 4. Sanitize the entry point by making sure that your module does not expose
-#    transitively imported modules used for implementation, such as os, sys.
+# We aim to keep this file minimal and ideally remove completely.
+# If you are adding a new file with @tf_export decorators,
+# import it in modules_with_exports.py instead.
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,g-bad-import-order,g-import-not-at-top
 
-import numpy as np
-
-from tensorflow.python import pywrap_tensorflow
-
-# Protocol buffers
-from tensorflow.core.framework.graph_pb2 import *
-from tensorflow.core.framework.node_def_pb2 import *
-from tensorflow.core.framework.summary_pb2 import *
-from tensorflow.core.framework.attr_value_pb2 import *
-from tensorflow.core.protobuf.meta_graph_pb2 import TensorInfo
-from tensorflow.core.protobuf.meta_graph_pb2 import MetaGraphDef
-from tensorflow.core.protobuf.config_pb2 import *
-from tensorflow.core.protobuf.tensorflow_server_pb2 import *
-from tensorflow.core.util.event_pb2 import *
-
-# Framework
-from tensorflow.python.framework.framework_lib import *  # pylint: disable=redefined-builtin
-from tensorflow.python.framework.versions import *
-from tensorflow.python.framework import config
-from tensorflow.python.framework import errors
-from tensorflow.python.framework import graph_util
-
-# Session
-from tensorflow.python.client.client_lib import *
-
-# Ops
-from tensorflow.python.ops.standard_ops import *
-
-# Namespaces
-from tensorflow.python.ops import initializers_ns as initializers
+from tensorflow.python.eager import context
 
 # pylint: enable=wildcard-import
 
@@ -85,6 +48,7 @@ from tensorflow.python import keras
 from tensorflow.python.feature_column import feature_column_lib as feature_column
 from tensorflow.python.layers import layers
 from tensorflow.python.module import module
+from tensorflow.python.ops import bincount_ops
 from tensorflow.python.ops import bitwise_ops as bitwise
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import image_ops as image
@@ -151,8 +115,8 @@ from tensorflow.python.framework.ops import enable_eager_execution
 # Check whether TF2_BEHAVIOR is turned on.
 from tensorflow.python.eager import monitoring as _monitoring
 from tensorflow.python import tf2 as _tf2
-_tf2_gauge = _monitoring.BoolGauge('/tensorflow/api/tf2_enable',
-                                   'Environment variable TF2_BEHAVIOR is set".')
+_tf2_gauge = _monitoring.BoolGauge(
+    '/tensorflow/api/tf2_enable', 'Environment variable TF2_BEHAVIOR is set".')
 _tf2_gauge.get_cell().set(_tf2.enabled())
 
 # Necessary for the symbols in this module to be taken into account by
@@ -184,30 +148,6 @@ nn.raw_rnn = rnn.raw_rnn
 nn.bidirectional_dynamic_rnn = rnn.bidirectional_dynamic_rnn
 nn.static_state_saving_rnn = rnn.static_state_saving_rnn
 nn.rnn_cell = rnn_cell
-
-# Export protos
-# pylint: disable=undefined-variable
-tf_export(v1=['AttrValue'])(AttrValue)
-tf_export(v1=['ConfigProto'])(ConfigProto)
-tf_export(v1=['Event', 'summary.Event'])(Event)
-tf_export(v1=['GPUOptions'])(GPUOptions)
-tf_export(v1=['GraphDef'])(GraphDef)
-tf_export(v1=['GraphOptions'])(GraphOptions)
-tf_export(v1=['HistogramProto'])(HistogramProto)
-tf_export(v1=['LogMessage'])(LogMessage)
-tf_export(v1=['MetaGraphDef'])(MetaGraphDef)
-tf_export(v1=['NameAttrList'])(NameAttrList)
-tf_export(v1=['NodeDef'])(NodeDef)
-tf_export(v1=['OptimizerOptions'])(OptimizerOptions)
-tf_export(v1=['RunMetadata'])(RunMetadata)
-tf_export(v1=['RunOptions'])(RunOptions)
-tf_export(v1=['SessionLog', 'summary.SessionLog'])(SessionLog)
-tf_export(v1=['Summary', 'summary.Summary'])(Summary)
-tf_export(v1=['summary.SummaryDescription'])(SummaryDescription)
-tf_export(v1=['SummaryMetadata'])(SummaryMetadata)
-tf_export(v1=['summary.TaggedRunMetadata'])(TaggedRunMetadata)
-tf_export(v1=['TensorInfo'])(TensorInfo)
-# pylint: enable=undefined-variable
 
 # Special dunders that we choose to export:
 _exported_dunders = set([

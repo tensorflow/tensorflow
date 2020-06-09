@@ -117,16 +117,18 @@ std::unique_ptr<HloModule> HloTestBase::CreateNewUnverifiedModule(
 }
 
 std::unique_ptr<VerifiedHloModule> HloTestBase::CreateNewVerifiedModule(
-    const string& name) {
+    const string& name, int64 replica_count) {
   return absl::make_unique<VerifiedHloModule>(
-      name, GetModuleConfigForTest(), verifier_layout_sensitive_,
+      name, GetModuleConfigForTest(replica_count), verifier_layout_sensitive_,
       allow_mixed_precision_in_hlo_verifier_,
       backend().compiler()->ShapeSizeBytesFunction());
 }
 
 StatusOr<std::unique_ptr<VerifiedHloModule>>
-HloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text) {
-  return ParseAndReturnVerifiedModule(hlo_text, GetModuleConfigForTest());
+HloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text,
+                                          int64 replica_count) {
+  return ParseAndReturnVerifiedModule(hlo_text,
+                                      GetModuleConfigForTest(replica_count));
 }
 
 StatusOr<std::unique_ptr<VerifiedHloModule>>
@@ -161,6 +163,16 @@ PrecisionConfig HloTestBase::DefaultPrecisionConfig(int operands) {
   precision_config.mutable_operand_precision()->Resize(
       operands, PrecisionConfig::DEFAULT);
   return precision_config;
+}
+
+void HloTestBase::SetAotFastMathDebugOptions(DebugOptions* options) {
+  options->set_xla_cpu_enable_fast_math(true);
+  options->set_xla_gpu_enable_fast_min_max(true);
+  options->set_xla_cpu_enable_fast_min_max(true);
+  options->set_xla_cpu_fast_math_honor_nans(false);
+  options->set_xla_cpu_fast_math_honor_infs(false);
+  options->set_xla_cpu_fast_math_honor_functions(false);
+  options->set_xla_cpu_fast_math_honor_division(false);
 }
 
 DebugOptions HloTestBase::GetDebugOptionsForTest() {

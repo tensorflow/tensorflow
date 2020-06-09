@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/device_memory.h"
 
 namespace xla {
 
@@ -47,6 +48,12 @@ class CpuTransferManager : public GenericTransferManager {
   bool CanShapedBufferBeAccessedNow(
       se::StreamExecutor* executor,
       const ShapedBuffer& device_buffer) const override {
+    return true;
+  }
+
+  bool CanBufferBeAccessedNow(
+      se::StreamExecutor* executor,
+      const se::DeviceMemoryBase& device_buffer) const override {
     return true;
   }
 

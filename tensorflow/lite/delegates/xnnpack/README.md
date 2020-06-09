@@ -1,15 +1,48 @@
 # XNNPACK backend for TensorFlow Lite
 
 XNNPACK is a highly optimized library of floating-point neural network
-inference operators for ARM, WebAssembly, and x86 platforms. This document
-describes how to use the XNNPACK library as a backend for TensorFlow Lite.
+inference operators for ARM, x86, and WebAssembly architectures in Android, iOS,
+Windows, Linux, macOS, and Emscripten environments. This document describes how
+to use the XNNPACK library as an inference engine for TensorFlow Lite.
 
-## Enabling XNNPACK backend in TensorFlow Lite models
+## Using XNNPACK engine with TensorFlow Lite interpreter
 
 XNNPACK integrates with TensorFlow Lite interpreter through the delegation
-mechanism. To leverage XNNPACK library for acceleration, the users need to
-create an XNNPACK delegate with the `TfLiteXNNPackDelegateCreate` function,
-and call `Interpreter::ModifyGraphWithDelegate` to delegate supported parts of
+mechanism. There are three methods to enable XNNPACK engine in TensorFlow Lite.
+
+### Enable XNNPACK via Bazel build flags (recommended)
+
+When building TensorFlow Lite with Bazel, add
+`--define tflite_with_xnnpack=true`, and the TensorFlow Lite interpreter will
+use XNNPACK engine by default.
+
+The exact command depends on the target platform, e.g. for Android AAR you'd use
+
+```
+bazel build -c opt --fat_apk_cpu=x86,x86_64,arm64-v8a,armeabi-v7a \
+  --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
+  --define tflite_with_xnnpack=true \
+  //tensorflow/lite/java:tensorflow-lite
+```
+
+### Enable XNNPACK via additional dependency
+
+Another way to enable XNNPACK is to build and link the
+`//tensorflow/lite:tflite_with_xnnpack` target into your application alongside
+the TensorFlow Lite framework.
+
+This method works on platforms which support POSIX-style weak symbols (Android,
+iOS, Linux, Mac, but **NOT** Windows).
+
+### Enable XNNPACK via low-level delegate API (not recommended)
+
+While it is possible to use low-level delegate API to enable XNNPACK, this
+method is **NOT RECOMMENDED** unless you need to use TensorFlow Lite both with
+and without XNNPACK (e.g. for benchmarking).
+
+With low-level delegate API users create an XNNPACK delegate with the
+`TfLiteXNNPackDelegateCreate` function, and then call
+`Interpreter::ModifyGraphWithDelegate` to delegate supported parts of
 the model to the XNNPACK delegate. The users must destroy the delegate with
 `TfLiteXNNPackDelegateDelete` **after** releasing the TensorFlow Lite
 interpreter. The snippet below illustrates the typical usage:
@@ -59,8 +92,6 @@ Below is the list of current operators and limitations:
 * Only addition with two inputs is supported.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
-* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
-  output are not supported.
 
 ### `AVERAGE_POOL_2D`
 
@@ -68,8 +99,6 @@ Below is the list of current operators and limitations:
 * 1x1 pooling is not supported.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
-* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
-  output are not supported.
 
 ### `CONV_2D`
 
@@ -78,8 +107,6 @@ Below is the list of current operators and limitations:
 * Both filter and bias must be static (use `kTfLiteMmapRo` allocation type).
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
-* Dynamically allocated (with `kTfLiteDynamic` allocation type) input and output
-  are not supported.
 
 ### `DEPTHWISE_CONV_2D`
 
@@ -88,20 +115,28 @@ Below is the list of current operators and limitations:
 * Both filter and bias must be static (use `kTfLiteMmapRo` allocation type).
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
-* Dynamically allocated (with `kTfLiteDynamic` allocation type) input and output
-  are not supported.
+
+### `DIV`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
+
+### `FULLY_CONNECTED`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Bias is mandatory.
+* Both filter and bias must be static (use `kTfLiteMmapRo` allocation type).
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
 
 ### `HARD_SWISH`
 
 * Inputs and outputs must be in 32-bit floating-point format.
-* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
-  output are not supported.
 
 ### `LOGISTIC`
 
 * Inputs and outputs must be in 32-bit floating-point format.
-* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
-  output are not supported.
 
 ### `MAX_POOL_2D`
 
@@ -109,16 +144,27 @@ Below is the list of current operators and limitations:
 * 1x1 pooling is not supported.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
-* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
-  output are not supported.
+
+### `MAXIMUM`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
+### `MINIMUM`
+
+* Inputs and outputs must be in 32-bit floating-point format.
 
 ### `MUL`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
-* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
-  output are not supported.
+
+### `PAD`
+
+* The first input and the output must be in 32-bit floating-point format.
+* The second input (the input with the padding specification) must be static
+  (use `kTfLiteMmapRo` allocation type).
+* The numbers of padding elements must be non-negative.
 
 ### `PRELU`
 
@@ -126,36 +172,38 @@ Below is the list of current operators and limitations:
 * Slope must be static (use `kTfLiteMmapRo` allocation type).
 * Slope must be either a 1D tensor, or have all its non-channel dimensions equal
   1.
-* Dynamically allocated (with `kTfLiteDynamic` allocation type) input and output
-  are not supported.
 
 ### `RELU`
 
 * Inputs and outputs must be in 32-bit floating-point format.
-* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
-  output are not supported.
 
 ### `RELU6`
 
 * Inputs and outputs must be in 32-bit floating-point format.
-* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
-  output are not supported.
 
 ### `RELU_N1_TO_1`
 
 * Inputs and outputs must be in 32-bit floating-point format.
-* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
-  output are not supported.
 
 ### `SOFTMAX`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 * Only `beta = 1.0` is supported.
-* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
-  output are not supported.
+
+### `SQUARED_DIFFERENCE`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
+### `SUB`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
 
 ### Other limitations
 
+* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
+  outputs are not supported.
 * Resizing model inputs (via `Interpreter::ResizeInputTensor`) is supported, but
   cause a complete reinitialization of the delegate instance, which has
   considerable overhead.

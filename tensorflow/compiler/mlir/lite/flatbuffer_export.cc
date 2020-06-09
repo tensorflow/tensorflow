@@ -191,7 +191,8 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
 
 static bool IsConst(Operation* op) {
   return isa<mlir::ConstantOp>(op) || isa<mlir::TF::ConstOp>(op) ||
-         isa<tfl::ConstOp>(op) || isa<tfl::QConstOp>(op);
+         isa<tfl::ConstOp>(op) || isa<tfl::QConstOp>(op) ||
+         isa<tfl::SparseConstOp>(op) || isa<tfl::SparseQConstOp>(op);
 }
 
 template <typename T>
@@ -403,17 +404,8 @@ class Translator {
   BufferOffset<tflite::Operator> BuildNumericVerifyOperator(
       mlir::TFL::NumericVerifyOp op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
-  Optional<BufferOffset<tflite::Operator>>
-  BuildConvolution2DTransposeBiasOperator(
-      Operation* inst, mlir::TFL::Convolution2DTransposeBiasOp op,
-      const std::vector<int32_t>& operands,
-      const std::vector<int32_t>& results);
-  Optional<BufferOffset<tflite::Operator>> BuildMaxPoolingWithArgMax2DOperator(
-      Operation* inst, mlir::TFL::MaxPoolingWithArgMax2DOp op,
-      const std::vector<int32_t>& operands,
-      const std::vector<int32_t>& results);
-  Optional<BufferOffset<tflite::Operator>> BuildMaxUnpooling2DOperator(
-      Operation* inst, mlir::TFL::MaxUnpooling2DOp op,
+  BufferOffset<tflite::Operator> BuildCustomOperator(
+      Operation* inst, mlir::TFL::CustomOp op,
       const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
@@ -435,7 +427,7 @@ class Translator {
   // Builds operator for the given operation with specified operand and result
   // tensor indices. Emits an error and returns llvm::None on failure.
   Optional<BufferOffset<tflite::Operator>> BuildOperator(
-      Operation* inst, const std::vector<int32_t>& operands,
+      Operation* inst, std::vector<int32_t> operands,
       const std::vector<int32_t>& results,
       const std::vector<int32_t>& intermediates);
 
@@ -463,6 +455,9 @@ class Translator {
 
   // Returns a unique name for `val`.
   std::string UniqueName(mlir::Value val);
+
+  BufferOffset<tflite::SparsityParameters> BuildSparsityParameters(
+      const mlir::TFL::SparsityParameterAttr& s_attr);
 
   ModuleOp module_;
 
@@ -510,9 +505,9 @@ Optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
   } else if (auto cst = dyn_cast<tfl::QConstOp>(inst)) {
     attr = cst.value();
   } else if (auto cst = dyn_cast<tfl::SparseConstOp>(inst)) {
-    attr = cst.value();
+    attr = cst.compressed_data();
   } else if (auto cst = dyn_cast<tfl::SparseQConstOp>(inst)) {
-    attr = cst.value();
+    attr = cst.compressed_data();
   } else {
     return empty_buffer_;
   }
@@ -599,23 +594,22 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
 
   std::vector<int32_t> shape;
   std::vector<int32_t> shape_signature;
+  auto* inst = value.getDefiningOp();
   if (type.hasStaticShape()) {
     llvm::ArrayRef<int64_t> shape_ref = type.getShape();
     if (mlir::failed(check_shape(shape_ref))) return llvm::None;
 
     shape = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
-  } else if (auto* inst = value.getDefiningOp()) {
-    if (IsConst(inst)) {
-      // Const op can have a result of dynamic shaped type (e.g. due to constant
-      // folding), but we can still derive the shape of a constant tensor for
-      // its attribute type.
-      mlir::Attribute tensor_attr = inst->getAttr("value");
-      llvm::ArrayRef<int64_t> shape_ref =
-          tensor_attr.getType().cast<TensorType>().getShape();
-      if (mlir::failed(check_shape(shape_ref))) return llvm::None;
+  } else if (inst && IsConst(inst)) {
+    // Const op can have a result of dynamic shaped type (e.g. due to constant
+    // folding), but we can still derive the shape of a constant tensor for
+    // its attribute type.
+    mlir::Attribute tensor_attr = inst->getAttr("value");
+    llvm::ArrayRef<int64_t> shape_ref =
+        tensor_attr.getType().cast<TensorType>().getShape();
+    if (mlir::failed(check_shape(shape_ref))) return llvm::None;
 
-      shape = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
-    }
+    shape = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
   } else if (type.hasRank()) {
     llvm::ArrayRef<int64_t> shape_ref = type.getShape();
     if (mlir::failed(check_shape(shape_ref))) return llvm::None;
@@ -627,11 +621,12 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
     shape_signature = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
   }
 
+  BufferOffset<tflite::SparsityParameters> s_params = 0;
   if (auto* inst = value.getDefiningOp()) {
     if (auto cst = dyn_cast<tfl::SparseConstOp>(inst)) {
-      // CreateSparsityParameters(cst.s_param());
+      s_params = BuildSparsityParameters(cst.s_param());
     } else if (auto cst = dyn_cast<tfl::SparseQConstOp>(inst)) {
-      // CreateSparsityParameters(cst.s_param());
+      s_params = BuildSparsityParameters(cst.s_param());
     }
   }
 
@@ -676,12 +671,12 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
     return tflite::CreateTensor(
         builder_, builder_.CreateVector(shape), tflite_element_type,
         (is_variable ? 0 : buffer_idx), builder_.CreateString(name), q_params,
-        /*is_variable=*/is_variable);
+        /*is_variable=*/is_variable, s_params);
   } else {
     return tflite::CreateTensor(
         builder_, builder_.CreateVector(shape), tflite_element_type,
         (is_variable ? 0 : buffer_idx), builder_.CreateString(name), q_params,
-        /*is_variable=*/is_variable, /*sparsity=*/0,
+        /*is_variable=*/is_variable, s_params,
         /*shape_signature=*/builder_.CreateVector(shape_signature));
   }
 }
@@ -768,48 +763,21 @@ BufferOffset<tflite::Operator> Translator::BuildNumericVerifyOperator(
   return BuildCustomOperator(tolerance, "NumericVerify", op, operands, results);
 }
 
-Optional<BufferOffset<tflite::Operator>>
-Translator::BuildConvolution2DTransposeBiasOperator(
-    Operation* inst, mlir::TFL::Convolution2DTransposeBiasOp op,
+BufferOffset<tflite::Operator> Translator::BuildCustomOperator(
+    Operation* inst, mlir::TFL::CustomOp op,
     const std::vector<int32_t>& operands, const std::vector<int32_t>& results) {
-  TfLiteTransposeConvParams conv_params;
-  conv_params.stride_height = op.stride_h().getSExtValue();
-  conv_params.stride_width = op.stride_w().getSExtValue();
-  const auto padding = GetTflitePadding(inst, op.padding());
-  if (padding) {
-    conv_params.padding = *padding;
-    return BuildCustomOperator(conv_params, "Convolution2DTransposeBias", op,
-                               operands, results);
-  }
-
-  return llvm::None;
-}
-
-Optional<BufferOffset<tflite::Operator>>
-Translator::BuildMaxPoolingWithArgMax2DOperator(
-    Operation* inst, mlir::TFL::MaxPoolingWithArgMax2DOp op,
-    const std::vector<int32_t>& operands, const std::vector<int32_t>& results) {
-  const auto pool_params = GetTflitePoolParams(inst, op);
-  if (pool_params) {
-    return BuildCustomOperator(*pool_params, "MaxPoolingWithArgmax2D", op,
-                               operands, results);
-  }
-
-  return llvm::None;
-}
-
-Optional<BufferOffset<tflite::Operator>>
-Translator::BuildMaxUnpooling2DOperator(Operation* inst,
-                                        mlir::TFL::MaxUnpooling2DOp op,
-                                        const std::vector<int32_t>& operands,
-                                        const std::vector<int32_t>& results) {
-  const auto pool_params = GetTflitePoolParams(inst, op);
-  if (pool_params) {
-    return BuildCustomOperator(*pool_params, "MaxUnpooling2D", op, operands,
-                               results);
-  }
-
-  return llvm::None;
+  const std::string attrs =
+      op.custom_option().cast<mlir::OpaqueElementsAttr>().getValue().str();
+  std::vector<uint8_t> custom_option_vector(attrs.size());
+  memcpy(custom_option_vector.data(), attrs.data(), attrs.size());
+  auto opcode_index =
+      GetOpcodeIndex(op.custom_code().str(), tflite::BuiltinOperator_CUSTOM);
+  return tflite::CreateOperator(
+      builder_, opcode_index, builder_.CreateVector(operands),
+      builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
+      /*builtin_options=*/0,
+      builder_.CreateVector<uint8_t>(custom_option_vector),
+      tflite::CustomOptionsFormat_FLEXBUFFERS);
 }
 
 Optional<CustomOptionsOffset> Translator::CreateFlexOpCustomOptions(
@@ -831,11 +799,6 @@ Optional<CustomOptionsOffset> Translator::CreateFlexOpCustomOptions(
 
 Optional<CustomOptionsOffset> Translator::CreateCustomOpCustomOptions(
     const ::tensorflow::NodeDef& node_def, const mlir::Location& loc) {
-  std::string node_def_str;
-  if (!node_def.SerializeToString(&node_def_str)) {
-    return emitError(loc, "failed to serialize tensorflow node_def"),
-           llvm::None;
-  }
   auto flex_builder = CreateFlexBuilderWithNodeAttrs(node_def, loc);
   return builder_.CreateVector(flex_builder->GetBuffer());
 }
@@ -845,9 +808,13 @@ Translator::CreateFlexBuilderWithNodeAttrs(
     const ::tensorflow::NodeDef& node_def, const mlir::Location& loc) {
   auto flex_builder = absl::make_unique<flexbuffers::Builder>();
   size_t map_start = flex_builder->StartMap();
-  for (const auto& pair : node_def.attr()) {
+  using Item = std::pair<std::string, ::tensorflow::AttrValue>;
+  std::vector<Item> attrs(node_def.attr().begin(), node_def.attr().end());
+  std::sort(attrs.begin(), attrs.end(),
+            [](Item& p1, Item& p2) -> bool { return p1.first < p2.first; });
+  for (const Item& pair : attrs) {
     const char* key = pair.first.c_str();
-    const auto& attr = pair.second;
+    const ::tensorflow::AttrValue& attr = pair.second;
     switch (attr.value_case()) {
       case ::tensorflow::AttrValue::kS:
         flex_builder->String(key, attr.s());
@@ -928,7 +895,7 @@ uint32_t Translator::GetOpcodeIndex(const std::string& op_name,
 }
 
 Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
-    Operation* inst, const std::vector<int32_t>& operands,
+    Operation* inst, std::vector<int32_t> operands,
     const std::vector<int32_t>& results,
     const std::vector<int32_t>& intermediates) {
   const auto* dialect = inst->getDialect();
@@ -952,19 +919,8 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
       if (auto verify_op = dyn_cast<mlir::TFL::NumericVerifyOp>(inst)) {
         return BuildNumericVerifyOperator(verify_op, operands, results);
       }
-      if (auto conv_transpose_bias_op =
-              dyn_cast<mlir::TFL::Convolution2DTransposeBiasOp>(inst)) {
-        return BuildConvolution2DTransposeBiasOperator(
-            inst, conv_transpose_bias_op, operands, results);
-      }
-      if (auto max_pooling_with_arg_max_op =
-              dyn_cast<mlir::TFL::MaxPoolingWithArgMax2DOp>(inst)) {
-        return BuildMaxPoolingWithArgMax2DOperator(
-            inst, max_pooling_with_arg_max_op, operands, results);
-      }
-      if (auto max_unpooling_op = dyn_cast<mlir::TFL::MaxUnpooling2DOp>(inst)) {
-        return BuildMaxUnpooling2DOperator(inst, max_unpooling_op, operands,
-                                           results);
+      if (auto custom_op = dyn_cast<mlir::TFL::CustomOp>(inst)) {
+        return BuildCustomOperator(inst, custom_op, operands, results);
       }
       if (auto whileOp = dyn_cast<mlir::TFL::WhileOp>(inst)) {
         if (inst->getNumOperands() != inst->getNumResults()) {
@@ -982,6 +938,15 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
 
     std::string op_name = inst->getName().getStringRef().str();
     uint32_t opcode_index = GetOpcodeIndex(op_name, *builtin_code);
+
+    // If this is TransposeConv we need to do a special case of ignoring the
+    // optional tensor, to allow newly created models to run on old runtimes.
+    if (*builtin_code == tflite::BuiltinOperator_TRANSPOSE_CONV) {
+      if (operands.size() == 4 && operands.at(3) == -1) {
+        operands.pop_back();
+      }
+    }
+
     auto offset = CreateFlatBufferOperator(inst, opcode_index, operands,
                                            results, intermediates, &builder_);
     if (!offset) {
@@ -1051,10 +1016,10 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
       inst->getName().print(os);
       // Print out attributes except for large elementsattributes (which should
       // rarely be the cause why the legalization didn't happen).
-      if (!inst->getAttrList().getAttrs().empty()) {
+      if (!inst->getMutableAttrDict().getAttrs().empty()) {
         os << " {";
         bool first = true;
-        for (auto& named_attr : inst->getAttrList().getDictionary()) {
+        for (auto& named_attr : inst->getAttrDictionary()) {
           os << (!first ? ", " : "");
           first = false;
           named_attr.first.print(os);
@@ -1420,6 +1385,60 @@ Optional<std::string> Translator::TranslateInternal() {
   // Return serialized string for the built FlatBuffer.
   return std::string(reinterpret_cast<const char*>(builder_.GetBufferPointer()),
                      builder_.GetSize());
+}
+
+BufferOffset<tflite::SparsityParameters> Translator::BuildSparsityParameters(
+    const mlir::TFL::SparsityParameterAttr& s_attr) {
+  const int dim_size = s_attr.dim_metadata().size();
+  std::vector<flatbuffers::Offset<tflite::DimensionMetadata>> fb_dim_metadata(
+      dim_size);
+  for (int i = 0; i < dim_size; i++) {
+    const auto dim_metadata =
+        s_attr.dim_metadata()[i].dyn_cast<mlir::TFL::DimensionMetadataAttr>();
+    if (dim_metadata.format().getValue() == "DENSE") {
+      fb_dim_metadata[i] =
+          tflite::CreateDimensionMetadata(builder_, tflite::DimensionType_DENSE,
+                                          dim_metadata.dense_size().getInt());
+
+    } else {
+      auto segments = dim_metadata.segments();
+      std::vector<int> vector_segments(segments.size(), 0);
+      for (int j = 0; j < segments.size(); j++) {
+        vector_segments[j] = segments[j].dyn_cast<mlir::IntegerAttr>().getInt();
+      }
+      auto array_segments =
+          tflite::CreateInt32Vector(builder_,
+                                    builder_.CreateVector(vector_segments))
+              .Union();
+      auto indices = dim_metadata.indices();
+      std::vector<int> vector_indices(indices.size(), 0);
+      for (int j = 0; j < indices.size(); j++) {
+        vector_indices[j] = indices[j].dyn_cast<mlir::IntegerAttr>().getInt();
+      }
+      auto array_indices = tflite::CreateInt32Vector(
+                               builder_, builder_.CreateVector(vector_indices))
+                               .Union();
+      fb_dim_metadata[i] = tflite::CreateDimensionMetadata(
+          builder_, tflite::DimensionType_SPARSE_CSR, 0,
+          tflite::SparseIndexVector_Int32Vector, array_segments,
+          tflite::SparseIndexVector_Int32Vector, array_indices);
+    }
+  }
+
+  std::vector<int> traversal_order(dim_size);
+  for (int i = 0; i < dim_size; i++) {
+    traversal_order[i] =
+        s_attr.traversal_order()[i].dyn_cast<mlir::IntegerAttr>().getInt();
+  }
+  const int block_map_size = s_attr.block_map().size();
+  std::vector<int> block_map(block_map_size);
+  for (int i = 0; i < block_map_size; i++) {
+    block_map[i] = s_attr.block_map()[i].dyn_cast<mlir::IntegerAttr>().getInt();
+  }
+
+  return tflite::CreateSparsityParameters(
+      builder_, builder_.CreateVector(traversal_order),
+      builder_.CreateVector(block_map), builder_.CreateVector(fb_dim_metadata));
 }
 
 }  // namespace

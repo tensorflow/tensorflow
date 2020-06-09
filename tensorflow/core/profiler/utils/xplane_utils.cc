@@ -14,9 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 
+#include <algorithm>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
@@ -129,31 +137,6 @@ void AddOrUpdateStrStat(int64 metadata_id, absl::string_view value,
   stat->set_str_value(std::string(value));
 }
 
-XEventBuilder CreateXEvent(
-    XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
-    absl::string_view event_name, int64 offset_ps, int64 duration_ps,
-    const absl::flat_hash_map<StatType, int64 /*stat_value*/>& stats) {
-  auto event_builder = line_builder->AddEvent(
-      *plane_builder->GetOrCreateEventMetadata(event_name));
-  event_builder.SetOffsetPs(offset_ps);
-  event_builder.SetDurationPs(duration_ps);
-  for (const auto& stat_type_and_value : stats) {
-    event_builder.AddStatValue(*plane_builder->GetOrCreateStatMetadata(
-                                   GetStatTypeStr(stat_type_and_value.first)),
-                               stat_type_and_value.second);
-  }
-  return event_builder;
-}
-
-XEventBuilder CreateXEvent(
-    XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
-    HostEventType event_type, int64 offset_ps, int64 duration_ps,
-    const absl::flat_hash_map<StatType, int64 /*stat_value*/>& stats) {
-  return CreateXEvent(plane_builder, line_builder,
-                      GetHostEventTypeStr(event_type), offset_ps, duration_ps,
-                      stats);
-}
-
 void RemovePlaneWithName(XSpace* space, absl::string_view name) {
   auto* planes = space->mutable_planes();
   planes->erase(
@@ -209,10 +192,17 @@ void SortXSpace(XSpace* space) {
   for (XPlane& plane : *space->mutable_planes()) SortXPlane(&plane);
 }
 
+// Normalize the line's timestamp in this XPlane.
+// NOTE: This can be called multiple times on the same plane. Only the first
+// call will do the normalization, subsequent calls will do nothing.
+// The assumption is that both line's timestamp_ns and start_time_ns are
+// nano-seconds from epoch time, the different of these values is much
+// smaller than these value.
 void NormalizeTimestamps(XPlane* plane, uint64 start_time_ns) {
   for (XLine& line : *plane->mutable_lines()) {
-    DCHECK_GE(line.timestamp_ns(), start_time_ns);
-    line.set_timestamp_ns(line.timestamp_ns() - start_time_ns);
+    if (line.timestamp_ns() >= start_time_ns) {
+      line.set_timestamp_ns(line.timestamp_ns() - start_time_ns);
+    }
   }
 }
 

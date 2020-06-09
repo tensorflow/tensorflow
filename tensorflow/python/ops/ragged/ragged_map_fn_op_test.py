@@ -23,7 +23,6 @@ import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras import backend
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops as mo
 from tensorflow.python.ops import string_ops
@@ -229,7 +228,7 @@ class RaggedMapOpTest(test_util.TensorFlowTestCase,
 
     def _zip(foo):
       y_val, x_val = foo
-      bar = backend.tile(y_val, array_ops.shape(x_val))
+      bar = array_ops.tile(y_val, array_ops.shape(x_val))
       return array_ops.stack([bar, x_val], axis=1)
 
     output = ragged_map_ops.map_fn(

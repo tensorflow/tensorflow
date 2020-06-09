@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Randomize all weights in a tflite file.
+r"""Randomize all weights in a tflite file.
 
 Example usage:
-python randomize_weights.py foo.tflite foo_randomized.tflite
+python randomize_weights.py \
+  --input_tflite_file=foo.tflite \
+  --output_tflite_file=foo_randomized.tflite
 """
 
 from __future__ import absolute_import

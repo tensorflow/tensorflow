@@ -19,13 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
-import os
 
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import gen_math_ops
@@ -474,6 +474,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
           expected=np.array([1 << 32, 1 << 36, 1 << 32, 1 << 36],
                             dtype=np.int64))
 
+  @test_util.disable_mlir_bridge("Enable tf.NextAfter Compilation")
   def testNextAfter(self):
     for dtype in self.numeric_types:
       if dtype in [np.float32, np.float64]:
@@ -501,6 +502,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
             expected=expected,
             equality_test=NextAfterEqualityTest)
 
+  @test_util.disable_mlir_bridge(
+      "Complex types not supported in CreateDenseElementsAttrFromLiteral")
   def testComplexOps(self):
     for dtype in self.complex_types:
       ctypes = {np.complex64: np.float32, np.complex128: np.float64}
@@ -521,11 +524,19 @@ class BinaryOpsTest(xla_test.XLATestCase):
 
       self._testBinary(
           gen_math_ops.real_div,
-          np.array([3, 3j, -1.5j, -8, 2 + 3j, 2 + 4j], dtype=dtype),
-          np.array([2, -2, 7j, -4j, 4 - 6j, 1 + 2j], dtype=dtype),
-          expected=np.array(
-              [1.5, -1.5j, -0.2142857, -2j, (2 + 3j) / (4 - 6j), 2],
-              dtype=dtype))
+          np.array(
+              [3, 3j, -1.5j, -8, 2 + 3j, 2 + 4j, 9.663546088957395e-28 + 0j],
+              dtype=dtype),
+          np.array([
+              2, -2, 7j, -4j, 4 - 6j, 1 + 2j,
+              9.39511792677288e-16 - 1.529841108938729e-23j
+          ],
+                   dtype=dtype),
+          expected=np.array([
+              1.5, -1.5j, -0.2142857, -2j,
+              (2 + 3j) / (4 - 6j), 2, 1.028571e-12 + 1.674859e-20j
+          ],
+                            dtype=dtype))
 
       self._testBinary(
           math_ops.pow,
@@ -716,6 +727,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
     for dtype in self.signed_int_types - {np.int8}:
       self._testRemainder(dtype)
 
+  @test_util.disable_mlir_bridge(
+      "F16 type is not supported in CreateDenseElementsAttrFromLiteral")
   def testFloatRemainder(self):
     for dtype in self.float_types:
       self._testRemainder(dtype)
@@ -1004,7 +1017,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
           math_ops.matmul,
           np.array([[3.1415926535897932]], dtype=dtype),
           np.array([[2.7182818284590452]], dtype=dtype),
-          expected=np.array([[8.5397342226735668]], dtype=dtype))
+          expected=np.array([[8.5397342226735668]], dtype=dtype),
+          rtol=1e-14)
 
       # Edge case with a large range of exponent. Not supported by float16.
       if dtype != np.float16:
@@ -1012,7 +1026,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
             math_ops.matmul,
             np.array([[9.4039548065783000e-38]], dtype=dtype),
             np.array([[4.5070591730234615e37]], dtype=dtype),
-            expected=np.array([[4.2384180773686798]], dtype=dtype))
+            expected=np.array([[4.2384180773686798]], dtype=dtype),
+            rtol=1e-14)
 
   # TODO(phawkins): failing on GPU, no registered kernel.
   def DISABLED_testSparseMatMul(self):
@@ -1210,6 +1225,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
                [7, 7, 7, 7, 7, 7]],
               dtype=dtype))
 
+  @test_util.disable_mlir_bridge(
+      "Requires concatenate op support in MlirHloBuilder")
   def testSymmetricMirrorPad(self):
     mirror_pad = lambda t, paddings: array_ops.pad(t, paddings, "SYMMETRIC")
     for dtype in self.numeric_types:
@@ -1241,6 +1258,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
           np.array([[0, 0], [0, 0]], dtype=np.int32),
           expected=np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype))
 
+  @test_util.disable_mlir_bridge(
+      "Requires concatenate op support in MlirHloBuilder")
   def testReflectMirrorPad(self):
     mirror_pad = lambda t, paddings: array_ops.pad(t, paddings, "REFLECT")
     for dtype in self.numeric_types:
@@ -1551,6 +1570,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
                      np.array([2, 1, 5], dtype=np.int32),
                      expected=np.array([2, 3, 5], dtype=np.int32))
 
+  @test_util.disable_mlir_bridge("Error handling")
+  def testBroadcastArgsError(self):
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
                                              "Incompatible shapes"):
       self._testBinary(array_ops.broadcast_dynamic_shape,
@@ -1568,29 +1589,16 @@ class BinaryOpsTest(xla_test.XLATestCase):
           expected=x)
       self._testBinary(
           array_ops.broadcast_to,
-          x,
-          np.array([6, 6], dtype=np.int32),
-          expected=np.tile(x, [3, 2]))
+          np.zeros([2, 3], dtype=dtype),
+          np.array([2, 2, 3], dtype=np.int32),
+          expected=np.zeros([2, 2, 3], dtype=dtype))
+
+      x = np.arange(2).reshape((2, 1)).astype(dtype)
       self._testBinary(
           array_ops.broadcast_to,
           x,
-          np.array([7, 4, 3], dtype=np.int32),
-          expected=np.tile(x, [7, 2, 1]))
-      self._testBinary(
-          array_ops.broadcast_to,
-          x,
-          np.array([7, 0, 3], dtype=np.int32),
-          expected=np.zeros([7, 0, 3], dtype=dtype))
-      self._testBinary(
-          array_ops.broadcast_to,
-          x,
-          np.array([7, 1, 2, 9], dtype=np.int32),
-          expected=np.tile(x, [7, 1, 1, 3]))
-      self._testBinary(
-          array_ops.broadcast_to,
-          np.zeros([2, 0], dtype=dtype),
-          np.array([4, 0], dtype=np.int32),
-          expected=np.zeros([4, 0], dtype=dtype))
+          np.array([2, 2, 3], dtype=np.int32),
+          expected=np.tile(x, (2, 1, 3)))
 
       x = np.arange(3).reshape((3, 1, 1, 1)).astype(dtype)
       self._testBinary(
@@ -1601,8 +1609,4 @@ class BinaryOpsTest(xla_test.XLATestCase):
 
 
 if __name__ == "__main__":
-  # TODO(b/130689556): XLA CPU does not honor inf/nan which causes problems
-  os.environ[
-      "XLA_FLAGS"] = "--xla_cpu_enable_fast_math=false " + os.environ.get(
-          "XLA_FLAGS", "")
   googletest.main()

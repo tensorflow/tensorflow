@@ -14,11 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/delegates/coreml/coreml_delegate.h"
 
+#include <string.h>
+#include <sys/utsname.h>
+#include <limits>
 #include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/delegates/utils.h"
 #include "tensorflow/lite/experimental/delegates/coreml/builders/op_validator.h"
 #include "tensorflow/lite/experimental/delegates/coreml/builders/util.h"
 #include "tensorflow/lite/experimental/delegates/coreml/coreml_delegate_kernel.h"
@@ -27,10 +31,12 @@ limitations under the License.
 
 namespace tflite {
 namespace {
+constexpr int kMinNodesPerCoreMlDelegate = 2;
+
 using delegates::coreml::CoreMlDelegateKernel;
 
 bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration, const TfLiteNode* node,
-                               TfLiteContext* context) {
+                               TfLiteContext* context, const TfLiteCoreMlDelegateOptions* options) {
   if (@available(iOS 11.0, *)) {
   } else {
     return false;
@@ -114,7 +120,8 @@ bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration, const TfL
       return true;
     }
     case kTfLiteBuiltinReshape: {
-      return delegates::coreml::IsReshapeOpSupported(registration, node, context);
+      return delegates::coreml::IsReshapeOpSupported(registration, node, context,
+                                                     options->coreml_version);
     }
     case kTfLiteBuiltinResizeBilinear: {
       return delegates::coreml::IsResizeBilinearOpSupported(registration, node, context);
@@ -136,6 +143,39 @@ bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration, const TfL
   return false;
 }
 
+class CoreMlDelegate : public TfLiteDelegate {
+ public:
+  explicit CoreMlDelegate(const TfLiteCoreMlDelegateOptions* params)
+      : params_(params != nullptr ? *params : TfLiteCoreMlDelegateOptions()) {
+    {
+      if (@available(iOS 13.0, *)) {
+        if (params_.coreml_version != 2 && params_.coreml_version != 3) {
+          NSLog(@"coreml_version must be 2 or 3. Setting to 3.");
+          params_.coreml_version = 3;
+        }
+      } else if (@available(iOS 12.0, *)) {
+        if (params_.coreml_version != 2) {
+          NSLog(@"coreml_version must be 2 - using Core ML version 2.");
+          params_.coreml_version = 2;
+        }
+      }
+      if (params_.max_delegated_partitions <= 0) {
+        params_.max_delegated_partitions = std::numeric_limits<int>::max();
+      }
+      if (params_.min_nodes_per_partition <= 0) {
+        params_.min_nodes_per_partition = kMinNodesPerCoreMlDelegate;
+      }
+    }
+  }
+
+  TfLiteCoreMlDelegateOptions* params() { return &params_; }
+
+  bool VerifyDelegate() { return true; }
+
+ private:
+  TfLiteCoreMlDelegateOptions params_;
+};
+
 TfLiteRegistration GetCoreMlKernelRegistration() {
   // This is the registration for the Delegate Node that gets added to
   // the TFLite graph instead of the subGraph it replaces it.
@@ -152,8 +192,9 @@ TfLiteRegistration GetCoreMlKernelRegistration() {
   };
   kernel_registration.init = [](TfLiteContext* context, const char* buffer,
                                 size_t length) -> void* {
-    const TfLiteDelegateParams* params = reinterpret_cast<const TfLiteDelegateParams*>(buffer);
-    CoreMlDelegateKernel* coreml_kernel = new CoreMlDelegateKernel();
+    const auto* params = reinterpret_cast<const TfLiteDelegateParams*>(buffer);
+    const auto* coreml_options = (reinterpret_cast<CoreMlDelegate*>(params->delegate))->params();
+    CoreMlDelegateKernel* coreml_kernel = new CoreMlDelegateKernel(coreml_options->coreml_version);
     if (coreml_kernel->Init(context, params) != kTfLiteOk) {
       delete coreml_kernel;
       return nullptr;
@@ -181,44 +222,28 @@ TfLiteRegistration GetCoreMlKernelRegistration() {
 }
 
 TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
-  // Reserve 1 element, since we need first element to be size, will be updated
-  // later.
-  std::vector<int> supported_nodes(1);
-  TfLiteIntArray* plan;
-  TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &plan));
-  TfLiteNode* node;
-  TfLiteRegistration* registration;
+  const auto* params = reinterpret_cast<TfLiteCoreMlDelegateOptions*>(delegate->data_);
 
-  for (int node_index : TfLiteIntArrayView(plan)) {
-    TF_LITE_ENSURE_STATUS(
-        context->GetNodeAndRegistration(context, node_index, &node, &registration));
-    if (IsNodeSupportedByDelegate(registration, node, context)) {
-      supported_nodes.push_back(node_index);
-    }
-  }
-  // Set first element to the number of nodes to replace.
-  supported_nodes[0] = supported_nodes.size() - 1;
-  TfLiteRegistration coreml_kernel_registration = GetCoreMlKernelRegistration();
-  TFLITE_LOG_PROD(tflite::TFLITE_LOG_INFO, "CoreML delegate: %d nodes delegated out of %d nodes.\n",
-                  supported_nodes[0], plan->size);
+  delegates::IsNodeSupportedFn node_supported_fn = [=](TfLiteContext* context, TfLiteNode* node,
+                                                       TfLiteRegistration* registration,
+                                                       std::string* unsupported_details) -> bool {
+    return IsNodeSupportedByDelegate(registration, node, context, params);
+  };
 
+  delegates::FP16GraphPartitionHelper partition_helper(context, node_supported_fn);
+  TF_LITE_ENSURE_STATUS(partition_helper.Partition(nullptr));
+
+  std::vector<int> delegated_nodes = partition_helper.GetNodesOfFirstNLargestPartitions(
+      params->max_delegated_partitions, params->min_nodes_per_partition);
+  TFLITE_LOG_PROD(tflite::TFLITE_LOG_INFO,
+                  "CoreML delegate: %d nodes delegated out of %d nodes, "
+                  "with %d partitions.\n",
+                  delegated_nodes.size(), partition_helper.num_total_nodes(),
+                  partition_helper.num_partitions());
   return context->ReplaceNodeSubsetsWithDelegateKernels(
-      context, coreml_kernel_registration,
-      reinterpret_cast<TfLiteIntArray*>(supported_nodes.data()), delegate);
+      context, GetCoreMlKernelRegistration(), BuildTfLiteIntArray(delegated_nodes).get(),
+      delegate);
 }
-
-class CoreMlDelegate : public TfLiteDelegate {
- public:
-  explicit CoreMlDelegate(const TfLiteCoreMlDelegateOptions* params)
-      : params_(params != nullptr ? *params : TfLiteCoreMlDelegateOptions()) {}
-
-  TfLiteCoreMlDelegateOptions* params() { return &params_; }
-
-  bool VerifyDelegate() { return true; }
-
- private:
-  TfLiteCoreMlDelegateOptions params_;
-};
 
 TfLiteDelegate* CreateCoreMlDelegate(const TfLiteCoreMlDelegateOptions* options) {
   TfLiteDelegate* delegate = new CoreMlDelegate(options);
@@ -239,12 +264,42 @@ TfLiteDelegate* CreateCoreMlDelegate(const TfLiteCoreMlDelegateOptions* options)
 }  // namespace
 }  // namespace tflite
 
+namespace {
+// utsname.machine has device identifier. For example, identifier for iPhone Xs is "iPhone11,2".
+// Since Neural Engine is only available for use on A12 and later, major device version in the
+// identifier is checked for these models:
+// A12: iPhone XS (11,2), iPad Mini - 5th Gen (11,1)
+// A12X: iPad Pro - 3rd Gen (8,1)
+// For more information, see https://www.theiphonewiki.com/wiki/Models
+bool IsNeuralEngineAvailable() {
+  struct utsname system_info;
+  uname(&system_info);
+
+  if (strncmp("iPad", system_info.machine, 4) == 0) {
+    const int major_version = atoi(system_info.machine + 4);
+    return major_version >= 8;  // There are no device between iPad 8 and 11.
+  } else if (strncmp("iPhone", system_info.machine, 6) == 0) {
+    const int major_version = atoi(system_info.machine + 6);
+    return major_version >= 11;
+  }
+  return false;
+}
+
+}  // namespace
+
 TfLiteDelegate* TfLiteCoreMlDelegateCreate(const TfLiteCoreMlDelegateOptions* options) {
-  if (@available(iOS 11.0, *)) {
+  if (@available(iOS 12.0, *)) {
+    if (options->enabled_devices == TfLiteCoreMlDelegateDevicesWithNeuralEngine &&
+        !IsNeuralEngineAvailable()) {
+      NSLog(@"This device does not have Neural Engine, so Core ML delegate will not be enabled. "
+             "If you want to run Core ML delegate anyway, set enabled_devices option to "
+             "TfLiteCoreMlDelegateAllDevices (or enabledDevices to .allDevices in Swift).");
+      return nullptr;
+    }
     return tflite::CreateCoreMlDelegate(options);
   } else {
     NSLog(@"Core ML delegate is not supported in this iOS version. "
-           "Minimum required iOS version is 11.0.");
+           "Minimum required iOS version is 12.0.");
     return nullptr;
   }
 }

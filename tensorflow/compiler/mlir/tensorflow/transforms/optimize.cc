@@ -33,12 +33,12 @@ namespace {
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_optimize.inc"
 
 // Canonicalize operations in functions.
-struct TFOptimizePass : public FunctionPass<TFOptimizePass> {
+struct TFOptimizePass : public PassWrapper<TFOptimizePass, FunctionPass> {
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     auto func = getFunction();
     populateWithGenerated(&getContext(), &patterns);
-    applyPatternsGreedily(func, patterns);
+    applyPatternsAndFoldGreedily(func, patterns);
   }
 };
 
@@ -62,16 +62,16 @@ void CreateTFStandardPipeline(OpPassManager &pm,
   // Hopefully there is a single island left, or there wasn't any to begin with.
   // We now run the optimizer which operates mostly inside islands.
   func_pm.addPass(createCanonicalizerPass());
+  pm.addPass(CreateTFShapeInferencePass());
   if (options.enable_inliner) {
     pm.addPass(createInlinerPass());
   }
   pm.addPass(createSymbolDCEPass());
-  pm.addPass(CreateTFShapeInferencePass());
   pm.addNestedPass<FuncOp>(CreateTFOptimizePass());
   pm.addNestedPass<FuncOp>(createCSEPass());
 }
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateTFOptimizePass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateTFOptimizePass() {
   return std::make_unique<TFOptimizePass>();
 }
 

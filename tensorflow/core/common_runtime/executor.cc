@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -66,6 +67,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/annotated_traceme.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
 namespace tensorflow {
@@ -200,9 +202,9 @@ class ExecutorImpl : public Executor {
     // Initial time (in CPU cycles) we expect an operation to take.  Used to
     // determine whether an operation should be place in a threadpool.
     // Operations start out "expensive".
-    static const uint64 kInitialCostEstimateCycles = 100 * 1000 * 1000;
-    static const uint64 kOpIsExpensiveThresholdCycles = 5000;
-    static const uint64 kCostDecay = 10;
+    static constexpr uint64 kInitialCostEstimateCycles = 100 * 1000 * 1000;
+    static constexpr uint64 kOpIsExpensiveThresholdCycles = 5000;
+    static constexpr uint64 kCostDecay = 10;
 
     std::unique_ptr<std::atomic<bool>[]> is_expensive_;
     std::unique_ptr<std::atomic_uint_fast64_t[]> cost_estimates_;
@@ -302,7 +304,7 @@ class ExecutorState {
 
   // After item->kernel computation is done, processes its outputs.
   Status ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
-                        EntryVector* outputs, NodeExecStatsInterface* stats);
+                        Entry* outputs, NodeExecStatsInterface* stats);
 
   // Called after each node finishes. Takes ownership of "stats". Returns true
   // if execution has completed.
@@ -375,10 +377,6 @@ class ExecutorState {
 
   mutex mu_;
   Status status_ TF_GUARDED_BY(mu_);
-
-  // A flag that is set on error after the propagator state has been
-  // dumped for diagnostic purposes.
-  bool dumped_on_error_ TF_GUARDED_BY(mu_) = false;
 };
 
 template <class PropagatorStateType>
@@ -407,7 +405,7 @@ ExecutorState<PropagatorStateType>::ExecutorState(
       runner_(args.runner),
       sync_on_finish_(args.sync_on_finish),
       run_all_kernels_inline_(args.run_all_kernels_inline),
-      propagator_(immutable_state, step_id_),
+      propagator_(immutable_state, step_id_, vlog_),
       num_outstanding_ops_(0) {
   if (args.user_intra_op_threadpool != nullptr) {
     Device* device = immutable_state_.params().device;
@@ -537,8 +535,6 @@ Status ExecutorState<PropagatorStateType>::ProcessSync(
         },
         profiler::GetTFTraceMeLevel(is_expensive));
     device->Compute(op_kernel, &ctx);
-    nodestats::SetOpEnd(stats);
-    s = ProcessOutputs(item, &ctx, outputs, stats);
   } else {
     // In the common case, avoid creating any tracing objects.
     if (is_expensive) {
@@ -548,9 +544,10 @@ Status ExecutorState<PropagatorStateType>::ProcessSync(
     } else {
       device->Compute(op_kernel, &ctx);
     }
-    nodestats::SetOpEnd(stats);
-    s = ProcessOutputs(item, &ctx, outputs, stats);
   }
+  nodestats::SetOpEnd(stats);
+  if (outputs->size() < item.num_outputs) outputs->resize(item.num_outputs);
+  s = ProcessOutputs(item, &ctx, outputs->data(), stats);
   nodestats::SetMemory(stats, &ctx);
   return s;
 }
@@ -571,8 +568,8 @@ void ExecutorState<PropagatorStateType>::ProcessAsync(
     Entry* first_input = state->first_input;       // Shorthand
 
     nodestats::SetOpEnd(stats);
-    EntryVector outputs;
-    Status s = ProcessOutputs(*state->item, &state->ctx, &outputs, stats);
+    EntryVector outputs(state->item->num_outputs);
+    Status s = ProcessOutputs(*state->item, &state->ctx, outputs.data(), stats);
     nodestats::SetMemory(stats, &state->ctx);
     if (vlog_) {
       VLOG(2) << "Async kernel done: " << state->item->node_id << " step "
@@ -621,7 +618,6 @@ void ExecutorState<PropagatorStateType>::ProcessConstTensor(
     const NodeItem& item, EntryVector* outputs, NodeExecStatsInterface* stats) {
   nodestats::SetOpStart(stats);
   nodestats::SetOpEnd(stats);
-  outputs->resize(1);
   Entry& output = (*outputs)[0];
   output.state = Entry::State::HAS_CONST_TENSOR;
   output.const_tensor = item.const_tensor;
@@ -701,7 +697,8 @@ void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
   Status s;
   NodeExecStatsInterface* stats = nullptr;
 
-  EntryVector outputs;
+  EntryVector outputs(1);
+
   bool completed = false;
   inline_ready.push_back(tagged_node);
   while (!inline_ready.empty()) {
@@ -731,14 +728,13 @@ void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
     }
 
     Entry* first_input = propagator_.GetInputTensors(tagged_node);
-    outputs.clear();
 
     // Only execute this node if it is not dead or it is a send/recv
     // transfer node. For transfer nodes, we need to propagate the "dead"
     // bit even when the node is dead.
     bool launched_asynchronously = false;
     if (tagged_node.get_is_dead() && !item.is_transfer_node) {
-      outputs.resize(item.num_outputs);
+      if (outputs.size() < item.num_outputs) outputs.resize(item.num_outputs);
     } else if (TF_PREDICT_FALSE(item.is_noop)) {
       ProcessNoop(stats);
     } else if (item.const_tensor != nullptr && !params.track_allocations) {
@@ -794,7 +790,13 @@ void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
       if (s.ok()) {
         propagator_.PropagateOutputs(tagged_node, &outputs, &ready);
       }
-      outputs.clear();
+
+      // Clear outputs without deallocating the `outputs` vector.
+      const int num_outputs = item.num_outputs;
+      for (int i = 0; i < num_outputs; ++i) {
+        outputs[i].ClearVal();
+      }
+
       if (stats) {
         scheduled_nsec = nodestats::NowInNsec();
       }
@@ -811,16 +813,14 @@ template <class PropagatorStateType>
 Status ExecutorState<PropagatorStateType>::PrepareInputs(
     const NodeItem& item, Entry* first_input, TensorValueVec* inputs,
     AllocatorAttributeVec* input_alloc_attrs, bool* is_input_dead) {
-  inputs->clear();
   inputs->resize(item.num_inputs);
-  input_alloc_attrs->clear();
   input_alloc_attrs->resize(item.num_inputs);
 
   *is_input_dead = false;
 
-  bool is_merge = item.is_merge;
   for (int i = 0; i < item.num_inputs; ++i) {
-    const bool expect_ref = IsRefType(item.input_type(i));
+    const bool expect_ref = TF_PREDICT_FALSE(item.is_any_input_ref_typed) &&
+                            IsRefType(item.input_type(i));
     Entry* entry = first_input + i;
     (*input_alloc_attrs)[i] = entry->alloc_attr;
 
@@ -830,7 +830,10 @@ Status ExecutorState<PropagatorStateType>::PrepareInputs(
     switch (entry->state) {
       case Entry::State::NO_VALUE: {
         // Only merge and transfer nodes can have no-value inputs.
-        if (!is_merge) {
+        inp->mutex_if_ref = nullptr;
+        if (item.is_merge) {
+          inp->tensor = nullptr;
+        } else {
           DCHECK(item.is_transfer_node)
               << item.kernel->name() << " - input " << i;
           entry->state = Entry::State::HAS_CONST_TENSOR;
@@ -846,17 +849,18 @@ Status ExecutorState<PropagatorStateType>::PrepareInputs(
       }
 
       case Entry::State::HAS_VALUE: {
-        if (expect_ref) {
+        if (TF_PREDICT_FALSE(expect_ref)) {
           return AttachDef(
               errors::InvalidArgument(i, "-th input expects a ref type"),
               item.kernel->def());
         }
+        inp->mutex_if_ref = nullptr;
         inp->tensor = entry->val.get();
         break;
       }
 
       case Entry::State::HAS_CONST_TENSOR: {
-        if (expect_ref) {
+        if (TF_PREDICT_FALSE(expect_ref)) {
           return AttachDef(
               errors::InvalidArgument(i, "-th input expects a ref type"),
               item.kernel->def());
@@ -865,6 +869,7 @@ Status ExecutorState<PropagatorStateType>::PrepareInputs(
         // stores a non-const `Tensor*`, and relies on the `OpKernelContext`
         // accessors making dynamic checks that prevent using an immutable
         // tensor as a mutable tensor.
+        inp->mutex_if_ref = nullptr;
         inp->tensor = const_cast<Tensor*>(entry->const_tensor);
         break;
       }
@@ -872,8 +877,8 @@ Status ExecutorState<PropagatorStateType>::PrepareInputs(
       case Entry::State::HAS_REF_TENSOR: {
         {
           tf_shared_lock ml(*entry->ref_tensor.mu);
-          if (!entry->ref_tensor.tensor->IsInitialized() &&
-              !item.is_initialization_op) {
+          if (TF_PREDICT_FALSE(!entry->ref_tensor.tensor->IsInitialized() &&
+                               !item.is_initialization_op)) {
             return AttachDef(errors::FailedPrecondition(
                                  "Attempting to use uninitialized value ",
                                  item.kernel->requested_input(i)),
@@ -896,12 +901,13 @@ Status ExecutorState<PropagatorStateType>::PrepareInputs(
           }
           entry->state = Entry::State::HAS_VALUE;
 
+          inp->mutex_if_ref = nullptr;
           inp->tensor = entry->val.get();
           // The dtype of entry->ref_tensor.tensor could have been changed by
           // another operation that ran after the operation that "produced" it
           // executed, so re-validate that the type of the dereferenced tensor
           // matches the expected input type.
-          if (item.input_type(i) != inp->tensor->dtype()) {
+          if (TF_PREDICT_FALSE(item.input_type(i) != inp->tensor->dtype())) {
             return AttachDef(
                 errors::InvalidArgument(
                     i, "-th input expects type ",
@@ -920,11 +926,8 @@ Status ExecutorState<PropagatorStateType>::PrepareInputs(
 
 template <class PropagatorStateType>
 Status ExecutorState<PropagatorStateType>::ProcessOutputs(
-    const NodeItem& item, OpKernelContext* ctx, EntryVector* outputs,
+    const NodeItem& item, OpKernelContext* ctx, Entry* outputs,
     NodeExecStatsInterface* stats) {
-  DCHECK_EQ(0, outputs->size());
-  outputs->resize(item.num_outputs);
-
   Status s = ctx->status();
   if (!s.ok()) {
     s = AttachDef(s, item.kernel->def());
@@ -932,11 +935,6 @@ Status ExecutorState<PropagatorStateType>::ProcessOutputs(
     // add better optional debugging support.
     if (vlog_ && VLOG_IS_ON(1)) {
       LOG(WARNING) << this << " Compute status: " << s;
-      mutex_lock l(mu_);
-      if (!dumped_on_error_) {
-        propagator_.DumpState();
-        dumped_on_error_ = true;
-      }
     }
     if (s.code() == error::RESOURCE_EXHAUSTED) {
       if (stats_collector_) {
@@ -958,6 +956,9 @@ Status ExecutorState<PropagatorStateType>::ProcessOutputs(
 
   for (int i = 0; i < item.num_outputs; ++i) {
     const TensorValue val = ctx->release_output(i);
+    Entry* out = &outputs[i];
+    DCHECK(out->state == Entry::State::NO_VALUE);
+
     if (val.tensor == nullptr) {
       // Unless it's a Switch or a Recv, or the executor has marked the output
       // as not required, the node must produce a tensor value at i-th output.
@@ -967,8 +968,6 @@ Status ExecutorState<PropagatorStateType>::ProcessOutputs(
                                   FormatNodeDefForError(item.kernel->def())));
       }
     } else {
-      Entry* out = &((*outputs)[i]);
-
       // Set the allocator attributes of the output entry.
       out->alloc_attr = ctx->output_alloc_attr(i);
 
@@ -1057,10 +1056,12 @@ bool ExecutorState<PropagatorStateType>::NodeDone(
         // aborting all other execution in the step.
         abort_run = true;
 
-        // If execution has been cancelled, mark any new errors as being
-        // derived. This ensures any errors triggered by cancellation are marked
-        // as derived.
-        if (cancellation_manager_ && cancellation_manager_->IsCancelled()) {
+        // If execution has been cancelled, mark cancelled or aborted errors as
+        // being derived. Note that the original node that fails might also
+        // trigger cancellation, and here we make sure the original error is
+        // exposed to users and not buried as a derived error.
+        if (cancellation_manager_ && cancellation_manager_->IsCancelled() &&
+            (errors::IsCancelled(s) || errors::IsAborted(s))) {
           status_ = StatusGroup::MakeDerived(s);
         } else {
           status_ = s;
@@ -1188,6 +1189,12 @@ void ExecutorState<PropagatorStateType>::Finish() {
   int64 step_id = step_id_;
   CHECK(done_cb != nullptr);
   Device* device = immutable_state_.params().device;
+
+  if (vlog_ && !status.ok() && VLOG_IS_ON(1)) {
+    // Logs verbose information about the current state of active and pending
+    // nodes in the propagator.
+    propagator_.DumpState();
+  }
 
   // There are several potential race conditions below. To name a few:
   // 1. Even if the device's status is OK at the precise moment when

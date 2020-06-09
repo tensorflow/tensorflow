@@ -55,8 +55,10 @@ llvm::StringRef OpOrArgNameMapper::GetUniqueName(llvm::StringRef prefix) {
   // to be unique.
   auto& val = prefix_it.first->second;
   llvm::SmallString<64> probe_name(prefix);
+  probe_name.append(GetSuffixSeparator());
+  const int probe_prefix_size = probe_name.size();
   while (true) {
-    probe_name.resize(prefix.size());
+    probe_name.resize(probe_prefix_size);
     // TODO(jpienaar): Subtract one so that the initial suffix is 0 instead
     // of 1.
     // TODO(jpienaar): Switch to radix 36 and update tests.

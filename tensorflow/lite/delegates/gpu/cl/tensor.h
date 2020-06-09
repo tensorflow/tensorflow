@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_memory.h"
+#include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -36,7 +37,7 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class Tensor {
+class Tensor : public GPUObject {
  public:
   Tensor()
       : memory_(nullptr), image_buffer_memory_(nullptr), memory_owner_(true) {}
@@ -57,11 +58,16 @@ class Tensor {
 
   virtual ~Tensor() { Release(); }
 
+  const GPUObjectDescriptor* GetGPUDescriptor() const override {
+    return &descriptor_;
+  }
+  GPUResourcesWithValue GetGPUResources(AccessType access_type) const override;
+
   int Width() const { return shape_.w; }
   int Height() const { return shape_.h; }
   int Depth() const { return shape_.d; }
   int Channels() const { return shape_.c; }
-  int Slices() const { return IntegralDivideRoundUp(shape_.c, 4); }
+  int Slices() const { return DivideRoundUp(shape_.c, 4); }
   int Batch() const { return shape_.b; }
 
   // returns int4(width * batch, height, slices, batch)
@@ -75,8 +81,9 @@ class Tensor {
   int4 GetWHSB() const { return int4(shape_.w, shape_.h, Slices(), shape_.b); }
   int4 GetWHDS() const { return int4(shape_.w, shape_.h, shape_.d, Slices()); }
 
-  enum DataType DataType() const { return descriptor_.data_type; }
-  TensorStorageType StorageType() const { return descriptor_.storage_type; }
+  TensorDescriptor GetDescriptor() const { return descriptor_; }
+  DataType GetDataType() const { return descriptor_.data_type; }
+  TensorStorageType GetStorageType() const { return descriptor_.storage_type; }
 
   // for profiling and memory statistics
   uint64_t GetMemorySizeInBytes() const;
@@ -88,6 +95,12 @@ class Tensor {
   cl_mem GetMemoryPtrForWriting() const;
 
   absl::Status WriteData(CLCommandQueue* queue, const TensorFloat32& src);
+  absl::Status WriteData(
+      CLCommandQueue* queue,
+      const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src);
+  absl::Status WriteData(
+      CLCommandQueue* queue,
+      const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src);
   absl::Status WriteData(CLCommandQueue* queue, const Tensor5DFloat32& src);
   absl::Status ReadData(CLCommandQueue* queue, TensorFloat32* dst) const;
   absl::Status ReadData(CLCommandQueue* queue, Tensor5DFloat32* dst) const;

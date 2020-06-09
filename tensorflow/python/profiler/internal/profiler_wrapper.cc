@@ -16,8 +16,8 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
-#include "include/pybind11/pybind11.h"
-#include "include/pybind11/pytypes.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/pytypes.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/xplane_to_profile_response.h"
@@ -41,10 +41,30 @@ tensorflow::ProfileRequest MakeProfileRequest(
   request.add_tools("input_pipeline");
   request.add_tools("kernel_stats");
   request.add_tools("tensorflow_stats");
+  request.add_tools("memory_profile");
   request.set_host_name(host);
   request.set_repository_root(logdir);
   request.set_session_id(session_id);
   return request;
+}
+
+tensorflow::ProfileOptions GetOptions(const py::dict& opts) {
+  tensorflow::ProfileOptions options =
+      tensorflow::ProfilerSession::DefaultOptions();
+  for (const auto& kw : opts) {
+    std::string key = py::cast<std::string>(kw.first);
+    if (key == "host_tracer_level") {
+      options.set_host_tracer_level(py::cast<int>(kw.second));
+      VLOG(1) << "host_tracer_level set to " << options.host_tracer_level();
+    } else if (key == "device_tracer_level") {
+      options.set_device_tracer_level(py::cast<int>(kw.second));
+      VLOG(1) << "device_tracer_level set to " << options.device_tracer_level();
+    } else if (key == "python_tracer_level") {
+      options.set_python_tracer_level(py::cast<int>(kw.second));
+      VLOG(1) << "python_tracer_level set to " << options.python_tracer_level();
+    }
+  }
+  return options;
 }
 
 class ProfilerSessionWrapper {
@@ -93,22 +113,6 @@ class ProfilerSessionWrapper {
   }
 
  private:
-  tensorflow::profiler::ProfilerOptions GetOptions(const py::dict& opts) {
-    tensorflow::profiler::ProfilerOptions options;
-    for (const auto& kw : opts) {
-      std::string key = py::cast<std::string>(kw.first);
-      if (key == "host_tracer_level") {
-        options.host_tracer_level = py::cast<int>(kw.second);
-        VLOG(1) << "host_tracer_level set to " << options.host_tracer_level;
-      } else if (key == "python_tracer_level") {
-        options.enable_python_tracer = py::cast<int>(kw.second) > 0;
-        VLOG(1) << "enable_python_tracer set to "
-                << options.enable_python_tracer;
-      }
-    }
-    return options;
-  }
-
   std::unique_ptr<tensorflow::ProfilerSession> session_;
   tensorflow::string logdir_;
 };
@@ -133,11 +137,12 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
 
   m.def("trace", [](const char* service_addr, const char* logdir,
                     const char* worker_list, bool include_dataset_ops,
-                    int duration_ms, int num_tracing_attempts) {
+                    int duration_ms, int num_tracing_attempts,
+                    py::dict options) {
     tensorflow::Status status =
         tensorflow::profiler::ValidateHostPortPair(service_addr);
     tensorflow::MaybeRaiseRegisteredFromStatus(status);
-    tensorflow::ProfileOptions opts;
+    tensorflow::ProfileOptions opts = GetOptions(options);
     opts.set_include_dataset_ops(include_dataset_ops);
     status =
         tensorflow::profiler::Trace(service_addr, logdir, worker_list,

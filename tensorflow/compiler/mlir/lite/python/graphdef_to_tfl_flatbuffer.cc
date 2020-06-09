@@ -55,8 +55,8 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   std::vector<string> node_names;
   std::vector<string> node_dtypes;
   std::vector<std::vector<int>> node_shapes;
-  std::vector<double> node_mins;
-  std::vector<double> node_maxs;
+  std::vector<llvm::Optional<double>> node_mins;
+  std::vector<llvm::Optional<double>> node_maxs;
 
   // Populate quantization specs.
   TF_RETURN_IF_ERROR(internal::PopulateQuantizationSpecs(
@@ -88,7 +88,6 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   bool emit_builtin_tflite_ops = !toco_flags.force_select_tf_ops();
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
   pass_config.lower_tensor_list_ops = true;
-  pass_config.shape_inference = false;
 
   return internal::ConvertMLIRToTFLiteFlatBuffer(toco_flags, std::move(module),
                                                  pass_config, result);

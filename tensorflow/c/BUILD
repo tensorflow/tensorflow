@@ -58,6 +58,7 @@ filegroup(
     name = "pywrap_required_hdrs",
     srcs = [
         "c_api_internal.h",
+        "conversion_macros.h",
         "python_api.h",
         "tensor_interface.h",
         "tf_status_helper.h",
@@ -84,7 +85,14 @@ tf_cuda_library(
     ],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//tensorflow:chromiumos": [
+            ":tf_attrtype",
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+            "//tensorflow/core/platform:platform",
         ],
         "//conditions:default": [
             ":tf_attrtype",
@@ -115,6 +123,13 @@ filegroup(
 cc_library(
     name = "tf_attrtype",
     hdrs = ["tf_attrtype.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "c_api_macros",
+    hdrs = ["c_api_macros.h"],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
 )
 
@@ -167,7 +182,7 @@ tf_cuda_library(
         ":tf_status_internal",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             ":tf_status",
@@ -201,10 +216,11 @@ tf_cuda_library(
     ],
     visibility = [
         "//tensorflow/c:__subpackages__",
+        "//tensorflow/compiler/mlir/tensorflow/c:__subpackages__",
     ],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
             "//tensorflow/core:lib",
@@ -217,12 +233,13 @@ cc_library(
     srcs = ["tf_status.cc"],
     hdrs = ["tf_status.h"],
     visibility = ["//visibility:public"],
-    deps = select({
+    deps = [
+        ":tf_status_internal",
+    ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
-            ":tf_status_internal",
             "//tensorflow/core:lib",
         ],
     }),
@@ -244,10 +261,15 @@ cc_library(
     name = "tensor_interface",
     hdrs = ["tensor_interface.h"],
     visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-    ],
+    deps = select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:lib",
+            "//tensorflow/core:protos_all_cc",
+        ],
+    }),
 )
 
 cc_library(
@@ -257,7 +279,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
+            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
             "//tensorflow/core:framework",
@@ -271,16 +293,17 @@ cc_library(
     srcs = ["tf_tensor.cc"],
     hdrs = ["tf_tensor.h"],
     visibility = ["//visibility:public"],
-    deps = select({
+    deps = [
+        ":tensor_interface",
+        ":tf_datatype",
+        ":tf_status",
+        ":tf_status_helper",
+        ":tf_tensor_internal",
+    ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
-            ":tensor_interface",
-            ":tf_datatype",
-            ":tf_status",
-            ":tf_status_helper",
-            ":tf_tensor_internal",
             "//tensorflow/core:framework",
             "//tensorflow/core:lib",
             "//tensorflow/core:protos_all_cc",
@@ -296,14 +319,15 @@ tf_cuda_library(
         "tf_tensor_internal.h",
     ],
     visibility = ["//tensorflow:internal"],
-    deps = select({
+    deps = [
+        ":tensor_interface",
+        ":tf_datatype",
+        ":tf_status",
+    ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
-            ":tensor_interface",
-            ":tf_datatype",
-            ":tf_status",
             "//tensorflow/core:framework",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core/platform:casts",
@@ -327,6 +351,9 @@ tf_cuda_library(
         ":checkpoint_reader",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_internal",
+        "//tensorflow/c/eager:tfe_context_internal",
+        "//tensorflow/c/eager:tfe_op_internal",
+        "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -368,8 +395,14 @@ tf_cuda_library(
     deps = [
         ":tf_status",
         ":tf_status_internal",
-        "//tensorflow/core:lib",
-    ],
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:lib",
+        ],
+    }),
 )
 
 tf_cc_test(
@@ -408,7 +441,7 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             "//tensorflow/core:framework",
@@ -439,7 +472,7 @@ tf_cuda_library(
     ] + select({
         "//tensorflow:android": [
             ":c_api_internal",
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             ":c_api_internal",
@@ -466,7 +499,7 @@ tf_cuda_library(
         ":tf_status_helper",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             "//tensorflow/core:framework",
@@ -517,12 +550,12 @@ tf_cuda_cc_test(
         ":test_op1.so",
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
-    kernels = [":test_op_kernel"],
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     tags = [
+        "no_windows",  # TODO(b/155444728)
         "noasan",
     ],
     # We must ensure that the dependencies can be dynamically linked since
@@ -531,6 +564,7 @@ tf_cuda_cc_test(
     deps = [
         ":c_api",
         ":c_test_util",
+        ":test_op_kernel",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:grad_ops",
         "//tensorflow/cc/saved_model:signature_constants",
@@ -597,6 +631,7 @@ tf_cc_test(
         ":c_api",
         ":c_api_internal",
         ":c_test_util",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -720,4 +755,12 @@ tf_cuda_library(
         "//tensorflow/python:cpp_shape_inference_proto_cc",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "conversion_macros",
+    hdrs = [
+        "conversion_macros.h",
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
 )

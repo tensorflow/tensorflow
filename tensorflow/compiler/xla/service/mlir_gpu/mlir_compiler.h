@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_MLIR_COMPILER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_MLIR_COMPILER_H_
 
-#include "absl/container/flat_hash_map.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/compiler.h"
@@ -27,7 +26,8 @@ namespace mlir_gpu {
 
 // A Compiler implementation that converts XLAs IR to a matching MLIR dialect,
 // performs all lowering on the MLIR IR and finally converts MLIR to LLVMIR for
-// generation of a think suitable for XLAs runtime.
+// generation of a thunk suitable for XLAs runtime. MlirCompilerImpl contains
+// the implementation.
 class MlirCompiler : public Compiler {
   using ErrorHandler =
       std::function<void(const EmissionContext::ErrorMap&, HloModule*)>;
@@ -36,30 +36,6 @@ class MlirCompiler : public Compiler {
   MlirCompiler();
 
   se::Platform::Id PlatformId() const override;
-
-  StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
-      std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-      se::DeviceMemoryAllocator* device_allocator) override;
-
-  StatusOr<std::unique_ptr<Executable>> RunBackend(
-      std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-      se::DeviceMemoryAllocator* device_allocator) override;
-
-  StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-      std::unique_ptr<HloModuleGroup> module_group,
-      std::vector<std::vector<se::StreamExecutor*>> stream_execs,
-      se::DeviceMemoryAllocator* device_allocator) override;
-
-  StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
-                     const AotCompilationOptions& options) override;
-
-  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override {
-    int64 pointer_size = pointer_size_;
-    return [pointer_size](const Shape& shape) {
-      return ShapeUtil::ByteSizeOf(shape, pointer_size);
-    };
-  }
 
   struct IRHook {
     enum class LoweringStage { LHLO, GPU, LLVM, KERNEL };
@@ -80,7 +56,7 @@ class MlirCompiler : public Compiler {
   void SetErrorHandler(ErrorHandler error_handler);
   void RemoveErrorHandler();
 
- private:
+ protected:
   ::mlir::MLIRContext context_;
   int64 pointer_size_;
   IRHook module_hook_;

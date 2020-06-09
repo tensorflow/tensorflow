@@ -30,8 +30,8 @@ limitations under the License.
 #include "tensorflow/lite/profiling/time.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_params.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
-#include "tensorflow/lite/tools/benchmark/logging.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
+#include "tensorflow/lite/tools/logging.h"
 
 #if (defined(ANDROID) || defined(__ANDROID__)) && \
     (defined(__arm__) || defined(__aarch64__))
@@ -233,6 +233,7 @@ void BenchmarkPerformanceOptions::ResetPerformanceOptions() {
   single_option_run_params_->Set<std::string>("nnapi_accelerator_name", "");
   single_option_run_params_->Set<bool>("disable_nnapi_cpu", false);
   single_option_run_params_->Set<int>("max_delegated_partitions", 0);
+  single_option_run_params_->Set<bool>("nnapi_allow_fp16", false);
 #endif
 #if defined(TFLITE_ENABLE_HEXAGON)
   single_option_run_params_->Set<bool>("use_hexagon", false);
@@ -334,7 +335,7 @@ void BenchmarkPerformanceOptions::Run() {
   // profiling listener etc. in each Run() invoke because such listeners may be
   // reset and become invalid in the next Run(). As a result, we record the
   // number of externally-added listeners here to prevent they're cleared later.
-  const int num_external_listners = single_option_run_->NumListeners();
+  const int num_external_listeners = single_option_run_->NumListeners();
 
   // Now perform all runs, each with different performance-affecting parameters.
   for (const auto& run_params : all_run_params_) {
@@ -349,7 +350,7 @@ void BenchmarkPerformanceOptions::Run() {
 
     // Clear internally created listeners before each run but keep externally
     // created ones.
-    single_option_run_->RemoveListeners(num_external_listners);
+    single_option_run_->RemoveListeners(num_external_listeners);
 
     all_run_stats_->MarkBenchmarkStart(*single_option_run_params_);
     single_option_run_->Run();

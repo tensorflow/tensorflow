@@ -1417,6 +1417,21 @@ void ConvertResizeBilinearOperator(const Model& model,
       src_op.half_pixel_centers);
 }
 
+void ConvertResizeNearestNeighborOperator(
+    const Model& model, const ResizeNearestNeighborOperator& src_op,
+    GraphDef* tensorflow_graph) {
+  tensorflow::NodeDef* resize_op = tensorflow_graph->add_node();
+  resize_op->set_op("ResizeNearestNeighbor");
+  resize_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 2);
+  *resize_op->add_input() = src_op.inputs[0];
+  *resize_op->add_input() = src_op.inputs[1];
+  (*resize_op->mutable_attr())["T"].set_type(DT_FLOAT);
+  (*resize_op->mutable_attr())["align_corners"].set_b(src_op.align_corners);
+  (*resize_op->mutable_attr())["half_pixel_centers"].set_b(
+      src_op.half_pixel_centers);
+}
+
 void ConvertOneHotOperator(const Model& model, const OneHotOperator& src_op,
                            GraphDef* tensorflow_graph) {
   tensorflow::NodeDef* onehot_op = tensorflow_graph->add_node();
@@ -2226,6 +2241,10 @@ void ConvertOperator(const Model& model, const Operator& src_op,
   } else if (src_op.type == OperatorType::kResizeBilinear) {
     ConvertResizeBilinearOperator(
         model, static_cast<const ResizeBilinearOperator&>(src_op),
+        tensorflow_graph);
+  } else if (src_op.type == OperatorType::kResizeNearestNeighbor) {
+    ConvertResizeNearestNeighborOperator(
+        model, static_cast<const ResizeNearestNeighborOperator&>(src_op),
         tensorflow_graph);
   } else if (src_op.type == OperatorType::kSpaceToBatchND) {
     ConvertSpaceToBatchNDOperator(

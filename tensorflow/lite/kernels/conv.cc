@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/eigen_support.h"
 // b/131835803 forces us to include multithreaded_conv.h before optimized_ops.h
-#ifndef TFLITE_WITH_RUY
+#ifndef TFLITE_WITH_RUY_ONLY
 #include "tensorflow/lite/kernels/internal/optimized/multithreaded_conv.h"
 #endif
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
@@ -320,9 +320,9 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
 
   // Check types. (We assume that UINT8 refers to quantized tensors)
   TfLiteType input_type = input->type;
-  TF_LITE_ENSURE(context, input_type == kTfLiteFloat32 ||
-                              input_type == kTfLiteUInt8 ||
-                              input_type == kTfLiteInt8);
+  TF_LITE_ENSURE(context,
+                 input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
+                     input_type == kTfLiteInt8 || input_type == kTfLiteInt16);
   TF_LITE_ENSURE_EQ(context, output->type, input_type);
 
   const TfLiteTensor* bias = nullptr;
@@ -336,6 +336,11 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
     if (input_type == kTfLiteUInt8 || input_type == kTfLiteInt8) {
       TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteInt32);
       TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
+    } else if (input_type == kTfLiteInt16) {
+      TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteInt64);
+      TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
+      TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+      TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
     } else {
       TF_LITE_ENSURE_EQ(context, bias->type, input_type);
     }
@@ -365,12 +370,15 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
     }
   }
 
-  // The multi-threaded kernel supports neither dilation nor hybrid kernels.
+  // The multi-threaded kernel supports neither dilation nor hybrid kernels, and
+  // is incompatible with mutable input filters that might change between evals.
   data->supports_multithreaded_kernel =
       (kernel_type == kMultithreadOptimized) &&
       (context->recommended_num_threads != 1) && !is_hybrid &&
       (params->dilation_width_factor == 1) &&
-      (params->dilation_height_factor == 1);
+      (params->dilation_height_factor == 1) &&
+      (filter->allocation_type != kTfLiteArenaRw) &&
+      !IsDynamicTensor(filter);
 
   TF_LITE_ENSURE_STATUS(AllocateTemporaryTensorsIfRequired(
       context, node, is_hybrid, data->is_hybrid_per_channel, kernel_type));
@@ -678,6 +686,42 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
 }
 
 template <KernelType kernel_type>
+void EvalQuantizedPerChannel16x8(TfLiteContext* context, TfLiteNode* node,
+                                 TfLiteConvParams* params, OpData* data,
+                                 const TfLiteTensor* input,
+                                 const TfLiteTensor* filter,
+                                 const TfLiteTensor* bias, TfLiteTensor* output,
+                                 TfLiteTensor* im2col) {
+  ConvParams op_params;
+  op_params.input_offset = -input->params.zero_point;
+  op_params.output_offset = output->params.zero_point;
+  op_params.stride_height = params->stride_height;
+  op_params.stride_width = params->stride_width;
+  op_params.dilation_height_factor = params->dilation_height_factor;
+  op_params.dilation_width_factor = params->dilation_width_factor;
+  op_params.padding_values.height = data->padding.height;
+  op_params.padding_values.width = data->padding.width;
+  op_params.quantized_activation_min = data->output_activation_min;
+  op_params.quantized_activation_max = data->output_activation_max;
+
+  switch (kernel_type) {
+    case kGenericOptimized:
+    case kMultithreadOptimized:
+    case kCblasOptimized:
+    case kReference: {
+      reference_integer_ops::ConvPerChannel(
+          op_params, data->per_channel_output_multiplier.data(),
+          data->per_channel_output_shift.data(), GetTensorShape(input),
+          GetTensorData<int16>(input), GetTensorShape(filter),
+          GetTensorData<int8>(filter), GetTensorShape(bias),
+          GetTensorData<std::int64_t>(bias), GetTensorShape(output),
+          GetTensorData<int16>(output));
+      break;
+    }
+  }
+}
+
+template <KernelType kernel_type>
 void EvalFloat(TfLiteContext* context, TfLiteNode* node,
                TfLiteConvParams* params, OpData* data,
                const TfLiteTensor* input, const TfLiteTensor* filter,
@@ -724,8 +768,8 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
       break;
     }
     case kMultithreadOptimized: {
-#ifdef TFLITE_WITH_RUY
-      // See Register_CONV_2D: we should never be here when tflite_with_ruy
+#ifdef TFLITE_WITH_RUY_ONLY
+      // See Register_CONV_2D: we should never be here when TFLITE_WITH_RUY_ONLY
       // was enabled. We #if out this code in order to get the corresponding
       // binary size benefits.
       TFLITE_DCHECK(false);
@@ -938,6 +982,10 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
       EvalQuantizedPerChannel<kernel_type>(context, node, params, data, input,
                                            filter, bias, output, im2col);
       break;
+    case kTfLiteInt16:
+      EvalQuantizedPerChannel16x8<kernel_type>(
+          context, node, params, data, input, filter, bias, output, im2col);
+      break;
     default:
       context->ReportError(context, "Type %s currently not supported.",
                            TfLiteTypeGetName(input->type));
@@ -957,6 +1005,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return EvalImpl<kernel_type, kTfLiteUInt8>(context, node);
     case kTfLiteInt8:
       return EvalImpl<kernel_type, kTfLiteInt8>(context, node);
+    case kTfLiteInt16:
+      return EvalImpl<kernel_type, kTfLiteInt16>(context, node);
     default:
       context->ReportError(context, "Type %d not currently supported.",
                            input->type);
@@ -1004,8 +1054,8 @@ TfLiteRegistration* Register_CONVOLUTION_CBLAS_OPT() {
 TfLiteRegistration* Register_CONV_2D() {
 #if defined TFLITE_USE_APPLE_ACCELERATE_FOR_CONV
   return Register_CONVOLUTION_CBLAS_OPT();
-#elif defined TFLITE_WITH_RUY
-  // tflite_with_ruy optimizes the generic kernel type.
+#elif defined TFLITE_WITH_RUY_ONLY
+  // TFLITE_WITH_RUY_ONLY optimizes the generic kernel type.
   return Register_CONVOLUTION_GENERIC_OPT();
 #else
   return Register_CONVOLUTION_MULTITHREADED_OPT();
@@ -1016,8 +1066,8 @@ TfLiteRegistration* Register_CONV_2D() {
 // models only need the UINT8 type. TFLite's op registration mechanism doesn't
 // yet allow for more nuanced registration mechanisms.
 TfLiteRegistration* Register_CONV_2D_UINT8() {
-#if defined TFLITE_WITH_RUY
-  // tflite_with_ruy optimizes the generic kernel type.
+#if defined TFLITE_WITH_RUY_ONLY
+  // TFLITE_WITH_RUY_ONLY optimizes the generic kernel type.
   return Register_CONVOLUTION_GENERIC_OPT_UINT8();
 #else
   return Register_CONV_2D();

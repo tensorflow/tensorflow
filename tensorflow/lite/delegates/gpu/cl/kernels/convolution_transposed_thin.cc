@@ -187,8 +187,8 @@ ConvolutionTransposedThin& ConvolutionTransposedThin::operator=(
 absl::Status ConvolutionTransposedThin::Compile(
     const CreationContext& creation_context) {
   const auto code = GenerateConvolutionTransposedCode(
-      definition_, IntegralDivideRoundUp(src_channels_, 4), dst_channels_,
-      kernel_size_, *creation_context.device, linked_operations_);
+      definition_, DivideRoundUp(src_channels_, 4), dst_channels_, kernel_size_,
+      *creation_context.device, linked_operations_);
 
   std::vector<CompilerOptions> options;
   if (definition_.precision == CalculationsPrecision::F16 &&

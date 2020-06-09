@@ -45,7 +45,7 @@ namespace {
 // otherwise _tf operations are wrapped in an island and the _ prefix is
 // removed. Control dependencies are moved to be handled by the island itself.
 struct ControlToExecutorDialectConversion
-    : public FunctionPass<ControlToExecutorDialectConversion> {
+    : public PassWrapper<ControlToExecutorDialectConversion, FunctionPass> {
   void runOnFunction() override;
 
  private:
@@ -167,7 +167,7 @@ void ControlToExecutorDialectConversion::runOnFunction() {
       op.getResult(0).replaceAllUsesWith(replacement->getResult(0));
       for (int i : llvm::seq<int>(1, op.getNumResults()))
         op.getResult(i).replaceAllUsesWith(replacement->getResult(i + 1));
-      replacement->setAttrs(op.getAttrList());
+      replacement->setAttrs(op.getMutableAttrDict());
       op.erase();
       continue;
     } else if (op.getName().getStringRef() == "_tf.NextIteration.sink") {
@@ -177,7 +177,7 @@ void ControlToExecutorDialectConversion::runOnFunction() {
           frame_name_to_loop[frame.getValue()];
       replacement = builder.create<tf_executor::NextIterationSinkOp>(
           loc, srcOp.token(), operands, ArrayRef<NamedAttribute>{});
-      replacement->setAttrs(op.getAttrList());
+      replacement->setAttrs(op.getMutableAttrDict());
       op.erase();
       continue;
     } else if (op.getName().getStringRef() == "_tf.LoopCond") {
@@ -220,7 +220,7 @@ void ControlToExecutorDialectConversion::runOnFunction() {
       // Create the operation inside the island
       OpBuilder island_builder = OpBuilder::atBlockEnd(&island.GetBody());
       Operation *inner_op = island_builder.createOperation(result);
-      inner_op->setAttrs(op.getAttrList());
+      inner_op->setAttrs(op.getMutableAttrDict());
 
       // Add the terminator for the island
       SmallVector<Value, 8> ret_vals(inner_op->getResults());
@@ -230,14 +230,14 @@ void ControlToExecutorDialectConversion::runOnFunction() {
     // Copy the attributes from the original operation to the replacement and
     // remap the results.
     if (!isa<tf_executor::IslandOp>(replacement))
-      replacement->setAttrs(op.getAttrList());
+      replacement->setAttrs(op.getMutableAttrDict());
     for (int i : llvm::seq<int>(0, op.getNumResults()))
       op.getResult(i).replaceAllUsesWith(replacement->getResult(i));
     op.erase();
   }
 }
 
-OpPassBase<FuncOp> *CreateTFControlToExecutorDialectConversion() {
+OperationPass<FuncOp> *CreateTFControlToExecutorDialectConversion() {
   return new ControlToExecutorDialectConversion();
 }
 

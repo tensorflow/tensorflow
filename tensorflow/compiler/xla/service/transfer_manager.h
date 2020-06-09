@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/device_memory.h"
 
 namespace xla {
 
@@ -253,6 +254,13 @@ class TransferManager {
   // immediately.
   virtual bool CanShapedBufferBeAccessedNow(
       se::StreamExecutor* executor, const ShapedBuffer& device_buffer) const {
+    return false;
+  }
+
+  // Equivalent to CanShapedBufferBeAccessedNow but for a single device buffer.
+  virtual bool CanBufferBeAccessedNow(
+      se::StreamExecutor* executor,
+      const se::DeviceMemoryBase& device_buffer) const {
     return false;
   }
 

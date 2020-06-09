@@ -116,11 +116,11 @@ namespace internal {
 
 template <typename T>
 struct is_floating_point_type {
-  static const bool value = std::is_same<T, Eigen::half>::value ||
-                            std::is_same<T, float>::value ||
-                            std::is_same<T, double>::value ||
-                            std::is_same<T, std::complex<float>>::value ||
-                            std::is_same<T, std::complex<double>>::value;
+  static constexpr bool value = std::is_same<T, Eigen::half>::value ||
+                                std::is_same<T, float>::value ||
+                                std::is_same<T, double>::value ||
+                                std::is_same<T, std::complex<float>>::value ||
+                                std::is_same<T, std::complex<double>>::value;
 };
 
 template <typename T>

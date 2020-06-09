@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -62,6 +64,17 @@ class FromTensorSlicesTest(test_base.DatasetTestBase, parameterized.TestCase):
     ds = dataset_ops.Dataset.from_tensor_slices(dss)
     ds = ds.flat_map(lambda x: x)
     self.assertDatasetProduces(ds, expected_output=list(range(10)) * 10)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFromTensorSlicesDatasetOfOrderedDict(self):
+    dss = [dataset_ops.Dataset.range(10).map(
+        lambda x: collections.OrderedDict([("x", x)])) for _ in range(10)]
+    ds = dataset_ops.Dataset.from_tensor_slices(dss)
+    ds = ds.flat_map(lambda x: x)
+    self.assertDatasetProduces(
+        ds,
+        expected_output=[collections.OrderedDict([("x", x)])
+                         for x in list(range(10)) * 10])
 
   @combinations.generate(test_base.default_test_combinations())
   def testFromTensorSlicesDatasetInFunction(self):

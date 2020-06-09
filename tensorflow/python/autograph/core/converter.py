@@ -68,14 +68,9 @@ import enum
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import ast_util
-from tensorflow.python.autograph.pyct import cfg
 from tensorflow.python.autograph.pyct import parser
-from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.pyct import transformer
-from tensorflow.python.autograph.pyct.static_analysis import activity
-from tensorflow.python.autograph.pyct.static_analysis import liveness
-from tensorflow.python.autograph.pyct.static_analysis import reaching_definitions
 from tensorflow.python.util.tf_export import tf_export
 
 # TODO(mdan): These contexts can be refactored into first class objects.
@@ -326,56 +321,3 @@ class Base(transformer.Base):
       return super(Base, self).visit(node)
     finally:
       self._ast_depth -= 1
-
-
-class AnnotatedDef(reaching_definitions.Definition):
-
-  def __init__(self):
-    super(AnnotatedDef, self).__init__()
-    self.directives = {}
-
-
-def standard_analysis(node, context, is_initial=False):
-  """Performs a complete static analysis of the given code.
-
-  Args:
-    node: ast.AST
-    context: converter.EntityContext
-    is_initial: bool, whether this is the initial analysis done on the input
-      source code
-
-  Returns:
-    ast.AST, same as node, with the static analysis annotations added
-  """
-  # TODO(mdan): Clear static analysis here.
-  # TODO(mdan): Consider not running all analyses every time.
-  # TODO(mdan): Don't return a node because it's modified by reference.
-  graphs = cfg.build(node)
-  node = qual_names.resolve(node)
-  node = activity.resolve(node, context, None)
-  node = reaching_definitions.resolve(node, context, graphs, AnnotatedDef)
-  node = liveness.resolve(node, context, graphs)
-  if is_initial:
-    anno.dup(
-        node,
-        {
-            anno.Static.DEFINITIONS: anno.Static.ORIG_DEFINITIONS,
-        },
-    )
-  return node
-
-
-def apply_(node, context, converter_module):
-  """Applies a converter to an AST.
-
-  Args:
-    node: ast.AST
-    context: converter.EntityContext
-    converter_module: converter.Base
-
-  Returns:
-    ast.AST, the result of applying converter to node
-  """
-  node = standard_analysis(node, context)
-  node = converter_module.transform(node, context)
-  return node

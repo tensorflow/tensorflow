@@ -41,7 +41,7 @@ namespace mlir {
 namespace tf_saved_model {
 namespace {
 struct OptimizeGlobalTensorsPass
-    : public OperationPass<OptimizeGlobalTensorsPass, ModuleOp> {
+    : public PassWrapper<OptimizeGlobalTensorsPass, OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
 
@@ -278,6 +278,10 @@ void EraseUnusedBoundInputs(ModuleOp module) {
 
 void OptimizeGlobalTensorsPass::runOnOperation() {
   auto module = getOperation();
+  if (!tf_saved_model::HasTfSavedModelSemantics(module)) {
+    return;
+  }
+
   EraseUnusedBoundInputs(module);
 
   ResourceAnalyzer resource_analyzer(module);
@@ -296,7 +300,7 @@ static PassRegistration<OptimizeGlobalTensorsPass> pass(
     "tf-saved-model-optimize-global-tensors",
     "Optimize tf_saved_model.global_tensor's.");
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateOptimizeGlobalTensorsPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateOptimizeGlobalTensorsPass() {
   return std::make_unique<OptimizeGlobalTensorsPass>();
 }
 

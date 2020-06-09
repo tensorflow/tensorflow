@@ -676,6 +676,39 @@ bool HloDataflowAnalysis::UpdateWhileValueSet(HloInstruction* xla_while) {
   }
 }
 
+bool HloDataflowAnalysis::UpdateCollectivePermuteStartValueSet(
+    HloInstruction* collective_permute_start) {
+  CHECK_EQ(collective_permute_start->opcode(),
+           HloOpcode::kCollectivePermuteStart);
+  bool changed = false;
+  // CollectivePermuteStart forwards the operand value to element {0} of its
+  // output.
+  const HloValueSet& operand_value_set =
+      GetValueSet(collective_permute_start->operand(0));
+  HloValueSet& value_set = GetValueSet(collective_permute_start, {0});
+  if (value_set != operand_value_set) {
+    value_set = operand_value_set;
+    changed = true;
+  }
+  return changed;
+}
+
+bool HloDataflowAnalysis::UpdateCollectivePermuteDoneValueSet(
+    HloInstruction* collective_permute_done) {
+  CHECK_EQ(collective_permute_done->opcode(),
+           HloOpcode::kCollectivePermuteDone);
+  bool changed = false;
+  // CollectivePermuteDone forwards the operand value at {0} to its output.
+  const HloValueSet& operand_value_set =
+      GetValueSet(collective_permute_done->operand(0), {1});
+  HloValueSet& value_set = GetValueSet(collective_permute_done);
+  if (value_set != operand_value_set) {
+    value_set = operand_value_set;
+    changed = true;
+  }
+  return changed;
+}
+
 bool HloDataflowAnalysis::UpdateInstructionValueSet(
     HloInstruction* instruction) {
   // Recompute from operands.
@@ -712,6 +745,10 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
       return UpdateCopyDoneValueSet(instruction);
     case HloOpcode::kConditional:
       return UpdateConditionalValueSet(instruction);
+    case HloOpcode::kCollectivePermuteStart:
+      return UpdateCollectivePermuteStartValueSet(instruction);
+    case HloOpcode::kCollectivePermuteDone:
+      return UpdateCollectivePermuteDoneValueSet(instruction);
     default:
       // Instruction does not forward HloValues (it defines all values in its
       // output). No update is necessary.
@@ -1150,6 +1187,9 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     HloInstruction* user, const ShapeIndex& user_index) const {
   CHECK(user->IsUserOf(operand))
       << "user: " << user->ToString() << " operand: " << operand->ToString();
+  if (operand->opcode() == HloOpcode::kConstant) {
+    return false;
+  }
   const Shape& operand_subshape =
       ShapeUtil::GetSubshape(operand->shape(), operand_index);
   const Shape& user_subshape =

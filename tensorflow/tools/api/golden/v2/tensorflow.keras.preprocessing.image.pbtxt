@@ -68,4 +68,8 @@ tf_module {
     name: "save_img"
     argspec: "args=[\'path\', \'x\', \'data_format\', \'file_format\', \'scale\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'True\'], "
   }
+  member_method {
+    name: "smart_resize"
+    argspec: "args=[\'x\', \'size\', \'interpolation\'], varargs=None, keywords=None, defaults=[\'bilinear\'], "
+  }
 }

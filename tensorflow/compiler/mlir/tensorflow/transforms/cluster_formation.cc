@@ -37,7 +37,8 @@ namespace TFDevice {
 
 namespace {
 
-struct ClusterFormationPass : public FunctionPass<ClusterFormationPass> {
+struct ClusterFormationPass
+    : public PassWrapper<ClusterFormationPass, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -229,7 +230,7 @@ void ClusterFormationPass::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateClusterFormationPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateClusterFormationPass() {
   return std::make_unique<ClusterFormationPass>();
 }
 

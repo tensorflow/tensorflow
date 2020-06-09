@@ -602,7 +602,7 @@ class RNNTest(keras_parameterized.TestCase):
     self.assertEqual(layer.get_losses_for(None), [loss_2])
     self.assertEqual(layer.get_losses_for(x), [loss_1])
 
-    # Test `get_updates_for` and `updates`
+    # Test `updates`
     cells = [keras.layers.LSTMCell(1),
              keras.layers.LSTMCell(1)]
     layer = keras.layers.RNN(cells)
@@ -618,8 +618,6 @@ class RNNTest(keras_parameterized.TestCase):
       cells[0].add_update(update_1, inputs=x)
       cells[0].add_update(update_2)
     self.assertEqual(len(layer.updates), 2)
-    self.assertEqual(len(layer.get_updates_for(None)), 1)
-    self.assertEqual(len(layer.get_updates_for(x)), 1)
 
   def test_rnn_dynamic_trainability(self):
     layer_class = keras.layers.SimpleRNN
@@ -1375,7 +1373,15 @@ class RNNTest(keras_parameterized.TestCase):
         initial_state=states
     )
     model = keras.Model([inputs, state_h, state_c], decoder_out)
+    output1 = model.predict(
+        [np.ones((1, 1, 1)), np.ones((1, 1)), np.ones((1, 1))])
+    output2 = model.predict(
+        [np.ones((1, 1, 1)), np.ones((1, 1)), np.ones((1, 1))])
     model.reset_states()
+    output3 = model.predict(
+        [np.ones((1, 1, 1)), np.ones((1, 1)), np.ones((1, 1))])
+    self.assertAllClose(output1, output3)
+    self.assertNotAllClose(output1, output2)
 
   def test_reset_states(self):
     # See https://github.com/tensorflow/tensorflow/issues/25852

@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import threading
 
 from tensorflow.python import tf2
@@ -24,6 +25,7 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
@@ -34,9 +36,10 @@ from tensorflow.python.ops import control_flow_v2_func_graphs
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import variables as tf_variables
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.training.tracking import base as tracking
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_contextlib
+from tensorflow.python.util.tf_export import keras_export
 
 _call_context = threading.local()
 
@@ -119,7 +122,7 @@ def make_variable(name,
         initializer,
         (type(init_ops.Initializer), type(init_ops_v2.Initializer))):
       initializer = initializer()
-    init_val = lambda: initializer(shape, dtype=dtype)
+    init_val = functools.partial(initializer, shape, dtype=dtype)
     variable_dtype = dtype.base_dtype
   if use_resource is None:
     use_resource = True
@@ -211,18 +214,17 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
   for tensor in tensor_list:
     if getattr(tensor, '_keras_history', None) is not None:
       continue
+    if sparse_tensor.is_sparse(tensor) or ragged_tensor.is_ragged(tensor):
+      example = """
+      weights_mult = lambda x: tf.sparse.sparse_dense_matmul(x, weights)
+      output = tf.keras.layers.Lambda(weights_mult)(input)
+      """
+      raise ValueError('Tensorflow ops that generate ragged or sparse tensor '
+                       'outputs are currently not supported by Keras automatic '
+                       'op wrapping. Please wrap these ops in a Lambda layer: '
+                       '\n\n```\n{example}\n```\n'.format(example=example))
     op = tensor.op  # The Op that created this Tensor.
     if op not in processed_ops:
-      if op.type.startswith('Sparse'):
-        lambda_example = """
-        weights_mult = lambda x: tf.sparse.sparse_dense_matmul(x, weights)
-        output = tf.keras.layers.Lambda(weights_mult)(input)
-        """
-        raise ValueError(
-            'Sparse ops are not supported with functional models with built-in '
-            'layer wrapping. Please wrap the sparse ops in a Lambda layer like'
-            ': \n{lambda_example}\n'.format(lambda_example=lambda_example))
-
       # Recursively set `_keras_history`.
       op_inputs = list(op.inputs)
       constants = {}
@@ -245,7 +247,10 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
             constants[i] = op_input
           else:
             with ops.init_scope():
-              constants[i] = backend.function([], op_input)([])
+              if ops.executing_eagerly_outside_functions():
+                constants[i] = backend.eval_in_eager_or_function(op_input)
+              else:
+                constants[i] = backend.function([], op_input)([])
       layer_inputs = unnest_if_single_tensor(layer_inputs)
       processed_ops, created_layers = _create_keras_history_helper(
           layer_inputs, processed_ops, created_layers)
@@ -254,8 +259,10 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
       op_layer = base_layer.TensorFlowOpLayer(
           node_def, constants=constants, name=name)
       created_layers.append(op_layer)
-      op_layer._add_inbound_node(  # pylint: disable=protected-access
-          layer_inputs, op.outputs)
+      op_layer._set_connectivity_metadata(  # pylint: disable=protected-access
+          args=(layer_inputs,),
+          kwargs={},
+          outputs=op.outputs)
       processed_ops.update([op])
   return processed_ops, created_layers
 
@@ -391,9 +398,11 @@ def mark_checked(tensors):
 
 def call_context():
   """Returns currently active `CallContext`."""
-  if getattr(_call_context, 'call_context', None) is None:
-    _call_context.call_context = CallContext()
-  return _call_context.call_context
+  call_ctx = getattr(_call_context, 'call_context', None)
+  if call_ctx is None:
+    call_ctx = CallContext()
+    _call_context.call_context = call_ctx
+  return call_ctx
 
 
 control_flow_util_v2._register_keras_layer_context_function(call_context)  # pylint: disable=protected-access
@@ -403,57 +412,80 @@ class CallContext(object):
   """Keeps track of properties currently inside a Layer/Model's `call`.
 
   Attributes:
+    in_call: Whether currently inside the `call` of a Layer.
     layer: The `Layer` whose `call` is currently active.
     inputs: The inputs to the currently active `Layer`.
+    build_graph: Whether currently inside a Graph or FuncGraph.
+    training: Whether currently executing in training or inference mode.
+    saving: Whether currently saving to SavedModel.
     frozen: Whether currently executing inside a `Layer` with `trainable` set to
       `False`.
-    in_call: Whether currently inside the `call` of a Layer.
-    training: Whether currently executing in training or inference mode.
     in_keras_graph: Whether executing inside the Keras Graph.
-    saving: Whether currently saving to SavedModel.
   """
 
   def __init__(self):
-    self.layer = None
-    self.inputs = None
-    self.frozen = False
+    # Handle `in_call` separately as it is the most-read attr and reading it is
+    # on the hot path.
     self.in_call = False
-    self.training = None
+    self._state = {
+        'layer': None,
+        'inputs': None,
+        'build_graph': False,
+        'training': None,
+        'saving': None
+    }
+    # TODO(b/150169018): This logic can be replaced after the Functional API
+    # refactor.
     self._in_keras_graph = False
-    self.saving = False
 
-  @tf_contextlib.contextmanager
   def enter(self, layer, inputs, build_graph, training, saving=None):
-    """Push a Layer and its inputs and state onto the current call context."""
-    prev_layer = self.layer
-    prev_inputs = self.inputs
-    prev_frozen = self.frozen
-    prev_in_call = self.in_call
-    prev_training = self.training
-    prev_in_keras_graph = self._in_keras_graph
-    prev_saving = self.saving
+    """Push a Layer and its inputs and state onto the current call context.
 
-    self.layer = layer
-    self.inputs = inputs
-    self.frozen = self.frozen or not layer.trainable
-    self.in_call = True
-    self.training = training
-    self._in_keras_graph = (
-        self._in_keras_graph or
-        (build_graph and
-         getattr(backend.get_graph(), 'name', None) == 'keras_graph'))
-    self.saving = prev_saving if saving is None else saving
+    Arguments:
+      layer: The `Layer` whose `call` is currently active.
+      inputs: The inputs to the currently active `Layer`.
+      build_graph: Whether currently inside a Graph or FuncGraph.
+      training: Whether currently executing in training or inference mode.
+      saving: Whether currently saving to SavedModel.
 
-    try:
-      yield
-    finally:
-      self.layer = prev_layer
-      self.inputs = prev_inputs
-      self.frozen = prev_frozen
-      self.in_call = prev_in_call
-      self.training = prev_training
-      self._in_keras_graph = prev_in_keras_graph
-      self.saving = prev_saving
+    Returns:
+      Context manager.
+    """
+    state = {
+        'layer': layer,
+        'inputs': inputs,
+        'build_graph': build_graph,
+        'training': training,
+        'saving': saving
+    }
+    return CallContextManager(self, state)
+
+  @property
+  def layer(self):
+    return self._state['layer']
+
+  @property
+  def inputs(self):
+    return self._state['inputs']
+
+  @property
+  def build_graph(self):
+    return self._state['build_graph']
+
+  @property
+  def training(self):
+    return self._state['training']
+
+  @property
+  def saving(self):
+    return self._state['saving']
+
+  @property
+  def frozen(self):
+    layer = self._state['layer']
+    if not layer:
+      return False
+    return not layer.trainable
 
   @property
   def in_keras_graph(self):
@@ -465,29 +497,45 @@ class CallContext(object):
             getattr(backend.get_graph(), 'name', None) == 'keras_graph')
 
 
+class CallContextManager(object):
+  """Context manager for `CallContext`."""
+
+  def __init__(self, call_ctx, state):
+    self._call_ctx = call_ctx
+    self._state = state
+    self._build_graph = state['build_graph']
+
+  def __enter__(self):
+    call_ctx = self._call_ctx
+    self._prev_in_call = call_ctx.in_call
+    self._prev_state = call_ctx._state
+
+    call_ctx.in_call = True
+    call_ctx._state = self._state
+
+    # TODO(b/150169018): This logic can be removed after the Functional API
+    # refactor.
+    if self._build_graph:
+      self._prev_in_keras_graph = call_ctx._in_keras_graph
+      call_ctx._in_keras_graph = (
+          call_ctx._in_keras_graph or
+          getattr(backend.get_graph(), 'name', None) == 'keras_graph')
+
+  def __exit__(self, *exc_info):
+    call_ctx = self._call_ctx
+    call_ctx.in_call = self._prev_in_call
+    call_ctx._state = self._prev_state
+
+    if self._build_graph:
+      call_ctx._in_keras_graph = self._prev_in_keras_graph
+
+
 def training_arg_passed_to_call(argspec, args, kwargs):
   """Returns whether a user passed the `training` argument in `__call__`."""
   # `argspec.args` starts with ['self', 'inputs']
   full_args = dict(zip(argspec.args[2:], args))
   full_args.update(kwargs)
   return 'training' in full_args and full_args['training'] is not None
-
-
-def autocast_context_manager(dtype):
-  """Returns a context manager to autocast AutoCastVariables.
-
-  Under this context manager, AutoCastVariables will be casted to `dtype` if
-  `dtype` is floating-point. Otherwise, AutoCastVariables will not be casted.
-
-  Args:
-    dtype: The dtype to cast AutoCastVariables to, or None.
-
-  Returns:
-    A context manager to automatically cast AutoCastVariables.
-  """
-  if dtype and not dtypes.as_dtype(dtype).is_floating:
-    dtype = None
-  return ops.get_default_graph()._enable_auto_casting_variables(dtype)  # pylint: disable=protected-access
 
 
 def is_subclassed(layer):
@@ -658,33 +706,34 @@ def mark_as_return(outputs, acd):
 V2_DTYPE_BEHAVIOR = None
 
 
+@keras_export(v1=['keras.layers.enable_v2_dtype_behavior'])
 def enable_v2_dtype_behavior():
   """Enable the V2 dtype behavior for Keras layers.
 
-  By default, the V2 dtype behavior is enabled in TensorFlow 2.
+  By default, the V2 dtype behavior is enabled in TensorFlow 2, so this function
+  is only useful if `tf.compat.v1.disable_v2_behavior` has been called. Since
+  mixed precision requires V2 dtype behavior to be enabled, this function allows
+  you to use mixed precision in Keras layers if `disable_v2_behavior` has been
+  called.
 
   When enabled, the dtype of Keras layers defaults to floatx (which is typically
   float32) instead of None. In addition, layers will automatically cast
   floating-point inputs to the layer's dtype.
 
-  For example, once enabled, the following block will run a Conv2D layer
-  in float32:
-
-  ```python
-  x = tf.ones((4, 4, 4, 4), dtype='float64')
-  layer = tf.keras.layers.Conv2D(filters=4, kernel_size=2)
-  print(layer.dtype)  # Float32 when enabled. None when disabled.
-  # When enabled, will cast inputs to the layer's dtype, which is float32. When
-  # disabled, will do no casting, so the layer is done in float64.
-  y = layer(x)
-  ```
+  >>> x = tf.ones((4, 4, 4, 4), dtype='float64')
+  >>> layer = tf.keras.layers.Conv2D(filters=4, kernel_size=2)
+  >>> print(layer.dtype)  # float32 since V2 dtype behavior is enabled
+  float32
+  >>> y = layer(x)  # Layer casts inputs since V2 dtype behavior is enabled
+  >>> print(y.dtype.name)
+  float32
 
   A layer author can opt-out their layer from the automatic input casting by
   passing `autocast=False` to the base Layer's constructor. This disables the
   autocasting part of the V2 behavior for that layer, but not the defaulting to
   floatx part of the V2 behavior.
 
-  When a global `tf.keras.mixed_precision.experimental.Policy` is set, the
+  When a global `tf.keras.mixed_precision.experimental.Policy` is set, a Keras
   layer's dtype will default to the global policy instead of floatx. Layers
   will automatically cast inputs to the policy's compute_dtype.
   """
@@ -692,12 +741,11 @@ def enable_v2_dtype_behavior():
   V2_DTYPE_BEHAVIOR = True
 
 
+@keras_export(v1=['keras.layers.disable_v2_dtype_behavior'])
 def disable_v2_dtype_behavior():
   """Disables the V2 dtype behavior for Keras layers.
 
-  See `enable_v2_dtype_behavior`.
-
-  This function will be removed in the future.
+  See `tf.compat.v1.keras.layers.enable_v2_dtype_behavior`.
   """
   global V2_DTYPE_BEHAVIOR
   V2_DTYPE_BEHAVIOR = False
@@ -779,6 +827,14 @@ class TrackableWeightHandler(object):
     for idx, tensor in enumerate(weights):
       feed_dict[self._placeholder_tensors[idx]] = tensor
     backend.get_session().run(self._assign_op, feed_dict)
+
+
+def no_ragged_support(inputs, layer_name):
+  input_list = nest.flatten(inputs)
+  if any(isinstance(x, ragged_tensor.RaggedTensor) for x in input_list):
+    raise ValueError('Layer %s does not support RaggedTensors as input. '
+                     'Inputs received: %s. You can try converting your '
+                     'input to an uniform tensor.' % (layer_name, inputs))
 
 
 # TODO(kathywu): This is a temporary hack. When a network of layers is revived

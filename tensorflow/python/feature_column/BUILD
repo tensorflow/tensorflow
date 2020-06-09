@@ -13,6 +13,7 @@ py_library(
         ":feature_column",
         ":feature_column_v2",
         "//tensorflow/python:util",
+        "//tensorflow/python/keras/feature_column",
     ],
 )
 
@@ -22,6 +23,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":utils",
+        "@six_archive//:six",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:control_flow_ops",
@@ -46,16 +48,19 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/keras/engine",
-        "@six_archive//:six",
+        # TODO(scottzhu): Remove metrics after we cleanup the keras internal cyclar dependency.
+        #     //third_party/tensorflow/python/feature_column:feature_column
+        #     //third_party/tensorflow/python/keras/engine:engine
+        # .-> //third_party/tensorflow/python/keras/distribute:distribute
+        # |   //third_party/tensorflow/python/keras:metrics
+        # `-- //third_party/tensorflow/python/keras/distribute:distribute
+        "//tensorflow/python/keras:metrics",
     ],
 )
 
 py_library(
     name = "feature_column_v2",
     srcs = [
-        "dense_features.py",
-        "dense_features_v2.py",
         "feature_column_v2.py",
         "sequence_feature_column.py",
         "serialization.py",
@@ -73,23 +78,22 @@ py_library(
         "//tensorflow/python:init_ops",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tf_export",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/keras:base_layer",
-        "//tensorflow/python/keras:engine",
         "//tensorflow/python/keras:initializers",
         "//tensorflow/python/keras/utils:generic_utils",
         "//tensorflow/python/training/tracking",
+        "//tensorflow/python/training/tracking:data_structures",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -116,15 +120,6 @@ tf_py_test(
         "no_rocm",
         "no_windows",
     ],
-    deps = [
-        ":feature_column_test_main_lib",
-    ],
-)
-
-tf_py_test(
-    name = "dense_features_test",
-    srcs = ["dense_features_test.py"],
-    tags = ["no_pip"],
     deps = [
         ":feature_column_test_main_lib",
     ],
@@ -170,15 +165,6 @@ tf_py_test(
         "no_windows",
     ],
     deps = [":feature_column_v2_test_main_lib"],
-)
-
-tf_py_test(
-    name = "dense_features_v2_test",
-    srcs = ["dense_features_v2_test.py"],
-    tags = ["no_pip"],
-    deps = [
-        ":feature_column_v2_test_main_lib",
-    ],
 )
 
 py_library(
@@ -251,11 +237,8 @@ py_test(
     deps = [
         ":feature_column_v2",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_ops",
         "//tensorflow/python:parsing_ops",
-        "//tensorflow/python:training",
         "//tensorflow/python:util",
-        "//tensorflow/python/keras/layers",
     ],
 )
 

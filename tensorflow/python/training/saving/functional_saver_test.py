@@ -20,20 +20,36 @@ from __future__ import print_function
 
 import os
 
-from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.eager import wrap_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import gfile
+from tensorflow.python.training.saving import checkpoint_options
 from tensorflow.python.training.saving import functional_saver
 from tensorflow.python.training.saving import saveable_hook
 from tensorflow.python.training.saving import saveable_object_util
 
+LOCALHOST = "/job:localhost/replica:0/task:0/device:CPU:0"
+
 
 class SaverTest(test.TestCase):
+
+  def setUp(self):
+    super(SaverTest, self).setUp()
+    cpus = config.list_physical_devices("CPU")
+    # Set 3 virtual CPUs
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
+    ])
+    self.local_options = checkpoint_options.CheckpointOptions(
+        experimental_io_device=LOCALHOST)
 
   @test_util.run_in_graph_and_eager_modes
   def test_resource_variable(self):
@@ -54,6 +70,33 @@ class SaverTest(test.TestCase):
         saveable_object_util.saveable_objects_for_op(v2, "x"))
     self.evaluate(second_saver.restore(prefix))
     self.assertEqual(2., self.evaluate(v2))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_resource_variable_use_localhost(self):
+    v1 = resource_variable_ops.ResourceVariable(2.)
+    self.evaluate(v1.initializer)
+    saver = functional_saver._SingleDeviceSaver(
+        saveable_object_util.saveable_objects_for_op(v1, "x"))
+    prefix = os.path.join(self.get_temp_dir(), "ckpt")
+    self.evaluate(saver.save(constant_op.constant(prefix), self.local_options))
+    self.assertEqual(2, len(gfile.Glob(prefix + "*")))
+    self.evaluate(v1.assign(1.))
+    self.evaluate(saver.restore(prefix, self.local_options))
+    self.assertEqual(2., self.evaluate(v1))
+
+    v2 = resource_variable_ops.ResourceVariable(3.)
+    self.evaluate(v2.initializer)
+    second_saver = functional_saver._SingleDeviceSaver(
+        saveable_object_util.saveable_objects_for_op(v2, "x"))
+    self.evaluate(second_saver.restore(prefix, self.local_options))
+    self.assertEqual(2., self.evaluate(v2))
+
+    # In graph mode, verify that the save and restore ops were set to run on
+    # localhost.
+    if not context.executing_eagerly():
+      for op in ops.get_default_graph().get_operations():
+        if op.type in ("SaveV2", "RestoreV2"):
+          self.assertEqual(LOCALHOST, op.device)
 
   def test_to_proto(self):
     v1 = resource_variable_ops.ResourceVariable(2.)
@@ -83,12 +126,7 @@ class SaverTest(test.TestCase):
     second_saver.restore(save_path)
     self.assertEqual(2., self.evaluate(v2))
 
-  @test_util.run_v1_only(
-      "Needs an API to setup multiple devices, b/124805129")
-  # Set up multiple devices when graph building. Before test.main() we configure
-  # the devices for eager execution.
-  @test_util.run_in_graph_and_eager_modes(
-      config=config_pb2.ConfigProto(device_count={"CPU": 3}))
+  @test_util.run_in_graph_and_eager_modes
   def test_checkpoint_is_sharded_by_device(self):
     with ops.device("cpu:0"):
       v0 = resource_variable_ops.ResourceVariable(0.)
@@ -99,9 +137,9 @@ class SaverTest(test.TestCase):
 
     self.evaluate([v0.initializer, v1.initializer, v2.initializer])
     saver = functional_saver.MultiDeviceSaver(
-        list(saveable_object_util.saveable_objects_for_op(v0, "v0"))
-        + list(saveable_object_util.saveable_objects_for_op(v1, "v1"))
-        + list(saveable_object_util.saveable_objects_for_op(v2, "v2")))
+        list(saveable_object_util.saveable_objects_for_op(v0, "v0")) +
+        list(saveable_object_util.saveable_objects_for_op(v1, "v1")) +
+        list(saveable_object_util.saveable_objects_for_op(v2, "v2")))
     prefix = os.path.join(self.get_temp_dir(), "ckpt")
     self.evaluate(saver.save(constant_op.constant(prefix)))
     self.assertEqual(4, len(gfile.Glob(prefix + "*")))
@@ -113,8 +151,38 @@ class SaverTest(test.TestCase):
     self.assertEqual(1., self.evaluate(v1))
     self.assertEqual(2., self.evaluate(v2))
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_checkpoint_multi_device_using_localhost(self):
+    with ops.device("cpu:0"):
+      v0 = resource_variable_ops.ResourceVariable(0.)
+    with ops.device("cpu:1"):
+      v1 = resource_variable_ops.ResourceVariable(1.)
+    with ops.device("cpu:2"):
+      v2 = resource_variable_ops.ResourceVariable(2.)
 
-class SaveableHookTest(test.TestCase):
+    self.evaluate([v0.initializer, v1.initializer, v2.initializer])
+    saver = functional_saver.MultiDeviceSaver(
+        list(saveable_object_util.saveable_objects_for_op(v0, "v0")) +
+        list(saveable_object_util.saveable_objects_for_op(v1, "v1")) +
+        list(saveable_object_util.saveable_objects_for_op(v2, "v2")))
+    prefix = os.path.join(self.get_temp_dir(), "ckpt")
+    self.evaluate(saver.save(constant_op.constant(prefix), self.local_options))
+    self.assertEqual(4, len(gfile.Glob(prefix + "*")))
+    self.evaluate(v0.assign(-1.))
+    self.evaluate(v1.assign(-1.))
+    self.evaluate(v2.assign(-1.))
+    self.evaluate(
+        saver.restore(constant_op.constant(prefix), self.local_options))
+    self.assertEqual(0., self.evaluate(v0))
+    self.assertEqual(1., self.evaluate(v1))
+    self.assertEqual(2., self.evaluate(v2))
+
+    # In graph mode, verify that the save and restore ops were set to run on
+    # localhost.
+    if not context.executing_eagerly():
+      for op in ops.get_default_graph().get_operations():
+        if op.type in ("SaveV2", "RestoreV2", "MergeV2Checkpoints"):
+          self.assertEqual(LOCALHOST, op.device)
 
   def test_callbacks_run(self):
     #  Use dict because an int would be shadowed inside callback.
@@ -144,6 +212,5 @@ class SaveableHookTest(test.TestCase):
 
 
 if __name__ == "__main__":
-  ops.enable_eager_execution(
-      config=config_pb2.ConfigProto(device_count={"CPU": 3}))
+  ops.enable_eager_execution()
   test.main()

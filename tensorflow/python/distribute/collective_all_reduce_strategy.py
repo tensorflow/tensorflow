@@ -330,8 +330,9 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         communication=self._communication)
     super(CollectiveAllReduceExtended, self)._initialize_single_worker(
         local_devices)
+    host_device = device_util.get_host_for_device(self._worker_device)
     self._input_workers = input_lib.InputWorkers(
-        [(self._worker_device, self.worker_devices)])
+        [(host_device, self.worker_devices)])
 
     # Add a default device so that ops without specified devices will not end up
     # on other workers.
@@ -416,6 +417,14 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         self._container_strategy(),
         split_batch_by=self._num_replicas_in_sync,
         input_context=input_context)
+
+  def _experimental_distribute_datasets_from_function(self, dataset_fn):
+    input_context = self._make_input_context()
+    return input_lib.get_distributed_datasets_from_function(
+        dataset_fn=dataset_fn,
+        input_workers=self._input_workers,
+        input_contexts=[input_context],
+        strategy=self._container_strategy())
 
   def _make_dataset_iterator(self, dataset):
     """Distributes the dataset to each local GPU."""

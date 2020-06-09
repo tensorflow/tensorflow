@@ -74,9 +74,9 @@ Status GetTensorListShapeFromElementShape(const xla::Shape& element_shape,
                                           xla::Shape* tensor_list_shape);
 
 // Returns a TensorList filled by zeros with the given shape.
-Status CreateZerosTensorListWithShape(xla::XlaBuilder* b,
-                                      const xla::Shape& list_shape,
-                                      xla::XlaOp* list);
+Status CreateZerosTensorListWithShape(
+    xla::XlaBuilder* b, const xla::Shape& list_shape,
+    const std::vector<std::vector<xla::XlaOp>>& dynamic_dims, xla::XlaOp* list);
 
 // If the TensorList is initialized, check that its shape matches element shape;
 // If the TensorList is uninitialized, initialize it with the element shape.

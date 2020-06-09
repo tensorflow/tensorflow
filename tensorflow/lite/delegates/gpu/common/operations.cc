@@ -209,7 +209,7 @@ OperationType OperationTypeFromString(const std::string& name) {
 namespace {
 
 template <typename T>
-T IntegralDivideRoundUp(T n, T divisor) {
+T DivideRoundUp(T n, T divisor) {
   return (n - 1) / divisor + 1;
 }
 
@@ -272,7 +272,7 @@ int32_t CalculateOutput(const BHWDC& input,
 }
 
 inline int32_t StridedSize(int32_t size, int32_t stride) {
-  return stride == 0 ? -1 : IntegralDivideRoundUp(size, stride);
+  return stride == 0 ? -1 : DivideRoundUp(size, stride);
 }
 
 template <Axis AxisT, typename AttrT>
@@ -499,11 +499,27 @@ BHWC CalculateOutputShape(const BHWC& input, const SliceAttributes& attr) {
               StridedSize(attr.ends.c - attr.starts.c, attr.strides.c));
 }
 
+BHWDC CalculateOutputShape(const BHWDC& input, const Slice3DAttributes& attr) {
+  return BHWDC(StridedSize(attr.ends.b - attr.starts.b, attr.strides.b),
+               StridedSize(attr.ends.h - attr.starts.h, attr.strides.h),
+               StridedSize(attr.ends.w - attr.starts.w, attr.strides.w),
+               StridedSize(attr.ends.d - attr.starts.d, attr.strides.d),
+               StridedSize(attr.ends.c - attr.starts.c, attr.strides.c));
+}
+
 BHWC CalculateOutputShape(const BHWC& input, const PadAttributes& attr) {
   return BHWC(attr.appended.b + attr.prepended.b + input.b,
               attr.appended.h + attr.prepended.h + input.h,
               attr.appended.w + attr.prepended.w + input.w,
               attr.appended.c + attr.prepended.c + input.c);
+}
+
+BHWDC CalculateOutputShape(const BHWDC& input, const Pad3DAttributes& attr) {
+  return BHWDC(attr.appended.b + attr.prepended.b + input.b,
+               attr.appended.h + attr.prepended.h + input.h,
+               attr.appended.w + attr.prepended.w + input.w,
+               attr.appended.d + attr.prepended.d + input.d,
+               attr.appended.c + attr.prepended.c + input.c);
 }
 
 BHWC CalculateOutputShape(const BHWC& input,
@@ -526,9 +542,10 @@ absl::Status CalculateOutputShape(const std::vector<BHWC>& input,
   switch (attr.axis) {
     case Axis::CHANNELS:
       for (int i = 1; i < input.size(); i++) {
-        if (input[i].h != new_shape.h || input[i].w != new_shape.w) {
+        if (input[i].h != new_shape.h || input[i].w != new_shape.w ||
+            input[i].b != new_shape.b) {
           return absl::InvalidArgumentError(
-              "Height and Width must be the same when concatenating "
+              "Height, Width and Batch must be the same when concatenating "
               "by channels axis");
         }
         new_shape.c += input[i].c;
@@ -536,9 +553,10 @@ absl::Status CalculateOutputShape(const std::vector<BHWC>& input,
       break;
     case Axis::HEIGHT:
       for (int i = 1; i < input.size(); i++) {
-        if (input[i].w != new_shape.w || input[i].c != new_shape.c) {
+        if (input[i].w != new_shape.w || input[i].c != new_shape.c ||
+            input[i].b != new_shape.b) {
           return absl::InvalidArgumentError(
-              "Channels and Width must be the same when concatenating "
+              "Channels, Width and Batch must be the same when concatenating "
               "by height axis");
         }
         new_shape.h += input[i].h;
@@ -546,17 +564,101 @@ absl::Status CalculateOutputShape(const std::vector<BHWC>& input,
       break;
     case Axis::WIDTH:
       for (int i = 1; i < input.size(); i++) {
-        if (input[i].h != new_shape.h || input[i].c != new_shape.c) {
+        if (input[i].h != new_shape.h || input[i].c != new_shape.c ||
+            input[i].b != new_shape.b) {
           return absl::InvalidArgumentError(
-              "Height and Channels must be the same when concatenating "
+              "Height, Channels and Batch must be the same when concatenating "
               "by width axis");
         }
         new_shape.w += input[i].w;
       }
       break;
+    case Axis::BATCH:
+      for (int i = 1; i < input.size(); i++) {
+        if (input[i].h != new_shape.h || input[i].c != new_shape.c ||
+            input[i].w != new_shape.w) {
+          return absl::InvalidArgumentError(
+              "Width, Height and Channels must be the same when concatenating "
+              "by batch axis");
+        }
+        new_shape.b += input[i].b;
+      }
+      break;
     default:
       return absl::InvalidArgumentError("Invalid axis");
       break;
+  }
+  *output_shape = new_shape;
+  return absl::OkStatus();
+}
+
+absl::Status CalculateOutputShape(const std::vector<BHWDC>& input,
+                                  const ConcatAttributes& attr,
+                                  BHWDC* output_shape) {
+  BHWDC new_shape = input[0];
+  switch (attr.axis) {
+    case Axis::CHANNELS:
+      for (int i = 1; i < input.size(); ++i) {
+        if (input[i].h != new_shape.h || input[i].w != new_shape.w ||
+            input[i].d != new_shape.d || input[i].b != new_shape.b) {
+          return absl::InvalidArgumentError(
+              "Height, Width, Batch and Depth must be the same when "
+              "concatenating "
+              "by channels axis");
+        }
+        new_shape.c += input[i].c;
+      }
+      break;
+    case Axis::HEIGHT:
+      for (int i = 1; i < input.size(); ++i) {
+        if (input[i].w != new_shape.w || input[i].c != new_shape.c ||
+            input[i].d != new_shape.d || input[i].b != new_shape.b) {
+          return absl::InvalidArgumentError(
+              "Width, Depth, Batch and Channels must be the same when "
+              "concatenating "
+              "by height axis");
+        }
+        new_shape.h += input[i].h;
+      }
+      break;
+    case Axis::WIDTH:
+      for (int i = 1; i < input.size(); ++i) {
+        if (input[i].h != new_shape.h || input[i].c != new_shape.c ||
+            input[i].d != new_shape.d || input[i].b != new_shape.b) {
+          return absl::InvalidArgumentError(
+              "Height, Depth, Batch and Channels must be the same when "
+              "concatenating "
+              "by width axis");
+        }
+        new_shape.w += input[i].w;
+      }
+      break;
+    case Axis::DEPTH:
+      for (int i = 1; i < input.size(); ++i) {
+        if (input[i].w != new_shape.w || input[i].h != new_shape.h ||
+            input[i].c != new_shape.c || input[i].b != new_shape.b) {
+          return absl::InvalidArgumentError(
+              "Width, Height, Batch and Channels must be the same when "
+              "concatenating "
+              "by depth axis");
+        }
+        new_shape.d += input[i].d;
+      }
+      break;
+    case Axis::BATCH:
+      for (int i = 1; i < input.size(); ++i) {
+        if (input[i].w != new_shape.w || input[i].h != new_shape.h ||
+            input[i].c != new_shape.c || input[i].d != new_shape.d) {
+          return absl::InvalidArgumentError(
+              "Width, Height, Depth and Channels must be the same when "
+              "concatenating "
+              "by batch axis");
+        }
+        new_shape.b += input[i].b;
+      }
+      break;
+    default:
+      return absl::InvalidArgumentError("Invalid axis");
   }
   *output_shape = new_shape;
   return absl::OkStatus();
@@ -638,6 +740,13 @@ BHWDC CalculateOutputShape(const BHWDC& input, const Resize3DAttributes& attr) {
 BHWC CalculateOutputShape(const BHWC& input, const TransposeAttributes& attr) {
   return BHWC(input.get(attr.perm.b), input.get(attr.perm.h),
               input.get(attr.perm.w), input.get(attr.perm.c));
+}
+
+BHWDC CalculateOutputShape(const BHWDC& input,
+                           const Transpose3DAttributes& attr) {
+  return BHWDC(input.get(attr.perm.b), input.get(attr.perm.h),
+               input.get(attr.perm.w), input.get(attr.perm.d),
+               input.get(attr.perm.c));
 }
 
 }  // namespace gpu

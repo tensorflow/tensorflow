@@ -265,9 +265,7 @@ uint32 Extend(uint32 crc, const char *buf, size_t size) {
 
 #if defined(PLATFORM_GOOGLE)
 uint32 Extend(uint32 crc, const absl::Cord &cord) {
-  absl::CordReader reader(cord);
-  absl::string_view fragment;
-  while (reader.ReadFragment(&fragment)) {
+  for (absl::string_view fragment : cord.Chunks()) {
     crc = Extend(crc, fragment.data(), fragment.size());
   }
   return crc;

@@ -15,11 +15,15 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_MICRO_INTERPRETER_H_
 #define TENSORFLOW_LITE_MICRO_MICRO_INTERPRETER_H_
 
+#include <cstddef>
+#include <cstdint>
+
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/micro/micro_allocator.h"
+#include "tensorflow/lite/micro/micro_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
 
@@ -68,9 +72,17 @@ class MicroInterpreter {
   // function.
   // The interpreter doesn't do any deallocation of any of the pointed-to
   // objects, ownership remains with the caller.
-  MicroInterpreter(const Model* model, const OpResolver& op_resolver,
+  MicroInterpreter(const Model* model, const MicroOpResolver& op_resolver,
                    uint8_t* tensor_arena, size_t tensor_arena_size,
                    ErrorReporter* error_reporter);
+
+  // Create an interpreter instance using an existing MicroAllocator instance.
+  // This constructor should be used when creating an allocator that needs to
+  // have allocation handled in more than one interpreter or for recording
+  // allocations inside the interpreter. The lifetime of the allocator must be
+  // as long as that of the interpreter object.
+  MicroInterpreter(const Model* model, const MicroOpResolver* op_resolver,
+                   MicroAllocator* allocator, ErrorReporter* error_reporter);
 
   ~MicroInterpreter();
 
@@ -132,14 +144,26 @@ class MicroInterpreter {
 
   TfLiteStatus initialization_status() const { return initialization_status_; }
 
-  size_t operators_size() const { return operators_->size(); }
+  size_t operators_size() const { return subgraph_->operators()->size(); }
 
   // For debugging only.
   const NodeAndRegistration node_and_registration(int node_index) const {
     return node_and_registrations_[node_index];
   }
 
+  // For debugging only.
+  // Returns the actual used arena in bytes. This method gives the optimal arena
+  // size. It's only available after `AllocateTensors` has been called.
+  // Note that normally `tensor_arena` requires 16 bytes alignment to fully
+  // utilize the space. If it's not the case, the optimial arena size would be
+  // arena_used_bytes() + 16.
+  size_t arena_used_bytes() const { return allocator_.used_bytes(); }
+
  private:
+  // TODO(b/158263161): Consider switching to Create() function to enable better
+  // error reporting during initialization.
+  void Init();
+
   void CorrectTensorEndianness(TfLiteTensor* tensorCorr);
 
   template <class T>
@@ -148,15 +172,13 @@ class MicroInterpreter {
   NodeAndRegistration* node_and_registrations_ = nullptr;
 
   const Model* model_;
-  const OpResolver& op_resolver_;
+  const MicroOpResolver& op_resolver_;
   ErrorReporter* error_reporter_;
   TfLiteContext context_ = {};
-  MicroAllocator allocator_;
+  MicroAllocator& allocator_;
   bool tensors_allocated_;
 
   TfLiteStatus initialization_status_;
-  const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors_;
-  const flatbuffers::Vector<flatbuffers::Offset<Operator>>* operators_;
 
   const SubGraph* subgraph_;
   internal::ContextHelper context_helper_;

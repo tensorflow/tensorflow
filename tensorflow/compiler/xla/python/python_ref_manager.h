@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "include/pybind11/pybind11.h"
+#include "pybind11/pybind11.h"
 
 namespace xla {
 
@@ -65,6 +65,10 @@ class PythonRefManager {
   std::shared_ptr<ManagedPyObjects> ManageReference(pybind11::object object);
   std::shared_ptr<ManagedPyObjects> ManageReferences(
       absl::Span<pybind11::object> objects);
+
+  // Adds garbage objects to the manager.
+  void AddGarbage(absl::Span<pybind11::object> garbage);
+  void AddGarbage(absl::Span<std::pair<PyCodeObject*, int> const> garbage);
 
   // Releases the contents of python_garbage_. Requires that the GIL is held.
   // The client calls this method during API entry points where the GIL is held

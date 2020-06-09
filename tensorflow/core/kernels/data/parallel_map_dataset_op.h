@@ -56,40 +56,6 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
   DeterminismPolicy deterministic_;
 };
 
-class ParallelMapFunctor {
- public:
-  virtual ~ParallelMapFunctor() {}
-
-  // A function that runs when the Iterator is initialized. It enables the user
-  // to specify error checking logic that can fail early.
-  virtual Status InitFunc(IteratorContext* ctx) { return Status::OK(); }
-
-  // Indicates whether the functor depends on any external state.
-  // If so, the method returns `errors::FailedPrecondition` with
-  // a message that identifies the external state. Otherwise, the method returns
-  // `Status::OK()`.
-  virtual Status CheckExternalState() = 0;
-
-  // A function that transforms elements of one dataset into another
-  // asynchronously. The arguments are:
-  // 1. An `IteratorContext*` for the context in which the function should
-  // execute.
-  // 2. A `std::vector<Tensor>` containing the input element.
-  // 3. A `std::vector<Tensor>*` to which the function will write the result.
-  // 4. A `StatusCallback` that should be invoked when the function is complete.
-  virtual void MapFunc(IteratorContext* ctx, const string& prefix,
-                       std::vector<Tensor> input, std::vector<Tensor>* output,
-                       StatusCallback callback) = 0;
-};
-
-// Returns a new iterator that uses `parallel_map_functor` to apply `MapFunc`
-// to the elements of `input_dataset` using the given degree of parallelism.
-std::unique_ptr<IteratorBase> NewParallelMapIterator(
-    const DatasetBaseIterator::BaseParams& params,
-    const DatasetBase* input_dataset,
-    std::unique_ptr<ParallelMapFunctor> parallel_map_functor,
-    int64 num_parallel_calls, bool deterministic, bool preserve_cardinality);
-
 }  // namespace data
 }  // namespace tensorflow
 

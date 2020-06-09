@@ -30,7 +30,6 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import image_ops
@@ -979,7 +978,6 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
 
 class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
 
-  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
   def testBatchedNMSFrom6(self):
     boxes_data = [[[0, 0, 1, 1], [3, 3, 4, 4], [0, 0.4, 1, 1.4],
                    [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 2]],
@@ -1017,7 +1015,6 @@ class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
                         indices_output)
     self.assertAllEqual([5, 4], num_valid_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
   def testBatchedNMSFrom6Max3(self):
     boxes_data = [[[0, 0, 1, 1], [3, 3, 4, 4], [0, 0.4, 1, 1.4],
                    [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 2]],
@@ -1051,7 +1048,6 @@ class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
     self.assertAllEqual([[0, 1, 2], [0, 1, 3]], indices_output)
     self.assertAllEqual([3, 3], num_valid_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
   def testBatchedNMSSingleFrom6Max3(self):
     boxes_data = [[0, 0, 1, 1], [3, 3, 4, 4], [0, 0.4, 1, 1.4],
                   [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 2]]
@@ -1082,7 +1078,6 @@ class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
     self.assertAllEqual([0, 1, 2], indices_output)
     self.assertAllEqual(3, num_valid_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
   def testBatchedNMSSingleFrom6NoPad(self):
     boxes_data = [[0, 0, 1, 1], [3, 3, 4, 4], [0, 0.4, 1, 1.4],
                   [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 2]]
@@ -1112,7 +1107,6 @@ class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
     self.assertAllEqual([0, 1, 2, 4, 5], indices_output)
     self.assertAllEqual(5, num_valid_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
   def testBatchedNMSBatchDimsFrom6Max3(self):
     boxes_data = [[[[0, 0, 1, 1], [3, 3, 4, 4], [0, 0.4, 1, 1.4],
                     [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 2]],
@@ -1146,7 +1140,6 @@ class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
     self.assertAllEqual([[[0, 1, 2], [0, 1, 3]]], indices_output)
     self.assertAllEqual([[3, 3]], num_valid_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
   def testBatchedNMSScoreThresholdFrom6Max3(self):
     boxes_data = [[[0, 0, 1, 1], [3, 3, 4, 4], [0, 0.4, 1, 1.4],
                    [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 2]],
@@ -1182,7 +1175,6 @@ class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
     self.assertAllEqual([3, 2], num_valid_output)
     self.assertAllEqual([[0, 1, 2], [0, 1, invalid_index]], indices_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
   def testBatchedNMSUnsortedInputFrom6(self):
     boxes_data = [[[0, 2, 1, 2], [3, 3, 4, 4], [0, 0, 1, 1],
                    [0, 0.4, 1, 1.4], [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8]],
@@ -1219,7 +1211,6 @@ class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
                         indices_output)
     self.assertAllEqual([5, 4], num_valid_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
   def testBatchedNMSNoncanonicalizedInputFrom6(self):
     boxes_data = [[[1, 0, 0, 1], [4, 3, 3, 4], [1, 0.4, 0, 1.4],
                    [1, 0.6, 0, 1.6], [1, 0.8, 0, 1.8], [1, 2, 0, 2]],
@@ -1257,7 +1248,6 @@ class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
                         indices_output)
     self.assertAllEqual([5, 4], num_valid_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
   def testBatchedNMSScoreThresholdCanInputsFrom6Max3(self):
     boxes_data = [[[0, 0, 1, 1], [3, 3, 4, 4], [0, 0.4, 1, 1.4],
                    [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 2]],
@@ -1293,7 +1283,6 @@ class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
     self.assertAllEqual([3, 2], num_valid_output)
     self.assertAllEqual([[0, 1, 2], [0, 1, invalid_index]], indices_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
   def testBatchedNMSFrom6DynamicInput(self):
     boxes_data = [[[0, 0, 1, 1], [3, 3, 4, 4], [0, 0.4, 1, 1.4],
                    [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 2]],

@@ -58,7 +58,7 @@ LIBS := \
 # There are no rules for compiling objects for the host system (since we don't
 # generate things like the protobuf compiler that require that), so all of
 # these settings are for the target compiler.
-CFLAGS := -O3 -DNDEBUG -fPIC
+CFLAGS := -O3 -DNDEBUG -fPIC $(EXTRA_CFLAGS)
 CXXFLAGS := $(CFLAGS) --std=c++11 $(EXTRA_CXXFLAGS)
 LDOPTS := -L/usr/local/lib
 ARFLAGS := -r
@@ -97,6 +97,11 @@ BENCHMARK_PERF_OPTIONS_BINARY_NAME := benchmark_model_performance_options
 MINIMAL_SRCS := \
 	tensorflow/lite/examples/minimal/minimal.cc
 
+LABEL_IMAGE_SRCS := \
+	tensorflow/lite/examples/label_image/bitmap_helpers.cc \
+	tensorflow/lite/examples/label_image/label_image.cc \
+	tensorflow/lite/tools/evaluation/utils.cc
+
 # What sources we want to compile, must be kept in sync with the main Bazel
 # build files.
 
@@ -111,12 +116,14 @@ PROFILE_SUMMARIZER_SRCS := \
 	tensorflow/core/util/stats_calculator.cc
 
 CMD_LINE_TOOLS_SRCS := \
-	tensorflow/lite/tools/command_line_flags.cc
+	tensorflow/lite/tools/command_line_flags.cc \
+	tensorflow/lite/tools/tool_params.cc
 
 CORE_CC_ALL_SRCS := \
 $(wildcard tensorflow/lite/*.cc) \
 $(wildcard tensorflow/lite/*.c) \
 $(wildcard tensorflow/lite/c/*.c) \
+$(wildcard tensorflow/lite/c/*.cc) \
 $(wildcard tensorflow/lite/core/*.cc) \
 $(wildcard tensorflow/lite/core/api/*.cc) \
 $(wildcard tensorflow/lite/experimental/resource/*.cc) \
@@ -170,9 +177,9 @@ ifeq ($(BUILD_TYPE),windows)
 	BUILD_WITH_MMAP=false
 endif
 ifeq ($(BUILD_WITH_MMAP),true)
-	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/mmap_allocation.cc
-else
 	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/mmap_allocation_disabled.cc
+else
+	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/mmap_allocation.cc
 endif
 
 BUILD_WITH_RUY ?= false
@@ -180,7 +187,15 @@ ifeq ($(TARGET_ARCH),aarch64)
 	BUILD_WITH_RUY=true
 endif
 ifeq ($(BUILD_WITH_RUY),true)
-  CXXFLAGS += -DTFLITE_WITH_RUY
+  CXXFLAGS += -DTFLITE_WITH_RUY_ONLY
+endif
+
+BUILD_WITH_RUY_PROFILER ?= false
+ifeq ($(BUILD_WITH_RUY_PROFILER),true)
+  CORE_CC_ALL_SRCS += tensorflow/lite/tools/make/downloads/ruy/ruy/profiler/instrumentation.cc
+  CORE_CC_ALL_SRCS += tensorflow/lite/tools/make/downloads/ruy/ruy/profiler/profiler.cc
+  CORE_CC_ALL_SRCS += tensorflow/lite/tools/make/downloads/ruy/ruy/profiler/treeview.cc
+  CXXFLAGS += -DRUY_PROFILER
 endif
 
 # Not to include XNNPACK.
@@ -211,6 +226,7 @@ TF_LITE_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 
 # Benchmark sources
 BENCHMARK_SRCS_DIR := tensorflow/lite/tools/benchmark
+DELEGATE_PROVIDER_SRCS_DIR := tensorflow/lite/tools/delegates
 EVALUATION_UTILS_SRCS := \
   tensorflow/lite/tools/evaluation/utils.cc
 BENCHMARK_ALL_SRCS := \
@@ -227,15 +243,16 @@ BENCHMARK_LIB_SRCS := $(filter-out \
 	$(BENCHMARK_MAIN_SRC) \
 	$(BENCHMARK_PERF_OPTIONS_SRC) \
 	$(BENCHMARK_SRCS_DIR)/benchmark_plus_flex_main.cc \
-	$(BENCHMARK_SRCS_DIR)/external_delegate_provider.cc \
-	$(BENCHMARK_SRCS_DIR)/gpu_delegate_provider.cc \
-	$(BENCHMARK_SRCS_DIR)/hexagon_delegate_provider.cc \
-	$(BENCHMARK_SRCS_DIR)/nnapi_delegate_provider.cc \
-	$(BENCHMARK_SRCS_DIR)/xnnpack_delegate_provider.cc, \
+	$(DELEGATE_PROVIDER_SRCS_DIR)/default_execution_provider.cc \
+	$(DELEGATE_PROVIDER_SRCS_DIR)/external_delegate_provider.cc \
+	$(DELEGATE_PROVIDER_SRCS_DIR)/gpu_delegate_provider.cc \
+	$(DELEGATE_PROVIDER_SRCS_DIR)/hexagon_delegate_provider.cc \
+	$(DELEGATE_PROVIDER_SRCS_DIR)/nnapi_delegate_provider.cc \
+	$(DELEGATE_PROVIDER_SRCS_DIR)/xnnpack_delegate_provider.cc, \
 	$(BENCHMARK_ALL_SRCS))
 
 # These target-specific makefiles should modify or replace options like
-# CXXFLAGS or LIBS to work for a specific targetted architecture. All logic
+# CXXFLAGS or LIBS to work for a specific targeted architecture. All logic
 # based on platforms or architectures should happen within these files, to
 # keep this main makefile focused on the sources and dependencies.
 include $(wildcard $(MAKEFILE_DIR)/targets/*_makefile.inc)
@@ -260,6 +277,7 @@ BENCHMARK_LIB := $(LIBDIR)$(BENCHMARK_LIB_NAME)
 BENCHMARK_BINARY := $(BINDIR)$(BENCHMARK_BINARY_NAME)
 BENCHMARK_PERF_OPTIONS_BINARY := $(BINDIR)$(BENCHMARK_PERF_OPTIONS_BINARY_NAME)
 MINIMAL_BINARY := $(BINDIR)minimal
+LABEL_IMAGE_BINARY := $(BINDIR)label_image
 
 CXX := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}g++
 CC := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}gcc
@@ -267,6 +285,9 @@ AR := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}ar
 
 MINIMAL_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(MINIMAL_SRCS))))
+
+LABEL_IMAGE_OBJS := $(addprefix $(OBJDIR), \
+$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(LABEL_IMAGE_SRCS))))
 
 LIB_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(TF_LITE_CC_SRCS)))))
@@ -322,17 +343,32 @@ $(MINIMAL_BINARY): $(MINIMAL_OBJS) $(LIB_PATH)
 
 minimal: $(MINIMAL_BINARY)
 
+$(LABEL_IMAGE_BINARY): $(LABEL_IMAGE_OBJS) $(LIB_PATH)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) \
+	-o $(LABEL_IMAGE_BINARY) $(LABEL_IMAGE_OBJS) \
+	$(LIBFLAGS) $(LIB_PATH) $(LDFLAGS) $(LIBS)
+
+label_image: $(LABEL_IMAGE_BINARY)
+
 $(BENCHMARK_LIB) : $(LIB_PATH) $(BENCHMARK_LIB_OBJS)
 	@mkdir -p $(dir $@)
 	$(AR) $(ARFLAGS) $(BENCHMARK_LIB) $(LIB_OBJS) $(BENCHMARK_LIB_OBJS)
 
 benchmark_lib: $(BENCHMARK_LIB)
 
+BENCHMARK_LINKOPTS :=
+ifeq ($(HOST_OS),osx)
+	BENCHMARK_LINKOPTS += $(LIBFLAGS) -Wl,-force_load $(BENCHMARK_LIB) $(LIBS) $(LDFLAGS) -framework CoreFoundation
+else
+	BENCHMARK_LINKOPTS += $(LIBFLAGS) -Wl,--whole-archive $(BENCHMARK_LIB) -Wl,--no-whole-archive $(LDFLAGS) $(LIBS)
+endif
+
 $(BENCHMARK_BINARY) : $(BENCHMARK_MAIN_OBJ) $(BENCHMARK_LIB)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) \
 	-o $(BENCHMARK_BINARY) $(BENCHMARK_MAIN_OBJ) \
-	$(LIBFLAGS) -Wl,--whole-archive $(BENCHMARK_LIB) -Wl,--no-whole-archive $(LDFLAGS) $(LIBS)
+	$(LIBFLAGS) $(BENCHMARK_LINKOPTS)
 
 $(BENCHMARK_PERF_OPTIONS_BINARY) : $(BENCHMARK_PERF_OPTIONS_OBJ) $(BENCHMARK_LIB)
 	@mkdir -p $(dir $@)

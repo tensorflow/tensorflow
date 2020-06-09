@@ -2345,6 +2345,14 @@ tf_module {
     argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "tensor_scatter_nd_max"
+    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "tensor_scatter_nd_min"
+    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "tensor_scatter_nd_sub"
     argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -2433,6 +2441,10 @@ tf_module {
     argspec: "args=[\'tensors\', \'name\', \'control_inputs\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
+    name: "type_spec_from_value"
+    argspec: "args=[\'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "unique"
     argspec: "args=[\'x\', \'out_idx\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
   }
@@ -2490,7 +2502,7 @@ tf_module {
   }
   member_method {
     name: "vectorized_map"
-    argspec: "args=[\'fn\', \'elems\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'fn\', \'elems\', \'fallback_to_while_loop\'], varargs=None, keywords=None, defaults=[\'True\'], "
   }
   member_method {
     name: "verify_tensor_all_finite"

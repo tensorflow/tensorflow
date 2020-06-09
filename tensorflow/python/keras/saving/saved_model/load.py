@@ -62,9 +62,9 @@ layers_module = LazyLoader(
 input_layer = LazyLoader(
     "input_layer", globals(),
     "tensorflow.python.keras.engine.input_layer")
-network_lib = LazyLoader(
-    "network_lib", globals(),
-    "tensorflow.python.keras.engine.network")
+functional_lib = LazyLoader(
+    "functional_lib", globals(),
+    "tensorflow.python.keras.engine.functional")
 training_lib = LazyLoader(
     "training_lib", globals(),
     "tensorflow.python.keras.engine.training")
@@ -142,7 +142,7 @@ def _is_graph_network(layer):
   # pylint: disable=protected-access
   if isinstance(layer, RevivedNetwork):
     return False
-  elif isinstance(layer, network_lib.Network):
+  elif isinstance(layer, functional_lib.Functional):
     return (layer._is_graph_network or
             isinstance(layer, models_lib.Sequential))
   return False
@@ -371,7 +371,8 @@ class KerasObjectLoader(tf_load.Loader):
     # functional or Sequential model.
     model_is_functional_or_sequential = (
         metadata.get('is_graph_network', False) or
-        metadata['class_name'] == 'Sequential')
+        metadata['class_name'] == 'Sequential' or
+        metadata['class_name'] == 'Functional')
     if not (generic_utils.validate_config(config) and
             model_is_functional_or_sequential):
       return None  # Revive as custom model.
@@ -383,7 +384,8 @@ class KerasObjectLoader(tf_load.Loader):
     if class_name == 'Sequential':
       model = models_lib.Sequential(name=config['name'])
     else:
-      model = models_lib.Model(name=config['name'])
+      model = models_lib.Functional(
+          inputs=[], outputs=[], name=config['name'])
 
     # Record this model and its layers. This will later be used to reconstruct
     # the model.
@@ -545,7 +547,10 @@ class KerasObjectLoader(tf_load.Loader):
         self._proto.nodes[model_id].user_object.metadata)['config']
     if isinstance(model, models_lib.Sequential):
       if not isinstance(layers[0], input_layer.InputLayer):
-        if 'batch_input_shape' in config['layers'][0]['config']:
+        if config['layers'][0]['class_name'] == 'InputLayer':
+          layers.insert(0, input_layer.InputLayer.from_config(
+              config['layers'][0]['config']))
+        elif 'batch_input_shape' in config['layers'][0]['config']:
           batch_input_shape = config['layers'][0]['config']['batch_input_shape']
           layers.insert(0, input_layer.InputLayer(
               input_shape=batch_input_shape[1:],
@@ -561,10 +566,11 @@ class KerasObjectLoader(tf_load.Loader):
         if not model.built and not isinstance(input_specs, dict):
           model.build(input_shapes)
     else:
-      (inputs, outputs, created_layers) = network_lib.reconstruct_from_config(
-          config, created_layers={layer.name: layer for layer in layers})
+      (inputs, outputs,
+       created_layers) = functional_lib.reconstruct_from_config(
+           config, created_layers={layer.name: layer for layer in layers})
       model.__init__(inputs, outputs, name=config['name'])
-      network_lib.connect_ancillary_layers(model, created_layers)
+      functional_lib.connect_ancillary_layers(model, created_layers)
 
     # Set model dtype and trainable status.
     _set_network_attributes_from_metadata(model)
@@ -764,7 +770,7 @@ def revive_custom_object(identifier, metadata):
   revived_classes = {
       '_tf_keras_layer': (RevivedLayer, base_layer.Layer),
       '_tf_keras_input_layer': (RevivedInputLayer, input_layer.InputLayer),
-      '_tf_keras_network': (RevivedNetwork, network_lib.Network),
+      '_tf_keras_network': (RevivedNetwork, functional_lib.Functional),
       '_tf_keras_model': (RevivedNetwork, model_class),
       '_tf_keras_sequential': (RevivedNetwork, models_lib.Sequential),
   }
@@ -852,7 +858,7 @@ def _revive_setter(layer, name, value):
       layer._track_trackable(value, name=name)
     layer._serialized_attributes[name] = value
     # pylint: enable=protected-access
-  elif (isinstance(layer, network_lib.Network) and
+  elif (isinstance(layer, functional_lib.Functional) and
         re.match(r'^layer(_with_weights)?-[\d+]', name) is not None):
     # Edges named "layer-n" or "layer_with_weights-n", which are tracked in
     # network._track_layers, should not be added as an attribute.

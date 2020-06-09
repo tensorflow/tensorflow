@@ -129,7 +129,8 @@ void TFE_DeleteContextCapsule(PyObject* context);
 bool EagerTensor_CheckExact(const PyObject* o);
 
 // Helper function to construct a new EagerTensor from a TFE_TensorHandle.
-PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle);
+PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle,
+                                const bool is_packed = false);
 
 // Extracts the handle inside EagerTensor object `o`. Returns nullptr on error.
 TFE_TensorHandle* EagerTensor_Handle(const PyObject* o);
@@ -331,6 +332,22 @@ PyObject* TFE_Py_ForwardAccumulatorPopState();
 //       appended to `tensors`.
 PyObject* TFE_Py_PackJVPs(PyObject* tensors);
 
+// Variable Watcher methods.
+
+// Creates a new variable watcher and adds it to the set of active variable
+// watchers.
+PyObject* TFE_Py_VariableWatcherNew();
+
+// Removes the passed variable watcher from the set of active variable watchers.
+void TFE_Py_VariableWatcherRemove(PyObject* variable_watcher);
+
+// Notifies all variable watchers that a variable has been accessed.
+void TFE_Py_VariableWatcherVariableAccessed(PyObject* variable);
+
+// Returns all variables watched by the given variable_watcher in the order
+// those variables were created.
+PyObject* TFE_Py_VariableWatcherWatchedVariables(PyObject* variable_watcher);
+
 // Returns an EagerTensor of dimension [len(`tensors`)] containing
 // the `slice_dim`'th dimension of each tensor in `tensors`. In other words,
 // TFE_Py_TensorShapeSlice takes a slice of dimensions of tensors in
@@ -363,7 +380,7 @@ void TFE_Py_EnableInteractivePythonLogging();
 // Py_None.
 //
 // This function is not thread-safe.
-PyObject* TFE_Py_SetEagerContext(PyObject* python_context);
+PyObject* TFE_Py_SetEagerContext(PyObject* py_context);
 
 // Returns the current eager Context object (defined in eager/context.py)
 // that was last set using TFE_Py_SetEagerContext.

@@ -234,12 +234,12 @@ template <DataType S, typename T>
 void RearrangeWeightsToOHWIOGroupI4O4(
     const tflite::gpu::Tensor<OHWI, S>& weights, int out_group_size,
     absl::Span<T> dst) {
-  const int dst_slices = IntegralDivideRoundUp(weights.shape.o, 4);
-  const int src_slices = IntegralDivideRoundUp(weights.shape.i, 4);
+  const int dst_slices = DivideRoundUp(weights.shape.o, 4);
+  const int src_slices = DivideRoundUp(weights.shape.i, 4);
   const int kernel_x = weights.shape.w;
   const int kernel_y = weights.shape.h;
 
-  const int dst_groups = IntegralDivideRoundUp(dst_slices, out_group_size);
+  const int dst_groups = DivideRoundUp(dst_slices, out_group_size);
 
   int counter = 0;
   for (int d = 0; d < dst_groups; ++d) {

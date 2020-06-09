@@ -1,0 +1,9 @@
+path: "tensorflow.tpu.experimental.embedding.FeatureConfig"
+tf_class {
+  is_instance: "<class \'tensorflow.python.tpu.tpu_embedding_v2_utils.FeatureConfig\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'table\', \'max_sequence_length\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
+  }
+}

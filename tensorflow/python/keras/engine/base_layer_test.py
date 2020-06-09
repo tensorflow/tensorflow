@@ -48,7 +48,6 @@ from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.layers import core as legacy_core
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import summary_ops_v2
@@ -86,7 +85,9 @@ class InvalidLayer(base_layer.Layer):
 
 class BaseLayerTest(keras_parameterized.TestCase):
 
-  @combinations.generate(combinations.keras_model_type_combinations())
+  @combinations.generate(combinations.times(
+      combinations.keras_model_type_combinations(),
+      combinations.keras_tensor_combinations()))
   def test_dynamic_layer(self):
     model = testing_utils.get_model_from_layers([DynamicLayer(dynamic=True)],
                                                 input_shape=(3,))
@@ -95,16 +96,30 @@ class BaseLayerTest(keras_parameterized.TestCase):
     self.assertEqual(model.run_eagerly, True)
     model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
 
-  @combinations.generate(combinations.keras_model_type_combinations())
+  @combinations.generate(combinations.times(
+      combinations.keras_model_type_combinations(),
+      combinations.keras_tensor_combinations()))
   def test_dynamic_layer_error(self):
-    with self.assertRaisesRegexp(TypeError,
-                                 'attempting to use Python control flow'):
+    # Functional Models hit the `dyanamic=True` error during construction.
+    # Subclass Models should just throw the original autograph error during
+    # execution.
+    raised_error = False
+    try:
       model = testing_utils.get_model_from_layers([DynamicLayer()],
                                                   input_shape=(3,))
       model.compile(rmsprop.RMSprop(0.001), loss='mse')
       model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
+    except errors_impl.OperatorNotAllowedInGraphError as e:
+      if 'iterating over `tf.Tensor` is not allowed' in str(e):
+        raised_error = True
+    except TypeError as e:
+      if 'attempting to use Python control flow' in str(e):
+        raised_error = True
+    self.assertTrue(raised_error)
 
-  @combinations.generate(combinations.keras_model_type_combinations())
+  @combinations.generate(combinations.times(
+      combinations.keras_model_type_combinations(),
+      combinations.keras_tensor_combinations()))
   def test_dynamic_layer_error_running_in_graph_mode(self):
     with ops.get_default_graph().as_default():
       model = testing_utils.get_model_from_layers([DynamicLayer(dynamic=True)],
@@ -125,6 +140,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
 
       def build(self, input_shape):
         self.build_counter += 1
+        self.build_shape = input_shape
 
       def call(self, inputs):
         return inputs
@@ -132,19 +148,17 @@ class BaseLayerTest(keras_parameterized.TestCase):
     layer = BuildCounter(dtype=dtypes.float64)
     output_shape = layer.compute_output_shape((None, 10))
     self.assertEqual(layer.build_counter, 1)
+    self.assertEqual(layer.build_shape.as_list(), [None, 10])
     self.assertEqual(output_shape.as_list(), [None, 10])
     output_signature = layer.compute_output_signature(
         tensor_spec.TensorSpec(dtype=dtypes.float64, shape=[None, 10]))
     self.assertEqual(layer.build_counter, 1)
+    self.assertEqual(layer.build_shape.as_list(), [None, 10])
     self.assertEqual(output_signature.dtype, dtypes.float64)
     self.assertEqual(output_signature.shape.as_list(), [None, 10])
     layer(np.ones((5, 10)))
     self.assertEqual(layer.build_counter, 1)
-
-  def test_eager_switch_case_input(self):
-    task = input_layer.Input(shape=(), dtype=dtypes.int32)
-    control_flow_ops.switch_case(
-        task[0], [lambda: constant_op.constant(1.0) for _ in range(10)])
+    self.assertEqual(layer.build_shape.as_list(), [None, 10])
 
   def test_dynamic_layer_with_deferred_sequential_model(self):
     model = sequential.Sequential([DynamicLayer(dynamic=True), layers.Dense(3)])
@@ -270,6 +284,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
   @combinations.generate(
       combinations.times(
           combinations.keras_model_type_combinations(),
+          combinations.keras_tensor_combinations(),
           combinations.combine(mode=['graph', 'eager'])))
   def test_build_with_numpy_data(self):
     model_layers = [
@@ -370,7 +385,8 @@ class BaseLayerTest(keras_parameterized.TestCase):
   # b/124459427: can't test with `run_eagerly=True` for now.
   @combinations.generate(
       combinations.times(combinations.keras_mode_combinations(),
-                         combinations.keras_model_type_combinations()))
+                         combinations.keras_model_type_combinations(),
+                         combinations.keras_tensor_combinations()))
   def test_training_arg_in_defun(self):
     layer = self._get_layer_with_training_arg()
     model = testing_utils.get_model_from_layers([layer], input_shape=(1,))
@@ -395,7 +411,8 @@ class BaseLayerTest(keras_parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(combinations.keras_mode_combinations(),
-                         combinations.keras_model_type_combinations()))
+                         combinations.keras_model_type_combinations(),
+                         combinations.keras_tensor_combinations()))
   def test_raw_variable_assignment(self):
 
     class RawVariableLayer(base_layer.Layer):
@@ -612,32 +629,36 @@ class BaseLayerTest(keras_parameterized.TestCase):
     self.assertTrue(layer.built)
     self.assertEqual([None, 3], layer._build_input_shape.as_list())
 
+  def test_activity_regularizer_string(self):
+
+    class MyLayer(base_layer.Layer):
+      pass
+
+    layer = MyLayer(activity_regularizer='l2')
+    self.assertIsInstance(layer.activity_regularizer, regularizers.L2)
+
 
 class SymbolicSupportTest(keras_parameterized.TestCase):
 
   def test_using_symbolic_tensors_with_tf_ops(self):
     # Single-input.
     x = input_layer.Input((3,))
-    y = math_ops.square(x)
-    self.assertEqual(y.graph, backend.get_graph())
+    math_ops.square(x)
 
     # Multi-inputs.
     x1, x2 = input_layer.Input((3,)), input_layer.Input((3,))
-    y = array_ops.concat([x1, x2], axis=1)
-    self.assertEqual(y.graph, backend.get_graph())
+    array_ops.concat([x1, x2], axis=1)
 
     # Mixing Keras symbolic tensors and graph tensors from the same graph works.
     with backend.get_graph().as_default():
       x1 = input_layer.Input((3,))
     x2 = input_layer.Input((3,))
-    y = math_ops.matmul(x1, x2)
-    self.assertEqual(y.graph, backend.get_graph())
+    math_ops.matmul(x1, x2)
 
     # Creating same op type (matmul) multiple times in the Keras graph works.
     x1 = input_layer.Input((3,))
     x2 = input_layer.Input((3,))
-    y = math_ops.matmul(x1, x2)
-    self.assertEqual(y.graph, backend.get_graph())
+    math_ops.matmul(x1, x2)
 
   def test_mixing_eager_and_graph_tensors(self):
     with ops.Graph().as_default():
@@ -659,7 +680,7 @@ class SymbolicSupportTest(keras_parameterized.TestCase):
     x1 = input_layer.Input((3,))
     x2 = array_ops.ones((3, 3))
     y = math_ops.matmul(x1, x2)
-    self.assertEqual(y.graph, backend.get_graph())
+
     fn = backend.function(inputs=[x1], outputs=[y])
     x_val = np.random.random((3, 3))
     y_val = np.ones((3, 3))
@@ -672,7 +693,7 @@ class SymbolicSupportTest(keras_parameterized.TestCase):
     x1 = input_layer.Input((3,))
     x2 = np.ones((3, 3), dtype='float32')
     y = math_ops.matmul(x1, x2)
-    self.assertEqual(y.graph, backend.get_graph())
+
     fn = backend.function(inputs=[x1], outputs=[y])
     x_val = np.random.random((3, 3))
     y_val = np.ones((3, 3))
@@ -1450,26 +1471,12 @@ class DTypeTest(keras_parameterized.TestCase):
         row_splits=array_ops.constant([0, 2, 2, 3], dtype='int64'))
 
     layer = IdentityLayer(dtype='float16')
-    layer._supports_ragged_inputs = True
 
     for x in sparse, ragged:
       self.assertEqual(x.dtype, 'float32')
       y = layer(x)
       self.assertEqual(y.dtype, 'float16')
       self.assertEqual(type(x), type(y))
-
-  def test_supports_ragged_inputs_attribute_error(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 'does not support RaggedTensors'):
-      ragged = ragged_tensor.RaggedTensor.from_row_splits(
-          values=array_ops.constant([1., 2., 3.], dtype='float32'),
-          row_splits=array_ops.constant([0, 2, 2, 3], dtype='int64'))
-      model = sequential.Sequential([
-          input_layer.InputLayer(input_shape=(None,), ragged=True),
-          IdentityLayer()
-      ])
-      model.compile(rmsprop.RMSprop(0.001), loss='mse')
-      model.train_on_batch(ragged)
 
   @testing_utils.enable_v2_dtype_behavior
   def test_passing_non_tensor(self):

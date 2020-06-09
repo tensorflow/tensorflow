@@ -1353,7 +1353,7 @@ def split_compile_and_replicate(computation,
 
       def custom_getter(getter, name, *args, **kwargs):
         """Variables on TPU have a few restrictions."""
-        partitioner = kwargs["partitioner"]
+        partitioner = kwargs.get("partitioner", None)
         if partitioner is not None:
           kwargs["partitioner"] = None
           logging.warning(

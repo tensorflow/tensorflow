@@ -15,11 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace {
+
+using OperationType = OpMetrics::MemoryAccessed::OperationType;
 
 // Combines the src OpMetrics into the dst OpMetrics.
 void CombineOpMetrics(const OpMetrics& src, OpMetrics* dst) {
@@ -28,6 +32,7 @@ void CombineOpMetrics(const OpMetrics& src, OpMetrics* dst) {
   DCHECK_EQ(src.name(), dst->name());
   dst->set_category(src.category());
   dst->set_provenance(src.provenance());
+  dst->set_is_eager(dst->is_eager() || src.is_eager());
   dst->set_deduplicated_name(src.deduplicated_name());
   if (!dst->has_layout() && src.has_layout()) {
     *dst->mutable_layout() = src.layout();
@@ -40,6 +45,8 @@ void CombineOpMetrics(const OpMetrics& src, OpMetrics* dst) {
   dst->set_self_time_ps(src.self_time_ps() + dst->self_time_ps());
   dst->set_flops(src.flops() + dst->flops());
   dst->set_bytes_accessed(src.bytes_accessed() + dst->bytes_accessed());
+  CombineMemoryAccessedBreakdown(src.memory_accessed_breakdown(),
+                                 dst->mutable_memory_accessed_breakdown());
   dst->set_dma_stall_ps(src.dma_stall_ps() + dst->dma_stall_ps());
 }
 
@@ -49,6 +56,33 @@ void CombinePrecisionStats(const PrecisionStats& src, PrecisionStats* dst) {
 }
 
 }  // namespace
+
+void CombineMemoryAccessedBreakdown(
+    const protobuf::RepeatedPtrField<OpMetrics_MemoryAccessed>& src,
+    protobuf::RepeatedPtrField<OpMetrics_MemoryAccessed>* dst) {
+  absl::flat_hash_map<std::pair<uint64 /*memory_space*/, OperationType>,
+                      OpMetrics_MemoryAccessed*>
+      dst_memory_accessed_map;
+  for (auto& dst_memory_accessed : *dst) {
+    dst_memory_accessed_map[{dst_memory_accessed.memory_space(),
+                             dst_memory_accessed.operation_type()}] =
+        &dst_memory_accessed;
+  }
+  for (const auto& src_memory_accessed : src) {
+    uint64 memory_space = src_memory_accessed.memory_space();
+    OperationType operation_type = src_memory_accessed.operation_type();
+    auto*& dst_memory_accessed =
+        dst_memory_accessed_map[{memory_space, operation_type}];
+    if (dst_memory_accessed == nullptr) {
+      dst_memory_accessed = dst->Add();
+      dst_memory_accessed->set_memory_space(memory_space);
+      dst_memory_accessed->set_operation_type(operation_type);
+    }
+    dst_memory_accessed->set_bytes_accessed(
+        src_memory_accessed.bytes_accessed() +
+        dst_memory_accessed->bytes_accessed());
+  }
+}
 
 void OpMetricsDbCombiner::Combine(const OpMetricsDb& src) {
   OpMetricsDb* dst = db();

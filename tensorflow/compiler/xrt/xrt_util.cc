@@ -21,9 +21,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
 namespace {
+
+mutex nccl_factory_mutex(LINKER_INITIALIZED);
+std::shared_ptr<NcclUniqueIdFactory>* nccl_factory;
 
 // The ScopedHandles data structure is used in the ExecuteChained() API and its
 // task is to track tuple allocation registrations. It is used both the track
@@ -161,6 +165,19 @@ Status PopulateOpWorkingSet(xla::Backend* backend,
 }
 
 }  // namespace
+
+void SetNcclUniqueIdFactory(std::shared_ptr<NcclUniqueIdFactory> factory) {
+  mutex_lock lock(nccl_factory_mutex);
+  if (nccl_factory == nullptr) {
+    nccl_factory = new std::shared_ptr<NcclUniqueIdFactory>();
+  }
+  *nccl_factory = std::move(factory);
+}
+
+std::shared_ptr<NcclUniqueIdFactory> GetNcclUniqueIdFactory() {
+  mutex_lock lock(nccl_factory_mutex);
+  return nccl_factory != nullptr ? *nccl_factory : nullptr;
+}
 
 xla::DebugOptions BuildXlaDebugOptions(const xla::DebugOptions& ref_options) {
   static const bool options_passthrough = DebugOptionsPassThroughEnabled();

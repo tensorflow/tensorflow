@@ -45,7 +45,7 @@ namespace {
 // The pass to trim functions before we legalize to TFL
 // dialect using the specified whitelist.
 class TrimFunctionsPass
-    : public mlir::OperationPass<TrimFunctionsPass, ModuleOp> {
+    : public mlir::PassWrapper<TrimFunctionsPass, OperationPass<ModuleOp>> {
  public:
   explicit TrimFunctionsPass() : trim_funcs_whitelist_(trim_funcs_whitelist) {}
   explicit TrimFunctionsPass(llvm::ArrayRef<std::string> trim_funcs_whitelist)
@@ -120,7 +120,7 @@ void TrimFunctionsPass::Verify() {
 
 // Creates an instance of the TensorFlow Lite dialect TrimFunctions
 /// pass.
-std::unique_ptr<OpPassBase<ModuleOp>> CreateTrimFunctionsPass(
+std::unique_ptr<OperationPass<ModuleOp>> CreateTrimFunctionsPass(
     llvm::ArrayRef<std::string> trim_funcs_whitelist) {
   return std::make_unique<TrimFunctionsPass>(trim_funcs_whitelist);
 }

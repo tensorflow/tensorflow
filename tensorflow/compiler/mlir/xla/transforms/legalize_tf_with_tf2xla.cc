@@ -21,7 +21,9 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Optional.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -36,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h.inc"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/mlir/xla/ir/mlir_hlo_builder.h"
@@ -77,8 +80,106 @@ static bool IsOpWhitelisted(Operation* op) {
   // building valid MLIR using MlirHloBuilder.
   // TODO(hinsu): Drop explicit whitelist when MLIR based bridge is enabled for
   // all tf2xla kernels.
-  return isa<TF::AbsOp>(op) || isa<TF::Atan2Op>(op) || isa<TF::CastOp>(op) ||
-         isa<TF::InvOp>(op) || isa<TF::SelectV2Op>(op);
+  // clang-format off
+  static llvm::SmallDenseSet<mlir::TypeID, 512> ops = {
+    TypeID::get<TF::AbsOp>(),
+    TypeID::get<TF::AcoshOp>(),
+    TypeID::get<TF::AcosOp>(),
+    TypeID::get<TF::AddNOp>(),
+    TypeID::get<TF::AddV2Op>(),
+    TypeID::get<TF::AngleOp>(),
+    TypeID::get<TF::ApproximateEqualOp>(),
+    TypeID::get<TF::AsinhOp>(),
+    TypeID::get<TF::AsinOp>(),
+    TypeID::get<TF::Atan2Op>(),
+    TypeID::get<TF::AtanhOp>(),
+    TypeID::get<TF::AtanOp>(),
+    TypeID::get<TF::BatchMatMulV2Op>(),
+    TypeID::get<TF::BiasAddGradOp>(),
+    TypeID::get<TF::BiasAddOp>(),
+    TypeID::get<TF::BitwiseAndOp>(),
+    TypeID::get<TF::BitwiseOrOp>(),
+    TypeID::get<TF::BitwiseXorOp>(),
+    TypeID::get<TF::CastOp>(),
+    TypeID::get<TF::ClipByValueOp>(),
+    TypeID::get<TF::ComplexAbsOp>(),
+    TypeID::get<TF::ConjugateTransposeOp>(),
+    TypeID::get<TF::CoshOp>(),
+    TypeID::get<TF::CrossOp>(),
+    TypeID::get<TF::DataFormatDimMapOp>(),
+    TypeID::get<TF::DataFormatVecPermuteOp>(),
+    TypeID::get<TF::DigammaOp>(),
+    TypeID::get<TF::DivNoNanOp>(),
+    TypeID::get<TF::EluGradOp>(),
+    TypeID::get<TF::EluOp>(),
+    TypeID::get<TF::EqualOp>(),
+    TypeID::get<TF::ErfcOp>(),
+    TypeID::get<TF::ErfOp>(),
+    TypeID::get<TF::Expm1Op>(),
+    TypeID::get<TF::FloorDivOp>(),
+    TypeID::get<TF::FloorModOp>(),
+    TypeID::get<TF::GatherNdOp>(),
+    TypeID::get<TF::GreaterEqualOp>(),
+    TypeID::get<TF::GreaterOp>(),
+    TypeID::get<TF::InvertOp>(),
+    TypeID::get<TF::InvOp>(),
+    TypeID::get<TF::LeakyReluGradOp>(),
+    TypeID::get<TF::LeakyReluOp>(),
+    TypeID::get<TF::LeftShiftOp>(),
+    TypeID::get<TF::LessEqualOp>(),
+    TypeID::get<TF::LessOp>(),
+    TypeID::get<TF::LgammaOp>(),
+    TypeID::get<TF::LogicalAndOp>(),
+    TypeID::get<TF::LogicalNotOp>(),
+    TypeID::get<TF::LogicalOrOp>(),
+    TypeID::get<TF::LogOp>(),
+    TypeID::get<TF::MatMulOp>(),
+    TypeID::get<TF::MulOp>(),
+    TypeID::get<TF::NegOp>(),
+    TypeID::get<TF::NotEqualOp>(),
+    TypeID::get<TF::PadOp>(),
+    TypeID::get<TF::PlaceholderWithDefaultOp>(),
+    TypeID::get<TF::PowOp>(),
+    TypeID::get<TF::RealDivOp>(),
+    TypeID::get<TF::ReciprocalOp>(),
+    TypeID::get<TF::ReciprocalGradOp>(),
+    TypeID::get<TF::Relu6GradOp>(),
+    TypeID::get<TF::RightShiftOp>(),
+    TypeID::get<TF::RintOp>(),
+    TypeID::get<TF::RoundOp>(),
+    TypeID::get<TF::SelectV2Op>(),
+    TypeID::get<TF::SeluGradOp>(),
+    TypeID::get<TF::SeluOp>(),
+    TypeID::get<TF::SigmoidGradOp>(),
+    TypeID::get<TF::SinhOp>(),
+    TypeID::get<TF::SinOp>(),
+    TypeID::get<TF::SoftplusGradOp>(),
+    TypeID::get<TF::SoftsignGradOp>(),
+    TypeID::get<TF::SoftsignOp>(),
+    TypeID::get<TF::SqrtGradOp>(),
+    TypeID::get<TF::SquareOp>(),
+    TypeID::get<TF::SubOp>(),
+    TypeID::get<TF::TanOp>(),
+    TypeID::get<TF::TransposeOp>(),
+    TypeID::get<TF::TruncateDivOp>(),
+    TypeID::get<TF::TruncatedNormalOp>(),
+    TypeID::get<TF::TruncateModOp>(),
+    TypeID::get<TF::UnpackOp>(),
+    TypeID::get<TF::XdivyOp>(),
+    TypeID::get<TF::XlaBroadcastHelperOp>(),
+    TypeID::get<TF::XlaConvOp>(),
+    TypeID::get<TF::XlaDotOp>(),
+    TypeID::get<TF::XlaDynamicSliceOp>(),
+    TypeID::get<TF::XlaDynamicUpdateSliceOp>(),
+    TypeID::get<TF::XlaPadOp>(),
+    TypeID::get<TF::Xlog1pyOp>(),
+    TypeID::get<TF::XlogyOp>()
+  };
+  // clang-format on
+
+  auto* abstractOp = op->getAbstractOperation();
+  if (!abstractOp) return false;
+  return ops.count(abstractOp->typeID);
 }
 
 static std::unique_ptr<tensorflow::StaticDeviceMgr> CreateDeviceMgr(
@@ -119,6 +220,10 @@ class FuncLegalizer {
   // conversion. Note that success return value doesn't mean successful
   // legalization.
   LogicalResult LegalizeOp(Operation* op);
+
+  // Converts the given operand to expression of kind kConstant or kXlaOp.
+  // Emits a remark and returns expression of kind kInvalid on failure.
+  tensorflow::XlaExpression GetExprForOperand(Value operand, Operation* op);
 
   FuncOp func_;
   std::string device_type_;
@@ -213,8 +318,8 @@ LogicalResult FuncLegalizer::LegalizeOp(Operation* op) {
 
   // Only static shaped operands are supported in XLA builders for now.
   for (Type ty : op->getOperandTypes()) {
-    auto ranked_ty = ty.cast<RankedTensorType>();
-    if (!ranked_ty || !ranked_ty.hasStaticShape()) {
+    auto ranked_ty = ty.cast<ShapedType>();
+    if (!ranked_ty.hasStaticShape()) {
       op->emitRemark() << "lowering requires static shaped operands";
       return success();
     }
@@ -246,6 +351,17 @@ LogicalResult FuncLegalizer::LegalizeOp(Operation* op) {
   // Transfer ownership of the kernel to a local smart pointer.
   auto op_kernel = absl::WrapUnique(op_kernel_raw);
 
+  std::vector<int> required_constants;
+  status = tensorflow::XlaOpRegistry::CompileTimeConstantInputs(
+      *op_kernel, &required_constants);
+  if (!status.ok()) {
+    op->emitRemark() << "failed to compute required constants: "
+                     << status.ToString();
+    return success();
+  }
+  llvm::SmallDenseSet<int, 4> required_consts;
+  required_consts.insert(required_constants.begin(), required_constants.end());
+
   // TensorValue in inputs are backed by tensors which in turn depend on
   // expressions. So, pre-allocate them to the required size.
   InlinedVector<tensorflow::XlaExpression, 4> expressions;
@@ -256,45 +372,39 @@ LogicalResult FuncLegalizer::LegalizeOp(Operation* op) {
   inputs.reserve(op->getNumOperands());
 
   // Prepare the list of Tensor inputs for the kernel.
-  for (Value operand : op->getOperands()) {
-    // Skip this op if XLA doesn't support this operand type.
-    auto xla_op_or = hlo_builder_.MakeXlaOp(operand);
-    if (!xla_op_or.ok()) {
-      op->emitRemark() << "skipping legalization due to "
-                       << xla_op_or.status().ToString();
+  for (auto it : llvm::enumerate(op->getOperands())) {
+    Value operand = it.value();
+    size_t idx = it.index();
+
+    tensorflow::XlaExpression expr = GetExprForOperand(operand, op);
+    tensorflow::XlaExpression::Kind kind = expr.kind();
+    if (kind == tensorflow::XlaExpression::Kind::kInvalid) return success();
+    if (required_consts.count(idx) &&
+        kind != tensorflow::XlaExpression::Kind::kConstant) {
+      op->emitRemark() << "lowering requires operand #" << idx
+                       << " to be a constant";
       return success();
     }
-    ::xla::XlaOp xla_op = xla_op_or.ValueOrDie();
+    expressions.push_back(expr);
 
-    tensorflow::DataType dtype;
-    status = tensorflow::ConvertToDataType(operand.getType(), &dtype);
-    if (!status.ok()) {
-      op->emitRemark() << "skipping legalization due to " << status.ToString();
-      return success();
-    }
-
-    auto expression = tensorflow::XlaExpression::XlaOp(xla_op, dtype);
-    expressions.push_back(expression);
-
-    if (!tensorflow::DataTypeCanUseMemcpy(dtype)) {
+    if (!tensorflow::DataTypeCanUseMemcpy(expr.dtype())) {
       op->emitRemark() << "skipping legalization due to unsupported type "
                        << operand.getType();
       return success();
     }
 
-    auto shape_or = expression.GetShape();
+    auto shape_or = expr.GetShape();
     if (!shape_or.ok()) {
       op->emitRemark() << "failed to get shape for expression. "
-                       << expression.HumanString();
+                       << expr.HumanString();
       return success();
     }
 
     tensors.emplace_back(
-        device_->GetAllocator(tensorflow::AllocatorAttributes()), dtype,
+        device_->GetAllocator(tensorflow::AllocatorAttributes()), expr.dtype(),
         shape_or.ValueOrDie());
     tensorflow::Tensor& tensor = tensors.back();
-    tensorflow::XlaOpKernelContext::AssignExpressionToTensor(expression,
-                                                             &tensor);
+    tensorflow::XlaOpKernelContext::AssignExpressionToTensor(expr, &tensor);
     inputs.emplace_back(&tensor);
   }
 
@@ -326,16 +436,58 @@ LogicalResult FuncLegalizer::LegalizeOp(Operation* op) {
       return op->emitError(
           "expects XlaExpression of kind kXlaOp in compiled output");
     auto value = hlo_builder_.GetValue(expr->handle());
-    op->getResult(i).replaceAllUsesWith(value);
+    mlir::OpResult old_result = op->getResult(i);
+    if (value.getType() != old_result.getType()) {
+      value =
+          hlo_builder_.create<mlir::TensorCastOp>(value, old_result.getType());
+    }
+    old_result.replaceAllUsesWith(value);
   }
 
   op->erase();
   return success();
 }
 
-class LegalizeTF : public FunctionPass<LegalizeTF> {
+tensorflow::XlaExpression FuncLegalizer::GetExprForOperand(Value operand,
+                                                           Operation* op) {
+  ElementsAttr const_attr;
+  auto defining_op = operand.getDefiningOp();
+  if (defining_op && matchPattern(defining_op, m_Constant(&const_attr))) {
+    tensorflow::Tensor tensor;
+    auto status = tensorflow::ConvertToTensor(const_attr, &tensor);
+    if (!status.ok()) {
+      op->emitRemark() << "skipping legalization due to failed const conversion"
+                       << status.ToString();
+      return tensorflow::XlaExpression::Invalid();
+    }
+    return tensorflow::XlaExpression::Constant(tensor);
+  }
+
+  // Skip this op if XLA doesn't support this operand type.
+  auto xla_op_or = hlo_builder_.MakeXlaOp(operand);
+  if (!xla_op_or.ok()) {
+    op->emitRemark() << "skipping legalization due to "
+                     << xla_op_or.status().ToString();
+    return tensorflow::XlaExpression::Invalid();
+  }
+  ::xla::XlaOp xla_op = xla_op_or.ValueOrDie();
+
+  tensorflow::DataType dtype;
+  auto status = tensorflow::ConvertToDataType(operand.getType(), &dtype);
+  if (!status.ok()) {
+    op->emitRemark() << "skipping legalization due to " << status.ToString();
+    return tensorflow::XlaExpression::Invalid();
+  }
+  return tensorflow::XlaExpression::XlaOp(xla_op, dtype);
+}
+
+class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
  public:
   LegalizeTF() = default;
+
+  explicit LegalizeTF(llvm::StringRef device_type) {
+    device_type_ = device_type.str();
+  }
 
   LegalizeTF(const LegalizeTF&) {}
 
@@ -358,6 +510,11 @@ static PassRegistration<LegalizeTF> pass(
     "Legalize from TensorFlow to the HLO dialect using tf2xla kernels");
 
 }  // end namespace
+
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeTfWithTf2XlaPass(
+    llvm::StringRef device_type) {
+  return std::make_unique<LegalizeTF>(device_type);
+}
 
 }  // end namespace xla_hlo
 }  // end namespace mlir

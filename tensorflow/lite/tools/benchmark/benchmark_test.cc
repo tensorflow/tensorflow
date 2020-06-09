@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -22,13 +23,15 @@ limitations under the License.
 #include "absl/algorithm/algorithm.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_performance_options.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_tflite_model.h"
-#include "tensorflow/lite/tools/benchmark/delegate_provider.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
+#include "tensorflow/lite/tools/delegates/delegate_provider.h"
+#include "tensorflow/lite/tools/logging.h"
 
 namespace {
 const std::string* g_fp32_model_path = nullptr;
@@ -50,6 +53,7 @@ BenchmarkParams CreateParams(int32_t num_runs, float min_secs, float max_secs,
   params.AddParam("max_secs", BenchmarkParam::Create<float>(max_secs));
   params.AddParam("run_delay", BenchmarkParam::Create<float>(-1.0f));
   params.AddParam("num_threads", BenchmarkParam::Create<int32_t>(1));
+  params.AddParam("use_caching", BenchmarkParam::Create<bool>(false));
   params.AddParam("benchmark_name", BenchmarkParam::Create<std::string>(""));
   params.AddParam("output_prefix", BenchmarkParam::Create<std::string>(""));
   params.AddParam("warmup_runs", BenchmarkParam::Create<int32_t>(1));
@@ -80,14 +84,14 @@ BenchmarkParams CreateParams(int32_t num_runs, float min_secs, float max_secs,
   params.AddParam("enable_op_profiling", BenchmarkParam::Create<bool>(false));
   params.AddParam("max_profiling_buffer_entries",
                   BenchmarkParam::Create<int32_t>(1024));
-  params.AddParam("max_delegated_partitions", BenchmarkParam::Create<int>(0));
   params.AddParam("profiling_output_csv_file",
                   BenchmarkParam::Create<std::string>(""));
   params.AddParam("enable_platform_tracing",
                   BenchmarkParam::Create<bool>(false));
 
-  for (const auto& delegate_provider : GetRegisteredDelegateProviders()) {
-    delegate_provider->AddParams(&params);
+  for (const auto& delegate_provider :
+       tools::GetRegisteredDelegateProviders()) {
+    params.Merge(delegate_provider->DefaultParams());
   }
   return params;
 }
@@ -342,6 +346,64 @@ TEST(BenchmarkTest, DoesntCrashWithExplicitInputValueFilesStringModel) {
   CheckInputTensorValue(input_tensor, 0, string_value_0);
   CheckInputTensorValue(input_tensor, 1, string_value_1);
   CheckInputTensorValue(input_tensor, 2, string_value_2);
+}
+
+class ScopedCommandlineArgs {
+ public:
+  explicit ScopedCommandlineArgs(const std::vector<std::string>& actual_args) {
+    argc_ = actual_args.size() + 1;
+    argv_ = new char*[argc_];
+    const std::string program_name = "benchmark_model";
+    int buffer_size = program_name.length() + 1;
+    for (const auto& arg : actual_args) buffer_size += arg.length() + 1;
+    buffer_ = new char[buffer_size];
+    auto next_start = program_name.copy(buffer_, program_name.length());
+    buffer_[next_start++] = '\0';
+    argv_[0] = buffer_;
+    for (int i = 0; i < actual_args.size(); ++i) {
+      const auto& arg = actual_args[i];
+      argv_[i + 1] = buffer_ + next_start;
+      next_start += arg.copy(argv_[i + 1], arg.length());
+      buffer_[next_start++] = '\0';
+    }
+  }
+  ~ScopedCommandlineArgs() {
+    delete[] argv_;
+    delete[] buffer_;
+  }
+
+  int argc() const { return argc_; }
+
+  char** argv() const { return argv_; }
+
+ private:
+  char* buffer_;  // the buffer for all arguments.
+  int argc_;
+  char** argv_;  // Each char* element points to each argument.
+};
+
+TEST(BenchmarkTest, RunWithCorrectFlags) {
+  ASSERT_THAT(g_fp32_model_path, testing::NotNull());
+  TestBenchmark benchmark(CreateFp32Params());
+  ScopedCommandlineArgs scoped_argv({"--num_threads=4"});
+  auto status = benchmark.Run(scoped_argv.argc(), scoped_argv.argv());
+  EXPECT_EQ(kTfLiteOk, status);
+}
+
+TEST(BenchmarkTest, RunWithWrongFlags) {
+  ASSERT_THAT(g_fp32_model_path, testing::NotNull());
+  TestBenchmark benchmark(CreateFp32Params());
+  ScopedCommandlineArgs scoped_argv({"--num_threads=str"});
+  auto status = benchmark.Run(scoped_argv.argc(), scoped_argv.argv());
+  EXPECT_EQ(kTfLiteError, status);
+}
+
+TEST(BenchmarkTest, RunWithUseCaching) {
+  ASSERT_THAT(g_fp32_model_path, testing::NotNull());
+  TestBenchmark benchmark(CreateFp32Params());
+  ScopedCommandlineArgs scoped_argv({"--use_caching=false"});
+  auto status = benchmark.Run(scoped_argv.argc(), scoped_argv.argv());
+  EXPECT_EQ(kTfLiteOk, status);
 }
 
 class MaxDurationWorksTestListener : public BenchmarkListener {

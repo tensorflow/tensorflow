@@ -16,9 +16,12 @@ limitations under the License.
 
 #include <utility>
 
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Transforms/ViewOpGraph.h"  // from @llvm-project
@@ -41,6 +44,77 @@ limitations under the License.
 
 namespace tensorflow {
 
+Status HandleInputOutputArraysWithModule(const toco::ModelFlags& model_flags,
+                                         mlir::OwningModuleRef* module) {
+  mlir::FuncOp entry_function = nullptr;
+  for (auto func : module->get().getOps<mlir::FuncOp>()) {
+    if (auto tf_attrs =
+            func.getAttrOfType<mlir::DictionaryAttr>("tf.entry_function")) {
+      // TODO(jaesung): There could be multiple entry functions. Let's handle
+      // such cases if there are any needs for that.
+      if (entry_function != nullptr) {
+        return errors::InvalidArgument(
+            "There should be only one tf.entry_function");
+      }
+      entry_function = func;
+    }
+  }
+  if (entry_function == nullptr) {
+    return errors::InvalidArgument("no tf.entry_function found");
+  }
+
+  // Get the list of input Op names from the function attribute.
+  mlir::DictionaryAttr tf_attrs =
+      entry_function.getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
+  llvm::SmallVector<llvm::StringRef, 4> function_input_names;
+  function_input_names.reserve(model_flags.input_arrays().size());
+  auto input_attr = tf_attrs.get("inputs");
+  if (!input_attr) {
+    return errors::InvalidArgument("no inputs attribute found");
+  }
+  auto input_names = input_attr.cast<mlir::StringAttr>().getValue();
+  input_names.split(function_input_names, ",");
+  if (function_input_names.size() != model_flags.input_arrays().size()) {
+    return errors::InvalidArgument(
+        "input array size mismatch: got ", function_input_names.size(),
+        ", expected: ", model_flags.input_arrays().size());
+  }
+  llvm::StringSet<> function_input_names_set;
+  function_input_names_set.insert(function_input_names.begin(),
+                                  function_input_names.end());
+  for (const auto& input_array : model_flags.input_arrays()) {
+    if (function_input_names_set.count(input_array.name()) == 0) {
+      return errors::InvalidArgument("input array name (", input_array.name(),
+                                     ") does not exist in the given graph");
+    }
+  }
+
+  // Get the list of output Op names from the function attribute.
+  llvm::SmallVector<llvm::StringRef, 4> function_output_names;
+  function_output_names.reserve(model_flags.output_arrays().size());
+  auto output_attr = tf_attrs.get("outputs");
+  if (!output_attr) {
+    return errors::InvalidArgument("no outputs attribute found");
+  }
+  auto output_names = output_attr.cast<mlir::StringAttr>().getValue();
+  output_names.split(function_output_names, ",");
+  if (function_output_names.size() != model_flags.output_arrays().size()) {
+    return errors::InvalidArgument(
+        "output array size mismatch: got ", function_output_names.size(),
+        ", expected: ", model_flags.output_arrays().size());
+  }
+  llvm::StringSet<> function_output_names_set;
+  function_output_names_set.insert(function_output_names.begin(),
+                                   function_output_names.end());
+  for (const auto& output_array : model_flags.output_arrays()) {
+    if (function_output_names_set.count(output_array) == 0) {
+      return errors::InvalidArgument("output array name (", output_array,
+                                     ") does not exist in the given graph");
+    }
+  }
+  return Status::OK();
+}
+
 Status ConvertSavedModelToTFLiteFlatBuffer(
     const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
     string* result) {
@@ -51,8 +125,8 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
   std::vector<string> node_names;
   std::vector<string> node_dtypes;
   std::vector<std::vector<int>> node_shapes;
-  std::vector<double> node_mins;
-  std::vector<double> node_maxs;
+  std::vector<llvm::Optional<double>> node_mins;
+  std::vector<llvm::Optional<double>> node_maxs;
 
   // Populate quantization specs.
   TF_RETURN_IF_ERROR(internal::PopulateQuantizationSpecs(
@@ -72,16 +146,24 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
       saved_model_exported_names.begin(), saved_model_exported_names.end());
   absl::Span<std::string> exported_names(exported_names_in_vector);
 
+  if (exported_names.size() != 1) {
+    return errors::Unimplemented("Only support a single exported name.");
+  }
+
   TF_ASSIGN_OR_RETURN(auto module,
                       ImportSavedModel(model_flags.saved_model_dir(),
                                        model_flags.saved_model_version(), tags,
                                        exported_names, &context));
 
+  if (!model_flags.input_arrays().empty() ||
+      !model_flags.output_arrays().empty()) {
+    TF_RETURN_IF_ERROR(HandleInputOutputArraysWithModule(model_flags, &module));
+  }
+
   mlir::TFL::PassConfig pass_config(quant_specs);
   bool emit_builtin_tflite_ops = !toco_flags.force_select_tf_ops();
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
   pass_config.lower_tensor_list_ops = true;
-  pass_config.shape_inference = true;
 
   auto status = internal::ConvertMLIRToTFLiteFlatBuffer(
       toco_flags, std::move(module), pass_config, result);

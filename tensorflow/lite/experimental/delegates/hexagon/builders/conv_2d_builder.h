@@ -37,6 +37,7 @@ class Conv2dOpBuilder : public OpBuilder {
   ~Conv2dOpBuilder() override;
 
  private:
+  // TODO(b/142009955): Combine into common util for all types of Conv.
   TfLiteStatus ProcessPerChannelQuantizedWeights(const TfLiteIntArray* inputs,
                                                  const TfLiteIntArray* outputs,
                                                  TfLiteContext* context,

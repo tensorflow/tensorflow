@@ -35,15 +35,19 @@ class TransposeOpModel : public SingleOpModelWithHexagon {
                  CreateTransposeOptions(builder_).Union());
     BuildInterpreter({GetShape(input_)});
     if (!const_perm) {
-      PopulateTensor<int32_t>(perm_, perm);
+      PopulateTensor<int>(perm_, perm);
     }
   }
 
-  void SetInput(const std::vector<uint8_t>& data) {
-    PopulateTensor<uint8_t>(input_, data);
+  template <typename integer_type>
+  void SetInput(const std::vector<integer_type>& data) {
+    PopulateTensor<integer_type>(input_, data);
   }
 
-  std::vector<uint8_t> GetOutput() { return ExtractVector<uint8_t>(output_); }
+  template <typename integer_type>
+  std::vector<integer_type> GetOutput() {
+    return ExtractVector<integer_type>(output_);
+  }
 
  protected:
   int input_;
@@ -51,10 +55,11 @@ class TransposeOpModel : public SingleOpModelWithHexagon {
   int output_;
 };
 
-void ComputeExpectedTransposeResult(const std::vector<int>& shape,
-                                    const std::vector<int>& perms,
-                                    std::vector<uint8_t>* input,
-                                    std::vector<uint8_t>* input_transposed) {
+template <typename integer_type>
+void ComputeExpectedTransposeResult(
+    const std::vector<int>& shape, const std::vector<int>& perms,
+    std::vector<integer_type>* input,
+    std::vector<integer_type>* input_transposed) {
   // Count elements and allocate output.
   int count = 1;
   for (auto factor : shape) count *= factor;
@@ -79,11 +84,12 @@ void ComputeExpectedTransposeResult(const std::vector<int>& shape,
     params.perm[i] = perms[i];
   }
 
-  reference_ops::Transpose<uint8_t>(params, input_shape, input->data(),
-                                    output_shape, input_transposed->data());
+  reference_ops::Transpose<integer_type>(params, input_shape, input->data(),
+                                         output_shape,
+                                         input_transposed->data());
 }
 
-TEST(TransposeOpTest, Test1D) {
+TEST(TransposeOpTest, Test1D_UInt8) {
   // Basic 1D identity.
   std::vector<uint8_t> expected_output, input;
   std::vector<int> input_shape = {3};
@@ -91,12 +97,25 @@ TEST(TransposeOpTest, Test1D) {
 
   TransposeOpModel model({TensorType_UINT8, input_shape, -10, 10}, {1}, {0},
                          true, {TensorType_UINT8, {}, -10, 10});
-  model.SetInput(input);
+  model.SetInput<uint8_t>(input);
   model.ApplyDelegateAndInvoke();
-  EXPECT_THAT(model.GetOutput(), ElementsAreArray(expected_output));
+  EXPECT_THAT(model.GetOutput<uint8_t>(), ElementsAreArray(expected_output));
 }
 
-TEST(TransposeOpTest, Test2D) {
+TEST(TransposeOpTest, Test1D_Int8) {
+  // Basic 1D identity.
+  std::vector<int8_t> expected_output, input;
+  std::vector<int> input_shape = {3};
+  ComputeExpectedTransposeResult(input_shape, {0}, &input, &expected_output);
+
+  TransposeOpModel model({TensorType_INT8, input_shape, -10, 10}, {1}, {0},
+                         true, {TensorType_INT8, {}, -10, 10});
+  model.SetInput<int8_t>(input);
+  model.ApplyDelegateAndInvoke();
+  EXPECT_THAT(model.GetOutput<int8_t>(), ElementsAreArray(expected_output));
+}
+
+TEST(TransposeOpTest, Test2D_UInt8) {
   std::vector<uint8_t> expected_output, input;
   std::vector<int> input_shape = {3, 2};
   std::vector<int> perm = {1, 0};
@@ -104,12 +123,25 @@ TEST(TransposeOpTest, Test2D) {
 
   TransposeOpModel model({TensorType_UINT8, input_shape, -10, 10}, {2}, {1, 0},
                          true, {TensorType_UINT8, {}, -10, 10});
-  model.SetInput(input);
+  model.SetInput<uint8_t>(input);
   model.ApplyDelegateAndInvoke();
-  EXPECT_THAT(model.GetOutput(), ElementsAreArray(expected_output));
+  EXPECT_THAT(model.GetOutput<uint8_t>(), ElementsAreArray(expected_output));
 }
 
-TEST(TransposeOpTest, Test4D) {
+TEST(TransposeOpTest, Test2D_Int8) {
+  std::vector<int8_t> expected_output, input;
+  std::vector<int> input_shape = {3, 2};
+  std::vector<int> perm = {1, 0};
+  ComputeExpectedTransposeResult(input_shape, perm, &input, &expected_output);
+
+  TransposeOpModel model({TensorType_INT8, input_shape, -10, 10}, {2}, {1, 0},
+                         true, {TensorType_INT8, {}, -10, 10});
+  model.SetInput<int8_t>(input);
+  model.ApplyDelegateAndInvoke();
+  EXPECT_THAT(model.GetOutput<int8_t>(), ElementsAreArray(expected_output));
+}
+
+TEST(TransposeOpTest, Test4D_UInt8) {
   std::vector<uint8_t> expected_output, input;
   std::vector<int> input_shape = {2, 2, 3, 1};
   std::vector<int> perm = {3, 0, 1, 2};
@@ -117,8 +149,21 @@ TEST(TransposeOpTest, Test4D) {
 
   TransposeOpModel model({TensorType_UINT8, input_shape, -10, 10}, {4},
                          {3, 0, 1, 2}, true, {TensorType_UINT8, {}, -10, 10});
-  model.SetInput(input);
+  model.SetInput<uint8_t>(input);
   model.ApplyDelegateAndInvoke();
-  EXPECT_THAT(model.GetOutput(), ElementsAreArray(expected_output));
+  EXPECT_THAT(model.GetOutput<uint8_t>(), ElementsAreArray(expected_output));
+}
+
+TEST(TransposeOpTest, Test4D_Int8) {
+  std::vector<int8_t> expected_output, input;
+  std::vector<int> input_shape = {2, 2, 3, 1};
+  std::vector<int> perm = {3, 0, 1, 2};
+  ComputeExpectedTransposeResult(input_shape, perm, &input, &expected_output);
+
+  TransposeOpModel model({TensorType_INT8, input_shape, -10, 10}, {4},
+                         {3, 0, 1, 2}, true, {TensorType_INT8, {}, -10, 10});
+  model.SetInput<int8_t>(input);
+  model.ApplyDelegateAndInvoke();
+  EXPECT_THAT(model.GetOutput<int8_t>(), ElementsAreArray(expected_output));
 }
 }  // namespace tflite

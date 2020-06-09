@@ -15,7 +15,13 @@ limitations under the License.
 
 #include <jni.h>
 
+#include "absl/status/status.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/delegate.h"
+#include "tensorflow/lite/delegates/gpu/gl/egl_environment.h"
+#include "tensorflow/lite/delegates/gpu/gl/request_gpu_info.h"
+#include "tensorflow/lite/experimental/acceleration/whitelist/android_info.h"
+#include "tensorflow/lite/experimental/acceleration/whitelist/gpu_whitelist.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,13 +29,17 @@ extern "C" {
 
 JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_gpu_GpuDelegate_createDelegate(
     JNIEnv* env, jclass clazz, jboolean precision_loss_allowed,
-    jint inference_preference) {
+    jboolean quantized_models_allowed, jint inference_preference) {
   TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
   if (precision_loss_allowed == JNI_TRUE) {
     options.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
     options.inference_priority2 =
         TFLITE_GPU_INFERENCE_PRIORITY_MIN_MEMORY_USAGE;
     options.inference_priority3 = TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
+  }
+  options.experimental_flags = TFLITE_GPU_EXPERIMENTAL_FLAGS_NONE;
+  if (quantized_models_allowed) {
+    options.experimental_flags |= TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_QUANT;
   }
   options.inference_preference = static_cast<int32_t>(inference_preference);
   return reinterpret_cast<jlong>(TfLiteGpuDelegateV2Create(&options));
@@ -38,6 +48,66 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_gpu_GpuDelegate_createDelegate(
 JNIEXPORT void JNICALL Java_org_tensorflow_lite_gpu_GpuDelegate_deleteDelegate(
     JNIEnv* env, jclass clazz, jlong delegate) {
   TfLiteGpuDelegateV2Delete(reinterpret_cast<TfLiteDelegate*>(delegate));
+}
+
+namespace {
+class WhitelistHelper {
+ public:
+  absl::Status ReadInfo() {
+    auto status = tflite::acceleration::RequestAndroidInfo(&android_info_);
+    if (!status.ok()) return status;
+
+    if (android_info_.android_sdk_version < "21") {
+      // Weakly linked symbols may not be available on pre-21, and the GPU is
+      // not supported anyway so return early.
+      return absl::OkStatus();
+    }
+
+    std::unique_ptr<tflite::gpu::gl::EglEnvironment> env;
+    status = tflite::gpu::gl::EglEnvironment::NewEglEnvironment(&env);
+    if (!status.ok()) return status;
+
+    status = tflite::gpu::gl::RequestGpuInfo(&gpu_info_);
+    if (!status.ok()) return status;
+
+    return absl::OkStatus();
+  }
+
+  bool IsDelegateSupportedOnThisDevice() {
+    return whitelist_.Includes(android_info_, gpu_info_);
+  }
+
+ private:
+  tflite::acceleration::AndroidInfo android_info_;
+  tflite::gpu::GpuInfo gpu_info_;
+  tflite::acceleration::GPUWhitelist whitelist_;
+};
+}  // namespace
+
+JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_gpu_Whitelist_createWhitelist(
+    JNIEnv* env, jclass clazz) {
+  WhitelistHelper* whitelist = new WhitelistHelper;
+  auto status = whitelist->ReadInfo();
+  // Errors in ReadInfo should almost always be failures to construct the OpenGL
+  // environment. Treating that as "GPU unsupported" is reasonable, and we can
+  // swallow the error.
+  status.IgnoreError();
+  return reinterpret_cast<jlong>(whitelist);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_tensorflow_lite_gpu_Whitelist_nativeIsDelegateSupportedOnThisDevice(
+    JNIEnv* env, jclass clazz, jlong whitelist_handle) {
+  WhitelistHelper* whitelist =
+      reinterpret_cast<WhitelistHelper*>(whitelist_handle);
+  return whitelist->IsDelegateSupportedOnThisDevice() ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL Java_org_tensorflow_lite_gpu_Whitelist_deleteWhitelist(
+    JNIEnv* env, jclass clazz, jlong whitelist_handle) {
+  WhitelistHelper* whitelist =
+      reinterpret_cast<WhitelistHelper*>(whitelist_handle);
+  delete whitelist;
 }
 
 #ifdef __cplusplus

@@ -63,10 +63,6 @@ class ExecutionInput {
   explicit ExecutionInput(xla::Shape shape) : buffers_(std::move(shape)) {}
   explicit ExecutionInput(ShapeTree<MaybeOwningDeviceMemory> buffers)
       : buffers_(std::move(buffers)) {}
-  ExecutionInput(ShapeTree<MaybeOwningDeviceMemory> buffers,
-                 std::vector<ShapeIndex> owner_held_indices)
-      : buffers_(std::move(buffers)),
-        unowned_indices_(std::move(owner_held_indices)) {}
   ExecutionInput(ExecutionInput&&) = default;
 
   ~ExecutionInput() {
@@ -149,9 +145,6 @@ class ExecutionOutput {
     to_be_released_.push_back(std::move(mem));
   }
 
-  void SetOutputShapeTable(se::OwningDeviceMemory output_shape_table) {
-    output_shape_table_ = std::move(output_shape_table);
-  }
 
   // Should be called once it is known that the execute operation succeeded,
   // before returning the ExecutionOutput to the caller.
@@ -164,17 +157,9 @@ class ExecutionOutput {
 
   ScopedShapedBuffer* MutableResult() { return &result_; }
 
-  const se::OwningDeviceMemory& ShapeTable() const {
-    return output_shape_table_;
-  }
-
   ScopedShapedBuffer ConsumeResult() {
     aliased_indices_.clear();
     return std::move(result_);
-  }
-
-  se::OwningDeviceMemory ConsumeShapeTable() {
-    return std::move(output_shape_table_);
   }
 
   const std::vector<se::OwningDeviceMemory>& ToBeReleased() const {
@@ -333,7 +318,7 @@ class Executable {
   // not supported by the executable.
   //
   // Does not include the size of used libraries (e.g. cuDNN, Eigen, etc.).
-  virtual int64 SizeOfGeneratedCodeInBytes();
+  virtual int64 SizeOfGeneratedCodeInBytes() const;
 
   // Dumping helpers.
   void set_hlo_proto(std::unique_ptr<xla::HloProto> hlo_proto) {

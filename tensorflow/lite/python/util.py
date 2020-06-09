@@ -117,6 +117,12 @@ def get_tensors_from_tensor_names(graph, tensor_names):
   tensors = []
   invalid_tensors = []
   for name in tensor_names:
+    if not isinstance(name, six.string_types):
+      raise ValueError("Invalid type for a tensor name in the provided graph. "
+                       "Expected type for a tensor name is 'str', instead got "
+                       "type '{}' for tensor name '{}'".format(
+                           type(name), name))
+
     tensor = tensor_name_to_tensor.get(name)
     if tensor is None:
       invalid_tensors.append(name)
@@ -263,9 +269,9 @@ def freeze_graph(sess, input_tensors, output_tensors):
                                         hinted_outputs_nodes)
 
   if not is_frozen_graph(sess):
-    output_arrays = [get_tensor_name(tensor) for tensor in output_tensors]
+    output_node_names = [tensor.name.split(":")[0] for tensor in output_tensors]
     return tf_graph_util.convert_variables_to_constants(sess, graph_def,
-                                                        output_arrays)
+                                                        output_node_names)
   else:
     return sess.graph_def
 

@@ -41,15 +41,22 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/lstm_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/tftext_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
+// The cmd line flag to turn on/off Tf.Text API fusion.
 // NOLINTNEXTLINE
+static llvm::cl::opt<bool> fuse_tftext(
+    "tfl-fuse-tftext", llvm::cl::value_desc("bool"),
+    llvm::cl::desc("Fuse TF.Text API ops when it's true"),
+    llvm::cl::init(false));
 
 namespace mlir {
 namespace TFL {
 namespace {
 
 constexpr char kTFAPIImplements[] = "tf.api_implements";
+constexpr char kTfTextAPIPRefix[] = "tftext:";
 
 // Abstracts the conversion of the embedded lookup composite function.
 class ConvertEmbeddedLookupFunc {
@@ -94,7 +101,8 @@ class ConvertEmbeddedLookupFunc {
 // body with the corresponding fused TFLite op. The replacement need not always
 // be a fused op, though that is the primary use case.
 class PrepareCompositeFunctionsPass
-    : public OperationPass<PrepareCompositeFunctionsPass, ModuleOp> {
+    : public PassWrapper<PrepareCompositeFunctionsPass,
+                         OperationPass<ModuleOp>> {
  public:
   explicit PrepareCompositeFunctionsPass() {}
 
@@ -186,6 +194,10 @@ void PrepareCompositeFunctionsPass::ConvertTFAPIImplements(FuncOp func,
     OpBuilder builder(func.getBody());
     if (failed(ConvertKerasLSTMLayer(func, &builder)))
       return signalPassFailure();
+  } else if (fuse_tftext && attr.getValue().startswith(kTfTextAPIPRefix)) {
+    if (failed(ConvertTFTextAPI(func, attr.getValue()))) {
+      return signalPassFailure();
+    }
   }
 }
 
@@ -211,7 +223,7 @@ void PrepareCompositeFunctionsPass::runOnOperation() {
 }
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreatePrepareCompositeFunctionsPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreatePrepareCompositeFunctionsPass() {
   return std::make_unique<PrepareCompositeFunctionsPass>();
 }
 

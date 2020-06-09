@@ -16,15 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_DLPACK_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_DLPACK_H_
 
-#include "include/pybind11/pybind11.h"
-#include "tensorflow/compiler/xla/python/local_client.h"
+#include "pybind11/pybind11.h"
+#include "tensorflow/compiler/xla/python/py_buffer.h"
+#include "tensorflow/compiler/xla/python/py_client.h"
 
 namespace xla {
 
-StatusOr<pybind11::capsule> BufferToDLPackManagedTensor(PyLocalBuffer* buffer);
+StatusOr<pybind11::capsule> BufferToDLPackManagedTensor(PyBuffer* buffer);
 
-StatusOr<std::unique_ptr<PyLocalBuffer>> DLPackManagedTensorToBuffer(
-    const pybind11::capsule& tensor, PyLocalClient* client);
+StatusOr<std::unique_ptr<PyBuffer>> DLPackManagedTensorToBuffer(
+    const pybind11::capsule& tensor, std::shared_ptr<PyClient> client);
 
 }  // namespace xla
 

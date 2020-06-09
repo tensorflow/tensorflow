@@ -440,8 +440,8 @@ absl::Status ConvolutionTransposed3D::BindArguments() {
   if (definition_.IsBatchSupported()) {
     RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->Batch()));
   }
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(
-      IntegralDivideRoundUp(dst_[0]->Slices(), block_size_.w)));
+  RETURN_IF_ERROR(
+      kernel_.SetBytesAuto(DivideRoundUp(dst_[0]->Slices(), block_size_.w)));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHDS()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHDS()));
   return absl::OkStatus();
@@ -451,11 +451,10 @@ int3 ConvolutionTransposed3D::GetGridSize() const {
   const int aligned_w = AlignByN(dst_[0]->Width(), stride_.x * block_size_.x);
   const int aligned_h = AlignByN(dst_[0]->Height(), stride_.y * block_size_.y);
   const int aligned_d = AlignByN(dst_[0]->Depth(), stride_.z * block_size_.z);
-  const int grid_x =
-      IntegralDivideRoundUp(aligned_w, block_size_.x) * dst_[0]->Batch();
-  const int grid_y = IntegralDivideRoundUp(aligned_h, block_size_.y);
-  const int grid_z = IntegralDivideRoundUp(dst_[0]->Slices(), block_size_.w) *
-                     IntegralDivideRoundUp(aligned_d, block_size_.z);
+  const int grid_x = DivideRoundUp(aligned_w, block_size_.x) * dst_[0]->Batch();
+  const int grid_y = DivideRoundUp(aligned_h, block_size_.y);
+  const int grid_z = DivideRoundUp(dst_[0]->Slices(), block_size_.w) *
+                     DivideRoundUp(aligned_d, block_size_.z);
   return int3(grid_x, grid_y, grid_z);
 }
 

@@ -57,8 +57,8 @@ class Policy(object):
   not have a single dtype. When the variable dtype does not match the compute
   dtype, variables will be automatically casted to the compute dtype to avoid
   type errors. In this case, `tf.keras.layers.Layer.dtype` refers to the
-  variable dtype, not the compute dtype. See [the mixed precision
-  guide](https://www.tensorflow.org/guide/keras/mixed_precision) for more
+  variable dtype, not the compute dtype. See [the mixed precision guide](
+    https://www.tensorflow.org/guide/keras/mixed_precision) for more
   information on how to use mixed precision.
 
   Certain policies also have a `tf.mixed_precision.experimental.LossScale`
@@ -119,8 +119,8 @@ class Policy(object):
   `'mixed_bfloat16'`, no loss scaling is done and loss scaling never needs to be
   manually applied.
 
-  See [the mixed precision
-  guide](https://www.tensorflow.org/guide/keras/mixed_precision) for more
+  See [the mixed precision guide](
+    https://www.tensorflow.org/guide/keras/mixed_precision) for more
   information on using mixed precision
 
   ### How to use float64 in a Keras model
@@ -194,6 +194,10 @@ class Policy(object):
 
   Other arguments are not automatically casted for technical reasons, but this
   may change in a future minor release.
+
+  The casting only occurs in TensorFlow 2, but can be enabled if
+  `tf.compat.v1.disable_v2_behavior()` has been called with
+  `tf.compat.v1.keras.layers.enable_v2_dtype_behavior()`.
 
   A layer subclass can prevent its inputs from being autocasted by passing
   `autocast=False` to the layer constructor. For example:
@@ -547,7 +551,10 @@ def set_policy(policy):
   """
   global _global_policy
   if not base_layer_utils.v2_dtype_behavior_enabled():
-    raise ValueError('The global policy can only be set in TensorFlow 2')
+    raise ValueError('The global policy can only be set in TensorFlow 2 or if '
+                     'V2 dtype behavior has been set. To enable V2 dtype '
+                     'behavior, call '
+                     '"tf.compat.v1.keras.layers.enable_v2_dtype_behavior()"')
   if policy is not None and not isinstance(policy, Policy):
     policy = Policy(policy)
   is_mixed_policy = policy is not None and policy.should_cast_variables

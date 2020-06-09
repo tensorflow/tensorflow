@@ -94,9 +94,10 @@ Value Transpose(OpBuilder* builder, Value value_to_transpose,
 
   // Create tensor type for the transpose result.
   auto transpose_type = original_type;
-  auto transpose_shape = functional::map(
-      [transpose_type](int32_t dim) { return transpose_type.getDimSize(dim); },
-      perm);
+  auto transpose_shape =
+      llvm::to_vector<8>(llvm::map_range(perm, [transpose_type](int32_t dim) {
+        return transpose_type.getDimSize(dim);
+      }));
   auto elem_type = transpose_type.getElementType();
   auto result_type = RankedTensorType::get(transpose_shape, elem_type);
 

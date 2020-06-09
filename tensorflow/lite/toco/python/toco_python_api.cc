@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/python/saved_model_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_model.h"
+#include "tensorflow/compiler/mlir/lite/sparsity/sparsify_model.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "tensorflow/lite/toco/toco_tooling.h"
 #include "tensorflow/lite/toco/toco_types.h"
 #include "tensorflow/lite/toco/tooling_util.h"
+#include "tensorflow/lite/toco/types.pb.h"
 
 namespace toco {
 
@@ -227,7 +229,59 @@ PyObject* TocoGetPotentiallySupportedOps() {
   return list;
 }
 
-PyObject* MlirQuantizeModel(PyObject* data, bool fully_quantize) {
+PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
+                            bool fully_quantize, int inference_type) {
+  using tflite::interpreter_wrapper::PythonErrorReporter;
+  char* buf = nullptr;
+  Py_ssize_t length;
+  std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
+
+  if (tflite::python_utils::ConvertFromPyString(data, &buf, &length) == -1) {
+    PyErr_Format(PyExc_ValueError, "Failed to convert input PyObject");
+    return nullptr;
+  }
+  std::unique_ptr<tflite::FlatBufferModel> model =
+      tflite::FlatBufferModel::BuildFromBuffer(buf, length,
+                                               error_reporter.get());
+  if (!model) {
+    PyErr_Format(PyExc_ValueError, "Invalid model");
+    return nullptr;
+  }
+  auto tflite_model = absl::make_unique<tflite::ModelT>();
+  model->GetModel()->UnPackTo(tflite_model.get(), nullptr);
+
+  tflite::TensorType inference_tensor_type;
+  switch (inference_type) {
+    case toco::IODataType::QUANTIZED_INT16:
+      inference_tensor_type = tflite::TensorType_INT16;
+      break;
+    case toco::IODataType::QUANTIZED_UINT8:
+      inference_tensor_type = tflite::TensorType_UINT8;
+      break;
+    case toco::IODataType::INT8:
+      inference_tensor_type = tflite::TensorType_INT8;
+      break;
+    default:
+      return nullptr;
+  }
+  tflite::TensorType inference_io_type =
+      fully_quantize ? inference_tensor_type : tflite::TensorType_FLOAT32;
+  flatbuffers::FlatBufferBuilder builder;
+  auto status = mlir::lite::QuantizeModel(
+      *tflite_model, inference_io_type, inference_io_type,
+      inference_tensor_type, {}, disable_per_channel, fully_quantize, &builder,
+      error_reporter.get());
+
+  if (status != kTfLiteOk) {
+    error_reporter->exception();
+    return nullptr;
+  }
+  return tflite::python_utils::ConvertToPyString(
+      reinterpret_cast<const char*>(builder.GetCurrentBufferPointer()),
+      builder.GetSize());
+}
+
+PyObject* MlirSparsifyModel(PyObject* data) {
   using tflite::interpreter_wrapper::PythonErrorReporter;
   char* buf = nullptr;
   Py_ssize_t length;
@@ -248,10 +302,8 @@ PyObject* MlirQuantizeModel(PyObject* data, bool fully_quantize) {
   model->GetModel()->UnPackTo(tflite_model.get(), nullptr);
 
   flatbuffers::FlatBufferBuilder builder;
-  auto status = mlir::lite::QuantizeModel(
-      *tflite_model, tflite::TensorType::TensorType_FLOAT32,
-      tflite::TensorType::TensorType_FLOAT32, {}, fully_quantize, &builder,
-      error_reporter.get());
+  auto status =
+      mlir::lite::SparsifyModel(*tflite_model, &builder, error_reporter.get());
 
   if (status != kTfLiteOk) {
     error_reporter->exception();

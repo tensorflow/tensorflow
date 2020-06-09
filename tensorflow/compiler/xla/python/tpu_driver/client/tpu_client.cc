@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/python/semaphore.h"
+#include "tensorflow/compiler/xla/pjrt/semaphore.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -37,7 +37,8 @@ namespace xla {
 
 TpuDevice::TpuDevice(int id, int host_id, const std::array<int, 3>& coords,
                      int core_on_chip)
-    : xla::Device(id, /*local_device_state=*/nullptr, kTpuPlatform, host_id),
+    : xla::Device(id, /*local_device_state=*/nullptr, kTpuPlatform,
+                  /*device_kind=*/"Cloud TPU", host_id),
       coords_(coords),
       core_on_chip_(core_on_chip) {}
 
@@ -749,8 +750,7 @@ PyTpuExecutable::ExecuteOnLocalDevices(
     const XlaComputation& computation,
     absl::optional<std::vector<Shape>> argument_layouts,
     const ExecutableBuildOptions* build_options,
-    std::shared_ptr<PyTpuClient> client,
-    absl::optional<DeviceAssignment> device_assignment, bool tuple_arguments) {
+    std::shared_ptr<PyTpuClient> client, bool tuple_arguments) {
   tensorflow::profiler::TraceMe traceme("PyTpuExecutable::Compile");
 
   VLOG(1) << "Compile: "
@@ -762,21 +762,23 @@ PyTpuExecutable::ExecuteOnLocalDevices(
   if (build_options != nullptr) {
     options = *build_options;
   }
+  absl::optional<xla::DeviceAssignment> device_assignment;
 
   // For POD use case, the device_assignment.num_replicas() may be greater than
   // the number of available local devices, where applicable the non-local
   // devices must be filtered out from participating local computation.
-  if (device_assignment) {
-    if (device_assignment->replica_count() != options.num_replicas()) {
+  if (options.has_device_assignment()) {
+    if (options.device_assignment().replica_count() != options.num_replicas()) {
       return InvalidArgument(
           "Mismatched number of replicas for device "
           "assignment and computation (%d vs %d).",
-          device_assignment->replica_count(), options.num_replicas());
-    } else if (device_assignment->computation_count() != 1) {
+          options.device_assignment().replica_count(), options.num_replicas());
+    } else if (options.device_assignment().computation_count() != 1) {
       return Unimplemented(
           "Only 1 computation per replica supported, %d requested.",
-          device_assignment->computation_count());
+          options.device_assignment().computation_count());
     }
+    device_assignment = options.device_assignment();
   } else {
     TF_ASSIGN_OR_RETURN(device_assignment,
                         client->GetDefaultDeviceAssignment(

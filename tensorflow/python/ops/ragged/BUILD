@@ -307,6 +307,7 @@ py_library(
     deps = [
         ":segment_id_ops",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:bincount_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
@@ -417,6 +418,7 @@ py_library(
     deps = [
         ":ragged_util",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:bincount_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
@@ -1108,7 +1110,6 @@ py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
-        "//tensorflow/python/keras:backend",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

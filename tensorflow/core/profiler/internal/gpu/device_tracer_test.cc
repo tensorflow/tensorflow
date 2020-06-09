@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
@@ -45,14 +46,15 @@ namespace tensorflow {
 namespace profiler {
 
 #if GOOGLE_CUDA
-std::unique_ptr<ProfilerInterface> CreateGpuTracer(
-    const ProfilerOptions& options);
+extern std::unique_ptr<ProfilerInterface> CreateGpuTracer(
+    const ProfileOptions& options);
+std::unique_ptr<ProfilerInterface> CreateGpuTracer() {
+  ProfileOptions options = ProfilerSession::DefaultOptions();
+  return CreateGpuTracer(options);
+}
 #else
 // We don't have device tracer for non-cuda case.
-std::unique_ptr<ProfilerInterface> CreateGpuTracer(
-    const ProfilerOptions& options) {
-  return nullptr;
-}
+std::unique_ptr<ProfilerInterface> CreateGpuTracer() { return nullptr; }
 #endif
 
 namespace {
@@ -111,24 +113,21 @@ class DeviceTracerTest : public ::testing::Test {
 };
 
 TEST_F(DeviceTracerTest, StartStop) {
-  profiler::ProfilerOptions options;
-  auto tracer = CreateGpuTracer(options);
+  auto tracer = CreateGpuTracer();
   if (!tracer) return;
   TF_EXPECT_OK(tracer->Start());
   TF_EXPECT_OK(tracer->Stop());
 }
 
 TEST_F(DeviceTracerTest, StopBeforeStart) {
-  profiler::ProfilerOptions options;
-  auto tracer = CreateGpuTracer(options);
+  auto tracer = CreateGpuTracer();
   if (!tracer) return;
   TF_EXPECT_OK(tracer->Stop());
   TF_EXPECT_OK(tracer->Stop());
 }
 
 TEST_F(DeviceTracerTest, CollectBeforeStart) {
-  profiler::ProfilerOptions options;
-  auto tracer = CreateGpuTracer(options);
+  auto tracer = CreateGpuTracer();
   if (!tracer) return;
   RunMetadata run_metadata;
   TF_EXPECT_OK(tracer->CollectData(&run_metadata));
@@ -136,8 +135,7 @@ TEST_F(DeviceTracerTest, CollectBeforeStart) {
 }
 
 TEST_F(DeviceTracerTest, CollectBeforeStop) {
-  profiler::ProfilerOptions options;
-  auto tracer = CreateGpuTracer(options);
+  auto tracer = CreateGpuTracer();
   if (!tracer) return;
   TF_EXPECT_OK(tracer->Start());
   RunMetadata run_metadata;
@@ -147,9 +145,8 @@ TEST_F(DeviceTracerTest, CollectBeforeStop) {
 }
 
 TEST_F(DeviceTracerTest, StartTwoTracers) {
-  profiler::ProfilerOptions options;
-  auto tracer1 = CreateGpuTracer(options);
-  auto tracer2 = CreateGpuTracer(options);
+  auto tracer1 = CreateGpuTracer();
+  auto tracer2 = CreateGpuTracer();
   if (!tracer1 || !tracer2) return;
 
   TF_EXPECT_OK(tracer1->Start());
@@ -162,8 +159,7 @@ TEST_F(DeviceTracerTest, StartTwoTracers) {
 
 TEST_F(DeviceTracerTest, RunWithTracer) {
   // On non-GPU platforms, we may not support DeviceTracer.
-  profiler::ProfilerOptions options;
-  auto tracer = CreateGpuTracer(options);
+  auto tracer = CreateGpuTracer();
   if (!tracer) return;
 
   Initialize({3, 2, -1, 0});
@@ -190,8 +186,7 @@ TEST_F(DeviceTracerTest, RunWithTracer) {
 }
 
 TEST_F(DeviceTracerTest, TraceToStepStatsCollector) {
-  profiler::ProfilerOptions options;
-  auto tracer = CreateGpuTracer(options);
+  auto tracer = CreateGpuTracer();
   if (!tracer) return;
 
   Initialize({3, 2, -1, 0});
@@ -244,8 +239,7 @@ TEST_F(DeviceTracerTest, RunWithTraceOption) {
 }
 
 TEST_F(DeviceTracerTest, TraceToXSpace) {
-  profiler::ProfilerOptions options;
-  auto tracer = CreateGpuTracer(options);
+  auto tracer = CreateGpuTracer();
   if (!tracer) return;
 
   Initialize({3, 2, -1, 0});
@@ -280,12 +274,12 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   EXPECT_EQ(device_plane->event_metadata_size(), 4);
   // Check if device capacity is serialized.
   XPlaneVisitor plane = CreateTfXPlaneVisitor(device_plane);
-  EXPECT_NE(plane.GetStats(kDevCapClockRateKHz), nullptr);
-  EXPECT_NE(plane.GetStats(kDevCapCoreCount), nullptr);
-  EXPECT_NE(plane.GetStats(kDevCapMemoryBandwidth), nullptr);
-  EXPECT_NE(plane.GetStats(kDevCapMemorySize), nullptr);
-  EXPECT_NE(plane.GetStats(kDevCapComputeCapMajor), nullptr);
-  EXPECT_NE(plane.GetStats(kDevCapComputeCapMinor), nullptr);
+  EXPECT_TRUE(plane.GetStat(kDevCapClockRateKHz).has_value());
+  EXPECT_TRUE(plane.GetStat(kDevCapCoreCount).has_value());
+  EXPECT_TRUE(plane.GetStat(kDevCapMemoryBandwidth).has_value());
+  EXPECT_TRUE(plane.GetStat(kDevCapMemorySize).has_value());
+  EXPECT_TRUE(plane.GetStat(kDevCapComputeCapMajor).has_value());
+  EXPECT_TRUE(plane.GetStat(kDevCapComputeCapMinor).has_value());
 
   // Check if the device events timestamps are set.
   int total_events = 0;

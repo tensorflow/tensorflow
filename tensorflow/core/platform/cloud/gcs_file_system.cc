@@ -133,34 +133,6 @@ Status GetTmpFilename(string* filename) {
   return Status::OK();
 }
 
-/// \brief Splits a GCS path to a bucket and an object.
-///
-/// For example, "gs://bucket-name/path/to/file.txt" gets split into
-/// "bucket-name" and "path/to/file.txt".
-/// If fname only contains the bucket and empty_object_ok = true, the returned
-/// object is empty.
-Status ParseGcsPath(StringPiece fname, bool empty_object_ok, string* bucket,
-                    string* object) {
-  StringPiece scheme, bucketp, objectp;
-  io::ParseURI(fname, &scheme, &bucketp, &objectp);
-  if (scheme != "gs") {
-    return errors::InvalidArgument("GCS path doesn't start with 'gs://': ",
-                                   fname);
-  }
-  *bucket = string(bucketp);
-  if (bucket->empty() || *bucket == ".") {
-    return errors::InvalidArgument("GCS path doesn't contain a bucket name: ",
-                                   fname);
-  }
-  absl::ConsumePrefix(&objectp, "/");
-  *object = string(objectp);
-  if (!empty_object_ok && object->empty()) {
-    return errors::InvalidArgument("GCS path doesn't contain an object name: ",
-                                   fname);
-  }
-  return Status::OK();
-}
-
 /// Appends a trailing slash if the name doesn't already have one.
 string MaybeAppendSlash(const string& name) {
   if (name.empty()) {
@@ -186,12 +158,17 @@ string JoinGcsPath(const string& path, const string& subpath) {
 /// For example:
 ///  - for 'a/b/c/d' it will append 'a', 'a/b' and 'a/b/c'
 ///  - for 'a/b/c/' it will append 'a', 'a/b' and 'a/b/c'
+///  - for 'a//b/c/' it will append 'a', 'a//b' and 'a//b/c'
+///  - for '/a/b/c/' it will append '/a', '/a/b' and '/a/b/c'
 std::set<string> AddAllSubpaths(const std::vector<string>& paths) {
   std::set<string> result;
   result.insert(paths.begin(), paths.end());
   for (const string& path : paths) {
     StringPiece subpath = io::Dirname(path);
-    while (!subpath.empty()) {
+    // If `path` starts with `/`, `subpath` will be `/` and then we get into an
+    // infinite loop. Same behavior happens if there is a `//` pattern in
+    // `path`, so we check for that and leave the loop quicker.
+    while (!(subpath.empty() || subpath == "/")) {
       result.emplace(string(subpath));
       subpath = io::Dirname(subpath);
     }
@@ -1034,6 +1011,34 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& fname, size_t offset,
   return Status::OK();
 }
 
+Status GcsFileSystem::ParseGcsPathForScheme(StringPiece fname, string scheme,
+                                            bool empty_object_ok,
+                                            string* bucket, string* object) {
+  StringPiece parsed_scheme, bucketp, objectp;
+  io::ParseURI(fname, &parsed_scheme, &bucketp, &objectp);
+  if (parsed_scheme != scheme) {
+    return errors::InvalidArgument("GCS path doesn't start with 'gs://': ",
+                                   fname);
+  }
+  *bucket = string(bucketp);
+  if (bucket->empty() || *bucket == ".") {
+    return errors::InvalidArgument("GCS path doesn't contain a bucket name: ",
+                                   fname);
+  }
+  absl::ConsumePrefix(&objectp, "/");
+  *object = string(objectp);
+  if (!empty_object_ok && object->empty()) {
+    return errors::InvalidArgument("GCS path doesn't contain an object name: ",
+                                   fname);
+  }
+  return Status::OK();
+}
+
+Status GcsFileSystem::ParseGcsPath(StringPiece fname, bool empty_object_ok,
+                                   string* bucket, string* object) {
+  return ParseGcsPathForScheme(fname, "gs", empty_object_ok, bucket, object);
+}
+
 void GcsFileSystem::ClearFileCaches(const string& fname) {
   tf_shared_lock l(block_cache_lock_);
   file_block_cache_->RemoveFile(fname);
@@ -1349,9 +1354,19 @@ Status GcsFileSystem::GetMatchingPaths(const string& pattern,
 
         const auto& files_and_folders = AddAllSubpaths(all_files);
 
+        // To handle `/` in the object names, we need to remove it from `dir`
+        // and then use `StrCat` to insert it back.
+        const StringPiece dir_no_slash = str_util::StripSuffix(dir, "/");
+
         // Match all obtained paths to the input pattern.
         for (const auto& path : files_and_folders) {
-          const string& full_path = this->JoinPath(dir, path);
+          // Manually construct the path instead of using `JoinPath` for the
+          // cases where `path` starts with a `/` (which is a valid character in
+          // the filenames of GCS objects). `JoinPath` canonicalizes the result,
+          // removing duplicate slashes. We know that `dir_no_slash` does not
+          // end in `/`, so we are safe inserting the new `/` here as the path
+          // separator.
+          const string full_path = strings::StrCat(dir_no_slash, "/", path);
           if (this->Match(full_path, pattern)) {
             results->push_back(full_path);
           }

@@ -21,8 +21,7 @@ limitations under the License.
 
 namespace {
 
-bool IsCPU(
-    absl::variant<tensorflow::Device*, tensorflow::CustomDevice*> variant) {
+bool IsCPU(tensorflow::VariantDevice variant) {
   if (VariantDeviceIsCustom(variant)) {
     return false;
   }
@@ -49,7 +48,7 @@ AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
     }
   }
 
-  if (IsRemote()) {
+  if (Type() == REMOTE) {
     const tensorflow::Tensor* t = nullptr;
     TensorHandle* h_cpu = nullptr;
     *status = EagerCopyToDevice(this, ctx_, &ctx_->Executor(), ctx_->HostCPU(),
@@ -69,7 +68,7 @@ AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
     h_cpu->Unref();
     delete tf_tensor;
     return retval;
-  } else {
+  } else if (Type() == LOCAL) {
     tensorflow::Tensor tensor;
     if (IsCPU(device()) || HasLocalMirror(nullptr)) {
       const tensorflow::Tensor* src = nullptr;
@@ -79,16 +78,26 @@ AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
         *status = Tensor(&src);
       }
       if (!status->ok()) return nullptr;
+
       tensor = *src;
     } else {
       *status = CopyToDevice(*ctx_, ctx_->HostCPU(), &tensor);
       if (!status->ok()) return nullptr;
 
-      *status = AddEmptyLocalMirror(nullptr);
-      if (!status->ok()) return nullptr;
       tensorflow::Tensor mirror = tensor;
-      *status = SetTensor(std::move(mirror), nullptr);
-      if (!status->ok()) return nullptr;
+      *status = AddLocalMirror(std::move(mirror), nullptr);
+      if (!status->ok()) {
+        // If a mirror was added since we called HasLocalMirror then drop the
+        // newly copied tensor and use the previously added mirror.
+        if (status->code() != error::Code::ALREADY_EXISTS) {
+          return nullptr;
+        }
+        const tensorflow::Tensor* src = nullptr;
+        *status = TensorFromDevice(nullptr, &src);
+        if (!status->ok()) return nullptr;
+
+        tensor = *src;
+      }
     }
     // TODO(b/153052876): Change TF_TensorFromTensor to just return an
     // AbstractTensorInterface
@@ -96,7 +105,53 @@ AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
     AbstractTensorInterface* retval = tf_tensor->tensor;
     delete tf_tensor;
     return retval;
+  } else {
+    *status = errors::InvalidArgument(
+        "Resolve() is not supoorted on packed TensorHandles.");
+    return nullptr;
   }
+}
+
+AbstractTensorHandleInterface* EagerContext::CopyTensorHandleToDevice(
+    AbstractTensorHandleInterface* handle, const char* device_name,
+    Status* status) {
+  TensorHandle* input = TensorHandleFromInterface(handle);
+  TensorHandle* result = nullptr;
+  Device* device;
+  *status = this->FindDeviceFromName(device_name, &device);
+  if (!status->ok()) {
+    tensorflow::CustomDevice* dev;
+    *status = this->FindCustomDeviceFromName(device_name, &dev);
+    if (status->ok()) {
+      *status = dev->CopyTensorToDevice(input, &result);
+      if (status->ok()) {
+        return result;
+      }
+    }
+    return nullptr;
+  }
+  // Handle tensor handles currently in custom devices
+  const char* handle_device_name = input->DeviceName(status);
+  if (!status->ok()) {
+    return nullptr;
+  }
+  tensorflow::CustomDevice* dev;
+  *status = this->FindCustomDeviceFromName(handle_device_name, &dev);
+  if (status->ok()) {
+    *status = dev->CopyTensorFromDevice(input, device_name, &result);
+    if (status->ok()) {
+      return result;
+    }
+    return nullptr;
+  }
+
+  // Handle regular case.
+  *status =
+      EagerCopyToDevice(input, this, &this->Executor(), device, false, &result);
+  if (status->ok()) {
+    return result;
+  }
+  return nullptr;
 }
 
 // TODO(b/152902651): We unfortunately need to put this EagerContext function

@@ -112,7 +112,7 @@ std::string ExperimentalConvertSavedModelV1ToMlir(
   // Convert the SavedModelBundle to an MLIR module.
 
   mlir::MLIRContext context;
-  auto module_or = ConvertSavedModelV1ToMlir(bundle, &context);
+  auto module_or = ConvertSavedModelV1ToMlir(bundle, {}, &context);
   if (!module_or.status().ok()) {
     Set_TF_Status_from_Status(status, module_or.status());
     return "// error";

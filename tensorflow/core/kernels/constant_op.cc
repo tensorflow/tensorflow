@@ -48,12 +48,15 @@ namespace tensorflow {
 namespace {
 
 NodeDef StripTensorDataFromNodeDef(OpKernelConstruction* ctx) {
-#ifndef TENSORFLOW_LITE_PROTOS
-  DCHECK_EQ(NodeDef::descriptor()->field_count(), 6)
-      << "The NodeDef format has changed, and the attr-stripping code may need "
-      << "to be updated.";
-#endif
   const NodeDef& original = ctx->def();
+  if (std::is_base_of<protobuf::Message, NodeDef>()) {
+    DCHECK_EQ(reinterpret_cast<const protobuf::Message*>(&original)
+                  ->GetDescriptor()
+                  ->field_count(),
+              6)
+        << "The NodeDef format has changed, and the attr-stripping code may "
+           "need to be updated.";
+  }
   NodeDef ret;
   ret.set_name(original.name());
   ret.set_op(original.op());
@@ -73,7 +76,7 @@ ConstantOp::ConstantOp(OpKernelConstruction* ctx)
     : OpKernel(ctx, StripTensorDataFromNodeDef(ctx), false),
       tensor_(ctx->output_type(0)) {
   const TensorProto* proto = nullptr;
-  auto op_annotation = ScopedMemoryDebugAnnotation(name_view().data());
+  ScopedMemoryDebugAnnotation op_annotation(name_view().data());
   OP_REQUIRES_OK(ctx, ctx->GetAttr("value", &proto));
   OP_REQUIRES_OK(ctx, ctx->device()->MakeTensorFromProto(
                           *proto, AllocatorAttributes(), &tensor_));

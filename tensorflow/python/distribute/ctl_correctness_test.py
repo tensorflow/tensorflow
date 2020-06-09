@@ -224,7 +224,7 @@ class TestDistributionStrategyDnnCorrectness(test.TestCase,
   @combinations.generate(
       combinations.combine(
           distribution=strategy_combinations.all_strategies,
-          optimizer_fn=strategy_combinations.optimizers_v1_and_v2,
+          optimizer_fn=strategy_combinations.optimizers_v2,
           mode=['eager'],
           iteration_type=['iterator', 'dataset'],
           inside_func=[False, True],

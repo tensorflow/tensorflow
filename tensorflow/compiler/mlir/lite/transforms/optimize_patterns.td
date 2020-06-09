@@ -29,6 +29,14 @@ def ExtractSingleElementAsFloat : NativeCodeCall<
 // Checks if the value has only one user.
 def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
 
+// Checks if the value has rank at most 'n'.
+class HasRankAtMost<int n> : Constraint<
+    CPred<"$0.getType().cast<ShapedType>().getRank() <= " # n>>;
+
+// Checks value is not produce by a TLF_QUant with
+// different quantization attribute
+def NotFromQuantOpDifferentQuant : Constraint<CPred<"NotFromQuantOpDifferentQuant($0,$1)">>;
+
 //===----------------------------------------------------------------------===//
 // Ternary ops patterns.
 //===----------------------------------------------------------------------===//
@@ -160,7 +168,10 @@ foreach BinaryOp = [TFL_DivOp, TFL_MulOp] in
 // This pattern applies when the same quantize/dequantize have been used twice
 // with the same scale. We want to remove the redundancy.
 // TODO(fengliuai): move this to the sanity check of pre-quantize pass.
-def : Pat<(TFL_QuantizeOp (TFL_DequantizeOp $in), $qt), (replaceWithValue $in)>;
+def eliminate_dq_q_pairs : Pat<
+  (TFL_QuantizeOp (TFL_DequantizeOp $in), $qt), 
+  (replaceWithValue $in), 
+  [(NotFromQuantOpDifferentQuant $in, $qt)]>;
 
 
 // Constraint that makes sure both operands are the same operands.
@@ -347,7 +358,9 @@ foreach BinaryOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp] in {
              // The result of the new "BinaryOp" will have the same shape as
              // `input`. In other words, the shape of the `Reshape` op are not
              // changed after the transformation.
-             (IsTailOfShape $rhs, $input)]>;
+             (IsTailOfShape $rhs, $input),
+             (HasRankAtMost<5> $input),
+             (HasRankAtMost<5> $rhs)]>;
 }
 
 foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
@@ -378,6 +391,19 @@ foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
              (IsTailOfShape $rhs, $input)]>;
 }
 
+// Reorder the element-wise value operations and the element move operations,
+// such that the value operation happens before move operation.
+foreach ValueOp = [TFL_CeilOp, TFL_ExpOp, TFL_FloorOp, TFL_NegOp,
+                   TFL_ReluOp, TFL_Relu1Op, TFL_Relu6Op, TFL_RoundOp,
+                   TFL_TanhOp, TFL_SqrtOp, TFL_SquareOp] in {
+  foreach MoveOp = [TFL_DepthToSpaceOp, TFL_ExpandDimsOp, TFL_SqueezeOp,
+                   TFL_ReshapeOp, TFL_TransposeOp] in {
+    def : Pat<(ValueOp:$value (MoveOp:$move $input, $move_def)),
+              (MoveOp (ValueOp $input), $move_def),
+              [(HasOneUse $move)]>;
+  }
+}
+
 // Returns shape of a ranked tensor.
 // if called without a ranked tensor it will fail.
 def GetShape: NativeCodeCall<"GetShape($0)">;
@@ -394,8 +420,9 @@ def : Pat<(TFL_ExpandDimsOp:$expand_dims_op $input, $dim),
            (ConstantOp (GetShape $expand_dims_op))),
           [(AnyStaticShapeTensor $expand_dims_op)]>;
 
-class ValueEquals<string val> : Constraint<CPred<
+class FloatValueEquals<string val> : Constraint<CPred<
   "$0.cast<DenseElementsAttr>().getNumElements() == 1 &&"
+  "$0.isa<DenseFPElementsAttr>() &&"
   "*$0.cast<DenseElementsAttr>().getValues<float>().begin() == " # val>>;
 
 // ReLU patterns
@@ -403,13 +430,13 @@ def : Pat<(TFL_MinimumOp (TFL_MaximumOp $input,
                           (ConstantOp $NegOne)),
            (ConstantOp $One)),
           (TFL_Relu1Op $input),
-          [(ValueEquals<"-1"> $NegOne), (ValueEquals<"1"> $One)]>;
+          [(FloatValueEquals<"-1"> $NegOne), (FloatValueEquals<"1"> $One)]>;
 
 def : Pat<(TFL_MaximumOp (TFL_MinimumOp $input,
                           (ConstantOp $One)),
            (ConstantOp $NegOne)),
           (TFL_Relu1Op $input),
-          [(ValueEquals<"-1"> $NegOne), (ValueEquals<"1"> $One)]>;
+          [(FloatValueEquals<"-1"> $NegOne), (FloatValueEquals<"1"> $One)]>;
 
 def : Pat<(TFL_MaximumOp (TFL_MulOp:$mul_out $input1,
                           (ConstantOp F32ElementsAttr:$alpha), TFL_AF_None),
@@ -443,3 +470,21 @@ def : Pat<(TFL_AddOp
 // The constant folding in this pass might produce constant in the tf dialect.
 // This rule is to legalize these constant to the tfl dialect.
 def : Pat<(TF_ConstOp ElementsAttr:$value), (TFL_ConstOp $value)>;
+
+// Reorders adds to allow constant folding.
+// Add --> Add $input, $constantA
+//    \--> $constantB
+// To
+// Add --> $input
+//    \--> Add ($constantA, $constantB)
+foreach ActFun = [TFL_AF_Relu, TFL_AF_Relu6, TFL_AF_Relu1, TFL_AF_None] in {
+  def : Pat<(TFL_AddOp
+              (TFL_AddOp:$first_output $input, (ConstantOp $a), TFL_AF_None),
+              (ConstantOp $b), ActFun),
+            (TFL_AddOp $input,
+              (TFL_AddOp (ConstantOp $a), (ConstantOp $b), TFL_AF_None),
+              ActFun),
+  [(HasOneUse $first_output)]>;
+}
+
+

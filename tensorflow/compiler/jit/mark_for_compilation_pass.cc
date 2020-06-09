@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/memory_types.h"
@@ -49,7 +50,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/public/version.h"
@@ -1891,6 +1891,7 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "DynamicStitch",
                                      "Einsum",
                                      "EmptyTensorList",
+                                     "EnsureShape",
                                      "ExtractImagePatches",
                                      "Igamma",
                                      "IgammaGradA",
@@ -2033,6 +2034,7 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "TensorArraySplitV3",
                                      "TensorArrayV3",
                                      "TensorArrayWriteV3",
+                                     "TensorListConcatV2",
                                      "TensorListElementShape",
                                      "TensorListFromTensor",
                                      "TensorListGather",
@@ -2042,6 +2044,7 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "TensorListPushBack",
                                      "TensorListReserve",
                                      "TensorListSetItem",
+                                     "TensorListSplit",
                                      "TensorListStack",
                                      "TensorScatterAdd",
                                      "TensorScatterSub",
@@ -2077,6 +2080,8 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "XlaSend",
                                      "XlaSharding",
                                      "XlaSort",
+                                     "XlaSpmdFullToShardShape",
+                                     "XlaSpmdShardToFullShape",
                                      "XlaSvd",
                                      "XlaWhile",
                                      "_Arg",

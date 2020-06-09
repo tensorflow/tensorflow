@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
@@ -409,8 +408,9 @@ void HierarchicalTreeBroadcaster::DispatchSend(int subdiv, int dst_rank,
                                                int src_rank,
                                                const Tensor* src_tensor,
                                                const StatusCallback& done) {
-  auto op_annotation = ScopedMemoryDebugAnnotation(
-      col_ctx_->op_ctx->op_kernel().name_view().data());
+  ScopedMemoryDebugAnnotation op_annotation(
+      col_ctx_->op_ctx->op_kernel().name_view().data(), col_ctx_->step_id,
+      "dynamic", src_tensor->dtype(), &src_tensor->shape());
   string send_buf_key =
       BroadcastBufKey(col_ctx_->exec_key, subdiv, src_rank, dst_rank);
   int dst_idx =
@@ -447,6 +447,8 @@ void HierarchicalTreeBroadcaster::DispatchRecv(int subdiv, int src_rank,
       col_ctx_->device_locality, 0 /*stream_index*/, done);
 }
 
+namespace {
 REGISTER_COLLECTIVE(HierarchicalTreeBroadcast, HierarchicalTreeBroadcaster);
+}  // namespace
 
 }  // namespace tensorflow

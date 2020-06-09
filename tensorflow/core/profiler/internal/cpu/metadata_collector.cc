@@ -13,17 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_debug_info_manager.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/internal/profiler_factory.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -62,19 +68,16 @@ class MetadataCollector : public ProfilerInterface {
       XPlane* plane = GetOrCreatePlane(space, kMetadataPlane);
       plane->set_id(kMetadataPlaneId);
       XPlaneBuilder xplane(plane);
+      const XStatMetadata& hlo_proto_stat =
+          *xplane.GetOrCreateStatMetadata(kHloProto);
       for (auto& p : debug_info_) {
-        std::string hlo_proto;
-        p.hlo_proto->SerializeToString(&hlo_proto);
+        xplane.AddStatValue(hlo_proto_stat, *p.hlo_proto);
         p.hlo_proto.reset();
-        xplane.AddStatValue(*xplane.GetOrCreateStatMetadata(kHloProto),
-                            std::move(hlo_proto), /*is_bytes=*/true);
       }
       debug_info_.clear();
     }
     return Status::OK();
   }
-
-  DeviceType GetDeviceType() override { return DeviceType::kCpu; }
 
  private:
   std::vector<xla::gpu::GpuModuleDebugInfo> debug_info_;
@@ -84,9 +87,9 @@ class MetadataCollector : public ProfilerInterface {
 };
 
 std::unique_ptr<ProfilerInterface> CreatMetadataCollector(
-    const profiler::ProfilerOptions& options) {
-  return options.enable_hlo_proto ? absl::make_unique<MetadataCollector>()
-                                  : nullptr;
+    const ProfileOptions& options) {
+  return options.enable_hlo_proto() ? absl::make_unique<MetadataCollector>()
+                                    : nullptr;
 }
 
 }  // namespace

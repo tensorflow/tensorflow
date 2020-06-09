@@ -486,8 +486,8 @@ std::vector<ComputeTaskDescriptorPtr> Winograd4x4To36(
         BHWC dst_shape;
         dst_shape.b = src_shape.b;
         dst_shape.h = 36;
-        dst_shape.w = IntegralDivideRoundUp(new_width, 4) *
-                      IntegralDivideRoundUp(new_height, 4);
+        dst_shape.w =
+            DivideRoundUp(new_width, 4) * DivideRoundUp(new_height, 4);
         dst_shape.c = src_shape.c;
         return dst_shape;
       }};
@@ -501,16 +501,16 @@ std::vector<ComputeTaskDescriptorPtr> Winograd4x4To36(
                          attr.padding.appended.w - 2;
          int new_height = src_shape.h + attr.padding.prepended.h +
                           attr.padding.appended.h - 2;
-         int tiles_x = IntegralDivideRoundUp(new_width, 4);
-         int tiles_y = IntegralDivideRoundUp(new_height, 4);
+         int tiles_x = DivideRoundUp(new_width, 4);
+         int tiles_y = DivideRoundUp(new_height, 4);
          std::vector<int> sizes = {
              src_shape.w,
              src_shape.h,
-             IntegralDivideRoundUp(src_shape.c, 4),
+             DivideRoundUp(src_shape.c, 4),
              0,
              dst_shape.w,
              dst_shape.h,
-             IntegralDivideRoundUp(dst_shape.c, 4),
+             DivideRoundUp(dst_shape.c, 4),
              0,
              -attr.padding.prepended.w,
              -attr.padding.prepended.h,
@@ -529,12 +529,12 @@ std::vector<ComputeTaskDescriptorPtr> Winograd4x4To36(
         src_shape.w + attr.padding.prepended.w + attr.padding.appended.w - 2;
     int new_height =
         src_shape.h + attr.padding.prepended.h + attr.padding.appended.h - 2;
-    int grid_x = IntegralDivideRoundUp(new_width, 4);
-    int grid_y = IntegralDivideRoundUp(new_height, 4);
-    int grid_z = IntegralDivideRoundUp(src_shape.c, 4);
-    int groups_x = IntegralDivideRoundUp(grid_x, groups_size.x);
-    int groups_y = IntegralDivideRoundUp(grid_y, groups_size.y);
-    int groups_z = IntegralDivideRoundUp(grid_z, groups_size.z);
+    int grid_x = DivideRoundUp(new_width, 4);
+    int grid_y = DivideRoundUp(new_height, 4);
+    int grid_z = DivideRoundUp(src_shape.c, 4);
+    int groups_x = DivideRoundUp(grid_x, groups_size.x);
+    int groups_y = DivideRoundUp(grid_y, groups_size.y);
+    int groups_z = DivideRoundUp(grid_z, groups_size.z);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
   return {desc};
@@ -563,8 +563,8 @@ std::vector<ComputeTaskDescriptorPtr> Winograd4x4To36TileX6(
         BHWC dst_shape;
         dst_shape.b = src_shape.b;
         dst_shape.h = 36;
-        dst_shape.w = IntegralDivideRoundUp(new_width, 4) *
-                      IntegralDivideRoundUp(new_height, 4);
+        dst_shape.w =
+            DivideRoundUp(new_width, 4) * DivideRoundUp(new_height, 4);
         dst_shape.c = src_shape.c;
         return dst_shape;
       }};
@@ -593,16 +593,16 @@ std::vector<ComputeTaskDescriptorPtr> Winograd4x4To36TileX6(
                          attr.padding.appended.w - 2;
          int new_height = src_shape.h + attr.padding.prepended.h +
                           attr.padding.appended.h - 2;
-         int tiles_x = IntegralDivideRoundUp(new_width, 4);
-         int tiles_y = IntegralDivideRoundUp(new_height, 4);
+         int tiles_x = DivideRoundUp(new_width, 4);
+         int tiles_y = DivideRoundUp(new_height, 4);
          std::vector<int> sizes = {
              src_shape.w,
              src_shape.h,
-             IntegralDivideRoundUp(src_shape.c, 4),
+             DivideRoundUp(src_shape.c, 4),
              0,
              dst_shape.w,
              dst_shape.h,
-             IntegralDivideRoundUp(dst_shape.c, 4),
+             DivideRoundUp(dst_shape.c, 4),
              0,
              -attr.padding.prepended.w,
              -attr.padding.prepended.h,
@@ -619,10 +619,10 @@ std::vector<ComputeTaskDescriptorPtr> Winograd4x4To36TileX6(
     const auto& dst_shape = buffers.find(output_id)->second;
     int grid_x = dst_shape.w;
     int grid_y = 6;
-    int grid_z = IntegralDivideRoundUp(dst_shape.c, 4);
-    int groups_x = IntegralDivideRoundUp(grid_x, groups_size.x);
-    int groups_y = IntegralDivideRoundUp(grid_y, groups_size.y);
-    int groups_z = IntegralDivideRoundUp(grid_z, groups_size.z);
+    int grid_z = DivideRoundUp(dst_shape.c, 4);
+    int groups_x = DivideRoundUp(grid_x, groups_size.x);
+    int groups_y = DivideRoundUp(grid_y, groups_size.y);
+    int groups_z = DivideRoundUp(grid_z, groups_size.z);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
   return {desc};
@@ -665,8 +665,8 @@ std::vector<ComputeTaskDescriptorPtr> Winograd36To4x4(
          const auto& src_shape = buffers.find(input_id)->second;
          const auto& dst_shape = buffers.find(output_id)->second;
          std::vector<int> sizes = {
-             src_shape.w, src_shape.h, IntegralDivideRoundUp(src_shape.c, 4), 0,
-             dst_shape.w, dst_shape.h, IntegralDivideRoundUp(dst_shape.c, 4), 0,
+             src_shape.w, src_shape.h, DivideRoundUp(src_shape.c, 4), 0,
+             dst_shape.w, dst_shape.h, DivideRoundUp(dst_shape.c, 4), 0,
          };
          return GetByteBuffer(sizes);
        }},
@@ -677,10 +677,10 @@ std::vector<ComputeTaskDescriptorPtr> Winograd36To4x4(
     const auto& src_shape = buffers.find(input_id)->second;
     int grid_x = src_shape.w;
     int grid_y = 1;
-    int grid_z = IntegralDivideRoundUp(src_shape.c, 4);
-    int groups_x = IntegralDivideRoundUp(grid_x, groups_size.x);
-    int groups_y = IntegralDivideRoundUp(grid_y, groups_size.y);
-    int groups_z = IntegralDivideRoundUp(grid_z, groups_size.z);
+    int grid_z = DivideRoundUp(src_shape.c, 4);
+    int groups_x = DivideRoundUp(grid_x, groups_size.x);
+    int groups_y = DivideRoundUp(grid_y, groups_size.y);
+    int groups_z = DivideRoundUp(grid_z, groups_size.z);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
   return {desc};
@@ -734,16 +734,16 @@ std::vector<ComputeTaskDescriptorPtr> Winograd36To4x4Tile4x1(
        [input_id, output_id](const std::map<ValueId, BHWC>& buffers) {
          const auto& src_shape = buffers.find(input_id)->second;
          const auto& dst_shape = buffers.find(output_id)->second;
-         const int tiles_x = IntegralDivideRoundUp(dst_shape.w, 4);
-         const int tiles_y = IntegralDivideRoundUp(dst_shape.h, 4);
+         const int tiles_x = DivideRoundUp(dst_shape.w, 4);
+         const int tiles_y = DivideRoundUp(dst_shape.h, 4);
          std::vector<int> sizes = {
              src_shape.w,
              src_shape.h,
-             IntegralDivideRoundUp(src_shape.c, 4),
+             DivideRoundUp(src_shape.c, 4),
              0,
              dst_shape.w,
              dst_shape.h,
-             IntegralDivideRoundUp(dst_shape.c, 4),
+             DivideRoundUp(dst_shape.c, 4),
              0,
              tiles_x,
              tiles_y,
@@ -757,14 +757,14 @@ std::vector<ComputeTaskDescriptorPtr> Winograd36To4x4Tile4x1(
   desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
     const uint3 groups_size{8, 4, 1};
     const auto& dst_shape = buffers.find(output_id)->second;
-    const int tiles_x = IntegralDivideRoundUp(dst_shape.w, 4);
-    const int tiles_y = IntegralDivideRoundUp(dst_shape.h, 4);
+    const int tiles_x = DivideRoundUp(dst_shape.w, 4);
+    const int tiles_y = DivideRoundUp(dst_shape.h, 4);
     int grid_x = tiles_x * tiles_y;
     int grid_y = 4;
-    int grid_z = IntegralDivideRoundUp(dst_shape.c, 4);
-    int groups_x = IntegralDivideRoundUp(grid_x, groups_size.x);
-    int groups_y = IntegralDivideRoundUp(grid_y, groups_size.y);
-    int groups_z = IntegralDivideRoundUp(grid_z, groups_size.z);
+    int grid_z = DivideRoundUp(dst_shape.c, 4);
+    int groups_x = DivideRoundUp(grid_x, groups_size.x);
+    int groups_y = DivideRoundUp(grid_y, groups_size.y);
+    int groups_z = DivideRoundUp(grid_z, groups_size.z);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
   return {desc};

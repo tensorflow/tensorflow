@@ -44,6 +44,12 @@ class CpuElementalIrEmitter : public ElementalIrEmitter {
   StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
                                   llvm::Value* value) override;
 
+  StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
+      const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
+      absl::string_view name) override {
+    return ir_emitter_->EmitThreadLocalCall(callee, parameters, name);
+  }
+
   IrEmitter* ir_emitter_;
 };
 

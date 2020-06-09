@@ -55,16 +55,46 @@ XlaLhloDialect::XlaLhloDialect(MLIRContext *context)
       >();
 }
 
+//===----------------------------------------------------------------------===//
+// StaticMemRefCastOp
+//===----------------------------------------------------------------------===//
+
+Value StaticMemRefCastOp::getViewSource() { return *getODSOperands(0).begin(); }
+
+static LogicalResult Verify(StaticMemRefCastOp op) {
+  if (!op.operand().getType().cast<ShapedType>().hasStaticShape())
+    return op.emitOpError("operand must have static shape");
+  if (!op.getType().hasStaticShape())
+    return op.emitOpError("result must have static shape");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// DynamicMemRefCastOp
+//===----------------------------------------------------------------------===//
+
+Value DynamicMemRefCastOp::getViewSource() {
+  return *getODSOperands(0).begin();
+}
+
+static LogicalResult Verify(DynamicMemRefCastOp op) {
+  // Check if `sizes` and `strides` args are compatible with the result type.
+  if (op.sizes().size() != op.getType().getRank())
+    return op.emitOpError(
+        "`sizes` args count must be equal to the rank of the output memref");
+  return success();
+}
+
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.cc.inc"
 
 // TODO(cheshire): Support folding, reuse code from hlo_ops.cc.
 
-void FusionOp::build(Builder *builder, OperationState &result,
+void FusionOp::build(OpBuilder &builder, OperationState &result,
                      ArrayRef<NamedAttribute> attributes) {
   result.addAttributes(attributes);
   Region *bodyRegion = result.addRegion();
-  FusionOp::ensureTerminator(*bodyRegion, *builder, result.location);
+  FusionOp::ensureTerminator(*bodyRegion, builder, result.location);
 }
 
 }  // namespace xla_lhlo

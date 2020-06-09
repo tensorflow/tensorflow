@@ -92,6 +92,11 @@ Status DynamicDeviceMgr::LookupDevice(StringPiece name, Device** device) const {
   return Status::OK();
 }
 
+bool DynamicDeviceMgr::ContainsDevice(int64 device_incarnation) const {
+  tf_shared_lock l(devices_mu_);
+  return device_incarnation_set_.contains(device_incarnation);
+}
+
 void DynamicDeviceMgr::ClearContainers(
     gtl::ArraySlice<string> containers) const {
   Status s;
@@ -138,6 +143,7 @@ Status DynamicDeviceMgr::AddDevices(
       device_map_[name] = d.get();
     }
     device_type_counts_[d->device_type()]++;
+    device_incarnation_set_.insert(d->attributes().incarnation());
     dynamic_devices_.emplace(d.get(), std::move(d));
   }
   return Status::OK();
@@ -171,6 +177,7 @@ Status DynamicDeviceMgr::RemoveDevices(std::vector<Device*> devices) {
       device_map_.erase(name);
     }
     device_type_counts_[d->device_type()]--;
+    device_incarnation_set_.erase(d->attributes().incarnation());
     dynamic_devices_.erase(it);
   }
   return Status::OK();

@@ -12,18 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <utility>
-#include <vector>
+#include <memory>
 
-#include "absl/strings/str_split.h"
-#include "tensorflow/core/framework/step_stats.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/internal/profiler_factory.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/python/profiler/internal/python_hooks.h"
 
@@ -49,8 +48,6 @@ class PythonTracer : public ProfilerInterface {
   Status CollectData(RunMetadata* run_metadata) override;
 
   Status CollectData(XSpace* space) override;
-
-  DeviceType GetDeviceType() override { return DeviceType::kCpu; }
 
  private:
   bool recording_ = false;
@@ -107,10 +104,10 @@ Status PythonTracer::CollectData(XSpace* space) {
 
 // Not in anonymous namespace for testing purposes.
 std::unique_ptr<ProfilerInterface> CreatePythonTracer(
-    const profiler::ProfilerOptions& options) {
-  if (!options.enable_python_tracer) return nullptr;
+    const ProfileOptions& options) {
+  if (options.python_tracer_level() == 0) return nullptr;
   // This ProfilerInterface rely on TraceMeRecorder to be active.
-  if (options.host_tracer_level == 0) return nullptr;
+  if (options.host_tracer_level() == 0) return nullptr;
   return absl::make_unique<PythonTracer>();
 }
 

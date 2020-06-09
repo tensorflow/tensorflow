@@ -128,24 +128,24 @@ absl::Status Conv3D::BindArguments() {
     RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->Batch()));
   }
   RETURN_IF_ERROR(kernel_.SetBytesAuto(
-      IntegralDivideRoundUp(dst_[0]->Slices(), conv_params_.block_size.w)));
+      DivideRoundUp(dst_[0]->Slices(), conv_params_.block_size.w)));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHDS()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHDS()));
   return absl::OkStatus();
 }
 
 int3 Conv3D::GetGridSize() const {
-  const int grid_x = IntegralDivideRoundUp(dst_[0]->Width() * dst_[0]->Batch(),
-                                           conv_params_.block_size.x);
+  const int grid_x = DivideRoundUp(dst_[0]->Width() * dst_[0]->Batch(),
+                                   conv_params_.block_size.x);
   const int grid_y =
-      IntegralDivideRoundUp(dst_[0]->Height(), conv_params_.block_size.y);
+      DivideRoundUp(dst_[0]->Height(), conv_params_.block_size.y);
   const int grid_z =
-      IntegralDivideRoundUp(dst_[0]->Slices(), conv_params_.block_size.w) *
-      IntegralDivideRoundUp(dst_[0]->Depth(), conv_params_.block_size.z);
+      DivideRoundUp(dst_[0]->Slices(), conv_params_.block_size.w) *
+      DivideRoundUp(dst_[0]->Depth(), conv_params_.block_size.z);
   int3 wg;
-  wg.x = IntegralDivideRoundUp(grid_x, conv_params_.work_group_size.x);
-  wg.y = IntegralDivideRoundUp(grid_y, conv_params_.work_group_size.y);
-  wg.z = IntegralDivideRoundUp(grid_z, conv_params_.work_group_size.z);
+  wg.x = DivideRoundUp(grid_x, conv_params_.work_group_size.x);
+  wg.y = DivideRoundUp(grid_y, conv_params_.work_group_size.y);
+  wg.z = DivideRoundUp(grid_z, conv_params_.work_group_size.z);
   return int3(wg[conv_params_.work_group_launch_order[0]] *
                   conv_params_.work_group_size.x,
               wg[conv_params_.work_group_launch_order[1]] *
@@ -885,8 +885,8 @@ Conv3D::ConvParams Conv3D::GuessBestParams(const CLDevice& device,
 Conv3D::ConvParams Conv3D::GuessBestParams(
     const CLDevice& device, const OperationDef& definition,
     const Convolution3DAttributes& attr) const {
-  const int dst_slices = IntegralDivideRoundUp(attr.weights.shape.o, 4);
-  const int src_slices = IntegralDivideRoundUp(attr.weights.shape.i, 4);
+  const int dst_slices = DivideRoundUp(attr.weights.shape.o, 4);
+  const int src_slices = DivideRoundUp(attr.weights.shape.i, 4);
   const bool x_kernel_is_1 = attr.weights.shape.w == 1 && attr.strides.w == 1 &&
                              attr.dilations.w == 1 &&
                              attr.padding.prepended.w == 0 &&

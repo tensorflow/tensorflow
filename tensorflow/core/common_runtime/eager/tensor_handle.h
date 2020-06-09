@@ -55,11 +55,6 @@ class EagerContext;
 // (unrelated to python TensorHandle).
 class TensorHandle : public AbstractTensorHandleInterface,
                      public core::RefCounted {
-  // Custom devices do many of the same things as physical Devices, but have a
-  // much more restricted interface. We pass around ambiguous pointers since
-  // TensorHandles may be placed either on custom or physical devices.
-  using VariantDevice = absl::variant<Device*, CustomDevice*>;
-
   // TensorHandle for dtype != DT_RESOURCE
   TensorHandle(tensorflow::Tensor&& t, Device* d, Device* op_device,
                Device* resource_device, EagerContext* ctx);
@@ -92,6 +87,19 @@ class TensorHandle : public AbstractTensorHandleInterface,
                                               Device* resource_device,
                                               tensorflow::DataType dtype,
                                               EagerContext* ctx);
+
+  // Create a handle which packs the given handles of the same dtype and shape.
+  // If handles are on different devices, assign the packed handle to a
+  // CompositeDevice.
+  static Status CreatePackedHandle(std::vector<TensorHandle*>&& handles,
+                                   const tensorflow::DataType dtype,
+                                   const tensorflow::TensorShape& shape,
+                                   EagerContext* ctx,
+                                   TensorHandle** packed_handle);
+  static Status CreatePackedHandle(std::vector<TensorHandle*>&& handles,
+                                   EagerContext* ctx,
+                                   TensorHandle** packed_handle);
+
 #if !defined(IS_MOBILE_PLATFORM)
   static TensorHandle* CreateUnshapedRemoteHandle(int64 op_id, int32 output_num,
                                                   const string& remote_task,
@@ -130,6 +138,9 @@ class TensorHandle : public AbstractTensorHandleInterface,
   VariantDevice device() const { return device_; }
   Device* op_device() const { return op_device_; }
   Device* resource_device() const { return resource_device_; }
+  int64 resource_remote_device_incarnation() const {
+    return resource_remote_device_incarnation_;
+  }
 
   VariantDevice DeviceOrHostCPU(const EagerContext& ctx) const;
 
@@ -158,7 +169,10 @@ class TensorHandle : public AbstractTensorHandleInterface,
                                 EagerContext* ctx);
 
   // Return the op_id and output num if the handle refers to a remote tensor.
-  Status RemoteAddress(const Device* d, int64* op_id, int32* output_num) const;
+  // If wait_until_ready is true, block until the remote tensor is ready on the
+  // given remote worker.
+  Status RemoteAddress(const Device* d, const bool wait_until_ready,
+                       int64* op_id, int32* output_num) const;
 
   // Called on an async remote tensor once it's shape has been determined. This
   // transitions the tensor handle from a non-ready to a ready state by
@@ -189,6 +203,7 @@ class TensorHandle : public AbstractTensorHandleInterface,
   // tensor for a specific device.
   void Poison(Status status, const Device* d);
 
+  // TODO(b/154282629): Consider moving it to EagerContext.
   Status CopyToDevice(const EagerContext& ctx, tensorflow::Device* d,
                       tensorflow::Tensor* output);
 
@@ -204,7 +219,10 @@ class TensorHandle : public AbstractTensorHandleInterface,
   // ready.
   const tensorflow::DataType dtype;
 
-  bool IsRemote() const;
+  enum HandleType { LOCAL = 0, PACKED = 1, REMOTE = 2 };
+
+  HandleType Type() const;
+  string TypeString() const;
 
   string DebugString() const;
 
@@ -222,7 +240,19 @@ class TensorHandle : public AbstractTensorHandleInterface,
       std::vector<DtypeAndPartialTensorShape>* result);
   Status GetResourceAllowedDevices(std::vector<string>* result);
 
+  // Returns the number of packed handles. 0 if the handle type is not PACKED.
+  int NumPackedHandles() const;
+  // It's called on a packed TensorHandle. Extract a handle with the given
+  // index.
+  Status ExtractPackedHandle(const int index, TensorHandle** handle) const;
+
  private:
+  friend class PackedTensorHandleTest;
+
+  TensorHandle(std::vector<TensorHandle*>&& handles, Device* device,
+               const tensorflow::DataType dtype,
+               const tensorflow::TensorShape& shape, EagerContext* ctx);
+
   ~TensorHandle() override;
 
   // The TensorHandleData can either represent a local or remote tensor handle.
@@ -244,6 +274,9 @@ class TensorHandle : public AbstractTensorHandleInterface,
   // If the tensor dtype is DT_RESOURCE, resource_device_ holds the device
   // backing the resource. Else resource_device_ is nullptr.
   tensorflow::Device* const resource_device_;
+  // Incarnation ID of the resource device if it locates on a remote device, or
+  // 0 if it locates on a local device.
+  const int64 resource_remote_device_incarnation_;
 
   mutable mutex mu_;
 
@@ -279,30 +312,62 @@ class TensorHandle : public AbstractTensorHandleInterface,
   // devices for the underlying resource.
   ResourceHandleInfo resource_handle_info_;
 
+  // A handle data which refers to multiple TensorHandles of the same dtype and
+  // shape.
+  class PackedTensorHandleData {
+   public:
+    PackedTensorHandleData(std::vector<TensorHandle*>&& handles,
+                           const TensorShape& shape);
+
+    ~PackedTensorHandleData();
+
+    Status Shape(TensorShape* shape) const;
+    Status NumDims(int* num_dims) const;
+    Status Dim(int dim_index, int64* dim) const;
+    Status NumElements(int64* num_elements) const;
+    Status Unprotect();
+    bool IsReady() const;
+    void Poison(Status status);
+    string DebugString() const;
+
+    // Number of packed handles.
+    int NumPackedHandles() const;
+    // Extract a handle on the given index.
+    Status ExtractPackedHandle(const int index, TensorHandle** handle) const;
+
+   private:
+    const std::vector<TensorHandle*> handles_;
+    const TensorShape shape_;
+
+    mutable mutex mu_;
+    Status is_poisoned_ TF_GUARDED_BY(mu_);
+  };
+
   // Does not need synchronization because it can be accessed only after
   // WaitReady() has returned. At that point, data_ is immutable.
 #if !defined(IS_MOBILE_PLATFORM)
-  absl::variant<LocalTensorHandleData, RemoteTensorHandleData> data_;
+  absl::variant<LocalTensorHandleData, PackedTensorHandleData,
+                RemoteTensorHandleData>
+      data_;
 #else
-  absl::variant<LocalTensorHandleData> data_;
+  absl::variant<LocalTensorHandleData, PackedTensorHandleData> data_;
 #endif
 
   PartialTensorShape inference_shape_;
 };
 
 // Checks whether a VariantDevice contains a custom device.
-bool VariantDeviceIsCustom(absl::variant<Device*, CustomDevice*> device);
+bool VariantDeviceIsCustom(VariantDevice device);
 
 // Wraps device->name() or CustomDevice->name().
-string VariantDeviceName(absl::variant<Device*, CustomDevice*> device);
+string VariantDeviceName(VariantDevice device);
 
 // Wraps device->DebugString() or CustomDevice->name().
-string VariantDeviceDebugString(absl::variant<Device*, CustomDevice*> device);
+string VariantDeviceDebugString(VariantDevice device);
 
 // Indicates either HostCPU or an unset physical device. We never set a null
 // CustomDevice*.
-const absl::variant<Device*, CustomDevice*> kVariantDeviceNull =
-    static_cast<Device*>(nullptr);
+const VariantDevice kVariantDeviceNull = static_cast<Device*>(nullptr);
 
 // Returns the device backing the resource. Else, returns nullptr.
 Device* GetResourceDevice(const ResourceHandle& handle, EagerContext* ctx);

@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -pass-pipeline='func(canonicalize)' | FileCheck %s
+// RUN: xla-opt %s -split-input-file -pass-pipeline='func(canonicalize)' | FileCheck %s
 
 // -----
 
@@ -191,7 +191,7 @@ func @const_f32_bf16() -> tensor<bf16> {
 
 // CHECK-LABEL: func @const_bf16_f64
 func @const_bf16_f64() -> tensor<f64> {
-  // CHECK-NEXT: [[CST:%.+]] = xla_hlo.constant dense<4.2{{0*}}e+00> : tensor<f64>
+  // CHECK-NEXT: [[CST:%.+]] = xla_hlo.constant dense<4.187500e+00> : tensor<f64>
   %cst = xla_hlo.constant dense<4.2> : tensor<bf16>
   %0 = "xla_hlo.convert"(%cst) : (tensor<bf16>) -> tensor<f64>
   // CHECK-NEXT: return [[CST]]

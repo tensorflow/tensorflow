@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
@@ -112,20 +113,6 @@ void BaseRendezvousMgr::Cleanup(int64 step_id) {
   }
   if (rendez) {
     StartAbortRendevous(rendez, errors::Aborted("Cleanup ", step_id));
-  }
-}
-
-void BaseRendezvousMgr::CleanupAll() {
-  std::vector<Rendezvous*> rendezs;
-  {
-    mutex_lock l(mu_);
-    for (const auto& entry : table_) {
-      rendezs.push_back(entry.second);
-    }
-    table_.clear();
-  }
-  for (auto rendez : rendezs) {
-    StartAbortRendevous(rendez, errors::Aborted("Shutdown"));
   }
 }
 
@@ -272,9 +259,8 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
     return;
   }
 
-  // Note that it would be nice to cache the step_id here, but it's not
-  // available.
-  auto op_annotation = ScopedMemoryDebugAnnotation("SameWorkerRecvDone", 0);
+  ScopedMemoryDebugAnnotation op_annotation("SameWorkerRecvDone", step_id_,
+                                            "dynamic", in.dtype(), &in.shape());
   AllocatorAttributes attr = recv_args.alloc_attrs;
   attr.set_gpu_compatible(send_args.alloc_attrs.gpu_compatible() ||
                           recv_args.alloc_attrs.gpu_compatible());
@@ -323,7 +309,7 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
   DCHECK(is_initialized()) << "RecvAsync called when uninitialized (key: "
                            << parsed.FullKey() << ").";
 
-  auto op_annotation = ScopedMemoryDebugAnnotation("RecvAsync", 0);
+  ScopedMemoryDebugAnnotation op_annotation("RecvAsync", step_id_);
   // Are src and dst in the same worker?
   if (IsSameWorker(parsed.src, parsed.dst)) {
     // Recv the tensor from local_.
@@ -388,11 +374,14 @@ void BaseRemoteRendezvous::RecvLocalAsyncInternal(const ParsedKey& parsed,
 
 void BaseRemoteRendezvous::StartAbort(const Status& s) {
   CHECK(!s.ok());
-  // Use a "derived" status as the status for the rendezvous. Derived
-  // status messages are ignored when aggregating errors across devices: this
-  // allows us to prefer our original status message over any cancellation
-  // related errors.
-  Status derived_status = StatusGroup::MakeDerived(s);
+  // If the status passed in is a cancelled or aborted error, mark it as
+  // "derived" for the rendezvous. Derived status messages are ignored when
+  // aggregating errors across devices: this allows us to prefer our original
+  // status message over any cancellation related errors.
+  Status derived_status = s;
+  if (errors::IsCancelled(s) || errors::IsAborted(s)) {
+    derived_status = StatusGroup::MakeDerived(s);
+  }
 
   local_->StartAbort(derived_status);
   {

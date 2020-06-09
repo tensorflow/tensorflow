@@ -14,7 +14,7 @@ struct type_casting_traits<QInt32, float> {
 
 template <>
 EIGEN_STRONG_INLINE Packet16f pcast<Packet16q32i>(const Packet16q32i& a) {
-  return _mm512_cvtepi32_ps(a.val);
+  return _mm512_cvtepi32_ps(a.m_val);
 }
 
 template <>

@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
@@ -79,7 +80,7 @@ TypeAttr RescaleQuantizedType(Type input, Attribute factor) {
     SmallVector<double, 4> new_scales;
     new_scales.reserve(scales.size());
     auto scales_iter = scales.begin();
-    for (auto f : factor_values) {
+    for (const auto& f : factor_values) {
       new_scales.push_back(*(scales_iter++) *
                            std::fabs(FloatAttr::getValueAsDouble(f)));
     }
@@ -435,6 +436,16 @@ bool RemoveRedundantStatsOps(mlir::FuncOp func,
                              OpQuantSpecGetter op_quant_spec_getter) {
   llvm::SmallVector<quant::StatisticsOp, 16> all_stats_ops;
   llvm::DenseSet<Operation*> redundant_stats_ops;
+
+  // Step 0: remove the quant::StatisticsOp which are used by the tfl.quantize
+  // op in case it overrides the information from training FakeQuant ops.
+  func.walk([&](quant::QuantizeCastOp q) {
+    auto input_op = q.arg().getDefiningOp();
+    if (auto stats = llvm::dyn_cast_or_null<quant::StatisticsOp>(input_op)) {
+      q.setOperand(stats.arg());
+      if (stats.use_empty()) stats.erase();
+    }
+  });
 
   // Step 1: forward pass: propagate any value scales which are not produces
   // by `SameOperandsAndResultsScale`. Additionally, remove the value scales

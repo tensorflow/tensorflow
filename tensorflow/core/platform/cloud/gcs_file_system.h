@@ -264,6 +264,19 @@ class GcsFileSystem : public FileSystem {
   virtual Status LoadBufferFromGCS(const string& fname, size_t offset, size_t n,
                                    char* buffer, size_t* bytes_transferred);
 
+  Status ParseGcsPathForScheme(StringPiece fname, string scheme,
+                               bool empty_object_ok, string* bucket,
+                               string* object);
+
+  /// \brief Splits a GCS path to a bucket and an object.
+  ///
+  /// For example, "gs://bucket-name/path/to/file.txt" gets split into
+  /// "bucket-name" and "path/to/file.txt".
+  /// If fname only contains the bucket and empty_object_ok = true, the returned
+  /// object is empty.
+  virtual Status ParseGcsPath(StringPiece fname, bool empty_object_ok,
+                              string* bucket, string* object);
+
   std::shared_ptr<ComputeEngineMetadataClient> compute_engine_metadata_client_;
 
  private:

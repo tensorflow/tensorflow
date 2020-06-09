@@ -83,7 +83,7 @@ namespace TFDevice {
 namespace {
 
 struct ParallelExecuteToIslandsPass
-    : public FunctionPass<ParallelExecuteToIslandsPass> {
+    : public PassWrapper<ParallelExecuteToIslandsPass, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -237,7 +237,7 @@ LogicalResult CreateIslandsFromParallelExecute(
 // individual islands per region of parallel_execute.
 void LowerSingleIslandParallelExecuteToIslands(
     tf_executor::IslandOp island_op) {
-  if (!has_single_element(island_op.GetBody().without_terminator())) return;
+  if (!hasSingleElement(island_op.GetBody().without_terminator())) return;
 
   if (auto parallel_execute_op = llvm::dyn_cast<tf_device::ParallelExecuteOp>(
           &island_op.GetBody().front()))
@@ -251,7 +251,7 @@ void ParallelExecuteToIslandsPass::runOnFunction() {
 }
 }  // anonymous namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateParallelExecuteToIslandsPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateParallelExecuteToIslandsPass() {
   return std::make_unique<ParallelExecuteToIslandsPass>();
 }
 

@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/api.h"
 
+#include <EGL/eglext.h>
+
 #include <algorithm>
 #include <cstring>
 
-#include <EGL/eglext.h>
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
@@ -352,10 +353,10 @@ class GlBufferHolder : public TensorTie {
 };
 
 TensorObject TensorToObj(const Tensor& tensor) {
-  if (tensor.StorageType() == TensorStorageType::BUFFER) {
+  if (tensor.GetStorageType() == TensorStorageType::BUFFER) {
     return OpenClBuffer{tensor.GetMemoryPtr()};
   }
-  if (tensor.StorageType() == TensorStorageType::IMAGE_BUFFER) {
+  if (tensor.GetStorageType() == TensorStorageType::IMAGE_BUFFER) {
     return OpenClBuffer{tensor.GetMemoryPtrForWriting()};
   }
   return OpenClTexture{tensor.GetMemoryPtr()};
@@ -512,13 +513,13 @@ class InferenceRunnerImpl : public InferenceRunner {
 
 TensorObjectDef TensorToDef(const Tensor& tensor) {
   TensorObjectDef def;
-  def.dimensions.b = 1;
+  def.dimensions.b = tensor.Batch();
   def.dimensions.h = tensor.Height();
   def.dimensions.w = tensor.Width();
   def.dimensions.c = tensor.Channels();
-  def.object_def.data_layout = ToDataLayout(tensor.StorageType());
-  def.object_def.data_type = tensor.DataType();
-  def.object_def.object_type = ToObjectType(tensor.StorageType());
+  def.object_def.data_layout = ToDataLayout(tensor.GetStorageType());
+  def.object_def.data_type = tensor.GetDataType();
+  def.object_def.object_type = ToObjectType(tensor.GetStorageType());
   def.object_def.user_provided = false;
   return def;
 }
@@ -661,9 +662,8 @@ class InferenceBuilderImpl : public InferenceBuilder {
   }
 
   // Links internal tensors with external user-facing objects.
-  std::vector<TensorTieDef> LinkTensors(
-      const GraphFloat32& graph,
-      const std::vector<Value<TensorRef<BHWC>>*>& values) {
+  std::vector<TensorTieDef> LinkTensors(const GraphFloat32& graph,
+                                        const std::vector<Value*>& values) {
     std::vector<TensorTieDef> links;
     links.reserve(values.size());
     for (const auto& value : values) {

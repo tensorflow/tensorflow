@@ -82,8 +82,26 @@ patch_kissfft() {
   echo "Finished patching kissfft"
 }
 
+# Create a header file containing an array with the first 10 images from the
+# CIFAR10 test dataset.
+patch_cifar10_dataset() {
+  xxd -l 30730 -i ${1}/test_batch.bin ${1}/../../../../examples/image_recognition_experimental/first_10_cifar_images.h
+  sed -i -E "s/unsigned char/const unsigned char/g" ${1}/../../../../examples/image_recognition_experimental/first_10_cifar_images.h
+}
+
 build_embarc_mli() {
-  gmake -j 4 -C ${1}/lib/make TCF_FILE=${2}
+  make -j 4 -C ${1}/lib/make TCF_FILE=${2}
+}
+
+setup_zephyr() {
+  command -v virtualenv >/dev/null 2>&1 || {
+    echo >&2 "The required 'virtualenv' tool isn't installed. Try 'pip install virtualenv'."; exit 1;
+  }
+  virtualenv -p python3 ${1}/venv-zephyr
+  . ${1}/venv-zephyr/bin/activate
+  python ${1}/venv-zephyr/bin/pip install -r ${1}/scripts/requirements.txt
+  west init -m https://github.com/zephyrproject-rtos/zephyr.git
+  deactivate
 }
 
 # Main function handling the download, verify, extract, and patch process.
@@ -102,14 +120,15 @@ download_and_extract() {
   command -v curl >/dev/null 2>&1 || {
     echo >&2 "The required 'curl' tool isn't installed. Try 'apt-get install curl'."; exit 1;
   }
-  
+
   echo "downloading ${url}" >&2
   mkdir -p "${dir}"
   # We've been seeing occasional 56 errors from valid URLs, so set up a retry
   # loop to attempt to recover from them.
   for (( i=1; i<=$curl_retries; ++i ))
-  do  
-    CURL_RESULT=$(curl -Ls --retry 5 "${url}" > ${tempfile} || true)
+  do
+    curl -Ls --fail --retry 5 "${url}" > ${tempfile}
+    CURL_RESULT=$?
     if [[ $CURL_RESULT -eq 0 ]]
     then
       break
@@ -128,7 +147,10 @@ download_and_extract() {
     echo "Checksum error for '${url}'. Expected ${expected_md5} but found ${DOWNLOADED_MD5}"
     exit 1
   fi
-  
+
+  # delete anything after the '?' in a url that may mask true file extension
+  url=$(echo "${url}" | sed "s/\?.*//")
+
   if [[ "${url}" == *gz ]]; then
     tar -C "${dir}" --strip-components=1 -xzf ${tempfile}
   elif [[ "${url}" == *tar.xz ]]; then
@@ -140,7 +162,7 @@ download_and_extract() {
     unzip ${tempfile} -d ${tempdir2} 2>&1 1>/dev/null
     # If the zip file contains nested directories, extract the files from the
     # inner directory.
-    if ls ${tempdir2}/*/* 1> /dev/null 2>&1; then
+    if [ $(find $tempdir2/* -maxdepth 0 | wc -l) = 1 ] && [ -d $tempdir2/* ]; then
       # unzip has no strip components, so unzip to a temp dir, and move the
       # files we want from the tempdir to destination.
       cp -R ${tempdir2}/*/* ${dir}/
@@ -159,8 +181,17 @@ download_and_extract() {
     patch_am_sdk ${dir}
   elif [[ ${action} == "patch_kissfft" ]]; then
     patch_kissfft ${dir}
+  elif [[ ${action} == "patch_cifar10_dataset" ]]; then
+    patch_cifar10_dataset ${dir}
   elif [[ ${action} == "build_embarc_mli" ]]; then
-    build_embarc_mli ${dir} ${action_param1}
+    if [[ "${action_param1}" == *.tcf ]]; then
+      cp ${action_param1} ${dir}/hw/arc.tcf
+      build_embarc_mli ${dir} ../../hw/arc.tcf
+    else
+      build_embarc_mli ${dir} ${action_param1}
+    fi
+  elif [[ ${action} == "setup_zephyr" ]]; then
+    setup_zephyr ${dir}
   elif [[ ${action} ]]; then
     echo "Unknown action '${action}'"
     exit 1

@@ -169,8 +169,8 @@ std::vector<ComputeTaskDescriptorPtr> Softmax(int id, ValueId input_id,
   desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
     uint3 groups_size{8, 4, 1};
     const auto& dimension = buffers.find(output_id)->second;
-    uint3 groups_count{IntegralDivideRoundUp(dimension.w, groups_size.x),
-                       IntegralDivideRoundUp(dimension.h, groups_size.y), 1};
+    uint3 groups_count{DivideRoundUp(dimension.w, groups_size.x),
+                       DivideRoundUp(dimension.h, groups_size.y), 1};
     return std::make_pair(groups_size, groups_count);
   };
 
@@ -198,13 +198,13 @@ std::vector<ComputeTaskDescriptorPtr> Softmax1x1(int id, ValueId input_id,
   desc->uniform_buffers = {
       {"constant uniforms& params",
        [channels_count](const std::map<ValueId, BHWC>& buffers) {
-         const int src_depth = IntegralDivideRoundUp(channels_count, 4);
+         const int src_depth = DivideRoundUp(channels_count, 4);
          struct uniforms {
            int4 size;
            float4 mask;
          };
          uniforms params;
-         params.size = {src_depth, IntegralDivideRoundUp(src_depth, 32), 1, 1};
+         params.size = {src_depth, DivideRoundUp(src_depth, 32), 1, 1};
          params.mask = {0.0f, 0.0f, 0.0f, 0.0f};
          const int reminder = channels_count % 4 == 0 ? 4 : channels_count % 4;
          for (int i = 0; i < reminder; ++i) {

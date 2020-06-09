@@ -477,8 +477,6 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
       self.assertEqual(0, len(model.updates))
     else:
       self.assertEqual(2, len(model.updates))
-      self.assertEqual(1, len(model.get_updates_for(None)))
-      self.assertEqual(1, len(model.get_updates_for(x)))
 
 
 class GraphSpecificModelSubclassingTests(test.TestCase):
@@ -536,8 +534,8 @@ class GraphSpecificModelSubclassingTests(test.TestCase):
 
       x = array_ops.ones(shape=[100, 784], dtype='float32')
       model(x)
-      self.assertEqual(len(model.get_updates_for(x)), 2)
-      self.assertEqual(len(model.get_losses_for(x)), 1)
+      self.assertLen(model.updates, 2)
+      self.assertLen(model.losses, 1)
 
     # Case 2: placeholder-sequential nested in subclass.
     class TestModel2(keras.Model):

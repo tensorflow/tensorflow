@@ -21,6 +21,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_UTIL_H_
 #define TENSORFLOW_LITE_UTIL_H_
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -59,6 +60,11 @@ struct TfLiteIntArrayDeleter {
     if (a) TfLiteIntArrayFree(a);
   }
 };
+
+// Helper for Building TfLiteIntArray that is wrapped in a unique_ptr,
+// So that it is automatically freed when it goes out of the scope.
+std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> BuildTfLiteIntArray(
+    const std::vector<int>& data);
 
 // Populates the size in bytes of a type into `bytes`. Returns kTfLiteOk for
 // valid types, and kTfLiteError otherwise.

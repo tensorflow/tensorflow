@@ -1,0 +1,50 @@
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+// This file is a copy of the TensorBoard ProjectorConfig proto.
+// Keep this file in sync with the source proto definition at
+// https://github.com/tensorflow/tensorboard/blob/master/tensorboard/plugins/projector/projector_config.proto
+
+syntax = "proto3";
+
+package third_party.tensorflow.python.keras.protobuf;
+
+message SpriteMetadata {
+  string image_path = 1;
+  // [width, height] of a single image in the sprite.
+  repeated uint32 single_image_dim = 2;
+}
+
+message EmbeddingInfo {
+  string tensor_name = 1;
+  string metadata_path = 2;
+  string bookmarks_path = 3;
+  // Shape of the 2D tensor [N x D]. If missing, it will be inferred from the
+  // model checkpoint.
+  repeated uint32 tensor_shape = 4;
+  SpriteMetadata sprite = 5;
+  // Path to the TSV file holding the tensor values. If missing, the tensor
+  // is assumed to be stored in the model checkpoint.
+  string tensor_path = 6;
+}
+
+message ProjectorConfig {
+  // Path to the checkpoint file. Use either this or model_checkpoint_dir.
+  string model_checkpoint_path = 1;
+  repeated EmbeddingInfo embeddings = 2;
+  // Path to the checkpoint directory. The directory will be scanned for the
+  // latest checkpoint file.
+  string model_checkpoint_dir = 3;
+}

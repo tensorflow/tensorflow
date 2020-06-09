@@ -41,6 +41,7 @@ xla_test(
     deps = [
         ":arithmetic",
         "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",

@@ -428,16 +428,24 @@ class DebugIdentityV2Op : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("output_slot", &output_slot_));
     OP_REQUIRES_OK(context,
                    context->GetAttr("tensor_debug_mode", &tensor_debug_mode_));
+    if (context->HasAttr("circular_buffer_size")) {
+      OP_REQUIRES_OK(context, context->GetAttr("circular_buffer_size",
+                                               &circular_buffer_size_));
+    } else {
+      circular_buffer_size_ =
+          tfdbg::DebugEventsWriter::kDefaultCyclicBufferSize;
+    }
   }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& tensor = context->input(0);
     for (const string& dump_root : dump_roots_) {
       tfdbg::DebugEventsWriter* debug_events_writer =
-          tfdbg::DebugEventsWriter::GetDebugEventsWriter(dump_root);
-      debug_events_writer->WriteGraphExecutionTrace(
-          tfdbg_context_id_, device_name_, op_name_, output_slot_,
-          tensor_debug_mode_, tensor);
+          tfdbg::DebugEventsWriter::GetDebugEventsWriter(dump_root,
+                                                         circular_buffer_size_);
+      OP_REQUIRES_OK(context, debug_events_writer->WriteGraphExecutionTrace(
+                                  tfdbg_context_id_, device_name_, op_name_,
+                                  output_slot_, tensor_debug_mode_, tensor));
     }
     context->set_output(0, tensor);
   }
@@ -449,6 +457,7 @@ class DebugIdentityV2Op : public OpKernel {
   string op_name_;
   int32 output_slot_;
   int32 tensor_debug_mode_;
+  int64 circular_buffer_size_;
 };
 
 typedef Eigen::ThreadPoolDevice CPUDevice;

@@ -1,0 +1,121 @@
+op {
+  name: "BlockLSTMGrad"
+  input_arg {
+    name: "seq_len_max"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "cs_prev"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "h_prev"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "w"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "wci"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "wcf"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "wco"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "b"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "i"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "cs"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "f"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "o"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "ci"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "co"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "h"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "cs_grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "h_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "x_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "cs_prev_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "h_prev_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "w_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "wci_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "wcf_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "wco_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "b_grad"
+    type_attr: "T"
+  }
+  attr {
+    name: "use_peephole"
+    type: "bool"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+      }
+    }
+  }
+}

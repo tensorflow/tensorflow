@@ -20,10 +20,13 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import tf_utils
@@ -80,7 +83,7 @@ class InputLayer(base_layer.Layer):
       ragged: Boolean, whether the placeholder created is meant to be ragged.
           In this case, values of 'None' in the 'shape' argument represent
           ragged dimensions. For more information about RaggedTensors, see
-          https://www.tensorflow.org/guide/ragged_tensors.
+          [this guide](https://www.tensorflow.org/guide/ragged_tensors).
           Default to False.
       name: Optional name of the layer (string).
   """
@@ -114,6 +117,10 @@ class InputLayer(base_layer.Layer):
     if kwargs:
       raise ValueError('Unrecognized keyword arguments:', kwargs.keys())
 
+    if sparse and ragged:
+      raise ValueError(
+          'Cannot set both sparse and ragged to True in a Keras input.')
+
     if not name:
       prefix = 'input'
       name = prefix + '_' + str(backend.get_uid(prefix))
@@ -132,7 +139,6 @@ class InputLayer(base_layer.Layer):
     self.ragged = ragged
     self.batch_size = batch_size
     self.supports_masking = True
-    self._supports_ragged_inputs = True
 
     if isinstance(input_shape, tensor_shape.TensorShape):
       input_shape = tuple(input_shape.as_list())
@@ -156,25 +162,35 @@ class InputLayer(base_layer.Layer):
       self.is_placeholder = True
       self._batch_input_shape = batch_input_shape
     else:
-      if not tf_utils.is_symbolic_tensor(input_tensor):
+      raise_eager_tensor_error = False
+      if keras_tensor.keras_tensors_enabled():
+        if not isinstance(input_tensor, keras_tensor.keras_tensors_enabled()):
+          raise_eager_tensor_error = True
+      else:
+        if not tf_utils.is_symbolic_tensor(input_tensor):
+          raise_eager_tensor_error = True
+      if raise_eager_tensor_error:
         raise ValueError('You should not pass an EagerTensor to `Input`. '
                          'For example, instead of creating an '
                          'InputLayer, you should instantiate your model and '
                          'directly call it on your input.')
       self.is_placeholder = False
-      self._batch_input_shape = tuple(input_tensor.shape.as_list())
-
-    # Create an input node to add to self.outbound_node
-    # and set output_tensors' _keras_history.
-    input_tensor._keras_history = base_layer.KerasHistory(self, 0, 0)
+      try:
+        self._batch_input_shape = tuple(input_tensor.shape.as_list())
+      except ValueError:
+        # If the shape cannot be represented as a tuple (e.g. unknown rank)
+        self._batch_input_shape = None
+    # Create an input node.
     input_tensor._keras_mask = None
-    node_module.Node(
-        self,
-        inbound_layers=[],
-        node_indices=[],
-        tensor_indices=[],
-        input_tensors=[input_tensor],
-        output_tensors=[input_tensor])
+    node_module.Node(layer=self, outputs=input_tensor)
+
+    # Store type spec
+    if isinstance(input_tensor, (
+        composite_tensor.CompositeTensor, keras_tensor.KerasTensor)):
+      self._type_spec = input_tensor._type_spec  # pylint: disable=protected-access
+    else:
+      self._type_spec = tensor_spec.TensorSpec(
+          shape=input_tensor.shape, dtype=input_tensor.dtype, name=self.name)
 
   def get_config(self):
     config = {
@@ -224,14 +240,16 @@ def Input(  # pylint: disable=invalid-name
       dtype: The data type expected by the input, as a string
           (`float32`, `float64`, `int32`...)
       sparse: A boolean specifying whether the placeholder to be created is
-          sparse. Only one of 'ragged' and 'sparse' can be True.
+          sparse. Only one of 'ragged' and 'sparse' can be True. Note that,
+          if `sparse` is False, sparse tensors can still be passed into the
+          input - they will be densified with a default value of 0.
       tensor: Optional existing tensor to wrap into the `Input` layer.
           If set, the layer will not create a placeholder tensor.
       ragged: A boolean specifying whether the placeholder to be created is
           ragged. Only one of 'ragged' and 'sparse' can be True. In this case,
           values of 'None' in the 'shape' argument represent ragged dimensions.
           For more information about RaggedTensors, see
-          https://www.tensorflow.org/guide/ragged_tensors.
+          [this guide](https://www.tensorflow.org/guide/ragged_tensors).
       **kwargs: deprecated arguments support. Supports `batch_shape` and
           `batch_input_shape`.
 
@@ -273,31 +291,29 @@ def Input(  # pylint: disable=invalid-name
 
   batch_input_shape = kwargs.pop('batch_input_shape',
                                  kwargs.pop('batch_shape', None))
-  if shape and batch_input_shape:
+  if shape is not None and batch_input_shape is not None:
     raise ValueError('Only provide the `shape` OR `batch_input_shape` argument '
                      'to Input, not both at the same time.')
+  if batch_input_shape is None and shape is None and tensor is None:
+    raise ValueError('Please provide to Input either a `shape`'
+                     ' or a `tensor` argument. Note that '
+                     '`shape` does not include the batch '
+                     'dimension.')
+  if kwargs:
+    raise ValueError('Unrecognized keyword arguments:', kwargs.keys())
+
   if batch_input_shape:
     shape = batch_input_shape[1:]
     input_layer_config.update({'batch_input_shape': batch_input_shape})
   else:
     input_layer_config.update(
         {'batch_size': batch_size, 'input_shape': shape})
-
-  if kwargs:
-    raise ValueError('Unrecognized keyword arguments:', kwargs.keys())
-
-  if shape is None and tensor is None:
-    raise ValueError('Please provide to Input either a `shape`'
-                     ' or a `tensor` argument. Note that '
-                     '`shape` does not include the batch '
-                     'dimension.')
-
   input_layer = InputLayer(**input_layer_config)
 
   # Return tensor including `_keras_history`.
   # Note that in this case train_output and test_output are the same pointer.
-  outputs = input_layer._inbound_nodes[0].output_tensors
-  if len(outputs) == 1:
+  outputs = input_layer._inbound_nodes[0].outputs
+  if isinstance(outputs, list) and len(outputs) == 1:
     return outputs[0]
   else:
     return outputs

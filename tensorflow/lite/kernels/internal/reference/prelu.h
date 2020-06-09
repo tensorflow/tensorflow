@@ -23,14 +23,12 @@ namespace tflite {
 
 namespace reference_ops {
 
-// Broadcast prelu to output_shape for quantized uint8 data.
-inline void BroadcastPrelu4DSlow(const PreluParams& params,
-                                 const RuntimeShape& input_shape,
-                                 const uint8* input_data,
-                                 const RuntimeShape& alpha_shape,
-                                 const uint8* alpha_data,
-                                 const RuntimeShape& output_shape,
-                                 uint8* output_data) {
+// Broadcast prelu to output_shape for quantized uint8/int8 data.
+template <typename T>
+inline void BroadcastPrelu4DSlow(
+    const PreluParams& params, const RuntimeShape& input_shape,
+    const T* input_data, const RuntimeShape& alpha_shape, const T* alpha_data,
+    const RuntimeShape& output_shape, T* output_data) {
   TFLITE_DCHECK_LE(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(alpha_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(output_shape.DimensionsCount(), 4);
@@ -48,26 +46,60 @@ inline void BroadcastPrelu4DSlow(const PreluParams& params,
           int input_index = SubscriptToIndex(desc1, b, y, x, c);
           const int32 input_value =
               params.input_offset + input_data[input_index];
+          int32 output_value;
           if (input_value >= 0) {
-            output_data[output_index] = input_data[input_index];
+            output_value = MultiplyByQuantizedMultiplier(
+                input_value, params.output_multiplier_1, params.output_shift_1);
           } else {
             auto alpha_index = SubscriptToIndex(desc2, b, y, x, c);
             const int32 alpha_value =
                 params.alpha_offset + alpha_data[alpha_index];
-            const int32 unclamped_output =
-                params.output_offset +
-                MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                    input_value * alpha_value, params.output_multiplier,
-                    params.output_shift);
-            const int32 quantized_min = std::numeric_limits<uint8_t>::min();
-            const int32 quantized_max = std::numeric_limits<uint8_t>::max();
-            const int32 clamped_output = std::min(
-                quantized_max, std::max(quantized_min, unclamped_output));
-            output_data[output_index] = static_cast<uint8>(clamped_output);
+
+            output_value = MultiplyByQuantizedMultiplier(
+                input_value * alpha_value, params.output_multiplier_2,
+                params.output_shift_2);
           }
+          output_value += params.output_offset;
+
+          const int32 quantized_min = std::numeric_limits<T>::min();
+          const int32 quantized_max = std::numeric_limits<T>::max();
+          const int32 clamped_output =
+              std::min(quantized_max, std::max(quantized_min, output_value));
+          output_data[output_index] = static_cast<T>(clamped_output);
         }
       }
     }
+  }
+}
+
+template <typename T>
+inline void Prelu(const PreluParams& params, const RuntimeShape& input_shape,
+                  const T* input_data, const RuntimeShape& alpha_shape,
+                  const T* alpha_data, const RuntimeShape& output_shape,
+                  T* output_data) {
+  const int32 quantized_min = std::numeric_limits<T>::min();
+  const int32 quantized_max = std::numeric_limits<T>::max();
+
+  const int flat_size =
+      MatchingElementsSize(input_shape, alpha_shape, output_shape);
+  for (int i = 0; i < flat_size; ++i) {
+    const int32 input_value = params.input_offset + input_data[i];
+    int32 output_value;
+    if (input_value >= 0) {
+      output_value = MultiplyByQuantizedMultiplier(
+          input_value, params.output_multiplier_1, params.output_shift_1);
+    } else {
+      const int32 alpha_value = params.alpha_offset + alpha_data[i];
+
+      output_value = MultiplyByQuantizedMultiplier(input_value * alpha_value,
+                                                   params.output_multiplier_2,
+                                                   params.output_shift_2);
+    }
+    output_value += params.output_offset;
+
+    const int32 clamped_output =
+        std::min(quantized_max, std::max(quantized_min, output_value));
+    output_data[i] = static_cast<T>(clamped_output);
   }
 }
 

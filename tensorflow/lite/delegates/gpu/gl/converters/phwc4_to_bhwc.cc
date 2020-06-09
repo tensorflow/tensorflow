@@ -83,7 +83,7 @@ absl::Status ConverterPhwc4ToBhwc::Convert(const BHWC& shape,
   }
 
   uint3 workload = uint3(shape.w, shape.h, shape.c);
-  uint3 num_workgroups = IntegralDivideRoundUp(workload, workgroup_size_);
+  uint3 num_workgroups = DivideRoundUp(workload, workgroup_size_);
 
   // TODO(akulik): simply pass workload as soon as UniformParameter
   // supports uint3

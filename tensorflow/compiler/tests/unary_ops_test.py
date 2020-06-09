@@ -25,6 +25,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import gen_nn_ops
@@ -84,6 +85,13 @@ class UnaryOpsTest(xla_test.XLATestCase):
     for i in xrange(len(result)):
       self.assertAllClose(result[i], expected[i], rtol, atol)
 
+  def AssertCloseAndSorted(self, result, expected, rtol, atol):
+    """Tests that result and expeted are both close and sorted."""
+    self.assertAllClose(result, expected, rtol, atol)
+    self.assertAllEqual(np.sort(result), result)
+
+  @test_util.disable_mlir_bridge(
+      "MlirHloBuilder::Iota missing required for xla::Diag")
   def testAllTypeOps(self):
     for dtype in self.numeric_types - {np.int8, np.uint8}:
       self._assertOpOutputMatchesExpected(
@@ -151,20 +159,37 @@ class UnaryOpsTest(xla_test.XLATestCase):
 
   def testSin(self):
     for dtype in self.float_types - {dtypes.bfloat16.as_numpy_dtype}:
-      tol = 1e-3 if dtype == np.float32 else 1e-10
+      tol = 1e-6 if dtype == np.float32 else 1e-12
 
-      x = np.linspace(-4 * np.pi, 4 * np.pi, num=1000, dtype=dtype)
+      x = np.linspace(-4 * np.e, 4 * np.e, num=1000, dtype=dtype)
       self._assertOpOutputMatchesExpected(
           math_ops.sin, x, expected=np.sin(x), rtol=tol, atol=tol)
 
-      x = np.linspace(0., 2.71828e-30, num=1000, dtype=dtype)
+      x = np.linspace(0., np.e * 1e-30, num=1000, dtype=dtype)
       self._assertOpOutputMatchesExpected(
           math_ops.sin, x, expected=np.sin(x), rtol=tol, atol=tol)
 
       if dtype == np.float64:
-        x = np.linspace(0., 3.141592e8, num=1000, dtype=dtype)
+        x = np.linspace(0., np.e * 1e8, num=1000, dtype=dtype)
         self._assertOpOutputMatchesExpected(
-            math_ops.sin, x, expected=np.sin(x), rtol=1e-5, atol=1e-5)
+            math_ops.sin, x, expected=np.sin(x), rtol=tol, atol=1e-5)
+
+  def testCos(self):
+    for dtype in self.float_types - {dtypes.bfloat16.as_numpy_dtype}:
+      tol = 1e-6 if dtype == np.float32 else 1e-12
+
+      x = np.linspace(-4 * np.e, 4 * np.e, num=1000, dtype=dtype)
+      self._assertOpOutputMatchesExpected(
+          math_ops.cos, x, expected=np.cos(x), rtol=tol, atol=tol)
+
+      x = np.linspace(0., np.e * 1e-30, num=1000, dtype=dtype)
+      self._assertOpOutputMatchesExpected(
+          math_ops.cos, x, expected=np.cos(x), rtol=tol, atol=tol)
+
+      if dtype == np.float64:
+        x = np.linspace(0., np.e * 1e8, num=1000, dtype=dtype)
+        self._assertOpOutputMatchesExpected(
+            math_ops.cos, x, expected=np.cos(x), rtol=tol, atol=1e-5)
 
   def testFloatOps(self):
     for dtype in self.float_types:
@@ -327,17 +352,15 @@ class UnaryOpsTest(xla_test.XLATestCase):
           expected=np.array(
               [1.55740772, -2.18503986, -0.14254654, 1.15782128], dtype=dtype))
 
-      # TODO(b/130689556): Turn this on for CPU when we start honoring NaNs.
-      if self.device != "XLA_CPU":
-        self._assertOpOutputMatchesExpected(
-            math_ops.tanh,
-            np.array([[1, 2, 3, 4], [np.inf, -np.inf, np.nan, 20],
-                      [19, -19, 22, -22]],
-                     dtype=dtype),
-            expected=np.array(
-                [[0.76159418, 0.96402758, 0.99505478, 0.99932933],
-                 [1.0, -1.0, np.nan, 1.0], [1.0, -1.0, 1.0, -1.0]],
-                dtype=dtype))
+      self._assertOpOutputMatchesExpected(
+          math_ops.tanh,
+          np.array([[1, 2, 3, 4], [np.inf, -np.inf, np.nan, 20],
+                    [19, -19, 22, -22]],
+                   dtype=dtype),
+          expected=np.array(
+              [[0.76159418, 0.96402758, 0.99505478, 0.99932933],
+               [1.0, -1.0, np.nan, 1.0], [1.0, -1.0, 1.0, -1.0]],
+              dtype=dtype))
 
       self._assertOpOutputMatchesExpected(
           nn_ops.log_softmax,
@@ -491,6 +514,21 @@ class UnaryOpsTest(xla_test.XLATestCase):
                   ],
               ],
               dtype=dtype))
+
+  @test_util.disable_mlir_bridge(
+      "TODO(b/155501444): Handle _UnaryOpsComposition ops from Grappler")
+  def testFloatOpsDisabledOnMlirBridge(self):
+    for dtype in self.float_types:
+      if dtype != np.float16:
+        self._assertOpOutputMatchesExpected(
+            lambda x: math_ops.sigmoid(x) / math_ops.log1p(math_ops.exp(x)),
+            np.array([-40, 40], dtype=dtype),
+            expected=np.array([1.0, 0.025], dtype=dtype))
+
+  @test_util.disable_mlir_bridge(
+      "TODO(b/153812660): Handle tf.QuantizeAndDequantize compilation")
+  def testQuantizeAndDequantize(self):
+    for dtype in self.float_types:
 
       def quantize_and_dequantize_v2(x):
         return array_ops.quantize_and_dequantize_v2(
@@ -806,26 +844,57 @@ class UnaryOpsTest(xla_test.XLATestCase):
             [[[1., 2.], [3., 4.]], [[5., 6.], [7., 8.]]], dtype=np.float32),
         expected=np.array([14., 22.], dtype=np.float32))
 
+  @test_util.disable_mlir_bridge("TODO(b/153812660): Handle tf.Cast compilation"
+                                )
   def testCast(self):
     shapes = [[], [4], [2, 3], [2, 0, 4]]
-    types = (
-        set([dtypes.bool, dtypes.int32, dtypes.float32])
-        | self.complex_tf_types)
-    for shape in shapes:
-      for src_type in types:
-        for dst_type in types:
-          src = np.arange(np.prod(shape)).astype(src_type.as_numpy_dtype)
-          if src_type in self.complex_tf_types:
-            src += (np.arange(np.prod(shape)) * 2j).astype(
-                src_type.as_numpy_dtype)
-          src = src.reshape(shape)
+    types = {
+        dtypes.bool, dtypes.float32, dtypes.float64, dtypes.complex64,
+        dtypes.int32, dtypes.int64, dtypes.uint32, dtypes.uint64
+    }
+    for src_type in types:
+      for dst_type in types:
+        src_np_dtype = src_type.as_numpy_dtype
+        dst_np_dtype = dst_type.as_numpy_dtype
 
-          dst = src.astype(dst_type.as_numpy_dtype)
+        for shape in shapes:
+          src = np.arange(np.prod(shape)).astype(src_np_dtype)
+
+          if src_type in self.complex_tf_types:
+            src += (np.arange(np.prod(shape)) * 2j).astype(src_np_dtype)
+          src = src.reshape(shape)
+          dst = src.astype(dst_np_dtype)
           self._assertOpOutputMatchesExpected(
               lambda x, dst_type=dst_type: math_ops.cast(x, dst_type),
               src,
               expected=dst)
 
+        # Check special values.
+        if src_type.is_integer:
+          imin = np.iinfo(src_np_dtype).min
+          imax = np.iinfo(src_np_dtype).max
+          src = np.array([imin, imax, 0, 1, -1], dtype=src_np_dtype)
+        elif src_type in self.float_tf_types:
+          if dst_type.is_integer:
+            imin = np.iinfo(dst_np_dtype).min
+            imax = np.iinfo(dst_np_dtype).max // 2
+            src = np.array([imin, imax, 0, 1], dtype=src_np_dtype)
+          elif dst_type in self.float_tf_types:
+            fmin = np.finfo(dst_np_dtype).min
+            fmax = np.finfo(dst_np_dtype).max
+            tiny = np.finfo(dst_np_dtype).tiny
+            eps = np.finfo(dst_np_dtype).eps
+            src = np.array(
+                [fmin, fmax, np.nan, eps, -eps, tiny, -tiny, np.inf, -np.inf],
+                dtype=src_np_dtype)
+        dst = src.astype(dst_np_dtype)
+        self._assertOpOutputMatchesExpected(
+            lambda x, dst_type=dst_type: math_ops.cast(x, dst_type),
+            src,
+            expected=dst)
+
+  @test_util.disable_mlir_bridge(
+      "TODO(b/153812660): Handle tf.Bitcast compilation")
   def testBitcast(self):
     self._assertOpOutputMatchesExpected(
         lambda x: array_ops.bitcast(x, dtypes.int32),
@@ -849,12 +918,16 @@ class UnaryOpsTest(xla_test.XLATestCase):
           np.array([1, 0x100000003f800000], np.int64),
           expected=np.array([1, 0x100000003f800000], np.uint64))
 
+  @test_util.disable_mlir_bridge(
+      "TODO(b/153812660): Handle tf.InvertPermutation compilation")
   def testInvertPermutation(self):
     self._assertOpOutputMatchesExpected(
         array_ops.invert_permutation,
         np.array([1, 2, 0], np.int32),
         expected=np.array([2, 0, 1], dtype=np.int32))
 
+  @test_util.disable_mlir_bridge(
+      "TODO(b/153812660): Handle tf.InvertPermutation compilation")
   def testInvertPermutationTwiceIsNoop(self):
     self._assertOpOutputMatchesExpected(
         lambda x: array_ops.invert_permutation(array_ops.invert_permutation(x)),
@@ -946,6 +1019,8 @@ class UnaryOpsTest(xla_test.XLATestCase):
         ],
         equality_test=self.ListsAreClose)
 
+  @test_util.disable_mlir_bridge(
+      "TODO(b/153812660): Handle tf.DepthToSpace compilation")
   def testDepthToSpace(self):
 
     def make_op(data_format):
@@ -998,6 +1073,8 @@ class UnaryOpsTest(xla_test.XLATestCase):
                               [[[6, 7], [14, 15]], [[22, 23], [30, 31]]]]],
                             dtype=dtype))
 
+  @test_util.disable_mlir_bridge(
+      "TODO(b/153812660): Handle tf.SpaceToDepth compilation")
   def testSpaceToDepth(self):
 
     def make_op(data_format):
@@ -1050,15 +1127,27 @@ class UnaryOpsTest(xla_test.XLATestCase):
                               [[[12, 13, 14, 15, 28, 29, 30, 31]]]]],
                             dtype=dtype))
 
-  def _assertSoftplusMatchesExpected(self, features, dtype):
+  def _assertSoftplusMatchesExpected(self,
+                                     features,
+                                     dtype,
+                                     equality_test=None,
+                                     rtol=1e-6,
+                                     atol=9.1e-6):
     features = np.array(features, dtype=dtype)
     zero = np.asarray(0).astype(dtype)
     expected = np.logaddexp(zero, features).astype(dtype)
     self._assertOpOutputMatchesExpected(
-        nn_ops.softplus, features, expected=expected, rtol=1e-6, atol=9.1e-6)
+        nn_ops.softplus,
+        features,
+        expected=expected,
+        equality_test=equality_test,
+        rtol=rtol,
+        atol=atol)
 
+  @test_util.disable_mlir_bridge(
+      "bf16 type not supported in CreateDenseElementsAttrFromLiteral")
   def testSoftplus(self):
-    for dtype in self.float_types:
+    for dtype in self.float_types & {dtypes.float32, dtypes.float64}:
       self._assertSoftplusMatchesExpected([[-2, 0, 8]], dtype)
       self._assertSoftplusMatchesExpected(
           [[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]], dtype)
@@ -1073,6 +1162,13 @@ class UnaryOpsTest(xla_test.XLATestCase):
           -log_eps, -log_eps - one, -log_eps + one, -log_eps - ten,
           -log_eps + ten
       ], dtype)
+
+      self._assertSoftplusMatchesExpected(
+          [0.69302183, 0.69324386],
+          dtype,
+          equality_test=self.AssertCloseAndSorted,
+          rtol=9e-5,
+          atol=9e-5)
 
 
 if __name__ == "__main__":

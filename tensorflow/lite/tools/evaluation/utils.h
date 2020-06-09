@@ -16,12 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_EVALUATION_UTILS_H_
 #define TENSORFLOW_LITE_TOOLS_EVALUATION_UTILS_H_
 
+#include <memory>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
 #if defined(__ANDROID__)
 #include "tensorflow/lite/delegates/gpu/delegate.h"
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #if (defined(__arm__) || defined(__aarch64__))
 #include "tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h"
 #endif
@@ -33,7 +35,6 @@ limitations under the License.
 #endif
 
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 
 namespace tflite {
 namespace evaluation {
@@ -61,8 +62,9 @@ inline TfLiteStatus GetSortedFileNames(const std::string& directory,
 }
 
 TfLiteDelegatePtr CreateNNAPIDelegate();
-
+#if defined(__ANDROID__)
 TfLiteDelegatePtr CreateNNAPIDelegate(StatefulNnApiDelegate::Options options);
+#endif
 
 TfLiteDelegatePtr CreateGPUDelegate();
 #if defined(__ANDROID__)
@@ -71,6 +73,11 @@ TfLiteDelegatePtr CreateGPUDelegate(TfLiteGpuDelegateOptionsV2* options);
 
 TfLiteDelegatePtr CreateHexagonDelegate(
     const std::string& library_directory_path, bool profiling);
+#if defined(__ANDROID__) && (defined(__arm__) || defined(__aarch64__))
+TfLiteDelegatePtr CreateHexagonDelegate(
+    const TfLiteHexagonDelegateOptions* options,
+    const std::string& library_directory_path);
+#endif
 
 // TODO(b/149248802): include XNNPACK delegate when the issue is resolved.
 #if !defined(__Fuchsia__) || defined(TFLITE_WITHOUT_XNNPACK)

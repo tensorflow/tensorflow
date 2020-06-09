@@ -30,6 +30,7 @@ from absl.testing import parameterized
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.eager import wrap_function
@@ -104,14 +105,24 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertIs(imported.dep_three, imported.dep_two.dep)
     self.assertIsNot(imported.dep_one, imported.dep_two)
 
+  @test_util.run_in_graph_and_eager_modes
   def test_variables(self, cycles):
     root = tracking.AutoTrackable()
     root.v1 = variables.Variable(1., trainable=True)
     root.v2 = variables.Variable(2., trainable=False)
-    imported = cycle(root, cycles)
-    self.assertEqual(imported.v1.numpy(), 1.0)
+    self.evaluate([root.v1.initializer, root.v2.initializer])
+
+    for _ in range(cycles):
+      imported = cycle(root, 1)
+      self.evaluate([imported.v1.initializer, imported.v2.initializer])
+
+    if not context.executing_eagerly():
+      self.assertIsInstance(imported.v1.initializer, ops.Operation)
+      self.assertIsInstance(imported.v2.initializer, ops.Operation)
+
+    self.assertEqual(self.evaluate(imported.v1), 1.0)
     self.assertTrue(imported.v1.trainable)
-    self.assertEqual(imported.v2.numpy(), 2.0)
+    self.assertEqual(self.evaluate(imported.v2), 2.0)
     self.assertFalse(imported.v2.trainable)
 
   def test_variables_name(self, cycles):
@@ -995,9 +1006,10 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual([6],
                         imported.f(constant_op.constant([3])).numpy())
 
+  @test_util.run_in_graph_and_eager_modes
   def test_concrete_function_backprop(self, cycles):
     @def_function.function(
-        input_signature=[tensor_spec.TensorSpec([None], dtypes.float32)])
+        input_signature=[tensor_spec.TensorSpec([], dtypes.float32)])
     def func(x):
       return x ** 2.
     root = tracking.AutoTrackable()
@@ -1010,10 +1022,10 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         output = function(inp)
       return tape.gradient(output, inp)
 
-    self.assertEqual(2., _compute_gradient(root.f).numpy())
+    self.assertAllEqual(2., _compute_gradient(root.f))
     # TODO(andresp): Fix exporting of loaded concrete functions as signatures.
     imported = cycle(root, cycles, signatures={})
-    self.assertEqual(2., _compute_gradient(imported.f).numpy())
+    self.assertAllEqual(2., _compute_gradient(imported.f))
 
   def test_revived_concrete_function_kwargs(self, cycles):
 
@@ -1811,11 +1823,15 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
   def test_ragged(self, cycles):
 
-    @def_function.function(input_signature=[
-        ragged_tensor.RaggedTensorSpec(shape=[None, None], dtype=dtypes.int32)
-    ])
-    def f(x):
-      return x + 1
+    @def_function.function
+    def f(x, c=1):
+      """Returns Tensor x incremented by Python constant c."""
+      return math_ops.add(x, c)
+
+    for c in (1, 2, 3):
+      _ = f.get_concrete_function(
+          ragged_tensor.RaggedTensorSpec([None, None], dtype=dtypes.int32),
+          c)
 
     obj = tracking.AutoTrackable()
     obj.f = f
@@ -1823,10 +1839,14 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     imported1 = cycle(obj, cycles, signatures={})
     rt = ragged_factory_ops.constant([[1, 2], [3]])
     self.assertAllEqual(imported1.f(rt), [[2, 3], [4]])
+    self.assertAllEqual(imported1.f(rt, 2), [[3, 4], [5]])
+    self.assertAllEqual(imported1.f(rt, 3), [[4, 5], [6]])
 
     imported2 = cycle(obj, cycles)
     rt = ragged_factory_ops.constant([[1, 2], [3]])
-    self.assertAllEqual(imported2.f(rt), [[2, 3], [4]])
+    self.assertAllEqual(imported2.f(rt, 1), [[2, 3], [4]])
+    self.assertAllEqual(imported2.f(rt, 2), [[3, 4], [5]])
+    self.assertAllEqual(imported2.f(rt, 3), [[4, 5], [6]])
 
 
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)

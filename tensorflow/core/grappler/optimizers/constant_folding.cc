@@ -2031,6 +2031,9 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
       PartialConcatConstFolding(optimized_graph, properties, node));
   SET_AND_RETURN_IF_MODIFIED(
       ConstantPushDownBiasAdd(properties, optimized_graph, node));
+  SET_AND_RETURN_IF_MODIFIED(SimplifyCase(optimized_graph, node));
+  SET_AND_RETURN_IF_MODIFIED(
+      SimplifySelect(*properties, optimized_graph, node));
 
   graph_modified_ = graph_modified_cached;
   return Status::OK();
@@ -2336,6 +2339,13 @@ bool ConstantFolding::SimplifyPack(GraphDef* optimized_graph, NodeDef* node) {
       node_map_->NodeExists(axis_node_name)) {
     return false;
   }
+
+  // It's unsafe to add a control dependency on the feed node, because it might
+  // have been never executed otherwiwise.
+  if (feed_nodes_.find(NodeName(node->input(0))) != feed_nodes_.end()) {
+    return false;
+  }
+
   // Create constant axis node.
   Tensor axis_t(DT_INT32, TensorShape({}));
   const int axis =
@@ -2368,6 +2378,66 @@ bool ConstantFolding::SimplifyPack(GraphDef* optimized_graph, NodeDef* node) {
   if (node->input_size() > 2) {
     node->mutable_input()->SwapElements(1, node->input_size() - 1);
   }
+  return true;
+}
+
+bool ConstantFolding::SimplifyCase(GraphDef* optimized_graph, NodeDef* node) {
+  if (node->op() != "Case") return false;
+  const NodeDef* output_idx_node = node_map_->GetNode(node->input(0));
+  if (output_idx_node == nullptr ||
+      !CheckAttrExists(*output_idx_node, "value").ok())
+    return false;
+  Tensor output_idx_t;
+  if (!output_idx_t.FromProto(output_idx_node->attr().at("value").tensor()))
+    return false;
+  int output_idx = output_idx_t.scalar<int>()();
+  const auto& func_list = node->attr().at("branches").list();
+  if (output_idx < 0 || output_idx >= func_list.func_size()) return false;
+  NodeDef call_node = *node;
+  call_node.set_op("PartitionedCall");
+  call_node.clear_input();
+  for (int i = 1; i < node->input_size(); ++i) {
+    call_node.add_input(node->input(i));
+  }
+  auto* new_func = (*call_node.mutable_attr())["f"].mutable_func();
+  *new_func = func_list.func(output_idx);
+  call_node.mutable_attr()->erase("branches");
+  call_node.mutable_attr()->erase("output_shapes");
+  *node = std::move(call_node);
+  return true;
+}
+
+bool ConstantFolding::SimplifySelect(const GraphProperties& properties,
+                                     GraphDef* optimized_graph, NodeDef* node) {
+  if (!IsSelect(*node)) return false;
+  // Replace node with Identity if no broadcasting is involved.
+  // TODO(b/155503011): Add support for broadcast.
+  const std::vector<OpInfo::TensorProperties>& input_props =
+      properties.GetInputProperties(node->name());
+  if (input_props.size() < 3) return false;
+  const TensorShapeProto& predicate_shape = input_props[0].shape();
+  const bool predicate_is_scalar =
+      !predicate_shape.unknown_rank() && predicate_shape.dim_size() == 0;
+  if (!ShapesSymbolicallyEqual(input_props[1], input_props[2]) ||
+      !(ShapesSymbolicallyEqual(input_props[0], input_props[1]) ||
+        predicate_is_scalar)) {
+    return false;
+  }
+  const NodeDef* predicate_node = node_map_->GetNode(node->input(0));
+  const bool is_all_true = IsOnes(*predicate_node);
+  const bool is_all_false = IsZeros(*predicate_node);
+  if (!is_all_true && !is_all_false) {
+    return false;
+  }
+  const int live_input_idx = is_all_true ? 1 : 2;
+  const int ignored_input_idx = is_all_true ? 2 : 1;
+  node->set_op("Identity");
+  *node->mutable_input(0) =
+      AddControlDependency(node->input(0), optimized_graph, node_map_.get());
+  *node->mutable_input(ignored_input_idx) = AddControlDependency(
+      node->input(ignored_input_idx), optimized_graph, node_map_.get());
+  node->mutable_input()->SwapElements(0, live_input_idx);
+  DedupControlInputs(node);
   return true;
 }
 
@@ -3737,6 +3807,7 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
                                         /*include_output_tensor_values=*/true);
 
   const bool can_use_shape_info = s.ok();
+  VLOG(1) << "can_use_shape_info = " << can_use_shape_info;
 
   absl::flat_hash_set<string> nodes_to_not_simplify;
   if (can_use_shape_info) {
@@ -3753,20 +3824,6 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
 
   return Status::OK();
 }
-
-namespace {
-Status CompressConstants(GraphDef* graph) {
-  for (int i = 0; i < graph->node_size(); ++i) {
-    NodeDef* node = graph->mutable_node(i);
-    if ((IsConstant(*node) || IsHostConstant(*node)) &&
-        HasNodeAttr(*node, "value")) {
-      AttrValue& attr_val = (*node->mutable_attr())["value"];
-      tensor::CompressTensorProtoInPlace(attr_val.mutable_tensor());
-    }
-  }
-  return Status::OK();
-}
-}  // namespace
 
 Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* optimized_graph) {

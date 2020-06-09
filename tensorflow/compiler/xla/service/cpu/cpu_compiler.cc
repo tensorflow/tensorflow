@@ -42,6 +42,8 @@ limitations under the License.
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
+#include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -72,6 +74,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
+#include "tensorflow/compiler/xla/service/dynamic_padder.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -157,6 +160,8 @@ CpuCompiler::CpuCompiler() {
   // Initialize LLVM's MC layer for the native target.
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
+
+  mlir::registerAllDialects();
 }
 
 namespace {
@@ -239,7 +244,6 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   HloPassPipeline pipeline("HLO passes through layout assignment");
   pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                             /*allow_mixed_precision=*/false);
-
   // Expand random number generation.
   pipeline.AddPass<RngExpander>();
   pipeline.AddPass<RngBitGeneratorExpander>(RandomAlgorithm::RNG_PHILOX);
@@ -273,6 +277,13 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<ConvolutionGroupConverter>(
       cost_model,
       /*convert_batch_groups_only=*/false);
+  pipeline.AddPass<ScatterExpander>();
+  pipeline.AddPass<BatchNormExpander>(
+      /*rewrite_training_op=*/true,
+      /*rewrite_inference_op=*/true,
+      /*rewrite_grad_op=*/true);
+  pipeline.AddPass<DynamicPadder>();
+  pipeline.AddPass<HloGetDimensionSizeRewriter>();
   pipeline.AddPass<ConvCanonicalization>(target_machine_features);
   {
     auto& pass =
@@ -281,12 +292,6 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
                                                /*allow_mixed_precision=*/false);
 
     pass.AddPass<TreeReductionRewriter>();
-    pass.AddPass<ScatterExpander>();
-    pass.AddPass<BatchNormExpander>(
-        /*rewrite_training_op=*/true,
-        /*rewrite_inference_op=*/true,
-        /*rewrite_grad_op=*/true);
-    pipeline.AddPass<HloGetDimensionSizeRewriter>();
     AlgebraicSimplifierOptions options;
     options.set_enable_dot_strength_reduction(false);
     pass.AddPass<AlgebraicSimplifier>(options);
@@ -402,8 +407,9 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
 namespace {
 
 // Align buffers to 16-byte boundaries.
-constexpr int64 kMemoryAlignment = 16;
-auto memory_alignment = [](LogicalBuffer::Color) { return kMemoryAlignment; };
+int64 memory_alignment(LogicalBuffer::Color) {
+  return cpu_function_runtime::kMinAlign;
+}
 
 llvm::TargetOptions CompilerTargetOptions(
     const HloModuleConfig& module_config) {
@@ -521,6 +527,33 @@ StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
   return std::move(module);
 }
 
+StatusOr<
+    std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
+CpuCompiler::RunHloPassesAndBufferAssignement(
+    std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
+    se::DeviceMemoryAllocator* device_allocator) {
+  TF_ASSIGN_OR_RETURN(
+      module, RunHloPasses(std::move(module), executor, device_allocator));
+
+  // Select an order for emitting the HLO instructions for each computation.
+  // Using this sequence enables tighter buffer liveness analysis and reduced
+  // memory usage (as compared to using DependencyHloOrdering).
+  TF_ASSIGN_OR_RETURN(HloSchedule schedule,
+                      ScheduleModule(module.get(), BufferSizeBytesFunction(),
+                                     ComputationSchedulerToModuleScheduler(
+                                         DFSMemoryScheduler)));
+
+  // Run buffer allocation on the HLO graph.
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<BufferAssignment> assignment,
+      BufferAssigner::Run(module.get(),
+                          absl::make_unique<SequentialHloOrdering>(schedule),
+                          BufferSizeBytesFunction(), memory_alignment,
+                          /*allocate_buffers_for_constants=*/true));
+
+  return std::make_tuple(std::move(module), std::move(assignment));
+}
+
 namespace {
 
 // Post-compilation callback functor for use by SimpleOrcJIT.
@@ -577,9 +610,11 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
                        user_post_optimization_hook_);
 
   // Compile must be thread-safe so create a new LLVM context for the module.
-  auto llvm_context = absl::make_unique<llvm::LLVMContext>();
-  auto llvm_module =
-      absl::make_unique<llvm::Module>("__compute_module", *llvm_context);
+  mlir::MLIRContext mlir_context;
+  auto llvm_module = absl::make_unique<llvm::Module>(
+      "__compute_module",
+      mlir_context.getRegisteredDialect<mlir::LLVM::LLVMDialect>()
+          ->getLLVMContext());
 
   auto jit = absl::make_unique<SimpleOrcJIT>(
       CompilerTargetOptions(module->config()),
@@ -633,7 +668,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   // before a caller computation.
 
   LLVMTargetMachineFeatures target_machine_features(jit->target_machine());
-  IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
+  IrEmitter ir_emitter(&mlir_context, *module, *assignment, llvm_module.get(),
                        std::move(instruction_to_profile_idx),
                        std::move(computation_to_profile_idx),
                        &target_machine_features,
@@ -787,8 +822,11 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
           opt_level));
 
   // Compile must be thread-safe so create a new LLVM context for the module.
-  llvm::LLVMContext llvm_context;
-  llvm::Module llvm_module("__compute_module", llvm_context);
+  mlir::MLIRContext mlir_context;
+  llvm::Module llvm_module(
+      "__compute_module",
+      mlir_context.getRegisteredDialect<mlir::LLVM::LLVMDialect>()
+          ->getLLVMContext());
   llvm_module.setDataLayout(target_machine->createDataLayout());
   llvm_module.setTargetTriple(triple.getTriple());
   if (pic_level != llvm::PICLevel::NotPIC) {
@@ -837,7 +875,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     }
 
     LLVMTargetMachineFeatures target_machine_features(target_machine.get());
-    IrEmitter ir_emitter(*module, *assignment, &llvm_module,
+    IrEmitter ir_emitter(&mlir_context, *module, *assignment, &llvm_module,
                          std::move(instruction_to_profile_idx),
                          std::move(computation_to_profile_idx),
                          &target_machine_features,

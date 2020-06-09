@@ -29,8 +29,8 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
-#include "mlir/Interfaces/SideEffects.h"  // from @llvm-project
-#include "mlir/Support/Functional.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/xla/ir/infer_fusibility_op_interface.h"
 
 namespace mlir {
 class OpBuilder;

@@ -15,13 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
+#include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
+#include "tensorflow/core/profiler/protobuf/tf_function.pb.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/group_events.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/core/profiler/utils/xplane_test_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -81,6 +86,9 @@ TEST(ConvertXPlaneToOpStats, RunEnvironment) {
 }
 
 TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
+  constexpr int64 kStepNum = 123;
+  constexpr int64 kStepId = 0;
+
   XSpace space;
   XPlaneBuilder host_plane_builder(space.add_planes());
   host_plane_builder.SetName(kHostThreads);
@@ -88,15 +96,15 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
-               0, 100, {{StatType::kStepNum, 123}});
+               0, 100, {{StatType::kStepNum, kStepNum}});
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
-               10, 90, {{StatType::kStepId, 0}});
+               10, 90, {{StatType::kStepId, kStepId}});
 
   auto tf_executor_thread = host_plane_builder.GetOrCreateLine(1);
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 20, 80,
-               {{StatType::kStepId, 0}});
-  CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 70, {});
+               {{StatType::kStepId, kStepId}});
+  CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 70);
 
   GroupTfEvents(&space, /*event_group_name_map=*/nullptr);
   OpStats op_stats = ConvertXSpaceToOpStats(space);
@@ -106,6 +114,10 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
 }
 
 TEST(ConvertXPlaneToOpStats, GpuStepDbTest) {
+  constexpr int64 kStepNum = 123;
+  constexpr int64 kStepId = 0;
+  constexpr int64 kCorrelationId = 100;
+
   XSpace space;
   XPlaneBuilder host_plane_builder(space.add_planes());
   host_plane_builder.SetName(kHostThreads);
@@ -113,16 +125,16 @@ TEST(ConvertXPlaneToOpStats, GpuStepDbTest) {
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
-               0, 100, {{StatType::kStepNum, 123}});
+               0, 100, {{StatType::kStepNum, kStepNum}});
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
-               10, 90, {{StatType::kStepId, 0}});
+               10, 90, {{StatType::kStepId, kStepId}});
 
   auto tf_executor_thread = host_plane_builder.GetOrCreateLine(1);
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 20, 20,
-               {{StatType::kStepId, 0}});
+               {{StatType::kStepId, kStepId}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 10,
-               {{StatType::kCorrelationId, 100}});
+               {{StatType::kCorrelationId, kCorrelationId}});
 
   XPlaneBuilder device_plane_builder(space.add_planes());
   device_plane_builder.SetName(absl::StrCat(kGpuPlanePrefix, ":0"));
@@ -130,7 +142,7 @@ TEST(ConvertXPlaneToOpStats, GpuStepDbTest) {
 
   auto stream = device_plane_builder.GetOrCreateLine(0);
   CreateXEvent(&device_plane_builder, &stream, "matmul", 50, 40,
-               {{StatType::kCorrelationId, 100}});
+               {{StatType::kCorrelationId, kCorrelationId}});
 
   GroupTfEvents(&space, /*event_group_name_map=*/nullptr);
   OpStats op_stats = ConvertXSpaceToOpStats(space);
@@ -142,6 +154,54 @@ TEST(ConvertXPlaneToOpStats, GpuStepDbTest) {
       op_stats.device_op_metrics_db().precision_stats();
   EXPECT_EQ(precision_stats.compute_16bit_ps(), 0);
   EXPECT_EQ(precision_stats.compute_32bit_ps(), 40);
+}
+
+TEST(ConcertXPlaneToOpStats, TfFunctionTest) {
+  XSpace space;
+  XPlaneBuilder host_plane_builder(space.add_planes());
+  host_plane_builder.SetName(kHostThreads);
+  host_plane_builder.ReserveLines(1);
+  std::string kFunctionName = "increment";
+
+  auto main_thread = host_plane_builder.GetOrCreateLine(0);
+  CreateTfFunctionCallEvent(&host_plane_builder, &main_thread, kFunctionName,
+                            10, 100, "traced-nonXla", 1);
+  CreateTfFunctionCallEvent(&host_plane_builder, &main_thread, kFunctionName,
+                            150, 20, "notTraced-nonXla", 1);
+  CreateTfFunctionCallEvent(&host_plane_builder, &main_thread, kFunctionName,
+                            200, 80, "traced-nonXla", 2);
+
+  OpStats op_stats = ConvertXSpaceToOpStats(space);
+  const TfFunctionDb& tf_function_db = op_stats.tf_function_db();
+
+  EXPECT_EQ(tf_function_db.tf_functions().size(), 1);
+  EXPECT_EQ(tf_function_db.tf_functions().count(kFunctionName), 1);
+  const TfFunction& tf_function =
+      tf_function_db.tf_functions().at(kFunctionName);
+  EXPECT_EQ(tf_function.total_tracing_count(), 2);
+  EXPECT_EQ(tf_function.compiler(), OTHER_COMPILER);
+  const auto& metrics = tf_function.metrics();
+  EXPECT_EQ(metrics.size(), 2);
+  EXPECT_EQ(metrics.count(TRACED_MODE), 1);
+  EXPECT_EQ(metrics.count(NOT_TRACED_MODE), 1);
+  const auto& traced_mode = metrics.at(TRACED_MODE);
+  EXPECT_EQ(traced_mode.count(), 2);
+  EXPECT_EQ(traced_mode.self_time_ps(), 180);
+  const auto& not_traced_mode = metrics.at(NOT_TRACED_MODE);
+  EXPECT_EQ(not_traced_mode.count(), 1);
+  EXPECT_EQ(not_traced_mode.self_time_ps(), 20);
+}
+
+TEST(ConvertXPlaneToOpStats, PropagateAndDedupErrors) {
+  XSpace space;
+  static constexpr char kError[] = "host: error";
+  *space.add_errors() = kError;
+  *space.add_errors() = kError;
+
+  OpStats op_stats = ConvertXSpaceToOpStats(space);
+
+  EXPECT_EQ(1, op_stats.errors_size());
+  EXPECT_EQ(kError, op_stats.errors(/*index=*/0));
 }
 
 }  // namespace

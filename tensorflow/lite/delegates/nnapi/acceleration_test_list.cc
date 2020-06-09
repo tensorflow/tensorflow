@@ -56,6 +56,7 @@ FloatActivationsOpTest/PRelu,29
 LogisticOpTest/LogisticOpTest/Sigmoid(.+nt8)?/\d+
 LogisticOpTest/LogisticOpTest/Sigmoid/\d+
 TanhOpTest/TanhOpTest/Tanh(.+nt8)?/\d+,29
+FloatActivationsOpTest/Elu,30
 FloatActivationsOpTest/HardSwish
 QuantizedActivationsOpTest/HardSwish
 QuantizedActivationsOpTest/HardSwishBias
@@ -172,6 +173,11 @@ ExpOpTest/FloatTest,29
 # Only constant tensors models
 ExpandDimsOpTest/.+/1,29
 
+# fill_test
+FillOpTest/FillOpTest/FillInt32/0,30
+FillOpTest/FillOpTest/FillFloat/0,30
+FillOpTest/FillOpTest/FillFloatInt32Dims/0,30
+
 # floor_test
 FloorOpTest/.+
 
@@ -263,6 +269,8 @@ FloatPoolingOpTest/L2PoolActivationRelu.*,29
 FloatPoolingOpTest/.+
 # Image is too big
 -QuantizedPoolingOpTest/AveragePoolImageSize17
+# Int16 unsupported
+-QuantizedPoolingOpTest/SymmetricAveragePool16
 QuantizedPoolingOpTest/.+
 QuantizedUInt8PoolingOpTest/.+
 
@@ -298,10 +306,15 @@ VariedShapeSpec/ReshapeOpTest/RegularShapes/1
 VariedShapeSpec/ReshapeOpTest/WithStretchDimension/1
 
 # resize_bilinear_test
+// align_corners & half_pixel_centers are not implemented in NNAPI before API 30
+ResizeBilinearOpTest/ResizeBilinearOpTest.+HalfPixelCenters.*/0,30
 // Only models with constant size tensor are accelerated
 ResizeBilinearOpTest/ResizeBilinearOpTest/.+/0,29
 
 # resize_nearest_neighbor_test
+// align_corners & half_pixel_centers are not implemented in NNAPI before API 30
+ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest.+AlignCorners.*/0,30
+ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest.+HalfPixelCenters.*/0,30
 // Only models with constant size tensor are accelerated
 ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest/.+/0,29
 
@@ -368,6 +381,7 @@ TransposeTest/.+
 
 # transpose_conv_test
 -TransposeConvOpTest/TransposeConvOpTest.SimpleTestQuantizedPerChannelSingleChannel/0
+-TransposeConvOpTest/TransposeConvOpTest.SimpleTestQuantizedPerChannel16x8/0
 -TransposeConvOpTest/TransposeConvOpTest.TestQuantizedPerChannelMultiChannel/0
 # Const tensor only
 TransposeConvOpTest/TransposeConvOpTest/.+/0,29

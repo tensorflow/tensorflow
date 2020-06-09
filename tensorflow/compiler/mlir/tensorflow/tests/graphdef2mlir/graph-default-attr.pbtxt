@@ -1,4 +1,4 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir %s -o - | FileCheck %s --dump-input-on-failure
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -o - | FileCheck %s --dump-input-on-failure
 
 # Verify that the data_format attributes is pulled from the default value in the
 # registry when not present in the GraphDef
@@ -9,7 +9,7 @@
 # export.
 # CHECK: tf.MaxPool
 # CHECK-NOT: T = f32
-# CHECK-SAME: : (tensor<?x112x112x32xf32>) -> tensor<?x56x56x32xf32>
+# CHECK-SAME: : (tensor<*xf32>) -> tensor<*xf32>
 
 node {
   name: "input"

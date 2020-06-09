@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -82,7 +83,7 @@ int main(int argc, char** argv) {
   // Add flags for all the registered translations.
   llvm::cl::opt<const mlir::TranslateFunction*, false, mlir::TranslationParser>
       requested_translation("", llvm::cl::desc("Translation to perform"));
-
+  mlir::registerAsmPrinterCLOptions();
   llvm::cl::ParseCommandLineOptions(argc, argv, "TF MLIR translation driver\n");
 
   if (!import_saved_model_object_graph && !import_saved_model_signature_defs &&
@@ -103,26 +104,24 @@ int main(int argc, char** argv) {
     return 1;
   }
 
+  std::unordered_set<std::string> tags = absl::StrSplit(saved_model_tags, ',');
+  std::vector<std::string> exported_names_vector =
+      absl::StrSplit(saved_model_exported_names, ',', absl::SkipEmpty());
+  absl::Span<std::string> exported_names(exported_names_vector);
+
   if (import_saved_model_object_graph) {
-    std::unordered_set<std::string> tags =
-        absl::StrSplit(saved_model_tags, ',');
-    std::vector<std::string> exported_names =
-        absl::StrSplit(saved_model_exported_names, ',', absl::SkipEmpty());
     mlir::MLIRContext context;
 
     auto module = tensorflow::SavedModelObjectGraphToMlirImport(
-        input_filename, tags, absl::Span<std::string>(exported_names),
-        &context);
+        input_filename, tags, exported_names, &context);
     if (!module) return 1;
 
     module->print(output->os());
   } else if (import_saved_model_signature_defs) {
-    std::unordered_set<std::string> tags =
-        absl::StrSplit(saved_model_tags, ',');
     mlir::MLIRContext context;
 
     auto module = tensorflow::SavedModelSignatureDefsToMlirImport(
-        input_filename, tags, &context);
+        input_filename, tags, exported_names, &context);
     if (!module) return 1;
 
     module->print(output->os());

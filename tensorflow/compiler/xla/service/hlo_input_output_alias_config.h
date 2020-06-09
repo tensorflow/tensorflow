@@ -36,7 +36,6 @@ class HloInputOutputAliasConfig {
   // compilation time by the user, and has to be respected. A kSystemAlias one
   // might be setup by the compiler, if it decides it is convenient to do so.
   enum AliasKind {
-    kNoAlias,
     kUserAlias,
     kSystemAlias,
   };
@@ -68,15 +67,15 @@ class HloInputOutputAliasConfig {
                     AliasKind kind = AliasKind::kUserAlias);
 
   // Returns the kind of alias for the given parameter number and parameter
-  // index. If no alias exists, AliasKind::kNoAlias is returned.
-  AliasKind ParameterAliasKind(int64 param_number,
-                               const ShapeIndex& param_index) const;
+  // index.
+  absl::optional<AliasKind> ParameterAliasKind(
+      int64 param_number, const ShapeIndex& param_index) const;
 
   // Returns true if the given parameter is aliased with one of the output
   // buffers.
   bool ParameterHasAlias(int64 param_number,
                          const ShapeIndex& param_index) const {
-    return ParameterAliasKind(param_number, param_index) != AliasKind::kNoAlias;
+    return ParameterAliasKind(param_number, param_index).has_value();
   }
 
   // Checks whether the provided output index has already been aliased.

@@ -70,6 +70,13 @@ class CpuUnaryIntrinsicTest
     return absl::StrCat(opcode, "_On_", triple,
                         (features.empty() ? "" : "_With"), features);
   }
+
+ private:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    HloTestBase::SetAotFastMathDebugOptions(&debug_options);
+    return debug_options;
+  }
 };
 
 // Creates a module with a call to the unary op, and tests if the

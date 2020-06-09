@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/profiling/time.h"
-#include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
 
@@ -71,7 +70,8 @@ TfLiteStatus TfliteInferenceStage::ApplyCustomDelegate(
   return kTfLiteOk;
 }
 
-TfLiteStatus TfliteInferenceStage::Init() {
+TfLiteStatus TfliteInferenceStage::Init(
+    const DelegateProviders* delegate_providers) {
   if (!config_.specification().has_tflite_inference_params()) {
     LOG(ERROR) << "TfliteInferenceParams not provided";
     return kTfLiteError;
@@ -96,14 +96,19 @@ TfLiteStatus TfliteInferenceStage::Init() {
   }
   interpreter_->SetNumThreads(params.num_threads());
 
-  std::string error_message;
-  auto delegate = CreateTfLiteDelegate(params, &error_message);
-  if (delegate) {
-    delegates_.push_back(std::move(delegate));
-    LOG(INFO) << "Successfully created "
-              << params.Delegate_Name(params.delegate()) << " delegate.";
+  if (!delegate_providers) {
+    std::string error_message;
+    auto delegate = CreateTfLiteDelegate(params, &error_message);
+    if (delegate) {
+      delegates_.push_back(std::move(delegate));
+      LOG(INFO) << "Successfully created "
+                << params.Delegate_Name(params.delegate()) << " delegate.";
+    } else {
+      LOG(WARNING) << error_message;
+    }
   } else {
-    LOG(WARNING) << error_message;
+    auto delegates = delegate_providers->CreateAllDelegates(params);
+    for (auto& one : delegates) delegates_.push_back(std::move(one));
   }
 
   for (int i = 0; i < delegates_.size(); ++i) {
@@ -154,6 +159,7 @@ EvaluationStageMetrics TfliteInferenceStage::LatestMetrics() {
   latency_metrics->set_min_us(latency_stats_.min());
   latency_metrics->set_sum_us(latency_stats_.sum());
   latency_metrics->set_avg_us(latency_stats_.avg());
+  latency_metrics->set_std_deviation_us(latency_stats_.std_deviation());
   metrics.set_num_runs(
       static_cast<int>(latency_stats_.count() / params.invocations_per_run()));
   auto* inference_metrics =

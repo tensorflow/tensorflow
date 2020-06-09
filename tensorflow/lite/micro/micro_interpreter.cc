@@ -14,12 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/micro/micro_interpreter.h"
 
+#include <cstdarg>
+#include <cstddef>
+#include <cstdint>
+
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/core/api/flatbuffer_conversions.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/tensor_utils.h"
-#include "tensorflow/lite/micro/compatibility.h"
 #include "tensorflow/lite/micro/micro_allocator.h"
-#include "tensorflow/lite/micro/micro_optional_debug_tools.h"
+#include "tensorflow/lite/micro/micro_op_resolver.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -67,28 +72,56 @@ void ContextHelper::ReportOpError(struct TfLiteContext* context,
 }  // namespace internal
 
 MicroInterpreter::MicroInterpreter(const Model* model,
-                                   const OpResolver& op_resolver,
+                                   const MicroOpResolver& op_resolver,
                                    uint8_t* tensor_arena,
                                    size_t tensor_arena_size,
                                    ErrorReporter* error_reporter)
     : model_(model),
       op_resolver_(op_resolver),
       error_reporter_(error_reporter),
-      allocator_(&context_, model_, tensor_arena, tensor_arena_size,
-                 error_reporter_),
-      tensors_allocated_(false),
+      allocator_(*MicroAllocator::Create(&context_, model, tensor_arena,
+                                         tensor_arena_size, error_reporter)),
       context_helper_(error_reporter_, &allocator_) {
+  Init();
+}
+
+MicroInterpreter::MicroInterpreter(const Model* model,
+                                   const MicroOpResolver* op_resolver,
+                                   MicroAllocator* allocator,
+                                   ErrorReporter* error_reporter)
+    : model_(model),
+      op_resolver_(*op_resolver),
+      error_reporter_(error_reporter),
+      allocator_(*allocator),
+      context_helper_(error_reporter_, &allocator_) {
+  Init();
+}
+
+MicroInterpreter::~MicroInterpreter() {
+  if (node_and_registrations_ != nullptr) {
+    for (size_t i = 0; i < subgraph_->operators()->size(); ++i) {
+      TfLiteNode* node = &(node_and_registrations_[i].node);
+      const TfLiteRegistration* registration =
+          node_and_registrations_[i].registration;
+      // registration is allocated outside the interpreter, so double check to
+      // make sure it's not nullptr;
+      if (registration != nullptr && registration->free != nullptr) {
+        registration->free(&context_, node->user_data);
+      }
+    }
+  }
+}
+
+void MicroInterpreter::Init() {
   const flatbuffers::Vector<flatbuffers::Offset<SubGraph>>* subgraphs =
-      model->subgraphs();
+      model_->subgraphs();
   if (subgraphs->size() != 1) {
-    TF_LITE_REPORT_ERROR(error_reporter,
+    TF_LITE_REPORT_ERROR(error_reporter_,
                          "Only 1 subgraph is currently supported.\n");
     initialization_status_ = kTfLiteError;
     return;
   }
   subgraph_ = (*subgraphs)[0];
-  tensors_ = subgraph_->tensors();
-  operators_ = subgraph_->operators();
 
   context_.impl_ = static_cast<void*>(&context_helper_);
   context_.ReportError = context_helper_.ReportOpError;
@@ -108,21 +141,6 @@ MicroInterpreter::MicroInterpreter(const Model* model,
   }
 
   initialization_status_ = kTfLiteOk;
-}
-
-MicroInterpreter::~MicroInterpreter() {
-  if (node_and_registrations_ != nullptr) {
-    for (size_t i = 0; i < operators_->size(); ++i) {
-      TfLiteNode* node = &(node_and_registrations_[i].node);
-      const TfLiteRegistration* registration =
-          node_and_registrations_[i].registration;
-      // registration is allocated outside the interpreter, so double check to
-      // make sure it's not nullptr;
-      if (registration != nullptr && registration->free != nullptr) {
-        registration->free(&context_, node->user_data);
-      }
-    }
-  }
 }
 
 void MicroInterpreter::CorrectTensorEndianness(TfLiteTensor* tensorCorr) {
@@ -163,7 +181,7 @@ void MicroInterpreter::CorrectTensorDataEndianness(T* data, int32_t size) {
 }
 
 TfLiteStatus MicroInterpreter::AllocateTensors() {
-  TF_LITE_ENSURE_OK(&context_, allocator_.AllocateNodeAndRegistrations(
+  TF_LITE_ENSURE_OK(&context_, allocator_.PrepareFromFlatbuffer(
                                    op_resolver_, &node_and_registrations_));
 
   // Only allow AllocatePersistentBuffer in Init stage.
@@ -171,7 +189,7 @@ TfLiteStatus MicroInterpreter::AllocateTensors() {
   context_.RequestScratchBufferInArena = nullptr;
   context_.GetScratchBuffer = nullptr;
 
-  for (size_t i = 0; i < operators_->size(); ++i) {
+  for (size_t i = 0; i < subgraph_->operators()->size(); ++i) {
     context_helper_.SetNodeIndex(i);
     auto* node = &(node_and_registrations_[i].node);
     auto* registration = node_and_registrations_[i].registration;
@@ -195,7 +213,7 @@ TfLiteStatus MicroInterpreter::AllocateTensors() {
   // in Prepare stage.
   context_.RequestScratchBufferInArena =
       context_helper_.RequestScratchBufferInArena;
-  for (size_t i = 0; i < operators_->size(); ++i) {
+  for (size_t i = 0; i < subgraph_->operators()->size(); ++i) {
     // Set node idx to annotate the lifetime for scratch buffers.
     context_helper_.SetNodeIndex(i);
     auto* node = &(node_and_registrations_[i].node);
@@ -223,6 +241,7 @@ TfLiteStatus MicroInterpreter::AllocateTensors() {
   tensors_allocated_ = true;
   return kTfLiteOk;
 }
+
 TfLiteStatus MicroInterpreter::Invoke() {
   if (initialization_status_ != kTfLiteOk) {
     TF_LITE_REPORT_ERROR(error_reporter_,
@@ -236,7 +255,7 @@ TfLiteStatus MicroInterpreter::Invoke() {
     TF_LITE_ENSURE_OK(&context_, AllocateTensors());
   }
 
-  for (size_t i = 0; i < operators_->size(); ++i) {
+  for (size_t i = 0; i < subgraph_->operators()->size(); ++i) {
     auto* node = &(node_and_registrations_[i].node);
     auto* registration = node_and_registrations_[i].registration;
 

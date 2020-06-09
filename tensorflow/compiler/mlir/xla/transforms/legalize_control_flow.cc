@@ -37,7 +37,8 @@ using mlir::PassRegistration;
 namespace mlir {
 namespace xla_hlo {
 namespace {
-struct LegalizeControlFlow : public mlir::FunctionPass<LegalizeControlFlow> {
+struct LegalizeControlFlow
+    : public mlir::PassWrapper<LegalizeControlFlow, FunctionPass> {
   // Perform the lowering to MLIR control flow.
   void runOnFunction() override;
 };
@@ -60,47 +61,46 @@ LogicalResult ReplaceTerminators(Region* region, Block* target_block,
   return success();
 }
 
-LogicalResult LowerConditionalOp(mlir::xla_hlo::ConditionalOp conditional_op) {
-  Operation* op_inst = conditional_op.getOperation();
-  mlir::OpBuilder builder(conditional_op);
+LogicalResult LowerIfOp(mlir::xla_hlo::IfOp if_op) {
+  Operation* op_inst = if_op.getOperation();
+  mlir::OpBuilder builder(if_op);
   auto orig_block = op_inst->getBlock();
   auto* tail_block = orig_block->splitBlock(op_inst);
-  auto loc = conditional_op.getLoc();
+  auto loc = if_op.getLoc();
 
   // Duplicate the true and false regions in the block between the sections
   // before and after the conditional.
   BlockAndValueMapping mapper;
-  conditional_op.true_branch().cloneInto(orig_block->getParent(),
-                                         Region::iterator(tail_block), mapper);
-  conditional_op.false_branch().cloneInto(orig_block->getParent(),
-                                          Region::iterator(tail_block), mapper);
+  if_op.true_branch().cloneInto(orig_block->getParent(),
+                                Region::iterator(tail_block), mapper);
+  if_op.false_branch().cloneInto(orig_block->getParent(),
+                                 Region::iterator(tail_block), mapper);
 
   // Determine the blocks for the start of the true and false regions.
-  Block* true_block = mapper.lookup(&conditional_op.true_branch().front());
-  Block* false_block = mapper.lookup(&conditional_op.false_branch().front());
+  Block* true_block = mapper.lookup(&if_op.true_branch().front());
+  Block* false_block = mapper.lookup(&if_op.false_branch().front());
 
   // Perform the conditional branch into the true/false cases.
   builder.setInsertionPointToEnd(orig_block);
 
   // Extract the predicate for checking branching, then branch to the true and
   // false regions appropriately.
-  auto cond_value =
-      builder.create<mlir::ExtractElementOp>(loc, conditional_op.pred());
+  auto cond_value = builder.create<mlir::ExtractElementOp>(loc, if_op.pred());
   builder.create<mlir::CondBranchOp>(loc, cond_value, true_block,
-                                     conditional_op.true_arg(), false_block,
-                                     conditional_op.false_arg());
+                                     if_op.true_arg(), false_block,
+                                     if_op.false_arg());
 
   // Replace the true case's return operations with a branch to the tail of
   // the condition.
-  if (failed(ReplaceTerminators(&conditional_op.true_branch(), tail_block, loc,
-                                mapper, &builder)))
+  if (failed(ReplaceTerminators(&if_op.true_branch(), tail_block, loc, mapper,
+                                &builder)))
     return failure();
-  if (failed(ReplaceTerminators(&conditional_op.false_branch(), tail_block, loc,
-                                mapper, &builder)))
+  if (failed(ReplaceTerminators(&if_op.false_branch(), tail_block, loc, mapper,
+                                &builder)))
     return failure();
 
-  tail_block->addArguments(conditional_op.getResult().getType());
-  conditional_op.getResult().replaceAllUsesWith(tail_block->getArgument(0));
+  tail_block->addArguments(if_op.getResult().getType());
+  if_op.getResult().replaceAllUsesWith(tail_block->getArgument(0));
 
   op_inst->erase();
   return success();
@@ -209,11 +209,11 @@ LogicalResult LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
 
 void LegalizeControlFlow::runOnFunction() {
   auto func = getFunction();
-  llvm::SmallVector<ConditionalOp, 4> conditional_ops;
-  func.walk([&](ConditionalOp op) { conditional_ops.push_back(op); });
+  llvm::SmallVector<IfOp, 4> if_ops;
+  func.walk([&](IfOp op) { if_ops.push_back(op); });
 
-  for (auto& op : conditional_ops) {
-    if (failed(LowerConditionalOp(op))) return signalPassFailure();
+  for (auto& op : if_ops) {
+    if (failed(LowerIfOp(op))) return signalPassFailure();
   }
 
   llvm::SmallVector<WhileOp, 4> while_ops;
@@ -227,7 +227,7 @@ void LegalizeControlFlow::runOnFunction() {
 }  // namespace xla_hlo
 }  // namespace mlir
 
-std::unique_ptr<mlir::OpPassBase<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
 mlir::xla_hlo::createLegalizeControlFlowPass() {
   return std::make_unique<LegalizeControlFlow>();
 }

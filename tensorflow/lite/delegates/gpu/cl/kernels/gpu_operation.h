@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/lite/delegates/gpu/cl/arguments.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/tuning_parameters.h"
@@ -114,6 +115,7 @@ class GPUOperation {
   OperationDef definition_;
   std::vector<Tensor*> src_;
   std::vector<Tensor*> dst_;
+  Arguments args_;
   std::vector<ElementwiseOperation*> linked_operations_;
 };
 
@@ -157,6 +159,9 @@ class ElementwiseOperation : public GPUOperation {
   virtual absl::Status BindArguments(CLKernel* kernel) {
     return absl::OkStatus();
   }
+
+  // ovveride to return false if for any reason operation can not be linked.
+  virtual bool IsLinkable() const { return true; }
 
  protected:
   absl::Status BindArguments();

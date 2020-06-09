@@ -44,9 +44,20 @@ constexpr llvm::StringRef kOutlinedFuncPrefix = "_tpu_v1_compat_outlined_func";
 // This is only intended for V1 compatibility mode where the bridge runs without
 // feed/fetches on session create/extend.
 struct TPUBridgeExecutorIslandOutlining
-    : public OperationPass<TPUBridgeExecutorIslandOutlining, ModuleOp> {
+    : public PassWrapper<TPUBridgeExecutorIslandOutlining,
+                         OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
+
+// Move FuncOp referenced by `symbol_ref` from one symbol table to another.
+void MoveFuncOp(FlatSymbolRefAttr &symbol_ref, SymbolTable &from,
+                SymbolTable &to) {
+  if (to.lookup<FuncOp>(symbol_ref.getValue())) return;
+  FuncOp callee = from.lookup<FuncOp>(symbol_ref.getValue());
+  callee.getOperation()->getBlock()->getOperations().remove(
+      callee.getOperation());
+  to.insert(callee);
+}
 
 void TPUBridgeExecutorIslandOutlining::runOnOperation() {
   MLIRContext *ctx = &getContext();
@@ -140,14 +151,17 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
   for (FuncOp func : outlined_module.getOps<FuncOp>()) {
     func.walk([&](Operation *op) {
       for (NamedAttribute attr : op->getAttrs()) {
-        auto symbol_ref = attr.second.dyn_cast<FlatSymbolRefAttr>();
-        if (!symbol_ref) continue;
-        if (outlined_symbol_table.lookup<FuncOp>(symbol_ref.getValue()))
+        if (auto symbol_ref = attr.second.dyn_cast<FlatSymbolRefAttr>()) {
+          MoveFuncOp(symbol_ref, symbol_table, outlined_symbol_table);
           continue;
-        FuncOp callee = symbol_table.lookup<FuncOp>(symbol_ref.getValue());
-        callee.getOperation()->getBlock()->getOperations().remove(
-            callee.getOperation());
-        outlined_symbol_table.insert(callee);
+        }
+        if (auto array_attr = attr.second.dyn_cast<ArrayAttr>()) {
+          for (const Attribute &attribute : array_attr) {
+            auto symbol_ref = attribute.dyn_cast<FlatSymbolRefAttr>();
+            if (!symbol_ref) continue;
+            MoveFuncOp(symbol_ref, symbol_table, outlined_symbol_table);
+          }
+        }
       }
     });
   }
@@ -160,7 +174,7 @@ PassRegistration<TPUBridgeExecutorIslandOutlining> tpu_pass(
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFExecutorTPUV1IslandOutliningPass() {
   return std::make_unique<TPUBridgeExecutorIslandOutlining>();
 }

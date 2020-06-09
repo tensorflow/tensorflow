@@ -4,16 +4,16 @@ tensorflow/api_template_v1.__init__.py
 tensorflow/compat_template.__init__.py
 tensorflow/compat_template_v1.__init__.py
 tensorflow/compiler/mlir/glob_lit_test.bzl
-tensorflow/core/public/version.h
+tensorflow/go/op/wrappers.go
 tensorflow/lite/micro/build_def.bzl
 tensorflow/python/autograph/core/config.py
-tensorflow/python/distribute/cluster_resolver/tpu_cluster_resolver.py
-tensorflow/python/distribute/cluster_resolver/tpu_cluster_resolver_test.py
+tensorflow/python/eager/benchmarks_test_base.py
 tensorflow/python/tpu/profiler/pip_package/BUILD
 tensorflow/python/tpu/profiler/pip_package/README
 tensorflow/python/tpu/profiler/pip_package/build_pip_package.sh
 tensorflow/python/tpu/profiler/pip_package/setup.py
 tensorflow/python/tpu/tpu.bzl
+tensorflow/security/fuzzing/tf_fuzzing.bzl
 tensorflow/stream_executor/build_defs.bzl
 tensorflow/third_party/BUILD
 tensorflow/third_party/__init__.py
@@ -97,6 +97,7 @@ tensorflow/third_party/gpus/cuda/BUILD.windows.tpl
 tensorflow/third_party/gpus/cuda/LICENSE
 tensorflow/third_party/gpus/cuda/build_defs.bzl.tpl
 tensorflow/third_party/gpus/cuda/cuda_config.h.tpl
+tensorflow/third_party/gpus/cuda/cuda_config.py.tpl
 tensorflow/third_party/gpus/cuda_configure.bzl
 tensorflow/third_party/gpus/find_cuda_config.py
 tensorflow/third_party/gpus/find_cuda_config.py.gz.base64
@@ -218,6 +219,13 @@ tensorflow/third_party/toolchains/cpus/arm/arm_compiler_configure.bzl
 tensorflow/third_party/toolchains/cpus/arm/cc_config.bzl.tpl
 tensorflow/third_party/toolchains/cpus/py/BUILD
 tensorflow/third_party/toolchains/cpus/py3/BUILD
+tensorflow/third_party/toolchains/embedded/README.md
+tensorflow/third_party/toolchains/embedded/arm-linux/BUILD
+tensorflow/third_party/toolchains/embedded/arm-linux/README.md
+tensorflow/third_party/toolchains/embedded/arm-linux/aarch64-linux-toolchain.BUILD
+tensorflow/third_party/toolchains/embedded/arm-linux/arm_linux_toolchain_configure.bzl
+tensorflow/third_party/toolchains/embedded/arm-linux/armhf-linux-toolchain.BUILD
+tensorflow/third_party/toolchains/embedded/arm-linux/cc_config.bzl.tpl
 tensorflow/third_party/toolchains/java/BUILD
 tensorflow/third_party/toolchains/preconfig/generate/BUILD
 tensorflow/third_party/toolchains/preconfig/generate/archives.bzl
@@ -242,6 +250,7 @@ tensorflow/third_party/toolchains/preconfig/ubuntu16.04/py/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/tensorrt5/BUILD
 tensorflow/third_party/toolchains/preconfig/win/BUILD
 tensorflow/third_party/toolchains/preconfig/win/bazel_211/BUILD
+tensorflow/third_party/toolchains/preconfig/win/tf_win_08062020/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/py36/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/py37/BUILD
@@ -256,6 +265,7 @@ tensorflow/third_party/toolchains/remote_config/containers.bzl
 tensorflow/third_party/toolchains/remote_config/rbe_config.bzl
 tensorflow/third_party/wrapt.BUILD
 tensorflow/third_party/zlib.BUILD
+tensorflow/tools/build_info/BUILD
 tensorflow/tools/ci_build/release/common.sh
 tensorflow/tools/ci_build/release/common_win.bat
 tensorflow/tools/ci_build/release/macos/cpu_libtensorflow/build.sh
@@ -335,6 +345,8 @@ tensorflow/tools/ci_build/release/ubuntu_16/gpu_py37_full/pip_v1.sh
 tensorflow/tools/ci_build/release/ubuntu_16/gpu_py38_full/nightly_release.sh
 tensorflow/tools/ci_build/release/ubuntu_16/gpu_py38_full/nonpip.sh
 tensorflow/tools/ci_build/release/ubuntu_16/gpu_py38_full/pip.sh
+tensorflow/tools/ci_build/release/ubuntu_16/libtensorflow/cpu/build.sh
+tensorflow/tools/ci_build/release/ubuntu_16/libtensorflow/gpu/build.sh
 tensorflow/tools/ci_build/release/ubuntu_16/sanity/build.sh
 tensorflow/tools/ci_build/release/ubuntu_16/tpu_py37_full/nonpip.sh
 tensorflow/tools/ci_build/release/windows/cpu_libtensorflow/nightly.bat
@@ -386,6 +398,7 @@ tensorflow/tools/def_file_filter/BUILD
 tensorflow/tools/def_file_filter/BUILD.tpl
 tensorflow/tools/def_file_filter/def_file_filter.py.tpl
 tensorflow/tools/def_file_filter/def_file_filter_configure.bzl
+tensorflow/tools/git/BUILD
 tensorflow/tools/lib_package/BUILD
 tensorflow/tools/lib_package/LibTensorFlowTest.java
 tensorflow/tools/lib_package/README.md

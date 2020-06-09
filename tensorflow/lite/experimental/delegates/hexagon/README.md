@@ -58,7 +58,7 @@ Hexagon only supports ops that have inputs/outputs of <= 4 dimensions.
 The following operations have been implemented, with a few constraints that
 are verified in `IsNodeSupportedByHexagon`:
 
-* Add
+* Add (Support relu activations)
 * ArgMax
 * ArgMin
 * AveragePool2D:
@@ -76,12 +76,19 @@ are verified in `IsNodeSupportedByHexagon`:
       - dilation only supported when stride == 1
       - Otherwise, stride height/width <= 3
 * FullyConnected (without any activation)
+* Hardswish
 * L2Normalization (without any activation)
 * Logistic (aka Sigmoid)
+* Maximum
 * MaxPool2D (without any activation) (b/129276536)
-* Mul (without any activation) (b/129276536)
+* Mean
+* Minimum
+* MirrorPad
+* Mul (Support relu activations)
 * Neg
+* Pack
 * Pad: Only supports 0 padding (b/139277813)
+* Quantize (8-bit inputs & outputs only)
 * Relu
 * Relu6
 * Reshape
@@ -89,10 +96,12 @@ are verified in `IsNodeSupportedByHexagon`:
   * Constraints:
     - Requested size <= 65 (b/143105433)
 * Resize Nearest Neighbor
+* Slice
 * SoftMax
 * SpaceToDepth
 * Split
-* Sub
+* Strided Slice
+* Sub (Support relu activations)
 * Tanh
 * Transpose
 * TransposeConv2D:

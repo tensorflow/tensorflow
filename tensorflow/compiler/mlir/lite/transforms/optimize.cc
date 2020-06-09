@@ -37,7 +37,6 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Support/Functional.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
@@ -52,6 +51,9 @@ namespace TFL {
 //===----------------------------------------------------------------------===//
 // The actual Optimize Pass.
 namespace {
+constexpr char kRelu[] = "RELU";
+constexpr char kRelu6[] = "RELU6";
+constexpr char kRelu1[] = "RELU_N1_TO_1";
 
 bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
   if (sq_op.getType().cast<ShapedType>().getRank() - 1 ==
@@ -74,7 +76,7 @@ bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
 using ::llvm::cast;
 
 // Optimize TFLite operations in functions.
-struct Optimize : public FunctionPass<Optimize> {
+struct Optimize : public PassWrapper<Optimize, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -204,6 +206,28 @@ DenseElementsAttr GetShape(Value output_val) {
       llvm::makeArrayRef(shape));
 }
 
+static Type GetShapeStrippedType(TypeAttr type_attr) {
+  auto type = type_attr.getValue();
+  auto shaped_type = type.dyn_cast<ShapedType>();
+  if (shaped_type) {
+    return shaped_type.getElementType();
+  } else {
+    return type;
+  }
+}
+
+bool NotFromQuantOpDifferentQuant(Value val, TypeAttr qtype_attr) {
+  auto val_defn_op = val.getDefiningOp();
+  TFL::QuantizeOp q_op = llvm::dyn_cast_or_null<TFL::QuantizeOp>(val_defn_op);
+  if (!q_op) return true;
+
+  // Ignore shape details - weŕe really only trying to
+  // check if quantization is the same.
+  auto stripped_src_qtype = GetShapeStrippedType(q_op.qtypeAttr());
+  auto stripped_qtype = GetShapeStrippedType(qtype_attr);
+  return stripped_src_qtype == stripped_qtype;
+}
+
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
 
 // Fuse Add with proceeding FullyConnected.
@@ -301,10 +325,11 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
 };
 
 // TODO(b/136285429): Move to tablegen when variadic is supported.
-struct FuseFullyConnectedAndRelu : public OpRewritePattern<TFL::ReluOp> {
-  using OpRewritePattern<TFL::ReluOp>::OpRewritePattern;
+template <typename ReluXOp, char const *Act>
+struct FuseFullyConnectedAndReluX : public OpRewritePattern<ReluXOp> {
+  using OpRewritePattern<ReluXOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(TFL::ReluOp relu_op,
+  LogicalResult matchAndRewrite(ReluXOp relu_op,
                                 PatternRewriter &rewriter) const override {
     Operation *input = relu_op.getOperand().getDefiningOp();
     if (!isa_and_nonnull<FullyConnectedOp>(input)) return failure();
@@ -312,7 +337,7 @@ struct FuseFullyConnectedAndRelu : public OpRewritePattern<TFL::ReluOp> {
     if (fully_connected_op.fused_activation_function() != "NONE")
       return failure();
 
-    auto new_activation_func = rewriter.getStringAttr("RELU");
+    auto new_activation_func = rewriter.getStringAttr(Act);
     auto new_weights_format =
         rewriter.getStringAttr(fully_connected_op.weights_format());
     auto new_keep_num_dims =
@@ -638,8 +663,8 @@ struct ConvertTrivialTransposeOpToReshapeOp
 
   LogicalResult matchAndRewrite(TFL::TransposeOp transpose_op,
                                 PatternRewriter &rewriter) const override {
-    auto input_type = transpose_op.x().getType().cast<ShapedType>();
-    auto output_type = transpose_op.y().getType().cast<ShapedType>();
+    auto input_type = transpose_op.input().getType().cast<ShapedType>();
+    auto output_type = transpose_op.output().getType().cast<ShapedType>();
     // It's possible to know if the transformation is safe only if the input
     // & output shapes are fully known and permutation is a constant.
     if (!input_type.hasStaticShape() || !output_type.hasStaticShape())
@@ -650,7 +675,7 @@ struct ConvertTrivialTransposeOpToReshapeOp
 
     auto input_shape = input_type.getShape();
     SmallVector<int64_t, 8> perm_values;
-    for (auto dim : perm_values_attr.getIntValues())
+    for (const auto &dim : perm_values_attr.getIntValues())
       perm_values.push_back(dim.getSExtValue());
 
     // This should never happen unless the input graph is malformed.
@@ -688,7 +713,8 @@ struct ConvertTrivialTransposeOpToReshapeOp
     auto new_shape = rewriter.create<TF::ConstOp>(loc, new_shape_attr);
 
     rewriter.replaceOpWithNewOp<TFL::ReshapeOp>(
-        transpose_op, transpose_op.y().getType(), transpose_op.x(), new_shape);
+        transpose_op, transpose_op.output().getType(), transpose_op.input(),
+        new_shape);
 
     return success();
   }
@@ -709,9 +735,12 @@ void Optimize::runOnFunction() {
   // we explore these potentially first and then fuse the binary ops with the
   // following ops in a second pattern match.
   TFL::populateWithGenerated(ctx, &patterns);
-  patterns.insert<FuseFullyConnectedAndAdd, FuseFullyConnectedAndRelu,
+  patterns.insert<FuseFullyConnectedAndAdd,
+                  FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
+                  FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
+                  FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
                   FuseFullyConnectedAndMul>(ctx);
-  applyPatternsGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, patterns);
 
   // Fuse the binary ops with the following ops.
   patterns.insert<
@@ -719,13 +748,13 @@ void Optimize::runOnFunction() {
       FuseBinaryOpToFollowingFullyConnected, FuseConv2DAndMulWithQDQs,
       FuseDepthwiseConv2DAndMulWithQDQs, ConvertTrivialTransposeOpToReshapeOp>(
       ctx);
-  applyPatternsGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, patterns);
 }
 
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect Optimize pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreateOptimizePass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass() {
   return std::make_unique<Optimize>();
 }
 

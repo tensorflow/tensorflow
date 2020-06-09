@@ -28,8 +28,7 @@ upper_tabs:
         path: https://codelabs.developers.google.com/codelabs/recognize-flowers-with-tensorflow-on-ios/
         status: external
       - title: "Transfer learning for image classification"
-        path: https://colab.research.google.com/github/tensorflow/examples/blob/master/tensorflow_examples/lite/model_maker/demo/image_classification.ipynb
-        status: external
+        path: /lite/tutorials/model_maker_image_classification
       - title: "Image classification on Raspberry Pi"
         path: https://github.com/tensorflow/examples/blob/master/lite/examples/image_classification/raspberry_pi/
         status: external
@@ -41,9 +40,8 @@ upper_tabs:
         status: external
 
       - heading: "Text"
-      - title: "Sentiment analysis"
-        path: https://colab.research.google.com/github/tensorflow/examples/blob/master/tensorflow_examples/lite/model_maker/demo/text_classification.ipynb
-        status: external
+      - title: "Text classification"
+        path: /lite/tutorials/model_maker_text_classification
 
       - heading: "Microcontrollers"
       - title: "Gesture recognition"
@@ -136,7 +134,7 @@ upper_tabs:
         path: /lite/performance/model_optimization
       - title: "Post-training quantization"
         path: /lite/performance/post_training_quantization
-      - title: "Post-training weight quantization"
+      - title: "Post-training dynamic range quantization"
         path: /lite/performance/post_training_quant
       - title: "Post-training integer quantization"
         path: /lite/performance/post_training_integer_quant
@@ -191,15 +189,17 @@ upper_tabs:
       - title: "Text classification"
         path: /lite/models/text_classification/overview
 
-    - name: "Python API"
+    - name: "API"
       skip_translation: true
       contents:
-      - title: "Python API"
+      - title: API Reference
+        path: /lite/api_docs/
+      - heading: "Python"
+      - title: "Overview"
+        status: external
         path: /api_docs/python/tf/lite
-    - name: "C++ API"
-      skip_translation: true
-      contents:
-      - title: "C++ API"
+      - heading: "C++"
+      - title: Overview
         path: /lite/api_docs/cc/
       - include: /lite/api_docs/cc/_doxygen.yaml
 

@@ -25,6 +25,8 @@ package(
 exports_files([
     "generated_examples_zip_test.cc",
     "tflite_diff_example_test.cc",
+    "init_tensorflow.h",
+    "init_tensorflow.cc",
 ])
 
 [gen_zip_test(
@@ -68,8 +70,8 @@ exports_files([
             "//tensorflow/core:test",
         ],
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib",
-            "//tensorflow/core:android_tensorflow_test_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_test_lib",
         ],
     }),
 ) for conversion_mode, test_name, tags, args in generated_test_models_all() + merged_test_models()]
@@ -222,10 +224,10 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/experimental/kernels:hashtable_op_kernels",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:custom_ops",
+        "//tensorflow/lite/kernels/hashtable:hashtable_op_kernels",
         "//tensorflow/lite/kernels:reference_ops",
         "//tensorflow/lite/tools/evaluation:utils",
     ] + select({
@@ -326,10 +328,10 @@ cc_library(
             "//tensorflow/core:tensorflow",
         ],
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
         ],
         "//tensorflow:ios": [
-            "//tensorflow/core:ios_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
         ],
     }),
 )
@@ -365,10 +367,10 @@ cc_library(
             "//tensorflow/core:framework",
         ],
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
         ],
         "//tensorflow:ios": [
-            "//tensorflow/core:ios_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
         ],
     }),
 )
@@ -405,10 +407,10 @@ cc_library(
             "//tensorflow/core:lib",
         ],
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
         ],
         "//tensorflow:ios": [
-            "//tensorflow/core:ios_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
         ],
     }),
 )
@@ -440,10 +442,10 @@ cc_library(
             "//tensorflow/core:lib",
         ],
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
         ],
         "//tensorflow:ios": [
-            "//tensorflow/core:ios_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
         ],
     }),
 )

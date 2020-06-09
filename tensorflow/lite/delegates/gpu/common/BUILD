@@ -1,3 +1,5 @@
+load("//tensorflow/core/platform:build_config.bzl", "tf_platform_alias")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
@@ -19,17 +21,9 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "custom_parsers",
-    srcs = ["custom_parsers.cc"],
-    hdrs = ["custom_parsers.h"],
-    deps = [
-        ":shape",
-        ":status",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:any",
-        "@flatbuffers",
-    ],
+exports_files(
+    ["custom_parsers.h"],
+    visibility = ["//tensorflow/lite/delegates/gpu/common:__subpackages__"],
 )
 
 cc_library(
@@ -84,6 +78,7 @@ cc_library(
 
 cc_library(
     name = "model",
+    srcs = ["model.cc"],
     hdrs = ["model.h"],
     deps = [
         ":data_type",
@@ -91,6 +86,7 @@ cc_library(
         ":status",
         ":tensor",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:any",
         "@com_google_absl//absl/types:optional",
     ],
@@ -107,44 +103,30 @@ cc_test(
 )
 
 cc_library(
-    name = "model_builder_helper",
-    hdrs = ["model_builder_helper.h"],
-    deps = [
-        ":status",
-        "//tensorflow/lite:context",
-        "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/delegates:utils",
-        "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
     name = "model_builder",
     srcs = ["model_builder.cc"],
     hdrs = ["model_builder.h"],
     deps = [
-        ":custom_parsers",
         ":data_type",
         ":model",
         ":model_builder_helper",
+        ":object_reader",
         ":operations",
         ":shape",
         ":status",
         ":tensor",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite:context",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/gpu/common/transformations:general_transformations",
         "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels/internal:reference_base",
+        "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/schema:schema_fbs",
-        "@FP16",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-    ],
+    ] + tf_platform_alias("custom_parsers", "//tensorflow/lite/delegates/gpu/common/"),
 )
 
 cc_test(
@@ -156,6 +138,29 @@ cc_test(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "model_builder_helper",
+    srcs = ["model_builder_helper.cc"],
+    hdrs = ["model_builder_helper.h"],
+    deps = [
+        ":data_type",
+        ":model",
+        ":shape",
+        ":status",
+        ":tensor",
+        "//tensorflow/lite:context",
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates:utils",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels/internal:reference_base",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/kernels/internal:types",
+        "@FP16",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -172,6 +177,20 @@ cc_library(
 # TODO(impjdi): Add unit test for model_transformer.
 
 cc_library(
+    name = "object_reader",
+    srcs = ["object_reader.cc"],
+    hdrs = ["object_reader.h"],
+    deps = [
+        ":model",
+        ":model_builder_helper",
+        ":status",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates:utils",
+        "//tensorflow/lite/kernels:kernel_util",
+    ],
+)
+
+cc_library(
     name = "operations",
     srcs = ["operations.cc"],
     hdrs = ["operations.h"],
@@ -181,6 +200,30 @@ cc_library(
         ":shape",
         ":status",
         "@com_google_absl//absl/types:variant",
+    ],
+)
+
+cc_library(
+    name = "quantization_util",
+    srcs = ["quantization_util.cc"],
+    hdrs = ["quantization_util.h"],
+    deps = [
+        ":status",
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels/internal:optimized_base",
+        "//tensorflow/lite/kernels/internal:types",
+    ],
+)
+
+cc_test(
+    name = "quantization_util_test",
+    srcs = ["quantization_util_test.cc"],
+    deps = [
+        ":quantization_util",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/micro/testing:micro_test",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

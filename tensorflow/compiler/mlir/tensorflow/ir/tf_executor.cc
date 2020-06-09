@@ -41,50 +41,21 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Support/STLExtras.h"  // from @llvm-project
 #include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
 namespace tf_executor {
-namespace {
-
-// If the given tensor has elements of type with subtypes, then returns a new
-// type after dropping subtypes info. Otherwise, returns the original type as
-// is.
-ShapedType DropTypeSubTypes(ShapedType ty) {
-  Type element_ty = ty.getElementType();
-  auto subtype_ty = element_ty.dyn_cast<TF::TensorFlowTypeWithSubtype>();
-  if (!subtype_ty) return ty;
-
-  Type default_ty = GetDefaultTypeOf(subtype_ty);
-  if (ty.hasRank()) return RankedTensorType::get(ty.getShape(), default_ty);
-
-  return UnrankedTensorType::get(default_ty);
-}
-
-// If the given tensor has elements of type ref, then returns a new type
-// of the shape, but corresponding non-ref type as element type. Otherwise,
-// returns the original type as is.
-ShapedType DropRefType(ShapedType ty) {
-  Type element_ty = ty.getElementType();
-  auto ref_ty = element_ty.dyn_cast<TF::TensorFlowRefType>();
-  if (!ref_ty) return ty;
-
-  Type default_ty = GetDefaultTypeOf(ref_ty);
-  if (ty.hasRank()) return RankedTensorType::get(ty.getShape(), default_ty);
-
-  return UnrankedTensorType::get(default_ty);
-}
-
-}  // namespace
 
 //===----------------------------------------------------------------------===//
 // TF Executor Dialect
 //===----------------------------------------------------------------------===//
 
 namespace {
+
+using TF::DropRefType;
+using TF::DropTypeSubTypes;
 
 struct TensorFlowExecutorInlinerInterface : public DialectInlinerInterface {
   using DialectInlinerInterface::DialectInlinerInterface;
@@ -318,7 +289,7 @@ YieldOp IslandOp::GetYield() { return llvm::cast<YieldOp>(GetBody().back()); }
 // operation results are perfectly forwarded to the islands yield.
 bool IslandOp::WrapsSingleOp() {
   auto body = GetBody().without_terminator();
-  if (!has_single_element(body)) return false;
+  if (!hasSingleElement(body)) return false;
 
   Operation &wrapped_op = *body.begin();
   YieldOp yield = GetYield();
@@ -475,7 +446,7 @@ namespace {
 ParseResult ParseSwitchOp(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 2> op_infos;
   SmallVector<Type, 1> types;
-  if (parser.parseOperandList(op_infos, 2) || parser.parseColonTypeList(types))
+  if (parser.parseOperandList(op_infos) || parser.parseColonTypeList(types))
     return failure();
   if (types.size() != 1)
     return parser.emitError(parser.getNameLoc())
@@ -487,12 +458,15 @@ ParseResult ParseSwitchOp(OpAsmParser &parser, OperationState &result) {
   // type).
   if (types.front().isa<FunctionType>()) {
     FunctionType type = types.front().cast<FunctionType>();
-    if (type.getNumInputs() != 2)
+    if (type.getNumInputs() < 2)
       return parser.emitError(parser.getNameLoc())
              << " expects a single data type and a predicate";
     result.types.assign(type.getResults().begin(), type.getResults().end());
     types.assign(type.getInputs().begin(), type.getInputs().end());
   } else {
+    if (op_infos.size() < 2)
+      return parser.emitError(parser.getNameLoc())
+             << " expects a single data type and a predicate";
     Type control_type = ControlType::get(parser.getBuilder().getContext());
     result.types.append(2, types[0]);
     result.types.push_back(control_type);

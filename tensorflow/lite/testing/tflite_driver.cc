@@ -24,8 +24,8 @@ limitations under the License.
 #if !defined(__APPLE__)
 #include "tensorflow/lite/delegates/flex/delegate.h"
 #endif
-#include "tensorflow/lite/experimental/kernels/hashtable_ops.h"
 #include "tensorflow/lite/kernels/custom_ops_register.h"
+#include "tensorflow/lite/kernels/hashtable/hashtable_ops.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/register_ref.h"
 #include "tensorflow/lite/string_util.h"
@@ -337,10 +337,7 @@ TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
       break;
     case DelegateType::kFlex:
 #if !defined(__APPLE__)
-      delegate_ = Interpreter::TfLiteDelegatePtr(
-          FlexDelegate::Create().release(), [](TfLiteDelegate* delegate) {
-            delete static_cast<tflite::FlexDelegate*>(delegate);
-          });
+      delegate_ = FlexDelegate::Create();
 #endif
       break;
   }

@@ -16,7 +16,6 @@ ifeq ($(TARGET), riscv32_mcu)
     -DTF_LITE_MCU_DEBUG_LOG \
     -DTF_LITE_USE_GLOBAL_CMATH_FUNCTIONS \
     -fno-unwind-tables \
-    -fno-builtin \
     -ffunction-sections \
     -fdata-sections \
     -funsigned-char \
@@ -30,6 +29,7 @@ ifeq ($(TARGET), riscv32_mcu)
     -Wmissing-field-initializers \
     -Wno-unused-parameter \
     -Wno-write-strings \
+    -Wunused-function \
     -fno-delete-null-pointer-checks \
     -fno-threadsafe-statics \
     -fomit-frame-pointer \

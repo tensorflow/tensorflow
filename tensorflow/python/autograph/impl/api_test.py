@@ -48,8 +48,6 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras.engine import sequential
-from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -523,7 +521,7 @@ class ApiTest(test.TestCase):
     ag_logging.set_verbosity(0, False)
     os.environ['AUTOGRAPH_STRICT_CONVERSION'] = '1'
 
-  def test_converted_call_partial_of_whitelisted_method(self):
+  def test_converted_call_partial_of_whitelisted_function(self):
 
     def test_fn(_):
       self.assertFalse(converter_testing.is_inside_generated_code())
@@ -610,25 +608,29 @@ class ApiTest(test.TestCase):
 
   def test_converted_call_whitelisted_method(self):
 
-    model = sequential.Sequential([core.Dense(2)])
+    class TestClass(object):
 
-    x = api.converted_call(
-        model.call, (constant_op.constant([[0.0]]),), {'training': True},
-        options=DEFAULT_RECURSIVE)
+      def method(self):
+        return converter_testing.is_inside_generated_code()
 
-    self.evaluate(variables.global_variables_initializer())
-    self.assertAllEqual([[0.0, 0.0]], self.evaluate(x))
+    obj = TestClass()
+    converter_testing.whitelist(obj.method.__func__)
+
+    self.assertFalse(
+        api.converted_call(obj.method, (), {}, options=DEFAULT_RECURSIVE))
 
   def test_converted_call_whitelisted_method_via_owner(self):
 
-    model = sequential.Sequential([core.Dense(2)])
+    class TestClass(object):
 
-    x = api.converted_call(
-        model.call, (constant_op.constant([[0.0]]),), {'training': True},
-        options=DEFAULT_RECURSIVE)
+      def method(self):
+        return converter_testing.is_inside_generated_code()
 
-    self.evaluate(variables.global_variables_initializer())
-    self.assertAllEqual([[0.0, 0.0]], self.evaluate(x))
+    converter_testing.whitelist(TestClass)
+
+    obj = TestClass()
+    self.assertFalse(
+        api.converted_call(obj.method, (), {}, options=DEFAULT_RECURSIVE))
 
   def test_converted_call_numpy(self):
 
@@ -1102,11 +1104,21 @@ class ApiTest(test.TestCase):
 
   def test_tf_convert_whitelisted_method(self):
 
-    model = sequential.Sequential([core.Dense(2)])
+    if six.PY2:
+      self.skipTest('Test bank not comptible with Python 2.')
+
+    class TestClass(object):
+
+      def method(self):
+        return converter_testing.is_inside_generated_code()
+
+    converter_testing.whitelist(TestClass.method)
+
+    obj = TestClass()
     converted_call = api.tf_convert(
-        model.call, ag_ctx.ControlStatusCtx(status=ag_ctx.Status.ENABLED))
+        obj.method, ag_ctx.ControlStatusCtx(status=ag_ctx.Status.ENABLED))
     _, converted_target = tf_decorator.unwrap(converted_call)
-    self.assertIs(converted_target.__func__, model.call.__func__)
+    self.assertIs(converted_target.__func__, obj.method.__func__)
 
   def test_tf_convert_tf_decorator_unwrapping_context_enabled(self):
 

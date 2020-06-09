@@ -9,15 +9,7 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["logging.h"])
-
 common_copts = ["-Wall"] + tflite_copts()
-
-cc_library(
-    name = "logging",
-    hdrs = ["logging.h"],
-    copts = common_copts,
-)
 
 cc_binary(
     name = "benchmark_model",
@@ -36,7 +28,7 @@ cc_binary(
     tags = ["builder_default_android_arm64"],
     deps = [
         ":benchmark_tflite_model_lib",
-        ":logging",
+        "//tensorflow/lite/tools:logging",
     ],
 )
 
@@ -57,7 +49,7 @@ cc_binary(
     deps = [
         ":benchmark_performance_options",
         ":benchmark_tflite_model_lib",
-        ":logging",
+        "//tensorflow/lite/tools:logging",
     ],
 )
 
@@ -80,9 +72,9 @@ tf_cc_binary(
     }),
     deps = [
         ":benchmark_tflite_model_lib",
-        ":logging",
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/testing:init_tensorflow",
+        "//tensorflow/lite/tools:logging",
     ],
 )
 
@@ -106,11 +98,13 @@ cc_test(
     deps = [
         ":benchmark_performance_options",
         ":benchmark_tflite_model_lib",
-        ":delegate_provider_hdr",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools:command_line_flags",
+        "//tensorflow/lite/tools:logging",
+        "//tensorflow/lite/tools/delegates:delegate_provider_hdr",
         "@com_google_absl//absl/algorithm",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
@@ -128,6 +122,7 @@ cc_library(
         "//tensorflow/lite/profiling:profile_summarizer",
         "//tensorflow/lite/profiling:profile_summary_formatter",
         "//tensorflow/lite/profiling:profiler",
+        "//tensorflow/lite/tools:logging",
     ],
 )
 
@@ -142,31 +137,24 @@ cc_library(
         "//conditions:default": [],
     }),
     deps = [
-        ":profiling_listener",
         ":benchmark_model_lib",
         ":benchmark_utils",
-        ":delegate_provider_hdr",
-        ":gpu_delegate_provider",
-        ":hexagon_delegate_provider",
-        ":external_delegate_provider",
-        ":logging",
-        ":nnapi_delegate_provider",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/strings",
+        ":profiling_listener",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
-        "@ruy//ruy/profiler",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/profiling:platform_profiler",
-        "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/profiling:profile_summary_formatter",
-        "//tensorflow/lite/tools/evaluation:utils",
-    ] + select({
-        "//tensorflow:fuchsia": [],
-        "//conditions:default": [
-            ":xnnpack_delegate_provider",
-        ],
-    }),
+        "//tensorflow/lite/profiling:profiler",
+        "//tensorflow/lite/tools:logging",
+        "//tensorflow/lite/tools/delegates:delegate_provider_hdr",
+        "//tensorflow/lite/tools/delegates:tflite_execution_providers",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings",
+        "@ruy//ruy/profiler",
+    ],
 )
 
 cc_library(
@@ -180,7 +168,7 @@ cc_library(
         ":benchmark_model_lib",
         ":benchmark_params",
         ":benchmark_utils",
-        ":logging",
+        "//tensorflow/lite/tools:logging",
         "@com_google_absl//absl/memory",
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite/c:common",
@@ -197,12 +185,9 @@ cc_library(
 
 cc_library(
     name = "benchmark_params",
-    srcs = [
-        "benchmark_params.cc",
-    ],
     hdrs = ["benchmark_params.h"],
     copts = common_copts,
-    deps = [":logging"],
+    deps = ["//tensorflow/lite/tools:tool_params"],
 )
 
 cc_library(
@@ -215,111 +200,14 @@ cc_library(
     deps = [
         ":benchmark_params",
         ":benchmark_utils",
-        ":logging",
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/profiling:memory_info",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools:command_line_flags",
+        "//tensorflow/lite/tools:logging",
     ],
-)
-
-cc_library(
-    name = "delegate_provider_hdr",
-    hdrs = [
-        "delegate_provider.h",
-    ],
-    copts = common_copts,
-    deps = [
-        ":benchmark_params",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/tools:command_line_flags",
-    ],
-)
-
-cc_library(
-    name = "gpu_delegate_provider",
-    srcs = ["gpu_delegate_provider.cc"],
-    copts = common_copts + select({
-        "//tensorflow:ios": [
-            "-xobjective-c++",
-        ],
-        "//conditions:default": [],
-    }),
-    deps = [
-        ":benchmark_model_lib",
-        ":benchmark_params",
-        ":delegate_provider_hdr",
-        ":logging",
-        "//tensorflow/lite/tools/evaluation:utils",
-    ] + select({
-        "//tensorflow:android": [
-            "//tensorflow/lite/delegates/gpu:delegate",
-        ],
-        "//tensorflow:ios": [
-            "//tensorflow/lite/delegates/gpu:metal_delegate",
-        ],
-        "//conditions:default": [],
-    }),
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "nnapi_delegate_provider",
-    srcs = ["nnapi_delegate_provider.cc"],
-    copts = common_copts,
-    deps = [
-        ":benchmark_model_lib",
-        ":benchmark_params",
-        ":delegate_provider_hdr",
-        ":logging",
-        "//tensorflow/lite/tools/evaluation:utils",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "hexagon_delegate_provider",
-    srcs = ["hexagon_delegate_provider.cc"],
-    copts = common_copts,
-    deps = [
-        ":benchmark_model_lib",
-        ":benchmark_params",
-        ":delegate_provider_hdr",
-        ":logging",
-        "//tensorflow/lite/tools/evaluation:utils",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "xnnpack_delegate_provider",
-    srcs = ["xnnpack_delegate_provider.cc"],
-    copts = tflite_copts(),
-    linkstatic = True,
-    visibility = ["//visibility:public"],
-    deps = [
-        ":benchmark_model_lib",
-        ":delegate_provider_hdr",
-        ":logging",
-        "//tensorflow/lite/tools/evaluation:utils",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "external_delegate_provider",
-    srcs = ["external_delegate_provider.cc"],
-    copts = tflite_copts(),
-    linkstatic = True,
-    visibility = ["//visibility:public"],
-    deps = [
-        ":benchmark_model_lib",
-        ":delegate_provider_hdr",
-        ":logging",
-    ],
-    alwayslink = 1,
 )
 
 cc_library(

@@ -22,8 +22,6 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.zip.ZipException;
 import org.checkerframework.checker.nullness.qual.Nullable;
-import org.tensorflow.lite.DataType;
-import org.tensorflow.lite.Tensor.QuantizationParams;
 import org.tensorflow.lite.schema.Tensor;
 import org.tensorflow.lite.support.metadata.schema.ModelMetadata;
 import org.tensorflow.lite.support.metadata.schema.TensorMetadata;
@@ -54,6 +52,11 @@ import org.tensorflow.lite.support.metadata.schema.TensorMetadata;
  * MetadataExtractor} omits subgraph index as an input in its methods.
  */
 public class MetadataExtractor {
+  // TODO(b/156539454): remove the hardcode versioning number and populate the version through
+  // genrule.
+  /** The version of the metadata parser that this {@link MetadataExtractor} library depends on. */
+  public static final String METADATA_PARSER_VERSION = "1.0.1";
+
   /** The helper class to load metadata from TFLite model FlatBuffer. */
   private final ModelInfo modelInfo;
 
@@ -76,6 +79,15 @@ public class MetadataExtractor {
     ByteBuffer metadataBuffer = modelInfo.getMetadataBuffer();
     if (metadataBuffer != null) {
       metadataInfo = new ModelMetadataInfo(metadataBuffer);
+
+      // Prints warning message if the minimum parser version is not satisfied.
+      if (!isMinimumParserVersionSatisfied()) {
+        System.err.printf(
+            "<Warning> Some fields in the metadata belong to a future schema. The minimum parser"
+                + " version required is %s, but the version of the current metadata parser is %s",
+            metadataInfo.getMininumParserVersion(), METADATA_PARSER_VERSION);
+      }
+
       checkArgument(
           modelInfo.getInputTensorCount() == metadataInfo.getInputTensorCount(),
           String.format(
@@ -97,8 +109,50 @@ public class MetadataExtractor {
     zipFile = createZipFile(buffer);
   }
 
+  /**
+   * Quantization parameters that corresponds to the table, {@code QuantizationParameters}, in the
+   * <a
+   * href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/schema/schema.fbs">TFLite
+   * Model schema file.</a>
+   *
+   * <p>Since per-channel quantization does not apply to input and output tensors, {@code scale} and
+   * {@code zero_point} are both single values instead of arrays.
+   *
+   * <p>For tensor that are not quantized, the values of scale and zero_point are both 0.
+   *
+   * <p>Given a quantized value q, the corresponding float value f should be: <br>
+   * f = scale * (q - zero_point) <br>
+   */
+  public static class QuantizationParams {
+    /** The scale value used in quantization. */
+    private final float scale;
+    /** The zero point value used in quantization. */
+    private final int zeroPoint;
+
+    /**
+     * Creates a {@link QuantizationParams} with {@code scale} and {@code zero_point}.
+     *
+     * @param scale The scale value used in quantization.
+     * @param zeroPoint The zero point value used in quantization.
+     */
+    public QuantizationParams(final float scale, final int zeroPoint) {
+      this.scale = scale;
+      this.zeroPoint = zeroPoint;
+    }
+
+    /** Returns the scale value. */
+    public float getScale() {
+      return scale;
+    }
+
+    /** Returns the zero point value. */
+    public int getZeroPoint() {
+      return zeroPoint;
+    }
+  }
+
   /** Returns {@code true} if the model has metadata. Otherwise, returns {@code false}. */
-  public Boolean hasMetadata() {
+  public boolean hasMetadata() {
     return metadataInfo != null;
   }
 
@@ -152,11 +206,11 @@ public class MetadataExtractor {
   }
 
   /**
-   * Gets the {@link DataType} of the input tensor with {@code inputIndex}.
+   * Gets the {@link TensorType} of the input tensor with {@code inputIndex}.
    *
    * @param inputIndex the index of the desired input tensor
    */
-  public DataType getInputTensorType(int inputIndex) {
+  public byte getInputTensorType(int inputIndex) {
     return modelInfo.getInputTensorType(inputIndex);
   }
 
@@ -207,16 +261,40 @@ public class MetadataExtractor {
   }
 
   /**
-   * Gets the {@link DataType} of the output tensor with {@code outputIndex}.
+   * Gets the {@link TensorType} of the output tensor with {@code outputIndex}.
    *
    * @param outputIndex the index of the desired output tensor
    */
-  public DataType getOutputTensorType(int outputIndex) {
+  public byte getOutputTensorType(int outputIndex) {
     return modelInfo.getOutputTensorType(outputIndex);
   }
 
   /**
-   * Asserts if {@link metdadataInfo} is not initialized. Some models may not have metadata and this
+   * Returns {@code true} if the minimum parser version required by the given metadata flatbuffer
+   * precedes or equals to the version of the metadata parser that this MetadataExtractor library is
+   * relying on. All fields in the metadata can be parsed correctly with this metadata extractor
+   * library in this case. Otherwise, it returns {@code false}.
+   *
+   * <p>For example, assume the underlying metadata parser version is {@code 1.14.1},
+   *
+   * <ul>
+   *   <li>it returns {@code true}, if the required minimum parser version is the same or older,
+   *       such as {@code 1.14.1} or {@code 1.14.0}. Null version precedes all numeric versions,
+   *       because some metadata flatbuffers are generated before the first versioned release; <br>
+   *   <li>it returns {@code false}, if the required minimum parser version is newer, such as {@code
+   *       1.14.2}.
+   * </ul>
+   */
+  public final boolean isMinimumParserVersionSatisfied() {
+    String minVersion = metadataInfo.getMininumParserVersion();
+    if (minVersion == null) {
+      return true;
+    }
+    return compareVersions(minVersion, METADATA_PARSER_VERSION) <= 0;
+  }
+
+  /**
+   * Asserts if {@link #metadataInfo} is not initialized. Some models may not have metadata and this
    * is allowed. However, invoking methods that reads the metadata is not allowed.
    *
    * @throws IllegalStateException if this model does not contain model metadata
@@ -259,5 +337,36 @@ public class MetadataExtractor {
       // However, invoking methods that read associated files later will lead into errors.
       return null;
     }
+  }
+
+  /**
+   * Compares two semantic version numbers.
+   *
+   * <p>Examples of comparing two versions: <br>
+   * {@code 1.9} precedes {@code 1.14}; <br>
+   * {@code 1.14} precedes {@code 1.14.1}; <br>
+   * {@code 1.14} and {@code 1.14.0} are euqal;
+   *
+   * @return the value {@code 0} if the two versions are equal; a value less than {@code 0} if
+   *     {@code version1} precedes {@code version2}; a value greater than {@code 0} if {@code
+   *     version2} precedes {@code version1}.
+   */
+  private static int compareVersions(String version1, String version2) {
+    // Using String.split instead of the recommanded Guava Splitter because we've been avoiding
+    // depending on other third party libraries in this project.
+    String[] levels1 = version1.split("\\.", 0);
+    String[] levels2 = version2.split("\\.", 0);
+
+    int length = Math.max(levels1.length, levels2.length);
+    for (int i = 0; i < length; i++) {
+      Integer v1 = i < levels1.length ? Integer.parseInt(levels1[i]) : 0;
+      Integer v2 = i < levels2.length ? Integer.parseInt(levels2[i]) : 0;
+      int compare = v1.compareTo(v2);
+      if (compare != 0) {
+        return compare;
+      }
+    }
+
+    return 0;
   }
 }

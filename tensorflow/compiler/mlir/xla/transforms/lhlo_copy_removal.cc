@@ -30,7 +30,7 @@ namespace {
 // arguments. All uses of each buffer are replaced with the corresponding block
 // argument and the buffer is freed. Note that this pass only works in regions
 // with a single block.
-struct LhloCopyRemoval : mlir::OperationPass<LhloCopyRemoval> {
+struct LhloCopyRemoval : mlir::PassWrapper<LhloCopyRemoval, OperationPass<>> {
   void runOnOperation() override {
     llvm::SmallVector<mlir::Operation*, 2> eraseList;
     auto operation = getOperation();

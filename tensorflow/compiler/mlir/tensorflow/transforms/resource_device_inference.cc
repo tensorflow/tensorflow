@@ -54,7 +54,7 @@ constexpr char kFuncDeviceAttr[] = "tf.device";
 // This pass changes the module by adding "tf.device" attribute to function
 // arguments and adding "device" attribute to TF ops.
 struct ResourceDeviceInference
-    : public OperationPass<ResourceDeviceInference, ModuleOp> {
+    : public PassWrapper<ResourceDeviceInference, OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
 
@@ -149,7 +149,7 @@ LogicalResult ComputeResourceDevicesInComputation(FuncOp func_op,
   }
   auto walk_res = func_op.walk([&](Operation* op) {
     if (auto var_handle = llvm::dyn_cast<TF::VarHandleOp>(op)) {
-      // Record VarHanldeOp's device attribute.
+      // Record VarHandleOp's device attribute.
       auto device_attr =
           var_handle.getAttrOfType<mlir::StringAttr>(kDeviceAttr);
       if (!device_attr || device_attr.getValue().empty()) {
@@ -266,7 +266,7 @@ void ResourceDeviceInference::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateResourceDeviceInferencePass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateResourceDeviceInferencePass() {
   return std::make_unique<ResourceDeviceInference>();
 }
 

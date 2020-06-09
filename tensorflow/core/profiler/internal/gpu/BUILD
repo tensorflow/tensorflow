@@ -15,6 +15,10 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+load(
+    "//tensorflow/stream_executor:build_defs.bzl",
+    "tf_additional_cupti_deps",
+)
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -76,6 +80,7 @@ tf_cc_test_gpu(
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/profiler/internal:profiler_interface",
+        "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core/profiler/utils:tf_xplane_visitor",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",
@@ -90,20 +95,25 @@ tf_cuda_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:platform_base",
-        "//tensorflow/stream_executor/cuda:cupti_stub",
-    ],
+    ] + tf_additional_cupti_deps(),
 )
 
+# Rationale for linkstatic: The symbols in libcupti_static.a have hidden
+# visibility. The wrapper will fail to find them if it's ever built as a
+# shared library. This is the same issue as b/11094727. Always linking
+# the wrapper statically works around the issue. An alternative would be
+# to patch libcupti_static, but it's not worth the trouble considering
+# that the wrapper is about the only direct user.
 tf_cuda_library(
     name = "cupti_wrapper",
     srcs = if_cuda_is_configured_compat(["cupti_wrapper.cc"]),
     hdrs = if_cuda_is_configured_compat(["cupti_wrapper.h"]),
     copts = tf_copts(),
+    linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
         ":cupti_interface",
-        "//tensorflow/stream_executor/cuda:cupti_stub",
-    ],
+    ] + tf_additional_cupti_deps(),
 )
 
 tf_cuda_library(

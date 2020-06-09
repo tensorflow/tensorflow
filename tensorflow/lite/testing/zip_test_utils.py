@@ -133,6 +133,11 @@ def create_scalar_data(dtype, min_value=-100, max_value=100):
     value = (max_value - min_value) * np.random.random() + min_value
   elif dtype in (tf.int32, tf.uint8, tf.int64, tf.int16):
     value = np.random.randint(min_value, max_value + 1)
+  elif dtype == tf.bool:
+    value = np.random.choice([True, False])
+  elif dtype == np.string_:
+    l = np.random.randint(1, 6)
+    value = "".join(np.random.choice(list(string.ascii_uppercase), size=l))
   return np.array(value, dtype=dtype)
 
 

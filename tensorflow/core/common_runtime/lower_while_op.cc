@@ -15,9 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/lower_while_op.h"
 
-#include "tensorflow/core/common_runtime/function.h"
-#include "tensorflow/core/common_runtime/lower_functional_ops.h"
-#include "tensorflow/core/common_runtime/lower_if_op.h"
+#include "tensorflow/core/common_runtime/inline_function_utils.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
@@ -30,7 +28,7 @@ namespace {
 using NodeOut = NodeBuilder::NodeOut;
 
 constexpr const char* const kLowerAsMultiDeviceFunctionAttr =
-    LowerFunctionalOpsPass::kLowerAsMultiDeviceFunctionAttr;
+    LowerFunctionalOpsConstants::kLowerAsMultiDeviceFunctionAttr;
 
 // Helper to convert a functional While op to its lowered form.
 //
@@ -240,12 +238,14 @@ Status LowerWhileHelper::CreateEnterNodes() {
   TF_RETURN_IF_ERROR(while_op_->input_edges(&edges));
   for (const Edge* edge : edges) {
     Node* enter_node;
-    NodeBuilder builder = NodeBuilder(NewName("enter"), "Enter",
-                                      graph_->op_registry(), &debug_info_)
-                              .Input(NodeOut(edge->src(), edge->src_output()))
-                              .Attr("frame_name", name_)
-                              .Attr("parallel_iterations", parallel_iterations_)
-                              .Device(while_op_->requested_device());
+    NodeBuilder builder =
+        NodeBuilder(NewName("enter"), "Enter", graph_->op_registry(),
+                    &debug_info_)
+            .Input(NodeOut(edge->src(), edge->src_output()))
+            .Attr("frame_name", name_)
+            .Attr("parallel_iterations", parallel_iterations_)
+            .Device(edge->src()->requested_device())
+            .AssignedDevice(edge->src()->assigned_device_name());
     if (IsResource(edge->dst_input())) {
       builder.Attr("is_constant", true);
     }
@@ -284,7 +284,8 @@ Status LowerWhileHelper::CreateMergeNodes() {
         NodeBuilder(NewName("merge"), "Merge", graph_->op_registry(),
                     &debug_info_)
             .Input({NodeOut(enter_node, 0), NodeOut(enter_node, 0)})
-            .Device(while_op_->requested_device())
+            .Device(enter_node->requested_device())
+            .AssignedDevice(enter_node->assigned_device_name())
             .Finalize(graph_, &merge_node));
     merge_nodes_.emplace_back(merge_node);
   }
@@ -325,21 +326,19 @@ Status LowerWhileHelper::CreateSwitchNodes() {
       TF_RETURN_IF_ERROR(while_op_->input_node(i, &input_node));
       op_name = strings::StrCat(input_node->name(), "_switch");
     }
+    Node* merge_node = merge_nodes_[op_input_output_to_lowered_node_[i]];
     Node* switch_node;
     string op_type = "Switch";
-    if (IsRefType(
-            merge_nodes_[op_input_output_to_lowered_node_[i]]->output_type(
-                0))) {
+    if (IsRefType(merge_node->output_type(0))) {
       op_type = "RefSwitch";
     }
-    TF_RETURN_IF_ERROR(
-        NodeBuilder(NewName(op_name), op_type, graph_->op_registry(),
-                    &debug_info_)
-            .Input(
-                NodeOut(merge_nodes_[op_input_output_to_lowered_node_[i]], 0))
-            .Input(NodeOut(loop_cond_node_, 0))
-            .Device(while_op_->requested_device())
-            .Finalize(graph_, &switch_node));
+    TF_RETURN_IF_ERROR(NodeBuilder(NewName(op_name), op_type,
+                                   graph_->op_registry(), &debug_info_)
+                           .Input(NodeOut(merge_node, 0))
+                           .Input(NodeOut(loop_cond_node_, 0))
+                           .Device(merge_node->requested_device())
+                           .AssignedDevice(merge_node->assigned_device_name())
+                           .Finalize(graph_, &switch_node));
     switch_nodes_.emplace_back(switch_node);
   }
   return Status::OK();
@@ -394,7 +393,10 @@ Status LowerWhileHelper::CreateExitNodes() {
                       &debug_info_)
               .Input(NodeOut(switch_nodes_[op_input_output_to_lowered_node_[i]],
                              0))
-              .Device(while_op_->requested_device())
+              .Device(switch_nodes_[op_input_output_to_lowered_node_[i]]
+                          ->requested_device())
+              .AssignedDevice(switch_nodes_[op_input_output_to_lowered_node_[i]]
+                                  ->assigned_device_name())
               .Finalize(graph_, &exit_node));
       exit_nodes_.emplace_back(exit_node);
       outputs.emplace_back(NodeOut(exit_node, 0));
@@ -442,11 +444,13 @@ Status LowerWhileHelper::CreateNextIterationNodes() {
     if (IsResource(i)) {
       continue;
     }
+    Node* merge_node = merge_nodes_[op_input_output_to_lowered_node_[i]];
     TF_RETURN_IF_ERROR(NodeBuilder(NewName("next_iteration"), "NextIteration",
                                    graph_->op_registry(), &debug_info_)
                            .Input(NodeOut(body_call_node_, i))
                            .ControlInput(body_call_node_)
-                           .Device(while_op_->requested_device())
+                           .Device(merge_node->requested_device())
+                           .AssignedDevice(merge_node->assigned_device_name())
                            .Finalize(graph_, &next_iteration));
     next_iterations_nodes_.emplace_back(next_iteration);
   }

@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_SIMPLE_MEMORY_ALLOCATOR_H_
 #define TENSORFLOW_LITE_MICRO_SIMPLE_MEMORY_ALLOCATOR_H_
 
-#include "tensorflow/lite/c/common.h"
+#include <cstddef>
+#include <cstdint>
+
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/micro/compatibility.h"
 
 namespace tflite {
 
@@ -27,43 +29,46 @@ namespace tflite {
 // This makes it pretty wasteful, so we should use a more intelligent method.
 class SimpleMemoryAllocator {
  public:
-  SimpleMemoryAllocator(uint8_t* buffer, size_t buffer_size)
-      : data_size_max_(buffer_size), data_(buffer) {}
+  // TODO(b/157615197): Cleanup constructors/destructor and use factory
+  // functions.
+  SimpleMemoryAllocator(ErrorReporter* error_reporter, uint8_t* buffer_head,
+                        uint8_t* buffer_tail);
+  SimpleMemoryAllocator(ErrorReporter* error_reporter, uint8_t* buffer,
+                        size_t buffer_size);
+  virtual ~SimpleMemoryAllocator();
 
-  // Allocates memory starting at the end of the arena (highest address and
-  // moving downwards, so that tensor buffers can be allocated from the start
-  // in ascending order.
-  uint8_t* AllocateFromTail(size_t size, size_t alignment);
+  // Creates a new SimpleMemoryAllocator from a given buffer head and size.
+  static SimpleMemoryAllocator* Create(ErrorReporter* error_reporter,
+                                       uint8_t* buffer_head,
+                                       size_t buffer_size);
 
-  size_t GetDataSize() const { return data_size_; }
-  uint8_t* GetBuffer() const { return data_; }
-  size_t GetMaxBufferSize() const { return data_size_max_; }
+  // Allocates memory starting at the head of the arena (lowest address and
+  // moving upwards).
+  virtual uint8_t* AllocateFromHead(size_t size, size_t alignment);
+  // Allocates memory starting at the tail of the arena (highest address and
+  // moving downwards).
+  virtual uint8_t* AllocateFromTail(size_t size, size_t alignment);
 
-  // Child allocator is something like a temporary allocator. Memory allocated
-  // by the child allocator will be freed once the child allocator is
-  // deallocated. Child allocator could be cascaded to have for example
-  // grandchild allocator. But at any given time, only the latest child
-  // allocator can be used. All its ancestors will be locked to avoid memory
-  // corruption. Locked means that the allocator can't allocate memory.
-  // WARNING: Parent allocator needs to live longer than the child allocator.
-  SimpleMemoryAllocator CreateChildAllocator();
+  uint8_t* GetHead() const;
+  uint8_t* GetTail() const;
 
-  // Unlocks parent allocator when the child allocator is deconstructed.
-  ~SimpleMemoryAllocator();
+  size_t GetHeadUsedBytes() const;
+  size_t GetTailUsedBytes() const;
+
+  size_t GetAvailableMemory() const;
+  size_t GetUsedBytes() const;
 
  private:
-  size_t data_size_ = 0;
-  size_t data_size_max_;
-  uint8_t* data_;
-  SimpleMemoryAllocator* parent_allocator_ = nullptr;
-  // The allocator is locked if it has a child.
-  bool has_child_allocator_ = false;
-};
+  size_t GetBufferSize() const;
 
-// Allocate a SimpleMemoryAllocator from the buffer and then return the pointer
-// to this allocator.
-SimpleMemoryAllocator* CreateInPlaceSimpleMemoryAllocator(uint8_t* buffer,
-                                                          size_t buffer_size);
+  ErrorReporter* error_reporter_;
+  uint8_t* buffer_head_;
+  uint8_t* buffer_tail_;
+  uint8_t* head_;
+  uint8_t* tail_;
+
+  TF_LITE_REMOVE_VIRTUAL_DELETE
+};
 
 }  // namespace tflite
 

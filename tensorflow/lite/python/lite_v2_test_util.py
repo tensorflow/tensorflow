@@ -53,10 +53,12 @@ class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       for idx, (shape_signature, final_shape) in enumerate(input_shapes):
         self.assertTrue(
             (input_details[idx]['shape_signature'] == shape_signature).all())
-        interpreter.resize_tensor_input(idx, final_shape)
+        index = input_details[idx]['index']
+        interpreter.resize_tensor_input(index, final_shape, strict=True)
     interpreter.allocate_tensors()
 
     output_details = interpreter.get_output_details()
+    input_details = interpreter.get_input_details()
 
     for input_tensor, tensor_data in zip(input_details, input_data):
       interpreter.set_tensor(input_tensor['index'], tensor_data.numpy())

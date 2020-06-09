@@ -24,65 +24,115 @@ namespace {
 using ::testing::ElementsAreArray;
 using ::testing::IsEmpty;
 
+enum class TestType {
+  kConst = 0,
+  kDynamic = 1,
+};
+
+template <typename dims_type, typename value_type>
 class FillOpModel : public SingleOpModel {
  public:
-  explicit FillOpModel(const TensorData& input1, const TensorData& input2) {
-    input1_ = AddInput(input1);
-    input2_ = AddInput(input2);
-    output_ = AddOutput(input1);
+  explicit FillOpModel(TensorType dims_tensor_type,
+                       std::initializer_list<int> dims_shape,
+                       std::initializer_list<dims_type> dims_data,
+                       value_type value, TestType input_tensor_types) {
+    if (input_tensor_types == TestType::kDynamic) {
+      dims_ = AddInput(dims_tensor_type);
+      value_ = AddInput(GetTensorType<value_type>());
+    } else {
+      dims_ = AddConstInput(dims_tensor_type, dims_data, dims_shape);
+      value_ = AddConstInput(GetTensorType<value_type>(), {value}, {});
+    }
+    output_ = AddOutput(GetTensorType<value_type>());
     SetBuiltinOp(BuiltinOperator_FILL, BuiltinOptions_FillOptions,
                  CreateFillOptions(builder_).Union());
-    BuildInterpreter({GetShape(input1_), GetShape(input2_)});
+    BuildInterpreter({dims_shape, {}});
+
+    if (input_tensor_types == TestType::kDynamic) {
+      if (dims_data.size() > 0) {
+        PopulateTensor<dims_type>(dims_, dims_data);
+      }
+      PopulateTensor<value_type>(value_, {value});
+    }
   }
 
-  int input1() { return input1_; }
-  int input2() { return input2_; }
-  int output() { return output_; }
+  std::vector<value_type> GetOutput() {
+    return ExtractVector<value_type>(output_);
+  }
+  std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
 
  protected:
-  int input1_;
-  int input2_;
+  int dims_;
+  int value_;
   int output_;
 };
 
-TEST(FillOpModel, FillInt32) {
-  FillOpModel m({TensorType_INT32, {2}}, {TensorType_INT32});
-  m.PopulateTensor<int32_t>(m.input1(), {2, 3});
-  m.PopulateTensor<int32_t>(m.input2(), {-11});
+class FillOpTest : public ::testing::TestWithParam<TestType> {};
+
+TEST_P(FillOpTest, FillInt32) {
+  FillOpModel<int32_t, int32_t> m(TensorType_INT32, {2}, {2, 3}, -11,
+                                  GetParam());
   m.Invoke();
-  EXPECT_THAT(m.ExtractVector<int32_t>(m.output()),
-              ElementsAreArray({-11, -11, -11, -11, -11, -11}));
-  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({2, 3}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-11, -11, -11, -11, -11, -11}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
 }
 
-TEST(FillOpModel, FillInt64) {
-  FillOpModel m({TensorType_INT32, {2}}, {TensorType_INT64});
-  m.PopulateTensor<int32_t>(m.input1(), {2, 4});
-  m.PopulateTensor<int64_t>(m.input2(), {1LL << 45});
+TEST_P(FillOpTest, FillInt64) {
+  FillOpModel<int64_t, int64_t> m(TensorType_INT64, {2}, {2, 4}, 1LL << 45,
+                                  GetParam());
   m.Invoke();
-  EXPECT_THAT(m.ExtractVector<int64_t>(m.output()),
+  EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({1LL << 45, 1LL << 45, 1LL << 45, 1LL << 45,
                                 1LL << 45, 1LL << 45, 1LL << 45, 1LL << 45}));
-  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({2, 4}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 4}));
 }
 
-TEST(FillOpModel, FillFloat) {
-  FillOpModel m({TensorType_INT64, {3}}, {TensorType_FLOAT32});
-  m.PopulateTensor<int64_t>(m.input1(), {2, 2, 2});
-  m.PopulateTensor<float>(m.input2(), {4.0});
+TEST_P(FillOpTest, FillFloat) {
+  FillOpModel<int64_t, float> m(TensorType_INT64, {3}, {2, 2, 2}, 4.0,
+                                GetParam());
   m.Invoke();
-  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+  EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0}));
-  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({2, 2, 2}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
 }
 
-TEST(FillOpModel, FillOutputScalar) {
-  FillOpModel m({TensorType_INT64, {0}}, {TensorType_FLOAT32});
-  m.PopulateTensor<float>(m.input2(), {4.0});
+TEST_P(FillOpTest, FillFloatInt32Dims) {
+  FillOpModel<int32_t, float> m(TensorType_INT32, {3}, {2, 2, 2}, 4.0,
+                                GetParam());
   m.Invoke();
-  EXPECT_THAT(m.ExtractVector<float>(m.output()), ElementsAreArray({4.0}));
-  EXPECT_THAT(m.GetTensorShape(m.output()), IsEmpty());
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
 }
+
+TEST_P(FillOpTest, FillOutputScalar) {
+  FillOpModel<int64_t, float> m(TensorType_INT64, {0}, {}, 4.0, GetParam());
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({4.0}));
+  EXPECT_THAT(m.GetOutputShape(), IsEmpty());
+}
+
+TEST_P(FillOpTest, FillBool) {
+  FillOpModel<int64_t, bool> m(TensorType_INT64, {3}, {2, 2, 2}, true,
+                               GetParam());
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({true, true, true, true, true,
+                                               true, true, true}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
+}
+
+TEST(FillOpTest, FillString) {
+  FillOpModel<int64_t, std::string> m(TensorType_INT64, {3}, {2, 2, 2}, "AB",
+                                      TestType::kDynamic);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({"AB", "AB", "AB", "AB", "AB",
+                                               "AB", "AB", "AB"}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
+}
+
+INSTANTIATE_TEST_SUITE_P(FillOpTest, FillOpTest,
+                         ::testing::Values(TestType::kConst,
+                                           TestType::kDynamic));
 
 }  // namespace
 }  // namespace tflite

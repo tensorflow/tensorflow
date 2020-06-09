@@ -23,7 +23,7 @@ limitations under the License.
 #define TF_OP_BASE
 
 include "mlir/IR/OpBase.td"
-include "mlir/Interfaces/SideEffects.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.td"
 
 //===----------------------------------------------------------------------===//
@@ -63,12 +63,68 @@ def TF_OperandsSameAsResultsTypeOrRef : NativeOpTrait<
 // format), as an example all element wise operations are layout agnostic.
 def TF_LayoutAgnostic : NativeOpTrait<"TF::LayoutAgnostic">;
 
+// Variant of broadcastable trait that considers TF's subtype behavior.
+class TF_OpIsBroadcastableToRes<int opId, int resId> : And<[
+    TCOpResIsShapedTypePred<opId, resId>,
+    CPred<"mlir::TF::BroadcastCompatible("
+              "$_op.getOperand(" # opId # ").getType(), "
+              "$_op.getResult(" # resId # ").getType())">]>;
+
+
+class TF_AllTypesMatchPred<list<string> values> :
+    CPred<"TF::AreCastCompatible(llvm::makeArrayRef({"# StrJoin<values>.result #"}))">;
+
+class TF_AllTypesMatch<list<string> names> :
+    PredOpTrait<
+        "all of {" # StrJoin<names>.result # "} have dynamically equal types ",
+        TF_AllTypesMatchPred<
+            !foreach(n, names, !subst("$_self", "$" # n, "$_self.getType()"))>>;
+
+//===----------------------------------------------------------------------===//
+// TensorFlow op side effects
+//===----------------------------------------------------------------------===//
+
+class TF_ResourceBase<string resourceKind> :
+  Resource<!strconcat("::mlir::TF::ResourceEffects::", resourceKind)> {
+}
+
+def TF_VariableResource : TF_ResourceBase<"Variable">;
+def TF_StackResource : TF_ResourceBase<"Stack">;
+def TF_TensorArrayResource : TF_ResourceBase<"TensorArray">;
+
+def TF_VariableRead : MemRead<TF_VariableResource>;
+def TF_StackRead : MemRead<TF_StackResource>;
+def TF_TensorArrayRead : MemRead<TF_TensorArrayResource>;
+
+def TF_VariableWrite : MemWrite<TF_VariableResource>;
+def TF_StackWrite : MemWrite<TF_StackResource>;
+def TF_TensorArrayWrite : MemWrite<TF_TensorArrayResource>;
+
 //===----------------------------------------------------------------------===//
 // TensorFlow op definitions
 //===----------------------------------------------------------------------===//
 
 class TF_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<TF_Dialect, mnemonic, traits>;
+
+//===----------------------------------------------------------------------===//
+// TensorFlow attribute definitions
+//===----------------------------------------------------------------------===//
+
+class TF_TensorFlowAttr <string name, string description> :
+    Attr<CPred<"$_self.isa<mlir::TF::" # name # "Attr>()">,
+         "TensorFlow " # description # " attribute">;
+
+def TF_ShapeAttr : TF_TensorFlowAttr<"Shape", "shape"> {
+  let returnType = "llvm::Optional<llvm::ArrayRef<int64_t>>";
+  let convertFromStorage = "$_self.cast<mlir::TF::ShapeAttr>().getValue()";
+
+  // Create a ranked shape attr by default.
+  let constBuilderCall = "mlir::TF::ShapeAttr::get($_builder.getContext(), $0)";
+}
+
+def TF_ShapeAttrArray :
+    TypedArrayAttrBase<TF_ShapeAttr, "tensorflow shape attribute array">;
 
 //===----------------------------------------------------------------------===//
 // TensorFlow type definitions
@@ -103,9 +159,16 @@ def TF_I32Or64 : SignlessIntOfWidths<[32, 64]>;
 def TF_I32OrI64Tensor : TensorOf<[TF_I32Or64]>;
 
 def TF_Uint8 : UI<8>;
+def TF_Uint8Tensor : TensorOf<[TF_Uint8]>;
+
 def TF_Uint16 : UI<16>;
+def TF_Uint16Tensor : TensorOf<[TF_Uint16]>;
+
 def TF_Uint32 : UI<32>;
+def TF_Uint32Tensor : TensorOf<[TF_Uint32]>;
+
 def TF_Uint64 : UI<64>;
+def TF_Uint64Tensor : TensorOf<[TF_Uint64]>;
 
 // Any unsigned integer type
 def TF_UInt : UnsignedIntOfWidths<[8, 16, 32, 64]>;
@@ -233,7 +296,8 @@ def TF_ConvnetDataFormatAttr : StringBasedAttr<
 class TF_DerivedOperandSizeAttr<int idx> : DerivedAttr<
   "size_t",
   "auto range = getODSOperands(" # idx # ");\n"
-  "return std::distance(range.begin(), range.end());">;
+  "return std::distance(range.begin(), range.end());",
+  [{ $_builder.getI64IntegerAttr($_self) }]>;
 
 // A derived attribute that returns the element type of `idx`-th ODS-declared
 // operand. If the `idx`-th operand is a variadic operand, then this attribute
@@ -251,7 +315,16 @@ class TF_DerivedOperandTypeListAttr<int idx> : DerivedAttr<
   "mlir::OperandElementTypeRange",
   "auto values = getODSOperands(" # idx # ");\n"
   "return {mlir::OperandElementTypeIterator(values.begin()), "
-          "mlir::OperandElementTypeIterator(values.end())};"
+          "mlir::OperandElementTypeIterator(values.end())};",
+  [{
+    ArrayAttr::get(
+    [&]() {
+      llvm::SmallVector<Attribute, 4> ret;
+      for (auto t : $_self)
+        ret.push_back(TypeAttr::get(t));
+      return ret;
+    }(), $_ctx)
+  }]
 >;
 
 // A derived attribute that returns the shapes of the tensors in the actual
@@ -262,7 +335,16 @@ class TF_DerivedOperandShapeListAttr<int idx> : DerivedAttr<
   "mlir::TF::OperandShapeRange",
   "auto values = getODSOperands(" # idx # ");\n"
   "return {mlir::TF::OperandShapeIterator(values.begin()), "
-          "mlir::TF::OperandShapeIterator(values.end())};"
+          "mlir::TF::OperandShapeIterator(values.end())};",
+  [{
+    ArrayAttr::get(
+      [&](){
+        llvm::SmallVector<Attribute, 4> ret;
+        for (auto shape : $_self)
+          ret.push_back(mlir::TF::ShapeAttr::get($_ctx, shape));
+        return ret;
+      }(), $_ctx)
+  }]
 >;
 
 // A derived attribute that returns the size of `idx`-th ODS-declared variadic
@@ -270,7 +352,8 @@ class TF_DerivedOperandShapeListAttr<int idx> : DerivedAttr<
 class TF_DerivedResultSizeAttr<int idx> : DerivedAttr<
   "size_t",
   "auto range = getODSResults(" # idx # ");\n"
-  "return std::distance(range.begin(), range.end());">;
+  "return std::distance(range.begin(), range.end());",
+  [{ $_builder.getI64IntegerAttr($_self) }]>;
 
 // A derived attribute that returns the element type of `idx`-th ODS-declared
 // result. If the `idx`-th result is a variadic result, then this attribute
@@ -288,7 +371,16 @@ class TF_DerivedResultTypeListAttr<int idx> : DerivedAttr<
   "mlir::ResultElementTypeRange",
   "auto values = getODSResults(" # idx # ");\n"
   "return {mlir::ResultElementTypeIterator(values.begin()), "
-          "mlir::ResultElementTypeIterator(values.end())};"
+          "mlir::ResultElementTypeIterator(values.end())};",
+  [{
+    ArrayAttr::get(
+    [&]() {
+      llvm::SmallVector<Attribute, 4> ret;
+      for (auto t : $_self)
+        ret.push_back(TypeAttr::get(t));
+      return ret;
+    }(), $_ctx)
+  }]
 >;
 
 // A derived attribute that returns the shapes of the tensors in the actual
@@ -299,12 +391,22 @@ class TF_DerivedResultShapeListAttr<int idx> : DerivedAttr<
   "mlir::TF::ResultShapeRange",
   "auto values = getODSResults(" # idx # ");\n"
   "return {mlir::TF::ResultShapeIterator(values.begin()), "
-          "mlir::TF::ResultShapeIterator(values.end())};"
+          "mlir::TF::ResultShapeIterator(values.end())};",
+  [{
+    ArrayAttr::get(
+      [&](){
+        llvm::SmallVector<Attribute, 4> ret;
+        for (auto shape : $_self)
+          ret.push_back(mlir::TF::ShapeAttr::get($_ctx, shape));
+        return ret;
+      }(), $_ctx)
+  }]
 >;
 
 // A derived attribute that returns the shape of the first result type.
 def TF_DerivedResultShapeAttr : DerivedAttr<"ShapedType",
-  "return (*getOperation()->result_type_begin()).cast<ShapedType>();">;
+  "return (*getOperation()->result_type_begin()).cast<ShapedType>();",
+  [{ TypeAttr::get($_self) }]>;
 
 // A derived attribute that returns the element type of the tensor held by a
 // named resource-type operand or result.
@@ -315,7 +417,6 @@ class TF_DerivedOperandOrResultHandleTypeAttr<string name> : DerivedTypeAttr<
   "assert(!resource_type.getSubtypes().empty() && \"unknown type\");\n"
   "return mlir::getElementTypeOrSelf(*resource_type.getSubtypes().begin());">;
 
-
 // A derived attribute that returns the shape of the tensor held by a named
 // resource-type operand or result.
 class TF_DerivedOperandOrResultHandleShapeAttr<string name> : DerivedAttr<
@@ -324,7 +425,8 @@ class TF_DerivedOperandOrResultHandleShapeAttr<string name> : DerivedAttr<
   "  mlir::getElementTypeOrSelf(this->" # name # "())\n"
   "  .cast<TF::ResourceType>();\n"
   "assert(!resource_type.getSubtypes().empty() && \"unknown shape\");\n"
-  "return resource_type.getSubtypes().begin()->cast<ShapedType>();">;
+  "return resource_type.getSubtypes().begin()->cast<ShapedType>();",
+  [{ TypeAttr::get($_self) }]>;
 
 def TF_IntTypeAttr : TypeAttrBase<"IntegerType", "integer type"> {
   let returnType = "Type";
@@ -338,7 +440,7 @@ def TF_IntTypeAttr : TypeAttrBase<"IntegerType", "integer type"> {
 // behavior. The result type has the same element type as both operands.
 class WithBroadcastableBinOpBuilder {
   list<OpBuilder> builders = [OpBuilder<
-"Builder *builder, OperationState &result, Value  x, Value  y",
+"OpBuilder &builder, OperationState &result, Value  x, Value  y",
 [{
   auto resultType =
       OpTrait::util::getBroadcastedType(x.getType(), y.getType());
@@ -353,12 +455,12 @@ class WithBroadcastableBinOpBuilder {
 // behavior. The result type has bool element type.
 class WithBroadcastableCmpOpBuilder {
   list<OpBuilder> builders = [OpBuilder<
-"Builder *builder, OperationState &result, Value  x, Value  y",
+"OpBuilder &builder, OperationState &result, Value  x, Value  y",
 [{
   Type resultType;
   if (x.getType().isa<UnrankedTensorType>() ||
       y.getType().isa<UnrankedTensorType>()) {
-    resultType = UnrankedTensorType::get(builder->getI1Type());
+    resultType = UnrankedTensorType::get(builder.getI1Type());
   } else {
     SmallVector<int64_t, 4> resultShape;
     if (!OpTrait::util::getBroadcastedShape(
@@ -368,7 +470,7 @@ class WithBroadcastableCmpOpBuilder {
                       "operands have no broadcastable shapes");
     }
 
-    resultType = RankedTensorType::get(resultShape, builder->getI1Type());
+    resultType = RankedTensorType::get(resultShape, builder.getI1Type());
   }
   return build(builder, result, resultType, x, y);
 }]

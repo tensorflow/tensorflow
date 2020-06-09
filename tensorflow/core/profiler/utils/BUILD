@@ -13,6 +13,19 @@ package_group(
 )
 
 cc_library(
+    name = "diagnostics",
+    srcs = ["diagnostics.cc"],
+    hdrs = ["diagnostics.h"],
+    deps = [
+        "//tensorflow/core/profiler/protobuf:diagnostics_proto_cc",
+        "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "event_span",
     srcs = ["event_span.cc"],
     hdrs = ["event_span.h"],
@@ -21,6 +34,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
@@ -39,6 +53,14 @@ cc_library(
 cc_library(
     name = "math_utils",
     hdrs = ["math_utils.h"],
+)
+
+cc_library(
+    name = "html_utils",
+    hdrs = ["html_utils.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(
@@ -63,6 +85,8 @@ cc_library(
         ":op_metrics_db_utils",
         ":tf_op_utils",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/profiler/convert:op_metrics_db_combiner",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "@com_google_absl//absl/strings",
     ],
@@ -74,7 +98,6 @@ cc_library(
     hdrs = ["tf_op_utils.h"],
     deps = [
         "//tensorflow/core:regexp_internal",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -87,6 +110,7 @@ tf_cc_test(
         ":tf_op_utils",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -137,6 +161,20 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "xplane_builder_test",
+    size = "small",
+    srcs = ["xplane_builder_test.cc"],
+    deps = [
+        ":xplane_builder",
+        ":xplane_visitor",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 cc_library(
     name = "xplane_schema",
     srcs = ["xplane_schema.cc"],
@@ -146,9 +184,9 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -160,7 +198,6 @@ cc_library(
     deps = [
         ":timespan",
         ":xplane_builder",
-        ":xplane_schema",
         ":xplane_visitor",
         "//tensorflow/core:platform_base",
         "//tensorflow/core/platform:types",
@@ -174,7 +211,6 @@ tf_cc_test(
     name = "xplane_utils_test",
     srcs = ["xplane_utils_test.cc"],
     deps = [
-        ":time_utils",
         ":xplane_builder",
         ":xplane_utils",
         ":xplane_visitor",
@@ -183,6 +219,25 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "xplane_test_utils",
+    testonly = True,
+    srcs = ["xplane_test_utils.cc"],
+    hdrs = ["xplane_test_utils.h"],
+    visibility = [":friends"],
+    deps = [
+        ":xplane_builder",
+        ":xplane_schema",
+        "//tensorflow/core/platform:types",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:variant",
     ],
 )
 
@@ -210,6 +265,7 @@ cc_library(
     deps = [
         ":xplane_schema",
         ":xplane_visitor",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
     ],
 )
 
@@ -219,10 +275,13 @@ cc_library(
     hdrs = ["group_events.h"],
     visibility = [":friends"],
     deps = [
+        ":tf_op_utils",
         ":tf_xplane_visitor",
+        ":xplane_builder",
         ":xplane_schema",
         ":xplane_utils",
         ":xplane_visitor",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -239,11 +298,14 @@ tf_cc_test(
         ":tf_xplane_visitor",
         ":xplane_builder",
         ":xplane_schema",
-        ":xplane_utils",
+        ":xplane_test_utils",
+        ":xplane_visitor",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -258,10 +320,13 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler/costs:cost_estimator",
+        "//tensorflow/core/grappler/costs:op_context",
         "//tensorflow/core/grappler/costs:op_level_cost_estimator",
         "//tensorflow/core/grappler/costs:op_performance_data_cc",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -273,6 +338,7 @@ cc_library(
         ":group_events",
         ":tf_op_utils",
         ":tf_xplane_visitor",
+        ":time_utils",
         ":timespan",
         ":trace_utils",
         ":xplane_builder",
@@ -282,8 +348,10 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -297,7 +365,9 @@ tf_cc_test(
         ":trace_utils",
         ":xplane_builder",
         ":xplane_schema",
-        ":xplane_utils",
+        ":xplane_test_utils",
+        ":xplane_visitor",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
@@ -312,6 +382,22 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:kernel_stats_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "tfstreamz_utils",
+    srcs = ["tfstreamz_utils.cc"],
+    hdrs = ["tfstreamz_utils.h"],
+    deps = [
+        ":xplane_builder",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/framework:protos_all_cc",
+        "//tensorflow/core/profiler/protobuf:tfstreamz_proto_cc",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
 )

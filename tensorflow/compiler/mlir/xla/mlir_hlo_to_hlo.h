@@ -31,16 +31,16 @@ namespace mlir {
 // are converted to a tuple even when there is only a single return value.
 // Multiple return values are always converted to a tuple and returned as a
 // single value.
-Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
+Status ConvertMlirHloToHlo(mlir::ModuleOp module, ::xla::HloProto* hlo_proto,
                            bool use_tuple_args, bool return_tuple,
                            const tensorflow::XlaCompiler::ShapeRepresentationFn
                                shape_representation_fn = nullptr);
 
 // Creates XlaOp equivalent of a given MLIR operation using the operand info
 // from `value_lowering` map.
-llvm::Optional<xla::XlaOp> CreateXlaOperator(
+llvm::Optional<::xla::XlaOp> CreateXlaOperator(
     mlir::Operation* op,
-    llvm::DenseMap<mlir::Value, xla::XlaOp>* value_lowering);
+    llvm::DenseMap<mlir::Value, ::xla::XlaOp>* value_lowering);
 
 }  // namespace mlir
 

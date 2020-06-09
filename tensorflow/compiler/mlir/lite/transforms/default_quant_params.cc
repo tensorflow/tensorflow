@@ -20,7 +20,6 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Support/Functional.h"
 #include "mlir/Support/LLVM.h"
 #include "absl/memory/memory.h"
 #include "llvm/ADT/STLExtras.h"
@@ -44,10 +43,14 @@ namespace TFL {
 #include "tensorflow/compiler/mlir/lite/utils/generated_op_quant_spec_getters.inc"
 
 namespace {
-class DefaultQuantParamsPass : public FunctionPass<DefaultQuantParamsPass> {
+class DefaultQuantParamsPass
+    : public PassWrapper<DefaultQuantParamsPass, FunctionPass> {
  public:
-  explicit DefaultQuantParamsPass(double default_min, double default_max)
-      : default_min_(default_min), default_max_(default_max) {}
+  explicit DefaultQuantParamsPass(double default_min, double default_max,
+                                  bool is_signed)
+      : default_min_(default_min),
+        default_max_(default_max),
+        is_signed_(is_signed) {}
 
   void runOnFunction() override;
 
@@ -82,6 +85,7 @@ class DefaultQuantParamsPass : public FunctionPass<DefaultQuantParamsPass> {
 
   double default_min_;
   double default_max_;
+  bool is_signed_;
   quant::QuantParams default_quant_params_;
 };
 }  // namespace
@@ -214,15 +218,16 @@ quant::QuantParams DefaultQuantParamsPass::GetDefaultQuantParams(
     default_quant_params_ = quant::fakeQuantAttrsToType(
         builder.getUnknownLoc(),
         /*numBits=*/8, default_min_, default_max_, /*narrowRange=*/false,
-        builder.getF32Type());
+        builder.getF32Type(), is_signed_);
   }
   return default_quant_params_;
 }
 
 // Creates an instance of the default quant parameters pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreateDefaultQuantParamsPass(
-    double default_min, double default_max) {
-  return absl::make_unique<DefaultQuantParamsPass>(default_min, default_max);
+std::unique_ptr<OperationPass<FuncOp>> CreateDefaultQuantParamsPass(
+    double default_min, double default_max, bool is_signed) {
+  return absl::make_unique<DefaultQuantParamsPass>(default_min, default_max,
+                                                   is_signed);
 }
 
 // Registers this pass with default values, only for test
@@ -230,7 +235,8 @@ static PassRegistration<DefaultQuantParamsPass> pass(
     "tfl-default-quant",
     "Apply quantization with default quantization parameter", [] {
       return CreateDefaultQuantParamsPass(/*default_min=*/-1.0,
-                                          /*default_max=*/1.0);
+                                          /*default_max=*/1.0,
+                                          /*is_signed=*/false);
     });
 
 }  // namespace TFL

@@ -85,7 +85,7 @@ namespace cutil = TF::collection_ops_util;
 //
 // The pass also works across control flow and functional calls.
 struct StackOpsDecompositionPass
-    : public OperationPass<StackOpsDecompositionPass, ModuleOp> {
+    : public PassWrapper<StackOpsDecompositionPass, OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
 
@@ -154,14 +154,14 @@ struct PartitionedCallStackOpsInfo {
 
 LogicalResult DecomposeStackOpsInternal(
     Block*, ModuleOp, llvm::SmallDenseMap<Value, Value>*,
-    llvm::SmallDenseMap<FuncOp, PartitionedCallStackOpsInfo>*);
+    llvm::StringMap<PartitionedCallStackOpsInfo>*);
 
 // Handles stack usage by a tf.While. It will convert the body and conditional
 // function signatures, and performs stack ops decomposition on them.
 LogicalResult HandleWhileOp(
     TF::WhileOp while_op, ModuleOp module,
     const llvm::SmallDenseMap<Value, Value>& data_var_to_size_var,
-    llvm::SmallDenseMap<FuncOp, PartitionedCallStackOpsInfo>*
+    llvm::StringMap<PartitionedCallStackOpsInfo>*
         decomposed_partitioned_call_callees) {
   auto body = module.lookupSymbol<FuncOp>(while_op.body());
   llvm::SmallDenseMap<Value, Value> body_map;
@@ -207,9 +207,8 @@ LogicalResult HandleWhileOp(
     new_while_operands.push_back(it->getSecond());
     if (!new_output_shapes.empty()) {
       // Size is a scalar shape.
-      tensorflow::TensorShapeProto shape_proto;
-      new_output_shapes.push_back(builder.getStringAttr(
-          tensorflow::mangling_util::MangleShape(shape_proto)));
+      new_output_shapes.push_back(
+          mlir::TF::ShapeAttr::get(builder.getContext(), ArrayRef<int64_t>()));
     }
   }
   auto new_while =
@@ -238,7 +237,7 @@ LogicalResult HandleWhileOp(
 LogicalResult HandleIfOp(
     TF::IfOp if_op, ModuleOp module,
     const llvm::SmallDenseMap<Value, Value>& data_var_to_size_var,
-    llvm::SmallDenseMap<FuncOp, PartitionedCallStackOpsInfo>*
+    llvm::StringMap<PartitionedCallStackOpsInfo>*
         decomposed_partitioned_call_callees) {
   auto then_branch = module.lookupSymbol<FuncOp>(if_op.then_branch());
   auto else_branch = module.lookupSymbol<FuncOp>(if_op.else_branch());
@@ -295,11 +294,11 @@ template <typename CallOp>
 LogicalResult HandlePartitionedCallOp(
     CallOp call, FuncOp callee, ModuleOp module,
     const llvm::SmallDenseMap<Value, Value>& data_var_to_size_var,
-    llvm::SmallDenseMap<FuncOp, PartitionedCallStackOpsInfo>*
+    llvm::StringMap<PartitionedCallStackOpsInfo>*
         decomposed_partitioned_call_callees) {
   auto emplace_res = decomposed_partitioned_call_callees->try_emplace(
-      callee, PartitionedCallStackOpsInfo());
-  auto& info = emplace_res.first->getSecond();
+      callee.getName(), PartitionedCallStackOpsInfo());
+  auto& info = emplace_res.first->second;
   // Recreate the call op with info.
   auto recreate_caller = [&] {
     auto new_operands = llvm::to_vector<8>(call.getOperands());
@@ -343,39 +342,38 @@ LogicalResult HandlePartitionedCallOp(
     return recreate_caller();
   }
   llvm::SmallDenseMap<Value, Value> callee_map;
-  auto callee_clone = callee.clone();
+  FuncOp lowered_callee = callee;
+  if (callee.getVisibility() != SymbolTable::Visibility::Private) {
+    // Clone non-private callee in case of signature change.
+    lowered_callee = callee.clone();
+    lowered_callee.setVisibility(SymbolTable::Visibility::Private);
+  }
   auto find_arg_stack_type = [&](int64_t index) -> llvm::Optional<Type> {
     auto it = data_var_to_size_var.find(call.getOperand(index));
     if (it == data_var_to_size_var.end()) return llvm::None;
     return it->getFirst().getType();
   };
-  ModifyFunctionSignature(callee_clone, &callee_map, find_arg_stack_type);
-  if (callee_map.empty()) {
+  ModifyFunctionSignature(lowered_callee, &callee_map, find_arg_stack_type);
+  info.signature_change = !callee_map.empty();
+  if (!info.signature_change) {
     // Signature is not modified. We do not need the clone.
-    info.signature_change = false;
-    callee_clone.erase();
+    if (lowered_callee != callee) {
+      lowered_callee.erase();
+    }
   } else {
-    info.signature_change = true;
-    info.decomposed_callee = callee_clone;
+    info.decomposed_callee = lowered_callee;
     for (auto& entry : callee_map) {
       info.stack_var_arg_to_size_arg
           [entry.getFirst().cast<BlockArgument>().getArgNumber()] =
           entry.getSecond().cast<BlockArgument>().getArgNumber();
     }
-    // Add the clone with a new name.
-    auto name_base = llvm::join(
-        std::vector<std::string>{callee.getName().str(), "stack_decomposed"},
-        "_");
-    auto name = name_base;
-    {
-      int64_t counter = 0;
-      while (module.lookupSymbol(name)) {
-        name = llvm::formatv("{0}_{1}", name_base, counter++).str();
-      }
+    if (lowered_callee != callee) {
+      // Add the clone with a new name.
+      lowered_callee.setName(
+          llvm::formatv("{0}_stack_decomposed", callee.getName()).str());
+      SymbolTable(module).insert(lowered_callee);
+      callee = lowered_callee;
     }
-    callee_clone.setName(name);
-    SymbolTable(module).insert(callee_clone);
-    callee = callee_clone;
   }
   if (failed(DecomposeStackOpsInternal(&callee.front(), module, &callee_map,
                                        decomposed_partitioned_call_callees))) {
@@ -487,7 +485,7 @@ LogicalResult HandleStackPopV2Op(
 LogicalResult DecomposeStackOpsInternal(
     Block* block, ModuleOp module,
     llvm::SmallDenseMap<Value, Value>* data_var_to_size_var,
-    llvm::SmallDenseMap<FuncOp, PartitionedCallStackOpsInfo>*
+    llvm::StringMap<PartitionedCallStackOpsInfo>*
         decomposed_partitioned_call_callees) {
   for (auto& op : llvm::make_early_inc_range(block->getOperations())) {
     if (llvm::isa<TF::IdentityOp>(&op) || llvm::isa<TF::IdentityNOp>(&op)) {
@@ -545,7 +543,7 @@ LogicalResult DecomposeStackOpsInternal(
 
 LogicalResult DecomposeStackOps(Block* block, ModuleOp module) {
   llvm::SmallDenseMap<Value, Value> data_var_to_size_var;
-  llvm::SmallDenseMap<FuncOp, PartitionedCallStackOpsInfo>
+  llvm::StringMap<PartitionedCallStackOpsInfo>
       decomposed_partitioned_call_callees;
   return DecomposeStackOpsInternal(block, module, &data_var_to_size_var,
                                    &decomposed_partitioned_call_callees);
@@ -568,7 +566,7 @@ static PassRegistration<StackOpsDecompositionPass> pass(
 }  // namespace
 
 namespace TF {
-std::unique_ptr<OpPassBase<ModuleOp>> CreateStackOpsDecompositionPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateStackOpsDecompositionPass() {
   return std::make_unique<StackOpsDecompositionPass>();
 }
 

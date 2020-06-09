@@ -130,6 +130,18 @@ class SoftmaxTest(test_lib.TestCase, parameterized.TestCase):
     self.assertAllClose(x_neg_axis_tf, y_pos_axis_tf, eps)
     self.assertAllClose(y_pos_axis_tf, z_gt_axis_tf, eps)
 
+  def testSoftmaxExtendType(self):
+    x_shape = [5, 10]
+    x_np = np.random.randn(*x_shape).astype(np.float32)
+
+    x_f32_tf = constant_op.constant(x_np)
+    x_bf16_tf = math_ops.cast(x_f32_tf, dtypes.bfloat16)
+    y_f32_tf = self.evaluate(nn_ops.softmax(x_f32_tf))
+    y_bf16_tf = self.evaluate(nn_ops.softmax(x_bf16_tf))
+    expected = math_ops.cast(y_f32_tf, dtypes.bfloat16)
+    tol = x_shape[1] * 1e-3
+    self.assertAllClose(y_bf16_tf, expected, rtol=tol, atol=tol)
+
   @parameterized.parameters(((5, 10),), ((2, 3, 4),))
   @test_util.run_deprecated_v1
   def testGradient(self, x_shape):
@@ -302,6 +314,20 @@ class L2NormalizeTest(test_lib.TestCase):
                                                       x_shape)
       print("L2Normalize gradient err = %g " % err)
       self.assertLess(err, 1e-4)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testL2NormalizeComplex(self):
+    x_shape = [20, 7, 3]
+    for dtype in [np.complex64, np.complex128]:
+      np.random.seed(1)
+      x_np = (
+          np.random.random_sample(x_shape).astype(dtype) +
+          np.random.random_sample(x_shape).astype(dtype) * 1j)
+      for dim in range(len(x_shape)):
+        y_np = self._l2Normalize(x_np, dim)
+        x_tf = constant_op.constant(x_np, name="x")
+        y_tf = nn_impl.l2_normalize_v2(x_tf, dim)
+        self.assertAllClose(y_np, self.evaluate(y_tf))
 
 
 class DropoutTest(test_lib.TestCase):
@@ -1199,6 +1225,32 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, [7, 3, 4, 9])
 
+  def testNHWCToNCHW_Size2(self):
+    x_val = [4, 9]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x)
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [4, 9])
+
+  @test_util.disable_xla("unsupported data format")
+  def testNHWCToWHCN(self):
+    x_val = [7, 4, 9, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x, src_format="NHWC", dst_format="WHCN")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [9, 4, 3, 7])
+
+  @test_util.disable_xla("unsupported data format")
+  def testNHWCToWHCN_Size2(self):
+    x_val = [4, 9]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x, src_format="NHWC", dst_format="WHCN")
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [9, 4])
+
   def testNCHWToNHWC(self):
     x_val = [7, 4, 9, 3]
     x = constant_op.constant(x_val)
@@ -1206,6 +1258,14 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
     with test_util.use_gpu():
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, [7, 9, 3, 4])
+
+  def testNCHWToNHWC_Size2(self):
+    x_val = [9, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x)
+    with test_util.use_gpu():
+      y_val = self.evaluate(y)
+      self.assertAllEqual(y_val, [9, 3])
 
   def testNHWCToHWNC(self):
     x_val = [7, 4, 9, 3]

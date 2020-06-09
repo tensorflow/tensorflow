@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_PYTHON_LIB_CORE_PYBIND11_PROTO_H_
 
 #include "absl/strings/str_cat.h"
-#include "include/pybind11/pybind11.h"
+#include "pybind11/pybind11.h"
 
 namespace tensorflow {
 

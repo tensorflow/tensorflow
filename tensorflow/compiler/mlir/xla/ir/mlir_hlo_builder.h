@@ -54,6 +54,9 @@ class MlirHloBuilder : public XlaBuilder {
   // TODO(hinsu): Add a constructor to build a new MLIR function from scratch
   // and override Build methods.
 
+  MlirHloBuilder(std::string name, mlir::OpBuilder builder, mlir::Location loc)
+      : XlaBuilder(name), builder_(builder), loc_(loc) {}
+
   MlirHloBuilder(const MlirHloBuilder&) = delete;
   MlirHloBuilder& operator=(const MlirHloBuilder&) = delete;
 
@@ -75,6 +78,17 @@ class MlirHloBuilder : public XlaBuilder {
     return mlir::Value::getFromOpaquePointer(ptr);
   }
 
+  // Returns MLIR values corresponding to the given XLA ops.
+  //
+  // Requires that the ops were created by this builder.
+  std::vector<mlir::Value> GetValues(absl::Span<const XlaOp> ops) {
+    std::vector<mlir::Value> values;
+    for (auto xla_op : ops) {
+      values.push_back(GetValue(xla_op));
+    }
+    return values;
+  }
+
   // Sets location for newly built ops, until reset.
   void SetLocation(mlir::Location loc) { loc_ = loc; }
 
@@ -87,27 +101,100 @@ class MlirHloBuilder : public XlaBuilder {
   // Returns the shape of the given op.
   StatusOr<const Shape*> GetShapePtr(XlaOp op) const override;
 
+  // Creates the given op at the current location.
+  template <typename OpTy, typename... Args>
+  OpTy create(Args&&... args) {
+    return builder_.create<OpTy>(loc_, std::forward<Args>(args)...);
+  }
+
  private:
   XlaOp ConstantLiteral(const LiteralSlice& literal) override;
 
+  StatusOr<XlaOp> ConvGeneralDilatedInternal(
+      const Shape& shape, XlaOp lhs, XlaOp rhs, const Window& window,
+      absl::Span<const int64> window_strides,
+      absl::Span<const std::pair<int64, int64>> padding,
+      absl::Span<const int64> lhs_dilation,
+      absl::Span<const int64> rhs_dilation,
+      const ConvolutionDimensionNumbers& dimension_numbers,
+      int64 feature_group_count, int64 batch_group_count,
+      const PrecisionConfig* precision_config) override;
+
+  StatusOr<XlaOp> TransposeInternal(
+      const Shape& shape, XlaOp operand,
+      absl::Span<const int64> permutation) override;
+
+  StatusOr<XlaOp> GatherInternal(
+      const Shape& shape, XlaOp input, XlaOp start_indices,
+      const GatherDimensionNumbers& dimension_numbers,
+      absl::Span<const int64> slice_sizes, bool indices_are_sorted) override;
+
+  StatusOr<XlaOp> RngOpInternal(RandomDistribution distribution,
+                                absl::Span<const XlaOp> parameters,
+                                const Shape& shape) override;
+
   StatusOr<XlaOp> ReshapeInternal(const Shape& shape, XlaOp operand,
                                   int64 inferred_dimension) override;
+
+  StatusOr<XlaOp> DotGeneralInternal(
+      const Shape& shape, XlaOp lhs, XlaOp rhs,
+      const DotDimensionNumbers& dimension_number,
+      const PrecisionConfig* precision_config) override;
 
   StatusOr<XlaOp> InDimBroadcast(
       const Shape& shape, XlaOp operand,
       absl::Span<const int64> broadcast_dimensions) override;
 
-  XlaOp BinaryOpNoBroadcast(
-      HloOpcode binop, const Shape& shape, XlaOp lhs, XlaOp rhs,
-      absl::optional<ComparisonDirection> direction) override;
+  StatusOr<XlaOp> Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
+                          ComparisonDirection direction) override;
+
+  XlaOp BinaryOpNoBroadcast(HloOpcode binop, const Shape& shape, XlaOp lhs,
+                            XlaOp rhs) override;
 
   StatusOr<XlaOp> AddOpWithShape(HloOpcode opcode, const Shape& shape,
                                  absl::Span<const XlaOp> operands) override;
 
+  XlaOp CreateToken() override;
+
+  StatusOr<XlaOp> InfeedWithTokenInternal(const Shape& infeed_instruction_shape,
+                                          XlaOp token,
+                                          const string& config) override;
+  StatusOr<XlaOp> OutfeedWithTokenInternal(
+      XlaOp operand, XlaOp token, const Shape& shape_with_layout,
+      const string& outfeed_config) override;
+
+  StatusOr<XlaOp> ConcatInDimInternal(const Shape& shape,
+                                      absl::Span<const XlaOp> operands,
+                                      int64 dimension) override;
+
+  StatusOr<XlaOp> GetTupleElementInternal(const Shape& shape, XlaOp tuple_data,
+                                          int64 index) override;
+
+  StatusOr<XlaOp> SliceInternal(const Shape& shape, XlaOp operand,
+                                absl::Span<const int64> start_indices,
+                                absl::Span<const int64> limit_indices,
+                                absl::Span<const int64> strides) override;
+
+  StatusOr<XlaOp> DynamicSliceInternal(
+      const Shape& shape, XlaOp operand, absl::Span<const XlaOp> start_indices,
+      absl::Span<const int64> slice_sizes) override;
+
+  StatusOr<XlaOp> DynamicUpdateSliceInternal(
+      const Shape& shape, XlaOp operand, XlaOp update,
+      absl::Span<const XlaOp> start_indices) override;
+
+  StatusOr<XlaOp> PadInternal(const Shape& shape, XlaOp operand,
+                              XlaOp padding_value,
+                              const PaddingConfig& padding_config) override;
+
+  StatusOr<XlaOp> TupleInternal(const Shape& shape,
+                                absl::Span<const XlaOp> elements) override;
+
   // Creates HLO dialect op and returns the result as an XlaOp.
-  StatusOr<XlaOp> CreateOp(const std::string& op_name, const Shape& shape,
-                           llvm::ArrayRef<XlaOp> operands,
-                           llvm::ArrayRef<mlir::NamedAttribute> attributes);
+  StatusOr<XlaOp> CreateOp(
+      const std::string& op_name, const Shape& shape,
+      llvm::ArrayRef<XlaOp> operands,
+      llvm::ArrayRef<mlir::NamedAttribute> attributes = {});
 
   mlir::OpBuilder builder_;
   mlir::Location loc_;

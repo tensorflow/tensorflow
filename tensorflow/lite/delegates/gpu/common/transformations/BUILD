@@ -105,6 +105,7 @@ cc_library(
     srcs = ["general_transformations.cc"],
     hdrs = ["general_transformations.h"],
     deps = [
+        ":add_quant_adjustments",
         ":fuse_add_to_conv",
         ":fuse_mul_to_conv",
         ":make_fully_connected",

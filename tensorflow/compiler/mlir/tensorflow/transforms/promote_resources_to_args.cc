@@ -13,31 +13,48 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This pass promotes resource reads in the main function to input arguments
-// of the function. It also promotes resource writes in the main function to
-// outputs of the main function. If a resource may be updated by the main
-// function, the corresponding input and output arguments are alias.
+// This pass promotes resource accesses in the main function to input arguments
+// and outputs of the main function.
+//
+// Two types of resources are supported:
+// (1) A function argument of TF::ResourceType type.
+// (2) A VarHandleOp in the function.
+//
+// After the pass,
+//
+//  . The function will have an input argument for each resource that is
+//    already provided as an input argument or is read. The type of the input
+//    argument will become the shape of the value represented by the resource.
+//
+//  . The function will have an output for each resource that is written. The
+//    type of the output will become the shape of the resource.
 //
 // The information of variable identification and input-output alising is
-// recorded as named attributes of the input arguments:
+// recorded as named attributes of the input argument or output:
 //
 //  . 'tf.resource_name' matches 'shared_name' of VarHandleOp, which represents
-//    the identifier of the resource corresponding to the input argument.
+//    the identifier of the corresponding resource. This attribute is added to
+//    an input argument if the initial value of the resource is read, or to the
+//    output if the initial value is not read.
 //
 //  . 'tf.aliasing_output' is the index of the function output that is an alias
-//    of the input argument. This attribute is not added if there is no output
-//    alias for the input argument.
+//    of the input argument. This attribute is added only to the input argument
+//    when the initial value of the corresponding resource is read, and the
+//    resource is written later.
 //
 // Assumption of this pass:
 //  . Compound resource operations have already been decomposed.
 //  . Dead functions have already been removed, as resource arguments in dead
 //    functions can cause the pass to fail.
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -59,89 +76,174 @@ constexpr char kResourceFunctionMsg[] =
     "expects function level resource argument";
 constexpr char kInvalidResourceMsg[] =
     "expects resource to be a VarHandleOp or function argument";
+constexpr char kResourceNameArgAttr[] = "tf.resource_name";
 
-// Records the input argument index and the current live value for a resource
-// variable.
-struct ResourceInfo {
-  int64_t input_index;
-  Value live_value;
-};
+// Checks if a function has only one block.
+mlir::LogicalResult CheckSingleBlockFunction(FuncOp function) {
+  if (!hasSingleElement(function.getBlocks()))
+    return function.emitError()
+           << "expects function '" << function.getName()
+           << "' to have 1 block, got " << function.getBlocks().size();
 
-using ArgOrName = llvm::PointerUnion<BlockArgument, Attribute>;
-using ResourceMap = llvm::SmallDenseMap<ArgOrName, ResourceInfo>;
-
-LogicalResult VerifyNoPotentialNestedResourceAccesses(ModuleOp module) {
-  auto result = module.walk([&](FuncOp func) -> WalkResult {
-    // Skip main function as resources can be passed in as arguments.
-    if (func.getName() == "main") return WalkResult::advance();
-
-    for (auto type : func.getType().getInputs())
-      if (getElementTypeOrSelf(type).isa<TF::ResourceType>())
-        return func.emitError("potential nested resource accesses in function");
-
-    return WalkResult::advance();
-  });
-
-  return failure(result.wasInterrupted());
+  return success();
 }
 
-LogicalResult PromoteResourcesToArguments(FuncOp function) {
+// Collects names of users of a resource that are not `tf.ReadVariableOp` and
+// not `tf.AssignVariableOp`.
+llvm::SmallSet<llvm::StringRef, 1> GetCompositeResourceUserNames(
+    Value resource) {
+  // SmallSet will use a vector when there is only one element and use std::set
+  // when there are more than one elements. This ensures that the operations in
+  // the error message are ordered.
+  llvm::SmallSet<llvm::StringRef, 1> composite_users;
+  for (Operation* user : resource.getUsers())
+    if (!llvm::isa<TF::ReadVariableOp>(user) &&
+        !llvm::isa<TF::AssignVariableOp>(user))
+      composite_users.insert(user->getName().getStringRef());
+
+  return composite_users;
+}
+
+// Checks if `tf.VarHandleOp` has a valid resource subtype and its users are of
+// `tf.ReadVariableOp` and `tf.AssignVariableOp` only.
+mlir::LogicalResult ValidateVarHandle(TF::VarHandleOp var_handle_op) {
+  auto resource_type =
+      getElementTypeOrSelf(var_handle_op.getType()).cast<TF::ResourceType>();
+  if (resource_type.getSubtypes().size() != 1)
+    return var_handle_op.emitOpError()
+           << "expects resource type to have one subtype, got "
+           << resource_type;
+
+  auto composite_ops = GetCompositeResourceUserNames(var_handle_op);
+  if (!composite_ops.empty())
+    return var_handle_op.emitOpError()
+           << "expects users to be 'tf.ReadVariableOp' or "
+              "'tf.AssignVariableOp', got ["
+           << llvm::join(composite_ops.begin(), composite_ops.end(), ", ")
+           << "]";
+
+  return success();
+}
+
+// Checks if resource argument has a valid resource subtype and its users are of
+// `tf.ReadVariableOp` and `tf.AssignVariableOp` only.
+mlir::LogicalResult ValidateResourceArgument(FuncOp function,
+                                             BlockArgument resource_arg,
+                                             TF::ResourceType resource_type) {
+  if (resource_type.getSubtypes().size() != 1)
+    return function.emitError()
+           << "expects resource type of argument "
+           << resource_arg.getArgNumber() << " to have one subtype, got "
+           << resource_type;
+
+  auto composite_ops = GetCompositeResourceUserNames(resource_arg);
+  if (!composite_ops.empty())
+    return function.emitError()
+           << "expects users of resource argument "
+           << resource_arg.getArgNumber()
+           << " to be 'tf.ReadVariableOp' or 'tf.AssignVariableOp', got ["
+           << llvm::join(composite_ops.begin(), composite_ops.end(), ", ")
+           << "]";
+
+  return success();
+}
+
+// Adds resource arguments for every unique (name) variable handle. Associated
+// `tf.VarHandleOp` are removed from the function. Variable shared names are
+// returned in `var_handle_shared_names` based on the ordering of added resource
+// arguments.
+mlir::LogicalResult PromoteVarHandlesToArguments(
+    FuncOp function, bool add_validation,
+    llvm::SmallVectorImpl<std::string>* var_handle_shared_names) {
+  Block& block = function.front();
+  auto func_type = function.getType();
+
+  auto func_arg_types = llvm::to_vector<4>(func_type.getInputs());
+  llvm::SmallDenseMap<llvm::StringRef, int> var_arg_index_by_name;
+  for (auto var_handle_op :
+       llvm::make_early_inc_range(block.getOps<TF::VarHandleOp>())) {
+    if (add_validation && failed(ValidateVarHandle(var_handle_op)))
+      return failure();
+
+    llvm::StringRef name = var_handle_op.shared_nameAttr().getValue();
+    auto it = var_arg_index_by_name.insert({name, func_arg_types.size()});
+    if (it.second) {
+      var_handle_shared_names->emplace_back(name);
+      auto resource_type = var_handle_op.resource().getType();
+      func_arg_types.push_back(resource_type);
+      var_handle_op.resource().replaceAllUsesWith(
+          block.addArgument(resource_type));
+    } else {
+      var_handle_op.resource().replaceAllUsesWith(
+          block.getArgument(it.first->getSecond()));
+    }
+    var_handle_op.erase();
+  }
+
+  if (!var_handle_shared_names->empty())
+    function.setType(FunctionType::get(func_arg_types, func_type.getResults(),
+                                       function.getContext()));
+
+  return success();
+}
+
+// Records the current live value for a resource variable and whether a read or
+// write on the variable occurred.
+struct ResourceInfo {
+  Value live_value = nullptr;
+  bool read = false;
+  bool write = false;
+};
+
+LogicalResult PromoteResourcesToArguments(
+    FuncOp function, llvm::ArrayRef<std::string> var_handle_shared_names) {
   Block& block = function.front();
 
   auto return_op = llvm::dyn_cast_or_null<ReturnOp>(block.getTerminator());
   if (!return_op)
-    return function.emitError(
-        "expects 'main' function to have a MLIR ReturnOp");
+    return function.emitError() << "expects function '" << function.getName()
+                                << "' to have a MLIR ReturnOp";
 
-  ResourceMap resource_map;
+  llvm::SmallVector<ResourceInfo, 4> resources(function.getNumArguments());
   auto argument_types = llvm::to_vector<4>(function.getType().getInputs());
+  bool has_resources = false;
+  auto add_resource_argument = [&](BlockArgument arg,
+                                   TF::ResourceType resource_type) {
+    Type arg_type = resource_type.getSubtypes().front();
+    arg.setType(arg_type);
+    resources[arg.getArgNumber()].live_value = arg;
+    argument_types[arg.getArgNumber()] = arg_type;
+    has_resources = true;
+  };
 
-  // Loop through the resource arguments in the function and store a mapping
-  // from that argument to its index and itself as the current live value.
-  for (BlockArgument& func_arg : function.getArguments()) {
+  // Loop through the non `tf.VarHandleOp` resource arguments in the function,
+  // validate its uses and subtype, and store a mapping from that argument to
+  // itself as the current live value.
+  auto func_args = function.getArguments().take_front(
+      function.getNumArguments() - var_handle_shared_names.size());
+  for (BlockArgument& func_arg : func_args) {
     auto resource_type =
         getElementTypeOrSelf(func_arg.getType()).dyn_cast<TF::ResourceType>();
     if (!resource_type) continue;
-    if (resource_type.getSubtypes().size() != 1)
-      return function.emitError()
-             << "expects resource type of argument " << func_arg.getArgNumber()
-             << " to have one subtype, got " << resource_type;
+    if (failed(ValidateResourceArgument(function, func_arg, resource_type)))
+      return failure();
 
-    for (auto* user : func_arg.getUsers())
-      if (!llvm::isa<TF::ReadVariableOp>(user) &&
-          !llvm::isa<TF::AssignVariableOp>(user))
-        return function.emitError()
-               << "expects users of resource argument "
-               << func_arg.getArgNumber()
-               << " to be 'tf.ReadVariableOp' or 'tf.AssignVariableOp'";
-
-    Type arg_type = resource_type.getSubtypes().front();
-    func_arg.setType(arg_type);
-    resource_map[func_arg] = {func_arg.getArgNumber(), func_arg};
-    argument_types[func_arg.getArgNumber()] = arg_type;
+    add_resource_argument(func_arg, resource_type);
   }
 
-  // Loop through the VarHandleOp in the function. When the first VarHandleOp
-  // for a resource variable is encountered, create a new function argument and
-  // add an entry to the resource_map to record the information.
-  for (auto var_handle_op : block.getOps<TF::VarHandleOp>()) {
-    if (resource_map.count(var_handle_op.shared_nameAttr())) continue;
-
+  // Loop through `tf.VarHandleOp` resource arguments in the function and store
+  // a mapping from that argument to itself as the current live value. No
+  // validations are necessary here as these arguments were validated prior to
+  // being added.
+  auto var_handle_args =
+      function.getArguments().take_back(var_handle_shared_names.size());
+  for (BlockArgument& var_handle_arg : var_handle_args) {
     auto resource_type =
-        getElementTypeOrSelf(var_handle_op.getType()).cast<TF::ResourceType>();
-    if (resource_type.getSubtypes().size() != 1)
-      return var_handle_op.emitOpError()
-             << "expects resource type to have one subtype, got "
-             << resource_type;
-
-    Type arg_type = resource_type.getSubtypes().front();
-    BlockArgument arg = block.addArgument(arg_type);
-    resource_map[var_handle_op.shared_nameAttr()] = {
-        static_cast<int64_t>(argument_types.size()), arg};
-    argument_types.push_back(arg_type);
+        getElementTypeOrSelf(var_handle_arg.getType()).cast<TF::ResourceType>();
+    add_resource_argument(var_handle_arg, resource_type);
   }
 
-  if (resource_map.empty()) return success();
+  if (!has_resources) return success();
 
   // We initially assign the argument for a resource as the live value for the
   // resource. We then walk through the operations in the function in their
@@ -154,11 +256,9 @@ LogicalResult PromoteResourcesToArguments(FuncOp function) {
         if (func_arg.getOwner() != &block)
           return read_op.emitOpError(kResourceFunctionMsg);
 
-        read_op.value().replaceAllUsesWith(resource_map[func_arg].live_value);
-      } else if (auto var_handle_op = llvm::dyn_cast<TF::VarHandleOp>(
-                     read_op.resource().getDefiningOp())) {
-        read_op.value().replaceAllUsesWith(
-            resource_map[var_handle_op.shared_nameAttr()].live_value);
+        ResourceInfo& resource_info = resources[func_arg.getArgNumber()];
+        resource_info.read = true;
+        read_op.value().replaceAllUsesWith(resource_info.live_value);
       } else {
         return read_op.emitOpError(kInvalidResourceMsg);
       }
@@ -169,11 +269,9 @@ LogicalResult PromoteResourcesToArguments(FuncOp function) {
         if (func_arg.getOwner() != &block)
           return write_op.emitOpError(kResourceFunctionMsg);
 
-        resource_map[func_arg].live_value = write_op.value();
-      } else if (auto var_handle_op = llvm::dyn_cast<TF::VarHandleOp>(
-                     write_op.resource().getDefiningOp())) {
-        resource_map[var_handle_op.shared_nameAttr()].live_value =
-            write_op.value();
+        ResourceInfo& resource_info = resources[func_arg.getArgNumber()];
+        resource_info.write = true;
+        resource_info.live_value = write_op.value();
       } else {
         return read_op.emitOpError(kInvalidResourceMsg);
       }
@@ -184,55 +282,68 @@ LogicalResult PromoteResourcesToArguments(FuncOp function) {
 
   const int64_t num_results_before = function.getNumResults();
   auto return_operands = llvm::to_vector<4>(return_op.getOperands());
-  return_operands.reserve(num_results_before + resource_map.size());
   auto result_types = llvm::to_vector<4>(return_op.getOperandTypes());
-  result_types.reserve(num_results_before + resource_map.size());
+  llvm::SmallVector<std::pair<int64_t, llvm::StringRef>, 4>
+      output_only_resources;
   llvm::SmallVector<std::pair<int64_t, int64_t>, 4> input_output_alias;
-  input_output_alias.reserve(resource_map.size());
 
-  // Collect new return values and mapping from resource input index to output
-  // alias. If the last live value is itself (argument), then that live value
-  // will not be returned as the resource is unmodified.
-  for (auto& resource : resource_map) {
-    int64_t input_index = resource.getSecond().input_index;
-    Value live_value = resource.getSecond().live_value;
-    auto live_arg = live_value.dyn_cast<BlockArgument>();
-    if (live_arg && live_arg.getOwner() == &block &&
-        live_arg.getArgNumber() == input_index)
+  // Collect new return values for variable writes and either (a) output-only
+  // resource attributes (if the resource is not promoted to an argument) or (b)
+  // mapping from resource input index to output alias (if the resource has been
+  // promoted to an argument). Resource arguments that were originally
+  // `tf.VarHandleOp` but not read are collected and then removed.
+  OpBuilder builder(return_op);
+  const int var_handles_start_idx =
+      function.getNumArguments() - var_handle_shared_names.size();
+  int new_argument_index = 0;
+  llvm::SmallVector<int, 4> argument_indices_to_remove;
+  for (auto resource_and_index : llvm::enumerate(resources)) {
+    const auto& resource = resource_and_index.value();
+    if (!resource.live_value) {
+      // Ignore non resource arguments.
+      ++new_argument_index;
       continue;
-
-    return_operands.push_back(live_value);
-    result_types.push_back(live_value.getType());
-    input_output_alias.push_back(
-        {input_index, num_results_before + input_output_alias.size()});
-  }
-
-  // Erase all VarHandleOp.
-  for (Operation& op : llvm::make_early_inc_range(function.front())) {
-    auto var_handle_op = llvm::dyn_cast<TF::VarHandleOp>(op);
-    if (!var_handle_op) continue;
-    if (!var_handle_op.use_empty()) {
-      // SmallSet will use a vector when there is only one element and use
-      // std::set when there are more than one elements. This ensures that
-      // the operations in the error message are ordered.
-      llvm::SmallSet<std::string, 2> unique_operations;
-      llvm::for_each(
-          var_handle_op.getOperation()->getUsers(), [&](Operation* user) {
-            unique_operations.insert(user->getName().getStringRef().str());
-          });
-
-      return var_handle_op.emitOpError(
-                 "expects no uses but used by operations: ")
-             << llvm::join(unique_operations.begin(), unique_operations.end(),
-                           ", ");
     }
 
-    op.erase();
+    const auto index = resource_and_index.index();
+    const bool is_var_handle = index >= var_handles_start_idx;
+    if (resource.write) {
+      if (!is_var_handle || resource.read) {
+        input_output_alias.push_back(
+            {new_argument_index, return_operands.size()});
+      } else if (is_var_handle) {
+        output_only_resources.push_back(
+            {return_operands.size(),
+             var_handle_shared_names[index - var_handles_start_idx]});
+      }
+      return_operands.push_back(resource.live_value);
+      result_types.push_back(resource.live_value.getType());
+    }
+
+    if (is_var_handle && !resource.read) {
+      assert(block.getArgument(index).getUses().empty());
+      argument_indices_to_remove.push_back(index);
+    } else {
+      if (is_var_handle) {
+        // Add resource_name attribute to VarHandleOp read.
+        function.setArgAttr(
+            new_argument_index, kResourceNameArgAttr,
+            builder.getStringAttr(
+                var_handle_shared_names[index - var_handles_start_idx]));
+      }
+      ++new_argument_index;
+    }
   }
 
-  // Rewrite return if more results need to be returned by the function.
-  OpBuilder builder(return_op);
-  if (!input_output_alias.empty()) {
+  // Remove unread var handle arguments.
+  for (int argument_index_to_remove :
+       llvm::reverse(argument_indices_to_remove)) {
+    block.eraseArgument(argument_index_to_remove);
+    argument_types.erase(argument_types.begin() + argument_index_to_remove);
+  }
+
+  // Rewrite return if there are variable writes.
+  if (return_operands.size() > num_results_before) {
     builder.create<ReturnOp>(return_op.getLoc(), return_operands);
     return_op.erase();
   }
@@ -240,13 +351,10 @@ LogicalResult PromoteResourcesToArguments(FuncOp function) {
   // Update function argument and result types with new resource subtypes.
   function.setType(builder.getFunctionType(argument_types, result_types));
 
-  // Add resource_name attribute to the input argument for the resources.
-  for (auto& resource : resource_map) {
-    if (auto attr = resource.getFirst().dyn_cast<Attribute>()) {
-      function.setArgAttr(resource.getSecond().input_index, "tf.resource_name",
-                          attr);
-    }
-  }
+  // Add resource_name attribute to the output for the resources.
+  for (auto& resource : output_only_resources)
+    function.setResultAttr(resource.first, kResourceNameArgAttr,
+                           builder.getStringAttr(resource.second));
 
   // Add aliasing_output attribute to the input argument for the resources that
   // are updated by the function.
@@ -258,7 +366,7 @@ LogicalResult PromoteResourcesToArguments(FuncOp function) {
 }
 
 class PromoteResourcesToArgsPass
-    : public OperationPass<PromoteResourcesToArgsPass, ModuleOp> {
+    : public PassWrapper<PromoteResourcesToArgsPass, OperationPass<ModuleOp>> {
  public:
   void runOnOperation() override;
 };
@@ -271,27 +379,60 @@ void PromoteResourcesToArgsPass::runOnOperation() {
   // This routine should only be called when control flow operations are still
   // represented with TF IfOp and WhileOp operations. In this case, there should
   // be only one basic blocks in the MLIR representation.
-  if (!has_single_element(main_func.getBlocks())) {
-    main_func.emitError() << "expects 'main' function to have 1 block, got "
-                          << main_func.getBlocks().size();
-    return signalPassFailure();
-  }
+  if (failed(CheckSingleBlockFunction(main_func))) return signalPassFailure();
 
+  llvm::SmallVector<std::string, 4> var_handle_shared_names;
   if (failed(ResourceLiftingForFunctionalControlFlow(main_func)) ||
-      failed(VerifyNoPotentialNestedResourceAccesses(module)) ||
-      failed(PromoteResourcesToArguments(main_func)))
+      failed(PromoteVarHandlesToArguments(main_func, /*add_validation=*/true,
+                                          &var_handle_shared_names)) ||
+      failed(PromoteResourcesToArguments(main_func, var_handle_shared_names)))
     return signalPassFailure();
+}
+
+class PromoteVarHandlesToArgsPass
+    : public PassWrapper<PromoteVarHandlesToArgsPass, OperationPass<ModuleOp>> {
+ public:
+  void runOnOperation() override;
+};
+
+void PromoteVarHandlesToArgsPass::runOnOperation() {
+  ModuleOp module = getOperation();
+  MLIRContext* context = module.getContext();
+  for (auto function : module.getOps<FuncOp>()) {
+    if (failed(CheckSingleBlockFunction(function))) return signalPassFailure();
+
+    llvm::SmallVector<std::string, 4> var_handle_shared_names;
+    PromoteVarHandlesToArguments(function, /*add_validation=*/false,
+                                 &var_handle_shared_names);
+
+    // Add resource names for each `tf.VarHandleOp` that were promoted to
+    // resource arguments.
+    const int var_handle_args_offset =
+        function.getNumArguments() - var_handle_shared_names.size();
+    for (auto var_name_and_index : llvm::enumerate(var_handle_shared_names))
+      function.setArgAttr(var_name_and_index.index() + var_handle_args_offset,
+                          kResourceNameArgAttr,
+                          StringAttr::get(var_name_and_index.value(), context));
+  }
 }
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreatePromoteResourcesToArgsPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreatePromoteResourcesToArgsPass() {
   return std::make_unique<PromoteResourcesToArgsPass>();
+}
+
+std::unique_ptr<OperationPass<ModuleOp>> CreatePromoteVarHandlesToArgsPass() {
+  return std::make_unique<PromoteVarHandlesToArgsPass>();
 }
 
 static PassRegistration<PromoteResourcesToArgsPass> pass(
     "tf-promote-resources-to-args",
     "Promote resources reads/writes to function inputs/outputs.");
+
+static PassRegistration<PromoteVarHandlesToArgsPass> var_handle_pass(
+    "tf-promote-var-handles-to-args",
+    "Promote tf.VarHandleOps to function arguments.");
 
 }  // namespace TF
 }  // namespace mlir

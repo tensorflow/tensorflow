@@ -38,7 +38,7 @@ namespace {
 // This pass outlines the cond/body region of the TFL WhileOp into functions and
 // replaces the regions with calls to these outlined functions.
 class WhileOutlinePass
-    : public mlir::OperationPass<WhileOutlinePass, ModuleOp> {
+    : public mlir::PassWrapper<WhileOutlinePass, OperationPass<ModuleOp>> {
  public:
   explicit WhileOutlinePass() {}
 
@@ -228,8 +228,7 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
 
   Operation* new_op = OpBuilder(op).insert(Operation::create(
       op->getLoc(), op->getName(), new_types, operands, op->getAttrs(),
-      /*successors=*/{}, /*numRegions=*/2,
-      /*resizableOperandList=*/true));
+      /*successors=*/{}, /*numRegions=*/2));
   for (int i = 0; i < 2; ++i) new_op->getRegion(i).takeBody(op->getRegion(i));
   op->replaceAllUsesWith(new_op->getResults().take_front(op->getNumResults()));
   op->erase();
@@ -241,7 +240,7 @@ void WhileOutlinePass::runOnOperation() {
 }
 
 // Creates an instance of the TensorFlow Lite dialect WhileOp outline pass.
-std::unique_ptr<OpPassBase<ModuleOp>> CreateWhileOutlinePass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateWhileOutlinePass() {
   return std::make_unique<WhileOutlinePass>();
 }
 

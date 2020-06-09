@@ -59,6 +59,8 @@ from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
+_XLA_OP_BY_OP_INPUTS_LIMIT = 200
+
 
 @contextlib.contextmanager
 def maybe_init_scope():
@@ -96,34 +98,33 @@ def validate_run_function(fn):
 
 @tf_export("distribute.experimental.TPUStrategy", v1=[])
 class TPUStrategy(distribute_lib.Strategy):
-  """TPU distribution strategy implementation."""
+  """TPU distribution strategy implementation.
+
+  To construct a TPUStrategy object, you need to run the
+  initialization code as below:
+
+  >>> resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
+  >>> tf.config.experimental_connect_to_cluster(resolver)
+  >>> tf.tpu.experimental.initialize_tpu_system(resolver)
+  >>> strategy = tf.distribute.experimental.TPUStrategy(resolver)
+
+  While using distribution strategies, the variables created within strategy's
+  scope will be replicated across all the replicas and can be kept in sync
+  using all-reduce algorithms.
+
+  To run TF2 programs on TPUs, you can either use `.compile` and
+  `.fit` APIs in `tf.keras` with TPUStrategy, or write your own customized
+  training loop by calling `strategy.run` directly. Note that
+  TPUStrategy doesn't support pure eager execution, so please make sure the
+  function passed into `strategy.run` is a `tf.function` or
+  `strategy.run` is called inside a `tf.function` if eager
+  behavior is enabled.
+  """
 
   def __init__(self,
                tpu_cluster_resolver=None,
                device_assignment=None):
     """Synchronous training in TPU donuts or Pods.
-
-    To construct a TPUStrategy object, you need to run the
-    initialization code as below:
-
-    ```python
-    resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu=FLAGS.tpu)
-    tf.config.experimental_connect_to_cluster(resolver)
-    tf.tpu.experimental.initialize_tpu_system(resolver)
-    strategy = tf.distribute.experimental.TPUStrategy(resolver)
-    ```
-
-    While using distribution strategies, the variables created within strategy's
-    scope will be replicated across all the replicas and can be kept in sync
-    using all-reduce algorithms.
-
-    To run TF2 programs on TPUs, you can either use `.compile` and
-    `.fit` APIs in `tf.keras` with TPUStrategy, or write your own customized
-    training loop by calling `strategy.run` directly. Note that
-    TPUStrategy doesn't support pure eager execution, so please make sure the
-    function passed into `strategy.run` is a `tf.function` or
-    `strategy.run` is called inside a `tf.function` if eager
-    behavior is enabled.
 
     Args:
       tpu_cluster_resolver: A tf.distribute.cluster_resolver.TPUClusterResolver,
@@ -209,26 +210,26 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
     Users can pass strategy specific options to `options` argument. An example
     to enable bucketizing dynamic shapes in `TPUStrategy.run`
     is:
-    ```python
 
-    resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
-    tf.config.experimental_connect_to_cluster(resolver)
-    tf.tpu.experimental.initialize_tpu_system(resolver)
-    strategy = tf.distribute.experimental.TPUStrategy(tpu='')
+    >>> resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
+    >>> tf.config.experimental_connect_to_cluster(resolver)
+    >>> tf.tpu.experimental.initialize_tpu_system(resolver)
+    >>> strategy = tf.distribute.experimental.TPUStrategy(resolver)
 
-    options = tf.distribute.RunOptions()
-    options.experimental_bucketizing_dynamic_shape = True
+    >>> options = tf.distribute.RunOptions(
+    ...     experimental_bucketizing_dynamic_shape=True)
 
-    iterator = iter(inputs)
+    >>> dataset = tf.data.Dataset.range(
+    ...    strategy.num_replicas_in_sync, output_type=dtypes.float32).batch(
+    ...        strategy.num_replicas_in_sync, drop_remainder=True)
+    >>> input_iterator = iter(strategy.experimental_distribute_dataset(dataset))
 
-    @tf.function()
-    def step_fn(inputs):
-      output = tf.reduce_sum(inputs)
-      return output
+    >>> @tf.function()
+    ... def step_fn(inputs):
+    ...  output = tf.reduce_sum(inputs)
+    ...  return output
 
-      strategy.run(step_fn, args=(next(iterator),),
-                                   options=options)
-    ```
+    >>> strategy.run(step_fn, args=(next(input_iterator),), options=options)
 
     Args:
       fn: The function to run. The output must be a `tf.nest` of `Tensor`s.
@@ -677,8 +678,18 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       return cross_device_ops_lib.reduce_non_distributed_value(
           reduce_op, value, destinations, self._num_replicas_in_sync)
 
+    # Currently XLA op by op mode has a limit for the number of inputs for a
+    # single op, thus we break one `add_n` op into a group of `add_n` ops to
+    # work around the constraint.
     # TODO(cjfj): Detect when it is possible to use `cross_replica_sum`.
-    output = math_ops.add_n(value.values)
+    if len(value.values) <= _XLA_OP_BY_OP_INPUTS_LIMIT:
+      output = math_ops.add_n(value.values)
+    else:
+      output = array_ops.zeros_like(
+          value.values[0], dtype=value.values[0].dtype)
+      for i in range(0, len(value.values), _XLA_OP_BY_OP_INPUTS_LIMIT):
+        output += math_ops.add_n(value.values[i:i + _XLA_OP_BY_OP_INPUTS_LIMIT])
+
     if reduce_op == reduce_util.ReduceOp.MEAN:
       output *= (1. / len(value.values))
 
@@ -898,7 +909,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           if tensor_util.is_tensor(input_tensor):
             rank = input_tensor.get_shape().rank
           else:
-            rank = np.rank(input_tensor)
+            rank = np.ndim(input_tensor)
           maximum_shape = tensor_shape.TensorShape([None] * rank)
           maximum_shapes.append(maximum_shape)
         maximum_shapes = nest.pack_sequence_as(replicate_inputs[0],

@@ -47,10 +47,10 @@ TfLiteStatus RecognizeCommands::ProcessLatestResults(
     return kTfLiteError;
   }
 
-  if (latest_results->type != kTfLiteUInt8) {
+  if (latest_results->type != kTfLiteInt8) {
     TF_LITE_REPORT_ERROR(
         error_reporter_,
-        "The results for recognition should be uint8 elements, but are %d",
+        "The results for recognition should be int8 elements, but are %d",
         latest_results->type);
     return kTfLiteError;
   }
@@ -66,7 +66,7 @@ TfLiteStatus RecognizeCommands::ProcessLatestResults(
   }
 
   // Add the latest results to the head of the queue.
-  previous_results_.push_back({current_time_ms, latest_results->data.uint8});
+  previous_results_.push_back({current_time_ms, latest_results->data.int8});
 
   // Prune any earlier results that are too old for the averaging window.
   const int64_t time_limit = current_time_ms - average_window_duration_ms_;
@@ -93,12 +93,12 @@ TfLiteStatus RecognizeCommands::ProcessLatestResults(
   for (int offset = 0; offset < previous_results_.size(); ++offset) {
     PreviousResultsQueue::Result previous_result =
         previous_results_.from_front(offset);
-    const uint8_t* scores = previous_result.scores_;
+    const int8_t* scores = previous_result.scores;
     for (int i = 0; i < kCategoryCount; ++i) {
       if (offset == 0) {
-        average_scores[i] = scores[i];
+        average_scores[i] = scores[i] + 128;
       } else {
-        average_scores[i] += scores[i];
+        average_scores[i] += scores[i] + 128;
       }
     }
   }

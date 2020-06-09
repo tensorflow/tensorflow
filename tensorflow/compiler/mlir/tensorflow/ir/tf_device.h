@@ -43,47 +43,6 @@ class TensorFlowDeviceDialect : public Dialect {
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h.inc"
 
-// TODO(b/148642767): Use tablegen to define tf_device.parallel_execute op once
-// variadic regions can be expressed in tablegen.
-//
-// ParallelExecute op concurrently executes variadic number of regions. Regions
-// must represent separate sets of instructions to execute concurrently. In
-// order to represent concurrently executed regions with dependencies, multiple
-// ParallelExecute ops can be used instead. As so, regions within
-// ParallelExecute op must not have control/data dependencies. While explicit
-// dependencies between regions are disallowed, ParallelExecute op does not
-// prevent implicit communication between regions (e.g. communication via
-// send/recvs). In this case, users of ParallelExecute op must provide correct
-// control dependencies between regions to guarantee correctness. Regions in
-// ParallelExecute may include Resource ops. In the case where different regions
-// include ops access the same resource, the users of the ParallelExecute op
-// must provide mechanism (via send/recvs or via control dependencies) to
-// guarantee correct ordering. Sequential ordering of ops within a region is
-// guaranteed. Also, sequential ordering of ops before/after ParallelExecute ops
-// are guaranteed. That is, execution of regions inside ParallelExecute op is
-// blocked until all inputs to all regions are materialized and ops following
-// ParallelExecute op are blocked until all regions are executed.
-class ParallelExecuteOp
-    : public Op<ParallelExecuteOp,
-                OpTrait::SingleBlockImplicitTerminator<ReturnOp>::Impl> {
- public:
-  using Op::Op;
-
-  static void build(Builder* builder, OperationState& state, int num_regions,
-                    llvm::ArrayRef<Type> output_types);
-
-  static StringRef getOperationName() { return "tf_device.parallel_execute"; }
-
-  LogicalResult verify();
-  Block& GetRegionBlockWithIndex(unsigned index);
-  Operation::result_range GetRegionOutputs(unsigned region_index);
-
-  // Checks if a tf_device.parallel_execute index'th region block wraps a single
-  // operation and the single operation results are perfectly forwarded to the
-  // region block's return.
-  bool RegionWrapsSingleOp(unsigned index);
-};
-
 }  // namespace tf_device
 }  // namespace mlir
 

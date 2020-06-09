@@ -97,9 +97,11 @@ cc_library(
     name = "cpuinfo_impl",
     srcs = select({
         ":linux_x86_64": COMMON_SRCS + X86_SRCS + LINUX_SRCS + LINUX_X86_SRCS,
-        ":linux_aarch64": COMMON_SRCS + ARM_SRCS + LINUX_SRCS + LINUX_ARM64_SRCS,
         ":linux_arm": COMMON_SRCS + ARM_SRCS + LINUX_SRCS + LINUX_ARM32_SRCS,
+        ":linux_armhf": COMMON_SRCS + ARM_SRCS + LINUX_SRCS + LINUX_ARM32_SRCS,
+        ":linux_aarch64": COMMON_SRCS + ARM_SRCS + LINUX_SRCS + LINUX_ARM64_SRCS,
         ":macos_x86_64": COMMON_SRCS + X86_SRCS + MACH_SRCS + MACH_X86_SRCS,
+        ":windows_x86_64": COMMON_SRCS + X86_SRCS + WINDOWS_X86_SRCS,
         ":android_armv7": COMMON_SRCS + ARM_SRCS + LINUX_SRCS + LINUX_ARM32_SRCS + ANDROID_ARM_SRCS,
         ":android_arm64": COMMON_SRCS + ARM_SRCS + LINUX_SRCS + LINUX_ARM64_SRCS + ANDROID_ARM_SRCS,
         ":android_x86": COMMON_SRCS + X86_SRCS + LINUX_SRCS + LINUX_X86_SRCS,
@@ -115,13 +117,19 @@ cc_library(
         ":watchos_arm64_32": COMMON_SRCS + MACH_SRCS + MACH_ARM_SRCS,
         ":tvos_x86_64": COMMON_SRCS + X86_SRCS + MACH_SRCS + MACH_X86_SRCS,
         ":tvos_arm64": COMMON_SRCS + MACH_SRCS + MACH_ARM_SRCS,
-        ":emscripten_wasm": COMMON_SRCS + EMSCRIPTEN_SRCS,
     }),
-    copts = C99OPTS + [
+    copts = select({
+        ":windows_x86_64": [],
+        "//conditions:default": C99OPTS,
+    }) + [
         "-Iexternal/cpuinfo/include",
         "-Iexternal/cpuinfo/src",
     ],
-    linkstatic = True,
+    linkstatic = select({
+        # https://github.com/bazelbuild/bazel/issues/11552
+        ":macos_x86_64": False,
+        "//conditions:default": True,
+    }),
     # Headers must be in textual_hdrs to allow us to set the standard to C99
     textual_hdrs = [
         "include/cpuinfo.h",
@@ -156,6 +164,16 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "cpuinfo_with_unstripped_include_path",
+    hdrs = [
+        "include/cpuinfo.h",
+    ],
+    deps = [
+        ":cpuinfo_impl",
+    ],
+)
+
 ############################# Build configurations #############################
 
 config_setting(
@@ -164,14 +182,18 @@ config_setting(
 )
 
 config_setting(
-    name = "linux_aarch64",
-    values = {"cpu": "aarch64"},
+    name = "linux_arm",
+    values = {"cpu": "arm"},
 )
 
 config_setting(
-    name = "linux_arm",
-    values = {"cpu": "arm"},
-    visibility = ["//visibility:public"],
+    name = "linux_armhf",
+    values = {"cpu": "armhf"},
+)
+
+config_setting(
+    name = "linux_aarch64",
+    values = {"cpu": "aarch64"},
 )
 
 config_setting(
@@ -180,6 +202,11 @@ config_setting(
         "apple_platform_type": "macos",
         "cpu": "darwin",
     },
+)
+
+config_setting(
+    name = "windows_x86_64",
+    values = {"cpu": "x64_windows"},
 )
 
 config_setting(

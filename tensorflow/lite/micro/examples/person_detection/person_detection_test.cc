@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/version.h"
 
 // Create an area of memory to use for input, output, and intermediate arrays.
-constexpr int tensor_arena_size = 73 * 1024;
+constexpr int tensor_arena_size = 93 * 1024;
 uint8_t tensor_arena[tensor_arena_size];
 
 TF_LITE_MICRO_TESTS_BEGIN
@@ -53,8 +53,8 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   // incur some penalty in code space for op implementations that are not
   // needed by this graph.
   //
-  // tflite::ops::micro::AllOpsResolver resolver;
-  tflite::MicroOpResolver<3> micro_op_resolver;
+  // tflite::AllOpsResolver resolver;
+  tflite::MicroMutableOpResolver<3> micro_op_resolver;
   micro_op_resolver.AddBuiltin(
       tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
       tflite::ops::micro::Register_DEPTHWISE_CONV_2D());

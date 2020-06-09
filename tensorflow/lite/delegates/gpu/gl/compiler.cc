@@ -120,8 +120,18 @@ class CompilerImpl : public Compiler {
     for (auto node : compiled_graph_.nodes()) {
       CompiledNodeAttributes attr;
       attr.node_indices.push_back(node->id);
-      RETURN_IF_ERROR(node_shader_.GenerateCode(
-          {&compiled_graph_, &gpu_info_, node, options_}, &attr.code));
+      NodeShader::GenerationContext ctx = {&gpu_info_, options_,
+                                           node->operation.type,
+                                           node->operation.attributes};
+      for (const auto& tensor : graph.FindInputs(node->id)) {
+        const auto& shape = tensor->tensor.shape;
+        ctx.input_shapes.push_back({shape.b, shape.h, shape.w, shape.c});
+      }
+      for (const auto& tensor : graph.FindOutputs(node->id)) {
+        const auto& shape = tensor->tensor.shape;
+        ctx.output_shapes.push_back({shape.b, shape.h, shape.w, shape.c});
+      }
+      RETURN_IF_ERROR(node_shader_.GenerateCode(ctx, &attr.code));
       node->operation.attributes = std::move(attr);
     }
 
@@ -180,8 +190,7 @@ class CompilerImpl : public Compiler {
                 "Workload uint3() requires all output sizes to match");
           }
         }
-        attr.code.workload =
-            uint3(shape.w, shape.h, IntegralDivideRoundUp(shape.c, 4));
+        attr.code.workload = uint3(shape.w, shape.h, DivideRoundUp(shape.c, 4));
       }
 
       int num_textures = 0;

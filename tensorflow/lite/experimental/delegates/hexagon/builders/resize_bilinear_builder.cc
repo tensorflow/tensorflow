@@ -22,8 +22,6 @@ namespace hexagon {
 TfLiteStatus ResizeBilinearOpBuilder::PopulateSubGraph(
     const TfLiteIntArray* inputs, const TfLiteIntArray* outputs,
     TfLiteContext* context) {
-  static int quant_bound_shape[] = {1, 1, 1, 1};
-
   if (inputs->size != 2) {
     context->ReportError(context, "Expecting 2 inputs %d != 2\n", inputs->size);
     return kTfLiteError;
@@ -50,15 +48,11 @@ TfLiteStatus ResizeBilinearOpBuilder::PopulateSubGraph(
 
   // Input min/max
   TF_LITE_ENSURE_OK(context, ComputeMinAndMaxQuantValues(
-                                 input_tensor, &input_min_, &input_max_,
-                                 std::numeric_limits<uint8_t>::min(),
-                                 std::numeric_limits<uint8_t>::max()));
+                                 input_tensor, &input_min_, &input_max_));
   auto* input_min_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&input_min_),
-      sizeof(input_min_));
+      kScalarShape, reinterpret_cast<char*>(&input_min_), sizeof(input_min_));
   auto* input_max_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&input_max_),
-      sizeof(input_max_));
+      kScalarShape, reinterpret_cast<char*>(&input_max_), sizeof(input_max_));
 
   AddInput(TensorID(input_min_const->GetID(), 0));
   AddInput(TensorID(input_max_const->GetID(), 0));
@@ -67,7 +61,7 @@ TfLiteStatus ResizeBilinearOpBuilder::PopulateSubGraph(
       reinterpret_cast<const TfLiteResizeBilinearParams*>(builtin_data_);
   int align_corners = params->align_corners ? 1 : 0;
   auto* align_corners_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&align_corners),
+      kScalarShape, reinterpret_cast<char*>(&align_corners),
       sizeof(align_corners));
   AddInput(TensorID(align_corners_const->GetID(), 0));
 
@@ -79,8 +73,8 @@ TfLiteStatus ResizeBilinearOpBuilder::PopulateSubGraph(
   auto resize_bilinear_out = AddOutput(sizeof(uint8_t), 4,
                                        {output_batch_size, output_height_size,
                                         output_width_size, output_depth_size});
-  AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-  AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+  AddOutput(sizeof(float), 4, kScalarShape);
+  AddOutput(sizeof(float), 4, kScalarShape);
   node_output_ = resize_bilinear_out;
 
   return kTfLiteOk;

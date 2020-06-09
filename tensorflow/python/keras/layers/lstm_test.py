@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -181,6 +183,12 @@ class LSTMLayerTest(keras_parameterized.TestCase):
       l1 = layer_class(units=1, stateful=stateful)
       l2 = layer_class.from_config(l1.get_config())
       assert l1.get_config() == l2.get_config()
+
+  def test_deep_copy_LSTM(self):
+    cell = keras.layers.LSTMCell(5)
+    copied_cell = copy.deepcopy(cell)
+    self.assertEqual(copied_cell.units, 5)
+    self.assertEqual(cell.get_config(), copied_cell.get_config())
 
   def test_specify_initial_state_keras_tensor(self):
     num_states = 2

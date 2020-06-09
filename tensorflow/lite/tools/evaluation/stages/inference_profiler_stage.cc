@@ -68,11 +68,12 @@ float CalculateAverageError(T* reference, T* test, int64_t num_elements) {
 
 }  // namespace
 
-TfLiteStatus InferenceProfilerStage::Init() {
+TfLiteStatus InferenceProfilerStage::Init(
+    const DelegateProviders* delegate_providers) {
   // Initialize TfliteInferenceStage with the user-provided
   // TfliteInferenceParams.
   test_stage_.reset(new TfliteInferenceStage(config_));
-  if (test_stage_->Init() != kTfLiteOk) return kTfLiteError;
+  if (test_stage_->Init(delegate_providers) != kTfLiteOk) return kTfLiteError;
   LOG(INFO) << "Test interpreter has been initialized.";
 
   // Initialize a reference TfliteInferenceStage that uses the given model &

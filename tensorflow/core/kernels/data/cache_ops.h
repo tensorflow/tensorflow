@@ -27,11 +27,9 @@ namespace data {
 // The expected use is that a single `MemoryWriterIterator` populates the
 // cache with dataset elements. Once all elements are cached, the cache can
 // be used by one or more `MemoryReaderIterator`s.
-class MemoryCache : public ResourceBase {
+class MemoryCache {
  public:
   MemoryCache() = default;
-
-  string DebugString() const override;
 
   // Marks the cache as completed.
   void Complete(std::vector<std::vector<Tensor>>&& cache);
@@ -55,11 +53,24 @@ class MemoryCache : public ResourceBase {
   std::vector<std::vector<Tensor>> cache_ TF_GUARDED_BY(mu_);
 };
 
+// A resource wrapping a shared instance of a memory cache.
+class MemoryCacheManager : public ResourceBase {
+ public:
+  MemoryCacheManager() : cache_(std::make_shared<MemoryCache>()) {}
+
+  string DebugString() const override;
+
+  std::shared_ptr<MemoryCache> get() { return cache_; }
+
+ private:
+  std::shared_ptr<MemoryCache> cache_;
+};
+
 // Creates an instance of cache resource and transfers ownership to the caller.
-class AnonymousMemoryCacheHandleOp : public AnonymousResourceOp<MemoryCache> {
+class AnonymousMemoryCacheHandleOp
+    : public AnonymousResourceOp<MemoryCacheManager> {
  public:
   explicit AnonymousMemoryCacheHandleOp(OpKernelConstruction* ctx);
-  void Compute(OpKernelContext* ctx) override;
 
  private:
   string name() override;
@@ -67,7 +78,7 @@ class AnonymousMemoryCacheHandleOp : public AnonymousResourceOp<MemoryCache> {
                         std::unique_ptr<FunctionLibraryDefinition> flib_def,
                         std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
                         FunctionLibraryRuntime* lib,
-                        MemoryCache** resource) override;
+                        MemoryCacheManager** manager) override;
 };
 
 // Deletes an instance of cache resource.

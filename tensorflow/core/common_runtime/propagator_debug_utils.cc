@@ -14,11 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/propagator_debug_utils.h"
 
-#include <vector>
-
 #include "tensorflow/core/common_runtime/entry.h"
-#include "tensorflow/core/common_runtime/immutable_executor_state.h"
+#include "tensorflow/core/common_runtime/graph_view.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/strcat.h"
 
 namespace tensorflow {
 
@@ -39,10 +40,8 @@ const Tensor* GetTensorValueForDump(const Entry& input) {
   }
 }
 
-void DumpPendingNodeState(const ImmutableExecutorState& immutable_state,
-                          const int node_id, const Entry* input_vector,
+void DumpPendingNodeState(const NodeItem& node_item, const Entry* input_vector,
                           const bool show_nodes_with_no_ready_inputs) {
-  const NodeItem& node_item = immutable_state.graph_view().node_ref(node_id);
   const int input_base = node_item.input_start;
   if (!show_nodes_with_no_ready_inputs) {
     bool has_ready_input = false;
@@ -73,9 +72,7 @@ void DumpPendingNodeState(const ImmutableExecutorState& immutable_state,
   }
 }
 
-void DumpActiveNodeState(const ImmutableExecutorState& immutable_state,
-                         const int node_id, const Entry* input_vector) {
-  const NodeItem& node_item = immutable_state.graph_view().node_ref(node_id);
+void DumpActiveNodeState(const NodeItem& node_item, const Entry* input_vector) {
   LOG(WARNING) << "    Active Node: " << node_item.DebugString();
   const int input_base = node_item.input_start;
   for (int i = 0; i < node_item.num_inputs; ++i) {

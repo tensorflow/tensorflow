@@ -33,8 +33,9 @@ class PadOpConstModel : public SingleOpModelWithHexagon {
     BuildInterpreter({input.shape});
   }
 
+  template <typename integer_type>
   void SetQuantizedInput(std::initializer_list<float> data) {
-    QuantizeAndPopulate<uint8_t>(input_, data);
+    QuantizeAndPopulate<integer_type>(input_, data);
   }
 
   void SetPaddings(std::initializer_list<int> paddings) {
@@ -43,9 +44,10 @@ class PadOpConstModel : public SingleOpModelWithHexagon {
 
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
 
+  template <typename integer_type>
   std::vector<float> GetDequantizedOutput() {
-    return Dequantize<uint8_t>(ExtractVector<uint8_t>(output_),
-                               GetScale(output_), GetZeroPoint(output_));
+    return Dequantize<integer_type>(ExtractVector<integer_type>(output_),
+                                    GetScale(output_), GetZeroPoint(output_));
   }
 
  protected:
@@ -54,35 +56,51 @@ class PadOpConstModel : public SingleOpModelWithHexagon {
   int paddings_;
 };
 
-TEST(PadOpConstModel, UInt8SimpleConstTest) {
+template <typename integer_type, TensorType tensor_dtype>
+void SimpleConstTestImpl() {
   const float quantization_tolerance = 2 / 255.0;
   // Padding is represented as four 2-D lists representing above padding and
   // below padding (i.e. {{0, 0}, {1, 1}, {1, 1}, {0, 0}}).
-  PadOpConstModel m({TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0}, {4, 2},
-                    {0, 0, 1, 1, 1, 1, 0, 0},
-                    {TensorType_UINT8, {}, -1.0, 1.0});
-  m.SetQuantizedInput({-0.8, 0.2, 0.9, 0.7});
+  PadOpConstModel m({tensor_dtype, {1, 2, 2, 1}, -1.0, 1.0}, {4, 2},
+                    {0, 0, 1, 1, 1, 1, 0, 0}, {tensor_dtype, {}, -1.0, 1.0});
+  m.SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7});
   m.ApplyDelegateAndInvoke();
-  EXPECT_THAT(m.GetDequantizedOutput(),
+  EXPECT_THAT(m.GetDequantizedOutput<integer_type>(),
               ElementsAreArray(ArrayFloatNear(
                   {0, 0, 0, 0, 0, -0.8, 0.2, 0, 0, 0.9, 0.7, 0, 0, 0, 0, 0},
                   quantization_tolerance)));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
 }
 
-TEST(PadOpConstModel, UInt8AdvancedConstTest) {
+template <typename integer_type, TensorType tensor_dtype>
+void AdvancedConstTestImpl() {
   const float quantization_tolerance = 2 / 255.0;
-  PadOpConstModel m({TensorType_UINT8, {1, 2, 3, 1}, -1.0, 1.0}, {4, 2},
-                    {0, 0, 0, 2, 1, 3, 0, 0},
-                    {TensorType_UINT8, {}, -1.0, 1.0});
-  m.SetQuantizedInput({-0.8, 0.2, 0.9, 0.7, 0.1, -0.3});
+  PadOpConstModel m({tensor_dtype, {1, 2, 3, 1}, -1.0, 1.0}, {4, 2},
+                    {0, 0, 0, 2, 1, 3, 0, 0}, {tensor_dtype, {}, -1.0, 1.0});
+  m.SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7, 0.1, -0.3});
   m.ApplyDelegateAndInvoke();
-  EXPECT_THAT(m.GetDequantizedOutput(),
+  EXPECT_THAT(m.GetDequantizedOutput<integer_type>(),
               ElementsAreArray(ArrayFloatNear(
                   {0, -0.8, 0.2, 0.9, 0, 0, 0, 0, 0.7, 0.1, -0.3, 0, 0, 0,
                    0, 0,    0,   0,   0, 0, 0, 0, 0,   0,   0,    0, 0, 0},
                   quantization_tolerance)));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 7, 1}));
+}
+
+TEST(PadOpConstModel, SimpleConstTest_UInt8) {
+  SimpleConstTestImpl<uint8_t, TensorType_UINT8>();
+}
+
+TEST(PadOpConstModel, SimpleConstTest_Int8) {
+  SimpleConstTestImpl<int8_t, TensorType_INT8>();
+}
+
+TEST(PadOpConstModel, AdvancedConstTest_UInt8) {
+  AdvancedConstTestImpl<uint8_t, TensorType_UINT8>();
+}
+
+TEST(PadOpConstModel, AdvancedConstTest_Int8) {
+  AdvancedConstTestImpl<int8_t, TensorType_INT8>();
 }
 
 }  // namespace tflite

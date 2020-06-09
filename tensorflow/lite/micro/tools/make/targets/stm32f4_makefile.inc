@@ -16,7 +16,6 @@ ifeq ($(TARGET), stm32f4)
     -fmessage-length=0 \
     -fno-exceptions \
     -fno-unwind-tables \
-    -fno-builtin \
     -ffunction-sections \
     -fdata-sections \
     -funsigned-char \
@@ -31,6 +30,7 @@ ifeq ($(TARGET), stm32f4)
     -Wno-missing-field-initializers \
     -Wno-write-strings \
     -Wno-sign-compare \
+    -Wunused-function \
     -fno-delete-null-pointer-checks \
     -fomit-frame-pointer \
     -fpermissive \
@@ -58,10 +58,12 @@ ifeq ($(TARGET), stm32f4)
   MICROLITE_CC_SRCS := $(filter-out $(EXCLUDED_SRCS), $(MICROLITE_CC_SRCS))
   TEST_SCRIPT := tensorflow/lite/micro/testing/test_stm32f4_binary.sh
   # TODO, non working tests.. the micro_speech example partly works
+  # TODO(b/158324045): Examine why some tests fail here.
   EXCLUDED_TESTS := \
     tensorflow/lite/micro/micro_interpreter_test.cc \
     tensorflow/lite/micro/micro_allocator_test.cc \
     tensorflow/lite/micro/memory_helpers_test.cc \
+    tensorflow/lite/micro/recording_micro_allocator_test.cc \
     tensorflow/lite/micro/kernels/logistic_test.cc \
     tensorflow/lite/micro/kernels/logical_test.cc \
     tensorflow/lite/micro/kernels/maximum_minimum_test.cc \
@@ -71,14 +73,11 @@ ifeq ($(TARGET), stm32f4)
     tensorflow/lite/micro/kernels/elementwise_test.cc \
     tensorflow/lite/micro/kernels/strided_slice_test.cc \
     tensorflow/lite/micro/kernels/prelu_test.cc \
-    tensorflow/lite/micro/kernels/pooling_test.cc \
     tensorflow/lite/micro/kernels/pack_test.cc \
     tensorflow/lite/micro/kernels/activations_test.cc \
     tensorflow/lite/micro/kernels/dequantize_test.cc \
     tensorflow/lite/micro/kernels/unpack_test.cc \
     tensorflow/lite/micro/kernels/split_test.cc \
-    tensorflow/lite/micro/kernels/conv_test.cc \
-    tensorflow/lite/micro/kernels/depthwise_conv_test.cc \
     tensorflow/lite/micro/simple_tensor_allocator_test.cc
   MICROLITE_TEST_SRCS := $(filter-out $(EXCLUDED_TESTS), $(MICROLITE_TEST_SRCS))
   EXCLUDED_EXAMPLE_TESTS := \

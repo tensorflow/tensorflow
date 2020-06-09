@@ -27,7 +27,8 @@ JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_nnapi_NnApiDelegate_createDelegate(
     JNIEnv* env, jclass clazz, jint preference, jstring accelerator_name,
     jstring cache_dir, jstring model_token, jint max_delegated_partitions,
-    jboolean override_disallow_cpu, jboolean disallow_cpu_value) {
+    jboolean override_disallow_cpu, jboolean disallow_cpu_value,
+    jboolean allow_fp16) {
   StatefulNnApiDelegate::Options options = StatefulNnApiDelegate::Options();
   options.execution_preference =
       (StatefulNnApiDelegate::Options::ExecutionPreference)preference;
@@ -47,6 +48,10 @@ Java_org_tensorflow_lite_nnapi_NnApiDelegate_createDelegate(
 
   if (override_disallow_cpu) {
     options.disallow_nnapi_cpu = disallow_cpu_value;
+  }
+
+  if (allow_fp16) {
+    options.allow_fp16 = allow_fp16;
   }
 
   auto delegate = new StatefulNnApiDelegate(options);

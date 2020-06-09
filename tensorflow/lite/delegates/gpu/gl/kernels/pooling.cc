@@ -34,16 +34,14 @@ namespace {
 absl::Status GenerateMaxPoolingCode(const Pooling2DAttributes& attr,
                                     const NodeShader::GenerationContext& ctx,
                                     GeneratedCode* generated_code) {
-  auto input = ctx.graph->FindInputs(ctx.node->id)[0];
-
   if (attr.padding.prepended.h > attr.kernel.h ||
       attr.padding.prepended.w > attr.kernel.w) {
     return absl::InvalidArgumentError("Padding is bigger than kernel.");
   }
 
   std::vector<Variable> parameters = {
-      {"input_data_0_h", input->tensor.shape.h},
-      {"input_data_0_w", input->tensor.shape.w},
+      {"input_data_0_h", static_cast<int>(ctx.input_shapes[0][1])},
+      {"input_data_0_w", static_cast<int>(ctx.input_shapes[0][2])},
       {"stride", int2(attr.strides.w, attr.strides.h)},
       {"offset", int2(attr.padding.prepended.w, attr.padding.prepended.h)},
       {"window_h", attr.kernel.h},
@@ -100,11 +98,9 @@ absl::Status GenerateMaxPoolingCode(const Pooling2DAttributes& attr,
 absl::Status GenerateAveragePoolingCode(
     const Pooling2DAttributes& attr, const NodeShader::GenerationContext& ctx,
     GeneratedCode* generated_code) {
-  auto input = ctx.graph->FindInputs(ctx.node->id)[0];
-
   std::vector<Variable> parameters = {
-      {"input_data_0_h", input->tensor.shape.h},
-      {"input_data_0_w", input->tensor.shape.w},
+      {"input_data_0_h", static_cast<int>(ctx.input_shapes[0][1])},
+      {"input_data_0_w", static_cast<int>(ctx.input_shapes[0][2])},
       {"stride", int2(attr.strides.w, attr.strides.h)},
       {"offset", int2(attr.padding.prepended.w, attr.padding.prepended.h)},
       {"window_h", attr.kernel.h},
@@ -143,8 +139,7 @@ class Pooling : public NodeShader {
  public:
   absl::Status GenerateCode(const GenerationContext& ctx,
                             GeneratedCode* generated_code) const final {
-    const auto& attr =
-        absl::any_cast<Pooling2DAttributes>(ctx.node->operation.attributes);
+    const auto& attr = absl::any_cast<const Pooling2DAttributes&>(ctx.op_attr);
     switch (attr.type) {
       case PoolingType::AVERAGE:
         return GenerateAveragePoolingCode(attr, ctx, generated_code);

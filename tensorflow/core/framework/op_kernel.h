@@ -597,9 +597,6 @@ class OpKernelContext {
     // The step being executed.
     int64 step_id = 0;
 
-    // True if the op is created by eager runtime.
-    bool is_eager = false;
-
     // The op kernel being computed.
     OpKernel* op_kernel = nullptr;
 
@@ -689,13 +686,14 @@ class OpKernelContext {
     StepStatsCollectorInterface* stats_collector = nullptr;
     GraphCollector* graph_collector = nullptr;
     bool run_all_kernels_inline = false;
+    const string* executor_type = nullptr;
 
     // TensorSliceReaderCache support.
     checkpoint::TensorSliceReaderCacheWrapper* slice_reader_cache = nullptr;
 
     // Support for forwarding reservations (used by ScopedAllocator).
-    static const int kNeverForward = -2;
-    static const int kNoReservation = -1;
+    static constexpr int kNeverForward = -2;
+    static constexpr int kNoReservation = -1;
     // Values in [0,...) represent reservations for the indexed output.
     const int* forward_from_array = nullptr;
 
@@ -716,8 +714,6 @@ class OpKernelContext {
   Env* env() const { return params_->device->env(); }
 
   int64 step_id() const { return params_->step_id; }
-
-  bool is_eager() const { return params_->is_eager; }
 
   const OpKernel& op_kernel() const { return *params_->op_kernel; }
 
@@ -829,6 +825,10 @@ class OpKernelContext {
   bool run_all_kernels_inline() const {
     return params_->run_all_kernels_inline;
   }
+
+  // Returns the registered name for the executor type that is executing the
+  // current kernel. If empty, the default executor is used.
+  const string& executor_type() const;
 
   // Input to output forwarding.
 

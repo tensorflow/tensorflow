@@ -524,6 +524,10 @@ renames = {
         'tf.compat.v1.keras.layers.CuDNNGRU',
     'tf.keras.layers.CuDNNLSTM':
         'tf.compat.v1.keras.layers.CuDNNLSTM',
+    'tf.keras.layers.disable_v2_dtype_behavior':
+        'tf.compat.v1.keras.layers.disable_v2_dtype_behavior',
+    'tf.keras.layers.enable_v2_dtype_behavior':
+        'tf.compat.v1.keras.layers.enable_v2_dtype_behavior',
     'tf.keras.losses.cosine':
         'tf.keras.losses.cosine_similarity',
     'tf.keras.losses.cosine_proximity':
@@ -1124,6 +1128,10 @@ renames = {
         'tf.compat.v1.scatter_nd_add',
     'tf.scatter_nd_sub':
         'tf.compat.v1.scatter_nd_sub',
+    'tf.scatter_nd_max':
+        'tf.compat.v1.scatter_nd_max',
+    'tf.scatter_nd_min':
+        'tf.compat.v1.scatter_nd_min',
     'tf.scatter_nd_update':
         'tf.compat.v1.scatter_nd_update',
     'tf.scatter_sub':

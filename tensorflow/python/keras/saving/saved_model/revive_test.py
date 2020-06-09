@@ -31,6 +31,7 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import keras_parameterized
@@ -38,6 +39,7 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.saving.saved_model import load as keras_load
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -98,7 +100,7 @@ class CustomLayerNoConfig(keras.layers.Layer):
         constant_op.constant(1.0, shape=input_shape[1:]), name=self.name+'_c')
 
   def call(self, inputs):
-    self.add_loss(math_ops.reduce_sum(inputs), inputs)
+    self.add_loss(math_ops.reduce_sum(inputs), inputs=inputs)
     self.add_metric(self.sum_metric(inputs))
     self.add_metric(inputs, aggregation='mean', name='mean')
 
@@ -221,7 +223,6 @@ class TestModelRevive(keras_parameterized.TestCase):
               inner_model_subclassed]
     model = testing_utils.get_model_from_layers(
         layers, input_shape=input_shape)
-
     # Run data through the Model to create save spec and weights.
     model.predict(np.ones((10, 2, 3)), batch_size=10)
 
@@ -241,6 +242,14 @@ class TestModelRevive(keras_parameterized.TestCase):
     model.save(self.path, save_format='tf')
     revived = keras_load.load(self.path)
     self._assert_revived_correctness(model, revived)
+
+  def test_revive_sequential_inputs(self):
+    model = keras.models.Sequential(
+        [keras.Input((None,), dtype=dtypes.string),
+         keras.layers.Lambda(string_ops.string_lower)])
+    model.save(self.path, save_format='tf')
+    revived = keras_load.load(self.path)
+    self.assertEqual(dtypes.string, revived._layers[0].dtype)
 
 
 if __name__ == '__main__':

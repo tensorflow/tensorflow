@@ -37,7 +37,7 @@ namespace {
 constexpr char kDeviceAttr[] = "device";
 
 struct ReplicateInvariantOpHoistingPass
-    : public FunctionPass<ReplicateInvariantOpHoistingPass> {
+    : public PassWrapper<ReplicateInvariantOpHoistingPass, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -178,7 +178,8 @@ void ReplicateInvariantOpHoistingPass::runOnFunction() {
 }
 }  // anonymous namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateReplicateInvariantOpHoistingPass() {
+std::unique_ptr<OperationPass<FuncOp>>
+CreateReplicateInvariantOpHoistingPass() {
   return std::make_unique<ReplicateInvariantOpHoistingPass>();
 }
 

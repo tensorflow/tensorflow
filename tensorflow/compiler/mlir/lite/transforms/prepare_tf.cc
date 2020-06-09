@@ -46,9 +46,9 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Support/Functional.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/dilated_conv.h"
@@ -71,7 +71,7 @@ namespace TFL {
 namespace {
 
 // Prepare TF operations in functions for subsequent legalization.
-class PrepareTFPass : public FunctionPass<PrepareTFPass> {
+class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
  public:
   explicit PrepareTFPass() : unfold_batch_matmul_(true) {}
   explicit PrepareTFPass(bool unfold_batch_matmul)
@@ -82,13 +82,48 @@ class PrepareTFPass : public FunctionPass<PrepareTFPass> {
   bool unfold_batch_matmul_;
 };
 
+template <class TFFakeQuantOp>
+struct FetchConstantMinMaxInputs {
+  using AttrType = DenseFPElementsAttr;
+  bool operator()(TFFakeQuantOp tf_op, AttrType &min_value,
+                  AttrType &max_value) const {
+    Value min = tf_op.min(), max = tf_op.max();
+
+    // TODO: incomplete  neither IdentityN ops
+    // nor chains of Identity* (not rare) are handled
+    if (auto id1 = dyn_cast_or_null<TF::IdentityOp>(min.getDefiningOp()))
+      min = id1.input();
+    if (auto id2 = dyn_cast_or_null<TF::IdentityOp>(max.getDefiningOp()))
+      max = id2.input();
+    if (!matchPattern(min, m_Constant(&min_value))) {
+      return false;
+    }
+    if (!matchPattern(max, m_Constant(&max_value))) {
+      return false;
+    }
+    return true;  // Succesfully matched and fetched.
+  }
+};
+
+template <class TFFakeQuantOp>
+struct FetchMinMaxAttrs {
+  using AttrType = FloatAttr;
+  bool operator()(TFFakeQuantOp tf_op, AttrType &min_value,
+                  AttrType &max_value) const {
+    min_value = tf_op.minAttr();
+    max_value = tf_op.maxAttr();
+    return true;  // Succesfully matched and fetched.
+  }
+};
+
 // TODO(fengliuai): move this rule to PreparePatterns.td
 // TODO(fengliuai): reuse the quantization/tensorflow/tf_to_quant pass.
 // TODO(b/140968741): propagate the sign from the command line. Currently all
 // the FakeQuant is assumed to targeting UIN8, but per-channel kernel is
 // actually INT8.
 // Inserts a "tfl.quantize" and "tfl.dequantize" op pair (QDQs) after the
-// "tf.FakeQuantWithMinMaxVarsOp" to be constant folded. Since the constant
+// tf.FakeQyantWithMinMax{Vars|VarsPerChannel|Args}Op
+// to be constant folded. Since the constant
 // folding logic will use a "std.constant" op to replace the
 // "tf.FakeQuantWithMinMaxVarsOp", the "tfl.quantize" op is used to preserve
 // the quantization parameters as a TypeAttr and "tfl.dequantize" op used to
@@ -112,33 +147,49 @@ class PrepareTFPass : public FunctionPass<PrepareTFPass> {
 //                   |
 //              tf.dequantize
 //                   |
-template <typename TFFakeQuantOp, bool PerAxis>
+//
+//
+// Warns if the (most likely unwanted, currently not quite correctly handled)
+// case of back-to-back tf.FakeQuant occurs
+//
+//             tf.FakeQuant*
+//                   |
+//             tf.FakeQuant*
+//
+// tf.identity / tf.IdentityN between the tf.FakeQuant* ops
+// need no special treatment are already eliminated before the rewrites / check
+// is applied.
+//
+
+template <typename TFFakeQuantOp, bool PerAxis, class FetchMinMax>
 struct InsertTFLQuantOpsAfterTFFakeQuantOp
     : public OpRewritePattern<TFFakeQuantOp> {
-  using BaseType = InsertTFLQuantOpsAfterTFFakeQuantOp<TFFakeQuantOp, PerAxis>;
+  using BaseType =
+      InsertTFLQuantOpsAfterTFFakeQuantOp<TFFakeQuantOp, PerAxis, FetchMinMax>;
 
-  explicit InsertTFLQuantOpsAfterTFFakeQuantOp<TFFakeQuantOp, PerAxis>(
-      MLIRContext *ctx)
+  explicit InsertTFLQuantOpsAfterTFFakeQuantOp<TFFakeQuantOp, PerAxis,
+                                               FetchMinMax>(MLIRContext *ctx)
       : OpRewritePattern<TFFakeQuantOp>(ctx) {}
 
+  FetchMinMax fetchMinMax;
+
+  using FetchAttrType = typename FetchMinMax::AttrType;
   LogicalResult matchAndRewrite(TFFakeQuantOp tf_op,
                                 PatternRewriter &rewriter) const override {
     // We don't want to insert quantize/dequantize if the quantize op exists.
     auto res = tf_op.outputs();
-    if (!res.hasOneUse() || isa<QuantizeOp>(*res.user_begin()))
+    if (!res.hasOneUse() || isa<QuantizeOp>(*res.user_begin())) {
       return failure();
+    }
 
     // Extract the min/max constant values from the operands. We also consider
     // a special case that there are tf.Identity ops between the min/max
     // constants and the tf.FakeQuantWithMinMaxVarsOp.
-    Value min = tf_op.min(), max = tf_op.max();
-    DenseFPElementsAttr min_value, max_value;
-    if (auto id1 = dyn_cast_or_null<TF::IdentityOp>(min.getDefiningOp()))
-      min = id1.input();
-    if (auto id2 = dyn_cast_or_null<TF::IdentityOp>(max.getDefiningOp()))
-      max = id2.input();
-    if (!matchPattern(min, m_Constant(&min_value))) return failure();
-    if (!matchPattern(max, m_Constant(&max_value))) return failure();
+
+    FetchAttrType min_value, max_value;
+    if (!fetchMinMax(tf_op, min_value, max_value)) {
+      return failure();
+    }
 
     int quant_dim = -1;
     if (PerAxis) {
@@ -155,7 +206,9 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
     TypeAttr qtype = quant::GetQuantizedTypeAttr(
         rewriter, res_type, min_value, max_value, quant_dim, num_bits,
         narrow_range, /*is_signed=*/false);
-    if (!qtype) failure();
+    if (!qtype) {
+      return failure();
+    }
 
     // Finally, use the quantization parameter to create the quantize and
     // dequantize ops, and insert them between the tf.FakeQuantWithMinMaxVarsOp
@@ -172,12 +225,22 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
   }
 };
 
-using PreparePerTensorFakeQuant =
-    InsertTFLQuantOpsAfterTFFakeQuantOp<TF::FakeQuantWithMinMaxVarsOp, false>;
+//
+// Three instances of the rule to cover the three different types of
+// TF::FakeQuant operators
+//
+using PreparePerTensorFakeQuant = InsertTFLQuantOpsAfterTFFakeQuantOp<
+    TF::FakeQuantWithMinMaxVarsOp, /*PerAxis=*/false,
+    FetchConstantMinMaxInputs<TF::FakeQuantWithMinMaxVarsOp>>;
 
-using PreparePerChannelFakeQuant =
-    InsertTFLQuantOpsAfterTFFakeQuantOp<TF::FakeQuantWithMinMaxVarsPerChannelOp,
-                                        true>;
+using PreparePerChannelFakeQuant = InsertTFLQuantOpsAfterTFFakeQuantOp<
+    TF::FakeQuantWithMinMaxVarsPerChannelOp, /*PerAxis=*/true,
+    FetchConstantMinMaxInputs<TF::FakeQuantWithMinMaxVarsPerChannelOp>>;
+
+using PreparePerTensorFakeQuantWithMinMaxArgs =
+    InsertTFLQuantOpsAfterTFFakeQuantOp<
+        TF::FakeQuantWithMinMaxArgsOp, /*PerAxis=*/false,
+        FetchMinMaxAttrs<TF::FakeQuantWithMinMaxArgsOp>>;
 
 // Templated class for declaring a converter from some TensorFlow convolution
 // op into its counterpart in TensorFlow Lite.
@@ -322,9 +385,10 @@ class ConvertTFConv2D : public ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp> {
 
     // Create tensor type for the transpose result.
     auto filter_type = filter.getType().cast<RankedTensorType>();
-    auto result_shape = functional::map(
-        [filter_type](int64_t dim) { return filter_type.getDimSize(dim); },
-        perm);
+    auto result_shape =
+        llvm::to_vector<4>(llvm::map_range(perm, [filter_type](int64_t dim) {
+          return filter_type.getDimSize(dim);
+        }));
     auto elem_type = filter_type.getElementType();
     auto result_type = RankedTensorType::get(result_shape, elem_type);
 
@@ -612,16 +676,41 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_prepare_tf.inc"
 
+// Returns success if all the operations in the `op`'s regions including `op`
+// itself are legal in a TFLite pipeline.
+LogicalResult ValidateOp(Operation *op) {
+  bool has_illegal_ops = false;
+  op->walk([&](Operation *op) {
+    if (isa<TF::VariableV2Op>(op)) {
+      has_illegal_ops = true;
+      op->emitOpError() << "is illegal in a TFLite pipeline";
+    }
+  });
+
+  return failure(has_illegal_ops);
+}
+
 void PrepareTFPass::runOnFunction() {
   OwningRewritePatternList patterns;
   auto func = getFunction();
   MLIRContext *ctx = &getContext();
 
+  // Check illegal ops in a TFLite pipeline (e.g. trainning only ops) , since
+  // PrepareTFPass is the very first TFLite pass in the pipeline.
+  // TODO(jingpu): It might be better to split this check into its own pass
+  // to make things more modular.
+  if (failed(ValidateOp(func))) {
+    func.emitError() << "tfl-prepare-tf pass failed.";
+    signalPassFailure();
+    return;
+  }
+
   // This pattern was intented to uses TFL QDQs to preserve the quantization
   // parameters from the TF Quant ops, thus this pattern should run with the
   // first `applyPatternsGreedily` method, which would otherwise removes the
   // TF FakeQuant ops by the constant folding.
-  patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant>(ctx);
+  patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant,
+                  PreparePerTensorFakeQuantWithMinMaxArgs>(ctx);
 
   // This pattern will try to identify and optimize for dilated convolution.
   // e.g. Patterns like "SpaceToBatchND -> Conv2D -> BatchToSpaceND" will be
@@ -634,7 +723,7 @@ void PrepareTFPass::runOnFunction() {
   // This will allow optimizing any TF_Mul->TF_Conv in the graph
   // and any expanded from FusedBatchNorm. We need to do this
   // before converting TF_Conv to TFL_Conv
-  applyPatternsGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, patterns);
 
   // Load the generated pattern again, so new quantization pass-through
   // will be applied.
@@ -646,13 +735,13 @@ void PrepareTFPass::runOnFunction() {
   }
   patterns.insert<TF::ConvertTFEinsumOp, ConvertTFConv2D,
                   ConvertTFDepthwiseConv2dNative, ConvertTFStridedSlice>(ctx);
-  applyPatternsGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, patterns);
 }
 
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreatePrepareTFPass(
+std::unique_ptr<OperationPass<FuncOp>> CreatePrepareTFPass(
     bool unfold_batch_matmul) {
   return std::make_unique<PrepareTFPass>(unfold_batch_matmul);
 }

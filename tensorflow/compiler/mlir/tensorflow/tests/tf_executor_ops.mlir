@@ -187,6 +187,26 @@ func @switch_with_unranked_pred(%arg0: tensor<*xf32>, %arg1: tensor<*xi1>) -> te
   return %result : tensor<*xf32>
 }
 
+// CHECK-LABEL: func @switch_with_control_inputs(
+func @switch_with_control_inputs(%arg0: tensor<i1>, %arg1: !tf_executor.control, %arg2: !tf_executor.control) -> tensor<i1> {
+  %result = tf_executor.graph {
+// CHECK: tf_executor.Switch %{{[^%]*}}, %{{[^%]*}}, %{{[^%]*}}, %{{[^%]*}} : tensor<i1>
+    %1:3 = tf_executor.Switch %arg0, %arg0, %arg1, %arg2 : tensor<i1>
+    tf_executor.fetch %1#0 : tensor<i1>
+  }
+  return %result : tensor<i1>
+}
+
+// CHECK-LABEL: func @switch_with_control_inputs_functional(
+func @switch_with_control_inputs_functional(%arg0: tensor<i1>, %arg1: !tf_executor.control, %arg2: !tf_executor.control) -> tensor<i1> {
+  %result = tf_executor.graph {
+// CHECK: tf_executor.Switch %{{[^%]*}}, %{{[^%]*}}, %{{[^%]*}}, %{{[^%]*}} : tensor<i1>
+    %1:3 = tf_executor.Switch %arg0, %arg0, %arg1, %arg2 : (tensor<i1>, tensor<i1>, !tf_executor.control, !tf_executor.control) -> (tensor<i1>, tensor<i1>, !tf_executor.control)
+    tf_executor.fetch %1#0 : tensor<i1>
+  }
+  return %result : tensor<i1>
+}
+
 // CHECK-LABEL: func @switchN(
 func @switchN(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   %fetches = tf_executor.graph {

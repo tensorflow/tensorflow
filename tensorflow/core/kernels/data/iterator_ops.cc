@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/metrics.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/optional_ops.h"
@@ -166,8 +166,7 @@ Status IteratorResource::Restore(OpKernelContext* ctx,
 }
 
 Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
-                                                DatasetBase* dataset,
-                                                int64 epoch_id) {
+                                                DatasetBase* dataset) {
   std::shared_ptr<State> new_state;
   {
     tf_shared_lock l(mu_);
@@ -180,7 +179,6 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
   IteratorContext::Params params(ctx);
   params.flr = new_state->flr;
   params.function_handle_cache = new_state->function_handle_cache.get();
-  params.epoch_id = epoch_id;
   params.resource_mgr = &new_state->resource_mgr;
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
@@ -532,18 +530,17 @@ Status MakeIteratorOp::DoCompute(OpKernelContext* ctx) {
   TF_RETURN_IF_ERROR(
       LookupResource(ctx, HandleFromInput(ctx, 1), &iterator_resource));
   core::ScopedUnref unref_iterator(iterator_resource);
-  return iterator_resource->SetIteratorFromDataset(
-      ctx, dataset, /*epoch_id=*/IteratorContext::kNoEpochId);
+  return iterator_resource->SetIteratorFromDataset(ctx, dataset);
 }
 
-void DeleteIteratorOp::Compute(OpKernelContext* ctx) {
+Status DeleteIteratorOp::DoCompute(OpKernelContext* ctx) {
   tensorflow::ResourceTagger tag(kTFDataResourceTag,
                                  ctx->op_kernel().type_string());
-  ResourceHandle handle = ctx->input(0).flat<ResourceHandle>()(0);
+  const ResourceHandle& handle = ctx->input(0).flat<ResourceHandle>()(0);
   // The iterator resource is guaranteed to exist because the variant tensor
   // wrapping the deleter is provided as an unused input to this op, which
   // guarantees that it has not run yet.
-  OP_REQUIRES_OK(ctx, ctx->resource_manager()->Delete(handle));
+  return ctx->resource_manager()->Delete(handle);
 }
 
 namespace {
@@ -551,7 +548,10 @@ namespace {
 class ToSingleElementOp : public HybridAsyncOpKernel {
  public:
   explicit ToSingleElementOp(OpKernelConstruction* ctx)
-      : HybridAsyncOpKernel(ctx, "tf_data_to_single_element") {}
+      : HybridAsyncOpKernel(ctx, "tf_data_to_single_element") {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+  }
 
  protected:
   Status DoCompute(OpKernelContext* ctx) override {
@@ -583,8 +583,9 @@ class ToSingleElementOp : public HybridAsyncOpKernel {
     if (end_of_sequence) {
       return errors::InvalidArgument("Dataset was empty.");
     }
+    TF_RETURN_IF_ERROR(VerifyTypesMatch(output_types_, components));
+    TF_RETURN_IF_ERROR(VerifyShapesCompatible(output_shapes_, components));
     for (int i = 0; i < components.size(); ++i) {
-      // TODO(mrry): Check that the shapes match the shape attrs.
       ctx->set_output(i, components[i]);
     }
 
@@ -596,6 +597,10 @@ class ToSingleElementOp : public HybridAsyncOpKernel {
     }
     return Status::OK();
   }
+
+ private:
+  DataTypeVector output_types_;
+  std::vector<PartialTensorShape> output_shapes_;
 };
 
 class ReduceDatasetOp : public HybridAsyncOpKernel {
@@ -605,6 +610,7 @@ class ReduceDatasetOp : public HybridAsyncOpKernel {
     FunctionMetadata::Params params;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_inter_op_parallelism",
                                      &params.use_inter_op_parallelism));
+    params.use_default_device = false;
     OP_REQUIRES_OK(ctx,
                    FunctionMetadata::Create(ctx, "f", params, &func_metadata_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
@@ -676,33 +682,9 @@ class ReduceDatasetOp : public HybridAsyncOpKernel {
       std::swap(reduce_func_output, state);
     }
 
-    if (state.size() != output_types_.size()) {
-      return errors::InvalidArgument(
-          "The number of result elements does not match "
-          "the size of output types: ",
-          state.size(), " vs. ", output_types_.size());
-    }
-    if (state.size() != output_shapes_.size()) {
-      return errors::InvalidArgument(
-          "The number of result elements does not match "
-          "the size of output shapes: ",
-          state.size(), " vs. ", output_shapes_.size());
-    }
+    TF_RETURN_IF_ERROR(VerifyTypesMatch(output_types_, state));
+    TF_RETURN_IF_ERROR(VerifyShapesCompatible(output_shapes_, state));
     for (size_t i = 0; i < state.size(); ++i) {
-      if (state[i].dtype() != output_types_[i]) {
-        return errors::InvalidArgument(
-            "The result does not match the expected type for "
-            "component ",
-            i, ". Expected: ", DataTypeString(output_types_[i]),
-            ". Actual: ", DataTypeString(state[i].dtype()), ".");
-      }
-      if (!output_shapes_[i].IsCompatibleWith(state[i].shape())) {
-        return errors::InvalidArgument(
-            "The result does not match the expected shape for "
-            "component ",
-            i, ". Expected: ", output_shapes_[i].DebugString(),
-            ". Actual: ", state[i].shape().DebugString(), ".");
-      }
       ctx->set_output(i, state[i]);
     }
     return Status::OK();
@@ -839,16 +821,9 @@ class OneShotIteratorOp : public AsyncOpKernel {
     opts.step_container = &step_container;
     opts.runner = ctx->runner();
     opts.run_all_kernels_inline = ctx->run_all_kernels_inline();
-    Notification n;
-    Status factory_status;
     std::vector<Tensor> return_values;
-    ctx->function_library()->Run(opts, f_handle, {}, &return_values,
-                                 [&n, &factory_status](Status s) {
-                                   factory_status.Update(s);
-                                   n.Notify();
-                                 });
-    n.WaitForNotification();
-    TF_RETURN_IF_ERROR(factory_status);
+    TF_RETURN_IF_ERROR(ctx->function_library()->RunSync(
+        std::move(opts), f_handle, {}, &return_values));
     if (return_values.size() != 1 || return_values[0].dtype() != DT_VARIANT ||
         !TensorShapeUtils::IsScalar(return_values[0].shape())) {
       return errors::InvalidArgument(
@@ -860,8 +835,7 @@ class OneShotIteratorOp : public AsyncOpKernel {
     // factory function.
     DatasetBase* dataset;
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(return_values[0], &dataset));
-    TF_RETURN_IF_ERROR((*iterator)->SetIteratorFromDataset(
-        ctx, dataset, /*epoch_id=*/IteratorContext::kNoEpochId));
+    TF_RETURN_IF_ERROR((*iterator)->SetIteratorFromDataset(ctx, dataset));
     (*iterator)->Ref();
     return Status::OK();
   }
@@ -927,14 +901,22 @@ Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
   if (end_of_sequence) {
     return errors::OutOfRange("End of sequence");
   }
+  TF_RETURN_IF_ERROR(VerifyTypesMatch(output_types_, components));
+  TF_RETURN_IF_ERROR(VerifyShapesCompatible(output_shapes_, components));
   for (int i = 0; i < components.size(); ++i) {
-    // TODO(mrry): Check that the shapes match the shape attrs.
     ctx->set_output(i, components[i]);
   }
   return Status::OK();
 }
 
 Status IteratorGetNextAsOptionalOp::DoCompute(OpKernelContext* ctx) {
+  profiler::TraceMe traceme(
+      [&] {
+        return strings::StrCat(
+            "IteratorGetNextAsOptionalOp::DoCompute#id=", ctx->step_id(),
+            ",iter_num=", ctx->frame_iter().iter_id, "#");
+      },
+      profiler::kInfo);
   tensorflow::ResourceTagger tag(kTFDataResourceTag,
                                  ctx->op_kernel().type_string());
   IteratorResource* iterator;
@@ -1105,9 +1087,8 @@ REGISTER_KERNEL_BUILDER(
     MakeIteratorOp);
 REGISTER_KERNEL_BUILDER(Name("DeleteIterator").Device(DEVICE_CPU).Priority(2),
                         DeleteIteratorOp);
-REGISTER_KERNEL_BUILDER(
-    Name("DeleteIterator").Device(DEVICE_GPU).HostMemory("deleter").Priority(1),
-    DeleteIteratorOp);
+REGISTER_KERNEL_BUILDER(Name("DeleteIterator").Device(DEVICE_GPU).Priority(1),
+                        DeleteIteratorOp);
 REGISTER_KERNEL_BUILDER(
     Name("AnonymousIterator").Device(DEVICE_CPU).Priority(2),
     AnonymousIteratorHandleOp);
@@ -1119,7 +1100,6 @@ REGISTER_KERNEL_BUILDER(
     AnonymousIteratorHandleOp);
 REGISTER_KERNEL_BUILDER(Name("AnonymousIteratorV2")
                             .Device(DEVICE_GPU)
-                            .HostMemory("deleter")
                             .Priority(1),
                         AnonymousIteratorHandleOp);
 REGISTER_KERNEL_BUILDER(Name("DatasetToSingleElement").Device(DEVICE_CPU),

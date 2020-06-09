@@ -53,7 +53,8 @@ def : Pat<
 def : Pattern<
     (TF_FusedBatchNormOp:$root
         $x, $scale, $offset, $mean, $variance,
-        F32Attr:$epsilon, $data_format, FalseBoolAttr:$is_training),
+        F32Attr:$epsilon, $exponential_avg_factor,
+        $data_format, FalseBoolAttr:$is_training),
     [(TF_AddOp
         (TF_MulOp
             $x,
@@ -75,7 +76,8 @@ def : Pattern<
 def : Pattern<
     (TF_FusedBatchNormV3Op:$root
         $x, $scale, $offset, $mean, $variance,
-        F32Attr:$epsilon, $data_format, FalseBoolAttr:$is_training),
+        F32Attr:$epsilon, $exponential_avg_factor,
+        $data_format, FalseBoolAttr:$is_training),
     [(TF_AddOp
         (TF_MulOp
             $x,

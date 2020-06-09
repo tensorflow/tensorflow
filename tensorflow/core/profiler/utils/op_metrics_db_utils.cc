@@ -15,8 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 
+#include <algorithm>
+#include <string>
+
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
@@ -40,8 +45,9 @@ class DeviceTfOpMetricsDbBuilder : public OpMetricsDbBuilder {
         /*hlo_module_id=*/0, tf_op_name);
     if (tf_op_metrics->category().empty()) {
       tf_op_metrics->set_category(
-          tf_op_type == kUnknownOp ? "Unknown" : string(tf_op_type));
+          tf_op_type == kUnknownOp ? "Unknown" : std::string(tf_op_type));
     }
+    tf_op_metrics->set_is_eager(device_op_metrics.is_eager());
     // The occurrences of a TF-op is the maximum among the occurrences of all
     // device ops that it contains.
     tf_op_metrics->set_occurrences(std::max(tf_op_metrics->occurrences(),
@@ -88,8 +94,8 @@ uint64 IdleTimePs(const OpMetricsDb& metrics_db) {
 void AddIdleOp(OpMetricsDb* db) {
   uint64 idle_time_ps = IdleTimePs(*db);
   OpMetrics* metrics = db->add_metrics_db();
-  metrics->set_name(string(kIdle));
-  metrics->set_category(string(kIdle));
+  metrics->set_name(std::string(kIdle));
+  metrics->set_category(std::string(kIdle));
   metrics->set_occurrences(0);
   metrics->set_time_ps(idle_time_ps);
   metrics->set_self_time_ps(idle_time_ps);

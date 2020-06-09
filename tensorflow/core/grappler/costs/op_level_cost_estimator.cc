@@ -693,46 +693,69 @@ OpLevelCostEstimator::ConvolutionDimensionsFromInputs(
   VLOG(2) << "op features: " << op_info.DebugString();
   VLOG(2) << "Original image shape: " << original_image_shape.DebugString();
   VLOG(2) << "Original filter shape: " << original_filter_shape.DebugString();
-  auto image_shape =
-      MaybeGetMinimumShape(original_image_shape, 4, found_unknown_shapes);
-  auto filter_shape =
-      MaybeGetMinimumShape(original_filter_shape, 4, found_unknown_shapes);
-  VLOG(2) << "Image shape: " << image_shape.DebugString();
-  VLOG(2) << "Filter shape: " << filter_shape.DebugString();
 
-  int x_index, y_index, channel_index;
+  int x_index, y_index, major_channel_index, minor_channel_index = -1;
   const string& data_format = GetDataFormat(op_info);
   if (data_format == "NCHW") {
-    channel_index = 1;
+    major_channel_index = 1;
     y_index = 2;
     x_index = 3;
+  } else if (data_format == "NCHW_VECT_C") {
+    // Use NCHW_VECT_C
+    minor_channel_index = 1;
+    y_index = 2;
+    x_index = 3;
+    major_channel_index = 4;
   } else {
     // Use NHWC.
     y_index = 1;
     x_index = 2;
-    channel_index = 3;
+    major_channel_index = 3;
   }
   const string& filter_format = GetFilterFormat(op_info);
-  int filter_x_index, filter_y_index, in_channel_index, out_channel_index;
+  int filter_x_index, filter_y_index, in_major_channel_index, out_channel_index,
+      in_minor_channel_index = -1;
   if (filter_format == "HWIO") {
     filter_y_index = 0;
     filter_x_index = 1;
-    in_channel_index = 2;
+    in_major_channel_index = 2;
     out_channel_index = 3;
+  } else if (filter_format == "OIHW_VECT_I") {
+    out_channel_index = 0;
+    in_minor_channel_index = 1;
+    filter_y_index = 2;
+    filter_x_index = 3;
+    in_major_channel_index = 4;
   } else {
     // Use OIHW
     out_channel_index = 0;
-    in_channel_index = 1;
+    in_major_channel_index = 1;
     filter_y_index = 2;
     filter_x_index = 3;
   }
+
+  auto image_shape = MaybeGetMinimumShape(original_image_shape,
+                                          minor_channel_index >= 0 ? 5 : 4,
+                                          found_unknown_shapes);
+  auto filter_shape = MaybeGetMinimumShape(original_filter_shape,
+                                           in_minor_channel_index >= 0 ? 5 : 4,
+                                           found_unknown_shapes);
+  VLOG(2) << "Image shape: " << image_shape.DebugString();
+  VLOG(2) << "Filter shape: " << filter_shape.DebugString();
+
   int64 batch = image_shape.dim(0).size();
   int64 ix = image_shape.dim(x_index).size();
   int64 iy = image_shape.dim(y_index).size();
-  int64 iz = image_shape.dim(channel_index).size();
+  int64 iz = minor_channel_index >= 0
+                 ? image_shape.dim(minor_channel_index).size() *
+                       image_shape.dim(major_channel_index).size()
+                 : image_shape.dim(major_channel_index).size();
   int64 kx = filter_shape.dim(filter_x_index).size();
   int64 ky = filter_shape.dim(filter_y_index).size();
-  int64 kz = filter_shape.dim(in_channel_index).size();
+  int64 kz = in_minor_channel_index >= 0
+                 ? filter_shape.dim(in_major_channel_index).size() *
+                       filter_shape.dim(in_minor_channel_index).size()
+                 : filter_shape.dim(in_major_channel_index).size();
   std::vector<int64> strides = GetStrides(op_info);
   const auto padding = GetPadding(op_info);
   int64 sx = strides[x_index];
@@ -1303,17 +1326,18 @@ Costs OpLevelCostEstimator::PredictFusedConv2DBiasActivation(
   // For more information, see
   // contrib/fused_conv/kernels/fused_conv2d_bias_activation_op.cc
 
-  // TODO(yaozhang): Support other data formats (NCHW_VECT_C, NHWC_VECT_W) and
-  // filter formats (OIHW_VECT_I).
+  // TODO(yaozhang): Support NHWC_VECT_W.
   string data_format = GetDataFormat(op_context.op_info);
-  if (data_format != "NCHW" && data_format != "NHWC") {
+  if (data_format != "NCHW" && data_format != "NHWC" &&
+      data_format != "NCHW_VECT_C") {
     LOG(WARNING) << "unsupported data format: " << data_format;
     Costs cost = Costs::ZeroCosts();
     cost.inaccurate = true;
     return cost;
   }
   string filter_format = GetFilterFormat(op_context.op_info);
-  if (filter_format != "HWIO" && filter_format != "OIHW") {
+  if (filter_format != "HWIO" && filter_format != "OIHW" &&
+      filter_format != "OIHW_VECT_I") {
     LOG(WARNING) << "unsupported filter format: " << filter_format;
     Costs cost = Costs::ZeroCosts();
     cost.inaccurate = true;
@@ -1337,7 +1361,7 @@ Costs OpLevelCostEstimator::PredictFusedConv2DBiasActivation(
   // and format, as it may not be available yet.
   // TODO(varomodt): should we centralize the Conv2D input/output shapes?
   OpInfo::TensorProperties output;
-  if (data_format == "NCHW") {
+  if (data_format == "NCHW" || data_format == "NCHW_VECT_C") {
     output = DescribeTensor(DT_FLOAT, {dims.batch, dims.oz, dims.oy, dims.ox});
   } else if (data_format == "NHWC") {
     output = DescribeTensor(DT_FLOAT, {dims.batch, dims.oy, dims.ox, dims.oz});

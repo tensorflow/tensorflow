@@ -26,7 +26,7 @@ _ALWAYS_EXCLUDE = [
     "**/* */**",
 ]
 
-def _run_lit_test(name, data, size, tags, driver, features):
+def _run_lit_test(name, data, size, tags, driver, features, exec_properties):
     """Runs lit on all tests it can find in `data` under tensorflow/compiler/mlir.
 
     Note that, due to Bazel's hermetic builds, lit only sees the tests that
@@ -64,6 +64,7 @@ def _run_lit_test(name, data, size, tags, driver, features):
         ],
         size = size,
         main = "lit.py",
+        exec_properties = exec_properties,
     )
 
 def glob_lit_tests(
@@ -76,7 +77,8 @@ def glob_lit_tests(
         default_tags = _default_tags,
         tags_override = {},
         driver = _default_driver,
-        features = []):
+        features = [],
+        exec_properties = {}):
     """Creates all plausible Lit tests (and their inputs) under this directory.
 
     Args:
@@ -92,6 +94,7 @@ def glob_lit_tests(
               Note: use of a custom driver is not currently supported
               and specifying a default driver will abort the tests.
       features: [str], list of extra features to enable.
+      exec_properties: a dictionary of properties to pass on.
     """
 
     # Ignore some patterns by default for tests and input data.
@@ -115,6 +118,7 @@ def glob_lit_tests(
             tags = default_tags + tags_override.pop(curr_test, []),
             driver = driver,
             features = features,
+            exec_properties = exec_properties,
         )
 
 def lit_test(
@@ -123,7 +127,8 @@ def lit_test(
         size = _default_size,
         tags = _default_tags,
         driver = _default_driver,
-        features = []):
+        features = [],
+        exec_properties = {}):
     """Runs test files under lit.
 
     Args:
@@ -136,4 +141,4 @@ def lit_test(
               and specifying a default driver will abort the tests.
       features: [str], list of extra features to enable.
     """
-    _run_lit_test(name + ".test", data + [name], size, tags, driver, features)
+    _run_lit_test(name + ".test", data + [name], size, tags, driver, features, exec_properties)

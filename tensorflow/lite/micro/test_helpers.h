@@ -18,8 +18,10 @@ limitations under the License.
 
 // Useful functions for writing tests.
 
+#include <cstdint>
+
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -57,6 +59,9 @@ CreateFlatbufferBuffers();
 
 // Performs a simple string comparison without requiring standard C library.
 int TestStrcmp(const char* a, const char* b);
+
+// Wrapper to forward kernel errors to the interpreter's error reporter.
+void ReportOpError(struct TfLiteContext* context, const char* format, ...);
 
 void PopulateContext(TfLiteTensor* tensors, int tensors_size,
                      TfLiteContext* context);

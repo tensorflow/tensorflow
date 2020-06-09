@@ -179,6 +179,8 @@ py_library(
         ":feature_column_v2",
         ":preempted_hook_py",
         ":tpu_embedding",
+        ":tpu_embedding_v2",
+        ":tpu_embedding_v2_utils",
         ":tpu_lib",
     ],
 )
@@ -432,6 +434,101 @@ tf_py_test(
         "//tensorflow/python/feature_column",
         "//tensorflow/python/feature_column:feature_column_py",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "tpu_embedding_v2_utils",
+    srcs = ["tpu_embedding_v2_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/distribute:device_util",
+        "//tensorflow/python/distribute:sharded_variable",
+        "//tensorflow/python/tpu:tpu_lib",
+        "//tensorflow/python/tpu:tpu_py",
+        "//tensorflow/python/training/saving:saveable_hook",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "tpu_embedding_v2",
+    srcs = ["tpu_embedding_v2.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":tpu_embedding_v2_utils",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/distribute:device_util",
+        "//tensorflow/python/distribute:sharded_variable",
+        "//tensorflow/python/tpu:tpu_lib",
+        "//tensorflow/python/tpu:tpu_py",
+        "//tensorflow/python/training/saving:saveable_hook",
+        "@six_archive//:six",
+    ],
+)
+
+tpu_py_test(
+    name = "tpu_embedding_v2_test",
+    srcs = [
+        "tpu_embedding_v2_test.py",
+    ],
+    disable_experimental = True,
+    python_version = "PY3",
+    shard_count = 4,
+    srcs_version = "PY2AND3",
+    deps = [
+        ":tpu_embedding",
+        ":tpu_embedding_v2",
+        ":tpu_strategy_util",
+        "//tensorflow/python:init_ops_v2",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/saved_model",
+        "//tensorflow/python/training/tracking:util",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "tpu_embedding_v2_cpu_test",
+    srcs = [
+        "tpu_embedding_v2_cpu_test.py",
+    ],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":tpu_embedding_v2",
+        "//tensorflow/python:init_ops_v2",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//third_party/py/numpy",
+    ],
+)
+
+tpu_py_test(
+    name = "tpu_outside_compilation_test",
+    srcs = [
+        "tpu_outside_compilation_test.py",
+    ],
+    disable_experimental = True,
+    python_version = "PY3",
+    tags = ["no_oss"],
+    deps = [
+        ":tpu_lib",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/eager:test",
     ],
 )
 

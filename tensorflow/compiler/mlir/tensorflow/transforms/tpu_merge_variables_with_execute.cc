@@ -75,7 +75,7 @@ constexpr char kFuncDeviceAttr[] = "tf.device";
 // the TPUExecute op.
 
 struct TPUMergeVariablesWithExecutePass
-    : public FunctionPass<TPUMergeVariablesWithExecutePass> {
+    : public PassWrapper<TPUMergeVariablesWithExecutePass, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -531,7 +531,8 @@ void TPUMergeVariablesWithExecutePass::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateTPUMergeVariablesWithExecutePass() {
+std::unique_ptr<OperationPass<FuncOp>>
+CreateTPUMergeVariablesWithExecutePass() {
   return std::make_unique<TPUMergeVariablesWithExecutePass>();
 }
 

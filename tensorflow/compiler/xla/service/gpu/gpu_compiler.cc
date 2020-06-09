@@ -37,8 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/convolution_4d_expander.h"
-#include "tensorflow/compiler/xla/service/convolution_group_converter.h"
-#include "tensorflow/compiler/xla/service/depthwise_convolution_converter.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
@@ -152,21 +150,6 @@ Status GpuCompiler::OptimizeHloModule(
 
     pipeline.AddPass<Convolution4DExpander>();
 
-    auto cost_model = [](HloInstruction*) {
-      // We need a cost model for GPUs. Currently, do nothing.
-      return false;
-    };
-    pipeline.AddPass<DepthwiseConvolutionConverter>(cost_model);
-
-    // We use the ConvolutionGroupConverter to convert backprops of filter
-    // grouped convolutions into non-grouped equivalents.
-    auto batch_group_cost_model = [](HloInstruction*) { return false; };
-
-    pipeline.AddPass<ConvolutionGroupConverter>(
-        batch_group_cost_model,
-        /*convert_batch_groups_only=*/true,
-        /*filter_expansion=*/true);
-
     // Expand the sort op to support stable sorting if required.
     pipeline.AddPass<StableSortExpander>();
     // Convert BF16 operations to F32 operations so that the GPU backend can
@@ -214,6 +197,7 @@ Status GpuCompiler::OptimizeHloModule(
       // bitcast. This leads to having to linearize and then delinearize the
       // index.
       options.set_replace_transpose_with_bitcast(false);
+      options.set_enable_conv_operand_swap(false);
       pass.AddPass<AlgebraicSimplifier>(options);
       // AlgebraicSimplifier may add contracting dimensions to a dot.
       pass.AddPass<DotDecomposer>();
@@ -319,6 +303,7 @@ Status GpuCompiler::OptimizeHloModule(
     HloPassPipeline pipeline("final_algebraic_simplifier");
     AlgebraicSimplifierOptions options;
     options.set_is_layout_sensitive(true);
+    options.set_enable_conv_operand_swap(false);
     pipeline.AddPass<AlgebraicSimplifier>(options);
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
@@ -397,6 +382,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // bitcast. This leads to having to linearize and then delinearize the
   // index.
   options.set_replace_transpose_with_bitcast(false);
+  options.set_enable_conv_operand_swap(false);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
   if (RequireDeterminism() ||
@@ -404,6 +390,16 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>();
   }
 
+  // GemmRewriter assumes that all transposes are folded into gemms, but,
+  // since commit 7d529df, this is not always true at this point.
+  // Therefore, rerun transpose folding.
+  pipeline.AddPass<TransposeFolding>(
+      [](const HloInstruction& dot,
+         const TransposeFolding::OperandIndices& candidate_operands) {
+        return IsMatrixMultiplication(dot) ? candidate_operands
+                                           : TransposeFolding::OperandIndices{};
+      },
+      TransposeFolding::NeverFoldTranspose);
   // Rewrite GEMMs into custom calls.
   pipeline.AddPass<GemmRewriter>();
 
@@ -503,6 +499,8 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
           /*allocate_buffers_for_constants=*/true,
           /*colorer=*/BufferAssigner::DefaultColorer(),
           /*must_not_live_out=*/{}, GetCanShareBuffer()));
+  VLOG(1) << "Buffer Assignment Stats "
+          << buffer_assignment->GetStats().ToString();
   DumpHloModuleIfEnabled(*module, *buffer_assignment, "after_optimizations");
 
   IrEmitterContext ir_emitter_context(

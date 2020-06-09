@@ -1,0 +1,28 @@
+op {
+  name: "WriteSummary"
+  input_arg {
+    name: "writer"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "step"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "tensor"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "tag"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "summary_metadata"
+    type: DT_STRING
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  is_stateful: true
+}

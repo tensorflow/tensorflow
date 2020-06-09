@@ -31,7 +31,8 @@ namespace {
 
 // Legalize TF While to TFL While with calls to the original functions from the
 // cond and body regions.
-struct LegalizeWhile : public OperationPass<LegalizeWhile, ModuleOp> {
+struct LegalizeWhile
+    : public PassWrapper<LegalizeWhile, OperationPass<ModuleOp>> {
   void RunOnFunction(FuncOp func);
 
   void runOnOperation() override {
@@ -76,7 +77,7 @@ void LegalizeWhile::RunOnFunction(FuncOp func) {
 }
 
 // Creates an instance of the TensorFlow While to TFLite While pass.
-std::unique_ptr<OpPassBase<ModuleOp>> CreateLegalizeTFWhilePass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFWhilePass() {
   return std::make_unique<LegalizeWhile>();
 }
 

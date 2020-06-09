@@ -227,3 +227,10 @@ def LowerZerosLikeOp :
   Pat<(TF_ZerosLikeOp:$src_op TensorOf<[AnySignlessInteger, AnyFloat]>:$input),
       (TF_BroadcastToOp (TF_ConstOp (GetScalarOfType<0> $input)),
                         (CreateTFShapeOp $src_op, $input, /*use 32bit*/ConstBoolAttrFalse))>;
+
+def LowerScatterNdOp :
+  Pat<(TF_ScatterNdOp $indices,
+       TensorOf<[AnySignlessInteger, AnyFloat]>:$updates, $shape),
+      (TF_TensorScatterUpdateOp
+       (TF_FillOp $shape, (TF_ConstOp (GetScalarOfType<0> $updates))),
+       $indices, $updates)>;

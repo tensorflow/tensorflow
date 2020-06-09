@@ -227,15 +227,11 @@ class TensorUtilTest(test.TestCase):
 
   def testHalf(self):
     t = tensor_util.make_tensor_proto(np.array([10.0, 20.0], dtype=np.float16))
-    self.assertProtoEquals("""
+    self.assertProtoEquals(
+        """
       dtype: DT_HALF
-      tensor_shape {
-        dim {
-          size: 2
-        }
-      }
-      half_val: 18688
-      half_val: 19712
+      tensor_shape { dim { size: 2 } }
+      tensor_content: "\000I\000M"
       """, t)
 
     a = tensor_util.MakeNdarray(t)
@@ -717,6 +713,19 @@ class TensorUtilTest(test.TestCase):
     self.assertAllEqual(
         np.array([[(1 + 2j), (3 + 4j)], [(5 + 6j), (7 + 8j)]]), a)
 
+  def testNestedNumpyArrayWithoutDType(self):
+    t = tensor_util.make_tensor_proto([10.0, 20.0, np.array(30.0)])
+    a = tensor_util.MakeNdarray(t)
+    self.assertEqual(np.float32, a.dtype)
+    self.assertAllClose(np.array([10.0, 20.0, 30.0], dtype=np.float32), a)
+
+  def testNestedNumpyArrayWithDType(self):
+    t = tensor_util.make_tensor_proto([10.0, 20.0, np.array(30.0)],
+                                      dtype=dtypes.float32)
+    a = tensor_util.MakeNdarray(t)
+    self.assertEqual(np.float32, a.dtype)
+    self.assertAllClose(np.array([10.0, 20.0, 30.0], dtype=np.float32), a)
+
   def testUnsupportedDTypes(self):
     with self.assertRaises(TypeError):
       tensor_util.make_tensor_proto(np.array([1]), 0)
@@ -1003,6 +1012,12 @@ class ConstantValueTest(test.TestCase):
   def testStopGradient(self):
     input_ = np.random.rand(4, 7)
     tf_val = array_ops.stop_gradient(input_)
+    c_val = tensor_util.constant_value(tf_val)
+    self.assertAllEqual(input_, c_val)
+
+  def testIdentity(self):
+    input_ = np.random.rand(4, 7)
+    tf_val = array_ops.identity(input_)
     c_val = tensor_util.constant_value(tf_val)
     self.assertAllEqual(input_, c_val)
 
