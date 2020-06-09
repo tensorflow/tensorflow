@@ -159,6 +159,28 @@ func (t *Tensor) DataType() DataType { return DataType(C.TF_TensorType(t.c)) }
 // Shape returns the shape of the Tensor.
 func (t *Tensor) Shape() []int64 { return t.shape }
 
+// Rehape returns Tensor with the new shape or error if this conversion is not possibe.
+func (t *Tensor) Reshape(new_shape []int64) error {
+	old_shape_size := numElements(t.shape)
+	new_shape_size := numElements(new_shape)
+
+	if old_shape_size != new_shape_size {
+		return bug("unable to convert shape %v (num_elements: %d) into shape %v (num_elements: %d)", t.shape, old_shape_size, new_shape, new_shape_size)
+	}
+
+	if len(new_shape) == 0 {
+		return nil
+	}
+
+	var shapePtr *C.int64_t
+	shapePtr = (*C.int64_t)(unsafe.Pointer(&new_shape[0]))
+
+	status := newStatus()
+	C.TF_TensorBitcastFrom(t.c, C.TF_TensorType(t.c), t.c, shapePtr, C.int(len(new_shape)), status.c)
+
+	return status.Err()
+}
+
 // Value converts the Tensor to a Go value. For now, not all Tensor types are
 // supported, and this function may panic if it encounters an unsupported
 // DataType.
