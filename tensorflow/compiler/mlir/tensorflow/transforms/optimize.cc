@@ -58,6 +58,8 @@ void CreateTFStandardPipeline(OpPassManager &pm,
   func_pm.addPass(tf_executor::CreateTFExecutorGraphPruningPass());
   func_pm.addPass(tf_executor::CreateTFExecutorIslandCoarseningPass());
   func_pm.addPass(CreateMaterializePassthroughOpPass());
+  if (options.form_clusters)
+    func_pm.addPass(TFDevice::CreateClusterFormationPass());
 
   // Hopefully there is a single island left, or there wasn't any to begin with.
   // We now run the optimizer which operates mostly inside islands.
