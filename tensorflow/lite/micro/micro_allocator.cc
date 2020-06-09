@@ -270,6 +270,31 @@ TfLiteStatus CommitPlan(ErrorReporter* error_reporter, MemoryPlanner* planner,
 
 namespace internal {
 
+// Allocate a TfLiteIntArray and copy the contents of a FlatBuffers Vector
+// into it.
+template <class T>
+TfLiteStatus FlatBufferIntArrayToTfLiteIntArray(
+    SimpleMemoryAllocator* allocator, ErrorReporter* error_reporter,
+    const flatbuffers::Vector<T>* flat_array, TfLiteIntArray** result) {
+  TfLiteIntArray* ret =
+      reinterpret_cast<TfLiteIntArray*>(allocator->AllocateFromTail(
+          TfLiteIntArrayGetSizeInBytes(flat_array->Length()),
+          alignof(TfLiteIntArray)));
+  if (nullptr == ret) {
+    TF_LITE_REPORT_ERROR(
+        error_reporter,
+        "Failed to allocate %d bytes of memory to copy an array.",
+        TfLiteIntArrayGetSizeInBytes(flat_array->Length()));
+    return kTfLiteError;
+  }
+  ret->size = flat_array->Length();
+  for (int64_t i = 0; i < static_cast<int64_t>(flat_array->Length()); i++) {
+    ret->data[i] = flat_array->Get(i);
+  }
+  *result = ret;
+  return kTfLiteOk;
+}
+
 TfLiteStatus InitializeTfLiteTensorFromFlatbuffer(
     SimpleMemoryAllocator* allocator, const tflite::Tensor& flatbuffer_tensor,
     const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
@@ -322,15 +347,23 @@ TfLiteStatus InitializeTfLiteTensorFromFlatbuffer(
   TF_LITE_ENSURE_STATUS(BytesRequiredForTensor(
       flatbuffer_tensor, &result->bytes, &type_size, error_reporter));
 
-  // TFLM doesn't allow reshaping the tensor which requires dynamic memory
-  // allocation so it is safe to drop the const qualifier. In the future, if
-  // we really want to update the tensor shape, we can always pass in a new
-  // TfLiteIntArray - especially we have to do so if the dimension is changed.
   if (flatbuffer_tensor.shape() == nullptr) {
     // flatbuffer_tensor.shape() can return a nullptr in the case of a scalar
     // tensor.
     result->dims = const_cast<TfLiteIntArray*>(&kZeroLengthIntArray);
+  } else if (!FLATBUFFERS_LITTLEENDIAN) {
+    // Big-endian architecture. Copy and byte-swap the little-endian shape
+    // data.
+    TF_LITE_ENSURE_STATUS(FlatBufferIntArrayToTfLiteIntArray(
+        allocator, error_reporter, flatbuffer_tensor.shape(), &(result->dims)));
   } else {
+    // On little-endian machines, TfLiteIntArray happens to have the same
+    // memory layout as flatbuffers:Vector<int>, so we can reinterpret_cast the
+    // tensor shape vector and avoid a copy.
+    // TFLM doesn't allow reshaping the tensor which requires dynamic memory
+    // allocation so it is safe to drop the const qualifier. In the future, if
+    // we really want to update the tensor shape, we can always pass in a new
+    // TfLiteIntArray - especially we have to do so if the dimension is changed.
     result->dims = const_cast<TfLiteIntArray*>(
         reinterpret_cast<const TfLiteIntArray*>(flatbuffer_tensor.shape()));
   }
