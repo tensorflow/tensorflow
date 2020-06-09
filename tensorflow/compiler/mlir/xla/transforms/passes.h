@@ -73,6 +73,9 @@ std::unique_ptr<OperationPass<FuncOp>> createTransformUnrankedHloPass();
 // necessary to export to XLA.
 std::unique_ptr<OperationPass<FuncOp>> createSinkConstantsToControlFlowPass();
 
+// fuse xla_hlo ops to kLoop/kInput fusion patterns
+std::unique_ptr<OperationPass<FuncOp>> createXlaHloFusionPass();
+
 }  // namespace xla_hlo
 
 namespace xla_lhlo {
