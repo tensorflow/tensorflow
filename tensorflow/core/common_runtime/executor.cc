@@ -65,8 +65,10 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/annotated_traceme.h"
+#include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
@@ -627,16 +629,19 @@ void ExecutorState<PropagatorStateType>::ProcessConstTensor(
 template <class PropagatorStateType>
 void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
                                                  int64 scheduled_nsec) {
-  profiler::TraceMe activity(
+  profiler::TraceMeConsumer activity(
+      // From TraceMeProducer in KernelAndDeviceFunc::RunAsync.
       [&] {
         // NOTE: This tracing uses the iteration number from the first tagged
         // node that executes during this call to `Process()`. In principle,
         // subsequent nodes could have different values of `iter_num` that
         // will not be traced.
-        return absl::StrCat("ExecutorState::Process#id=", step_id_,
-                            ",iter_num=", tagged_node.get_iter_num(), "#");
+        return profiler::TraceMeEncode(
+            "ExecutorState::Process",
+            {{"id", step_id_}, {"iter_num", tagged_node.get_iter_num()}});
       },
-      2);
+      step_id_, profiler::ContextType::kTfExecutor,
+      profiler::TraceMeLevel::kInfo);
   WithContext wc(context_);
   TaggedNodeSeq ready;
   TaggedNodeReadyQueue inline_ready;
@@ -1240,11 +1245,14 @@ void ExecutorState<PropagatorStateType>::Finish() {
     }
     delete this;
     runner([step_id, status, done_cb = std::move(done_cb)]() {
-      profiler::TraceMe traceme(
+      profiler::TraceMeConsumer activity(
+          // From TraceMeProducer in KernelAndDeviceFunc::RunAsync.
           [&] {
-            return absl::StrCat("ExecutorDoneCallback#id=", step_id, "#");
+            return profiler::TraceMeEncode("ExecutorDoneCallback",
+                                           {{"id", step_id}});
           },
-          2);
+          step_id, profiler::ContextType::kTfExecutor,
+          profiler::TraceMeLevel::kInfo);
       done_cb(status);
     });
     return;
