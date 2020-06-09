@@ -584,5 +584,4 @@ BENCHMARK(BM_Resize);
 
 #endif
 
->>>>>>> upstream/master
 }  // namespace tensorflow
