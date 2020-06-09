@@ -883,14 +883,15 @@ class FromSessionTest(TestModels, parameterized.TestCase):
   @parameterized.named_parameters(
       # Quantize model to Int8: with enable mlir
       ('UseTfliteBuiltinsIntEnableMLIR',
-        [lite.OpsSet.TFLITE_BUILTINS_INT8], True),
+       [lite.OpsSet.TFLITE_BUILTINS_INT8], True),
       # Quantize model to Int8: with disable mlir
       ('UseTfliteBuiltinsIntDisableMLIR',
-        [lite.OpsSet.TFLITE_BUILTINS_INT8], False),
+       [lite.OpsSet.TFLITE_BUILTINS_INT8], False),
       # Quantize model to Int16: with disable mlir
       ('UseTfliteBuiltinsInt16DisableMLIR',
-        [lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8],
-        False))
+       [lite.OpsSet.\
+       EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8],
+       False))
   def testCalibrateAndQuantizeBuiltinInt(self, supported_ops, enable_mlir):
     with ops.Graph().as_default():
       inp, output, calibration_gen = self._getCalibrationQuantizeModel()
