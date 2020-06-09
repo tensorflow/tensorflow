@@ -72,6 +72,9 @@ struct TensorDescriptor : public GPUObjectDescriptor {
 
   bool HasAxis(Axis axis) const;
 
+  std::string GetBatchIDFromState() const;
+  bool IsBatchedWidth() const;
+
   DataType data_type = DataType::UNKNOWN;
   TensorStorageType storage_type = TensorStorageType::UNKNOWN;
   // This field describes logical layout, actual(physical) GPU layout can be
@@ -128,8 +131,6 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   bool ParseCoordsFromArgs(const std::vector<std::string>& args, int offset,
                            std::string* xc, std::string* yc, std::string* zc,
                            std::string* sc, std::string* bc) const;
-
-  bool IsBatchedWidth() const;
 };
 
 std::string ToString(TensorStorageType type);

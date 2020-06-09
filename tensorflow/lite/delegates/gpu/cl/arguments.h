@@ -63,8 +63,14 @@ class Arguments {
 
   std::string GetListOfArgs();
 
-  absl::Status Bind(cl_kernel kernel, int offset);
+  absl::Status Bind(cl_kernel kernel, int offset = 0);
 
+  void RenameArgs(const std::string& postfix, std::string* code) const;
+  absl::Status Merge(Arguments&& args, const std::string& postfix);
+
+  absl::Status InsertLinkableCode(const std::string& link_object_name,
+                                  const std::string& linkable_code,
+                                  std::string* code);
   absl::Status TransformToCLCode(std::string* code);
 
   // Move only

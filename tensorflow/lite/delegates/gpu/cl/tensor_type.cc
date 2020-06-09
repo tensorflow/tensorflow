@@ -477,6 +477,15 @@ bool TensorDescriptor::HasAxis(Axis axis) const {
   return false;
 }
 
+std::string TensorDescriptor::GetBatchIDFromState() const {
+  auto it = state_vars_.find("batch_id");
+  if (it == state_vars_.end()) {
+    return "";
+  } else {
+    return it->second;
+  }
+}
+
 bool TensorDescriptor::ParseCoordsFromArgs(const std::vector<std::string>& args,
                                            int offset, std::string* xc,
                                            std::string* yc, std::string* zc,

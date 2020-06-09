@@ -19,6 +19,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
+#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 
 namespace tflite {
 namespace gpu {
@@ -27,6 +28,7 @@ namespace {
 struct TestDescriptor : public GPUObjectDescriptor {
   absl::Status PerformSelector(const std::string& selector,
                                const std::vector<std::string>& args,
+                               const std::vector<std::string>& template_args,
                                std::string* result) const override {
     if (selector == "Length") {
       *result = "length";
@@ -45,7 +47,7 @@ struct TestDescriptor : public GPUObjectDescriptor {
     }
   }
 
-  GPUResources GetGPUResources() const override {
+  GPUResources GetGPUResources(AccessType access_type) const override {
     GPUResources resources;
     resources.ints.push_back("length");
     GPUBufferDescriptor desc;
@@ -60,7 +62,8 @@ struct TestDescriptor : public GPUObjectDescriptor {
 TEST(ArgumentsTest, TestSelectorResolve) {
   TestDescriptor descriptor;
   Arguments args;
-  args.AddObjectRef("object", absl::make_unique<TestDescriptor>(descriptor));
+  args.AddObjectRef("object", AccessType::WRITE,
+                    absl::make_unique<TestDescriptor>(descriptor));
   std::string sample_code = R"(
   if (a < 3) {
     value = args.object.Read(id);
@@ -82,13 +85,69 @@ TEST(ArgumentsTest, TestSelectorResolve) {
 TEST(ArgumentsTest, TestNoSelector) {
   TestDescriptor descriptor;
   Arguments args;
-  args.AddObjectRef("object", absl::make_unique<TestDescriptor>(descriptor));
+  args.AddObjectRef("object", AccessType::WRITE,
+                    absl::make_unique<TestDescriptor>(descriptor));
   std::string sample_code = R"(
   if (a < 3) {
     value = args.object.Write(id);
   }
 )";
   EXPECT_FALSE(args.TransformToCLCode(&sample_code).ok());
+}
+
+TEST(ArgumentsTest, TestInsertLinkable) {
+  TensorDescriptor desc{DataType::FLOAT32, TensorStorageType::BUFFER,
+                        Layout::HWC};
+  Arguments args;
+  args.AddObjectRef("spatial_tensor", AccessType::WRITE,
+                    absl::make_unique<TensorDescriptor>(desc));
+  std::string linkable_code = "in_out_value += X_COORD * Y_COORD - S_COORD;\n";
+  std::string sample_code = R"(
+  if (a < 3) {
+    args.spatial_tensor.Write(value, xc, yc, zc);
+  }
+)";
+  EXPECT_TRUE(
+      args.InsertLinkableCode("spatial_tensor", linkable_code, &sample_code)
+          .ok());
+  const std::string expected_result = R"(
+  if (a < 3) {
+    value += xc * yc - zc;
+args.spatial_tensor.Write(value, xc, yc, zc);
+  }
+)";
+  EXPECT_EQ(sample_code, expected_result);
+}
+
+TEST(ArgumentsTest, TestMergeArgs) {
+  TensorDescriptor desc{DataType::FLOAT32, TensorStorageType::BUFFER,
+                        Layout::HWC};
+  Arguments args;
+  args.AddObjectRef("spatial_tensor", AccessType::WRITE,
+                    absl::make_unique<TensorDescriptor>(desc));
+
+  Arguments linkable_args;
+  linkable_args.AddFloat("alpha", 0.5f);
+  std::string linkable_code = "in_out_value += args.alpha;\n";
+  std::string sample_code = R"(
+  if (a < 3) {
+    args.spatial_tensor.Write(value, xc, yc, zc);
+  }
+)";
+
+  linkable_args.RenameArgs("_link0", &linkable_code);
+  EXPECT_EQ(linkable_code, "in_out_value += args.alpha_link0;\n");
+  EXPECT_TRUE(args.Merge(std::move(linkable_args), "_link0").ok());
+  EXPECT_TRUE(
+      args.InsertLinkableCode("spatial_tensor", linkable_code, &sample_code)
+          .ok());
+  const std::string expected_result = R"(
+  if (a < 3) {
+    value += args.alpha_link0;
+args.spatial_tensor.Write(value, xc, yc, zc);
+  }
+)";
+  EXPECT_EQ(sample_code, expected_result);
 }
 
 }  // namespace cl
