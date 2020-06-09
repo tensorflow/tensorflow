@@ -2273,6 +2273,12 @@ def tf_py_test(
         **kwargs
     )
     if tfrt_enabled_internal:
+        # None `main` defaults to `name` + ".py" in `py_test` target. However, since we
+        # are appending _tfrt. it becomes `name` + "_tfrt.py" effectively. So force
+        # set `main` argument without `_tfrt`.
+        if main == None:
+            main = name + ".py"
+
         py_test(
             name = name + "_tfrt",
             size = size,
