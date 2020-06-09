@@ -62,17 +62,33 @@ limitations under the License.
 
 namespace mlir {
 
-// To support use EquivalenceClasses<Value> directly.
-bool operator<(Value lhs, Value rhs) {
-  return lhs.getAsOpaquePointer() < rhs.getAsOpaquePointer();
-}
-
 namespace xla_hlo {
 namespace {
 
 using llvm::EquivalenceClasses;
 using FusionPattern = std::vector<Operation*>;
 using FusionPlan = std::vector<FusionPattern>;
+
+// To support using EquivalenceClasses for Value
+class ValueWrapper {
+ public:
+  explicit ValueWrapper(Value value) : value_(std::move(value)) {}
+
+  Value getValue() const { return value_; }
+
+  bool operator==(const ValueWrapper& rhs) const {
+    return getValue() == rhs.getValue();
+  }
+
+ private:
+  Value value_;
+};
+
+bool operator<(const ValueWrapper& lhs, const ValueWrapper& rhs) {
+  auto lhs_value = lhs.getValue().getAsOpaquePointer();
+  auto rhs_value = rhs.getValue().getAsOpaquePointer();
+  return lhs_value < rhs_value;
+}
 
 bool IsFusible(Operation* op) {
   if (matchPattern(op, m_Constant())) {
@@ -156,7 +172,7 @@ class ShapeConstraintAnalysis {
 
    // Returns true is `lhs` and `rhs` are supposed to have same shape.
    bool HasSameShape(Value lhs, Value rhs) {
-     return impl_.isEquivalent(lhs, rhs);
+     return impl_.isEquivalent(ValueWrapper(lhs), ValueWrapper(rhs));
    }
 
  private:
@@ -166,7 +182,7 @@ class ShapeConstraintAnalysis {
     bool converged = true;
     do {
       converged = true;
-      auto update = [&](Value lhs, Value rhs) {
+      auto update = [&](const ValueWrapper& lhs, const ValueWrapper& rhs) {
         if (!impl_.isEquivalent(lhs, rhs)) {
           converged = false;
           impl_.unionSets(lhs, rhs);
@@ -181,25 +197,28 @@ class ShapeConstraintAnalysis {
         for (int input1 = 0; input1 < numInput; ++input1)
           for (int input2 = input1+1; input2 < numInput; ++input2)
             if (op_fusibility.inferInputsShapeEquality(input1, input2))
-              update(op->getOperand(input1), op->getOperand(input2));
+              update(ValueWrapper(op->getOperand(input1)),
+                     ValueWrapper(op->getOperand(input2)));
 
         // shape equality propagation between outputs.
         for (int output1 = 0; output1 < numOutput; ++output1)
           for (int output2 = output1+1; output2 < numOutput; ++output2)
             if (op_fusibility.inferOutputsShapeEquality(output1, output2))
-              update(op->getResult(output1), op->getResult(output2));
+              update(ValueWrapper(op->getResult(output1)),
+                     ValueWrapper(op->getResult(output2)));
 
         // shape equality propagation between input and output.
         for (int input = 0; input < numInput; ++input)
           for (int output = 0; output < numOutput; ++output)
             if (op_fusibility.inferInputOutputShapeEquality(input, output))
-              update(op->getOperand(input), op->getResult(output));
+              update(ValueWrapper(op->getOperand(input)),
+                     ValueWrapper(op->getResult(output)));
       }
     } while (!converged);
   }
 
   // a UnionFind set
-  EquivalenceClasses<Value> impl_;
+  EquivalenceClasses<ValueWrapper> impl_;
 };
 
 // A fusion planner that can propose a fusion plan for a block of ops.
