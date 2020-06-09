@@ -407,11 +407,39 @@ def LHLO_ConcatenateOp : LHLO_Op<"concatenate", []>, BASE_HLO_ConcatenateOp {
    );
 }
 
+// TODO(bondhugula): Make this struct dialect independent so that it can be
+// shared between the HLO and LHLO dialects.
+def ConvDimensionNumbers : StructAttr<"ConvDimensionNumbers", LHLO_Dialect, [
+  StructFieldAttr<"input_batch_dimension",I64Attr>,
+  StructFieldAttr<"input_feature_dimension", I64Attr>,
+  StructFieldAttr<"input_spatial_dimensions", I64ElementsAttr>,
+  StructFieldAttr<"kernel_input_feature_dimension", I64Attr>,
+  StructFieldAttr<"kernel_output_feature_dimension", I64Attr>,
+  StructFieldAttr<"kernel_spatial_dimensions", I64ElementsAttr>,
+  StructFieldAttr<"output_batch_dimension", I64Attr>,
+  StructFieldAttr<"output_feature_dimension", I64Attr>,
+  StructFieldAttr<"output_spatial_dimensions", I64ElementsAttr>] > {
+
+  let description = "Structure of dimension information for conv op";
+}
+
 def LHLO_ConvOp : LHLO_Op<"convolution", []>, BASE_HLO_ConvOp {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$lhs,
     Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
-    Arg<LHLO_Buffer, "", [MemWrite]>:$output
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+    // Default value: one for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$window_strides,
+    // Default value: zero for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$padding,
+    // Default value: one for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$lhs_dilation,
+    // Default value: one for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$rhs_dilation,
+    ConvDimensionNumbers:$dimension_numbers,
+    I64Attr:$feature_group_count,
+    I64Attr:$batch_group_count,
+    HLO_PrecisionConfigAttr:$precision_config
   );
 }
 
