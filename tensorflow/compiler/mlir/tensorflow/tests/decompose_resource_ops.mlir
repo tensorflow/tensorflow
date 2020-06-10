@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -tf-device-decompose-resource-ops | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -split-input-file -tf-device-decompose-resource-ops | FileCheck %s
 
 // Tests that resources with subtypes are used if present.
 

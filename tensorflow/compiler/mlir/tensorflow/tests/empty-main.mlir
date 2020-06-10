@@ -1,4 +1,4 @@
-// RUN: tf-opt -tf-executor-graph-pruning %s  | FileCheck %s --check-prefix=CONTROL --dump-input=fail
+// RUN: tf-opt -tf-executor-graph-pruning %s  | FileCheck %s --check-prefix=CONTROL
 
 // CONTROL-LABEL: func @main
 // CONTROL-NEXT:    return

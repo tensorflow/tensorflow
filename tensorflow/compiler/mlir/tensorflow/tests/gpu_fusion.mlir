@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-gpu-op-fusion | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -tf-gpu-op-fusion | FileCheck %s
 
 // Test the op-fusion pass specific to the GPU target.
 

@@ -1,4 +1,4 @@
-// RUN: xla-opt -split-input-file -test-xla-unfuse-batch-norm -verify-diagnostics %s | FileCheck --enable-var-scope --dump-input=fail %s
+// RUN: xla-opt -split-input-file -test-xla-unfuse-batch-norm -verify-diagnostics %s | FileCheck --enable-var-scope %s
 
 // CHECK-LABEL: @batchNormInference_2D_inner_features
 // CHECK-SAME: %[[X:[^:[:space:]]+]]
