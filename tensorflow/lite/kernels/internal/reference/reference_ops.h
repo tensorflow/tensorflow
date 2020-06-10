@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/activations.h"
 #include "tensorflow/lite/kernels/internal/reference/add.h"
 #include "tensorflow/lite/kernels/internal/reference/arg_min_max.h"
 #include "tensorflow/lite/kernels/internal/reference/binary_function.h"
@@ -2598,20 +2599,6 @@ void ReverseSequence(const TS* seq_lengths, const int seq_dim,
         }
       }
     }
-  }
-}
-
-template <typename T>
-inline void HardSwish(const RuntimeShape& input_shape, const T* input_data,
-                      const RuntimeShape& output_shape, T* output_data) {
-  ruy::profiler::ScopeLabel label("ReferenceHardSwish/Float");
-  auto matching_size = MatchingFlatSize(input_shape, output_shape);
-  const T* in_end = input_data + matching_size;
-  for (; input_data < in_end; input_data++, output_data++) {
-    const float in = *input_data;
-    *output_data =
-        in * std::min(static_cast<T>(6), std::max(static_cast<T>(0), in + 3)) /
-        6;
   }
 }
 

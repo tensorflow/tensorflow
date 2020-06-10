@@ -437,6 +437,7 @@ cc_library(
     name = "reference_base",
     srcs = [],
     hdrs = [
+        "reference/activations.h",
         "reference/add.h",
         "reference/arg_min_max.h",
         "reference/batch_matmul.h",
@@ -525,6 +526,7 @@ cc_library(
     name = "legacy_reference_base",
     srcs = [],
     hdrs = [
+        "reference/activations.h",
         "reference/add.h",
         "reference/arg_min_max.h",
         "reference/binary_function.h",

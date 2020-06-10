@@ -139,7 +139,7 @@ void TestRelu6Float(const int* input_dims_data, const float* input_data,
 
 void GenerateUniformRandomVector(int size, float min, float max,
                                  std::minstd_rand* random_engine,
-                                 std::vector<float>* result) {
+                                 float* result) {
   // Never use std::uniform_*_distribution in tests, it's
   // implementation-defined. Likewise, don't use std::default_random_engine,
   // implementation-defined. Implementation-defined is bad because it means that
@@ -147,7 +147,6 @@ void GenerateUniformRandomVector(int size, float min, float max,
   // std::minstd_rand is a standard instantiation of
   // std::linear_congruential_engine, the cheapest generator in c++11 stdlib,
   // it's good enough here.
-  result->resize(size);
   for (int i = 0; i < size; i++) {
     // We don't care whether the `max` value may ever be produced exactly.
     // It may actually be thanks to rounding, as std::minstd_rand::modulus
@@ -155,23 +154,23 @@ void GenerateUniformRandomVector(int size, float min, float max,
     float random_value_scaled_0_1 =
         (*random_engine)() *
         (1.0f / static_cast<float>(std::minstd_rand::modulus));
-    (*result)[i] = min + (max - min) * random_value_scaled_0_1;
+    result[i] = min + (max - min) * random_value_scaled_0_1;
   }
 }
 
-void EvalTestReferenceHardSwish(int size, const std::vector<float>& input,
-                                std::vector<float>* result) {
-  result->resize(size);
+void EvalTestReferenceHardSwish(int size, float* input,
+                                float* result) {
   for (int i = 0; i < size; i++) {
     const float in = input[i];
-    (*result)[i] = in * std::min(6.0f, std::max(0.0f, in + 3)) * (1.0f / 6.0f);
+    result[i] = in * std::min(6.0f, std::max(0.0f, in + 3)) * (1.0f / 6.0f);
   }
 }
 
 template <typename T>
 void TestHardSwishQuantized(int size, const T* output_data, T* input_data_quantized, float* dequantized_output,
                             float input_min, float input_max, float output_min,
-                            float output_max, std::minstd_rand* random_engine) {
+                            float output_max, std::minstd_rand* random_engine,
+                            float *float_input_values, float* float_ref_output_values) {
   const int input_dims_data[] = {2, 1, size};
   const int output_dims_data[] = {2, 1, size};
   const float input_scale = ScaleFromMinMax<T>(input_min, input_max);
@@ -191,21 +190,20 @@ void TestHardSwishQuantized(int size, const T* output_data, T* input_data_quanti
 
   TF_LITE_MICRO_EXPECT_EQ(output_elements_count, size);
 
-  std::vector<float> float_input_values;
-  std::vector<float> float_ref_output_values;
   GenerateUniformRandomVector(size, input_min, input_max, random_engine,
-                              &float_input_values);
+                              float_input_values);
   EvalTestReferenceHardSwish(size, float_input_values,
-                             &float_ref_output_values);
-  for (float& val : float_ref_output_values) {
-    val = std::min(output_max, std::max(output_min, val));
+                             float_ref_output_values);
+  for (int i = 0; i < size; i++) {
+    float val = float_ref_output_values[i];
+    float_ref_output_values[i] = std::min(output_max, std::max(output_min, val));
   }
 
   constexpr int inputs_size = 1;
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantizedTensor(float_input_values.data(), input_data_quantized, input_dims,
+      CreateQuantizedTensor(float_input_values, input_data_quantized, input_dims,
                             input_scale, input_zero_point, "input_tensor"),
       CreateQuantizedTensor(output_data, output_dims, output_scale,
                             output_zero_point, "output_tensor"),
@@ -253,18 +251,18 @@ void TestHardSwishQuantized(int size, const T* output_data, T* input_data_quanti
   AsymmetricDequantize<T>(output_data, output_elements_count, output_scale, output_zero_point, dequantized_output);
 
   for (int i = 0; i < output_elements_count; ++i) {
-    TF_LITE_MICRO_EXPECT_NEAR(float_ref_output_values.data()[i], dequantized_output[i], kTolerance);
+    TF_LITE_MICRO_EXPECT_NEAR(float_ref_output_values[i], dequantized_output[i], kTolerance);
   }
 }
 
 template <typename T>
 void TestHardSwishQuantizedBias(const int size, const T* output_data, T* input_data_quantized,
                                 float* dequantized_output, float input_min, float input_max,
-                                float output_min, float output_max, float tolerated_bias) {
+                                float output_min, float output_max, float tolerated_bias,
+                                float* float_input_values, float* float_ref_output_values) {
   const float quantized_type_range =
       static_cast<float>(std::numeric_limits<T>::max()) -
       static_cast<float>(std::numeric_limits<T>::min());
-
 
   const float input_scale = ScaleFromMinMax<T>(input_min, input_max);
   const float output_scale = ScaleFromMinMax<T>(output_min, output_max);
@@ -284,20 +282,18 @@ void TestHardSwishQuantizedBias(const int size, const T* output_data, T* input_d
   const int quantized_input_positive_three =
       std::round(std::numeric_limits<T>::min() +
                  (3.0f - input_min) / input_scale);
-  std::vector<float> float_input_values;
+
   for (int i = quantized_input_negative_three;
        i <= quantized_input_positive_three; i++) {
-    float_input_values.push_back(
-        input_min +
-        (i - std::numeric_limits<T>::min()) * input_scale);
+    float_input_values[i] = input_min +
+                            (i - std::numeric_limits<T>::min()) * input_scale;
   }
-  TF_LITE_MICRO_EXPECT_EQ(float_input_values.size(), size);
 
-  std::vector<float> float_ref_output_values;
   EvalTestReferenceHardSwish(size, float_input_values,
-                             &float_ref_output_values);
-  for (float& val : float_ref_output_values) {
-    val = std::min(output_max, std::max(output_min, val));
+                             float_ref_output_values);
+  for (int i = 0; i < size; i++) {
+    float val = float_ref_output_values[i];
+    float_ref_output_values[i] = std::min(output_max, std::max(output_min, val));
   }
 
   const int input_dims_data[] = {2, 1, size};
@@ -319,7 +315,7 @@ void TestHardSwishQuantizedBias(const int size, const T* output_data, T* input_d
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantizedTensor(float_input_values.data(), input_data_quantized, input_dims,
+      CreateQuantizedTensor(float_input_values, input_data_quantized, input_dims,
                             input_scale, input_zero_point, "input_tensor"),
       CreateQuantizedTensor(output_data, output_dims, output_scale,
                             output_zero_point, "output_tensor"),
@@ -375,15 +371,15 @@ void TestHardSwishQuantizedBias(const int size, const T* output_data, T* input_d
   TF_LITE_MICRO_EXPECT_LE(std::abs(bias), tolerated_bias);
 }
 
-void TestHardSwishFloat(const int size, float* output_data, std::minstd_rand* random_engine) {
-  std::vector<float> float_input_values;
+void TestHardSwishFloat(const int size, float* output_data, std::minstd_rand* random_engine,
+                        float* float_input_values, float* float_ref_output_values) {
   const float kMin = -10.0f;
   const float kMax = 10.0f;
   GenerateUniformRandomVector(size, kMin, kMax, random_engine,
-                              &float_input_values);
-  std::vector<float> float_ref_output_values;
+                              float_input_values);
+
   EvalTestReferenceHardSwish(size, float_input_values,
-                             &float_ref_output_values);
+                             float_ref_output_values);
 
   const int input_dims_data[] = {1, size};
   const int output_dims_data[] = {1, size};
@@ -398,7 +394,7 @@ void TestHardSwishFloat(const int size, float* output_data, std::minstd_rand* ra
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(float_input_values.data(), input_dims, "input_tensor"),
+      CreateFloatTensor(float_input_values, input_dims, "input_tensor"),
       CreateFloatTensor(output_data, output_dims, "output_tensor"),
   };
   TfLiteContext context;
@@ -439,7 +435,7 @@ void TestHardSwishFloat(const int size, float* output_data, std::minstd_rand* ra
   }
 
   for (int i = 0; i < output_elements_count; ++i) {
-    TF_LITE_MICRO_EXPECT_NEAR(float_ref_output_values.data()[i], output_data[i], 1e-5f);
+    TF_LITE_MICRO_EXPECT_NEAR(float_ref_output_values[i], output_data[i], 1e-5f);
   }
 }
 
@@ -743,55 +739,62 @@ TF_LITE_MICRO_TEST(SimpleHardSwishTestFloat) {
   std::minstd_rand random_engine;
   constexpr int size = 100;
   float output_data[size] = {0.f};
+  float input_values[size] = {0.f};
+  float output_values[size] = {0.f};
 
-  tflite::testing::TestHardSwishFloat(size, output_data, &random_engine);
+  tflite::testing::TestHardSwishFloat(size, output_data, &random_engine,
+                                      input_values, output_values);
 }
 
 
 TF_LITE_MICRO_TEST(SimpleHardSwishTestInt8) {
   std::minstd_rand random_engine;
-  std::vector<std::pair<float, float>> minmax_pairs{
-      {0.f, 1.f}, {-2.f, 1.f}, {-5.f, 10.f}, {-40.f, 60.f}};
+  constexpr int pairs = 4, one_pair = 2;
   constexpr int size = 101;
+  constexpr float minmax_pairs[pairs][one_pair] = {
+    {0.f, 1.f}, {-2.f, 1.f}, {-5.f, 10.f}, {-40.f, 60.f}};
   constexpr int8_t output_data[size] = {0};
   int8_t input_data_quantized[size] = {0};
   float dequantized_output[size] = {0.f};
+  float input_values[size] = {0.f};
+  float output_values[size] = {0.f};
 
-  for (const auto& input_minmax : minmax_pairs) {
-    for (const auto& output_minmax : minmax_pairs) {
-      float input_min = input_minmax.first;
-      float input_max = input_minmax.second;
-      float output_min = output_minmax.first;
-      float output_max = output_minmax.second;
+  for (int x = 0; x < pairs; x++) {
+    for (int y = 0; y < pairs; y++) {
+      float input_min = minmax_pairs[x][0];
+      float input_max = minmax_pairs[x][1];
+      float output_min = minmax_pairs[y][0];
+      float output_max = minmax_pairs[y][1];
 
       tflite::testing::TestHardSwishQuantized<int8_t>(size, output_data, input_data_quantized, dequantized_output,
                                                       input_min, input_max, output_min, output_max,
-                                                      &random_engine);
-
+                                                      &random_engine, input_values, output_values);
     }
   }
 }
 
 TF_LITE_MICRO_TEST(SimpleHardSwishTestUint8) {
   std::minstd_rand random_engine;
-  std::vector<std::pair<float, float>> minmax_pairs{
-      {0.f, 1.f}, {-2.f, 1.f}, {-5.f, 10.f}, {-40.f, 60.f}};
   constexpr int size = 99;
+  constexpr int pairs = 4, one_pair = 2;
+  constexpr float minmax_pairs[pairs][one_pair] = {
+    {0.f, 1.f}, {-2.f, 1.f}, {-5.f, 10.f}, {-40.f, 60.f}};
   constexpr uint8_t output_data[size] = {0};
   uint8_t input_data_quantized[size] = {0};
   float dequantized_output[size] = {0.f};
+  float input_values[size] = {0.f};
+  float output_values[size] = {0.f};
 
-  for (const auto& input_minmax : minmax_pairs) {
-    for (const auto& output_minmax : minmax_pairs) {
-      float input_min = input_minmax.first;
-      float input_max = input_minmax.second;
-      float output_min = output_minmax.first;
-      float output_max = output_minmax.second;
+  for (int x = 0; x < pairs; x++) {
+    for (int y = 0; y < pairs; y++) {
+      float input_min = minmax_pairs[x][0];
+      float input_max = minmax_pairs[x][1];
+      float output_min = minmax_pairs[y][0];
+      float output_max = minmax_pairs[y][1];
 
       tflite::testing::TestHardSwishQuantized<uint8_t>(size, output_data, input_data_quantized, dequantized_output,
                                                        input_min, input_max, output_min, output_max,
-                                                       &random_engine);
-
+                                                       &random_engine, input_values, output_values);
     }
   }
 }
@@ -806,11 +809,13 @@ TF_LITE_MICRO_TEST(SimpleHardSwishTestQuantizedBias) {
   constexpr uint8_t output_data[size] = {0};
   uint8_t input_data_quantized[size] = {0};
   float dequantized_output[size] = {0.f};
+  float input_values[size] = {0.f};
+  float output_values[size] = {0.f};
 
   tflite::testing::TestHardSwishQuantizedBias<uint8_t>(size, output_data, input_data_quantized, dequantized_output,
-                                                       -11.654928f, 25.036512f, -0.3905796f, 24.50887f, 0.035);
+                                                       -11.654928f, 25.036512f, -0.3905796f, 24.50887f, 0.035,
+                                                       input_values, output_values);
 }
-
 
 TF_LITE_MICRO_TEST(SimpleReluTestUint8) {
   const int elements_count = 10;
