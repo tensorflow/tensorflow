@@ -138,9 +138,11 @@ TEST(FunctionApiInfoTest, ParseTags) {
 
   EXPECT_EQ("DoStuff", GetInterfaceName(lib_api_info, "DoStuffCpu"));
   EXPECT_EQ("DoStuff", GetInterfaceName(lib_api_info, "DoStuffGpu"));
+  EXPECT_EQ("DoThings", GetInterfaceName(lib_api_info, "DoThings"));
 
   EXPECT_EQ("CPU", GetPreferredDevice(lib_api_info, "DoStuffCpu"));
   EXPECT_EQ("GPU", GetPreferredDevice(lib_api_info, "DoStuffGpu"));
+  EXPECT_EQ("", GetPreferredDevice(lib_api_info, "DoThings"));
 
   EXPECT_TRUE(CheckEquivImpl(lib_api_info, "DoStuffCpu", {"DoStuffGpu"}));
   EXPECT_TRUE(CheckEquivImpl(lib_api_info, "DoStuffGpu", {"DoStuffCpu"}));
@@ -181,19 +183,6 @@ TEST(FunctionApiInfoTest, MismatchedArguments) {
   FunctionLibraryApiInfo lib_api_info;
   const Status ret = lib_api_info.Init(func_lib);
   EXPECT_FALSE(ret.ok());
-}
-
-TEST(FunctionApiInfoTest, ImplementsWithoutDevice) {
-  FunctionDefLibrary func_lib;
-  const std::vector<ArgSpec> func_args{{"in1", "float32"}, {"in2", "int32"}};
-  const std::vector<ArgSpec> output_args{{"out", "float32"}};
-  PopulateFunction("DoThings", "DoThings", "", func_args, output_args, "", "",
-                   func_lib.add_function());
-  FunctionLibraryApiInfo lib_api_info;
-  const Status ret = lib_api_info.Init(func_lib);
-  EXPECT_TRUE(ret.ok());
-  EXPECT_TRUE(lib_api_info.empty());
-  EXPECT_TRUE(CheckEquivImpl(lib_api_info, "DoThings", {}));
 }
 
 }  // namespace
