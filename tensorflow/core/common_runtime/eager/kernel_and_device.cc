@@ -40,9 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/setround.h"
 #include "tensorflow/core/profiler/lib/annotated_traceme.h"
-#include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 #if !defined(IS_MOBILE_PLATFORM)
@@ -383,17 +381,16 @@ void KernelAndDeviceFunc::RunAsync(
 
   outputs->clear();
 
-  profiler::TraceMeProducer activity(
-      // To TraceMeConsumers in ExecutorState::Process/Finish.
+  profiler::TraceMe* activity = new profiler::TraceMe(
       [&] {
-        return profiler::TraceMeEncode(
-            "FunctionRun", {{"id", opts->step_id}, {"$r", 1} /*root_event*/});
+        return absl::StrCat("FunctionRun#name=", name(), ",id=", opts->step_id,
+                            "#");
       },
-      profiler::ContextType::kTfExecutor, opts->step_id,
       profiler::TraceMeLevel::kInfo);
   pflr_->Run(*opts, handle_, inputs, outputs,
-             [opts, rendezvous, local_cm, step_container, this,
+             [opts, rendezvous, local_cm, step_container, this, activity,
               done = std::move(done)](const Status& s) {
+               delete activity;
                rendezvous->Unref();
                if (step_container == nullptr) {
                  this->step_container_.CleanUp();
