@@ -1,4 +1,4 @@
-# RUN: not tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false -tf-input-arrays=x,y -tf-input-data-types=DT_INT32,DT_INT32 -tf-input-shapes=2:3 -tf-output-arrays=x_y_sum %s --tf-debug-info=%s.debug -o - 2>&1 | FileCheck %s --dump-input-on-failure
+# RUN: not tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false -tf-input-arrays=x,y -tf-input-data-types=DT_INT32,DT_INT32 -tf-input-shapes=2:3 -tf-output-arrays=x_y_sum %s --tf-debug-info=%s.debug -o - 2>&1 | FileCheck %s
 
 # Checks that source debug information is used in the output error message.
 # CHECK: error: 'tf.Add' op operands don't have broadcast-compatible shapes

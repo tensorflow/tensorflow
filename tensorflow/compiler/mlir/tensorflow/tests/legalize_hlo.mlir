@@ -1,4 +1,4 @@
-// RUN: tf-opt -tf-legalize-hlo %s | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt -tf-legalize-hlo %s | FileCheck %s
 
 
 func @biasAdd_NHWC(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>) -> tensor<1x32x10x32xi32> {

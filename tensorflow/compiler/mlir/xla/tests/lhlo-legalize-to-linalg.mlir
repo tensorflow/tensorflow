@@ -1,4 +1,4 @@
-// RUN: xla-opt %s -lhlo-legalize-to-linalg -split-input-file | FileCheck %s --dump-input-on-failure
+// RUN: xla-opt %s -lhlo-legalize-to-linalg -split-input-file | FileCheck %s
 
 // CHECK: #map0 = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @element_wise

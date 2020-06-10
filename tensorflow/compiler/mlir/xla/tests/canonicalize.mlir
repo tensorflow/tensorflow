@@ -1,4 +1,4 @@
-// RUN: xla-opt %s -pass-pipeline='func(canonicalize)' | FileCheck %s --dump-input-on-failure
+// RUN: xla-opt %s -pass-pipeline='func(canonicalize)' | FileCheck %s
 
 // CHECK-LABEL: add_fold
 func @add_fold() -> tensor<4xi64> {

@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tfl-legalize-tf | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt %s -tfl-legalize-tf | FileCheck %s
 
 func @add(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
   %0 = "tf.Add"(%arg0, %arg1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
