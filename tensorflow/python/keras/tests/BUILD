@@ -50,9 +50,6 @@ tpu_py_test(
     srcs = [
         "automatic_outside_compilation_test.py",
     ],
-    args = [
-        "--use_automatic_outside_compilation_pass=true",
-    ],
     python_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
