@@ -1029,6 +1029,21 @@ inline void ForwardMklMetaDataInToOut(OpKernelContext* context,
 }
 
 // -------------------------------------------------------------------
+//          Common utility functions used by MKL unit tests
+
+inline Tensor GetMklMetaTensor() {
+  MklDnnShape non_mkl_shape;
+  non_mkl_shape.SetMklTensor(false);
+
+  auto size = static_cast<int64>(non_mkl_shape.GetSerializeBufferSize());
+  Tensor tensor(DT_UINT8, {size});
+
+  non_mkl_shape.SerializeMklDnnShape(tensor.flat<uint8>().data(),
+                                     size * sizeof(uint8));
+  return tensor;
+}
+
+// -------------------------------------------------------------------
 
 /// Return MKL-DNN data type (memory::data_type) for input type T
 ///

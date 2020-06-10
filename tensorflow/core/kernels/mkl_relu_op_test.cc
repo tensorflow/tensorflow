@@ -13,10 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#undef INTEL_MKL
-
 #ifdef INTEL_MKL
 
+#include "absl/strings/match.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/nn_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -27,6 +26,10 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/stacktrace_handler.h"
+#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/session.h"
@@ -37,125 +40,64 @@ limitations under the License.
 // Compare performance of default Tensorflow convolution kernels (Eigen) with
 // MKL kernels on CPU.
 
-// Before running these benchmarks configure OpenMP environment variables:
-//   export KMP_BLOCKTIME=0
-//   export OMP_NUM_THREADS=${num_threads}
-
 namespace tensorflow {
-static Tensor NonMklTensor() {
-  MklDnnShape non_mkl_shape;
-  non_mkl_shape.SetMklTensor(false);
 
-  auto size = static_cast<int64>(non_mkl_shape.GetSerializeBufferSize());
-  Tensor tensor(DT_UINT8, {size});
+static Graph* Activation(const string& op_name, const string& kind,
+                         const TensorShape& shape) {
+  auto* graph = new Graph(OpRegistry::Global());
+  const string node_name = kind + "_" + op_name;
+  const bool isForwardOp = !tensorflow::str_util::EndsWith(op_name, "Grad");
+  const bool isDefault = (kind == "Default");
 
-  non_mkl_shape.SerializeMklDnnShape(tensor.flat<uint8>().data(),
-                                     size * sizeof(uint8));
-  return tensor;
+  Tensor input_t(DT_FLOAT, shape);
+  input_t.flat<float>().setRandom();
+  Node* input = test::graph::Constant(graph, input_t, "input");
+  Node* not_mkl_shape =
+      test::graph::Constant(graph, GetMklMetaTensor(), "not_mkl");
+
+  if (isForwardOp) {
+    // Default forward op.
+    if (isDefault) {
+      TF_CHECK_OK(NodeBuilder(graph->NewName(node_name), op_name)
+                      .Input(input)
+                      .Attr("T", DT_FLOAT)
+                      .Finalize(graph, nullptr));
+      return graph;
+    }
+    // MKL forward op.
+    TF_CHECK_OK(NodeBuilder(graph->NewName(node_name), "_Mkl" + op_name)
+                    .Input(input)
+                    .Input(not_mkl_shape)
+                    .Attr("T", DT_FLOAT)
+                    .Attr("_kernel", "MklLayoutDependentOp")
+                    .Finalize(graph, nullptr));
+    return graph;
+  }
+
+  // Default backward op.
+  Tensor grad_t(DT_FLOAT, shape);
+  grad_t.flat<float>().setRandom();
+  Node* grad = test::graph::Constant(graph, grad_t, "grad");
+  if (isDefault) {
+    TF_CHECK_OK(NodeBuilder(graph->NewName(node_name), op_name)
+                    .Input(grad)
+                    .Input(input)
+                    .Attr("T", DT_FLOAT)
+                    .Finalize(graph, nullptr));
+    return graph;
+  }
+
+  // MKL backward op.
+  TF_CHECK_OK(NodeBuilder(graph->NewName(node_name), "_Mkl" + op_name)
+                  .Input(grad)
+                  .Input(input)
+                  .Input(not_mkl_shape)
+                  .Input(not_mkl_shape)
+                  .Attr("T", DT_FLOAT)
+                  .Attr("_kernel", "MklLayoutDependentOp")
+                  .Finalize(graph, nullptr));
+  return graph;
 }
-
-static Tensor GetRandomTensor(const TensorShape& shape) {
-  Tensor tensor(DT_FLOAT, TensorShape(shape));
-  tensor.flat<float>() = tensor.flat<float>().setRandom();
-  return tensor;
-}
-
-#define CREATE_DEFAULT_FWD_OP(NODE_NAME, OP_NAME)                 \
-  static Graph* NODE_NAME(const TensorShape& shape) {             \
-    auto* graph = new Graph(OpRegistry::Global());                \
-    Tensor input_t = GetRandomTensor(shape);                      \
-    Node* input = test::graph::Constant(graph, input_t, "input"); \
-    Node* op;                                                     \
-    TF_CHECK_OK(NodeBuilder(graph->NewName(#NODE_NAME), #OP_NAME) \
-                    .Input(input)                                 \
-                    .Attr("T", DT_FLOAT)                          \
-                    .Finalize(graph, &op));                       \
-    return graph;                                                 \
-  }
-CREATE_DEFAULT_FWD_OP(Default_Tanh, Tanh)
-CREATE_DEFAULT_FWD_OP(Default_Elu, Elu)
-CREATE_DEFAULT_FWD_OP(Default_Relu, Relu)
-CREATE_DEFAULT_FWD_OP(Default_Relu6, Relu6)
-CREATE_DEFAULT_FWD_OP(Default_LeakyRelu, LeakyRelu)
-
-#define CREATE_DEFAULT_BWD_OP(NODE_NAME, OP_NAME)                 \
-  static Graph* NODE_NAME(const TensorShape& shape) {             \
-    auto* graph = new Graph(OpRegistry::Global());                \
-    Tensor input_t = GetRandomTensor(shape);                      \
-    Node* input = test::graph::Constant(graph, input_t, "input"); \
-    Tensor grad_t = GetRandomTensor(shape);                       \
-    Node* grad = test::graph::Constant(graph, grad_t, "grad");    \
-    Node* op;                                                     \
-    TF_CHECK_OK(NodeBuilder(graph->NewName(#NODE_NAME), #OP_NAME) \
-                    .Input(grad)                                  \
-                    .Input(input)                                 \
-                    .Attr("T", DT_FLOAT)                          \
-                    .Finalize(graph, &op));                       \
-    return graph;                                                 \
-  }
-CREATE_DEFAULT_BWD_OP(Default_TanhGrad, TanhGrad)
-CREATE_DEFAULT_BWD_OP(Default_EluGrad, EluGrad)
-CREATE_DEFAULT_BWD_OP(Default_ReluGrad, ReluGrad)
-CREATE_DEFAULT_BWD_OP(Default_Relu6Grad, Relu6Grad)
-CREATE_DEFAULT_BWD_OP(Default_LeakyReluGrad, LeakyReluGrad)
-
-#define CREATE_MKL_FWD_OP(NODE_NAME, OP_NAME)                     \
-  static Graph* NODE_NAME(const TensorShape& shape) {             \
-    auto* graph = new Graph(OpRegistry::Global());                \
-                                                                  \
-    Tensor input_t = GetRandomTensor(shape);                      \
-    Node* input = test::graph::Constant(graph, input_t, "input"); \
-                                                                  \
-    Node* not_mkl_shape =                                         \
-        test::graph::Constant(graph, NonMklTensor(), "not_mkl");  \
-                                                                  \
-    Node* op;                                                     \
-    TF_CHECK_OK(NodeBuilder(graph->NewName(#NODE_NAME), #OP_NAME) \
-                    .Input(input)                                 \
-                    .Input(not_mkl_shape)                         \
-                    .Attr("T", DT_FLOAT)                          \
-                    .Attr("_kernel", "MklLayoutDependentOp")      \
-                    .Finalize(graph, &op));                       \
-                                                                  \
-    return graph;                                                 \
-  }
-
-CREATE_MKL_FWD_OP(Mkl_Tanh, _MklTanh)
-CREATE_MKL_FWD_OP(Mkl_Elu, _MklElu)
-CREATE_MKL_FWD_OP(Mkl_Relu, _MklRelu)
-CREATE_MKL_FWD_OP(Mkl_Relu6, _MklRelu6)
-CREATE_MKL_FWD_OP(Mkl_LeakyRelu, _MklLeakyRelu)
-
-#define CREATE_MKL_BWD_OP(NODE_NAME, OP_NAME)                     \
-  static Graph* NODE_NAME(const TensorShape& shape) {             \
-    auto* graph = new Graph(OpRegistry::Global());                \
-                                                                  \
-    Tensor input_t = GetRandomTensor(shape);                      \
-    Node* input = test::graph::Constant(graph, input_t, "input"); \
-    Tensor grad_t = GetRandomTensor(shape);                       \
-    Node* grad = test::graph::Constant(graph, grad_t, "grad");    \
-                                                                  \
-    Node* not_mkl_shape =                                         \
-        test::graph::Constant(graph, NonMklTensor(), "not_mkl");  \
-                                                                  \
-    Node* op;                                                     \
-    TF_CHECK_OK(NodeBuilder(graph->NewName(#NODE_NAME), #OP_NAME) \
-                    .Input(grad)                                  \
-                    .Input(input)                                 \
-                    .Input(not_mkl_shape)                         \
-                    .Input(not_mkl_shape)                         \
-                    .Attr("T", DT_FLOAT)                          \
-                    .Attr("_kernel", "MklLayoutDependentOp")      \
-                    .Finalize(graph, &op));                       \
-                                                                  \
-    return graph;                                                 \
-  }
-
-CREATE_MKL_BWD_OP(Mkl_TanhGrad, _MklTanhGrad)
-CREATE_MKL_BWD_OP(Mkl_EluGrad, _MklEluGrad)
-CREATE_MKL_BWD_OP(Mkl_ReluGrad, _MklReluGrad)
-CREATE_MKL_BWD_OP(Mkl_Relu6Grad, _MklRelu6Grad)
-CREATE_MKL_BWD_OP(Mkl_LeakyReluGrad, _MklLeakyReluGrad)
 
 #define BM_Activation(op, kind, A, B, C, D, type)                            \
   static void BM_##op##_##kind##_##type##_##A##_##B##_##C##_##D(int iters) { \
@@ -163,7 +105,7 @@ CREATE_MKL_BWD_OP(Mkl_LeakyReluGrad, _MklLeakyReluGrad)
     int64 flops_per_iter = num_computed_elements;                            \
     testing::ItemsProcessed(static_cast<int64>(iters) * flops_per_iter);     \
                                                                              \
-    test::Benchmark(#type, kind##_##op({A, B, C, D})).Run(iters);            \
+    test::Benchmark(#type, Activation(#op, #kind, {A, B, C, D})).Run(iters); \
   }                                                                          \
   BENCHMARK(BM_##op##_##kind##_##type##_##A##_##B##_##C##_##D)
 
@@ -189,5 +131,27 @@ TEST_ALL_SIZES(LeakyRelu)
 TEST_ALL_SIZES(LeakyReluGrad)
 
 }  // namespace tensorflow
+
+// --------------------------------------------------------------------------
+
+GTEST_API_ int main(int argc, char** argv) {
+  // Sets OpenMP environment variables.
+  // TODO(intel-tf): Remove this when OpenMP is removed.
+  tensorflow::setenv("KMP_BLOCKTIME", "0", true /*overwrite*/);
+  tensorflow::setenv("OMP_NUM_THREADS",
+                     std::to_string(tensorflow::port::MaxParallelism()).c_str(),
+                     true /*overwrite*/);
+
+  tensorflow::testing::InstallStacktraceHandler();
+  ::testing::InitGoogleTest(&argc, argv);
+  for (int i = 1; i < argc; i++) {
+    if (absl::StartsWith(argv[i], "--benchmarks=")) {
+      const char* pattern = argv[i] + strlen("--benchmarks=");
+      tensorflow::testing::Benchmark::Run(pattern);
+      return 0;
+    }
+  }
+  return RUN_ALL_TESTS();
+}
 
 #endif  // INTEL_MKL
