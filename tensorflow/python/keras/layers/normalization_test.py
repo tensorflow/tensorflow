@@ -153,11 +153,48 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
     x = np.random.normal(loc=5.0, scale=10.0, size=(1000, 4, 4, 4, 3))
     model.fit(x, x, epochs=4, verbose=0)
     out = model.predict(x)
-    out -= np.reshape(keras.backend.eval(norm.beta), (1, 1, 1, 3))
-    out /= np.reshape(keras.backend.eval(norm.gamma), (1, 1, 1, 3))
+    out -= np.reshape(keras.backend.eval(norm.beta), (1, 1, 1, 1, 3))
+    out /= np.reshape(keras.backend.eval(norm.gamma), (1, 1, 1, 1, 3))
 
-    np.testing.assert_allclose(np.mean(out, axis=(0, 1, 2)), 0.0, atol=1e-1)
-    np.testing.assert_allclose(np.std(out, axis=(0, 1, 2)), 1.0, atol=1e-1)
+    np.testing.assert_allclose(np.mean(out, axis=(0, 1, 2, 3)), 0.0, atol=1e-1)
+    np.testing.assert_allclose(np.std(out, axis=(0, 1, 2, 3)), 1.0, atol=1e-1)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_batchnorm_convnet_channel_last_3d_fused_correctness(self):
+    model = keras.models.Sequential()
+    norm = keras.layers.BatchNormalization(axis=-1, momentum=0.8, fused=True)
+    model.add(norm)
+    model.compile(
+        loss='mse',
+        optimizer=gradient_descent.GradientDescentOptimizer(0.01))
+
+    # Sequential values ensure the result is axis-dependent.
+    x = np.arange(5 * 5 * 5 * 5 * 3).reshape([5, 5, 5, 5, 3])
+    x = x.astype(np.float32)
+    model.fit(x, x, epochs=1000, verbose=0)
+    moving_mean = keras.backend.eval(norm.moving_mean)
+    moving_variance = keras.backend.eval(norm.moving_variance)
+    np.testing.assert_allclose(
+        moving_mean, np.array([936., 937., 938.]), rtol=1e-5)
+    np.testing.assert_allclose(
+        moving_variance, np.array([292968., 292968., 292968.]), rtol=1e-2)
+
+    beta = np.reshape(keras.backend.eval(norm.beta), (1, 1, 1, 1, 3))
+    gamma = np.reshape(keras.backend.eval(norm.gamma), (1, 1, 1, 1, 3))
+
+    out = (model.predict(x) - beta) / gamma
+    np.testing.assert_allclose(
+        np.mean(out, axis=(0, 1, 2, 3)), 0.0, atol=1e-2)
+    np.testing.assert_allclose(np.std(out, axis=(0, 1, 2, 3)), 1.0, atol=1e-2)
+
+    # Test with changed input shape.
+    x = np.arange(7 * 7 * 7 * 7 * 3).reshape([7, 7, 7, 7, 3])
+    x = x.astype(np.float32)
+    out = (model.predict(x) - beta) / gamma
+    np.testing.assert_allclose(
+        np.mean(out, axis=(0, 1, 2, 3)), 4.92, atol=1e-2)
+    np.testing.assert_allclose(
+        np.std(out, axis=(0, 1, 2, 3)), 3.84, atol=1e-2)
 
   @keras_parameterized.run_all_keras_modes
   def test_batchnorm_correctness(self):

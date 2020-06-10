@@ -366,33 +366,8 @@ class BatchNormalizationBase(Layer):
                          'be specified')
 
     self._input_fused_shape = None
-    if self.fused:
-      if not self._USE_V2_BEHAVIOR:
-        self.fused = self._fused_can_be_used()
-
-      fused_axis = self.axis
-      if self.fused and (self.axis[0] not in (1, ndims - 1) or ndims != 4):
-        # The fused implementation only supports NCHW or NHWC, so we will
-        # reshape the input/output tensor to/from an equivalent 4D shape.
-        fused_shape, fused_axis = self._get_shape_and_axis_for_fused(
-            input_shape.dims, self.axis[0])
-        self._input_fused_shape = [-1] + fused_shape[1:]
-        fused_axis = [fused_axis]
-
-      # TODO(chrisying): fused batch norm is currently not supported for
-      # multi-axis batch norm and by extension virtual batches. In some cases,
-      # it might be possible to use fused batch norm but would require reshaping
-      # the Tensor to 4D with the axis in 1 or 3 (preferred 1) which is
-      # particularly tricky. A compromise might be to just support the most
-      # common use case (turning 5D w/ virtual batch to NCHW)
-
-      if fused_axis == [1]:
-        self._data_format = 'NCHW'
-      elif fused_axis == [3]:
-        self._data_format = 'NHWC'
-      else:
-        raise ValueError('Unsupported axis, fused batch norm only supports '
-                         'axis == [1] or axis == [3]')
+    if self.fused and not self._USE_V2_BEHAVIOR:
+      self.fused = self._fused_can_be_used()
 
     axis_to_dim = {x: input_shape.dims[x].value for x in self.axis}
     for x in axis_to_dim:
@@ -550,9 +525,26 @@ class BatchNormalizationBase(Layer):
     beta = self.beta if self.center else self._beta_const
     gamma = self.gamma if self.scale else self._gamma_const
 
-    original_shape = [-1] + inputs.shape.as_list()[1:]
-    if self._input_fused_shape is not None:
-      inputs = array_ops.reshape(inputs, self._input_fused_shape)
+    original_shape = None
+    fused_axis = self.axis[0]
+    input_shape = inputs.shape.as_list()
+    ndims = len(input_shape)
+    if self.axis[0] not in (1, ndims - 1) or ndims != 4:
+      # The fused implementation only supports NCHW or NHWC, so we reshape the
+      # input/output tensor to/from an equivalent 4D shape.
+      fused_shape, fused_axis = self._get_shape_and_axis_for_fused(input_shape,
+                                                                   self.axis[0])
+      original_shape = [-1] + input_shape[1:]
+      inputs = array_ops.reshape(inputs, [-1] + fused_shape[1:])
+
+      # TODO(chrisying): fused batch norm is currently not supported for
+      # multi-axis batch norm and by extension virtual batches. In some cases,
+      # it might be possible to use fused batch norm but would require reshaping
+      # the Tensor to 4D with the axis in 1 or 3 (preferred 1) which is
+      # particularly tricky. A compromise might be to just support the most
+      # common use case (turning 5D w/ virtual batch to NCHW)
+
+    data_format = 'NCHW' if fused_axis == 1 else 'NHWC'
 
     # TODO(b/129279393): Support zero batch input in non DistributionStrategy
     # code as well.
@@ -603,7 +595,7 @@ class BatchNormalizationBase(Layer):
               self.moving_variance, remove=False),
           epsilon=self.epsilon,
           is_training=True,
-          data_format=self._data_format,
+          data_format=data_format,
           exponential_avg_factor=exponential_avg_factor)
 
     def _fused_batch_norm_training_empty():
@@ -618,7 +610,7 @@ class BatchNormalizationBase(Layer):
           variance=self.moving_variance,
           epsilon=self.epsilon,
           is_training=False,
-          data_format=self._data_format)
+          data_format=data_format)
 
     train_op = _fused_batch_norm_training
     if use_fused_avg_updates and input_batch_size is not None:
@@ -631,7 +623,7 @@ class BatchNormalizationBase(Layer):
     output, mean, variance = tf_utils.smart_cond(training, train_op,
                                                  _fused_batch_norm_inference)
 
-    if self._input_fused_shape is not None:
+    if original_shape is not None:
       output = array_ops.reshape(output, original_shape)
 
     variance = _maybe_add_or_remove_bessels_correction(variance, remove=True)
