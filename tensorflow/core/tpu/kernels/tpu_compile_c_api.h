@@ -92,9 +92,6 @@ uint64_t TpuCompile_CreateGuaranteedConstFingerprint(uint64_t fingerprint,
                                                      const char* data,
                                                      size_t size);
 
-// Checks if whether a TPU compilation is enabled.
-bool TpuCompile_IsTpuCompilationEnabled();
-
 // Executes the computations using XLA TPU compiler and returns TPU programs
 // ready for execution.
 void TpuCompile_CompileAheadOfTime(
@@ -107,12 +104,6 @@ void TpuCompile_BuildXLADeviceAssignment(
     TpuSerializedProto serialized_tpu_compile_metadata,
     const XLA_TpuMeshState* mesh_state,
     TpuSerializedProto* serialized_device_assignment, SE_Status* status);
-
-// Converts an XLA `Shape` into its equivalent TPU `Shape` representation.
-void TpuCompile_ToTpuShapeRepresentation(
-    TpuSerializedProto serialized_xla_shape, int data_type,
-    bool use_fast_memory, TpuSerializedProto* serialized_tensor_shape,
-    SE_Status* status);
 
 }  // extern "C"
 

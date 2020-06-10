@@ -287,6 +287,14 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_util_c_api_hdrs",
+    hdrs = ["tpu_util_c_api.h"],
+    deps = [
+        "//tensorflow/stream_executor/tpu:proto_helper",
+    ],
+)
+
+cc_library(
     name = "tpu_util",
     srcs = ["tpu_util.cc"],
     hdrs = ["tpu_util.h"],
