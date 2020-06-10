@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
-#include "tensorflow/core/tpu/kernels/tpu_compile_c_api.h"
 #include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
 
@@ -185,8 +184,9 @@ Shape GetPerDeviceShape(const Shape& shape, const HloSharding& sharding,
   std::vector<int64> dimensions;
   std::vector<int64> offset = sharding.TileOffsetForDevice(shape, device);
   std::vector<int64> limit = sharding.TileLimitForDevice(shape, device);
+  dimensions.resize(limit.size());
   for (int64 i = 0; i < limit.size(); ++i) {
-    dimensions.push_back(limit[i] - offset[i]);
+    dimensions[i] = limit[i] - offset[i];
   }
   if (shape.has_layout()) {
     return xla::ShapeUtil::MakeShapeWithLayout(shape.element_type(), dimensions,
