@@ -1179,7 +1179,11 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
     // skip nodes that have cross device edges.
     auto is_cross_device_edge = [](const Edge* e) {
       auto src = e->src();
+      if (src->IsSource())
+        return false;
       auto dst = e->dst();
+      if (dst->IsSink())
+        return false;
       return !src->assigned_device_name().empty() &&
              !dst->assigned_device_name().empty() &&
              src->assigned_device_name() != dst->assigned_device_name();
