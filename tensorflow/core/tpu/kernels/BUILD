@@ -157,6 +157,7 @@ cc_library(
         ":tpu_program_group",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core/lib/core:refcount",
+        "//tensorflow/core/platform:casts",
     ],
 )
 

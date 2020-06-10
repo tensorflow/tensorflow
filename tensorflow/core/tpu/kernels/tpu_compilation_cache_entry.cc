@@ -14,12 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_entry.h"
 
+#include "tensorflow/core/platform/casts.h"
+
 namespace tensorflow {
 namespace tpu {
 
 TpuCompilationCacheEntry::TpuCompilationCacheEntry(
     const TpuProgramGroupInterface* tpu_program_group, int core_index)
-    : tpu_program_group_(down_cast<const TpuProgramGroup*>(tpu_program_group)),
+    : tpu_program_group_(
+          tensorflow::down_cast<const TpuProgramGroup*>(tpu_program_group)),
       core_index_(core_index) {}
 
 // Constructor for an empty entry.
