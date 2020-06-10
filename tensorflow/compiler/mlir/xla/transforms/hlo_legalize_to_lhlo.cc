@@ -455,7 +455,7 @@ void populateHLOToLHLOConversionPattern(
   >(context, bufferAssignment, converter);
   // clang-format on
   populateWithBufferAssignmentOpConversionPatterns<
-      mlir::ReturnOp, xla_lhlo::TerminatorOp, xla_lhlo::CopyOp,
+      mlir::ReturnOp, mlir::ReturnOp, xla_lhlo::CopyOp,
       /*allowMemrefFunctionResults=*/false>(context, bufferAssignment,
                                             converter, patterns);
 }

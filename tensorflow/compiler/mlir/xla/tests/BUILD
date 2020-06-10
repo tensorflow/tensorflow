@@ -6,7 +6,6 @@ package(licenses = ["notice"])
 glob_lit_tests(
     data = [":test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
-    exclude = ["hlo-legalize-to-lhlo.mlir"],  # TODO(pifon): Fix this test.
     test_file_exts = ["mlir"],
 )
 
