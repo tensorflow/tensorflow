@@ -475,6 +475,9 @@ class HloComputation {
   // HloInstructions in a pass.
   void Cleanup() { to_be_deleted_.clear(); }
 
+  // Returns true if a given instruction is marked dead in this computation.
+  bool IsMarkedAsDead(const HloInstruction* inst);
+
  private:
   explicit HloComputation(
       const string& name, int parameter_count,

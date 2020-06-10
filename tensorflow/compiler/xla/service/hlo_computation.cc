@@ -248,6 +248,15 @@ bool HloComputation::HasSideEffect() const {
   return false;
 }
 
+bool HloComputation::IsMarkedAsDead(const HloInstruction* inst) {
+  for (auto& to_be_delete : to_be_deleted_) {
+    if (to_be_delete.get() == inst) {
+      return true;
+    }
+  }
+  return false;
+}
+
 Status HloComputation::RemoveInstructionAndUnusedOperands(
     HloInstruction* instruction, std::function<void(HloInstruction*)> cleanup) {
   TF_RET_CHECK(root_instruction() != instruction);
