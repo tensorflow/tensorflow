@@ -39,6 +39,9 @@ limitations under the License.
 
 // Compare performance of default Tensorflow convolution kernels (Eigen) with
 // MKL kernels on CPU.
+// Before running these benchmarks configure OpenMP environment variables:
+//   export KMP_BLOCKTIME=0
+//   export OMP_NUM_THREADS=${num_threads}
 
 namespace tensorflow {
 
