@@ -659,12 +659,16 @@ Status GpuTracer::CollectData(XSpace* space) {
     case State::kStartedOk:
       return errors::FailedPrecondition("Cannot collect trace before stopping");
     case State::kStartedError:
-      LOG(ERROR) << "Cannot collect, xprof failed to start";
+      LOG(ERROR) << "Cannot collect, profiler failed to start";
       return Status::OK();
     case State::kStoppedError:
       VLOG(1) << "No trace data collected";
       return Status::OK();
     case State::kStoppedOk: {
+      std::string cupti_error = CuptiTracer::ErrorIfAny();
+      if (!cupti_error.empty()) {
+        space->add_errors(cupti_error);
+      }
       if (cupti_collector_) {
         cupti_collector_->Export(space);
       }

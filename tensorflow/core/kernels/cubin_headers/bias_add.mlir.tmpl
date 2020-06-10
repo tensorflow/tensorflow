@@ -1,0 +1,6 @@
+func @bias_add(%arg0: tensor<?x?xf99>,
+         %arg1: tensor<?xf99>) -> tensor<?x?xf99> {
+  %0 = "tf.BiasAdd"(%arg0, %arg1) { T = "tfdtype$DT_TYPE" }
+    : (tensor<?x?xf99>, tensor<?xf99>) -> tensor<?x?xf99>
+  return %0 : tensor<?x?xf99>
+}

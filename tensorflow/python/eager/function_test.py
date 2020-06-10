@@ -60,9 +60,11 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gen_resource_variable_ops
+from tensorflow.python.ops import gen_sendrecv_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import list_ops
@@ -185,6 +187,43 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     c = constant_op.constant(1.0)
     with self.assertRaisesRegexp(AttributeError, 'no attribute'):
       add(c)
+
+  def testPackedVariable(self):
+    with ops.device('/cpu:0'):
+      v0_0 = resource_variable_ops.ResourceVariable(1.0)
+    with ops.device('/cpu:1'):
+      v0_1 = resource_variable_ops.ResourceVariable(2.0)
+      v1_0 = resource_variable_ops.ResourceVariable(3.0)
+    with ops.device('/cpu:2'):
+      v1_1 = resource_variable_ops.ResourceVariable(4.0)
+
+    packed_var_0 = ops.pack_eager_tensors([v0_0.handle, v0_1.handle])
+    packed_var_1 = ops.pack_eager_tensors([v1_0.handle, v1_1.handle])
+
+    # TODO(b/145922293): use ResourceVariable.assign_add and
+    # ResourceVariable.read_value directly once we support packing multiple
+    # ResourceVariable into one ResourceVariable.
+    @def_function.function
+    def read_var():
+      resource_variable_ops.assign_add_variable_op(
+          packed_var_0, constant_op.constant(5.0))
+      resource_variable_ops.assign_add_variable_op(
+          packed_var_1, constant_op.constant(6.0))
+      with ops.device('/cpu:0'):
+        read0 = resource_variable_ops.read_variable_op(
+            packed_var_0, dtype=dtypes.float32)
+      with ops.device('/cpu:1'):
+        read1 = resource_variable_ops.read_variable_op(
+            packed_var_0, dtype=dtypes.float32)
+        read2 = resource_variable_ops.read_variable_op(
+            packed_var_1, dtype=dtypes.float32)
+      with ops.device('/cpu:2'):
+        read3 = resource_variable_ops.read_variable_op(
+            packed_var_1, dtype=dtypes.float32)
+
+      return read0, read1, read2, read3
+
+    self.assertAllEqual(read_var(), (1 + 5, 2 + 5, 3 + 6, 4 + 6))
 
   def testImplementsAttributeBasic(self):
     v = def_function.function(
@@ -820,6 +859,60 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # `pool.map` below instantiates 100 functions, one for each object.
     pool.map(stateful, [object() for _ in range(100)])
     self.assertEqual(float(v.read_value()), 0.0)
+
+  def testShareRendezvous(self):
+
+    # Disable grappler from inlining the functions. Note we run the send & recv
+    # in graph mode since with eager mode the function should automatically be
+    # inlined.
+    context.context().set_optimizer_experimental_options(
+        {'disable_meta_optimizer': True})
+
+    cpu = '/device:CPU:0'
+
+    signature = [tensor_spec.TensorSpec([], dtypes.int32)]
+
+    @def_function.function
+    def send():
+      x = constant_op.constant(1)
+      gen_sendrecv_ops.send(x, 'x', cpu, 0, cpu)
+      return x
+
+    send._shared_rendezvous = True  # pylint: disable=protected-access
+
+    @def_function.function(input_signature=signature)
+    def send_body(n):
+      send()
+      return n - 1
+
+    @def_function.function
+    def recv():
+      return gen_sendrecv_ops.recv(dtypes.int32, 'x', cpu, 0, cpu)
+
+    recv._shared_rendezvous = True  # pylint: disable=protected-access
+
+    @def_function.function(input_signature=signature)
+    def recv_body(n):
+      recv()
+      return n - 1
+
+    @def_function.function(input_signature=signature)
+    def cond(n):
+      return n > 0
+
+    # Instead of calling the send & recv functions directly we want to call them
+    # through a functional while to ensure the rendezvous is shared across the
+    # while boundary.
+    @def_function.function
+    def fn(n):
+      functional_ops.While([n], cond.get_concrete_function(),
+                           send_body.get_concrete_function())
+      return functional_ops.While([n], cond.get_concrete_function(),
+                                  recv_body.get_concrete_function())
+
+    # Use a graph context since functions will not be automatically inlined
+    with context.graph_mode(), self.cached_session():
+      self.evaluate(fn(2))
 
   def disabled_testRandomSeed(self):
 
@@ -3762,6 +3855,24 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     c5 = func2.get_concrete_function(8, vector)
     c5_summary = 'func2(x=8, y)'
     self.assertEqual(c5.pretty_printed_signature(verbose=False), c5_summary)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testIndexedSlicesAsGradientsForConcreteFunctions(self):
+
+    @def_function.function
+    def summing_rnn(inputs):
+      return math_ops.reduce_sum(inputs, axis=1)
+
+    @def_function.function
+    def gradients(inputs):
+      with backprop.GradientTape() as tape:
+        tape.watch(inputs)
+        hidden = summing_rnn(inputs)
+        hidden = array_ops.gather(hidden, constant_op.constant([0]))
+        loss = math_ops.reduce_mean(hidden)
+      return tape.gradient(loss, inputs)
+
+    gradients(constant_op.constant([[[1.0], [2.0]]]))  # No error is raised
 
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):

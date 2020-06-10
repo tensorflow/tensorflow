@@ -31,7 +31,7 @@ filegroup(
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/SideEffects.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
     ],
 )
 
@@ -216,13 +216,13 @@ cc_library(
         "ir/tfl_ops.h",
         "transforms/passes.h",
         "utils/attribute_utils.h",
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_traits.h",
         "@llvm-project//mlir:include/mlir/Transforms/InliningUtils.h",
     ],
     deps = [
         ":tensorflow_lite_ops_inc_gen",
         ":validators",
         "//tensorflow/compiler/mlir/lite/experimental/estimators:cost_estimators",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/lite/schema:schema_fbs",
         "@llvm-project//llvm:support",
@@ -248,6 +248,25 @@ cc_library(
     ],
     hdrs = [
         "utils/lstm_utils.h",
+    ],
+    copts = ["-std=c++14"],
+    deps = [
+        ":tensorflow_lite",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "tftext_utils",
+    srcs = [
+        "utils/tftext_utils.cc",
+    ],
+    hdrs = [
+        "utils/tftext_utils.h",
     ],
     copts = ["-std=c++14"],
     deps = [
@@ -320,6 +339,7 @@ cc_library(
         ":lstm_utils",
         ":stateful_ops_utils",
         ":tensorflow_lite",
+        ":tftext_utils",
         ":validators",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stddef.h>
 #include <stdint.h>
+
 #include <algorithm>
 #include <iterator>
 #include <limits>
@@ -40,6 +41,7 @@ limitations under the License.
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/IntrinsicsX86.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -88,8 +90,8 @@ using llvm_ir::SetToFirstInsertPoint;
 namespace cpu {
 
 IrEmitter::IrEmitter(
-    const HloModule& hlo_module, const BufferAssignment& assignment,
-    llvm::Module* llvm_module,
+    mlir::MLIRContext* mlir_context, const HloModule& hlo_module,
+    const BufferAssignment& assignment, llvm::Module* llvm_module,
     std::unordered_map<const HloInstruction*, int64> instruction_to_profile_idx,
     std::unordered_map<const HloComputation*, int64> computation_to_profile_idx,
     const TargetMachineFeatures* target_machine_features,
@@ -98,6 +100,7 @@ IrEmitter::IrEmitter(
       module_(llvm_module),
       arch_type_(llvm::Triple(llvm_module->getTargetTriple()).getArch()),
       b_(llvm_module->getContext()),
+      mlir_context_(mlir_context),
       instruction_to_profile_idx_(std::move(instruction_to_profile_idx)),
       computation_to_profile_idx_(std::move(computation_to_profile_idx)),
       alias_analysis_(hlo_module, assignment, &llvm_module->getContext()),
@@ -570,25 +573,9 @@ Status IrEmitter::HandleSort(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(sort));
   Shape keys_shape = sort->keys()->shape();
   PrimitiveType keys_type = keys_shape.element_type();
-  switch (keys_type) {
-    case PRED:
-    case S8:
-    case U8:
-    case S16:
-    case U16:
-    case BF16:
-    case F16:
-    case S32:
-    case U32:
-    case F32:
-    case S64:
-    case U64:
-    case F64:
-      break;
-    default:
-      return Unimplemented(
-          "Element type %s not supported in the Sort op on CPU.",
-          PrimitiveType_Name(keys_type));
+  if (!primitive_util::IsArrayType(keys_type)) {
+    return Unimplemented("Element type %s not supported in the Sort op on CPU.",
+                         PrimitiveType_Name(keys_type));
   }
   std::vector<llvm::Value*> destination_addresses(sort->operand_count());
   for (int64 i = 0; i < sort->operand_count(); ++i) {
@@ -913,7 +900,7 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   // Dot operation is complicated so we delegate to a helper class.
   return EmitDotOperation(*dot, target_array, lhs_array, rhs_array,
                           /*addend_array=*/nullptr,
-                          GetExecutableRunOptionsArgument(), &b_,
+                          GetExecutableRunOptionsArgument(), &b_, mlir_context_,
                           hlo_module_config_, target_machine_features_);
 }
 
@@ -1230,7 +1217,7 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
   auto operand = fft->operand(0);
   TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
       /*instruction=*/*fft, /*operands=*/{operand},
-      /*supported_types=*/{F32, C64}));
+      /*supported_types=*/{F32, F64, C64, C128}));
   TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(operand->shape().layout()));
   TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(fft->shape().layout()));
   VLOG(3) << "operand=" << ShapeUtil::HumanStringWithLayout(operand->shape());
@@ -1252,7 +1239,7 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
   llvm::FunctionType* fft_type = llvm::FunctionType::get(
       b_.getVoidTy(),
       {int8_ptr_type, int8_ptr_type, int8_ptr_type, int32_type, int32_type,
-       int64_type, int64_type, int64_type, int64_type},
+       int32_type, int64_type, int64_type, int64_type, int64_type},
       /*isVarArg=*/false);
 
   bool multi_threaded_eigen =
@@ -1271,6 +1258,8 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
        {GetExecutableRunOptionsArgument(),
         BitCast(GetEmittedValueFor(fft), int8_ptr_type),
         BitCast(operand_address, int8_ptr_type), b_.getInt32(fft->fft_type()),
+        b_.getInt32(operand->shape().element_type() == F64 ||
+                    operand->shape().element_type() == C128),
         b_.getInt32(fft_rank), b_.getInt64(input_batch),
         b_.getInt64(fft_rank > 0 ? fft_length[0] : 0),
         b_.getInt64(fft_rank > 1 ? fft_length[1] : 0),
@@ -2320,10 +2309,10 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
     llvm_ir::IrArray addend_array(
         GetIrArrayFor(fusion->operand(addend_param_number)));
 
-    TF_RETURN_IF_ERROR(
-        EmitDotOperation(*dot, target_array, lhs_array, rhs_array,
-                         &addend_array, GetExecutableRunOptionsArgument(), &b_,
-                         hlo_module_config_, target_machine_features_));
+    TF_RETURN_IF_ERROR(EmitDotOperation(
+        *dot, target_array, lhs_array, rhs_array, &addend_array,
+        GetExecutableRunOptionsArgument(), &b_, mlir_context_,
+        hlo_module_config_, target_machine_features_));
     return Status::OK();
   } else {
     return Unimplemented("Fusion kind not implemented on CPU");
@@ -2357,7 +2346,125 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
   return Status::OK();
 }
 
+Status IrEmitter::HandleSliceToDynamic(HloInstruction* hlo) {
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
+  std::vector<llvm::Value*> dynamic_dims;
+  int32 raw_data_size =
+      ShapeUtil::ByteSizeOf(ShapeUtil::MakeStaticShape(hlo->shape()));
+  llvm::Value* dest_buffer = GetEmittedValueFor(hlo);
+  llvm::Value* raw_buffer =
+      b_.CreateBitCast(dest_buffer, b_.getInt8Ty()->getPointerTo());
+  for (int64 i = 1; i < hlo->operand_count(); ++i) {
+    const int64 dim_index = i - 1;
+    llvm::Value* source_buffer = GetEmittedValueFor(hlo->operand(i));
+    llvm::LoadInst* dyn_dim_size = b_.CreateLoad(source_buffer, "dyn_dim_size");
+
+    llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
+        b_.getInt8Ty(), raw_buffer, raw_data_size + dim_index * sizeof(int32));
+    b_.CreateStore(dyn_dim_size,
+                   b_.CreateBitCast(metadata, b_.getInt32Ty()->getPointerTo()));
+    dynamic_dims.push_back(b_.CreateIntCast(dyn_dim_size, b_.getInt64Ty(),
+                                            /*isSigned=*/true,
+                                            "i64_dyn_dim_size"));
+  }
+
+  llvm_ir::IrArray data_array = GetIrArrayFor(hlo);
+  // Pseudo code for sliceToDynamic:
+  //
+  //   for (index i in dynamic_dim)
+  //     dest_index = delinearize(linearize(i, dynamic_dim), static_dim)
+  //     dest[dest_index] = source[i]
+  auto loop_body_emitter =
+      [&](const llvm_ir::IrArray::Index& array_index) -> Status {
+    llvm::Value* source_element =
+        GetIrArrayFor(hlo->operand(0)).EmitReadArrayElement(array_index, &b_);
+    llvm::Value* linear_index = array_index.Linearize(dynamic_dims, &b_);
+    // Delinearize the index based on the static shape.
+    llvm_ir::IrArray::Index dest_index(linear_index, data_array.GetShape(),
+                                       &b_);
+    data_array.EmitWriteArrayElement(dest_index, source_element, &b_);
+    return Status::OK();
+  };
+  return llvm_ir::LoopEmitter(loop_body_emitter, data_array.GetShape(),
+                              dynamic_dims, &b_)
+      .EmitLoop(IrName(hlo));
+}
+
+Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice data_slice,
+                      assignment_.GetUniqueSlice(hlo, {0}));
+  std::vector<llvm::Value*> dynamic_dims;
+  std::vector<llvm::Value*> tuple_operand_ptrs;
+  const Shape& data_shape = ShapeUtil::GetSubshape(hlo->shape(), {0});
+  const Shape& input_shape = hlo->operand(0)->shape();
+  llvm::Value* data_address = EmitBufferPointer(data_slice, data_shape);
+  llvm_ir::IrArray data_array(data_address, data_shape);
+  llvm::Value* source_buffer = GetEmittedValueFor(hlo->operand(0));
+  llvm::Value* raw_buffer =
+      b_.CreateBitCast(source_buffer, b_.getInt8Ty()->getPointerTo());
+  int64 raw_data_size =
+      ShapeUtil::ByteSizeOf(ShapeUtil::MakeStaticShape(input_shape));
+
+  // Put a placeholder for the data array's pointer
+  tuple_operand_ptrs.push_back(data_array.GetBasePointer());
+  // PadToStatic has a dynamic tensor as input and variadic size of outputs:
+  // (static_tensor, dynamic_dim_0, dynamic_dim_1, ... )
+  // Dynamic dimension sizes starts from output index 1.
+  for (int64 i = 1; i < hlo->shape().tuple_shapes_size(); ++i) {
+    // Read from the metadata section of the dynamic input (operand 0).
+    const Shape& dim_shape = ShapeUtil::GetSubshape(hlo->shape(), {i});
+    TF_RET_CHECK(Shape::Equal()(dim_shape, ShapeUtil::MakeScalarShape(S32)));
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dim_size_slice,
+                        assignment_.GetUniqueSlice(hlo, {i}));
+    llvm::Value* dest_dim_size_address =
+        EmitBufferPointer(dim_size_slice, data_shape);
+    const int64 dim_index = i - 1;
+    llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
+        b_.getInt8Ty(), raw_buffer, raw_data_size + dim_index * sizeof(int32));
+    llvm::Value* dyn_dim_size = b_.CreateLoad(
+        b_.CreateBitCast(metadata, b_.getInt32Ty()->getPointerTo()),
+        "dyn_dim_size");
+    b_.CreateStore(dyn_dim_size,
+                   b_.CreateBitCast(dest_dim_size_address,
+                                    b_.getInt32Ty()->getPointerTo()));
+    dynamic_dims.push_back(b_.CreateIntCast(dyn_dim_size, b_.getInt64Ty(),
+                                            /*isSigned=*/true,
+                                            "i64_dyn_dim_size"));
+    tuple_operand_ptrs.push_back(dest_dim_size_address);
+  }
+
+  // Pseudo code for padToStatic:
+  //
+  //   for (index i in dynamic_dim)
+  //     source_index = delinearize(inearize(i, dynamic_dim), static_dim)
+  //     dest[i] = source[source_index]
+  auto loop_body_emitter =
+      [&](const llvm_ir::IrArray::Index& array_index) -> Status {
+    llvm::Value* linear_index = array_index.Linearize(dynamic_dims, &b_);
+    llvm_ir::IrArray::Index source_index(linear_index, input_shape, &b_);
+    llvm::Value* source_element =
+        GetIrArrayFor(hlo->operand(0)).EmitReadArrayElement(source_index, &b_);
+    data_array.EmitWriteArrayElement(array_index, source_element, &b_);
+    return Status::OK();
+  };
+  TF_RETURN_IF_ERROR(
+      llvm_ir::LoopEmitter(loop_body_emitter, input_shape, dynamic_dims, &b_)
+          .EmitLoop(IrName(hlo)));
+
+  // Emit static tensor and dynamic sizes as one tuple.
+  llvm_ir::EmitTuple(GetIrArrayFor(hlo), tuple_operand_ptrs, &b_);
+  return Status::OK();
+}
+
 Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
+  if (custom_call->custom_call_target() == "PadToStatic") {
+    return HandlePadToStatic(custom_call);
+  }
+  if (custom_call->custom_call_target() == "SliceToDynamic") {
+    return HandleSliceToDynamic(custom_call);
+  }
   absl::Span<HloInstruction* const> operands(custom_call->operands());
   llvm::Type* i8_ptr_type = b_.getInt8PtrTy();
   llvm::AllocaInst* operands_alloca =
@@ -2802,9 +2909,8 @@ Status IrEmitter::HandleRngGetAndUpdateState(HloInstruction* rng_state) {
                                  old_state->getType()->getScalarType(),
                                  address->getType()->getPointerAddressSpace()));
   llvm::StoreInst* store = Store(old_state, address);
-  store->setAlignment(
-      llvm::MaybeAlign(IrEmitter::MinimumAlignmentForPrimitiveType(
-          rng_state->shape().element_type())));
+  store->setAlignment(llvm::Align(IrEmitter::MinimumAlignmentForPrimitiveType(
+      rng_state->shape().element_type())));
 
   return Status::OK();
 }

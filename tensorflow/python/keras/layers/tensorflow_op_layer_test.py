@@ -50,7 +50,6 @@ def _single_identity_op_at_end():
   inputs = keras.Input(shape=(10,))
   x = keras.layers.Dense(10)(inputs)
   outputs = array_ops.identity(x)
-  assert 'Identity' in outputs.name
   return keras.Model(inputs, outputs)
 
 
@@ -186,7 +185,7 @@ def _reuse_ancillary_layer():
   return model
 
 
-@keras_parameterized.run_all_keras_modes
+@keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
 class AutoLambdaTest(keras_parameterized.TestCase):
 
   @parameterized.named_parameters(
@@ -288,9 +287,10 @@ class AutoLambdaTest(keras_parameterized.TestCase):
                         constant_op.constant(40.0, shape=(1, 1)))
 
   def test_no_tracking(self):
-    x = keras.backend.placeholder((10, 10))
-    keras.layers.Dense(1)(x)
-    self.assertTrue(x._keras_history_checked)
+    if not context.executing_eagerly():
+      x = constant_op.constant(1.0, shape=(10, 10))
+      keras.layers.Dense(1)(x)
+      self.assertTrue(x._keras_history_checked)
 
   def test_timing_scales_linearly(self):
 
@@ -311,11 +311,6 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     # Check construction time grows approx. linearly with size.
     e = 3  # Fudge factor to prevent flakiness.
     self.assertLess(size_500, (10 * e) * size_50)
-
-  def test_no_mask_tracking(self):
-    x = keras.backend.placeholder((10, 10))
-    y = keras.layers.Masking(0.)(x)
-    self.assertTrue(y._keras_mask._keras_history_checked)
 
   def test_built(self):
     inputs = keras.Input(shape=(10,))

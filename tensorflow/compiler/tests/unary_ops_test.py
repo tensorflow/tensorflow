@@ -85,6 +85,11 @@ class UnaryOpsTest(xla_test.XLATestCase):
     for i in xrange(len(result)):
       self.assertAllClose(result[i], expected[i], rtol, atol)
 
+  def AssertCloseAndSorted(self, result, expected, rtol, atol):
+    """Tests that result and expeted are both close and sorted."""
+    self.assertAllClose(result, expected, rtol, atol)
+    self.assertAllEqual(np.sort(result), result)
+
   @test_util.disable_mlir_bridge(
       "MlirHloBuilder::Iota missing required for xla::Diag")
   def testAllTypeOps(self):
@@ -347,17 +352,15 @@ class UnaryOpsTest(xla_test.XLATestCase):
           expected=np.array(
               [1.55740772, -2.18503986, -0.14254654, 1.15782128], dtype=dtype))
 
-      # TODO(b/130689556): Turn this on for CPU when we start honoring NaNs.
-      if self.device != "XLA_CPU":
-        self._assertOpOutputMatchesExpected(
-            math_ops.tanh,
-            np.array([[1, 2, 3, 4], [np.inf, -np.inf, np.nan, 20],
-                      [19, -19, 22, -22]],
-                     dtype=dtype),
-            expected=np.array(
-                [[0.76159418, 0.96402758, 0.99505478, 0.99932933],
-                 [1.0, -1.0, np.nan, 1.0], [1.0, -1.0, 1.0, -1.0]],
-                dtype=dtype))
+      self._assertOpOutputMatchesExpected(
+          math_ops.tanh,
+          np.array([[1, 2, 3, 4], [np.inf, -np.inf, np.nan, 20],
+                    [19, -19, 22, -22]],
+                   dtype=dtype),
+          expected=np.array(
+              [[0.76159418, 0.96402758, 0.99505478, 0.99932933],
+               [1.0, -1.0, np.nan, 1.0], [1.0, -1.0, 1.0, -1.0]],
+              dtype=dtype))
 
       self._assertOpOutputMatchesExpected(
           nn_ops.log_softmax,
@@ -513,6 +516,16 @@ class UnaryOpsTest(xla_test.XLATestCase):
               dtype=dtype))
 
   @test_util.disable_mlir_bridge(
+      "TODO(b/155501444): Handle _UnaryOpsComposition ops from Grappler")
+  def testFloatOpsDisabledOnMlirBridge(self):
+    for dtype in self.float_types:
+      if dtype != np.float16:
+        self._assertOpOutputMatchesExpected(
+            lambda x: math_ops.sigmoid(x) / math_ops.log1p(math_ops.exp(x)),
+            np.array([-40, 40], dtype=dtype),
+            expected=np.array([1.0, 0.025], dtype=dtype))
+
+  @test_util.disable_mlir_bridge(
       "TODO(b/153812660): Handle tf.QuantizeAndDequantize compilation")
   def testQuantizeAndDequantize(self):
     for dtype in self.float_types:
@@ -601,7 +614,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
           np.array([-1, -0.5, 0, 0.3], dtype=dtype),
           expected=np.array([-1., -0.5, 0., 0.296875], dtype=dtype))
 
-  @test_util.disable_mlir_bridge("TODO(b/156135423): Fix ConvertSigmoidOp")
   def testComplexOps(self):
     for dtype in self.complex_types:
 
@@ -1115,17 +1127,27 @@ class UnaryOpsTest(xla_test.XLATestCase):
                               [[[12, 13, 14, 15, 28, 29, 30, 31]]]]],
                             dtype=dtype))
 
-  def _assertSoftplusMatchesExpected(self, features, dtype):
+  def _assertSoftplusMatchesExpected(self,
+                                     features,
+                                     dtype,
+                                     equality_test=None,
+                                     rtol=1e-6,
+                                     atol=9.1e-6):
     features = np.array(features, dtype=dtype)
     zero = np.asarray(0).astype(dtype)
     expected = np.logaddexp(zero, features).astype(dtype)
     self._assertOpOutputMatchesExpected(
-        nn_ops.softplus, features, expected=expected, rtol=1e-6, atol=9.1e-6)
+        nn_ops.softplus,
+        features,
+        expected=expected,
+        equality_test=equality_test,
+        rtol=rtol,
+        atol=atol)
 
   @test_util.disable_mlir_bridge(
       "bf16 type not supported in CreateDenseElementsAttrFromLiteral")
   def testSoftplus(self):
-    for dtype in self.float_types:
+    for dtype in self.float_types & {dtypes.float32, dtypes.float64}:
       self._assertSoftplusMatchesExpected([[-2, 0, 8]], dtype)
       self._assertSoftplusMatchesExpected(
           [[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]], dtype)
@@ -1140,6 +1162,13 @@ class UnaryOpsTest(xla_test.XLATestCase):
           -log_eps, -log_eps - one, -log_eps + one, -log_eps - ten,
           -log_eps + ten
       ], dtype)
+
+      self._assertSoftplusMatchesExpected(
+          [0.69302183, 0.69324386],
+          dtype,
+          equality_test=self.AssertCloseAndSorted,
+          rtol=9e-5,
+          atol=9e-5)
 
 
 if __name__ == "__main__":

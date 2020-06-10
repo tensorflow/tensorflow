@@ -21,6 +21,7 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:TargetNVVMIR",
         "@llvm-project//mlir:Transforms",
+        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/xla:hlo",
         "//tensorflow/compiler/mlir/xla:lhlo",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
@@ -40,6 +41,7 @@ cc_library(
 tf_cc_binary(
     name = "tf_to_cubin",
     srcs = ["tf_to_cubin.cc"],
+    visibility = ["//tensorflow/core/kernels/cubin_headers:__pkg__"],
     deps = [
         ":cubin_creator",
         "//tensorflow/core:framework_internal",

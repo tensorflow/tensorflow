@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
@@ -42,6 +43,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Target/NVVMIR.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
@@ -216,14 +218,22 @@ Status PropagateStaticShapeKnowledgeToKernel(
   }
   return Status::OK();
 }
+
+void RegisterDialects() {
+  static bool init_once = []() {
+    mlir::registerDialect<mlir::TF::TensorFlowDialect>();
+    return true;
+  }();
+  (void)init_once;
+}
 }  // namespace
 
 StatusOr<std::vector<uint8_t>> tensorflow::kernel_gen::GenerateCubinForTfCode(
     llvm::StringRef tf_code, std::pair<int32_t, int32_t> compute_capability,
     llvm::ArrayRef<uint32_t> tile_sizes, llvm::ArrayRef<uint32_t> same_shape,
     llvm::ArrayRef<uint32_t> unroll_factors) {
+  RegisterDialects();
   mlir::MLIRContext context;
-  context.allowUnregisteredDialects();  // TODO(b/152572127)
   mlir::OwningModuleRef module = mlir::parseSourceString(tf_code, &context);
 
   TF_RETURN_IF_ERROR(LowerTfOpToLhloWithDynamicShapes(module.get()));
@@ -231,8 +241,14 @@ StatusOr<std::vector<uint8_t>> tensorflow::kernel_gen::GenerateCubinForTfCode(
       xla::mlir_gpu::LowerLHLOToGPU(module.get(), tile_sizes, unroll_factors,
                                     /*collapseParallelLoops=*/false));
   TF_RETURN_IF_ERROR(xla::mlir_gpu::LowerKernelBodiesToNVVM(module.get()));
-  TF_RETURN_IF_ERROR(
-      PropagateStaticShapeKnowledgeToKernel(module.get(), same_shape));
+  // TODO(b/156985522): Figure out why we get a segfault when generating Tanh
+  // with 'same_shape' containing {0, 1}. We would also get the crash if we
+  // unconditionally call PropagateStaticShapeKnowledgeToKernel while
+  // 'same_shape' is empty.
+  if (!same_shape.empty()) {
+    TF_RETURN_IF_ERROR(
+        PropagateStaticShapeKnowledgeToKernel(module.get(), same_shape));
+  }
 
   mlir::OwningModuleRef kernel_module =
       xla::mlir_gpu::ExtractKernelModule(*module).ValueOrDie();

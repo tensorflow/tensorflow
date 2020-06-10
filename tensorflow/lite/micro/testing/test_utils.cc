@@ -119,8 +119,8 @@ int32_t F2Q32(float value, float scale) {
 // TODO(b/141330728): Move this method elsewhere as part clean up.
 void PopulateContext(TfLiteTensor* tensors, int tensors_size,
                      ErrorReporter* error_reporter, TfLiteContext* context) {
-  simple_memory_allocator_ = CreateInPlaceSimpleMemoryAllocator(
-      error_reporter, raw_arena_, kArenaSize);
+  simple_memory_allocator_ =
+      SimpleMemoryAllocator::Create(error_reporter, raw_arena_, kArenaSize);
   TFLITE_DCHECK(simple_memory_allocator_ != nullptr);
   scratch_buffer_count_ = 0;
 

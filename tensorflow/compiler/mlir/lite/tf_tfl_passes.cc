@@ -48,7 +48,8 @@ void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
       quant_specs.default_ranges.second.hasValue()) {
     pass_manager->addPass(mlir::TFL::CreateDefaultQuantParamsPass(
         quant_specs.default_ranges.first.getValueOr(0.0),
-        quant_specs.default_ranges.second.getValueOr(0.0)));
+        quant_specs.default_ranges.second.getValueOr(0.0),
+        quant_specs.IsSignedInferenceType()));
     pass_manager->addPass(mlir::TFL::CreateQuantizePass());
     pass_manager->addPass(
         mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
@@ -57,21 +58,10 @@ void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
 
 void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
                                 mlir::OpPassManager* pass_manager) {
-  pass_manager->addPass(mlir::tf_executor::CreateSwitchFoldPass());
-  if (pass_config.skip_control_dialect) {
-    // Merge islands.
-    pass_manager->addPass(
-        mlir::tf_executor::CreateTFExecutorIslandCoarseningPass());
-    // Assuming island coarsening above results in a graph with a single island,
-    // a canonicalization can be ran to hoist the ops of the single island out.
-    pass_manager->addPass(mlir::createCanonicalizerPass());
-
-    if (pass_config.form_clusters)
-      pass_manager->addPass(mlir::TFDevice::CreateClusterFormationPass());
-  } else {
-    pass_manager->addPass(mlir::CreateTFExecutorToControlDialectConversion());
-    pass_manager->addPass(mlir::TFControlFlow::CreateRaiseTFControlFlowPass());
-  }
+  mlir::TF::StandardPipelineOptions standard_pipeline_options;
+  standard_pipeline_options.enable_inliner = false;
+  standard_pipeline_options.form_clusters = pass_config.form_clusters;
+  mlir::TF::CreateTFStandardPipeline(*pass_manager, standard_pipeline_options);
 
   if (pass_config.shape_inference) {
     pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
@@ -161,6 +151,10 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addPass(
         mlir::TFL::CreatePrepareTFPass(pass_config.unfold_batch_matmul));
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+    if (pass_config.shape_inference) {
+      // Add a shape inference pass to optimize away the unnecessary casts.
+      pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
+    }
     pass_manager->addPass(
         mlir::TFL::CreateLegalizeTFPass(pass_config.runtime_verification));
     pass_manager->addPass(mlir::TFL::CreateOptimizePass());
@@ -208,13 +202,8 @@ void CreateTFLStandardPipeline(OpPassManager& pm,
   OpPassManager& func_pm = pm.nest<FuncOp>();
 
   // tf_executor dialect passes - Cleaning up the IR.
-  func_pm.addPass(tf_executor::CreateSwitchFoldPass());
-  func_pm.addPass(tf_executor::CreateTFExecutorGraphPruningPass());
-  func_pm.addPass(tf_executor::CreateTFExecutorIslandCoarseningPass());
-
-  // more cleanup of executor dialect and raise to control flow.
-  pm.addPass(mlir::CreateTFExecutorToControlDialectConversion());
-  pm.addPass(mlir::TFControlFlow::CreateRaiseTFControlFlowPass());
+  mlir::TF::StandardPipelineOptions standard_pipeline_options;
+  mlir::TF::CreateTFStandardPipeline(func_pm, standard_pipeline_options);
 
   // This is needed for control flow support with TF TensorList.
   pm.addPass(mlir::TFL::CreateLowerStaticTensorListPass());

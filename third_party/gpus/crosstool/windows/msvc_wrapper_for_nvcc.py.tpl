@@ -59,7 +59,7 @@ def GetOptionValue(argv, option):
   parser.add_argument(option, nargs='*', action='append')
   option = option.lstrip('-/').replace('-', '_')
   args, leftover = parser.parse_known_args(argv)
-  if args and vars(args).get(option):
+  if args and vars(args)[option]:
     return (sum(vars(args)[option], []), leftover)
   return ([], leftover)
 
@@ -130,20 +130,34 @@ def InvokeNvcc(argv, log=False):
   undefines, argv = GetOptionValue(argv, '/U')
   undefines = ['-U' + define for define in undefines]
 
+  fatbin_options, argv = GetOptionValue(argv, '-Xcuda-fatbinary')
+  fatbin_options = ['--fatbin-options=' + option for option in fatbin_options]
+
   # The rest of the unrecognized options should be passed to host compiler
   host_compiler_options = [option for option in argv if option not in (src_files + out_file)]
 
   m_options = ["-m64"]
 
   nvccopts = ['-D_FORCE_INLINES']
-  for capability in GetOptionValue(argv, "--cuda-gpu-arch"):
+  compute_capabilities, argv = GetOptionValue(argv, "--cuda-gpu-arch")
+  for capability in compute_capabilities:
     capability = capability[len('sm_'):]
-    nvccopts += r'-gencode=arch=compute_%s,\"code=sm_%s,compute_%s\" ' % (
-        capability, capability, capability)
+    nvccopts += [
+        r'-gencode=arch=compute_%s,"code=sm_%s"' % (capability, capability)
+    ]
+  compute_capabilities, argv = GetOptionValue(argv, '--cuda-include-ptx')
+  for capability in compute_capabilities:
+    capability = capability[len('sm_'):]
+    nvccopts += [
+        r'-gencode=arch=compute_%s,"code=compute_%s"' % (capability, capability)
+    ]
+  _, argv = GetOptionValue(argv, '--no-cuda-include-ptx')
+
   nvccopts += nvcc_compiler_options
   nvccopts += undefines
   nvccopts += defines
   nvccopts += m_options
+  nvccopts += fatbin_options
   nvccopts += ['--compiler-options="' + " ".join(host_compiler_options) + '"']
   nvccopts += ['-x', 'cu'] + opt + includes + out + ['-c'] + src_files
   # Specify a unique temp directory for nvcc to generate intermediate files,
@@ -157,10 +171,15 @@ def InvokeNvcc(argv, log=False):
   # Provide a unique dir for each compiling action to avoid conflicts.
   tempdir = tempfile.mkdtemp(dir = NVCC_TEMP_DIR)
   nvccopts += ['--keep', '--keep-dir', tempdir]
-  cmd = [NVCC_PATH] + nvccopts
   if log:
-    Log(cmd)
-  proc = subprocess.Popen(cmd,
+    Log([NVCC_PATH] + nvccopts)
+
+  # Store command line options in a file to avoid hitting the character limit.
+  optsfile = tempfile.NamedTemporaryFile(mode='w', dir=tempdir, delete=False)
+  optsfile.write("\n".join(nvccopts))
+  optsfile.close()
+
+  proc = subprocess.Popen([NVCC_PATH, "--options-file", optsfile.name],
                           stdout=sys.stdout,
                           stderr=sys.stderr,
                           env=os.environ.copy(),

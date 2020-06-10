@@ -96,8 +96,6 @@ def get_build_info():
 
     - cuda_version
     - cudnn_version
-    - tensorrt_version
-    - nccl_version
     - is_cuda_build
     - is_rocm_build
     - msvcp_dll_names

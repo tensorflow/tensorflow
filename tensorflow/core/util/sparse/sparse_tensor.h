@@ -474,7 +474,9 @@ inline SparseTensor SparseTensor::Concat(
     const int st_num_entries = st.num_entries();
 
     // Fill in indices & values.
-    std::copy_n(&st.vals_.vec<T>()(0), st_num_entries, &vals_t(offset));
+    if (st_num_entries > 0) {
+      std::copy_n(&st.vals_.vec<T>()(0), st_num_entries, &vals_t(offset));
+    }
 
     const auto* st_ix = &st.ix_.matrix<int64>()(0, 0);
     auto* ix_out = &ix_t(offset, 0);

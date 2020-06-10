@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 #include "tensorflow/core/profiler/convert/step_events_to_steps_db.h"
@@ -48,25 +49,29 @@ namespace {
 DeviceCapabilities GetDeviceCapFromXPlane(const XPlane& device_plane) {
   DeviceCapabilities cap;
   XPlaneVisitor plane = CreateTfXPlaneVisitor(&device_plane);
-  if (auto clock_rate_khz = plane.GetStats(kDevCapClockRateKHz)) {
-    cap.set_clock_rate_in_ghz(clock_rate_khz->int64_value() / 1000000.0);
-  }
-  if (auto core_count = plane.GetStats(kDevCapCoreCount)) {
-    cap.set_num_cores(core_count->int64_value());
-  }
-  // Set memory bandwidth in bytes/s.
-  if (auto memory_bw = plane.GetStats(kDevCapMemoryBandwidth)) {
-    cap.set_memory_bandwidth(memory_bw->int64_value());
-  }
-  if (auto memory_size_in_bytes = plane.GetStats(kDevCapMemorySize)) {
-    cap.set_memory_size_in_bytes(memory_size_in_bytes->uint64_value());
-  }
-  if (auto cap_major = plane.GetStats(kDevCapComputeCapMajor)) {
-    cap.mutable_compute_capability()->set_major(cap_major->int64_value());
-  }
-  if (auto cap_minor = plane.GetStats(kDevCapComputeCapMinor)) {
-    cap.mutable_compute_capability()->set_minor(cap_minor->int64_value());
-  }
+  plane.ForEachStat([&cap](const XStatVisitor& stat) {
+    if (!stat.Type().has_value()) return;
+    switch (stat.Type().value()) {
+      case kDevCapClockRateKHz:
+        cap.set_clock_rate_in_ghz(stat.IntValue() / 1000000.0);
+        break;
+      case kDevCapCoreCount:
+        cap.set_num_cores(stat.IntValue());
+        break;
+      case kDevCapMemoryBandwidth:
+        cap.set_memory_bandwidth(stat.IntValue());  // bytes/s
+        break;
+      case kDevCapMemorySize:
+        cap.set_memory_size_in_bytes(stat.UintValue());
+        break;
+      case kDevCapComputeCapMajor:
+        cap.mutable_compute_capability()->set_major(stat.IntValue());
+        break;
+      case kDevCapComputeCapMinor:
+        cap.mutable_compute_capability()->set_minor(stat.IntValue());
+        break;
+    }
+  });
   return cap;
 }
 
@@ -109,12 +114,20 @@ void ProcessHostPlane(const XPlane* host_plane, bool use_device_step_events,
 
 }  // namespace
 
+void PropagateXSpaceErrorsToOpStats(const XSpace& space, OpStats* op_stats) {
+  if (space.errors().empty()) return;
+  absl::flat_hash_set<std::string> unique_errors;
+  unique_errors.insert(space.errors().begin(), space.errors().end());
+  *op_stats->mutable_errors() = {unique_errors.begin(), unique_errors.end()};
+}
+
 OpStats ConvertXSpaceToOpStats(const XSpace& space) {
   const XPlane* host_plane = FindPlaneWithName(space, kHostThreads);
   std::vector<const XPlane*> device_planes =
       FindPlanesWithPrefix(space, kGpuPlanePrefix);
   OpStats op_stats;
   StepEvents step_events;
+  PropagateXSpaceErrorsToOpStats(space, &op_stats);
   // Convert device planes.
   OpMetricsDbCombiner op_metrics_db_combiner(
       op_stats.mutable_device_op_metrics_db());

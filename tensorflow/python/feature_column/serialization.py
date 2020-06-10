@@ -84,8 +84,7 @@ def serialize_feature_column(fc):
   if isinstance(fc, six.string_types):
     return fc
   elif isinstance(fc, fc_lib.FeatureColumn):
-    return generic_utils.serialize_keras_class_and_config(
-        fc.__class__.__name__, fc.get_config())  # pylint: disable=protected-access
+    return {'class_name': fc.__class__.__name__, 'config': fc.get_config()}
   else:
     raise ValueError('Instance: {} is not a FeatureColumn'.format(fc))
 

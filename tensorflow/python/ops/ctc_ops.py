@@ -43,6 +43,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.nn_grad import _BroadcastMul
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -70,6 +71,7 @@ def _generate_defun_backend(unique_api_name, preferred_device, func):
 
 # pylint: disable=protected-access, invalid-name
 @tf_export(v1=["nn.ctc_loss"])
+@dispatch.add_dispatch_support
 def ctc_loss(labels,
              inputs=None,
              sequence_length=None,
@@ -80,7 +82,7 @@ def ctc_loss(labels,
              logits=None):
   """Computes the CTC (Connectionist Temporal Classification) Loss.
 
-  This op implements the CTC loss as presented in (Graves et al., 2016).
+  This op implements the CTC loss as presented in (Graves et al., 2006).
 
   Input requirements:
 
@@ -178,7 +180,7 @@ def ctc_loss(labels,
   References:
       Connectionist Temporal Classification - Labeling Unsegmented Sequence Data
       with Recurrent Neural Networks:
-        [Graves et al., 2016](https://dl.acm.org/citation.cfm?id=1143891)
+        [Graves et al., 2006](https://dl.acm.org/citation.cfm?id=1143891)
         ([pdf](http://www.cs.toronto.edu/~graves/icml_2006.pdf))
   """
   return _ctc_loss_impl(
@@ -284,6 +286,7 @@ def _CTCLossV2Grad(op, grad_loss, _):
 
 
 @tf_export("nn.ctc_greedy_decoder")
+@dispatch.add_dispatch_support
 def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
   """Performs greedy decoding on the logits given in input (best path).
 
@@ -333,6 +336,7 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
 
 
 @tf_export(v1=["nn.ctc_beam_search_decoder"])
+@dispatch.add_dispatch_support
 def ctc_beam_search_decoder(inputs,
                             sequence_length,
                             beam_width=100,
@@ -395,6 +399,7 @@ def ctc_beam_search_decoder(inputs,
 
 
 @tf_export("nn.ctc_beam_search_decoder", v1=["nn.ctc_beam_search_decoder_v2"])
+@dispatch.add_dispatch_support
 def ctc_beam_search_decoder_v2(inputs,
                                sequence_length,
                                beam_width=100,
@@ -731,6 +736,7 @@ def _ctc_loss_shape(op):
 
 # pylint: disable=protected-access, invalid-name
 @tf_export(v1=["nn.ctc_loss_v2"])
+@dispatch.add_dispatch_support
 def ctc_loss_v2(labels,
                 logits,
                 label_length,
@@ -741,7 +747,7 @@ def ctc_loss_v2(labels,
                 name=None):
   """Computes CTC (Connectionist Temporal Classification) loss.
 
-  This op implements the CTC loss as presented in (Graves et al., 2016).
+  This op implements the CTC loss as presented in (Graves et al., 2006).
 
   Notes:
 
@@ -781,7 +787,7 @@ def ctc_loss_v2(labels,
   References:
       Connectionist Temporal Classification - Labeling Unsegmented Sequence Data
       with Recurrent Neural Networks:
-        [Graves et al., 2016](https://dl.acm.org/citation.cfm?id=1143891)
+        [Graves et al., 2006](https://dl.acm.org/citation.cfm?id=1143891)
         ([pdf](http://www.cs.toronto.edu/~graves/icml_2006.pdf))
   """
   if isinstance(labels, sparse_tensor.SparseTensor):
@@ -825,6 +831,7 @@ def ctc_loss_v2(labels,
 
 
 @tf_export("nn.ctc_loss", v1=[])
+@dispatch.add_dispatch_support
 def ctc_loss_v3(labels,
                 logits,
                 label_length,
@@ -939,7 +946,7 @@ def ctc_loss_dense(labels,
                    name=None):
   """Computes CTC (Connectionist Temporal Classification) loss.
 
-  This op implements the CTC loss as presented in (Graves et al., 2016),
+  This op implements the CTC loss as presented in (Graves et al., 2006),
   using the batched forward backward algorithm described in (Sim et al., 2017).
 
   Notes:
@@ -986,7 +993,7 @@ def ctc_loss_dense(labels,
   References:
       Connectionist Temporal Classification - Labeling Unsegmented Sequence Data
       with Recurrent Neural Networks:
-        [Graves et al., 2016](https://dl.acm.org/citation.cfm?id=1143891)
+        [Graves et al., 2006](https://dl.acm.org/citation.cfm?id=1143891)
         ([pdf](http://www.cs.toronto.edu/~graves/icml_2006.pdf))
       Improving the efficiency of forward-backward algorithm using batched
       computation in TensorFlow:
@@ -1056,6 +1063,7 @@ def ctc_loss_dense(labels,
 
 
 @tf_export("nn.collapse_repeated")
+@dispatch.add_dispatch_support
 def collapse_repeated(labels, seq_length, name=None):
   """Merge repeated labels into single labels.
 
@@ -1153,6 +1161,7 @@ def dense_labels_to_sparse(dense, length):
 
 
 @tf_export("nn.ctc_unique_labels")
+@dispatch.add_dispatch_support
 def ctc_unique_labels(labels, name=None):
   """Get unique labels and indices for batched labels for `tf.nn.ctc_loss`.
 

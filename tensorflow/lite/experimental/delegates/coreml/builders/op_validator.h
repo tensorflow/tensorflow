@@ -32,7 +32,8 @@ bool IsFullyConnectedOpSupported(const TfLiteRegistration* registration,
                                  const TfLiteNode* node,
                                  TfLiteContext* context);
 bool IsReshapeOpSupported(const TfLiteRegistration* registration,
-                          const TfLiteNode* node, TfLiteContext* context);
+                          const TfLiteNode* node, TfLiteContext* context,
+                          int coreml_version);
 bool IsResizeBilinearOpSupported(const TfLiteRegistration* registration,
                                  const TfLiteNode* node,
                                  TfLiteContext* context);

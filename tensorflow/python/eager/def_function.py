@@ -109,7 +109,7 @@ class _FrequentTracingDetector(object):
             "retracing. Tracing is expensive and the excessive number of "
             "tracings could be due to (1) creating @tf.function repeatedly in "
             "a loop, (2) passing tensors with different shapes, (3) passing "
-            "Python objects instead of tensors. For (1), please  define your "
+            "Python objects instead of tensors. For (1), please define your "
             "@tf.function outside of the loop. For (2), @tf.function has "
             "experimental_relax_shapes=True option that relaxes argument "
             "shapes that can avoid unnecessary retracing. For (3), please "
@@ -308,7 +308,8 @@ RUN_FUNCTIONS_EAGERLY = False
 
 @deprecation.deprecated(
     None,
-    "Use tf.config.run_functions_eagerly instead of the experimental version.")
+    "Use `tf.config.run_functions_eagerly` instead of the experimental "
+    "version.")
 @tf_export("config.experimental_run_functions_eagerly")
 def experimental_run_functions_eagerly(run_eagerly):
   """Enables / disables eager execution of `tf.function`s.
@@ -520,6 +521,10 @@ class Function(object):
     self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
         python_function, input_signature)
     self._implements = experimental_implements
+    # If `True`, the function uses the rendezvous of the parent. This is only
+    # needed to support code where raw send/recv operations are inserted and
+    # when functions are run in graph mode where they may not be inlined.
+    self._shared_rendezvous = None
     self._autograph = autograph
     self._experimental_autograph_options = experimental_autograph_options
     self._experimental_relax_shapes = experimental_relax_shapes
@@ -628,6 +633,10 @@ class Function(object):
     if self._implements is not None:
       attributes = self._create_implements_attribute()
 
+    share = self._shared_rendezvous
+    if share is not None:
+      attributes[function_lib.SHARED_RENDEZVOUS_ATTRIBUTE_NAME] = share
+
     if self._experimental_compile is not None:
       attributes.update(_XlaMustCompile=bool(self._experimental_compile))
       if self._experimental_compile:
@@ -697,7 +706,8 @@ class Function(object):
     self._stateless_fn._name = self._name  # pylint: disable=protected-access
 
   def _clone(self, python_function):
-    return Function(
+    """Clone the function with different python function."""
+    f = Function(
         python_function=(self._python_function
                          if python_function is None else python_function),
         name=self._name,
@@ -707,6 +717,11 @@ class Function(object):
         experimental_autograph_options=self._experimental_autograph_options,
         experimental_relax_shapes=self._experimental_relax_shapes,
         experimental_compile=self._experimental_compile)
+
+    if self._shared_rendezvous:
+      f._shared_rendezvous = self._shared_rendezvous  # pylint: disable=protected-access
+
+    return f
 
   def _decorate(self, decorator):
     """Allows the captured Python function to be decorated in place.
@@ -921,8 +936,8 @@ class Function(object):
     @function_lib.defun(autograph=False)
     def initialize_variables():
       op_map = object_identity.ObjectIdentityDictionary()
-      # Stack all the var_is_initialized values into one tensor and interpret the
-      # numpy value. This will reduce the number of RPCs between client and
+      # Stack all the var_is_initialized values into one tensor and interpret
+      # the numpy value. This will reduce the number of RPCs between client and
       # worker in the remote case.
       with ops.init_scope():
         var_is_initialized = []

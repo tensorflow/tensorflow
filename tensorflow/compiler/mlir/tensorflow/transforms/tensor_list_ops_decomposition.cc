@@ -254,22 +254,14 @@ LogicalResult HandleIfOp(TF::IfOp if_op, ModuleOp module,
   if (output_buffer_to_size.empty() && arg_no_changed) return success();
   // Recreate the If op.
   auto new_if_operands = llvm::to_vector<8>(if_op.getOperands());
-  auto new_output_shapes = llvm::to_vector<8>(if_op.output_shapes().getValue());
   for (int64_t i = 1; i < if_op.getNumOperands(); ++i) {
     auto it = buffer_to_size->find(if_op.getOperand(i));
     if (it == buffer_to_size->end()) continue;
     new_if_operands.push_back(it->getSecond().size);
-    if (!new_output_shapes.empty()) {
-      // Size is a scalar shape.
-      tensorflow::TensorShapeProto shape_proto;
-      new_output_shapes.push_back(builder.getStringAttr(
-          tensorflow::mangling_util::MangleShape(shape_proto)));
-    }
   }
   auto new_if = OpBuilder(if_op).create<TF::IfOp>(
       if_op.getLoc(), then_branch.getType().getResults(), new_if_operands,
       if_op.getAttrs());
-  new_if.setAttr("output_shapes", builder.getArrayAttr(new_output_shapes));
   for (const auto& entry : output_buffer_to_size) {
     (*buffer_to_size)[new_if.getResult(std::get<0>(entry))] = {
         new_if.getResult(std::get<1>(entry)), std::get<2>(entry)};

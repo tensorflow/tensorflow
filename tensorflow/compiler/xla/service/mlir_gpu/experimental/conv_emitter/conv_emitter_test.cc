@@ -18,7 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Conversion/LoopToStandard/ConvertLoopToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project

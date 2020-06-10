@@ -31,6 +31,7 @@ namespace nnapi {
 constexpr int32_t kMinSdkVersionForNNAPI = 27;
 constexpr int32_t kMinSdkVersionForNNAPI11 = 28;
 constexpr int32_t kMinSdkVersionForNNAPI12 = 29;
+constexpr int32_t kMinSdkVersionForNNAPI13 = 30;
 
 // Track tensor indices to NN API tensor indices mapping.
 class OperandMapping {
@@ -340,15 +341,14 @@ class NNAPIDelegateKernel {
 
   std::vector<int> nnapi_to_tflite_op_mapping_;
 
-  void AddDequantizeOperatorsWhereNeeded(const TfLiteContext* context,
-                                         int builtin_code,
-                                         const TfLiteNode* node,
-                                         NNAPIOpBuilder* builder,
-                                         int* nnapi_errno);
+  void AddDequantizeOperatorsWhereNeeded(
+      const TfLiteContext* context, int builtin_code, const TfLiteNode* node,
+      int tflite_node_index, NNAPIOpBuilder* builder, int* nnapi_errno);
 
   TfLiteStatus AddOpsAndTensors(TfLiteContext* context, int* nnapi_errno);
 
   TfLiteStatus BuildGraph(TfLiteContext* context,
+                          const StatefulNnApiDelegate::Options& options,
                           const TfLiteIntArray* input_tensors,
                           const TfLiteIntArray* output_tensors,
                           int* nnapi_errno);

@@ -35,8 +35,9 @@ tflite_micro_cc_test(
     deps = [
         ":model",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
-        "//tensorflow/lite/micro/kernels:all_ops_resolver",
+        "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro/kernels:micro_ops",
         "//tensorflow/lite/micro/testing:micro_test",
         "//tensorflow/lite/schema:schema_fbs",
@@ -54,7 +55,7 @@ cc_library(
     copts = micro_copts(),
     deps = [
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_error_reporter",
     ],
 )
 
@@ -86,8 +87,15 @@ cc_binary(
         ":model",
         ":output_handler",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
-        "//tensorflow/lite/micro/kernels:all_ops_resolver",
+        "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/schema:schema_fbs",
     ],
+)
+
+sh_test(
+    name = "hello_world_binary_test",
+    srcs = ["hello_world_binary_test.sh"],
+    data = [":hello_world"],
 )

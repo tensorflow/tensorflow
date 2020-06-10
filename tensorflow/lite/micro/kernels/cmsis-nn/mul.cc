@@ -50,14 +50,16 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
 
   TF_LITE_ENSURE_EQ(context, input1->type, input2->type);
 
-  TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
-      context, params->activation, output, &data->output_activation_min,
-      &data->output_activation_max));
+  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8) {
+    TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
+        context, params->activation, output, &data->output_activation_min,
+        &data->output_activation_max));
 
-  double real_multiplier =
-      input1->params.scale * input2->params.scale / output->params.scale;
-  QuantizeMultiplier(real_multiplier, &data->output_multiplier,
-                     &data->output_shift);
+    double real_multiplier =
+        input1->params.scale * input2->params.scale / output->params.scale;
+    QuantizeMultiplier(real_multiplier, &data->output_multiplier,
+                       &data->output_shift);
+  }
 
   return kTfLiteOk;
 }

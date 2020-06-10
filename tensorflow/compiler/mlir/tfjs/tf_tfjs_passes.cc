@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,15 +20,8 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/transforms/decode_constant.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfjs/transforms/passes.h"
-
-namespace mlir {
-/// Create a pass to convert from the TFExecutor to the TF control dialect.
-std::unique_ptr<OperationPass<FuncOp>>
-CreateTFExecutorToControlDialectConversion();
-}  // namespace mlir
 
 namespace tensorflow {
 
@@ -47,6 +40,11 @@ void AddTFToTFJSConversionPasses(mlir::OpPassManager* pm) {
   // Canonicalize, CSE etc.
   pm->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   pm->addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
+
+  // raise to executor dialect in order to use GraphDef converter
+  pm->addNestedPass<mlir::FuncOp>(
+      mlir::CreateFunctionalToExecutorDialectConversionPass());
+  pm->addNestedPass<mlir::FuncOp>(mlir::CreateBreakUpIslandsPass());
 }
 
 }  // namespace tensorflow

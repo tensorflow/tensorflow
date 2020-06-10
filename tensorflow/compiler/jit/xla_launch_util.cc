@@ -201,9 +201,7 @@ void XlaComputationLaunchContext::PopulateInputs(
   se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
   // Build ShapedBuffers that point directly to the Tensor buffers.
-  arg_buffers_.reserve(kernel->xla_input_shapes.size() + 1);
-  arg_buffers_.resize(kernel->xla_input_shapes.size());
-  arg_ptrs_ = std::vector<ShapedBuffer*>(arg_buffers_.size());
+  arg_ptrs_ = std::vector<ShapedBuffer*>(kernel->xla_input_shapes.size());
 
   // Pass remaining parameters.
   const Tensor* t;
@@ -239,11 +237,11 @@ void XlaComputationLaunchContext::PopulateInputs(
           << " not the same as on-host shape "
           << xla::ShapeUtil::HumanStringWithLayout(shape);
       se::DeviceMemoryBase dmem = XlaTensor::DeviceMemoryFromTensor(*t);
-      arg_buffers_[i] = absl::make_unique<ShapedBuffer>(
+      arg_buffers_.emplace_back(
           /*on_host_shape=*/shape, /*on_device_shape=*/shape,
           client_->platform(), client_->default_device_ordinal());
-      arg_buffers_[i]->set_buffer(dmem, /*index=*/{});
-      arg_ptrs_[i] = arg_buffers_[i].get();
+      arg_buffers_.back().set_buffer(dmem, /*index=*/{});
+      arg_ptrs_[i] = &arg_buffers_.back();
     }
   }
 }
@@ -470,10 +468,6 @@ Status XlaComputationLaunchContext::PopulateOutputs(
             << "Invalid input for outputs " << i << ": " << input_index;
         ctx->set_output(i, ctx->input(input_index));
       } else {
-        if (MustAliasOutput(input_output_alias, output_num)) {
-          DCHECK(output.buffer({output_num}).is_null())
-              << "Expected output buffer to be aliased, but it is not nil.";
-        }
         if (allocate_xla_tensors_) {
           TF_RETURN_IF_ERROR(SetBufferForTensorUnderAllocateXlaTensors(
               input_output_alias, output_num, ctx, i, shape, &output,

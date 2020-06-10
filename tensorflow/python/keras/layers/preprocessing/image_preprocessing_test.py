@@ -21,6 +21,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.distribute.mirrored_strategy import MirroredStrategy
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
@@ -29,6 +30,7 @@ from tensorflow.python.keras.layers.preprocessing import image_preprocessing
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.ops import gen_stateful_random_ops
 from tensorflow.python.ops import image_ops_impl as image_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.platform import test
@@ -306,7 +308,7 @@ class RescalingTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_rescaling_base(self):
-    kwargs = {'scale': 0.004}
+    kwargs = {'scale': 1./127.5, 'offset': -1.}
     testing_utils.layer_test(
         image_preprocessing.Rescaling,
         kwargs=kwargs,
@@ -315,18 +317,18 @@ class RescalingTest(keras_parameterized.TestCase):
 
   @tf_test_util.run_v2_only
   def test_rescaling_correctness_float(self):
-    layer = image_preprocessing.Rescaling(0.004)
+    layer = image_preprocessing.Rescaling(scale=1./127.5, offset=-1.)
     inputs = random_ops.random_uniform((2, 4, 5, 3))
     outputs = layer(inputs)
-    self.assertAllClose(outputs.numpy(), inputs.numpy() * 0.004)
+    self.assertAllClose(outputs.numpy(), inputs.numpy() * (1./127.5) - 1)
 
   @tf_test_util.run_v2_only
   def test_rescaling_correctness_int(self):
-    layer = image_preprocessing.Rescaling(0.004)
+    layer = image_preprocessing.Rescaling(scale=1./127.5, offset=-1)
     inputs = random_ops.random_uniform((2, 4, 5, 3), 0, 100, dtype='int32')
     outputs = layer(inputs)
     self.assertEqual(outputs.dtype.name, 'float32')
-    self.assertAllClose(outputs.numpy(), inputs.numpy() * 0.004)
+    self.assertAllClose(outputs.numpy(), inputs.numpy() * (1./127.5) - 1)
 
   def test_config_with_custom_name(self):
     layer = image_preprocessing.Rescaling(0.5, name='rescaling')
@@ -961,6 +963,21 @@ class RandomRotationTest(keras_parameterized.TestCase):
         actual_output = layer(input_images, training=0)
         self.assertAllClose(expected_output, actual_output)
 
+  def test_distribution_strategy(self):
+    """Tests that RandomRotation can be created within distribution strategies.
+
+    And that replicas got the same random result.
+    """
+    input_images = np.random.random((2, 5, 8, 3)).astype(np.float32)
+    with tf_test_util.use_gpu():
+      strat = MirroredStrategy(devices=['cpu', 'gpu'])
+      with strat.scope():
+        layer = image_preprocessing.RandomRotation(.5)
+        output = strat.run(lambda: layer(input_images, training=True))
+      values = output.values
+      self.assertAllEqual(2, len(values))
+      self.assertAllClose(values[0], values[1])
+
   @tf_test_util.run_v2_only
   def test_config_with_custom_name(self):
     layer = image_preprocessing.RandomRotation(.5, name='image_preproc')
@@ -1021,7 +1038,27 @@ class RandomZoomTest(keras_parameterized.TestCase):
     for dtype in (np.int64, np.float32):
       with tf_test_util.use_gpu():
         input_image = np.reshape(np.arange(0, 25), (5, 5, 1)).astype(dtype)
-        layer = image_preprocessing.RandomZoom((.5, .5), (.5, .5),
+        layer = image_preprocessing.RandomZoom((.5, .5), (.8, .8),
+                                               fill_mode='constant',
+                                               interpolation='nearest')
+        output_image = layer(np.expand_dims(input_image, axis=0))
+        # pyformat: disable
+        expected_output = np.asarray([
+            [0, 0, 0, 0, 0],
+            [0, 5, 7, 9, 0],
+            [0, 10, 12, 14, 0],
+            [0, 20, 22, 24, 0],
+            [0, 0, 0, 0, 0]
+        ]).astype(dtype)
+        # pyformat: enable
+        expected_output = np.reshape(expected_output, (1, 5, 5, 1))
+        self.assertAllEqual(expected_output, output_image)
+
+  def test_random_zoom_out_numeric_preserve_aspect_ratio(self):
+    for dtype in (np.int64, np.float32):
+      with tf_test_util.use_gpu():
+        input_image = np.reshape(np.arange(0, 25), (5, 5, 1)).astype(dtype)
+        layer = image_preprocessing.RandomZoom((.5, .5),
                                                fill_mode='constant',
                                                interpolation='nearest')
         output_image = layer(np.expand_dims(input_image, axis=0))
@@ -1094,7 +1131,10 @@ class RandomHeightTest(keras_parameterized.TestCase):
       with tf_test_util.use_gpu():
         input_image = np.reshape(np.arange(0, 6), (2, 3, 1)).astype(dtype)
         layer = image_preprocessing.RandomHeight(factor=(1., 1.))
-        output_image = layer(np.expand_dims(input_image, axis=0))
+        # Return type of RandomHeight() is float32 if `interpolation` is not
+        # set to `ResizeMethod.NEAREST_NEIGHBOR`; cast `layer` to desired dtype.
+        output_image = math_ops.cast(layer(np.expand_dims(input_image, axis=0)),
+                                     dtype=dtype)
         # pyformat: disable
         expected_output = np.asarray([
             [0, 1, 2],
@@ -1182,7 +1222,10 @@ class RandomWidthTest(keras_parameterized.TestCase):
       with tf_test_util.use_gpu():
         input_image = np.reshape(np.arange(0, 6), (3, 2, 1)).astype(dtype)
         layer = image_preprocessing.RandomWidth(factor=(1., 1.))
-        output_image = layer(np.expand_dims(input_image, axis=0))
+        # Return type of RandomWidth() is float32 if `interpolation` is not
+        # set to `ResizeMethod.NEAREST_NEIGHBOR`; cast `layer` to desired dtype.
+        output_image = math_ops.cast(layer(np.expand_dims(input_image, axis=0)),
+                                     dtype=dtype)
         # pyformat: disable
         expected_output = np.asarray([
             [0, 0.25, 0.75, 1],

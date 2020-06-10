@@ -472,8 +472,9 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
       HloInstruction* dot);
 
   HloComputation* GetOrCreateScalarAddComputation(PrimitiveType type) {
-    if (scalar_add_computation_) {
-      return scalar_add_computation_;
+    HloComputation*& scalar_add_computation = scalar_add_computations_[type];
+    if (scalar_add_computation) {
+      return scalar_add_computation;
     }
 
     HloComputation::Builder b("scalar_add_computation");
@@ -485,9 +486,9 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
         HloInstruction::CreateParameter(1, shape, "scalar_rhs"));
     auto scalar_op = b.AddInstruction(HloInstruction::CreateBinary(
         shape, HloOpcode::kAdd, scalar_lhs, scalar_rhs));
-    scalar_add_computation_ =
+    scalar_add_computation =
         computation_->parent()->AddEmbeddedComputation(b.Build(scalar_op));
-    return scalar_add_computation_;
+    return scalar_add_computation;
   }
 
   // Tries to fold a kPad in the input or filter into the convolution
@@ -508,6 +509,13 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // Tries to convert slice(reshape(X)) into reshape(slice(X))
   StatusOr<bool> TryToReorderSliceAndReshape(HloInstruction* slice);
 
+  // Tries to simplify `(and (< a N) (< a K))` in cases where `N <= K` into
+  // `(< a N)`. This is crucial for being able to figure out the loop trip
+  // count.
+  //
+  // Assumes that the input is conjunction.
+  StatusOr<bool> TrySimplifyTautologicalCompare(HloInstruction* conjunction);
+
   // Useful when we want to use the same visitor over multiple computations.
   void ResetState(HloComputation* computation);
 
@@ -521,8 +529,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // Whether algebraic simplification has occurred.
   bool changed_ = false;
 
-  // Cached computation for adding two scalar F32.
-  HloComputation* scalar_add_computation_ = nullptr;
+  // Cached computation for adding two scalars of a given type.
+  absl::flat_hash_map<PrimitiveType, HloComputation*> scalar_add_computations_;
 
   AlgebraicSimplifier* simplifier_ = nullptr;
 };
@@ -856,6 +864,50 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
   return Status::OK();
 }
 
+StatusOr<bool> AlgebraicSimplifierVisitor::TrySimplifyTautologicalCompare(
+    HloInstruction* conjunction) {
+  HloInstruction *lhs, *rhs;
+  if (!Match(conjunction, m::And(m::Op(&lhs), m::Op(&rhs)))) {
+    return false;
+  }
+  struct LessThanCompareInfo {  // (LT var constant)
+    HloInstruction* var;
+    int64 constant;
+  };
+
+  auto get_compare_info =
+      [&](HloInstruction* cmp) -> absl::optional<LessThanCompareInfo> {
+    HloInstruction *lhs, *rhs;
+    auto scalar_shape_matcher =
+        m::Shape().IsEffectiveScalar().WithElementType(PrimitiveType::S32);
+    if (Match(cmp, m::Compare(m::Op(&lhs),
+                              m::Constant(&rhs).WithShape(scalar_shape_matcher))
+                       .WithComparisonDirection(ComparisonDirection::kLt))) {
+      return {LessThanCompareInfo{lhs, *rhs->literal().GetFirstInteger()}};
+    } else if (Match(
+                   cmp,
+                   m::Compare(m::Constant(&lhs).WithShape(scalar_shape_matcher),
+                              m::Op(&rhs))
+                       .WithComparisonDirection(ComparisonDirection::kGt))) {
+      return {LessThanCompareInfo{rhs, *lhs->literal().GetFirstInteger()}};
+    }
+    return absl::nullopt;
+  };
+
+  absl::optional<LessThanCompareInfo> lhs_info = get_compare_info(lhs);
+  absl::optional<LessThanCompareInfo> rhs_info = get_compare_info(rhs);
+  if (lhs_info && rhs_info && lhs_info->var == rhs_info->var) {
+    int64 new_bound = std::min(lhs_info->constant, rhs_info->constant);
+    TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
+        conjunction,
+        HloInstruction::CreateCompare(lhs->shape(), lhs_info->var,
+                                      MakeScalarLike(lhs_info->var, new_bound),
+                                      ComparisonDirection::kLt)));
+    return true;
+  }
+  return false;
+}
+
 Status AlgebraicSimplifierVisitor::HandleAnd(HloInstruction* logical_and) {
   HloInstruction *lhs, *rhs;
   CHECK(Match(logical_and, m::And(m::Op(&lhs), m::Op(&rhs))));
@@ -887,6 +939,13 @@ Status AlgebraicSimplifierVisitor::HandleAnd(HloInstruction* logical_and) {
   VLOG(10) << "trying transform [False && A => False]: "
            << logical_and->ToString();
   if (IsAll(lhs, 0) && ReplaceInstructionIfSameShape(logical_and, lhs)) {
+    return Status::OK();
+  }
+
+  // Simplify tautological conjunctions.
+  TF_ASSIGN_OR_RETURN(bool found_tautological_compare,
+                      TrySimplifyTautologicalCompare(logical_and));
+  if (found_tautological_compare) {
     return Status::OK();
   }
 
@@ -1421,6 +1480,22 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
     TF_ASSIGN_OR_RETURN(auto new_divide,
                         MakeBinaryHlo(HloOpcode::kDivide, a_times_c, b));
     return ReplaceInstruction(divide, new_divide);
+  }
+
+  // If X is a convert from pred, then
+  // X / broadcast(Y) => broadcast(1/Y) * X
+  if (Match(divide,
+            m::Divide(
+                m::Convert(&a,
+                           m::Op().WithShape(m::Shape().WithElementType(PRED))),
+                m::Broadcast(m::Op(&b).WithShape(m::Shape().IsScalar()))))) {
+    TF_ASSIGN_OR_RETURN(
+        auto recip, MakeBinaryHlo(HloOpcode::kDivide, MakeScalarLike(b, 1), b));
+    auto recip_bcast = computation_->AddInstruction(
+        HloInstruction::CreateBroadcast(divide->shape(), recip, {}));
+    TF_ASSIGN_OR_RETURN(auto mul,
+                        MakeBinaryHlo(HloOpcode::kMultiply, recip_bcast, a));
+    return ReplaceInstruction(divide, mul);
   }
 
   return Status::OK();
@@ -2898,6 +2973,7 @@ Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
     // slice instruction should all have the same layout.
     TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
         pad->shape(), nonzero_pad->mutable_shape()));
+    simplifier_->UpdateLayout(nonzero_pad->mutable_shape());
 
     // Second, construct the slice instruction to perform the negative padding.
     std::vector<int64> start_indices;
@@ -2924,9 +3000,14 @@ Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
         MakeSliceHlo(nonzero_pad, start_indices, end_indices, strides));
     TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
         pad->shape(), slice->mutable_shape()));
+    simplifier_->UpdateLayout(slice->mutable_shape());
 
     // Verify that the slice shape matches the pad shape.
-    TF_RET_CHECK(ShapeUtil::Equal(slice->shape(), pad->shape()));
+    auto equal = Shape::Equal();
+    if (!options_.is_layout_sensitive()) {
+      equal.IgnoreTilesInLayout();
+    }
+    TF_RET_CHECK(equal(slice->shape(), pad->shape()));
 
     return ReplaceInstruction(pad, slice);
   }

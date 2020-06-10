@@ -542,3 +542,16 @@ func @convert_f32_to_i32(%input: tensor<2x2xf32>) -> tensor<2x2xi32> {
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32):
 // CHECK-NEXT:   %[[RESULT:.*]] = fptosi %[[OPERAND_IN]] : f32 to i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
+
+// -----
+
+// CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1) -> (d0, -d1 + 2)>
+// CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-LABEL: func @reverse
+func @reverse(%input: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  %result = "xla_hlo.reverse"(%input) {
+    dimensions = dense<1> : tensor<1xi64>
+  } : (tensor<2x3xf32>) -> tensor<2x3xf32>
+  return %result : tensor<2x3xf32>
+}
+// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]

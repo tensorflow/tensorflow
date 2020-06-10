@@ -120,7 +120,7 @@ module attributes {tf_saved_model.semantics} {
 
 module attributes {tf_saved_model.semantics} {
 
-  // expected-error@+1 {{all arguments should have 'tf_saved_model.index_path' or 'tf_saved_model.bound_input' attributes}}
+  // expected-error@+1 {{all arguments should have 'tf_saved_model.index_path', 'tf_saved_model.bound_input' or 'tf.resource_name' attributes}}
   func @f(
     %arg0: tensor<f32>
   ) attributes { tf_saved_model.exported_names = ["f"] } {

@@ -10,24 +10,27 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-# Enables usage of ruy in TFLite kernels.
+# Enables usage of ruy exclusively as the GEMM backend in TFLite kernels.
+# This will cause TFLite to build with ruy only, providing a smaller binary.
 # WARNING: This build flag is experimental and subject to change.
 config_setting(
-    name = "tflite_with_ruy_explicit_true",
-    define_values = {"tflite_with_ruy": "true"},
+    name = "tflite_with_ruy_only_explicit_true",
+    define_values = {"TFLITE_WITH_RUY_ONLY": "true"},
 )
 
-# Disables usage of ruy in TFLite kernels.
+# Disables usage of ruy as the exclusive GEMM backend in TFLite kernels.
+# TFLite will be built with ruy and other GEMM libraries. Ruy will not be
+# the default GEMM option at runtime.
 # WARNING: This build flag is experimental and subject to change.
 config_setting(
-    name = "tflite_with_ruy_explicit_false",
-    define_values = {"tflite_with_ruy": "false"},
+    name = "tflite_with_ruy_only_explicit_false",
+    define_values = {"TFLITE_WITH_RUY_ONLY": "false"},
 )
 
 ###### Beginning of config_setting's to match aarch64 ######
 #
 # We need to identify the aarch64 instruction set to decide whether to enable
-# tflite_with_ruy by default. This is surprisingly hard to do because select()
+# TFLITE_WITH_RUY_ONLY by default. This is surprisingly hard to do because select()
 # can only consume config_setting's, these config_settings are not centralized,
 # and the "cpu" value which they define are free-form strings and there is no
 # standardization of the strings that we need to match for the aarch64 architecture.
@@ -229,36 +232,45 @@ cc_test(
 )
 
 cc_library(
-    name = "tflite_with_ruy_enabled",
+    name = "tflite_with_ruy_only_enabled",
     build_for_embedded = True,
-    defines = ["TFLITE_WITH_RUY"],
+    defines = ["TFLITE_WITH_RUY_ONLY"],
     visibility = ["//visibility:private"],
 )
 
 cc_library(
-    name = "tflite_with_ruy_default",
+    name = "tflite_with_ruy_only_and_caching_enabled",
+    defines = [
+        "TFLITE_WITH_RUY_ONLY",
+        "TFLITE_WITH_RUY_GEMV",
+    ],
+    visibility = ["//visibility:private"],
+)
+
+cc_library(
+    name = "tflite_with_ruy_only_default",
     build_for_embedded = True,
     select_deps = {
-        ":chromiumos_arm64": [":tflite_with_ruy_enabled"],
-        ":cpu_aarch64": [":tflite_with_ruy_enabled"],
-        ":cpu_arm64": [":tflite_with_ruy_enabled"],
-        ":cpu_arm64e": [":tflite_with_ruy_enabled"],
-        ":cpu_ios_arm64": [":tflite_with_ruy_enabled"],
-        ":cpu_ios_arm64e": [":tflite_with_ruy_enabled"],
-        ":cpu_arm64_v8a": [":tflite_with_ruy_enabled"],
-        "//tensorflow:android_arm": ["tflite_with_ruy_enabled"],
+        ":chromiumos_arm64": [":tflite_with_ruy_only_enabled"],
+        ":cpu_aarch64": [":tflite_with_ruy_only_enabled"],
+        ":cpu_arm64": [":tflite_with_ruy_only_enabled"],
+        ":cpu_arm64e": [":tflite_with_ruy_only_enabled"],
+        ":cpu_ios_arm64": [":tflite_with_ruy_only_enabled"],
+        ":cpu_ios_arm64e": [":tflite_with_ruy_only_enabled"],
+        ":cpu_arm64_v8a": [":tflite_with_ruy_only_enabled"],
+        "//tensorflow:android_arm": ["tflite_with_ruy_only_enabled"],
         "//conditions:default": [],
     },
     visibility = ["//visibility:private"],
 )
 
 cc_library(
-    name = "tflite_with_ruy",
+    name = "tflite_with_ruy_only",
     build_for_embedded = True,
     select_deps = {
-        ":tflite_with_ruy_explicit_true": [":tflite_with_ruy_enabled"],
-        ":tflite_with_ruy_explicit_false": [],
-        "//conditions:default": [":tflite_with_ruy_default"],
+        ":tflite_with_ruy_only_explicit_true": [":tflite_with_ruy_only_enabled"],
+        ":tflite_with_ruy_only_explicit_false": [],
+        "//conditions:default": [":tflite_with_ruy_only_default"],
     },
 )
 
@@ -272,7 +284,7 @@ cc_library(
     ],
     copts = tflite_copts(),
     deps = [
-        ":tflite_with_ruy",
+        ":tflite_with_ruy_only",
         ":op_macros",
         # For now this unconditionally depends on both ruy and gemmlowp.
         # See the comment inside class CpuBackendContext on the
@@ -291,11 +303,11 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":cpu_backend_context",
-        ":tflite_with_ruy",
+        ":tflite_with_ruy_only",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:types",
         # For now this unconditionally depends on both ruy and gemmlowp.
-        # We only need to depend on gemmlowp when tflite_with_ruy
+        # We only need to depend on gemmlowp when tflite_with_ruy_only
         # is false, but putting these dependencies in a select() seems to
         # defeat copybara's rewriting rules.
         "@ruy//ruy:context",
@@ -329,19 +341,19 @@ cc_library(
     ],
     copts = tflite_copts(),
     deps = [
-        ":tflite_with_ruy",
+        ":tflite_with_ruy_only",
         "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:types",
         ":cpu_backend_context",
         ":cpu_backend_threadpool",
-        # Depend on ruy regardless of `tflite_with_ruy`. See the comment in
+        # Depend on ruy regardless of `tflite_with_ruy_only`. See the comment in
         # cpu_backend_gemm.h about why ruy is the generic path.
         "@ruy//ruy",
         "@ruy//ruy:matrix",
         "@ruy//ruy:path",
         "@ruy//ruy/profiler:instrumentation",
-        # We only need to depend on gemmlowp and Eigen when tflite_with_ruy
+        # We only need to depend on gemmlowp and Eigen when tflite_with_ruy_only
         # is false, but putting these dependencies in a select() seems to
         # defeat copybara's rewriting rules.
         "@gemmlowp",
@@ -386,7 +398,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:cppmath",
         "//tensorflow/lite/kernels/internal:quantization_util",
-        "@flatbuffers",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -423,140 +435,155 @@ cc_library(
     ],
 )
 
+BUILTIN_KERNEL_SRCS = [
+    "activations.cc",
+    "add.cc",
+    "add_n.cc",
+    "arg_min_max.cc",
+    "audio_spectrogram.cc",
+    "basic_rnn.cc",
+    "batch_matmul.cc",
+    "batch_to_space_nd.cc",
+    "bidirectional_sequence_lstm.cc",
+    "bidirectional_sequence_rnn.cc",
+    "cast.cc",
+    "ceil.cc",
+    "comparisons.cc",
+    "concatenation.cc",
+    "conv.cc",
+    "densify.cc",
+    "depth_to_space.cc",
+    "depthwise_conv.cc",
+    "dequantize.cc",
+    "detection_postprocess.cc",
+    "div.cc",
+    "elementwise.cc",
+    "embedding_lookup.cc",
+    "embedding_lookup_sparse.cc",
+    "exp.cc",
+    "expand_dims.cc",
+    "fake_quant.cc",
+    "fill.cc",
+    "floor.cc",
+    "floor_div.cc",
+    "floor_mod.cc",
+    "fully_connected.cc",
+    "gather.cc",
+    "gather_nd.cc",
+    "hashtable_lookup.cc",
+    "if.cc",
+    "l2norm.cc",
+    "local_response_norm.cc",
+    "logical.cc",
+    "lsh_projection.cc",
+    "lstm.cc",
+    "matrix_diag.cc",
+    "matrix_set_diag.cc",
+    "maximum_minimum.cc",
+    "mfcc.cc",
+    "mirror_pad.cc",
+    "mul.cc",
+    "neg.cc",
+    "non_max_suppression.cc",
+    "numeric_verify.cc",
+    "one_hot.cc",
+    "pack.cc",
+    "pad.cc",
+    "pooling.cc",
+    "pow.cc",
+    "quantize.cc",
+    "range.cc",
+    "rank.cc",
+    "reduce.cc",
+    "reshape.cc",
+    "resize_bilinear.cc",
+    "resize_nearest_neighbor.cc",
+    "reverse.cc",
+    "reverse_sequence.cc",
+    "round.cc",
+    "scatter_nd.cc",
+    "segment_sum.cc",
+    "select.cc",
+    "shape.cc",
+    "skip_gram.cc",
+    "slice.cc",
+    "space_to_batch_nd.cc",
+    "space_to_depth.cc",
+    "sparse_to_dense.cc",
+    "split.cc",
+    "split_v.cc",
+    "squared_difference.cc",
+    "squeeze.cc",
+    "strided_slice.cc",
+    "sub.cc",
+    "svdf.cc",
+    "tile.cc",
+    "topk_v2.cc",
+    "transpose.cc",
+    "transpose_conv.cc",
+    "unidirectional_sequence_lstm.cc",
+    "unidirectional_sequence_rnn.cc",
+    "unique.cc",
+    "unpack.cc",
+    "where.cc",
+    "while.cc",
+    "zeros_like.cc",
+]
+
+BUILTIN_KERNEL_DEPS = [
+    ":cpu_backend_context",
+    ":cpu_backend_gemm",
+    ":cpu_backend_threadpool",
+    ":eigen_support",
+    ":kernel_util",
+    ":lstm_eval",
+    ":lstm_shared",
+    ":op_macros",
+    ":padding",
+    "//third_party/eigen3",
+    "@flatbuffers",
+    "//tensorflow/lite:framework_lib",
+    "//tensorflow/lite:minimal_logging",
+    "//tensorflow/lite:string_util",
+    "//tensorflow/lite/c:common",
+    "//tensorflow/lite/kernels/internal:audio_utils",
+    "//tensorflow/lite/kernels/internal:common",
+    "//tensorflow/lite/kernels/internal:compatibility",
+    "//tensorflow/lite/kernels/internal:cpu_check",
+    "//tensorflow/lite/kernels/internal:kernel_utils",
+    "//tensorflow/lite/kernels/internal:optimized",
+    "//tensorflow/lite/kernels/internal:optimized_base",
+    "//tensorflow/lite/kernels/internal:quantization_util",
+    "//tensorflow/lite/kernels/internal:reference_base",
+    "//tensorflow/lite/kernels/internal:strided_slice_logic",
+    "//tensorflow/lite/kernels/internal:tensor",
+    "//tensorflow/lite/kernels/internal:tensor_utils",
+    "//tensorflow/lite/kernels/internal:types",
+]
+
 cc_library(
     name = "builtin_op_kernels",
-    srcs = [
-        "activations.cc",
-        "add.cc",
-        "add_n.cc",
-        "arg_min_max.cc",
-        "audio_spectrogram.cc",
-        "basic_rnn.cc",
-        "batch_matmul.cc",
-        "batch_to_space_nd.cc",
-        "bidirectional_sequence_lstm.cc",
-        "bidirectional_sequence_rnn.cc",
-        "cast.cc",
-        "ceil.cc",
-        "comparisons.cc",
-        "concatenation.cc",
-        "conv.cc",
-        "densify.cc",
-        "depth_to_space.cc",
-        "depthwise_conv.cc",
-        "dequantize.cc",
-        "detection_postprocess.cc",
-        "div.cc",
-        "elementwise.cc",
-        "embedding_lookup.cc",
-        "embedding_lookup_sparse.cc",
-        "exp.cc",
-        "expand_dims.cc",
-        "fake_quant.cc",
-        "fill.cc",
-        "floor.cc",
-        "floor_div.cc",
-        "floor_mod.cc",
-        "fully_connected.cc",
-        "gather.cc",
-        "gather_nd.cc",
-        "hashtable_lookup.cc",
-        "if.cc",
-        "l2norm.cc",
-        "local_response_norm.cc",
-        "logical.cc",
-        "lsh_projection.cc",
-        "lstm.cc",
-        "matrix_diag.cc",
-        "matrix_set_diag.cc",
-        "maximum_minimum.cc",
-        "mfcc.cc",
-        "mirror_pad.cc",
-        "mul.cc",
-        "neg.cc",
-        "non_max_suppression.cc",
-        "numeric_verify.cc",
-        "one_hot.cc",
-        "pack.cc",
-        "pad.cc",
-        "pooling.cc",
-        "pow.cc",
-        "quantize.cc",
-        "range.cc",
-        "rank.cc",
-        "reduce.cc",
-        "reshape.cc",
-        "resize_bilinear.cc",
-        "resize_nearest_neighbor.cc",
-        "reverse.cc",
-        "reverse_sequence.cc",
-        "round.cc",
-        "scatter_nd.cc",
-        "segment_sum.cc",
-        "select.cc",
-        "shape.cc",
-        "skip_gram.cc",
-        "slice.cc",
-        "space_to_batch_nd.cc",
-        "space_to_depth.cc",
-        "sparse_to_dense.cc",
-        "split.cc",
-        "split_v.cc",
-        "squared_difference.cc",
-        "squeeze.cc",
-        "strided_slice.cc",
-        "sub.cc",
-        "svdf.cc",
-        "tile.cc",
-        "topk_v2.cc",
-        "transpose.cc",
-        "transpose_conv.cc",
-        "unidirectional_sequence_lstm.cc",
-        "unidirectional_sequence_rnn.cc",
-        "unique.cc",
-        "unpack.cc",
-        "where.cc",
-        "while.cc",
-        "zeros_like.cc",
-    ],
+    srcs = BUILTIN_KERNEL_SRCS,
     hdrs = [
         "dequantize.h",
     ],
     copts = tflite_copts() + tf_opts_nortti_if_android() + EXTRA_EIGEN_COPTS,
     visibility = ["//visibility:private"],
-    deps = [
-        ":cpu_backend_context",
-        ":cpu_backend_gemm",
-        ":cpu_backend_threadpool",
-        ":eigen_support",
-        ":kernel_util",
-        ":lstm_eval",
-        ":lstm_shared",
-        ":op_macros",
-        ":padding",
-        "//tensorflow/lite:framework_lib",
-        "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels/internal:audio_utils",
-        "//tensorflow/lite/kernels/internal:common",
-        "//tensorflow/lite/kernels/internal:compatibility",
-        "//tensorflow/lite/kernels/internal:cpu_check",
-        "//tensorflow/lite/kernels/internal:kernel_utils",
-        "//tensorflow/lite/kernels/internal:optimized",
-        "//tensorflow/lite/kernels/internal:optimized_base",
-        "//tensorflow/lite/kernels/internal:quantization_util",
-        "//tensorflow/lite/kernels/internal:reference_base",
-        "//tensorflow/lite/kernels/internal:strided_slice_logic",
-        "//tensorflow/lite/kernels/internal:tensor",
-        "//tensorflow/lite/kernels/internal:tensor_utils",
-        "//tensorflow/lite/kernels/internal:types",
-        "//third_party/eigen3",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@farmhash_archive//:farmhash",
-        "@flatbuffers",
+    deps = BUILTIN_KERNEL_DEPS + ["@farmhash_archive//:farmhash"],
+)
+
+# Creates a target where Ruy is unconditionally enabled along with caching
+# on GEMV operations. This is useful for TF Lite deployments where custom
+# copts are not allowed, e.g. b/156119344
+cc_library(
+    name = "builtin_op_kernels_ruy_and_caching",
+    srcs = BUILTIN_KERNEL_SRCS,
+    hdrs = [
+        "dequantize.h",
     ],
+    copts = tflite_copts() + tf_opts_nortti_if_android() + EXTRA_EIGEN_COPTS,
+    visibility = ["//visibility:private"],
+    deps = BUILTIN_KERNEL_DEPS + ["@farmhash_archive//:farmhash"] + [":tflite_with_ruy_only_and_caching_enabled"],
 )
 
 cc_library(
@@ -668,6 +695,22 @@ cc_library(
     ],
     deps = [
         ":builtin_op_kernels",
+        "//tensorflow/lite:framework_lib",
+        "//tensorflow/lite/c:common",
+    ],
+)
+
+#  TODO(b/156664104) Remove once runtime flag available.
+cc_library(
+    name = "builtin_ops_ruy_and_caching_enabled",
+    srcs = ["register.cc"],
+    hdrs = [
+        "builtin_op_kernels.h",
+        "fully_connected.h",
+        "register.h",
+    ],
+    deps = [
+        ":builtin_op_kernels_ruy_and_caching",
         "//tensorflow/lite:framework_lib",
         "//tensorflow/lite/c:common",
     ],
@@ -1972,6 +2015,7 @@ cc_test(
     name = "fill_test",
     size = "small",
     srcs = ["fill_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",

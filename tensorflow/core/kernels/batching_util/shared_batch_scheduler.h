@@ -160,6 +160,10 @@ class SharedBatchScheduler
     // See the class documentation above for guidelines on how to tune this
     // parameter.
     size_t max_enqueued_batches = 10;
+
+    // If true, queue implementation would split one input batch task into
+    // subtasks and fit them into different batches.
+    bool enable_large_batch_splitting = false;
   };
   Status AddQueue(const QueueOptions& options,
                   std::function<void(std::unique_ptr<Batch<TaskType>>)>

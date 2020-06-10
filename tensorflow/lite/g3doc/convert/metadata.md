@@ -20,7 +20,7 @@ set this up [here](https://www.tensorflow.org/install).
 After setup the Python programming environment, you will need to install
 additional tooling:
 
-```
+```sh
 pip install tflite-support
 ```
 
@@ -53,31 +53,31 @@ Lite metadata:
 
 ### Examples
 
-Note: The export directory specified has to exist before you run the script, it
+Note: The export directory specified has to exist before you run the script; it
 does not get created as part of the process.
 
 You can find examples on how the metadata should be populated for different
 types of models here:
 
-#### Image Classification
+#### Image classification
 
 Download the script
 [here](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/metadata/metadata_writer_for_image_classifier.py)
 and run the script like this:
 
-```
+```sh
 python ./metadata_writer_for_image_classifier.py \
     --model_file=./model_without_metadata/mobilenet_v1_0.75_160_quantized.tflite \
     --label_file=./model_without_metadata/labels.txt \
     --export_directory=model_with_metadata
 ```
 
-The rest of this guide will highlight some of the key sections in the Image
-Classification example to illustrate the key elements.
+The rest of this guide will highlight some of the key sections in the image
+classification example to illustrate the key elements.
 
-### Deep dive into the Image Classification example
+### Deep dive into the image classification example
 
-#### Model Information
+#### Model information
 
 Metadata starts by creating a new model info:
 
@@ -103,9 +103,9 @@ model_meta.license = ("Apache License. Version 2.0 "
 
 #### Input / output information
 
-This describe your model's input and output signature and it maybe used by
-automatic code generators to create pre- and post- processing code. To create an
-input or output information about a tensor:
+This section shows you how to describe your model's input and output signature.
+This metadata may be used by automatic code generators to create pre- and post-
+processing code. To create input or output information about a tensor:
 
 ```python
 # Creates input info.
@@ -115,13 +115,13 @@ input_meta = _metadata_fb.TensorMetadataT()
 output_meta = _metadata_fb.TensorMetadataT()
 ```
 
-#### Image Input
+#### Image input
 
 Image is a common input type for machine learning. TensorFlow Lite metadata
 supports information such as colorspace and pre-processing information such as
-normalization. One thing that does not required manual input is the dimension of
-the image as this is already provided by the shape of the input tensor and can
-be automatically inferred.
+normalization. The dimension of the image does not require manual specification
+since it is already provided by the shape of the input tensor and can be
+automatically inferred.
 
 ```python
 input_meta.name = "image"
@@ -153,7 +153,7 @@ input_meta.stats = input_stats
 Label can be mapped to an output tensor via an associated file using
 `TENSOR_AXIS_LABELS`.
 
-```Python
+```python
 # Creates output info.
 output_meta = _metadata_fb.TensorMetadataT()
 output_meta.name = "probability"
@@ -175,7 +175,7 @@ output_meta.associatedFiles = [label_file]
 
 #### Put it all together
 
-The following code pull the model information together with the input and output
+The following code combines the model information with the input and output
 information:
 
 ```python
@@ -192,8 +192,8 @@ b.Finish(
 metadata_buf = b.Output()
 ```
 
-Once the data structure is ready, the writing of the metadata into the tflite
-file is done via the `populate` method:
+Once the data structure is ready, the metadata is written into the TFLite file
+via the `populate` method:
 
 ```python
 populator = _metadata.MetadataPopulator.with_model_file(model_file)
@@ -204,9 +204,9 @@ populator.populate()
 
 #### Verify the metadata
 
-You can read back the metadata in a tflite file using the `MetadataDisplayer`:
+You can read the metadata in a TFLite file using the `MetadataDisplayer`:
 
-```Python
+```python
 displayer = _metadata.MetadataDisplayer.with_model_file(export_model_path)
 export_json_file = os.path.join(FLAGS.export_directory,
                     os.path.splitext(model_basename)[0] + ".json")

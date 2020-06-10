@@ -31,6 +31,7 @@ from tensorflow.python.distribute import distribution_strategy_context as ds_con
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import parameter_server_strategy
+from tensorflow.python.distribute import ps_values
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import values
@@ -796,8 +797,8 @@ class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
                        msg=('created_step %s type %s vs. get_step %s type %s' %
                             (id(created_step), created_step.__class__.__name__,
                              id(get_step), get_step.__class__.__name__)))
-      self.assertIs(values.AggregatingVariable, type(created_step))
-      self.assertIs(values.AggregatingVariable, type(get_step))
+      self.assertIs(ps_values.AggregatingVariable, type(created_step))
+      self.assertIs(ps_values.AggregatingVariable, type(get_step))
       self.assertIs(strategy, created_step.distribute_strategy)
 
   @combinations.generate(combinations.combine(mode=['graph']))
@@ -828,7 +829,7 @@ class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
           _ = v * v
         v, = tape.watched_variables()
         w = strategy.extended.value_container(v)
-        self.assertIs(values.AggregatingVariable, type(w))
+        self.assertIs(ps_values.AggregatingVariable, type(w))
 
       strategy.extended.call_for_each_replica(f)
 

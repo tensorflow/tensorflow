@@ -62,6 +62,7 @@ from tensorflow.python.framework import versions
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.platform import app
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.types import core as core_tf_types
 from tensorflow.python.types import internal
 from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
@@ -182,16 +183,8 @@ def _override_helper(clazz_object, operator, func):
     func: the function that replaces the overridden operator.
 
   Raises:
-    ValueError: If operator has already been overwritten,
-      or if operator is not allowed to be overwritten.
+    ValueError: If operator is not allowed to be overwritten.
   """
-  existing = getattr(clazz_object, operator, None)
-  if existing is not None:
-    # Check to see if this is a default method-wrapper or slot wrapper which
-    # will be true for the comparison operators.
-    if not isinstance(existing, type(object.__lt__)):
-      raise ValueError("operator %s cannot be overwritten again on class %s." %
-                       (operator, clazz_object))
   if operator not in Tensor.OVERLOADABLE_OPERATORS:
     raise ValueError("Overriding %s is disallowed" % operator)
   setattr(clazz_object, operator, func)
@@ -213,53 +206,11 @@ def _as_graph_element(obj):
   return None
 
 
-_TENSOR_LIKE_TYPES = tuple()
-
-
+# Deprecated - do not use.
+# This API to avoid breaking estimator and tensorflow-mesh which depend on this
+# internal API. The stub should be safe to use after TF 2.3 is released.
 def is_dense_tensor_like(t):
-  """EXPERIMENTAL: Returns true if `t` implements the tensor interface.
-
-  See `register_dense_tensor_like_type()` for the current definition of a
-  "tensor-like type".
-
-  Args:
-    t: An object.
-
-  Returns:
-    True iff `t` is an instance of one of the registered "tensor-like" types.
-  """
-  return isinstance(t, _TENSOR_LIKE_TYPES)
-
-
-def register_dense_tensor_like_type(tensor_type):
-  """EXPERIMENTAL: Registers `tensor_type` as implementing the tensor interface.
-
-  A "tensor-like type" can represent a single dense tensor, and implements
-  the `name`, `dtype` and `shape` properties.
-
-  Args:
-    tensor_type: A type implementing the tensor interface.
-
-  Raises:
-    TypeError: If `tensor_type` does not implement the tensor interface.
-  """
-  if not (hasattr(tensor_type, "name") and
-          isinstance(tensor_type.name, property)):
-    raise TypeError("Type %s does not define a `name` property" %
-                    tensor_type.__name__)
-  if not (hasattr(tensor_type, "dtype") and
-          isinstance(tensor_type.dtype, property)):
-    raise TypeError("Type %s does not define a `dtype` property" %
-                    tensor_type.__name__)
-  if not (hasattr(tensor_type, "shape") and
-          isinstance(tensor_type.shape, property)):
-    raise TypeError("Type %s does not define a `shape` property" %
-                    tensor_type.__name__)
-  # We expect this list to be small, so choose quadratic complexity
-  # for registration, so that we have a tuple that can be used for
-  # more efficient `isinstance` checks later.
-  global _TENSOR_LIKE_TYPES
-  _TENSOR_LIKE_TYPES = tuple(list(_TENSOR_LIKE_TYPES) + [tensor_type])
+  return isinstance(t, core_tf_types.Tensor)
 
 
 def uid():
@@ -304,7 +255,7 @@ def disable_tensor_equality():
 
 # TODO(mdan): This object should subclass Symbol, not just Tensor.
 @tf_export("Tensor")
-class Tensor(internal.NativeObject):
+class Tensor(internal.NativeObject, core_tf_types.Tensor):
   """A tensor is a multidimensional array of elements represented by a
 
   `tf.Tensor` object.  All elements are of a single known data type.
@@ -1305,9 +1256,6 @@ class _EagerTensorBase(Tensor):
 EagerTensor = pywrap_tfe.TFE_Py_InitEagerTensor(_EagerTensorBase)
 
 
-register_dense_tensor_like_type(Tensor)
-
-
 @tf_export(v1=["convert_to_tensor"])
 def convert_to_tensor_v1(value,
                          dtype=None,
@@ -1436,6 +1384,65 @@ def convert_to_tensor_v2(value, dtype=None, dtype_hint=None, name=None):
 
 def _error_prefix(name):
   return "" if name is None else "%s: " % name
+
+
+def pack_eager_tensors(tensors, ctx=None):
+  """Pack multiple `EagerTensor`s of the same dtype and shape.
+
+  Args:
+    tensors: a list of EagerTensors to pack.
+    ctx: context.context().
+
+  Returns:
+    A packed EagerTensor.
+  """
+  if not isinstance(tensors, list):
+    raise TypeError("tensors must be a list or a tuple: %s" % tensors)
+
+  if not tensors:
+    raise ValueError("Empty tensors is unexpected for packing.")
+
+  dtype = tensors[0].dtype
+  shape = tensors[0].shape
+  handle_data = tensors[0]._handle_data  # pylint: disable=protected-access
+  is_resource = dtype == dtypes.resource
+  for i in range(len(tensors)):
+    t = tensors[i]
+    if not isinstance(t, EagerTensor):
+      raise TypeError("tensors must be a list of EagerTensors: %s" % t)
+
+    if t.dtype != dtype:
+      raise ValueError(
+          "All tensors being packed should have the same dtype %s, "
+          "but the %d-th tensor is of dtype %s" % (dtype, i, t.dtype))
+    if t.shape != shape:
+      raise ValueError(
+          "All tensors being packed should have the same shape %s, "
+          "but the %d-th tensor is of shape %s" % (shape, i, t.shape))
+    # pylint: disable=protected-access
+    if is_resource and t._handle_data != handle_data:
+      raise ValueError(
+          "All tensors being packed should have the same handle data %s, "
+          "but the %d-th tensor is of handle data %s" %
+          (handle_data, i, t._handle_data))
+    # pylint: enable=protected-access
+
+  if ctx is None:
+    ctx = context.context()
+
+  # Propogate handle data for resource variables
+  packed_tensor = ctx.pack_eager_tensors(tensors)
+  if handle_data is not None:
+    packed_tensor._handle_data = handle_data  # pylint: disable=protected-access
+
+  def grad_fun(_):
+    raise ValueError(
+        "Gradients through pack_eager_tensors are not supported yet.")
+
+  tape.record_operation("pack_eager_tensors", [packed_tensor], tensors,
+                        grad_fun)
+
+  return packed_tensor
 
 
 def convert_to_tensor(value,
@@ -5118,19 +5125,17 @@ class Graph(object):
     Returns:
       The dtype that instances of `AutoCastVariable` will be casted to.
     """
-    if not hasattr(self._thread_local, "_auto_cast_variable_read_dtype"):
+    dtype = getattr(self._thread_local, "_auto_cast_variable_read_dtype", None)
+    if dtype is None:
       self._thread_local._auto_cast_variable_read_dtype = None  # pylint: disable=protected-access
-    return self._thread_local._auto_cast_variable_read_dtype  # pylint: disable=protected-access
+    return dtype
 
   @_auto_cast_variable_read_dtype.setter
   def _auto_cast_variable_read_dtype(self, dtype):
-    if dtype:
-      dtype = dtypes.as_dtype(dtype)
     self._thread_local._auto_cast_variable_read_dtype = dtype  # pylint: disable=protected-access
 
-  @tf_contextlib.contextmanager
   def _enable_auto_casting_variables(self, dtype):
-    """Context manager to automatically cast AutoCastVariables.
+    """Returns a context manager to automatically cast AutoCastVariables.
 
     If an AutoCastVariable `var` is used under this context manager, it will be
     casted to `dtype` before being used.
@@ -5140,15 +5145,10 @@ class Graph(object):
     Args:
       dtype: The dtype that AutoCastVariables should be casted to.
 
-    Yields:
-      Nothing.
+    Returns:
+      Context manager.
     """
-    prev_read_dtype = self._auto_cast_variable_read_dtype
-    try:
-      self._auto_cast_variable_read_dtype = dtype
-      yield
-    finally:
-      self._auto_cast_variable_read_dtype = prev_read_dtype
+    return enable_auto_cast_variables(dtype, graph=self)
 
   def _mutation_lock(self):
     """Returns a lock to guard code that creates & mutates ops.
@@ -5163,6 +5163,36 @@ class Graph(object):
     See the comment for self._group_lock for more info.
     """
     return self._group_lock.group(_SESSION_RUN_LOCK_GROUP)
+
+
+class enable_auto_cast_variables(object):
+  """Enables the autocasting of `AutoCastVariable`s.
+
+  Under this context manager, `AutoCastVariable`s will be cast to `dtype` if
+  `dtype` is floating-point. Otherwise, `AutoCastVariable`s will not be cast.
+  """
+
+  def __init__(self, dtype, graph=None):
+    if dtype and not dtype.is_floating:
+      self._dtype = None
+    else:
+      self._dtype = dtype
+    if graph is None:
+      self._graph = get_default_graph()
+    else:
+      self._graph = graph
+
+  def __enter__(self):
+    # For performance, access `_thread_local` attr directly rather than
+    # @property wrappers.
+    graph_thread_local = self._graph._thread_local
+    self._prev_read_dtype = getattr(graph_thread_local,
+                                    "_auto_cast_variable_read_dtype", None)
+    graph_thread_local._auto_cast_variable_read_dtype = self._dtype
+
+  def __exit__(self, type_arg, value_arg, traceback_arg):
+    self._graph._thread_local._auto_cast_variable_read_dtype = (
+        self._prev_read_dtype)
 
 
 # TODO(agarwal): currently device directives in an outer eager scope will not
@@ -5338,7 +5368,7 @@ class _DefaultStack(threading.local):
     self.stack = []
 
   def get_default(self):
-    return self.stack[-1] if len(self.stack) >= 1 else None
+    return self.stack[-1] if self.stack else None
 
   def reset(self):
     self.stack = []
@@ -5526,10 +5556,13 @@ class _DefaultGraphStack(_DefaultStack):  # pylint: disable=protected-access
 
   def get_default(self):
     """Override that returns a global default if the stack is empty."""
-    ret = super(_DefaultGraphStack, self).get_default()
-    if ret is None:
-      ret = self._GetGlobalDefaultGraph()
-    return ret
+    if self.stack:
+      return self.stack[-1]
+    elif self._global_default_graph:
+      return self._global_default_graph
+    else:
+      self._global_default_graph = Graph()
+      return self._global_default_graph
 
   def _GetGlobalDefaultGraph(self):
     if self._global_default_graph is None:
@@ -6520,24 +6553,6 @@ class name_scope_v1(object):  # pylint: disable=invalid-name
     return self._name_scope.__exit__(*exc_info)
 
 
-def enter_eager_name_scope(ctx, name):
-  """Updates the eager context to enter the given name scope."""
-  old_name = ctx.scope_name
-  if not name:
-    scope_name = ""
-  else:
-    if name.endswith("/"):
-      # A trailing slash breaks out of nested name scopes, indicating a
-      # fully specified scope name, for compatibility with Graph.name_scope.
-      scope_name = name
-    else:
-      scope_name = name + "/"
-      if old_name:
-        scope_name = old_name + scope_name
-  ctx.scope_name = scope_name
-  return scope_name, old_name
-
-
 @tf_export("name_scope", v1=[])
 class name_scope_v2(object):
   """A context manager for use when defining a Python op.
@@ -6560,9 +6575,9 @@ class name_scope_v2(object):
   When executed, the Tensors `a`, `b`, `c`, will have names `MyOp/a`, `MyOp/b`,
   and `MyOp/c`.
 
-  If the scope name already exists, the name will be made unique by appending
-  `_n`. For example, calling `my_op` the second time will generate `MyOp_1/a`,
-  etc.
+  Inside a `tf.function`, if the scope name already exists, the name will be
+  made unique by appending `_n`. For example, calling `my_op` the second time
+  will generate `MyOp_1/a`, etc.
   """
 
   def __init__(self, name):
@@ -6572,9 +6587,9 @@ class name_scope_v2(object):
       name: The prefix to use on all names created within the name scope.
 
     Raises:
-      ValueError: If name is None, or not a string.
+      ValueError: If name is not a string.
     """
-    if name is None or not isinstance(name, six.string_types):
+    if not isinstance(name, six.string_types):
       raise ValueError("name for name_scope must be a string.")
     self._name = name
     self._exit_fns = []
@@ -6588,16 +6603,29 @@ class name_scope_v2(object):
 
     Returns:
       The scope name.
-
-    Raises:
-      ValueError: if neither `name` nor `default_name` is provided
-        but `values` are.
     """
     ctx = context.context()
     if ctx.executing_eagerly():
-      scope_name, old_scope_name = enter_eager_name_scope(ctx, self._name)
-      self._exit_fns.append(
-          lambda *a: setattr(ctx, "scope_name", old_scope_name))
+      # Names are not auto-incremented in eager mode.
+      # A trailing slash breaks out of nested name scopes, indicating a
+      # fully specified scope name, for compatibility with Graph.name_scope.
+      # This also prevents auto-incrementing.
+      old_name = ctx.scope_name
+      name = self._name
+      if not name:
+        scope_name = ""
+      elif name[-1] == "/":
+        scope_name = name
+      elif old_name:
+        scope_name = old_name + name + "/"
+      else:
+        scope_name = name + "/"
+      ctx.scope_name = scope_name
+
+      def _restore_name_scope(*_):
+        ctx.scope_name = old_name
+
+      self._exit_fns.append(_restore_name_scope)
     else:
       scope = get_default_graph().name_scope(self._name)
       scope_name = scope.__enter__()
@@ -6605,8 +6633,7 @@ class name_scope_v2(object):
     return scope_name
 
   def __exit__(self, type_arg, value_arg, traceback_arg):
-    exit_fn = self._exit_fns.pop()
-    exit_fn(type_arg, value_arg, traceback_arg)
+    self._exit_fns.pop()(type_arg, value_arg, traceback_arg)
     return False  # False values do not suppress exceptions
 
 

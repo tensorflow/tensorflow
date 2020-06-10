@@ -4,16 +4,16 @@ tensorflow/api_template_v1.__init__.py
 tensorflow/compat_template.__init__.py
 tensorflow/compat_template_v1.__init__.py
 tensorflow/compiler/mlir/glob_lit_test.bzl
+tensorflow/go/op/wrappers.go
 tensorflow/lite/micro/build_def.bzl
 tensorflow/python/autograph/core/config.py
-tensorflow/python/distribute/cluster_resolver/tpu_cluster_resolver.py
-tensorflow/python/distribute/cluster_resolver/tpu_cluster_resolver_test.py
 tensorflow/python/eager/benchmarks_test_base.py
 tensorflow/python/tpu/profiler/pip_package/BUILD
 tensorflow/python/tpu/profiler/pip_package/README
 tensorflow/python/tpu/profiler/pip_package/build_pip_package.sh
 tensorflow/python/tpu/profiler/pip_package/setup.py
 tensorflow/python/tpu/tpu.bzl
+tensorflow/security/fuzzing/tf_fuzzing.bzl
 tensorflow/stream_executor/build_defs.bzl
 tensorflow/third_party/BUILD
 tensorflow/third_party/__init__.py
@@ -97,6 +97,7 @@ tensorflow/third_party/gpus/cuda/BUILD.windows.tpl
 tensorflow/third_party/gpus/cuda/LICENSE
 tensorflow/third_party/gpus/cuda/build_defs.bzl.tpl
 tensorflow/third_party/gpus/cuda/cuda_config.h.tpl
+tensorflow/third_party/gpus/cuda/cuda_config.py.tpl
 tensorflow/third_party/gpus/cuda_configure.bzl
 tensorflow/third_party/gpus/find_cuda_config.py
 tensorflow/third_party/gpus/find_cuda_config.py.gz.base64
@@ -249,6 +250,7 @@ tensorflow/third_party/toolchains/preconfig/ubuntu16.04/py/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/tensorrt5/BUILD
 tensorflow/third_party/toolchains/preconfig/win/BUILD
 tensorflow/third_party/toolchains/preconfig/win/bazel_211/BUILD
+tensorflow/third_party/toolchains/preconfig/win/tf_win_08062020/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/py36/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/py37/BUILD

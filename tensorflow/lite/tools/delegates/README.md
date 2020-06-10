@@ -31,26 +31,31 @@ TFLite delegate.
     This option is currently supported by the Hexagon and CoreML delegate.
 
 ### GPU delegate provider
+
+Only Android and iOS devices support GPU delegate.
+
+#### Common options
 *   `use_gpu`: `bool` (default=false) \
     Whether to use the
     [GPU accelerator delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/gpu).
-    This option is currently only available on Android and iOS devices.
 *   `gpu_precision_loss_allowed`: `bool` (default=true) \
-    Whethre to allow the GPU delegate to carry out computation with some
+    Whether to allow the GPU delegate to carry out computation with some
     precision loss (i.e. processing in FP16) or not. If allowed, the performance
     will increase.
 *   `gpu_experimental_enable_quant`: `bool` (default=true) \
-    Whether to allow the GPU delegate to run a quantized model or not. \
-    This option is currently only available on Android.
+    Whether to allow the GPU delegate to run a 8-bit quantized model or not.
+
+#### Android options
 *  `gpu_backend`: `string` (default="") \
     Force the GPU delegate to use a particular backend for execution, and fail
     if unsuccessful. Should be one of: cl, gl. By default, the GPU delegate will
-    try OpenCL first and then OpenGL if the former fails.\
-    Note this option is only available on Android.
+    try OpenCL first and then OpenGL if the former fails.
+
+#### iOS options
 *   `gpu_wait_type`: `string` (default="") \
-    Which GPU wait_type option to use, when using GPU delegate on iOS. Should be
-    one of the following: passive, active, do_not_wait, aggressive. When left
-    blank, passive mode is used by default.
+    Which GPU wait_type option to use. Should be one of the following: passive,
+    active, do_not_wait, aggressive. When left blank, passive mode is used by
+    default.
 
 ### NNAPI delegate provider
 *   `use_nnapi`: `bool` (default=false) \
@@ -73,6 +78,8 @@ TFLite delegate.
     [NNAPI CPU reference implementation](https://developer.android.com/ndk/guides/neuralnetworks#device-assignment)
     from the possible devices to be used by NNAPI to execute the model. This
     option is ignored if `nnapi_accelerator_name` is specified.
+*   `nnapi_allow_fp16`: `bool` (default=false) \
+    Whether to allow FP32 computation to be run in FP16.
 
 ### Hexagon delegate provider
 *   `use_hexagon`: `bool` (default=false) \
@@ -93,6 +100,9 @@ TFLite delegate.
 *   `use_coreml`: `bool` (default=false) \
     Whether to use the [Core ML delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/delegates/coreml).
     This option is only available in iOS.
+*   `coreml_version`: `int` (default=0) \
+    Target Core ML version for model conversion. The default value is 0 and it
+    means using the newest version that's available on the device.
 
 ### External delegate provider
 *   `external_delegate_path`: `string` (default="") \

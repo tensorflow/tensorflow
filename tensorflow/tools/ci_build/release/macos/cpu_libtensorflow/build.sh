@@ -24,4 +24,7 @@ install_bazelisk
 export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
 sudo xcode-select -s "${DEVELOPER_DIR}"
 
+# Update the version string to nightly
+./tensorflow/tools/ci_build/update_version.py --nightly
+
 tensorflow/tools/ci_build/osx/libtensorflow_cpu.sh

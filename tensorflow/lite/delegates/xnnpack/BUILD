@@ -24,6 +24,7 @@ cc_library(
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
+        "@FP16",
         "@XNNPACK",
     ],
 )
@@ -39,6 +40,7 @@ cc_library(
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
+        "@FP16",
         "@XNNPACK",
     ],
 )
@@ -53,8 +55,27 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
+        "@FP16",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "conv_2d_tester",
+    testonly = 1,
+    srcs = ["conv_2d_tester.cc"],
+    hdrs = ["conv_2d_tester.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@FP16",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
@@ -68,8 +89,10 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
+        "@FP16",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
@@ -80,6 +103,23 @@ cc_library(
     testonly = 1,
     srcs = ["fully_connected_tester.cc"],
     hdrs = ["fully_connected_tester.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@FP16",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "pad_tester",
+    testonly = 1,
+    srcs = ["pad_tester.cc"],
+    hdrs = ["pad_tester.h"],
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
@@ -99,6 +139,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -114,6 +155,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -129,6 +171,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -188,14 +231,10 @@ cc_test(
         "//conditions:default": [],
     }),
     deps = [
+        ":conv_2d_tester",
         ":test_main",
-        ":xnnpack_delegate",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/kernels:builtin_ops",
-        "//tensorflow/lite/schema:schema_fbs",
+        ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
-        "@flatbuffers",
     ],
 )
 
@@ -209,6 +248,21 @@ cc_test(
     tags = ["nomsan"],  # b/145129478
     deps = [
         ":depthwise_conv_2d_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "div_test",
+    srcs = ["div_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":binary_elementwise_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
@@ -252,9 +306,6 @@ cc_test(
         "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
         "//conditions:default": [],
     }),
-    tags = [
-        "notsan",  # TODO(b/155404603)
-    ],
     deps = [
         ":pool_2d_tester",
         ":test_main",
@@ -279,6 +330,36 @@ cc_test(
 )
 
 cc_test(
+    name = "maximum_test",
+    srcs = ["maximum_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":binary_elementwise_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "minimum_test",
+    srcs = ["minimum_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":binary_elementwise_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "mul_test",
     srcs = ["mul_test.cc"],
     linkopts = select({
@@ -287,6 +368,21 @@ cc_test(
     }),
     deps = [
         ":binary_elementwise_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "pad_test",
+    srcs = ["pad_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":pad_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
@@ -347,6 +443,36 @@ cc_test(
     }),
     deps = [
         ":softmax_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "squared_difference_test",
+    srcs = ["squared_difference_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":binary_elementwise_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "sub_test",
+    srcs = ["sub_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":binary_elementwise_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",

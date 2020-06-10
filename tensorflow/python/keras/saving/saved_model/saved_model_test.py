@@ -39,7 +39,6 @@ from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.feature_column import feature_column_v2 as fc
-from tensorflow.python.feature_column.dense_features import DenseFeatures
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -48,6 +47,7 @@ from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.feature_column.dense_features import DenseFeatures
 from tensorflow.python.keras.saving.saved_model import load as keras_load
 from tensorflow.python.keras.saving.saved_model import save_impl as keras_save
 from tensorflow.python.keras.utils import generic_utils
@@ -57,6 +57,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load as tf_load
 from tensorflow.python.saved_model import save as tf_save
@@ -391,6 +392,37 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
       self.evaluate(loaded.get_updates_for(input_arr2))
     self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0.12])
 
+  def testDisablingBatchNormTrainableBeforeSaving(self):
+    # We disable trainable on the batchnorm layers before saving
+    model = keras.models.Sequential(
+        keras.layers.BatchNormalization(input_shape=(1,)))
+    model.trainable = False
+    self.evaluate(variables.variables_initializer(model.variables))
+    saved_model_dir = self._save_model_dir()
+    model.save(saved_model_dir, save_format='tf')
+    loaded = keras_load.load(saved_model_dir)
+    self.evaluate(variables.variables_initializer(loaded.variables))
+    input_arr = array_ops.constant([[11], [12], [13]], dtype=dtypes.float32)
+    input_arr2 = array_ops.constant([[14], [15], [16]], dtype=dtypes.float32)
+    self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0])
+
+    # Trainable should still be disabled after loading
+    self.evaluate(loaded(input_arr, training=True))
+    if not context.executing_eagerly():
+      self.evaluate(loaded.get_updates_for(input_arr))
+    self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0.0])
+
+    # Re-enabling trainable on the loaded model should cause the batchnorm
+    # layer to start training again.
+    # Note: this only works in v2.
+    if context.executing_eagerly():
+      loaded.trainable = True
+      self.evaluate(loaded(input_arr, training=True))
+      self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0.12])
+
+      self.evaluate(loaded(input_arr2, training=False))
+      self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0.12])
+
   def testSaveWithSignatures(self):
     model = keras.models.Sequential()
     model.add(keras.layers.Dense(5, input_shape=(3,),
@@ -698,6 +730,42 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
 
     self.assertAllClose(layer.states, loaded_layer.states)
     self.assertAllClose(model(input_arr), loaded(input_arr))
+
+  def testSaveWithRaggedInputs(self):
+
+    class EmbeddingMerger(keras.layers.Layer):
+
+      def __init__(self, list_features, **kwargs):
+        super().__init__(**kwargs)
+        self._supports_ragged_inputs = True
+        self.embeddings = {
+            feature: keras.layers.Embedding(10, 3) for feature in list_features}
+        self.mean = keras.layers.Lambda(
+            math_ops.reduce_mean, arguments=dict(axis=1))
+
+      def call(self, inputs):
+        tensors = [self.embeddings[col](inputs[col]) for col in inputs]
+        tensors = [self.mean(inp) for inp in tensors]
+        return keras.layers.Add()(tensors)
+
+    list_features = ['feature_1', 'feature_2']
+    feature_1 = ragged_factory_ops.constant([[0.], [1, 3]])
+    feature_2 = ragged_factory_ops.constant([[1., 2], [4]])
+    f = {'feature_1': feature_1,
+         'feature_2': feature_2}
+    f_inputs = {
+        'feature_1': keras.Input(shape=(None,), name='feature_1', ragged=True),
+        'feature_2': keras.Input(shape=(None,), name='feature_2', ragged=True)}
+
+    out = EmbeddingMerger(list_features)(f_inputs)
+    model = keras.Model(f_inputs, out)
+    self.evaluate(variables.variables_initializer(model.variables))
+    saved_model_dir = self._save_model_dir()
+    tf_save.save(model, saved_model_dir)
+
+    loaded = keras_load.load(saved_model_dir)
+    self.evaluate(variables.variables_initializer(loaded.variables))
+    self.assertAllClose(model.predict(f), loaded.predict(f))
 
 
 class TestLayerCallTracing(test.TestCase, parameterized.TestCase):

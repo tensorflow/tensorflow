@@ -1,11 +1,11 @@
 # TensorFlow Lite on GPU
 
 [TensorFlow Lite](https://www.tensorflow.org/mobile/tflite/) supports several
-hardware accelerators.  This document describes how to use the GPU backend using
-the TensorFlow Lite delegate APIs on Android (requires OpenGL ES 3.1 or higher)
-and iOS (requires iOS 8 or later).
+hardware accelerators. This document describes how to use the GPU backend using
+the TensorFlow Lite delegate APIs on Android (requires OpenCL or OpenGL ES 3.1
+and higher) and iOS (requires iOS 8 or later).
 
-## Benefits of GPU Acceleration
+## Benefits of GPU acceleration
 
 ### Speed
 
@@ -24,43 +24,51 @@ GPUs do their computation with 16-bit or 32-bit floating point numbers and
 decreased accuracy made quantization untenable for your models, running your
 neural network on a GPU may eliminate this concern.
 
-### Energy Efficiency
+### Energy efficiency
 
 Another benefit that comes with GPU inference is its power efficiency. A GPU
 carries out computations in a very efficient and optimized way, consuming less
 power and generating less heat than the same task run on a CPU.
 
-## Supported Ops
+## Supported ops
 
 TensorFlow Lite on GPU supports the following ops in 16-bit and 32-bit float
 precision:
 
-* `ADD v1`
-* `AVERAGE_POOL_2D v1`
-* `CONCATENATION v1`
-* `CONV_2D v1`
-* `DEPTHWISE_CONV_2D v1-2`
-* `FULLY_CONNECTED v1`
-* `LOGISTIC v1`
-* `MAX_POOL_2D v1`
-* `MUL v1`
-* `PAD v1`
-* `PRELU v1`
-* `RELU v1`
-* `RELU6 v1`
-* `RESHAPE v1`
-* `RESIZE_BILINEAR v1`
-* `SOFTMAX v1`
-* `STRIDED_SLICE v1`
-* `SUB v1`
-* `TRANSPOSE_CONV v1`
+*   `ADD`
+*   `AVERAGE_POOL_2D`
+*   `CONCATENATION`
+*   `CONV_2D`
+*   `DEPTHWISE_CONV_2D v1-2`
+*   `EXP`
+*   `FULLY_CONNECTED`
+*   `LOGISTIC`
+*   `LSTM v2 (Basic LSTM only)`
+*   `MAX_POOL_2D`
+*   `MAXIMUM`
+*   `MINIMUM`
+*   `MUL`
+*   `PAD`
+*   `PRELU`
+*   `RELU`
+*   `RELU6`
+*   `RESHAPE`
+*   `RESIZE_BILINEAR v1-3`
+*   `SOFTMAX`
+*   `STRIDED_SLICE`
+*   `SUB`
+*   `TRANSPOSE_CONV`
 
-## Basic Usage
+By default, all ops are only supported at version 1. Enabling the
+[experimental quantization support](gpu_advanced.md#running-quantized-models-experimental-android-only)
+allows the appropriate versions; for example, ADD v2.
+
+## Basic usage
 
 ### Android (Java)
 
 Run TensorFlow Lite on GPU with `TfLiteDelegate`. In Java, you can specify the
-GpuDelegate through `Interpreter.Options`.
+`GpuDelegate` through `Interpreter.Options`.
 
 ```java
 // NEW: Prepare GPU delegate.
@@ -82,8 +90,8 @@ delegate.close();
 ### Android (C/C++)
 
 For C/C++ usage of TensorFlow Lite GPU on Android, the GPU delegate can be
-created with `TfLiteGpuDelegateCreate()` and destroyed with
-`TfLiteGpuDelegateDelete()`.
+created with `TfLiteGpuDelegateV2Create()` and destroyed with
+`TfLiteGpuDelegateV2Delete()`.
 
 ```c++
 // Set up interpreter.
@@ -94,15 +102,7 @@ std::unique_ptr<Interpreter> interpreter;
 InterpreterBuilder(*model, op_resolver)(&interpreter);
 
 // NEW: Prepare GPU delegate.
-const TfLiteGpuDelegateOptions options = {
-  .metadata = NULL,
-  .compile_options = {
-    .precision_loss_allowed = 1,  // FP16
-    .preferred_gl_object_type = TFLITE_GL_OBJECT_TYPE_FASTEST,
-    .dynamic_batch_enabled = 0,   // Not fully functional yet
-  },
-};
-auto* delegate = TfLiteGpuDelegateCreate(&options);
+auto* delegate = TfLiteGpuDelegateV2Create(/*default options=*/nullptr);
 if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) return false;
 
 // Run inference.
@@ -111,8 +111,12 @@ if (interpreter->Invoke() != kTfLiteOk) return false;
 ReadFromOutputTensor(interpreter->typed_output_tensor<float>(0));
 
 // NEW: Clean up.
-TfLiteGpuDelegateDelete(delegate);
+TfLiteGpuDelegateV2Delete(delegate);
 ```
+
+Take a look at `TfLiteGpuDelegateOptionsV2` to create a delegate instance with
+custom options. You can initialize the default options with
+`TfLiteGpuDelegateOptionsV2Default()` and then modify them as necessary.
 
 TFLite GPU for Android C/C++ uses the [Bazel](https://bazel.io) build system.
 The delegate can be built, for example, using the following command:
@@ -122,10 +126,28 @@ bazel build -c opt --config android_arm64 tensorflow/lite/delegates/gpu:gl_deleg
 bazel build -c opt --config android_arm64 tensorflow/lite/delegates/gpu:libtensorflowlite_gpu_gl.so  # for dynamic library
 ```
 
-### iOS (ObjC++)
+### iOS (Swift)
 
-To use TensorFlow Lite on GPU, get the GPU delegate via `NewGpuDelegate()` and
-then pass it to `Interpreter::ModifyGraphWithDelegate()` (instead of calling
+Initialize TensorFlow Lite interpreter with the GPU delegate.
+
+```swift
+import TensorFlowLite
+
+let delegate = MetalDelegate()
+if let interpreter = try Interpreter(modelPath: modelPath,
+                                     delegates: [delegate]) {
+
+  // Run inference ...
+}
+
+```
+
+### iOS (Objective-C)
+
+Note: For Objective-C, GPU delegate is provided via C API.
+
+To use TensorFlow Lite on GPU, get the GPU delegate via `TFLGpuDelegateCreate()`
+and then pass it to `Interpreter::ModifyGraphWithDelegate()` (instead of calling
 `Interpreter::AllocateTensors()`).
 
 ```c++
@@ -138,12 +160,7 @@ InterpreterBuilder(*model, op_resolver)(&interpreter);
 
 // NEW: Prepare GPU delegate.
 
-const GpuDelegateOptions options = {
-  .allow_precision_loss = false,
-  .wait_type = kGpuDelegateOptions::WaitType::Passive,
-};
-
-auto* delegate = NewGpuDelegate(options);
+auto* delegate = TFLGpuDelegateCreate(/*default options=*/nullptr);
 if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) return false;
 
 // Run inference.
@@ -152,7 +169,7 @@ if (interpreter->Invoke() != kTfLiteOk) return false;
 ReadFromOutputTensor(interpreter->typed_output_tensor<float>(0));
 
 // Clean up.
-DeleteGpuDelegate(delegate);
+TFLGpuDelegateDelete(delegate);
 ```
 
 Note: When calling `Interpreter::ModifyGraphWithDelegate()` or
@@ -163,46 +180,48 @@ then the developer must ensure that `Interpreter::Invoke()` is always called
 from the same thread in which `Interpreter::ModifyGraphWithDelegate()` was
 called.
 
-## Advanced Usage
+## Advanced usage
 
 ### Delegate Options for iOS
 
-`NewGpuDelegate()` accepts a `struct` of options.
+`TFLGpuDelegateCreate()` accepts a `struct` of options.
+([C API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/gpu/metal_delegate.h),
+[Swift API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/swift/Sources/MetalDelegate.swift))
 
-```c++
-struct GpuDelegateOptions {
-  // Allows to quantify tensors, downcast values, process in float16 etc.
-  bool allow_precision_loss;
+Passing `nullptr`(C API) or nothing (Swift API) to the initializer sets the
+default options (which are explicated in the Basic Usage example above).
 
-  enum class WaitType {
-    // waitUntilCompleted
-    kPassive,
-    // Minimize latency. It uses active spinning instead of mutex and consumes
-    // additional CPU resources.
-    kActive,
-    // Useful when the output is used with GPU pipeline then or if external
-    // command encoder is set
-    kDoNotWait,
-  };
-  WaitType wait_type;
-};
+**Swift API**
+
+```swift
+
+// THIS:
+var options = MetalDelegate.Options()
+options.allowsPrecisionLoss = false
+options.waitType = .passive
+options.isQuantizationEnabled = false
+let delegate = MetalDelegate(options: options)
+
+// IS THE SAME AS THIS:
+let delegate = MetalDelegate()
+
 ```
 
-Passing `nullptr` into `NewGpuDelegate()` sets the default options (which are
-explicated in the Basic Usage example above).
+**C API (also used for Objective-C)**
 
 ```c++
 
 // THIS:
-const GpuDelegateOptions options = {
+const TFLGpuDelegateOptions options = {
   .allow_precision_loss = false,
-  .wait_type = kGpuDelegateOptions::WaitType::Passive,
+  .wait_type = TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypePassive,
+  .enable_quantization = false,
 };
 
-auto* delegate = NewGpuDelegate(options);
+auto* delegate = TFLGpuDelegateCreate(options);
 
 // IS THE SAME AS THIS:
-auto* delegate = NewGpuDelegate(nullptr);
+auto* delegate = TFLGpuDelegateCreate(nullptr);
 
 ```
 
@@ -210,7 +229,70 @@ While it is convenient to use `nullptr`, we recommend that you explicitly set
 the options, to avoid any unexpected behavior if default values are changed in
 the future.
 
-### Input/Output Buffers
+### Running quantized models (Experimental)
+
+The GPU delegate already supports
+[float16 quantized](https://www.tensorflow.org/lite/performance/post_training_float16_quant)
+models. There is experimental support on Android to run 8-bit quantized as well.
+This includes all flavors of quantization, including:
+
+*   Models trained with
+    [Quantization-aware training](https://www.tensorflow.org/lite/convert/quantization)
+*   [Post-training dynamic-range quantization](https://www.tensorflow.org/lite/performance/post_training_quant)
+*   [Post-training full-integer quantization](https://www.tensorflow.org/lite/performance/post_training_integer_quant)
+
+To optimize performance, use models that have floating-point input & output
+tensors.
+
+This feature can be enabled using delegate options as follows:
+
+#### Android
+
+**C++ API**
+
+```c++
+// NEW: Prepare custom options with feature enabled.
+TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
+options.experimental_flags |= TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_QUANT;
+
+auto* delegate = TfLiteGpuDelegateV2Create(options);
+if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) return false;
+```
+
+**Java API**
+
+```java
+// NEW: Prepare GPU delegate with feature turned on.
+GpuDelegate delegate = new GpuDelegate(new GpuDelegate.Options().setQuantizedModelsAllowed(true));
+
+Interpreter.Options options = (new Interpreter.Options()).addDelegate(delegate);
+```
+
+#### iOS
+
+**Swift API**
+
+```swift
+// NEW: Prepare custom options with feature enabled.
+var options = MetalDelegate.Options()
+options.isQuantizationEnabled = true
+let delegate = MetalDelegate(options: options)
+```
+
+**C API (also used for Objective-C)**
+
+```c
+
+// THIS:
+// NEW: Prepare custom options with feature enabled.
+const TFLGpuDelegateOptions options = {
+  .enable_quantization = true,
+};
+
+auto* delegate = TFLGpuDelegateCreate(options);
+```
+
+### Input/Output Buffers (iOS only)
 
 To do computation on the GPU, data must be made available to the GPU. This often
 requires performing a memory copy. It is desirable not to cross the CPU/GPU
@@ -229,91 +311,26 @@ To achieve best performance, TensorFlow Lite makes it possible for users to
 directly read from and write to the TensorFlow hardware buffer and bypass
 avoidable memory copies.
 
-#### Android
-
-Assuming the image input is in the GPU memory, it must first be converted to an
-OpenGL Shader Storage Buffer Object (SSBO). You can associate a TfLiteTensor to
-a user-prepared SSBO with `Interpreter.bindGlBufferToTensor()`. Note that
-`Interpreter.bindGlBufferToTensor()` must be called before
-`Interpreter.modifyGraphWithDelegate()`.
-
-```java
-// Ensure a valid EGL rendering context.
-EGLContext eglContext = eglGetCurrentContext();
-if (eglContext.equals(EGL_NO_CONTEXT)) return false;
-
-// Create an SSBO.
-int[] id = new int[1];
-glGenBuffers(id.length, id, 0);
-glBindBuffer(GL_SHADER_STORAGE_BUFFER, id[0]);
-glBufferData(GL_SHADER_STORAGE_BUFFER, inputSize, null, GL_STREAM_COPY);
-glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);  // unbind
-int inputSsboId = id[0];
-
-// Create interpreter.
-Interpreter interpreter = new Interpreter(tfliteModel);
-Tensor inputTensor = interpreter.getInputTensor(0);
-GpuDelegate gpuDelegate = new GpuDelegate();
-// The buffer must be bound before the delegate is installed.
-gpuDelegate.bindGlBufferToTensor(inputTensor, inputSsboId);
-interpreter.modifyGraphWithDelegate(gpuDelegate);
-
-// Run inference; the null input argument indicates use of the bound buffer for input.
-fillSsboWithCameraImageTexture(inputSsboId);
-float[] outputArray = new float[outputSize];
-interpreter.runInference(null, outputArray);
-```
-
-A similar approach can be applied to the output tensor. In that case,
-`Interpreter.Options.setAllowBufferHandleOutput(true)` should be passed on, to
-disable the default copying of the network's output from GPU memory to CPU
-memory.
-
-```java
-// Ensure a valid EGL rendering context.
-EGLContext eglContext = eglGetCurrentContext();
-if (eglContext.equals(EGL_NO_CONTEXT)) return false;
-
-// Create a SSBO.
-int[] id = new int[1];
-glGenBuffers(id.length, id, 0);
-glBindBuffer(GL_SHADER_STORAGE_BUFFER, id[0]);
-glBufferData(GL_SHADER_STORAGE_BUFFER, outputSize, null, GL_STREAM_COPY);
-glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);  // unbind
-int outputSsboId = id[0];
-
-// Create interpreter.
-Interpreter.Options options = (new Interpreter.Options()).setAllowBufferHandleOutput(true);
-Interpreter interpreter = new Interpreter(tfliteModel, options);
-Tensor outputTensor = interpreter.getOutputTensor(0);
-GpuDelegate gpuDelegate = new GpuDelegate();
-// The buffer must be bound before the delegate is installed.
-gpuDelegate.bindGlBufferToTensor(outputTensor, outputSsboId);
-interpreter.modifyGraphWithDelegate(gpuDelegate);
-
-// Run inference; the null output argument indicates use of the bound buffer for output.
-ByteBuffer input = getCameraImageByteBuffer();
-interpreter.runInference(input, null);
-renderOutputSsbo(outputSsboId);
-```
-
-#### iOS
-
 Assuming the image input is in GPU memory, it must first be converted to a
 `MTLBuffer` object for Metal. You can associate a TfLiteTensor to a
-user-prepared `MTLBuffer` with `BindMetalBufferToTensor()`. Note that
-`BindMetalBufferToTensor()` must be called before
+user-prepared `MTLBuffer` with `TFLGpuDelegateBindMetalBufferToTensor()`. Note
+that `TFLGpuDelegateBindMetalBufferToTensor()` must be called before
 `Interpreter::ModifyGraphWithDelegate()`. Additionally, the inference output is,
 by default, copied from GPU memory to CPU memory. This behavior can be turned
 off by calling `Interpreter::SetAllowBufferHandleOutput(true)` during
 initialization.
 
 ```c++
+#include "tensorflow/lite/delegates/gpu/metal_delegate.h"
+#include "tensorflow/lite/delegates/gpu/metal_delegate_internal.h"
+
+// ...
+
 // Prepare GPU delegate.
-auto* delegate = NewGpuDelegate(nullptr);
+auto* delegate = TFLGpuDelegateCreate(nullptr);
 interpreter->SetAllowBufferHandleOutput(true);  // disable default gpu->cpu copy
-if (!BindMetalBufferToTensor(delegate, interpreter->inputs()[0], user_provided_input_buffer)) return false;
-if (!BindMetalBufferToTensor(delegate, interpreter->outputs()[0], user_provided_output_buffer)) return false;
+if (!TFLGpuDelegateBindMetalBufferToTensor(delegate, interpreter->inputs()[0], user_provided_input_buffer)) return false;
+if (!TFLGpuDelegateBindMetalBufferToTensor(delegate, interpreter->outputs()[0], user_provided_output_buffer)) return false;
 if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) return false;
 
 // Run inference.

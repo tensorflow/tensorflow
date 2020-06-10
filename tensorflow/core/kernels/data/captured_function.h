@@ -256,10 +256,6 @@ class CapturedFunction {
   CapturedFunction(std::shared_ptr<const FunctionMetadata> metadata,
                    std::vector<Tensor> captured_inputs);
 
-  // Determines whether the captured function requires the use of the
-  // multi-device function backend.
-  Status IsMultiDevice(IteratorContext* ctx, bool* is_multi_device);
-
   const std::shared_ptr<const FunctionMetadata> metadata_;
   const std::vector<Tensor> captured_inputs_;
 

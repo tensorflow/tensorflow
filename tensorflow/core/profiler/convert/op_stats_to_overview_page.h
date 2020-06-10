@@ -54,8 +54,6 @@ OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
 // Returns a html which provides tf-function related recommendation.
 std::string TfFunctionRecommendationHtml(const TfFunctionDb& tf_function_db);
 
-void SetRemarks(const OpStats& op_stats, OverviewPageAnalysis* analysis);
-
 }  // namespace profiler
 }  // namespace tensorflow
 

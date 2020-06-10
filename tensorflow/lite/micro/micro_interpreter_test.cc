@@ -17,163 +17,19 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/core/api/flatbuffer_conversions.h"
+#include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/micro/micro_optional_debug_tools.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 #include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 
-namespace tflite {
-namespace {
-
-// A simple operator that returns the median of the input with the number of
-// times the kernel was invoked. The implementation below is deliberately
-// complicated, just to demonstrate how kernel memory planning works.
-class SimpleStatefulOp {
-  static constexpr int kBufferNotAllocated = 0;
-  // Inputs:
-  static constexpr int kInputTensor = 0;
-  // Outputs:
-  static constexpr int kMedianTensor = 0;
-  static constexpr int kInvokeCount = 1;
-  struct OpData {
-    int invoke_count = 0;
-    int sorting_buffer = kBufferNotAllocated;
-  };
-
- public:
-  static const TfLiteRegistration* getRegistration() {
-    static TfLiteRegistration r = {Init, /* free= */ nullptr, Prepare, Invoke};
-    return &r;
-  }
-
-  static void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-    TF_LITE_MICRO_EXPECT_EQ(nullptr, context->RequestScratchBufferInArena);
-    TF_LITE_MICRO_EXPECT_EQ(nullptr, context->AllocateBufferForEval);
-    TF_LITE_MICRO_EXPECT_EQ(nullptr, context->GetScratchBuffer);
-
-    void* raw;
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, context->AllocatePersistentBuffer(
-                                           context, sizeof(OpData), &raw));
-    OpData* data = reinterpret_cast<OpData*>(raw);
-    *data = {};
-    return raw;
-  }
-
-  static TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-    OpData* data = reinterpret_cast<OpData*>(node->user_data);
-
-    // Make sure that the input is in uint8 with at least 1 data entry.
-    const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-    if (input->type != kTfLiteUInt8) return kTfLiteError;
-    if (NumElements(input->dims) == 0) return kTfLiteError;
-
-    // Allocate a temporary buffer with the same size of input for sorting.
-    TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
-        context, sizeof(uint8_t) * NumElements(input->dims),
-        &data->sorting_buffer));
-    return kTfLiteOk;
-  }
-
-  static TfLiteStatus Invoke(TfLiteContext* context, TfLiteNode* node) {
-    OpData* data = reinterpret_cast<OpData*>(node->user_data);
-    data->invoke_count += 1;
-
-    const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-    const uint8_t* input_data = GetTensorData<uint8_t>(input);
-    int size = NumElements(input->dims);
-
-    uint8_t* sorting_buffer = reinterpret_cast<uint8_t*>(
-        context->GetScratchBuffer(context, data->sorting_buffer));
-    // Copy inputs data to the sorting buffer. We don't want to mutate the input
-    // tensor as it might be used by a another node.
-    for (int i = 0; i < size; i++) {
-      sorting_buffer[i] = input_data[i];
-    }
-
-    // In place insertion sort on `sorting_buffer`.
-    for (int i = 1; i < size; i++) {
-      for (int j = i; j > 0 && sorting_buffer[j] < sorting_buffer[j - 1]; j--) {
-        std::swap(sorting_buffer[j], sorting_buffer[j - 1]);
-      }
-    }
-
-    TfLiteTensor* median = GetOutput(context, node, kMedianTensor);
-    uint8_t* median_data = GetTensorData<uint8_t>(median);
-    TfLiteTensor* invoke_count = GetOutput(context, node, kInvokeCount);
-    int32_t* invoke_count_data = GetTensorData<int32_t>(invoke_count);
-
-    median_data[0] = sorting_buffer[size / 2];
-    invoke_count_data[0] = data->invoke_count;
-    return kTfLiteOk;
-  }
-};
-
-bool freed = false;
-
-class MockCustom {
- public:
-  static const TfLiteRegistration* getRegistration() {
-    static TfLiteRegistration r = {Init, Free, Prepare, Invoke};
-    return &r;
-  }
-
-  static void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-    // We don't support delegate in TFL micro. This is a weak check to test if
-    // context struct being zero-initialized.
-    TF_LITE_MICRO_EXPECT_EQ(nullptr,
-                            context->ReplaceNodeSubsetsWithDelegateKernels);
-    // Do nothing.
-    return nullptr;
-  }
-
-  static void Free(TfLiteContext* context, void* buffer) { freed = true; }
-
-  static TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-    return kTfLiteOk;
-  }
-
-  static TfLiteStatus Invoke(TfLiteContext* context, TfLiteNode* node) {
-    const TfLiteTensor* input = GetInput(context, node, 0);
-    const int32_t* input_data = input->data.i32;
-    const TfLiteTensor* weight = GetInput(context, node, 1);
-    const uint8_t* weight_data = weight->data.uint8;
-    TfLiteTensor* output = GetOutput(context, node, 0);
-    int32_t* output_data = output->data.i32;
-    output_data[0] =
-        0;  // Catch output tensor sharing memory with an input tensor
-    output_data[0] = input_data[0] + weight_data[0];
-    return kTfLiteOk;
-  }
-};
-
-class MockOpResolver : public OpResolver {
- public:
-  const TfLiteRegistration* FindOp(BuiltinOperator op,
-                                   int version) const override {
-    return nullptr;
-  }
-  const TfLiteRegistration* FindOp(const char* op, int version) const override {
-    if (strcmp(op, "mock_custom") == 0) {
-      return MockCustom::getRegistration();
-    } else if (strcmp(op, "simple_stateful_op") == 0) {
-      return SimpleStatefulOp::getRegistration();
-    } else {
-      return nullptr;
-    }
-  }
-};
-
-}  // namespace
-}  // namespace tflite
-
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(TestInterpreter) {
-  tflite::freed = false;
   const tflite::Model* model = tflite::testing::GetSimpleMockModel();
   TF_LITE_MICRO_EXPECT_NE(nullptr, model);
-  tflite::MockOpResolver mock_resolver;
+  tflite::testing::MockOpResolver mock_resolver;
   constexpr size_t allocator_buffer_size =
       928 /* optimal arena size at the time of writting. */ +
       16 /* alignment */ + 100 /* some headroom */;
@@ -222,13 +78,13 @@ TF_LITE_MICRO_TEST(TestInterpreter) {
     tflite::PrintInterpreterState(&interpreter);
   }
 
-  TF_LITE_MICRO_EXPECT_EQ(tflite::freed, true);
+  TF_LITE_MICRO_EXPECT_EQ(tflite::testing::MockCustom::freed_, true);
 }
 
 TF_LITE_MICRO_TEST(TestKernelMemoryPlanning) {
   const tflite::Model* model = tflite::testing::GetSimpleStatefulModel();
   TF_LITE_MICRO_EXPECT_NE(nullptr, model);
-  tflite::MockOpResolver mock_resolver;
+  tflite::testing::MockOpResolver mock_resolver;
   constexpr size_t allocator_buffer_size = 1024;
   uint8_t allocator_buffer[allocator_buffer_size];
   tflite::MicroInterpreter interpreter(model, mock_resolver, allocator_buffer,
@@ -268,7 +124,7 @@ TF_LITE_MICRO_TEST(TestVariableTensorReset) {
   const tflite::Model* model = tflite::testing::GetComplexMockModel();
   TF_LITE_MICRO_EXPECT_NE(nullptr, model);
 
-  tflite::MockOpResolver mock_resolver;
+  tflite::testing::MockOpResolver mock_resolver;
   constexpr size_t allocator_buffer_size =
       2096 /* optimal arena size at the time of writting. */ +
       16 /* alignment */ + 100 /* some headroom */;
@@ -346,7 +202,7 @@ TF_LITE_MICRO_TEST(TestIncompleteInitialization) {
   const tflite::Model* model = tflite::testing::GetComplexMockModel();
   TF_LITE_MICRO_EXPECT_NE(nullptr, model);
 
-  tflite::MockOpResolver mock_resolver;
+  tflite::testing::MockOpResolver mock_resolver;
   constexpr size_t allocator_buffer_size = 2048;
   uint8_t allocator_buffer[allocator_buffer_size];
   tflite::MicroInterpreter interpreter(model, mock_resolver, allocator_buffer,

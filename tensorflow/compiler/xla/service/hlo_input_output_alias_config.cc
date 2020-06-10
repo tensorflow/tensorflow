@@ -121,10 +121,10 @@ string HloInputOutputAliasConfig::ToString() const {
   return absl::StrJoin(pieces, "\n");
 }
 
-HloInputOutputAliasConfig::AliasKind
+absl::optional<HloInputOutputAliasConfig::AliasKind>
 HloInputOutputAliasConfig::ParameterAliasKind(
     int64 param_number, const ShapeIndex& param_index) const {
-  AliasKind kind = AliasKind::kNoAlias;
+  absl::optional<AliasKind> kind;
   alias_.ForEachElement(
       [&](const xla::ShapeIndex&, absl::optional<Alias> alias) {
         if (alias && alias->parameter_number == param_number &&

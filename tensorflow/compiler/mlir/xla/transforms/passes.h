@@ -36,7 +36,7 @@ namespace xla_hlo {
 /// Lowers from TF dialect to HLO dialect. When allow_partial_conversion is
 /// false, emits an error if there is any operation that can't be legalized.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass(
-    bool allow_partial_conversion = false);
+    bool allow_partial_conversion = false, bool legalize_chlo = true);
 
 /// Lowers from TF dialect to HLO dialect using tf2xla op kernels for the
 /// specified device type.
@@ -50,7 +50,8 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFControlFlowPass();
 /// dialect using the conversion patterns registered by the HLO dialect. When
 /// allow_partial_conversion is false, emits an error if there is any operation
 /// that can't be legalized.
-LogicalResult legalizeTF(Operation* op, bool allow_partial_conversion = false);
+LogicalResult legalizeTF(Operation* op, bool allow_partial_conversion = false,
+                         bool legalize_chlo = true);
 
 /// Lowers HLO control flow ops to the Standard dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeControlFlowPass();
@@ -64,6 +65,16 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass();
 
 // Lowers from HLO dialect to Linalg dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass();
+
+// Transforms unranked HLO operations to ranked ones where possible.
+std::unique_ptr<OperationPass<FuncOp>> createTransformUnrankedHloPass();
+
+// Sinks constants implicitly captured in control flow regions. This is
+// necessary to export to XLA.
+std::unique_ptr<OperationPass<FuncOp>> createSinkConstantsToControlFlowPass();
+
+// fuse xla_hlo ops to kLoop/kInput fusion patterns
+std::unique_ptr<OperationPass<FuncOp>> createXlaHloFusionPass();
 
 }  // namespace xla_hlo
 
@@ -81,8 +92,8 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeToGpuPass();
 // Fuses linalg ops obtained after LHLO lowering. To enable fusion,
 // operations are first tiled.
 //
-// When 'use_parallel_loops' is set, the tiling will use loop.parallel
-// operations. Otherwise, loop.for operations are used.
+// When 'use_parallel_loops' is set, the tiling will use scf.parallel
+// operations. Otherwise, scf.for operations are used.
 //
 // 'tile_sizes' provides the tile sizes to use for tiling. If the linalg
 // operation has more dimensions than tile sizes provided, 1 is used as

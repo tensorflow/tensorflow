@@ -18,14 +18,58 @@ limitations under the License.
 
 // Useful functions for writing tests.
 
+#include <cstdint>
+
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace testing {
+
+// A simple operator that returns the median of the input with the number of
+// times the kernel was invoked. The implementation below is deliberately
+// complicated, just to demonstrate how kernel memory planning works.
+class SimpleStatefulOp {
+  static constexpr int kBufferNotAllocated = 0;
+  // Inputs:
+  static constexpr int kInputTensor = 0;
+  // Outputs:
+  static constexpr int kMedianTensor = 0;
+  static constexpr int kInvokeCount = 1;
+  struct OpData {
+    int invoke_count = 0;
+    int sorting_buffer = kBufferNotAllocated;
+  };
+
+ public:
+  static const TfLiteRegistration* getRegistration();
+  static void* Init(TfLiteContext* context, const char* buffer, size_t length);
+  static TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node);
+  static TfLiteStatus Invoke(TfLiteContext* context, TfLiteNode* node);
+};
+
+class MockCustom {
+ public:
+  static const TfLiteRegistration* getRegistration();
+  static void* Init(TfLiteContext* context, const char* buffer, size_t length);
+  static void Free(TfLiteContext* context, void* buffer);
+  static TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node);
+  static TfLiteStatus Invoke(TfLiteContext* context, TfLiteNode* node);
+
+  static bool freed_;
+};
+
+class MockOpResolver : public MicroOpResolver {
+ public:
+  const TfLiteRegistration* FindOp(BuiltinOperator op) const override;
+  const TfLiteRegistration* FindOp(const char* op) const override;
+  MicroOpResolver::BuiltinParseFunction GetOpDataParser(
+      tflite::BuiltinOperator) const override;
+};
 
 // Returns a simple example flatbuffer TensorFlow Lite model. Contains 1 input,
 // 1 layer of weights, 1 output Tensor, and 1 operator.

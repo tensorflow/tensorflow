@@ -26,4 +26,9 @@ which bazel
 # Install realpath
 sudo apt-get install realpath
 
+# Update the version string to nightly
+if [ -n "${IS_NIGHTLY_BUILD}" ]; then
+  ./tensorflow/tools/ci_build/update_version.py --nightly
+fi
+
 ./tensorflow/tools/ci_build/linux/libtensorflow.sh

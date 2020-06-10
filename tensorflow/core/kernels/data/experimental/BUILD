@@ -110,6 +110,20 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "compression_ops",
+    srcs = ["compression_ops.cc"],
+    hdrs = ["compression_ops.h"],
+    deps = [
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/data:compression_utils",
+        "//tensorflow/core/data:dataset_proto_cc",
+    ],
+)
+
+tf_kernel_library(
     name = "csv_dataset_op",
     srcs = ["csv_dataset_op.cc"],
     deps = [
@@ -131,8 +145,8 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/data/service:common_proto_cc",
-        "//tensorflow/core/data/service:compression_utils",
+        "//tensorflow/core/data:compression_utils",
+        "//tensorflow/core/data:dataset_proto_cc",
         "//tensorflow/core/data/service:data_service",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/kernels/data:dataset_utils",
@@ -367,6 +381,7 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:functional_ops_op_lib",
+        "//tensorflow/core:lib",
         "//tensorflow/core/kernels/data:dataset_utils",
         "//tensorflow/core/kernels/data:name_utils",
         "//tensorflow/core/kernels/data:parallel_map_dataset_op",
@@ -523,12 +538,27 @@ cc_library(
         "//tensorflow/core/platform:random",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+tf_cc_test(
+    name = "snapshot_util_test",
+    size = "small",
+    srcs = ["snapshot_util_test.cc"],
+    deps = [
+        ":snapshot_util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
 tf_kernel_library(
     name = "snapshot_dataset_op",
     srcs = ["snapshot_dataset_op.cc"],
+    hdrs = ["snapshot_dataset_op.h"],
     deps = [
         ":snapshot_util",
         "//tensorflow/core:core_cpu_internal",
@@ -537,10 +567,16 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/framework:op_requires",
         "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/kernels/data:captured_function",
         "//tensorflow/core/kernels/data:dataset_utils",
+        "//tensorflow/core/kernels/data:name_utils",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
     ],
 )
@@ -681,6 +717,7 @@ tf_kernel_library(
         ":auto_shard_dataset_op",
         ":choose_fastest_branch_dataset_op",
         ":choose_fastest_dataset_op",
+        ":compression_ops",
         ":csv_dataset_op",
         ":dense_to_sparse_batch_dataset_op",
         ":directed_interleave_dataset_op",

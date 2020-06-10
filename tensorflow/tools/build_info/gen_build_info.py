@@ -19,17 +19,14 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import os
-import platform
-import sys
 
 import six
 
-# CUDA library gathering is only valid in OSS
+# cuda.cuda is only valid in OSS
 try:
-  from third_party.gpus import find_cuda_config  # pylint: disable=g-import-not-at-top
+  from cuda.cuda import cuda_config  # pylint: disable=g-import-not-at-top
 except ImportError:
-  find_cuda_config = None
+  cuda_config = None
 
 
 def write_build_info(filename, key_value_list):
@@ -42,6 +39,10 @@ def write_build_info(filename, key_value_list):
   """
 
   build_info = {}
+
+  if cuda_config:
+    build_info.update(cuda_config.config)
+
   for arg in key_value_list:
     key, value = six.ensure_str(arg).split("=")
     if value.lower() == "true":
@@ -49,29 +50,7 @@ def write_build_info(filename, key_value_list):
     elif value.lower() == "false":
       build_info[key] = False
     else:
-      build_info[key] = value
-
-  # Generate cuda_build_info, a dict describing the CUDA component versions
-  # used to build TensorFlow.
-  if find_cuda_config and build_info.get("is_cuda_build", False):
-    libs = ["_", "cuda", "cudnn"]
-    if platform.system() == "Linux":
-      if os.environ.get("TF_NEED_TENSORRT", "0") == "1":
-        libs.append("tensorrt")
-      if "TF_NCCL_VERSION" in os.environ:
-        libs.append("nccl")
-    # find_cuda_config accepts libraries to inspect as argv from the command
-    # line. We can work around this restriction by setting argv manually
-    # before calling find_cuda_config.
-    backup_argv = sys.argv
-    sys.argv = libs
-    cuda = find_cuda_config.find_cuda_config()
-
-    build_info["cuda_version"] = cuda["cuda_version"]
-    build_info["cudnn_version"] = cuda["cudnn_version"]
-    build_info["tensorrt_version"] = cuda.get("tensorrt_version", None)
-    build_info["nccl_version"] = cuda.get("nccl_version", None)
-    sys.argv = backup_argv
+      build_info[key] = value.format(**build_info)
 
   contents = """
 # Copyright 2020 The TensorFlow Authors. All Rights Reserved.
@@ -92,8 +71,6 @@ def write_build_info(filename, key_value_list):
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
-from collections import namedtuple
 
 build_info = {build_info}
 """.format(build_info=build_info)

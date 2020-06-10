@@ -747,7 +747,9 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
 // -----
 
-// Tests simple case of `tf_device.cluster_func` on TPU with replication.
+// Tests simple case of `tf_device.cluster_func` on TPU with replication. Under
+// data parallelism replicated host devices are also added to the
+// tf_device.replicate
 
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"]} {
   // CHECK-LABEL: func @replicated_tpu_cluster_func
@@ -758,7 +760,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
     // CHECK: %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK-SAME: ([%[[A_OUTPUT]], %[[ARG_0]]] as %[[RI_0:[a-z0-9]*]]: tensor<?xi32>)
-    // CHECK-SAME: devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"]}
+    // CHECK-SAME: devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"], TPU_REPLICATED_HOST = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:CPU:0"]}
     // CHECK-SAME: n = 2
     %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<?xi32>) {n = 2 : i32} {
       // CHECK: %[[A_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[RI_0]])
@@ -1222,7 +1224,8 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
 // -----
 
-// Tests simple case of `tf_device.cluster_func` on TPU with replication and parallel_execute.
+// Tests simple case of `tf_device.cluster_func` on TPU with replication and
+// parallel_execute.
 
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"]} {
   // CHECK-LABEL: func @replicated_parallel_tpu_cluster_func
@@ -1231,17 +1234,26 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<?xi32>) {n = 2 : i32} {
+      // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
       // CHECK: "tf._TPUCompileMlir"
       // CHECK: "tf.TPUCompileSucceededAssert"
       // CHECK: "tf_device.parallel_execute"
+      // CHECK-NOT:"tf._TPUCompileMlir"
+      // CHECK:    "tf.D"(%[[COMPILE_OUTPUT]]#1
       // CHECK:    "tf.TPUExecute"
+      // CHECK-NOT:"tf._TPUCompileMlir"
+      // CHECK:    "tf.E"(%[[COMPILE_OUTPUT]]#1
       %3 = "tf_device.parallel_execute"() ( {
-        "tf.D"() : () -> ()
+        %status, %program = "tf._TPUCompileMlir"() {metadata = "...", mlir_module = "..."} : () -> (tensor<!tf.string>, tensor<!tf.string>)
+        "tf.D"(%program) : (tensor<!tf.string>) -> ()
         tf_device.return
       }, {
         %4 = "tf_device.cluster_func"(%ri_0) {_tpu_replicate = "cluster0", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<?xi32>) -> tensor<?xi32>
-
         tf_device.return %4 : tensor<?xi32>
+      }, {
+        %status, %program = "tf._TPUCompileMlir"() {metadata = "...", mlir_module = "..."} : () -> (tensor<!tf.string>, tensor<!tf.string>)
+        "tf.E"(%program) : (tensor<!tf.string>) -> ()
+        tf_device.return
       }) : () -> (tensor<?xi32>)
       tf_device.return %3 : tensor<?xi32>
     }
@@ -1317,15 +1329,14 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
 //   "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01"
 // -----
 
-// Tests devices are set properly for replicated model parallelism.
+// Tests devices are set properly for replicated model parallelism. No
+// replicated host device should be present.
 
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0", "/job:localhost/replica:0/task:1/device:CPU:0", "/job:localhost/replica:0/task:1/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU_SYSTEM:0"]} {
   // CHECK-LABEL: func @replicated_parallel_execute
   func @replicated_parallel_execute(%arg0: tensor<8xi32>, %arg1: tensor<8xi32>) -> (tensor<8xi32>, tensor<8xi32>) {
     // CHECK: tf_device.replicate
-    // CHECK-SAME: devices =
-    // CHECK-SAME: TPU_REPLICATED_CORE_0 = ["/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1"]
-    // CHECK-SAME: TPU_REPLICATED_CORE_1 = ["/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU:0"]
+    // CHECK-SAME: devices = {TPU_REPLICATED_CORE_0 = ["/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1"], TPU_REPLICATED_CORE_1 = ["/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU:0"]}
     %0:2 = tf_device.replicate([%arg0, %arg1] as %ri: tensor<8xi32>) {n = 2 : i32} {
       // CHECK-NEXT: %[[COMPILE:[a-z0-9]+]]:3 = "tf_device.launch"
       // CHECK-NEXT:   "tf._TPUCompileMlir"()
@@ -1357,8 +1368,8 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
 
 // -----
 
-// Tests that inputs are inputs with maximal and replicate sharding are set properly
-// for replicated model parallelism.
+// Tests that inputs are inputs with maximal and replicate sharding are set
+// properly for replicated model parallelism.
 
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0", "/job:localhost/replica:0/task:1/device:CPU:0", "/job:localhost/replica:0/task:1/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU_SYSTEM:0"]} {
   // CHECK-LABEL: func @parallel_execute_with_input_with_sharding_configurations
@@ -1392,8 +1403,8 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
 
 // -----
 
-// Tests devices are set properly for replicated model parallelism with
-// outputs to TPU computation placed on logical device 0.
+// Tests devices are set properly for replicated model parallelism with outputs
+// to TPU computation placed on logical device 0.
 
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0", "/job:localhost/replica:0/task:1/device:CPU:0", "/job:localhost/replica:0/task:1/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU_SYSTEM:0"]} {
   // CHECK-LABEL: func @parallel_execute_with_different_outputs
@@ -1469,8 +1480,8 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
 
 // -----
 
-// Tests inputs are correctly split and fed into TPU computation for
-// tiled input sharding.
+// Tests inputs are correctly split and fed into TPU computation for tiled input
+// sharding.
 
 // The following OpSharding is used for TPU computation inputs in below test:
 // Proto debug string:

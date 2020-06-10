@@ -17,8 +17,6 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_FULLY_CONNECTED_TESTER_H_
 
 #include <cstdint>
-#include <functional>
-#include <random>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -73,6 +71,13 @@ class FullyConnectedTester {
 
   inline bool KeepDims() const { return keep_dims_; }
 
+  inline FullyConnectedTester& FP16Weights() {
+    fp16_weights_ = true;
+    return *this;
+  }
+
+  inline bool FP16Weights() const { return fp16_weights_; }
+
   inline FullyConnectedTester& ReluActivation() {
     activation_ = ::tflite::ActivationFunctionType_RELU;
     return *this;
@@ -104,6 +109,7 @@ class FullyConnectedTester {
   int32_t input_channels_ = 1;
   int32_t output_channels_ = 1;
   bool keep_dims_ = false;
+  bool fp16_weights_ = false;
   ::tflite::ActivationFunctionType activation_ =
       ::tflite::ActivationFunctionType_NONE;
 };

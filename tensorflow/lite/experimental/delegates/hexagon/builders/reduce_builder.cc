@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/experimental/delegates/hexagon/hexagon_nn/hexagon_nn.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace delegates {
@@ -28,22 +29,15 @@ namespace hexagon {
 TfLiteStatus ReduceOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
                                                const TfLiteIntArray* outputs,
                                                TfLiteContext* context) {
-  static int quant_bound_shape[] = {1, 1, 1, 1};
-  int tensor_id;
-
   // Input data tensor.
-  tensor_id = inputs->data[0];
+  int tensor_id = inputs->data[0];
   const auto& input_tensor = context->tensors[tensor_id];
   AddInput(graph_builder_->GetHexagonTensorId(tensor_id));
-  ComputeMinAndMaxQuantValues(input_tensor, &input_min_, &input_max_,
-                              std::numeric_limits<uint8_t>::min(),
-                              std::numeric_limits<uint8_t>::max());
+  ComputeMinAndMaxQuantValues(input_tensor, &input_min_, &input_max_);
   auto* input_min_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&input_min_),
-      sizeof(input_min_));
+      kScalarShape, reinterpret_cast<char*>(&input_min_), sizeof(input_min_));
   auto* input_max_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&input_max_),
-      sizeof(input_max_));
+      kScalarShape, reinterpret_cast<char*>(&input_max_), sizeof(input_max_));
 
   // Min/max values for input tensor.
   AddInput(TensorID(input_min_const->GetID(), 0));
@@ -63,37 +57,46 @@ TfLiteStatus ReduceOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
     return kTfLiteError;
   }
 
+  auto& output_tensor = context->tensors[outputs->data[0]];
   int output_batch_size, output_height_size, output_width_size,
       output_depth_size;
   GetDims(&output_batch_size, &output_height_size, &output_width_size,
-          &output_depth_size, context->tensors[outputs->data[0]].dims);
+          &output_depth_size, output_tensor.dims);
 
-  // Hexagon's sum-reduction outputs int32, so we shrink it down to UInt8.
-  if (op_node_.op_type == OP_QuantizedSum_8to32) {
-    const auto& reduce_out = AddOutput(sizeof(int32_t), 4,
-                                       {output_batch_size, output_height_size,
-                                        output_width_size, output_depth_size});
-    const auto& reduce_out_min = AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-    const auto& reduce_out_max = AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+  float output_min = -1, output_max = -1;
+  ComputeMinAndMaxQuantValues(output_tensor, &output_min, &output_max);
+  auto* output_min_const = graph_builder_->AddConstNodeWithData(
+      kScalarShape, reinterpret_cast<char*>(&output_min), sizeof(output_min));
+  auto* output_max_const = graph_builder_->AddConstNodeWithData(
+      kScalarShape, reinterpret_cast<char*>(&output_max), sizeof(output_max));
+  // Min/max values for output tensor.
+  AddInput(TensorID(output_min_const->GetID(), 0));
+  AddInput(TensorID(output_max_const->GetID(), 0));
 
-    auto* quantize_output_op = graph_builder_->AddNode(GetTFLiteNodeID());
-    quantize_output_op->SetOpType(OP_QuantizeDownAndShrinkRange_32to8);
-    quantize_output_op->AddInput(reduce_out);
-    quantize_output_op->AddInput(reduce_out_min);
-    quantize_output_op->AddInput(reduce_out_max);
-    node_output_ =
-        quantize_output_op->AddOutput(sizeof(uint8_t), 4,
-                                      {output_batch_size, output_height_size,
-                                       output_width_size, output_depth_size});
-    quantize_output_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-    quantize_output_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-  } else {
-    node_output_ = AddOutput(sizeof(uint8_t), 4,
-                             {output_batch_size, output_height_size,
-                              output_width_size, output_depth_size});
-    AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-    AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-  }
+  // Add outputs
+  size_t output_element_size = 0;
+  TF_LITE_ENSURE_STATUS(
+      GetSizeOfType(context, output_tensor.type, &output_element_size));
+  auto mean_output = AddOutput(output_element_size, 4,
+                               {output_batch_size, output_height_size,
+                                output_width_size, output_depth_size});
+  auto mean_out_min = AddOutput(output_element_size, 4, kScalarShape);
+  auto mean_out_max = AddOutput(output_element_size, 4, kScalarShape);
+  // Mean op doesn't honor the passed min/max for output, so we need
+  // to add requantize.
+  auto* requantize_op = graph_builder_->AddNode(GetTFLiteNodeID());
+  requantize_op->SetOpType(OP_Requantize_8to8);
+  requantize_op->AddInput(mean_output);
+  requantize_op->AddInput(mean_out_min);
+  requantize_op->AddInput(mean_out_max);
+  requantize_op->AddInput(TensorID(output_min_const->GetID(), 0));
+  requantize_op->AddInput(TensorID(output_max_const->GetID(), 0));
+  node_output_ =
+      requantize_op->AddOutput(sizeof(uint8_t), 4,
+                               {output_batch_size, output_height_size,
+                                output_width_size, output_depth_size});
+  requantize_op->AddOutput(sizeof(float), 4, kScalarShape);
+  requantize_op->AddOutput(sizeof(float), 4, kScalarShape);
 
   return kTfLiteOk;
 }

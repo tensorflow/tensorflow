@@ -326,11 +326,11 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
         TF_LITE_SUB(reference_ops, Add, uint8_t);
       }
     } else {
-      if (op_params.broadcast_category ==
-          BroadcastableOpCategory::kGenericBroadcast) {
-        TF_LITE_SUB(optimized_ops, BroadcastAdd4DSlow, uint8_t);
-      } else if (need_broadcast) {
-        TF_LITE_SUB(optimized_ops, BroadcastAddFivefold, uint8_t);
+      if (need_broadcast) {
+        optimized_ops::BroadcastAddDispatch(
+            op_params, GetTensorShape(input1), GetTensorData<uint8_t>(input1),
+            GetTensorShape(input2), GetTensorData<uint8_t>(input2),
+            GetTensorShape(output), GetTensorData<uint8_t>(output));
       } else {
         TF_LITE_SUB(optimized_ops, Add, uint8_t);
       }

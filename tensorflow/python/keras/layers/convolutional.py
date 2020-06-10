@@ -78,6 +78,11 @@ class Conv(Layer):
       the dilation rate to use for dilated convolution.
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any `strides` value != 1.
+    groups: A positive integer specifying the number of groups in which the
+      input is split along the channel axis. Each group is convolved
+      separately with `filters / groups` filters. The output is the
+      concatenation of all the `groups` results along the channel axis.
+      Input channels and `filters` must both be divisible by `groups`.
     activation: Activation function to use.
       If you don't specify anything, no activation is applied.
     use_bias: Boolean, whether the layer uses a bias.
@@ -100,13 +105,15 @@ class Conv(Layer):
     name: A string, the name of the layer.
   """
 
-  def __init__(self, rank,
+  def __init__(self,
+               rank,
                filters,
                kernel_size,
                strides=1,
                padding='valid',
                data_format=None,
                dilation_rate=1,
+               groups=1,
                activation=None,
                use_bias=True,
                kernel_initializer='glorot_uniform',
@@ -128,6 +135,11 @@ class Conv(Layer):
     if filters is not None and not isinstance(filters, int):
       filters = int(filters)
     self.filters = filters
+    self.groups = groups or 1
+    if filters is not None and filters % self.groups != 0:
+      raise ValueError(
+          'The number of filters must be evenly divisible by the number of '
+          'groups. Received: groups={}, filters={}'.format(groups, filters))
     self.kernel_size = conv_utils.normalize_tuple(
         kernel_size, rank, 'kernel_size')
     if not all(self.kernel_size):
@@ -150,12 +162,19 @@ class Conv(Layer):
     self.bias_regularizer = regularizers.get(bias_regularizer)
     self.kernel_constraint = constraints.get(kernel_constraint)
     self.bias_constraint = constraints.get(bias_constraint)
-    self.input_spec = InputSpec(ndim=self.rank + 2)
+    self.input_spec = InputSpec(min_ndim=self.rank + 2)
 
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
     input_channel = self._get_input_channel(input_shape)
-    kernel_shape = self.kernel_size + (input_channel, self.filters)
+    if input_channel % self.groups != 0:
+      raise ValueError(
+          'The number of input channels must be evenly divisible by the number '
+          'of groups. Received groups={}, but the input has {} channels '
+          '(full input shape is {}).'.format(self.groups, input_channel,
+                                             input_shape))
+    kernel_shape = self.kernel_size + (input_channel // self.groups,
+                                       self.filters)
 
     self.kernel = self.add_weight(
         name='kernel',
@@ -177,10 +196,10 @@ class Conv(Layer):
     else:
       self.bias = None
     channel_axis = self._get_channel_axis()
-    self.input_spec = InputSpec(ndim=self.rank + 2,
+    self.input_spec = InputSpec(min_ndim=self.rank + 2,
                                 axes={channel_axis: input_channel})
 
-    self._build_conv_op_input_shape = input_shape
+    self._build_conv_op_data_shape = input_shape[-(self.rank + 1):]
     self._build_input_channel = input_channel
     self._padding_op = self._get_padding_op()
     self._conv_op_data_format = conv_utils.convert_data_format(
@@ -191,36 +210,53 @@ class Conv(Layer):
         dilation_rate=self.dilation_rate,
         strides=self.strides,
         padding=self._padding_op,
-        data_format=self._conv_op_data_format)
+        data_format=self._conv_op_data_format,
+        num_spatial_dims=self.rank)
     self.built = True
 
   def call(self, inputs):
     if self._recreate_conv_op(inputs):
       self._convolution_op = nn_ops.Convolution(
-          inputs.get_shape(),
+          inputs.shape,
           filter_shape=self.kernel.shape,
           dilation_rate=self.dilation_rate,
           strides=self.strides,
           padding=self._padding_op,
-          data_format=self._conv_op_data_format)
-      self._build_conv_op_input_shape = inputs.get_shape()
+          data_format=self._conv_op_data_format,
+          num_spatial_dims=self.rank)
+      self._build_conv_op_data_shape = inputs.shape[-(self.rank + 1):]
 
     # Apply causal padding to inputs for Conv1D.
     if self.padding == 'causal' and self.__class__.__name__ == 'Conv1D':
-      inputs = array_ops.pad(inputs, self._compute_causal_padding())
+      inputs = array_ops.pad(inputs, self._compute_causal_padding(inputs))
 
     outputs = self._convolution_op(inputs, self.kernel)
 
     if self.use_bias:
+      outputs_rank = outputs.shape.ndims
       if self.data_format == 'channels_first':
         if self.rank == 1:
           # nn.bias_add does not accept a 1D input tensor.
           bias = array_ops.reshape(self.bias, (1, self.filters, 1))
           outputs += bias
         else:
-          outputs = nn.bias_add(outputs, self.bias, data_format='NCHW')
+          if outputs_rank is not None and outputs_rank > 2 + self.rank:
+            # larger batch rank
+            outputs = nn_ops.squeeze_batch_dims(
+                outputs,
+                lambda o: nn.bias_add(o, self.bias, data_format='NCHW'),
+                inner_rank=self.rank + 1)
+          else:
+            outputs = nn.bias_add(outputs, self.bias, data_format='NCHW')
       else:
-        outputs = nn.bias_add(outputs, self.bias, data_format='NHWC')
+        if outputs_rank is not None and outputs_rank > 2 + self.rank:
+          # larger batch rank
+          outputs = nn_ops.squeeze_batch_dims(
+              outputs,
+              lambda o: nn.bias_add(o, self.bias, data_format='NHWC'),
+              inner_rank=self.rank + 1)
+        else:
+          outputs = nn.bias_add(outputs, self.bias, data_format='NHWC')
 
     if self.activation is not None:
       return self.activation(outputs)
@@ -239,49 +275,71 @@ class Conv(Layer):
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    batch_rank = len(input_shape) - self.rank - 1
     if self.data_format == 'channels_last':
       return tensor_shape.TensorShape(
-          [input_shape[0]] + self._spatial_output_shape(input_shape[1:-1]) +
-          [self.filters])
+          input_shape[:batch_rank]
+          + self._spatial_output_shape(input_shape[batch_rank:-1])
+          + [self.filters])
     else:
       return tensor_shape.TensorShape(
-          [input_shape[0], self.filters] +
-          self._spatial_output_shape(input_shape[2:]))
+          input_shape[:batch_rank] + [self.filters] +
+          self._spatial_output_shape(input_shape[batch_rank + 1:]))
 
   def get_config(self):
     config = {
-        'filters': self.filters,
-        'kernel_size': self.kernel_size,
-        'strides': self.strides,
-        'padding': self.padding,
-        'data_format': self.data_format,
-        'dilation_rate': self.dilation_rate,
-        'activation': activations.serialize(self.activation),
-        'use_bias': self.use_bias,
-        'kernel_initializer': initializers.serialize(self.kernel_initializer),
-        'bias_initializer': initializers.serialize(self.bias_initializer),
-        'kernel_regularizer': regularizers.serialize(self.kernel_regularizer),
-        'bias_regularizer': regularizers.serialize(self.bias_regularizer),
+        'filters':
+            self.filters,
+        'kernel_size':
+            self.kernel_size,
+        'strides':
+            self.strides,
+        'padding':
+            self.padding,
+        'data_format':
+            self.data_format,
+        'dilation_rate':
+            self.dilation_rate,
+        'groups':
+            self.groups,
+        'activation':
+            activations.serialize(self.activation),
+        'use_bias':
+            self.use_bias,
+        'kernel_initializer':
+            initializers.serialize(self.kernel_initializer),
+        'bias_initializer':
+            initializers.serialize(self.bias_initializer),
+        'kernel_regularizer':
+            regularizers.serialize(self.kernel_regularizer),
+        'bias_regularizer':
+            regularizers.serialize(self.bias_regularizer),
         'activity_regularizer':
             regularizers.serialize(self.activity_regularizer),
-        'kernel_constraint': constraints.serialize(self.kernel_constraint),
-        'bias_constraint': constraints.serialize(self.bias_constraint)
+        'kernel_constraint':
+            constraints.serialize(self.kernel_constraint),
+        'bias_constraint':
+            constraints.serialize(self.bias_constraint)
     }
     base_config = super(Conv, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
-  def _compute_causal_padding(self):
+  def _compute_causal_padding(self, inputs):
     """Calculates padding for 'causal' option for 1-d conv layers."""
     left_pad = self.dilation_rate[0] * (self.kernel_size[0] - 1)
-    if self.data_format == 'channels_last':
-      causal_padding = [[0, 0], [left_pad, 0], [0, 0]]
+    if getattr(inputs.shape, 'ndims', None) is None:
+      batch_rank = 1
     else:
-      causal_padding = [[0, 0], [0, 0], [left_pad, 0]]
+      batch_rank = len(inputs.shape) - 2
+    if self.data_format == 'channels_last':
+      causal_padding = [[0, 0]] * batch_rank + [[left_pad, 0], [0, 0]]
+    else:
+      causal_padding = [[0, 0]] * batch_rank + [[0, 0], [left_pad, 0]]
     return causal_padding
 
   def _get_channel_axis(self):
     if self.data_format == 'channels_first':
-      return 1
+      return -1 - self.rank
     else:
       return -1
 
@@ -315,11 +373,12 @@ class Conv(Layer):
     Returns:
       `True` or `False` to indicate whether to recreate the conv_op.
     """
-    call_input_shape = inputs.get_shape()
-    # If the most specific compatible shape between _build_input_shape and
-    # call_input_shape is not _build_input_shape then we must re-build.
-    return self._build_conv_op_input_shape.most_specific_compatible_shape(
-        call_input_shape) != self._build_conv_op_input_shape
+    call_data_shape = inputs.shape[-(self.rank + 1):]
+    # If the most specific compatible shape between _build_data_shape and
+    # call_data_shape is not _build_data_shape then we must re-build.
+    return (self._build_conv_op_data_shape
+            != self._build_conv_op_data_shape.most_specific_compatible_shape(
+                call_data_shape))
 
 
 @keras_export('keras.layers.Conv1D', 'keras.layers.Convolution1D')
@@ -346,9 +405,19 @@ class Conv1D(Conv):
   >>> input_shape = (4, 10, 128)
   >>> x = tf.random.normal(input_shape)
   >>> y = tf.keras.layers.Conv1D(
-  ... 32, 3, activation='relu',input_shape=input_shape)(x)
+  ... 32, 3, activation='relu',input_shape=input_shape[1:])(x)
   >>> print(y.shape)
   (4, 8, 32)
+
+  >>> # With extended batch shape [4, 7] (e.g. weather data where batch
+  >>> # dimensions correspond to spatial location and the third dimension
+  >>> # corresponds to time.)
+  >>> input_shape = (4, 7, 10, 128)
+  >>> x = tf.random.normal(input_shape)
+  >>> y = tf.keras.layers.Conv1D(
+  ... 32, 3, activation='relu', input_shape=input_shape[2:])(x)
+  >>> print(y.shape)
+  (4, 7, 8, 32)
 
   Arguments:
     filters: Integer, the dimensionality of the output space
@@ -371,6 +440,11 @@ class Conv1D(Conv):
       the dilation rate to use for dilated convolution.
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any `strides` value != 1.
+    groups: A positive integer specifying the number of groups in which the
+      input is split along the channel axis. Each group is convolved
+      separately with `filters / groups` filters. The output is the
+      concatenation of all the `groups` results along the channel axis.
+      Input channels and `filters` must both be divisible by `groups`.
     activation: Activation function to use.
       If you don't specify anything, no activation is applied (
       see `keras.activations`).
@@ -392,10 +466,10 @@ class Conv1D(Conv):
       see `keras.constraints`).
 
   Input shape:
-    3D tensor with shape: `(batch_size, steps, input_dim)`
+    3+D tensor with shape: `batch_shape + (steps, input_dim)`
 
   Output shape:
-    3D tensor with shape: `(batch_size, new_steps, filters)`
+    3+D tensor with shape: `batch_shape + (new_steps, filters)`
       `steps` value might have changed due to padding or strides.
 
   Returns:
@@ -403,7 +477,7 @@ class Conv1D(Conv):
     `activation(conv1d(inputs, kernel) + bias)`.
 
   Raises:
-    ValueError: when both `strides` > 1 and `dilation_rate` > 1.
+    ValueError: when both `strides > 1` and `dilation_rate > 1`.
   """
 
   def __init__(self,
@@ -413,6 +487,7 @@ class Conv1D(Conv):
                padding='valid',
                data_format='channels_last',
                dilation_rate=1,
+               groups=1,
                activation=None,
                use_bias=True,
                kernel_initializer='glorot_uniform',
@@ -431,6 +506,7 @@ class Conv1D(Conv):
         padding=padding,
         data_format=data_format,
         dilation_rate=dilation_rate,
+        groups=groups,
         activation=activations.get(activation),
         use_bias=use_bias,
         kernel_initializer=initializers.get(kernel_initializer),
@@ -466,7 +542,7 @@ class Conv2D(Conv):
   >>> input_shape = (4, 28, 28, 3)
   >>> x = tf.random.normal(input_shape)
   >>> y = tf.keras.layers.Conv2D(
-  ... 2, 3, activation='relu', input_shape=input_shape)(x)
+  ... 2, 3, activation='relu', input_shape=input_shape[1:])(x)
   >>> print(y.shape)
   (4, 26, 26, 2)
 
@@ -474,7 +550,7 @@ class Conv2D(Conv):
   >>> input_shape = (4, 28, 28, 3)
   >>> x = tf.random.normal(input_shape)
   >>> y = tf.keras.layers.Conv2D(
-  ... 2, 3, activation='relu', dilation_rate=2, input_shape=input_shape)(x)
+  ... 2, 3, activation='relu', dilation_rate=2, input_shape=input_shape[1:])(x)
   >>> print(y.shape)
   (4, 24, 24, 2)
 
@@ -482,9 +558,17 @@ class Conv2D(Conv):
   >>> input_shape = (4, 28, 28, 3)
   >>> x = tf.random.normal(input_shape)
   >>> y = tf.keras.layers.Conv2D(
-  ... 2, 3, activation='relu', padding="same", input_shape=input_shape)(x)
+  ... 2, 3, activation='relu', padding="same", input_shape=input_shape[1:])(x)
   >>> print(y.shape)
   (4, 28, 28, 2)
+
+  >>> # With extended batch shape [4, 7]:
+  >>> input_shape = (4, 7, 28, 28, 3)
+  >>> x = tf.random.normal(input_shape)
+  >>> y = tf.keras.layers.Conv2D(
+  ... 2, 3, activation='relu', input_shape=input_shape[2:])(x)
+  >>> print(y.shape)
+  (4, 7, 26, 26, 2)
 
 
   Arguments:
@@ -510,13 +594,18 @@ class Conv2D(Conv):
       `(batch_size, channels, height, width)`.
       It defaults to the `image_data_format` value found in your
       Keras config file at `~/.keras/keras.json`.
-      If you never set it, then it will be "channels_last".
+      If you never set it, then it will be `channels_last`.
     dilation_rate: an integer or tuple/list of 2 integers, specifying
       the dilation rate to use for dilated convolution.
       Can be a single integer to specify the same value for
       all spatial dimensions.
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any stride value != 1.
+    groups: A positive integer specifying the number of groups in which the
+      input is split along the channel axis. Each group is convolved
+      separately with `filters / groups` filters. The output is the
+      concatenation of all the `groups` results along the channel axis.
+      Input channels and `filters` must both be divisible by `groups`.
     activation: Activation function to use.
       If you don't specify anything, no activation is applied (
       see `keras.activations`).
@@ -538,25 +627,27 @@ class Conv2D(Conv):
       see `keras.constraints`).
 
   Input shape:
-    4D tensor with shape:
-    `(batch_size, channels, rows, cols)` if data_format='channels_first'
-    or 4D tensor with shape:
-    `(batch_size, rows, cols, channels)` if data_format='channels_last'.
+    4+D tensor with shape:
+    `batch_shape + (channels, rows, cols)` if `data_format='channels_first'`
+    or 4+D tensor with shape:
+    `batch_shape + (rows, cols, channels)` if `data_format='channels_last'`.
 
   Output shape:
-    4D tensor with shape:
-    `(batch_size, filters, new_rows, new_cols)` if data_format='channels_first'
-    or 4D tensor with shape:
-    `(batch_size, new_rows, new_cols, filters)` if data_format='channels_last'.
+    4+D tensor with shape:
+    `batch_shape + (filters, new_rows, new_cols)` if
+    `data_format='channels_first'` or 4+D tensor with shape:
+    `batch_shape + (new_rows, new_cols, filters)` if
+    `data_format='channels_last'`.
+
     `rows` and `cols` values might have changed due to padding.
 
   Returns:
-    A tensor of rank 4 representing
+    A tensor of rank 4+ representing
     `activation(conv2d(inputs, kernel) + bias)`.
 
   Raises:
-    ValueError: if `padding` is "causal".
-    ValueError: when both `strides` > 1 and `dilation_rate` > 1.
+    ValueError: if `padding` is `"causal"`.
+    ValueError: when both `strides > 1` and `dilation_rate > 1`.
   """
 
   def __init__(self,
@@ -566,6 +657,7 @@ class Conv2D(Conv):
                padding='valid',
                data_format=None,
                dilation_rate=(1, 1),
+               groups=1,
                activation=None,
                use_bias=True,
                kernel_initializer='glorot_uniform',
@@ -584,6 +676,7 @@ class Conv2D(Conv):
         padding=padding,
         data_format=data_format,
         dilation_rate=dilation_rate,
+        groups=groups,
         activation=activations.get(activation),
         use_bias=use_bias,
         kernel_initializer=initializers.get(kernel_initializer),
@@ -620,9 +713,18 @@ class Conv3D(Conv):
   >>> input_shape =(4, 28, 28, 28, 1)
   >>> x = tf.random.normal(input_shape)
   >>> y = tf.keras.layers.Conv3D(
-  ... 2, 3, activation='relu', input_shape=input_shape)(x)
+  ... 2, 3, activation='relu', input_shape=input_shape[1:])(x)
   >>> print(y.shape)
   (4, 26, 26, 26, 2)
+
+  >>> # With extended batch shape [4, 7], e.g. a batch of 4 videos of 3D frames,
+  >>> # with 7 frames per video.
+  >>> input_shape = (4, 7, 28, 28, 28, 1)
+  >>> x = tf.random.normal(input_shape)
+  >>> y = tf.keras.layers.Conv3D(
+  ... 2, 3, activation='relu', input_shape=input_shape[2:])(x)
+  >>> print(y.shape)
+  (4, 7, 26, 26, 26, 2)
 
   Arguments:
     filters: Integer, the dimensionality of the output space
@@ -643,9 +745,9 @@ class Conv3D(Conv):
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch_size, spatial_dim1, spatial_dim2, spatial_dim3, channels)`
+      `batch_shape + (spatial_dim1, spatial_dim2, spatial_dim3, channels)`
       while `channels_first` corresponds to inputs with shape
-      `(batch_size, channels, spatial_dim1, spatial_dim2, spatial_dim3)`.
+      `batch_shape + (channels, spatial_dim1, spatial_dim2, spatial_dim3)`.
       It defaults to the `image_data_format` value found in your
       Keras config file at `~/.keras/keras.json`.
       If you never set it, then it will be "channels_last".
@@ -655,6 +757,11 @@ class Conv3D(Conv):
       all spatial dimensions.
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any stride value != 1.
+    groups: A positive integer specifying the number of groups in which the
+      input is split along the channel axis. Each group is convolved
+      separately with `filters / groups` filters. The output is the
+      concatenation of all the `groups` results along the channel axis.
+      Input channels and `filters` must both be divisible by `groups`.
     activation: Activation function to use.
       If you don't specify anything, no activation is applied (
       see `keras.activations`).
@@ -677,30 +784,30 @@ class Conv3D(Conv):
       see `keras.constraints`).
 
   Input shape:
-    5D tensor with shape:
-    `(batch_size, channels, conv_dim1, conv_dim2, conv_dim3)` if
+    5+D tensor with shape:
+    `batch_shape + (channels, conv_dim1, conv_dim2, conv_dim3)` if
       data_format='channels_first'
-    or 5D tensor with shape:
-    `(batch_size, conv_dim1, conv_dim2, conv_dim3, channels)` if
+    or 5+D tensor with shape:
+    `batch_shape + (conv_dim1, conv_dim2, conv_dim3, channels)` if
       data_format='channels_last'.
 
   Output shape:
-    5D tensor with shape:
-    `(batch_size, filters, new_conv_dim1, new_conv_dim2, new_conv_dim3)` if
+    5+D tensor with shape:
+    `batch_shape + (filters, new_conv_dim1, new_conv_dim2, new_conv_dim3)` if
       data_format='channels_first'
-    or 5D tensor with shape:
-    `(batch_size, new_conv_dim1, new_conv_dim2, new_conv_dim3, filters)` if
+    or 5+D tensor with shape:
+    `batch_shape + (new_conv_dim1, new_conv_dim2, new_conv_dim3, filters)` if
       data_format='channels_last'.
     `new_conv_dim1`, `new_conv_dim2` and `new_conv_dim3` values might have
       changed due to padding.
 
   Returns:
-    A tensor of rank 5 representing
+    A tensor of rank 5+ representing
     `activation(conv3d(inputs, kernel) + bias)`.
 
   Raises:
     ValueError: if `padding` is "causal".
-    ValueError: when both `strides` > 1 and `dilation_rate` > 1.
+    ValueError: when both `strides > 1` and `dilation_rate > 1`.
   """
 
   def __init__(self,
@@ -710,6 +817,7 @@ class Conv3D(Conv):
                padding='valid',
                data_format=None,
                dilation_rate=(1, 1, 1),
+               groups=1,
                activation=None,
                use_bias=True,
                kernel_initializer='glorot_uniform',
@@ -728,6 +836,7 @@ class Conv3D(Conv):
         padding=padding,
         data_format=data_format,
         dilation_rate=dilation_rate,
+        groups=groups,
         activation=activations.get(activation),
         use_bias=use_bias,
         kernel_initializer=initializers.get(kernel_initializer),
@@ -1142,8 +1251,8 @@ class Conv2DTranspose(Conv2D):
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
     if len(input_shape) != 4:
-      raise ValueError('Inputs should have rank 4. Received input shape: ' +
-                       str(input_shape))
+      raise ValueError('Inputs should have rank 4. Received input '
+                       'shape: ' + str(input_shape))
     channel_axis = self._get_channel_axis()
     if input_shape.dims[channel_axis].value is None:
       raise ValueError('The channel dimension of the inputs '

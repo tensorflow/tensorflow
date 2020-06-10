@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import os
 import platform
+import sys
 import lit.formats
 from lit.llvm import llvm_config
 from lit.llvm.subst import ToolSubst
@@ -70,9 +71,9 @@ tool_dirs = config.mlir_tf_tools_dirs + [
 ]
 tool_names = [
     'mlir-opt', 'mlir-translate', 'tf-opt', 'tf_tfl_translate',
-    'flatbuffer_to_string', 'flatbuffer_translate', 'tf-mlir-translate',
-    'mlir-tflite-runner', 'tfcompile', 'json_to_flatbuffer', 'xla-gpu-opt',
-    'xla-opt'
+    'tf_tfjs_translate', 'flatbuffer_to_string', 'flatbuffer_translate',
+    'tf-mlir-translate', 'mlir-tflite-runner', 'tfcompile',
+    'json_to_flatbuffer', 'xla-gpu-opt', 'xla-opt'
 ]
 tools = [ToolSubst(s, unresolved='ignore') for s in tool_names]
 llvm_config.add_tool_substitutions(tools, tool_dirs)

@@ -205,6 +205,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
   5. `use_bias` is `True`
   6. `reset_after` is `True`
   7. Inputs, if use masking, are strictly right-padded.
+  8. Eager execution is enabled in the outermost context.
 
   There are two variants of the GRU implementation. The default one is based on
   [v3](https://arxiv.org/abs/1406.1078v3) and has reset gate applied to hidden
@@ -413,7 +414,9 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     input_shape = K.int_shape(inputs)
     timesteps = input_shape[0] if self.time_major else input_shape[1]
 
-    if not self._could_use_gpu_kernel:
+    # TODO(b/156447398) Investigate why the cuDNN kernel kernel fails with
+    # ragged inputs.
+    if is_ragged_input or not self._could_use_gpu_kernel:
       kwargs = {'training': training}
       self._maybe_reset_cell_dropout_mask(self.cell)
 
@@ -926,6 +929,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
   4. `unroll` is `False`
   5. `use_bias` is `True`
   6. Inputs, if use masking, are strictly right-padded.
+  7. Eager execution is enabled in the outermost context.
 
   For example:
 
@@ -1109,7 +1113,9 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
     input_shape = K.int_shape(inputs)
     timesteps = input_shape[0] if self.time_major else input_shape[1]
 
-    if not self._could_use_gpu_kernel:
+    # TODO(b/156447398) Investigate why the cuDNN kernel kernel fails with
+    # ragged inputs.
+    if is_ragged_input or not self._could_use_gpu_kernel:
       # Fall back to use the normal LSTM.
       kwargs = {'training': training}
       self._maybe_reset_cell_dropout_mask(self.cell)

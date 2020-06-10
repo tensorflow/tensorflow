@@ -55,6 +55,21 @@ class Normalization(CombinerPreprocessingLayer):
         in the specified axis. If set to 'None', the layer will perform scalar
         normalization (diving the input by a single scalar value). 0 (the batch
         axis) is not allowed.
+
+
+  Examples:
+
+  Calculate the mean and variance by analyzing the dataset in `adapt`.
+
+  >>> adapt_data = np.array([[1.], [2.], [3.], [4.], [5.]], dtype=np.float32)
+  >>> input_data = np.array([[1.], [2.], [3.]], np.float32)
+  >>> layer = Normalization()
+  >>> layer.adapt(adapt_data)
+  >>> layer(input_data)
+  <tf.Tensor: shape=(3, 1), dtype=float32, numpy=
+  array([[-1.4142135 ],
+         [-0.70710677],
+         [ 0.        ]], dtype=float32)>
   """
 
   def __init__(self, axis=-1, dtype=None, **kwargs):
@@ -107,6 +122,10 @@ class Normalization(CombinerPreprocessingLayer):
     super(Normalization, self).build(input_shape)
 
   def call(self, inputs):
+    # If the inputs are not floats, cast them to floats. This avoids issues
+    # with int-float multiplication and division below.
+    if inputs.dtype != K.floatx():
+      inputs = math_ops.cast(inputs, K.floatx())
     # We need to reshape the mean and variance data to ensure that Tensorflow
     # broadcasts the data correctly.
     mean = array_ops.reshape(self.mean, self._broadcast_shape)
@@ -158,7 +177,7 @@ class _NormalizingCombiner(Combiner):
       reduction_counts = np.delete(values.shape, self.axis)
     # We get the number of elements that will be reduced by multiplying all
     # values of 'shape' corresponding to the reduced axes.
-    count = np.prod(reduction_counts, dtype=np.int32)
+    count = np.prod(reduction_counts, dtype=np.int64)
 
     # We want to reduce across dimensions except those specified in 'axis'
     # when using np.mean or np.variance; create the tuple of axes to reduce

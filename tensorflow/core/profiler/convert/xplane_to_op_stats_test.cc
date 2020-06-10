@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/group_events.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/core/profiler/utils/xplane_test_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -86,6 +86,9 @@ TEST(ConvertXPlaneToOpStats, RunEnvironment) {
 }
 
 TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
+  constexpr int64 kStepNum = 123;
+  constexpr int64 kStepId = 0;
+
   XSpace space;
   XPlaneBuilder host_plane_builder(space.add_planes());
   host_plane_builder.SetName(kHostThreads);
@@ -93,14 +96,14 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
-               0, 100, {{StatType::kStepNum, 123}});
+               0, 100, {{StatType::kStepNum, kStepNum}});
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
-               10, 90, {{StatType::kStepId, 0}});
+               10, 90, {{StatType::kStepId, kStepId}});
 
   auto tf_executor_thread = host_plane_builder.GetOrCreateLine(1);
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 20, 80,
-               {{StatType::kStepId, 0}});
+               {{StatType::kStepId, kStepId}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 70);
 
   GroupTfEvents(&space, /*event_group_name_map=*/nullptr);
@@ -111,6 +114,10 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
 }
 
 TEST(ConvertXPlaneToOpStats, GpuStepDbTest) {
+  constexpr int64 kStepNum = 123;
+  constexpr int64 kStepId = 0;
+  constexpr int64 kCorrelationId = 100;
+
   XSpace space;
   XPlaneBuilder host_plane_builder(space.add_planes());
   host_plane_builder.SetName(kHostThreads);
@@ -118,16 +125,16 @@ TEST(ConvertXPlaneToOpStats, GpuStepDbTest) {
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
-               0, 100, {{StatType::kStepNum, 123}});
+               0, 100, {{StatType::kStepNum, kStepNum}});
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
-               10, 90, {{StatType::kStepId, 0}});
+               10, 90, {{StatType::kStepId, kStepId}});
 
   auto tf_executor_thread = host_plane_builder.GetOrCreateLine(1);
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 20, 20,
-               {{StatType::kStepId, 0}});
+               {{StatType::kStepId, kStepId}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 10,
-               {{StatType::kCorrelationId, 100}});
+               {{StatType::kCorrelationId, kCorrelationId}});
 
   XPlaneBuilder device_plane_builder(space.add_planes());
   device_plane_builder.SetName(absl::StrCat(kGpuPlanePrefix, ":0"));
@@ -135,7 +142,7 @@ TEST(ConvertXPlaneToOpStats, GpuStepDbTest) {
 
   auto stream = device_plane_builder.GetOrCreateLine(0);
   CreateXEvent(&device_plane_builder, &stream, "matmul", 50, 40,
-               {{StatType::kCorrelationId, 100}});
+               {{StatType::kCorrelationId, kCorrelationId}});
 
   GroupTfEvents(&space, /*event_group_name_map=*/nullptr);
   OpStats op_stats = ConvertXSpaceToOpStats(space);
@@ -183,6 +190,18 @@ TEST(ConcertXPlaneToOpStats, TfFunctionTest) {
   const auto& not_traced_mode = metrics.at(NOT_TRACED_MODE);
   EXPECT_EQ(not_traced_mode.count(), 1);
   EXPECT_EQ(not_traced_mode.self_time_ps(), 20);
+}
+
+TEST(ConvertXPlaneToOpStats, PropagateAndDedupErrors) {
+  XSpace space;
+  static constexpr char kError[] = "host: error";
+  *space.add_errors() = kError;
+  *space.add_errors() = kError;
+
+  OpStats op_stats = ConvertXSpaceToOpStats(space);
+
+  EXPECT_EQ(1, op_stats.errors_size());
+  EXPECT_EQ(kError, op_stats.errors(/*index=*/0));
 }
 
 }  // namespace

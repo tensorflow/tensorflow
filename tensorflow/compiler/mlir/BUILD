@@ -77,10 +77,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_legalize_hlo",
         "//tensorflow/compiler/mlir/tfjs:tensorflow_js_passes",
-        "//tensorflow/compiler/mlir/tfrt:lower_tf_to_tfd_alwayslink",
-        "//tensorflow/compiler/mlir/tfrt:runtime_fallback_opdefs_alwayslink",
-        "//tensorflow/compiler/mlir/tfrt:tf_legalize_to_tfrt",
-        "//tensorflow/compiler/mlir/tfrt:tf_to_corert",
     ],
 )
 
@@ -108,6 +104,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:StandardOps",
     ],
     alwayslink = 1,
@@ -152,7 +149,6 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/compiler/mlir/tensorflow:translate_registration",
         "//tensorflow/compiler/mlir/tensorflow:translate_tf_dialect_op",
-        "//tensorflow/compiler/mlir/tfrt:compatibility_analysis",
         "//tensorflow/compiler/mlir/xla:xla_mlir_translate",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

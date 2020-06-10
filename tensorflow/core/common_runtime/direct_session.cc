@@ -349,12 +349,12 @@ DirectSession::DirectSession(const SessionOptions& options,
   int devices_added = 0;
   if (options.config.log_device_placement()) {
     const string mapping_str = device_mgr_->DeviceMappingString();
+    string msg;
     if (mapping_str.empty()) {
-      printf("Device mapping: no known devices.\n");
+      msg = "Device mapping: no known devices.";
     } else {
-      printf("Device mapping:\n%s", mapping_str.c_str());
+      msg = strings::StrCat("Device mapping:\n", mapping_str);
     }
-    string msg = strings::StrCat("Device mapping:\n", mapping_str);
     if (!logging::LogToListeners(msg)) {
       LOG(INFO) << msg;
     }
@@ -666,7 +666,9 @@ Status DirectSession::RunInternal(
 
   std::unique_ptr<ProfilerSession> profiler_session;
   if (run_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
-    profiler_session = ProfilerSession::Create();
+    ProfileOptions options = ProfilerSession::DefaultOptions();
+    options.set_host_tracer_level(0);
+    profiler_session = ProfilerSession::Create(options);
   }
 
   // Register this step with session's cancellation manager, so that

@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -34,31 +35,15 @@ namespace gpu {
 // allocated device buffers.
 class BufferAllocations {
  public:
-  // This inner class encapsulates methods that build a BufferAllocations from
-  // the given buffer assignment.
-  class Builder {
-   public:
-    // Registers preallocated buffers (such as parameter addresses and
-    // user-specified result buffers) to the given buffer index. The builder
-    // will skip allocating buffers for registered buffer indices.
-    void RegisterBuffer(BufferAllocation::Index index,
-                        se::DeviceMemoryBase address);
+  BufferAllocations(absl::Span<se::DeviceMemoryBase const> buffers,
+                    int device_ordinal,
+                    se::DeviceMemoryAllocator* memory_allocator)
+      : buffers_(buffers.begin(), buffers.end()),
+        device_ordinal_(device_ordinal),
+        memory_allocator_(memory_allocator) {}
 
-    // Builds a BufferAllocations object from the given buffer assignment.
-    // `memory_allocator` is what this function uses to allocate device memory.
-    // `device_ordinal` is the number of the device this function allocates
-    // memory on.
-    StatusOr<std::unique_ptr<BufferAllocations>> Build(
-        const BufferAssignment* buffer_assignment, int device_ordinal,
-        se::DeviceMemoryAllocator* memory_allocator);
-
-   private:
-    absl::flat_hash_map<BufferAllocation::Index, se::DeviceMemoryBase>
-        registered_buffers_;
-  };
-
-  ~BufferAllocations();
-
+  BufferAllocations(BufferAllocations&& other) = default;
+  BufferAllocations& operator=(BufferAllocations&& other) = default;
   BufferAllocations(const BufferAllocations&) = delete;
   BufferAllocations& operator=(const BufferAllocations&) = delete;
 
@@ -78,37 +63,28 @@ class BufferAllocations {
   se::DeviceMemoryBase GetDeviceAddress(
       const BufferAllocation::Slice& buffer_slice) const;
 
-  se::DeviceMemoryBase GetTempBufferBase() const { return temp_buffer_base_; }
-
   // Tears down all buffers allocated by this object that are not in
   // `live_addresses`.
-  Status TearDown(const std::set<se::DeviceMemoryBase>& live_addresses);
+  Status TearDown(const std::set<se::DeviceMemoryBase>& live_addresses,
+                  const BufferAssignment* buffer_assignment);
+
+  std::string ToString() {
+    std::string out;
+    for (BufferAllocation::Index i = 0; i < buffers_.size(); ++i) {
+      const auto& buf = buffers_[i];
+      absl::StrAppendFormat(&out, "Buffer %d -> %p (%d B)", i, buf.opaque(),
+                            buf.size());
+    }
+    return out;
+  }
 
  private:
-  BufferAllocations(BufferAllocation::Index buffer_count, int device_ordinal,
-                    se::DeviceMemoryAllocator* memory_allocator,
-                    const BufferAssignment* buffer_assignment)
-      : buffers_(buffer_count),
-        device_ordinal_(device_ordinal),
-        memory_allocator_(memory_allocator),
-        buffer_assignment_(buffer_assignment) {}
-
-  // Sets the device address of buffer `buffer_index`.
-  void SetBuffer(BufferAllocation::Index buffer_index,
-                 se::DeviceMemoryBase buffer);
-
   // An array of device pointers that stores the address of each buffer
   // indexed by Index. Each element can point to a temporary buffer, an
   // input buffer, or nullptr if no buffer is needed for that Index.
   std::vector<se::DeviceMemoryBase> buffers_;
-
-  // The base address of the memory block that contains all temporary buffers.
-  se::DeviceMemoryBase temp_buffer_base_;
-
   int device_ordinal_;
   se::DeviceMemoryAllocator* memory_allocator_;
-  const BufferAssignment* buffer_assignment_;
-  bool torn_down_ = false;
 };
 
 // LLVM and PTXAS don't deal well with large constants, so we only emit very

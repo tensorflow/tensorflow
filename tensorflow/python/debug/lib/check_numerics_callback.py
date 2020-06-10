@@ -275,7 +275,9 @@ class CheckNumericsCallback(object):
                   output,
                   inputs,
                   graph=graph,
-                  traceback=output.op.traceback))
+                  traceback=output.op.traceback,
+                  stack_height_limit=self._stack_height_limit,
+                  path_length_limit=self._path_length_limit))
           _CHECK_NUMERICS_INPUT_LOOKUP[graph][checked_output.name] = output
           instrumented_outputs.append(self._get_output_tensor(
               op_type_bytes, output, checked_output, is_v1_graph_mode))
@@ -409,6 +411,21 @@ def enable_check_numerics(stack_height_limit=30,
      y = tf.math.sqrt(x)
      z = tf.matmul(y, y)
      ```
+
+  NOTE: If your code is running on TPUs, be sure to call
+  `tf.config.set_soft_device_placement(True)` before calling
+  `tf.debugging.enable_check_numerics()` as this API uses automatic outside
+  compilation on TPUs. For example:
+
+  ```py
+  tf.config.set_soft_device_placement(True)
+  tf.debugging.enable_check_numerics()
+
+  resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
+  strategy = tf.distribute.experimental.TPUStrategy(resolver)
+  with strategy.scope():
+    # ...
+  ```
 
   Args:
     stack_height_limit: Limit to the height of the printed stack trace.

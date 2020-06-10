@@ -530,8 +530,7 @@ class DynamicClusterTest(test.TestCase, parameterized.TestCase):
     threads.append(threading.Thread(target=update_server_def_fn))
     for t in threads:
       t.start()
-    for t in threads:
-      t.join()
+    self._coord.join(threads)
     for result in results:
       np.testing.assert_array_equal([[2, 2], [2, 2]], result)
 

@@ -28,6 +28,7 @@ transitive_hdrs(
     deps = [
         "//tensorflow/c/experimental:network",
         "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
+        "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -107,7 +108,6 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/autograph/pyct/common_transformers:common_transformers",
     "//tensorflow/python/compiler:compiler",
     "//tensorflow/python:cond_v2",
-    "//tensorflow/python/data/service:server_lib",
     "//tensorflow/python:distributed_framework_test_lib",
     "//tensorflow/python/distribute:distribute_test_lib_pip",
     "//tensorflow/python:loss_scale",
@@ -120,6 +120,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/data/experimental/kernel_tests:reader_dataset_ops_test_base",
     "//tensorflow/python/data/experimental/kernel_tests:stats_dataset_test_base",
     "//tensorflow/python/data/experimental/ops:testing",
+    "//tensorflow/python/data/experimental/service:server_lib",
     "//tensorflow/python/data/kernel_tests:test_base",
     "//tensorflow/python/debug:debug_pip",
     "//tensorflow/python/distribute:combinations",
@@ -213,6 +214,8 @@ filegroup(
         "@sobol_data//:LICENSE",
         "@termcolor_archive//:COPYING.txt",
         "@zlib//:zlib.h",
+        "@clog//:LICENSE",
+        "@cpuinfo//:LICENSE",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],

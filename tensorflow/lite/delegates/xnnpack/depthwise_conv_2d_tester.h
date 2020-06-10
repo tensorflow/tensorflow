@@ -17,17 +17,11 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_DEPTHWISE_CONV_2D_TESTER_H_
 
 #include <cstdint>
-#include <functional>
-#include <random>
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/version.h"
 
 namespace tflite {
 namespace xnnpack {
@@ -158,6 +152,13 @@ class DepthwiseConv2DTester {
     return (KernelWidth() - 1) * DilationWidth() + 1;
   }
 
+  inline DepthwiseConv2DTester& FP16Weights() {
+    fp16_weights_ = true;
+    return *this;
+  }
+
+  inline bool FP16Weights() const { return fp16_weights_; }
+
   inline DepthwiseConv2DTester& SamePadding() {
     padding_ = ::tflite::Padding_SAME;
     return *this;
@@ -215,6 +216,7 @@ class DepthwiseConv2DTester {
   int32_t stride_width_ = 1;
   int32_t dilation_height_ = 1;
   int32_t dilation_width_ = 1;
+  bool fp16_weights_ = false;
   ::tflite::Padding padding_ = ::tflite::Padding_VALID;
   ::tflite::ActivationFunctionType activation_ =
       ::tflite::ActivationFunctionType_NONE;

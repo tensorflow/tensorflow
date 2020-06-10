@@ -34,6 +34,7 @@ from tensorflow.core.lib.core import error_codes_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as framework_device_lib
@@ -1911,12 +1912,15 @@ class SessionTest(test_util.TensorFlowTestCase):
       def __str__(self):
         return self._output
 
+    context.set_log_device_placement(True)
     if context.executing_eagerly():
-      context.set_log_device_placement(True)
       with CaptureStderr() as log:
         a = constant_op.constant(1)
         b = constant_op.constant(2)
         c = a + b
+        # Ensure if the same kernel with the same arguments is executed then its
+        # execution is logged.
+        d = a + b
     else:
       # Passing the config to the server, but not the session should still
       # result in logging device placement.
@@ -1925,12 +1929,32 @@ class SessionTest(test_util.TensorFlowTestCase):
       a = constant_op.constant(1)
       b = constant_op.constant(2)
       c = a + b
+      d = a + b
       with session.Session(server.target) as sess:
         with CaptureStderr() as log:
-          sess.run(c)
+          c, d = sess.run([c, d])
 
+    self.assertEqual(c, 3)
+    self.assertEqual(d, 3)
     # Ensure that we did log device placement.
-    self.assertTrue('/replica:0/task:0/device:CPU:0' in str(log), str(log))
+    add_executions = [l for l in str(log).splitlines() if 'AddV2' in l]
+    self.assertEqual(len(add_executions), 2)
+
+    @def_function.function
+    def fn():
+      a = constant_op.constant(1)
+      b = constant_op.constant(2)
+      c = a + b
+      d = a + b
+      return c, d
+
+    with CaptureStderr() as log:
+      c, d = self.evaluate(fn())
+    self.assertEqual(c, 3)
+    self.assertEqual(d, 3)
+    # Ensure that we did log device placement.
+    add_executions = [l for l in str(log).splitlines() if 'AddV2' in l]
+    self.assertEqual(len(add_executions), 2)
 
   @test_util.run_v1_only('b/120545219')
   def testLocalMasterSessionTimeout(self):

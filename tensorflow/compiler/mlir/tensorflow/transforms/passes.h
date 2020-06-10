@@ -52,6 +52,10 @@ std::unique_ptr<OperationPass<FuncOp>> CreateBatchMatMulToEinsumPass();
 // Optimizes Tensorflow graph.
 std::unique_ptr<OperationPass<FuncOp>> CreateTFOptimizePass();
 
+// Creates pass to rewrite RecvTPUEmbeddingActivationsOp and
+// SendTPUEmbeddingGradients ops to internal variants.
+std::unique_ptr<OperationPass<FuncOp>> CreateRewriteTPUEmbeddingOps();
+
 // Performs specific fusion for GPU targets.
 std::unique_ptr<OperationPass<FuncOp>> CreateGpuOpFusionPass();
 
@@ -73,6 +77,9 @@ struct StandardPipelineOptions
   Option<bool> enable_inliner{*this, "enable-inliner",
                               llvm::cl::desc("Enable inliner."),
                               llvm::cl::init(false)};
+  Option<bool> form_clusters{*this, "form-clusters",
+                             llvm::cl::desc("Enable Cluster Formation pass."),
+                             llvm::cl::init(false)};
 };
 
 // Propagates the pass manager with the passes involved in transforming or
@@ -90,6 +97,15 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateResourceDeviceInferencePass();
 // The pass also annotates the input arguments for resources with the indices
 // of their aliasing output arguments.
 std::unique_ptr<OperationPass<ModuleOp>> CreatePromoteResourcesToArgsPass();
+
+// Creates a pass that promotes tf.VarHandleOp to resource arguments for all
+// functions.
+std::unique_ptr<OperationPass<ModuleOp>> CreatePromoteVarHandlesToArgsPass();
+
+// Creates a pass that converts readonly reference variables to the
+// corresponding resource variables.
+std::unique_ptr<OperationPass<FuncOp>>
+CreateConvertReadonlyReferenceVariablesToResourceVariablesPass();
 
 // Marks function visibility using tf.entry_function specification. That is,
 // functions with tf.entry_function attributes are marked with public
@@ -131,14 +147,10 @@ CreateTensorArrayOpsDecompositionPass();
 
 // Create a pass that legalize HLO to TF dialect.
 std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeHloToTfPass();
+
+// Creates a pass that performs fusion of common sequences of ops.
+std::unique_ptr<OperationPass<FuncOp>> CreateOpFusionPass();
 }  // namespace TF
-
-namespace TFControlFlow {
-// Raises from the "TensorFlow Control Flow" dialect to the standard TensorFlow
-// dialect.
-std::unique_ptr<OperationPass<FuncOp>> CreateRaiseTFControlFlowPass();
-
-}  // namespace TFControlFlow
 
 namespace tf_executor {
 class GraphOp;
@@ -256,9 +268,13 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTPUMergeVariablesWithExecutePass();
 // run-time according to compilation result.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUVariableReformattingPass();
 
+// Creates a pass that groups outside compiled operations (CPU ops inside TPU
+// cluster) into clusters that can be extracted and run on the CPU.
+std::unique_ptr<OperationPass<FuncOp>> CreateTPUOutsideCompilationClusterPass();
+
 // Creates a pass that extracts outside compilation (CPU ops inside TPU cluster)
 // at head/tail of TPU cluster to run before/after TPU computation.
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUExtractHeadTailOutsideCompilationPass();
 
 // Creates a pass that extract outside compilation (CPU ops inside TPU cluster)

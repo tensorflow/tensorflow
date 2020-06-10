@@ -52,6 +52,8 @@ class TensorID {
 // API is experimental and subject to change.
 class GraphBuilder {
  public:
+  explicit GraphBuilder(int coreml_version) : coreml_version_(coreml_version) {}
+
   // Returns pointer to the created builder. Ownership still belongs
   // to the GraphBuilder.
   OpBuilder* AddBuilder(int builtin_code, const TfLiteNode* node);
@@ -78,6 +80,8 @@ class GraphBuilder {
   // Return if this tensor is used in the graph (not as data).
   // This information is used to mark constant tensors that are used as input.
   bool IsTensorUsed(int tflite_tensor_index);
+
+  const int coreml_version_;
 
  private:
   std::vector<std::unique_ptr<OpBuilder>> builders_;

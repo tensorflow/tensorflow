@@ -37,11 +37,10 @@ namespace cl {
 // on the GPU, which cannot represent int8 tensors.
 //
 // Implemented as:
-// qvalue = round((min(qmax, max(qmin, src_val)) - qmin) * (1/qscale) + 0.5)
+// qvalue = round((min(qmax, max(qmin, src_val)) - qmin) * (1/qscale))
 // dq_value = qvalue * qscale + qmin
 // Here, qmin, qmax & qscale refer to the quantization values as implemented in
-// TensorFlow Lite's 'FakeQuant' kernel. round(x + 0.5) ensures we round away
-// from zero.
+// TensorFlow Lite's 'FakeQuant' kernel.
 //
 // NOTE: We do not need to nudge min/max values in this op, since they would
 // already be adjusted while generating the quantized model.

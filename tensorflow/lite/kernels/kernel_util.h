@@ -28,29 +28,25 @@ inline int NumDimensions(const TfLiteTensor* t) { return t->dims->size; }
 inline int SizeOfDimension(const TfLiteTensor* t, int dim) {
   return t->dims->data[dim];
 }
-inline const TfLiteTensor* GetInput(TfLiteContext* context,
+inline const TfLiteTensor* GetInput(const TfLiteContext* context,
                                     const TfLiteNode* node, int index) {
-  return &context
-              ->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];
+  return &context->tensors[node->inputs->data[index]];
 }
 // Note: You must check if result is not null:
 // TfLiteTensor* my_tensor = GetVariableInput(context, node, kMyTensorIdx);
 // TF_LITE_ENSURE(context, my_tensor != nullptr);
 inline TfLiteTensor* GetVariableInput(TfLiteContext* context,
                                       const TfLiteNode* node, int index) {
-  TfLiteTensor* tensor =
-      &context->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];
+  TfLiteTensor* tensor = &context->tensors[node->inputs->data[index]];
   return (tensor->is_variable) ? tensor : nullptr;
 }
 inline TfLiteTensor* GetOutput(TfLiteContext* context, const TfLiteNode* node,
                                int index) {
-  return &context
-              ->tensors[flatbuffers::EndianScalar(node->outputs->data[index])];
+  return &context->tensors[node->outputs->data[index]];
 }
 inline TfLiteTensor* GetTemporary(TfLiteContext* context,
                                   const TfLiteNode* node, int index) {
-  return &context->tensors[flatbuffers::EndianScalar(
-      node->temporaries->data[index])];
+  return &context->tensors[node->temporaries->data[index]];
 }
 inline const TfLiteTensor* GetIntermediates(TfLiteContext* context,
                                             const TfLiteNode* node, int index) {
@@ -80,13 +76,16 @@ inline const TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
   const bool use_tensor = index < node->inputs->size &&
                           node->inputs->data[index] != kTfLiteOptionalTensor;
   if (use_tensor) {
-    return &context
-                ->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];
+    return &context->tensors[node->inputs->data[index]];
   }
   return nullptr;
 }
 
 // Determines whether tensor is constant.
+// TODO(b/138199592): Introduce new query which checks for constant OR
+// persistent-read-only, which would be useful for most tensor kernels that
+// are potentially dynamic based on the input tensor value availability at the
+// time of prepare.
 inline bool IsConstantTensor(const TfLiteTensor* tensor) {
   return tensor->allocation_type == kTfLiteMmapRo;
 }
@@ -101,6 +100,14 @@ inline bool IsDynamicTensor(const TfLiteTensor* tensor) {
 inline void SetTensorToDynamic(TfLiteTensor* tensor) {
   if (tensor->allocation_type != kTfLiteDynamic) {
     tensor->allocation_type = kTfLiteDynamic;
+    tensor->data.raw = nullptr;
+  }
+}
+
+// Sets tensor to persistent and read-only.
+inline void SetTensorToPersistentRo(TfLiteTensor* tensor) {
+  if (tensor->allocation_type != kTfLitePersistentRo) {
+    tensor->allocation_type = kTfLitePersistentRo;
     tensor->data.raw = nullptr;
   }
 }

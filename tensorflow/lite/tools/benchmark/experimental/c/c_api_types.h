@@ -58,7 +58,7 @@ typedef enum TfLiteExternalContextType {
   kTfLiteEigenContext = 0,       // include eigen_support.h to use.
   kTfLiteGemmLowpContext = 1,    // include gemm_support.h to use.
   kTfLiteEdgeTpuContext = 2,     // Placeholder for Edge TPU support.
-  kTfLiteCpuBackendContext = 3,  // include cpu_backend_support.h to use.
+  kTfLiteCpuBackendContext = 3,  // include cpu_backend_context.h to use.
   kTfLiteMaxExternalContexts = 4
 } TfLiteExternalContextType;
 
@@ -86,8 +86,9 @@ typedef struct TfLiteIntArray {
   int size;
 // gcc 6.1+ have a bug where flexible members aren't properly handled
 // https://github.com/google/re2/commit/b94b7cd42e9f02673cd748c1ac1d16db4052514c
-#if !defined(__clang__) && defined(__GNUC__) && __GNUC__ == 6 && \
-    __GNUC_MINOR__ >= 1
+#if (!defined(__clang__) && defined(__GNUC__) && __GNUC__ == 6 && \
+     __GNUC_MINOR__ >= 1) ||                                      \
+    defined(HEXAGON)
   int data[0];
 #else
   int data[];
@@ -125,6 +126,7 @@ typedef struct TfLiteFloatArray {
   int size;
 // gcc 6.1+ have a bug where flexible members aren't properly handled
 // https://github.com/google/re2/commit/b94b7cd42e9f02673cd748c1ac1d16db4052514c
+// This also applies to the toolchain used for Qualcomm Hexagon DSPs.
 #if !defined(__clang__) && defined(__GNUC__) && __GNUC__ == 6 && \
     __GNUC_MINOR__ >= 1
   float data[0];
@@ -321,15 +323,23 @@ typedef union TfLitePtrUnion {
   void* data;
 } TfLitePtrUnion;
 
-// Memory allocation strategies. kTfLiteMmapRo is for read-only memory-mapped
-// data (or data externally allocated). kTfLiteArenaRw is arena allocated
-// data. kTfLiteDynamic is for tensors that are allocated during evaluation.
+// Memory allocation strategies.
+//  * kTfLiteMmapRo: Read-only memory-mapped data, or data externally allocated.
+//  * kTfLiteArenaRw: Arena allocated with no guarantees about persistence,
+//        and available during eval.
+//  * kTfLiteArenaRwPersistent: Arena allocated but persistent across eval, and
+//        only available during eval.
+//  * kTfLiteDynamic: Allocated during eval, or for string tensors.
+//  * kTfLitePersistentRo: Allocated and populated during prepare. This is
+//        useful for tensors that can be computed during prepare and treated
+//        as constant inputs for downstream ops (also in prepare).
 typedef enum TfLiteAllocationType {
   kTfLiteMemNone = 0,
   kTfLiteMmapRo,
   kTfLiteArenaRw,
   kTfLiteArenaRwPersistent,
   kTfLiteDynamic,
+  kTfLitePersistentRo,
 } TfLiteAllocationType;
 
 // The delegates should use zero or positive integers to represent handles.
@@ -734,8 +744,9 @@ typedef struct TfLiteDelegate {
                           struct TfLiteDelegate* delegate);
 
   // Copy the data from delegate buffer handle into raw memory of the given
-  // 'tensor'. This cannot be null. The delegate is allowed to allocate the raw
-  // bytes as long as it follows the rules for kTfLiteDynamic tensors.
+  // 'tensor'. Note that the delegate is allowed to allocate the raw bytes as
+  // long as it follows the rules for kTfLiteDynamic tensors, in which case this
+  // cannot be null.
   TfLiteStatus (*CopyFromBufferHandle)(TfLiteContext* context,
                                        struct TfLiteDelegate* delegate,
                                        TfLiteBufferHandle buffer_handle,
