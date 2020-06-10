@@ -26,32 +26,6 @@ func @opaquetensorattr() -> () {
 }
 
 //===--------------------------------------------------------------------===//
-//  Test raw TF operations (_tf.*)
-//===--------------------------------------------------------------------===//
-
-// Test of parsing !tf.resource type
-// CHECK-LABEL: func @testTFResource(%arg0: !tf.resource)
-func @testTFResource(!tf.resource) -> () {
-^bb0(%arg0: !tf.resource):
-  // CHECK: %0:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_Resource", name = "Const"} : () -> (tensor<*x!tf.resource>, !_tf.control)
-  %0:2 = "_tf.Const"() {device = "", name = "Const", dtype = "tfdtype$DT_Resource"} : () -> (tensor<*x!tf.resource>, !_tf.control)
-  // CHECK: %1 = "_tf.AssignAddVariableOp"(%arg0, %0#0) {device = "", name = "AssignAddVariableOp"} : (!tf.resource, tensor<*x!tf.resource>) -> !_tf.control
-  %1 = "_tf.AssignAddVariableOp"(%arg0, %0#0) {device = "", name = "AssignAddVariableOp"} : (!tf.resource, tensor<*x!tf.resource>) -> !_tf.control
-  return
-}
-
-// Test of parsing !tf.variant type
-// CHECK-LABEL: func @testTFVariant(%arg0: tensor<*x!tf.variant>)
-func @testTFVariant(tensor<*x!tf.variant>) -> () {
-^bb0(%arg0: tensor<*x!tf.variant>):
-  // CHECK: %0:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_VARIANT", name = "Const"} : () -> (!tf.variant, !_tf.control)
-  %0:2 = "_tf.Const"() {device = "", name = "Const", dtype = "tfdtype$DT_VARIANT"} : () -> (!tf.variant, !_tf.control)
-  // CHECK: %1 = "_tf.AssignAddVariableOp"(%arg0, %0#0) {device = "", name = "AssignAddVariableOp"} : (tensor<*x!tf.variant>, !tf.variant) -> !_tf.control
-  %1 = "_tf.AssignAddVariableOp"(%arg0, %0#0) {device = "", name = "AssignAddVariableOp"} : (tensor<*x!tf.variant>, !tf.variant) -> !_tf.control
-  return
-}
-
-//===--------------------------------------------------------------------===//
 //  Test TF operations (tf.*)
 //===--------------------------------------------------------------------===//
 

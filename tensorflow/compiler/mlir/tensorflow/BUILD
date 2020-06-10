@@ -249,7 +249,6 @@ cc_library(
 cc_library(
     name = "tensorflow",
     srcs = [
-        "ir/control_flow_ops.cc",
         "ir/tf_device.cc",
         "ir/tf_executor.cc",
         "ir/tf_executor.cc.inc",
@@ -264,7 +263,6 @@ cc_library(
         "ir/tf_verifiers.cc",
     ],
     hdrs = [
-        "ir/control_flow_ops.h",
         "ir/tf_device.h",
         "ir/tf_executor.h",
         "ir/tf_ops.h",
@@ -458,7 +456,6 @@ cc_library(
         "transforms/tpu_space_to_depth_pass.cc",
         "transforms/tpu_variable_runtime_reformatting.cc",
         "translate/breakup-islands.cc",
-        "translate/control_to_executor_dialect.cc",
         "translate/tf_functional_to_executor.cc",
     ],
     hdrs = [
