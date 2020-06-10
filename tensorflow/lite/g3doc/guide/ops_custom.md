@@ -1,32 +1,31 @@
 # Custom operators
 
 TensorFlow Lite currently supports a subset of TensorFlow operators. It supports
-the use of user-provided implementations (as known as custom implementations) if
+the use of user-provided implementations (known as custom implementations) if
 the model contains an operator that is not supported. Providing custom kernels
-is also a way of evaluating a series of TensorFlow operations as a single fused
-TensorFlow Lite operations.
+is also a way of executing a series of TensorFlow operations as a single fused
+TensorFlow Lite operation.
 
 Using custom operators consists of three steps.
 
-*   Making sure the TensorFlow Graph Def or SavedModel refers to the correctly
+*   Make sure the TensorFlow Graph Def or SavedModel refers to the correctly
     named TensorFlow Lite operator.
 
-*   Registering a custom kernel with TensorFlow Lite so that the runtime knows
-    how to map your operator and parameters in your graph to executable C/C++
-    code.
+*   Register a custom kernel with TensorFlow Lite so that the runtime knows how
+    to map your operator and parameters in your graph to executable C/C++ code.
 
-*   Testing and profiling your operator correctness and performance,
-    respectively. If you wish to test just your custom operator it is best to
-    create a model with just your custom operator and using the
+*   Test and profile your operator correctness and performance, respectively. If
+    you wish to test just your custom operator, it is best to create a model
+    with just your custom operator and using the
     [benchmark_model](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/benchmark/benchmark_model_test.cc)
-    program
+    program.
 
-Below we describe a complete example of defining Sin and some links to existing
-conversion process involving custom operators.
+Below we describe a complete example of defining `Sin` and some links to
+existing conversion process involving custom operators.
 
 ## Making a custom operator for Sin
 
-Let’s walk through this an example of supporting a TensorFlow operator that
+Let’s walk through an example of supporting a TensorFlow operator that
 TensorFlow Lite does not have. Assume we are using the `Sin` operator and that
 we are building a very simple model for a function `y = sin(x + offset)`, where
 `offset` is trainable.
@@ -45,11 +44,11 @@ optimizer = tf.train.GradientDescentOptimizer(0.001)
 train = optimizer.minimize(loss)
 ```
 
-If you convert this model to Tensorflow Lite format using the TensorFlow Lite
+If you convert this model to TensorFlow Lite format using the TensorFlow Lite
 Optimizing Converter with `--allow_custom_ops` argument, and run it with the
 default interpreter, the interpreter will raise the following error messages:
 
-```
+```none
 Didn't find custom op for name 'Sin'
 Registration failed.
 ```
@@ -57,8 +56,7 @@ Registration failed.
 ### Defining the kernel in the TensorFlow Lite runtime
 
 All we need to do to use the op in TensorFlow Lite is define two functions
-(`Prepare` and `Eval`), and construct a `TfLiteRegistration`. This code would
-look something like this:
+(`Prepare` and `Eval`), and construct a `TfLiteRegistration`:
 
 ```cpp
 TfLiteStatus SinPrepare(TfLiteContext* context, TfLiteNode* node) {
@@ -105,44 +103,45 @@ TfLiteRegistration* Register_SIN() {
 }
 ```
 
-When initializing the `OpResolver`, add the custom op into the resolver, this
+When initializing the `OpResolver`, add the custom op into the resolver. This
 will register the operator with Tensorflow Lite so that TensorFlow Lite can use
-the new implementation. Note that the last two arguments in TfLiteRegistration
-correspond to the `SinPrepare` and `SinEval()` functions you defined for the
-custom op. If you used two functions to initialize variables used in the op and
-free up space: `Init()` and `Free()`, then they would be added to the first two
-arguments of TfLiteRegistration; they are set to nullptr in this example.
+the new implementation. Note that the last two arguments in `TfLiteRegistration`
+correspond to the `SinPrepare` and `SinEval` functions you defined for the
+custom op. If you used `SinInit` and `SinFree` functions to initialize variables
+used in the op and to free up space, respectively, then they would be added to
+the first two arguments of `TfLiteRegistration`; those arguments are set to
+`nullptr` in this example.
 
 ```cpp
 tflite::ops::builtin::BuiltinOpResolver builtins;
 builtins.AddCustom("Sin", Register_SIN());
 ```
 
-If you want to make your custom operators in Java, you would currently need to
+If you want to define your custom operators in Java, you would currently need to
 build your own custom JNI layer and compile your own AAR
 [in this jni code](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/java/src/main/native/builtin_ops_jni.cc).
-Similarly, if you wish to make these operators available in Python you can place
-your registrations in the
+Similarly, if you wish to define these operators available in Python you can
+place your registrations in the
 [Python wrapper code](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper.cc).
 
-Note that a similar process as above can be followed for supporting for a set of
+Note that a similar process as above can be followed for supporting a set of
 operations instead of a single operator. Just add as many `AddCustom` operators
 as you need. In addition, `BuiltinOpResolver` also allows you to override
 implementations of builtins by using the `AddBuiltin`.
 
-## Best Practices
+## Best practices
 
 ### Writing TensorFlow Lite kernels best practices
 
-1.  Optimize memory allocations and de-allocations cautiously. It is more
-    efficient to allocate memory in Prepare() instead of Invoke(), and allocate
-    memory before a loop instead of in every iteration. Use temporary tensors
-    data rather than mallocing yourself (see item 2). Use pointers/references
-    instead of copying as much as possible.
+1.  Optimize memory allocations and de-allocations cautiously. Allocating memory
+    in `Prepare` is more efficient than in `Invoke`, and allocating memory
+    before a loop is better than in every iteration. Use temporary tensors data
+    rather than mallocing yourself (see item 2). Use pointers/references instead
+    of copying as much as possible.
 
 2.  If a data structure will persist during the entire operation, we advise
     pre-allocating the memory using temporary tensors. You may need to use
-    OpData struct to reference the tensor indices in other functions. See
+    OpData struct to reference the tensor indices in other functions. See the
     example in the
     [kernel for convolution](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/kernels/conv.cc).
     A sample code snippet is below
@@ -158,23 +157,24 @@ implementations of builtins by using the `AddBuiltin`.
     ```
 
 3.  If it doesn't cost too much wasted memory, prefer using a static fixed size
-    array (or in Resize() pre-allocated std::vector) rather than using a
-    dynamically allocating std::vector every iteration of execution.
+    array (or a pre-allocated `std::vector` in `Resize`) rather than using a
+    dynamically allocated `std::vector` every iteration of execution.
 
 4.  Avoid instantiating standard library container templates that don't already
-    exist, because they affect binary size. For example, if you need a std::map
-    in your operation that doesn't exist in other kernels, using a std::vector
-    with direct indexing mapping could work while keeping the binary size small.
-    See what other kernels use to gain insight (or ask).
+    exist, because they affect binary size. For example, if you need a
+    `std::map` in your operation that doesn't exist in other kernels, using a
+    `std::vector` with direct indexing mapping could work while keeping the
+    binary size small. See what other kernels use to gain insight (or ask).
 
-5.  Check the pointer to the memory returned by malloc. If this pointer is
-    nullptr, no operations should be performed using that pointer. If you
-    malloc() in a function and have an error exit, deallocate memory before you
+5.  Check the pointer to the memory returned by `malloc`. If this pointer is
+    `nullptr`, no operations should be performed using that pointer. If you
+    `malloc` in a function and have an error exit, deallocate memory before you
     exit.
 
-6.  Use TF_LITE_ENSURE(context, condition) to check for a specific condition.
-    Your code must not leave memory hanging when TF_LITE_ENSURE is done, i.e.,
-    these should be done before any resources are allocated that will leak.
+6.  Use `TF_LITE_ENSURE(context, condition)` to check for a specific condition.
+    Your code must not leave memory hanging when `TF_LITE_ENSURE` is used, i.e.,
+    these macros should be used before any resources are allocated that will
+    leak.
 
 ### Conversion best practices
 
@@ -187,10 +187,10 @@ instead of the builtin TensorFlow one.
 #### Converting TensorFlow models to convert graphs
 
 In TensorFlow you can use the `tf.lite.OpHint` class to encapsulate groups of
-operators when you create a TensorFlow graph. This allows you then to extract a
-graph def that has references to those operators. This is currently experimental
-and should only be used by advanced users. There is a full example of how to use
-this in the
+operators when you create a TensorFlow graph. This encapsulation allows you then
+to extract a graph def that has references to those operators. `tf.lite.OpHint`
+is currently experimental and should only be used by advanced users. A full
+example of how to use this class is in the
 [OpHint code](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/python/op_hint.py).
 
 In addition, you can also use a manual graph substitution approach to rewrite
@@ -198,23 +198,23 @@ Tensorflow graphs. There is an example of how this is done in single shot object
 based detection models
 [export script](https://github.com/tensorflow/models/blob/master/research/object_detection/export_tflite_ssd_graph.py).
 
-### TF Graph Attributes
+### TF graph attributes
 
 When `tflite_convert` converts a TensorFlow graph into TFLite format, it makes
-some assumption about custom operations that might not be correct. In this case,
+some assumptions about custom operations. If the assumptions are not correct,
 the generated graph may not execute.
 
-It is possible to add additional information about your custom op output to TF
-graph before it is converted. The following attributes are supported:
+It is possible to add additional information about your custom op output to the
+TF graph before it is converted. The following attributes are supported:
 
 -   **_output_quantized** a boolean attribute, true if the operation outputs are
     quantized
 -   **_output_types** a list of types for output tensors
 -   **_output_shapes** a list of shapes for output tensors
 
-#### Setting the Attributes
+#### Setting the attributes
 
-This is an example how the attributes can be set:
+The following example demonstrates how the attributes can be set:
 
 ```python
 frozen_graph_def = tf.graph_util.convert_variables_to_constants(...)
@@ -231,5 +231,5 @@ tflite_model = tf.lite.toco_convert(
         frozen_graph_def,...)
 ```
 
-**Note:** After the attributes are set, the graph can not be executed by
-Tensorflow, therefore it should be done just before the conversion.
+**Note:** After the attributes are set, the graph cannot be executed by
+TensorFlow. Therefore, the attributes should be set just before the conversion.

@@ -1280,9 +1280,6 @@ port::Status CheckAndFetchProjectionWeights(
   cudnnDataType_t data_type;
 #if CUDNN_VERSION >= 8000
   RETURN_IF_CUDNN_ERROR(cudnnGetRNNDescriptor_v6(
-#else
-  RETURN_IF_CUDNN_ERROR(cudnnGetRNNDescriptor(
-#endif
       /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc,
       /*hiddenSize=*/&hidden_size_v,
       /*numLayers=*/&num_layers_v,
@@ -1291,7 +1288,19 @@ port::Status CheckAndFetchProjectionWeights(
       /*direction=*/&direction,
       /*mode=*/&mode,
       /*algo=*/&algo,
-      /*dataType=*/&data_type));
+      /*mathPrec=*/&data_type));
+#else
+  RETURN_IF_CUDNN_ERROR(cudnnGetRNNDescriptor(
+      /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc,
+      /*hiddenSize=*/&hidden_size_v,
+      /*numLayers=*/&num_layers_v,
+      /*dropoutDesc=*/&dropout_desc,
+      /*inputMode=*/&input_mode,
+      /*direction=*/&direction,
+      /*mode=*/&mode,
+      /*algo=*/&algo,
+      /*mathPrec=*/&data_type));
+#endif
   int rec_proj_size_v;
   int out_proj_size_v;
   RETURN_IF_CUDNN_ERROR(cudnnGetRNNProjectionLayers(

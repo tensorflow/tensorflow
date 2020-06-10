@@ -277,7 +277,7 @@ class CuDNNGRU(_CuDNNRNN):
     input_h = array_ops.expand_dims(input_h, axis=0)
 
     params = []
-    if build_info.is_rocm_build:
+    if build_info.build_info['is_rocm_build']:
       # ROCm MIOpen's weight sequence for GRU is same with the canonical format
       # but different from that of Cudnn
       # MIOpen/Canonical: [z, r, h] Cudnn: [r, z, h]
@@ -502,7 +502,7 @@ class CuDNNLSTM(_CuDNNRNN):
     input_c = array_ops.expand_dims(input_c, axis=0)
 
     params = []
-    if build_info.is_rocm_build:
+    if build_info.build_info['is_rocm_build']:
       # ROCm MIOpen's weight sequence for LSTM is different from both canonical
       # and Cudnn format
       # MIOpen: [i, f, o, c] Cudnn/Canonical: [i, f, c, o]

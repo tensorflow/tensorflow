@@ -81,6 +81,8 @@ class CpuExecutable : public Executable {
 
   const BufferAssignment& buffer_assignment() const { return *assignment_; }
 
+  int64 SizeOfGeneratedCodeInBytes() const override;
+
  private:
   // Creates an array suitable for passing as the "buffer_table" argument to the
   // JIT compiled function pointer.

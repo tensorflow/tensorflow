@@ -44,6 +44,16 @@ class ReduceTest(test_util.TensorFlowTestCase):
       y_tf = self.evaluate(math_ops.reduce_sum(x))
       self.assertEqual(y_tf, 21)
 
+  def testReduceExtendType(self):
+    in_f32 = np.random.randn(1000, 1000).astype(np.float32)
+    in_bf16 = math_ops.cast(in_f32, dtypes.bfloat16)
+
+    out_f32 = self.evaluate(math_ops.reduce_sum(in_f32))
+    out_bf16 = self.evaluate(math_ops.reduce_sum(in_bf16))
+    expected = math_ops.cast(out_f32, dtypes.bfloat16)
+
+    self.assertAllClose(out_bf16, expected, 1e-3)
+
   def testReduceExplicitAxes(self):
     x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
     with test_util.device(use_gpu=True):
@@ -413,6 +423,16 @@ class AddNTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(slc_as_dense, math_ops.add_n([slc]))
       self.assertAllEqual(2 * slc_as_dense, math_ops.add_n([slc, slc]))
 
+  def test_iterable(self):
+    """Test that add_n supports iterables (e.g. generators and dict values)."""
+    def fn():
+      yield 1
+      yield 2
+    values_dict = {"a": 1, "b": 2}
+    with test_util.use_gpu():
+      self.assertAllEqual(3, math_ops.add_n(fn()))
+      self.assertAllEqual(3, math_ops.add_n(values_dict.values()))
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class DivAndModTest(test_util.TensorFlowTestCase):
@@ -530,6 +550,13 @@ class DivAndModTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(tf3_result, expanded_nums)
     # Consistent with desire to get numerator
     self.assertAllEqual(tf_result, expanded_nums)
+
+  def testWithPythonValue(self):
+    # Test case for https://github.com/tensorflow/tensorflow/issues/39475
+    x = math_ops.divide(5, 2)
+    self.assertIsInstance(x, ops.Tensor)
+    x = math_ops.divide(5, array_ops.constant(2.0))
+    self.assertIsInstance(x, ops.Tensor)
 
 
 @test_util.run_all_in_graph_and_eager_modes

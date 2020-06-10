@@ -830,6 +830,13 @@ func @get_tuple_element(%arg0: tuple<tensor<f32>, tensor<i32>>) -> tensor<f32> {
 
 // -----
 
+func @get_tuple_element_token(%arg0: tuple<tensor<f32>, !xla_hlo.token>) -> !xla_hlo.token {
+  %0 = "xla_hlo.get_tuple_element"(%arg0) {index = 1 : i32} : (tuple<tensor<f32>, !xla_hlo.token>) -> !xla_hlo.token
+  return %0 : !xla_hlo.token
+}
+
+// -----
+
 func @get_tuple_element_bad_type(%arg0: tuple<tensor<f32>, tensor<i32>>) -> tensor<i32> {
   // expected-error@+1 {{has return type tensor<i32>, but expected tensor<f32>}}
   %0 = "xla_hlo.get_tuple_element"(%arg0) {index = 0 : i32} : (tuple<tensor<f32>, tensor<i32>>) -> tensor<i32>

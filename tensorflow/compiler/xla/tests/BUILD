@@ -2141,7 +2141,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:stream_executor_no_cuda",
         "@com_google_absl//absl/memory",
-        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:ir",
     ],
 )
 

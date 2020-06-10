@@ -81,6 +81,8 @@ cc_library(
         ":op_metrics_db_utils",
         ":tf_op_utils",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/profiler/convert:op_metrics_db_combiner",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "@com_google_absl//absl/strings",
     ],
@@ -192,7 +194,6 @@ cc_library(
     deps = [
         ":timespan",
         ":xplane_builder",
-        ":xplane_schema",
         ":xplane_visitor",
         "//tensorflow/core:platform_base",
         "//tensorflow/core/platform:types",
@@ -216,6 +217,23 @@ tf_cc_test(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "xplane_test_utils",
+    testonly = True,
+    srcs = ["xplane_test_utils.cc"],
+    hdrs = ["xplane_test_utils.h"],
+    visibility = [":friends"],
+    deps = [
+        ":xplane_builder",
+        ":xplane_schema",
+        "//tensorflow/core/platform:types",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:variant",
     ],
 )
 
@@ -276,7 +294,7 @@ tf_cc_test(
         ":tf_xplane_visitor",
         ":xplane_builder",
         ":xplane_schema",
-        ":xplane_utils",
+        ":xplane_test_utils",
         ":xplane_visitor",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -343,7 +361,7 @@ tf_cc_test(
         ":trace_utils",
         ":xplane_builder",
         ":xplane_schema",
-        ":xplane_utils",
+        ":xplane_test_utils",
         ":xplane_visitor",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",

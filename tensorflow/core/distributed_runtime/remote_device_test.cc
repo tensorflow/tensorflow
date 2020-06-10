@@ -39,6 +39,7 @@ class RemoteDeviceTest : public ::testing::Test {
   WorkerInterface* wi_;
   std::vector<Device*> devices_;
   std::unique_ptr<test::TestCluster> cluster_;
+  std::unique_ptr<GrpcWorkerEnv> grpc_worker_env_;
 
   RemoteDeviceTest() {
     SessionOptions options;
@@ -51,7 +52,9 @@ class RemoteDeviceTest : public ::testing::Test {
         ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
     std::shared_ptr<GrpcChannelCache> channel_cache(
         NewGrpcChannelCache(spec, channel_func));
-    worker_cache_.reset(NewGrpcWorkerCache(channel_cache));
+    grpc_worker_env_.reset(CreateGrpcWorkerEnv());
+    worker_cache_.reset(
+        NewGrpcWorkerCache(channel_cache, grpc_worker_env_.get()));
     remote_name_ = "/job:localhost/replica:0/task:0";
     wi_ = worker_cache_->GetOrCreateWorker(remote_name_);
   }
@@ -82,11 +85,13 @@ class RemoteDeviceTest : public ::testing::Test {
 
 TEST_F(RemoteDeviceTest, GetStatus) {
   // We know what the testlib's fake server does.
-  EXPECT_EQ(devices_[0]->name(), strings::StrCat(remote_name_, "/cpu:0"));
+  EXPECT_EQ(devices_[0]->name(),
+            strings::StrCat(remote_name_, "/device:CPU:0"));
   EXPECT_EQ(devices_[0]->attributes().device_type(),
             DeviceType(DEVICE_CPU).type());
   EXPECT_EQ(devices_[0]->attributes().memory_limit(), 256 << 20);
-  EXPECT_EQ(devices_[1]->name(), strings::StrCat(remote_name_, "/cpu:1"));
+  EXPECT_EQ(devices_[1]->name(),
+            strings::StrCat(remote_name_, "/device:CPU:1"));
   EXPECT_EQ(devices_[1]->attributes().memory_limit(), 256 << 20);
 }
 

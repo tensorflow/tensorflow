@@ -29,10 +29,10 @@ TfLiteStatus BatchSeqBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   // Options is currently 0 or 1, 0 is default and batches
   // will run in increasing order, this behavior can be disabled by setting 1.
   // Refer to Hexagon NN docs for more details.
-  int32_t config[] = {max_size_for_batch_, 1, 0};
+  int config[] = {max_size_for_batch_, 1, 0};
 
   auto* input_config = graph_builder_->AddConstNodeWithData(
-      config_shape, reinterpret_cast<char*>(&config), sizeof(int32_t) * 3);
+      config_shape, reinterpret_cast<char*>(&config), sizeof(int) * 3);
   AddInput(TensorID(input_config->GetID(), 0));
 
   // Add Input batch details.

@@ -127,19 +127,23 @@ class GraphPartitionHelper {
   TfLiteIntArray* supported_nodes_ = nullptr;  // owns the memory
 };
 
-// While partitioning the graph, this claims DEQUANTIZE nodes (FP16->FP32) in
-// addition to supported nodes for the delegate, when the DEQUANTIZE node's
-// output is an input to the kernel that supports FP16 input.
+// Specialized partitioner for graphs that possibly contain fp16 tensors.
+//
+// From nodes that accept fp16 inputs, this delegates the following:
+// 1. All nodes (except DEQUANTIZE) that are supported with fp16 inputs by the
+// delegate (in the TFLite graph, these nodes take in dequantized FP32
+// outputs).
+// 2. All fp16 DEQUANTIZE nodes that have *all* their consumers in the *first*
+// delegated partition. This is because TFLite's partitioning algorithm
+// greedily puts all such nodes in the first partition.
 class FP16GraphPartitionHelper : public GraphPartitionHelper {
  public:
   FP16GraphPartitionHelper(TfLiteContext* context,
                            IsNodeSupportedFn is_node_supported_fn)
       : GraphPartitionHelper(context, std::move(is_node_supported_fn)) {}
 
-  TfLiteStatus Partition(
-      std::set<std::string>* unsupported_nodes_info) override;
-
  protected:
+  // Specialized function to handle fp16 nodes.
   bool IsNodeSupported(TfLiteContext* context, TfLiteNode* node,
                        TfLiteRegistration* registration, int node_id,
                        std::string* unsupported_details) override;
@@ -149,39 +153,25 @@ class FP16GraphPartitionHelper : public GraphPartitionHelper {
       int n, int min_nodes_per_partition) override;
 
  private:
-  // Record 'node' if it is a dequant op (i.e. a fp16 one here) and return true.
-  // When it's not a dequant op, remap its inputs to the inputs of the preceding
-  // dequant if there's a one and returns false. 'orig_inputs' records original
-  // input tensor ids of this node if any input is remapped.
-  bool RecordAndRemapInputTensors(int32_t op_code, int node_id,
-                                  TfLiteNode* node,
-                                  std::vector<int>* orig_inputs);
+  // This remaps fp32 inputs of the given node to their corresponding fp16
+  // version, if applicable. Can be summarized as:
+  // fp16 -> DEQUANTIZE -> fp32 -> OP -> output
+  // becomes
+  // fp16 -> OP -> output
+  void RemapFp16InputTensors(TfLiteNode* node,
+                             std::vector<int>* orig_inputs) const;
 
-  // Restore inputs of 'node' to 'orig_inputs' only if two sizes match.
-  void RestoreToOrigInputTensors(TfLiteNode* node,
-                                 const std::vector<int>& orig_inputs);
+  // Performs the above remapping for all nodes in the given list, without
+  // tracking the original inputs.
+  void RemapFp16InputTensors(const std::vector<int>& nodes) const;
 
-  // Remap input tensors of every node in 'nodes' (i.e. node indices) if some of
-  // them are from dequant ops.
-  void RemapInputTensors(const std::vector<int>& nodes) const;
-
-  void RemoveSingleDequantNodePartitions();
-
-  void RemoveReservedDequantsFromNodes(std::vector<int>* nodes);
-
-  // Remap input tensors of a single 'node' if some of come from a dequant op.
-  // If 'orig_inputs' isn't nullptr, it records original input tensor ids of
-  // this node if any input is remapped.
-  void RemapInputTensors(TfLiteNode* node, std::vector<int>* orig_inputs) const;
-
-  // A map recording dequantize nodes's input/output tensors of this selected
-  // graph. The key is the output tensor id, and the value is the input tensor
-  // id.
+  // ('dequantize' here refers to fp16 DEQUANTIZE)
+  // Mapping of dequantize nodes' output tensor-id to its node id.
   std::unordered_map<int, int> dequant_nodes_;
-
-  // A set of dequant nodes as in node indices that have to be preserved in the
-  // graph.
-  std::set<int> dequant_nodes_to_save_;
+  // Mapping of DEQUANTIZE node's output (fp32) to its input (fp16).
+  std::unordered_map<int, int> dequant_map_;
+  // mapping of DEQUANTIZE output tensor-id to its number of consumers.
+  std::unordered_map<int, int> dequant_consumers_;
 };
 
 }  // namespace delegates

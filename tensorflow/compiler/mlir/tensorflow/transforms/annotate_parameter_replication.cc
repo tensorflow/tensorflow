@@ -33,7 +33,7 @@ namespace TFDevice {
 
 namespace {
 
-constexpr char kReplicationAttr[] = "tf_device.is_same_data_across_replicas";
+constexpr char kReplicationAttr[] = "xla_hlo.is_same_data_across_replicas";
 constexpr char kMirroredVariableIndicesAttr[] = "_mirrored_variable_indices";
 
 // Analyzes the inputs to ClusterFuncOps in the module, and annotates their
@@ -83,8 +83,7 @@ void AnnotateParameterReplication::runOnOperation() {
         // Not a replication-invariant operand.
         continue;
       }
-      func.setArgAttr(entry.index(), kReplicationAttr,
-                      builder.getBoolAttr(true));
+      func.setArgAttr(entry.index(), kReplicationAttr, builder.getUnitAttr());
     }
   });
 }

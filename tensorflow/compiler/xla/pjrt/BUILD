@@ -159,6 +159,20 @@ cc_library(
 )
 
 cc_library(
+    name = "interpreter_device",
+    srcs = ["interpreter_device.cc"],
+    hdrs = ["interpreter_device.h"],
+    deps = [
+        ":pjrt_client",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/service:interpreter_plugin",
+        "//tensorflow/compiler/xla/service:platform_util",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "cpu_device",
     srcs = ["cpu_device.cc"],
     hdrs = ["cpu_device.h"],

@@ -36,8 +36,6 @@ void GetBeginAndSizeVectors(int dimensions, const TfLiteTensor* begin,
 TfLiteStatus SliceOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
                                               const TfLiteIntArray* outputs,
                                               TfLiteContext* context) {
-  static int quant_bound_shape[] = {1, 1, 1, 1};
-
   // Input data tensor.
   const int tensor_id = inputs->data[0];
   const auto& input_tensor = context->tensors[tensor_id];
@@ -45,23 +43,23 @@ TfLiteStatus SliceOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   // Start / Size
   const auto& begin_tensor = context->tensors[inputs->data[1]];
   const auto& size_tensor = context->tensors[inputs->data[2]];
-  std::vector<int32_t> begins, sizes;
+  std::vector<int> begins, sizes;
   if (begin_tensor.type == kTfLiteInt32) {
-    GetBeginAndSizeVectors<int32_t>(input_tensor.dims->size, &begin_tensor,
-                                    &size_tensor, &begins, &sizes);
+    GetBeginAndSizeVectors<int>(input_tensor.dims->size, &begin_tensor,
+                                &size_tensor, &begins, &sizes);
   } else if (begin_tensor.type == kTfLiteInt64) {
     GetBeginAndSizeVectors<int64_t>(input_tensor.dims->size, &begin_tensor,
                                     &size_tensor, &begins, &sizes);
   } else {
     return kTfLiteError;
   }
-  const int32_t begins_shape[] = {1, 1, 1, static_cast<int32_t>(begins.size())};
+  const int begins_shape[] = {1, 1, 1, static_cast<int>(begins.size())};
   auto begins_node = graph_builder_->AddConstNodeWithData(
       begins_shape, reinterpret_cast<char*>(begins.data()),
-      sizeof(int32_t) * begins.size());
+      sizeof(int) * begins.size());
   auto sizes_node = graph_builder_->AddConstNodeWithData(
       begins_shape, reinterpret_cast<char*>(sizes.data()),
-      sizeof(int32_t) * begins.size());
+      sizeof(int) * begins.size());
   AddInput(TensorID(begins_node->GetID(), 0));
   AddInput(TensorID(sizes_node->GetID(), 0));
 
@@ -69,11 +67,9 @@ TfLiteStatus SliceOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   TF_LITE_ENSURE_STATUS(
       ComputeMinAndMaxQuantValues(input_tensor, &input_min_, &input_max_));
   auto* input_min_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&input_min_),
-      sizeof(input_min_));
+      kScalarShape, reinterpret_cast<char*>(&input_min_), sizeof(input_min_));
   auto* input_max_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape, reinterpret_cast<char*>(&input_max_),
-      sizeof(input_max_));
+      kScalarShape, reinterpret_cast<char*>(&input_max_), sizeof(input_max_));
   AddInput(TensorID(input_min_const->GetID(), 0));
   AddInput(TensorID(input_max_const->GetID(), 0));
 
@@ -85,8 +81,8 @@ TfLiteStatus SliceOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   node_output_ = AddOutput(sizeof(uint8_t), 4,
                            {output_batch_size, output_height_size,
                             output_width_size, output_depth_size});
-  AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-  AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+  AddOutput(sizeof(float), 4, kScalarShape);
+  AddOutput(sizeof(float), 4, kScalarShape);
   return kTfLiteOk;
 }
 

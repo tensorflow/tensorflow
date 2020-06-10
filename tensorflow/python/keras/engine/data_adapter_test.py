@@ -985,7 +985,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
 class TestValidationSplit(keras_parameterized.TestCase):
 
   @parameterized.named_parameters(('numpy_arrays', True), ('tensors', False))
-  def test_validation_split_shuffled(self, use_numpy):
+  def test_validation_split_unshuffled(self, use_numpy):
     if use_numpy:
       x = np.array([0, 1, 2, 3, 4])
       y = np.array([0, 2, 4, 6, 8])
@@ -998,48 +998,13 @@ class TestValidationSplit(keras_parameterized.TestCase):
     (train_x, train_y, train_sw), (val_x, val_y, val_sw) = (
         data_adapter.train_validation_split((x, y, sw), validation_split=0.2))
 
-    self.assertEqual(int(train_x.shape[0]), 4)
-    self.assertEqual(int(train_y.shape[0]), 4)
-    self.assertEqual(int(train_sw.shape[0]), 4)
-    for i in range(4):
-      # Check that all arrays were shuffled in identical order.
-      self.assertEqual(2 * train_x[i].numpy(), train_y[i].numpy())
-      self.assertEqual(2 * train_y[i].numpy(), train_sw[i].numpy())
-
-    self.assertEqual(int(val_x.shape[0]), 1)
-    self.assertEqual(int(val_y.shape[0]), 1)
-    self.assertEqual(int(val_sw.shape[0]), 1)
-    for i in range(1):
-      # Check that all arrays were shuffled in identical order.
-      self.assertEqual(2 * train_x[i].numpy(), train_y[i].numpy())
-      self.assertEqual(2 * train_y[i].numpy(), train_sw[i].numpy())
-
-    # Check that arrays contain expected values.
-    self.assertEqual(
-        sorted(array_ops.concat([train_x, val_x], axis=0).numpy().tolist()),
-        sorted(ops.convert_to_tensor_v2(x).numpy().tolist()))
-    self.assertEqual(
-        sorted(array_ops.concat([train_y, val_y], axis=0).numpy().tolist()),
-        sorted(ops.convert_to_tensor_v2(y).numpy().tolist()))
-    self.assertEqual(
-        sorted(array_ops.concat([train_sw, val_sw], axis=0).numpy().tolist()),
-        sorted(ops.convert_to_tensor_v2(sw).numpy().tolist()))
-
-  @parameterized.named_parameters(('numpy_arrays', True), ('tensors', False))
-  def test_validation_split_unshuffled(self, use_numpy):
     if use_numpy:
-      x = np.array([0, 1, 2, 3, 4])
-      y = np.array([0, 2, 4, 6, 8])
-      sw = np.array([0, 4, 8, 12, 16])
-    else:
-      x = ops.convert_to_tensor_v2([0, 1, 2, 3, 4])
-      y = ops.convert_to_tensor_v2([0, 2, 4, 6, 8])
-      sw = ops.convert_to_tensor_v2([0, 4, 8, 12, 16])
-
-    (train_x, train_y, train_sw), (val_x, val_y, val_sw) = (
-        data_adapter.train_validation_split((x, y, sw),
-                                            validation_split=0.2,
-                                            shuffle=False))
+      train_x = ops.convert_to_tensor_v2(train_x)
+      train_y = ops.convert_to_tensor_v2(train_y)
+      train_sw = ops.convert_to_tensor_v2(train_sw)
+      val_x = ops.convert_to_tensor_v2(val_x)
+      val_y = ops.convert_to_tensor_v2(val_y)
+      val_sw = ops.convert_to_tensor_v2(val_sw)
 
     self.assertEqual(train_x.numpy().tolist(), [0, 1, 2, 3])
     self.assertEqual(train_y.numpy().tolist(), [0, 2, 4, 6])

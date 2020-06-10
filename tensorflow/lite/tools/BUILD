@@ -134,6 +134,7 @@ cc_binary(
     deps = [
         ":command_line_flags",
         ":gen_op_registration",
+        "//tensorflow/lite:util",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -249,6 +250,60 @@ cc_test(
     deps = [
         ":command_line_flags",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "list_flex_ops",
+    srcs = ["list_flex_ops.cc"],
+    hdrs = ["list_flex_ops.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:util",
+        "@com_google_absl//absl/strings",
+        "@flatbuffers",
+    ],
+)
+
+# This tool list flex ops and kernels inside a TFLite file.
+# It is used to generate header file for selective registration.
+cc_binary(
+    name = "list_flex_ops_main",
+    srcs = ["list_flex_ops_main.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":list_flex_ops",
+        "//tensorflow/lite/tools:command_line_flags",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "list_flex_ops_test",
+    srcs = ["list_flex_ops_test.cc"],
+    data = [
+        "//tensorflow/lite:testdata/0_subgraphs.bin",
+        "//tensorflow/lite:testdata/multi_add_flex.bin",
+        "//tensorflow/lite:testdata/softplus_flex.bin",
+        "//tensorflow/lite:testdata/test_model.bin",
+        "//tensorflow/lite:testdata/test_model_broken.bin",
+    ],
+    tags = [
+        "no_oss",  # Currently requires --config=monolithic, b/118895218.
+        "tflite_not_portable_android",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":list_flex_ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
     ],
 )
 

@@ -57,9 +57,10 @@ struct TensorLinearDescriptor : public GPUObjectDescriptor {
 
   absl::Status PerformSelector(const std::string& selector,
                                const std::vector<std::string>& args,
+                               const std::vector<std::string>& template_args,
                                std::string* result) const override;
 
-  GPUResources GetGPUResources() const override;
+  GPUResources GetGPUResources(AccessType access_type) const override;
   absl::Status PerformReadSelector(const std::vector<std::string>& args,
                                    std::string* result) const;
 };
@@ -94,7 +95,7 @@ class LinearStorage : public GPUObject {
   const GPUObjectDescriptor* GetGPUDescriptor() const override {
     return &desc_;
   }
-  GPUResourcesWithValue GetGPUResources() const override;
+  GPUResourcesWithValue GetGPUResources(AccessType access_type) const override;
 
  private:
   friend absl::Status CreateTextureLinearStorage(int size, DataType data_type,

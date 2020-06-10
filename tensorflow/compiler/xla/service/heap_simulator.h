@@ -59,6 +59,10 @@ class HeapSimulator {
     int64 chunk_end() const { return offset + size; }
 
     bool OverlapsWith(Chunk other_chunk) const;
+
+    bool operator==(const Chunk& other) const {
+      return offset == other.offset && size == other.size;
+    }
   };
 
   // Result represents the result of the heap simulation.

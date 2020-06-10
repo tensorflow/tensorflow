@@ -59,6 +59,8 @@ from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
+_XLA_OP_BY_OP_INPUTS_LIMIT = 200
+
 
 @contextlib.contextmanager
 def maybe_init_scope():
@@ -676,8 +678,18 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       return cross_device_ops_lib.reduce_non_distributed_value(
           reduce_op, value, destinations, self._num_replicas_in_sync)
 
+    # Currently XLA op by op mode has a limit for the number of inputs for a
+    # single op, thus we break one `add_n` op into a group of `add_n` ops to
+    # work around the constraint.
     # TODO(cjfj): Detect when it is possible to use `cross_replica_sum`.
-    output = math_ops.add_n(value.values)
+    if len(value.values) <= _XLA_OP_BY_OP_INPUTS_LIMIT:
+      output = math_ops.add_n(value.values)
+    else:
+      output = array_ops.zeros_like(
+          value.values[0], dtype=value.values[0].dtype)
+      for i in range(0, len(value.values), _XLA_OP_BY_OP_INPUTS_LIMIT):
+        output += math_ops.add_n(value.values[i:i + _XLA_OP_BY_OP_INPUTS_LIMIT])
+
     if reduce_op == reduce_util.ReduceOp.MEAN:
       output *= (1. / len(value.values))
 
