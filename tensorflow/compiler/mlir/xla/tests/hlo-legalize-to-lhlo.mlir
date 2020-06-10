@@ -18,7 +18,7 @@ func @return_func(%arg0: tensor<4xf32>) -> tensor<4xf32> {
 }
 //      CHECK: (%[[ARG0:.*]]: [[TYPE:.*]], %[[RESULT:.*]]: [[TYPE]])
 // CHECK-NEXT: "xla_lhlo.copy"(%[[ARG0]], %[[RESULT]]) : ([[TYPE]], [[TYPE]]) -> ()
-// CHECK-NEXT: "xla_lhlo.terminator"() : () -> ()
+// CHECK-NEXT: return
 
 // -----
 
@@ -48,7 +48,7 @@ func @func_op_long(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> 
 // CHECK-NEXT: dealloc %[[ADD_RESULT]] : memref<4xf32>
 // CHECK-NEXT: "xla_lhlo.copy"(%[[MUL_RESULT]], %[[RESULT]]) : (memref<4xf32>, memref<4xf32>) -> ()
 // CHECK-NEXT: dealloc %[[MUL_RESULT]] : memref<4xf32>
-// CHECK-NEXT: "xla_lhlo.terminator"() : () -> ()
+// CHECK-NEXT: return
 
 // -----
 
@@ -291,7 +291,8 @@ func @convert(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xf32>
   %tensor_result = "xla_hlo.convert"(%tensor_operand)
       : (tensor<2x2xf32>) -> tensor<2x2xf32>
-  // CHECK: xla_lhlo.terminator
+  // CHECK: "xla_lhlo.copy"(%{{.*}}, %{{.*}})
+  // CHECK-NOT: tensor_store
   tensor_store %tensor_result, %result : memref<2x2xf32>
   return
 }
