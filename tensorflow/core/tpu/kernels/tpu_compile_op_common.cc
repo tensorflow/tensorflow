@@ -358,7 +358,7 @@ Status TPUCompileOpKernelCommon::CompileTFFunctionToHlo(
                 "termination is to ensure a consistent state. If your job "
                 "does not restart, modify the retries allowed. See "
                 "b/71383512.";
-#elif
+#else
   LOG(ERROR) << "Restarting TPU host due to cancelled compilation.";
 #endif
 
