@@ -193,11 +193,7 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
       temp_sum->type = kTfLiteInt64;
       break;
     case kTfLiteUInt8:
-      temp_sum->type = kTfLiteInt32;
-      break;
     case kTfLiteInt8:
-      temp_sum->type = kTfLiteInt32;
-      break;
     case kTfLiteInt16:
       temp_sum->type = kTfLiteInt32;
       break;
