@@ -486,7 +486,7 @@ class SliceAssignTest(xla_test.XLATestCase):
 
   def testUninitialized(self):
     with self.assertRaisesRegexp(errors.FailedPreconditionError,
-                                 "Read variable failure"):
+                                 "uninitialized"):
       with self.session() as sess, self.test_scope():
         v = resource_variable_ops.ResourceVariable([1, 2])
         sess.run(v[:].assign([1, 2]))
