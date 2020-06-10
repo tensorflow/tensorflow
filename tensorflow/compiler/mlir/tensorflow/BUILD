@@ -431,7 +431,6 @@ cc_library(
         "transforms/optimize_global_tensors.cc",
         "transforms/parallel_execute_to_islands.cc",
         "transforms/promote_resources_to_args.cc",
-        "transforms/raise_control_flow.cc",
         "transforms/readonly_references_to_resources.cc",
         "transforms/replicate_invariant_op_hoisting.cc",
         "transforms/replicate_to_island.cc",
@@ -460,7 +459,6 @@ cc_library(
         "transforms/tpu_variable_runtime_reformatting.cc",
         "translate/breakup-islands.cc",
         "translate/control_to_executor_dialect.cc",
-        "translate/executor_to_control_dialect.cc",
         "translate/tf_functional_to_executor.cc",
     ],
     hdrs = [

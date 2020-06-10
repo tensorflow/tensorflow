@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/micro/recording_micro_allocator.h"
 
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/micro/compatibility.h"
 #include "tensorflow/lite/micro/recording_simple_memory_allocator.h"
 
@@ -28,6 +29,26 @@ RecordingMicroAllocator::RecordingMicroAllocator(
     : MicroAllocator(context, model, recording_memory_allocator,
                      error_reporter),
       recording_memory_allocator_(recording_memory_allocator) {}
+
+RecordingMicroAllocator* RecordingMicroAllocator::Create(
+    TfLiteContext* context, const Model* model,
+    RecordingSimpleMemoryAllocator* memory_allocator,
+    ErrorReporter* error_reporter) {
+  TFLITE_DCHECK(context != nullptr);
+  TFLITE_DCHECK(model != nullptr);
+  TFLITE_DCHECK(memory_allocator != nullptr);
+  uint8_t* allocator_buffer = memory_allocator->AllocateFromTail(
+      sizeof(RecordingMicroAllocator), alignof(RecordingMicroAllocator));
+  RecordingMicroAllocator* allocator = new (allocator_buffer)
+      RecordingMicroAllocator(context, model, memory_allocator, error_reporter);
+  if (allocator->InitGraphAndContextTensorData() != kTfLiteOk) {
+    TF_LITE_REPORT_ERROR(
+        error_reporter,
+        "RecordingMicroAllocator: Failed to initialize model graph.");
+    return nullptr;
+  }
+  return allocator;
+}
 
 RecordedAllocation RecordingMicroAllocator::GetRecordedAllocation(
     RecordedAllocationType allocation_type) {

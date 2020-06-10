@@ -31,6 +31,10 @@ namespace profiler {
 namespace {
 
 TEST(GroupEventsTest, GroupGpuTraceTest) {
+  constexpr int64 kStepNum = 123;
+  constexpr int64 kStepId = 0;
+  constexpr int64 kCorrelationId = 100;
+
   XSpace space;
   XPlaneBuilder host_plane_builder(space.add_planes());
   host_plane_builder.SetName(kHostThreads);
@@ -38,16 +42,16 @@ TEST(GroupEventsTest, GroupGpuTraceTest) {
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
-               0, 100, {{StatType::kStepNum, 123}});
+               0, 100, {{StatType::kStepNum, kStepNum}});
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
-               10, 90, {{StatType::kStepId, 0}});
+               10, 90, {{StatType::kStepId, kStepId}});
 
   auto tf_executor_thread = host_plane_builder.GetOrCreateLine(1);
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 20, 80,
-               {{StatType::kStepId, 0}});
+               {{StatType::kStepId, kStepId}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 70,
-               {{StatType::kCorrelationId, 100}});
+               {{StatType::kCorrelationId, kCorrelationId}});
 
   XPlane* device_plane = space.add_planes();
   XPlaneBuilder device_plane_builder(device_plane);
@@ -55,7 +59,7 @@ TEST(GroupEventsTest, GroupGpuTraceTest) {
 
   auto stream = device_plane_builder.GetOrCreateLine(0);
   CreateXEvent(&device_plane_builder, &stream, "matmul", 200, 300,
-               {{StatType::kCorrelationId, 100}});
+               {{StatType::kCorrelationId, kCorrelationId}});
 
   EventGroupNameMap event_group_name_map;
   GroupTfEvents(&space, &event_group_name_map);
@@ -69,6 +73,10 @@ TEST(GroupEventsTest, GroupGpuTraceTest) {
 }
 
 TEST(GroupEventsTest, GroupTensorFlowLoopTest) {
+  constexpr int64 kStepId = 0;
+  constexpr int64 kIterNum = 10;
+  constexpr int64 kCorrelationId = 100;
+
   XSpace space;
   XPlaneBuilder host_plane_builder(space.add_planes());
   host_plane_builder.SetName(kHostThreads);
@@ -77,12 +85,12 @@ TEST(GroupEventsTest, GroupTensorFlowLoopTest) {
   auto tf_executor_thread = host_plane_builder.GetOrCreateLine(0);
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 5, 10,
-               {{StatType::kStepId, 0}, {StatType::kIterNum, 10}});
+               {{StatType::kStepId, kStepId}, {StatType::kIterNum, kIterNum}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 20, 80,
-               {{StatType::kStepId, 0}, {StatType::kIterNum, 10}});
+               {{StatType::kStepId, kStepId}, {StatType::kIterNum, kIterNum}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 70,
-               {{StatType::kCorrelationId, 100}});
+               {{StatType::kCorrelationId, kCorrelationId}});
 
   XPlane* device_plane = space.add_planes();
   XPlaneBuilder device_plane_builder(device_plane);
@@ -90,7 +98,7 @@ TEST(GroupEventsTest, GroupTensorFlowLoopTest) {
 
   auto stream = device_plane_builder.GetOrCreateLine(0);
   CreateXEvent(&device_plane_builder, &stream, "matmul", 200, 300,
-               {{StatType::kCorrelationId, 100}});
+               {{StatType::kCorrelationId, kCorrelationId}});
 
   EventGroupNameMap event_group_name_map;
   GroupTfEvents(&space, &event_group_name_map);
@@ -111,6 +119,11 @@ TEST(GroupEventsTest, GroupTensorFlowLoopTest) {
 // group_id is initialized to the first TF loop's first iter_num (10) and then
 // monotonically increased.
 TEST(GroupEventsTest, GroupMultipleTensorFlowLoopsTest) {
+  constexpr int64 kFirstStepId = 0;
+  constexpr int64 kSecondStepId = 1;
+  constexpr int64 kFirstIterNumStart = 10;
+  constexpr int64 kSecondIterNumStart = 0;
+
   XSpace space;
   XPlaneBuilder host_plane_builder(space.add_planes());
   host_plane_builder.SetName(kHostThreads);
@@ -119,17 +132,21 @@ TEST(GroupEventsTest, GroupMultipleTensorFlowLoopsTest) {
   auto first_tf_executor_thread = host_plane_builder.GetOrCreateLine(0);
   CreateXEvent(&host_plane_builder, &first_tf_executor_thread,
                HostEventType::kExecutorStateProcess, 220, 80,
-               {{StatType::kStepId, 1}, {StatType::kIterNum, 0}});
+               {{StatType::kStepId, kSecondStepId},
+                {StatType::kIterNum, kSecondIterNumStart}});
   CreateXEvent(&host_plane_builder, &first_tf_executor_thread,
                HostEventType::kExecutorStateProcess, 320, 80,
-               {{StatType::kStepId, 1}, {StatType::kIterNum, 1}});
+               {{StatType::kStepId, kSecondStepId},
+                {StatType::kIterNum, kSecondIterNumStart + 1}});
   auto second_tf_executor_thread = host_plane_builder.GetOrCreateLine(1);
   CreateXEvent(&host_plane_builder, &second_tf_executor_thread,
                HostEventType::kExecutorStateProcess, 20, 80,
-               {{StatType::kStepId, 0}, {StatType::kIterNum, 10}});
+               {{StatType::kStepId, kFirstStepId},
+                {StatType::kIterNum, kFirstIterNumStart}});
   CreateXEvent(&host_plane_builder, &second_tf_executor_thread,
                HostEventType::kExecutorStateProcess, 120, 80,
-               {{StatType::kStepId, 0}, {StatType::kIterNum, 11}});
+               {{StatType::kStepId, kFirstStepId},
+                {StatType::kIterNum, kFirstIterNumStart + 1}});
 
   EventGroupNameMap event_group_name_map;
   GroupTfEvents(&space, &event_group_name_map);
@@ -141,6 +158,10 @@ TEST(GroupEventsTest, GroupMultipleTensorFlowLoopsTest) {
 }
 
 TEST(GroupEventsTest, GroupFunctionalOp) {
+  constexpr int64 kStepNum = 123;
+  constexpr int64 kStepId = 0;
+  constexpr int64 kFunctionStepId = 1;
+
   XSpace space;
   XPlane* host_plane = space.add_planes();
   XPlaneBuilder host_plane_builder(host_plane);
@@ -149,20 +170,20 @@ TEST(GroupEventsTest, GroupFunctionalOp) {
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
-               0, 200, {{StatType::kStepNum, 123}});
+               0, 200, {{StatType::kStepNum, kStepNum}});
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
-               10, 190, {{StatType::kStepId, 0}});
+               10, 190, {{StatType::kStepId, kStepId}});
 
   auto tf_executor_thread = host_plane_builder.GetOrCreateLine(0);
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 20, 80,
-               {{StatType::kStepId, 0}});
+               {{StatType::kStepId, kStepId}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kRemoteCallOp, 30, 70,
-               {{StatType::kFunctionStepId, 1}});
+               {{StatType::kFunctionStepId, kFunctionStepId}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 100, 150,
-               {{StatType::kStepId, 1}});
+               {{StatType::kStepId, kFunctionStepId}});
 
   EventGroupNameMap event_group_name_map;
   GroupTfEvents(&space, &event_group_name_map);
@@ -174,12 +195,10 @@ TEST(GroupEventsTest, GroupFunctionalOp) {
         line.ForEachEvent(
             [&](const tensorflow::profiler::XEventVisitor& event) {
               absl::optional<int64> group_id;
-              event.ForEachStat(
-                  [&](const tensorflow::profiler::XStatVisitor& stat) {
-                    if (stat.Type() == StatType::kGroupId) {
-                      group_id = stat.IntValue();
-                    }
-                  });
+              if (absl::optional<XStatVisitor> stat =
+                      event.GetStat(StatType::kGroupId)) {
+                group_id = stat->IntValue();
+              }
               EXPECT_TRUE(group_id.has_value());
               EXPECT_EQ(*group_id, 0);
             });
@@ -187,6 +206,8 @@ TEST(GroupEventsTest, GroupFunctionalOp) {
 }
 
 TEST(GroupEventsTest, EagerOpTest) {
+  constexpr int64 kCorrelationId = 100;
+
   XSpace space;
   XPlane* host_plane = space.add_planes();
   XPlaneBuilder host_plane_builder(host_plane);
@@ -196,12 +217,12 @@ TEST(GroupEventsTest, EagerOpTest) {
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
   // Eagerly scheduled GPU kernel.
   CreateXEvent(&host_plane_builder, &main_thread,
-               HostEventType::kEagerKernelExecute, 10, 100, {});
+               HostEventType::kEagerKernelExecute, 10, 100);
   CreateXEvent(&host_plane_builder, &main_thread, "matmul", 10, 100,
-               {{StatType::kCorrelationId, 100}});
+               {{StatType::kCorrelationId, kCorrelationId}});
   // Eagerly executed CPU TF op.
   CreateXEvent(&host_plane_builder, &main_thread,
-               HostEventType::kEagerKernelExecute, 120, 80, {});
+               HostEventType::kEagerKernelExecute, 120, 80);
   CreateXEvent(&host_plane_builder, &main_thread, "add:Add", 120, 80);
 
   XPlane* device_plane = space.add_planes();
@@ -211,7 +232,7 @@ TEST(GroupEventsTest, EagerOpTest) {
   auto stream = device_plane_builder.GetOrCreateLine(0);
   // Eagerly executed GPU kernel.
   CreateXEvent(&device_plane_builder, &stream, "matmul", 200, 300,
-               {{StatType::kCorrelationId, 100}});
+               {{StatType::kCorrelationId, kCorrelationId}});
 
   GroupTfEvents(&space, /*event_group_name_map=*/nullptr);
   XPlaneVisitor host_plane_visitor = CreateTfXPlaneVisitor(host_plane);
@@ -229,6 +250,10 @@ TEST(GroupEventsTest, EagerOpTest) {
 }
 
 TEST(GroupEventsTest, FunctionOpTest) {
+  constexpr int64 kStepNum = 123;
+  constexpr int64 kStepId = 0;
+  constexpr int64 kCorrelationId = 100;
+
   XSpace space;
   XPlane* host_plane = space.add_planes();
   XPlaneBuilder host_plane_builder(host_plane);
@@ -237,19 +262,19 @@ TEST(GroupEventsTest, FunctionOpTest) {
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
-               0, 100, {{StatType::kStepNum, 123}});
+               0, 100, {{StatType::kStepNum, kStepNum}});
   CreateXEvent(&host_plane_builder, &main_thread,
-               HostEventType::kEagerKernelExecute, 10, 90, {});
+               HostEventType::kEagerKernelExecute, 10, 90);
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
-               10, 90, {{StatType::kStepId, 0}});
+               10, 90, {{StatType::kStepId, kStepId}});
 
   auto tf_executor_thread = host_plane_builder.GetOrCreateLine(1);
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 20, 80,
-               {{StatType::kStepId, 0}});
+               {{StatType::kStepId, kStepId}});
   // GPU kernel scheduled inside tf.function.
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 30,
-               {{StatType::kCorrelationId, 100}});
+               {{StatType::kCorrelationId, kCorrelationId}});
   // CPU TF op executed inside tf.function.
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "add:Add", 70, 20);
 
@@ -260,7 +285,7 @@ TEST(GroupEventsTest, FunctionOpTest) {
   auto stream = device_plane_builder.GetOrCreateLine(0);
   // GPU kernel executed as part of tf.function.
   CreateXEvent(&device_plane_builder, &stream, "matmul", 200, 300,
-               {{StatType::kCorrelationId, 100}});
+               {{StatType::kCorrelationId, kCorrelationId}});
 
   GroupTfEvents(&space, /*event_group_name_map=*/nullptr);
   XPlaneVisitor host_plane_visitor = CreateTfXPlaneVisitor(host_plane);
@@ -278,8 +303,9 @@ TEST(GroupEventsTest, FunctionOpTest) {
 }
 
 TEST(GroupEventsTest, SemanticArgTest) {
+  constexpr int64 kIsRoot = 1;
   constexpr int64 kStepNum = 100;
-  constexpr int kContextType = 123;
+  constexpr int64 kContextType = 123;
   constexpr uint64 kContextId = 456;
 
   XSpace raw_space;
@@ -288,7 +314,7 @@ TEST(GroupEventsTest, SemanticArgTest) {
   plane.ReserveLines(2);
   auto root_producer = plane.GetOrCreateLine(0);
   CreateXEvent(&plane, &root_producer, HostEventType::kTraceContext, 0, 100,
-               {{StatType::kIsRoot, 1}, {StatType::kStepNum, kStepNum}});
+               {{StatType::kIsRoot, kIsRoot}, {StatType::kStepNum, kStepNum}});
   CreateXEvent(&plane, &root_producer, HostEventType::kFunctionRun, 10, 90,
                {{StatType::kProducerType, kContextType},
                 {StatType::kProducerId, kContextId}});
@@ -305,12 +331,10 @@ TEST(GroupEventsTest, SemanticArgTest) {
         line.ForEachEvent(
             [&](const tensorflow::profiler::XEventVisitor& event) {
               absl::optional<int64> group_id;
-              event.ForEachStat(
-                  [&](const tensorflow::profiler::XStatVisitor& stat) {
-                    if (stat.Type() == StatType::kGroupId) {
-                      group_id = stat.IntValue();
-                    }
-                  });
+              if (absl::optional<XStatVisitor> stat =
+                      event.GetStat(StatType::kGroupId)) {
+                group_id = stat->IntValue();
+              }
               EXPECT_TRUE(group_id.has_value());
               EXPECT_EQ(*group_id, 0);
             });
@@ -318,7 +342,99 @@ TEST(GroupEventsTest, SemanticArgTest) {
   EXPECT_EQ(num_events, 3);
 }
 
+TEST(GroupEventsTest, SemanticIntArgNoMatchTest) {
+  constexpr int64 kIsRoot = 1;
+  constexpr int64 kStepNum = 100;
+  constexpr int64 kContextType = 123;
+  constexpr uint64 kProducerId = 456;
+  constexpr uint64 kConsumerId = 789;
+
+  XSpace raw_space;
+  XPlane* raw_plane = raw_space.add_planes();
+  XPlaneBuilder plane(raw_plane);
+  plane.ReserveLines(2);
+  auto root_producer = plane.GetOrCreateLine(0);
+  CreateXEvent(&plane, &root_producer, HostEventType::kTraceContext, 0, 100,
+               {{StatType::kIsRoot, kIsRoot}, {StatType::kStepNum, kStepNum}});
+  CreateXEvent(&plane, &root_producer, HostEventType::kFunctionRun, 10, 90,
+               {{StatType::kProducerType, kContextType},
+                {StatType::kProducerId, kProducerId}});
+  auto consumer = plane.GetOrCreateLine(1);
+  CreateXEvent(&plane, &consumer, HostEventType::kExecutorStateProcess, 20, 80,
+               {{StatType::kConsumerType, kContextType},
+                {StatType::kConsumerId, kConsumerId}});
+
+  GroupTfEvents(&raw_space, /*event_group_name_map=*/nullptr);
+  int num_events = 0;
+  CreateTfXPlaneVisitor(raw_plane).ForEachLine(
+      [&](const tensorflow::profiler::XLineVisitor& line) {
+        num_events += line.NumEvents();
+        line.ForEachEvent(
+            [&](const tensorflow::profiler::XEventVisitor& event) {
+              absl::optional<int64> group_id;
+              if (absl::optional<XStatVisitor> stat =
+                      event.GetStat(StatType::kGroupId)) {
+                group_id = stat->IntValue();
+              }
+              if (event.Type() == HostEventType::kExecutorStateProcess) {
+                EXPECT_FALSE(group_id.has_value());
+              } else {
+                EXPECT_TRUE(group_id.has_value());
+                EXPECT_EQ(*group_id, 0);
+              }
+            });
+      });
+  EXPECT_EQ(num_events, 3);
+}
+
+TEST(GroupEventsTest, SemanticUintArgNoMatchTest) {
+  constexpr int64 kIsRoot = 1;
+  constexpr int64 kStepNum = 100;
+  constexpr int64 kContextType = 123;
+  constexpr uint64 kProducerId = UINT64_MAX;
+  constexpr uint64 kConsumerId = UINT64_MAX - 1;
+
+  XSpace raw_space;
+  XPlane* raw_plane = raw_space.add_planes();
+  XPlaneBuilder plane(raw_plane);
+  plane.ReserveLines(2);
+  auto root_producer = plane.GetOrCreateLine(0);
+  CreateXEvent(&plane, &root_producer, HostEventType::kTraceContext, 0, 100,
+               {{StatType::kIsRoot, kIsRoot}, {StatType::kStepNum, kStepNum}});
+  CreateXEvent(&plane, &root_producer, HostEventType::kFunctionRun, 10, 90,
+               {{StatType::kProducerType, kContextType},
+                {StatType::kProducerId, kProducerId}});
+  auto consumer = plane.GetOrCreateLine(1);
+  CreateXEvent(&plane, &consumer, HostEventType::kExecutorStateProcess, 20, 80,
+               {{StatType::kConsumerType, kContextType},
+                {StatType::kConsumerId, kConsumerId}});
+
+  GroupTfEvents(&raw_space, /*event_group_name_map=*/nullptr);
+  int num_events = 0;
+  CreateTfXPlaneVisitor(raw_plane).ForEachLine(
+      [&](const tensorflow::profiler::XLineVisitor& line) {
+        num_events += line.NumEvents();
+        line.ForEachEvent(
+            [&](const tensorflow::profiler::XEventVisitor& event) {
+              absl::optional<int64> group_id;
+              if (absl::optional<XStatVisitor> stat =
+                      event.GetStat(StatType::kGroupId)) {
+                group_id = stat->IntValue();
+              }
+              if (event.Type() == HostEventType::kExecutorStateProcess) {
+                EXPECT_FALSE(group_id.has_value());
+              } else {
+                EXPECT_TRUE(group_id.has_value());
+                EXPECT_EQ(*group_id, 0);
+              }
+            });
+      });
+  EXPECT_EQ(num_events, 3);
+}
+
 TEST(GroupEventsTest, AsyncEventTest) {
+  constexpr int64 kIsRoot = 1;
+  constexpr int64 kIsAsync = 1;
   constexpr absl::string_view kParent = "parent";
   constexpr absl::string_view kAsync = "async";
   constexpr absl::string_view kChild = "child";
@@ -328,8 +444,9 @@ TEST(GroupEventsTest, AsyncEventTest) {
   XPlaneBuilder plane(raw_plane);
   plane.ReserveLines(1);
   auto line = plane.GetOrCreateLine(0);
-  CreateXEvent(&plane, &line, kParent, 0, 100, {{StatType::kIsRoot, 1}});
-  CreateXEvent(&plane, &line, kAsync, 10, 200, {{StatType::kIsAsync, 1}});
+  CreateXEvent(&plane, &line, kParent, 0, 100, {{StatType::kIsRoot, kIsRoot}});
+  CreateXEvent(&plane, &line, kAsync, 10, 200,
+               {{StatType::kIsAsync, kIsAsync}});
   CreateXEvent(&plane, &line, kChild, 20, 80);
 
   GroupTfEvents(&raw_space, /*event_group_name_map=*/nullptr);
@@ -339,12 +456,10 @@ TEST(GroupEventsTest, AsyncEventTest) {
         line.ForEachEvent(
             [&](const tensorflow::profiler::XEventVisitor& event) {
               absl::optional<int64> group_id;
-              event.ForEachStat(
-                  [&](const tensorflow::profiler::XStatVisitor& stat) {
-                    if (stat.Type() == StatType::kGroupId) {
-                      group_id = stat.IntValue();
-                    }
-                  });
+              if (absl::optional<XStatVisitor> stat =
+                      event.GetStat(StatType::kGroupId)) {
+                group_id = stat->IntValue();
+              }
               if (event.Name() == kAsync) {
                 EXPECT_FALSE(group_id.has_value());
               } else {

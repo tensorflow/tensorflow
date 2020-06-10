@@ -1361,6 +1361,7 @@ cc_library(
     hdrs = ["replicate_per_replica_nodes.h"],
     copts = tf_copts(),
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

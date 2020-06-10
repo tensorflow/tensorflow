@@ -64,7 +64,17 @@ typedef struct {
 
 // Allocator responsible for allocating memory for all intermediate tensors
 // necessary to invoke a model.
-
+//
+// The lifetime of the model, tensor arena and error reporter must be at
+// least as long as that of the allocator object, since the allocator needs
+// them to be accessible during its entire lifetime.
+//
+// The MicroAllocator simply plans out additional allocations that are required
+// to standup a model for inference in TF Micro. This class currently relies on
+// an additional allocator - SimpleMemoryAllocator - for all allocations from an
+// arena. These allocations are divided into head (non-persistent) and tail
+// (persistent) regions:
+//
 // Memory layout to help understand how it works
 // This information could change in the future version.
 // ************** .memory_allocator->GetBuffer()
@@ -77,20 +87,21 @@ typedef struct {
 // ************** .memory_allocator->GetBuffer() + ->GetMaxBufferSize()
 class MicroAllocator {
  public:
-  // The lifetime of the model, tensor allocator and error reporter must be at
-  // least as long as that of the allocator object, since the allocator needs
-  // them to be accessible during its entire lifetime.
-
+  // Creates a MicroAllocator instance from a given tensor arena. This arena
+  // will be managed by the created instance.
   // Note: Please use __declspec(align(16)) to make sure tensor_arena is 16
   // bytes aligned, otherwise some head room will be wasted.
-  MicroAllocator(TfLiteContext* context, const Model* model,
-                 uint8_t* tensor_arena, size_t arena_size,
-                 ErrorReporter* error_reporter);
-  virtual ~MicroAllocator();
+  // TODO(b/157615197): Cleanup constructor + factory usage.
+  static MicroAllocator* Create(TfLiteContext* context, const Model* model,
+                                uint8_t* tensor_arena, size_t arena_size,
+                                ErrorReporter* error_reporter);
 
-  // Initializes the allocator by allocating required internal structs required
-  // to prepare the model from the flatbuffer data in PrepareFromFlatbuffer.
-  TfLiteStatus Init();
+  // Creates a MicroAllocator instance using the provided SimpleMemoryAllocator
+  // intance. This allocator instance will use the SimpleMemoryAllocator
+  // instance to manage allocations internally.
+  static MicroAllocator* Create(TfLiteContext* context, const Model* model,
+                                SimpleMemoryAllocator* memory_allocator,
+                                ErrorReporter* error_reporter);
 
   // Run through the model flatbuffer data (loaded from the TfLiteModel
   // instance) to allocate nodes and registrations. We need to keep them for the
@@ -132,6 +143,7 @@ class MicroAllocator {
   MicroAllocator(TfLiteContext* context, const Model* model,
                  SimpleMemoryAllocator* memory_allocator,
                  ErrorReporter* error_reporter);
+  virtual ~MicroAllocator();
 
   // Allocates an array in the arena to hold pointers to the tensors required
   // to initialize and prepare a model. These allocations are stored and
@@ -166,9 +178,10 @@ class MicroAllocator {
 
   ErrorReporter* error_reporter();
 
- private:
+  // Initializes the graph and allocates TfLiteContext tensor data.
   TfLiteStatus InitGraphAndContextTensorData();
 
+ private:
   // A simple memory allocator that always allocate from the arena tail.
   SimpleMemoryAllocator* memory_allocator_;
 

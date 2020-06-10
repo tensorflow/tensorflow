@@ -526,7 +526,7 @@ class BatchResource : public ResourceBase {
 
       for (int j = 0; j < batch->num_tasks(); ++j) {
         BatchTask& task = *(batch->mutable_task(j));
-        task.context->set_output(i, split_tensor.at(j));
+        task.context->set_output(i, std::move(split_tensor.at(j)));
       }  // (Ignore a possible final split_tensors entry containing the
          // padding.)
     }

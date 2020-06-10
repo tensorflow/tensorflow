@@ -1500,7 +1500,7 @@ class TextVectorizationSavingTest(
     loaded_model = keras.models.load_model(output_path)
     self.assertAllEqual(loaded_model.predict(input_array), expected_output)
 
-  def test_saving_with_tfidf(self):
+  def DISABLE_test_saving_with_tfidf(self):
     vocab_data = ["earth", "wind", "and", "fire"]
     tfidf_data = [.5, .25, .2, .125]
     input_array = np.array([["earth", "wind", "and", "earth"],

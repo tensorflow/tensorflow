@@ -254,9 +254,12 @@ LogicalResult VerifyExportedFunc(FuncOp func) {
       }
       continue;
     }
+    if (func.getArgAttr(i, "tf.resource_name")) {
+      continue;
+    }
     return func.emitError()
-           << "all arguments should have 'tf_saved_model.index_path' or "
-              "'tf_saved_model.bound_input' attributes";
+           << "all arguments should have 'tf_saved_model.index_path', "
+              "'tf_saved_model.bound_input' or 'tf.resource_name' attributes";
   }
   llvm::SmallDenseSet<StringRef, 8> unique_bound_inputs;
   for (int i = 0, e = func.getNumArguments(); i < e; i++) {

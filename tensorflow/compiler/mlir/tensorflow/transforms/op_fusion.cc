@@ -166,7 +166,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateOpFusionPass() {
 }
 
 static PassRegistration<OpFusionPass> pass(
-    "op-fusion",
+    "tf-op-fusion",
     "Replaces commonly occurring subgraphs with optimized fused kernels");
 
 }  // namespace TF

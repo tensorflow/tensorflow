@@ -1394,8 +1394,8 @@ XlaOp NextAfter(XlaOp from, XlaOp to) {
 }
 
 XlaOp Logistic(XlaOp x) {
-  auto half = xla::ScalarLike(x, 0.5);
-  return half + half * xla::Tanh(half * x);
+  auto one = xla::ScalarLike(x, 1);
+  return xla::Div(one, (one + xla::Exp(xla::Neg(x))));
 }
 
 // Computes an approximation to the modified Bessel function of the first kind,

@@ -1635,7 +1635,8 @@ TEST_P(MemorySpaceAssignmentTest, WhileCondAliasBug) {
     %constant.5 = s32[1]{0:T(128)} constant({1})
     %prev.4 = s32[6]{0:T(128)} parameter(0)
     %rng.8 = s32[5]{0:T(128)} rng(s32[]{:T(128)} %constant.6, s32[]{:T(128)} %constant.7), distribution=rng_uniform
-    ROOT %fusion = s32[6]{0:T(128)} fusion(s32[6]{0:T(128)} %prev.4, s32[1]{0:T(128)} %constant.5, s32[5]{0:T(128)} %rng.8), kind=kLoop, calls=%fused_computation
+    %neg = s32[1]{0:T(128)} negate(s32[1]{0:T(128)} %constant.5)
+    ROOT %fusion = s32[6]{0:T(128)} fusion(s32[6]{0:T(128)} %prev.4, s32[1]{0:T(128)} %neg, s32[5]{0:T(128)} %rng.8), kind=kLoop, calls=%fused_computation
   }
 
   %WhileWithPrngScalarResult.11 (prev.12: s32[6]) -> pred[] {
@@ -1663,6 +1664,62 @@ TEST_P(MemorySpaceAssignmentTest, WhileCondAliasBug) {
                 .layout()
                 .memory_space(),
             kDefaultMemorySpace);
+}
+
+TEST_P(MemorySpaceAssignmentTest, WhileInPlaceBuffer) {
+  // Ensure that a dynamic update slice within a while loop is able to get an
+  // alternate memory allocation.
+  absl::string_view hlo_string = R"(
+  HloModule Module, is_scheduled=true
+
+  fused_computation {
+    param0 = f32[2,3] parameter(0)
+    constant.1 = f32[] constant(0)
+    broadcast = f32[2,1] broadcast(constant.1), dimensions={}
+    constant.3 = s32[] constant(0)
+    ROOT dynamic-update-slice.5 = f32[2,3] dynamic-update-slice(param0, broadcast, constant.3, constant.3)
+  }
+
+  %WhileBody (body_param: (f32[2,3], f32[2,3], f32[])) -> (f32[2,3], f32[2,3], f32[]) {
+    %body_param = (f32[2,3]{1,0}, f32[2,3]{1,0}, f32[]) parameter(0)
+    %get-tuple-element.1 = f32[] get-tuple-element((f32[2,3]{1,0}, f32[2,3]{1,0}, f32[]) %body_param), index=2
+    %get-tuple-element.2 = f32[2,3]{1,0} get-tuple-element((f32[2,3]{1,0}, f32[2,3]{1,0}, f32[]) %body_param), index=0
+    %get-tuple-element.3 = f32[2,3]{1,0} get-tuple-element((f32[2,3]{1,0}, f32[2,3]{1,0}, f32[]) %body_param), index=1
+    %fusion = f32[2,3]{1,0} fusion(get-tuple-element.3), kind=kLoop, calls=fused_computation
+    %multiply = f32[2,3]{1,0} multiply(f32[2,3]{1,0} %get-tuple-element.2, f32[2,3]{1,0} %fusion)
+    ROOT %tuple = (f32[2,3]{1,0}, f32[2,3]{1,0}, f32[]) tuple(f32[2,3]{1,0} %multiply, f32[2,3]{1,0} %fusion, f32[] %get-tuple-element.1)
+  }
+
+  %WhileCond (cond_param: (f32[2,3], f32[2,3], f32[])) -> pred[] {
+    %cond_param = (f32[2,3]{1,0}, f32[2,3]{1,0}, f32[]) parameter(0)
+    %get-tuple-element = f32[] get-tuple-element((f32[2,3]{1,0}, f32[2,3]{1,0}, f32[]) %cond_param), index=2
+    %constant = f32[] constant(50)
+    ROOT %compare = pred[] compare(f32[] %get-tuple-element, f32[] %constant), direction=LT
+  }
+
+  ENTRY %Entry (param_data: f32[2,3], param_iter: f32[], p2: f32[2,3]) -> f32[2,3] {
+    %param_iter = f32[] parameter(1)
+    %param_data = f32[2,3]{1,0} parameter(0)
+    %p2 = f32[2,3]{1,0} parameter(2)
+    %copy1 = f32[2,3]{1,0} copy(param_data)
+    %copy2 = f32[2,3]{1,0} copy(p2)
+    %tuple.1 = (f32[2,3]{1,0}, f32[2,3]{1,0}, f32[]) tuple(f32[2,3]{1,0} copy1, f32[2,3]{1,0} copy2, f32[] %param_iter)
+    %while = (f32[2,3]{1,0}, f32[2,3]{1,0}, f32[]) while((f32[2,3]{1,0}, f32[2,3]{1,0}, f32[]) %tuple.1), condition=%WhileCond, body=%WhileBody
+    %get-tuple-element.4 = f32[2,3]{1,0} get-tuple-element((f32[2,3]{1,0}, f32[2,3]{1,0}, f32[]) %while), index=0
+    ROOT %copy3 = f32[2,3]{1,0} copy(get-tuple-element.4)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  const HloInstruction* while_op =
+      module->entry_computation()->GetInstructionWithName("while");
+  if (GetParam()) {
+    EXPECT_EQ(
+        ShapeUtil::GetSubshape(while_op->shape(), {1}).layout().memory_space(),
+        kAlternateMemorySpace);
+  }
 }
 
 TEST_P(MemorySpaceAssignmentTest, ControlPredecessorsBug) {

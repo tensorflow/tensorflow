@@ -76,13 +76,11 @@ std::string GetSoftmaxKernelCode(
 
 Softmax::Softmax(Softmax&& kernel)
     : GPUOperation(std::move(kernel)),
-      args_(std::move(kernel.args_)),
       kernel_(std::move(kernel.kernel_)),
       work_group_size_(kernel.work_group_size_) {}
 
 Softmax& Softmax::operator=(Softmax&& kernel) {
   if (this != &kernel) {
-    args_ = std::move(kernel.args_);
     kernel_ = std::move(kernel.kernel_);
     std::swap(work_group_size_, kernel.work_group_size_);
     GPUOperation::operator=(std::move(kernel));

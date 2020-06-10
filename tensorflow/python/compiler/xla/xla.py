@@ -429,11 +429,12 @@ def is_flat(outputs):
   # there is, then outputs is non-flat.
   if isinstance(outputs, collections.Sequence):
     for o in outputs:
-      if isinstance(o, collections.Sequence) or isinstance(o, dict):
+      if isinstance(o, collections.Sequence) or isinstance(
+          o, collections.Mapping):
         return False
 
   # If outputs is a dict, it is non-flat.
-  if isinstance(outputs, dict):
+  if isinstance(outputs, collections.Mapping):
     return False
 
   # Getting here means either outputs itself is a single non-structured value

@@ -26,7 +26,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -112,6 +111,8 @@ void SetGroupId(const XPlaneVisitor& visitor, int64 group_id, XEvent* event) {
 void SetContextGroup(EventNode* event, ContextGroupMap* context_groups) {
   auto producer = event->GetProducerContext();
   if (producer.has_value()) {
+    DCHECK_EQ(((*context_groups)[producer->type][producer->id]).producer,
+              nullptr);
     ((*context_groups)[producer->type][producer->id]).producer = event;
   }
   auto consumer = event->GetConsumerContext();
@@ -125,9 +126,10 @@ void ConnectContextGroups(const ContextGroupMap& context_groups) {
   for (auto& type_id_group : context_groups) {
     for (auto& id_group : type_id_group.second) {
       const ContextGroup& group = id_group.second;
-      EventNode* parent = group.producer;
-      for (EventNode* child : group.consumers) {
-        parent->AddChild(child);
+      if (EventNode* parent = group.producer) {
+        for (EventNode* child : group.consumers) {
+          parent->AddChild(child);
+        }
       }
     }
   }
@@ -195,13 +197,13 @@ EventNode::EventNode(const XPlaneVisitor* plane, XLine* raw_line,
         producer_type = stat.IntValue();
         break;
       case StatType::kProducerId:
-        producer_id = stat.IntValue();
+        producer_id = stat.UintValue();
         break;
       case StatType::kConsumerType:
         consumer_type = stat.IntValue();
         break;
       case StatType::kConsumerId:
-        consumer_id = stat.IntValue();
+        consumer_id = stat.UintValue();
         break;
       case StatType::kIsRoot:
         is_root_ = stat.IntValue();
@@ -225,30 +227,30 @@ EventNode::EventNode(const EventNode& event_node)
     : EventNode(event_node.plane_, event_node.raw_line_,
                 event_node.raw_event_) {}
 
-const XStat* EventNode::GetContextStat(int64 stat_type) const {
-  if (const XStat* stat = visitor_.GetStats(stat_type)) {
-    return stat;
-  } else if (parent_) {
-    return parent_->GetContextStat(stat_type);
+absl::optional<XStatVisitor> EventNode::GetContextStat(int64 stat_type) const {
+  for (const EventNode* node = this; node != nullptr; node = node->parent_) {
+    if (absl::optional<XStatVisitor> stat = node->visitor_.GetStat(stat_type)) {
+      return stat;
+    }
   }
-  return nullptr;
+  return absl::nullopt;
 }
 
 std::string EventNode::GetGroupName() const {
-  std::vector<std::string> name_parts;
-  if (const XStat* graph_type_stat = GetContextStat(StatType::kGraphType)) {
-    XStatVisitor stat(plane_, graph_type_stat);
-    name_parts.push_back(stat.ToString());
+  std::string name;
+  if (absl::optional<XStatVisitor> stat =
+          GetContextStat(StatType::kGraphType)) {
+    absl::StrAppend(&name, stat->StrOrRefValue(), " ");
   }
   int64 step_num = group_id_.value_or(0);
-  if (const XStat* step_num_stat = GetContextStat(StatType::kStepNum)) {
-    step_num = step_num_stat->int64_value();
+  if (absl::optional<XStatVisitor> stat = GetContextStat(StatType::kIterNum)) {
+    step_num = stat->IntValue();
+  } else if (absl::optional<XStatVisitor> stat =
+                 GetContextStat(StatType::kStepNum)) {
+    step_num = stat->IntValue();
   }
-  if (const XStat* iter_num_stat = GetContextStat(StatType::kIterNum)) {
-    step_num = iter_num_stat->int64_value();
-  }
-  name_parts.push_back(absl::StrCat(step_num));
-  return absl::StrJoin(name_parts, " ");
+  absl::StrAppend(&name, step_num);
+  return name;
 }
 
 void EventNode::PropagateGroupId(int64 group_id) {
@@ -331,7 +333,7 @@ void EventForest::ConnectIntraThread(const XPlaneVisitor& visitor,
 void EventForest::ConnectInterThread(
     const std::vector<InterThreadConnectInfo>& connect_info_list) {
   for (const auto& connect_info : connect_info_list) {
-    absl::flat_hash_map<std::vector<int64>, EventNode*> connect_map;
+    absl::flat_hash_map<std::vector<uint64>, EventNode*> connect_map;
     const std::vector<int64>& parent_stat_types =
         connect_info.parent_stat_types;
     const std::vector<int64>* child_stat_types = &connect_info.child_stat_types;
@@ -341,13 +343,12 @@ void EventForest::ConnectInterThread(
     if (auto parent_event_node_list =
             gtl::FindOrNull(event_node_map_, connect_info.parent_event_type)) {
       for (const auto& parent_event_node : *parent_event_node_list) {
-        std::vector<int64> stats;
+        std::vector<uint64> stats;
         for (auto stat_type : parent_stat_types) {
-          const XStat* stat = parent_event_node->GetContextStat(stat_type);
+          absl::optional<XStatVisitor> stat =
+              parent_event_node->GetContextStat(stat_type);
           if (!stat) break;
-          stats.push_back(stat->value_case() == stat->kInt64Value
-                              ? stat->int64_value()
-                              : stat->uint64_value());
+          stats.push_back(stat->IntOrUintValue());
         }
         if (stats.size() == parent_stat_types.size()) {
           connect_map[stats] = parent_event_node.get();
@@ -357,13 +358,12 @@ void EventForest::ConnectInterThread(
     if (auto child_event_node_list =
             gtl::FindOrNull(event_node_map_, connect_info.child_event_type)) {
       for (const auto& child_event_node : *child_event_node_list) {
-        std::vector<int64> stats;
+        std::vector<uint64> stats;
         for (auto stat_type : *child_stat_types) {
-          const XStat* stat = child_event_node->GetContextStat(stat_type);
+          absl::optional<XStatVisitor> stat =
+              child_event_node->GetContextStat(stat_type);
           if (!stat) break;
-          stats.push_back(stat->value_case() == stat->kInt64Value
-                              ? stat->int64_value()
-                              : stat->uint64_value());
+          stats.push_back(stat->IntOrUintValue());
         }
         if (stats.size() == child_stat_types->size()) {
           if (auto parent_event_node = gtl::FindPtrOrNull(connect_map, stats)) {
@@ -429,14 +429,14 @@ void EventForest::ProcessTensorFlowLoop() {
   if (!executor_event_list) return;
   for (auto& executor_event : *executor_event_list) {
     if (IsTfDataEvent(*executor_event)) continue;
-    const XStat* step_id_stat =
+    absl::optional<XStatVisitor> step_id_stat =
         executor_event->GetContextStat(StatType::kStepId);
-    const XStat* iter_num_stat =
+    absl::optional<XStatVisitor> iter_num_stat =
         executor_event->GetContextStat(StatType::kIterNum);
     if (!step_id_stat || !iter_num_stat) continue;
-    int64 step_id = step_id_stat->int64_value();
+    int64 step_id = step_id_stat->IntValue();
     TensorFlowLoop& tf_loop = tf_loops[step_id];
-    TensorFlowLoopIteration& iteration = tf_loop[iter_num_stat->int64_value()];
+    TensorFlowLoopIteration& iteration = tf_loop[iter_num_stat->IntValue()];
     if (!iteration.first_event ||
         executor_event->StartsBefore(*iteration.first_event)) {
       iteration.first_event = executor_event.get();

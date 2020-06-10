@@ -76,6 +76,14 @@ class MicroInterpreter {
                    uint8_t* tensor_arena, size_t tensor_arena_size,
                    ErrorReporter* error_reporter);
 
+  // Create an interpreter instance using an existing MicroAllocator instance.
+  // This constructor should be used when creating an allocator that needs to
+  // have allocation handled in more than one interpreter or for recording
+  // allocations inside the interpreter. The lifetime of the allocator must be
+  // as long as that of the interpreter object.
+  MicroInterpreter(const Model* model, const MicroOpResolver* op_resolver,
+                   MicroAllocator* allocator, ErrorReporter* error_reporter);
+
   ~MicroInterpreter();
 
   // Runs through the model and allocates all necessary input, output and
@@ -152,6 +160,10 @@ class MicroInterpreter {
   size_t arena_used_bytes() const { return allocator_.used_bytes(); }
 
  private:
+  // TODO(b/158263161): Consider switching to Create() function to enable better
+  // error reporting during initialization.
+  void Init();
+
   void CorrectTensorEndianness(TfLiteTensor* tensorCorr);
 
   template <class T>
@@ -163,7 +175,7 @@ class MicroInterpreter {
   const MicroOpResolver& op_resolver_;
   ErrorReporter* error_reporter_;
   TfLiteContext context_ = {};
-  MicroAllocator allocator_;
+  MicroAllocator& allocator_;
   bool tensors_allocated_;
 
   TfLiteStatus initialization_status_;

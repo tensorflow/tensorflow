@@ -77,6 +77,9 @@ struct StandardPipelineOptions
   Option<bool> enable_inliner{*this, "enable-inliner",
                               llvm::cl::desc("Enable inliner."),
                               llvm::cl::init(false)};
+  Option<bool> form_clusters{*this, "form-clusters",
+                             llvm::cl::desc("Enable Cluster Formation pass."),
+                             llvm::cl::init(false)};
 };
 
 // Propagates the pass manager with the passes involved in transforming or
@@ -95,11 +98,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateResourceDeviceInferencePass();
 // of their aliasing output arguments.
 std::unique_ptr<OperationPass<ModuleOp>> CreatePromoteResourcesToArgsPass();
 
-// Creates a pass that promotes tf.VarHandleOp to to resource arguments of where
-// resource names are `tf_saved_model.bound_input` symbol argument attributes
-// for all functions.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreatePromoteVarHandlesToSavedModelArgsPass();
+// Creates a pass that promotes tf.VarHandleOp to resource arguments for all
+// functions.
+std::unique_ptr<OperationPass<ModuleOp>> CreatePromoteVarHandlesToArgsPass();
 
 // Creates a pass that converts readonly reference variables to the
 // corresponding resource variables.
@@ -150,13 +151,6 @@ std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeHloToTfPass();
 // Creates a pass that performs fusion of common sequences of ops.
 std::unique_ptr<OperationPass<FuncOp>> CreateOpFusionPass();
 }  // namespace TF
-
-namespace TFControlFlow {
-// Raises from the "TensorFlow Control Flow" dialect to the standard TensorFlow
-// dialect.
-std::unique_ptr<OperationPass<FuncOp>> CreateRaiseTFControlFlowPass();
-
-}  // namespace TFControlFlow
 
 namespace tf_executor {
 class GraphOp;

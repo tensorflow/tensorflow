@@ -48,16 +48,11 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats);
 OverviewPageRunEnvironment ComputeRunEnvironment(
     const RunEnvironment& run_environment);
 
-void SetOverviewPageErrorMessage(const OpStats& op_stats,
-                                 OverviewPage* overview_page);
-
 OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
                                           HardwareType hardware_type);
 
 // Returns a html which provides tf-function related recommendation.
 std::string TfFunctionRecommendationHtml(const TfFunctionDb& tf_function_db);
-
-void SetRemarks(const OpStats& op_stats, OverviewPageAnalysis* analysis);
 
 }  // namespace profiler
 }  // namespace tensorflow

@@ -15,10 +15,15 @@ limitations under the License.
 
 // This file implements logic for legalizing HLO to TensorFlow.
 
+#include <cstdint>
+#include <functional>
 #include <memory>
+#include <numeric>
 #include <vector>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -39,6 +44,8 @@ limitations under the License.
 namespace mlir {
 namespace TF {
 namespace {
+
+using xla_hlo::DotDimensionNumbers;
 
 class ConvertSliceOp : public OpConversionPattern<xla_hlo::SliceOp> {
  public:
@@ -74,6 +81,205 @@ class ConvertSliceOp : public OpConversionPattern<xla_hlo::SliceOp> {
     return success();
   };
 };
+
+// Appends all elements in `range` to `values`.
+template <typename ValueT, typename Range>
+void Append(llvm::SmallVectorImpl<ValueT> &values, Range &&range) {
+  values.insert(values.end(), range.begin(), range.end());
+}
+
+// Appends all elements in `range` to `values`.
+template <typename ValueT, typename Range, typename... RangeTs>
+void Append(llvm::SmallVectorImpl<ValueT> &values, Range &&range,
+            RangeTs &&... ranges) {
+  values.insert(values.end(), range.begin(), range.end());
+  Append(values, ranges...);
+}
+
+// Returns the number of elements in `range`.
+template <typename Range>
+size_t Size(Range &&range) {
+  return range.size();
+}
+
+// Returns the total number of elements in a variadic number of `ranges`.
+template <typename Range, typename... RangeTs>
+size_t Size(Range &&range, RangeTs &&... ranges) {
+  return range.size() + Size(std::forward<RangeTs>(ranges)...);
+}
+
+// Concats all elements in `ranges` and returns a small vector as a result.
+template <typename ValueT, typename... RangeTs>
+llvm::SmallVector<ValueT, 4> Concat(RangeTs &&... ranges) {
+  llvm::SmallVector<int64_t, 4> results;
+  results.reserve(Size(std::forward<RangeTs>(ranges)...));
+  Append(results, std::forward<RangeTs>(ranges)...);
+  return results;
+}
+
+// A struct to hold axes and sizes for a set of dimensions.
+struct DimensionSetVector {
+  llvm::ArrayRef<int64_t> AxesArray() const { return axes.getArrayRef(); }
+  llvm::ArrayRef<int64_t> SizesArray() const { return sizes.getArrayRef(); }
+
+  llvm::SmallSetVector<int64_t, 4> axes;
+  llvm::SmallSetVector<int64_t, 4> sizes;
+};
+
+// A struct to hold information about dimensions of dot_general operands.
+class DotDimensionsInfo {
+ public:
+  DotDimensionsInfo(ShapedType type, DenseIntElementsAttr batch_dimensions,
+                    DenseIntElementsAttr contracting_dimensions) {
+    const int rank = type.getRank();
+    for (const int dim : batch_dimensions.getValues<int64_t>()) {
+      batch_dimensions_.axes.insert(dim);
+      batch_dimensions_.sizes.insert(type.getDimSize(dim));
+    }
+
+    for (const int dim : contracting_dimensions.getValues<int64_t>()) {
+      contracting_dimensions_.axes.insert(dim);
+      contracting_dimensions_.sizes.insert(type.getDimSize(dim));
+    }
+
+    for (int dim = 0; dim < rank; ++dim) {
+      if (contracting_dimensions_.axes.count(dim) > 0 ||
+          batch_dimensions_.axes.count(dim) > 0) {
+        continue;
+      }
+      out_dimensions_.axes.insert(dim);
+      out_dimensions_.sizes.insert(type.getDimSize(dim));
+    }
+  }
+
+  const DimensionSetVector &batch_dimensions() const {
+    return batch_dimensions_;
+  }
+  const DimensionSetVector &contracting_dimensions() const {
+    return contracting_dimensions_;
+  }
+  // Out dimensions are any dimensions that are neither batch nor contracting
+  // dimensions, hence will be propagated to output shape.
+  const DimensionSetVector &out_dimensions() const { return out_dimensions_; }
+
+  // Returns the total dimension size after flattening all contracting
+  // dimensions.
+  int FlattenedContractingDimensionSize() const {
+    return std::accumulate(contracting_dimensions_.sizes.begin(),
+                           contracting_dimensions_.sizes.end(), 1,
+                           std::multiplies<int64_t>());
+  }
+
+  // Returns the total dimension size after flattening all out dimensions.
+  int FlattenedOutDimensionSize() const {
+    return std::accumulate(out_dimensions_.sizes.begin(),
+                           out_dimensions_.sizes.end(), 1,
+                           std::multiplies<int64_t>());
+  }
+
+ private:
+  DimensionSetVector batch_dimensions_;
+  DimensionSetVector contracting_dimensions_;
+  // Out dimensions are any dimensions that are neither batch nor contracting
+  // dimensions, hence will be propagated to output shape.
+  DimensionSetVector out_dimensions_;
+};
+
+// Converts xla_hlo.dot to tf.BatchMatMul. Reshape or Transpose ops will also be
+// inserted to convert to well-formed matrix multiply.
+Value ConvertDotGeneralOp(PatternRewriter &rewriter, Operation *old_op) {
+  auto dot_general_op = cast<xla_hlo::DotGeneralOp>(old_op);
+  auto lhs_type = dot_general_op.lhs().getType().cast<ShapedType>();
+  auto rhs_type = dot_general_op.rhs().getType().cast<ShapedType>();
+  auto result_type = dot_general_op.getResult().getType().cast<ShapedType>();
+  DotDimensionNumbers dot_dimension_numbers =
+      dot_general_op.dot_dimension_numbers();
+  mlir::Location loc = dot_general_op.getLoc();
+  const int lhs_rank = lhs_type.getRank();
+  const int rhs_rank = rhs_type.getRank();
+
+  // Collects lhs and rhs dimensions information.
+  DotDimensionsInfo lhs_dot_dimensions_info(
+      lhs_type, dot_dimension_numbers.lhs_batching_dimensions(),
+      dot_dimension_numbers.lhs_contracting_dimensions());
+  DotDimensionsInfo rhs_dot_dimensions_info(
+      rhs_type, dot_dimension_numbers.rhs_batching_dimensions(),
+      dot_dimension_numbers.rhs_contracting_dimensions());
+
+  // Transposes lhs shape to be in the order of {batch_dimensions,
+  // out_dimensions, contracting dimensions}.
+  llvm::SmallVector<int64_t, 4> lhs_permutation = Concat<int64_t>(
+      lhs_dot_dimensions_info.batch_dimensions().AxesArray(),
+      lhs_dot_dimensions_info.out_dimensions().AxesArray(),
+      lhs_dot_dimensions_info.contracting_dimensions().AxesArray());
+  llvm::SmallVector<int64_t, 4> lhs_transposed_shape = Concat<int64_t>(
+      lhs_dot_dimensions_info.batch_dimensions().SizesArray(),
+      lhs_dot_dimensions_info.out_dimensions().SizesArray(),
+      lhs_dot_dimensions_info.contracting_dimensions().SizesArray());
+  auto lhs_transposed = rewriter.create<xla_hlo::TransposeOp>(
+      loc,
+      RankedTensorType::get(lhs_transposed_shape, lhs_type.getElementType()),
+      dot_general_op.lhs(),
+      DenseIntElementsAttr::get(
+          RankedTensorType::get({lhs_rank}, rewriter.getI64Type()),
+          lhs_permutation));
+
+  // Transposes rhs shape to be in the order of {batch_dimensions, contracting
+  // dimensions, out_dimensions}.
+  llvm::SmallVector<int64_t, 4> rhs_permutation = Concat<int64_t>(
+      rhs_dot_dimensions_info.batch_dimensions().AxesArray(),
+      rhs_dot_dimensions_info.contracting_dimensions().AxesArray(),
+      rhs_dot_dimensions_info.out_dimensions().AxesArray());
+  llvm::SmallVector<int64_t, 4> rhs_transposed_shape = Concat<int64_t>(
+      rhs_dot_dimensions_info.batch_dimensions().SizesArray(),
+      rhs_dot_dimensions_info.contracting_dimensions().SizesArray(),
+      rhs_dot_dimensions_info.out_dimensions().SizesArray());
+  auto rhs_transposed = rewriter.create<xla_hlo::TransposeOp>(
+      loc,
+      RankedTensorType::get(rhs_transposed_shape, rhs_type.getElementType()),
+      dot_general_op.rhs(),
+      DenseIntElementsAttr::get(
+          RankedTensorType::get({rhs_rank}, rewriter.getI64Type()),
+          rhs_permutation));
+
+  // Reshapes lhs to flatten out_dimensions and contracting_dimensions.
+  llvm::SmallVector<int64_t, 4> lhs_flattened_shape = Concat<int64_t>(
+      lhs_dot_dimensions_info.batch_dimensions().SizesArray(),
+      llvm::ArrayRef<int64_t>{
+          lhs_dot_dimensions_info.FlattenedOutDimensionSize()},
+      llvm::ArrayRef<int64_t>{
+          lhs_dot_dimensions_info.FlattenedContractingDimensionSize()});
+  auto lhs_flattend = rewriter.create<xla_hlo::ReshapeOp>(
+      loc,
+      RankedTensorType::get(lhs_flattened_shape, lhs_type.getElementType()),
+      lhs_transposed.getResult());
+
+  // Reshapes rhs to flatten out_dimensions and contracting_dimensions.
+  llvm::SmallVector<int64_t, 4> rhs_flattened_shape = Concat<int64_t>(
+      rhs_dot_dimensions_info.batch_dimensions().SizesArray(),
+      llvm::ArrayRef<int64_t>{
+          rhs_dot_dimensions_info.FlattenedContractingDimensionSize()},
+      llvm::ArrayRef<int64_t>{
+          rhs_dot_dimensions_info.FlattenedOutDimensionSize()});
+  auto rhs_flattend = rewriter.create<xla_hlo::ReshapeOp>(
+      loc,
+      RankedTensorType::get(rhs_flattened_shape, rhs_type.getElementType()),
+      rhs_transposed.getResult());
+
+  // Creates matmul op of `lhs_flattend` and `rhs_flattend`.
+  llvm::SmallVector<int64_t, 4> matmul_shape =
+      Concat<int64_t>(lhs_dot_dimensions_info.batch_dimensions().SizesArray(),
+                      llvm::ArrayRef<int64_t>{
+                          lhs_dot_dimensions_info.FlattenedOutDimensionSize()},
+                      llvm::ArrayRef<int64_t>{
+                          rhs_dot_dimensions_info.FlattenedOutDimensionSize()});
+  auto matmul = rewriter.create<TF::BatchMatMulV2Op>(
+      loc, RankedTensorType::get(matmul_shape, result_type.getElementType()),
+      lhs_flattend.getResult(), rhs_flattend.getResult());
+  auto reshaped =
+      rewriter.create<xla_hlo::ReshapeOp>(loc, result_type, matmul.getResult());
+  return reshaped.getResult();
+}
 
 class LegalizeHloToTf : public PassWrapper<LegalizeHloToTf, FunctionPass> {
  public:

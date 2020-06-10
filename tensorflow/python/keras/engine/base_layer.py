@@ -1327,10 +1327,13 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     return self.trainable_weights + self.non_trainable_weights
 
   @property
-  @doc_controls.do_not_doc_inheritable
+  @deprecation.deprecated(
+      date=None,
+      instructions='This property should not be used in TensorFlow 2.0, '
+      'as updates are applied automatically.')
+  @doc_controls.do_not_generate_docs
   def updates(self):
-    if (keras_tensor.keras_tensors_enabled()
-        and ops.executing_eagerly_outside_functions()):
+    if keras_tensor.keras_tensors_enabled():
       return []
 
     collected_updates = []

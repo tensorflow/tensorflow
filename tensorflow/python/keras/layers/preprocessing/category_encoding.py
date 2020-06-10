@@ -30,6 +30,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_preprocessing_layer
+from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bincount_ops
@@ -163,6 +164,8 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
           dtype=K.floatx(),
           initializer=initializer)
 
+      self.input_spec = InputSpec(ndim=2)
+
   def compute_output_shape(self, input_shape):
     return tensor_shape.TensorShape([input_shape[0], self._max_tokens])
 
@@ -277,6 +280,9 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
       # If the input is a sparse tensor, we densify it with the default value of
       # -1. Because -1 is ignored by one_hot, this effectively drops the non-set
       # positions from the output encoding.
+      if self._sparse:
+        raise ValueError("`sparse=True` with `output_mode=tfidf` "
+                         "is not supported.")
       if isinstance(inputs, sparse_tensor.SparseTensor):
         inputs = sparse_ops.sparse_tensor_to_dense(inputs, default_value=-1)
       one_hot_data = array_ops.one_hot(inputs, depth=out_depth)
@@ -293,7 +299,13 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
           minlength=out_depth,
           axis=-1,
           binary_output=binary_output)
-      return math_ops.cast(result, K.floatx())
+      result = math_ops.cast(result, K.floatx())
+      batch_size = array_ops.shape(result)[0]
+      result = sparse_tensor.SparseTensor(
+          indices=result.indices,
+          values=result.values,
+          dense_shape=[batch_size, out_depth])
+      return result
     else:
       result = bincount_ops.bincount(
           inputs,

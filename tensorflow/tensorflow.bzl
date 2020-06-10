@@ -327,7 +327,7 @@ def tf_copts(
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
         if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML"]) +
         if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) +
-        if_mkl_v1_open_source_only(["-DENABLE_MKLDNN_V1"]) +
+        if_mkl_v1_open_source_only(["-DENABLE_MKLDNN_V1", "-DENABLE_INTEL_MKL_BFLOAT16"]) +
         if_mkldnn_threadpool([
             "-DENABLE_MKLDNN_THREADPOOL",
             "-DENABLE_MKLDNN_V1",
@@ -354,9 +354,7 @@ def tf_copts(
     )
 
 def tf_openmp_copts():
-    # TODO(intel-mkl): Remove -fopenmp for threadpool after removing all
-    # omp pragmas in tensorflow/core.
-    return if_mkl_lnx_x64(["-fopenmp"]) + if_mkldnn_threadpool(["-fopenmp"])
+    return (if_mkl_lnx_x64(["-fopenmp"]) + if_mkldnn_threadpool(["-fno-openmp"]))
 
 def tfe_xla_copts():
     return select({
@@ -2273,6 +2271,12 @@ def tf_py_test(
         **kwargs
     )
     if tfrt_enabled_internal:
+        # None `main` defaults to `name` + ".py" in `py_test` target. However, since we
+        # are appending _tfrt. it becomes `name` + "_tfrt.py" effectively. So force
+        # set `main` argument without `_tfrt`.
+        if main == None:
+            main = name + ".py"
+
         py_test(
             name = name + "_tfrt",
             size = size,
@@ -2283,7 +2287,7 @@ def tf_py_test(
             kernels = kernels,
             main = main,
             shard_count = shard_count,
-            tags = tags,
+            tags = tags + ["tfrt"],
             visibility = [clean_dep("//tensorflow:internal")] +
                          additional_visibility,
             deps = depset(deps + xla_test_true_list + ["//tensorflow/python:is_tfrt_test_true"]),
