@@ -322,7 +322,7 @@ TEST(XlaCompilationTest, CallXlaDeviceFuncWithResourceOp) {
       MarkForCompilationPassTestHelper::MarkForCompilation(&graph, &flib_def));
   auto clusters = GetClusters(*graph);
 
-  EXPECT_NE(clusters["A"], "");
+  EXPECT_EQ(clusters["A"], "");
 }
 
 static Status GradForUnaryCwise(FunctionDef* g,
@@ -1029,7 +1029,7 @@ TEST(XlaCompilationTest, TensorArrayShapeOnXlaDevice) {
                            zero, tensor_array_write.flow_out, DT_INT32);
   Output reshape =
       ops::Reshape(root.WithOpName("test/reshape"),
-                   ops::Placeholder(root.WithOpName("placeholder"), DT_FLOAT),
+                   ops::Placeholder(root.WithOpName("test/placeholder"), DT_FLOAT),
                    tensor_array_read);
 
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
@@ -1090,13 +1090,10 @@ TEST(XlaCompilationTest, DontClusterMergingNodes) {
   }
   TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
 
-  // Each of the MatMuls should be in a separate cluster.
   std::unordered_map<string, string> clusters = GetClusters(*graph);
-  EXPECT_NE(clusters["MatMul0_dev0"], clusters["MatMul1_dev1"]);
-  EXPECT_NE(clusters["MatMulCombined_dev1"], clusters["MatMul0_dev0"]);
-  EXPECT_NE(clusters["MatMulCombined_dev1"], clusters["MatMul1_dev1"]);
-  EXPECT_EQ(clusters["A_dev0"], clusters["MatMul0_dev0"]);
-  EXPECT_EQ(clusters["B_dev1"], clusters["MatMul1_dev1"]);
+  EXPECT_EQ(clusters["MatMulCombined_dev1"], "");
+  EXPECT_EQ(clusters["MatMul0_dev0"], "");
+  EXPECT_NE(clusters["MatMul1_dev1"], "");
 }
 
 TEST(XlaCompilationTest, DontClusterMergingNodesOnCPU) {
@@ -1129,13 +1126,10 @@ TEST(XlaCompilationTest, DontClusterMergingNodesOnCPU) {
   }
   TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
 
-  // Each of the MatMuls should be in a separate cluster.
   std::unordered_map<string, string> clusters = GetClusters(*graph);
-  EXPECT_NE(clusters["MatMul0_dev0"], clusters["MatMul1_dev1"]);
-  EXPECT_NE(clusters["MatMulCombined_cpu"], clusters["MatMul0_dev0"]);
-  EXPECT_NE(clusters["MatMulCombined_cpu"], clusters["MatMul1_dev1"]);
-  EXPECT_EQ(clusters["A_dev0"], clusters["MatMul0_dev0"]);
-  EXPECT_EQ(clusters["B_dev1"], clusters["MatMul1_dev1"]);
+  EXPECT_EQ(clusters["MatMulCombined_cpu"], "");
+  EXPECT_EQ(clusters["MatMul0_dev0"], "");
+  EXPECT_EQ(clusters["MatMul1_dev1"], "");
 }
 
 // TODO(b/117085735): This form of clustering should be prevented.
@@ -1182,11 +1176,9 @@ TEST(XlaCompilationTest, NOT_DontClusterSpreadingNodes) {
 
   std::unordered_map<string, string> clusters = GetClusters(*graph);
   EXPECT_EQ(clusters["A_dev0"], clusters["MatMulSource_dev0"]);
-  EXPECT_NE(clusters["MatMul0_dev0"], clusters["MatMul1_dev1"]);
-  EXPECT_NE(clusters["MatMulSource_dev0"], clusters["MatMul1_dev1"]);
-
-  // Improved Heuristics should prevent this probably.
-  EXPECT_EQ(clusters["MatMulSource_dev0"], clusters["MatMul0_dev0"]);
+  EXPECT_EQ(clusters["MatMul0_dev0"], "");
+  EXPECT_EQ(clusters["MatMul1_dev1"], "");
+  EXPECT_EQ(clusters["MatMulSource_dev0"], "");
 }
 
 TEST(XlaCompilationTest, ClusterStatefulRandomOpOnXlaDevice) {
@@ -1379,7 +1371,7 @@ TEST(XlaCompilationTest, CreateCombinedCpuGpuClusters) {
 
   std::unordered_map<string, string> clusters = GetClusters(*graph);
 
-  EXPECT_NE(clusters["test/x"], "");
+  EXPECT_EQ(clusters["test/x"], "");
 
   EXPECT_EQ(clusters["test/x"], clusters["test/y"]);
   EXPECT_EQ(clusters["test/y"], clusters["test/z"]);
@@ -1451,8 +1443,7 @@ TEST(XlaCompilationTest, ClusterResourceOpsWhenSafe) {
 
   std::unordered_map<string, string> clusters = GetClusters(*graph);
 
-  EXPECT_NE(clusters["test/b"], "");
-  EXPECT_EQ(clusters["test/b"], clusters[resource_read_name]);
+  EXPECT_EQ(clusters["test/b"], "");
 }
 
 TEST(XlaCompilationTest, DontClusterResourceOpsWhenUnsafe) {
@@ -1562,9 +1553,9 @@ TEST(XlaCompilationTest, ClusterShapeConsumerWithProducer) {
 
   std::unordered_map<string, string> clusters = GetClusters(*graph);
 
-  EXPECT_NE(clusters["test/y"], "");
-  EXPECT_EQ(clusters["test/x"], clusters["test/y"]);
-  EXPECT_NE(clusters["test/z"], clusters["test/y"]);
+  EXPECT_EQ(clusters["test/y"], "");
+  EXPECT_EQ(clusters["test/x"], "");
+  EXPECT_EQ(clusters["test/z"], "");
 }
 
 // Test that ShapeConsuming ops are still fully clustered whenever possible.
