@@ -45,9 +45,9 @@ struct TensorOpTensor {
 
 // Finds float tensors that are model inputs and is consumed by a quantize Op.
 // The returned TensorOpTensor should have reverse order.
-std::vector<TensorOpTensor> GetInputTensors(ModelT* model,
-                                            ErrorReporter* error_reporter,
-                                            const TensorType& input_type) {
+std::vector<TensorOpTensor> GetInputTensors(const TensorType& input_type,
+                                            ModelT* model,
+                                            ErrorReporter* error_reporter) {
   std::vector<TensorOpTensor> result;
   // Get all input tensors.
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
@@ -91,7 +91,10 @@ std::vector<TensorOpTensor> GetInputTensors(ModelT* model,
                              "modify_model_interface currently only supports "
                              "int8 and int16 quantized models.");
       }
+      // Usually the input model has to have the same quantization layers as the ones
+      // we're trying to remove.
       if (quant_output->type != input_type) {
+        //An exception from this is when we are setting the input or output type to UINT8.
         if (!(quant_output->type == TensorType_INT8 && input_type == TensorType_UINT8)) {
           TF_LITE_REPORT_ERROR(error_reporter,
                               "Model's type incompatible with output type argument.");
@@ -109,9 +112,9 @@ std::vector<TensorOpTensor> GetInputTensors(ModelT* model,
 
 // Finds float tensors that are model output and is consumed by a dequantize Op.
 // The returned TensorOpTensor should have reverse order.
-std::vector<TensorOpTensor> GetOutputTensors(ModelT* model,
-                                             ErrorReporter* error_reporter,
-                                             const TensorType& output_type) {
+std::vector<TensorOpTensor> GetOutputTensors(const TensorType& output_type,
+                                             ModelT* model,
+                                             ErrorReporter* error_reporter) {
   std::vector<TensorOpTensor> result;
   // Get all output tensors.
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
@@ -302,9 +305,9 @@ std::unique_ptr<tflite::ModelT> CreateMutableModelFromFile(
   return copied_model;
 }
 
-int GetOriginalNumberOfTensors(ModelT* model, ErrorReporter* error_reporter, const TensorType& input_type, const TensorType& output_type) {
-  std::vector<TensorOpTensor> outputs = GetOutputTensors(model, error_reporter, output_type);
-  std::vector<TensorOpTensor> inputs = GetInputTensors(model, error_reporter, input_type);
+int GetOriginalNumberOfTensors(const TensorType& input_type, const TensorType& output_type, ModelT* model, ErrorReporter* error_reporter) {
+  std::vector<TensorOpTensor> outputs = GetOutputTensors(output_type, model, error_reporter);
+  std::vector<TensorOpTensor> inputs = GetInputTensors(input_type, model, error_reporter);
   return model->subgraphs[0]->tensors.size() - outputs.size() - inputs.size();
 }
 
@@ -315,12 +318,12 @@ TfLiteStatus ModifyModelInterface(flatbuffers::FlatBufferBuilder* builder,
                                   const TensorType& output_type) {
   tflite::StderrReporter error_reporter;
   const int original_number_tensors =
-      GetOriginalNumberOfTensors(model, &error_reporter, input_type, output_type);
+      GetOriginalNumberOfTensors(input_type, output_type, model, &error_reporter);
   // Finds float tensors that are model output and are consumed by a float to int8/int16
   // quantize Op.
   // Do output first since the tensors are added into input first.,
   std::vector<TensorOpTensor> outputs =
-      GetOutputTensors(model, &error_reporter, output_type);
+      GetOutputTensors(output_type, model, &error_reporter);
   switch (output_type) {
     case TensorType_UINT8:
       SetOutputTypeToUINT8(model, outputs);
@@ -335,7 +338,7 @@ TfLiteStatus ModifyModelInterface(flatbuffers::FlatBufferBuilder* builder,
 
   // Find float tensors that are model input and is consumed by a float to int8/int16
   // quantize Op.
-  std::vector<TensorOpTensor> inputs = GetInputTensors(model, &error_reporter, input_type);
+  std::vector<TensorOpTensor> inputs = GetInputTensors(input_type, model, &error_reporter);
   switch (input_type) {
     case TensorType_UINT8:
       SetInputTypeToUINT8(model, inputs);
