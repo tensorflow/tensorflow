@@ -25,12 +25,10 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  const std::unordered_map<std::string, tflite::TensorType> supported_types
-  {
-    { "uint8", tflite::TensorType_UINT8 },
-    { "int8",  tflite::TensorType_INT8 },
-    { "int16", tflite::TensorType_INT16 }
-  };
+  const std::unordered_map<std::string, tflite::TensorType> supported_types{
+      {"uint8", tflite::TensorType_UINT8},
+      {"int8", tflite::TensorType_INT8},
+      {"int16", tflite::TensorType_INT16}};
 
   tflite::TensorType input = tflite::TensorType_INT8;
   tflite::TensorType output = tflite::TensorType_INT8;
@@ -39,7 +37,8 @@ int main(int argc, char** argv) {
     input = supported_types.at(argv[3]);
     output = supported_types.at(argv[4]);
   } catch (const std::out_of_range&) {
-    printf("Only supports uint8, int8 and int16 for input and output interfaces");
+    printf(
+        "Only supports uint8, int8 and int16 for input and output interfaces");
     return 1;
   }
 

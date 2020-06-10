@@ -19,8 +19,8 @@ limitations under the License.
 #include <sstream>
 #include <unordered_set>
 
-#include "flatbuffers/flexbuffers.h"
 #include "absl/memory/memory.h"
+#include "flatbuffers/flexbuffers.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/error_reporter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -86,18 +86,22 @@ std::vector<TensorOpTensor> GetInputTensors(const TensorType& input_type,
       }
       const int model_input_index = input_tensors[input_tensor];
       TensorT* quant_output = subgraph->tensors[op->outputs[0]].get();
-      if (quant_output->type != TensorType_INT8 && quant_output->type != TensorType_INT16) {
+      if (quant_output->type != TensorType_INT8 &&
+          quant_output->type != TensorType_INT16) {
         TF_LITE_REPORT_ERROR(error_reporter,
                              "modify_model_interface currently only supports "
                              "int8 and int16 quantized models.");
       }
-      // Usually the input model has to have the same quantization layers as the ones
-      // we're trying to remove.
+      // Usually the input model has to have the same quantization layers as the
+      // ones we're trying to remove.
       if (quant_output->type != input_type) {
-        //An exception from this is when we are setting the input or output type to UINT8.
-        if (!(quant_output->type == TensorType_INT8 && input_type == TensorType_UINT8)) {
-          TF_LITE_REPORT_ERROR(error_reporter,
-                              "Model's type incompatible with output type argument.");
+        // An exception from this is when we are setting the input or output
+        // type to UINT8.
+        if (!(quant_output->type == TensorType_INT8 &&
+              input_type == TensorType_UINT8)) {
+          TF_LITE_REPORT_ERROR(
+              error_reporter,
+              "Model's type incompatible with output type argument.");
         }
       }
       if (quant_output->quantization == nullptr) {
@@ -153,7 +157,8 @@ std::vector<TensorOpTensor> GetOutputTensors(const TensorType& output_type,
       }
       const int model_output_index = output_tensors[output_tensor];
       TensorT* dequant_input = subgraph->tensors[op->inputs[0]].get();
-      if (dequant_input->type != TensorType_INT8 && dequant_input->type != TensorType_INT16) {
+      if (dequant_input->type != TensorType_INT8 &&
+          dequant_input->type != TensorType_INT16) {
         // Currently only supports INT8 and INT16 quantized models.
         TF_LITE_REPORT_ERROR(error_reporter,
                              "modify_model_interface currently only supports "
@@ -161,9 +166,11 @@ std::vector<TensorOpTensor> GetOutputTensors(const TensorType& output_type,
         return {};
       }
       if (dequant_input->type != output_type) {
-        if (!(dequant_input->type == TensorType_INT8 && output_type == TensorType_UINT8)) {
-          TF_LITE_REPORT_ERROR(error_reporter,
-                              "Model's type incompatible with output type argument.");
+        if (!(dequant_input->type == TensorType_INT8 &&
+              output_type == TensorType_UINT8)) {
+          TF_LITE_REPORT_ERROR(
+              error_reporter,
+              "Model's type incompatible with output type argument.");
         }
       }
       if (dequant_input->quantization == nullptr) {
@@ -305,9 +312,13 @@ std::unique_ptr<tflite::ModelT> CreateMutableModelFromFile(
   return copied_model;
 }
 
-int GetOriginalNumberOfTensors(const TensorType& input_type, const TensorType& output_type, ModelT* model, ErrorReporter* error_reporter) {
-  std::vector<TensorOpTensor> outputs = GetOutputTensors(output_type, model, error_reporter);
-  std::vector<TensorOpTensor> inputs = GetInputTensors(input_type, model, error_reporter);
+int GetOriginalNumberOfTensors(const TensorType& input_type,
+                               const TensorType& output_type, ModelT* model,
+                               ErrorReporter* error_reporter) {
+  std::vector<TensorOpTensor> outputs =
+      GetOutputTensors(output_type, model, error_reporter);
+  std::vector<TensorOpTensor> inputs =
+      GetInputTensors(input_type, model, error_reporter);
   return model->subgraphs[0]->tensors.size() - outputs.size() - inputs.size();
 }
 
@@ -317,11 +328,11 @@ TfLiteStatus ModifyModelInterface(flatbuffers::FlatBufferBuilder* builder,
                                   ModelT* model, const TensorType& input_type,
                                   const TensorType& output_type) {
   tflite::StderrReporter error_reporter;
-  const int original_number_tensors =
-      GetOriginalNumberOfTensors(input_type, output_type, model, &error_reporter);
-  // Finds float tensors that are model output and are consumed by a float to int8/int16
-  // quantize Op.
-  // Do output first since the tensors are added into input first.,
+  const int original_number_tensors = GetOriginalNumberOfTensors(
+      input_type, output_type, model, &error_reporter);
+  // Finds float tensors that are model output and are consumed by a float to
+  // int8/int16 quantize Op. Do output first since the tensors are added into
+  // input first.,
   std::vector<TensorOpTensor> outputs =
       GetOutputTensors(output_type, model, &error_reporter);
   switch (output_type) {
@@ -336,9 +347,10 @@ TfLiteStatus ModifyModelInterface(flatbuffers::FlatBufferBuilder* builder,
       return kTfLiteError;
   }
 
-  // Find float tensors that are model input and is consumed by a float to int8/int16
-  // quantize Op.
-  std::vector<TensorOpTensor> inputs = GetInputTensors(input_type, model, &error_reporter);
+  // Find float tensors that are model input and is consumed by a float to
+  // int8/int16 quantize Op.
+  std::vector<TensorOpTensor> inputs =
+      GetInputTensors(input_type, model, &error_reporter);
   switch (input_type) {
     case TensorType_UINT8:
       SetInputTypeToUINT8(model, inputs);

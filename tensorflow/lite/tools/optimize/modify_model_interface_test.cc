@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/modify_model_interface.h"
 
-#include <memory>
-
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+
+#include <memory>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/model.h"
@@ -30,7 +30,8 @@ namespace {
 using ::testing::ElementsAreArray;
 
 // Create a model with 1 quant, 1 FC, 1 dequant
-std::unique_ptr<ModelT> CreateQuantizedModelSingleInputOutput(const TensorType& quantization_type) {
+std::unique_ptr<ModelT> CreateQuantizedModelSingleInputOutput(
+    const TensorType& quantization_type) {
   auto model = absl::make_unique<ModelT>();
   auto subgraph = absl::make_unique<tflite::SubGraphT>();
   auto buffer = absl::make_unique<tflite::BufferT>();
@@ -118,7 +119,8 @@ std::unique_ptr<ModelT> CreateQuantizedModelSingleInputOutput(const TensorType& 
 
 // Create a model with 2 quant, 1 FC, 2 dequant
 // The model mimics the behavior of the quantize_model.cc.
-std::unique_ptr<ModelT> CreateQuantizedModelMultipleInputOutput(const TensorType& quantization_type) {
+std::unique_ptr<ModelT> CreateQuantizedModelMultipleInputOutput(
+    const TensorType& quantization_type) {
   auto model = absl::make_unique<ModelT>();
   auto subgraph = absl::make_unique<tflite::SubGraphT>();
   auto buffer = absl::make_unique<tflite::BufferT>();
@@ -290,8 +292,7 @@ std::unique_ptr<ModelT> CreateFloatModel() {
   return model;
 }
 
-struct ModelInterface:
-  ::testing::TestWithParam<tflite::TensorType> {};
+struct ModelInterface : ::testing::TestWithParam<tflite::TensorType> {};
 
 TEST_P(ModelInterface, SingleInputOutput) {
   TensorType quantization_type = GetParam();
@@ -333,15 +334,14 @@ TEST_P(ModelInterface, SingleInputOutput) {
 }
 
 TEST_P(ModelInterface, MutipleInputOutput) {
-
   TensorType quantization_type = GetParam();
 
   auto model = CreateQuantizedModelMultipleInputOutput(quantization_type);
 
   // Change model type.
-    flatbuffers::FlatBufferBuilder builder;
+  flatbuffers::FlatBufferBuilder builder;
   EXPECT_EQ(ModifyModelInterface(&builder, model.get(), quantization_type,
-                               quantization_type),
+                                 quantization_type),
             kTfLiteOk);
 
   // Verify results.
@@ -386,11 +386,8 @@ TEST_P(ModelInterface, MutipleInputOutput) {
   EXPECT_EQ(output_2->quantization->zero_point[0], 50);
 }
 
-INSTANTIATE_TEST_SUITE_P(
-  MultipleInputOutputTests,
-  ModelInterface,
-  ::testing::Values(TensorType_INT8, TensorType_INT16)
-);
+INSTANTIATE_TEST_SUITE_P(MultipleInputOutputTests, ModelInterface,
+                         ::testing::Values(TensorType_INT8, TensorType_INT16));
 
 TEST(ModelInterface, MixedTypeSingleInputOutput) {
   auto model = CreateQuantizedModelSingleInputOutput(TensorType_INT8);
