@@ -203,6 +203,21 @@ cc_library(
 )
 
 cc_test(
+    name = "abs_test",
+    srcs = ["abs_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test_main",
+        ":unary_elementwise_tester",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "add_test",
     srcs = ["add_test.cc"],
     linkopts = select({
@@ -227,6 +242,21 @@ cc_test(
     deps = [
         ":pool_2d_tester",
         ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "ceil_test",
+    srcs = ["ceil_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test_main",
+        ":unary_elementwise_tester",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],
@@ -294,8 +324,38 @@ cc_test(
 )
 
 cc_test(
+    name = "floor_test",
+    srcs = ["floor_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test_main",
+        ":unary_elementwise_tester",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "hard_swish_test",
     srcs = ["hard_swish_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test_main",
+        ":unary_elementwise_tester",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "logistic_test",
+    srcs = ["logistic_test.cc"],
     linkopts = select({
         "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
         "//conditions:default": [],
@@ -318,21 +378,6 @@ cc_test(
     deps = [
         ":pool_2d_tester",
         ":test_main",
-        ":xnnpack_delegate_test_mode",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
-    name = "logistic_test",
-    srcs = ["logistic_test.cc"],
-    linkopts = select({
-        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
-        "//conditions:default": [],
-    }),
-    deps = [
-        ":test_main",
-        ":unary_elementwise_tester",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],
@@ -378,6 +423,21 @@ cc_test(
     deps = [
         ":binary_elementwise_tester",
         ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "neg_test",
+    srcs = ["neg_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test_main",
+        ":unary_elementwise_tester",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],
@@ -444,6 +504,21 @@ cc_test(
 )
 
 cc_test(
+    name = "round_test",
+    srcs = ["round_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test_main",
+        ":unary_elementwise_tester",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "softmax_test",
     srcs = ["softmax_test.cc"],
     linkopts = select({
@@ -453,6 +528,21 @@ cc_test(
     deps = [
         ":softmax_tester",
         ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "square_test",
+    srcs = ["square_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test_main",
+        ":unary_elementwise_tester",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],
