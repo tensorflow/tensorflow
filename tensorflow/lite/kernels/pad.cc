@@ -153,6 +153,8 @@ TfLiteStatus EvalInt(TfLiteContext* context, const PadContext& op_context,
                        &pad_value_copy, GetTensorShape(op_context.output),
                        GetTensorData<integer_type>(op_context.output));
   }
+
+  return kTfLiteOk;
 }
 
 template <KernelType kernel_type>
