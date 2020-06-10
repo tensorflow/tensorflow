@@ -1135,7 +1135,8 @@ class SparseFullyConnectedOpModel : public SingleOpModel {
   SparseFullyConnectedOpModel(TfLiteRegistration* registration, int units,
                               int batches, const TensorData& input,
                               const TensorData& weights,
-                              std::initializer_list<T> weights_data)
+                              std::initializer_list<T> weights_data,
+                              int num_threads = 1)
       : batches_(batches), units_(units) {
     int total_input_size = 1;
     for (size_t i = 0; i < input.shape.size(); ++i) {
@@ -1157,7 +1158,9 @@ class SparseFullyConnectedOpModel : public SingleOpModel {
             .Union());
     resolver_ = absl::make_unique<SingleOpResolver>(
         BuiltinOperator_FULLY_CONNECTED, registration);
-    BuildInterpreter({GetShape(input_), GetShape(weights_), GetShape(bias_)});
+    BuildInterpreter({GetShape(input_), GetShape(weights_), GetShape(bias_)},
+                     num_threads, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false);
   }
   void SetBias(const std::vector<T>& data) { PopulateTensor(bias_, data); }
   void SetInput(const std::vector<T>& data) { PopulateTensor(input_, data); }
@@ -1266,6 +1269,82 @@ TEST_P(SparseFullyConnectedOpTest, Simple1x4Test) {
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(m.GetOutput(), ElementsAre(289, 290, 291, 81, 82, 83));
+}
+
+TEST_P(SparseFullyConnectedOpTest, Simple1x4TestMultiThreaded) {
+  std::initializer_list<float> weight_data = {
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,  // u = 0
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,  // u = 2
+  };
+  TensorData weight = {};
+  weight.type = TensorType_FLOAT32;
+  weight.shape = {3, 12};
+  weight.traversal_order = {0, 1, 2};
+  weight.format = {kTfLiteDimDense, kTfLiteDimSparseCSR};
+  weight.block_map = {1};
+  weight.block_size = {4};
+  for (int num_threads = 1; num_threads <= 4; num_threads++) {
+    SparseFullyConnectedOpModel<float> m(
+        GetRegistration(),
+        /*units=*/3, /*batches=*/2,
+        /*input=*/{TensorType_FLOAT32, {2, 12}}, weight, weight_data,
+        num_threads);
+    m.SetBias({1, 2, 3});
+
+    m.SetInput({
+        1, 2, 3, 4, 5, 6, 7, 8,  -9, -10, 11,  12,  // b = 0
+        1, 2, 3, 4, 5, 6, 7, -8, 9,  -10, -11, 12,  // b = 1
+    });
+
+    m.Invoke();
+
+    EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 3));
+    EXPECT_THAT(m.GetOutput(), ElementsAre(289, 290, 291, 81, 82, 83));
+  }
+}
+
+TEST_P(SparseFullyConnectedOpTest, Simple1x4TestMultiThreadedMoreBatches) {
+  std::initializer_list<float> weight_data = {
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,  // u = 0
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,  // u = 2
+  };
+  TensorData weight = {};
+  weight.type = TensorType_FLOAT32;
+  weight.shape = {3, 12};
+  weight.traversal_order = {0, 1, 2};
+  weight.format = {kTfLiteDimDense, kTfLiteDimSparseCSR};
+  weight.block_map = {1};
+  weight.block_size = {4};
+  for (int num_threads = 1; num_threads <= 4; num_threads++) {
+    SparseFullyConnectedOpModel<float> m(
+        GetRegistration(),
+        /*units=*/3, /*batches=*/6,
+        /*input=*/{TensorType_FLOAT32, {6, 12}}, weight, weight_data,
+        num_threads);
+    m.SetBias({1, 2, 3});
+
+    m.SetInput({
+        1, 2, 3, 4, 5, 6, 7, 8,  -9, -10, 11,  12,  // b = 0
+        1, 2, 3, 4, 5, 6, 7, -8, 9,  -10, -11, 12,  // b = 1
+        1, 2, 3, 4, 5, 6, 7, 8,  -9, -10, 11,  12,  // b = 2
+        1, 2, 3, 4, 5, 6, 7, -8, 9,  -10, -11, 12,  // b = 3
+        1, 2, 3, 4, 5, 6, 7, 8,  -9, -10, 11,  12,  // b = 4
+        1, 2, 3, 4, 5, 6, 7, -8, 9,  -10, -11, 12,  // b = 5
+    });
+
+    m.Invoke();
+
+    EXPECT_THAT(m.GetOutputShape(), ElementsAre(6, 3));
+    EXPECT_THAT(m.GetOutput(), ElementsAre(289, 290, 291,  // b = 0
+                                           81, 82, 83,     // b = 1
+                                           289, 290, 291,  // b = 2
+                                           81, 82, 83,     // b = 3
+                                           289, 290, 291,  // b = 4
+                                           81, 82, 83      // b = 5
+                                           ));
+  }
 }
 // TODO(b/148391360): Add tests for unsupported sparsity format.
 // TEST_P(SparseFullyConnectedOpTest, TestUnsupportedSparsityFormat)
