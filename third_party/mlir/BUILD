@@ -686,6 +686,25 @@ gentbl(
     ],
 )
 
+gentbl(
+    name = "MLIRShapeCanonicalizationIncGen",
+    strip_include_prefix = "include/mlir/Dialect/Shape/IR",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "include/mlir/Dialect/Shape/IR/ShapeCanonicalization.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "lib/Dialect/Shape/IR/ShapeCanonicalization.td",
+    td_srcs = [
+        ":StdOpsTdFiles",
+        "include/mlir/Dialect/Shape/IR/ShapeBase.td",
+        "include/mlir/Dialect/Shape/IR/ShapeOps.td",
+        "include/mlir/Interfaces/InferTypeOpInterface.td",
+    ],
+)
+
 cc_library(
     name = "Shape",
     srcs = glob(
@@ -704,6 +723,7 @@ cc_library(
         ":Dialect",
         ":IR",
         ":InferTypeOpInterface",
+        ":MLIRShapeCanonicalizationIncGen",
         ":ShapeOpsIncGen",
         ":SideEffects",
         ":Support",
@@ -733,6 +753,39 @@ cc_library(
         ":Transforms",
         "@llvm-project//llvm:ir",
         "@llvm-project//llvm:support",
+    ],
+)
+
+gentbl(
+    name = "ShapeTransformsPassIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [(
+        "-gen-pass-decls",
+        "include/mlir/Dialect/Shape/Transforms/Passes.h.inc",
+    )],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/Shape/Transforms/Passes.td",
+    td_srcs = [":PassBaseTdFiles"],
+)
+
+cc_library(
+    name = "ShapeTransforms",
+    srcs = glob([
+        "lib/Dialect/Shape/Transforms/*.cpp",
+        "lib/Dialect/Shape/Transforms/*.h",
+    ]),
+    hdrs = glob(["include/mlir/Dialect/Shape/Transforms/*.h"]),
+    includes = ["include"],
+    deps = [
+        #":Analysis",
+        #":ControlFlowInterfaces",
+        ":IR",
+        ":Pass",
+        ":Shape",
+        ":ShapeTransformsPassIncGen",
+        ":Support",
+        ":Transforms",
+        #"@llvm-project//llvm:support",
     ],
 )
 
@@ -1377,6 +1430,30 @@ cc_library(
         ":SPIRVDialect",
         ":SPIRVLowering",
         ":StandardToSPIRVConversions",
+        ":Support",
+        ":Transforms",
+    ],
+)
+
+cc_library(
+    name = "SPIRVToLLVM",
+    srcs = glob([
+        "lib/Conversion/SPIRVToLLVM/*.cpp",
+    ]) + [
+        "lib/Conversion/PassDetail.h",
+    ],
+    hdrs = glob([
+        "include/mlir/Conversion/SPIRVToLLVM/*.h",
+    ]),
+    includes = ["include"],
+    deps = [
+        ":ConversionPassIncGen",
+        ":IR",
+        ":LLVMDialect",
+        ":LLVMTransforms",
+        ":Pass",
+        ":SPIRVDialect",
+        ":StandardOps",
         ":Support",
         ":Transforms",
     ],
@@ -2512,6 +2589,7 @@ cc_library(
         ":Pass",
         ":SCFTransforms",
         ":ShapeToStandard",
+        ":ShapeTransforms",
         ":StandardOpsTransforms",
         ":StandardToSPIRVConversions",
         ":Support",
@@ -2608,8 +2686,11 @@ cc_library(
         ":SPIRVDialect",
         ":SPIRVLowering",
         ":SPIRVPassIncGen",
+        ":SPIRVToLLVM",
         ":Shape",
         ":ShapeToStandard",
+        ":ShapeTransforms",
+        ":ShapeTransformsPassIncGen",
         ":StandardOps",
         ":StandardOpsTransforms",
         ":StandardOpsTransformsPassIncGen",
