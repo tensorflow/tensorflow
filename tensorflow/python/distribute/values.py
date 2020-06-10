@@ -748,9 +748,7 @@ class MirroredVariable(DistributedVariable, Mirrored):
 
   def _update_replica(self, update_fn, value, **kwargs):
     if self.aggregation == vs.VariableAggregation.NONE:
-      raise ValueError(
-          values_util.aggregation_error_msg.format(
-              variable_type="MirroredVariable"))
+      return update_fn(self._get_on_device_or_primary(), value, **kwargs)
 
     def merge_fn(strategy, value, **kwargs):
       """Aggregate values and update all variables in cross replica context."""
