@@ -676,11 +676,24 @@ py_library(
 )
 
 py_library(
+    name = "packed_distributed_variable",
+    srcs = ["packed_distributed_variable.py"],
+    deps = [
+        ":device_util",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+py_library(
     name = "values",
     srcs = ["values.py"],
     deps = [
         ":device_util",
         ":distribute_lib",
+        ":packed_distributed_variable",
         ":reduce_util",
         ":values_util",
         "//tensorflow/python:array_ops",
@@ -1708,6 +1721,24 @@ py_library(
     name = "multi_process_lib",
     srcs = ["multi_process_lib.py"],
     deps = ["@six_archive//:six"],
+)
+
+py_test(
+    name = "packed_distributed_variable_test",
+    srcs = ["packed_distributed_variable_test.py"],
+    tags = [
+        "nomac",  #TODO(b/145922293): It would cause a Python segfault on macos
+    ],
+    deps = [
+        ":device_util",
+        ":packed_distributed_variable",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+    ],
 )
 
 py_test(
