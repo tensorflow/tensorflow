@@ -164,11 +164,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "945c0e3c1c3a4cc58f99a5ccf3cdbcf710db99f2ef7f7821eb6be93e59e53534",
-        strip_prefix = "XNNPACK-5fab409eeff66b0cca5d0482c69b322f2fff6880",
+        sha256 = "ce44ddcf8b54d8ee87d7aee3a93a8cc949440547c41a8ab23fbf8a66314ef7ce",
+        strip_prefix = "XNNPACK-24567894452324bbc369e67b23fd86d87506511a",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/5fab409eeff66b0cca5d0482c69b322f2fff6880.zip",
-            "https://github.com/google/XNNPACK/archive/5fab409eeff66b0cca5d0482c69b322f2fff6880.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/24567894452324bbc369e67b23fd86d87506511a.zip",
+            "https://github.com/google/XNNPACK/archive/24567894452324bbc369e67b23fd86d87506511a.zip",
         ],
     )
 
@@ -184,11 +184,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "pthreadpool",
-        sha256 = "9f5fb7f87dc778d9c1d638826344b762afa23884d0252526337ae710264faef3",
-        strip_prefix = "pthreadpool-18a7156cb9be8e534acefade42e46d4209600c35",
+        sha256 = "c4d4a16053ec0e5125dbd8ae1d6d2ba99601d6fdcf8601a0d51d02a048c40348",
+        strip_prefix = "pthreadpool-e1642461b3b0217d23d6664d839a060f54e4e652",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/Maratyszcza/pthreadpool/archive/18a7156cb9be8e534acefade42e46d4209600c35.zip",
-            "https://github.com/Maratyszcza/pthreadpool/archive/18a7156cb9be8e534acefade42e46d4209600c35.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/Maratyszcza/pthreadpool/archive/e1642461b3b0217d23d6664d839a060f54e4e652.zip",
+            "https://github.com/Maratyszcza/pthreadpool/archive/e1642461b3b0217d23d6664d839a060f54e4e652.zip",
         ],
     )
 
