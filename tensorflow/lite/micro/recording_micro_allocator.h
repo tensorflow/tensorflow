@@ -52,7 +52,6 @@ typedef struct RecordedAllocation {
 class RecordingMicroAllocator : public MicroAllocator {
  public:
   static RecordingMicroAllocator* Create(
-      TfLiteContext* context, const Model* model,
       RecordingSimpleMemoryAllocator* memory_allocator,
       ErrorReporter* error_reporter);
 
@@ -65,11 +64,16 @@ class RecordingMicroAllocator : public MicroAllocator {
   void PrintAllocations();
 
  protected:
-  TfLiteStatus AllocateTfLiteTensorArray() override;
-  TfLiteStatus PopulateTfLiteTensorArrayFromFlatbuffer() override;
+  TfLiteStatus AllocateTfLiteTensorArray(TfLiteContext* context,
+                                         const SubGraph* subgraph) override;
+  TfLiteStatus PopulateTfLiteTensorArrayFromFlatbuffer(
+      const Model* model, TfLiteContext* context,
+      const SubGraph* subgraph) override;
   TfLiteStatus AllocateNodeAndRegistrations(
+      const SubGraph* subgraph,
       NodeAndRegistration** node_and_registrations) override;
   TfLiteStatus PrepareNodeAndRegistrationDataFromFlatbuffer(
+      const Model* model, const SubGraph* subgraph,
       const MicroOpResolver& op_resolver,
       NodeAndRegistration* node_and_registrations) override;
 
@@ -77,8 +81,7 @@ class RecordingMicroAllocator : public MicroAllocator {
   void RecordAllocationUsage(RecordedAllocation& recorded_allocation);
 
  private:
-  RecordingMicroAllocator(TfLiteContext* context, const Model* model,
-                          RecordingSimpleMemoryAllocator* memory_allocator,
+  RecordingMicroAllocator(RecordingSimpleMemoryAllocator* memory_allocator,
                           ErrorReporter* error_reporter);
 
   void PrintRecordedAllocation(RecordedAllocationType allocation_type,

@@ -23,30 +23,19 @@ limitations under the License.
 namespace tflite {
 
 RecordingMicroAllocator::RecordingMicroAllocator(
-    TfLiteContext* context, const Model* model,
     RecordingSimpleMemoryAllocator* recording_memory_allocator,
     ErrorReporter* error_reporter)
-    : MicroAllocator(context, model, recording_memory_allocator,
-                     error_reporter),
+    : MicroAllocator(recording_memory_allocator, error_reporter),
       recording_memory_allocator_(recording_memory_allocator) {}
 
 RecordingMicroAllocator* RecordingMicroAllocator::Create(
-    TfLiteContext* context, const Model* model,
     RecordingSimpleMemoryAllocator* memory_allocator,
     ErrorReporter* error_reporter) {
-  TFLITE_DCHECK(context != nullptr);
-  TFLITE_DCHECK(model != nullptr);
   TFLITE_DCHECK(memory_allocator != nullptr);
   uint8_t* allocator_buffer = memory_allocator->AllocateFromTail(
       sizeof(RecordingMicroAllocator), alignof(RecordingMicroAllocator));
   RecordingMicroAllocator* allocator = new (allocator_buffer)
-      RecordingMicroAllocator(context, model, memory_allocator, error_reporter);
-  if (allocator->InitGraphAndContextTensorData() != kTfLiteOk) {
-    TF_LITE_REPORT_ERROR(
-        error_reporter,
-        "RecordingMicroAllocator: Failed to initialize model graph.");
-    return nullptr;
-  }
+      RecordingMicroAllocator(memory_allocator, error_reporter);
   return allocator;
 }
 
@@ -101,48 +90,52 @@ void RecordingMicroAllocator::PrintRecordedAllocation(
                        allocation.requested_bytes, allocation.count);
 }
 
-TfLiteStatus RecordingMicroAllocator::AllocateTfLiteTensorArray() {
+TfLiteStatus RecordingMicroAllocator::AllocateTfLiteTensorArray(
+    TfLiteContext* context, const SubGraph* subgraph) {
   SnapshotAllocationUsage(recorded_tflite_tensor_array_data_);
 
-  TfLiteStatus status = MicroAllocator::AllocateTfLiteTensorArray();
+  TfLiteStatus status =
+      MicroAllocator::AllocateTfLiteTensorArray(context, subgraph);
 
   RecordAllocationUsage(recorded_tflite_tensor_array_data_);
-  recorded_tflite_tensor_array_data_.count = GetTensorsCount();
+  recorded_tflite_tensor_array_data_.count = context->tensors_size;
   return status;
 }
 
-TfLiteStatus
-RecordingMicroAllocator::PopulateTfLiteTensorArrayFromFlatbuffer() {
+TfLiteStatus RecordingMicroAllocator::PopulateTfLiteTensorArrayFromFlatbuffer(
+    const Model* model, TfLiteContext* context, const SubGraph* subgraph) {
   SnapshotAllocationUsage(recorded_tflite_tensor_array_quantization_data_);
 
-  TfLiteStatus status =
-      MicroAllocator::PopulateTfLiteTensorArrayFromFlatbuffer();
+  TfLiteStatus status = MicroAllocator::PopulateTfLiteTensorArrayFromFlatbuffer(
+      model, context, subgraph);
 
   RecordAllocationUsage(recorded_tflite_tensor_array_quantization_data_);
   return status;
 }
 
 TfLiteStatus RecordingMicroAllocator::AllocateNodeAndRegistrations(
-    NodeAndRegistration** node_and_registrations) {
+    const SubGraph* subgraph, NodeAndRegistration** node_and_registrations) {
   SnapshotAllocationUsage(recorded_node_and_registration_array_data_);
 
-  TfLiteStatus status =
-      MicroAllocator::AllocateNodeAndRegistrations(node_and_registrations);
+  TfLiteStatus status = MicroAllocator::AllocateNodeAndRegistrations(
+      subgraph, node_and_registrations);
 
   RecordAllocationUsage(recorded_node_and_registration_array_data_);
-  recorded_node_and_registration_array_data_.count = GetOperatorsCount();
+  recorded_node_and_registration_array_data_.count =
+      subgraph->operators()->size();
   return status;
 }
 
 TfLiteStatus
 RecordingMicroAllocator::PrepareNodeAndRegistrationDataFromFlatbuffer(
+    const Model* model, const SubGraph* subgraph,
     const MicroOpResolver& op_resolver,
     NodeAndRegistration* node_and_registrations) {
   SnapshotAllocationUsage(recorded_op_data_);
 
   TfLiteStatus status =
       MicroAllocator::PrepareNodeAndRegistrationDataFromFlatbuffer(
-          op_resolver, node_and_registrations);
+          model, subgraph, op_resolver, node_and_registrations);
 
   RecordAllocationUsage(recorded_op_data_);
   return status;
