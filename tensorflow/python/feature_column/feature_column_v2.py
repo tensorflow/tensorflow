@@ -142,9 +142,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
-# TODO(b/118385027): Dependency on keras can be problematic if Keras moves out
-# of the main repo.
-from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -2609,7 +2606,8 @@ class NumericColumn(
   def get_config(self):
     """See 'FeatureColumn` base class."""
     config = dict(zip(self._fields, self))
-    config['normalizer_fn'] = generic_utils.serialize_keras_object(
+    from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
+    config['normalizer_fn'] = serialization._serialize_keras_object(  # pylint: disable=protected-access
         self.normalizer_fn)
     config['dtype'] = self.dtype.name
     return config
@@ -2618,8 +2616,9 @@ class NumericColumn(
   def from_config(cls, config, custom_objects=None, columns_by_name=None):
     """See 'FeatureColumn` base class."""
     _check_config_keys(config, cls._fields)
+    from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
     kwargs = _standardize_and_copy_config(config)
-    kwargs['normalizer_fn'] = generic_utils.deserialize_keras_object(
+    kwargs['normalizer_fn'] = serialization._deserialize_keras_object(  # pylint: disable=protected-access
         config['normalizer_fn'], custom_objects=custom_objects)
     kwargs['dtype'] = dtypes.as_dtype(config['dtype'])
 
@@ -3027,11 +3026,11 @@ class EmbeddingColumn(
 
   def get_config(self):
     """See 'FeatureColumn` base class."""
-    from tensorflow.python.feature_column.serialization import serialize_feature_column  # pylint: disable=g-import-not-at-top
+    from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
     config = dict(zip(self._fields, self))
-    config['categorical_column'] = serialize_feature_column(
+    config['categorical_column'] = serialization.serialize_feature_column(
         self.categorical_column)
-    config['initializer'] = generic_utils.serialize_keras_object(
+    config['initializer'] = serialization._serialize_keras_object(  # pylint: disable=protected-access
         self.initializer)
     return config
 
@@ -3040,13 +3039,13 @@ class EmbeddingColumn(
     """See 'FeatureColumn` base class."""
     if 'use_safe_embedding_lookup' not in config:
       config['use_safe_embedding_lookup'] = True
-    from tensorflow.python.feature_column.serialization import deserialize_feature_column  # pylint: disable=g-import-not-at-top
+    from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
     _check_config_keys(config, cls._fields)
     kwargs = _standardize_and_copy_config(config)
-    kwargs['categorical_column'] = deserialize_feature_column(
+    kwargs['categorical_column'] = serialization.deserialize_feature_column(
         config['categorical_column'], custom_objects, columns_by_name)
     all_initializers = dict(tf_inspect.getmembers(init_ops, tf_inspect.isclass))
-    kwargs['initializer'] = generic_utils.deserialize_keras_object(
+    kwargs['initializer'] = serialization._deserialize_keras_object(  # pylint: disable=protected-access
         config['initializer'],
         module_objects=all_initializers,
         custom_objects=custom_objects)
