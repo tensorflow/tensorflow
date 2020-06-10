@@ -59,6 +59,13 @@ Status FunctionApiInfo::Init(const FunctionDef& function_def) {
         "Function '", function_def.signature().name(),
         "' has a preferred device, but does not implement an interface");
   }
+  // Handles the case that api_implements exists but prefered_device does not
+  // exist. Currently this is for tf lite/mlir, which depends on api_implements.
+  if (!interface_name_.empty() && preferred_device_.empty()) {
+    VLOG(1) << "A function has api_implements: " << interface_name_ << ", but "
+            << "api_preferred_device";
+    interface_name_.clear();
+  }
   return Status::OK();
 }
 
