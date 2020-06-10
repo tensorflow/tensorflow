@@ -3623,12 +3623,17 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
       new_slice_strides.push_back(slice->slice_strides(dim));
       new_slice_limits.push_back(slice->slice_limits(dim));
     }
+    VLOG(3) << "Sink broadcast through slice";
+    VLOG(3) << "Original slice: " << slice->ToString();
+    VLOG(3) << "Original broadcast: " << broadcast->ToString();
     TF_ASSIGN_OR_RETURN(auto new_slice,
                         MakeSliceHlo(broadcast_operand, new_slice_starts,
                                      new_slice_limits, new_slice_strides));
-    return ReplaceInstruction(
-        slice,
-        MakeBroadcastHlo(new_slice, broadcast->dimensions(), slice->shape()));
+    auto new_broadcast = HloInstruction::CreateBroadcast(
+        slice->shape(), new_slice, broadcast->dimensions());
+    VLOG(3) << "New slice: " << slice->ToString();
+    VLOG(3) << "New broadcast: " << new_broadcast->ToString();
+    return ReplaceWithNewInstruction(slice, std::move(new_broadcast));
   }
 
   // Try to simplify concat -> slice to an operand of concat.
@@ -3708,16 +3713,21 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
       new_indices.push_back(dynamic_slice->mutable_operand(1 + dim));
       new_slice_sizes.push_back(dynamic_slice->slice_sizes(dim));
     }
+
+    VLOG(3) << "Sink broadcast through dynamic slice";
+    VLOG(3) << "Original dynamic slice: " << dynamic_slice->ToString();
+    VLOG(3) << "Original broadcast: " << operand->ToString();
     HloInstruction* new_dynamic_slice = broadcast_operand;
     if (!new_slice_sizes.empty()) {
       TF_ASSIGN_OR_RETURN(
           new_dynamic_slice,
           MakeDynamicSliceHlo(broadcast_operand, new_indices, new_slice_sizes));
     }
-    return ReplaceInstruction(
-        dynamic_slice,
-        MakeBroadcastHlo(new_dynamic_slice, operand->dimensions(),
-                         dynamic_slice->shape()));
+    auto new_broadcast = HloInstruction::CreateBroadcast(
+        dynamic_slice->shape(), new_dynamic_slice, operand->dimensions());
+    VLOG(3) << "New dynamic slice: " << dynamic_slice->ToString();
+    VLOG(3) << "New broadcast: " << new_broadcast->ToString();
+    return ReplaceWithNewInstruction(dynamic_slice, std::move(new_broadcast));
   }
 
   // Convert a dynamic slice into a slice if all offsets are  constant and the
