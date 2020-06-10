@@ -21,13 +21,13 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/** Unit tests for {@link org.tensorflow.lite.gpu.Whitelist}. */
+/** Unit tests for {@link org.tensorflow.lite.gpu.CompatibilityList}. */
 @RunWith(JUnit4.class)
-public final class WhitelistTest {
+public final class CompatibilityListTest {
 
   @Test
   public void testBasic() throws Exception {
-    try (Whitelist whitelist = new Whitelist()) {
+    try (CompatibilityList whitelist = new CompatibilityList()) {
       assertThat(whitelist.isDelegateSupportedOnThisDevice()).isTrue();
     }
   }

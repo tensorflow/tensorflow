@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_WHITELIST_ANDROID_INFO_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_WHITELIST_ANDROID_INFO_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_COMPATIBILITY_ANDROID_INFO_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_COMPATIBILITY_ANDROID_INFO_H_
 
 #include <string>
 
@@ -22,7 +22,7 @@ limitations under the License.
 namespace tflite {
 namespace acceleration {
 
-// Information about and Android device, used for determining whitelisting
+// Information about and Android device, used for determining compatibility
 // status.
 struct AndroidInfo {
   // Property ro.build.version.sdk
@@ -40,4 +40,4 @@ absl::Status RequestAndroidInfo(AndroidInfo* info_out);
 }  // namespace acceleration
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_WHITELIST_ANDROID_INFO_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_COMPATIBILITY_ANDROID_INFO_H_

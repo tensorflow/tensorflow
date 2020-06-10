@@ -43,7 +43,7 @@
                           "derived_properties": [
                             {
                               "variable": "tflite.gpu.status",
-                              "value": "WHITELISTED"
+                              "value": "SUPPORTED"
                             }
                           ]
                         }
@@ -63,7 +63,7 @@
                           "derived_properties": [
                             {
                               "variable": "tflite.gpu.status",
-                              "value": "WHITELISTED"
+                              "value": "SUPPORTED"
                             }
                           ]
                         }
@@ -99,11 +99,11 @@
                           "derived_properties": [
                             {
                               "variable": "tflite.gpu.status",
-                              "value": "WHITELISTED"
+                              "value": "SUPPORTED"
                             },
                             {
                               "variable": "tflite.gpu.opencl_status",
-                              "value": "WHITELISTED"
+                              "value": "SUPPORTED"
                             }
                           ]
                         }
@@ -132,7 +132,7 @@
                           "derived_properties": [
                             {
                               "variable": "tflite.gpu.status",
-                              "value": "BLACKLISTED"
+                              "value": "UNSUPPORTED"
                             }
                           ]
                         }
@@ -151,7 +151,7 @@
                           "derived_properties": [
                             {
                               "variable": "tflite.gpu.opencl_status",
-                              "value": "WHITELISTED"
+                              "value": "SUPPORTED"
                             }
                           ]
                         }

@@ -18,7 +18,7 @@ package org.tensorflow.lite.gpu;
 import java.io.Closeable;
 
 /**
- * GPU Delegate Whitelisting data.
+ * GPU Delegate CompatibilityListing data.
  *
  * <p>The GPU delegate is not supported on all Android devices, due to differences in available
  * OpenGL versions, driver features, and device resources. This class provides information on
@@ -26,16 +26,16 @@ import java.io.Closeable;
  *
  * <p>This API is experimental and subject to change.
  *
- * <p><b>WARNING:</b> the whitelist is constructed from testing done on a limited set of models. You
- * should plan to verify that your own model(s) work.
+ * <p><b>WARNING:</b> the compatibilityList is constructed from testing done on a limited set of
+ * models. You should plan to verify that your own model(s) work.
  *
  * <p>Example usage:
  *
  * <pre>{@code
  * Interpreter.Options options = new Interpreter.Options();
- * try (Whitelist whitelist = new Whitelist()) {
- *   if (whitelist.isDelegateSupportedOnThisDevice()) {
- *     GpuDelegate.Options delegateOptions = whitelist.getBestOptionsForThisDevice();
+ * try (CompatibilityList compatibilityList = new CompatibilityList()) {
+ *   if (compatibilityList.isDelegateSupportedOnThisDevice()) {
+ *     GpuDelegate.Options delegateOptions = compatibilityList.getBestOptionsForThisDevice();
  *     gpuDelegate = new GpuDelegate(delegateOptions):
  *     options.addDelegate(gpuDelegate);
  *   }
@@ -43,29 +43,29 @@ import java.io.Closeable;
  * Interpreter interpreter = new Interpreter(modelBuffer, options);
  * }</pre>
  */
-public class Whitelist implements Closeable {
+public class CompatibilityList implements Closeable {
 
-  private static final long INVALID_WHITELIST_HANDLE = 0;
+  private static final long INVALID_COMPATIBILITY_LIST_HANDLE = 0;
   private static final String TFLITE_GPU_LIB = "tensorflowlite_gpu_jni";
 
-  private long whitelistHandle = INVALID_WHITELIST_HANDLE;
+  private long compatibilityListHandle = INVALID_COMPATIBILITY_LIST_HANDLE;
 
   /** Whether the GPU delegate is supported on this device. */
   public boolean isDelegateSupportedOnThisDevice() {
-    if (whitelistHandle == INVALID_WHITELIST_HANDLE) {
-      throw new IllegalStateException("Trying to query a closed whitelist.");
+    if (compatibilityListHandle == INVALID_COMPATIBILITY_LIST_HANDLE) {
+      throw new IllegalStateException("Trying to query a closed compatibilityList.");
     }
-    return nativeIsDelegateSupportedOnThisDevice(whitelistHandle);
+    return nativeIsDelegateSupportedOnThisDevice(compatibilityListHandle);
   }
 
   /** What options should be used for the GPU delegate. */
   public GpuDelegate.Options getBestOptionsForThisDevice() {
-    // For forward compatibility, when the whitelist contains more information.
+    // For forward compatibility, when the compatibilityList contains more information.
     return new GpuDelegate.Options();
   }
 
-  public Whitelist() {
-    whitelistHandle = createWhitelist();
+  public CompatibilityList() {
+    compatibilityListHandle = createCompatibilityList();
   }
 
   /**
@@ -75,9 +75,9 @@ public class Whitelist implements Closeable {
    */
   @Override
   public void close() {
-    if (whitelistHandle != INVALID_WHITELIST_HANDLE) {
-      deleteWhitelist(whitelistHandle);
-      whitelistHandle = INVALID_WHITELIST_HANDLE;
+    if (compatibilityListHandle != INVALID_COMPATIBILITY_LIST_HANDLE) {
+      deleteCompatibilityList(compatibilityListHandle);
+      compatibilityListHandle = INVALID_COMPATIBILITY_LIST_HANDLE;
     }
   }
 
@@ -85,9 +85,9 @@ public class Whitelist implements Closeable {
     System.loadLibrary(TFLITE_GPU_LIB);
   }
 
-  private static native long createWhitelist();
+  private static native long createCompatibilityList();
 
-  private static native void deleteWhitelist(long handle);
+  private static native void deleteCompatibilityList(long handle);
 
   private static native boolean nativeIsDelegateSupportedOnThisDevice(long handle);
 }

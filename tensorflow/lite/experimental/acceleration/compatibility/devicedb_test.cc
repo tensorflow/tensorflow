@@ -12,16 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/experimental/acceleration/whitelist/devicedb.h"
+#include "tensorflow/lite/experimental/acceleration/compatibility/devicedb.h"
 
 #include <memory>
 #include <string>
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/experimental/acceleration/whitelist/database_generated.h"
-#include "tensorflow/lite/experimental/acceleration/whitelist/devicedb-sample.h"
-#include "tensorflow/lite/experimental/acceleration/whitelist/variables.h"
+#include "tensorflow/lite/experimental/acceleration/compatibility/database_generated.h"
+#include "tensorflow/lite/experimental/acceleration/compatibility/devicedb-sample.h"
+#include "tensorflow/lite/experimental/acceleration/compatibility/variables.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
@@ -78,7 +78,7 @@ TEST_F(DeviceDbTest, StatusLookupWithSoC) {
   variables[kSoCModel] = "exynos_7872";
   variables[kAndroidSdkVersion] = "24";
   UpdateVariablesFromDatabase(&variables, *device_db_);
-  EXPECT_EQ(variables[gpu::kStatus], gpu::kStatusWhitelisted);
+  EXPECT_EQ(variables[gpu::kStatus], gpu::kStatusSupported);
 
   // Ensure no results without a match.
   variables[kOpenGLESVersion] = "3.0";
@@ -96,27 +96,27 @@ TEST_F(DeviceDbTest, StatusLookupWithSoC) {
   // Find a match with android version above minimum.
   variables[kAndroidSdkVersion] = "29";
   UpdateVariablesFromDatabase(&variables, *device_db_);
-  EXPECT_EQ(variables[gpu::kStatus], gpu::kStatusWhitelisted);
+  EXPECT_EQ(variables[gpu::kStatus], gpu::kStatusSupported);
 }
 
 TEST_F(DeviceDbTest, StatusLookupWithDevice) {
   LoadSample();
   ASSERT_TRUE(device_db_);
   std::map<std::string, std::string> variables;
-  // Find blacklisted device (same model, different device).
+  // Find unsupported device (same model, different device).
   variables[kAndroidSdkVersion] = "24";
   variables[kDeviceModel] = "sm_j810f";
   variables[kDeviceName] = "j8y18lte";
   UpdateVariablesFromDatabase(&variables, *device_db_);
-  EXPECT_EQ(variables[gpu::kStatus], gpu::kStatusBlacklisted);
+  EXPECT_EQ(variables[gpu::kStatus], gpu::kStatusUnsupported);
 
-  // Find whitelisted device (same model, different device).
+  // Find supported device (same model, different device).
   variables.clear();
   variables[kAndroidSdkVersion] = "24";
   variables[kDeviceModel] = "sm_j810m";
   variables[kDeviceName] = "j8y18lte";
   UpdateVariablesFromDatabase(&variables, *device_db_);
-  EXPECT_EQ(variables[gpu::kOpenCLStatus], gpu::kStatusWhitelisted);
+  EXPECT_EQ(variables[gpu::kOpenCLStatus], gpu::kStatusSupported);
 }
 
 TEST_F(DeviceDbTest, StatusLookupBasedOnDerivedProperties) {
@@ -128,7 +128,7 @@ TEST_F(DeviceDbTest, StatusLookupBasedOnDerivedProperties) {
   variables[kAndroidSdkVersion] = "24";
   variables[kDeviceModel] = "m712c";
   UpdateVariablesFromDatabase(&variables, *device_db_);
-  EXPECT_EQ(variables[gpu::kStatus], gpu::kStatusWhitelisted);
+  EXPECT_EQ(variables[gpu::kStatus], gpu::kStatusSupported);
 }
 
 }  // namespace

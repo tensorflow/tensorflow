@@ -111,20 +111,20 @@ cc_test(
 )
 
 genrule(
-    name = "gpu_whitelist_binary",
-    srcs = ["gpu_whitelist.bin"],
+    name = "gpu_compatibility_binary",
+    srcs = ["gpu_compatibility.bin"],
     outs = [
-        "gpu_whitelist_binary.h",
-        "gpu_whitelist_binary.cc",
+        "gpu_compatibility_binary.h",
+        "gpu_compatibility_binary.cc",
     ],
     # convert_file_to_c_source for some reason doesn't define the global with
     # 'extern', which is needed for global const variables in C++.
     cmd = """
     $(location :convert_binary_to_cc_source) \
-        --input_binary_file $(location :gpu_whitelist.bin) \
-        --output_header_file $(location :gpu_whitelist_binary.h) \
-        --output_source_file $(location :gpu_whitelist_binary.cc) \
-        --array_variable_name g_tflite_acceleration_gpu_whitelist_binary
+        --input_binary_file $(location :gpu_compatibility.bin) \
+        --output_header_file $(location :gpu_compatibility_binary.h) \
+        --output_source_file $(location :gpu_compatibility_binary.cc) \
+        --array_variable_name g_tflite_acceleration_gpu_compatibility_binary
     """,
     tools = [":convert_binary_to_cc_source"],
 )
@@ -139,14 +139,14 @@ cc_library(
 )
 
 cc_library(
-    name = "gpu_whitelist",
+    name = "gpu_compatibility",
     srcs = [
-        "gpu_whitelist.cc",
-        "gpu_whitelist_binary.cc",
-        "gpu_whitelist_binary.h",
+        "gpu_compatibility.cc",
+        "gpu_compatibility_binary.cc",
+        "gpu_compatibility_binary.h",
     ],
     hdrs = [
-        "gpu_whitelist.h",
+        "gpu_compatibility.h",
     ],
     deps = [
         ":android_info",
