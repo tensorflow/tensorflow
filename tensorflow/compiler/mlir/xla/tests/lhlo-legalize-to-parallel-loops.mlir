@@ -1,4 +1,4 @@
-// RUN: xla-opt %s -lhlo-legalize-to-parallel-loops -canonicalize -split-input-file | FileCheck %s --dump-input-on-failure
+// RUN: xla-opt %s -lhlo-legalize-to-parallel-loops -canonicalize -split-input-file | FileCheck %s
 
 func @reduce(%arg: memref<100x10x5xf32>,
              %init: memref<f32>,
