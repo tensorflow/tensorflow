@@ -118,7 +118,8 @@ class CpuExecutable : public Executable {
   // assignment.
   StatusOr<ExecutionOutput> CreateResultShapedBuffer(
       const ServiceExecutableRunOptions* run_options,
-      absl::Span<MaybeOwningDeviceMemory> buffers);
+      absl::Span<MaybeOwningDeviceMemory> buffers,
+      absl::Span<ExecutionInput> arguments);
 
   // Returns the instruction value set of the root instruction of the entry
   // computation. Uses dataflow analysis from buffer assignment.
