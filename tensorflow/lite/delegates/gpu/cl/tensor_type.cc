@@ -206,6 +206,29 @@ absl::Status TensorDescriptor::PerformReadSelector(
   return absl::OkStatus();
 }
 
+absl::Status TensorDescriptor::GetLinkingContextFromWriteSelector(
+    const std::vector<std::string>& args, std::string* value_name,
+    std::string* x_coord, std::string* y_coord, std::string* s_coord) const {
+  std::string xc;
+  std::string yc;
+  std::string zc;
+  std::string sc;
+  std::string bc;
+  bool parsed = ParseCoordsFromArgs(args, 1, &xc, &yc, &zc, &sc, &bc);
+  if (args.size() < 2 || !parsed) {
+    return absl::NotFoundError("Unrecognized Write selector");
+  }
+  *value_name = args[0];
+  if (HasAxis(Axis::BATCH) && !IsBatchedWidth()) {
+    *x_coord = absl::StrCat("((", xc, ") * batch + (", bc, "))");
+  } else {
+    *x_coord = absl::StrCat("(", xc, ")");
+  }
+  *y_coord = absl::StrCat("(", yc, ")");
+  *s_coord = absl::StrCat("(", sc, ")");
+  return absl::OkStatus();
+}
+
 absl::Status TensorDescriptor::PerformWriteSelector(
     const std::vector<std::string>& args, std::string* result) const {
   std::string xc;
@@ -475,15 +498,6 @@ bool TensorDescriptor::HasAxis(Axis axis) const {
     return true;
   }
   return false;
-}
-
-std::string TensorDescriptor::GetBatchIDFromState() const {
-  auto it = state_vars_.find("batch_id");
-  if (it == state_vars_.end()) {
-    return "";
-  } else {
-    return it->second;
-  }
 }
 
 bool TensorDescriptor::ParseCoordsFromArgs(const std::vector<std::string>& args,

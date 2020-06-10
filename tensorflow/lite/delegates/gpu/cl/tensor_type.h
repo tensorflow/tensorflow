@@ -72,8 +72,9 @@ struct TensorDescriptor : public GPUObjectDescriptor {
 
   bool HasAxis(Axis axis) const;
 
-  std::string GetBatchIDFromState() const;
-  bool IsBatchedWidth() const;
+  absl::Status GetLinkingContextFromWriteSelector(
+      const std::vector<std::string>& args, std::string* value_name,
+      std::string* x_coord, std::string* y_coord, std::string* s_coord) const;
 
   DataType data_type = DataType::UNKNOWN;
   TensorStorageType storage_type = TensorStorageType::UNKNOWN;
@@ -102,6 +103,8 @@ struct TensorDescriptor : public GPUObjectDescriptor {
                    const std::string& global_address) const;
   std::string Write(const std::string& var_name,
                     const std::string& global_address) const;
+
+  bool IsBatchedWidth() const;
 
   absl::Status GetDataTypeFromTemplateArgs(const std::string& template_arg,
                                            DataType* result) const;
