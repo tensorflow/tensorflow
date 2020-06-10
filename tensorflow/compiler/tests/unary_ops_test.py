@@ -292,17 +292,13 @@ class UnaryOpsTest(xla_test.XLATestCase):
           np.array([[1, 2]], dtype=dtype),
           expected=np.array([[0.540297, -0.41614]], dtype=dtype))
 
-      # Confirm that log1p will remain precise across a range of small values.
       self._assertOpOutputMatchesExpected(
           math_ops.log1p,
-          np.array([[1e-14, 1e-15, 0.6, 2] + [x * 1e-5 for x in range(1, 20)]],
-                   dtype=dtype),
-          expected=np.log1p(
-              np.array(
-                  [[1e-14, 1e-15, 0.6, 2] + [x * 1e-5 for x in range(1, 20)]],
-                  dtype=dtype)).astype(dtype),
-          rtol=1e-15 if dtype == np.float64 else 1e-4,
-          atol=1e-15 if dtype == np.float64 else 1e-4)
+          np.array([[1e-14, 1e-15, 0.6]], dtype=dtype),
+          expected=np.log1p(np.array([[1e-14, 1e-15, 0.6]],
+                                     dtype=dtype)).astype(dtype),
+          rtol=1e-4,
+          atol=1e-6)
 
       self._assertOpOutputMatchesExpected(
           math_ops.rint,
