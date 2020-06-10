@@ -22,7 +22,9 @@ import time
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.layers import convolutional as conv_layers
 from tensorflow.python.keras.layers import core as core_layers
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import tf_inspect
 
@@ -114,6 +116,36 @@ class MicroBenchmarksBase(test.Benchmark):
 
     layer = core_layers.Flatten()
     x = ops.convert_to_tensor([[[1.]]])
+
+    def fn():
+      layer(x)
+
+    self._run(fn, 10000)
+
+  def benchmark_tf_keras_conv1d_overhead(self):
+
+    layer = conv_layers.Conv1D(1, (1,))
+    x = array_ops.ones((1, 1, 1))
+
+    def fn():
+      layer(x)
+
+    self._run(fn, 10000)
+
+  def benchmark_tf_keras_conv2d_overhead(self):
+
+    layer = conv_layers.Conv2D(1, (1, 1))
+    x = array_ops.ones((1, 1, 1, 1))
+
+    def fn():
+      layer(x)
+
+    self._run(fn, 10000)
+
+  def benchmark_tf_keras_conv3d_overhead(self):
+
+    layer = conv_layers.Conv3D(1, (1, 1, 1))
+    x = array_ops.ones((1, 1, 1, 1, 1))
 
     def fn():
       layer(x)
