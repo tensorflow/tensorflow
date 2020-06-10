@@ -144,12 +144,12 @@ from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
 # TODO(b/118385027): Dependency on keras can be problematic if Keras moves out
 # of the main repo.
-from tensorflow.python.keras import initializers
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
@@ -165,6 +165,7 @@ from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
@@ -588,7 +589,7 @@ def embedding_column(categorical_column,
                      'Embedding of column_name: {}'.format(
                          categorical_column.name))
   if initializer is None:
-    initializer = initializers.truncated_normal(
+    initializer = init_ops.truncated_normal_initializer(
         mean=0.0, stddev=1 / math.sqrt(dimension))
 
   return EmbeddingColumn(
@@ -730,7 +731,7 @@ def shared_embedding_columns(categorical_columns,
   if (initializer is not None) and (not callable(initializer)):
     raise ValueError('initializer must be callable if specified.')
   if initializer is None:
-    initializer = initializers.truncated_normal(
+    initializer = init_ops.truncated_normal_initializer(
         mean=0.0, stddev=1. / math.sqrt(dimension))
 
   # Sort the columns so the default collection name is deterministic even if the
@@ -913,7 +914,7 @@ def shared_embedding_columns_v2(categorical_columns,
   if (initializer is not None) and (not callable(initializer)):
     raise ValueError('initializer must be callable if specified.')
   if initializer is None:
-    initializer = initializers.truncated_normal(
+    initializer = init_ops.truncated_normal_initializer(
         mean=0.0, stddev=1. / math.sqrt(dimension))
 
   # Sort the columns so the default collection name is deterministic even if the
@@ -3030,7 +3031,8 @@ class EmbeddingColumn(
     config = dict(zip(self._fields, self))
     config['categorical_column'] = serialize_feature_column(
         self.categorical_column)
-    config['initializer'] = initializers.serialize(self.initializer)
+    config['initializer'] = generic_utils.serialize_keras_object(
+        self.initializer)
     return config
 
   @classmethod
@@ -3043,8 +3045,11 @@ class EmbeddingColumn(
     kwargs = _standardize_and_copy_config(config)
     kwargs['categorical_column'] = deserialize_feature_column(
         config['categorical_column'], custom_objects, columns_by_name)
-    kwargs['initializer'] = initializers.deserialize(
-        config['initializer'], custom_objects=custom_objects)
+    all_initializers = dict(tf_inspect.getmembers(init_ops, tf_inspect.isclass))
+    kwargs['initializer'] = generic_utils.deserialize_keras_object(
+        config['initializer'],
+        module_objects=all_initializers,
+        custom_objects=custom_objects)
     return cls(**kwargs)
 
 

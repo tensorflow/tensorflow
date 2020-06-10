@@ -90,7 +90,6 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/keras:initializers",
         "//tensorflow/python/keras/utils:generic_utils",
         "//tensorflow/python/training/tracking",
         "//tensorflow/python/training/tracking:data_structures",
