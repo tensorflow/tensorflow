@@ -3010,6 +3010,7 @@ cc_library(
     hdrs = ["hlo_replication_analysis.h"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
