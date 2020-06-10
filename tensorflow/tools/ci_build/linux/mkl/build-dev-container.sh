@@ -214,7 +214,7 @@ function test_container()
   # Test to check if horovod is installed successfully
   if [[ ${ENABLE_HOROVOD} == "yes" ]]; then
       debug "Test horovod in the container..."
-      HOROVOD_TEST_CMD=$(${DOCKER_BINARY} exec ${CONTAINER_ID} bash -c "${PYTHON} -c 'import horovod.tensorflow as hvd;'")  
+      HOROVOD_TEST_CMD=$(${DOCKER_BINARY} exec ${CONTAINER_ID} bash -c "${PYTHON} -c 'import horovod.tensorflow as hvd;'")
       ${HOROVOD_TEST_CMD}
       if [[ $? == "0" ]]; then
           echo "PASS: HOROVOD installation test in ${TEMP_IMAGE_NAME}"
