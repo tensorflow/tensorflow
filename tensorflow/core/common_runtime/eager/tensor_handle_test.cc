@@ -219,6 +219,39 @@ TEST_F(PackedTensorHandleTest, PackedHandle) {
   packed_handle->Unref();
 }
 
+TEST_F(PackedTensorHandleTest, PackedSingleHandle) {
+  tensorflow::DataType dtype = DT_RESOURCE;
+  TensorShape shape = {};
+
+  Tensor t(dtype, shape);
+  Device* d = ListDevices().at(0);
+  TensorHandle* h =
+      TensorHandle::CreateLocalHandle(std::move(t), d, d, d, context());
+  std::vector<TensorHandle*> handles = {h};
+
+  TensorHandle* packed_handle = nullptr;
+  TF_EXPECT_OK(TensorHandle::CreatePackedHandle(std::move(handles), context(),
+                                                &packed_handle));
+  h->Unref();
+
+  EXPECT_EQ(packed_handle->Type(), TensorHandle::PACKED);
+  EXPECT_EQ(packed_handle->dtype, dtype);
+  TensorShape packed_shape;
+  TF_ASSERT_OK(packed_handle->Shape(&packed_shape));
+  EXPECT_EQ(packed_shape, shape);
+
+  CompositeDevice* device = reinterpret_cast<CompositeDevice*>(
+      absl::get<Device*>(packed_handle->device()));
+  EXPECT_EQ(device->name(), "/job:worker/replica:0/task:0/device:COMPOSITE:0");
+  EXPECT_EQ(device->underlying_devices()->size(), 1);
+  EXPECT_EQ(packed_handle->NumPackedHandles(), 1);
+  TensorHandle* h0 = nullptr;
+  TF_ASSERT_OK(packed_handle->ExtractPackedHandle(0, &h0));
+  EXPECT_EQ(absl::get<Device*>(h0->device()), d);
+  EXPECT_TRUE(IsReady(packed_handle));
+  packed_handle->Unref();
+}
+
 TEST(TensorHandle_ResourceDeviceTest, OnLocalDevice) {
   std::unique_ptr<Device> d0(
       CreateDevice("CPU", "/job:localhost/replica:0/task:0/device:CPU:0"));

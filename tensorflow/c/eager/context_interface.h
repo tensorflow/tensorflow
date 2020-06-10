@@ -104,6 +104,14 @@ class AbstractContextInterface {
   // Block until all pending nodes are finished.
   virtual Status AsyncWait() = 0;
 
+  // Add a function (serialized FunctionDef protocol buffer) so that it can
+  // be executed as an op. Return error if the function with the same name
+  // already exists.
+  virtual Status AddFunctionDef(const FunctionDef& fdef) = 0;
+  // Remove a function. 'func' argument is the name of a previously added
+  // FunctionDef. The name is in fdef.signature.name.
+  virtual Status RemoveFunction(const string& func) = 0;
+
  protected:
   virtual ~AbstractContextInterface() {}
 };

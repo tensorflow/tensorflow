@@ -19,10 +19,8 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "absl/types/optional.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/python/traceback_manager.h"
-#include "tensorflow/compiler/xla/python/types.h"
+#include "tensorflow/compiler/xla/python/py_client.h"
+#include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 
@@ -33,11 +31,10 @@ namespace xla {
 // b) to add Python-specific functionality.
 class PyBuffer {
  public:
-  PyBuffer(std::shared_ptr<PjRtClient> client,
-           std::unique_ptr<PjRtBuffer> buffer,
-           absl::optional<TracebackManager::Traceback> traceback);
+  PyBuffer(std::shared_ptr<PyClient> client, std::unique_ptr<PjRtBuffer> buffer,
+           std::unique_ptr<Traceback> traceback);
 
-  std::shared_ptr<PjRtClient> client() const { return client_; }
+  std::shared_ptr<PyClient> client() const { return client_; }
   PjRtBuffer* buffer() const { return buffer_.get(); }
 
   ClientAndPtr<Device> device() const;
@@ -63,14 +60,12 @@ class PyBuffer {
   // PEP 3118 Python buffer protocol implementation.
   static PyBufferProcs* BufferProtocol();
 
-  const absl::optional<TracebackManager::Traceback>& traceback() {
-    return traceback_;
-  }
+  Traceback* traceback() { return traceback_.get(); }
 
  private:
-  std::shared_ptr<PjRtClient> client_;
+  std::shared_ptr<PyClient> client_;
   std::unique_ptr<PjRtBuffer> buffer_;
-  absl::optional<TracebackManager::Traceback> traceback_;
+  std::unique_ptr<Traceback> traceback_;
 };
 
 }  // namespace xla

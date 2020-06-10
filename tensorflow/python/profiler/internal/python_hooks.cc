@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/python/profiler/internal/python_hooks.h"
 
+#include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/core/platform/path.h"
 
@@ -44,16 +45,30 @@ PythonHooks* PythonHooks::GetSingleton() {
   return singleton;
 }
 
-void PythonHooks::Start() {
-  PyGILState_STATE gil_state = PyGILState_Ensure();
-  SetProfilerInAllThreads();
-  PyGILState_Release(gil_state);
+void PythonHooks::Start(const PythonHooksOptions& option) {
+  if (option.enable_python_traceme || option.enable_trace_python_function) {
+    PyGILState_STATE gil_state = PyGILState_Ensure();
+    if (option.enable_trace_python_function) {
+      SetProfilerInAllThreads();
+    }
+    if (option.enable_python_traceme) {
+      EnableTraceMe(true);
+    }
+    PyGILState_Release(gil_state);
+  }
 }
 
-void PythonHooks::Stop() {
-  PyGILState_STATE gil_state = PyGILState_Ensure();
-  ClearProfilerInAllThreads();
-  PyGILState_Release(gil_state);
+void PythonHooks::Stop(const PythonHooksOptions& option) {
+  if (option.enable_python_traceme || option.enable_trace_python_function) {
+    PyGILState_STATE gil_state = PyGILState_Ensure();
+    if (option.enable_trace_python_function) {
+      ClearProfilerInAllThreads();
+    }
+    if (option.enable_python_traceme) {
+      EnableTraceMe(false);
+    }
+    PyGILState_Release(gil_state);
+  }
 }
 
 void PythonHooks::Finalize() { tracemes_.clear(); }
@@ -178,6 +193,13 @@ void PythonHooks::ClearProfilerInAllThreads() {
 
   // And notify the threading library that we're done.
   ThreadingSetProfile(py::none());
+}
+
+void PythonHooks::EnableTraceMe(bool enable) {
+  const char* kModuleName =
+      "tensorflow.python.profiler.internal._pywrap_traceme";
+  auto trace_module = py::module::import(kModuleName);
+  trace_module.attr("enabled") = enable;
 }
 
 }  // namespace profiler

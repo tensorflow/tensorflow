@@ -25,6 +25,8 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -476,6 +478,141 @@ const Model* BuildComplexMockModel() {
 }
 
 }  // namespace
+
+const TfLiteRegistration* SimpleStatefulOp::getRegistration() {
+  static TfLiteRegistration r;
+  r.init = Init;
+  r.prepare = Prepare;
+  r.invoke = Invoke;
+  return &r;
+}
+
+void* SimpleStatefulOp::Init(TfLiteContext* context, const char* buffer,
+                             size_t length) {
+  TFLITE_DCHECK(context->AllocateBufferForEval == nullptr);
+  TFLITE_DCHECK(context->GetScratchBuffer == nullptr);
+  TFLITE_DCHECK(context->RequestScratchBufferInArena == nullptr);
+
+  void* raw;
+  TFLITE_DCHECK(context->AllocatePersistentBuffer(context, sizeof(OpData),
+                                                  &raw) == kTfLiteOk);
+  OpData* data = reinterpret_cast<OpData*>(raw);
+  *data = {};
+  return raw;
+}
+
+TfLiteStatus SimpleStatefulOp::Prepare(TfLiteContext* context,
+                                       TfLiteNode* node) {
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+
+  // Make sure that the input is in uint8 with at least 1 data entry.
+  const TfLiteTensor* input = tflite::GetInput(context, node, kInputTensor);
+  if (input->type != kTfLiteUInt8) return kTfLiteError;
+  if (NumElements(input->dims) == 0) return kTfLiteError;
+
+  // Allocate a temporary buffer with the same size of input for sorting.
+  TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
+      context, sizeof(uint8_t) * NumElements(input->dims),
+      &data->sorting_buffer));
+  return kTfLiteOk;
+}
+
+TfLiteStatus SimpleStatefulOp::Invoke(TfLiteContext* context,
+                                      TfLiteNode* node) {
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+  data->invoke_count += 1;
+
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const uint8_t* input_data = GetTensorData<uint8_t>(input);
+  int size = NumElements(input->dims);
+
+  uint8_t* sorting_buffer = reinterpret_cast<uint8_t*>(
+      context->GetScratchBuffer(context, data->sorting_buffer));
+  // Copy inputs data to the sorting buffer. We don't want to mutate the input
+  // tensor as it might be used by a another node.
+  for (int i = 0; i < size; i++) {
+    sorting_buffer[i] = input_data[i];
+  }
+
+  // In place insertion sort on `sorting_buffer`.
+  for (int i = 1; i < size; i++) {
+    for (int j = i; j > 0 && sorting_buffer[j] < sorting_buffer[j - 1]; j--) {
+      std::swap(sorting_buffer[j], sorting_buffer[j - 1]);
+    }
+  }
+
+  TfLiteTensor* median = GetOutput(context, node, kMedianTensor);
+  uint8_t* median_data = GetTensorData<uint8_t>(median);
+  TfLiteTensor* invoke_count = GetOutput(context, node, kInvokeCount);
+  int32_t* invoke_count_data = GetTensorData<int32_t>(invoke_count);
+
+  median_data[0] = sorting_buffer[size / 2];
+  invoke_count_data[0] = data->invoke_count;
+  return kTfLiteOk;
+}
+
+const TfLiteRegistration* MockCustom::getRegistration() {
+  static TfLiteRegistration r;
+  r.init = Init;
+  r.prepare = Prepare;
+  r.invoke = Invoke;
+  r.free = Free;
+  return &r;
+}
+
+void* MockCustom::Init(TfLiteContext* context, const char* buffer,
+                       size_t length) {
+  // We don't support delegate in TFL micro. This is a weak check to test if
+  // context struct being zero-initialized.
+  TFLITE_DCHECK(context->ReplaceNodeSubsetsWithDelegateKernels == nullptr);
+  freed_ = false;
+  // Do nothing.
+  return nullptr;
+}
+
+void MockCustom::Free(TfLiteContext* context, void* buffer) { freed_ = true; }
+
+TfLiteStatus MockCustom::Prepare(TfLiteContext* context, TfLiteNode* node) {
+  return kTfLiteOk;
+}
+
+TfLiteStatus MockCustom::Invoke(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input = tflite::GetInput(context, node, 0);
+  const int32_t* input_data = input->data.i32;
+  const TfLiteTensor* weight = tflite::GetInput(context, node, 1);
+  const uint8_t* weight_data = weight->data.uint8;
+  TfLiteTensor* output = GetOutput(context, node, 0);
+  int32_t* output_data = output->data.i32;
+  output_data[0] =
+      0;  // Catch output tensor sharing memory with an input tensor
+  output_data[0] = input_data[0] + weight_data[0];
+  return kTfLiteOk;
+}
+
+bool MockCustom::freed_ = false;
+
+const TfLiteRegistration* MockOpResolver::FindOp(BuiltinOperator op) const {
+  return nullptr;
+}
+
+const TfLiteRegistration* MockOpResolver::FindOp(const char* op) const {
+  if (strcmp(op, "mock_custom") == 0) {
+    return MockCustom::getRegistration();
+  } else if (strcmp(op, "simple_stateful_op") == 0) {
+    return SimpleStatefulOp::getRegistration();
+  } else {
+    return nullptr;
+  }
+}
+
+MicroOpResolver::BuiltinParseFunction MockOpResolver::GetOpDataParser(
+    tflite::BuiltinOperator) const {
+  // TODO(b/149408647): Figure out an alternative so that we do not have any
+  // references to ParseOpData in the micro code and the signature for
+  // MicroOpResolver::BuiltinParseFunction can be changed to be different from
+  // ParseOpData.
+  return ParseOpData;
+}
 
 const Model* GetSimpleMockModel() {
   static Model* model = nullptr;

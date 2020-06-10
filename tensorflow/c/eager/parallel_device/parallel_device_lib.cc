@@ -100,7 +100,7 @@ std::unique_ptr<ParallelTensor> ParallelDevice::DeviceIDs(
 
 absl::optional<std::vector<std::unique_ptr<ParallelTensor>>>
 ParallelDevice::Execute(TFE_Context* context,
-                        std::vector<MaybeParallelTensorUnowned> inputs,
+                        const std::vector<ParallelTensor*>& inputs,
                         const char* operation_name,
                         const TFE_OpAttrs* attributes, int expected_max_outputs,
                         TF_Status* status) const {
@@ -129,26 +129,10 @@ ParallelDevice::Execute(TFE_Context* context,
                     status);
     TFE_OpAddAttrs(op.get(), attributes);
     for (int input_index = 0; input_index < inputs.size(); ++input_index) {
-      if (absl::holds_alternative<TFE_TensorHandle*>(inputs[input_index])) {
-        // Non-parallel tensors are implicitly broadcast, i.e. set as the input
-        // to each parallel operation.
-        //
-        // TODO(allenl): There may be smarter ways to do this copy in some
-        // cases, i.e. with a collective broadcast. We'll need to be careful
-        // about things that are taken as inputs on the host or on their
-        // existing device (for multi-device functions).
-        TFE_OpAddInput(op.get(),
-                       absl::get<TFE_TensorHandle*>(inputs[input_index]),
-                       status);
-        if (TF_GetCode(status) != TF_OK) return result;
-      } else {
-        // Parallel tensors are divided between operations by device.
-        TFE_OpAddInput(op.get(),
-                       absl::get<ParallelTensor*>(inputs[input_index])
-                           ->tensor(device_index),
-                       status);
-        if (TF_GetCode(status) != TF_OK) return result;
-      }
+      // Parallel tensors are divided between operations by device.
+      TFE_OpAddInput(op.get(), inputs[input_index]->tensor(device_index),
+                     status);
+      if (TF_GetCode(status) != TF_OK) return result;
     }
     std::vector<TFE_TensorHandle*> op_outputs(expected_max_outputs);
     int real_num_outputs = expected_max_outputs;

@@ -40,7 +40,8 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True,
+                                         skip_keras_tensors=True)
 class LinearModelTest(keras_parameterized.TestCase):
 
   def test_linear_model_with_single_input(self):

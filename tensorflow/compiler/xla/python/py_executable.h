@@ -20,27 +20,26 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
-#include "tensorflow/compiler/xla/python/traceback_manager.h"
-#include "tensorflow/compiler/xla/python/types.h"
+#include "tensorflow/compiler/xla/python/py_client.h"
+#include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
 
 // Python wrapper around PjRtExecutable. We use a wrapper class:
-// a) to keep the PjRtClient alive via a std::shared_ptr<>
+// a) to keep the PyClient alive via a std::shared_ptr<>
 // b) to add Python-specific functionality.
 class PyExecutable {
  public:
-  PyExecutable(std::shared_ptr<PjRtClient> client,
+  PyExecutable(std::shared_ptr<PyClient> client,
                std::unique_ptr<PjRtExecutable> executable,
-               absl::optional<TracebackManager::Traceback> traceback);
+               std::unique_ptr<Traceback> traceback);
 
-  std::shared_ptr<PjRtClient> client() const { return client_; }
+  std::shared_ptr<PyClient> client() const { return client_; }
 
   const std::vector<std::pair<int, int>>& local_logical_device_ids() const {
     return executable_->local_logical_device_ids();
@@ -62,14 +61,12 @@ class PyExecutable {
 
   StatusOr<std::vector<std::shared_ptr<HloModule>>> HloModules() const;
 
-  const absl::optional<TracebackManager::Traceback>& traceback() {
-    return traceback_;
-  }
+  Traceback* traceback() { return traceback_.get(); }
 
  private:
-  std::shared_ptr<PjRtClient> client_;
+  std::shared_ptr<PyClient> client_;
   std::unique_ptr<PjRtExecutable> executable_;
-  absl::optional<TracebackManager::Traceback> traceback_;
+  std::unique_ptr<Traceback> traceback_;
 };
 
 }  // namespace xla

@@ -1529,3 +1529,22 @@ func @matmul_batchv2_unknown_dim(%arg0: tensor<?x10x15xf32>, %arg1: tensor<15x17
 // CHECK-LABEL: matmul_batchv2_unknown_dim
 // CHECK: "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<?x10x15xf32>, tensor<15x17xf32>) -> tensor<?x10x17xf32>
 }
+
+// -----
+
+func @select_v2_with_6d_broadcasting(%arg0: tensor<1x1x1x1x3x1xi1>, %arg1 : tensor<1x1x1x1x1x4xf32>, %arg2 : tensor<1x1x1x2x1x1xf32>) -> tensor<1x1x1x2x3x4xf32> {
+  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2): (tensor<1x1x1x1x3x1xi1>, tensor<1x1x1x1x1x4xf32>, tensor<1x1x1x2x1x1xf32>) -> tensor<1x1x1x2x3x4xf32>
+  return %0 : tensor<1x1x1x2x3x4xf32>
+// CHECK-LABEL: select_v2_with_6d_broadcasting
+// CHECK: "tf.SelectV2"(%arg0, %arg1, %arg2)
+}
+
+// -----
+
+func @maximum_with_6d_broadcasting(%arg0: tensor<1x1x1x1x8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<1x1x1x1x8x16xf32> {
+  %0 = "tf.Maximum"(%arg0, %arg1) : (tensor<1x1x1x1x8x16xf32>, tensor<8x16xf32>) -> tensor<1x1x1x1x8x16xf32>
+  return %0 : tensor<1x1x1x1x8x16xf32>
+
+// CHECK-LABEL: maximum_with_6d_broadcasting
+// CHECK:  "tf.Maximum"(%arg0, %arg1)
+}

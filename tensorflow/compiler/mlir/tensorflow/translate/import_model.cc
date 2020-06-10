@@ -3572,6 +3572,24 @@ StatusOr<mlir::OwningModuleRef> ConvertGraphToMlir(
                                    /*func_name=*/"main");
 }
 
+stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertFunctionToMlir(
+    mlir::StringRef name, const FunctionLibraryDefinition& flib_def,
+    mlir::MLIRContext* context) {
+  const tensorflow::FunctionDef* fdef = flib_def.Find(name.str());
+  if (fdef == nullptr)
+    return tensorflow::errors::NotFound("Cannot find function ", name.str());
+
+  std::unique_ptr<tensorflow::FunctionBody> fbody;
+  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fdef, tensorflow::AttrSlice(),
+                                             &flib_def, &fbody));
+
+  tensorflow::GraphDebugInfo dummy_debug_info;
+  tensorflow::GraphImportConfig specs;
+  specs.graph_as_function = true;
+  return GraphDefImporter::Convert(context, *fbody->graph, dummy_debug_info,
+                                   flib_def, specs, name);
+}
+
 StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(
     SavedModelV2Bundle* saved_model, mlir::MLIRContext* context,
     absl::Span<std::string> exported_names, bool add_default_attributes) {

@@ -366,14 +366,12 @@ std::string GetWinograd36To4x4Code(
 Winograd4x4To36::Winograd4x4To36(Winograd4x4To36&& operation)
     : GPUOperation(std::move(operation)),
       padding_(operation.padding_),
-      args_(std::move(operation.args_)),
       kernel_(std::move(operation.kernel_)),
       work_group_size_(operation.work_group_size_) {}
 
 Winograd4x4To36& Winograd4x4To36::operator=(Winograd4x4To36&& operation) {
   if (this != &operation) {
     std::swap(padding_, operation.padding_);
-    args_ = std::move(operation.args_);
     kernel_ = std::move(operation.kernel_);
     std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));

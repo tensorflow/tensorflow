@@ -134,6 +134,7 @@ def disable_multi_worker(method):
 
 
 def inject_functional_model_class(cls):
+  """Inject `Functional` into the hierarchy of this class if needed."""
   from tensorflow.python.keras.engine import functional  # pylint: disable=g-import-not-at-top
   from tensorflow.python.keras.engine import training_v1  # pylint: disable=g-import-not-at-top
   if cls == Model or cls == training_v1.Model:
@@ -141,6 +142,10 @@ def inject_functional_model_class(cls):
 
   cls.__bases__ = tuple(inject_functional_model_class(base)
                         for base in cls.__bases__)
+  # Trigger any `__new__` class swapping that needed to happen on `Functional`
+  # but did not because functional was not in the class hierarchy.
+  cls.__new__(cls)
+
   return cls
 
 

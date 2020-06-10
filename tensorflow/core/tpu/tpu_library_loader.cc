@@ -64,12 +64,19 @@ TfTpu_ConfigApiFn* ConfigApiFn() {
 }
 
 Status InitializeTpuLibrary(void* library_handle) {
+  bool shared_object_loaded = true;
   if (library_handle == nullptr) {
     library_handle = dlopen(nullptr, RTLD_LAZY);
+    shared_object_loaded = false;
   }
 
   TF_RETURN_IF_ERROR(SetTpuInitializeStructFns(library_handle));
   TF_RETURN_IF_ERROR(SetTpuConfigStructFns(library_handle));
+
+  if (shared_object_loaded) {
+    // Initialize TPU platform when the platform code is loaded from a library.
+    InitializeApiFn()->TfTpu_InitializeFn();
+  }
 
   return Status::OK();
 }

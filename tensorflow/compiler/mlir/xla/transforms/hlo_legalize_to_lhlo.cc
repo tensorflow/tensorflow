@@ -44,7 +44,7 @@ constexpr StringRef kTempBufferAttr = "temp";
 template <typename T>
 using BaseOpConversion = BufferAssignmentOpConversionPattern<T>;
 using StdReturnOpConverter =
-    BufferAssignmentReturnOpConverter<mlir::ReturnOp, xla_lhlo::TerminatorOp,
+    BufferAssignmentReturnOpConverter<mlir::ReturnOp, mlir::ReturnOp,
                                       xla_lhlo::CopyOp>;
 
 Value InsertDynamicAllocAndDealloc(Location loc, Value result,
@@ -383,7 +383,6 @@ struct HloLegalizeToLhlo
     target.addLegalDialect<xla_lhlo::XlaLhloDialect>();
     target.addLegalDialect<StandardOpsDialect>();
     target.addLegalOp<ModuleOp>();
-    target.addIllegalOp<mlir::ReturnOp>();
     target.addIllegalOp<mlir::TensorLoadOp>();
     target.addIllegalOp<mlir::TensorStoreOp>();
     target.addLegalOp<ModuleTerminatorOp>();
@@ -393,6 +392,11 @@ struct HloLegalizeToLhlo
       auto inputs = op.getType().getInputs();
       return std::all_of(inputs.begin(), inputs.end(),
                          [](Type input) { return input.isa<MemRefType>(); });
+    });
+    target.addDynamicallyLegalOp<mlir::ReturnOp>([&](mlir::ReturnOp returnOp) {
+      return std::all_of(returnOp.operand_type_begin(),
+                         returnOp.operand_type_end(),
+                         [](Type type) { return type.isa<MemRefType>(); });
     });
 
     auto module = getOperation();
@@ -423,6 +427,7 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<xla_hlo::CompareOp>,
       HloToLhloOpConverter<xla_hlo::ComplexOp>,
       HloToLhloOpConverter<xla_hlo::ConstOp>,
+      HloToLhloOpConverter<xla_hlo::ConvOp>,
       HloToLhloOpConverter<xla_hlo::ConvertOp>,
       HloToLhloOpConverter<xla_hlo::CopyOp>,
       HloToLhloOpConverter<xla_hlo::CosOp>,

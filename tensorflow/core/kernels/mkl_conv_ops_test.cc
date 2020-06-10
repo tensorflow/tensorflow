@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/core/public/session.h"
 
 #if defined(INTEL_MKL_DNN_ONLY)
-#include "third_party/intel_mkl_dnn/include/mkldnn.h"
+#include "mkldnn.hpp"
 #include "tensorflow/core/util/mkl_util.h"
 #endif
 

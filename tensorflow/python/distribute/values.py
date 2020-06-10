@@ -183,6 +183,17 @@ class DistributedDelegate(DistributedValues):
                                              "_distributed_container"):
       return super(DistributedDelegate, self).__getattr__(name)
 
+    # This allows copy.copy(DistributedDelegate). When copying an object,
+    # copy.copy doesn't invoke its __init__ method, instead it makes a new
+    # empty object, then copies the attributes over. copy.copy looks for
+    # attributes like "__getstate__" in case the object implements its custom
+    # copying. Since DistributedDelegate doesn't have those attributes defined,
+    # __getattr__ will be invoked, which tries to access "_values" attributes,
+    # but that doesn't exist either because this is an empty object, and again
+    # __getattr__ is invoked, leading to an infinite recursion.
+    if name == "_values":
+      raise AttributeError()
+
     # TODO(priyag): This needs to be made robust against pitfalls from mix use
     # __getattr__ and @property. See b/120402273.
     return getattr(self._get(), name)
@@ -737,9 +748,7 @@ class MirroredVariable(DistributedVariable, Mirrored):
 
   def _update_replica(self, update_fn, value, **kwargs):
     if self.aggregation == vs.VariableAggregation.NONE:
-      raise ValueError(
-          values_util.aggregation_error_msg.format(
-              variable_type="MirroredVariable"))
+      return update_fn(self._get_on_device_or_primary(), value, **kwargs)
 
     def merge_fn(strategy, value, **kwargs):
       """Aggregate values and update all variables in cross replica context."""

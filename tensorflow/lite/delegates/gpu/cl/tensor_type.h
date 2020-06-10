@@ -72,6 +72,9 @@ struct TensorDescriptor : public GPUObjectDescriptor {
 
   bool HasAxis(Axis axis) const;
 
+  std::string GetBatchIDFromState() const;
+  bool IsBatchedWidth() const;
+
   DataType data_type = DataType::UNKNOWN;
   TensorStorageType storage_type = TensorStorageType::UNKNOWN;
   // This field describes logical layout, actual(physical) GPU layout can be
@@ -103,6 +106,22 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   absl::Status GetDataTypeFromTemplateArgs(const std::string& template_arg,
                                            DataType* result) const;
 
+  std::string GetGlobalAddressNoDeclarationWHS(const std::string& x,
+                                               const std::string& y,
+                                               const std::string& s) const;
+  std::string GetGlobalAddressNoDeclarationWHSB(const std::string& x,
+                                                const std::string& y,
+                                                const std::string& s,
+                                                const std::string& b) const;
+  std::string GetGlobalAddressNoDeclarationWHDS(const std::string& x,
+                                                const std::string& y,
+                                                const std::string& z,
+                                                const std::string& s) const;
+  std::string GetGlobalAddressNoDeclarationWHDSB(const std::string& x,
+                                                 const std::string& y,
+                                                 const std::string& z,
+                                                 const std::string& s,
+                                                 const std::string& b) const;
   std::string GetGlobalAddressNoDeclaration(const std::string& xc,
                                             const std::string& yc,
                                             const std::string& zc,

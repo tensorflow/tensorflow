@@ -27,13 +27,14 @@ def _gen_kernel_image_hdr_impl(ctx):
         filename = "%s.%s.cubin" % (name, arch)
         cubin = ctx.actions.declare_file(filename)
         ctx.actions.run(
+            inputs = [ctx.file.mlir_op],
             outputs = [cubin],
             executable = ctx.executable._tool,
             arguments = same_shape + [
                 "--tile_sizes=%s" % tile_sizes,
                 "--arch=%s" % arch.split("_")[1],
+                "--input=%s" % ctx.file.mlir_op.path,
                 "--output=%s" % cubin.path,
-                ctx.attr.op,
             ],
             mnemonic = "compile",
         )
@@ -70,7 +71,7 @@ _gen_kernel_image_hdr_rule = rule(
     implementation = _gen_kernel_image_hdr_impl,
     output_to_genfiles = True,
     attrs = {
-        "op": attr.string(mandatory = True),
+        "mlir_op": attr.label(mandatory = True, allow_single_file = True),
         "tile_size": attr.string(mandatory = True),
         "same_shape": attr.string(),
         "out": attr.output(mandatory = True),
@@ -87,12 +88,12 @@ _gen_kernel_image_hdr_rule = rule(
     },
 )
 
-def _gen_kernel_image_hdr(name, op, tile_size, tags = [], same_shape = None):
+def _gen_kernel_image_hdr(name, mlir_op, tile_size, tags = [], same_shape = None):
     """Generates a C header with fatbin data from a Tensorflow op."""
     if cuda_gpu_architectures():
         _gen_kernel_image_hdr_rule(
             name = name,
-            op = op,
+            mlir_op = mlir_op,
             tile_size = tile_size,
             same_shape = same_shape,
             out = "%s.h" % name,
@@ -101,17 +102,55 @@ def _gen_kernel_image_hdr(name, op, tile_size, tags = [], same_shape = None):
             tags = tags,
         )
 
-def gen_kernel_library(name, op, types, tile_size, tags = [], same_shape = None):
+def _gen_mlir_op_impl(ctx):
+    ctx.actions.run_shell(
+        inputs = [ctx.file.template],
+        outputs = [ctx.outputs.out],
+        command = "cat %s | sed s/f99/%s/g > %s" % (
+            ctx.file.template.path,
+            ctx.attr.type,
+            ctx.outputs.out.path,
+        ),
+    )
+
+_gen_mlir_op_rule = rule(
+    implementation = _gen_mlir_op_impl,
+    output_to_genfiles = True,
+    attrs = {
+        "template": attr.label(mandatory = True, allow_single_file = True),
+        "type": attr.string(mandatory = True),
+        "out": attr.output(mandatory = True),
+    },
+)
+
+def _gen_mlir_op(name, type):
+    _gen_mlir_op_rule(
+        name = "generate_{name}_{type}_mlir".format(name = name, type = type),
+        template = "{name}.mlir.tmpl".format(name = name),
+        type = type,
+        out = "{name}_{type}.mlir".format(name = name, type = type),
+    )
+
+def gen_kernel_library(name, types, tile_size, tags = [], same_shape = None):
+    """ Generate a library with kernels for a specific tensorflow op.
+
+    Args:
+      name: The name of the tensorflow op.
+      types: The types ("f16", "f32", "f64") for which a kernel should be generated.
+      tile_size: The tiling specification, e.g. "16x16".
+      tags: The tags which should be added to the library.
+      same_shape: The information about which shapes are the same, e.g. "0,1".
+    """
+
     if cuda_gpu_architectures():
-        type_to_dtype = {
-            "f16": "DT_HALF",
-            "f32": "DT_FLOAT",
-            "f64": "DT_DOUBLE",
-        }
         for type in types:
+            _gen_mlir_op(
+                name = name,
+                type = type,
+            )
             _gen_kernel_image_hdr(
                 name = "{name}_{type}_kernel".format(name = name, type = type),
-                op = op.replace("f99", type).replace("DT_TYPE", type_to_dtype[type]),
+                mlir_op = "{name}_{type}.mlir".format(name = name, type = type),
                 tile_size = tile_size,
                 tags = tags,
                 same_shape = same_shape,

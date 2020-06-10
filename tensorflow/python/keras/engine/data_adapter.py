@@ -1500,12 +1500,13 @@ def pack_x_y_sample_weight(x, y=None, sample_weight=None):
 
   >>> x = tf.ones((10, 1))
   >>> data = tf.keras.utils.pack_x_y_sample_weight(x)
-  >>> len(data)
-  1
+  >>> isinstance(data, tf.Tensor)
+  True
   >>> y = tf.ones((10, 1))
   >>> data = tf.keras.utils.pack_x_y_sample_weight(x, y)
-  >>> len(data)
-  2
+  >>> isinstance(data, tuple)
+  True
+  >>> x, y = data
 
   Arguments:
     x: Features to pass to `Model`.
@@ -1516,7 +1517,14 @@ def pack_x_y_sample_weight(x, y=None, sample_weight=None):
     Tuple in the format used in `Model.fit`.
   """
   if y is None:
-    return (x,)
+    # For single x-input, we do no tuple wrapping since in this case
+    # there is no ambiguity. This also makes NumPy and Dataset
+    # consistent in that the user does not have to wrap their Dataset
+    # data in an unecessary tuple
+    if not nest.is_sequence(x):
+      return x
+    else:
+      return (x,)
   elif sample_weight is None:
     return (x, y)
   else:

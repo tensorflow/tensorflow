@@ -413,6 +413,15 @@ absl::optional<HloInstruction*> ExchangeHalo(
   std::vector<HloInstruction*> concat_pieces;
 
   int64 max_left_halo_size = left_halo_size_function.MaxInRange(1, shard_count);
+  int64 max_right_halo_size =
+      right_halo_size_function.MaxInRange(0, shard_count - 1);
+  if (max_left_halo_size + max_right_halo_size + input_shard_size >=
+          input_shard_size * shard_count &&
+      (max_left_halo_size > input_shard_size ||
+       max_right_halo_size > input_shard_size)) {
+    return absl::nullopt;
+  }
+  // Left halo.
   for (int64 i = CeilOfRatio(max_left_halo_size, input_shard_size) - 1; i >= 0;
        --i) {
     std::vector<std::pair<int64, int64>> source_target_pairs;
@@ -447,8 +456,6 @@ absl::optional<HloInstruction*> ExchangeHalo(
   concat_pieces.push_back(hlo);
 
   // Right halo.
-  int64 max_right_halo_size =
-      right_halo_size_function.MaxInRange(0, shard_count - 1);
   for (int64 i = 0; i < CeilOfRatio(max_right_halo_size, input_shard_size);
        ++i) {
     std::vector<std::pair<int64, int64>> source_target_pairs;

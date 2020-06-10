@@ -1101,7 +1101,7 @@ def argsort(a, axis=-1, kind='quicksort', order=None):  # pylint: disable=missin
 
     return sort_ops.argsort(a, axis, stable=stable)
 
-  tf_ans = control_flow_ops.cond(
+  tf_ans = np_utils.cond(
       math_ops.equal(array_ops.rank(a), 0), lambda: constant_op.constant([0]),
       lambda: _argsort(a, axis, stable))
 

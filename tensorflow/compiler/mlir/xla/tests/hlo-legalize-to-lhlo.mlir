@@ -18,7 +18,7 @@ func @return_func(%arg0: tensor<4xf32>) -> tensor<4xf32> {
 }
 //      CHECK: (%[[ARG0:.*]]: [[TYPE:.*]], %[[RESULT:.*]]: [[TYPE]])
 // CHECK-NEXT: "xla_lhlo.copy"(%[[ARG0]], %[[RESULT]]) : ([[TYPE]], [[TYPE]]) -> ()
-// CHECK-NEXT: "xla_lhlo.terminator"() : () -> ()
+// CHECK-NEXT: return
 
 // -----
 
@@ -48,7 +48,7 @@ func @func_op_long(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> 
 // CHECK-NEXT: dealloc %[[ADD_RESULT]] : memref<4xf32>
 // CHECK-NEXT: "xla_lhlo.copy"(%[[MUL_RESULT]], %[[RESULT]]) : (memref<4xf32>, memref<4xf32>) -> ()
 // CHECK-NEXT: dealloc %[[MUL_RESULT]] : memref<4xf32>
-// CHECK-NEXT: "xla_lhlo.terminator"() : () -> ()
+// CHECK-NEXT: return
 
 // -----
 
@@ -291,7 +291,8 @@ func @convert(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xf32>
   %tensor_result = "xla_hlo.convert"(%tensor_operand)
       : (tensor<2x2xf32>) -> tensor<2x2xf32>
-  // CHECK: xla_lhlo.terminator
+  // CHECK: "xla_lhlo.copy"(%{{.*}}, %{{.*}})
+  // CHECK-NOT: tensor_store
   tensor_store %tensor_result, %result : memref<2x2xf32>
   return
 }
@@ -432,7 +433,39 @@ func @dot(%arg0: tensor<1024x1024xf32>) -> tensor<1024x1024xf32> {
 // CHECK-SAME: (%[[ARG0:.*]]: [[TYPE:.*]],
 // CHECK-SAME:  %[[RESULT:.*]]: [[TYPE]])
 // CHECK: "xla_lhlo.dot"(%[[ARG0]], %[[ARG0]], %{{.*}}) : ([[TYPE]], [[TYPE]], [[TYPE]]) -> ()
-    %dot = "xla_hlo.dot"(%arg0, %arg0)
-      : (tensor<1024x1024xf32>, tensor<1024x1024xf32>) -> tensor<1024x1024xf32>
-    return %dot : tensor<1024x1024xf32>
-  }
+  %dot = "xla_hlo.dot"(%arg0, %arg0)
+          : (tensor<1024x1024xf32>, tensor<1024x1024xf32>) -> tensor<1024x1024xf32>
+  return %dot : tensor<1024x1024xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @conv
+func @conv(%input: tensor<3x5x5x3xf32>, %filter : tensor<2x2x3x4xf32>) -> tensor<3x5x5x4xf32> {
+  %c0 = constant 0 : index
+  // CHECK: %[[OUT:.*]] = alloc() : memref<3x5x5x4xf32>
+  // CHECK: "xla_lhlo.convolution"(%{{.+}}, %{{.+}}, %[[OUT]])
+  // CHECK-SAME: padding = dense<[
+  // CHECK-SAME:                  [0, 1], [0, 1]]> : tensor<2x2xi64>
+  // CHECK-SAME: rhs_dilation = dense<[1, 2]>
+  // CHECK-SAME: window_strides = dense<[2, 1]>
+  %out = "xla_hlo.convolution"(%filter, %input) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = {
+      input_batch_dimension = 0 : i64,
+      input_feature_dimension = 3 : i64,
+      input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>,
+      kernel_input_feature_dimension = 2 : i64,
+      kernel_output_feature_dimension = 3 : i64,
+      kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>,
+      output_batch_dimension = 0 : i64,
+      output_feature_dimension = 3 : i64,
+      output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>
+    },
+    feature_group_count = 1 : i64,
+    padding = dense<[[0, 1], [0, 1]]> : tensor<2x2xi64>,
+    rhs_dilation = dense<[1, 2]> : tensor<2xi64>,
+    window_strides = dense<[2, 1]> : tensor<2xi64>
+  } : (tensor<2x2x3x4xf32>, tensor<3x5x5x3xf32>) -> tensor<3x5x5x4xf32>
+  return %out : tensor<3x5x5x4xf32>
+}

@@ -1018,19 +1018,19 @@ func @main(%arg0: tensor<2xcomplex<f32>>, %arg1: tensor<2xcomplex<f64>>) -> (ten
 // -----
 
 // CHECK:  HloModule
-func @main(%arg0: tensor<4xui8>) -> (tensor<4xui8>) {
+func @main(%arg0: tensor<4xui8>) -> tensor<4xui8> {
   %0 = "xla_hlo.not"(%arg0) : (tensor<4xui8>) -> tensor<4xui8>
   return %0 : tensor<4xui8>
 }
 
 // CHECK: ENTRY
 // CHECK: %[[ARG0:.*]] = u8[4] parameter(0)
-//  ROOT %[[RESULT:.*]] = u8[4] not(u8[4] %[[ARG0]])
+// CHECK: ROOT %[[RESULT:.*]] = u8[4] not(u8[4] %[[ARG0]])
 
 // -----
 
 // CHECK:  HloModule
-func @main(%arg0: tensor<4xi32>) -> (tensor<*xi32>) {
+func @main(%arg0: tensor<4xi32>) -> tensor<*xi32> {
   %0 = "xla_hlo.not"(%arg0) : (tensor<4xi32>) -> tensor<4xi32>
   %1 = tensor_cast %0 : tensor<4xi32> to tensor<*xi32>
   return %1 : tensor<*xi32>
@@ -1038,4 +1038,52 @@ func @main(%arg0: tensor<4xi32>) -> (tensor<*xi32>) {
 
 // CHECK: ENTRY
 // CHECK: %[[ARG0:.*]] = s32[4] parameter(0)
-//  ROOT %[[RESULT:.*]] = s32[4] not(s32[4] %[[ARG0]])
+// CHECK: ROOT %[[RESULT:.*]] = s32[4] not(s32[4] %[[ARG0]])
+
+// -----
+
+// Tests ops with different frontend attributes have such attributes set
+// correctly in HloModule as frontend_attributes.
+
+// CHECK:  HloModule
+func @main(%arg: tensor<3x4xf32>, %token: !xla_hlo.token) -> tuple<tensor<3x4xf32>, !xla_hlo.token> {
+  %0 = "xla_hlo.send"(%arg, %token) {channel_id = {handle = 1 : i64, type = 2 : i64}, is_host_transfer = true, xla_hlo.frontend_attributes = {_xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "channel_dtoh_0"}} : (tensor<3x4xf32>, !xla_hlo.token) -> !xla_hlo.token
+  %1 = "xla_hlo.recv"(%0) {channel_id = {handle = 2 : i64, type = 3 : i64}, is_host_transfer = true, xla_hlo.frontend_attributes = {_xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "channel_htod_0"}} : (!xla_hlo.token) -> tuple<tensor<3x4xf32>, !xla_hlo.token>
+  return %1 : tuple<tensor<3x4xf32>, !xla_hlo.token>
+}
+
+// CHECK:  ENTRY
+// CHECK:  %[[SEND:.*]] = (f32[3,4], u32[], token[]) send
+// CHECK-SAME: frontend_attributes={_xla_host_transfer_original_type="f32",_xla_host_transfer_rendezvous="channel_dtoh_0"}
+// CHECK:  %[[SEND_DONE:.*]] = token[] send-done((f32[3,4], u32[], token[]) %[[SEND]])
+// CHECK-SAME: frontend_attributes={_xla_host_transfer_original_type="f32",_xla_host_transfer_rendezvous="channel_dtoh_0"}
+// CHECK:  %[[RECV:.*]] = (f32[3,4], u32[], token[]) recv(token[] %[[SEND_DONE]])
+// CHECK-SAME: frontend_attributes={_xla_host_transfer_original_type="f32",_xla_host_transfer_rendezvous="channel_htod_0"}
+// CHECK:  ROOT %{{.*}} = (f32[3,4], token[]) recv-done((f32[3,4], u32[], token[]) %[[RECV]])
+// CHECK-SAME: frontend_attributes={_xla_host_transfer_original_type="f32",_xla_host_transfer_rendezvous="channel_htod_0"}
+
+// -----
+
+// Tests ops with empty frontend attributes do not have frontend_attributes
+// populated in HloModule.
+
+// CHECK:  HloModule
+func @main(%arg: tensor<3x4xf32>, %token: !xla_hlo.token) -> !xla_hlo.token {
+  %0 = "xla_hlo.send"(%arg, %token) {channel_id = {handle = 1 : i64, type = 2 : i64}, is_host_transfer = true, xla_hlo.frontend_attributes = {}} : (tensor<3x4xf32>, !xla_hlo.token) -> !xla_hlo.token
+  return %0 : !xla_hlo.token
+}
+
+// CHECK-NOT:  frontend_attributes
+
+// -----
+
+// Tests ops with no frontend attributes do not have frontend_attributes
+// populated in HloModule.
+
+// CHECK:  HloModule
+func @main(%arg: tensor<3x4xf32>, %token: !xla_hlo.token) -> !xla_hlo.token {
+  %0 = "xla_hlo.send"(%arg, %token) {channel_id = {handle = 1 : i64, type = 2 : i64}, is_host_transfer = true} : (tensor<3x4xf32>, !xla_hlo.token) -> !xla_hlo.token
+  return %0 : !xla_hlo.token
+}
+
+// CHECK-NOT:  frontend_attributes

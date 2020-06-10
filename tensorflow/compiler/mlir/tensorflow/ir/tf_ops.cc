@@ -4011,15 +4011,6 @@ struct TFInlinerInterface : public DialectInlinerInterface {
   // Analysis Hooks
   //===--------------------------------------------------------------------===//
 
-  // Defines the legality of inlinining 'src' region into the 'dest' region
-  // attached to a TF operation
-  bool isLegalToInline(Region *dest, Region *src,
-                       BlockAndValueMapping &valueMapping) const final {
-    // Allow inlining in regions attached to region based control flow
-    // operations only if the src region is a single block region
-    return isa<IfRegionOp>(dest->getParentOp()) && src->getBlocks().size() == 1;
-  }
-
   // Defines the legality of inlining TF operations.
   bool isLegalToInline(Operation *, Region *,
                        BlockAndValueMapping &) const final {

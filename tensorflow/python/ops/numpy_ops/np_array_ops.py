@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
 import math
 import numpy as np
 import six
@@ -296,7 +295,15 @@ def array(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=redefined-out
 
     # Handles lists of ndarrays
     result_t = nest.map_structure(maybe_data, result_t)
-    result_t = np_arrays.convert_to_tensor(result_t)
+    # EagerTensor conversion complains about "mixed types" when converting
+    # tensors with no dtype information. This is because it infers types based
+    # on one selected item in the list. So e.g. when converting [2., 2j]
+    # to a tensor, it will select float32 as the inferred type and not be able
+    # to convert the list to a float 32 tensor.
+    # Since we have some information about the final dtype we care about, we
+    # supply that information so that convert_to_tensor will do best-effort
+    # conversion to that dtype first.
+    result_t = np_arrays.convert_to_tensor(result_t, dtype_hint=dtype)
     result_t = math_ops.cast(result_t, dtype=dtype)
   elif dtype:
     result_t = math_ops.cast(result_t, dtype)
@@ -643,7 +650,7 @@ def imag(a):
   return np_utils.tensor_to_ndarray(math_ops.imag(a.data))
 
 
-_TO_INT64 = 0
+_TO_INT_ = 0
 _TO_FLOAT = 1
 
 
@@ -652,7 +659,7 @@ def _reduce(tf_fn,
             axis=None,
             dtype=None,
             keepdims=None,
-            promote_int=_TO_INT64,
+            promote_int=_TO_INT_,
             tf_bool_fn=None,
             preserve_bool=False):
   """A general reduction function.
@@ -665,7 +672,7 @@ def _reduce(tf_fn,
     dtype: (optional) the dtype of the result.
     keepdims: (optional) whether to keep the reduced dimension(s).
     promote_int: how to promote integer and bool inputs. There are three
-      choices. (1) `_TO_INT64` always promotes them to int64 or uint64; (2)
+      choices. (1) `_TO_INT_` always promotes them to np.int_ or np.uint; (2)
       `_TO_FLOAT` always promotes them to a float type (determined by
       dtypes.default_float_type); (3) None: don't promote.
     tf_bool_fn: (optional) the TF reduction function for bool inputs. It will
@@ -690,20 +697,23 @@ def _reduce(tf_fn,
   if dtype is None:
     dtype = a.dtype
     if np.issubdtype(dtype, np.integer) or dtype == np.bool_:
-      if promote_int == _TO_INT64:
-        # If a is an integer/bool type and whose bit width is less than 64,
-        # numpy up-casts it to 64-bit.
+      if promote_int == _TO_INT_:
+        # If a is an integer/bool type and whose bit width is less than np.int_,
+        # numpy up-casts it to np.int_ based on the documentation at
+        # https://numpy.org/doc/1.18/reference/generated/numpy.sum.html
         if dtype == np.bool_:
           is_signed = True
           width = 8  # We can use any number here that is less than 64
         else:
           is_signed = np.issubdtype(dtype, np.signedinteger)
           width = np.iinfo(dtype).bits
-        if width < 64:
+        # Numpy int_ and uint are defined as 'long' and 'unsigned long', so
+        # should have the same bit width.
+        if width < np.iinfo(np.int_).bits:
           if is_signed:
-            dtype = np.int64
+            dtype = np.int_
           else:
-            dtype = np.uint64
+            dtype = np.uint
           a = a.astype(dtype)
       elif promote_int == _TO_FLOAT:
         a = a.astype(np_dtypes.default_float_type())
@@ -771,47 +781,57 @@ def amin(a, axis=None, keepdims=None):
       preserve_bool=True)
 
 
-# TODO(wangpeng): Remove this workaround once b/157232284 is fixed
-def _reduce_variance_complex(input_tensor, axis, keepdims):
-  f = functools.partial(math_ops.reduce_variance, axis=axis, keepdims=keepdims)
-  return f(math_ops.real(input_tensor)) + f(math_ops.imag(input_tensor))
+def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: disable=missing-docstring
+  if dtype:
+    working_dtype = np_utils.result_type(a, dtype)
+  else:
+    working_dtype = None
+  if out is not None:
+    raise ValueError('Setting out is not supported.')
+  if ddof != 0:
+    # TF reduce_variance doesn't support ddof, so calculate it using raw ops.
+    def reduce_fn(input_tensor, axis, keepdims):
+      means = math_ops.reduce_mean(input_tensor, axis=axis, keepdims=True)
+      centered = input_tensor - means
+      if input_tensor.dtype in (dtypes.complex64, dtypes.complex128):
+        centered = math_ops.cast(
+            math_ops.real(centered * math_ops.conj(centered)),
+            input_tensor.dtype)
+      else:
+        centered = math_ops.square(centered)
+      squared_deviations = math_ops.reduce_sum(
+          centered, axis=axis, keepdims=keepdims)
 
+      if axis is None:
+        n = array_ops.size(input_tensor)
+      else:
+        if axis < 0:
+          axis += array_ops.rank(input_tensor)
+        n = math_ops.reduce_prod(
+            array_ops.gather(array_ops.shape(input_tensor), axis))
+      n = math_ops.cast(n - ddof, input_tensor.dtype)
 
-# TODO(wangpeng): Remove this workaround once b/157232284 is fixed
-def _reduce_std_complex(input_tensor, axis, keepdims):
-  y = _reduce_variance_complex(
-      input_tensor=input_tensor, axis=axis, keepdims=keepdims)
-  return math_ops.sqrt(y)
+      return math_ops.cast(math_ops.divide(squared_deviations, n), dtype)
+  else:
+    reduce_fn = math_ops.reduce_variance
 
-
-@np_utils.np_doc(np.var)
-def var(a, axis=None, keepdims=None):  # pylint: disable=missing-function-docstring
-
-  def f(input_tensor, axis, keepdims):
-    if input_tensor.dtype in (dtypes.complex64, dtypes.complex128):
-      # A workaround for b/157232284
-      fn = _reduce_variance_complex
-    else:
-      fn = math_ops.reduce_variance
-    return fn(input_tensor=input_tensor, axis=axis, keepdims=keepdims)
-
-  return _reduce(
-      f, a, axis=axis, dtype=None, keepdims=keepdims, promote_int=_TO_FLOAT)
+  result = _reduce(
+      reduce_fn,
+      a,
+      axis=axis,
+      dtype=working_dtype,
+      keepdims=keepdims,
+      promote_int=_TO_FLOAT).data
+  if dtype:
+    result = math_ops.cast(result, dtype)
+  return np_utils.tensor_to_ndarray(result)
 
 
 @np_utils.np_doc(np.std)
 def std(a, axis=None, keepdims=None):  # pylint: disable=missing-function-docstring
-
-  def f(input_tensor, axis, keepdims):
-    if input_tensor.dtype in (dtypes.complex64, dtypes.complex128):
-      # A workaround for b/157232284
-      fn = _reduce_std_complex
-    else:
-      fn = math_ops.reduce_std
-    return fn(input_tensor=input_tensor, axis=axis, keepdims=keepdims)
-
   return _reduce(
-      f, a, axis=axis, dtype=None, keepdims=keepdims, promote_int=_TO_FLOAT)
+      math_ops.reduce_std, a, axis=axis, dtype=None, keepdims=keepdims,
+      promote_int=_TO_FLOAT)
 
 
 @np_utils.np_doc(np.ravel)

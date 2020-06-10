@@ -238,6 +238,19 @@ class Conv2DTest(keras_parameterized.TestCase):
       self._run_test(kwargs, expected_output_shape)
       self._run_test_extra_batch_dim(kwargs, expected_output_shape)
 
+  def test_conv2d_op_not_recreated_on_different_batch_shape(self):
+    layer = keras.layers.Conv2D(2, 3)
+    layer(np.ones((1, 28, 28, 2)))
+    # pylint: disable=protected-access
+    old_conv_op = layer._convolution_op
+    # Expand batch to rank-2 shape (5, 5)
+    layer(np.ones((5, 5, 28, 28, 2)))
+    self.assertEqual(old_conv_op, layer._convolution_op)
+    layer(np.ones((1, 30, 30, 2)))
+    # 'HW' changed, so the conv object is rebuilt
+    self.assertNotEqual(old_conv_op, layer._convolution_op)
+    # pylint: enable=protected-access
+
   def test_conv2d_regularizers(self):
     kwargs = {
         'filters': 3,

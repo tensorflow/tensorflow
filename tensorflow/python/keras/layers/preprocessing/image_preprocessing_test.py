@@ -21,6 +21,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.distribute.mirrored_strategy import MirroredStrategy
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
@@ -961,6 +962,21 @@ class RandomRotationTest(keras_parameterized.TestCase):
         layer = image_preprocessing.RandomRotation(.5)
         actual_output = layer(input_images, training=0)
         self.assertAllClose(expected_output, actual_output)
+
+  def test_distribution_strategy(self):
+    """Tests that RandomRotation can be created within distribution strategies.
+
+    And that replicas got the same random result.
+    """
+    input_images = np.random.random((2, 5, 8, 3)).astype(np.float32)
+    with tf_test_util.use_gpu():
+      strat = MirroredStrategy(devices=['cpu', 'gpu'])
+      with strat.scope():
+        layer = image_preprocessing.RandomRotation(.5)
+        output = strat.run(lambda: layer(input_images, training=True))
+      values = output.values
+      self.assertAllEqual(2, len(values))
+      self.assertAllClose(values[0], values[1])
 
   @tf_test_util.run_v2_only
   def test_config_with_custom_name(self):

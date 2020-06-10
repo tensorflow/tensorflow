@@ -27,6 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
@@ -80,11 +81,13 @@ class Node(object):
     self._single_positional_tensor_passed = (not self.call_kwargs and len(
         self.call_args) == 1 and tensor_util.is_tensor(self.call_args[0]))
 
-    # Create TensorFlowOpLayers if needed.
-    for obj in self._flat_arguments:
-      if (isinstance(obj, ops.Tensor) and
-          base_layer_utils.needs_keras_history(obj, ignore_call_context=True)):
-        base_layer_utils.create_keras_history(obj)
+    if not keras_tensor.keras_tensors_enabled():
+      # Create TensorFlowOpLayers if needed.
+      for obj in self._flat_arguments:
+        if (isinstance(obj, ops.Tensor) and
+            base_layer_utils.needs_keras_history(
+                obj, ignore_call_context=True)):
+          base_layer_utils.create_keras_history(obj)
 
     self._keras_inputs = []
     self._keras_inputs_ids_and_indices = []

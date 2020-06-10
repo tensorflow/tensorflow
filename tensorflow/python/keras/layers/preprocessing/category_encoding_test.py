@@ -31,13 +31,12 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.layers.preprocessing import category_encoding
 from tensorflow.python.keras.layers.preprocessing import category_encoding_v1
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
-from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 
@@ -253,23 +252,24 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
         sparse_ops.sparse_tensor_to_dense(sp_output_dataset, default_value=0),
         output_dataset)
 
+  # TODO(b/158570051): Support KerasTensor
   # Keras functional model doesn't support dense layer stacked with sparse out.
-  def DISABLED_test_sparse_output_and_dense_layer(self):
-    input_array = constant_op.constant([[1, 2, 3], [3, 3, 0]])
+  def test_sparse_output_and_dense_layer(self):
+    with testing_utils.use_keras_tensors_scope(False):
+      input_array = constant_op.constant([[1, 2, 3], [3, 3, 0]])
 
-    max_tokens = 4
+      max_tokens = 4
 
-    input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
-    encoding_layer = get_layer_class()(
-        max_tokens=max_tokens, output_mode=category_encoding.COUNT, sparse=True)
-    int_data = encoding_layer(input_data)
-    output_data = math_ops.cast(int_data, dtypes.float32)
-    weights = variables.Variable([[.1], [.2], [.3], [.4]], dtype=dtypes.float32)
-    weights_mult = lambda x: sparse_ops.sparse_tensor_dense_matmul(x, weights)
-    output_data = keras.layers.Lambda(weights_mult)(output_data)
+      input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
+      encoding_layer = get_layer_class()(
+          max_tokens=max_tokens, output_mode=category_encoding.COUNT,
+          sparse=True)
+      int_data = encoding_layer(input_data)
+      dense_layer = keras.layers.Dense(units=1)
+      output_data = dense_layer(int_data)
 
-    model = keras.Model(inputs=input_data, outputs=output_data)
-    _ = model.predict(input_array, steps=1)
+      model = keras.Model(inputs=input_data, outputs=output_data)
+      _ = model.predict(input_array, steps=1)
 
 
 @keras_parameterized.run_all_keras_modes

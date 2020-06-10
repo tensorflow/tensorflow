@@ -28,12 +28,6 @@ limitations under the License.
 namespace tflite {
 
 namespace {
-
-// Used to convert int8 <-> uint8.
-constexpr int kSameScaleEffectiveMultiplier = 1 << 30;
-constexpr int kSameScaleEffectiveShift = 1;
-constexpr int kInt8Uint8ZeroPointDiff = 128;
-
 // Returns uint64 representing total cycles in 'perf_info' by
 // combining lo and hi counters.
 inline uint64_t GetCycles(const hexagon_nn_perfinfo& perf_info) {

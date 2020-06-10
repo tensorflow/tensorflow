@@ -146,7 +146,7 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
         normalization_v2.BatchNormalization, dtype='float32')
 
   @keras_parameterized.run_all_keras_modes
-  def test_batchnorm_mixed_precision(self):
+  def test_batchnorm_float16(self):
     _run_batchnorm_correctness_test(
         normalization.BatchNormalization, dtype='float16')
     _run_batchnorm_correctness_test(
@@ -154,7 +154,7 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   @testing_utils.enable_v2_dtype_behavior
-  def test_batchnorm_policy(self):
+  def test_batchnorm_mixed_precision(self):
     norm = keras.layers.BatchNormalization(
         axis=-1,
         input_shape=(4, 4, 3),
@@ -165,6 +165,20 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
     self.assertEqual(y.dtype, 'float16')
     self.assertEqual(norm.beta.dtype.base_dtype, 'float32')
     self.assertEqual(norm.gamma.dtype.base_dtype, 'float32')
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager'],
+                                              fused=[True, False]))
+  @testing_utils.enable_v2_dtype_behavior
+  def test_batchnorm_mixed_precision_does_not_overflow(self, fused):
+    norm = keras.layers.BatchNormalization(
+        axis=-1,
+        input_shape=(1, 1, 1),
+        fused=fused,
+        dtype=policy.Policy('mixed_float16'))
+    x = np.array([-1000., 1000.]).reshape((2, 1, 1, 1))
+    y = norm(x, training=True)
+    expected_y = np.array([-1.0, 1.0]).reshape((2, 1, 1, 1))
+    self.assertAllClose(keras.backend.eval(y), expected_y)
 
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_batchnorm_non_trainable_with_fit(self):
@@ -311,18 +325,17 @@ class BatchNormalizationV2Test(keras_parameterized.TestCase):
       norm(inp)
 
   def test_updates_in_wrap_function(self):
-    with context.eager_mode():
-      layer = keras.layers.BatchNormalization()
+    layer = normalization.BatchNormalization()
 
-      def my_func():
-        x = array_ops.ones((10, 1))
-        return layer(x, training=True)
+    def my_func():
+      x = array_ops.ones((10, 1))
+      return layer(x, training=True)
 
-      wrapped_fn = wrap_function.wrap_function(my_func, [])
-      wrapped_fn()
+    wrapped_fn = wrap_function.wrap_function(my_func, [])
+    wrapped_fn()
 
-      # Updates should be tracked in a `wrap_function`.
-      self.assertLen(layer.updates, 2)
+    # Updates should be tracked in a `wrap_function`.
+    self.assertLen(layer.updates, 2)
 
   @keras_parameterized.run_all_keras_modes
   def test_basic_batchnorm_v2_none_shape_and_virtual_batch_size(self):

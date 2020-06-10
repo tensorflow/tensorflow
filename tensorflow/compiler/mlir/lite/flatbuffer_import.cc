@@ -424,6 +424,10 @@ StatusOr<Operation*> BuildExternalConstOp(const tflite::TensorT& tensor,
 StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
                                   const std::vector<uint8_t>& buffer,
                                   OpBuilder builder, Location loc) {
+  if (buffer.empty()) {
+    return errors::InvalidArgument("Constant's buffer may not be empty");
+  }
+
   TF_ASSIGN_OR_RETURN(auto type, GetTensorType(tensor, builder,
                                                /*shapeless_are_scalars=*/true,
                                                /*is_constant=*/true));
@@ -799,9 +803,17 @@ StatusOr<FuncOp> ConvertSubgraph(
   }
 
   for (auto output : func_outputs) {
-    bool is_constant = !is_op_output[output];
+    const bool is_func_input = input_index_set.contains(output);
+    bool is_constant = !is_op_output[output] && !is_func_input;
+    // There are 2 cases tensor is scalar when it doesn't have a shape in
+    // flatbuffer:
+    // 1. `is_constant` = true, means this tensor is created from a constant op.
+    // 2. `is_func_input` = true and `is_entry_point` = true, which means this
+    // tensor is function input and function input type is a scalar tensor.
+    const bool shapeless_is_scalar =
+        is_constant || (is_func_input && is_entry_point);
     auto type_or_err = GetTensorType(*subgraph.tensors.at(output), builder,
-                                     /*shapeless_are_scalars=*/is_constant,
+                                     shapeless_is_scalar,
                                      /*is_constant=*/is_constant);
     if (!type_or_err.ok()) {
       emitError(func_loc, "error reading return types")

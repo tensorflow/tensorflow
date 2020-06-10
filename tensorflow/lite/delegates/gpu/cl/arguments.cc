@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
+#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
@@ -108,6 +109,20 @@ void ReplaceAllWords(const std::string& old_word, const std::string& new_word,
     str->replace(position, old_word.size(), new_word);
     position = str->find(old_word, position + new_word.size());
   }
+}
+
+std::string RenameArg(const std::vector<std::string>& object_names,
+                      const std::string& postfix, const std::string& arg_name) {
+  for (const auto& object_name : object_names) {
+    if (absl::StartsWith(arg_name, object_name) &&
+        arg_name.size() > object_name.size() &&
+        arg_name[object_name.size()] == '_') {
+      return object_name + postfix +
+             arg_name.substr(object_name.size(),
+                             arg_name.size() - object_name.size());
+    }
+  }
+  return arg_name + postfix;
 }
 
 void AppendArgument(const std::string& arg, std::string* args) {
@@ -361,6 +376,160 @@ absl::Status Arguments::SetGPUResources(
   return absl::OkStatus();
 }
 
+void Arguments::RenameArgs(const std::string& postfix,
+                           std::string* code) const {
+  size_t next_position = code->find(kArgsPrefix);
+  while (next_position != std::string::npos) {
+    size_t arg_pos = next_position + strlen(kArgsPrefix);
+    std::string arg_name = GetNextWord(*code, arg_pos);
+    code->replace(arg_pos, arg_name.size(), arg_name + postfix);
+    next_position = code->find(kArgsPrefix, arg_pos + arg_name.size());
+  }
+}
+
+absl::Status Arguments::Merge(Arguments&& args, const std::string& postfix) {
+  std::vector<std::string> object_names;
+  object_names.reserve(args.object_refs_.size() + args.objects_.size());
+  for (auto& v : args.object_refs_) {
+    object_names.push_back(v.first);
+    const std::string name = v.first + postfix;
+    if (object_refs_.find(name) != object_refs_.end()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Object reference name collision. Name - ", name));
+    }
+    object_refs_[name] = {v.second.access_type, std::move(v.second.descriptor)};
+  }
+  for (auto& v : args.objects_) {
+    object_names.push_back(v.first);
+    const std::string name = v.first + postfix;
+    if (objects_.find(name) != objects_.end()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Object name collision. Name - ", name));
+    }
+    objects_[name] = {v.second.access_type, std::move(v.second.obj_ptr)};
+  }
+  for (const auto& v : args.int_values_) {
+    AddInt(RenameArg(object_names, postfix, v.first), v.second.value);
+  }
+  for (const auto& v : args.float_values_) {
+    AddFloat(RenameArg(object_names, postfix, v.first), v.second.value);
+  }
+  for (const auto& v : args.half_values_) {
+    AddHalf(RenameArg(object_names, postfix, v.first), v.second.value);
+  }
+  for (const auto& v : args.buffers_) {
+    AddBuffer(RenameArg(object_names, postfix, v.first), v.second);
+  }
+  for (const auto& v : args.images2d_) {
+    AddImage2D(RenameArg(object_names, postfix, v.first), v.second);
+  }
+  for (const auto& v : args.image2d_arrays_) {
+    AddImage2DArray(RenameArg(object_names, postfix, v.first), v.second);
+  }
+  for (const auto& v : args.images3d_) {
+    AddImage3D(RenameArg(object_names, postfix, v.first), v.second);
+  }
+  for (const auto& v : args.image_buffers_) {
+    AddImageBuffer(RenameArg(object_names, postfix, v.first), v.second);
+  }
+  return absl::OkStatus();
+}
+
+absl::Status Arguments::InsertLinkableCode(const std::string& link_object_name,
+                                           const std::string& linkable_code,
+                                           std::string* code) {
+  const GPUObjectDescriptor* desc_ptr;
+  AccessType access_type;
+  if (auto it = object_refs_.find(link_object_name); it != object_refs_.end()) {
+    desc_ptr = it->second.descriptor.get();
+    access_type = it->second.access_type;
+  } else if (auto it = objects_.find(link_object_name); it != objects_.end()) {
+    desc_ptr = it->second.obj_ptr->GetGPUDescriptor();
+    access_type = it->second.access_type;
+  } else {
+    return absl::NotFoundError(
+        absl::StrCat("No object with name - ", link_object_name));
+  }
+  if (access_type != AccessType::WRITE &&
+      access_type != AccessType::READ_WRITE) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "Object with name - ", link_object_name, " should have Write access."));
+  }
+
+  const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(desc_ptr);
+  if (!tensor_desc) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Object with name - ", link_object_name,
+                     " is not spatial tensor. Currently linking supported only "
+                     "for spatial tensors."));
+  }
+
+  std::string token = kArgsPrefix + link_object_name + ".Write";
+  size_t next_position = code->find(token);
+  while (next_position != std::string::npos) {
+    size_t arg_pos = next_position;
+    next_position += token.size();
+    char next = (*code)[next_position];
+    if (next != '(') {
+      return absl::NotFoundError(
+          absl::StrCat("Expected ( after ", token, " call"));
+    }
+    std::vector<std::string> args;
+    size_t close_bracket_pos;
+    RETURN_IF_ERROR(ParseArgsInsideBrackets(*code, next_position,
+                                            &close_bracket_pos, &args));
+    std::string value_name, x_coord, y_coord, s_coord;
+    if (tensor_desc->HasAxis(Axis::BATCH)) {
+      if (args.size() == 5) {
+        value_name = args[0];
+        x_coord = "(" + args[1] + " * args." + link_object_name +
+                  ".Batch() + " + args[3] + ")";
+        y_coord = args[2];
+        s_coord = args[3];
+      } else if (args.size() == 4) {
+        if (tensor_desc->IsBatchedWidth()) {
+          value_name = args[0];
+          x_coord = args[1];
+          y_coord = args[2];
+          s_coord = args[3];
+        } else {
+          std::string batch_name = tensor_desc->GetBatchIDFromState();
+          if (batch_name.empty()) {
+            return absl::FailedPreconditionError(
+                "Object has Batch axis, but can not find batch_id.");
+          }
+          value_name = args[0];
+          x_coord = "(" + args[1] + " * args." + link_object_name +
+                    ".Batch() + " + batch_name + ")";
+          y_coord = args[2];
+          s_coord = args[3];
+        }
+      } else {
+        return absl::FailedPreconditionError(
+            "Unsupported Write(...) method for linking.");
+      }
+    } else {
+      if (args.size() == 4) {
+        value_name = args[0];
+        x_coord = args[1];
+        y_coord = args[2];
+        s_coord = args[3];
+      } else {
+        return absl::FailedPreconditionError(
+            "Unsupported Write(...) method for linking.");
+      }
+    }
+    std::string patch = linkable_code;
+    ReplaceAllWords("in_out_value", value_name, &patch);
+    ReplaceAllWords("X_COORD", x_coord, &patch);
+    ReplaceAllWords("Y_COORD", y_coord, &patch);
+    ReplaceAllWords("S_COORD", s_coord, &patch);
+    code->insert(arg_pos, patch);
+    next_position = code->find(token, arg_pos + patch.size() + token.size());
+  }
+  return absl::OkStatus();
+}
+
 absl::Status Arguments::TransformToCLCode(std::string* code) {
   RETURN_IF_ERROR(AddObjectArgs());
   RETURN_IF_ERROR(ResolveSelectorsPass(code));
@@ -473,6 +642,16 @@ absl::Status Arguments::Bind(cl_kernel kernel, int offset) {
   for (int i = 0; i < shared_float4s_data_.size() / 4; ++i) {
     const int error_code = clSetKernelArg(kernel, offset, sizeof(int32_t) * 4,
                                           &shared_float4s_data_[i * 4]);
+    if (error_code != CL_SUCCESS) {
+      return absl::UnknownError(absl::StrCat(
+          "Failed to set kernel arguments - ", CLErrorCodeToString(error_code),
+          "(at index - ", offset, ")"));
+    }
+    offset++;
+  }
+  for (int i = 0; i < shared_half4s_data_.size() / 4; ++i) {
+    const int error_code = clSetKernelArg(kernel, offset, sizeof(int16_t) * 4,
+                                          &shared_half4s_data_[i * 4]);
     if (error_code != CL_SUCCESS) {
       return absl::UnknownError(absl::StrCat(
           "Failed to set kernel arguments - ", CLErrorCodeToString(error_code),

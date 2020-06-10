@@ -23,110 +23,6 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
-std::string GetGlobalAddressNoDeclarationWHS(const std::string& x,
-                                             const std::string& y,
-                                             const std::string& s,
-                                             TensorStorageType storage_type) {
-  switch (storage_type) {
-    case TensorStorageType::BUFFER:
-    case TensorStorageType::IMAGE_BUFFER:
-      return absl::Substitute("((($2) * height + ($1)) * width + ($0))", x, y,
-                              s);
-    case TensorStorageType::TEXTURE_2D:
-      return absl::Substitute("(int2)(($0), ($1) * slices + ($2))", x, y, s);
-    case TensorStorageType::SINGLE_TEXTURE_2D:
-      return absl::StrCat("(int2)(", x, ", ", y, ")");
-    case TensorStorageType::TEXTURE_ARRAY:
-    case TensorStorageType::TEXTURE_3D:
-      return absl::StrCat("(int4)(", x, ", ", y, ", ", s, ", 0)");
-    case TensorStorageType::UNKNOWN:
-      return "error";
-  }
-}
-
-std::string GetGlobalAddressNoDeclarationWHSB(const std::string& x,
-                                              const std::string& y,
-                                              const std::string& s,
-                                              const std::string& b,
-                                              TensorStorageType storage_type) {
-  switch (storage_type) {
-    case TensorStorageType::BUFFER:
-    case TensorStorageType::IMAGE_BUFFER:
-      return absl::Substitute(
-          "(((($3) * height + $2) * width + ($1)) * batch + ($0))", b, x, y, s);
-    case TensorStorageType::TEXTURE_2D:
-      return absl::Substitute(
-          "(int2)(($0) * batch + ($1), ($2) * slices + ($3))", x, b, y, s);
-    case TensorStorageType::SINGLE_TEXTURE_2D:
-      return absl::Substitute("(int2)(($0) * batch + ($1), ($2))", x, b, y);
-    case TensorStorageType::TEXTURE_ARRAY:
-    case TensorStorageType::TEXTURE_3D:
-      return absl::Substitute("(int4)(($0) * batch + ($1), ($2), ($3), 0)", x,
-                              b, y, s);
-    case TensorStorageType::UNKNOWN:
-      return "error";
-    default:
-      return "error";
-  }
-}
-
-std::string GetGlobalAddressNoDeclarationWHDS(const std::string& x,
-                                              const std::string& y,
-                                              const std::string& z,
-                                              const std::string& s,
-                                              TensorStorageType storage_type) {
-  switch (storage_type) {
-    case TensorStorageType::BUFFER:
-    case TensorStorageType::IMAGE_BUFFER:
-      return absl::Substitute(
-          "(((($3) * slices + ($2)) * height + ($1)) * width + ($0))", x, y, s,
-          z);
-    case TensorStorageType::TEXTURE_2D:
-      return absl::Substitute(
-          "(int2)(($0) * depth + ($1), ($2) * slices + ($3))", x, z, y, s);
-    case TensorStorageType::SINGLE_TEXTURE_2D:
-      return absl::Substitute("(int2)(($0) * depth + ($1), ($2))", x, z, y);
-    case TensorStorageType::TEXTURE_ARRAY:
-    case TensorStorageType::TEXTURE_3D:
-      return absl::Substitute("(int4)(($0), ($1), ($2) * slices + ($3), 0)", x,
-                              y, z, s);
-    case TensorStorageType::UNKNOWN:
-      return "error";
-  }
-}
-
-std::string GetGlobalAddressNoDeclarationWHDSB(const std::string& x,
-                                               const std::string& y,
-                                               const std::string& z,
-                                               const std::string& s,
-                                               const std::string& b,
-                                               TensorStorageType storage_type) {
-  switch (storage_type) {
-    case TensorStorageType::BUFFER:
-    case TensorStorageType::IMAGE_BUFFER:
-      return absl::Substitute(
-          "((((($4) * slices + ($3)) * height + $2) * width + ($1)) * batch + "
-          "($0))",
-          b, x, y, s, z);
-    case TensorStorageType::TEXTURE_2D:
-      return absl::Substitute(
-          "(int2)((($0) * batch + ($1)) * depth + ($2), ($3) * slices + ($4))",
-          x, b, z, y, s);
-    case TensorStorageType::SINGLE_TEXTURE_2D:
-      return absl::Substitute(
-          "(int2)((($0) * batch + ($1)) * depth + ($2), ($3))", x, b, z, y);
-    case TensorStorageType::TEXTURE_ARRAY:
-    case TensorStorageType::TEXTURE_3D:
-      return absl::Substitute(
-          "(int4)(($0) * batch + ($1), ($2), ($3) * slices + ($4), 0)", x, b, y,
-          z, s);
-    case TensorStorageType::UNKNOWN:
-      return "error";
-    default:
-      return "error";
-  }
-}
-
 std::string GetReadImageFromDataType(DataType data_type) {
   if (data_type == DataType::FLOAT32) {
     return "read_imagef";
@@ -172,6 +68,7 @@ GPUResources TensorDescriptor::GetGPUResources(AccessType access_type) const {
   GPUResources resources;
   if (HasAxis(Axis::WIDTH)) {
     resources.ints.push_back("width");
+    resources.ints.push_back("width_batched");
   }
   if (HasAxis(Axis::HEIGHT)) {
     resources.ints.push_back("height");
@@ -229,7 +126,11 @@ absl::Status TensorDescriptor::PerformSelector(
     const std::string& selector, const std::vector<std::string>& args,
     const std::vector<std::string>& template_args, std::string* result) const {
   if (selector == "Width") {
-    *result = "width";
+    if (IsBatchedWidth()) {
+      *result = "width_batched";
+    } else {
+      *result = "width";
+    }
     return absl::OkStatus();
   } else if (selector == "Height") {
     *result = "height";
@@ -421,17 +322,117 @@ std::string TensorDescriptor::StorageTypeToAddressType() const {
   }
 }
 
+std::string TensorDescriptor::GetGlobalAddressNoDeclarationWHS(
+    const std::string& x, const std::string& y, const std::string& s) const {
+  switch (storage_type) {
+    case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER: {
+      const std::string width = IsBatchedWidth() ? "width_batched" : "width";
+      return absl::Substitute("((($2) * height + ($1)) * $3 + ($0))", x, y, s,
+                              width);
+    }
+    case TensorStorageType::TEXTURE_2D:
+      return absl::Substitute("(int2)(($0), ($1) * slices + ($2))", x, y, s);
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+      return absl::StrCat("(int2)(", x, ", ", y, ")");
+    case TensorStorageType::TEXTURE_ARRAY:
+    case TensorStorageType::TEXTURE_3D:
+      return absl::StrCat("(int4)(", x, ", ", y, ", ", s, ", 0)");
+    case TensorStorageType::UNKNOWN:
+      return "error";
+  }
+}
+
+std::string TensorDescriptor::GetGlobalAddressNoDeclarationWHSB(
+    const std::string& x, const std::string& y, const std::string& s,
+    const std::string& b) const {
+  switch (storage_type) {
+    case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
+      return absl::Substitute(
+          "(((($3) * height + $2) * width + ($1)) * batch + ($0))", b, x, y, s);
+    case TensorStorageType::TEXTURE_2D:
+      return absl::Substitute(
+          "(int2)(($0) * batch + ($1), ($2) * slices + ($3))", x, b, y, s);
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+      return absl::Substitute("(int2)(($0) * batch + ($1), ($2))", x, b, y);
+    case TensorStorageType::TEXTURE_ARRAY:
+    case TensorStorageType::TEXTURE_3D:
+      return absl::Substitute("(int4)(($0) * batch + ($1), ($2), ($3), 0)", x,
+                              b, y, s);
+    case TensorStorageType::UNKNOWN:
+      return "error";
+    default:
+      return "error";
+  }
+}
+
+std::string TensorDescriptor::GetGlobalAddressNoDeclarationWHDS(
+    const std::string& x, const std::string& y, const std::string& z,
+    const std::string& s) const {
+  switch (storage_type) {
+    case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER: {
+      const std::string width = IsBatchedWidth() ? "width_batched" : "width";
+      return absl::Substitute(
+          "(((($3) * slices + ($2)) * height + ($1)) * $4 + ($0))", x, y, s, z,
+          width);
+    }
+    case TensorStorageType::TEXTURE_2D:
+      return absl::Substitute(
+          "(int2)(($0) * depth + ($1), ($2) * slices + ($3))", x, z, y, s);
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+      return absl::Substitute("(int2)(($0) * depth + ($1), ($2))", x, z, y);
+    case TensorStorageType::TEXTURE_ARRAY:
+    case TensorStorageType::TEXTURE_3D:
+      return absl::Substitute("(int4)(($0), ($1), ($2) * slices + ($3), 0)", x,
+                              y, z, s);
+    case TensorStorageType::UNKNOWN:
+      return "error";
+  }
+}
+
+std::string TensorDescriptor::GetGlobalAddressNoDeclarationWHDSB(
+    const std::string& x, const std::string& y, const std::string& z,
+    const std::string& s, const std::string& b) const {
+  switch (storage_type) {
+    case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
+      return absl::Substitute(
+          "((((($4) * slices + ($3)) * height + $2) * width + ($1)) * batch + "
+          "($0))",
+          b, x, y, s, z);
+    case TensorStorageType::TEXTURE_2D:
+      return absl::Substitute(
+          "(int2)((($0) * batch + ($1)) * depth + ($2), ($3) * slices + ($4))",
+          x, b, z, y, s);
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+      return absl::Substitute(
+          "(int2)((($0) * batch + ($1)) * depth + ($2), ($3))", x, b, z, y);
+    case TensorStorageType::TEXTURE_ARRAY:
+    case TensorStorageType::TEXTURE_3D:
+      return absl::Substitute(
+          "(int4)(($0) * batch + ($1), ($2), ($3) * slices + ($4), 0)", x, b, y,
+          z, s);
+    case TensorStorageType::UNKNOWN:
+      return "error";
+    default:
+      return "error";
+  }
+}
+
 std::string TensorDescriptor::GetGlobalAddressNoDeclaration(
     const std::string& xc, const std::string& yc, const std::string& zc,
     const std::string& sc, const std::string& bc) const {
-  if (layout == Layout::HWC) {
-    return GetGlobalAddressNoDeclarationWHS(xc, yc, sc, storage_type);
+  if (layout == Layout::HWC || (IsBatchedWidth() && layout == Layout::BHWC)) {
+    return GetGlobalAddressNoDeclarationWHS(xc, yc, sc);
   } else if (layout == Layout::BHWC) {
-    return GetGlobalAddressNoDeclarationWHSB(xc, yc, sc, bc, storage_type);
-  } else if (layout == Layout::HWDC) {
-    return GetGlobalAddressNoDeclarationWHDS(xc, yc, zc, sc, storage_type);
+    return GetGlobalAddressNoDeclarationWHSB(xc, yc, sc, bc);
+  } else if (layout == Layout::HWDC ||
+             (IsBatchedWidth() && layout == Layout::BHWDC)) {
+    return GetGlobalAddressNoDeclarationWHDS(xc, yc, zc, sc);
   } else if (layout == Layout::BHWDC) {
-    return GetGlobalAddressNoDeclarationWHDSB(xc, yc, zc, sc, bc, storage_type);
+    return GetGlobalAddressNoDeclarationWHDSB(xc, yc, zc, sc, bc);
   } else {
     return "Unsupported layout";
   }
@@ -476,6 +477,15 @@ bool TensorDescriptor::HasAxis(Axis axis) const {
   return false;
 }
 
+std::string TensorDescriptor::GetBatchIDFromState() const {
+  auto it = state_vars_.find("batch_id");
+  if (it == state_vars_.end()) {
+    return "";
+  } else {
+    return it->second;
+  }
+}
+
 bool TensorDescriptor::ParseCoordsFromArgs(const std::vector<std::string>& args,
                                            int offset, std::string* xc,
                                            std::string* yc, std::string* zc,
@@ -505,7 +515,7 @@ bool TensorDescriptor::ParseCoordsFromArgs(const std::vector<std::string>& args,
       *sc = args[offset++];
     }
   }
-  if (HasAxis(Axis::BATCH)) {
+  if (HasAxis(Axis::BATCH) && !IsBatchedWidth()) {
     if (offset >= args.size()) {
       auto it = state_vars_.find("batch_id");
       if (it == state_vars_.end()) {
@@ -518,6 +528,11 @@ bool TensorDescriptor::ParseCoordsFromArgs(const std::vector<std::string>& args,
     }
   }
   return true;
+}
+
+bool TensorDescriptor::IsBatchedWidth() const {
+  auto it = state_vars_.find("BatchedWidth");
+  return it != state_vars_.end() && it->second == "true";
 }
 
 }  // namespace cl

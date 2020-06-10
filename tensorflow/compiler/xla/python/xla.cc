@@ -49,7 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
-#include "tensorflow/compiler/xla/python/traceback_manager.h"
+#include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
@@ -501,161 +501,76 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("PLATFORM", GpuAllocatorConfig::Kind::kPlatform)
       .value("BFC", GpuAllocatorConfig::Kind::kBFC);
 
-  py::class_<PjRtClient, std::shared_ptr<PjRtClient>> py_local_client(
-      m, "LocalClient");
-  py_local_client.def_property_readonly("platform", &PjRtClient::platform_name)
-      .def("device_count", &PjRtClient::device_count)
-      .def("local_device_count", &PjRtClient::local_device_count)
-      .def("devices",
-           [](std::shared_ptr<PjRtClient> client) {
-             std::vector<ClientAndPtr<Device>> devices;
-             devices.reserve(client->devices().size());
-             for (const auto& device : client->devices()) {
-               devices.push_back(WrapWithClient(client, device.get()));
-             }
-             return devices;
-           })
-      .def("local_devices",
-           [](std::shared_ptr<PjRtClient> client) {
-             std::vector<ClientAndPtr<Device>> devices;
-             devices.reserve(client->local_devices().size());
-             for (Device* device : client->local_devices()) {
-               devices.push_back(WrapWithClient(client, device));
-             }
-             return devices;
-           })
-      .def("host_id", &PjRtClient::host_id)
+  py::class_<PyClient, std::shared_ptr<PyClient>> py_local_client(m, "Client");
+  py_local_client.def_property_readonly("platform", &PyClient::platform_name)
+      .def("device_count", &PyClient::device_count)
+      .def("local_device_count", &PyClient::local_device_count)
+      .def("devices", &PyClient::Devices)
+      .def("local_devices", &PyClient::LocalDevices)
+      .def("host_id", &PyClient::host_id)
       .def("get_default_device_assignment",
-           [](std::shared_ptr<PjRtClient> client, int num_replicas,
-              int num_partitions)
-               -> StatusOr<std::vector<std::vector<ClientAndPtr<Device>>>> {
-             TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
-                                 client->GetDefaultDeviceAssignment(
-                                     num_replicas, num_partitions));
-             std::vector<std::vector<ClientAndPtr<Device>>> result;
-             result.resize(num_replicas);
-             for (int r = 0; r < num_replicas; ++r) {
-               result[r].resize(num_partitions);
-               for (int p = 0; p < num_partitions; ++p) {
-                 int device_id = device_assignment(r, p);
-                 auto iter = client->id_to_device().find(device_id);
-                 CHECK(iter != client->id_to_device().end()) << device_id;
-                 result[r][p] = WrapWithClient(client, iter->second);
-               }
-             }
-             return result;
-           })
+           &PyClient::GetDefaultDeviceAssignment)
       // TODO(skye): delete after all callers can handle 2D output
       .def("get_default_device_assignment",
-           [](std::shared_ptr<PjRtClient> client,
-              int num_replicas) -> StatusOr<std::vector<ClientAndPtr<Device>>> {
-             TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
-                                 client->GetDefaultDeviceAssignment(
-                                     num_replicas, /*num_partitions=*/1));
-             std::vector<ClientAndPtr<Device>> result;
-             for (int i = 0; i < num_replicas; ++i) {
-               int device_id = device_assignment(i, 0);
-               auto iter = client->id_to_device().find(device_id);
-               CHECK(iter != client->id_to_device().end()) << device_id;
-               result.push_back(WrapWithClient(client, iter->second));
-             }
-             return result;
-           })
-      .def("create_channel_handle",
-           [](PjRtClient* client) {
-             return client->client()->CreateChannelHandle();
-           })
+           &PyClient::GetDefaultDeviceAssignment1D)
+      .def("create_channel_handle", &PyClient::CreateChannelHandle)
       .def("create_device_to_host_channel_handle",
-           [](PjRtClient* client) {
-             return client->client()->CreateDeviceToHostChannelHandle();
-           })
-      .def("create_host_to_device_channel_handle", [](PjRtClient* client) {
-        return client->client()->CreateHostToDeviceChannelHandle();
-      });
-  py_local_client.def(
-      "buffer_from_pyval",
-      [](std::shared_ptr<PjRtClient> client, const pybind11::object& argument,
-         Device* device,
-         bool force_copy) -> StatusOr<std::unique_ptr<PyBuffer>> {
-        if (device == nullptr) {
-          TF_RET_CHECK(!client->local_devices().empty());
-          device = client->local_devices().front();
-        }
-        CHECK(device != nullptr);
-        auto iter = client->id_to_device().find(device->id());
-        if (iter->second != device) {
-          return InvalidArgument(
-              "Cannot copy value to device '%s' with '%s' backend",
-              device->DebugString(), client->platform_name());
-        }
-        GlobalPyRefManager()->CollectGarbage();
+           &PyClient::CreateDeviceToHostChannelHandle)
+      .def("create_host_to_device_channel_handle",
+           &PyClient::CreateHostToDeviceChannelHandle)
+      .def("buffer_from_pyval", &PyClient::BufferFromPyal, py::arg("argument"),
+           py::arg("device") = nullptr, py::arg("force_copy") = false)
+      .def("compile", &PyClient::Compile, py::arg("computation"),
+           py::arg("compile_options") = CompileOptions());
 
-        absl::optional<CastToArrayResult> c = CastToArray(argument);
-        if (!c) {
-          return InvalidArgument("from_python argument must be an array.");
-        }
-
-        TF_ASSIGN_OR_RETURN(PythonBufferTree tree,
-                            GetPythonBufferTree(argument));
-        std::shared_ptr<PythonRefManager::ManagedPyObjects> py_buffer_ref =
-            GlobalPyRefManager()->ManageReference(std::move(c->array));
-
-        auto traceback = TracebackManager::Get()->GetTraceback();
-
-        py::gil_scoped_release gil_release;
+  m.def(
+      "get_cpu_client",
+      [](bool asynchronous) -> StatusOr<std::shared_ptr<PyClient>> {
+        TF_ASSIGN_OR_RETURN(std::shared_ptr<PjRtClient> client,
+                            GetCpuClient(asynchronous));
+        return std::make_shared<PyClient>(std::move(client));
+      },
+      py::arg("asynchronous") = true);
+  m.def("get_interpreter_client", []() -> StatusOr<std::shared_ptr<PyClient>> {
+    TF_ASSIGN_OR_RETURN(std::shared_ptr<PjRtClient> client,
+                        GetInterpreterClient());
+    return std::make_shared<PyClient>(std::move(client));
+  });
+  m.def(
+      "get_nvidia_gpu_client",
+      [](bool asynchronous, const GpuAllocatorConfig& allocator_config,
+         std::shared_ptr<DistributedRuntimeClient> distributed_client,
+         int node_id) -> StatusOr<std::shared_ptr<PyClient>> {
         TF_ASSIGN_OR_RETURN(
-            std::unique_ptr<PjRtBuffer> buffer,
-            PjRtBuffer::FromHostBuffer(c->buf_ptr, c->shape, force_copy,
-                                       std::move(py_buffer_ref), client.get(),
-                                       device));
-        return std::make_unique<PyBuffer>(std::move(client), std::move(buffer),
-                                          traceback);
+            std::shared_ptr<PjRtClient> client,
+            GetNvidiaGpuClient(asynchronous, allocator_config,
+                               std::move(distributed_client), node_id));
+        return std::make_shared<PyClient>(std::move(client));
       },
-      py::arg("argument"), py::arg("device") = nullptr,
-      py::arg("force_copy") = false);
-  py_local_client.def(
-      "compile",
-      [](std::shared_ptr<PjRtClient> client, const XlaComputation& computation,
-         CompileOptions options) -> StatusOr<std::unique_ptr<PyExecutable>> {
-        auto traceback = TracebackManager::Get()->GetTraceback();
-        py::gil_scoped_release gil_release;
-        TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
-                            PjRtExecutable::Compile(computation, client.get(),
-                                                    std::move(options)));
-        return std::make_unique<PyExecutable>(
-            std::move(client), std::move(executable), std::move(traceback));
-      },
-      py::arg("computation"), py::arg("compile_options") = CompileOptions());
+      py::arg("asynchronous") = true,
+      py::arg("allocator_config") = GpuAllocatorConfig(),
+      py::arg("distributed_client") = nullptr, py::arg("node_id") = 0);
 
-  m.def("get_cpu_client", &GetCpuClient, py::arg("asynchronous") = true);
-  m.def("get_interpreter_client", &GetInterpreterClient);
-  m.def("get_nvidia_gpu_client", &GetNvidiaGpuClient,
-        py::arg("asynchronous") = true,
-        py::arg("allocator_config") = GpuAllocatorConfig(),
-        py::arg("distributed_client") = nullptr, py::arg("node_id") = 0);
-
-  py::class_<TracebackManager::Frame>(m, "Frame")
-      .def_readonly("file_name", &TracebackManager::Frame::file_name)
-      .def_readonly("function_name", &TracebackManager::Frame::function_name)
+  py::class_<Traceback::Frame>(m, "Frame")
+      .def_readonly("file_name", &Traceback::Frame::file_name)
+      .def_readonly("function_name", &Traceback::Frame::function_name)
       .def_readonly("function_start_line",
-                    &TracebackManager::Frame::function_start_line)
-      .def_readonly("line_num", &TracebackManager::Frame::line_num)
-      .def("__repr__", [](const TracebackManager::Frame& frame) {
+                    &Traceback::Frame::function_start_line)
+      .def_readonly("line_num", &Traceback::Frame::line_num)
+      .def("__repr__", [](const Traceback::Frame& frame) {
         return absl::StrFormat("%s;%s:%d", frame.function_name, frame.file_name,
                                frame.line_num);
       });
-  py::bind_vector<std::vector<TracebackManager::Frame>>(m, "FrameVector");
 
-  py::class_<TracebackManager::Traceback> traceback(
-      m, "Traceback", "Represents a Python stack trace.");
+  py::class_<Traceback> traceback(m, "Traceback",
+                                  "Represents a Python stack trace.");
   traceback.def_property_static(
-      "enabled",
-      [](py::object /* cls */) { return TracebackManager::Get()->enabled(); },
+      "enabled", [](py::object /* cls */) { return Traceback::enabled(); },
       [](py::object /* cls */, bool enabled) {
-        return TracebackManager::Get()->SetEnabled(enabled);
+        return Traceback::SetEnabled(enabled);
       });
   traceback.def_static(
-      "get_traceback", []() { return TracebackManager::Get()->GetTraceback(); },
+      "get_traceback", []() { return Traceback::Get(); },
       R"doc(
     Returns a :class:`Traceback` for the current thread.
 
@@ -664,9 +579,8 @@ PYBIND11_MODULE(xla_extension, m) {
     collection has a small overhead, so it is disabled by default. If traceback
     collection is disabled, returns ``None``.
     )doc");
-  traceback.def_property_readonly("frames",
-                                  &TracebackManager::Traceback::Frames);
-  traceback.def("__str__", &TracebackManager::Traceback::ToString);
+  traceback.def_property_readonly("frames", &Traceback::Frames);
+  traceback.def("__str__", &Traceback::ToString);
 
   py::class_<PyBuffer, std::unique_ptr<PyBuffer>> buffer(m, "Buffer");
   // TODO(phawkins): alias for backward compatibility. Remove after JAX no

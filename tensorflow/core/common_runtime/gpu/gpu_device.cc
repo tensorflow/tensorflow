@@ -847,7 +847,7 @@ Status VerifyVirtualDeviceSettings(
         " #valid GPUs: ", valid_platform_gpu_ids.size(),
         " virtual_devices.size(): ", virtual_devices.size());
   }
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   // Check memory_limt_mb and priority sizes match if priority is non-empty.
   bool priority_exists = !virtual_devices.Get(0).priority().empty();
   for (int i = 0; i < virtual_devices.size(); ++i) {
@@ -891,15 +891,6 @@ Status VerifyVirtualDeviceSettings(
             priority_range.second, ",", priority_range.first,
             "] for virtual device ", i, " on GPU# ", gpu_id);
       }
-    }
-  }
-#elif TENSORFLOW_USE_ROCM
-  for (int i = 0; i < virtual_devices.size(); ++i) {
-    if (!virtual_devices.Get(i).priority().empty()) {
-      return errors::InvalidArgument(
-          "Priority is supported only on Nvidia GPUs."
-          " However, priority is set for virtual device ",
-          i, ", which corresponds to a non Nvidia GPU");
     }
   }
 #endif
@@ -1185,6 +1176,18 @@ Status BaseGPUDeviceFactory::CreateDevices(
                                 platform_gpu_id.value(),
                                 " failed. Status: ", hipGetErrorString(err));
       }
+      int priority_low, priority_high;
+      hipDeviceGetStreamPriorityRange(&priority_low, &priority_high);
+      if (err != hipSuccess) {
+        return errors::Internal(
+            "hipDeviceGetStreamPriorityRange() on GPU:", original_device,
+            " failed. Status: ", hipGetErrorString(err));
+      }
+      VLOG(1) << "HIP stream priority range on GPU(" << original_device
+              << "): " << priority_high << "," << priority_low;
+      supported_priority_ranges.insert(
+          std::make_pair(platform_gpu_id.value(),
+                         std::make_pair(priority_low, priority_high)));
 #endif
     }
     // Reset to the original device.

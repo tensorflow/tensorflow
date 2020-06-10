@@ -2973,6 +2973,7 @@ Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
     // slice instruction should all have the same layout.
     TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
         pad->shape(), nonzero_pad->mutable_shape()));
+    simplifier_->UpdateLayout(nonzero_pad->mutable_shape());
 
     // Second, construct the slice instruction to perform the negative padding.
     std::vector<int64> start_indices;
@@ -2999,9 +3000,14 @@ Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
         MakeSliceHlo(nonzero_pad, start_indices, end_indices, strides));
     TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
         pad->shape(), slice->mutable_shape()));
+    simplifier_->UpdateLayout(slice->mutable_shape());
 
     // Verify that the slice shape matches the pad shape.
-    TF_RET_CHECK(ShapeUtil::Equal(slice->shape(), pad->shape()));
+    auto equal = Shape::Equal();
+    if (!options_.is_layout_sensitive()) {
+      equal.IgnoreTilesInLayout();
+    }
+    TF_RET_CHECK(equal(slice->shape(), pad->shape()));
 
     return ReplaceInstruction(pad, slice);
   }
@@ -3058,20 +3064,6 @@ AlgebraicSimplifierVisitor::TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(
     return false;
   }
   HloInstruction* operand = broadcast->mutable_operand(0);
-  auto is_scalar_broadcast = [](const HloInstruction* instruction) {
-    return instruction->opcode() == HloOpcode::kBroadcast &&
-           ShapeUtil::IsScalar(instruction->operand(0)->shape());
-  };
-  auto is_equal_broadcast = [operand,
-                             broadcast](const HloInstruction* instruction) {
-    return instruction->opcode() == HloOpcode::kBroadcast &&
-           ShapeUtil::Equal(operand->shape(),
-                            instruction->operand(0)->shape()) &&
-           broadcast->dimensions() == instruction->dimensions();
-  };
-  auto is_compatible_broadcast = [&](const HloInstruction* instruction) {
-    return is_scalar_broadcast(instruction) || is_equal_broadcast(instruction);
-  };
   for (HloInstruction* user : broadcast->users()) {
     if (user->user_count() == 0 && user != computation_->root_instruction()) {
       continue;
@@ -3090,20 +3082,18 @@ AlgebraicSimplifierVisitor::TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(
       continue;
     }
 
-    // Check if all the operands of the user are compatible broadcasts for
-    // sinking. (They are either scalar broadcasts or broadcasts casting
-    // from/to the same shape/dimensions)
-    int64 compatible_broadcast_count = 0;
+    // Find the unique non-scalar operand or continue if there isn't one.
+    int64 scalar_broadcast_count = 0;
     int64 broadcast_use_count = 0;
     for (HloInstruction* user_operand : user->operands()) {
-      if (is_compatible_broadcast(user_operand)) {
-        ++compatible_broadcast_count;
+      if (user_operand->opcode() == HloOpcode::kBroadcast &&
+          ShapeUtil::IsScalar(user_operand->operand(0)->shape())) {
+        ++scalar_broadcast_count;
       } else if (broadcast == user_operand) {
         ++broadcast_use_count;
       }
     }
-    if (compatible_broadcast_count + broadcast_use_count !=
-        user->operand_count()) {
+    if (scalar_broadcast_count + broadcast_use_count != user->operand_count()) {
       continue;
     }
     std::vector<HloInstruction*> new_operands;
@@ -3111,24 +3101,14 @@ AlgebraicSimplifierVisitor::TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(
 
     Shape changed_shape;
     for (HloInstruction* user_operand : user->operands()) {
-      // If this is a broadcast operand that is not our original broadcast input
-      // to this function then we might need to change the input.
-      if (is_compatible_broadcast(user_operand)) {
-        // If this is a broadcast from a scalar value rewrite a broadcast from
-        // the scalar to the new shape enforced from the other broadcast
-        // operands.
-        if (is_scalar_broadcast(user_operand)) {
-          changed_shape = ShapeUtil::ChangeElementType(
-              operand->shape(), user_operand->shape().element_type());
-          simplifier_->UpdateLayout(&changed_shape);
-          new_operands.push_back(
-              computation_->AddInstruction(HloInstruction::CreateBroadcast(
-                  changed_shape, user_operand->mutable_operand(0), {})));
-        } else {
-          // For the non-scalar broadcasts we guarantee that the shape of the
-          // operand of the broadcast needs to be already a compatible shape.
-          new_operands.push_back(user_operand->mutable_operand(0));
-        }
+      if (user_operand->opcode() == HloOpcode::kBroadcast &&
+          ShapeUtil::IsScalar(user_operand->operand(0)->shape())) {
+        changed_shape = ShapeUtil::ChangeElementType(
+            operand->shape(), user_operand->shape().element_type());
+        simplifier_->UpdateLayout(&changed_shape);
+        new_operands.push_back(
+            computation_->AddInstruction(HloInstruction::CreateBroadcast(
+                changed_shape, user_operand->mutable_operand(0), {})));
       } else {
         CHECK_EQ(broadcast, user_operand);
         new_operands.push_back(operand);
@@ -3643,12 +3623,17 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
       new_slice_strides.push_back(slice->slice_strides(dim));
       new_slice_limits.push_back(slice->slice_limits(dim));
     }
+    VLOG(3) << "Sink broadcast through slice";
+    VLOG(3) << "Original slice: " << slice->ToString();
+    VLOG(3) << "Original broadcast: " << broadcast->ToString();
     TF_ASSIGN_OR_RETURN(auto new_slice,
                         MakeSliceHlo(broadcast_operand, new_slice_starts,
                                      new_slice_limits, new_slice_strides));
-    return ReplaceInstruction(
-        slice,
-        MakeBroadcastHlo(new_slice, broadcast->dimensions(), slice->shape()));
+    auto new_broadcast = HloInstruction::CreateBroadcast(
+        slice->shape(), new_slice, broadcast->dimensions());
+    VLOG(3) << "New slice: " << slice->ToString();
+    VLOG(3) << "New broadcast: " << new_broadcast->ToString();
+    return ReplaceWithNewInstruction(slice, std::move(new_broadcast));
   }
 
   // Try to simplify concat -> slice to an operand of concat.
@@ -3728,16 +3713,21 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
       new_indices.push_back(dynamic_slice->mutable_operand(1 + dim));
       new_slice_sizes.push_back(dynamic_slice->slice_sizes(dim));
     }
+
+    VLOG(3) << "Sink broadcast through dynamic slice";
+    VLOG(3) << "Original dynamic slice: " << dynamic_slice->ToString();
+    VLOG(3) << "Original broadcast: " << operand->ToString();
     HloInstruction* new_dynamic_slice = broadcast_operand;
     if (!new_slice_sizes.empty()) {
       TF_ASSIGN_OR_RETURN(
           new_dynamic_slice,
           MakeDynamicSliceHlo(broadcast_operand, new_indices, new_slice_sizes));
     }
-    return ReplaceInstruction(
-        dynamic_slice,
-        MakeBroadcastHlo(new_dynamic_slice, operand->dimensions(),
-                         dynamic_slice->shape()));
+    auto new_broadcast = HloInstruction::CreateBroadcast(
+        dynamic_slice->shape(), new_dynamic_slice, operand->dimensions());
+    VLOG(3) << "New dynamic slice: " << dynamic_slice->ToString();
+    VLOG(3) << "New broadcast: " << new_broadcast->ToString();
+    return ReplaceWithNewInstruction(dynamic_slice, std::move(new_broadcast));
   }
 
   // Convert a dynamic slice into a slice if all offsets are  constant and the

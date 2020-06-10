@@ -620,10 +620,8 @@ class StrategyBase(object):
     if not hasattr(extended, "_retrace_functions_for_each_device"):
       # pylint: disable=protected-access
       # `extended._retrace_functions_for_each_device` dictates
-      # 1) whether all the ops created inside function will have devices
-      #    inherited from outer stack, and
-      # 2) whether the same function will be retraced when it is called on
-      #    different devices.
+      # whether the same function will be retraced when it is called on
+      # different devices.
       try:
         extended._retrace_functions_for_each_device = (
             len(extended.worker_devices) > 1)
@@ -691,8 +689,10 @@ class StrategyBase(object):
       return self.extended._make_input_fn_iterator(  # pylint: disable=protected-access
           input_fn, replication_mode=replication_mode)
 
+  @deprecation.deprecated(
+      "2020-09-30", "Please use tf.data.Dataset.from_tensor_slices instead")
   def experimental_make_numpy_dataset(self, numpy_input):
-    """Makes a `tf.data.Dataset` for input provided via a numpy array.
+    """Makes a `tf.data.Dataset` from a numpy array.
 
     This avoids adding `numpy_input` as a large constant in the graph,
     and copies the data to the machine or machines that will be processing
@@ -702,16 +702,19 @@ class StrategyBase(object):
     with the returned dataset to further distribute it with the strategy.
 
     Example:
-    ```
-    numpy_input = np.ones([10], dtype=np.float32)
-    dataset = strategy.experimental_make_numpy_dataset(numpy_input)
-    dist_dataset = strategy.experimental_distribute_dataset(dataset)
-    ```
+
+    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> numpy_input = np.ones([10], dtype=np.float32)
+    >>> dataset = strategy.experimental_make_numpy_dataset(numpy_input)
+    >>> dataset
+    <TensorSliceDataset shapes: (), types: tf.float32>
+    >>> dataset = dataset.batch(2)
+    >>> dist_dataset = strategy.experimental_distribute_dataset(dataset)
 
     Args:
-      numpy_input: A nest of NumPy input arrays that will be converted into a
-      dataset. Note that lists of Numpy arrays are stacked, as that is normal
-      `tf.data.Dataset` behavior.
+      numpy_input: a nest of NumPy input arrays that will be converted into a
+        dataset. Note that the NumPy arrays are stacked, as that is normal
+        `tf.data.Dataset` behavior.
 
     Returns:
       A `tf.data.Dataset` representing `numpy_input`.

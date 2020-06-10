@@ -1962,9 +1962,9 @@ def conv1d_transpose(
     input: A 3-D `Tensor` of type `float` and shape
       `[batch, in_width, in_channels]` for `NWC` data format or
       `[batch, in_channels, in_width]` for `NCW` data format.
-    filters: A 3-D `Tensor` with the same type as `value` and shape
+    filters: A 3-D `Tensor` with the same type as `input` and shape
       `[filter_width, output_channels, in_channels]`.  `filter`'s
-      `in_channels` dimension must match that of `value`.
+      `in_channels` dimension must match that of `input`.
     output_shape: A 1-D `Tensor`, containing three elements, representing the
       output shape of the deconvolution op.
     strides: An int or list of `ints` that has length `1` or `3`.  The number of
@@ -1979,7 +1979,7 @@ def conv1d_transpose(
     name: Optional name for the returned tensor.
 
   Returns:
-    A `Tensor` with the same type as `value`.
+    A `Tensor` with the same type as `input`.
 
   Raises:
     ValueError: If input/output depth does not match `filter`'s shape, if
@@ -3118,9 +3118,9 @@ def conv3d_transpose_v2(input,  # pylint: disable=redefined-builtin
     input: A 5-D `Tensor` of type `float` and shape `[batch, depth, height,
       width, in_channels]` for `NDHWC` data format or `[batch, in_channels,
       depth, height, width]` for `NCDHW` data format.
-    filters: A 5-D `Tensor` with the same type as `value` and shape `[depth,
+    filters: A 5-D `Tensor` with the same type as `input` and shape `[depth,
       height, width, output_channels, in_channels]`.  `filter`'s `in_channels`
-      dimension must match that of `value`.
+      dimension must match that of `input`.
     output_shape: A 1-D `Tensor` representing the output shape of the
       deconvolution op.
     strides: An int or list of `ints` that has length `1`, `3` or `5`.  The
@@ -3142,7 +3142,7 @@ def conv3d_transpose_v2(input,  # pylint: disable=redefined-builtin
     name: Optional name for the returned tensor.
 
   Returns:
-    A `Tensor` with the same type as `value`.
+    A `Tensor` with the same type as `input`.
 
   References:
     Deconvolutional Networks:
