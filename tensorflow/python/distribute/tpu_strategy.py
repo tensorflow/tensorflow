@@ -320,10 +320,6 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     self.steps_per_run = steps_per_run
     self._require_static_shapes = True
 
-    # TPUStrategy handles the graph replication in TF-XLA bridge, so we don't
-    # need to retrace functions for each device.
-    self._retrace_functions_for_each_device = False
-
     self.experimental_enable_get_next_as_optional = True
     self._prefetch_on_host = False
 
