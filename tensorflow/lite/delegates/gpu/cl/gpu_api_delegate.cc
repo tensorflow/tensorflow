@@ -80,8 +80,8 @@ class Delegate {
       options_.compile_options.precision_loss_allowed = 0;
       options_.compile_options.inference_priority = TfLiteGpuInferencePriority::
           TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
-      options_.egl_display = eglGetCurrentDisplay();
-      options_.egl_context = eglGetCurrentContext();
+      options_.egl_display = EGL_NO_DISPLAY;
+      options_.egl_context = EGL_NO_CONTEXT;
       options_.serialized_binary_cache_data = nullptr;
       options_.serialized_binary_cache_size = 0;
     }
