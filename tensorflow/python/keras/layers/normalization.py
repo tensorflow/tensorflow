@@ -274,9 +274,20 @@ class BatchNormalizationBase(Layer):
         'experimental_enable_get_next_as_optional', False)
 
   def _get_shape_and_axis_for_fused(self, nd_shape, nd_axis):
-    '''Returns a 4D shape and axis (1 or 3) to which nd_shape and nd_axis can
-    be changed without changing the result of the batch normalization operation.
-    '''
+    """Compute an equivalent shape and axis that are compatible with the fused
+    implementation.
+
+    The input/output of the layer can be reshaped to/from the shape returned by
+    this function without affecting the correctness of the computation.
+
+    Arguments:
+      nd_shape: List. The original shape of the operation.
+      nd_axis: Integer. The original axis of the operation.
+
+    Returns:
+      shape: List. A 4D shape.
+      axis: Integer. An axis (always 1 or 3).
+    """
     assert(isinstance(nd_axis, int))
     ndims = len(nd_shape)
     shape = nd_shape[:]
@@ -291,10 +302,11 @@ class BatchNormalizationBase(Layer):
       else:
         # Merge excess pre-axis dims into first dim.
         # Transform [N, ..., C, ...] to [product(N, ...), C, ...].
-        for dim in range(axis - 1, 0, -1):
-          shape[0] *= shape[dim]
-          del shape[dim]
-          ndims -= 1
+        product = 1
+        for dim in shape[:axis]:
+          product *= dim
+        shape[:axis] = [product]
+        ndims -= (axis - 1)
       axis = 1
     # Now change shape to 4D.
     is_channels_last = axis == ndims - 1
@@ -312,9 +324,10 @@ class BatchNormalizationBase(Layer):
       # Transform [N, C, H, W, ...] to [N, C, H, product(W, ...)].
       # Or        [N, H, W, ..., C] to [N, H, product(W, ...), C].
       merge_dim = 2 if is_channels_last else 3
-      for dim in range(merge_dim + (ndims - 4), merge_dim, -1):
-        shape[merge_dim] *= shape[dim]
-        del shape[dim]
+      product = 1
+      for dim in shape[merge_dim:merge_dim + 1 + (ndims - 4)]:
+        product *= dim
+      shape[merge_dim:merge_dim + 1 + (ndims - 4)] = [product]
     axis = 3 if is_channels_last else 1
     return shape, axis
 
@@ -352,22 +365,20 @@ class BatchNormalizationBase(Layer):
         raise ValueError('When using virtual_batch_size, adjustment cannot '
                          'be specified')
 
-    fused_axis = self.axis
     self._input_fused_shape = None
-    if self.fused in (None, True):
-      if len(self.axis) == 1 and (self.axis[0] not in (1, ndims - 1) or
-                                  ndims != 4):
+    if self.fused:
+      if not self._USE_V2_BEHAVIOR:
+        self.fused = self._fused_can_be_used()
+
+      fused_axis = self.axis
+      if self.fused and (self.axis[0] not in (1, ndims - 1) or ndims != 4):
         # The fused implementation only supports NCHW or NHWC, so we will
         # reshape the input/output tensor to/from an equivalent 4D shape.
         fused_shape, fused_axis = self._get_shape_and_axis_for_fused(
             input_shape.dims, self.axis[0])
-        fused_shape = tensor_shape.TensorShape(fused_shape)
-        self._input_fused_shape = [-1] + fused_shape.as_list()[1:]
+        self._input_fused_shape = [-1] + fused_shape[1:]
         fused_axis = [fused_axis]
 
-      if not self._USE_V2_BEHAVIOR:
-        assert self.fused is not None
-        self.fused = self._fused_can_be_used()
       # TODO(chrisying): fused batch norm is currently not supported for
       # multi-axis batch norm and by extension virtual batches. In some cases,
       # it might be possible to use fused batch norm but would require reshaping
@@ -375,7 +386,6 @@ class BatchNormalizationBase(Layer):
       # particularly tricky. A compromise might be to just support the most
       # common use case (turning 5D w/ virtual batch to NCHW)
 
-    if self.fused:
       if fused_axis == [1]:
         self._data_format = 'NCHW'
       elif fused_axis == [3]:
