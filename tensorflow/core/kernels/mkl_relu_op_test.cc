@@ -132,26 +132,4 @@ TEST_ALL_SIZES(LeakyReluGrad)
 
 }  // namespace tensorflow
 
-// --------------------------------------------------------------------------
-
-GTEST_API_ int main(int argc, char** argv) {
-  // Sets OpenMP environment variables.
-  // TODO(intel-tf): Remove this when OpenMP is removed.
-  tensorflow::setenv("KMP_BLOCKTIME", "0", true /*overwrite*/);
-  tensorflow::setenv("OMP_NUM_THREADS",
-                     std::to_string(tensorflow::port::MaxParallelism()).c_str(),
-                     true /*overwrite*/);
-
-  tensorflow::testing::InstallStacktraceHandler();
-  ::testing::InitGoogleTest(&argc, argv);
-  for (int i = 1; i < argc; i++) {
-    if (absl::StartsWith(argv[i], "--benchmarks=")) {
-      const char* pattern = argv[i] + strlen("--benchmarks=");
-      tensorflow::testing::Benchmark::Run(pattern);
-      return 0;
-    }
-  }
-  return RUN_ALL_TESTS();
-}
-
 #endif  // INTEL_MKL
