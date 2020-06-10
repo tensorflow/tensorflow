@@ -278,6 +278,26 @@ cuda_py_test(
 )
 
 tf_py_test(
+    name = "saved_model_test",
+    size = "small",
+    srcs = ["saved_model_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:function",
+        "//tensorflow/python/keras/layers:core",
+        "//tensorflow/python/keras/optimizer_v2",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/training/tracking:util",
+    ],
+)
+
+tf_py_test(
     name = "temporal_sample_weights_correctness_test",
     srcs = ["temporal_sample_weights_correctness_test.py"],
     python_version = "PY3",
