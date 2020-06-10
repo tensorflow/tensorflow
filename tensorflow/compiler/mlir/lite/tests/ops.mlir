@@ -277,6 +277,52 @@ func @testMul(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
   return %0#0 : tensor<? x i32>
 }
 
+// -----
+
+func @add_with_quantized_i16_broadcasting(tensor<2x2xf32>, tensor<1xf32>) -> tensor<2x2x!quant.any<i16:f32>> {
+^bb0(%arg0: tensor<2x2xf32>, %arg1: tensor<1xf32>):
+  // expected-error @+1 {{Operands do not have valid shapes}}
+  %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor<2x2xf32>, tensor<1xf32>) -> tensor<2x2x!quant.any<i16:f32>>
+  return %0#0 : tensor<2x2x!quant.any<i16:f32>>
+}
+// -----
+
+func @sub_with_quantized_i8_five_dim_broadcasting(tensor<1x1x1x1x1xf32>, tensor<1xf32>) -> tensor<1x1x1x1x1x!quant.any<i8:f32>> {
+^bb0(%arg0: tensor<1x1x1x1x1xf32>, %arg1: tensor<1xf32>):
+  // expected-error @+1 {{Operands do not have valid shapes}}
+  %0 = "tfl.sub"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor<1x1x1x1x1xf32>, tensor<1xf32>) -> tensor<1x1x1x1x1x!quant.any<i8:f32>>
+  return %0#0 : tensor<1x1x1x1x1x!quant.any<i8:f32>>
+}
+
+// -----
+
+func @mul_with_i32_five_dim_broadcasting(tensor<1x1x1x1x1xi32>, tensor<1xi32>) -> tensor<1x1x1x1x1xi32> {
+^bb0(%arg0: tensor<1x1x1x1x1xi32>, %arg1: tensor<1xi32>):
+  // expected-error @+1 {{Operands do not have valid shapes}}
+  %0 = "tfl.mul"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor<1x1x1x1x1xi32>, tensor<1xi32>) -> tensor<1x1x1x1x1xi32>
+  return %0#0 : tensor<1x1x1x1x1xi32>
+}
+
+// -----
+
+func @mul_with_quantized_i16_five_dim_broadcasting(tensor<1x1x1x1x1x!quant.any<i16:f32>>, tensor<1x!quant.any<i16:f32>>) -> tensor<1x1x1x1x1x!quant.any<i16:f32>> {
+^bb0(%arg0: tensor<1x1x1x1x1x!quant.any<i16:f32>>, %arg1: tensor<1x!quant.any<i16:f32>>):
+  // expected-error @+1 {{Operands do not have valid shapes}}
+  %0 = "tfl.mul"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor<1x1x1x1x1x!quant.any<i16:f32>>, tensor<1x!quant.any<i16:f32>>) -> tensor<1x1x1x1x1x!quant.any<i16:f32>>
+  return %0#0 : tensor<1x1x1x1x1x!quant.any<i16:f32>>
+}
+
+// -----
+
+func @mul_with_quantized_i16_to_uint8_broadcasting(tensor<1x1x!quant.any<i16:f32>>, tensor<1x!quant.any<i16:f32>>) -> tensor<1x1x!quant.any<ui8:f32>> {
+^bb0(%arg0: tensor<1x1x!quant.any<i16:f32>>, %arg1: tensor<1x!quant.any<i16:f32>>):
+  // expected-error @+1 {{Operands do not have valid shapes}}
+  %0 = "tfl.mul"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor<1x1x!quant.any<i16:f32>>, tensor<1x!quant.any<i16:f32>>) -> tensor<1x1x!quant.any<ui8:f32>>
+  return %0#0 : tensor<1x1x!quant.any<ui8:f32>>
+}
+
+// -----
+
 // CHECK-LABEL: testMulNonQuantizedOperandsandQuantizedResult
 func @testMulNonQuantizedOperandsandQuantizedResult(tensor<? x f32>, tensor<? x f32>) -> tensor<? x !quant.any<i16:f32>> {
 ^bb0(%arg0: tensor<? x f32>, %arg1: tensor<? x f32>):
