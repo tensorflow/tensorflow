@@ -133,6 +133,16 @@ func @testSameCastTypeAcrossBasicBlocks(tensor<8x16x32x64xf32>) -> tensor<8x16x3
 // CHECK: return %arg0
 }
 
+// CHECK-LABEL: testConcatCanonicalization
+func @testConcatCanonicalization(%arg0: tensor<2x1xi32>, %arg1: tensor<2x1xi32>) -> tensor<2x2xi32> {
+  // CHECK: %[[AXIS:.*]] = "tf.Const"
+  %0 = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK: "tf.ConcatV2"(%arg0, %arg1, %[[AXIS]])
+  %1 = "tf.Concat"(%0, %arg0, %arg1) : (tensor<i32>, tensor<2x1xi32>, tensor<2x1xi32>) -> tensor<2x2xi32>
+  return %1 : tensor<2x2xi32>
+}
+
 // CHECK-LABEL: testLogOfSoftmax
 func @testLogOfSoftmax(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
   %0 = "tf.Softmax"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>

@@ -1521,6 +1521,8 @@ def TF_ConcatOp : TF_Op<"Concat", [NoSideEffect]> {
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_ConcatOffsetOp : TF_Op<"ConcatOffset", [NoSideEffect]> {
