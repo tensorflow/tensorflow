@@ -21,14 +21,12 @@ limitations under the License.
 
 hx_drv_sensor_image_config_t g_pimg_config;
 
-
 TfLiteStatus GetImage(tflite::ErrorReporter* error_reporter, int image_width,
                       int image_height, int channels, int8_t* image_data) {
   static bool is_initialized = false;
 
   if (!is_initialized) {
-    if(hx_drv_sensor_initial(&g_pimg_config)!= HX_DRV_LIB_PASS)
-    {
+    if (hx_drv_sensor_initial(&g_pimg_config) != HX_DRV_LIB_PASS) {
       return kTfLiteError;
     }
     is_initialized = true;
@@ -36,9 +34,9 @@ TfLiteStatus GetImage(tflite::ErrorReporter* error_reporter, int image_width,
 
   hx_drv_sensor_capture(&g_pimg_config);
 
-  hx_drv_image_rescale((uint8_t*)g_pimg_config.raw_address, g_pimg_config.img_width, g_pimg_config.img_height,
-                     image_data, image_width, image_height);
-
+  hx_drv_image_rescale((uint8_t*)g_pimg_config.raw_address,
+                       g_pimg_config.img_width, g_pimg_config.img_height,
+                       image_data, image_width, image_height);
 
   return kTfLiteOk;
 }

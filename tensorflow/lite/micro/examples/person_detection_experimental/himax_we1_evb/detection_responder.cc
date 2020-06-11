@@ -22,7 +22,6 @@ limitations under the License.
 // should implement their own versions of this function.
 void RespondToDetection(tflite::ErrorReporter* error_reporter,
                         int8_t person_score, int8_t no_person_score) {
-
   if (person_score > no_person_score) {
     hx_drv_led_on(HX_DRV_LED_GREEN);
   } else {
