@@ -18,6 +18,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 import collections
 import contextlib
 import json
@@ -26,6 +27,8 @@ import signal
 import sys
 import threading
 import time
+import unittest
+
 from absl import logging
 import six
 from six.moves import queue as Queue
@@ -34,7 +37,8 @@ from tensorflow.python import tf2
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import multi_process_lib
 from tensorflow.python.eager import context
-from tensorflow.python.platform import test
+
+multiprocessing = multi_process_lib.multiprocessing
 
 # pylint: disable=g-import-not-at-top
 try:
@@ -43,60 +47,56 @@ try:
 except ImportError:
   faulthandler = None
 
+# TODO(b/150264776): Remove after resolving CI issue.
+try:
+  import dill
+except ImportError:
+  dill = None
+
+# TODO(b/150264776): Remove after resolving CI issue.
+try:
+  import tblib.pickling_support
+  # For pickling traceback objects.
+  tblib.pickling_support.install()
+except ImportError:
+  pass
+
+
 # _ProcessStatusInfo contains process status information. When is_successful
 # attribute is True, the subprocess has ended successfully, or if False, the
 # exception stack trace info is stored in exc_info to pass on to parent process
 # to be re-raised.
 _ProcessStatusInfo = collections.namedtuple(
-    '_ProcessStatusInfo', ['task_type', 'is_successful', 'exc_info'])
-
-# _SubprocessInfo collects basic information of a subprocess such as task type
-# and process id.
-_SubprocessInfo = collections.namedtuple('_SubprocessInfo',
-                                         ['pid', 'task_type', 'task_id'])
+    '_ProcessStatusInfo',
+    ['task_type', 'is_successful', 'exc_info', 'return_value'])
 
 # Information returned from a successful MultiProcessRunner run.
 MultiProcessRunnerResult = collections.namedtuple('MultiProcessRunnerResult',
                                                   ['return_value', 'stdout'])
 
-# Process status queue is used by `multi_process_runner` internally for
-# communication from subprocesses to the parent process for whether it's been
-# successful, and if not what the error stack trace is.
-PROCESS_STATUS_QUEUE = 'process_status_queue'
+TestEnvironment = collections.namedtuple('TestEnvironment', [
+    'task_type', 'task_id', 'cluster_spec', 'rpc_layer', 'grpc_fail_fast',
+    'v2_enabled', 'executing_eagerly'
+])
 
-# Return value queue is intended to be used by users of `multi_process_runner`
-# for the process function to return information to the caller of
-# `multi_process_runner.run()`.
-RETURN_VALUE_QUEUE = 'return_value_queue'
-
-# Subprocess info queue stores `_SubprocessInfo` for later potential
-# termination by the parent.
-SUBPROCESS_INFO_QUEUE = 'subprocess_info_queue'
-
-# Parent-to-sub queue is used for communications from parent to subprocess.
-# Currently this is only used to terminate subprocesses.
+# Resources for communication between worker processes and the main process.
+#
+# `process_status_queue` is used by `multi_process_runner` internally for
+#   communication from subprocesses to the parent process for whether it's been
+#   successful, and if not what the error stack trace is.
+# `parent_to_sub_queue` is used for communications from parent to subprocess.
+#   Currently this is only used to terminate subprocesses.
 # TODO(rchao): Remove this once subprocess is terminated by SIGKILL.
-PARENT_TO_SUB_QUEUE = 'parent_to_sub_queue'
-
-# Streaming queue stores the logged and printed messages from subprocesses.
-STREAMING_QUEUE = 'streaming_queue'
-
-# Pipes to stream stdout and stderr from subprocesses to parent process.
-STREAMING_PIPE = 'streaming_pipe'
-
-# Barrier identifier.
-BARRIER = 'barrier'
-
-_DEFAULT_MAX_SUBPROCESS_COUNT = 20
+# `streaming_pipe_w` is to stream stdout and stderr from subprocesses to parent
+#   process.
+# `barrier` is a barrier for the party of all subprocesses.
+Resources = collections.namedtuple('Resources', [
+    'process_status_queue', 'parent_to_sub_queue', 'streaming_pipe_w', 'barrier'
+])
 
 # Default time out sec is selected so that it's handled before the default
 # "medium" timeout of the test runs.
 _DEFAULT_TIMEOUT_SEC = 200
-
-# Next pipe index to be global so that pipes are not reused across multiple
-# MultiProcessRunner usages.
-# TODO(rchao): Investigate possibility to remove this variable.
-_next_pipe_index = 0
 
 
 class MultiProcessRunner(object):
@@ -123,6 +123,7 @@ class MultiProcessRunner(object):
                grpc_fail_fast=None,
                stream_stdout=True,
                list_stdout=False,
+               use_dill_for_args=True,
                args=None,
                kwargs=None):
     """Creates a multi-process runner.
@@ -153,6 +154,9 @@ class MultiProcessRunner(object):
         returned from `MultiProcessRunner.join()`. If True, the list of stdout
         can be retrieved via `MultiProcessRunnerResult.stdout` attribute.
         Defaults to False.
+      use_dill_for_args: Whether to use dill to pickle `args` and `kwargs`. dill
+        can pickle more objects, but doesn't work with types in
+        `multiprocessing` library like `Mutex`.
       args: Positional arguments to be sent to functions run on processes.
       kwargs: Keyword arguments to be sent to functions run on processes.
 
@@ -165,15 +169,14 @@ class MultiProcessRunner(object):
       raise ValueError('If chief exists in the cluster, there must be at most '
                        'one chief. Current `cluster_spec` has {} chiefs.'
                        .format(len(cluster_spec['chief'])))
-
-    assert callable(proc_func)
-
-    if not multi_process_lib.using_context_manager():
+    if not multi_process_lib.initialized():
       raise RuntimeError('`multi_process_runner` is not initialized. '
                          'Please call `multi_process_runner.test_main()` '
                          'within `if __name__ == \'__main__\':` block '
                          'in your python module to properly initialize '
                          '`multi_process_runner`.')
+    if not callable(proc_func):
+      raise ValueError('proc_func is not a callable')
 
     self._proc_func = proc_func
     self._cluster_spec = cluster_spec
@@ -184,62 +187,90 @@ class MultiProcessRunner(object):
     # TODO(rchao): Revisit list_stdout argument to consider other solution.
     self._list_stdout = list_stdout
     self._dependence_on_chief = True
+    self._use_dill_for_args = use_dill_for_args
     self._args = args or ()
     self._kwargs = kwargs or {}
-
-    self._outstanding_subprocess_count = 0
 
     # Child processes should have the same v2 and eager behavior.
     self._v2_enabled = tf2.enabled()
     self._executing_eagerly = context.executing_eagerly()
+
+    self._joined = False
+    self._processes = {}
+    self._outstanding_subprocess_count = 0
+    self._reading_threads = []
+
+    self._manager = multiprocessing.Manager()
+    self._process_status_queue = self._manager.Queue()
+    self._parent_to_sub_queue = self._manager.Queue()
+    parties = sum(len(addresses) for addresses in self._cluster_spec.values())
+    self._barrier = self._manager.Barrier(parties)
+
+    # We use a queue to collect outputs from worker processes since it's thread
+    # safe.
+    self._streaming_queue = self._manager.Queue()
 
     # This flag will be set to True once terminate_all() is called.
     self._all_forced_terminated = False
 
   def _continuously_readline_from_sub(self, pipe_r, task_type, task_id):
     """Function to continuously read lines from subprocesses."""
-    reader = os.fdopen(pipe_r.fileno(), 'r')
-    while True:
-      read_line = reader.readline()
-      if read_line == 'EOF':
-        reader.close()
-        # The thread that runs `_continuously_readline_from_sub` stops here.
-        # However the threads don't exit until the test exits, so we do not
-        # attempt to join the threads (which leads to timeout).
-        # TODO(rchao): Understand why and do thread joining.
-        break
-      task_string = '[{}-{}]:'.format(task_type, task_id)
-      formatted_line = '{} {}'.format(task_string.ljust(14), read_line)
-      if self._stream_stdout:
-        self._print_stdout_in_parent(formatted_line, task_type, task_id)
-      if self._list_stdout:
-        self._add_stdout_in_queue(formatted_line, task_type, task_id)
+    with os.fdopen(pipe_r.fileno(), 'r', closefd=False) as reader:
+      for line in reader:
+        task_string = '[{}-{}]:'.format(task_type, task_id)
+        formatted_line = '{} {}'.format(task_string.ljust(14), line)
+        if self._stream_stdout:
+          # TODO(rchao): Use a lock here to ensure the printed lines are not
+          # broken.
+          print(formatted_line, end='', flush=True)
+        if self._list_stdout:
+          self._streaming_queue.put(formatted_line)
 
-  def _print_stdout_in_parent(self, formatted_line, task_type, task_id):
-    del task_type, task_id
-    # Flush True so the logging order from subprocesses is respected.
-    # TODO(rchao): Use a lock here to ensure the printed lines are not broken.
-    print(formatted_line, end='', flush=True)
-
-  def _add_stdout_in_queue(self, formatted_line, task_type, task_id):
-    del task_type, task_id
-    # A queue instead of a simple list is used here due to b/150652733.
-    _resource(STREAMING_QUEUE).put(formatted_line)
-
-  def _start_subprocess_and_reading_thread(self, proc_func, task_type, task_id,
-                                           cluster_spec, args, kwargs):
+  def _start_subprocess_and_reading_thread(self,
+                                           task_type,
+                                           task_id,
+                                           cluster_spec=None,
+                                           proc_func=None,
+                                           args=None,
+                                           kwargs=None):
     """Start a subprocess and a thread the reads lines from the subprocess."""
-    global _next_pipe_index
-    pipe_r, pipe_w = _resource(STREAMING_PIPE)[_next_pipe_index]
-    _next_pipe_index += 1
 
-    p = multi_process_lib.Process(
-        target=_Subprocess(),
-        args=(proc_func, task_type, task_id, cluster_spec, self._rpc_layer,
-              self._grpc_fail_fast, self._v2_enabled, self._executing_eagerly,
-              pipe_w) + args,
-        kwargs=kwargs)
+    if dill is None:
+      raise unittest.SkipTest(
+          'TODO(b/150264776): Resolve dependency issue in CI')
+
+    test_env = TestEnvironment(
+        task_type=task_type,
+        task_id=task_id,
+        cluster_spec=cluster_spec or self._cluster_spec,
+        rpc_layer=self._rpc_layer,
+        grpc_fail_fast=self._grpc_fail_fast,
+        v2_enabled=self._v2_enabled,
+        executing_eagerly=self._executing_eagerly,
+    )
+    pipe_r, pipe_w = multiprocessing.Pipe(duplex=False)
+    resources = Resources(
+        process_status_queue=self._process_status_queue,
+        parent_to_sub_queue=self._parent_to_sub_queue,
+        streaming_pipe_w=pipe_w,
+        barrier=self._barrier,
+    )
+    if proc_func is None:
+      proc_func, args, kwargs = self._proc_func, self._args, self._kwargs
+    # Always use dill to pickle proc_func so that we support more callable
+    # types, e.g. lambda.
+    proc_func = dill.dumps(proc_func, dill.HIGHEST_PROTOCOL)
+    if self._use_dill_for_args:
+      args = dill.dumps(args, dill.HIGHEST_PROTOCOL)
+      kwargs = dill.dumps(kwargs, dill.HIGHEST_PROTOCOL)
+
+    p = _Process(
+        test_env=test_env,
+        target=_ProcFunc(),
+        args=(resources, test_env, proc_func, args, kwargs,
+              self._use_dill_for_args))
     p.start()
+    self._processes[(task_type, task_id)] = p
     self._outstanding_subprocess_count += 1
 
     # For each subprocess, we dedicate a thread continuously reading lines
@@ -248,18 +279,15 @@ class MultiProcessRunner(object):
         target=self._continuously_readline_from_sub,
         args=(pipe_r, task_type, task_id))
     thread.start()
+    self._reading_threads.append(thread)
 
   def start(self):
     """Starts processes, one for each task in `cluster_spec`."""
-
-    global _next_pipe_index
-    self._starting_pipe_index = _next_pipe_index
-
+    if self._processes:
+      raise ValueError('MultiProcessRunner already started.')
     for task_type, addresses in self._cluster_spec.items():
       for task_id, _ in enumerate(addresses):
-        self._start_subprocess_and_reading_thread(self._proc_func, task_type,
-                                                  task_id, self._cluster_spec,
-                                                  self._args, self._kwargs)
+        self._start_subprocess_and_reading_thread(task_type, task_id)
 
     # TODO(rchao): Remove the need of using SIGALRM if possible. At this time,
     # without this the tests become very flaky.
@@ -309,33 +337,22 @@ class MultiProcessRunner(object):
       as_task_type: The task type to be run in the main process.
       as_task_id: The task id to be run in the main process.
     """
-    global _next_pipe_index
-    self._starting_pipe_index = _next_pipe_index
-
+    if self._processes:
+      raise ValueError('MultiProcessRunner already started.')
     for task_type, addresses in self._cluster_spec.items():
       for task_id, _ in enumerate(addresses):
         if not (task_type == as_task_type and task_id == as_task_id):
-          self._start_subprocess_and_reading_thread(self._proc_func, task_type,
-                                                    task_id, self._cluster_spec,
-                                                    self._args, self._kwargs)
-    tf_config_dict = {
-        'cluster': self._cluster_spec,
-        'task': {
-            'type': as_task_type,
-            'index': as_task_id,
-        },
-    }
-    if self._rpc_layer is not None:
-      tf_config_dict['rpc_layer'] = self._rpc_layer
-    os.environ['TF_CONFIG'] = json.dumps(tf_config_dict)
+          self._start_subprocess_and_reading_thread(task_type, task_id)
 
+    _set_tf_config(as_task_type, as_task_id, self._cluster_spec,
+                   self._rpc_layer)
     self._proc_func(*self._args, **self._kwargs)
 
   def start_single_process(self,
                            task_type,
                            task_id,
-                           proc_func=None,
                            cluster_spec=None,
+                           proc_func=None,
                            args=None,
                            kwargs=None):
     """Starts a single process.
@@ -352,19 +369,22 @@ class MultiProcessRunner(object):
     Args:
       task_type: The task type.
       task_id: The task id.
-      proc_func: The process function to be run on the newly started
-        process. If `None`, the function provided at `__init__` will be used.
       cluster_spec: The cluster spec to be used on the newly started
         process. If `None`, the cluster spec provided at `__init__` will be
         used.
+      proc_func: The process function to be run on the newly started
+        process. If specified, specify `args` and `kwargs` as well. If `None`,
+        the function provided at `__init__` will be used.
       args: Optional positional arguments to be supplied in `proc_func`.
       kwargs: Optional keyword arguments to be supplied in `proc_func`.
     """
-    cluster_spec = cluster_spec or self._cluster_spec
-    proc_func = proc_func or self._proc_func
-    self._start_subprocess_and_reading_thread(proc_func, task_type, task_id,
-                                              cluster_spec, args or (),
-                                              kwargs or {})
+    self._start_subprocess_and_reading_thread(
+        task_type,
+        task_id,
+        cluster_spec=cluster_spec,
+        proc_func=proc_func,
+        args=args or (),
+        kwargs=kwargs or {})
 
   def _queue_to_list(self, queue_to_convert):
     """Convert `queue.Queue` to `list`."""
@@ -379,25 +399,20 @@ class MultiProcessRunner(object):
 
   def get_process_id(self, task_type, task_id):
     """Returns the subprocess id given the task type and task id."""
-    if not hasattr(self, '_pid_dict'):
-      self._pid_dict = {}
-      subprocess_infos = []
+    p = self._processes.get((task_type, task_id), None)
+    return p.pid if p else None
 
-      while True:
-        try:
-          subprocess_info = _resource(SUBPROCESS_INFO_QUEUE).get(block=False)
-          subprocess_infos.append(subprocess_info)
-        except Queue.Empty:
-          break
-
-      for subprocess_info in subprocess_infos:
-        self._pid_dict[(subprocess_info.task_type,
-                        subprocess_info.task_id)] = subprocess_info.pid
-
-      for subprocess_info in subprocess_infos:
-        _resource(SUBPROCESS_INFO_QUEUE).put(subprocess_info)
-
-    return self._pid_dict.get((task_type, task_id), None)
+  def _join_or_terminate(self, task_type, task_id, process, timeout):
+    """Joins a process. If it times out, terminate all procsses."""
+    logging.info('joining %s-%d', task_type, task_id)
+    process.join(timeout)
+    # If exitcode is None, the process aren't terminated and this is a
+    # timeout.
+    if process.exitcode is None:
+      # Force termination to dump worker processes stack trace.
+      self.terminate_all(sig=signal.SIGTERM)
+      raise RuntimeError('%s-%d and possibly more subprocesses timed out.' %
+                         (task_type, task_id))
 
   def join(self, timeout=_DEFAULT_TIMEOUT_SEC):
     """Joins all the processes with timeout.
@@ -417,84 +432,97 @@ class MultiProcessRunner(object):
       RuntimeError: if not all processes report status approximatelty within
       `timeout` seconds, or there's an exception propagated from any subprocess.
     """
+    if self._joined:
+      raise ValueError("MultiProcessRunner can't be joined twice.")
+    self._joined = True
 
-    if not timeout:
-      timeout = float('inf')
-    start_time = time.time()
-    while self._outstanding_subprocess_count > 0:
-      try:
-        process_status = _resource(PROCESS_STATUS_QUEUE).get(timeout=10)
+    chief = self._processes.get(('chief', 0), None)
+    if self._dependence_on_chief and chief:
+      self._join_or_terminate('chief', 0, chief, timeout)
+      # Give other processes a chance to exit on their own.
+      for p in self._processes.values():
+        p.join(timeout=3)
+      self.terminate_all()
+    else:
+      for (task_type, task_id), p in self._processes.items():
+        self._join_or_terminate(task_type, task_id, p, timeout)
 
-        self._outstanding_subprocess_count -= 1
-        assert isinstance(process_status, _ProcessStatusInfo)
-        if not process_status.is_successful:
-          six.reraise(*process_status.exc_info)
+    for (task_type, task_id), p in self._processes.items():
+      logging.info('%s-%d exit code: %s', task_type, task_id, p.exitcode)
 
-        if self._dependence_on_chief and process_status.task_type == 'chief':
-          self.terminate_all()
-          break
-      except Queue.Empty:
-        if self._all_forced_terminated:
-          break
-        if time.time() - start_time > timeout:
-          # Send SIGTERM signal to subprocesses to dump their current
-          # stack trace.
-          self.terminate_all(sig=signal.SIGTERM)
-          # If none of those did, report timeout to user.
-          raise RuntimeError('One or more subprocesses timed out. '
-                             'Number of outstanding subprocesses '
-                             'is %d.' % self._outstanding_subprocess_count)
+    process_statuses = self._queue_to_list(self._process_status_queue)
+    if not self._all_forced_terminated and len(
+        process_statuses) != self._outstanding_subprocess_count:
+      raise RuntimeError(
+          'missing statuses from %d subproceses.' %
+          (self._outstanding_subprocess_count - len(process_statuses)))
+    return_values = []
+    for process_status in process_statuses:
+      assert isinstance(process_status, _ProcessStatusInfo)
+      if not process_status.is_successful:
+        six.reraise(*process_status.exc_info)
+      if process_status.return_value is not None:
+        return_values.append(process_status.return_value)
 
-    # Giving threads some time to finish the message reading from subprocesses.
-    time.sleep(5)
+    logging.info('Joining log reading threads.')
+    for thread in self._reading_threads:
+      thread.join()
+    logging.info('Joined log reading threads.')
 
-    stdout = self._queue_to_list(_resource(STREAMING_QUEUE))
-    return_value = self._queue_to_list(_resource(RETURN_VALUE_QUEUE))
+    # Clear the alarm.
+    signal.alarm(0)
 
-    # Notifying the threads that are reading lines that we should stop.
-    for pipe_index in range(self._starting_pipe_index, _next_pipe_index):  # pylint: disable=protected-access
-      _, pipe_w = _resource(STREAMING_PIPE)[pipe_index]
-      writer = os.fdopen(pipe_w.fileno(), 'w')
-      # Writing end of file message so the threads that's actively reading lines
-      # know to stop.
-      writer.writelines(['EOF'])
-      writer.close()
+    stdout = self._queue_to_list(self._streaming_queue)
 
-    return MultiProcessRunnerResult(stdout=stdout, return_value=return_value)
+    return MultiProcessRunnerResult(stdout=stdout, return_value=return_values)
 
   def terminate(self, task_type, task_id):
     """Terminates the process with `task_type` and `task_id`."""
-    _resource(PARENT_TO_SUB_QUEUE).put('terminate {} {}'.format(
-        task_type, task_id))
+    p = self._processes.get((task_type, task_id), None)
+    if p is None:
+      raise ValueError('{}-{} does not exist'.format(task_type, task_id))
+    # TODO(crccw): change to use Process.terminate() as well.
+    self._parent_to_sub_queue.put('terminate {} {}'.format(task_type, task_id))
+    p.join()
 
   def terminate_all(self, sig=None):
     """Terminates all subprocesses."""
     # Use SIGKILL as default. In systems where that's unavailable such as
     # windows, use SIGTERM.
     sig = sig or getattr(signal, 'SIGKILL', signal.SIGTERM)
-    subprocess_infos = []
-
-    while True:
+    for (task_type, task_id), p in self._processes.items():
       try:
-        subprocess_info = _resource(SUBPROCESS_INFO_QUEUE).get(block=False)
-        subprocess_infos.append(subprocess_info)
-      except Queue.Empty:
-        break
-
-    for subprocess_info in subprocess_infos:
-      logging.info('Parent process is now killing PID: %d', subprocess_info.pid)
-      try:
-        os.kill(subprocess_info.pid, sig)
+        os.kill(p.pid, sig)
       except ProcessLookupError:
-        # TODO(rchao): Remove subprocess info from the queue once a subprocess
-        # is terminated.
-        logging.info('PID %d does not exist.', subprocess_info.pid)
-
+        logging.info('Attempting to kill %s-%d but it does not exist.',
+                     task_type, task_id)
     self._all_forced_terminated = True
 
 
-class _Subprocess(object):
-  """Represents an internal subprocess used in MultiProcessRunner's context."""
+class _Process(multi_process_lib.Process):
+  """A modified `multiprocessing.Process` that can set up environment variables."""
+
+  # TODO(crccw): consider moving other logics in _ProcFunc to _Process.
+
+  def __init__(self, test_env, **kwargs):
+    super(_Process, self).__init__(**kwargs)
+    self._test_env = test_env
+    self._actual_run = getattr(self, 'run')
+    self.run = self._run_with_setenv
+
+  def _run_with_setenv(self):
+    # We need to set environment variables before doing anything because
+    # setenv() is not thread-safe.
+    test_env = self._test_env
+    if test_env.grpc_fail_fast is not None:
+      os.environ['GRPC_FAIL_FAST'] = str(test_env.grpc_fail_fast)
+    _set_tf_config(test_env.task_type, test_env.task_id, test_env.cluster_spec,
+                   test_env.rpc_layer)
+    return self._actual_run()
+
+
+class _ProcFunc(object):
+  """Represents a callable to run in a subprocess."""
 
   @contextlib.contextmanager
   def _runtime_mode(self, executing_eagerly):
@@ -505,21 +533,12 @@ class _Subprocess(object):
       with context.graph_mode():
         yield
 
-  def _finish_process(self, process_status_info, return_value):
-    """Adds data to queues before program exits."""
-    # Clear the alarm.
-    signal.alarm(0)
-
-    if return_value is not None:
-      self._add_return_data(return_value)
-    _resource(PROCESS_STATUS_QUEUE).put(process_status_info)
-
   def _message_checking_func(self, task_type, task_id):
     """A function that regularly checks messages from parent process."""
     # TODO(rchao): Remove this once parent uses SIGKILL to terminate subprocess.
     while True:
       try:
-        message = _resource(PARENT_TO_SUB_QUEUE).get(block=False)
+        message = self._resources.parent_to_sub_queue.get(block=False)
 
         # Currently the only possible message is termination.
         if not message.startswith('terminate'):
@@ -530,63 +549,75 @@ class _Subprocess(object):
         else:
           # If the message is not targeting this process, put it back to the
           # queue.
-          _resource(PARENT_TO_SUB_QUEUE).put(message)
+          self._resources.parent_to_sub_queue.put(message)
           time.sleep(1)
       except Queue.Empty:
         time.sleep(0.1)
-    self._finish_process(
+    self._resources.process_status_queue.put(
         _ProcessStatusInfo(
-            task_type=task_type, is_successful=True, exc_info=None), None)
+            task_type=task_type,
+            is_successful=True,
+            exc_info=None,
+            return_value=None))
     # `os._exit(0)` is used to more reliably terminate a subprocess.
     os._exit(0)  # pylint: disable=protected-access
 
-  def __call__(self, proc_func, task_type, task_id, per_process_cluster_spec,
-               rpc_layer, grpc_fail_fast, v2_enabled, executing_eagerly, pipe_w,
-               *arg, **kwargs):
+  def _close_streaming(self):
+    """Close stdout, stderr and streaming pipe.
+
+    We need to explicitly close them since Tensorflow may take a while to exit,
+    so that the reading threads in the main process can exit more quickly.
+    """
+    sys.stdout.flush()
+    sys.stderr.flush()
+    sys.stdout.close()
+    sys.stderr.close()
+    self._resources.streaming_pipe_w.close()
+
+  def __call__(self, resources, test_env, proc_func, args, kwargs,
+               use_dill_for_args):
     """The wrapper function that actually gets run in child process(es)."""
+
+    global _barrier
+
+    self._resources = resources
+    _barrier = self._resources.barrier
+    proc_func = dill.loads(proc_func)
+    if use_dill_for_args:
+      args = dill.loads(args)
+      kwargs = dill.loads(kwargs)
 
     if faulthandler is not None:
       faulthandler.enable()
       faulthandler.register(signal.SIGTERM, chain=True)
 
+    # All logging should go to stderr to be streamed to the main process.
+    logging.set_stderrthreshold(logging.DEBUG)
+
+    # Assign sys.stdout and sys.stderr as duplicates of `streaming_pipe_w` so
+    # print() and logging.*() write directly to `streaming_pipe_w`.
+    # Unfortunately since we cannot prepend task_type and task_id information to
+    # the streamed logs we will need a thread per subprocess to distinguish
+    # where the piece of message is from.
+    os.dup2(resources.streaming_pipe_w.fileno(), sys.stdout.fileno())
+    os.dup2(resources.streaming_pipe_w.fileno(), sys.stderr.fileno())
+
     pid = os.getpid()
     logging.info('Subprocess with PID %d (%s, %d) is now being started.', pid,
-                 task_type, task_id)
-    _resource(SUBPROCESS_INFO_QUEUE).put(
-        _SubprocessInfo(pid=pid, task_type=task_type, task_id=task_id))
-    # Assign sys.stdout and sys.stderr as duplicates of `pipe_w` so print() and
-    # logging.*() write directly to `pipe_w`. Unfortunately since we cannot
-    # prepend task_type and task_id information to the streamed logs we will
-    # need a thread per subprocess to distinguish where the piece of message is
-    # from.
-    os.dup2(pipe_w.fileno(), sys.stdout.fileno())
-    os.dup2(pipe_w.fileno(), sys.stderr.fileno())
+                 test_env.task_type, test_env.task_id)
 
     # The thread will be dedicated to checking messages from the parent process.
     threading.Thread(  # pylint: disable=unexpected-keyword-arg
         target=self._message_checking_func,
-        args=(task_type, task_id),
+        args=(test_env.task_type, test_env.task_id),
         daemon=True).start()
 
-    if grpc_fail_fast is not None:
-      os.environ['GRPC_FAIL_FAST'] = str(grpc_fail_fast)
-    tf_config_dict = {
-        'cluster': per_process_cluster_spec,
-        'task': {
-            'type': task_type,
-            'index': task_id,
-        },
-    }
-    if rpc_layer is not None:
-      tf_config_dict['rpc_layer'] = rpc_layer
-    os.environ['TF_CONFIG'] = json.dumps(tf_config_dict)
-
-    if v2_enabled:
+    if test_env.v2_enabled:
       v2_compat.enable_v2_behavior()
 
     try:
-      with self._runtime_mode(executing_eagerly):
-        return_value = proc_func(*arg, **kwargs)
+      with self._runtime_mode(test_env.executing_eagerly):
+        return_value = proc_func(*args, **kwargs)
         is_successful = True
         exc_info = None
 
@@ -606,35 +637,27 @@ class _Subprocess(object):
       raise
 
     finally:
-      self._finish_process(
-          _ProcessStatusInfo(
-              task_type=task_type,
-              is_successful=is_successful,
-              exc_info=exc_info),
-          return_value)
-
-  def _add_return_data(self, data):
-    """Adds return data that will be returned by `join`.
-
-    The function provides a way for child processes to communicate with the
-    parent process. Data passed to `_add_return_data` will be available in a
-    Python Queue.Queue that is eventually returned by `join`.
-
-    Args:
-      data: data to be made available in the queue returned by `join`.
-    """
-    # TODO(rchao): Incorporate the task type and id information in a data
-    # wrapper that becomes what is stored in the queue so we can tell where
-    # the data is from.
-    _resource(RETURN_VALUE_QUEUE).put(data)
+      info = _ProcessStatusInfo(
+          task_type=test_env.task_type,
+          is_successful=is_successful,
+          exc_info=exc_info,
+          return_value=return_value)
+      self._resources.process_status_queue.put(info)
+      self._close_streaming()
 
 
-def barrier():
-  return multi_process_lib.get_user_data()[BARRIER]
-
-
-def _resource(resource_name):
-  return multi_process_lib.get_user_data()[resource_name]
+def _set_tf_config(task_type, task_id, cluster_spec, rpc_layer=None):
+  """Set TF_CONFIG environment variable."""
+  tf_config_dict = {
+      'cluster': cluster_spec,
+      'task': {
+          'type': task_type,
+          'index': task_id,
+      },
+  }
+  if rpc_layer is not None:
+    tf_config_dict['rpc_layer'] = rpc_layer
+  os.environ['TF_CONFIG'] = json.dumps(tf_config_dict)
 
 
 def run(proc_func,
@@ -670,16 +693,19 @@ def run(proc_func,
   return runner.join(timeout)
 
 
-def test_main(max_subprocess_count=_DEFAULT_MAX_SUBPROCESS_COUNT,
-              barrier_parties=0):
-  """Main function to be called within `__main__` of a test file.
+# This is set by MultiProcessRunner in worker processes.
+_barrier = None
 
-  Args:
-    max_subprocess_count: Maximum number of subprocesses that will be used. User
-      of multi_process_runner needs to determine a number at calling this
-      method, and the subprocesses involved later should not exceed this number.
-    barrier_parties: Number of parties the barrier will be used toward. User of
-      multi_process_runner needs to determine a number at calling this method.
-  """
-  with multi_process_lib.context_manager(max_subprocess_count, barrier_parties):
-    test.main()
+
+def barrier():
+  if _barrier is None:
+    raise ValueError(
+        'barrier is not defined. It is likely because you are calling barrier()'
+        'in the main process. barrier() can only be called in the subprocesses.'
+    )
+  return _barrier
+
+
+def test_main():
+  """Main function to be called within `__main__` of a test file."""
+  multi_process_lib.test_main()

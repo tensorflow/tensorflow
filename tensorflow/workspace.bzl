@@ -532,6 +532,28 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         ],
     )
 
+    tf_http_archive(
+        name = "dill_archive",
+        build_file = clean_dep("//third_party:dill.BUILD"),
+        urls = [
+            "http://mirror.tensorflow.org/files.pythonhosted.org/packages/c7/11/345f3173809cea7f1a193bfbf02403fff250a3360e0e118a1630985e547d/dill-0.3.1.1.tar.gz",
+            "https://files.pythonhosted.org/packages/c7/11/345f3173809cea7f1a193bfbf02403fff250a3360e0e118a1630985e547d/dill-0.3.1.1.tar.gz",
+        ],
+        sha256 = "42d8ef819367516592a825746a18073ced42ca169ab1f5f4044134703e7a049c",
+        strip_prefix = "dill-0.3.1.1",
+    )
+
+    tf_http_archive(
+        name = "tblib_archive",
+        build_file = clean_dep("//third_party:tblib.BUILD"),
+        urls = [
+            "http://mirror.tensorflow.org/files.pythonhosted.org/packages/ec/c4/8c651f3240a73c28a218194f3d527eb2be5a173d08501060cdee84ade33f/tblib-1.3.2.tar.gz",
+            "https://files.pythonhosted.org/packages/ec/c4/8c651f3240a73c28a218194f3d527eb2be5a173d08501060cdee84ade33f/tblib-1.3.2.tar.gz",
+        ],
+        sha256 = "436e4200e63d92316551179dc540906652878df4ff39b43db30fcf6400444fe7",
+        strip_prefix = "tblib-1.3.2",
+    )
+
     filegroup_external(
         name = "org_python_license",
         licenses = ["notice"],  # Python 2.0
