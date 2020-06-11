@@ -1034,7 +1034,11 @@ Allocator* BaseGPUDevice::GetScopedAllocator(AllocatorAttributes attr,
 const int BaseGPUDeviceFactory::InterconnectMap::kSameDeviceStrength = 1000;
 const int BaseGPUDeviceFactory::InterconnectMap::kStreamExecutorStrength = 1;
 
-Status BaseGPUDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
+Status BaseGPUDeviceFactory::CacheDeviceIds() {
+  if (!cached_device_ids_.empty()) {
+    return Status::OK();
+  }
+
   TF_RETURN_IF_ERROR(ValidateGPUMachineManager());
   se::Platform* gpu_manager = GPUMachineManager();
   if (gpu_manager == nullptr) {
@@ -1047,20 +1051,49 @@ Status BaseGPUDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
   }
 
   std::vector<PlatformGpuId> visible_gpu_order(device_count);
-  int deviceNo = 0;
-  std::generate(visible_gpu_order.begin(), visible_gpu_order.end(),
-                [&deviceNo] { return deviceNo++; });
+  std::iota(visible_gpu_order.begin(), visible_gpu_order.end(), 0);
+  TF_RETURN_IF_ERROR(GetValidDeviceIds(visible_gpu_order, &cached_device_ids_));
+  return Status::OK();
+}
 
-  std::vector<PlatformGpuId> valid_platform_gpu_ids;
-  TF_RETURN_IF_ERROR(
-      GetValidDeviceIds(visible_gpu_order, &valid_platform_gpu_ids));
-
-  for (PlatformGpuId platform_gpu_id : valid_platform_gpu_ids) {
+Status BaseGPUDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
+  TF_RETURN_IF_ERROR(CacheDeviceIds());
+  for (PlatformGpuId platform_gpu_id : cached_device_ids_) {
     const string device_name =
         strings::StrCat("/physical_device:GPU:", platform_gpu_id.value());
     devices->push_back(device_name);
   }
 
+  return Status::OK();
+}
+
+Status BaseGPUDeviceFactory::GetDeviceDetails(
+    int device_index, std::unordered_map<string, string>* details) {
+  TF_RETURN_IF_ERROR(CacheDeviceIds());
+
+  if (device_index < 0 || device_index > cached_device_ids_.size()) {
+    return errors::Internal("Invalid device index: ", device_index);
+  }
+  PlatformGpuId platform_gpu_id = cached_device_ids_[device_index];
+
+  TF_RETURN_IF_ERROR(ValidateGPUMachineManager());
+  se::Platform* gpu_manager = GPUMachineManager();
+  if (gpu_manager == nullptr) {
+    return errors::Internal("Cannot get GPUMachineManager");
+  }
+  auto desc_status = gpu_manager->DescriptionForDevice(platform_gpu_id.value());
+  if (!desc_status.ok()) {
+    return desc_status.status();
+  }
+
+  auto desc = desc_status.ConsumeValueOrDie();
+  (*details)["device_name"] = desc->name();
+#if GOOGLE_CUDA
+  int cc_major, cc_minor;
+  if (desc->cuda_compute_capability(&cc_major, &cc_minor)) {
+    (*details)["compute_capability"] = strings::StrCat(cc_major, ".", cc_minor);
+  }
+#endif  // GOOGLE_CUDA
   return Status::OK();
 }
 
