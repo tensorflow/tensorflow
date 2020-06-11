@@ -1,5 +1,6 @@
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 
 package(
     default_visibility = [
@@ -271,7 +272,7 @@ cc_library(
 
 # This tool list flex ops and kernels inside a TFLite file.
 # It is used to generate header file for selective registration.
-cc_binary(
+tf_cc_binary(
     name = "list_flex_ops_main",
     srcs = ["list_flex_ops_main.cc"],
     visibility = ["//visibility:public"],
@@ -282,7 +283,7 @@ cc_binary(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "list_flex_ops_test",
     srcs = ["list_flex_ops_test.cc"],
     data = [
@@ -293,7 +294,6 @@ cc_test(
         "//tensorflow/lite:testdata/test_model_broken.bin",
     ],
     tags = [
-        "no_oss",  # Currently requires --config=monolithic, b/118895218.
         "tflite_not_portable_android",
         "tflite_not_portable_ios",
     ],
