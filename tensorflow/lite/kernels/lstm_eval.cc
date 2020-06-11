@@ -58,61 +58,61 @@ void ComputeRowSums(
     const float* aux_input_ptr) {
   // Compute the row sums for dequantization
   if (!use_cifg) {
-    memset(input_to_input_row_sums, 0, sizeof(int32_t) * n_cell);
+    std::fill_n(input_to_input_row_sums, n_cell, 0);
     tensor_utils::ReductionSumVector(input_to_input_weights_ptr,
                                      input_to_input_row_sums, n_cell, n_input);
   }
-  memset(input_to_forget_row_sums, 0, sizeof(int32_t) * n_cell);
+  std::fill_n(input_to_forget_row_sums, n_cell, 0);
   tensor_utils::ReductionSumVector(input_to_forget_weights_ptr,
                                    input_to_forget_row_sums, n_cell, n_input);
-  memset(input_to_cell_row_sums, 0, sizeof(int32_t) * n_cell);
+  std::fill_n(input_to_cell_row_sums, n_cell, 0);
   tensor_utils::ReductionSumVector(input_to_cell_weights_ptr,
                                    input_to_cell_row_sums, n_cell, n_input);
-  memset(input_to_output_row_sums, 0, sizeof(int32_t) * n_cell);
+  std::fill_n(input_to_output_row_sums, n_cell, 0);
   tensor_utils::ReductionSumVector(input_to_output_weights_ptr,
                                    input_to_output_row_sums, n_cell, n_input);
 
   if (aux_input_ptr) {
     if (!use_cifg) {
-      memset(aux_input_to_input_row_sums, 0, sizeof(int32_t) * n_cell);
+      std::fill_n(aux_input_to_input_row_sums, n_cell, 0);
       tensor_utils::ReductionSumVector(aux_input_to_input_weights_ptr,
                                        aux_input_to_input_row_sums, n_cell,
                                        n_aux_input);
     }
-    memset(aux_input_to_forget_row_sums, 0, sizeof(int32_t) * n_cell);
+    std::fill_n(aux_input_to_forget_row_sums, n_cell, 0);
     tensor_utils::ReductionSumVector(aux_input_to_forget_weights_ptr,
                                      aux_input_to_forget_row_sums, n_cell,
                                      n_aux_input);
-    memset(aux_input_to_cell_row_sums, 0, sizeof(int32_t) * n_cell);
+    std::fill_n(aux_input_to_cell_row_sums, n_cell, 0);
     tensor_utils::ReductionSumVector(aux_input_to_cell_weights_ptr,
                                      aux_input_to_cell_row_sums, n_cell,
                                      n_aux_input);
-    memset(aux_input_to_output_row_sums, 0, sizeof(int32_t) * n_cell);
+    std::fill_n(aux_input_to_output_row_sums, n_cell, 0);
     tensor_utils::ReductionSumVector(aux_input_to_output_weights_ptr,
                                      aux_input_to_output_row_sums, n_cell,
                                      n_aux_input);
   }
   if (!use_cifg) {
-    memset(recurrent_to_input_row_sums, 0, sizeof(int32_t) * n_cell);
+    std::fill_n(recurrent_to_input_row_sums, n_cell, 0);
     tensor_utils::ReductionSumVector(recurrent_to_input_weights_ptr,
                                      recurrent_to_input_row_sums, n_cell,
                                      n_output);
   }
-  memset(recurrent_to_forget_row_sums, 0, sizeof(int32_t) * n_cell);
+  std::fill_n(recurrent_to_forget_row_sums, n_cell, 0);
   tensor_utils::ReductionSumVector(recurrent_to_forget_weights_ptr,
                                    recurrent_to_forget_row_sums, n_cell,
                                    n_output);
-  memset(recurrent_to_cell_row_sums, 0, sizeof(int32_t) * n_cell);
+  std::fill_n(recurrent_to_cell_row_sums, n_cell, 0);
   tensor_utils::ReductionSumVector(recurrent_to_cell_weights_ptr,
                                    recurrent_to_cell_row_sums, n_cell,
                                    n_output);
-  memset(recurrent_to_output_row_sums, 0, sizeof(int32_t) * n_cell);
+  std::fill_n(recurrent_to_output_row_sums, n_cell, 0);
   tensor_utils::ReductionSumVector(recurrent_to_output_weights_ptr,
                                    recurrent_to_output_row_sums, n_cell,
                                    n_output);
 
   if (projection_weights_ptr != nullptr) {
-    memset(projection_weights_row_sums, 0, sizeof(int32_t) * n_output);
+    std::fill_n(projection_weights_row_sums, n_output, 0);
     tensor_utils::ReductionSumVector(
         projection_weights_ptr, projection_weights_row_sums, n_output, n_cell);
   }
@@ -1175,11 +1175,11 @@ inline void LstmStepInteger(
 
   // Set scratch to 0.
   if (!use_cifg) {
-    memset(scratch_0_ptr, 0, n_batch * n_cell * sizeof(int16_t));
+    std::fill_n(scratch_0_ptr, n_batch * n_cell, 0);
   }
-  memset(scratch_1_ptr, 0, n_batch * n_cell * sizeof(int16_t));
-  memset(scratch_2_ptr, 0, n_batch * n_cell * sizeof(int16_t));
-  memset(scratch_3_ptr, 0, n_batch * n_cell * sizeof(int16_t));
+  std::fill_n(scratch_1_ptr, n_batch * n_cell, 0);
+  std::fill_n(scratch_2_ptr, n_batch * n_cell, 0);
+  std::fill_n(scratch_3_ptr, n_batch * n_cell, 0);
 
   // Forget gate.
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
@@ -1309,7 +1309,7 @@ inline void LstmStepInteger(
                          scratch_4_ptr);
   // Projection.
   if (use_projection) {
-    memset(output_ptr, 0, n_batch * n_output * sizeof(int8_t));
+    std::fill_n(output_ptr, n_batch * n_output, 0);
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         scratch_4_ptr, projection_effective_bias, proj_weight_ptr,
         effective_proj_scale_a, effective_proj_scale_b, n_batch, n_cell,
@@ -1473,8 +1473,8 @@ void LstmStepInteger(
     int16_t* scratch4, int16_t* scratch5, int16_t* scratch6,
     int16_t* scratch7) {
   // Forget gate.
-  memset(scratch0, 0, n_batch * n_cell);
-  memset(scratch1, 0, n_batch * n_cell);
+  std::fill_n(scratch0, n_batch * n_cell, 0);
+  std::fill_n(scratch1, n_batch * n_cell, 0);
   tensor_utils::MatrixBatchVectorMultiply(
       input_ptr, input_zp, input_to_forget_weight_ptr,
       effective_input_to_forget_scale_a, effective_input_to_forget_scale_b,
@@ -1500,8 +1500,8 @@ void LstmStepInteger(
   tensor_utils::ApplySigmoidFloat(scratch2, n_batch, n_cell, scratch2);
 
   // Update gate.
-  memset(scratch0, 0, n_batch * n_cell);
-  memset(scratch1, 0, n_batch * n_cell);
+  std::fill_n(scratch0, n_batch * n_cell, 0);
+  std::fill_n(scratch1, n_batch * n_cell, 0);
   tensor_utils::MatrixBatchVectorMultiply(
       input_ptr, input_zp, input_to_cell_weight_ptr,
       effective_input_to_cell_scale_a, effective_input_to_cell_scale_b, n_batch,
@@ -1526,8 +1526,8 @@ void LstmStepInteger(
   tensor_utils::ApplyTanhFloat(scratch3, n_batch, n_cell, -12, scratch3);
 
   // Output gate.
-  memset(scratch0, 0, n_batch * n_cell);
-  memset(scratch1, 0, n_batch * n_cell);
+  std::fill_n(scratch0, n_batch * n_cell, 0);
+  std::fill_n(scratch1, n_batch * n_cell, 0);
   tensor_utils::MatrixBatchVectorMultiply(
       input_ptr, input_zp, input_to_output_weight_ptr,
       effective_input_to_output_scale_a, effective_input_to_output_scale_b,
@@ -1587,7 +1587,7 @@ void LstmStepInteger(
   }
 
   // Copy output to activation.
-  memcpy(activation_ptr, output_ptr, n_batch * n_output * sizeof(int8_t));
+  std::copy_n(output_ptr, n_batch * n_output, activation_ptr);
 }
 
 }  // namespace
