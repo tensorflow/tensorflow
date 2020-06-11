@@ -24,6 +24,7 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops as framework_ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import compat
@@ -86,6 +87,38 @@ class LiftToGraphTest(test.TestCase):
         print('Unexpected class_attr', class_attr, 'on', op.name)
       self.assertItemsEqual(op.colocation_groups(),  # Expect default self-ref.
                             [compat.as_bytes('loc:@%s' % op.name)])
+
+  def testMixedSourceAndNonSourceInOpOutputs(self):
+
+    @def_function.function
+    def fn():
+      input_range = math_ops.range(0, 4)
+      split0, split1 = array_ops.split(input_range, 2, name='split')
+      concat = array_ops.concat([split0, split1], axis=0, name='concat')
+      return concat
+
+    concrete_fn = fn.get_concrete_function()
+    out = concrete_fn.graph.outputs[0]
+
+    g = func_graph.FuncGraph('lifted')
+    # split:0 is source, but split:1 is non source.
+    op_map = lift_to_graph.lift_to_graph(
+        [out],
+        g,
+        sources=[concrete_fn.graph.get_operation_by_name('split').outputs[0]])
+    for old, new in op_map.items():
+      if old.name == 'split':
+        self.assertEqual('split_1', new.name)
+      elif old.name == 'split:0':
+        self.assertEqual('split:0', new.name)
+      elif old.name == 'split:1':
+        self.assertEqual('split_1:1', new.name)
+      elif old.name == 'concat':
+        new_concat_inputs = []
+        for input_tensor in new.inputs:
+          new_concat_inputs.append(input_tensor.name)
+        # The inputs of 'concat' used to be ['split:0', 'split:1'].
+        self.assertContainsSubset(['split:0', 'split_1:1'], new_concat_inputs)
 
 
 if __name__ == '__main__':
