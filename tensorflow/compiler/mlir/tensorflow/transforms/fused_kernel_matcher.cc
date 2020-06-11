@@ -43,7 +43,8 @@ namespace {
 // Optimizes TF computations by fusing subgraphs/nodes onto more efficient
 // implementations to decrease the number of operations needed to perform a
 // computation.
-struct OpFusionPass : public PassWrapper<OpFusionPass, FunctionPass> {
+struct FusedKernelMatcherPass
+    : public PassWrapper<FusedKernelMatcherPass, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -151,7 +152,7 @@ class FuseConv2DBiasAdd : public OpRewritePattern<Conv2DOp> {
   }
 };
 
-void OpFusionPass::runOnFunction() {
+void FusedKernelMatcherPass::runOnFunction() {
   OwningRewritePatternList patterns;
   auto func = getFunction();
   patterns.insert<FuseConv2DBiasAdd>(&getContext());
@@ -161,13 +162,13 @@ void OpFusionPass::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateOpFusionPass() {
-  return std::make_unique<OpFusionPass>();
+std::unique_ptr<OperationPass<FuncOp>> CreateFusedKernelMatcherPass() {
+  return std::make_unique<FusedKernelMatcherPass>();
 }
 
-static PassRegistration<OpFusionPass> pass(
-    "tf-op-fusion",
-    "Replaces commonly occurring subgraphs with optimized fused kernels");
+static PassRegistration<FusedKernelMatcherPass> pass(
+    "tf-fused-kernel-matcher",
+    "Matches computations corresponding to optimized fused kernels");
 
 }  // namespace TF
 
