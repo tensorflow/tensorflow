@@ -125,6 +125,22 @@ cc_library(
 )
 
 cc_library(
+    name = "leaky_relu_tester",
+    testonly = 1,
+    srcs = ["leaky_relu_tester.cc"],
+    hdrs = ["leaky_relu_tester.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
     name = "pad_tester",
     testonly = 1,
     srcs = ["pad_tester.cc"],
@@ -348,6 +364,21 @@ cc_test(
     deps = [
         ":test_main",
         ":unary_elementwise_tester",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "leaky_relu_test",
+    srcs = ["leaky_relu_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":leaky_relu_tester",
+        ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],

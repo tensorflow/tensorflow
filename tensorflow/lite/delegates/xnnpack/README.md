@@ -146,6 +146,10 @@ Below is the list of current operators and limitations:
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
+### `LEAKY_RELU`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
 ### `LOGISTIC`
 
 * Inputs and outputs must be in 32-bit floating-point format.
