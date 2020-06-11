@@ -30,4 +30,4 @@ sudo xcode-select -s "${DEVELOPER_DIR}"
 tensorflow/tools/ci_build/osx/libtensorflow_cpu.sh
 
 # Copy the nightly version update script
-cp tensorflow/tools/ci_build/builds/libtensorflow/libtensorflow_nightly_symlink.sh lib_package
+cp tensorflow/tools/ci_build/builds/libtensorflow_nightly_symlink.sh lib_package
