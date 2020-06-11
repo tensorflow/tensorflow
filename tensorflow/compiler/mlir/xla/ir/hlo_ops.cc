@@ -143,7 +143,7 @@ DenseIntElementsAttr BuildConvPaddingAttrs(
 
   int rank = padding_low.size();
   SmallVector<int64_t, 8> padding;
-  for (unsigned i = 0; i < rank; ++i) {
+  for (unsigned i = 0; i < static_cast<size_t>(rank); ++i) {
     padding.push_back(GetPaddingValue(padding_attr, {i, 0}) + padding_low[i]);
     padding.push_back(GetPaddingValue(padding_attr, {i, 1}) + padding_high[i]);
   }
@@ -853,7 +853,7 @@ static Attribute foldConcatenateHelper(ConcatenateOp* op,
   auto shape = type.getShape();
 
   size_t top_size = 1;
-  for (int i = 0; i < axis; i++) {
+  for (size_t i = 0; i < axis; i++) {
     top_size = top_size * shape[i];
   }
 
@@ -1118,7 +1118,7 @@ static LogicalResult Verify(MapOp op) {
   // increasing.
   auto values = op.dimensions().getValues<int64_t>();
   auto dimensions = std::vector<int64_t>{values.begin(), values.end()};
-  for (int i = 0; i < dimensions.size(); ++i) {
+  for (int i = 0; static_cast<size_t>(i) < dimensions.size(); ++i) {
     if (dimensions[i] != i)
       return op.emitOpError() << "requires monotonically increasing dimension "
                                  "numbers, but got: "

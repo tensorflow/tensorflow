@@ -268,7 +268,7 @@ inline void RequantizeManyInNewRangeReference(const qint32* input, int64 count,
   // that could be easily adapted for a SIMD implementation. It should also be
   // possible to perform all the calculations in 32-bit rather than 64, but
   // that's not been implemented yet.
-  for (size_t index = 0; index < count; ++index) {
+  for (size_t index = 0; static_cast<tensorflow::int64>(index) < count; ++index) {
     const int64 input_value = static_cast<int64>(input[index]);
     const int64 fp_value =
         ((input_value * range_scale_fp) >> 32) + input_offset_fp;

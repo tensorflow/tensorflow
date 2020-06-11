@@ -294,7 +294,7 @@ class QuantizationDriver {
         return;
       if (current_op == op) llvm::errs() << "===>>>";
       llvm::errs() << op->getName() << " : (";
-      for (auto i = 0; i < op->getNumOperands(); ++i) {
+      for (size_t i = 0; i < op->getNumOperands(); ++i) {
         if (auto params = GetOperandQuantState(op, i).params)
           params.print(llvm::errs());
         else
@@ -303,7 +303,7 @@ class QuantizationDriver {
         llvm::errs() << ",";
       }
       llvm::errs() << ") -> (";
-      for (auto i = 0; i < op->getNumResults(); ++i) {
+      for (size_t i = 0; i < op->getNumResults(); ++i) {
         if (auto params = GetResultQuantState(op, i).params)
           params.print(llvm::errs());
         else

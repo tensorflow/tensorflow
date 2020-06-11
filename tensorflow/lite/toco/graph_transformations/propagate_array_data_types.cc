@@ -170,7 +170,7 @@ void SetDataTypeForAllOutputs(Model* model, Operator* op,
       if (unsupported_op->output_data_types.size() < op->outputs.size()) {
         return ::tensorflow::Status::OK();
       }
-      for (int i = 0; i < op->outputs.size(); ++i) {
+      for (size_t i = 0; i < op->outputs.size(); ++i) {
         const string& output = op->outputs[i];
         const ArrayDataType data_type = unsupported_op->output_data_types[i];
         model->GetArray(output).data_type = data_type;

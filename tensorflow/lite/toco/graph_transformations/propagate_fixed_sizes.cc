@@ -431,7 +431,7 @@ void ProcessTensorFlowReshapeOperator(Model* model,
   bool has_wildcard = false;
   int wildcard_index = 0;
   int product_non_wildcard_dims = 1;
-  for (int i = 0; i < shape_data.size(); i++) {
+  for (size_t i = 0; i < shape_data.size(); i++) {
     if (shape_data[i] == -1) {
       CHECK(!has_wildcard);
       has_wildcard = true;
@@ -574,7 +574,7 @@ void ProcessTensorFlowReductionOperator(Model* model, Operator* op) {
     std::set<int32> true_indices;
     const auto& reduction_indices =
         reduction_indices_array.GetBuffer<ArrayDataType::kInt32>().data;
-    for (int i = 0; i < reduction_indices.size(); ++i) {
+    for (size_t i = 0; i < reduction_indices.size(); ++i) {
       const int32 reduction_index = reduction_indices[i];
       if (reduction_index < -input_rank || reduction_index >= input_rank) {
         CHECK(false) << "Invalid reduction dimension " << reduction_index
@@ -627,7 +627,7 @@ void ProcessSliceOperator(Model* model, SliceOperator* op) {
   CHECK_EQ(op->begin.size(), op->size.size());
 
   std::vector<int> output_dims;
-  for (int i = 0; i < op->begin.size(); ++i) {
+  for (size_t i = 0; i < op->begin.size(); ++i) {
     int size = op->size[i];
     if (size == -1) {
       size = input_array.shape().dims(i) - op->begin[i];
@@ -883,7 +883,7 @@ void ProcessTensorFlowSplitVOperator(Model* model,
 
   CHECK_EQ(op->outputs.size(), op->num_split);
 
-  for (int i = 0; i < op->outputs.size(); ++i) {
+  for (size_t i = 0; i < op->outputs.size(); ++i) {
     const auto& output = op->outputs[i];
     Shape output_shape = input_shape;
     (*output_shape.mutable_dims())[axis] = size_splits_vector.at(i);
@@ -1514,7 +1514,7 @@ void ProcessPadOperator(Model* model, PadOperator* op) {
   std::vector<int>& dims = *output_shape.mutable_dims();
   CHECK_EQ(op->left_padding.size(), dims.size());
 
-  for (int i = 0; i < op->left_padding.size(); ++i) {
+  for (size_t i = 0; i < op->left_padding.size(); ++i) {
     dims[i] += op->left_padding[i] + op->right_padding[i];
   }
 
@@ -1540,7 +1540,7 @@ void ProcessPadV2Operator(Model* model, PadV2Operator* op) {
   std::vector<int>& dims = *output_shape.mutable_dims();
   CHECK_EQ(op->left_padding.size(), dims.size());
 
-  for (int i = 0; i < op->left_padding.size(); ++i) {
+  for (size_t i = 0; i < op->left_padding.size(); ++i) {
     dims[i] += op->left_padding[i] + op->right_padding[i];
   }
 
@@ -1683,7 +1683,7 @@ void ProcessStridedSliceOperator(Model* model, StridedSliceOperator* op) {
   CHECK_LE(op->strides.size(), num_input_axes)
       << "StridedSlice op with output \"" << op->outputs[0]
       << "\", requires no more than " << num_input_axes << " strides";
-  for (int i = 0; i < op->strides.size(); i++) {
+  for (size_t i = 0; i < op->strides.size(); i++) {
     CHECK_NE(op->strides[i], 0) << "Strides must be non-zero. Axis " << i
                                 << " has stride=" << op->strides[i] << ".";
   }
@@ -1814,7 +1814,7 @@ void ProcessTransposeOperator(Model* model, TransposeOperator* op) {
       << "Transpose permutation input " << op->inputs[1]
       << " must be same length as input dimensions";
   std::vector<int>* output_dims = output_array.mutable_shape()->mutable_dims();
-  for (int i = 0; i < perm.size(); i++) {
+  for (size_t i = 0; i < perm.size(); i++) {
     int axis = perm[i];
     CHECK_GE(axis, 0);
     CHECK_LT(axis, input_shape.dimensions_count());
@@ -1856,8 +1856,8 @@ void ProcessArgMinMaxOperator(Model* model, Op* op) {
   std::vector<int> output_dims;
 
   output_dims.reserve(input_dims.size() - 1);
-  for (int i = 0; i < input_dims.size(); ++i) {
-    if (i != axis) {
+  for (size_t i = 0; i < input_dims.size(); ++i) {
+    if ( static_cast<int>(i) != axis) {
       output_dims.push_back(input_dims[i]);
     }
   }
@@ -1938,7 +1938,7 @@ void ProcessTileOperator(Model* model, TensorFlowTileOperator* op) {
 
   auto* mutable_dims = output_array.mutable_shape()->mutable_dims();
   mutable_dims->resize(multiples.size());
-  for (int i = 0; i < mutable_dims->size(); ++i) {
+  for (size_t i = 0; i < mutable_dims->size(); ++i) {
     (*mutable_dims)[i] = input_shape.dims(i) * multiples[i];
   }
 }
@@ -2010,8 +2010,8 @@ void ProcessUnpackOperator(Model* model, UnpackOperator* op) {
   std::vector<int> output_dims;
 
   output_dims.reserve(input_dims.size() - 1);
-  for (int i = 0; i < input_dims.size(); ++i) {
-    if (i != op->axis) {
+  for (size_t i = 0; i < input_dims.size(); ++i) {
+    if ( static_cast<int>(i) != op->axis) {
       output_dims.push_back(input_dims[i]);
     }
   }
@@ -2399,7 +2399,7 @@ void ProcessScatterNdOperator(Model* model, ScatterNdOperator* op) {
       if (unsupported_op->output_shapes.size() < op->outputs.size()) {
         return ::tensorflow::Status::OK();
       }
-      for (int i = 0; i < op->outputs.size(); ++i) {
+      for (size_t i = 0; i < op->outputs.size(); ++i) {
         const string& output = op->outputs[i];
         model->GetArray(output).copy_shape(unsupported_op->output_shapes.at(i));
       }

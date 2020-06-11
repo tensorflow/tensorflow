@@ -41,7 +41,7 @@ std::string MakeUniqueFilename(string name) {
   static NameCounts& instance = *new NameCounts;
 
   // Remove illegal characters from `name`.
-  for (int i = 0; i < name.size(); ++i) {
+  for (size_t i = 0; i < name.size(); ++i) {
     char ch = name[i];
     if (ch == '/' || ch == '[' || ch == ']' || ch == '*' || ch == '?' ||
         ch == '\\') {

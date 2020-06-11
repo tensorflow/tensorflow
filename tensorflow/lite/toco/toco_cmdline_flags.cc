@@ -320,7 +320,7 @@ void ReadTocoFlagsFromCommandLineFlags(const ParsedTocoFlags& parsed_toco_flags,
     std::vector<string> input_types =
         absl::StrSplit(parsed_toco_flags.input_types.value(), ',');
     QCHECK(!input_types.empty());
-    for (int i = 1; i < input_types.size(); i++) {
+    for (size_t i = 1; i < input_types.size(); i++) {
       QCHECK_EQ(input_types[i], input_types[0]);
     }
     toco::IODataType input_type;

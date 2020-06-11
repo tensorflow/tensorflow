@@ -266,7 +266,7 @@ void SortXSpace(XSpace* space) {
 // smaller than these value.
 void NormalizeTimestamps(XPlane* plane, uint64 start_time_ns) {
   for (XLine& line : *plane->mutable_lines()) {
-    if (line.timestamp_ns() >= start_time_ns) {
+    if (line.timestamp_ns() >= static_cast<long int>(start_time_ns)) {
       line.set_timestamp_ns(line.timestamp_ns() - start_time_ns);
     }
   }

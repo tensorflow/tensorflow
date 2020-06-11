@@ -486,18 +486,18 @@ class BatchResource : public ResourceBase {
     std::map<string, std::vector<Tensor>> split_tensors;
 
     DCHECK_EQ(batch->task(0).context->num_outputs(), combined_outputs.size());
-    if (combined_outputs.size() != batch->task(0).context->num_outputs()) {
+    if (static_cast<int>(combined_outputs.size()) != batch->task(0).context->num_outputs()) {
       return errors::Internal("Wrong number of batched output tensors");
     }
 
     // Generate 'split_tensors' and populate the context outputs.
-    for (int i = 0; i < combined_outputs.size(); ++i) {
+    for (size_t i = 0; i < combined_outputs.size(); ++i) {
       const Tensor& output_tensor = combined_outputs[i];
       if (output_tensor.shape().dims() == 0) {
         return errors::FailedPrecondition(
             "Batched output tensor has 0 dimensions");
       }
-      if (output_tensor.shape().dim_size(0) != batch->size() + padding_size) {
+      if (output_tensor.shape().dim_size(0) != static_cast<long long int>(batch->size() + padding_size)) {
         return errors::FailedPrecondition(
             "Batched output tensor's 0th dimension does not equal the sum of "
             "the 0th dimension sizes of the input tensors");

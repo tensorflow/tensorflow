@@ -906,7 +906,7 @@ Status S3FileSystem::MultiPartCopy(const Aws::String& source,
       // wait on the mutex until notify is called
       // then check the finished parts as there could be false notifications
       multi_part_copy_cv.wait(lock, [&finishedPartStates, num_parts] {
-        return finishedPartStates.size() == num_parts;
+        return static_cast<const int>(finishedPartStates.size()) == num_parts;
       });
     }
     // check if there was any error for any part

@@ -48,7 +48,7 @@ bool ParseInputNodeQuantSpecs(absl::string_view node_names,
   std::vector<double> node_mins;
   if (!min_values.empty()) {
     std::vector<std::string> node_mins_str = absl::StrSplit(min_values, ',');
-    for (int i = 0; i < node_mins_str.size(); i++) {
+    for (size_t i = 0; i < node_mins_str.size(); i++) {
       double value;
       if (!absl::SimpleAtod(node_mins_str[i], &value)) {
         return true;
@@ -60,7 +60,7 @@ bool ParseInputNodeQuantSpecs(absl::string_view node_names,
   std::vector<double> node_maxs;
   if (!max_values.empty()) {
     std::vector<std::string> node_maxs_str = absl::StrSplit(max_values, ',');
-    for (int i = 0; i < node_maxs_str.size(); i++) {
+    for (size_t i = 0; i < node_maxs_str.size(); i++) {
       double value;
       if (!absl::SimpleAtod(node_maxs_str[i], &value)) {
         llvm::errs() << "Unexpected mins: " << node_maxs_str[i] << "\n";

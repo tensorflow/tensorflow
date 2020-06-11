@@ -124,11 +124,11 @@ namespace toco {
   const auto& offset_float_data =
       offset_array.GetBuffer<ArrayDataType::kFloat>().data;
 
-  CHECK(mul_float_data.size() == buffer_size);
-  CHECK(add_float_data.size() == buffer_size);
-  CHECK(mean_float_data.size() == buffer_size);
-  CHECK(multiplier_float_data.size() == buffer_size);
-  CHECK(offset_float_data.size() == buffer_size);
+  CHECK(static_cast<int>(mul_float_data.size()) == buffer_size);
+  CHECK(static_cast<int>(add_float_data.size()) == buffer_size);
+  CHECK(static_cast<int>(mean_float_data.size()) == buffer_size);
+  CHECK(static_cast<int>(multiplier_float_data.size()) == buffer_size);
+  CHECK(static_cast<int>(offset_float_data.size()) == buffer_size);
 
   for (int i = 0; i < buffer_size; i++) {
     mul_float_data[i] = multiplier_float_data[i];
