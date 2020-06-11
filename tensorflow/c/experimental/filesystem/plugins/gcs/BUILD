@@ -26,6 +26,6 @@ cc_library(
     deps = [
         "//tensorflow/c:tf_status",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
-        "@com_github_googleapis_google_cloud_cpp//:storage_client",
+        "@com_github_googlecloudplatform_google_cloud_cpp//:storage_client",
     ],
 )
