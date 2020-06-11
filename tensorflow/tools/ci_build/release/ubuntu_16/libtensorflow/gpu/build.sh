@@ -33,3 +33,8 @@ if [ -n "${IS_NIGHTLY_BUILD}" ]; then
 fi
 
 ./tensorflow/tools/ci_build/linux/libtensorflow.sh
+
+# Copy the nightly version update script
+if [ -n "${IS_NIGHTLY_BUILD}" ]; then
+  cp tensorflow/tools/ci_build/builds/libtensorflow/libtensorflow_nightly_symlink.sh lib_package
+fi
