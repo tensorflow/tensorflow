@@ -358,7 +358,7 @@ def HLO_SubOp : HLO_BinaryElementwiseOp<"subtract",
 }
 
 //===----------------------------------------------------------------------===//
-// XLA binary elementwise op definitions.
+// XLA binary logical elementwise op definitions.
 //===----------------------------------------------------------------------===//
 
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations

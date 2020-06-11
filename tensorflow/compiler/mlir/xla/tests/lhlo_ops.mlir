@@ -1,8 +1,66 @@
 // RUN: xla-opt %s -verify-diagnostics -split-input-file | xla-opt | FileCheck %s
 
-func @enforce_same_shape(%arg0: memref<1xf32>, %arg1: memref<2xf32>) -> () {
-  // expected-error@+1{{'xla_lhlo.tanh' op requires all operands to have the same type}}
-  "xla_lhlo.tanh"(%arg0, %arg1) : (memref<1xf32>, memref<2xf32>) -> ()
+// -----
+
+// CHECK-LABEL: func @ceil
+func @ceil(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
+  "xla_lhlo.ceil"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  return
+}
+
+// -----
+
+func @ceil(%input: memref<2x2xi32>, %result: memref<2x2xi32>) {
+  // expected-error@+1{{must be memref of floating-point values}}
+  "xla_lhlo.ceil"(%input, %result) : (memref<2x2xi32>, memref<2x2xi32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @cos
+func @cos(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
+  "xla_lhlo.cosine"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @cos
+func @cos(%input: memref<2x2xcomplex<f32>>, %result: memref<2x2xcomplex<f32>>) {
+  "xla_lhlo.cosine"(%input, %result) : (memref<2x2xcomplex<f32>>, memref<2x2xcomplex<f32>>) -> ()
+  return
+}
+
+// -----
+
+func @cos(%input: memref<2x2xi32>, %result: memref<2x2xi32>) {
+  // expected-error@+1{{must be memref of floating-point or complex-type values}}
+  "xla_lhlo.cosine"(%input, %result) : (memref<2x2xi32>, memref<2x2xi32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @sin
+func @sin(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
+  "xla_lhlo.sine"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @sin
+func @sin(%input: memref<2x2xcomplex<f32>>, %result: memref<2x2xcomplex<f32>>) {
+  "xla_lhlo.sine"(%input, %result) : (memref<2x2xcomplex<f32>>, memref<2x2xcomplex<f32>>) -> ()
+  return
+}
+
+// -----
+
+func @sin(%input: memref<2x2xi32>, %result: memref<2x2xi32>) {
+  // expected-error@+1{{must be memref of floating-point or complex-type values}}
+  "xla_lhlo.sine"(%input, %result) : (memref<2x2xi32>, memref<2x2xi32>) -> ()
   return
 }
 
@@ -25,16 +83,40 @@ func @abs_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
 // -----
 
 // CHECK-LABEL: func @convert_memref
-func @convert_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
-  "xla_lhlo.convert"(%in, %out) : (memref<10xf32>, memref<10xf32>) -> ()
+func @convert_memref(%in: memref<10xf32>, %out: memref<10xi32>) -> () {
+  "xla_lhlo.convert"(%in, %out) : (memref<10xf32>, memref<10xi32>) -> ()
   return
 }
 
 // -----
 
-// CHECK-LABEL: func @exp_memref
-func @exp_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
-  "xla_lhlo.exponential"(%in, %out) : (memref<10xf32>, memref<10xf32>) -> ()
+func @convert_memref(%in: memref<10xf32>, %out: memref<9xi32>) -> () {
+  // expected-error@+1{{requires the same shape for all operands}}
+  "xla_lhlo.convert"(%in, %out) : (memref<10xf32>, memref<9xi32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @exp
+func @exp(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
+  "xla_lhlo.exponential"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @exp
+func @exp(%input: memref<2x2xcomplex<f32>>, %result: memref<2x2xcomplex<f32>>) {
+  "xla_lhlo.exponential"(%input, %result) : (memref<2x2xcomplex<f32>>, memref<2x2xcomplex<f32>>) -> ()
+  return
+}
+
+// -----
+
+func @exp(%input: memref<2x2xi32>, %result: memref<2x2xi32>) {
+  // expected-error@+1{{must be memref of floating-point or complex-type values}}
+  "xla_lhlo.exponential"(%input, %result) : (memref<2x2xi32>, memref<2x2xi32>) -> ()
   return
 }
 
@@ -43,6 +125,22 @@ func @exp_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
 // CHECK-LABEL: func @log_memref
 func @log_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
   "xla_lhlo.log"(%in, %out) : (memref<10xf32>, memref<10xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @log_memref
+func @log_memref(%in: memref<10xcomplex<f32>>, %out: memref<10xcomplex<f32>>) -> () {
+  "xla_lhlo.log"(%in, %out) : (memref<10xcomplex<f32>>, memref<10xcomplex<f32>>) -> ()
+  return
+}
+
+// -----
+
+func @log_memref(%in: memref<10xi32>, %out: memref<10xi32>) -> () {
+  // expected-error@+1{{must be memref of floating-point or complex-type values}}
+  "xla_lhlo.log"(%in, %out) : (memref<10xi32>, memref<10xi32>) -> ()
   return
 }
 
@@ -64,6 +162,46 @@ func @rsqrt_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
 
 // -----
 
+// CHECK-LABEL: func @rsqrt_memref
+func @rsqrt_memref(%in: memref<10xcomplex<f32>>, %out: memref<10xcomplex<f32>>) -> () {
+  "xla_lhlo.rsqrt"(%in, %out) : (memref<10xcomplex<f32>>, memref<10xcomplex<f32>>) -> ()
+  return
+}
+
+// -----
+
+func @rsqrt_memref(%in: memref<10xi32>, %out: memref<10xi32>) -> () {
+  // expected-error@+1{{must be memref of floating-point or complex-type values}}
+  "xla_lhlo.rsqrt"(%in, %out) : (memref<10xi32>, memref<10xi32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @sqrt_memref
+func @sqrt_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
+  "xla_lhlo.sqrt"(%in, %out) : (memref<10xf32>, memref<10xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @sqrt_memref
+func @sqrt_memref(%in: memref<10xcomplex<f32>>, %out: memref<10xcomplex<f32>>) -> () {
+  "xla_lhlo.sqrt"(%in, %out) : (memref<10xcomplex<f32>>, memref<10xcomplex<f32>>) -> ()
+  return
+}
+
+// -----
+
+func @sqrt_memref(%in: memref<10xi32>, %out: memref<10xi32>) -> () {
+  // expected-error@+1{{must be memref of floating-point or complex-type values}}
+  "xla_lhlo.sqrt"(%in, %out) : (memref<10xi32>, memref<10xi32>) -> ()
+  return
+}
+
+// -----
+
 // CHECK-LABEL: func @sign_memref
 func @sign_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
   "xla_lhlo.sign"(%in, %out) : (memref<10xf32>, memref<10xf32>) -> ()
@@ -75,6 +213,30 @@ func @sign_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
 // CHECK-LABEL: func @tanh_memref
 func @tanh_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
   "xla_lhlo.tanh"(%in, %out) : (memref<10xf32>, memref<10xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @tanh_memref
+func @tanh_memref(%in: memref<10xcomplex<f32>>, %out: memref<10xcomplex<f32>>) -> () {
+  "xla_lhlo.tanh"(%in, %out) : (memref<10xcomplex<f32>>, memref<10xcomplex<f32>>) -> ()
+  return
+}
+
+// -----
+
+func @tanh_memref(%in: memref<10xi32>, %out: memref<10xi32>) -> () {
+  // expected-error@+1{{must be memref of floating-point or complex-type values}}
+  "xla_lhlo.tanh"(%in, %out) : (memref<10xi32>, memref<10xi32>) -> ()
+  return
+}
+
+// -----
+
+func @tanh_memref(%arg0: memref<1xf32>, %arg1: memref<2xf32>) -> () {
+  // expected-error@+1{{'xla_lhlo.tanh' op requires all operands to have the same type}}
+  "xla_lhlo.tanh"(%arg0, %arg1) : (memref<1xf32>, memref<2xf32>) -> ()
   return
 }
 
@@ -129,8 +291,72 @@ func @sub_memref(%lhs: memref<10xf32>, %rhs: memref<10xf32>, %out: memref<10xf32
 // -----
 
 // CHECK-LABEL: func @and_memref
+func @and_memref(%lhs: memref<10xi32>, %rhs: memref<10xi32>, %out: memref<10xi32>) -> () {
+  "xla_lhlo.and"(%lhs, %rhs, %out) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @and_memref
+func @and_memref(%lhs: memref<10xi1>, %rhs: memref<10xi1>, %out: memref<10xi1>) -> () {
+  "xla_lhlo.and"(%lhs, %rhs, %out) : (memref<10xi1>, memref<10xi1>, memref<10xi1>) -> ()
+  return
+}
+
+// -----
+
 func @and_memref(%lhs: memref<10xf32>, %rhs: memref<10xf32>, %out: memref<10xf32>) -> () {
+  // expected-error @+1 {{must be memref of 8/16/32/64-bit signless integer or 8/16/32/64-bit unsigned integer or pred (AKA boolean or 1-bit integer) values}}
   "xla_lhlo.and"(%lhs, %rhs, %out) : (memref<10xf32>, memref<10xf32>, memref<10xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @or_memref
+func @or_memref(%lhs: memref<10xi32>, %rhs: memref<10xi32>, %out: memref<10xi32>) -> () {
+  "xla_lhlo.or"(%lhs, %rhs, %out) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @or_memref
+func @or_memref(%lhs: memref<10xi1>, %rhs: memref<10xi1>, %out: memref<10xi1>) -> () {
+  "xla_lhlo.or"(%lhs, %rhs, %out) : (memref<10xi1>, memref<10xi1>, memref<10xi1>) -> ()
+  return
+}
+
+// -----
+
+func @or_memref(%lhs: memref<10xf32>, %rhs: memref<10xf32>, %out: memref<10xf32>) -> () {
+  // expected-error @+1 {{must be memref of 8/16/32/64-bit signless integer or 8/16/32/64-bit unsigned integer or pred (AKA boolean or 1-bit integer) values}}
+  "xla_lhlo.or"(%lhs, %rhs, %out) : (memref<10xf32>, memref<10xf32>, memref<10xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @xor_memref
+func @xor_memref(%lhs: memref<10xi32>, %rhs: memref<10xi32>, %out: memref<10xi32>) -> () {
+  "xla_lhlo.xor"(%lhs, %rhs, %out) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @xor_memref
+func @xor_memref(%lhs: memref<10xi1>, %rhs: memref<10xi1>, %out: memref<10xi1>) -> () {
+  "xla_lhlo.xor"(%lhs, %rhs, %out) : (memref<10xi1>, memref<10xi1>, memref<10xi1>) -> ()
+  return
+}
+
+// -----
+
+func @xor_memref(%lhs: memref<10xf32>, %rhs: memref<10xf32>, %out: memref<10xf32>) -> () {
+  // expected-error @+1 {{must be memref of 8/16/32/64-bit signless integer or 8/16/32/64-bit unsigned integer or pred (AKA boolean or 1-bit integer) values}}
+  "xla_lhlo.xor"(%lhs, %rhs, %out) : (memref<10xf32>, memref<10xf32>, memref<10xf32>) -> ()
   return
 }
 
@@ -246,5 +472,261 @@ func @dynamic_memref_cast_incompatible_result_type(%in: memref<?xf32>) {
   %step = constant 1 : index
   %out = xla_lhlo.dynamic_memref_cast %in(%size)[%step]
            : memref<?xf32> -> memref<?x?xf32, offset: 0, strides: [?, ?]>
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @atan2_memrefs
+func @atan2_memrefs(%arg0: memref<1xf32>, %arg1: memref<1xf32>, %arg_out: memref<1xf32>) -> () {
+  "xla_lhlo.atan2"(%arg0, %arg1, %arg_out) : (memref<1xf32>, memref<1xf32>, memref<1xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @atan2_memrefs
+func @atan2_memrefs(%arg0: memref<1xcomplex<f32>>, %arg1: memref<1xcomplex<f32>>, %arg_out: memref<1xcomplex<f32>>) -> () {
+  "xla_lhlo.atan2"(%arg0, %arg1, %arg_out) : (memref<1xcomplex<f32>>, memref<1xcomplex<f32>>, memref<1xcomplex<f32>>) -> ()
+  return
+}
+
+// -----
+
+func @atan2_memrefs(%arg0: memref<1xi32>, %arg1: memref<1xi32>, %arg_out: memref<1xi32>) -> () {
+  // expected-error@+1{{must be memref of floating-point or complex-type values}}
+  "xla_lhlo.atan2"(%arg0, %arg1, %arg_out) : (memref<1xi32>, memref<1xi32>, memref<1xi32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @bitcast_convert_memrefs
+func @bitcast_convert_memrefs(%arg0: memref<1xf32>, %arg_out: memref<1xi32>) -> () {
+  "xla_lhlo.bitcast_convert"(%arg0, %arg_out) : (memref<1xf32>, memref<1xi32>) -> ()
+  return
+}
+
+// -----
+
+func @bitcast_convert_memrefs(%arg0: memref<1xf32>, %arg_out: memref<2xi32>) -> () {
+  // expected-error@+1{{requires the same shape for all operands}}
+  "xla_lhlo.bitcast_convert"(%arg0, %arg_out) : (memref<1xf32>, memref<2xi32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @clz_memrefs
+func @clz_memrefs(%arg0: memref<1xi32>, %arg_out: memref<1xi32>) -> () {
+  "xla_lhlo.count_leading_zeros"(%arg0, %arg_out) : (memref<1xi32>, memref<1xi32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @expm1_memrefs
+func @expm1_memrefs(%arg0: memref<1xf32>, %arg_out: memref<1xf32>) -> () {
+  "xla_lhlo.exponential_minus_one"(%arg0, %arg_out) : (memref<1xf32>, memref<1xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @expm1_memrefs
+func @expm1_memrefs(%arg0: memref<1xcomplex<f32>>, %arg_out: memref<1xcomplex<f32>>) -> () {
+  "xla_lhlo.exponential_minus_one"(%arg0, %arg_out) : (memref<1xcomplex<f32>>, memref<1xcomplex<f32>>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @floor_memrefs
+func @floor_memrefs(%arg0: memref<1xf32>, %arg_out: memref<1xf32>) -> () {
+  "xla_lhlo.floor"(%arg0, %arg_out) : (memref<1xf32>, memref<1xf32>) -> ()
+  return
+}
+
+// -----
+
+func @floor_memrefs(%arg0: memref<1xi32>, %arg_out: memref<1xi32>) -> () {
+  // expected-error@+1{{must be memref of floating-point values}}
+  "xla_lhlo.floor"(%arg0, %arg_out) : (memref<1xi32>, memref<1xi32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @imag_memrefs
+func @imag_memrefs(%arg0: memref<1xcomplex<f32>>, %arg_out: memref<1xf32>) -> () {
+  "xla_lhlo.imag"(%arg0, %arg_out) : (memref<1xcomplex<f32>>, memref<1xf32>) -> ()
+  return
+}
+
+// -----
+
+func @imag_memrefs(%arg0: memref<1xf32>, %arg_out: memref<1xf32>) -> () {
+  // expected-error@+1{{must be memref of complex-type values}}
+  "xla_lhlo.imag"(%arg0, %arg_out) : (memref<1xf32>, memref<1xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @real_memrefs
+func @real_memrefs(%arg0: memref<1xcomplex<f32>>, %arg_out: memref<1xf32>) -> () {
+  "xla_lhlo.real"(%arg0, %arg_out) : (memref<1xcomplex<f32>>, memref<1xf32>) -> ()
+  return
+}
+
+// -----
+
+func @real_memrefs(%arg0: memref<1xf32>, %arg_out: memref<1xf32>) -> () {
+  // expected-error@+1{{must be memref of complex-type values}}
+  "xla_lhlo.real"(%arg0, %arg_out) : (memref<1xf32>, memref<1xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @is_finite_memrefs
+func @is_finite_memrefs(%arg0: memref<1xf32>, %arg_out: memref<1xi1>) -> () {
+  "xla_lhlo.is_finite"(%arg0, %arg_out) : (memref<1xf32>, memref<1xi1>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @log1p_memrefs
+func @log1p_memrefs(%arg0: memref<1xf32>, %arg_out: memref<1xf32>) -> () {
+  "xla_lhlo.log_plus_one"(%arg0, %arg_out) : (memref<1xf32>, memref<1xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @log1p_memrefs
+func @log1p_memrefs(%arg0: memref<1xcomplex<f32>>, %arg_out: memref<1xcomplex<f32>>) -> () {
+  "xla_lhlo.log_plus_one"(%arg0, %arg_out) : (memref<1xcomplex<f32>>, memref<1xcomplex<f32>>) -> ()
+  return
+}
+
+// -----
+
+func @log1p_memref(%in: memref<10xi32>, %out: memref<10xi32>) -> () {
+  // expected-error@+1{{must be memref of floating-point or complex-type values}}
+  "xla_lhlo.log_plus_one"(%in, %out) : (memref<10xi32>, memref<10xi32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @not_memrefs
+func @not_memrefs(%arg0: memref<1xi32>, %arg_out: memref<1xi32>) -> () {
+  "xla_lhlo.not"(%arg0, %arg_out) : (memref<1xi32>, memref<1xi32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @not_memrefs
+func @not_memrefs(%arg0: memref<1xi1>, %arg_out: memref<1xi1>) -> () {
+  "xla_lhlo.not"(%arg0, %arg_out) : (memref<1xi1>, memref<1xi1>) -> ()
+  return
+}
+
+// -----
+
+func @not_memrefs(%arg0: memref<1xf32>, %arg_out: memref<1xf32>) -> () {
+  // expected-error @+1 {{must be memref of 8/16/32/64-bit signless integer or 8/16/32/64-bit unsigned integer or pred (AKA boolean or 1-bit integer) values}}
+  "xla_lhlo.not"(%arg0, %arg_out) : (memref<1xf32>, memref<1xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @popcnt_memrefs
+func @popcnt_memrefs(%arg0: memref<1xi32>, %arg_out: memref<1xi32>) -> () {
+  "xla_lhlo.popcnt"(%arg0, %arg_out) : (memref<1xi32>, memref<1xi32>) -> ()
+  return
+}
+
+// -----
+
+func @popcnt_memrefs(%arg0: memref<1xf32>, %arg_out: memref<1xf32>) -> () {
+  // expected-error @+1 {{must be memref of 8/16/32/64-bit signless integer or 8/16/32/64-bit unsigned integer values}}
+  "xla_lhlo.popcnt"(%arg0, %arg_out) : (memref<1xf32>, memref<1xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @reduce_precision_memrefs
+func @reduce_precision_memrefs(%arg0: memref<1xf32>, %arg_out: memref<1xf32>) -> () {
+  "xla_lhlo.reduce_precision"(%arg0, %arg_out) { exponent_bits = 4 : i32, mantissa_bits = 4 : i32 } : (memref<1xf32>, memref<1xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @round_memrefs
+func @round_memrefs(%arg0: memref<1xf32>, %arg_out: memref<1xf32>) -> () {
+  "xla_lhlo.round_nearest_afz"(%arg0, %arg_out) : (memref<1xf32>, memref<1xf32>) -> ()
+  return
+}
+
+// -----
+
+func @round_memrefs(%arg0: memref<1xi32>, %arg_out: memref<1xi32>) -> () {
+  // expected-error@+1{{must be memref of floating-point values}}
+  "xla_lhlo.round_nearest_afz"(%arg0, %arg_out) : (memref<1xi32>, memref<1xi32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @shift_left_memrefs
+func @shift_left_memrefs(%arg0: memref<1xi32>, %arg1: memref<1xi32>, %arg_out: memref<1xi32>) -> () {
+  "xla_lhlo.shift_left"(%arg0, %arg1, %arg_out) : (memref<1xi32>, memref<1xi32>, memref<1xi32>) -> ()
+  return
+}
+
+// -----
+
+func @shift_left_memrefs(%arg0: memref<1xf32>, %arg1: memref<1xf32>, %arg_out: memref<1xf32>) -> () {
+  // expected-error @+1 {{must be memref of 8/16/32/64-bit signless integer or 8/16/32/64-bit unsigned integer values}}
+  "xla_lhlo.shift_left"(%arg0, %arg1, %arg_out) : (memref<1xf32>, memref<1xf32>, memref<1xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @shift_right_arithmetic_memrefs
+func @shift_right_arithmetic_memrefs(%arg0: memref<1xi32>, %arg1: memref<1xi32>, %arg_out: memref<1xi32>) -> () {
+  "xla_lhlo.shift_right_arithmetic"(%arg0, %arg1, %arg_out) : (memref<1xi32>, memref<1xi32>, memref<1xi32>) -> ()
+  return
+}
+
+// -----
+
+func @shift_right_arithmetic_memrefs(%arg0: memref<1xf32>, %arg1: memref<1xf32>, %arg_out: memref<1xf32>) -> () {
+  // expected-error @+1 {{must be memref of 8/16/32/64-bit signless integer or 8/16/32/64-bit unsigned integer values}}
+  "xla_lhlo.shift_right_arithmetic"(%arg0, %arg1, %arg_out) : (memref<1xf32>, memref<1xf32>, memref<1xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @shift_right_logical_memrefs
+func @shift_right_logical_memrefs(%arg0: memref<1xi32>, %arg1: memref<1xi32>, %arg_out: memref<1xi32>) -> () {
+  "xla_lhlo.shift_right_logical"(%arg0, %arg1, %arg_out) : (memref<1xi32>, memref<1xi32>, memref<1xi32>) -> ()
+  return
+}
+
+// -----
+
+func @shift_right_logical_memrefs(%arg0: memref<1xf32>, %arg1: memref<1xf32>, %arg_out: memref<1xf32>) -> () {
+  // expected-error @+1 {{must be memref of 8/16/32/64-bit signless integer or 8/16/32/64-bit unsigned integer values}}
+  "xla_lhlo.shift_right_logical"(%arg0, %arg1, %arg_out) : (memref<1xf32>, memref<1xf32>, memref<1xf32>) -> ()
   return
 }

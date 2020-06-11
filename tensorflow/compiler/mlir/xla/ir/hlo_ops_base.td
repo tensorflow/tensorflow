@@ -1258,4 +1258,19 @@ class BASE_HLO_RngNormalOp {
   }];
 }
 
+class BASE_HLO_ReducePrecisionOp {
+  string summary = "Reduce precision operator";
+
+  string description = [{
+    Models the effect of converting floating - point values to a lower -
+    precision format(such as IEEE - FP16) and back to the original
+    format. The number of exponent and mantissa bits in the lower -
+    precision format can be specified arbitrarily,
+    although all bit sizes may not be supported on all hardware
+    implementations.
+
+    See https://www.tensorflow.org/xla/operation_semantics#reduceprecision.
+  }];
+}
+
 #endif // HLO_OPS_BASE

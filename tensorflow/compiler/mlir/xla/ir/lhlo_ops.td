@@ -14,6 +14,20 @@ limitations under the License.
 ==============================================================================*/
 
 // This is the operation definition file for LXLA.
+//
+// This file largely overlaps with hlo_ops.td at a logic level. It's tempting to
+// merge these two files together, but we need to consider the following
+// obstacles:
+// * We need to have a common representation for arguments. That is to say,
+// HLO_Array<X> translates to HLO_Tensor<X> in HLO dialect, and
+// Arg<LHLO_Buffer<X>, "", [Mem(Read|Write)]> in LHLO. Array types within tuples
+// also need to be transformed.
+// * As of now, TableGen's dag functions are not sufficient to accomplish the
+// one above.
+// * Traits aren't identical, but need to be coped. For example,
+// SameOperandAndResultType in HLO corresponds to SameTypeOperands in LHLO.
+// * Also, currently HLO describes the API in XLA's client side, not service
+// side. LHLO aims for the service side.
 
 #ifndef LHLO_OPS
 #define LHLO_OPS
@@ -38,10 +52,16 @@ def LHLO_IntBuffer : MemRefOf<[HLO_Int]>;
 // Any floating-point tensor types
 def LHLO_FpBuffer : MemRefOf<[AnyFloat]>;
 
+def LHLO_ComplexBuffer : MemRefOf<[AnyComplex]>;
+
+def LHLO_FpOrComplexBuffer : MemRefOf<[AnyFloat, AnyComplex]>;
+
 def LHLO_PredBuffer : MemRefOf<[HLO_Pred]>;
 
 // Any integer or floating-point tensor types
 def LHLO_IntOrFpBuffer : MemRefOf<[HLO_Int, AnyFloat]>;
+
+def LHLO_PredOrIntBuffer : MemRefOf<[HLO_Int, HLO_Pred]>;
 
 def LHLO_Buffer : MemRefOf<[AnyFloat, AnySignlessInteger, AnyComplex]>;
 
@@ -74,88 +94,126 @@ def LHLO_IotaOp : LHLO_Op<"iota", []>, BASE_HLO_IotaOp {
 //===----------------------------------------------------------------------===//
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions
 
-class LHLO_UnaryElementwiseOp<string mnemonic> :
-    LHLO_Op<mnemonic, [SameTypeOperands]> {
-  let arguments = (ins Arg<LHLO_Buffer, "", [MemRead]>:$input,
-                       Arg<LHLO_Buffer, "", [MemWrite]>:$output);
+class LHLO_UnaryElementwiseOp<string mnemonic,
+                              Type BufferType = LHLO_Buffer,
+                              list<OpTrait> traits = [SameTypeOperands]>
+    : LHLO_Op<mnemonic, traits> {
+  let arguments = (ins Arg<BufferType, "", [MemRead]>:$input,
+                       Arg<BufferType, "", [MemWrite]>:$output);
 }
 
 def LHLO_AbsOp: LHLO_UnaryElementwiseOp<"abs">, BASE_HLO_AbsOp;
 
-def LHLO_CeilOp: LHLO_UnaryElementwiseOp<"ceil">, BASE_HLO_CeilOp;
+// TODO(timshen): add a custom verifier.
+def LHLO_BitcastConvertOp:
+    LHLO_UnaryElementwiseOp<"bitcast_convert", LHLO_Buffer, [SameOperandsShape]>, BASE_HLO_BitcastConvertOp;
 
-def LHLO_ConvertOp :  LHLO_Op<"convert", [SameOperandsShape]>, BASE_HLO_ConvertOp {
-  let arguments = (ins Arg<LHLO_Buffer, "", [MemRead]>:$input,
-                       Arg<LHLO_Buffer, "", [MemWrite]>:$output);
-}
+def LHLO_CeilOp: LHLO_UnaryElementwiseOp<"ceil", LHLO_FpBuffer>, BASE_HLO_CeilOp;
 
-def LHLO_CosOp: LHLO_UnaryElementwiseOp<"cosine">, BASE_HLO_CosOp;
+def LHLO_ClzOp: LHLO_UnaryElementwiseOp<"count_leading_zeros", LHLO_IntBuffer>, BASE_HLO_ClzOp;
 
-def LHLO_ExpOp: LHLO_UnaryElementwiseOp<"exponential">, BASE_HLO_ExpOp;
+// TODO(timshen): add a custom verifier.
+def LHLO_ConvertOp : LHLO_UnaryElementwiseOp<"convert", LHLO_Buffer, [SameOperandsShape]>, BASE_HLO_ConvertOp;
+
+def LHLO_CosOp: LHLO_UnaryElementwiseOp<"cosine", LHLO_FpOrComplexBuffer>, BASE_HLO_CosOp;
+
+def LHLO_ExpOp: LHLO_UnaryElementwiseOp<"exponential", LHLO_FpOrComplexBuffer>, BASE_HLO_ExpOp;
+
+def LHLO_Expm1Op: LHLO_UnaryElementwiseOp<"exponential_minus_one", LHLO_FpOrComplexBuffer>, BASE_HLO_Expm1Op;
+
+def LHLO_FloorOp: LHLO_UnaryElementwiseOp<"floor", LHLO_FpBuffer>, BASE_HLO_FloorOp;
 
 def LHLO_ImagOp: LHLO_Op<"imag", [SameOperandsShape]>, BASE_HLO_ImagOp {
-  let arguments = (ins Arg<LHLO_Buffer, "", [MemRead]>:$input,
-                       Arg<LHLO_Buffer, "", [MemWrite]>:$output);
+  let arguments = (ins Arg<LHLO_ComplexBuffer, "", [MemRead]>:$input,
+                       Arg<LHLO_FpBuffer, "", [MemWrite]>:$output);
 }
 
-def LHLO_LogOp: LHLO_UnaryElementwiseOp<"log">, BASE_HLO_LogOp;
+def LHLO_IsFiniteOp: LHLO_Op<"is_finite", [SameOperandsShape]>, BASE_HLO_IsFiniteOp {
+  let arguments = (ins Arg<LHLO_FpBuffer, "", [MemRead]>:$input,
+                       Arg<LHLO_PredBuffer, "", [MemWrite]>:$output);
+}
+
+def LHLO_LogOp: LHLO_UnaryElementwiseOp<"log", LHLO_FpOrComplexBuffer>, BASE_HLO_LogOp;
+
+def LHLO_Log1pOp: LHLO_UnaryElementwiseOp<"log_plus_one", LHLO_FpOrComplexBuffer>, BASE_HLO_Log1pOp;
 
 def LHLO_NegOp: LHLO_UnaryElementwiseOp<"negate">, BASE_HLO_NegOp;
 
+def LHLO_NotOp: LHLO_UnaryElementwiseOp<"not", LHLO_PredOrIntBuffer>, BASE_HLO_NotOp;
+
+def LHLO_PopulationCountOp: LHLO_UnaryElementwiseOp<"popcnt", LHLO_IntBuffer>, BASE_HLO_PopulationCountOp;
+
 def LHLO_RealOp: LHLO_Op<"real", [SameOperandsShape]>, BASE_HLO_RealOp {
-  let arguments = (ins Arg<LHLO_Buffer, "", [MemRead]>:$input,
-                       Arg<LHLO_Buffer, "", [MemWrite]>:$output);
+  let arguments = (ins Arg<LHLO_ComplexBuffer, "", [MemRead]>:$input,
+                       Arg<LHLO_FpBuffer, "", [MemWrite]>:$output);
 }
 
-def LHLO_RsqrtOp: LHLO_UnaryElementwiseOp<"rsqrt">, BASE_HLO_RsqrtOp;
+def LHLO_RoundOp: LHLO_UnaryElementwiseOp<"round_nearest_afz", LHLO_FpBuffer>, BASE_HLO_RoundOp;
 
-def LHLO_SqrtOp: LHLO_UnaryElementwiseOp<"sqrt">, BASE_HLO_SqrtOp;
+def LHLO_RsqrtOp: LHLO_UnaryElementwiseOp<"rsqrt", LHLO_FpOrComplexBuffer>, BASE_HLO_RsqrtOp;
+
+def LHLO_SqrtOp: LHLO_UnaryElementwiseOp<"sqrt", LHLO_FpOrComplexBuffer>, BASE_HLO_SqrtOp;
 
 def LHLO_SignOp: LHLO_UnaryElementwiseOp<"sign">, BASE_HLO_SignOp;
 
-def LHLO_SinOp: LHLO_UnaryElementwiseOp<"sine">, BASE_HLO_SinOp;
+def LHLO_SinOp: LHLO_UnaryElementwiseOp<"sine", LHLO_FpOrComplexBuffer>, BASE_HLO_SinOp;
 
-def LHLO_TanhOp: LHLO_UnaryElementwiseOp<"tanh">, BASE_HLO_TanhOp;
+def LHLO_TanhOp: LHLO_UnaryElementwiseOp<"tanh", LHLO_FpOrComplexBuffer>, BASE_HLO_TanhOp;
 
 //===----------------------------------------------------------------------===//
 // XLA binary elementwise op definitions.
 //===----------------------------------------------------------------------===//
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 
-class LHLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
+class LHLO_BinaryElementwiseOp<string mnemonic, Type BufferType = LHLO_Buffer,
+                               list<OpTrait> traits = [SameTypeOperands]> :
         LHLO_Op<mnemonic, traits> {
   let arguments = (ins
-      Arg<LHLO_Buffer, "", [MemRead]>:$lhs,
-      Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
-      Arg<LHLO_Buffer, "", [MemWrite]>:$out,
+      Arg<BufferType, "", [MemRead]>:$lhs,
+      Arg<BufferType, "", [MemRead]>:$rhs,
+      Arg<BufferType, "", [MemWrite]>:$out,
       OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions
   );
 }
 
-def LHLO_AddOp : LHLO_BinaryElementwiseOp<"add", []>, BASE_HLO_AddOp;
+def LHLO_AddOp : LHLO_BinaryElementwiseOp<"add">, BASE_HLO_AddOp;
+
+def LHLO_AndOp: LHLO_BinaryElementwiseOp<"and", LHLO_PredOrIntBuffer>, BASE_HLO_AndOp;
+
+def LHLO_Atan2Op : LHLO_BinaryElementwiseOp<"atan2", LHLO_FpOrComplexBuffer>, BASE_HLO_Atan2Op;
 
 def LHLO_ComplexOp: LHLO_Op<"complex", [SameOperandsShape]>, BASE_HLO_ComplexOp {
-  let arguments = (ins Arg<LHLO_Buffer, "", [MemRead]>:$lhs,
-                       Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
-                       Arg<LHLO_Buffer, "", [MemWrite]>:$output);
+  let arguments = (ins
+      Arg<LHLO_FpBuffer, "", [MemRead]>:$lhs,
+      Arg<LHLO_FpBuffer, "", [MemRead]>:$rhs,
+      Arg<LHLO_ComplexBuffer, "", [MemWrite]>:$output,
+      OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions
+  );
 }
 
-def LHLO_DivOp : LHLO_BinaryElementwiseOp<"divide", []>, BASE_HLO_DivOp;
+def LHLO_DivOp : LHLO_BinaryElementwiseOp<"divide">, BASE_HLO_DivOp;
 
-def LHLO_MaxOp : LHLO_BinaryElementwiseOp<"maximum", []>, BASE_HLO_MaxOp;
+def LHLO_MaxOp : LHLO_BinaryElementwiseOp<"maximum">, BASE_HLO_MaxOp;
 
-def LHLO_MinOp : LHLO_BinaryElementwiseOp<"minimum", []>, BASE_HLO_MinOp;
+def LHLO_MinOp : LHLO_BinaryElementwiseOp<"minimum">, BASE_HLO_MinOp;
 
-def LHLO_MulOp : LHLO_BinaryElementwiseOp<"multiply", []>, BASE_HLO_MulOp;
+def LHLO_MulOp : LHLO_BinaryElementwiseOp<"multiply">, BASE_HLO_MulOp;
 
-def LHLO_RemOp :
-      LHLO_BinaryElementwiseOp<"remainder", []>, BASE_HLO_RemOp;
+def LHLO_OrOp : LHLO_BinaryElementwiseOp<"or", LHLO_PredOrIntBuffer>, BASE_HLO_OrOp;
 
-def LHLO_SubOp : LHLO_BinaryElementwiseOp<"subtract", []>, BASE_HLO_SubOp;
+def LHLO_PowOp : LHLO_BinaryElementwiseOp<"power">, BASE_HLO_PowOp;
 
-def LHLO_AndOp: LHLO_BinaryElementwiseOp<"and", []>, BASE_HLO_AndOp;
+def LHLO_RemOp : LHLO_BinaryElementwiseOp<"remainder", LHLO_IntOrFpBuffer>, BASE_HLO_RemOp;
 
-def LHLO_OrOp: LHLO_BinaryElementwiseOp<"or", []>, BASE_HLO_OrOp;
+def LHLO_ShiftLeftOp : LHLO_BinaryElementwiseOp<"shift_left", LHLO_IntBuffer>, BASE_HLO_ShiftLeftOp;
+
+def LHLO_ShiftRightArithmeticOp : LHLO_BinaryElementwiseOp<"shift_right_arithmetic", LHLO_IntBuffer>, BASE_HLO_ShiftRightArithmeticOp;
+
+def LHLO_ShiftRightLogicalOp : LHLO_BinaryElementwiseOp<"shift_right_logical", LHLO_IntBuffer>, BASE_HLO_ShiftRightLogicalOp;
+
+def LHLO_SubOp : LHLO_BinaryElementwiseOp<"subtract">, BASE_HLO_SubOp;
+
+def LHLO_XorOp : LHLO_BinaryElementwiseOp<"xor", LHLO_PredOrIntBuffer>, BASE_HLO_XorOp;
 
 //===----------------------------------------------------------------------===//
 // XLA control flow op definitions.
@@ -530,6 +588,16 @@ def LHLO_TransposeOp: LHLO_Op<"transpose", []>, BASE_HLO_TransposeOp {
     Arg<LHLO_Buffer, "", [MemRead]>:$operand,
     I64ElementsAttr:$permutation,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output
+  );
+}
+
+def LHLO_ReducePrecisionOp: LHLO_Op<"reduce_precision", [SameTypeOperands]>,
+                            BASE_HLO_ReducePrecisionOp {
+  let arguments = (ins
+    Arg<LHLO_FpBuffer, "", [MemRead]>:$operand,
+    Arg<LHLO_FpBuffer, "", [MemWrite]>:$output,
+    I32Attr:$exponent_bits,
+    I32Attr:$mantissa_bits
   );
 }
 
