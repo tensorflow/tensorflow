@@ -163,10 +163,7 @@ class AttrBuilder {
     DCHECK(!node_def_finalized_)
         << "Calling SetInAttrValueMap after BuildNodeDef.";
     // If attribute is set more than once, its first value prevails
-    if (AttrSlice(m).Find(attr_name) == nullptr) {
-      SetAttrValue(value, &attr_tmp_);
-      m->insert(AttrValueMap::value_type(attr_name, attr_tmp_));
-    }
+    m->insert({attr_name, value});
   }
 
   void AddAttrIfNotPresent(StringPiece attr_name, const AttrValue& value);
