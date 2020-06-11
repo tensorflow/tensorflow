@@ -1597,9 +1597,10 @@ distribute_py_test(
         "no_rocm",
     ],
     deps = [
+        ":combinations",
         ":saved_model_test_base",
+        "//tensorflow/python/eager:test",
         "//tensorflow/python/keras/saving",
-        "//tensorflow/python/saved_model",
     ],
 )
 
