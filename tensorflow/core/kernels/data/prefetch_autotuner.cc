@@ -40,13 +40,13 @@ void PrefetchAutotuner::RecordConsumption(size_t current_buffer_size) {
     case Mode::kDisabled:
       return;
     case Mode::kUpswing:
-      if (current_buffer_size == buffer_limit_) {
+      if (static_cast<tensorflow::int64>(current_buffer_size) == buffer_limit_) {
         mode_ = Mode::kDownswing;
       }
       return;
     case Mode::kDownswing:
       if (current_buffer_size == 0) {
-        if (buffer_limit_ >= kBufferLimitThreshold) {
+        if (buffer_limit_ >= static_cast<tensorflow::int64>(kBufferLimitThreshold)) {
           buffer_limit_ += kBufferLimitThreshold;
         } else {
           buffer_limit_ *= 2;

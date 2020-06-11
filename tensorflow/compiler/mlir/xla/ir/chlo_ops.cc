@@ -49,7 +49,7 @@ static Type GetBroadcastType(Type x, Type y, Type element_type,
 
   if (shape_x.size() == shape_y.size()) {
     llvm::SmallVector<int64_t, 4> out_shape(shape_x.size());
-    for (int i = 0; i < shape_x.size(); i++) {
+    for (size_t i = 0; i < shape_x.size(); i++) {
       auto x_val = shape_x[i];
       auto y_val = shape_y[i];
       if (x_val == -1 || y_val == -1) {

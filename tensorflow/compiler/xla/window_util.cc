@@ -42,7 +42,7 @@ Window MakeWindow(absl::Span<const int64> sizes,
                   absl::Span<const int64> strides) {
   Window window;
   CHECK_EQ(sizes.size(), strides.size());
-  for (auto nb = 0; nb < sizes.size(); ++nb) {
+  for (auto nb = 0; static_cast<size_t>(nb) < sizes.size(); ++nb) {
     auto* dimension = window.add_dimensions();
     dimension->set_size(sizes[nb]);
     dimension->set_stride(strides[nb]);
