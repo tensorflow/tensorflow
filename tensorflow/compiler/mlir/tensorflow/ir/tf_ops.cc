@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -67,6 +68,17 @@ limitations under the License.
 
 namespace mlir {
 namespace TF {
+
+// Propagates underscore and device attributes from src to dst.
+// TODO(b/158769932): This should be a general feature instead post some policy
+// discussion.
+static void PropagateAttributes(Operation *src, Operation *dst) {
+  auto device = mlir::Identifier::get("device", src->getContext());
+  for (auto named_attr : src->getAttrs()) {
+    if (*named_attr.first.begin() == '_' || named_attr.first == device)
+      dst->setAttr(named_attr.first, named_attr.second);
+  }
+}
 
 //===----------------------------------------------------------------------===//
 // TF op helper functions
@@ -786,11 +798,49 @@ static LogicalResult Verify(BroadcastToOp op) {
 }
 
 //===----------------------------------------------------------------------===//
-// CastOp
+// CaseOp
 //===----------------------------------------------------------------------===//
 
+class FoldConstantCaseOp : public OpRewritePattern<TF::CaseOp> {
+ public:
+  explicit FoldConstantCaseOp(MLIRContext *context)
+      : OpRewritePattern<TF::CaseOp>(context) {}
+  LogicalResult matchAndRewrite(TF::CaseOp op,
+                                PatternRewriter &rewriter) const override;
+};
+
+LogicalResult FoldConstantCaseOp::matchAndRewrite(
+    TF::CaseOp op, PatternRewriter &rewriter) const {
+  // Extract the constant cond value.
+  DenseIntElementsAttr branch;
+  if (!matchPattern(op.branch_index(), m_Constant(&branch))) return failure();
+
+  // Only attempt to fold scalar valued case statements.
+  // TODO(jpienaar): This can be removed if CaseOp's verifier covers it.
+  if (!branch.getType().cast<RankedTensorType>().getShape().empty())
+    return failure();
+
+  int index = *branch.getValues<int>().begin();
+  // TODO(jpienaar): This can be removed if CaseOp's verifier covers it.
+  if (index >= op.branches().size()) return failure();
+
+  auto func = op.branches()[index].cast<SymbolRefAttr>();
+  auto empty = rewriter.getStringAttr("");
+  auto call_op = rewriter.create<PartitionedCallOp>(
+      op.getLoc(), op.getResultTypes(), op.getOperands().drop_front(), func,
+      /*config=*/empty, /*config_proto=*/empty, /*executor_type=*/empty);
+  PropagateAttributes(op.getOperation(), call_op);
+  rewriter.replaceOp(op, call_op.getResults());
+  return success();
+}
+
+void CaseOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                         MLIRContext *context) {
+  results.insert<FoldConstantCaseOp>(context);
+}
+
 //===----------------------------------------------------------------------===//
-// LeakyReluOp
+// CastOp
 //===----------------------------------------------------------------------===//
 
 OpFoldResult CastOp::fold(ArrayRef<Attribute> operands) {
