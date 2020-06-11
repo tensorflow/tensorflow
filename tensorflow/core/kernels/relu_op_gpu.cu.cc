@@ -35,7 +35,7 @@ namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-static constexpr int VectorSize = 8;
+static constexpr int VectorSizeElements = 8;
 namespace functor {
 
 // This kernel computes ReluGrad by processing one half2, two fp16, at a time.
@@ -98,10 +98,11 @@ __global__ void ReluGradHalfKernelVector(
     const Eigen::half* __restrict__ gradient,
     const Eigen::half* __restrict__ feature,
     Eigen::half* __restrict__ backprop, int32 count) {
-  int32 half8_count = count / VectorSize;
+  int32 half8_count = count / VectorSizeElements;
   int32 index = blockIdx.x * blockDim.x + threadIdx.x;
 
   if (index < half8_count) {
+    // Cast to xx_h8 for vector load and store.
     float4 gradient_h8 = reinterpret_cast<const float4*>(gradient)[index];
     float4 feature_h8 = reinterpret_cast<const float4*>(feature)[index];
     float4* p_backprop_h8 = reinterpret_cast<float4*>(backprop) + index;
@@ -115,7 +116,7 @@ __global__ void ReluGradHalfKernelVector(
 #if __CUDA_ARCH__ >= 530
     const half2 kZeroH2 = __float2half2_rn(0.f);
 #endif
-    for (int i = 0; i < VectorSize / 2; i++) {
+    for (int i = 0; i < VectorSizeElements / 2; i++) {
 #if __CUDA_ARCH__ >= 530
       // mask = (feature > 0)
       half2 mask_h2 = __hgt2(feature_h2[i], kZeroH2);
@@ -136,19 +137,19 @@ __global__ void ReluGradHalfKernelVector(
     *p_backprop_h8 = backprop_h8;
   }
 
-  int remaining_count = (count % VectorSize);
+  int remaining_count = (count % VectorSizeElements);
 
   if (index < remaining_count) {
     // Use first threads to process the remaining elements.
-    Eigen::half grad_h = gradient[half8_count * VectorSize + index];
-    Eigen::half feature_h = feature[half8_count * VectorSize + index];
+    Eigen::half grad_h = gradient[half8_count * VectorSizeElements + index];
+    Eigen::half feature_h = feature[half8_count * VectorSizeElements + index];
 
     float grad_f = static_cast<float>(grad_h);
     float feature_f = static_cast<float>(feature_h);
     float backprop_f = (feature_f > 0) ? grad_f : 0;
 
     Eigen::half backprop_h(backprop_f);
-    backprop[half8_count * VectorSize + index] = backprop_h;
+    backprop[half8_count * VectorSizeElements + index] = backprop_h;
   }
 }
 
@@ -176,7 +177,7 @@ struct ReluGrad<Device, Eigen::half> {
     constexpr int32 kThreadInBlock = 512;
     if (count == 0) return;
     if (aligned) {
-      int32 half8_count = Eigen::divup(count, VectorSize);
+      int32 half8_count = Eigen::divup(count, VectorSizeElements);
       int32 kBlock = Eigen::divup(half8_count, kThreadInBlock);
       TF_CHECK_OK(GpuLaunchKernel(
           ReluGradHalfKernelVector, kBlock, kThreadInBlock,
