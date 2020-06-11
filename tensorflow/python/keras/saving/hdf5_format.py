@@ -30,7 +30,6 @@ from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.saving import model_config as model_config_lib
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import conv_utils
-from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.platform import tf_logging as logging
@@ -193,10 +192,6 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
       # Compile model.
       model.compile(**saving_utils.compile_args_from_training_config(
           training_config, custom_objects))
-
-      if not version_utils.is_v1_layer_or_model(model):
-        model.compiled_metrics.build(model.outputs, model.outputs)
-        model.compiled_loss.build(model.outputs)
 
       # Set optimizer weights.
       if 'optimizer_weights' in f:

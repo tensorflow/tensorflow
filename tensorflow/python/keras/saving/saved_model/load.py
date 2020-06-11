@@ -34,7 +34,6 @@ from tensorflow.python.keras.saving.saved_model import utils
 from tensorflow.python.keras.saving.saved_model.serialized_attributes import CommonEndpoints
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import metrics_utils
-from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import load as tf_load
 from tensorflow.python.saved_model import nested_structure_coder
@@ -125,10 +124,6 @@ def load(path, compile=True):  # pylint: disable=redefined-builtin
     if training_config is not None:
       model.compile(**saving_utils.compile_args_from_training_config(
           training_config))
-      if (not version_utils.is_v1_layer_or_model(model) and
-          model.outputs is not None):
-        model.compiled_metrics.build(model.outputs, model.outputs)
-        model.compiled_loss.build(model.outputs)
     else:
       logging.warning('No training configuration found in save file, so the '
                       'model was *not* compiled. Compile it manually.')
