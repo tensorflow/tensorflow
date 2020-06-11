@@ -60,6 +60,33 @@ void AsymmetricQuantizeFloats(const float* values, const int size,
                               int8_t* quantized_values, float* scaling_factor,
                               int32_t* offset);
 
+// Helper function to quantize floats.
+// float_data_ptr     input float vectors
+// n_batch            number of input vectors
+// n_data             size of a single input vector
+// quantized_data_ptr (out) vector with quantized data
+// scaling_factors    (out) scaling factors (one per vector)
+// zero_points        (out) zero points (one per vector)
+// do_asymmetric      controls if the quantization should be asymmetric.
+inline void BatchQuantizeFloats(const float* float_data_ptr, int n_batch,
+                                int n_data, int8_t* quantized_data_ptr,
+                                float* scaling_factors, int32_t* zero_points,
+                                bool do_asymmetric) {
+  for (int b = 0; b < n_batch; ++b) {
+    const int offset = b * n_data;
+    if (do_asymmetric) {
+      tensor_utils::AsymmetricQuantizeFloats(
+          float_data_ptr + offset, n_data, quantized_data_ptr + offset,
+          &scaling_factors[b], &zero_points[b]);
+    } else {
+      float unused_min, unused_max;
+      tensor_utils::SymmetricQuantizeFloats(
+          float_data_ptr + offset, n_data, quantized_data_ptr + offset,
+          &unused_min, &unused_max, &scaling_factors[b]);
+    }
+  }
+}
+
 // Multiplies a matrix by a "batched" vector (i.e. a matrix with a batch
 // dimension composed by input vectors independent from each other). The result
 // of the multiplication is accumulated to the passed result buffer.

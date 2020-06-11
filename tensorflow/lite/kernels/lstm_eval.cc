@@ -642,19 +642,9 @@ inline void LstmStepHybrid(
   }
 
   if (!tensor_utils::IsZeroVector(input_ptr, n_batch * n_input)) {
-    for (int b = 0; b < n_batch; ++b) {
-      const int offset = b * n_input;
-      if (asymmetric_quantize_inputs) {
-        tensor_utils::AsymmetricQuantizeFloats(
-            input_ptr + offset, n_input, quantized_input_ptr + offset,
-            &scaling_factors[b], &zero_points[b]);
-      } else {
-        float unused_min, unused_max;
-        tensor_utils::SymmetricQuantizeFloats(
-            input_ptr + offset, n_input, quantized_input_ptr + offset,
-            &unused_min, &unused_max, &scaling_factors[b]);
-      }
-    }
+    tensor_utils::BatchQuantizeFloats(input_ptr, n_batch, n_input,
+                                      quantized_input_ptr, scaling_factors,
+                                      zero_points, asymmetric_quantize_inputs);
     if (!use_cifg) {
       for (int b = 0; b < n_batch; ++b) {
         product_scaling_factors[b] =
@@ -705,21 +695,9 @@ inline void LstmStepHybrid(
   // Skip if auxiliary input is not available or all zeros.
   if (aux_input_ptr != nullptr &&
       !tensor_utils::IsZeroVector(aux_input_ptr, n_batch * n_aux_input)) {
-    for (int b = 0; b < n_batch; ++b) {
-      const int offset = b * n_aux_input;
-      if (asymmetric_quantize_inputs) {
-        tensor_utils::AsymmetricQuantizeFloats(
-            aux_input_ptr + offset, n_aux_input,
-            quantized_aux_input_ptr + offset, &scaling_factors[b],
-            &zero_points[b]);
-      } else {
-        float unused_min, unused_max;
-        tensor_utils::SymmetricQuantizeFloats(
-            aux_input_ptr + offset, n_aux_input,
-            quantized_aux_input_ptr + offset, &unused_min, &unused_max,
-            &scaling_factors[b]);
-      }
-    }
+    tensor_utils::BatchQuantizeFloats(aux_input_ptr, n_batch, n_aux_input,
+                                      quantized_aux_input_ptr, scaling_factors,
+                                      zero_points, asymmetric_quantize_inputs);
 
     if (!use_cifg) {
       for (int b = 0; b < n_batch; ++b) {
@@ -770,21 +748,9 @@ inline void LstmStepHybrid(
 
   if (!tensor_utils::IsZeroVector(output_state_ptr, n_batch * n_output)) {
     // Save quantization and matmul computation for all zero input.
-    for (int b = 0; b < n_batch; ++b) {
-      const int offset = b * n_output;
-      if (asymmetric_quantize_inputs) {
-        tensor_utils::AsymmetricQuantizeFloats(
-            output_state_ptr + offset, n_output,
-            quantized_output_state_ptr + offset, &scaling_factors[b],
-            &zero_points[b]);
-      } else {
-        float unused_min, unused_max;
-        tensor_utils::SymmetricQuantizeFloats(
-            output_state_ptr + offset, n_output,
-            quantized_output_state_ptr + offset, &unused_min, &unused_max,
-            &scaling_factors[b]);
-      }
-    }
+    tensor_utils::BatchQuantizeFloats(
+        output_state_ptr, n_batch, n_output, quantized_output_state_ptr,
+        scaling_factors, zero_points, asymmetric_quantize_inputs);
     // For each batch and cell: compute recurrent_weight * output_state.
     if (!use_cifg) {
       for (int b = 0; b < n_batch; ++b) {
@@ -949,21 +915,9 @@ inline void LstmStepHybrid(
     }
     if (!tensor_utils::IsZeroVector(output_gate_scratch, n_batch * n_cell)) {
       // Save quantization and matmul computation for all zero input.
-      for (int b = 0; b < n_batch; ++b) {
-        const int offset = b * n_cell;
-        if (asymmetric_quantize_inputs) {
-          tensor_utils::AsymmetricQuantizeFloats(
-              output_gate_scratch + offset, n_cell,
-              quantized_cell_state_ptr + offset, &scaling_factors[b],
-              &zero_points[b]);
-        } else {
-          float unused_min, unused_max;
-          tensor_utils::SymmetricQuantizeFloats(
-              output_gate_scratch + offset, n_cell,
-              quantized_cell_state_ptr + offset, &unused_min, &unused_max,
-              &scaling_factors[b]);
-        }
-      }
+      tensor_utils::BatchQuantizeFloats(
+          output_gate_scratch, n_batch, n_cell, quantized_cell_state_ptr,
+          scaling_factors, zero_points, asymmetric_quantize_inputs);
       for (int b = 0; b < n_batch; ++b) {
         product_scaling_factors[b] =
             scaling_factors[b] * projection_weights_scale;

@@ -266,19 +266,11 @@ inline void EvalHybridSVDF(
 
   if (!tensor_utils::IsZeroVector(input_ptr, batch_size * input_size)) {
     // Quantize input from float to int8.
+    tensor_utils::BatchQuantizeFloats(input_ptr, batch_size, input_size,
+                                      quantized_input_ptr, scaling_factors_ptr,
+                                      zero_points_ptr,
+                                      params->asymmetric_quantize_inputs);
     for (int b = 0; b < batch_size; ++b) {
-      const int offset = b * input_size;
-      if (params->asymmetric_quantize_inputs) {
-        tensor_utils::AsymmetricQuantizeFloats(
-            input_ptr + offset, input_size, quantized_input_ptr + offset,
-            &scaling_factors_ptr[b], &zero_points_ptr[b]);
-      } else {
-        // Quantize input from float to int8.
-        float unused_min, unused_max;
-        tensor_utils::SymmetricQuantizeFloats(
-            input_ptr + offset, input_size, quantized_input_ptr + offset,
-            &unused_min, &unused_max, &scaling_factors_ptr[b]);
-      }
       scaling_factors_ptr[b] *= weights_feature_scale;
     }
 
