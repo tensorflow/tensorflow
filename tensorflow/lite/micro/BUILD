@@ -205,6 +205,7 @@ cc_library(
     ],
     hdrs = [
         "recording_micro_allocator.h",
+        "recording_micro_interpreter.h",
         "recording_simple_memory_allocator.h",
     ],
     build_for_embedded = True,
@@ -358,6 +359,19 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":micro_time",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "memory_arena_threshold_test",
+    srcs = [
+        "memory_arena_threshold_test.cc",
+    ],
+    deps = [
+        ":op_resolvers",
+        ":recording_allocators",
+        "//tensorflow/lite/micro/benchmarks:keyword_scrambled_model_data",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )

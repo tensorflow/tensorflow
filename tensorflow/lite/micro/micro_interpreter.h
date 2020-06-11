@@ -159,6 +159,10 @@ class MicroInterpreter {
   // arena_used_bytes() + 16.
   size_t arena_used_bytes() const { return allocator_.used_bytes(); }
 
+ protected:
+  const MicroAllocator& allocator() const { return allocator_; }
+  const TfLiteContext& context() const { return context_; }
+
  private:
   // TODO(b/158263161): Consider switching to Create() function to enable better
   // error reporting during initialization.

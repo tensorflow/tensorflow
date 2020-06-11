@@ -172,7 +172,7 @@ class MicroAllocator {
       const MicroOpResolver& op_resolver,
       NodeAndRegistration* node_and_registrations);
 
-  ErrorReporter* error_reporter();
+  ErrorReporter* error_reporter() const;
 
  private:
   // Initializes the graph and allocates TfLiteContext tensor data.

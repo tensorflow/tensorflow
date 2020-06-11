@@ -718,7 +718,9 @@ TfLiteStatus MicroAllocator::PrepareNodeAndRegistrationDataFromFlatbuffer(
   return kTfLiteOk;
 }
 
-ErrorReporter* MicroAllocator::error_reporter() { return error_reporter_; }
+ErrorReporter* MicroAllocator::error_reporter() const {
+  return error_reporter_;
+}
 
 TfLiteStatus MicroAllocator::InitGraphAndContextTensorData(
     const Model* model, TfLiteContext* context, const SubGraph* subgraph) {
