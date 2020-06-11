@@ -64,10 +64,15 @@ class CSVDatasetOp : public DatasetOpKernel {
     OP_REQUIRES(ctx, select_cols_tensor->dims() == 1,
                 errors::InvalidArgument("`select_cols` must be a vector."));
 
-    const Tensor* exclude_cols_tensor = new const Tensor();
-    if (op_version_ > 1) {
-      OP_REQUIRES_OK(ctx, ctx->input("exclude_cols", &exclude_cols_tensor));
-    }
+std::vector<int64> exclude_cols;
+if (op_version_ > 1) {
+  const Tensor* exclude_cols_tensor;
+  OP_REQUIRES_OK(ctx, ctx->input("exclude_cols", &exclude_cols_tensor));
+  exclude_cols.reserve(exclude_cols_tensor->NumElements());
+  for (int i = 0; i < exclude_cols_tensor->NumElements(); ++i) {
+    exclude_cols.push_back(exclude_cols_tensor->flat<int64>()(i));
+  }
+}
 
     OP_REQUIRES(ctx, exclude_cols_tensor->dims() == 1,
                 errors::InvalidArgument("`exclude_cols` must be a vector"));
