@@ -72,7 +72,7 @@ std::vector<TensorOpTensor> GetInputTensors(const TensorType& input_type,
         continue;
       }
       if (op_code != BuiltinOperator_QUANTIZE) {
-        // Currently only supports INT8 and INT16 quantized models.
+        // Currently only supports int8 and int16 quantized models.
         TF_LITE_REPORT_ERROR(
             error_reporter,
             "modify_model_interface called on a model without quant/dequant.");
@@ -96,7 +96,7 @@ std::vector<TensorOpTensor> GetInputTensors(const TensorType& input_type,
       // ones we're trying to remove.
       if (quant_output->type != input_type) {
         // An exception from this is when we are setting the input or output
-        // type to UINT8.
+        // type to uint8.
         if (!(quant_output->type == TensorType_INT8 &&
               input_type == TensorType_UINT8)) {
           TF_LITE_REPORT_ERROR(
@@ -143,7 +143,7 @@ std::vector<TensorOpTensor> GetOutputTensors(const TensorType& output_type,
         continue;
       }
       if (op_code != BuiltinOperator_DEQUANTIZE) {
-        // Currently only supports INT8 and INT16 quantized models.
+        // Currently only supports int8 and int16 quantized models.
         TF_LITE_REPORT_ERROR(
             error_reporter,
             "modify_model_interface called on a model without quant/dequant.");
@@ -159,7 +159,7 @@ std::vector<TensorOpTensor> GetOutputTensors(const TensorType& output_type,
       TensorT* dequant_input = subgraph->tensors[op->inputs[0]].get();
       if (dequant_input->type != TensorType_INT8 &&
           dequant_input->type != TensorType_INT16) {
-        // Currently only supports INT8 and INT16 quantized models.
+        // Currently only supports int8 and int16 quantized models.
         TF_LITE_REPORT_ERROR(error_reporter,
                              "modify_model_interface currently only supports "
                              "int8 and int16 quantized models.");

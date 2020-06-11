@@ -38,7 +38,7 @@ int main(int argc, char** argv) {
     output = supported_types.at(argv[4]);
   } catch (const std::out_of_range&) {
     printf(
-        "Only supports uint8, int8 and int16 for input and output interfaces");
+        "Only supports uint8, int8 and int16 for input and output types");
     return 1;
   }
 
