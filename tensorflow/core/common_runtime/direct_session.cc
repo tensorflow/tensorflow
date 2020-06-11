@@ -71,8 +71,9 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
@@ -500,18 +501,24 @@ Status DirectSession::RunInternal(
   RunState run_state(step_id, &devices_);
   const size_t num_executors = executors_and_keys->items.size();
 
-  profiler::TraceMe activity(
+  profiler::TraceMeProducer activity(
+      // To TraceMeConsumers in ExecutorState::Process/Finish.
       [&] {
         if (options_.config.experimental().has_session_metadata()) {
           const auto& model_metadata =
               options_.config.experimental().session_metadata();
-          return strings::StrCat("SessionRun#id=", step_id,
-                                 ",model_id=", model_metadata.name(), ":",
-                                 model_metadata.version(), "#");
+          string model_id = strings::StrCat(model_metadata.name(), ":",
+                                            model_metadata.version());
+          return profiler::TraceMeEncode("SessionRun",
+                                         {{"id", step_id},
+                                          {"$r", 1} /*root_event*/,
+                                          {"model_id", model_id}});
         } else {
-          return strings::StrCat("SessionRun#id=", step_id, "#");
+          return profiler::TraceMeEncode(
+              "SessionRun", {{"id", step_id}, {"$r", 1} /*root_event*/});
         }
       },
+      profiler::ContextType::kTfExecutor, step_id,
       profiler::TraceMeLevel::kInfo);
 
   std::unique_ptr<DebuggerStateInterface> debugger_state;
