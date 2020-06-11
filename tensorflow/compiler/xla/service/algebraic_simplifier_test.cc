@@ -6659,5 +6659,39 @@ TEST_F(AlgebraicSimplifierTest, MultipleDotStrengthReductions) {
   EXPECT_EQ(3, m->computation_count());
 }
 
+TEST_F(AlgebraicSimplifierTest, UnaryVariadicReduce) {
+  const char* kModuleStr = R"(
+    HloModule m
+    fn {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      a = f32[] add(p0, p1)
+      ROOT t = (f32[]) tuple(a)
+    }
+    test {
+      p0 = f32[32,8,6,7] parameter(0)
+      c = f32[] constant(0)
+      ROOT r = (f32[8,6,7]) reduce(p0, c), dimensions={0}, to_apply=fn
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(m::Reduce(m::Parameter(0), m::ConstantScalar(0)))));
+  ASSERT_EQ(m->entry_computation()
+                ->root_instruction()
+                ->operand(0)
+                ->called_computations()
+                .size(),
+            1);
+  EXPECT_THAT(m->entry_computation()
+                  ->root_instruction()
+                  ->operand(0)
+                  ->called_computations()[0]
+                  ->root_instruction(),
+              GmockMatch(m::Add(m::Parameter(0), m::Parameter(1))));
+}
+
 }  // namespace
 }  // namespace xla
