@@ -92,10 +92,13 @@ void ExpandHeadOutsideCompiledOps(tf_device::ClusterOp cluster,
 
   for (auto head_outside_compiled_op :
        llvm::reverse(head_outside_compiled_ops)) {
-    if (HasOutsideCompilationAttribute(head_outside_compiled_op)) continue;
+    auto users = head_outside_compiled_op->getUsers();
+    if (users.empty() ||
+        HasOutsideCompilationAttribute(head_outside_compiled_op))
+      continue;
 
     bool should_expand_op_to_host_computation = true;
-    for (auto consumer_op : head_outside_compiled_op->getUsers()) {
+    for (auto consumer_op : users) {
       if (should_expand_op_to_host_computation &&
           !HasOutsideCompilationAttribute(consumer_op)) {
         should_expand_op_to_host_computation = false;
