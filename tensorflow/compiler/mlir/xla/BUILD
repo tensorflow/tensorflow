@@ -416,7 +416,7 @@ cc_library(
     srcs = ["transforms/cycle_detector.cc"],
     hdrs = ["transforms/cycle_detector.h"],
     deps = [
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
     ],
     alwayslink = 1,
 )
@@ -437,8 +437,8 @@ cc_library(
     deps = [
         ":cycle_detector",
         ":hlo",
-        "@llvm-project//llvm:ir",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
