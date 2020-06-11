@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
 
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
 namespace parallel_device {
@@ -28,21 +30,198 @@ class OpDeleter {
 
 using OpPtr = std::unique_ptr<TFE_Op, OpDeleter>;
 
-// Creates a vector of `count` new executors (threads).
-std::vector<ExecutorPtr> MakeExecutors(size_t count) {
-  std::vector<ExecutorPtr> executors;
-  executors.reserve(count);
-  for (int i = 0; i < count; ++i) {
-    executors.emplace_back(TFE_NewExecutor(true /* is_async */));
-  }
-  return executors;
-}
+class StatusDeleter {
+ public:
+  void operator()(TF_Status* to_delete) const { TF_DeleteStatus(to_delete); }
+};
+
+using StatusPtr = std::unique_ptr<TF_Status, StatusDeleter>;
 
 }  // namespace
 
+// Allows a single op at a time to be launched without blocking.
+//
+// DeviceThread itself is thread-safe, in that StartExecute will block if there
+// is a pending execution. Since StartExecute is equivalent to grabbing a lock,
+// multiple DeviceThreads should always be accessed in the same order to avoid
+// deadlocks.
+class DeviceThread {
+ public:
+  // Starts a background thread waiting for `StartExecute`.
+  explicit DeviceThread(const std::string& device)
+      : status_(TF_NewStatus()),
+        device_(device),
+        op_(nullptr),
+        thread_(tensorflow::Env::Default()->StartThread(
+            tensorflow::ThreadOptions(), "parallel_device_execute",
+            std::bind(&DeviceThread::Run, this))) {}
+  ~DeviceThread();
+
+  // Requests that the worker thread execute the specified operation. Blocks
+  // until the previously pending operation (a StartExecute without a Join) has
+  // finished, if any.
+  void StartExecute(TFE_Context* context, const char* operation_name,
+                    std::vector<TFE_TensorHandle*> inputs,
+                    const TFE_OpAttrs* attributes, int expected_max_outputs);
+  // Block until the previous `StartExecute` operation has executed. Forwards
+  // the status from `TFE_Execute` and returns outputs if the status is OK.
+  std::vector<TensorHandlePtr> Join(TF_Status* status);
+
+ private:
+  void Run();
+
+  void Execute(TFE_Context* context, const char* operation_name,
+               std::vector<TFE_TensorHandle*> inputs,
+               const TFE_OpAttrs* attributes, int expected_max_outputs,
+               std::vector<TensorHandlePtr>* outputs, TF_Status* status) const
+      TF_EXCLUSIVE_LOCKS_REQUIRED(execution_mutex_);
+
+  enum class ExecutionState {
+    kReadyToExecute,
+    kHasResult,
+    kIdle,
+    kShuttingDown,
+  };
+
+  tensorflow::mutex execution_mutex_;
+  ExecutionState execution_state_ TF_GUARDED_BY(execution_mutex_) =
+      ExecutionState::kIdle;
+  // Tells the worker thread that there is new work.
+  tensorflow::condition_variable start_execute_;
+  // The worker thread notifies that work has finished.
+  tensorflow::condition_variable finished_execute_;
+  // Notifies a StartExecute that the previous Join has finished.
+  tensorflow::condition_variable finished_join_;
+
+  // Temporary state between `StartExecute` and `Join`.
+  //   Inputs
+  TFE_Context* context_ TF_GUARDED_BY(execution_mutex_);
+  const char* operation_name_ TF_GUARDED_BY(execution_mutex_);
+  std::vector<TFE_TensorHandle*> op_inputs_ TF_GUARDED_BY(execution_mutex_);
+  const TFE_OpAttrs* attributes_ TF_GUARDED_BY(execution_mutex_);
+  int expected_max_outputs_ TF_GUARDED_BY(execution_mutex_);
+  //   Outputs
+  std::vector<TensorHandlePtr> op_outputs_ TF_GUARDED_BY(execution_mutex_);
+  StatusPtr status_ TF_GUARDED_BY(execution_mutex_);
+
+  const std::string device_;
+  mutable OpPtr op_ TF_GUARDED_BY(execution_mutex_);
+  std::unique_ptr<Thread> thread_;
+};
+
+DeviceThread::~DeviceThread() {
+  {
+    tensorflow::mutex_lock l(execution_mutex_);
+    execution_state_ = ExecutionState::kShuttingDown;
+  }
+  start_execute_.notify_one();
+}
+
+void DeviceThread::Run() {
+  while (true) {
+    {
+      tensorflow::mutex_lock l(execution_mutex_);
+      while (execution_state_ == ExecutionState::kIdle ||
+             execution_state_ == ExecutionState::kHasResult) {
+        start_execute_.wait(l);
+      }
+      if (execution_state_ == ExecutionState::kShuttingDown) {
+        return;
+      } else if (execution_state_ == ExecutionState::kReadyToExecute) {
+        // op_outputs_ may have been std::moved
+        op_outputs_ = std::vector<TensorHandlePtr>();
+        Execute(context_, operation_name_, std::move(op_inputs_), attributes_,
+                expected_max_outputs_, &op_outputs_, status_.get());
+        execution_state_ = ExecutionState::kHasResult;
+      }
+    }
+    finished_execute_.notify_one();
+  }
+}
+
+void DeviceThread::StartExecute(TFE_Context* context,
+                                const char* operation_name,
+                                std::vector<TFE_TensorHandle*> inputs,
+                                const TFE_OpAttrs* attributes,
+                                int expected_max_outputs) {
+  {
+    tensorflow::mutex_lock l(execution_mutex_);
+    while (execution_state_ != ExecutionState::kIdle) {
+      // If there's already a pending execution, wait until Join finishes before
+      // starting on the next operation.
+      finished_join_.wait(l);
+    }
+    context_ = context;
+    operation_name_ = operation_name;
+    op_inputs_ = inputs;
+    attributes_ = attributes;
+    expected_max_outputs_ = expected_max_outputs;
+    execution_state_ = ExecutionState::kReadyToExecute;
+  }
+  start_execute_.notify_one();
+}
+
+std::vector<TensorHandlePtr> DeviceThread::Join(TF_Status* status) {
+  std::vector<TensorHandlePtr> result;
+  {
+    tensorflow::mutex_lock l(execution_mutex_);
+    while (execution_state_ != ExecutionState::kHasResult) {
+      finished_execute_.wait(l);
+    }
+    if (TF_GetCode(status_.get()) != TF_OK) {
+      TF_SetStatus(status, TF_GetCode(status_.get()),
+                   TF_Message(status_.get()));
+    }
+    execution_state_ = ExecutionState::kIdle;
+    result = std::move(op_outputs_);
+  }
+  finished_join_.notify_one();
+  return result;
+}
+
+void DeviceThread::Execute(TFE_Context* context, const char* operation_name,
+                           std::vector<TFE_TensorHandle*> inputs,
+                           const TFE_OpAttrs* attributes,
+                           int expected_max_outputs,
+                           std::vector<TensorHandlePtr>* outputs,
+                           TF_Status* status) const {
+  if (op_ == nullptr) {
+    op_.reset(TFE_NewOp(context, operation_name, status));
+    if (TF_GetCode(status) != TF_OK) return;
+    TFE_OpSetDevice(op_.get(), device_.c_str(), status);
+    if (TF_GetCode(status) != TF_OK) return;
+  } else {
+    TFE_OpReset(op_.get(), operation_name, device_.c_str(), status);
+    if (TF_GetCode(status) != TF_OK) return;
+  }
+  TFE_OpAddAttrs(op_.get(), attributes);
+  for (int input_index = 0; input_index < inputs.size(); ++input_index) {
+    TFE_OpAddInput(op_.get(), inputs[input_index], status);
+    if (TF_GetCode(status) != TF_OK) return;
+  }
+  std::vector<TFE_TensorHandle*> unwrapped_results(expected_max_outputs);
+  int real_num_outputs = expected_max_outputs;
+  if (TF_GetCode(status) != TF_OK) return;
+  TFE_Execute(op_.get(), unwrapped_results.data(), &real_num_outputs, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  unwrapped_results.resize(real_num_outputs);
+  outputs->reserve(real_num_outputs);
+  for (TFE_TensorHandle* unwrapped_result : unwrapped_results) {
+    outputs->emplace_back(unwrapped_result);
+  }
+}
+
 ParallelDevice::ParallelDevice(const std::vector<std::string>& devices)
-    : underlying_devices_(devices),
-      executors_(MakeExecutors(underlying_devices_.size())) {}
+    : underlying_devices_(devices) {
+  device_threads_.reserve(devices.size());
+  for (int device_index = 0; device_index < devices.size(); ++device_index) {
+    device_threads_.emplace_back(
+        new DeviceThread(devices[device_index].c_str()));
+  }
+}
+
+// Necessary for a unique_ptr to a forward-declared type.
+ParallelDevice::~ParallelDevice() = default;
 
 std::unique_ptr<ParallelTensor> ParallelDevice::CopyToParallelDevice(
     TFE_Context* context, TFE_TensorHandle* tensor, TF_Status* status) const {
@@ -108,72 +287,34 @@ ParallelDevice::Execute(TFE_Context* context,
   // Compute per-device per-output tensors
   std::vector<std::vector<TensorHandlePtr>> per_device_output_tensors;
   per_device_output_tensors.reserve(underlying_devices_.size());
-  // TODO(allenl): Add a TFE_ExecuteWithExecutor API so we don't have to keep
-  // setting the thread-local executor like this.
-  TFE_Executor* previous_executor(TFE_ContextGetExecutorForThread(context));
-  auto reset_executor =
-      tensorflow::gtl::MakeCleanup([context, previous_executor]() {
-        TFE_ContextSetExecutorForThread(context, previous_executor);
-        TFE_DeleteExecutor(previous_executor);
-      });
-  int first_op_output_count;
+  int first_op_output_count = 0;
   for (int device_index = 0; device_index < underlying_devices_.size();
        ++device_index) {
-    TFE_Executor* executor = executors_[device_index].get();
-    // Note that the `reset_executor` cleanup sets the thread's executor back to
-    // the value before this function ran.
-    TFE_ContextSetExecutorForThread(context, executor);
-    OpPtr op(TFE_NewOp(context, operation_name, status));
-    if (TF_GetCode(status) != TF_OK) return result;
-    TFE_OpSetDevice(op.get(), underlying_devices_[device_index].c_str(),
-                    status);
-    TFE_OpAddAttrs(op.get(), attributes);
+    DeviceThread* device_thread = device_threads_[device_index].get();
+    std::vector<TFE_TensorHandle*> device_inputs;
+    device_inputs.reserve(device_inputs.size());
     for (int input_index = 0; input_index < inputs.size(); ++input_index) {
       // Parallel tensors are divided between operations by device.
-      TFE_OpAddInput(op.get(), inputs[input_index]->tensor(device_index),
-                     status);
-      if (TF_GetCode(status) != TF_OK) return result;
+      device_inputs.push_back(inputs[input_index]->tensor(device_index));
     }
-    std::vector<TFE_TensorHandle*> op_outputs(expected_max_outputs);
-    int real_num_outputs = expected_max_outputs;
-    // For nested devices, the inner device sees the async executor we've
-    // set. Inner parallel devices will just overwrite this with their own and
-    // then set it back to ours before returning. This means parallel devices
-    // which consist of several aliased parallel devices would hypothetically
-    // deadlock if the outer parallel device ran one collective with a group
-    // size equal to the total number of aliased physical devices. Currently
-    // physical devices cannot participate in a single collective reduction
-    // multiple times, so this would fail earlier.
-    //
-    // TODO(allenl): Keep a map from outer executor to list of inner executors
-    // rather than a single list of executors so aliased nested parallel devices
-    // don't re-use an executor.
-    TFE_Execute(op.get(), op_outputs.data(), &real_num_outputs, status);
+    device_thread->StartExecute(context, operation_name,
+                                std::move(device_inputs), attributes,
+                                expected_max_outputs);
+  }
+  for (int device_index = 0; device_index < underlying_devices_.size();
+       ++device_index) {
+    DeviceThread* device_thread = device_threads_[device_index].get();
+    per_device_output_tensors.push_back(device_thread->Join(status));
+    if (TF_GetCode(status) != TF_OK) return result;
     if (device_index == 0) {
-      first_op_output_count = real_num_outputs;
+      first_op_output_count = per_device_output_tensors.rbegin()->size();
     } else {
-      if (real_num_outputs != first_op_output_count) {
+      if (per_device_output_tensors.rbegin()->size() != first_op_output_count) {
         TF_SetStatus(status, TF_INTERNAL,
                      "Parallel ops produced different numbers of tensors.");
         return result;
       }
     }
-    if (TF_GetCode(status) != TF_OK) return result;
-    std::vector<TensorHandlePtr> this_outputs;
-    this_outputs.reserve(real_num_outputs);
-    for (int output_num = 0; output_num < real_num_outputs; ++output_num) {
-      this_outputs.emplace_back(op_outputs[output_num]);
-    }
-    per_device_output_tensors.push_back(std::move(this_outputs));
-  }
-  for (int device_index = 0; device_index < underlying_devices_.size();
-       ++device_index) {
-    TFE_Executor* executor = executors_[device_index].get();
-    // TODO(b/157523095): Syncing the executor here shouldn't be
-    // necessary. Currently async+remote is missing cross-executor
-    // coordination.
-    TFE_ExecutorWaitForAllPendingNodes(executor, status);
-    if (TF_GetCode(status) != TF_OK) return result;
   }
   // For each output of the original operation, pack the per-device
   // TensorHandles we've computed into a single parallel TensorHandle.
