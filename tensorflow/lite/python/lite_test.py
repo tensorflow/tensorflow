@@ -891,7 +891,11 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       ('UseTfliteBuiltinsInt16DisableMLIR',
        [lite.OpsSet.\
        EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8],
-       False))
+       False),
+      ('UseTfliteBuiltinsInt16EnableMLIR',
+       [lite.OpsSet.\
+       EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8],
+       True))
   def testCalibrateAndQuantizeBuiltinInt(self, supported_ops, enable_mlir):
     with ops.Graph().as_default():
       inp, output, calibration_gen = self._getCalibrationQuantizeModel()
