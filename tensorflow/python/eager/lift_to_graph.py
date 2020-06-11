@@ -134,9 +134,7 @@ def _copy_non_source(op, graph, op_map, base_graph):
         name=op.name)
   op_map[op] = copied_op
   for i, o in enumerate(op.outputs):
-    # The tensor should already be in the map if it's a source.
-    if o not in op_map:
-      op_map[o] = copied_op.outputs[i]
+    op_map[o] = copied_op.outputs[i]
 
   return ([mutation._replace(copied_op=copied_op)
            for mutation in input_mutations],
@@ -309,10 +307,12 @@ def lift_to_graph(tensors,
   with graph.as_default():
     for i in variable_init_tensors:
       op_map[i] = i
+    source_ops = set()
     # Add the sources in the same order as the original graph.
     for s in internal_captures:
       if s in sources:
         sources.remove(s)
+        source_ops.add(s.op)
         _copy_source(
             s=s,
             graph=graph,
@@ -321,6 +321,7 @@ def lift_to_graph(tensors,
             inverse_captures=inverse_captures,
             base_graph=base_graph)
     for s in sources:
+      source_ops.add(s.op)
       _copy_source(
           s=s,
           graph=graph,
@@ -332,6 +333,8 @@ def lift_to_graph(tensors,
     input_mutations = []
     control_mutations = []
     for op in reversed(ops_to_copy):
+      if op in source_ops or op in op_map:
+        continue
       new_input_mutations, new_control_mutations = _copy_non_source(
           op=op, graph=graph, op_map=op_map, base_graph=base_graph)
       input_mutations.extend(new_input_mutations)
