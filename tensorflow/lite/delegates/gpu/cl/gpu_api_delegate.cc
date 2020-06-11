@@ -159,18 +159,30 @@ class Delegate {
           options.priority2 = InferencePriority::MIN_LATENCY;
           options.priority3 = InferencePriority::MIN_MEMORY_USAGE;
           break;
+        case TfLiteGpuInferencePriority::
+            TFLITE_GPU_INFERENCE_PRIORITY_MIN_MEMORY_USAGE:
+          options.priority2 = InferencePriority::MIN_MEMORY_USAGE;
+          options.priority3 = InferencePriority::MIN_LATENCY;
+          break;
       }
     } else {
-      options.priority1 = InferencePriority::MIN_LATENCY;
       switch (options_.compile_options.inference_priority) {
         case TfLiteGpuInferencePriority::
             TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION:
+          options.priority1 = InferencePriority::MIN_LATENCY;
           options.priority2 = InferencePriority::MAX_PRECISION;
           options.priority3 = InferencePriority::MIN_MEMORY_USAGE;
           break;
         case TfLiteGpuInferencePriority::
             TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY:
+          options.priority1 = InferencePriority::MIN_LATENCY;
           options.priority2 = InferencePriority::MIN_MEMORY_USAGE;
+          options.priority3 = InferencePriority::MAX_PRECISION;
+          break;
+        case TfLiteGpuInferencePriority::
+            TFLITE_GPU_INFERENCE_PRIORITY_MIN_MEMORY_USAGE:
+          options.priority1 = InferencePriority::MIN_MEMORY_USAGE;
+          options.priority2 = InferencePriority::MIN_LATENCY;
           options.priority3 = InferencePriority::MAX_PRECISION;
           break;
       }
