@@ -405,6 +405,7 @@ class CategoryEncodingAdaptTest(keras_parameterized.TestCase,
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     layer = get_layer_class()(
         max_tokens=None, output_mode=category_encoding.BINARY)
+    layer.adapt([1, 2])
     _ = layer(input_data)
     with self.assertRaisesRegex(RuntimeError, "num_elements cannot be changed"):
       layer.set_num_elements(5)
@@ -415,6 +416,7 @@ class CategoryEncodingAdaptTest(keras_parameterized.TestCase,
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     layer = get_layer_class()(
         max_tokens=None, output_mode=category_encoding.BINARY)
+    layer.adapt(vocab_data)
     _ = layer(input_data)
     with self.assertRaisesRegex(RuntimeError, "can't be adapted"):
       layer.adapt(vocab_data)
@@ -425,6 +427,7 @@ class CategoryEncodingAdaptTest(keras_parameterized.TestCase,
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     layer = get_layer_class()(
         max_tokens=None, output_mode=category_encoding.BINARY)
+    layer.adapt([1, 2])
     _ = layer(input_data)
     with self.assertRaisesRegex(RuntimeError, "num_elements cannot be changed"):
       layer._set_state_variables(state_variables)
@@ -740,6 +743,21 @@ class CategoryEncodingCombinerTest(
                                                    expected_accumulator_output)
     self.validate_accumulator_computation(combiner, data, expected_accumulator)
     self.validate_accumulator_extract(combiner, data, expected_extract_output)
+
+  def test_1d_data(self):
+    data = [1, 2, 3]
+    cls = get_layer_class()
+    layer = cls()
+    layer.adapt(data)
+    output = layer(data)
+    self.assertListEqual(output.shape.as_list(), [3, 4])
+
+  def test_no_adapt_exception(self):
+    cls = get_layer_class()
+    layer = cls()
+    with self.assertRaisesRegex(
+        RuntimeError, r".*you need to call.*"):
+      _ = layer([1, 2, 3])
 
 
 if __name__ == "__main__":
