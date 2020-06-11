@@ -269,7 +269,9 @@ def HLO_DynamicUpdateSliceOp: LHLO_Op<"dynamic-update-slice", []> {
 
 def HLO_StaticMemRefCastOp: Op<LHLO_Dialect, "static_memref_cast",
     [NoSideEffect, DeclareOpInterfaceMethods<ViewLikeOpInterface>]> {
-  let summary = "static memref cast operation";
+  let summary = [{
+    "modifies the offset, sizes and strides of a statically shaped memref.
+  }];
   let description = [{
     Allows to modify the offset, sizes and strides of a statically shaped memref.
 
