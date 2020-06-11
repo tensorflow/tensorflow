@@ -1,8 +1,11 @@
 # Description:
 #   Contains Keras test utils and integration tests.
 
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 package(
     default_visibility = [
@@ -39,6 +42,40 @@ tf_py_test(
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tpu_py_test(
+    name = "automatic_outside_compilation_test",
+    srcs = [
+        "automatic_outside_compilation_test.py",
+    ],
+    disable_experimental = True,
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:config",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:function",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:string_ops",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:summary_ops_v2",
+        "//tensorflow/python:training_lib",
+        "//tensorflow/python:training_util",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras/distribute:distribute_strategy_test_lib",
+        "//tensorflow/python/ops/losses",
     ],
 )
 
@@ -274,6 +311,26 @@ cuda_py_test(
         "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/layers:core",
+    ],
+)
+
+tf_py_test(
+    name = "saved_model_test",
+    size = "small",
+    srcs = ["saved_model_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:function",
+        "//tensorflow/python/keras/layers:core",
+        "//tensorflow/python/keras/optimizer_v2",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/training/tracking:util",
     ],
 )
 

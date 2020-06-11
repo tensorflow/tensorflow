@@ -26,10 +26,12 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import optimizers
@@ -368,48 +370,54 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
 
 
 @keras_parameterized.run_with_all_saved_model_formats
-class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
+class TestWholeModelSaving(keras_parameterized.TestCase):
 
   def _save_model_dir(self, dirname='saved_model'):
     temp_dir = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
     return os.path.join(temp_dir, dirname)
 
-  def _assert_same_weights(self, model, loaded_model,
-                           original_optimizer_has_iterations_variable=True):
-    """Checks that the loaded weighs are the same as the original weights.
+  def _assert_same_weights_and_metrics(self, model, loaded_model):
+    """Checks that the loaded weights and metrics are the same as the original.
 
     Args:
       model: original model
       loaded_model: loaded model
-      original_optimizer_has_iterations_variable: If the original optimizer
-        uses an iterations variable. The loaded model will have a v2
-        optimizer, which always contains an iterations variable. So when
-        comparing the weights, the first variable in the loaded optimizer
-        weights may need to be ignored.
     """
     self.assertAllClose(model.weights, loaded_model.weights)
+
     if loaded_model.optimizer:
       if testing_utils.get_save_format() == 'tf':
         # TODO(b/153110928): Keras TF format doesn't restore optimizer weights
         # currently.
         return
-      if original_optimizer_has_iterations_variable:
-        self.assertAllClose(model.optimizer.weights,
-                            loaded_model.optimizer.weights)
-      else:
-        self.assertAllClose(model.optimizer.weights,
-                            loaded_model.optimizer.weights[1:])
+      self.assertAllClose(model.optimizer.weights,
+                          loaded_model.optimizer.weights)
 
-  def test_sequential_model_saving(self):
+    # In V1/Graph mode, the model isn't built, so the metrics are not loaded
+    # immediately (requires model to be called on some data before building
+    # metrics).
+    check_metrics = tf2.enabled and context.executing_eagerly()
+
+    if check_metrics:
+      self.assertAllEqual([m.name for m in model.metrics],
+                          [m.name for m in loaded_model.metrics])
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_save_and_load(self):
     saved_model_dir = self._save_model_dir()
     save_format = testing_utils.get_save_format()
 
+    if save_format == 'h5' and testing_utils.get_model_type() == 'subclass':
+      return  # HDF5 format currently does not allow saving classed models.
+
     with self.cached_session():
-      model = keras.models.Sequential()
-      model.add(keras.layers.Dense(2, input_shape=(3,)))
-      model.add(keras.layers.RepeatVector(3))
-      model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
+      model = testing_utils.get_model_from_layers(
+          [keras.layers.Dense(2),
+           keras.layers.RepeatVector(3),
+           keras.layers.TimeDistributed(keras.layers.Dense(3))],
+          input_shape=(3,))
       model.compile(
           loss=keras.losses.MSE,
           optimizer=keras.optimizer_v2.rmsprop.RMSprop(lr=0.0001),
@@ -432,43 +440,35 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
       out = model.predict(x)
       keras.models.save_model(model, saved_model_dir, save_format=save_format)
 
-      new_model = keras.models.load_model(saved_model_dir)
-      self._assert_same_weights(model, new_model)
+      loaded_model = keras.models.load_model(saved_model_dir)
+      self._assert_same_weights_and_metrics(model, loaded_model)
 
-      out2 = new_model.predict(x)
+      out2 = loaded_model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
 
-      # test that new updates are the same with both models
-      model.train_on_batch(x, y)
-      new_model.train_on_batch(x, y)
-
       eval_out = model.evaluate(x, y)
-      eval_out2 = new_model.evaluate(x, y)
+      eval_out2 = loaded_model.evaluate(x, y)
       self.assertArrayNear(eval_out, eval_out2, 0.001)
 
-      out = model.predict(x)
-      out2 = new_model.predict(x)
-      # The model has been trained on two batches. So the tolerance is larger.
-      self.assertAllClose(out, out2, atol=0.01)
-
+  @test_util.run_in_graph_and_eager_modes
   def test_sequential_model_saving_without_input_shape(self):
     saved_model_dir = self._save_model_dir()
     save_format = testing_utils.get_save_format()
-    with ops.Graph().as_default(), self.cached_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(2))
       model.add(keras.layers.RepeatVector(3))
       model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
       model.compile(
           loss=keras.losses.MSE,
-          optimizer=keras.optimizers.RMSprop(lr=0.0001),
+          optimizer='rmsprop',
           metrics=[
               keras.metrics.categorical_accuracy,
-              keras.metrics.CategoricalAccuracy()
+              keras.metrics.CategoricalAccuracy(name='cat_acc')
           ],
           weighted_metrics=[
               keras.metrics.categorical_accuracy,
-              keras.metrics.CategoricalAccuracy()
+              keras.metrics.CategoricalAccuracy(name='cat_acc2')
           ],
           sample_weight_mode='temporal')
       x = np.random.random((1, 3))
@@ -479,12 +479,13 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
       model.save(saved_model_dir, save_format=save_format)
 
       new_model = keras.models.load_model(saved_model_dir)
-      self._assert_same_weights(
-          model, new_model, original_optimizer_has_iterations_variable=False)
+
+      self._assert_same_weights_and_metrics(model, new_model)
 
       out2 = new_model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
 
+  @test_util.run_in_graph_and_eager_modes
   def test_sequential_model_saving_without_compile(self):
     saved_model_dir = self._save_model_dir()
     save_format = testing_utils.get_save_format()
@@ -501,7 +502,7 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
       keras.models.save_model(model, saved_model_dir, save_format=save_format)
 
       new_model = keras.models.load_model(saved_model_dir)
-      self._assert_same_weights(model, new_model)
+      self._assert_same_weights_and_metrics(model, new_model)
 
       out2 = new_model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
@@ -535,40 +536,9 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
           saved_model_dir,
           custom_objects={'CustomOp': CustomOp,
                           'custom_loss': custom_loss})
-      self._assert_same_weights(model, new_model)
+      self._assert_same_weights_and_metrics(model, new_model)
 
       out2 = new_model.predict(x)
-      self.assertAllClose(out, out2, atol=1e-05)
-
-  def test_functional_model_saving(self):
-    saved_model_dir = self._save_model_dir()
-    save_format = testing_utils.get_save_format()
-    with ops.Graph().as_default(), self.cached_session():
-      inputs = keras.layers.Input(shape=(3,))
-      x = keras.layers.Dense(2)(inputs)
-      output = keras.layers.Dense(3)(x)
-
-      model = keras.models.Model(inputs, output)
-      model.compile(
-          loss=keras.losses.MSE,
-          optimizer=keras.optimizers.RMSprop(lr=0.0001),
-          metrics=[
-              keras.metrics.categorical_accuracy,
-              keras.metrics.CategoricalAccuracy()
-          ],
-          weighted_metrics=[
-              keras.metrics.categorical_accuracy,
-              keras.metrics.CategoricalAccuracy()
-          ])
-      x = np.random.random((1, 3))
-      y = np.random.random((1, 3))
-      model.train_on_batch(x, y)
-
-      out = model.predict(x)
-      keras.models.save_model(model, saved_model_dir, save_format=save_format)
-      model = keras.models.load_model(saved_model_dir)
-
-      out2 = model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
 
   def test_saving_without_compilation(self):

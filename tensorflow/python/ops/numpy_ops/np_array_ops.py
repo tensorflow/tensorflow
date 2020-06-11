@@ -84,8 +84,8 @@ def zeros(shape, dtype=float):  # pylint: disable=redefined-outer-name
   Returns:
     An ndarray.
   """
-  if dtype:
-    dtype = np_utils.result_type(dtype)
+  dtype = (
+      np_utils.result_type(dtype) if dtype else np_dtypes.default_float_type())
   if isinstance(shape, np_arrays.ndarray):
     shape = shape.data
   return np_arrays.tensor_to_ndarray(array_ops.zeros(shape, dtype=dtype))
@@ -378,28 +378,6 @@ def arange(start, stop=None, step=1, dtype=None):
   # is integer type.
   return np_arrays.tensor_to_ndarray(
       math_ops.cast(math_ops.range(start, limit=stop, delta=step), dtype=dtype))
-
-
-@np_utils.np_doc(np.geomspace)
-def geomspace(start, stop, num=50, endpoint=True, dtype=float):  # pylint: disable=missing-docstring
-  if dtype:
-    dtype = np_utils.result_type(dtype)
-  if num < 0:
-    raise ValueError('Number of samples {} must be non-negative.'.format(num))
-  if not num:
-    return empty([0])
-  step = 1.
-  if endpoint:
-    if num > 1:
-      step = math_ops.pow((stop / start), 1 / (num - 1))
-  else:
-    step = math_ops.pow((stop / start), 1 / num)
-  result = math_ops.cast(math_ops.range(num), step.dtype)
-  result = math_ops.pow(step, result)
-  result = math_ops.multiply(result, start)
-  if dtype:
-    result = math_ops.cast(result, dtype=dtype)
-  return np_arrays.tensor_to_ndarray(result)
 
 
 # Building matrices.
@@ -1636,3 +1614,35 @@ def ix_(*args):  # pylint: disable=missing-docstring
           'Only integer and bool dtypes are supported, got {}'.format(dtype))
 
   return output
+
+
+@np_utils.np_doc(np.broadcast_arrays)
+def broadcast_arrays(*args, **kwargs):  # pylint: disable=missing-docstring
+  subok = kwargs.pop('subok', False)
+  if subok:
+    raise ValueError('subok=True is not supported.')
+  if kwargs:
+    raise ValueError('Received unsupported arguments {}'.format(kwargs.keys()))
+
+  args = [asarray(arg).data for arg in args]
+  args = np_utils.tf_broadcast(*args)
+  return [np_utils.tensor_to_ndarray(arg) for arg in args]
+
+
+@np_utils.np_doc_only(np.sign)
+def sign(x, out=None, where=None, **kwargs):  # pylint: disable=missing-docstring,redefined-outer-name
+  if out:
+    raise ValueError('tf.numpy doesnt support setting out.')
+  if where:
+    raise ValueError('tf.numpy doesnt support setting where.')
+  if kwargs:
+    raise ValueError('tf.numpy doesnt support setting {}'.format(kwargs.keys()))
+
+  x = asarray(x)
+  dtype = x.dtype
+  if np.issubdtype(dtype, np.complex):
+    result = math_ops.cast(math_ops.sign(math_ops.real(x.data)), dtype)
+  else:
+    result = math_ops.sign(x.data)
+
+  return np_utils.tensor_to_ndarray(result)

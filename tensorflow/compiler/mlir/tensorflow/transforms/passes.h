@@ -277,6 +277,11 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTPUOutsideCompilationClusterPass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUExtractHeadTailOutsideCompilationPass();
 
+// Creates a pass that expands outside compilation cluster at the head/tail of
+// TPU computation by adding outside compilation attribute to identity/cast ops
+// that are only used for host computation.
+std::unique_ptr<OperationPass<FuncOp>> CreateTPUHostComputationExpansionPass();
+
 // Creates a pass that extract outside compilation (CPU ops inside TPU cluster)
 // ops to a separate parallel_execute region to run on CPU.
 std::unique_ptr<OperationPass<FuncOp>> CreateTPUExtractOutsideCompilationPass();

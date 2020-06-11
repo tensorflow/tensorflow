@@ -12,12 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_WHITELIST_VARIABLES_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_WHITELIST_VARIABLES_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_COMPATIBILITY_VARIABLES_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_COMPATIBILITY_VARIABLES_H_
 
-// This file lists generally useful whitelisting properties.
+// This file lists generally useful compatibility properties.
 // Properties starting with "tflite." are reserved.
-// Users of the whitelisting library can use arbitrary other property names.
+// Users of the compatibility library can use arbitrary other property names.
 
 namespace tflite {
 namespace acceleration {
@@ -71,17 +71,17 @@ namespace gpu {
 // GPU-delegate derived properties.
 
 // Whether the GPU delegate works in general.
-// ("UNSET", "UNKNOWN", "WHITELISTED", "BLACKLISTED").
+// ("UNSET", "UNKNOWN", "SUPPORTED", "UNSUPPORTED").
 constexpr char kStatus[] = "tflite.gpu.status";
 
 // Whether OpenCL should be allowed. Possible values are the SupportStatus enums
-// ("UNSET", "UNKNOWN", "WHITELISTED", "BLACKLISTED").
+// ("UNSET", "UNKNOWN", "SUPPORTED", "UNSUPPORTED").
 constexpr char kOpenCLStatus[] = "tflite.gpu.opencl_status";
-constexpr char kStatusWhitelisted[] = "WHITELISTED";
-constexpr char kStatusBlacklisted[] = "BLACKLISTED";
+constexpr char kStatusSupported[] = "SUPPORTED";
+constexpr char kStatusUnsupported[] = "UNSUPPORTED";
 }  // namespace gpu
 
 }  // namespace acceleration
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_WHITELIST_VARIABLES_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_COMPATIBILITY_VARIABLES_H_

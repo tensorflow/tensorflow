@@ -98,7 +98,7 @@ limitations under the License.
 
   source_template = """{license_text}
 // This is a binary file that has been converted into a C++ data array using the
-// //tensorflow/lite/experimental/acceleration/whitelist/convert_binary_to_cc_source.py
+// //tensorflow/lite/experimental/acceleration/compatibility/convert_binary_to_cc_source.py
 // script. This form is useful for compiling into a binary to simplify
 // deployment on mobile devices
 
@@ -131,7 +131,7 @@ extern const int {array_name}_len = {array_length};
 {license_text}
 
 // This is a binary file that has been converted into a C++ data array using the
-// //tensorflow/lite/experimental/acceleration/whitelist/convert_binary_to_cc_source.py
+// //tensorflow/lite/experimental/acceleration/compatibility/convert_binary_to_cc_source.py
 // script. This form is useful for compiling into a binary to simplify
 // deployment on mobile devices
 

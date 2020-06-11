@@ -1,4 +1,4 @@
-// RUN: tf-opt %s | tf-opt | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s | tf-opt | FileCheck %s
 
 // CHECK-LABEL: func @return_no_operands
 func @return_no_operands() {

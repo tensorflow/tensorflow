@@ -74,7 +74,7 @@ TEST(ArgumentsTest, TestSelectorResolve) {
     value = object_buffer[id];
   }
 )";
-  ASSERT_OK(args.TransformToCLCode(&sample_code));
+  ASSERT_OK(args.TransformToCLCode({}, &sample_code));
   EXPECT_EQ(sample_code, expected_result);
 
   std::string cl_arguments = args.GetListOfArgs();
@@ -92,62 +92,15 @@ TEST(ArgumentsTest, TestNoSelector) {
     value = args.object.Write(id);
   }
 )";
-  EXPECT_FALSE(args.TransformToCLCode(&sample_code).ok());
+  EXPECT_FALSE(args.TransformToCLCode({}, &sample_code).ok());
 }
 
-TEST(ArgumentsTest, TestInsertLinkable) {
-  TensorDescriptor desc{DataType::FLOAT32, TensorStorageType::BUFFER,
-                        Layout::HWC};
-  Arguments args;
-  args.AddObjectRef("spatial_tensor", AccessType::WRITE,
-                    absl::make_unique<TensorDescriptor>(desc));
-  std::string linkable_code = "in_out_value += X_COORD * Y_COORD - S_COORD;\n";
-  std::string sample_code = R"(
-  if (a < 3) {
-    args.spatial_tensor.Write(value, xc, yc, zc);
-  }
-)";
-  EXPECT_TRUE(
-      args.InsertLinkableCode("spatial_tensor", linkable_code, &sample_code)
-          .ok());
-  const std::string expected_result = R"(
-  if (a < 3) {
-    value += xc * yc - zc;
-args.spatial_tensor.Write(value, xc, yc, zc);
-  }
-)";
-  EXPECT_EQ(sample_code, expected_result);
-}
-
-TEST(ArgumentsTest, TestMergeArgs) {
-  TensorDescriptor desc{DataType::FLOAT32, TensorStorageType::BUFFER,
-                        Layout::HWC};
-  Arguments args;
-  args.AddObjectRef("spatial_tensor", AccessType::WRITE,
-                    absl::make_unique<TensorDescriptor>(desc));
-
+TEST(ArgumentsTest, TestRenameArgs) {
   Arguments linkable_args;
   linkable_args.AddFloat("alpha", 0.5f);
   std::string linkable_code = "in_out_value += args.alpha;\n";
-  std::string sample_code = R"(
-  if (a < 3) {
-    args.spatial_tensor.Write(value, xc, yc, zc);
-  }
-)";
-
   linkable_args.RenameArgs("_link0", &linkable_code);
   EXPECT_EQ(linkable_code, "in_out_value += args.alpha_link0;\n");
-  EXPECT_TRUE(args.Merge(std::move(linkable_args), "_link0").ok());
-  EXPECT_TRUE(
-      args.InsertLinkableCode("spatial_tensor", linkable_code, &sample_code)
-          .ok());
-  const std::string expected_result = R"(
-  if (a < 3) {
-    value += args.alpha_link0;
-args.spatial_tensor.Write(value, xc, yc, zc);
-  }
-)";
-  EXPECT_EQ(sample_code, expected_result);
 }
 
 }  // namespace cl

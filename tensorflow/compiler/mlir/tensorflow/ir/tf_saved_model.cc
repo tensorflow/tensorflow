@@ -229,7 +229,7 @@ static LogicalResult VerifySavedModelModule(
   for (auto symbol_use : *symbol_uses) {
     auto func = symbol_table.lookup<FuncOp>(
         symbol_use.getSymbolRef().cast<FlatSymbolRefAttr>().getValue());
-    if (func && !GetExportedNames(func).empty()) {
+    if (func && IsExported(func)) {
       return symbol_use.getUser()
           ->emitError("exported function cannot be internally referenced")
           .attachNote(func.getLoc())
@@ -331,7 +331,11 @@ SmallVector<StringRef, 2> GetExportedNames(Operation *op) {
   return ret;
 }
 
-bool IsExported(Operation *op) { return !GetExportedNames(op).empty(); }
+bool IsExported(Operation *op) {
+  auto exported_names =
+      op->getAttrOfType<ArrayAttr>("tf_saved_model.exported_names");
+  return exported_names && exported_names.size() != 0;
+}
 
 bool HasTfSavedModelSemantics(ModuleOp module) {
   return module.getAttr("tf_saved_model.semantics") != nullptr;

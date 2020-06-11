@@ -19,7 +19,7 @@ enum Comparison : byte {
   MINIMUM = 1,
 }
 
-// Mapping from available device features to whitelisting decisions. Basic usage is to:
+// Mapping from available device features to compatibility decisions. Basic usage is to:
 // 1) Map easily available device data (like Android version,
 // Manufacturer, Device) to things like SoC vendor, SoC model.
 // 2) Map complete device data to delegate-specific features and support status

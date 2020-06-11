@@ -112,13 +112,26 @@ string HloInputOutputAliasConfig::ToString() const {
       absl::StrFormat("  Output shape: %s", alias_.shape().ToString()));
 
   ForEachAlias([&](const ShapeIndex& output_index, const Alias& alias) {
-    const char* kind = alias.kind == AliasKind::kUserAlias ? "USER" : "SYSTEM";
     pieces.push_back(absl::StrFormat(
         "  OutputIndex %s is aliased (kind=%s) with parameter %lld at %s:",
-        output_index.ToString(), kind, alias.parameter_number,
-        alias.parameter_index.ToString()));
+        output_index.ToString(), AliasKindToString(alias.kind),
+        alias.parameter_number, alias.parameter_index.ToString()));
   });
   return absl::StrJoin(pieces, "\n");
+}
+
+string HloInputOutputAliasConfig::ToShortString() const {
+  std::vector<string> pieces;
+  for (const auto& p : alias_) {
+    const ShapeIndex& index = p.first;
+    absl::optional<Alias> alias = p.second;
+    if (!alias) {
+      continue;
+    }
+    pieces.push_back(
+        absl::StrFormat("%s: %s", index.ToString(), alias->ToString()));
+  }
+  return absl::StrJoin(pieces, ", ");
 }
 
 absl::optional<HloInputOutputAliasConfig::AliasKind>

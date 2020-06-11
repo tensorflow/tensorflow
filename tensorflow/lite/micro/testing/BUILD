@@ -3,9 +3,16 @@ load(
     "tflite_micro_cc_test",
 )
 
-package(
-    default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+licenses(["notice"])  # Apache 2.0
+
+package_group(
+    name = "micro",
+    packages = ["//tensorflow/lite/micro/..."],
+)
+
+package_group(
+    name = "microfrontend",
+    packages = ["//tensorflow/lite/experimental/microfrontend/..."],
 )
 
 exports_files(["test_linux_binary.sh"])
@@ -18,6 +25,10 @@ cc_library(
     hdrs = [
         "micro_test.h",
         "test_utils.h",
+    ],
+    visibility = [
+        ":micro",
+        ":microfrontend",
     ],
     deps = [
         "//tensorflow/lite/c:common",
@@ -40,25 +51,15 @@ tflite_micro_cc_test(
 )
 
 cc_library(
-    name = "micro_benchmark",
-    hdrs = [
-        "micro_benchmark.h",
-    ],
-    deps = [
-        "//tensorflow/lite/micro:micro_error_reporter",
-        "//tensorflow/lite/micro:micro_framework",
-        "//tensorflow/lite/micro:micro_time",
-        "//tensorflow/lite/micro:op_resolvers",
-    ],
-)
-
-cc_library(
     name = "test_conv_model",
     srcs = [
         "test_conv_model.cc",
     ],
     hdrs = [
         "test_conv_model.h",
+    ],
+    visibility = [
+        ":micro",
     ],
 )
 

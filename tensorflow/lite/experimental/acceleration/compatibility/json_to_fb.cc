@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 // Simple program to convert from JSON to binary flatbuffers for given schema.
 //
-// Used for creating the binary version of a whitelist.
+// Used for creating the binary version of a compatibility list.
 //
 // The flatc command line is not available in all build environments.
 #include <fstream>

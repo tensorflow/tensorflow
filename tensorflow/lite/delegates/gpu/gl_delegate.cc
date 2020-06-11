@@ -389,8 +389,8 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
         // for whatever reason forbids that.
         const auto status = gpu_delegate->Prepare(context, params);
         if (status.ok()) return gpu_delegate;
-        context->ReportError(context, "TfLiteGpuDelegate Prepare: %s",
-                             std::string(status.message()).c_str());
+        TF_LITE_KERNEL_LOG(context, "TfLiteGpuDelegate Prepare: %s",
+                           std::string(status.message()).c_str());
         return nullptr;
       },
       // .free
@@ -403,8 +403,8 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
       [](TfLiteContext* context, TfLiteNode* node) -> TfLiteStatus {
         const auto status = GetGpuDelegate(node)->Invoke(context);
         if (status.ok()) return kTfLiteOk;
-        context->ReportError(context, "TfLiteGpuDelegate Invoke: %s",
-                             std::string(status.message()).c_str());
+        TF_LITE_KERNEL_LOG(context, "TfLiteGpuDelegate Invoke: %s",
+                           std::string(status.message()).c_str());
         return kTfLiteError;
       },
       nullptr,              // .profiling_string
@@ -427,8 +427,8 @@ TfLiteStatus DelegateCopyFromBufferHandle(TfLiteContext* context,
   if (!gpu_delegate) return kTfLiteError;
   const auto status = gpu_delegate->CopyFromBufferHandle(buffer_handle, tensor);
   if (status.ok()) return kTfLiteOk;
-  context->ReportError(context, "TfLiteGpuDelegate CopyFromBufferHandle: %s",
-                       std::string(status.message()).c_str());
+  TF_LITE_KERNEL_LOG(context, "TfLiteGpuDelegate CopyFromBufferHandle: %s",
+                     std::string(status.message()).c_str());
   return kTfLiteError;
 }
 
@@ -440,8 +440,8 @@ TfLiteStatus DelegateCopyToBufferHandle(TfLiteContext* context,
   if (!gpu_delegate) return kTfLiteError;
   const auto status = gpu_delegate->CopyToBufferHandle(buffer_handle, tensor);
   if (status.ok()) return kTfLiteOk;
-  context->ReportError(context, "TfLiteGpuDelegate CopyToBufferHandle: %s",
-                       std::string(status.message()).c_str());
+  TF_LITE_KERNEL_LOG(context, "TfLiteGpuDelegate CopyToBufferHandle: %s",
+                     std::string(status.message()).c_str());
   return kTfLiteError;
 }
 

@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/experimental/acceleration/whitelist/gpu_whitelist.h"
+#include "tensorflow/lite/experimental/acceleration/compatibility/gpu_compatibility.h"
 
 #include <cctype>
 #include <map>
@@ -20,17 +20,17 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/experimental/acceleration/whitelist/database_generated.h"
-#include "tensorflow/lite/experimental/acceleration/whitelist/devicedb.h"
-#include "tensorflow/lite/experimental/acceleration/whitelist/gpu_whitelist_binary.h"
-#include "tensorflow/lite/experimental/acceleration/whitelist/variables.h"
+#include "tensorflow/lite/experimental/acceleration/compatibility/database_generated.h"
+#include "tensorflow/lite/experimental/acceleration/compatibility/devicedb.h"
+#include "tensorflow/lite/experimental/acceleration/compatibility/gpu_compatibility_binary.h"
+#include "tensorflow/lite/experimental/acceleration/compatibility/variables.h"
 
 namespace tflite {
 namespace acceleration {
 namespace {
 
 std::string CanonicalizeValue(absl::string_view input) {
-  // This assumes ASCII, which holds for all values we have in the whitelist.
+  // This assumes ASCII, which holds for all values we have in the list.
   std::string output(input);
   for (int i = 0; i < output.size(); i++) {
     char c = output[i];
@@ -51,15 +51,17 @@ void CanonicalizeValues(std::map<std::string, std::string>* variable_values) {
 
 }  // namespace
 
-GPUWhitelist::GPUWhitelist()
-    : GPUWhitelist(g_tflite_acceleration_gpu_whitelist_binary) {}
+GPUCompatibilityList::GPUCompatibilityList()
+    : GPUCompatibilityList(g_tflite_acceleration_gpu_compatibility_binary) {}
 
-GPUWhitelist::GPUWhitelist(const unsigned char* whitelist_flatbuffer) {
-  if (!whitelist_flatbuffer) return;
-  database_ = flatbuffers::GetRoot<DeviceDatabase>(whitelist_flatbuffer);
+GPUCompatibilityList::GPUCompatibilityList(
+    const unsigned char* compatibility_list_flatbuffer) {
+  if (!compatibility_list_flatbuffer) return;
+  database_ =
+      flatbuffers::GetRoot<DeviceDatabase>(compatibility_list_flatbuffer);
 }
 
-std::map<std::string, std::string> GPUWhitelist::CalculateVariables(
+std::map<std::string, std::string> GPUCompatibilityList::CalculateVariables(
     const AndroidInfo& android_info,
     const ::tflite::gpu::GpuInfo& gpu_info) const {
   std::map<std::string, std::string> variables;
@@ -80,16 +82,17 @@ std::map<std::string, std::string> GPUWhitelist::CalculateVariables(
   return variables;
 }
 
-bool GPUWhitelist::Includes(const AndroidInfo& android_info,
-                            const ::tflite::gpu::GpuInfo& gpu_info) const {
+bool GPUCompatibilityList::Includes(
+    const AndroidInfo& android_info,
+    const ::tflite::gpu::GpuInfo& gpu_info) const {
   auto variables = CalculateVariables(android_info, gpu_info);
-  return variables[gpu::kStatus] == std::string(gpu::kStatusWhitelisted);
+  return variables[gpu::kStatus] == std::string(gpu::kStatusSupported);
 }
 
-TfLiteGpuDelegateOptionsV2 GPUWhitelist::GetBestOptionsFor(
+TfLiteGpuDelegateOptionsV2 GPUCompatibilityList::GetBestOptionsFor(
     const AndroidInfo& /* android_info */,
     const ::tflite::gpu::GpuInfo& /* gpu_info */) const {
-  // This method is for forwards-compatibility: the whitelist may later include
+  // This method is for forwards-compatibility: the list may later include
   // information about which backend to choose (OpenGL/OpenCL/Vulkan) or other
   // options.
   return TfLiteGpuDelegateOptionsV2Default();

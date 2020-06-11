@@ -1,4 +1,4 @@
-// RUN: tf-opt -tfl-lower-static-tensor-list %s | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt -tfl-lower-static-tensor-list %s | FileCheck %s
 
 // CHECK-LABEL: tensorlistConst
 func @tensorlistConst(%arg0 : tensor<1xi32>) -> tensor<2x3xi32> {

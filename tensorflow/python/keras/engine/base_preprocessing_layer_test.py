@@ -130,9 +130,9 @@ def get_layer():
 @keras_parameterized.run_all_keras_modes
 class PreprocessingLayerTest(keras_parameterized.TestCase):
 
-  def test_adapt_list_fails(self):
+  def test_adapt_bad_input_fails(self):
     """Test that non-Dataset/Numpy inputs cause a reasonable error."""
-    input_dataset = [1, 2, 3, 4, 5]
+    input_dataset = {"foo": 0}
 
     layer = get_layer()
     with self.assertRaisesRegex(ValueError, "requires a"):

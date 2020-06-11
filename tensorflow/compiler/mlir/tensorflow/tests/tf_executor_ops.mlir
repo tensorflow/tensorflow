@@ -1,4 +1,4 @@
-// RUN: tf-opt %s | tf-opt | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s | tf-opt | FileCheck %s
 
 // CHECK-LABEL: func @control_type() -> !tf_executor.control
 func @control_type() -> !tf_executor.control

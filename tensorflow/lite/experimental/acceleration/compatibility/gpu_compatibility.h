@@ -12,16 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_WHITELIST_GPU_WHITELIST_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_WHITELIST_GPU_WHITELIST_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_COMPATIBILITY_GPU_COMPATIBILITY_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_COMPATIBILITY_GPU_COMPATIBILITY_H_
 
 #include <map>
 #include <string>
 
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/delegate.h"
-#include "tensorflow/lite/experimental/acceleration/whitelist/android_info.h"
-#include "tensorflow/lite/experimental/acceleration/whitelist/devicedb.h"
+#include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
+#include "tensorflow/lite/experimental/acceleration/compatibility/devicedb.h"
 
 namespace tflite {
 namespace acceleration {
@@ -39,21 +39,21 @@ namespace acceleration {
 //   EXPECT_OK(tflite::acceleration::RequestAndroidInfo(&android_info));
 //   EXPECT_OK(tflite::gpu::gl::EglEnvironment::NewEglEnvironment(&env));
 //   EXPECT_OK(tflite::gpu::gl::RequestGpuInfo(&tflite_gpu_info));
-//   tflite::acceleration::GPUWhitelist whitelist;
+//   tflite::acceleration::GPUCompatibilityList list;
 //   TfLiteDelegate* gpu_delegate = nullptr;
 //   TfLiteGpuDelegateOptions gpu_options;
-//   if (whitelist.Includes(android_info, gpu_info)) {
-//     gpu_options = whitelist.BestOptionsFor(android_info, gpu_info);
+//   if (list.Includes(android_info, gpu_info)) {
+//     gpu_options = list.BestOptionsFor(android_info, gpu_info);
 //     gpu_delegate = TfLiteGpuDelegateCreate(&gpu_options);
 //     EXPECT_EQ(interpreter->ModifyGraphWithDelegate(gpu_delegate), TfLiteOk);
 //   } else {
 //     // Fallback path.
 //   }
-class GPUWhitelist {
+class GPUCompatibilityList {
  public:
-  // Construct whitelist from bundled data.
-  GPUWhitelist();
-  // Returns true if the provided device specs are whitelisted by the database.
+  // Construct list from bundled data.
+  GPUCompatibilityList();
+  // Returns true if the provided device specs are supported by the database.
   bool Includes(const AndroidInfo& android_info,
                 const ::tflite::gpu::GpuInfo& gpu_info) const;
 
@@ -65,21 +65,22 @@ class GPUWhitelist {
       const ::tflite::gpu::GpuInfo& gpu_info) const;
 
   // Convert android_info and gpu_info into a set of variables used for querying
-  // the whitelist, and update variables from whitelist data. See variables.h
+  // the list, and update variables from list data. See variables.h
   // and devicedb.h for more information.
   std::map<std::string, std::string> CalculateVariables(
       const AndroidInfo& android_info,
       const ::tflite::gpu::GpuInfo& gpu_info) const;
 
-  GPUWhitelist(const GPUWhitelist&) = delete;
-  GPUWhitelist& operator=(const GPUWhitelist&) = delete;
+  GPUCompatibilityList(const GPUCompatibilityList&) = delete;
+  GPUCompatibilityList& operator=(const GPUCompatibilityList&) = delete;
 
  protected:
-  explicit GPUWhitelist(const unsigned char* whitelist_flatbuffer);
+  explicit GPUCompatibilityList(
+      const unsigned char* compatibility_list_flatbuffer);
   const DeviceDatabase* database_;
 };
 
 }  // namespace acceleration
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_WHITELIST_GPU_WHITELIST_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_COMPATIBILITY_GPU_COMPATIBILITY_H_

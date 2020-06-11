@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_MICRO_TESTING_MICRO_BENCHMARK_H_
-#define TENSORFLOW_LITE_MICRO_TESTING_MICRO_BENCHMARK_H_
+#ifndef TENSORFLOW_LITE_MICRO_BENCHMARKS_MICRO_BENCHMARK_H_
+#define TENSORFLOW_LITE_MICRO_BENCHMARKS_MICRO_BENCHMARK_H_
 
 #include <climits>
 
@@ -116,4 +116,4 @@ class MicroBenchmarkRunner {
   tflite::MicroInterpreter interpreter_;
 };
 
-#endif  // TENSORFLOW_LITE_MICRO_TESTING_MICRO_BENCHMARK_H_
+#endif  // TENSORFLOW_LITE_MICRO_BENCHMARKS_MICRO_BENCHMARK_H_

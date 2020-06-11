@@ -43,8 +43,8 @@ tf_py_test(
 )
 
 cuda_py_test(
-    name = "load_test",
-    srcs = ["load_test.py"],
+    name = "saved_model_test",
+    srcs = ["saved_model_test.py"],
     python_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",

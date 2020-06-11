@@ -92,32 +92,32 @@ class MicroAllocator {
   // Note: Please use __declspec(align(16)) to make sure tensor_arena is 16
   // bytes aligned, otherwise some head room will be wasted.
   // TODO(b/157615197): Cleanup constructor + factory usage.
-  static MicroAllocator* Create(TfLiteContext* context, const Model* model,
-                                uint8_t* tensor_arena, size_t arena_size,
+  static MicroAllocator* Create(uint8_t* tensor_arena, size_t arena_size,
                                 ErrorReporter* error_reporter);
 
   // Creates a MicroAllocator instance using the provided SimpleMemoryAllocator
   // intance. This allocator instance will use the SimpleMemoryAllocator
   // instance to manage allocations internally.
-  static MicroAllocator* Create(TfLiteContext* context, const Model* model,
-                                SimpleMemoryAllocator* memory_allocator,
+  static MicroAllocator* Create(SimpleMemoryAllocator* memory_allocator,
                                 ErrorReporter* error_reporter);
 
-  // Run through the model flatbuffer data (loaded from the TfLiteModel
-  // instance) to allocate nodes and registrations. We need to keep them for the
-  // entire life time of the model to allow persistent tensors. This method
-  // needs to be called before FinishTensorAllocation method. This method also
-  // allocates any internal Op data that is required from the flatbuffer.
-  TfLiteStatus PrepareFromFlatbuffer(
+  // Begin allocating internal resources required for model inference.
+  // This method will run through the flatbuffer data supplied in the model to
+  // properly allocate tensor, node, and op registration data. This method is
+  // expected to be followed with a call to FinishModelAllocation() before
+  // resuming allocation with another model.
+  TfLiteStatus StartModelAllocation(
+      const Model* model, TfLiteContext* context,
       const MicroOpResolver& op_resolver,
       NodeAndRegistration** node_and_registrations);
 
-  // Runs through the model and allocates all necessary input, output and
-  // intermediate tensors.
-  // WARNING: doing any allocation after calling this method has the risk of
-  // corrupting tensor data so this method should be the last non-const method
-  // called in this class.
-  TfLiteStatus FinishTensorAllocation();
+  // Finish allocating internal resources required for model inference.
+  // This method will plan non-persistent buffers and commit a memory plan to
+  // the 'head' section of the memory arena. All variable tensor data will also
+  // be allocated. This method should be called after assigning model resources
+  // in StartModelAllocation().
+  TfLiteStatus FinishModelAllocation(const Model* model,
+                                     TfLiteContext* context);
 
   // Allocates persistent buffer which has the same life time as the allocator.
   // The memory is immediately available and is allocated from the tail of the
@@ -140,56 +140,59 @@ class MicroAllocator {
   size_t used_bytes() const;
 
  protected:
-  MicroAllocator(TfLiteContext* context, const Model* model,
-                 SimpleMemoryAllocator* memory_allocator,
+  MicroAllocator(SimpleMemoryAllocator* memory_allocator,
                  ErrorReporter* error_reporter);
   virtual ~MicroAllocator();
 
   // Allocates an array in the arena to hold pointers to the tensors required
   // to initialize and prepare a model. These allocations are stored and
   // populated on the context.
-  virtual TfLiteStatus AllocateTfLiteTensorArray();
+  virtual TfLiteStatus AllocateTfLiteTensorArray(TfLiteContext* context,
+                                                 const SubGraph* subgraph);
 
   // Populates content on the list of tensor pointers required to initialize and
   // prepare a model from data in the flatbuffer (loaded from the TfLiteModel
   // instance). Persistent data (e.g. quantization params) is allocated from the
   // arena.
-  virtual TfLiteStatus PopulateTfLiteTensorArrayFromFlatbuffer();
+  virtual TfLiteStatus PopulateTfLiteTensorArrayFromFlatbuffer(
+      const Model* model, TfLiteContext* context, const SubGraph* subgraph);
 
   // Allocates an array in the arena to hold pointers to the node and
   // registration pointers required to represent the inference graph of the
   // model.
   virtual TfLiteStatus AllocateNodeAndRegistrations(
-      NodeAndRegistration** node_and_registrations);
+      const SubGraph* subgraph, NodeAndRegistration** node_and_registrations);
 
   // Populates node and registration pointers representing the inference graph
   // of the model from values inside the flatbuffer (loaded from the TfLiteModel
   // instance). Persistent data (e.g. operator data) is allocated from the
   // arena.
   virtual TfLiteStatus PrepareNodeAndRegistrationDataFromFlatbuffer(
+      const Model* model, const SubGraph* subgraph,
       const MicroOpResolver& op_resolver,
       NodeAndRegistration* node_and_registrations);
 
-  // Returns the number of tensors in the model subgraph.
-  size_t GetTensorsCount() const;
-
-  // Returns the number of operators in the model subgraph.
-  size_t GetOperatorsCount() const;
-
   ErrorReporter* error_reporter();
 
-  // Initializes the graph and allocates TfLiteContext tensor data.
-  TfLiteStatus InitGraphAndContextTensorData();
-
  private:
-  // A simple memory allocator that always allocate from the arena tail.
+  // Initializes the graph and allocates TfLiteContext tensor data.
+  TfLiteStatus InitGraphAndContextTensorData(const Model* model,
+                                             TfLiteContext* context,
+                                             const SubGraph* subgraph);
+
+  // Returns the first subgraph from the model.
+  const SubGraph* GetSubGraphFromModel(const Model* model);
+
+  // Commits a memory plan for all non-persistent buffer allocations in the
+  // 'head' section of the memory arena.
+  virtual TfLiteStatus CommitStaticMemoryPlan(const SubGraph* subgraph,
+                                              TfLiteContext* context);
+
+  // A simple memory allocator that always allocate from the arena tail or head.
   SimpleMemoryAllocator* memory_allocator_;
 
-  const Model* model_;
-  TfLiteContext* context_;
   ErrorReporter* error_reporter_;
-  // Indicating if the allocator is ready for allocation.
-  bool active_ = false;
+  bool model_is_allocating_;
 
   // In reverse order for efficiency.
   // i.e. scratch_buffer_handles_[0] is the handle for the last buffer,
@@ -197,8 +200,6 @@ class MicroAllocator {
   internal::ScratchBufferHandle* scratch_buffer_handles_ = nullptr;
   // How many scratch buffers have been allocated.
   size_t scratch_buffer_count_ = 0;
-
-  const SubGraph* subgraph_;
 
   TF_LITE_REMOVE_VIRTUAL_DELETE
 };

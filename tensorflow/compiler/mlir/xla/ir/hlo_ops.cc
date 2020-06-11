@@ -824,6 +824,46 @@ class ConcatenateOperandRemoval : public OpRewritePattern<ConcatenateOp> {
 };
 }  // namespace
 
+LogicalResult ConcatenateOp::inferReturnTypes(
+    MLIRContext*, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type>& inferredReturnTypes) {
+  if (operands.empty()) {
+    return failure();
+  }
+
+  auto dimension_attr = attributes.get("dimension").cast<IntegerAttr>();
+  auto dimension = dimension_attr.getInt();
+
+  auto first_type = (*operands.begin()).getType().cast<ShapedType>();
+
+  auto out_element = first_type.getElementType();
+  auto out_shape = llvm::to_vector<6>(first_type.getShape());
+  out_shape[dimension] = 0;
+
+  for (auto operand : operands.getTypes()) {
+    auto type = operand.cast<ShapedType>();
+    auto dim = type.getShape()[dimension];
+
+    // Validate the element types match.
+    if (type.getElementType() != out_element) {
+      return failure();
+    }
+
+    // If the dimension is dynamic we know the output dimension is dynamic.
+    if (dim == -1) {
+      out_shape[dimension] = -1;
+      break;
+    }
+
+    out_shape[dimension] += dim;
+  }
+
+  inferredReturnTypes.push_back(RankedTensorType::get(out_shape, out_element));
+
+  return success();
+}
+
 void ConcatenateOp::getCanonicalizationPatterns(
     OwningRewritePatternList& results, MLIRContext* context) {
   results.insert<ConcatenateOperandRemoval>(context);
@@ -1623,6 +1663,103 @@ OpFoldResult SliceOp::fold(ArrayRef<Attribute> operands) {
   }
 
   return {};
+}
+
+namespace {
+// In cases where a concat is fed into a slice, it is possible the concat
+// can be simplified or bypassed. This checks which inputs to the concat are
+// used by the slice, either reducing the number of concatenated values or
+// entirely removes the concat.
+struct SimplifyConcatSlice : public OpRewritePattern<SliceOp> {
+  using OpRewritePattern<SliceOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(SliceOp slice,
+                                PatternRewriter& rewriter) const override {
+    auto result_ty = slice.getType().cast<ShapedType>();
+    if (!result_ty.hasStaticShape()) {
+      return failure();
+    }
+
+    auto slice_input = slice.operand();
+    auto slice_input_ty = slice_input.getType().cast<ShapedType>();
+    auto concat = dyn_cast_or_null<ConcatenateOp>(slice_input.getDefiningOp());
+    if (!concat) {
+      return failure();
+    }
+
+    auto dimension = concat.dimension().getSExtValue();
+
+    auto start = slice.start_indices().getIntValues();
+    auto limit = slice.limit_indices().getIntValues();
+
+    auto slice_start = (*(start.begin() + dimension)).getSExtValue();
+    auto slice_limit = (*(limit.begin() + dimension)).getSExtValue();
+
+    // We need to determine what inputs from the concat affect the slice, and
+    // how the bounds of the slice need to be updated for the minimally required
+    // inputs.
+    int64_t running_size = 0;
+    int64_t front_offset = slice_input_ty.getShape()[dimension];
+
+    auto subset_start = concat.operand_end();
+    auto subset_end = concat.operand_end();
+    for (auto it = concat.operand_begin(); it < concat.operand_end(); ++it) {
+      auto input = *it;
+      ShapedType input_ty = input.getType().cast<ShapedType>();
+      if (input_ty.isDynamicDim(dimension)) {
+        return failure();
+      }
+      auto dim_size = input_ty.getShape()[dimension];
+
+      // If this position is in the slice its the start of the subset and we
+      // need to update the start and limit values.
+      if (running_size + dim_size > slice_start &&
+          subset_start == concat.operand_end()) {
+        subset_start = it;
+        front_offset = running_size;
+      }
+
+      // Determine the last required offset.
+      if (running_size < slice_limit) {
+        subset_end = it + 1;
+      }
+
+      running_size += dim_size;
+    }
+
+    auto subset_size = subset_end - subset_start;
+    // We need all inputs so no optimization.
+    if (subset_size == concat.getNumOperands()) {
+      return failure();
+    }
+
+    if (subset_size > 1 && !concat.getResult().hasOneUse()) {
+      return failure();
+    }
+
+    auto concat_range = OperandRange(subset_start, subset_end);
+    auto new_concat = rewriter.create<ConcatenateOp>(
+        concat.getLoc(), concat_range, concat.dimension());
+
+    llvm::SmallVector<APInt, 6> new_start(start);
+    llvm::SmallVector<APInt, 6> new_limit(limit);
+    new_start[dimension] -= front_offset;
+    new_limit[dimension] -= front_offset;
+
+    auto attr_type = slice.start_indices().getType().cast<ShapedType>();
+    auto create = rewriter.create<SliceOp>(
+        slice.getLoc(), new_concat,
+        DenseIntElementsAttr::get(attr_type, new_start),
+        DenseIntElementsAttr::get(attr_type, new_limit), slice.strides());
+    rewriter.replaceOp(slice, create.getResult());
+    return success();
+  }
+};
+}  // namespace
+
+void SliceOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                          MLIRContext* context) {
+  results.insert<SimplifyConcatSlice>(context);
 }
 
 // Returns output dimension size for slice result for the given arguments.

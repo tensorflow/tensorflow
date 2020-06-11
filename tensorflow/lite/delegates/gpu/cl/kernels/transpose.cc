@@ -131,7 +131,7 @@ Transpose& Transpose::operator=(Transpose&& operation) {
 absl::Status Transpose::Compile(const CreationContext& creation_context) {
   std::string code =
       GetTransposeCode(definition_, attr_, linked_operations_, &args_);
-  RETURN_IF_ERROR(args_.TransformToCLCode(&code));
+  RETURN_IF_ERROR(args_.TransformToCLCode({}, &code));
   code = absl::Substitute(code, args_.GetListOfArgs());
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,

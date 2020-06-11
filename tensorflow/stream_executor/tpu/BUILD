@@ -1,7 +1,10 @@
 # Description: StreamExecutor Interface for TPUs
 
 package(
-    default_visibility = ["//tensorflow/core/tpu:__subpackages__"],
+    default_visibility = [
+        "//learning/brain/tfrc/runtime/tpu_driver:__subpackages__",
+        "//tensorflow/core/tpu:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
