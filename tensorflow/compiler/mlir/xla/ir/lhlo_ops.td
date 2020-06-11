@@ -268,6 +268,16 @@ def LHLO_CaseOp: LHLO_Op<"case", [
   let regions = (region VariadicRegion<SizedRegion<1>>:$branches);
 }
 
+// TODO(timshen): Add a custom syntax for this.
+def LHLO_WhileOp: LHLO_Op<"while", [SameTypeOperands]>, BASE_HLO_WhileOp {
+  let arguments = (ins
+    Arg<LHLO_BufferOrTuple, "", [MemRead]>:$val,
+    Arg<LHLO_BufferOrTuple, "", [MemWrite]>:$output
+  );
+
+  let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
+}
+
 //===----------------------------------------------------------------------===//
 // XLA tuple op definitions.
 //===----------------------------------------------------------------------===//
@@ -417,7 +427,23 @@ def HLO_DynamicMemRefCastOp: Op<LHLO_Dialect, "dynamic_memref_cast",
 // XLA Other op definitions.
 //===----------------------------------------------------------------------===//
 
-def HLO_BatchNormInferenceOp : LHLO_Op<"batch_norm_inference", []>,
+def LHLO_BatchNormGradOp : LHLO_Op<"batch_norm_grad", []>,
+    BASE_HLO_BatchNormGradOp {
+
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<LHLO_Buffer, "", [MemRead]>:$scale,
+    Arg<LHLO_Buffer, "", [MemRead]>:$mean,
+    Arg<LHLO_Buffer, "", [MemRead]>:$variance,
+    Arg<LHLO_Buffer, "", [MemRead]>:$grad_output,
+    Arg<LHLO_TupleBuffer, "", [MemWrite]>:$output,
+    F32Attr:$epsilon,
+    I64Attr:$feature_index
+  );
+
+}
+
+def LHLO_BatchNormInferenceOp : LHLO_Op<"batch_norm_inference", []>,
     BASE_HLO_BatchNormInferenceOp {
 
   let arguments = (ins
@@ -427,6 +453,19 @@ def HLO_BatchNormInferenceOp : LHLO_Op<"batch_norm_inference", []>,
     Arg<LHLO_Buffer, "", [MemRead]>:$mean,
     Arg<LHLO_Buffer, "", [MemRead]>:$variance,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+    F32Attr:$epsilon,
+    I64Attr:$feature_index
+  );
+}
+
+def LHLO_BatchNormTrainingOp : LHLO_Op<"batch_norm_training", []>,
+    BASE_HLO_BatchNormTrainingOp {
+
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<LHLO_Buffer, "", [MemRead]>:$scale,
+    Arg<LHLO_Buffer, "", [MemRead]>:$offset,
+    Arg<LHLO_TupleBuffer, "", [MemWrite]>:$output,
     F32Attr:$epsilon,
     I64Attr:$feature_index
   );
@@ -598,6 +637,78 @@ def LHLO_ReducePrecisionOp: LHLO_Op<"reduce_precision", [SameTypeOperands]>,
     Arg<LHLO_FpBuffer, "", [MemWrite]>:$output,
     I32Attr:$exponent_bits,
     I32Attr:$mantissa_bits
+  );
+}
+
+def LHLO_AllReduceOp : LHLO_Op<"all_reduce", [SameTypeOperands]>,
+                       BASE_HLO_AllReduceOp {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+    I64ElementsAttr:$replica_groups,
+    DefaultValuedAttr<BoolAttr, "false">:$constrain_layout,
+    OptionalAttr<ChannelHandle<LHLO_Dialect>>:$channel_id,
+    DefaultValuedAttr<BoolAttr, "false">:$use_global_device_ids
+  );
+  let regions = (region SizedRegion<1>:$computation);
+}
+
+def LHLO_CollectivePermuteOp: LHLO_Op<"collective_permute", [SameTypeOperands]>,
+                              BASE_HLO_CollectivePermuteOp {
+
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+    I64ElementsAttr:$source_target_pairs,
+    OptionalAttr<ChannelHandle<LHLO_Dialect>>:$channel_id
+  );
+}
+
+def LHLO_FftOp: LHLO_Op<"fft", []>, BASE_HLO_FftOp {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+    HLO_FftTypeAttr:$fft_type,
+    I64ElementsAttr:$fft_length
+  );
+}
+
+def LHLO_CholeskyOp: LHLO_Op<"cholesky", [SameOperandsElementType]>, BASE_HLO_CholeskyOp {
+  let arguments = (ins
+    Arg<LHLO_FpOrComplexBuffer, "", [MemRead]>:$a,
+    Arg<LHLO_FpOrComplexBuffer, "", [MemWrite]>:$output,
+    DefaultValuedAttr<BoolAttr, "false">:$lower
+  );
+}
+
+def LHLO_Infeed: LHLO_Op<"infeed", []>, BASE_HLO_InfeedOp {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+    DefaultValuedAttr<StrAttr, "">:$config
+  );
+}
+
+def LHLO_Outfeed: LHLO_Op<"outfeed", []> {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    DefaultValuedAttr<StrAttr, "">:$config
+  );
+}
+
+def LHLO_ReplicaIdOp : LHLO_Op<"replica_id", []>, BASE_HLO_ReplicaIdOp {
+  let arguments = (ins Arg<MemRefOf<[UI32]>, "", [MemWrite]>);
+}
+
+def LHLO_TriangularSolveOp: LHLO_Op<"triangular_solve", [SameOperandsElementType]>,
+                            BASE_HLO_TriangularSolveOp {
+  let arguments = (ins
+    Arg<LHLO_FpOrComplexBuffer, "", [MemRead]>:$a,
+    Arg<LHLO_FpOrComplexBuffer, "", [MemRead]>:$b,
+    Arg<LHLO_FpOrComplexBuffer, "", [MemWrite]>:$output,
+    BoolAttr:$left_side,
+    BoolAttr:$lower,
+    BoolAttr:$unit_diagonal,
+    HLO_TransposeAttr:$transpose_a
   );
 }
 

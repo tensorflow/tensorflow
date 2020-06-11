@@ -730,3 +730,136 @@ func @shift_right_logical_memrefs(%arg0: memref<1xf32>, %arg1: memref<1xf32>, %a
   "xla_lhlo.shift_right_logical"(%arg0, %arg1, %arg_out) : (memref<1xf32>, memref<1xf32>, memref<1xf32>) -> ()
   return
 }
+
+// -----
+
+// CHECK-LABEL: func @all_reduce_memrefs
+func @all_reduce_memrefs(%arg0: memref<10xf32>, %arg_out: memref<10xf32>) -> () {
+  "xla_lhlo.all_reduce"(%arg0, %arg_out) ({
+    ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
+    %max = xla_hlo.maximum %lhs, %rhs : tensor<f32>
+    "xla_hlo.return"(%max) : (tensor<f32>) -> ()
+  })
+  { replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64> }: (memref<10xf32>, memref<10xf32>) -> ()
+
+  "xla_lhlo.all_reduce"(%arg0, %arg_out) ({
+    ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
+    %max = xla_hlo.maximum %lhs, %rhs : tensor<f32>
+    "xla_hlo.return"(%max) : (tensor<f32>) -> ()
+  })
+  {
+    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>,
+    channel_id = { handle = 5 : i64, type = 2 : i64 },
+    constrain_layout = true,
+    use_global_device_ids = true
+  }: (memref<10xf32>, memref<10xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @collective_permute_memrefs
+func @collective_permute_memrefs(%arg0: memref<128x32xf32>, %arg_out: memref<128x32xf32>) -> () {
+  "xla_lhlo.collective_permute"(%arg0, %arg_out) {
+    source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>
+  } : (memref<128x32xf32>, memref<128x32xf32>) -> ()
+
+  "xla_lhlo.collective_permute"(%arg0, %arg_out) {
+    source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>,
+    channel_id = { handle = 5 : i64, type = 2 : i64 }
+  } : (memref<128x32xf32>, memref<128x32xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @fft_memrefs
+func @fft_memrefs(%arg0: memref<3x9xf32>, %arg_out: memref<3x5xcomplex<f32>>) -> () {
+  "xla_lhlo.fft"(%arg0, %arg_out) {fft_length = dense<9> : tensor<1xi64>, fft_type = "RFFT"} : (memref<3x9xf32>, memref<3x5xcomplex<f32>>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @batch_norm_grad_memrefs
+func @batch_norm_grad_memrefs(%arg0: memref<8x8x8x8xf32>, %arg1: memref<8xf32>, %arg2: memref<8xf32>,
+                              %arg3: memref<8xf32>, %arg4: memref<8x8x8x8xf32>,
+                              %arg_out: tuple<memref<8x8x8x8xf32>, memref<8xf32>, memref<8xf32>>) -> () {
+  "xla_lhlo.batch_norm_grad"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg_out) {epsilon = 1.000000e-03 : f32, feature_index = 3 : i64}
+      : (memref<8x8x8x8xf32>, memref<8xf32>, memref<8xf32>, memref<8xf32>, memref<8x8x8x8xf32>,
+         tuple<memref<8x8x8x8xf32>, memref<8xf32>, memref<8xf32>>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @batch_norm_inference_memrefs
+func @batch_norm_inference_memrefs(%arg0: memref<8x8x8x8xf32>, %arg1: memref<8xf32>, %arg2: memref<8xf32>,
+                                   %arg3: memref<8xf32>, %arg4: memref<8xf32>, %arg_out: memref<8x8x8x8xf32>) -> () {
+  "xla_lhlo.batch_norm_inference"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg_out) {epsilon = 1.000000e-03 : f32, feature_index = 3 : i64}
+      : (memref<8x8x8x8xf32>, memref<8xf32>, memref<8xf32>, memref<8xf32>, memref<8xf32>, memref<8x8x8x8xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @batch_norm_training_memrefs
+func @batch_norm_training_memrefs(%arg0: memref<8x8x8x8xf32>, %arg1: memref<8xf32>, %arg2: memref<8xf32>,
+                                  %arg_out: tuple<memref<8x8x8x8xf32>, memref<8xf32>, memref<8xf32>>) -> () {
+  "xla_lhlo.batch_norm_training"(%arg0, %arg1, %arg2, %arg_out) {epsilon = 1.000000e-03 : f32, feature_index = 3 : i64}
+      : (memref<8x8x8x8xf32>, memref<8xf32>, memref<8xf32>, tuple<memref<8x8x8x8xf32>, memref<8xf32>, memref<8xf32>>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @cholesky_memrefs
+func @cholesky_memrefs(%arg0: memref<1x291x291xf32>, %arg_out: memref<1x291x291xf32>) -> () {
+  "xla_lhlo.cholesky"(%arg0, %arg_out) : (memref<1x291x291xf32>, memref<1x291x291xf32>) -> ()
+  "xla_lhlo.cholesky"(%arg0, %arg_out) { lower = true } : (memref<1x291x291xf32>, memref<1x291x291xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @infeed_memrefs
+func @infeed_memrefs(%arg_out: memref<3xf32>) -> () {
+  "xla_lhlo.infeed"(%arg_out) { config = "x" } : (memref<3xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @outfeed_memrefs
+func @outfeed_memrefs(%arg0: memref<3xf32>) -> () {
+  "xla_lhlo.outfeed"(%arg0) { config = "x" } : (memref<3xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @replica_id_memrefs
+func @replica_id_memrefs(%arg_out: memref<ui32>) -> () {
+  "xla_lhlo.replica_id"(%arg_out) : (memref<ui32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @triangular_solve_memrefs
+func @triangular_solve_memrefs(%arg0: memref<4x4xf32>, %arg1: memref<3x4xf32>, %arg_out: memref<3x4xf32>) -> () {
+  "xla_lhlo.triangular_solve"(%arg0, %arg1, %arg_out) {left_side = true, lower = true, transpose_a = "NO_TRANSPOSE", unit_diagonal = true}
+      : (memref<4x4xf32>, memref<3x4xf32>, memref<3x4xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @while_memrefs
+func @while_memrefs(%arg0: memref<i64>, %arg_out: memref<i64>) -> () {
+  "xla_lhlo.while"(%arg0, %arg_out) (
+    { ^bb0(%arg: memref<i64>, %cond: memref<i1>): "xla_lhlo.terminator"() : () -> () },
+    { ^bb0(%arg: memref<i64>, %body_out: memref<i64>): "xla_lhlo.terminator"() : () -> () }
+  ) : (memref<i64>, memref<i64>) -> ()
+  return
+}

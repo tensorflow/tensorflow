@@ -584,6 +584,15 @@ class BASE_HLO_CaseOp {
 // XLA parallelism related op definitions.
 //===----------------------------------------------------------------------===//
 
+// Represents a unique identifier for each Send/Recv instruction pair or
+// optionally for collective instructions (AllReduce, CollectivePermute,
+// AllToAll). Non-positive channel_id handle is equivalent to no channel id.
+class ChannelHandle<Dialect dialect> : StructAttr<"ChannelHandle", dialect, [
+                StructFieldAttr<"handle", I64Attr>,
+                StructFieldAttr<"type", I64Attr>]> {
+  let description = "two 64-bit integers 'handle' and 'type'";
+}
+
 class BASE_HLO_ReplicaIdOp {
   string summary = "ReplicaId operator";
 
@@ -1270,6 +1279,32 @@ class BASE_HLO_ReducePrecisionOp {
     implementations.
 
     See https://www.tensorflow.org/xla/operation_semantics#reduceprecision.
+  }];
+}
+
+class BASE_HLO_InfeedOp {
+  string summary = "Infeed operator";
+
+  string description = [{
+    Reads a single data item from the implicit Infeed streaming interface of
+    the device, interpreting the data as the given shape and its layout, and
+    returns an LHLO op of the data. Multiple Infeed operations are allowed in a
+    computation, but there must be a total order among the Infeed operations.
+    For example, two Infeeds in the code below have a total order since there
+    is a dependency between the while loops.
+
+    See https://www.tensorflow.org/xla/operation_semantics#infeed
+  }];
+}
+
+class BASE_HLO_WhileOp {
+  string summary = "While operator";
+
+  string description = [{
+    Returns the result of executing a body function until the cond body returns
+    true.
+
+    See https://www.tensorflow.org/xla/operation_semantics#while.
   }];
 }
 

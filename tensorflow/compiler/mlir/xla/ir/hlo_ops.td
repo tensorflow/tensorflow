@@ -379,15 +379,6 @@ def HLO_XorOp : HLO_BinaryLogicalElementwiseOp<"xor">, BASE_HLO_XorOp;
 // XLA communication op definitions.
 //===----------------------------------------------------------------------===//
 
-// Represents a unique identifier for each Send/Recv instruction pair or
-// optionally for collective instructions (AllReduce, CollectivePermute,
-// AllToAll). Non-positive channel_id handle is equivalent to no channel id.
-def ChannelHandle : StructAttr<"ChannelHandle", HLO_Dialect, [
-                StructFieldAttr<"handle", I64Attr>,
-                StructFieldAttr<"type", I64Attr>]> {
-  let description = "two 64-bit integers 'handle' and 'type'";
-}
-
 // InfeedOp corresponds to 'InfeedWithToken' xla client API and not 'Infeed'.
 // InfeedWithToken allows ordering of infeed HLO instructions using tokens.
 def HLO_InfeedOp : HLO_Op<"infeed", []> {
@@ -451,7 +442,7 @@ def HLO_SendOp : HLO_Op<"send", []> {
   let arguments = (ins
     HLO_TensorOrTuple:$operand,
     HLO_Token:$token,
-    ChannelHandle:$channel_id,
+    ChannelHandle<HLO_Dialect>:$channel_id,
     DefaultValuedAttr<BoolAttr, "false">:$is_host_transfer
   );
 
@@ -476,7 +467,7 @@ def HLO_RecvOp : HLO_Op<"recv", []> {
 
   let arguments = (ins
     HLO_Token:$token,
-    ChannelHandle:$channel_id,
+    ChannelHandle<HLO_Dialect>:$channel_id,
     DefaultValuedAttr<BoolAttr, "false">:$is_host_transfer
   );
 
@@ -564,16 +555,8 @@ def HLO_CaseOp: HLO_Op<"case", [RecursiveSideEffects]>,
 
 
 def HLO_WhileOp: HLO_Op<"while", [RecursiveSideEffects,
-                                  SameOperandsAndResultType]> {
-  string summary = "While operator";
-
-  string description = [{
-    Returns the result of executing a body function until the cond body returns
-    true.
-
-    See https://www.tensorflow.org/xla/operation_semantics#while.
-  }];
-
+                                  SameOperandsAndResultType]>,
+                 BASE_HLO_WhileOp {
   let arguments = (ins HLO_TensorOrTuple:$val);
 
   let regions = (region AnyRegion:$cond, AnyRegion:$body);
@@ -590,7 +573,7 @@ def HLO_AllReduceOp : HLO_Op<"all_reduce",
   let arguments = (ins
     HLO_Tensor:$operand,
     I64ElementsAttr:$replica_groups,
-    OptionalAttr<ChannelHandle>:$channel_id
+    OptionalAttr<ChannelHandle<HLO_Dialect>>:$channel_id
   );
   let regions = (region SizedRegion<1>:$computation);
   let results = (outs HLO_Tensor);
