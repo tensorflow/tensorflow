@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
@@ -28,7 +29,6 @@ namespace {
 
 std::string GetTransposeCode(
     const OperationDef& op_def, const TransposeAttributes& attr,
-    const std::vector<ElementwiseOperation*>& linked_operations,
     Arguments* args) {
   args->AddObjectRef(
       "src_tensor", AccessType::READ,
@@ -39,12 +39,7 @@ std::string GetTransposeCode(
 
   const std::string batch_id = op_def.IsBatchSupported() ? "B" : "";
   std::string c = GetCommonDefines(op_def.precision);
-  std::string linked_args = GetArgsDeclaration(linked_operations);
-  if (linked_args[0] == ',') {
-    linked_args[0] = ' ';
-  }
   c += "__kernel void main_function(\n";
-  c += linked_args;
   c += "$0) {\n";
   if (op_def.IsBatchSupported()) {
     c += "  int linear_id = get_global_id(0);\n";
@@ -102,10 +97,6 @@ std::string GetTransposeCode(
     c += "  }\n";
   }
   c += "  FLT4 result = (FLT4)(temps[0], temps[1], temps[2], temps[3]);\n";
-  std::string x_3dcoord =
-      op_def.IsBatchSupported() ? "X * args.dst_tensor.Batch() + B" : "X";
-  const LinkingContext context{"result", x_3dcoord, "Y", "Z"};
-  c += PostProcess(linked_operations, context);
   c += "  args.dst_tensor.Write(result, X, Y, Z);\n";
   c += "}\n";
   return c;
@@ -129,9 +120,18 @@ Transpose& Transpose::operator=(Transpose&& operation) {
 }
 
 absl::Status Transpose::Compile(const CreationContext& creation_context) {
-  std::string code =
-      GetTransposeCode(definition_, attr_, linked_operations_, &args_);
-  RETURN_IF_ERROR(args_.TransformToCLCode({}, &code));
+  std::string code = GetTransposeCode(definition_, attr_, &args_);
+  std::string element_wise_code;
+  for (int i = 0; i < linked_operations_.size(); ++i) {
+    std::string code = linked_operations_[i]->GetCode();
+    std::string postfix = absl::StrCat("_link", i + 1);
+    auto&& link_args = linked_operations_[i]->MoveArgs();
+    link_args.RenameArgs(postfix, &code);
+    element_wise_code += "{\n" + code + "\n}\n";
+    RETURN_IF_ERROR(args_.Merge(std::move(link_args), postfix));
+  }
+  RETURN_IF_ERROR(
+      args_.TransformToCLCode({{"dst_tensor", element_wise_code}}, &code));
   code = absl::Substitute(code, args_.GetListOfArgs());
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
@@ -141,9 +141,8 @@ absl::Status Transpose::Compile(const CreationContext& creation_context) {
 absl::Status Transpose::BindArguments() {
   RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
   RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
-  kernel_.ResetBindingCounter();
-  RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(args_.Bind(kernel_.kernel(), kernel_.GetBindingCounter()));
+  RETURN_IF_ERROR(SetArgs(linked_operations_, &args_));
+  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
   return absl::OkStatus();
 }
 
