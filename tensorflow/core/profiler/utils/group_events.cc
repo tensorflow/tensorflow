@@ -274,13 +274,13 @@ EventNode::EventNode(const XPlaneVisitor* plane, XLine* raw_line,
         producer_type = stat.IntValue();
         break;
       case StatType::kProducerId:
-        producer_id = stat.UintValue();
+        producer_id = stat.IntOrUintValue();
         break;
       case StatType::kConsumerType:
         consumer_type = stat.IntValue();
         break;
       case StatType::kConsumerId:
-        consumer_id = stat.UintValue();
+        consumer_id = stat.IntOrUintValue();
         break;
       case StatType::kIsRoot:
         is_root_ = stat.IntValue();
