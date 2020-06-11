@@ -40,45 +40,11 @@ Timespan XEventTimespan(const XEvent& event) {
   return Timespan(event.offset_ps(), event.duration_ps());
 }
 
-// Creates a Timespan from a non-empty XLine.
-Timespan XLineTimespan(const XLine& line) {
-  uint64 begin_ps = kuint64max, end_ps = 0;
-  for (const XEvent& event : line.events()) {
-    // Don't use XEventTimespan. We need the absolute event start time as lines
-    // might have different timestamps.
-    Timespan span(line.timestamp_ns() * 1000 + event.offset_ps(),
-                  event.duration_ps());
-    begin_ps = std::min(span.begin_ps(), begin_ps);
-    end_ps = std::max(span.end_ps(), end_ps);
-  }
-  return Timespan::FromEndPoints(begin_ps, end_ps);
-}
-
 // Functor that compares XEvents of the same XLine for sorting by timespan.
 struct XEventsComparator {
   bool operator()(const XEvent* a, const XEvent* b) const {
     return XEventTimespan(*a) < XEventTimespan(*b);
   }
-};
-
-// Functor that compares XLines of the same XPlane for sorting by timespan.
-class XLinesComparator {
- public:
-  bool operator()(const XLine* a, const XLine* b) const {
-    return CachedXLineTimespan(a) < CachedXLineTimespan(b);
-  }
-
- private:
-  Timespan CachedXLineTimespan(const XLine* line) const {
-    DCHECK_GT(line->events_size(), 0);
-    Timespan& line_timespan = line_timespan_[line];
-    if (line_timespan.Instant()) {
-      line_timespan = XLineTimespan(*line);
-    }
-    return line_timespan;
-  }
-
-  mutable absl::flat_hash_map<const XLine*, Timespan> line_timespan_;
 };
 
 }  // namespace
@@ -184,7 +150,6 @@ void SortXPlane(XPlane* plane) {
     std::sort(events.pointer_begin(), events.pointer_end(),
               XEventsComparator());
   }
-  SortXLinesBy(plane, XLinesComparator());
 }
 
 void SortXSpace(XSpace* space) {

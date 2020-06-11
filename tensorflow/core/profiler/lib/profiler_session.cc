@@ -101,6 +101,8 @@ Status ProfilerSession::CollectData(profiler::XSpace* space) {
     profiler::XPlane* host_plane =
         profiler::GetOrCreatePlane(space, profiler::kHostThreads);
     profiler::MergePlanes(*cupti_driver_api_plane, host_plane);
+    profiler::SortXLinesBy(host_plane, profiler::XLinesComparatorByName());
+    // This might invalidate host_plane pointer.
     profiler::RemovePlaneWithName(space, profiler::kCuptiDriverApiPlaneName);
   }
   // 2. Normalize all timestamps by shifting timeline to profiling start time.
