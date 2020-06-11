@@ -239,9 +239,8 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
                          EnvTime::kNanosToPicos;
       }
       dst_line.SetNameIfEmpty(line.Name());
-      if (!line.DisplayName().empty()) {
-        dst_line.SetDisplayNameIfEmpty(line.DisplayName());
-      }
+      // Don't override dst_line's display name because if both lines have name,
+      // but no display name, line's name will became display name of dst_line.
     }
 
     line.ForEachEvent([&](const tensorflow::profiler::XEventVisitor& event) {
