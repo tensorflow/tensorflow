@@ -108,7 +108,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/memory",
-        "@llvm-project//llvm:ir",
+        "@llvm-project//llvm:Core",
     ],
 )
 
@@ -123,9 +123,9 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:arm_target",  # fixdeps: keep
-        "@llvm-project//llvm:target_base",
-        "@llvm-project//llvm:x86_target",  # fixdeps: keep
+        "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
     ],
 )
 
@@ -155,9 +155,9 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:arm_target",  # fixdeps: keep
-        "@llvm-project//llvm:target_base",
-        "@llvm-project//llvm:x86_target",  # fixdeps: keep
+        "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
     ],
 )
 
@@ -259,8 +259,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:arm_target",  # fixdeps: keep
-        "@llvm-project//llvm:target_base",
-        "@llvm-project//llvm:x86_target",  # fixdeps: keep
+        "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
     ],
 )
