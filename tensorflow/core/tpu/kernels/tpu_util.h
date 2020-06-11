@@ -61,6 +61,10 @@ Status DynamicShapesToTensorShapes(const InputList& dynamic_shapes,
 xla::StatusOr<xla::Shape> TpuShapeRepresentation(const TensorShape& shape,
                                                  DataType type,
                                                  bool use_fast_memory);
+
+// A callback called on exit.
+void LogAndExit(int code);
+
 }  // namespace tpu
 }  // namespace tensorflow
 

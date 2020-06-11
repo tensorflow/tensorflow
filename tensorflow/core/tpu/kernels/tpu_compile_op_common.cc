@@ -352,19 +352,7 @@ Status TPUCompileOpKernelCommon::CompileTFFunctionToHlo(
     return;
   }
 
-#ifdef PLATFORM_GOOGLE
-  // TODO(henrytan): copybara this out.
-  LOG(ERROR) << "Aborting process due to cancelled TPUCompileOp. This "
-                "termination is to ensure a consistent state. If your job "
-                "does not restart, modify the retries allowed. See "
-                "b/71383512.";
-#else
-  LOG(ERROR) << "Restarting TPU host due to cancelled compilation.";
-#endif
-
-  // Exit code 42 tells the Borglet to restart the task and not report it as a
-  // failure: http://g3doc/borg/slave/g3doc/users/task_features
-  std::quick_exit(42);
+  LogAndExit(42);
 }
 
 /* static */ Status TPUCompileOpKernelCommon::GetDynamicShapes(
