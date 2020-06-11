@@ -1086,6 +1086,7 @@ def _create_local_cuda_repository(repository_ctx):
         cudnn_headers = [
             "cudnn_adv_infer.h",
             "cudnn_adv_train.h",
+            "cudnn_backend.h",
             "cudnn_cnn_infer.h",
             "cudnn_cnn_train.h",
             "cudnn_ops_infer.h",
