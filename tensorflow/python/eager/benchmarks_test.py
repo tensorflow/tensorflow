@@ -212,6 +212,15 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
         func()  # Warmup.
       self._run(func, 30000)
 
+  def _benchmark_add_operator_overload(self, a, b):
+    def func():
+      return memoryview(a + b)
+
+    with ops.device("GPU:0" if context.num_gpus() else "CPU:0"):
+      for _ in range(1000):
+        func()  # Warmup.
+      self._run(func, 30000)
+
   def benchmark_add_float_scalars(self):
     self._benchmark_add(42.0, 24.0)
 
@@ -222,6 +231,11 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     tensor_a = constant_op.constant(42.0)
     tensor_b = constant_op.constant(24.0)
     self._benchmark_add(tensor_a, tensor_b)
+
+  def benchmark_add_float_scalar_tensor_overloaded_operator(self):
+    tensor_a = constant_op.constant(42.0)
+    tensor_b = constant_op.constant(24.0)
+    self._benchmark_add_operator_overload(tensor_a, tensor_b)
 
   def benchmark_add_int32_scalar_tensor(self):
     tensor_a = constant_op.constant(42)
