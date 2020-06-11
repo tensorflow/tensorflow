@@ -130,6 +130,8 @@ std::string GetImageModifier(AccessType access) {
 
 }  // namespace
 
+constexpr char Arguments::kArgsPrefix[];
+
 Arguments::Arguments(Arguments&& args)
     : int_values_(std::move(args.int_values_)),
       shared_int4s_data_(std::move(args.shared_int4s_data_)),
