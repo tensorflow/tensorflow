@@ -281,6 +281,9 @@ class EagerResourceDeleter(object):
     # Resources follow object-identity when executing eagerly, so it is safe to
     # delete the resource we have a handle to.
     try:
+      # A packed EagerTensor doesn't own any resource.
+      if isinstance(self._handle, ops.EagerTensor) and self._handle.is_packed:
+        return
       # This resource was created in eager mode. However, this destructor may be
       # running in graph mode (especially during unit tests). To clean up
       # successfully, we switch back into eager mode temporarily.

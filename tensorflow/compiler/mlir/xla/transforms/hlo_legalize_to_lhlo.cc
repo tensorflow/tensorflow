@@ -44,8 +44,8 @@ constexpr StringRef kTempBufferAttr = "temp";
 template <typename T>
 using BaseOpConversion = BufferAssignmentOpConversionPattern<T>;
 using StdReturnOpConverter =
-    BufferAssignmentReturnOpConverter<mlir::ReturnOp, mlir::ReturnOp,
-                                      xla_lhlo::CopyOp>;
+    detail::BufferAssignmentReturnOpConverter<mlir::ReturnOp, mlir::ReturnOp,
+                                              xla_lhlo::CopyOp, true>;
 
 Value InsertDynamicAllocAndDealloc(Location loc, Value result,
                                    Value shape_operand,
@@ -451,11 +451,13 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<xla_hlo::TanhOp>,
       HloToLhloReduceOpConverter,
       HloToLhloTensorLoadOpConverter,
-      HloToLhloTensorStoreOpConverter,
-      FunctionAndBlockSignatureConverter,
-      StdReturnOpConverter
+      HloToLhloTensorStoreOpConverter
   >(context, bufferAssignment, converter);
   // clang-format on
+  populateWithBufferAssignmentOpConversionPatterns<
+      mlir::ReturnOp, mlir::ReturnOp, xla_lhlo::CopyOp,
+      /*allowMemrefFunctionResults=*/false>(context, bufferAssignment,
+                                            converter, patterns);
 }
 
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass() {

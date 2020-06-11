@@ -17,6 +17,8 @@ limitations under the License.
 
 typedef struct XLA_TpuMeshState XLA_TpuMeshState;
 
+extern "C" {
+
 // Creates a new TPU mesh state object.
 XLA_TpuMeshState* TpuMeshState_Create();
 
@@ -26,5 +28,7 @@ void TpuMeshState_Free(XLA_TpuMeshState* mesh_state);
 
 // Returns a pointer to an opaque mesh data structure used internally.
 void* TpuMeshState_MeshCommonState(XLA_TpuMeshState* mesh_state);
+
+}  // extern "C"
 
 #endif  // TENSORFLOW_CORE_TPU_KERNELS_TPU_MESH_STATE_C_API_H_

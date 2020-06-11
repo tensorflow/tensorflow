@@ -674,7 +674,8 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
             GetTensorData<float>(input), GetTensorShape(filter),
             GetTensorData<float>(filter), GetTensorShape(bias),
             GetTensorData<float>(bias), GetTensorShape(output),
-            GetTensorData<float>(output));
+            GetTensorData<float>(output),
+            CpuBackendContext::GetFromContext(context));
       } else {
         TF_LITE_KERNEL_LOG(context,
                            "Unsupported sparse fully-connected weight format.");

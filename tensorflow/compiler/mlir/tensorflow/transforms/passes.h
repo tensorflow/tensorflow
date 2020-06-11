@@ -148,8 +148,10 @@ CreateTensorArrayOpsDecompositionPass();
 // Create a pass that legalize HLO to TF dialect.
 std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeHloToTfPass();
 
-// Creates a pass that performs fusion of common sequences of ops.
-std::unique_ptr<OperationPass<FuncOp>> CreateOpFusionPass();
+// Matches sequence of ops to TensorFlow fused kernels. This pass should not be
+// generally used beyond exporting to runtimes that supports these ops. In the
+// future these fusions may be codegen'd automatically.
+std::unique_ptr<OperationPass<FuncOp>> CreateFusedKernelMatcherPass();
 }  // namespace TF
 
 namespace tf_executor {
@@ -276,6 +278,11 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTPUOutsideCompilationClusterPass();
 // at head/tail of TPU cluster to run before/after TPU computation.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUExtractHeadTailOutsideCompilationPass();
+
+// Creates a pass that expands outside compilation cluster at the head/tail of
+// TPU computation by adding outside compilation attribute to identity/cast ops
+// that are only used for host computation.
+std::unique_ptr<OperationPass<FuncOp>> CreateTPUHostComputationExpansionPass();
 
 // Creates a pass that extract outside compilation (CPU ops inside TPU cluster)
 // ops to a separate parallel_execute region to run on CPU.

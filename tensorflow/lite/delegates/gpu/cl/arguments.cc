@@ -435,104 +435,10 @@ absl::Status Arguments::Merge(Arguments&& args, const std::string& postfix) {
   return absl::OkStatus();
 }
 
-absl::Status Arguments::InsertLinkableCode(const std::string& link_object_name,
-                                           const std::string& linkable_code,
-                                           std::string* code) {
-  const GPUObjectDescriptor* desc_ptr;
-  AccessType access_type;
-  if (auto it = object_refs_.find(link_object_name); it != object_refs_.end()) {
-    desc_ptr = it->second.descriptor.get();
-    access_type = it->second.access_type;
-  } else if (auto it = objects_.find(link_object_name); it != objects_.end()) {
-    desc_ptr = it->second.obj_ptr->GetGPUDescriptor();
-    access_type = it->second.access_type;
-  } else {
-    return absl::NotFoundError(
-        absl::StrCat("No object with name - ", link_object_name));
-  }
-  if (access_type != AccessType::WRITE &&
-      access_type != AccessType::READ_WRITE) {
-    return absl::FailedPreconditionError(absl::StrCat(
-        "Object with name - ", link_object_name, " should have Write access."));
-  }
-
-  const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(desc_ptr);
-  if (!tensor_desc) {
-    return absl::FailedPreconditionError(
-        absl::StrCat("Object with name - ", link_object_name,
-                     " is not spatial tensor. Currently linking supported only "
-                     "for spatial tensors."));
-  }
-
-  std::string token = kArgsPrefix + link_object_name + ".Write";
-  size_t next_position = code->find(token);
-  while (next_position != std::string::npos) {
-    size_t arg_pos = next_position;
-    next_position += token.size();
-    char next = (*code)[next_position];
-    if (next != '(') {
-      return absl::NotFoundError(
-          absl::StrCat("Expected ( after ", token, " call"));
-    }
-    std::vector<std::string> args;
-    size_t close_bracket_pos;
-    RETURN_IF_ERROR(ParseArgsInsideBrackets(*code, next_position,
-                                            &close_bracket_pos, &args));
-    std::string value_name, x_coord, y_coord, s_coord;
-    if (tensor_desc->HasAxis(Axis::BATCH)) {
-      if (args.size() == 5) {
-        value_name = args[0];
-        x_coord = "(" + args[1] + " * args." + link_object_name +
-                  ".Batch() + " + args[3] + ")";
-        y_coord = args[2];
-        s_coord = args[3];
-      } else if (args.size() == 4) {
-        if (tensor_desc->IsBatchedWidth()) {
-          value_name = args[0];
-          x_coord = args[1];
-          y_coord = args[2];
-          s_coord = args[3];
-        } else {
-          std::string batch_name = tensor_desc->GetBatchIDFromState();
-          if (batch_name.empty()) {
-            return absl::FailedPreconditionError(
-                "Object has Batch axis, but can not find batch_id.");
-          }
-          value_name = args[0];
-          x_coord = "(" + args[1] + " * args." + link_object_name +
-                    ".Batch() + " + batch_name + ")";
-          y_coord = args[2];
-          s_coord = args[3];
-        }
-      } else {
-        return absl::FailedPreconditionError(
-            "Unsupported Write(...) method for linking.");
-      }
-    } else {
-      if (args.size() == 4) {
-        value_name = args[0];
-        x_coord = args[1];
-        y_coord = args[2];
-        s_coord = args[3];
-      } else {
-        return absl::FailedPreconditionError(
-            "Unsupported Write(...) method for linking.");
-      }
-    }
-    std::string patch = linkable_code;
-    ReplaceAllWords("in_out_value", value_name, &patch);
-    ReplaceAllWords("X_COORD", x_coord, &patch);
-    ReplaceAllWords("Y_COORD", y_coord, &patch);
-    ReplaceAllWords("S_COORD", s_coord, &patch);
-    code->insert(arg_pos, patch);
-    next_position = code->find(token, arg_pos + patch.size() + token.size());
-  }
-  return absl::OkStatus();
-}
-
-absl::Status Arguments::TransformToCLCode(std::string* code) {
+absl::Status Arguments::TransformToCLCode(
+    const std::map<std::string, std::string>& linkables, std::string* code) {
   RETURN_IF_ERROR(AddObjectArgs());
-  RETURN_IF_ERROR(ResolveSelectorsPass(code));
+  RETURN_IF_ERROR(ResolveSelectorsPass(linkables, code));
   ResolveArgsPass(code);
   return absl::OkStatus();
 }
@@ -740,6 +646,7 @@ void Arguments::ResolveObjectNames(const std::string& object_name,
 }
 
 absl::Status Arguments::ResolveSelector(
+    const std::map<std::string, std::string>& linkables,
     const std::string& object_name, const std::string& selector,
     const std::vector<std::string>& args,
     const std::vector<std::string>& template_args, std::string* result) {
@@ -755,14 +662,38 @@ absl::Status Arguments::ResolveSelector(
     return absl::NotFoundError(
         absl::StrCat("No object with name - ", object_name));
   }
-  RETURN_IF_ERROR(
-      desc_ptr->PerformSelector(selector, args, template_args, result));
   auto names = desc_ptr->GetGPUResources(access_type).GetNames();
-  ResolveObjectNames(object_name, names, result);
+  const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(desc_ptr);
+  if (tensor_desc && selector == "Write") {
+    if (auto it = linkables.find(object_name); it != linkables.end()) {
+      if (access_type != AccessType::WRITE &&
+          access_type != AccessType::READ_WRITE) {
+        return absl::FailedPreconditionError(absl::StrCat(
+            "Object with name - ", object_name, " should have Write access."));
+      }
+      std::string value_name, x_coord, y_coord, s_coord;
+      RETURN_IF_ERROR(tensor_desc->GetLinkingContextFromWriteSelector(
+          args, &value_name, &x_coord, &y_coord, &s_coord));
+      // x_coord can have batch size property of link_object
+      ResolveObjectNames(object_name, names, &x_coord);
+      *result = it->second;
+      ReplaceAllWords("in_out_value", value_name, result);
+      ReplaceAllWords("X_COORD", x_coord, result);
+      ReplaceAllWords("Y_COORD", y_coord, result);
+      ReplaceAllWords("S_COORD", s_coord, result);
+      RETURN_IF_ERROR(ResolveSelectorsPass({}, result));
+    }
+  }
+  std::string patch;
+  RETURN_IF_ERROR(
+      desc_ptr->PerformSelector(selector, args, template_args, &patch));
+  ResolveObjectNames(object_name, names, &patch);
+  *result += patch;
   return absl::OkStatus();
 }
 
-absl::Status Arguments::ResolveSelectorsPass(std::string* code) {
+absl::Status Arguments::ResolveSelectorsPass(
+    const std::map<std::string, std::string>& linkables, std::string* code) {
   std::string result;
   size_t position = 0;
   size_t next_position = code->find(kArgsPrefix);
@@ -793,8 +724,8 @@ absl::Status Arguments::ResolveSelectorsPass(std::string* code) {
       RETURN_IF_ERROR(ParseArgsInsideBrackets(*code, next_position,
                                               &close_bracket_pos, &args));
       std::string patch;
-      RETURN_IF_ERROR(ResolveSelector(object_name, selector_name, args,
-                                      template_args, &patch));
+      RETURN_IF_ERROR(ResolveSelector(linkables, object_name, selector_name,
+                                      args, template_args, &patch));
       code->replace(arg_pos, close_bracket_pos - arg_pos, patch);
       position = arg_pos + patch.size();
     } else {

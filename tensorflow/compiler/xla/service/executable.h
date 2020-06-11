@@ -276,6 +276,10 @@ class Executable {
       const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments);
 
+  StatusOr<ExecutionOutput> ExecuteOnStreamWrapper(
+      const ServiceExecutableRunOptions* run_options,
+      std::vector<ExecutionInput> arguments);
+
   StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStreamWrapper(
       const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments);

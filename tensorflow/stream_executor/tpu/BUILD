@@ -15,6 +15,7 @@ cc_library(
         "//tensorflow/c:tf_attrtype",
         "//tensorflow/c:tf_datatype",
         "//tensorflow/c:tf_status",
+        "//tensorflow/core/tpu/kernels:tpu_ops_common_c_api_hdrs",
     ],
 )
 

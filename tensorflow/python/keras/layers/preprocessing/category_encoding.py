@@ -267,12 +267,22 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
     K.set_value(self.tf_idf_weights, tfidf_data)
 
   def call(self, inputs, count_weights=None):
+    if isinstance(inputs, (list, np.ndarray)):
+      inputs = ops.convert_to_tensor_v2(inputs)
+    if inputs.shape.rank == 1:
+      inputs = array_ops.expand_dims(inputs, 1)
+
     if count_weights is not None and self._output_mode != COUNT:
       raise ValueError("count_weights is not used in `output_mode='tf-idf'`, "
                        "or `output_mode='binary'`. Please pass a single input.")
     self._called = True
     if self._max_tokens is None:
       out_depth = K.get_value(self.num_elements)
+      if out_depth == 0:
+        raise RuntimeError(
+            "If you construct a `CategoryEncoding` layer with "
+            "`max_tokens=None`, you need to call `adapt()` "
+            "on it before using it")
     else:
       out_depth = self._max_tokens
 
@@ -352,6 +362,8 @@ class _CategoryEncodingCombiner(base_preprocessing_layer.Combiner):
 
     # TODO(momernick): Benchmark improvements to this algorithm.
     for element in values:
+      if not isinstance(element, list):
+        element = [element]
       current_doc_id = accumulator.data[self.DOC_ID_IDX]
       for value in element:
         current_max_value = accumulator.data[self.MAX_VALUE_IDX]

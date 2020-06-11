@@ -1353,7 +1353,8 @@ def TF_CollectiveBcastRecvOp : TF_Op<"CollectiveBcastRecv", []> {
     I64Attr:$group_key,
     I64Attr:$instance_key,
     TF_ShapeAttr:$shape,
-    DefaultValuedAttr<StrAttr, "auto">:$communication_hint
+    DefaultValuedAttr<StrAttr, "auto">:$communication_hint,
+    DefaultValuedAttr<F32Attr, "0.0f">:$timeout_seconds
   );
 
   let results = (outs
@@ -1376,7 +1377,8 @@ def TF_CollectiveBcastSendOp : TF_Op<"CollectiveBcastSend", []> {
     I64Attr:$group_key,
     I64Attr:$instance_key,
     TF_ShapeAttr:$shape,
-    DefaultValuedAttr<StrAttr, "auto">:$communication_hint
+    DefaultValuedAttr<StrAttr, "auto">:$communication_hint,
+    DefaultValuedAttr<F32Attr, "0.0f">:$timeout_seconds
   );
 
   let results = (outs
@@ -1401,7 +1403,8 @@ Mutually accumulates multiple tensors of identical type and shape.
     I64Attr:$group_key,
     I64Attr:$instance_key,
     TF_ShapeAttr:$shape,
-    DefaultValuedAttr<StrAttr, "auto">:$communication_hint
+    DefaultValuedAttr<StrAttr, "auto">:$communication_hint,
+    DefaultValuedAttr<F32Attr, "0.0f">:$timeout_seconds
   );
 
   let results = (outs
@@ -1429,7 +1432,8 @@ Mutually reduces multiple tensors of identical type and shape.
     TF_AnyStrAttrOf<["Id", "Div"]>:$final_op,
     I64ArrayAttr:$subdiv_offsets,
     DefaultValuedAttr<I64ArrayAttr, "{}">:$wait_for,
-    DefaultValuedAttr<StrAttr, "auto">:$communication_hint
+    DefaultValuedAttr<StrAttr, "auto">:$communication_hint,
+    DefaultValuedAttr<F32Attr, "0.0f">:$timeout_seconds
   );
 
   let results = (outs
@@ -8977,7 +8981,8 @@ The above computation has a replicated input of two replicas.
     Variadic<TF_Tensor>:$inputs,
 
     DefaultValuedAttr<BoolAttr, "false">:$is_mirrored_variable,
-    DefaultValuedAttr<I64Attr, "-1">:$index
+    DefaultValuedAttr<I64Attr, "-1">:$index,
+    DefaultValuedAttr<BoolAttr, "false">:$is_packed
   );
 
   let results = (outs
@@ -10841,11 +10846,27 @@ def TF_ZerosLikeOp : TF_Op<"ZerosLike", [NoSideEffect, SameOperandsAndResultType
 
 def TF__FusedConv2DOp : TF_Op<"_FusedConv2D", [NoSideEffect]> {
   let summary = [{
-*NOTE*: Do not invoke this operator directly in Python. Grappler is
+Performs a convolution followed by a specified series of operations.
   }];
 
   let description = [{
-expected to create these operators.
+The inputs to the convolution are `input` and `filter`. The series of operations
+that follows is specified by the `fused_ops` attribute, which is a list of TF op
+names specified as strings (e.g. "Relu"). They are performed in order, where the
+(first) input to each op is the output of the preceding op. The first input and
+the output of each fused_op must be of type T.
+
+Currently supported fused_op combinations are: [X] and [X,A], where X is one of
+{"BiasAdd","FusedBatchNorm"} and A is one of {"Elu","Relu","Relu6"}.
+
+* The first input to op X is the Conv2D result, and the additional input(s) to X
+are specified by `args`.
+* If there is an op A specified, the output of op X is the input to op A, and op
+A produces the _FusedConv2D output. Otherwise, op X produces the _FusedConv2D
+output.
+
+*NOTE*: Do not invoke this operator directly in Python. Grappler is expected to
+create these operators.
   }];
 
   let arguments = (ins

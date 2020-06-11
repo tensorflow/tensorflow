@@ -1,4 +1,4 @@
-// RUN: xla-opt -hlo-legalize-to-lhlo -buffer-placement -split-input-file %s -o - | FileCheck %s --dump-input-on-failure
+// RUN: xla-opt -hlo-legalize-to-lhlo -buffer-placement -split-input-file %s -o - | FileCheck %s
 
 // CHECK-LABEL: func @attrs
 func @attrs_copy(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
@@ -184,14 +184,16 @@ func @dyn_broadcast(%operand: memref<?x?xf32>) {
 
   // CHECK: %[[C1__:.*]] = constant 1 : index
   // CHECK: %[[EL1_:.*]] = extract_element %[[SHAPE]]{{\[}}%[[C1__]]] : tensor<3xi64>
-  // CHECK: %[[OPERAND_DIM_0:.*]] = dim %[[OPERAND]], 0 : memref<?x?xf32>
+  // CHECK: %[[C0___:.*]] = constant 0 : index
+  // CHECK: %[[OPERAND_DIM_0:.*]] = dim %[[OPERAND]], %[[C0___]] : memref<?x?xf32>
   // CHECK: %[[RESULT_DIM_1:.*]] = index_cast %[[EL1_]] : i64 to index
   // CHECK: %[[EXPAND_0:.*]] = cmpi "slt", %[[OPERAND_DIM_0]], %[[RESULT_DIM_1]]
   // CHECK: %[[STRIDE_0:.*]] = select %[[EXPAND_0]], %[[C0_]], %[[C1_]] : index
 
   // CHECK: %[[C2_:.*]] = constant 2 : index
   // CHECK: %[[EL2_:.*]] = extract_element %[[SHAPE]]{{\[}}%[[C2_]]] : tensor<3xi64>
-  // CHECK: %[[OPERAND_DIM_1:.*]] = dim %[[OPERAND]], 1 : memref<?x?xf32>
+  // CHECK: %[[C1___:.*]] = constant 1 : index
+  // CHECK: %[[OPERAND_DIM_1:.*]] = dim %[[OPERAND]], %[[C1___]] : memref<?x?xf32>
   // CHECK: %[[RESULT_DIM_2:.*]] = index_cast %[[EL2_]] : i64 to index
   // CHECK: %[[EXPAND_1:.*]] = cmpi "slt", %[[OPERAND_DIM_1]], %[[RESULT_DIM_2]]
   // CHECK: %[[STRIDE_1:.*]] = select %[[EXPAND_1]], %[[C0_]], %[[C1_]] : index
@@ -389,15 +391,18 @@ func @remainder(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>, %result: memref<2x
 func @add_dyn(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) {
   %result = "xla_hlo.add"(%lhs, %rhs)
       : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
-  // CHECK: %[[DIM0:.*]] = dim %arg0, 0 : memref<?x?xf32>
+  // CHECK: %[[C0:.*]] = constant 0 : index
+  // CHECK: %[[DIM0:.*]] = dim %arg0, %[[C0]] : memref<?x?xf32>
   // CHECK: %[[IC0:.*]] = index_cast %[[DIM0]] : index to i64
-  // CHECK: %[[DIM1:.*]] = dim %arg0, 1 : memref<?x?xf32>
+  // CHECK: %[[C1:.*]] = constant 1 : index
+  // CHECK: %[[DIM1:.*]] = dim %arg0, %[[C1]] : memref<?x?xf32>
   // CHECK: %[[IC1:.*]] = index_cast %[[DIM1]] : index to i64
   // CHECK: %[[SHAPE:.*]] = tensor_from_elements(%[[IC0]], %[[IC1]]) : tensor<2xi64>
-  // CHECK: %[[C0:.*]] = constant 0 : index
-  // CHECK: %[[EE0:.*]] = extract_element %[[SHAPE]][%[[C0]]] : tensor<2xi64>
+  // CHECK: %[[C0_:.*]] = constant 0 : index
+  // CHECK: %[[EE0:.*]] = extract_element %[[SHAPE]][%[[C0_]]] : tensor<2xi64>
   // CHECK: %[[ICS0:.*]] = index_cast %[[EE0]] : i64 to index
-  // CHECK: %[[EE1:.*]] = extract_element %[[SHAPE]][%[[C1]]] : tensor<2xi64>
+  // CHECK: %[[C1_:.*]] = constant 1 : index
+  // CHECK: %[[EE1:.*]] = extract_element %[[SHAPE]][%[[C1_]]] : tensor<2xi64>
   // CHECK: %[[ICS1:.*]] = index_cast %[[EE1]] : i64 to index
   // CHECK: %[[RESULT:.*]] = alloc(%[[ICS0]], %[[ICS1]])
   // CHECK: "xla_lhlo.add"(%arg0, %arg1, %[[RESULT]]) : (memref<?x?xf32>, memref<?x?xf32>, memref<?x?xf32>) -> ()
@@ -411,15 +416,18 @@ func @add_dyn(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) {
 func @tanh_dyn(%arg0: tensor<?x?xf32>) {
   %result = "xla_hlo.tanh"(%arg0)
       : (tensor<?x?xf32>) -> tensor<?x?xf32>
-  // CHECK: %[[DIM0:.*]] = dim %arg0, 0 : memref<?x?xf32>
+  // CHECK: %[[C0:.*]] = constant 0 : index
+  // CHECK: %[[DIM0:.*]] = dim %arg0, %[[C0]] : memref<?x?xf32>
   // CHECK: %[[IC0:.*]] = index_cast %[[DIM0]] : index to i64
-  // CHECK: %[[DIM1:.*]] = dim %arg0, 1 : memref<?x?xf32>
+  // CHECK: %[[C1:.*]] = constant 1 : index
+  // CHECK: %[[DIM1:.*]] = dim %arg0, %[[C1]] : memref<?x?xf32>
   // CHECK: %[[IC1:.*]] = index_cast %[[DIM1]] : index to i64
   // CHECK: %[[SHAPE:.*]] = tensor_from_elements(%[[IC0]], %[[IC1]]) : tensor<2xi64>
-  // CHECK: %[[C0:.*]] = constant 0 : index
-  // CHECK: %[[EE0:.*]] = extract_element %[[SHAPE]][%[[C0]]] : tensor<2xi64>
+  // CHECK: %[[C0_:.*]] = constant 0 : index
+  // CHECK: %[[EE0:.*]] = extract_element %[[SHAPE]][%[[C0_]]] : tensor<2xi64>
   // CHECK: %[[ICS0:.*]] = index_cast %[[EE0]] : i64 to index
-  // CHECK: %[[EE1:.*]] = extract_element %[[SHAPE]][%[[C1]]] : tensor<2xi64>
+  // CHECK: %[[C1_:.*]] = constant 1 : index
+  // CHECK: %[[EE1:.*]] = extract_element %[[SHAPE]][%[[C1_]]] : tensor<2xi64>
   // CHECK: %[[ICS1:.*]] = index_cast %[[EE1]] : i64 to index
   // CHECK: %[[RESULT:.*]] = alloc(%[[ICS0]], %[[ICS1]])
   // CHECK: "xla_lhlo.tanh"(%arg0, %[[RESULT]]) : (memref<?x?xf32>, memref<?x?xf32>) -> ()

@@ -86,6 +86,10 @@ benefit from XNNPACK delegate.
 
 Below is the list of current operators and limitations:
 
+### `ABS`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
 ### `ADD`
 
 * Inputs and outputs must be in 32-bit floating-point format.
@@ -99,6 +103,10 @@ Below is the list of current operators and limitations:
 * 1x1 pooling is not supported.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
+
+### `CEIL`
+
+* Inputs and outputs must be in 32-bit floating-point format.
 
 ### `CONV_2D`
 
@@ -130,7 +138,15 @@ Below is the list of current operators and limitations:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
+### `FLOOR`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
 ### `HARD_SWISH`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
+### `LEAKY_RELU`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
@@ -159,6 +175,10 @@ Below is the list of current operators and limitations:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
+### `NEG`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
 ### `PAD`
 
 * The first input and the output must be in 32-bit floating-point format.
@@ -185,10 +205,18 @@ Below is the list of current operators and limitations:
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
+### `ROUND`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
 ### `SOFTMAX`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 * Only `beta = 1.0` is supported.
+
+### `SQUARE`
+
+* Inputs and outputs must be in 32-bit floating-point format.
 
 ### `SQUARED_DIFFERENCE`
 

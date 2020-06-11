@@ -18,6 +18,7 @@ load(
     "tf_opts_nortti_if_lite_protos",
 )
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
+load("//tensorflow/core/kernels:build_defs.bzl", "if_mlir_generated_gpu_kernels_enabled")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "if_nccl")
@@ -88,8 +89,8 @@ config_setting(
     # sparse matrix multiplications. You will also need appropriate -mavx*
     # options, as required by specific op you use.
     name = "xsmm",
-    values = {
-        "define": "tensorflow_xsmm=1",
+    define_values = {
+        "tensorflow_xsmm": "1",
     },
 )
 
@@ -98,8 +99,8 @@ config_setting(
     # use libxsmm for forward convolutions. You will also need appropriate
     # -mavx* # options, as required by specific op you use.
     name = "xsmm_convolutions",
-    values = {
-        "define": "tensorflow_xsmm_convolutions=1",
+    define_values = {
+        "tensorflow_xsmm_convolutions": "1",
     },
 )
 
@@ -109,8 +110,8 @@ config_setting(
     # backward convolutions (and possibly more in the future). You will also
     # need appropriate -mavx* options, as required by specific op you use.
     name = "xsmm_backward_convolutions",
-    values = {
-        "define": "tensorflow_xsmm_backward_convolutions=1",
+    define_values = {
+        "tensorflow_xsmm_backward_convolutions": "1",
     },
 )
 
@@ -121,8 +122,15 @@ config_setting(
     # (https://en.wikipedia.org/wiki/CPUID). Default Eigen contraction kernel is
     # Eigen::internal::gebp_kernel (general block-panel kernel).
     name = "no_mkldnn_contraction_kernel",
-    values = {
-        "define": "tensorflow_mkldnn_contraction_kernel=0",
+    define_values = {
+        "tensorflow_mkldnn_contraction_kernel": "0",
+    },
+)
+
+config_setting(
+    name = "mlir_generated_gpu_kernels_enabled",
+    define_values = {
+        "tensorflow_enable_mlir_generated_gpu_kernels": "1",
     },
 )
 
@@ -4134,8 +4142,23 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "cwise_op",
+    copts = if_mlir_generated_gpu_kernels_enabled(if_true = ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED=1"]),
     prefix = "cwise_op",
-    deps = MATH_DEPS,
+    deps = MATH_DEPS + if_mlir_generated_gpu_kernels_enabled(if_true = [":mlir_generated_cwise_op"]),
+)
+
+tf_kernel_library(
+    name = "mlir_generated_cwise_op",
+    gpu_srcs = ["mlir_generated_cwise_op_gpu_tanh.cu.cc"],
+    tags = ["manual"],
+    deps = if_cuda([
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/kernels/cubin_headers:tanh_kernels",
+    ]),
 )
 
 tf_kernel_library(

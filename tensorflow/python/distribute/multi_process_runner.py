@@ -52,8 +52,8 @@ _ProcessStatusInfo = collections.namedtuple(
 
 # _SubprocessInfo collects basic information of a subprocess such as task type
 # and process id.
-# TODO(rchao): Include task_type and task_id in subprocess info.
-_SubprocessInfo = collections.namedtuple('_SubprocessInfo', ['pid'])
+_SubprocessInfo = collections.namedtuple('_SubprocessInfo',
+                                         ['pid', 'task_type', 'task_id'])
 
 # Information returned from a successful MultiProcessRunner run.
 MultiProcessRunnerResult = collections.namedtuple('MultiProcessRunnerResult',
@@ -552,7 +552,8 @@ class _Subprocess(object):
     pid = os.getpid()
     logging.info('Subprocess with PID %d (%s, %d) is now being started.', pid,
                  task_type, task_id)
-    _resource(SUBPROCESS_INFO_QUEUE).put(_SubprocessInfo(pid=pid))
+    _resource(SUBPROCESS_INFO_QUEUE).put(
+        _SubprocessInfo(pid=pid, task_type=task_type, task_id=task_id))
     # Assign sys.stdout and sys.stderr as duplicates of `pipe_w` so print() and
     # logging.*() write directly to `pipe_w`. Unfortunately since we cannot
     # prepend task_type and task_id information to the streamed logs we will

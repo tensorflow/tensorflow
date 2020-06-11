@@ -46,6 +46,7 @@ PythonHooks* PythonHooks::GetSingleton() {
 }
 
 void PythonHooks::Start(const PythonHooksOptions& option) {
+  DCHECK(Py_IsInitialized());
   if (option.enable_python_traceme || option.enable_trace_python_function) {
     PyGILState_STATE gil_state = PyGILState_Ensure();
     if (option.enable_trace_python_function) {
@@ -59,6 +60,7 @@ void PythonHooks::Start(const PythonHooksOptions& option) {
 }
 
 void PythonHooks::Stop(const PythonHooksOptions& option) {
+  if (!Py_IsInitialized()) return;
   if (option.enable_python_traceme || option.enable_trace_python_function) {
     PyGILState_STATE gil_state = PyGILState_Ensure();
     if (option.enable_trace_python_function) {

@@ -1,4 +1,4 @@
-// RUN: xla-opt %s -lhlo-legalize-to-gpu -split-input-file | FileCheck %s --dump-input=fail
+// RUN: xla-opt %s -lhlo-legalize-to-gpu -split-input-file | FileCheck %s
 
 func @reduce(%arg: memref<100x10xf32>,
              %init: memref<f32>,

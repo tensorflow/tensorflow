@@ -146,6 +146,98 @@ class IrEmitterUnnested : public IrEmitter,
     thunk_sequence_->emplace_back(std::move(thunk));
   }
 
+  // Input = {static array, dynamic_dim0, dynamic_dim1}
+  // Output = {dynamic array(with dynamic dimension meta data at the end)}
+  // For a tensor with static dimension [2][<=5] and dynamic dimension [2][3]
+  // (`_` stands for padding)
+  // Input = {{1,2,3,_,_,4,5,6_,_}, 2, 3}
+  // Output = {{1,2,3,4,5,6,_,_,_,_,2,3}}
+
+  // pseudo code for padToStatic on a 2d array
+  //   ```
+  // void padToStatic(int** input, int** output, int thread_per_block,
+  //                  int meta_data_offset, int max_num_element,
+  //                  int static_dim0_size, int static_dim1_size) {
+  //   int* source_array = input[0];
+  //   int* dest_array = output[0];
+
+  //   // extract the dynamic dimension from the source array's metadata
+  //   int* dyn_dim0_size = source_array + meta_data_offset;
+  //   int* dyn_dim1_size = source_array + meta_data_offset + sizeof(int);
+
+  //   // only one thread need to store the dynamic index
+  //   int thread_id = GetThreadId();
+  //   int block_id = GetBlockId();
+  //   if (thread_id == 0 && block_id == 0) {
+  //     *output[1] = *dyn_dim0_size;
+  //     *output[2] = *dyn_dim1_size;
+  //   }
+
+  //   int dyn_element_total = 1;
+  //   dyn_element_total *= *dyn_dim0_size;
+  //   dyn_element_total *= *dyn_dim1_size;
+  //   linear_index = block_id * thread_per_block + thread_id;
+  //   if (linear_index < max_num_element) {
+  //     Index static_index =
+  //         delinerized(linerized_index, static_dim0_size, static_dim1_size);
+  //     if (linerized_index < dyn_element_total) {
+  //       Index dyn_index =
+  //           delinerized(linerized_index, *dyn_dim0_size, *dyn_dim1_size);
+  //       dest_array[dyn_index.dim0][dyn_index.dim1] =
+  //           source_array[static_index.dim0][static_index.dim1];
+  //     }
+  //   }
+  //   return;
+  // }
+  //   ```
+  Status HandlePadToStatic(HloInstruction* pad_to_static);
+
+  // Input = {dynamic array(with dynamic dimension meta data at the end)}
+  // Output = {static array, dynamic_dim0, dynamic_dim1}
+  // For a tensor with static dimension [2][<=5] and dynamic dimension [2][3]
+  // (`_` stands for padding)
+  // Input = {{1,2,3,4,5,6,_,_,_,_,2,3}}
+  // Output = {{1,2,3,_,_,4,5,6_,_}, 2, 3}
+
+  // pseudo code for sliceToDynamic on a 2d array
+  //   ```
+  // void sliceToDynamic(int** input, int** output, int thread_per_block,
+  //                  int meta_data_offset, int max_num_element,
+  //                  int static_dim0_size, int static_dim1_size) {
+  //   int* source_array = input[0];
+  //   int* dest_array = output[0];
+
+  //   // calculate the location where metadata needs to be inserted
+  //   int* dyn_dim0_size = dest_array + meta_data_offset;
+  //   int* dyn_dim1_size = dest_array + meta_data_offset + sizeof(int);
+
+  //   // only one thread need to store the dynamic index
+  //   int thread_id = GetThreadId();
+  //   int block_id = GetBlockId();
+  //   if (thread_id == 0 && block_id == 0) {
+  //     *dyn_dim0_size = *output[1];
+  //     *dyn_dim1_size = *output[2];
+  //   }
+
+  //   int dyn_element_total = 1;
+  //   dyn_element_total *= *dyn_dim0_size;
+  //   dyn_element_total *= *dyn_dim1_size;
+  //   linear_index = block_id * thread_per_block + thread_id;
+  //   if (linear_index < max_num_element) {
+  //     Index static_index =
+  //         delinerized(linerized_index, static_dim0_size, static_dim1_size);
+  //     if (linerized_index < dyn_element_total) {
+  //       Index dyn_index =
+  //           delinerized(linerized_index, *dyn_dim0_size, *dyn_dim1_size);
+  //       dest_array[static_index.dim0][static_index.dim1] =
+  //           source_array[dyn_index.dim0][dyn_index.dim1];
+  //     }
+  //   }
+  //   return;
+  // }
+  //   ```
+  Status HandleSliceToDynamic(HloInstruction* slice_to_dynamic);
+
   // A convenient helper for calling BufferAssignment::GetUniqueSlice.
   StatusOr<BufferAllocation::Slice> MaybeGetAllocationSlice(
       const HloInstruction& hlo, const ShapeIndex& index) const override {

@@ -1043,6 +1043,26 @@ def logspace(start, stop, num=50, endpoint=True, base=10.0, dtype=None, axis=0):
   return np_arrays.tensor_to_ndarray(result)
 
 
+@np_utils.np_doc(np.geomspace)
+def geomspace(start, stop, num=50, endpoint=True, dtype=None, axis=0):  # pylint: disable=missing-docstring
+  dtype = dtype or np_utils.result_type(start, stop, float(num),
+                                        np_array_ops.zeros((), dtype))
+  computation_dtype = np.promote_types(dtype, np.float32)
+  start = np_array_ops.asarray(start, dtype=computation_dtype)
+  stop = np_array_ops.asarray(stop, dtype=computation_dtype)
+  # follow the numpy geomspace convention for negative and complex endpoints
+  start_sign = 1 - np_array_ops.sign(np_array_ops.real(start))
+  stop_sign = 1 - np_array_ops.sign(np_array_ops.real(stop))
+  signflip = 1 - start_sign * stop_sign // 2
+  res = signflip * logspace(log10(signflip * start),
+                            log10(signflip * stop), num,
+                            endpoint=endpoint, base=10.0,
+                            dtype=computation_dtype, axis=0)
+  if axis != 0:
+    res = np_array_ops.moveaxis(res, 0, axis)
+  return np_utils.tensor_to_ndarray(math_ops.cast(res, dtype))
+
+
 @np_utils.np_doc(np.ptp)
 def ptp(a, axis=None, keepdims=None):
   return (np_array_ops.amax(a, axis=axis, keepdims=keepdims) -

@@ -76,9 +76,10 @@ cc_library(
     hdrs = ["tpu_compile_c_api.h"],
     deps = [
         ":tpu_mesh_state_c_api",
+        ":tpu_ops_common_c_api_hdrs",
+        ":tpu_program_c_api_hdrs",
         "//tensorflow/c:tf_datatype",
         "//tensorflow/stream_executor/tpu:proto_helper",
-        "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
     ],
 )
 
@@ -157,6 +158,7 @@ cc_library(
         ":tpu_program_group",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core/lib/core:refcount",
+        "//tensorflow/core/platform:casts",
     ],
 )
 
@@ -225,6 +227,7 @@ cc_library(
         ":tpu_compile_op_support",
         ":tpu_compile_proto_cc",
         ":tpu_executable_info_proto_cc",
+        ":tpu_program_c_api_hdrs",
         ":tpu_program_group_interface",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:xla_proto_cc",
@@ -293,7 +296,6 @@ cc_library(
 
 cc_library(
     name = "trace_util_hdrs",
-    srcs = [],
     hdrs = ["trace_util.h"],
     deps = [
         "//tensorflow/core:protos_all_cc",
@@ -320,6 +322,20 @@ cc_library(
     name = "tpu_util_c_api_hdrs",
     hdrs = ["tpu_util_c_api.h"],
     deps = [
+        "//tensorflow/stream_executor/tpu:proto_helper",
+    ],
+)
+
+cc_library(
+    name = "tpu_ops_common_c_api_hdrs",
+    hdrs = ["tpu_ops_common_c_api.h"],
+)
+
+cc_library(
+    name = "tpu_program_c_api_hdrs",
+    hdrs = ["tpu_program_c_api.h"],
+    deps = [
+        ":tpu_ops_common_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:proto_helper",
     ],
 )

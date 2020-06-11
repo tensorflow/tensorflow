@@ -35,14 +35,22 @@ TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(TestRecordsTfLiteTensorArrayData) {
   TfLiteContext context;
+  tflite::AllOpsResolver all_ops_resolver;
+  tflite::NodeAndRegistration* node_and_registration;
   const tflite::Model* model = tflite::GetModel(kTestConvModelData);
   uint8_t arena[kTestConvArenaSize];
   tflite::RecordingSimpleMemoryAllocator memory_allocator(
       micro_test::reporter, arena, kTestConvArenaSize);
+
   tflite::RecordingMicroAllocator* micro_allocator =
-      tflite::RecordingMicroAllocator::Create(
-          &context, model, &memory_allocator, micro_test::reporter);
+      tflite::RecordingMicroAllocator::Create(&memory_allocator,
+                                              micro_test::reporter);
   TF_LITE_MICRO_EXPECT_NE(nullptr, micro_allocator);
+  TF_LITE_MICRO_EXPECT_GE(kTfLiteOk, micro_allocator->StartModelAllocation(
+                                         model, &context, all_ops_resolver,
+                                         &node_and_registration));
+  TF_LITE_MICRO_EXPECT_GE(
+      kTfLiteOk, micro_allocator->FinishModelAllocation(model, &context));
 
   tflite::RecordedAllocation recorded_allocation =
       micro_allocator->GetRecordedAllocation(
@@ -56,14 +64,22 @@ TF_LITE_MICRO_TEST(TestRecordsTfLiteTensorArrayData) {
 
 TF_LITE_MICRO_TEST(TestRecordsTensorArrayQuantizationData) {
   TfLiteContext context;
+  tflite::AllOpsResolver all_ops_resolver;
+  tflite::NodeAndRegistration* node_and_registration;
   const tflite::Model* model = tflite::GetModel(kTestConvModelData);
   uint8_t arena[kTestConvArenaSize];
   tflite::RecordingSimpleMemoryAllocator memory_allocator(
       micro_test::reporter, arena, kTestConvArenaSize);
+
   tflite::RecordingMicroAllocator* micro_allocator =
-      tflite::RecordingMicroAllocator::Create(
-          &context, model, &memory_allocator, micro_test::reporter);
+      tflite::RecordingMicroAllocator::Create(&memory_allocator,
+                                              micro_test::reporter);
   TF_LITE_MICRO_EXPECT_NE(nullptr, micro_allocator);
+  TF_LITE_MICRO_EXPECT_GE(kTfLiteOk, micro_allocator->StartModelAllocation(
+                                         model, &context, all_ops_resolver,
+                                         &node_and_registration));
+  TF_LITE_MICRO_EXPECT_GE(
+      kTfLiteOk, micro_allocator->FinishModelAllocation(model, &context));
 
   // Walk the model subgraph to find all tensors with quantization params and
   // keep a tally.
@@ -106,20 +122,22 @@ TF_LITE_MICRO_TEST(TestRecordsTensorArrayQuantizationData) {
 
 TF_LITE_MICRO_TEST(TestRecordsNodeAndRegistrationArrayData) {
   TfLiteContext context;
+  tflite::AllOpsResolver all_ops_resolver;
+  tflite::NodeAndRegistration* node_and_registration;
   const tflite::Model* model = tflite::GetModel(kTestConvModelData);
   uint8_t arena[kTestConvArenaSize];
   tflite::RecordingSimpleMemoryAllocator memory_allocator(
       micro_test::reporter, arena, kTestConvArenaSize);
-  tflite::RecordingMicroAllocator* micro_allocator =
-      tflite::RecordingMicroAllocator::Create(
-          &context, model, &memory_allocator, micro_test::reporter);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, micro_allocator);
 
-  tflite::AllOpsResolver ops_resolver;
-  tflite::NodeAndRegistration* node_and_registrations;
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
-                          micro_allocator->PrepareFromFlatbuffer(
-                              ops_resolver, &node_and_registrations));
+  tflite::RecordingMicroAllocator* micro_allocator =
+      tflite::RecordingMicroAllocator::Create(&memory_allocator,
+                                              micro_test::reporter);
+  TF_LITE_MICRO_EXPECT_NE(nullptr, micro_allocator);
+  TF_LITE_MICRO_EXPECT_GE(kTfLiteOk, micro_allocator->StartModelAllocation(
+                                         model, &context, all_ops_resolver,
+                                         &node_and_registration));
+  TF_LITE_MICRO_EXPECT_GE(
+      kTfLiteOk, micro_allocator->FinishModelAllocation(model, &context));
 
   size_t num_ops = model->subgraphs()->Get(0)->operators()->size();
   tflite::RecordedAllocation recorded_allocation =

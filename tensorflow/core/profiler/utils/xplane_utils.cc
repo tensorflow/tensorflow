@@ -184,8 +184,7 @@ void SortXPlane(XPlane* plane) {
     std::sort(events.pointer_begin(), events.pointer_end(),
               XEventsComparator());
   }
-  std::sort(plane->mutable_lines()->pointer_begin(),
-            plane->mutable_lines()->pointer_end(), XLinesComparator());
+  SortXLinesBy(plane, XLinesComparator());
 }
 
 void SortXSpace(XSpace* space) {

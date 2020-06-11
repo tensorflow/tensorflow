@@ -31,6 +31,7 @@ from tensorflow.python import tf2
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import packed_distributed_variable as packed
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute import tpu_values
@@ -40,6 +41,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
@@ -702,6 +704,27 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
               context.executing_eagerly()):
         self.evaluate(
             distribution.experimental_local_results(distribution.run(assign)))
+
+  def testPackedVariable(self, distribution, synchronization, aggregation):
+    with distribution.scope():
+      v0 = variables_lib.Variable(
+          0., synchronization=synchronization, aggregation=aggregation)
+    self.assertEqual(v0._packed_var, None)
+
+    device_type = device.DeviceSpec.from_string(v0._devices[0]).device_type
+    for d in v0._devices:
+      if device.DeviceSpec.from_string(d).device_type != device_type:
+        self.skipTest("Packing variables on devices of different types "
+                      "is not supported yet.")
+
+    distribution._enable_packed_variable_in_eager_mode = True
+    with distribution.scope():
+      v1 = variables_lib.Variable(
+          0., synchronization=synchronization, aggregation=aggregation)
+    if ops.executing_eagerly_outside_functions():
+      self.assertIsInstance(v1._packed_var, packed.PackedDistributedVariable)
+    else:
+      self.assertEqual(v1._packed_var, None)
 
 
 class MirroredVariableTest(test.TestCase, parameterized.TestCase):

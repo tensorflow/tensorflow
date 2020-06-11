@@ -68,10 +68,8 @@ class Arguments {
   void RenameArgs(const std::string& postfix, std::string* code) const;
   absl::Status Merge(Arguments&& args, const std::string& postfix);
 
-  absl::Status InsertLinkableCode(const std::string& link_object_name,
-                                  const std::string& linkable_code,
-                                  std::string* code);
-  absl::Status TransformToCLCode(std::string* code);
+  absl::Status TransformToCLCode(
+      const std::map<std::string, std::string>& linkables, std::string* code);
 
   // Move only
   Arguments(Arguments&& args);
@@ -89,13 +87,14 @@ class Arguments {
   absl::Status AddObjectArgs();
 
   void ResolveArgsPass(std::string* code);
-  absl::Status ResolveSelectorsPass(std::string* code);
+  absl::Status ResolveSelectorsPass(
+      const std::map<std::string, std::string>& linkables, std::string* code);
 
-  absl::Status ResolveSelector(const std::string& object_name,
-                               const std::string& selector,
-                               const std::vector<std::string>& args,
-                               const std::vector<std::string>& template_args,
-                               std::string* result);
+  absl::Status ResolveSelector(
+      const std::map<std::string, std::string>& linkables,
+      const std::string& object_name, const std::string& selector,
+      const std::vector<std::string>& args,
+      const std::vector<std::string>& template_args, std::string* result);
 
   void ResolveObjectNames(const std::string& object_name,
                           const std::vector<std::string>& member_names,
