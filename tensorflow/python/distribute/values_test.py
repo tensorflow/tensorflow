@@ -706,6 +706,8 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
             distribution.experimental_local_results(distribution.run(assign)))
 
   def testPackedVariable(self, distribution, synchronization, aggregation):
+    if context.num_gpus() > 1:
+      self.skipTest("b/158767088")
     with distribution.scope():
       v0 = variables_lib.Variable(
           0., synchronization=synchronization, aggregation=aggregation)
