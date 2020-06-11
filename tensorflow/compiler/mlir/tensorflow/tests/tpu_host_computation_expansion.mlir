@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -tf-tpu-host-computation-expansion | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt %s -split-input-file -tf-tpu-host-computation-expansion | FileCheck %s
 
 // Tests expansion of a outside compiled ops at head/tail of TPU computation.
 
