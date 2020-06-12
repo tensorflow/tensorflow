@@ -114,6 +114,15 @@ patch_cmsis() {
     -iname '*.*' -exec \
     sed -i -E $'s@#include "arm_nn_tables.h"@#include "cmsis/CMSIS/NN/Include/arm_nn_tables.h"@g' {} \;
 
+  # Until the fix for https://github.com/ARMmbed/mbed-os/issues/12568 is
+  # rolled into Mbed version used on the Arduino IDE, we have to replace
+  # one intrinsic with a patched equivalent.
+  sed -i -E 's@__SXTB16_RORn@__patched_SXTB16_RORn@g' \
+    tensorflow/lite/micro/tools/make/downloads/cmsis/CMSIS/NN/Source/NNSupportFunctions/arm_nn_mat_mult_nt_t_s8.c
+
+  sed -i -E $'33 a \\\n\\\n// Work around for https://github.com/ARMmbed/mbed-os/issues/12568\\\n__STATIC_FORCEINLINE uint32_t __patched_SXTB16_RORn(uint32_t op1, uint32_t rotate) {\\\n  uint32_t result;\\\n  __ASM ("sxtb16 %0, %1, ROR %2" : "=r" (result) : "r" (op1), "i" (rotate) );\\\n  return result;\\\n}' \
+    tensorflow/lite/micro/tools/make/downloads/cmsis/CMSIS/NN/Source/NNSupportFunctions/arm_nn_mat_mult_nt_t_s8.c
+
   echo "Finished patching CMSIS"
 }
 
