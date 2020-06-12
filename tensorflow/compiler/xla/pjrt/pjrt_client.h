@@ -409,6 +409,9 @@ class PjRtBuffer {
     return on_host_shape_.IsTuple() && on_host_shape_.tuple_shapes_size() == 0;
   }
 
+  // Returns the size of the on-device representation of this buffer in bytes.
+  int64 OnDeviceSizeInBytes() const;
+
   // Returns the buffer's value as an XLA Literal. If the value has previously
   // been prefetched to the host, then returns the prefetched version, otherwise
   // copies the buffer to the host. Blocks until the value is ready.

@@ -529,7 +529,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("buffer_from_pyval", &PyClient::BufferFromPyal, py::arg("argument"),
            py::arg("device") = nullptr, py::arg("force_copy") = false)
       .def("compile", &PyClient::Compile, py::arg("computation"),
-           py::arg("compile_options") = CompileOptions());
+           py::arg("compile_options") = CompileOptions())
+      .def("heap_profile", &PyClient::HeapProfile);
 
   m.def(
       "get_cpu_client",
@@ -570,8 +571,8 @@ PYBIND11_MODULE(xla_extension, m) {
                                frame.line_num);
       });
 
-  py::class_<Traceback> traceback(m, "Traceback",
-                                  "Represents a Python stack trace.");
+  py::class_<Traceback, std::shared_ptr<Traceback>> traceback(
+      m, "Traceback", "Represents a Python stack trace.");
   traceback.def_property_static(
       "enabled", [](py::object /* cls */) { return Traceback::enabled(); },
       [](py::object /* cls */, bool enabled) {
