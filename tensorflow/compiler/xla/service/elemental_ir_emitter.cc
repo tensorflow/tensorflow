@@ -1336,9 +1336,40 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitLog1p(PrimitiveType prim_type,
   // When x is large, the naive evaluation of ln(x + 1) is more
   // accurate than the Taylor series.
   TF_ASSIGN_OR_RETURN(auto for_large_x, EmitLog(prim_type, FAdd(x, one)));
-  // The Taylor series for ln(x+1) is x - x^2/2 - x^3/3 + ….
-  auto for_small_x = FMul(FAdd(FMul(negative_half, x), one), x);
-  const auto kAntilogarithmIsSmallThreshold = 1e-4;
+  // When x is small, (defined to be less than sqrt(2) / 2), use a rational
+  // approximation. The approximation below is based on one from the Cephes
+  // Mathematical Library.
+  //
+  // sqrt(2) - 1.
+  const auto kAntilogarithmIsSmallThreshold = 0.41421356237309504880;
+
+  static const std::array<double, 7> kDenominatorCoeffs{
+      1.,
+      1.5062909083469192043167E1,
+      8.3047565967967209469434E1,
+      2.2176239823732856465394E2,
+      3.0909872225312059774938E2,
+      2.1642788614495947685003E2,
+      6.0118660497603843919306E1,
+  };
+
+  static const std::array<double, 7> kNumeratorCoeffs{
+      4.5270000862445199635215E-5, 4.9854102823193375972212E-1,
+      6.5787325942061044846969E0,  2.9911919328553073277375E1,
+      6.0949667980987787057556E1,  5.7112963590585538103336E1,
+      2.0039553499201281259648E1,
+  };
+
+  auto x_squared = FMul(x, x);
+  TF_ASSIGN_OR_RETURN(auto denominator,
+                      EvaluatePolynomial(type, x, kDenominatorCoeffs));
+  TF_ASSIGN_OR_RETURN(auto numerator,
+                      EvaluatePolynomial(type, x, kNumeratorCoeffs));
+  auto for_small_x = FDiv(numerator, denominator);
+  for_small_x = FMul(FMul(x, x_squared), for_small_x);
+  for_small_x = FAdd(FMul(negative_half, x_squared), for_small_x);
+  for_small_x = FAdd(x, for_small_x);
+
   auto abs_x =
       llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {value}, {type}, b_);
   auto x_is_small = FCmpOLT(
@@ -2697,6 +2728,16 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduce(
     CHECK_EQ(accumulator_addrs.size(), 1);
     return Load(accumulator_addrs[0]);
   }
+}
+
+// Evaluate polynomial using Horner's method.
+StatusOr<llvm::Value*> ElementalIrEmitter::EvaluatePolynomial(
+    llvm::Type* type, llvm::Value* x, absl::Span<const double> coefficients) {
+  llvm::Value* poly = llvm::ConstantFP::get(type, 0.0);
+  for (const double c : coefficients) {
+    poly = FAdd(FMul(poly, x), llvm::ConstantFP::get(type, c));
+  }
+  return poly;
 }
 
 }  // namespace xla
