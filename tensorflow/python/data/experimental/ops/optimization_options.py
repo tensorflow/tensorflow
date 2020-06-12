@@ -126,6 +126,13 @@ class OptimizationOptions(options.OptionsBase):
       "Whether to fuse filter dataset that predicts random_uniform < rate into "
       "a sampling dataset. If None, defaults to False.")
 
+  hoist_data_discarding_ops = options.create_option(
+      name="hoist_data_discarding_ops",
+      ty=bool,
+      docstring=
+      "Whether to hoist ops that will discard data (such as skip, take, shard)"
+      "out of map transformations. If None, defaults to False.")
+
   hoist_random_uniform = options.create_option(
       name="hoist_random_uniform",
       ty=bool,
@@ -218,6 +225,7 @@ class OptimizationOptions(options.OptionsBase):
     all_optimizations = [
         "filter_fusion",
         "filter_with_random_uniform_fusion",
+        "hoist_data_discarding_ops",
         "hoist_random_uniform",
         "map_and_batch_fusion",
         "map_and_filter_fusion",

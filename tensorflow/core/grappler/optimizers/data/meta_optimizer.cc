@@ -35,13 +35,14 @@ using ConfigMap =
     std::map<string, tensorflow::RewriterConfig_CustomGraphOptimizer>;
 
 // tf.data optimizations, in the order we want to perform them.
-constexpr std::array<const char*, 15> kTFDataOptimizations = {
+constexpr std::array<const char*, 16> kTFDataOptimizations = {
     "noop_elimination",
     "shuffle_and_repeat_fusion",
     "map_fusion",
     "filter_fusion",
     "filter_with_random_uniform_fusion",
     "map_and_filter_fusion",
+    "hoist_data_discarding_ops",
     "hoist_random_uniform",
     "map_parallelization",
     "map_and_batch_fusion",

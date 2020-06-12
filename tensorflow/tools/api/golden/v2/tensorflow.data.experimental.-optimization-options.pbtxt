@@ -28,6 +28,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "hoist_data_discarding_ops"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "hoist_random_uniform"
     mtype: "<type \'property\'>"
   }
