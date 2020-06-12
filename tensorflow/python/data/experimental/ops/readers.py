@@ -732,7 +732,7 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
     )
     self._element_spec = tuple(
         tensor_spec.TensorSpec([], d.dtype) for d in self._record_defaults)
-    if compat.forward_compatible(2020, 6, 25):
+    if compat.forward_compatible(2020, 7, 3) or exclude_cols is not None:
       variant_tensor = gen_experimental_dataset_ops.csv_dataset_v2(
           filenames=self._filenames,
           record_defaults=self._record_defaults,

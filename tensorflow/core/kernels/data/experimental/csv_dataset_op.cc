@@ -30,7 +30,7 @@ class CSVDatasetOp : public DatasetOpKernel {
  public:
   explicit CSVDatasetOp(OpKernelConstruction* ctx)
       : DatasetOpKernel(ctx),
-        op_version_(ctx->def().op() == "CSVDataset" ? 1 : 2) {
+        op_version_(ctx->def().op() == "CSVDatasetV2" ? 2 : 1) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
   }
@@ -64,18 +64,17 @@ class CSVDatasetOp : public DatasetOpKernel {
     OP_REQUIRES(ctx, select_cols_tensor->dims() == 1,
                 errors::InvalidArgument("`select_cols` must be a vector."));
 
-std::vector<int64> exclude_cols;
-if (op_version_ > 1) {
-  const Tensor* exclude_cols_tensor;
-  OP_REQUIRES_OK(ctx, ctx->input("exclude_cols", &exclude_cols_tensor));
-  exclude_cols.reserve(exclude_cols_tensor->NumElements());
-  for (int i = 0; i < exclude_cols_tensor->NumElements(); ++i) {
-    exclude_cols.push_back(exclude_cols_tensor->flat<int64>()(i));
-  }
-}
-
-    OP_REQUIRES(ctx, exclude_cols_tensor->dims() == 1,
-                errors::InvalidArgument("`exclude_cols` must be a vector"));
+    std::vector<int64> exclude_cols;
+    if (op_version_ > 1) {
+      const Tensor* exclude_cols_tensor;
+      OP_REQUIRES_OK(ctx, ctx->input("exclude_cols", &exclude_cols_tensor));
+      OP_REQUIRES(ctx, exclude_cols_tensor->dims() == 1,
+                  errors::InvalidArgument("`exclude_cols` must be a vector"));
+      exclude_cols.reserve(exclude_cols_tensor->NumElements());
+      for (int i = 0; i < exclude_cols_tensor->NumElements(); ++i) {
+        exclude_cols.push_back(exclude_cols_tensor->flat<int64>()(i));
+      }
+    }
 
     int64 buffer_size = 0;
     OP_REQUIRES_OK(
@@ -141,11 +140,6 @@ if (op_version_ > 1) {
         ctx, select_cols.empty() || select_cols.front() >= 0,
         errors::InvalidArgument("select_cols should be non-negative indices"));
 
-    std::vector<int64> exclude_cols;
-    exclude_cols.reserve(exclude_cols_tensor->NumElements());
-    for (int i = 0; i < exclude_cols_tensor->NumElements(); ++i) {
-      exclude_cols.push_back(exclude_cols_tensor->flat<int64>()(i));
-    }
     OP_REQUIRES(ctx, select_cols.empty() || exclude_cols.empty(),
                 errors::InvalidArgument(
                     "Either select_cols or exclude_cols should be empty"));
@@ -158,12 +152,12 @@ if (op_version_ > 1) {
         ctx, exclude_cols.empty() || exclude_cols.front() >= 0,
         errors::InvalidArgument("exclude_cols should be non-negative indices"));
 
-    *output =
-        new Dataset(ctx, std::move(filenames), header,
-                    std::move(compression_type), zlib_compression_options,
-                    output_types_, output_shapes_, std::move(record_defaults),
-                    std::move(select_cols), std::move(exclude_cols),
-                    use_quote_delim, delim[0], std::move(na_value));
+    *output = new Dataset(ctx, std::move(filenames), header,
+                          std::move(compression_type), zlib_compression_options,
+                          output_types_, output_shapes_,
+                          std::move(record_defaults), std::move(select_cols),
+                          std::move(exclude_cols), use_quote_delim, delim[0],
+                          std::move(na_value), op_version_);
   }
 
  private:
@@ -175,7 +169,7 @@ if (op_version_ > 1) {
             const std::vector<PartialTensorShape>& output_shapes,
             std::vector<Tensor> record_defaults, std::vector<int64> select_cols,
             std::vector<int64> exclude_cols, bool use_quote_delim, char delim,
-            string na_value)
+            string na_value, int op_version)
         : DatasetBase(DatasetContext(ctx)),
           filenames_(std::move(filenames)),
           header_(header),
@@ -187,6 +181,7 @@ if (op_version_ > 1) {
           use_quote_delim_(use_quote_delim),
           delim_(delim),
           na_value_(std::move(na_value)),
+          op_version_(op_version),
           use_compression_(!compression_type.empty()),
           compression_type_(std::move(compression_type)),
           options_(options) {}
@@ -242,16 +237,31 @@ if (op_version_ > 1) {
       TF_RETURN_IF_ERROR(b->AddVector(select_cols_, &select_cols));
       TF_RETURN_IF_ERROR(b->AddVector(exclude_cols_, &exclude_cols));
 
-      TF_RETURN_IF_ERROR(b->AddDataset(
-          this,
-          {std::make_pair(0, filenames), std::make_pair(1, compression_type),
-           std::make_pair(2, buffer_size), std::make_pair(3, header),
-           std::make_pair(4, delim), std::make_pair(5, use_quote_delim),
-           std::make_pair(6, na_value), std::make_pair(7, select_cols),
-           std::make_pair(9, exclude_cols)},     // Single tensor inputs
-          {std::make_pair(8, record_defaults)},  // Tensor list inputs
-          {},
-          output));
+      if (op_version_ > 1) {
+        TF_RETURN_IF_ERROR(b->AddDataset(
+            this,
+            {std::make_pair(0, filenames), std::make_pair(1, compression_type),
+             std::make_pair(2, buffer_size), std::make_pair(3, header),
+             std::make_pair(4, delim), std::make_pair(5, use_quote_delim),
+             std::make_pair(6, na_value), std::make_pair(7, select_cols),
+             std::make_pair(9, exclude_cols)},     // Single tensor inputs
+            {std::make_pair(8, record_defaults)},  // Tensor list inputs
+            {},
+            output));
+      } else {
+        TF_RETURN_IF_ERROR(b->AddDataset(
+            this,
+            {
+                std::make_pair(0, filenames),
+                std::make_pair(1, compression_type),
+                std::make_pair(2, buffer_size), std::make_pair(3, header),
+                std::make_pair(4, delim), std::make_pair(5, use_quote_delim),
+                std::make_pair(6, na_value), std::make_pair(7, select_cols),
+            },                                     // Single tensor inputs
+            {std::make_pair(8, record_defaults)},  // Tensor list inputs
+            {},
+            output));
+      }
       return Status::OK();
     }
 
@@ -899,6 +909,7 @@ if (op_version_ > 1) {
     const bool use_quote_delim_;
     const char delim_;
     const tstring na_value_;
+    const int op_version_;
     const bool use_compression_;
     const tstring compression_type_;
     const io::ZlibCompressionOptions options_;
