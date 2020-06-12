@@ -576,96 +576,6 @@ class LhloBroadcastInDimConverter
   }
 };
 
-/// Pattern for the special case where reshape is adding or removing a dimension
-/// of size 1. These can be lowered to a linalg.generic op.
-///
-/// For example a
-///   "xla_hlo.reshape"(..) : (tensor<12x1x42xi32) -> tensor<12x42xi32>
-/// can have indexing maps
-/// [affine_map<(d0, d1) -> (d0, 0, d1)>, affine_map<(d0, d1) -> (d0, d1)>]
-///
-/// Similarly a
-///   "xla_hlo.reshape"(..) : (tensor<12x42xi32>) -> tensor<12x1x42xi32>
-/// can have indexing maps
-/// [affine_map<(d0, d1, d2) -> (d0, d2)>, affine_map<(d0, d1, d2) -> (d0, d1,
-/// d2)>]
-
-// TODO(ravishankarm): This pattern needs to be removed. The general reshape
-// lowering hits a corner case where the following sequence of operations
-// cannot be fused cause the resulting indexing map is not invertible.
-//
-// %r = linalg.reshape %s [affine_map<(d0, d1, d2) -> (d0, d1)>,
-//                         affine_map<(d0, d1, d2) -> (d2)>]
-//      : tensor<5x5xf32> into tensor<5x1x5xf32>
-// %f = linalg.generic
-//      {...
-//       indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d1, d2)>,
-//                        affine_map<(d0, d1, d2) -> (d0, d2)>],
-//       iterator_types = ["parallel", "parallel", "parallel"]} %r {..}
-//      : tensor<5x1x5xf32> -> tensor<5x5xf32>
-//
-// The resolution of this requires a canonicalization on linalg ops where the
-// dims of size 1 are removed. This pattern can be removed after that.
-template <typename OpTy, bool isLHLO = true>
-class ReshapeAddRemoveDimConverter
-    : public DataMovementOpConverter<ReshapeAddRemoveDimConverter<OpTy, isLHLO>,
-                                     OpTy, isLHLO> {
- public:
-  ReshapeAddRemoveDimConverter(MLIRContext* context)
-      : DataMovementOpConverter<ReshapeAddRemoveDimConverter<OpTy, isLHLO>,
-                                OpTy, isLHLO>(context, 100) {}
-
-  static SmallVector<AffineMap, 2> getIndexingMaps(OpTy op, Builder* b) {
-    auto resultType =
-        getXLAOpResultType<isLHLO>(op).template cast<ShapedType>();
-    auto operandType =
-        op.getOperation()->getOperand(0).getType().template cast<ShapedType>();
-    if (!resultType.hasStaticShape() || !operandType.hasStaticShape())
-      return {};
-
-    auto nloops = resultType.getRank();
-    SmallVector<AffineExpr, 2> inputExprs;
-    unsigned resultIndex = 0, operandIndex = 0;
-    auto resultShape = resultType.getShape();
-    auto operandShape = operandType.getShape();
-
-    while (resultIndex < resultShape.size() &&
-           operandIndex < operandShape.size()) {
-      if (resultShape[resultIndex] == operandShape[operandIndex]) {
-        // Copy over the affine expr when the size of the result and operand
-        // match at a dim
-        inputExprs.push_back(b->getAffineDimExpr(resultIndex));
-        resultIndex++;
-        operandIndex++;
-      } else if (resultShape[resultIndex] == 1) {
-        // If size at result is 1, then ignore this dimension for the input, it
-        // is an extra dim added.
-        resultIndex++;
-      } else if (operandShape[operandIndex] == 1) {
-        // If the operandShape is 1, then add a (0) for the operand map since
-        // this dimension is dropped.
-        inputExprs.push_back(b->getAffineConstantExpr(0));
-        operandIndex++;
-      } else {
-        return {};
-      }
-    }
-    // Make sure all remaining dimensions of the operand and result are ones.
-    auto checkRemainingDims = [](int64_t dim) { return dim != 1; };
-    if ((resultIndex < resultShape.size() &&
-         llvm::any_of(resultShape.drop_front(resultIndex),
-                      checkRemainingDims)) ||
-        (operandIndex < operandShape.size() &&
-         llvm::any_of(operandShape.drop_front(operandIndex),
-                      checkRemainingDims)))
-      return {};
-    inputExprs.resize(operandShape.size(), b->getAffineConstantExpr(0));
-    return {
-        AffineMap::get(nloops, /*symbolCount=*/0, inputExprs, b->getContext()),
-        b->getMultiDimIdentityMap(nloops)};
-  }
-};
-
 template <typename OpTy, bool isLHLO = true>
 class TransposeConverter
     : public DataMovementOpConverter<TransposeConverter<OpTy, isLHLO>, OpTy,
@@ -706,14 +616,6 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
     ShapedType resultType = getXLAOpResultType<isLHLO>(reshapeOp);
 
     if (!operandType.hasStaticShape() || !resultType.hasStaticShape())
-      return failure();
-
-    // TODO(ravishankarm): To make this pattern not match the pattern that
-    // ReshapeAddRemoveDimConverter is for, check that condition here. Remove
-    // this when ReshapeAddRemoveDimConverter pattern is removed.
-    if (!ReshapeAddRemoveDimConverter<OpTy, isLHLO>::getIndexingMaps(reshapeOp,
-                                                                     &rewriter)
-             .empty())
       return failure();
 
     // Compute the reassociation maps for the linalg operation.
@@ -929,7 +831,7 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<xla_lhlo::SqrtOp>,
                    PointwiseToLinalgConverter<xla_lhlo::SubOp>,
                    PointwiseToLinalgConverter<xla_lhlo::TanhOp>,
-                   ReshapeAddRemoveDimConverter<xla_lhlo::ReshapeOp>,
+                   ReshapeOpConverter<xla_lhlo::ReshapeOp>,
                    ReverseConverter<xla_lhlo::ReverseOp>,
                    ScalarPointwiseToStandardConverter<xla_lhlo::AddOp>,
                    SliceConverter
@@ -1028,7 +930,6 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<xla_hlo::SqrtOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::SubOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::TanhOp, false>,
-                   ReshapeAddRemoveDimConverter<xla_hlo::ReshapeOp, false>,
                    ReshapeOpConverter<xla_hlo::ReshapeOp, false>,
                    ReverseConverter<xla_hlo::ReverseOp, false>,
                    TransposeConverter<xla_hlo::TransposeOp, false>>(context);

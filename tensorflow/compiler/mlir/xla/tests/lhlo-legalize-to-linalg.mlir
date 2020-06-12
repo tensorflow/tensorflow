@@ -173,7 +173,8 @@ func @iota(%out: memref<7x10xf32>) {
   "xla_lhlo.iota"(%out) {iota_dimension = 1 : i64} : (memref<7x10xf32>) -> ()
   return
 }
-// CHECK: linalg.indexed_generic {{{.*}}indexing_maps = [#[[RESULT_MAP]]]
+// CHECK: linalg.indexed_generic
+// CHECK-SAME: indexing_maps = [#[[RESULT_MAP]]]
 // CHECK-NEXT: ^bb0(%[[D0:.*]]: index, %[[D1:.*]]: index, %[[RESULT:.*]]: f32):
 // CHECK-NEXT:   %[[INT_CAST:.*]] = index_cast %[[D1]] : index to i32
 // CHECK-NEXT:   %[[FLOAT_CAST:.*]] = sitofp %[[INT_CAST]] : i32 to f32
@@ -190,7 +191,8 @@ func @broadcast_scalar(%operand: memref<f32>, %result: memref<4x2x1xf32>) {
   } : (memref<f32>, memref<4x2x1xf32>) -> ()
   return
 }
-// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+// CHECK: linalg.generic
+// CHECK-SAME: indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
 // CHECK-NEXT: ^bb0(%[[OPERAND:.+]]: f32, %{{.+}}: f32):
 // CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32
 
@@ -206,7 +208,8 @@ func @broadcast(%operand: memref<4x?x16xf32>,
   } : (memref<4x?x16xf32>, memref<4x2x1x4x?x16xf32>) -> ()
   return
 }
-// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+// CHECK: linalg.generic
+// CHECK-SAME: indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
 // CHECK-NEXT: ^bb0(%[[OPERAND:.+]]: f32, %{{.+}}: f32):
 // CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32
 
@@ -222,7 +225,8 @@ func @dynamic_broadcast_in_dim(%operand: memref<?x?x?xf32>,
   } : (memref<?x?x?xf32>, memref<?x?x?x?x?xf32>) -> ()
   return
 }
-// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+// CHECK: linalg.generic
+// CHECK-SAME: indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
 // CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: f32, %[[RESULT:.*]]: f32):
 // CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32
 
@@ -645,39 +649,42 @@ func @slice(%operand: memref<?x?xf32>, %result: memref<?x?xf32>) {
 
 // -----
 
-// CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1) -> (d0, 0, d1)>
-// CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0, d1, d2) -> (d0, d1)>
+// CHECK-DAG: #[[MAP2:.*]] = affine_map<(d0, d1, d2) -> (d2)>
 // CHECK-LABEL: func @reshape_3D_2D
 func @reshape_3D_2D(%arg0: memref<12x1x42xi32>, %arg1 : memref<12x42xi32>) {
   "xla_lhlo.reshape"(%arg0, %arg1)
     : (memref<12x1x42xi32>, memref<12x42xi32>) -> ()
   return
 }
-// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+// CHECK: linalg.reshape %{{.*}} [#[[MAP1]], #[[MAP2]]]
+// CHECK-NEXT: linalg.copy
 
 // -----
 
-// CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1, 0, 0)>
-// CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0, d1, d2, d3) -> (d0)>
+// CHECK-DAG: #[[MAP2:.*]] = affine_map<(d0, d1, d2, d3) -> (d1, d2, d3)>
 // CHECK-LABEL: func @reshape_4D_2D
 func @reshape_4D_2D(%arg0: memref<12x42x1x1xi32>, %arg1 : memref<12x42xi32>) {
   "xla_lhlo.reshape"(%arg0, %arg1)
     : (memref<12x42x1x1xi32>, memref<12x42xi32>) -> ()
   return
 }
-// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+// CHECK: linalg.reshape %{{.*}} [#[[MAP1]], #[[MAP2]]]
+// CHECK-NEXT: linalg.copy
 
 // -----
 
-// CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d2)>
-// CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+// CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1)>
+// CHECK-DAG: #[[MAP2:.*]] = affine_map<(d0, d1, d2, d3) -> (d2, d3)>
 // CHECK-LABEL: func @reshape_2D_4D
 func @reshape_2D_4D(%arg0: memref<12x42xi32>, %arg1 : memref<12x1x42x1xi32>) {
   "xla_lhlo.reshape"(%arg0, %arg1)
     : (memref<12x42xi32>, memref<12x1x42x1xi32>) -> ()
   return
 }
-// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+// CHECK: linalg.reshape %{{.*}} [#[[MAP1]], #[[MAP2]]]
+// CHECK-NEXT: linalg.copy
 
 // -----
 
