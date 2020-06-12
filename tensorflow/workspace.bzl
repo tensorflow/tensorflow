@@ -351,26 +351,6 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         ],
     )
 
-    http_file(
-        name = "com_github_nlohmann_json_single_header",
-        sha256 = "63da6d1f22b2a7bb9e4ff7d6b255cf691a161ff49532dcc45d398a53e295835f",
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/nlohmann/json/releases/download/v3.4.0/json.hpp",
-            "https://github.com/nlohmann/json/releases/download/v3.4.0/json.hpp",
-        ],
-    )
-
-    tf_http_archive(
-        name = "com_github_google_crc32c",
-        sha256 = "6b3b1d861bb8307658b2407bc7a4c59e566855ef5368a60b35c893551e4788e9",
-        build_file = "@com_github_googlecloudplatform_google_cloud_cpp//bazel:crc32c.BUILD",
-        strip_prefix = "crc32c-1.0.6",
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/crc32c/archive/1.0.6.tar.gz",
-            "https://github.com/google/crc32c/archive/1.0.6.tar.gz",
-        ],
-    )
-
     tf_http_archive(
         name = "com_google_googleapis",
         build_file = clean_dep("//third_party/googleapis:googleapis.BUILD"),
