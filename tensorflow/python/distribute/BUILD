@@ -287,12 +287,43 @@ py_library(
 )
 
 py_library(
+    name = "distribute_utils",
+    srcs = ["distribute_utils.py"],
+    deps = [
+        ":device_util",
+        ":distribute_lib",
+        ":reduce_util",
+        ":shared_variable_creator",
+        ":values",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:config",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:device",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python:summary_ops_v2",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:tf_export",
+        "//tensorflow/python:training",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/autograph/core",
+        "//tensorflow/python/autograph/impl",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+    ],
+)
+
+py_library(
     name = "mirrored_strategy",
     srcs = ["mirrored_strategy.py"],
     deps = [
         ":cross_device_ops",
         ":device_util",
         ":distribute_lib",
+        ":distribute_utils",
         ":input_lib",
         ":mirrored_run",
         ":multi_worker_util",
@@ -320,6 +351,7 @@ py_library(
         ":cross_device_ops",
         ":device_util",
         ":distribute_lib",
+        ":distribute_utils",
         ":input_lib",
         ":mirrored_run",
         ":multi_worker_util",
@@ -508,6 +540,7 @@ py_library(
     deps = [
         ":device_util",
         ":distribute_lib",
+        ":distribute_utils",
         ":input_ops",
         ":values",
         "//tensorflow/python:framework_ops",

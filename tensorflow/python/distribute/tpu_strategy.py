@@ -32,6 +32,7 @@ from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
@@ -363,7 +364,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     return self._input_workers_obj
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
-    values.validate_colocate(colocate_with_variable, self)
+    distribute_utils. validate_colocate(colocate_with_variable, self)
 
   def _make_dataset_iterator(self, dataset):
     """Make iterators for each of the TPU hosts."""
@@ -423,7 +424,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       per_replica_values.append(
           value_fn(distribute_lib.ValueContext(replica_id,
                                                self._num_replicas_in_sync)))
-    return values.regroup(per_replica_values, always_wrap=True)
+    return distribute_utils.regroup(per_replica_values, always_wrap=True)
 
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
   # TODO(sourabhbajaj): Remove the initial_loop_values parameter when we have
@@ -462,7 +463,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       per_replica_inputs = multi_worker_iterator.get_next()
       replicate_inputs = []
       for replica_id in range(self._num_replicas_in_sync):
-        select_replica = lambda x: values.select_replica(replica_id, x)  # pylint: disable=cell-var-from-loop
+        select_replica = lambda x: distribute_utils.select_replica(  # pylint: disable=g-long-lambda
+            replica_id, x)   # pylint: disable=cell-var-from-loop
         replicate_inputs.append((nest.map_structure(
             select_replica, per_replica_inputs),))
 
@@ -648,11 +650,10 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           value_list.append(v)
       return value_list
 
-    return values.create_mirrored_variable(self._container_strategy(),
-                                           _real_mirrored_creator,
-                                           tpu_values.TPUMirroredVariable,
-                                           tpu_values.TPUSyncOnReadVariable,
-                                           **kwargs)
+    return distribute_utils.create_mirrored_variable(
+        self._container_strategy(), _real_mirrored_creator,
+        tpu_values.TPUMirroredVariable, tpu_values.TPUSyncOnReadVariable,
+        **kwargs)
 
   def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
     if (isinstance(value, values.DistributedValues) or
@@ -722,10 +723,10 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
            distribute_lib.UpdateContext(i), \
            ops.name_scope(name):
         # If args and kwargs are not mirrored, the value is returned as is.
-        updates.append(fn(v,
-                          *values.select_replica_mirrored(i, args),
-                          **values.select_replica_mirrored(i, kwargs)))
-    return values.update_regroup(self, updates, group)
+        updates.append(
+            fn(v, *distribute_utils.select_replica_mirrored(i, args),
+               **distribute_utils.select_replica_mirrored(i, kwargs)))
+    return distribute_utils.update_regroup(self, updates, group)
 
   def read_var(self, var):
     assert isinstance(var, tpu_values.TPUVariableMixin) or isinstance(
@@ -893,8 +894,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       for i in range(strategy.num_replicas_in_sync):
         replicate_inputs.append(
             [constant_op.constant(i, dtype=dtypes.int32),
-             values.select_replica(i, args),
-             values.select_replica(i, kwargs)])
+             distribute_utils.select_replica(i, args),
+             distribute_utils.select_replica(i, kwargs)])
 
       # Construct and pass `maximum_shapes` so that we could support dynamic
       # shapes using dynamic padder.
@@ -941,7 +942,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
             nest.pack_sequence_as(result[0], nest.flatten(replica_output))
             for replica_output in replicate_outputs
         ]
-      return values.regroup(replicate_outputs)
+      return distribute_utils.regroup(replicate_outputs)
 
     if context.executing_eagerly():
       tpu_function = def_function.function(tpu_function)
