@@ -504,14 +504,14 @@ class LhloBroadcastInDimConverter
     }
 
     SmallVector<int64_t, 2> new_shape, new_strides, broadcast_dims;
-    SmallVector<SmallVector<AffineExpr, 2>, 4> collapsed_dims_list;
-    SmallVector<AffineExpr, 2> collapsed_dims;
+    SmallVector<linalg::ReassociationIndices, 4> collapsed_dims_list;
+    linalg::ReassociationIndices collapsed_dims;
     for (const auto& item :
          enumerate(op.broadcast_dimensions().getIntValues())) {
       size_t index = item.index();
       int dim = item.value().getSExtValue();
 
-      collapsed_dims.push_back(rewriter.getAffineDimExpr(index));
+      collapsed_dims.push_back(index);
 
       bool expansion_needed =
           operand_shape[index] == 1 && result_shape[dim] != 1;
@@ -542,16 +542,13 @@ class LhloBroadcastInDimConverter
     // `linalg.reshape` is inserted only if necessary, i.e. when the rank can be
     // reduced.
     if (new_shape.size() < operand_shape.size()) {
-      SmallVector<ArrayRef<AffineExpr>, 4> reassociation_maps;
-      for (const auto& dims : collapsed_dims_list)
-        reassociation_maps.push_back(dims);
       auto new_memref_type = MemRefType::get(
           new_shape, operand_type.getElementType(),
           makeStridedLinearLayoutMap(new_strides, operand_offset,
                                      rewriter.getContext()));
       operand = rewriter.create<linalg::ReshapeOp>(op.getLoc(), new_memref_type,
                                                    operand_adaptor.operand(),
-                                                   reassociation_maps);
+                                                   collapsed_dims_list);
     }
     return std::make_pair(operand, broadcast_dims);
   }
@@ -737,22 +734,25 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
         (operandType.getRank() > resultType.getRank() ? resultType.getShape()
                                                       : operandType.getShape());
     unsigned currSrcDim = 0, currDstDim = 0;
-    SmallVector<SmallVector<AffineExpr, 4>, 4> exprs(dstShape.size());
+    SmallVector<linalg::ReassociationExprs, 4> reassociationMap(
+        dstShape.size());
     while (currSrcDim < srcShape.size() && currDstDim < dstShape.size()) {
       int64_t dstSize = dstShape[currDstDim];
       int64_t srcSize = srcShape[currSrcDim];
       while (srcSize < dstSize && currSrcDim < srcShape.size()) {
-        exprs[currDstDim].push_back(rewriter.getAffineDimExpr(currSrcDim++));
+        reassociationMap[currDstDim].push_back(
+            rewriter.getAffineDimExpr(currSrcDim++));
         srcSize *= srcShape[currSrcDim];
       }
       if (srcSize == dstSize) {
-        exprs[currDstDim].push_back(rewriter.getAffineDimExpr(currSrcDim++));
+        reassociationMap[currDstDim].push_back(
+            rewriter.getAffineDimExpr(currSrcDim++));
         // If the next dim in dstShape is not 1, treat subsequent dims in
         // srcShape which are 1 to be collapsed.
         if (currDstDim == dstShape.size() - 1 ||
             dstShape[currDstDim + 1] != 1) {
           while (currSrcDim < srcShape.size() && srcShape[currSrcDim] == 1) {
-            exprs[currDstDim].push_back(
+            reassociationMap[currDstDim].push_back(
                 rewriter.getAffineDimExpr(currSrcDim++));
           }
         }
@@ -763,18 +763,15 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
     }
     if (currSrcDim != srcShape.size()) return failure();
 
-    SmallVector<ArrayRef<AffineExpr>, 4> reassociationMaps;
-    for (auto& expr : exprs) reassociationMaps.push_back(expr);
-
     if (isLHLO) {
       Value reshapeBuffer = rewriter.create<linalg::ReshapeOp>(
-          reshapeOp.getLoc(), resultType, args[0], reassociationMaps);
+          reshapeOp.getLoc(), resultType, args[0], reassociationMap);
       rewriter.replaceOpWithNewOp<linalg::CopyOp>(
           reshapeOp, reshapeBuffer, args[1], /*inputPermutation =*/nullptr,
           /*outputPermutation =*/nullptr);
     } else {
       rewriter.replaceOpWithNewOp<linalg::TensorReshapeOp>(
-          reshapeOp, resultType, args[0], reassociationMaps);
+          reshapeOp, resultType, args[0], reassociationMap);
     }
     return success();
   }
