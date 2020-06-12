@@ -94,20 +94,18 @@ void parse_custom_options(const char *buffer, size_t length, int32_t *stride_h,
         auto plan_values = plan_map.Values();
         for (int j = 0; j < plan_map.size(); ++j) {
           const std::string &plan_key = plan_keys[j].AsString().str();
-          if (plan_key.compare("tp") == 0) {
-            plan->SetType((::xcore::ExecutionPlanType)plan_values[j].AsInt32());
-          } else if (plan_key.compare("th") == 0) {
+          if (plan_key.compare("th") == 0) {
             plan->SetNumThreads(plan_values[j].AsInt32());
           } else if (plan_key.compare("co") == 0) {
-            plan->SetNumChannels(plan_values[j].AsInt32());
+            plan->changrps.SetNumChannels(plan_values[j].AsInt32());
           } else if (plan_key.compare("rc") == 0) {
             const auto &regions = plan_values[j].AsVector();
             for (int k = 0; k < regions.size(); k++) {
               auto region =
                   regions[k]
                       .AsVector();  // values represent [top, left, rows, cols]
-              plan->AppendRegion({region[0].AsInt32(), region[1].AsInt32(),
-                                  region[2].AsInt32(), region[3].AsInt32()});
+              plan->regions.Append({region[0].AsInt32(), region[1].AsInt32(),
+                                    region[2].AsInt32(), region[3].AsInt32()});
             }
           }
         }
