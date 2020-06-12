@@ -1104,6 +1104,29 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.tpu_strategy,
           ],
+          mode=["eager"]))
+  def testOperatorOverride(self, distribution):
+
+    with distribution.scope():
+      v = variable_scope.variable(
+          1, aggregation=variables_lib.VariableAggregation.MEAN)
+
+    self.assertEqual(2, self.evaluate(v + 1))
+
+    @def_function.function
+    def add():
+      return v + 1
+
+    per_replica_results = self.evaluate(
+        distribution.experimental_local_results(distribution.run(add)))
+    self.assertAllEqual([2, 2], per_replica_results)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+          ],
           mode=["graph", "eager"]))
   def testAssignAdd(self, distribution):
     with distribution.scope():
@@ -1910,6 +1933,39 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
     step()
     vals = self.evaluate(v[0].values)
     self.assertAllEqual(vals[0], vals[1])
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.tpu_strategy,
+          ],
+          mode=["eager"]))
+  def testOperatorOverride(self, distribution):
+
+    with distribution.scope():
+      v = variable_scope.variable(
+          0.0,
+          synchronization=variables_lib.VariableSynchronization.ON_READ,
+          aggregation=variables_lib.VariableAggregation.MEAN)
+
+    @def_function.function
+    def assign():
+      ctx = distribution_strategy_context.get_replica_context()
+      replica_id = ctx.replica_id_in_sync_group
+      return v.assign(math_ops.cast(replica_id, dtypes.float32))
+
+    # Assign different replicas with different values.
+    distribution.run(assign)
+
+    self.assertEqual(1.5, self.evaluate(v + 1))
+
+    @def_function.function
+    def add():
+      return v + 1
+
+    per_replica_results = self.evaluate(
+        distribution.experimental_local_results(distribution.run(add)))
+    self.assertAllEqual([1, 2], per_replica_results)
 
 
 @combinations.generate(
