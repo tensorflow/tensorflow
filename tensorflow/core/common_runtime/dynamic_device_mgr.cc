@@ -178,6 +178,7 @@ Status DynamicDeviceMgr::RemoveDevices(std::vector<Device*> devices) {
     }
     device_type_counts_[d->device_type()]--;
     device_incarnation_set_.erase(d->attributes().incarnation());
+    stale_devices_.add(std::move(it->second));
     dynamic_devices_.erase(it);
   }
   return Status::OK();

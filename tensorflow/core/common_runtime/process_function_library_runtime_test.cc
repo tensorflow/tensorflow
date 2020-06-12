@@ -95,15 +95,26 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
   ProcessFunctionLibraryRuntimeTest() {
     SessionOptions options;
     auto* device_count = options.config.mutable_device_count();
-    device_count->insert({"CPU", 2});
-    std::vector<std::unique_ptr<Device>> devices;
+    device_count->insert({"CPU", 3});
+    std::vector<std::unique_ptr<Device>> created_devices;
     TF_CHECK_OK(DeviceFactory::AddDevices(options, "/job:a/replica:0/task:0",
-                                          &devices));
-    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
+                                          &created_devices));
+    // Do not add CPU:2 to device manager. Used for removed device testing.
+    device2_ = std::move(created_devices[2]);
+    created_devices.erase(created_devices.begin() + 2);
+
+    device_mgr_ = std::make_unique<DynamicDeviceMgr>();
+    TF_CHECK_OK(device_mgr_->AddDevices(std::move(created_devices)));
     TF_CHECK_OK(device_mgr_->LookupDevice(
         "/job:a/replica:0/task:0/device:CPU:0", &device0_));
     TF_CHECK_OK(device_mgr_->LookupDevice(
         "/job:a/replica:0/task:0/device:CPU:1", &device1_));
+    Device* device2_ptr = nullptr;
+    EXPECT_NE(
+        error::OK,
+        device_mgr_
+            ->LookupDevice("/job:a/replica:0/task:0/device:CPU:2", &device2_ptr)
+            .code());
     // If no GPU is available, gpu_device_ will remain nullptr.
     Status status = device_mgr_->LookupDevice(
         "/job:a/replica:0/task:0/device:GPU:0", &gpu_device_);
@@ -301,9 +312,10 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     return Status::OK();
   }
 
-  std::unique_ptr<DeviceMgr> device_mgr_;
+  std::unique_ptr<DynamicDeviceMgr> device_mgr_;
   Device* device0_ = nullptr;  // Not owned. (Owned by device_mgr_.)
   Device* device1_ = nullptr;  // Not owned. (Owned by device_mgr_.)
+  std::unique_ptr<Device> device2_;
   // Remains as nullptr if no GPU is available.
   Device* gpu_device_ = nullptr;  // Not owned. (Owned by device_mgr_.)
   std::unique_ptr<FunctionLibraryDefinition> lib_def_;
@@ -443,6 +455,28 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultipleCallsDiffDeviceFindDevice) {
   test::ExpectTensorEqual<tstring>(
       y, test::AsTensor<tstring>({"/job:a/replica:0/task:0/device:CPU:1"},
                                  TensorShape({})));
+}
+
+TEST_F(ProcessFunctionLibraryRuntimeTest, InstantiateFunctionOnRemovedDevice) {
+  std::vector<std::unique_ptr<Device>> devices;
+  Device* device2_ptr = device2_.get();
+  devices.emplace_back(std::move(device2_));
+  TF_CHECK_OK(device_mgr_->AddDevices(std::move(devices)));
+
+  Init({test::function::FindDevice()});
+  std::vector<Device*> remove_devices{device2_ptr};
+  TF_CHECK_OK(device_mgr_->RemoveDevices(std::move(remove_devices)));
+
+  // Since the process FLR device set is not updated yet, it still holds the
+  // raw pointer to device2. Make sure that function instantion with device2
+  // will not lead to segfault.
+  FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
+  FunctionLibraryRuntime::Handle h;
+  instantiate_opts.target = "/job:a/replica:0/task:0/device:CPU:1";
+  instantiate_opts.is_multi_device_function = true;
+  TF_CHECK_OK(Instantiate("FindDevice",
+                          {{"_target", "/job:b/replica:0/task:0/device:CPU:2"}},
+                          instantiate_opts, &h));
 }
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, ClusterFLRSerialTest) {

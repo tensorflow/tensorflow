@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/group_events.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/core/profiler/utils/xplane_test_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -37,6 +37,13 @@ namespace {
 // consists of matmul. The host's step db should be created only for the step
 // observed on the host.
 TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
+  constexpr int64 kFirstStepNum = 123;
+  constexpr int64 kSecondStepNum = 456;
+  constexpr int64 kFirstStepId = 0;
+  constexpr int64 kSecondStepId = 1;
+  constexpr int64 kFirstCorrelationId = 100;
+  constexpr int64 kSecondCorrelationId = 200;
+
   XSpace space;
   XPlane* host_plane = space.add_planes();
   XPlaneBuilder host_plane_builder(host_plane);
@@ -45,25 +52,25 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
-               0, 100, {{StatType::kStepNum, 123}});
+               0, 100, {{StatType::kStepNum, kFirstStepNum}});
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
-               10, 90, {{StatType::kStepId, 0}});
+               10, 90, {{StatType::kStepId, kFirstStepId}});
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
-               300, 100, {{StatType::kStepNum, 456}});
+               300, 100, {{StatType::kStepNum, kSecondStepNum}});
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
-               310, 90, {{StatType::kStepId, 1}});
+               310, 90, {{StatType::kStepId, kSecondStepId}});
 
   auto tf_executor_thread = host_plane_builder.GetOrCreateLine(1);
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 20, 20,
-               {{StatType::kStepId, 0}});
+               {{StatType::kStepId, kFirstStepId}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 10,
-               {{StatType::kCorrelationId, 100}});
+               {{StatType::kCorrelationId, kFirstCorrelationId}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 320, 20,
-               {{StatType::kStepId, 1}});
+               {{StatType::kStepId, kSecondStepId}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 330, 10,
-               {{StatType::kCorrelationId, 200}});
+               {{StatType::kCorrelationId, kSecondCorrelationId}});
 
   XPlane* device_plane = space.add_planes();
   XPlaneBuilder device_plane_builder(device_plane);
@@ -71,7 +78,7 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
 
   auto stream = device_plane_builder.GetOrCreateLine(0);
   CreateXEvent(&device_plane_builder, &stream, "matmul", 50, 40,
-               {{StatType::kCorrelationId, 100}});
+               {{StatType::kCorrelationId, kFirstCorrelationId}});
 
   GroupTfEvents(&space, nullptr);
   StepEvents device_step_events =

@@ -276,6 +276,10 @@ class Executable {
       const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments);
 
+  StatusOr<ExecutionOutput> ExecuteOnStreamWrapper(
+      const ServiceExecutableRunOptions* run_options,
+      std::vector<ExecutionInput> arguments);
+
   StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStreamWrapper(
       const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments);
@@ -318,7 +322,7 @@ class Executable {
   // not supported by the executable.
   //
   // Does not include the size of used libraries (e.g. cuDNN, Eigen, etc.).
-  virtual int64 SizeOfGeneratedCodeInBytes();
+  virtual int64 SizeOfGeneratedCodeInBytes() const;
 
   // Dumping helpers.
   void set_hlo_proto(std::unique_ptr<xla::HloProto> hlo_proto) {

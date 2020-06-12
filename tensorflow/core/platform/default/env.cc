@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/ram_file_system.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -151,7 +152,7 @@ class PosixEnv : public Env {
       auto thread_name =
           GetThreadNameRegistry().find(std::this_thread::get_id());
       if (thread_name != GetThreadNameRegistry().end()) {
-        *name = thread_name->second;
+        *name = strings::StrCat(thread_name->second, "/", GetCurrentThreadId());
         return true;
       }
     }

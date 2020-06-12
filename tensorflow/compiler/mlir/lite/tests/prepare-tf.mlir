@@ -1,4 +1,4 @@
-// RUN: tf-opt -tfl-prepare-tf %s | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt -tfl-prepare-tf %s | FileCheck %s
 
 func @conv(tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>, tensor<256x3x32x32xf32>) -> (tensor<256x30x30x16xf32>, tensor<256x16x30x30xf32>, tensor<256x30x30x16xf32>, tensor<256x30x30x16xf32>, tensor<256x30x30x16xf32>) {
 ^bb0(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>, %arg2: tensor<256x3x32x32xf32>) :

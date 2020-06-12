@@ -42,6 +42,16 @@ tf_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "saved_model_test",
+    srcs = ["saved_model_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:extra_py_tests_deps",
+    ],
+)
+
 tf_py_test(
     name = "legacy_rnn_test",  # Remove this target in when TF 1 is deprecated.
     srcs = ["legacy_rnn_test.py"],
@@ -75,6 +85,7 @@ cuda_py_test(
     name = "gradient_checkpoint_test",
     srcs = ["gradient_checkpoint_test.py"],
     python_version = "PY3",
+    tags = ["no_rocm"],
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:extra_py_tests_deps",

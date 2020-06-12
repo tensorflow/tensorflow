@@ -30,27 +30,23 @@ inline int SizeOfDimension(const TfLiteTensor* t, int dim) {
 }
 inline const TfLiteTensor* GetInput(const TfLiteContext* context,
                                     const TfLiteNode* node, int index) {
-  return &context
-              ->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];
+  return &context->tensors[node->inputs->data[index]];
 }
 // Note: You must check if result is not null:
 // TfLiteTensor* my_tensor = GetVariableInput(context, node, kMyTensorIdx);
 // TF_LITE_ENSURE(context, my_tensor != nullptr);
 inline TfLiteTensor* GetVariableInput(TfLiteContext* context,
                                       const TfLiteNode* node, int index) {
-  TfLiteTensor* tensor =
-      &context->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];
+  TfLiteTensor* tensor = &context->tensors[node->inputs->data[index]];
   return (tensor->is_variable) ? tensor : nullptr;
 }
 inline TfLiteTensor* GetOutput(TfLiteContext* context, const TfLiteNode* node,
                                int index) {
-  return &context
-              ->tensors[flatbuffers::EndianScalar(node->outputs->data[index])];
+  return &context->tensors[node->outputs->data[index]];
 }
 inline TfLiteTensor* GetTemporary(TfLiteContext* context,
                                   const TfLiteNode* node, int index) {
-  return &context->tensors[flatbuffers::EndianScalar(
-      node->temporaries->data[index])];
+  return &context->tensors[node->temporaries->data[index]];
 }
 inline const TfLiteTensor* GetIntermediates(TfLiteContext* context,
                                             const TfLiteNode* node, int index) {
@@ -80,8 +76,7 @@ inline const TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
   const bool use_tensor = index < node->inputs->size &&
                           node->inputs->data[index] != kTfLiteOptionalTensor;
   if (use_tensor) {
-    return &context
-                ->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];
+    return &context->tensors[node->inputs->data[index]];
   }
   return nullptr;
 }

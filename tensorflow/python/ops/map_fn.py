@@ -453,13 +453,14 @@ def map_fn(fn,
 
     # Prepare result tensor array.
     # TODO(edloper): Should we set infer_shape=False for composite tensors?
-    result_batchable_dtype = _result_flat_signature_to_batchable_dtype(
-        result_flat_signature)
-    result_batchable_ta = [
-        tensor_array_ops.TensorArray(
-            dtype=dt, size=n, dynamic_size=False, infer_shape=infer_shape)
-        for dt in result_batchable_dtype
-    ]
+    result_batchable_tensor_spec = (
+        _result_flat_signature_to_batchable_tensor_spec(result_flat_signature))
+    result_batchable_ta = []
+    for spec in result_batchable_tensor_spec:
+      result_batchable_ta.append(
+          tensor_array_ops.TensorArray(
+              dtype=spec.dtype, size=n, dynamic_size=False,
+              infer_shape=infer_shape, element_shape=spec.shape))
 
     def compute(i, tas):
       """The loop body of map_fn.
@@ -538,15 +539,14 @@ def _most_general_compatible_type(spec):
     return spec
 
 
-def _result_flat_signature_to_batchable_dtype(result_flat_signature):
-  """Converts result_flat_signature -> result_batchable_dtype."""
-  components = []
+def _result_flat_signature_to_batchable_tensor_spec(result_flat_signature):
+  """Converts result_flat_signature -> result_batchable_tensor_specs."""
+  tensor_specs = []
   for spec in result_flat_signature:
     if not isinstance(spec, type_spec.BatchableTypeSpec):
       raise TypeError("map_fn can not generate %s outputs" % (spec,))
-    # pylint: disable=protected-access
-    components.extend([s.dtype for s in spec._flat_tensor_specs])
-  return components
+    tensor_specs.extend(spec._flat_tensor_specs)  # pylint: disable=protected-access
+  return tensor_specs
 
 
 def _elems_flat_to_batchable(elems_flat):

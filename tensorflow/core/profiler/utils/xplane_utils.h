@@ -21,8 +21,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/xplane_builder.h"
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -47,31 +45,6 @@ void AddOrUpdateIntStat(int64 metadata_id, int64 value,
 void AddOrUpdateStrStat(int64 metadata_id, absl::string_view value,
                         tensorflow::profiler::XEvent* event);
 
-// Creates an XEvent with int64 stats.
-XEventBuilder CreateXEvent(
-    XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
-    absl::string_view event_name, int64 offset_ps, int64 duration_ps,
-    const absl::flat_hash_map<StatType, int64 /*stat_value*/>& stats = {});
-XEventBuilder CreateXEvent(
-    XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
-    HostEventType event_type, int64 offset_ps, int64 duration_ps,
-    const absl::flat_hash_map<StatType, int64 /*stat_value*/>& stats);
-
-// Creates an XEvent with string stats.
-XEventBuilder CreateXEventWithStringViewMetadataValue(
-    XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
-    absl::string_view event_name, int64 offset_ps, int64 duration_ps,
-    const absl::flat_hash_map<StatType, absl::string_view /*stat_value*/>&
-        stats);
-
-// Creates an XEvent with int64 and string stats.
-XEventBuilder CreateXEventWithIntAndStringViewMetadataValue(
-    XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
-    absl::string_view event_name, int64 offset_ps, int64 duration_ps,
-    const absl::flat_hash_map<StatType, int64 /*stat_value*/>& int_stats,
-    const absl::flat_hash_map<StatType, absl::string_view /*stat_value*/>&
-        str_stats);
-
 void RemovePlaneWithName(XSpace* space, absl::string_view name);
 void RemoveEmptyPlanes(XSpace* space);
 void RemoveEmptyLines(XPlane* plane);
@@ -82,6 +55,22 @@ XPlane* FindMutablePlaneWithName(XSpace* space, absl::string_view name);
 // Returns the plane with the given name in the container. If necessary, adds a
 // new plane to the container.
 XPlane* FindOrAddMutablePlaneWithName(XSpace* space, absl::string_view name);
+
+// Sort lines in plane with a provided comparator.
+template <class Compare>
+void SortXLinesBy(XPlane* plane, Compare comp) {
+  std::sort(plane->mutable_lines()->pointer_begin(),
+            plane->mutable_lines()->pointer_end(), comp);
+}
+
+class XLinesComparatorByName {
+ public:
+  bool operator()(const XLine* a, const XLine* b) const {
+    auto& line_a = a->display_name().empty() ? a->name() : a->display_name();
+    auto& line_b = b->display_name().empty() ? b->name() : b->display_name();
+    return line_a < line_b;
+  }
+};
 
 // Sorts each XLine's XEvents by offset_ps (ascending) and duration_ps
 // (descending) so nested events are sorted from outer to innermost.
@@ -103,13 +92,6 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane);
 // timestamps. If zero line exists, return 0;
 uint64 GetStartTimestampNs(const XPlane& plane);
 
-// Creates a Xevent in the given plane & line for a tf-function.
-void CreateTfFunctionCallEvent(XPlaneBuilder* plane_builder,
-                               XLineBuilder* line_builder,
-                               absl::string_view function_name, int64 offset_ps,
-                               int64 duration_ps,
-                               absl::string_view execution_mode,
-                               int64 tracing_count = -1);
 }  // namespace profiler
 }  // namespace tensorflow
 

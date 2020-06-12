@@ -122,6 +122,7 @@ GPUOperation::GPUOperation(GPUOperation&& operation)
     : definition_(std::move(operation.definition_)),
       src_(std::move(operation.src_)),
       dst_(std::move(operation.dst_)),
+      args_(std::move(operation.args_)),
       linked_operations_(std::move(operation.linked_operations_)) {}
 
 GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
@@ -129,6 +130,7 @@ GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
     definition_ = std::move(operation.definition_);
     src_ = std::move(operation.src_);
     dst_ = std::move(operation.dst_);
+    args_ = std::move(operation.args_);
     linked_operations_ = std::move(operation.linked_operations_);
   }
   return *this;
@@ -141,12 +143,14 @@ void GPUOperation::AddOperation(ElementwiseOperation* operation) {
 
 ElementwiseOperation::ElementwiseOperation(ElementwiseOperation&& operation)
     : GPUOperation(std::move(operation)),
+      code_(std::move(operation.code_)),
       kernel_(std::move(operation.kernel_)),
       work_group_size_(operation.work_group_size_) {}
 
 ElementwiseOperation& ElementwiseOperation::operator=(
     ElementwiseOperation&& operation) {
   if (this != &operation) {
+    code_ = std::move(operation.code_);
     kernel_ = std::move(operation.kernel_);
     std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
@@ -205,7 +209,7 @@ std::string PostProcess(const std::vector<ElementwiseOperation*>& linked_ops,
                         const LinkingContext& context) {
   std::string code;
   for (auto linked_op : linked_ops) {
-    code += linked_op->GetCoreCode(context);
+    code += "{" + linked_op->GetCoreCode(context) + "}";
   }
   return code;
 }
@@ -214,6 +218,14 @@ absl::Status BindArgs(CLKernel* kernel,
                       const std::vector<ElementwiseOperation*>& linked_ops) {
   for (auto linked_op : linked_ops) {
     RETURN_IF_ERROR(linked_op->BindArguments(kernel));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status SetArgs(const std::vector<ElementwiseOperation*>& linked_ops,
+                     Arguments* args) {
+  for (int i = 0; i < linked_ops.size(); ++i) {
+    RETURN_IF_ERROR(linked_ops[i]->SetArgs(i + 1, args));
   }
   return absl::OkStatus();
 }

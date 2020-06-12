@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
@@ -27,18 +28,851 @@ from tensorflow.core.framework import variable_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
-from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import graph_util
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
-from tensorflow.python.util import object_identity
 from tensorflow.python.training.saver import export_meta_graph
+from tensorflow.python.util import lazy_loader
+from tensorflow.python.util import object_identity
 
+# Lazy load the single eager module to avoid introducing new dependencies for
+# graph_util:convert_variables_to_constants (eg in
+# tensorflow/contrib/session_bundle:session_bundle_py_test).
+wrap_function = lazy_loader.LazyLoader(
+    "wrap_function", globals(),
+    "tensorflow.python.eager.wrap_function")
 
 _CONDITIONAL_OPS = set(["If", "StatelessIf"])
 _LOOP_OPS = set(["While", "StatelessWhile"])
 _CONTROL_FLOW_OPS = _CONDITIONAL_OPS.union(_LOOP_OPS)
+
+
+class _TensorData(
+    collections.namedtuple("_TensorData", ["numpy", "dtype", "index"])):
+  """Data about a tensor that was converted to a constant."""
+  __slots__ = ()
+
+  @property
+  def dtype_attr(self):
+    return attr_value_pb2.AttrValue(type=self.dtype)
+
+
+class _EndPoint(collections.namedtuple("_EndPoint", ["convertible", "index"])):
+  """An endpoint in a graph."""
+  __slots__ = ()
+
+  def __str__(self):
+    return "{}[{}]".format(self.convertible, self.index)
+
+
+class _Edge(collections.namedtuple("_Edge", ["source", "destination"])):
+  """A directed graph edge."""
+  __slots__ = ()
+
+  def __str__(self):
+    return "{} -> {}".format(self.source, self.destination)
+
+
+class _Convertible(object):
+  """An entity that can have variables converted to constants."""
+
+  def __init__(self, enclosing_graph):
+    self._enclosing_graph = enclosing_graph
+    self._outgoing_edges = []
+    self._converted_self = None
+
+  def converted_self(self):
+    """A copy of this Convertible to be modified during conversion.
+
+    Returns:
+      Implementations should return the copied instance, which in turn should
+      be contained in converted_enclosing_graph(). This instance is the one that
+      will be modified during conversion. Its main use will be in the
+      implementations of convert_variable_to_constant().
+    """
+    raise NotImplementedError()
+
+  def convert_variable_to_constant(self, incoming_edge, tensor_data):
+    """Converts a variable in this Convertible and its dependencies.
+
+    This method should make sure that a converted copy of itself is present in
+    the converted graph, and that all Convertibles depending on this one also go
+    through the same process.
+
+    Args:
+      incoming_edge: The graph edge into this Convertible that is being
+        converted to a constant.
+      tensor_data: The tensor representing the constant.
+    """
+    raise NotImplementedError()
+
+  def create_edges(self):
+    """Calls add_outgoing_edge for all edges known to this Convertible.
+
+    This is used to build the graph dependencies, so that conversion of
+    variables to constants can be properly propagated through the graph. Usually
+    this method will call add_outgoing_edge() to all the Convertible inputs.
+    """
+    raise NotImplementedError()
+
+  def add_outgoing_edge(self, edge):
+    """Adds an outgoing edge to the Convertible's list of edges.
+
+    Args:
+      edge: The outgoing edge (its source should be 'self').
+    """
+    self._outgoing_edges.append(edge)
+
+  @property
+  def converted_enclosing_graph(self):
+    """The graph being converted."""
+    return self._enclosing_graph.converted_self()
+
+  @property
+  def outgoing_edges(self):
+    """The list of edges starting at this Convertible."""
+    return self._outgoing_edges
+
+
+class _Function(_Convertible):
+  """A library function Convertible.
+
+  Edges into functions are edges from node _inputs_ into function _inputs_:
+  Functions get their input from their callers, not from node outputs, and the
+  callers in turn get those values as inputs.
+  """
+
+  def __init__(self, function, enclosing_graph):
+    super(_Function, self).__init__(enclosing_graph)
+    self._function = function
+    self._nodes = {
+        n.name:
+        _Node.new(node=n, function=self, enclosing_graph=enclosing_graph)
+        for n in function.node_def
+    }
+
+  def __str__(self):
+    return self.function.signature.name
+
+  @property
+  def function(self):
+    return self._function
+
+  @property
+  def nodes(self):
+    return self._nodes
+
+  def converted_self(self):
+    """The Function copy to be converted.
+
+    The copy will be renamed according to the graph's converted_function_name
+    map, to ensure the name does not match anything currently in TensorFlow's
+    function cache.
+
+    Returns:
+      The function instance to be converted.
+    """
+    if self._converted_self is None:
+      old_name = self.function.signature.name
+      new_name = self._enclosing_graph.converted_function_names[old_name]
+      self.converted_enclosing_graph.rename_function(old_name, new_name)
+      self._converted_self = self.converted_enclosing_graph.functions[new_name]
+    return self._converted_self
+
+  def convert_variable_to_constant(self, incoming_edge, tensor_data):
+    """Converts one function argument into a constant.
+
+    Args:
+      incoming_edge: The edge into the argument to be converted.
+      tensor_data: The constant value.
+    """
+    function = self.converted_self().function
+    index = incoming_edge.destination.index
+    function.signature.input_arg[index].type = tensor_data.dtype
+
+    for edge in self.outgoing_edges:
+      if edge.source.index == index:
+        edge.destination.convertible.convert_variable_to_constant(
+            edge, tensor_data)
+
+  def create_edges(self):
+    for n in self._nodes.values():
+      n.create_edges()
+
+
+class _Node(_Convertible):
+  """A Convertible NodeDef."""
+
+  def __init__(self, node, function, enclosing_graph):
+    super(_Node, self).__init__(enclosing_graph)
+    self._node = node
+    self._function = function
+
+  def __str__(self):
+    return self._node.name
+
+  @staticmethod
+  def new(node, function, enclosing_graph):
+    """Creates a new _Node base on its operation type."""
+    if node.op in ["VariableV2", "VarHandleOp", "Placeholder"]:
+      return _VarHandle(node, function, enclosing_graph)
+    elif node.op == "Case":
+      return _Case(node, function, enclosing_graph)
+    elif node.op == "Merge":
+      return _Merge(node, function, enclosing_graph)
+    elif node.op == "PartitionedCall":
+      return _PartitionedCall(node, function, enclosing_graph)
+    elif node.op == "ReadVariableOp":
+      return _ReadVariable(node, function, enclosing_graph)
+    elif node.op == "ResourceGather":
+      return _ResourceGather(node, function, enclosing_graph)
+    elif node.op == "ResourceGatherNd":
+      return _ResourceGatherNd(node, function, enclosing_graph)
+    elif node.op in ["If", "StatelessIf"]:
+      return _If(node, function, enclosing_graph)
+    elif node.op in ["While", "StatelessWhile"]:
+      return _While(node, function, enclosing_graph)
+    elif node.op in ["Enter", "Exit", "Identity", "NextIteration", "Switch"]:
+      return _Intermediate(node, function, enclosing_graph)
+    else:
+      return _Node(node, function, enclosing_graph)
+
+  @property
+  def node(self):
+    return self._node
+
+  @property
+  def container(self):
+    """The node container (either a graph or a function)."""
+    if self._function is not None:
+      return self._function.function
+    return self._enclosing_graph.graph_def
+
+  def converted_self(self):
+    """The NodeDef to be converted.
+
+    Returns:
+      The NodeDef to be converted, which can come from either a graph for a
+      function. Derived classes should call this (via 'super') to make sure the
+      node is retrieved from the right place.
+    """
+    if self._converted_self is None:
+      source = self._function or self._enclosing_graph
+      self._converted_self = source.converted_self().nodes[self._node.name]
+    return self._converted_self
+
+  def convert_variable_to_constant(self, incoming_edge, tensor_data):
+    pass
+
+  def create_edges(self):
+    for index, name in enumerate(self._node.input):
+      # Discard edges from control inputs.
+      if name[0] == "^":
+        continue
+      source = self.resolve_input(name)
+      source.convertible.add_outgoing_edge(
+          _Edge(source, _EndPoint(self, index)))
+
+  def resolve_input(self, input_name):
+    """Resolves an input into its _EndPoint.
+
+    A NodeDef's input name can refer to either global NodeDefs (in the
+    GraphDef's node list), a NodeDef in a function's node list, or a Function
+    (in the GraphDef's function library). The name can also carry semantic
+    information, depending on whether it starts with "^". This method handles
+    all that logic in order to find the object to which the input name refers
+    to.
+
+    Args:
+      input_name: The input name to resolve.
+
+    Returns:
+      The object referred to by 'input_name'.
+    """
+
+    # The logic below oversimplifes the semantics, but is good enough for the
+    # purposes of converting to constants. The introduction of new types of
+    # operations may change this, forcing the code to be more generic.
+    #
+    # In particular, we are assuming that the lack of an index suffix means
+    # ":0", when it could mean "all the outputs of a node." This works now
+    # because converting to constants relies very little on output types, and
+    # when it does it specializes its treatment in dedicated classes.
+    name_elts = input_name.split(":")
+    source_name = name_elts[0]
+    if source_name[0] == "^":
+      source_name = source_name[1:]
+    source_index = 0
+    if len(name_elts) > 1 and name_elts[-1].isnumeric():
+      source_index = int(name_elts[-1])
+
+    if self._function is None:
+      return _EndPoint(self._enclosing_graph.nodes[source_name], source_index)
+
+    if source_index != 0 or source_name in self._function.nodes:
+      return _EndPoint(self._function.nodes[source_name], source_index)
+
+    inputs = [i.name for i in self._function.function.signature.input_arg]
+    return _EndPoint(self._function, inputs.index(source_name))
+
+  def update_dtype(self, attr_name, index, dtype):
+    """Changes the type of a given input.
+
+    Args:
+      attr_name: The NodeDef attribute containing the type to change.
+      index: The index of the input type to change.
+      dtype: The type to change to.
+    """
+    attr = self._node.attr[attr_name]
+    num_types = 0
+    # Check for various 'oneof' possibilities, and update the type if
+    # index in range.
+    if attr.HasField("list"):
+      types = attr.list.type
+      num_types = len(types)
+      if num_types > index:
+        types[index] = dtype
+        return
+    elif attr.HasField("type"):
+      num_types = 1
+      if index == 0:
+        attr.type = dtype
+        return
+    raise ValueError(
+        "Index %d out of range for node(%s).attr(%s), which has %d elements." %
+        (index, self._node.name, attr_name, num_types))
+
+
+class _Intermediate(_Node):
+  """Specialization of _Node to intermediate ops."""
+
+  def convert_variable_to_constant(self, incoming_edge, tensor_data):
+    node = self.converted_self()
+    node.update_dtype("T", incoming_edge.destination.index, tensor_data.dtype)
+    if "_output_shapes" in node.node.attr:
+      del node.node.attr["_output_shapes"]
+    for edge in self.outgoing_edges:
+      edge.destination.convertible.convert_variable_to_constant(
+          edge, tensor_data)
+
+
+class _Merge(_Node):
+  """Specialization of _Node to Merge ops."""
+
+  def convert_variable_to_constant(self, incoming_edge, tensor_data):
+    # The Merge operation has a single type for all its inputs, the number of
+    # which is reflected in the "N" attribute. For the time being, we assume
+    # that unilaterally changing all of them at once is ok.
+    super(_Merge, self).convert_variable_to_constant(
+        _Edge(incoming_edge.source,
+              _Edge(incoming_edge.destination.convertible, 0)), tensor_data)
+
+
+class _VarHandle(_Node):
+  """Specialization of _Node to VarHandleOp."""
+
+  def convert_variable_to_constant(self, incoming_edge, tensor_data):
+    tensor_proto = tensor_util.make_tensor_proto(tensor_data.numpy,
+                                                 tensor_data.dtype,
+                                                 tensor_data.numpy.shape)
+
+    node = self.converted_self().node
+    node.Clear()
+    node.name = self._node.name
+    node.op = "Const"
+    node.attr["dtype"].CopyFrom(tensor_data.dtype_attr)
+    node.attr["value"].tensor.CopyFrom(tensor_proto)
+
+    for edge in self.outgoing_edges:
+      edge.destination.convertible.convert_variable_to_constant(
+          edge, tensor_data)
+
+
+class _ResourceGather(_Node):
+  """Specialization of _Node to ResourceGather."""
+
+  def convert_variable_to_constant(self, incoming_edge, tensor_data):
+    # We currently skip the conversion if this is inside a function.
+    if self._function is not None:
+      return
+    if self._node.attr["batch_dims"].i != 0:
+      raise ValueError("batch_dims != 0 is not supported by freeze_graph.")
+    axis_node_name = self._node.name + "/axis"
+    axis_dtype = self._node.attr["Tindices"]
+    axis_data = np.array(self._node.attr["batch_dims"].i)
+    output_axis_node = self.converted_self().container.node.add()
+    output_axis_node.name = axis_node_name
+    output_axis_node.op = "Const"
+    output_axis_node.attr["dtype"].CopyFrom(axis_dtype)
+    tensor = tensor_util.make_tensor_proto(
+        axis_data, dtype=axis_dtype.type, shape=axis_data.shape)
+    output_axis_node.attr["value"].tensor.CopyFrom(tensor)
+
+    output_node = self.converted_self().node
+    output_node.Clear()
+    output_node.name = self._node.name
+    output_node.op = "GatherV2"
+    output_node.input.extend(
+        [self._node.input[0], self._node.input[1], axis_node_name])
+    output_node.attr["Tparams"].CopyFrom(self._node.attr["dtype"])
+    output_node.attr["Tindices"].CopyFrom(self._node.attr["Tindices"])
+    output_node.attr["Taxis"].CopyFrom(axis_dtype)
+    if "_class" in self._node.attr:
+      output_node.attr["_class"].CopyFrom(self._node.attr["_class"])
+
+
+class _ResourceGatherNd(_Node):
+  """Specialization of _Node to ResourceGatherNd."""
+
+  def convert_variable_to_constant(self, incoming_edge, tensor_data):
+    output_node = self.converted_self().node
+    output_node.Clear()
+    output_node.name = self._node.name
+    output_node.op = "GatherNd"
+    output_node.input.extend([self._node.input[0], self._node.input[1]])
+    output_node.attr["Tparams"].CopyFrom(self._node.attr["dtype"])
+    output_node.attr["Tindices"].CopyFrom(self._node.attr["Tindices"])
+    if "_class" in self._node.attr:
+      output_node.attr["_class"].CopyFrom(self._node.attr["_class"])
+
+
+class _ReadVariable(_Node):
+  """Specialization of _Node to ReadVariableOp."""
+
+  def convert_variable_to_constant(self, incoming_edge, tensor_data):
+    node = self.converted_self().node
+    node.Clear()
+    node.name = self._node.name
+    node.op = "Identity"
+
+    node.input.append(self._node.input[0])
+    node.attr["T"].CopyFrom(self._node.attr["dtype"])
+    if "_class" in self._node.attr:
+      node.attr["_class"].CopyFrom(self._node.attr["_class"])
+
+    # If the ReadVariableOp is part of a function, then every node having the
+    # ReadVariableOp one as its input will refer to it using a ":value"
+    # syntax. We need to change that to ":output".
+    if self._function is not None:
+      for edge in self.outgoing_edges:
+        index = edge.destination.index
+        dest = edge.destination.convertible.converted_self()
+        if isinstance(dest, _Node):
+          input_name_parts = dest.node.input[index].split(":")
+          if len(input_name_parts) > 1 and input_name_parts[1] == "value":
+            input_name_parts[1] = "output"
+            dest.node.input[index] = ":".join(input_name_parts)
+
+
+class _FunctionCaller(_Node):
+  """A base class for Convertibles that reference functions."""
+
+  def __init__(self, node, function, enclosing_graph, first_function_input,
+               type_attribute, function_attributes):
+    """Initializes a _FunctionCaller.
+
+    Args:
+      node: As in _Node.
+      function: As in _Node.
+      enclosing_graph: As in _Node.
+      first_function_input: The index of the first NodeDef input that is tied to
+        the function inputs. It is assumed that the rest of the NodeDef inputs
+        map one to one to function inputs.
+      type_attribute: The name of the NodeDef attribute that defines the input
+        types. It is assumed that the types listed here map one-to-one with the
+        function inputs (that is, they do _not_ specify types for inputs that
+        are not passed to functions).
+      function_attributes: The names of the NodeDef attributes containing
+        references to functions.
+    """
+    super(_FunctionCaller, self).__init__(node, function, enclosing_graph)
+    self._first_function_input = first_function_input
+    self._type_attribute = type_attribute
+    self._function_attributes = function_attributes
+
+  def converted_self(self):
+    if self._converted_self is None:
+      node = super(_FunctionCaller, self).converted_self().node
+      converted_names = self._enclosing_graph.converted_function_names
+      for attr_name in self._function_attributes:
+        attr = node.attr[attr_name]
+        if attr.HasField("func"):
+          attr.func.name = converted_names[attr.func.name]
+        elif attr.HasField("list"):
+          for func in attr.list.func:
+            func.name = converted_names[func.name]
+    return self._converted_self
+
+  def convert_variable_to_constant(self, incoming_edge, tensor_data):
+    node = self.converted_self()
+    index = incoming_edge.destination.index
+    if index >= self._first_function_input:
+      node.update_dtype(self._type_attribute,
+                        index - self._first_function_input, tensor_data.dtype)
+
+    # The loop below is reasonable but not correct in general:
+    # The outgoing edges going into the functions are correct, because the
+    # inputs map to the function inputs. But the edges going into other nodes do
+    # not take into account the logic of the body function, which may do
+    # arbitrary things to the node's output:
+    #
+    #   while x < 0:
+    #     return y
+    #
+    # In this case, the node's ":0" output may map to its ":1 input". For the
+    # time being, then, we only process edges into functions.
+    for edge in self.outgoing_edges:
+      dest = edge.destination.convertible
+      if edge.source.index == index and isinstance(dest, _Function):
+        dest.convert_variable_to_constant(edge, tensor_data)
+
+  def create_edges(self):
+    """Creates edges related to a function caller.
+
+    Edges from a function caller to its called functions are always edges from
+    _inputs_ to _inputs_: a FunctionDef input is given by the caller, based on
+    its own inputs.
+    """
+    super(_FunctionCaller, self).create_edges()
+    for attr_name in self._function_attributes:
+      attr = self._node.attr[attr_name]
+      if attr.HasField("func"):
+        function = self._enclosing_graph.functions[attr.func.name]
+        for index in range(len(self._node.input) - self._first_function_input):
+          self.add_outgoing_edge(
+              _Edge(
+                  _EndPoint(self, index + self._first_function_input),
+                  _EndPoint(function, index)))
+      elif attr.HasField("list"):
+        for func in attr.list.func:
+          function = self._enclosing_graph.functions[func.name]
+          for index in range(
+              len(self._node.input) - self._first_function_input):
+            self.add_outgoing_edge(
+                _Edge(
+                    _EndPoint(self, index + self._first_function_input),
+                    _EndPoint(function, index)))
+
+
+class _If(_FunctionCaller):
+  """Specialization of _Node to If-like operations."""
+
+  def __init__(self, node, function, enclosing_graph):
+    super(_If, self).__init__(
+        node,
+        function,
+        enclosing_graph,
+        first_function_input=1,
+        type_attribute="Tin",
+        function_attributes=["then_branch", "else_branch"])
+
+
+class _Case(_FunctionCaller):
+  """Specialization of _Node to Case-like operations."""
+
+  def __init__(self, node, function, enclosing_graph):
+    super(_Case, self).__init__(
+        node,
+        function,
+        enclosing_graph,
+        first_function_input=1,
+        type_attribute="Tin",
+        function_attributes=["branches"])
+
+
+class _PartitionedCall(_FunctionCaller):
+  """Specialization of _Node to PartitionedCall-like operations."""
+
+  def __init__(self, node, function, enclosing_graph):
+    super(_PartitionedCall, self).__init__(
+        node,
+        function,
+        enclosing_graph,
+        first_function_input=0,
+        type_attribute="Tin",
+        function_attributes=["f"])
+
+
+class _While(_FunctionCaller):
+  """Specialization of _Node to While-like operations."""
+
+  def __init__(self, node, function, enclosing_graph):
+    super(_While, self).__init__(
+        node,
+        function,
+        enclosing_graph,
+        first_function_input=0,
+        type_attribute="T",
+        function_attributes=["body", "cond"])
+
+  def convert_variable_to_constant(self, incoming_edge, tensor_data):
+    super(_While, self).convert_variable_to_constant(incoming_edge, tensor_data)
+    node = self.converted_self()
+    node.node.attr["output_shapes"].list.shape[
+        incoming_edge.destination.index].CopyFrom(
+            tensor_shape_pb2.TensorShapeProto(dim=[
+                tensor_shape_pb2.TensorShapeProto.Dim(size=dim)
+                for dim in tensor_data.numpy.shape
+            ]))
+    # The while's body inputs and outputs have the same type, so here we can go
+    # ahead and change that function's output type.
+    body_name = self._node.attr["body"].func.name
+    body = self._enclosing_graph.functions[body_name].converted_self().function
+    body.signature.output_arg[
+        incoming_edge.destination.index].type = tensor_data.dtype
+
+
+class _GraphDef(_Convertible):
+  """A convertible GraphDef."""
+
+  def __init__(self, graph_def):
+    super(_GraphDef, self).__init__(enclosing_graph=None)
+    self._graph_def = graph_def
+    self._nodes = {
+        n.name: _Node.new(node=n, function=None, enclosing_graph=self)
+        for n in graph_def.node
+    }
+    self._functions = {
+        f.signature.name: _Function(f, enclosing_graph=self)
+        for f in graph_def.library.function
+    }
+    self.create_edges()
+    self._converted_function_names = None
+
+  @property
+  def graph_def(self):
+    return self._graph_def
+
+  @property
+  def nodes(self):
+    return self._nodes
+
+  @property
+  def functions(self):
+    return self._functions
+
+  @property
+  def converted_function_names(self):
+    """Map from original to new function names.
+
+    In order to avoid conflicts (two functions with the same name, one converted
+    and one not), we need to change the name of every converted function to
+    something that is hopefully unique.
+
+    Returns:
+      Map from original to new suggested function names.
+    """
+    if self._converted_function_names is None:
+      parsed_names = []  # List of (id, base_name, original_name)
+      for name in self.functions:
+        elements = name.rsplit("_", 1)
+        if len(elements) == 2 and elements[1].isnumeric():
+          parsed_names.append((int(elements[1]), elements[0], name))
+        else:
+          parsed_names.append((-1, name, name))
+      self._converted_function_names = {
+          name: "{}_frozen_{}".format(base_name, ops.uid())
+          for (_, base_name, name) in sorted(parsed_names)
+      }
+
+    return self._converted_function_names
+
+  def rename_function(self, old_name, new_name):
+    func = self.functions.pop(old_name)
+    func.function.signature.name = new_name
+    self.functions[new_name] = func
+
+  def converted_self(self):
+    if self._converted_self is None:
+      copied_graph = graph_pb2.GraphDef()
+      copied_graph.CopyFrom(self._graph_def)
+      self._converted_self = _GraphDef(copied_graph)
+    return self._converted_self
+
+  def create_edges(self):
+    for n in self._nodes.values():
+      n.create_edges()
+    for f in self._functions.values():
+      f.create_edges()
+
+
+class _ConverterData(object):
+  """Container for constant conversion supporting data.
+
+  The data includes the graph being converted, and the pre-converted
+  tensors. This class will be specialized for ConcreteFunction and Session-based
+  conversions, as the means to obtain that data is different for each case.
+  """
+
+  def __init__(self,
+               graph_def,
+               variable_names_whitelist=None,
+               variable_names_blacklist=None):
+    self._graph_def = graph_def
+    self._tensor_data = {}
+    self._build_node_defs_list()
+    self._variable_names_whitelist = variable_names_whitelist
+    self._variable_names_blacklist = variable_names_blacklist
+
+  @property
+  def graph_def(self):
+    """The graph to be converted."""
+    return self._graph_def
+
+  @property
+  def node_defs(self):
+    """All the node defs in the graph to be converted.
+
+    Returns:
+      A map from node name to the NodeDef for all NodeDefs in the graph, as well
+      as all control flow NodeDefs in the functions.
+    """
+    return self._node_defs
+
+  @property
+  def tensor_data(self):
+    """A map from tensor name to its converted _TensorData."""
+    return self._tensor_data
+
+  def _should_convert(self, name):
+    """Checks whether to convert the given variable name to a constant."""
+    return (self._variable_names_whitelist is None or
+            name in self._variable_names_whitelist) and (
+                self._variable_names_blacklist is None or
+                name not in self._variable_names_blacklist)
+
+  def _build_node_defs_list(self):
+    """Builds the list of NodeDefs in the GraphDef.
+
+    This list consists of all NodeDefs in the main graph as well as all control
+    flow NodeDefs in the functions.
+
+    The remaining NodeDefs in the functions are not included because the op
+    names
+    are not unique and the variables are handled differently than the main
+    graph.
+    The control flow ops need to be extracted because they are need their
+    attributes to be updated similar to the control flow ops in the main graph.
+    """
+    self._node_defs = {node.name: node for node in self._graph_def.node}
+
+    if self._graph_def.library:
+      for func in self._graph_def.library.function:
+        self._node_defs.update({
+            node.name: node
+            for node in func.node_def
+            if node.op in _CONTROL_FLOW_OPS
+        })
+
+
+class _FunctionConverterData(_ConverterData):
+  """Container for ConcreteFunction-based conversion data."""
+
+  def __init__(self,
+               func,
+               lower_control_flow,
+               aggressive_inlining,
+               variable_names_whitelist=None,
+               variable_names_blacklist=None):
+    """Creates the conversion data for the given function.
+
+    Args:
+      func: ConcreteFunction.
+      lower_control_flow: Boolean indicating whether or not to lower control
+        flow ops such as If and While.
+      aggressive_inlining: Boolean indicating whether or not to to aggressive
+        function inlining (might be unsafe if function has stateful ops, not
+        properly connected to control outputs).
+      variable_names_whitelist: The set of variable names to convert (by
+        default, all variables are converted).
+      variable_names_blacklist: The set of variable names to omit converting to
+        constants.
+    """
+
+    self._func = func
+    # Inline the graph in order to remove functions when possible.
+    graph_def = _run_inline_graph_optimization(func, lower_control_flow,
+                                               aggressive_inlining)
+    super(_FunctionConverterData, self).__init__(
+        graph_def,
+        variable_names_whitelist=variable_names_whitelist,
+        variable_names_blacklist=variable_names_blacklist)
+    self._build_tensor_data()
+
+  def _build_tensor_data(self):
+    """Caches the tensor data for all Placeholders in the given function."""
+    map_index_to_variable = {}
+    for var in self._func.graph.variables:
+      for idx, captured_input in enumerate(self._func.captured_inputs):
+        if var.handle is captured_input:  # pylint: disable=protected-access
+          map_index_to_variable[idx] = var
+          break
+
+    # Iterates through all captures which are represented as Placeholders.
+    for idx, (val_tensor, name_tensor) in enumerate(self._func.graph.captures):
+      tensor_name = name_tensor.name.split(":")[0]
+      if not self._should_convert(tensor_name):
+        continue
+      if idx in map_index_to_variable:
+        data = map_index_to_variable[idx].numpy()
+      else:
+        data = val_tensor.numpy()
+      self._tensor_data[tensor_name] = _TensorData(
+          numpy=data,
+          dtype=dtypes.as_dtype(data.dtype).as_datatype_enum,
+          index=idx)
+
+    # Get data for VariableV2 ops (reference variables) that cannot be lifted.
+    for node in self.node_defs.values():
+      if node.op == "VariableV2":
+        if not self._should_convert(node.name):
+          continue
+        if node.name not in self.tensor_data:
+          with self._func.graph.as_default():
+            identity_node = array_ops.identity(
+                self._func.graph.as_graph_element(node.name + ":0"))
+          pruned_graph = self._func.prune([], [identity_node.name])()[0]
+          self._tensor_data[node.name] = _TensorData(
+              numpy=pruned_graph.numpy(),
+              dtype=node.attr["dtype"].type,
+              index=None)
+
+
+class _SessionConverterData(_ConverterData):
+  """Container for Session-based conversion data."""
+
+  def __init__(self,
+               session,
+               graph_def,
+               output_node_names,
+               variable_names_whitelist=None,
+               variable_names_blacklist=None):
+    graph_def = graph_util.extract_sub_graph(graph_def, output_node_names)
+    super(_SessionConverterData, self).__init__(
+        graph_def,
+        variable_names_whitelist=variable_names_whitelist,
+        variable_names_blacklist=variable_names_blacklist)
+
+    nodes_to_convert = []
+    tensor_names_to_convert = []
+    for node in self.graph_def.node:
+      if node.op in ["Variable", "VariableV2", "VarHandleOp"]:
+        tensor_name = node.name
+        if not self._should_convert(tensor_name):
+          continue
+        if node.op == "VarHandleOp":
+          tensor_name = tensor_name + "/Read/ReadVariableOp"
+        nodes_to_convert.append(node)
+        tensor_names_to_convert.append(tensor_name + ":0")
+
+    if tensor_names_to_convert:
+      converted_tensors = session.run(tensor_names_to_convert)
+      for node, tensor_value in zip(nodes_to_convert, converted_tensors):
+        self._tensor_data[node.name] = _TensorData(
+            numpy=tensor_value, dtype=node.attr["dtype"].type, index=None)
 
 
 def disable_lower_using_switch_merge(graph_def):
@@ -135,247 +969,6 @@ def _run_inline_graph_optimization(func, lower_control_flow,
   return tf_optimizer.OptimizeGraph(config, meta_graph)
 
 
-def _get_tensor_name(name):
-  """Returns the name of the input tensor.
-
-  Args:
-    name: str
-
-  Returns:
-    str
-  """
-  return name.split(":")[0]
-
-
-def _get_new_function_name(name):
-  """Returns the function name with '_frozen' appended.
-
-  Args:
-    name: str
-
-  Returns:
-    str
-  """
-  return name + "_frozen"
-
-
-def _get_node_defs_list(graph_def):
-  """Returns a list of NodeDefs in the GraphDef.
-
-  This list consists of all NodeDefs in the main graph as well as all control
-  flow NodeDefs in the functions.
-
-  The remaining NodeDefs in the functions are not included because the op names
-  are not unique and the variables are handled differently than the main graph.
-  The control flow ops need to be extracted because they are need their
-  attributes to be updated similar to the control flow ops in the main graph.
-
-  Args:
-    graph_def: GraphDef proto.
-
-  Returns:
-    [NodeDef]
-  """
-  node_defs = list(graph_def.node)
-
-  if graph_def.library:
-    for func in graph_def.library.function:
-      node_defs.extend(
-          [node for node in func.node_def if node.op in _CONTROL_FLOW_OPS])
-  return node_defs
-
-
-def _get_tensor_data(func):
-  """Gets the tensor data for all Placeholders in the model.
-
-  Returns a dictionary that maps the tensor name to a dictionary containing:
-    data: numpy data
-    index: int index in func.graph.captures
-    is_variable: bool indicating whether the tensor is a variable or not
-
-  Args:
-    func: ConcreteFunction.
-
-  Returns:
-    Dict
-  """
-  tensor_data = {}
-  map_index_to_variable = {}
-  for var in func.graph.variables:
-    for idx, captured_input in enumerate(func.captured_inputs):
-      if var.handle is captured_input:  # pylint: disable=protected-access
-        map_index_to_variable[idx] = var
-        break
-
-  # Iterates through all captures which are represented as Placeholders.
-  for idx, (val_tensor, name_tensor) in enumerate(func.graph.captures):
-    tensor_name = _get_tensor_name(name_tensor.name)
-    is_variable = idx in map_index_to_variable
-    if is_variable:
-      data = map_index_to_variable[idx].numpy()
-    else:
-      data = val_tensor.numpy()
-    tensor_data[tensor_name] = {
-        "data": data,
-        "index": idx,
-        "is_variable": is_variable,
-    }
-  return tensor_data
-
-
-def _get_control_flow_function_data(node_defs, tensor_data, name_to_node):
-  """Gets the types and shapes for the parameters to the function.
-
-  Creates a map from function name to a list of types and a list of shapes that
-  correspond with the function arguments. The data is primarily determined from
-  the corresponding "If" or "While" op. If the argument is a resource variable,
-  then the type is determined from the type of the data contained within the
-  Tensor. The shape data is only determined in the case of the "While" op.
-
-  `is_also_output_type` is used to identify the "While" bodies that require the
-  output types to be updated at the same time the input types are updated.
-
-  Args:
-    node_defs: List of NodeDefs.
-    tensor_data: {str name : Tensor}.
-    name_to_node: Dictionary mapping node name to node object.
-
-  Returns:
-    {str function name : {"types" : [int representing DataType],
-                          "shapes" : [[int] representing TensorShape]],
-                          "is_also_output_type" : bool}
-  """
-  func_data = {}
-
-  def get_source_node_name_through_identities(node_name):
-    # Trace the source node along with a chain of Identity nodes.
-    # For example, given Placeholder -> Identity -> Identity -> node_name
-    # The function will return the name of the Placeholder.
-    while name_to_node[node_name].op == "Identity":
-      node_name = _get_tensor_name(name_to_node[node_name].input[0])
-    return node_name
-
-  def get_resource_type(node_name):
-    node_name = get_source_node_name_through_identities(node_name)
-
-    numpy_type = tensor_data[node_name]["data"].dtype
-    return dtypes.as_dtype(numpy_type).as_datatype_enum
-
-  def get_resource_shape(node_name):
-    node_name = get_source_node_name_through_identities(node_name)
-
-    return tensor_shape_pb2.TensorShapeProto(dim=[
-        tensor_shape_pb2.TensorShapeProto.Dim(size=dim)
-        for dim in tensor_data[node_name]["data"].shape
-    ])
-
-  def add_value(func_name, arg_types, output_shapes, is_also_output_type):
-    func_data[func_name] = {
-        "types": arg_types,
-        "shapes": output_shapes,
-        "is_also_output_type": is_also_output_type
-    }
-
-  for node in node_defs:
-    if node.op in _CONDITIONAL_OPS:
-      arg_types = [dtype for dtype in node.attr["Tin"].list.type]
-
-      for idx in range(len(arg_types)):
-        if arg_types[idx] == dtypes.resource:
-          # Skip first index which represents the condition.
-          arg_types[idx] = get_resource_type(node.input[idx + 1])
-
-      add_value(node.attr["then_branch"].func.name, arg_types, None, False)
-      add_value(node.attr["else_branch"].func.name, arg_types, None, False)
-    elif node.op in _LOOP_OPS:
-      arg_types = [dtype for dtype in node.attr["T"].list.type]
-      output_shapes = [shape for shape in node.attr["output_shapes"].list.shape]
-
-      for idx in range(len(arg_types)):
-        if arg_types[idx] == dtypes.resource:
-          input_name = node.input[idx]
-          arg_types[idx] = get_resource_type(input_name)
-          output_shapes[idx] = get_resource_shape(input_name)
-
-      add_value(node.attr["body"].func.name, arg_types, output_shapes, True)
-      add_value(node.attr["cond"].func.name, arg_types, output_shapes, False)
-  return func_data
-
-
-def _populate_const_op(output_node, node_name, dtype, data, data_shape):
-  """Creates a Const op.
-
-  Args:
-    output_node: TensorFlow NodeDef.
-    node_name: str node name.
-    dtype: AttrValue with a populated .type field.
-    data: numpy data value.
-    data_shape: Tuple of integers containing data shape.
-  """
-  output_node.op = "Const"
-  output_node.name = node_name
-  output_node.attr["dtype"].CopyFrom(dtype)
-  tensor = tensor_util.make_tensor_proto(
-      data, dtype=dtype.type, shape=data_shape)
-  output_node.attr["value"].tensor.CopyFrom(tensor)
-
-
-def _populate_identity_op(output_node, input_node):
-  """Creates an Identity op from a ReadVariable op.
-
-  Args:
-    output_node: TensorFlow NodeDef.
-    input_node: TensorFlow NodeDef.
-  """
-  output_node.op = "Identity"
-  output_node.name = input_node.name
-  output_node.input.append(input_node.input[0])
-  output_node.attr["T"].CopyFrom(input_node.attr["dtype"])
-  if "_class" in input_node.attr:
-    output_node.attr["_class"].CopyFrom(input_node.attr["_class"])
-
-
-def _populate_if_op(output_node, input_node, function_data):
-  """Updates the type attributes and function names of If or StatelessIf.
-
-  Args:
-    output_node: TensorFlow NodeDef.
-    input_node: TensorFlow NodeDef.
-    function_data: Map of function names to the list of types and shapes that
-      correspond with the function arguments.
-  """
-  output_node.CopyFrom(input_node)
-  then_func = input_node.attr["then_branch"].func.name
-  output_node.attr["then_branch"].func.name = _get_new_function_name(then_func)
-  output_node.attr["else_branch"].func.name = _get_new_function_name(
-      input_node.attr["else_branch"].func.name)
-  output_node.attr["Tin"].list.CopyFrom(
-      attr_value_pb2.AttrValue.ListValue(
-          type=function_data[then_func]["types"]))
-
-
-def _populate_while_op(output_node, input_node, function_data):
-  """Updates the type attributes and function names of While or StatelessWhile.
-
-  Args:
-    output_node: TensorFlow NodeDef.
-    input_node: TensorFlow NodeDef.
-    function_data: Map of function names to the list of types and shapes that
-      correspond with the function arguments.
-  """
-  output_node.CopyFrom(input_node)
-  cond_func = input_node.attr["cond"].func.name
-  output_node.attr["cond"].func.name = _get_new_function_name(cond_func)
-  output_node.attr["body"].func.name = _get_new_function_name(
-      input_node.attr["body"].func.name)
-  output_node.attr["T"].list.CopyFrom(
-      attr_value_pb2.AttrValue.ListValue(
-          type=function_data[cond_func]["types"]))
-  output_node.attr["output_shapes"].list.CopyFrom(
-      attr_value_pb2.AttrValue.ListValue(
-          shape=function_data[cond_func]["shapes"]))
-
-
 def _construct_concrete_function(func, output_graph_def,
                                  converted_input_indices):
   """Constructs a concrete function from the `output_graph_def`.
@@ -394,7 +987,8 @@ def _construct_concrete_function(func, output_graph_def,
   converted_inputs = object_identity.ObjectIdentitySet(
       [input_tensors[index] for index in converted_input_indices])
   not_converted_inputs = [
-      tensor for tensor in func.inputs if tensor not in converted_inputs]
+      tensor for tensor in func.inputs if tensor not in converted_inputs
+  ]
   not_converted_inputs_map = {
       tensor.name: tensor for tensor in not_converted_inputs
   }
@@ -412,242 +1006,34 @@ def _construct_concrete_function(func, output_graph_def,
   return new_func
 
 
-def _convert_variables_to_constants_v2_impl(func,
-                                            lower_control_flow=True,
-                                            aggressive_inlining=False):
-  """Replaces all the variables in a graph with constants of the same values.
+def _replace_variables_by_constants(converter_data):
+  """Replaces variables by constants on a given graph.
 
-  TensorFlow 2.0 function for converting all Variable ops into Const ops holding
-  the same values. This makes it possible to describe the network fully with a
-  single GraphDef file, and allows the removal of a lot of ops related to
-  loading and saving the variables. This function runs Grappler's function
-  inlining optimization in order to return a single subgraph.
-
-  The current implementation only works for graphs that do not contain any
-  control flow or embedding related ops.
-
-  Note that the NodeDefs in the returned GraphDef contains the original node
-  names if they are created by the graph optimization. Converting the GraphDef
-  to concrete function will lose these debug information.
+  Given a _ConverterData instance with converted variables in its tensor_data
+  field, create a new graph where the respective variables are replaced with the
+  converted constants.
 
   Args:
-    func: ConcreteFunction.
-    lower_control_flow: Boolean indicating whether or not to lower control flow
-      ops such as If and While. (default True)
-    aggressive_inlining: Inlining functions with stateful ops might lead to
-      undefined execution if function call doesn't have an outgoing control
-      edge and control outputs (they should be added automatically in TFv2).
-      Aggressive mode disables safety checks in Grappler function optimizer.
+    converter_data: A pre-populated _ConverterData instance.
 
   Returns:
-    GraphDef containing a simplified version of the original and converted
-    input indices that were converted to constants.
+    The converted graph.
   """
-  # Inline the graph in order to remove functions when possible.
-  graph_def = _run_inline_graph_optimization(func, lower_control_flow,
-                                             aggressive_inlining)
+  input_graph = _GraphDef(converter_data.graph_def)
 
-  # Gets list of all node defs include those in the library.
-  node_defs = _get_node_defs_list(graph_def)
+  for tensor_name, tensor_data in converter_data.tensor_data.items():
+    input_graph.nodes[tensor_name].convert_variable_to_constant(
+        None, tensor_data)
 
-  # Get mapping from node name to node.
-  name_to_node = {_get_tensor_name(node.name): node for node in node_defs}
+  converted_graph = input_graph.converted_self().graph_def
 
-  # Get mapping from node name to variable value.
-  tensor_data = _get_tensor_data(func)
+  converted_input_indices = {
+      t.index
+      for t in converter_data.tensor_data.values()
+      if t.index is not None
+  }
 
-  # Get mapping from function name to argument types.
-  function_data = _get_control_flow_function_data(
-      node_defs, tensor_data, name_to_node)
-
-  # Get variable data for all nodes in `node_defs`.
-  reference_variables = {}
-  resource_identities = {}
-  placeholders = {}
-  converted_input_indices = set()
-
-  def _save_placeholder(node_name, dtype):
-    placeholders[node_name] = {
-        "dtype": dtype,
-        "data": tensor_data[node_name]["data"],
-    }
-    converted_input_indices.add(tensor_data[node_name]["index"])
-
-  for node in node_defs:
-    if node.op in _CONDITIONAL_OPS:
-      # Get dtype and data for resource Placeholders.
-      then_func = node.attr["then_branch"].func.name
-      arg_types = function_data[then_func]["types"]
-      for idx, input_tensor in enumerate(node.input[1:]):
-        input_name = _get_tensor_name(input_tensor)
-        if input_name in tensor_data:
-          dtype = attr_value_pb2.AttrValue(type=arg_types[idx])
-          _save_placeholder(_get_tensor_name(input_tensor), dtype)
-    elif node.op in _LOOP_OPS:
-      # Get dtype and data for resource Placeholders.
-      cond_func = node.attr["cond"].func.name
-      arg_types = function_data[cond_func]["types"]
-      for idx, input_tensor in enumerate(node.input):
-        input_name = _get_tensor_name(input_tensor)
-        if input_name in tensor_data:
-          dtype = attr_value_pb2.AttrValue(type=arg_types[idx])
-          _save_placeholder(_get_tensor_name(input_tensor), dtype)
-    elif (node.op == "Identity" and node.attr["T"].type == dtypes.resource and
-          name_to_node[_get_tensor_name(node.input[0])].op in _LOOP_OPS):
-      # Store the dtype for Identity resource ops that are outputs of While ops.
-      while_node = name_to_node[_get_tensor_name(node.input[0])]
-      body_func = while_node.attr["body"].func.name
-      input_data = node.input[0].split(":")
-      idx = 0 if len(input_data) == 1 else int(input_data[1])
-
-      dtype = attr_value_pb2.AttrValue(
-          type=function_data[body_func]["types"][idx])
-      resource_identities[node.name] = dtype
-    elif node.op == "VariableV2":
-      # Get data for VariableV2 ops (reference variables) that cannot be lifted.
-      with func.graph.as_default():
-        identity_node = array_ops.identity(
-            func.graph.as_graph_element(node.name + ":0"))
-      reference_variables[node.name] = (
-          func.prune([], [identity_node.name])()[0])
-    elif node.name in tensor_data and not tensor_data[node.name]["is_variable"]:
-      # Get dtype and data for non-variable Placeholders (ex. values for 1.X
-      # Const ops that are loaded as Placeholders in 2.0)
-      _save_placeholder(node.name, node.attr["dtype"])
-    elif node.op in ["ReadVariableOp", "ResourceGather", "ResourceGatherNd"]:
-      # Get dtype and data for Placeholder ops associated with ReadVariableOp
-      # and ResourceGather ops. There can be an Identity in between the
-      # resource op and Placeholder. Store the dtype for the Identity ops.
-      input_name = _get_tensor_name(node.input[0])
-      while name_to_node[input_name].op == "Identity":
-        resource_identities[input_name] = node.attr["dtype"]
-        input_name = _get_tensor_name(name_to_node[input_name].input[0])
-      if name_to_node[input_name].op != "Placeholder":
-        raise ValueError("Cannot find the Placeholder op that is an input "
-                         "to the ReadVariableOp.")
-      _save_placeholder(input_name, node.attr["dtype"])
-
-  # Reconstruct the graph with constants in place of variables.
-  output_graph_def = graph_pb2.GraphDef()
-
-  for input_node in graph_def.node:
-    output_node = output_graph_def.node.add()
-    # Convert VariableV2 ops to Const ops.
-    if input_node.name in reference_variables:
-      data = reference_variables[input_node.name]
-      dtype = attr_value_pb2.AttrValue(type=data.dtype.as_datatype_enum)
-      _populate_const_op(output_node, input_node.name, dtype, data.numpy(),
-                         data.shape)
-    # Convert Placeholder ops to Const ops.
-    elif input_node.name in placeholders:
-      data = placeholders[input_node.name]["data"]
-      dtype = placeholders[input_node.name]["dtype"]
-      _populate_const_op(output_node, input_node.name, dtype, data, data.shape)
-    # Update the dtype for Identity ops that are inputs to ReadVariableOps.
-    elif input_node.name in resource_identities:
-      output_node.CopyFrom(input_node)
-      output_node.attr["T"].CopyFrom(resource_identities[input_node.name])
-    # Convert ReadVariableOps to Identity ops.
-    elif input_node.op == "ReadVariableOp":
-      _populate_identity_op(output_node, input_node)
-    # Convert ResourceGather to Gather ops with a Const axis feeding into it.
-    elif input_node.op == "ResourceGather":
-      if input_node.attr["batch_dims"].i != 0:
-        raise ValueError("batch_dims != 0 is not supported by freeze_graph.")
-      output_axis_node = output_graph_def.node.add()
-      axis_node_name = input_node.name + "/axis"
-      axis_dtype = input_node.attr["Tindices"]
-      axis_data = np.array(input_node.attr["batch_dims"].i)
-      _populate_const_op(output_axis_node, axis_node_name, axis_dtype,
-                         axis_data, axis_data.shape)
-
-      output_node.op = "GatherV2"
-      output_node.name = input_node.name
-      output_node.input.extend(
-          [input_node.input[0], input_node.input[1], axis_node_name])
-      output_node.attr["Tparams"].CopyFrom(input_node.attr["dtype"])
-      output_node.attr["Tindices"].CopyFrom(input_node.attr["Tindices"])
-      output_node.attr["Taxis"].CopyFrom(axis_dtype)
-      if "_class" in input_node.attr:
-        output_node.attr["_class"].CopyFrom(input_node.attr["_class"])
-    elif input_node.op == "ResourceGatherNd":
-      output_node.op = "GatherNd"
-      output_node.name = input_node.name
-      output_node.input.extend(
-          [input_node.input[0], input_node.input[1]])
-      output_node.attr["Tparams"].CopyFrom(input_node.attr["dtype"])
-      output_node.attr["Tindices"].CopyFrom(input_node.attr["Tindices"])
-      if "_class" in input_node.attr:
-        output_node.attr["_class"].CopyFrom(input_node.attr["_class"])
-    # Update the function names and argument types for the conditional ops.
-    elif input_node.op in _CONDITIONAL_OPS:
-      _populate_if_op(output_node, input_node, function_data)
-    elif input_node.op in _LOOP_OPS:
-      _populate_while_op(output_node, input_node, function_data)
-    else:
-      output_node.CopyFrom(input_node)
-
-  # Add functions to reconstructed graph.
-  if graph_def.library:
-    library = output_graph_def.library
-
-    for input_library_func in graph_def.library.function:
-      orig_func_name = input_library_func.signature.name
-      new_func_name = _get_new_function_name(orig_func_name)
-
-      # Do not copy any functions that aren't being used in the graph. Any
-      # functions that are not used by control flow should have been inlined.
-      if orig_func_name not in function_data:
-        continue
-
-      output_library_func = library.function.add()
-      for key, value in input_library_func.ret.items():
-        output_library_func.ret[key] = value
-      for key, value in input_library_func.control_ret.items():
-        output_library_func.control_ret[key] = value
-
-      # Update the input types in the function signature. Update the output
-      # types for functions that are while loop bodies.
-      output_library_func.signature.CopyFrom(input_library_func.signature)
-      output_library_func.signature.name = new_func_name
-      for dtype, arg in zip(function_data[orig_func_name]["types"],
-                            output_library_func.signature.input_arg):
-        arg.type = dtype
-      if function_data[orig_func_name]["is_also_output_type"]:
-        for dtype, arg in zip(function_data[orig_func_name]["types"],
-                              output_library_func.signature.output_arg):
-          arg.type = dtype
-
-      # Update the NodeDefs.
-      func_variables = {
-          node.name: node.input[0]
-          for node in input_library_func.node_def
-          if node.op == "ReadVariableOp"
-      }
-
-      for input_node in input_library_func.node_def:
-        output_node = output_library_func.node_def.add()
-        # Convert ReadVariableOps to Identity ops.
-        if input_node.op == "ReadVariableOp":
-          _populate_identity_op(output_node, input_node)
-        # Update the function names and argument types for the conditional ops.
-        elif input_node.op in _CONDITIONAL_OPS:
-          _populate_if_op(output_node, input_node, function_data)
-        elif input_node.op in _LOOP_OPS:
-          _populate_while_op(output_node, input_node, function_data)
-        else:
-          output_node.CopyFrom(input_node)
-          # Convert :value to :output for ops that use the ReadVariableOp.
-          for idx, full_name in enumerate(input_node.input):
-            input_name = _get_tensor_name(full_name)
-            if input_name in func_variables:
-              full_name_parts = full_name.split(":")
-              full_name_parts[1] = "output"
-              input_name = ":".join(full_name_parts)
-              output_node.input[idx] = input_name
-
-  output_graph_def.versions.CopyFrom(graph_def.versions)
-  return (output_graph_def, converted_input_indices)
+  return converted_graph, converted_input_indices
 
 
 def convert_variables_to_constants_v2(func,
@@ -675,9 +1061,17 @@ def convert_variables_to_constants_v2(func,
   Returns:
     ConcreteFunction containing a simplified version of the original.
   """
-  output_graph_def, converted_inputs = _convert_variables_to_constants_v2_impl(
-      func, lower_control_flow, aggressive_inlining)
-  return _construct_concrete_function(func, output_graph_def, converted_inputs)
+
+  converter_data = _FunctionConverterData(
+      func=func,
+      lower_control_flow=lower_control_flow,
+      aggressive_inlining=aggressive_inlining)
+
+  output_graph_def, converted_input_indices = _replace_variables_by_constants(
+      converter_data=converter_data)
+
+  return _construct_concrete_function(func, output_graph_def,
+                                      converted_input_indices)
 
 
 def convert_variables_to_constants_v2_as_graph(func,
@@ -702,7 +1096,51 @@ def convert_variables_to_constants_v2_as_graph(func,
     the intermediate GraphDef containing the node debug information for the
     transformations in the frozen phase.
   """
-  graph_def, converted_inputs = _convert_variables_to_constants_v2_impl(
-      func, lower_control_flow, aggressive_inlining)
-  frozen_func = _construct_concrete_function(func, graph_def, converted_inputs)
-  return frozen_func, graph_def
+  converter_data = _FunctionConverterData(
+      func=func,
+      lower_control_flow=lower_control_flow,
+      aggressive_inlining=aggressive_inlining)
+
+  output_graph_def, converted_input_indices = _replace_variables_by_constants(
+      converter_data=converter_data)
+
+  frozen_func = _construct_concrete_function(func, output_graph_def,
+                                             converted_input_indices)
+  return frozen_func, output_graph_def
+
+
+def convert_variables_to_constants_from_session_graph(
+    session,
+    graph_def,
+    output_node_names,
+    variable_names_whitelist=None,
+    variable_names_blacklist=None):
+  """Replaces all the variables in a graph with constants of the same values.
+
+  This function works similarly to convert_variables_to_constants_v2, but it
+  retrieves the constant values from a Session instead of from a
+  ConcreteFunction. This is useful when converting graphs generated from
+  TensorFlow V1, where ConcreteFunctions are not available. This also differs
+  from graph_util.convert_variables_to_constants in that it supports resource
+  variables when V2 control flow constructions are present.
+
+  Args:
+    session: Active TensorFlow session containing the variables.
+    graph_def: A GraphDef to convert.
+    output_node_names: List of name strings for the result nodes of the graph.
+    variable_names_whitelist: The set of variable names to convert (by default,
+      all variables are converted).
+    variable_names_blacklist: The set of variable names to omit converting to
+      constants.
+
+  Returns:
+    An optimized GraphDef.
+  """
+  graph_def, _ = _replace_variables_by_constants(
+      converter_data=_SessionConverterData(
+          session=session,
+          graph_def=graph_def,
+          output_node_names=output_node_names,
+          variable_names_whitelist=variable_names_whitelist,
+          variable_names_blacklist=variable_names_blacklist))
+  return graph_def

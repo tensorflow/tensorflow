@@ -138,6 +138,13 @@ static bool OperatorWritersMain(raw_ostream& os, RecordKeeper& records) {
   os << "  xla::XlaScopedShardingAssignment sharding(lowering_context.builder, "
         "CreateOpShardingFromAttribute(op));\n\n";
 
+  // Create a scoped object to assign frontend attributes to generated XLA ops.
+  // Any HLO can have an attribute of "frontend_attributes", which are used to
+  // pass hints / configuration options.
+  os << "  xla::XlaScopedFrontendAttributesAssignment "
+        "frontend_attributes(lowering_context.builder, "
+        "CreateOpFrontendAttributesFromAttribute(op));\n\n";
+
   // Retrieve all the definitions derived from HLO_Op and sort by record name.
   for (const auto* def : records.getAllDerivedDefinitions("HLO_Op")) {
     // Skip operations that have a custom exporter.

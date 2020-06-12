@@ -263,7 +263,8 @@ class LogicalDevice(
 @tf_export("config.LogicalDeviceConfiguration",
            "config.experimental.VirtualDeviceConfiguration")
 class LogicalDeviceConfiguration(
-    collections.namedtuple("LogicalDeviceConfiguration", ["memory_limit"])):
+    collections.namedtuple("LogicalDeviceConfiguration",
+                           ["memory_limit", "experimental_priority"])):
   """Configuration class for a logical devices.
 
   The class specifies the parameters to configure a `tf.config.PhysicalDevice`
@@ -276,10 +277,15 @@ class LogicalDeviceConfiguration(
   Fields:
     memory_limit: (optional) Maximum memory (in MB) to allocate on the virtual
       device. Currently only supported for GPUs.
+    experimental_priority: (optional) Priority to assign to a virtual device.
+      Lower values have higher priorities and 0 is the default.
+      Within a physical GPU, the GPU scheduler will prioritize ops on virtual
+      devices with higher priority. Currently only supported for Nvidia GPUs.
   """
 
-  def __new__(cls, memory_limit=None):
-    return super(LogicalDeviceConfiguration, cls).__new__(cls, memory_limit)
+  def __new__(cls, memory_limit=None, experimental_priority=None):
+    return super(LogicalDeviceConfiguration,
+                 cls).__new__(cls, memory_limit, experimental_priority)
 
 
 @tf_export("config.PhysicalDevice")
@@ -434,6 +440,7 @@ class Context(object):
 
     self._device_lock = threading.Lock()
     self._physical_devices = None
+    self._physical_device_to_index = None
     self._visible_device_list = []
     self._memory_growth_map = None
     self._virtual_device_map = {}
@@ -1019,12 +1026,19 @@ class Context(object):
       if self._virtual_device_map:
         vdevs = self._virtual_device_map.get(dev, [])
         device_limits = []
+        priority = []
         for virt_dev in vdevs:
           device_limits.append(virt_dev.memory_limit)
+          if virt_dev.experimental_priority is not None:
+            priority.append(virt_dev.experimental_priority)
+        # If priority is specified, it must be specified for all virtual
+        # devices.
+        if priority and len(device_limits) != len(priority):
+          raise ValueError("priority must be specified for all virtual devices")
 
         virtual_devices.append(
             config_pb2.GPUOptions.Experimental.VirtualDevices(
-                memory_limit_mb=device_limits))
+                memory_limit_mb=device_limits, priority=priority))
 
     # Only compute growth if virtual devices have not been configured and we
     # have GPUs
@@ -1213,6 +1227,10 @@ class Context(object):
       self._physical_devices = [
           PhysicalDevice(name=d.decode(),
                          device_type=d.decode().split(":")[1]) for d in devs]
+      self._physical_device_to_index = {
+          p: i for i, p in enumerate(self._physical_devices)
+      }
+
       # Construct the visible device list from all physical devices but ignore
       # XLA devices
       self._visible_device_list = [
@@ -1245,6 +1263,37 @@ class Context(object):
       return list(self._physical_devices)
 
     return [d for d in self._physical_devices if d.device_type == device_type]
+
+  def get_device_details(self, device):  # pylint: disable=redefined-outer-name
+    """Returns details about a physical devices.
+
+    Args:
+      device: A `tf.config.PhysicalDevice` returned by
+        `tf.config.list_physical_devices` or `tf.config.get_visible_devices`.
+
+    Returns:
+      A dict with string keys.
+    """
+    if not isinstance(device, PhysicalDevice):
+      raise ValueError("device must be a tf.config.PhysicalDevice, but got: "
+                       "%s" % (device,))
+    if (self._physical_device_to_index is None or
+        device not in self._physical_device_to_index):
+      raise ValueError("The PhysicalDevice must be one obtained from "
+                       "calling `tf.config.list_physical_devices`, but got: "
+                       "%s" % (device,))
+    index = self._physical_device_to_index[device]
+    details = pywrap_tfe.TF_GetDeviceDetails(index)
+
+    # Change compute_capability from a string to a tuple
+    if "compute_capability" in details:
+      try:
+        major, minor = details["compute_capability"].split(".")
+        details["compute_capability"] = (int(major), int(minor))
+      except ValueError:
+        raise RuntimeError("Device returned compute capability an in invalid "
+                           "format: %s" % details["compute_capability"])
+    return details
 
   def _import_config(self):
     """Import config if passed in during construction.
@@ -1394,6 +1443,9 @@ class Context(object):
         if vdev.memory_limit is not None:
           raise ValueError("Setting memory limit on CPU virtual devices is "
                            "currently not supported")
+        if vdev.experimental_priority is not None:
+          raise ValueError("Setting experimental_priority on CPU virtual "
+                           " devices is currently not supported")
     elif dev.device_type == "GPU":
       for vdev in virtual_devices:
         if vdev.memory_limit is None:

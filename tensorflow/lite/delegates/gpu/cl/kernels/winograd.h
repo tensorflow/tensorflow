@@ -59,7 +59,6 @@ class Winograd4x4To36 : public GPUOperation {
   absl::Status BindArguments();
   int3 GetGridSize() const;
 
-  LinearStorage bt_;
   Padding2D padding_;
 
   CLKernel kernel_;

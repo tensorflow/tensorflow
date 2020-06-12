@@ -133,8 +133,8 @@ That step is only needed when using the Hexagon delegate.
 
 ```
 bazel build --config=android_arm64 \
-  tensorflow/lite/experimental/delegates/hexagon/hexagon_nn:libhexagon_interface.so
-adb push bazel-bin/tensorflow/lite/experimental/delegates/hexagon/hexagon_nn/libhexagon_interface.so /data/local/tmp
+  tensorflow/lite/delegates/hexagon/hexagon_nn:libhexagon_interface.so
+adb push bazel-bin/tensorflow/lite/delegates/hexagon/hexagon_nn/libhexagon_interface.so /data/local/tmp
 adb push libhexagon_nn_skel*.so /data/local/tmp
 ```
 

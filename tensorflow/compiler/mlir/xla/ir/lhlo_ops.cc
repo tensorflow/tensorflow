@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h.inc"
 
 namespace mlir {
+#include "tensorflow/compiler/mlir/xla/ir/lhlo_structs.cc.inc"
 namespace xla_lhlo {
 
 XlaLhloDialect::XlaLhloDialect(MLIRContext *context)
@@ -53,6 +54,36 @@ XlaLhloDialect::XlaLhloDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.cc.inc"
       >();
+}
+
+//===----------------------------------------------------------------------===//
+// StaticMemRefCastOp
+//===----------------------------------------------------------------------===//
+
+Value StaticMemRefCastOp::getViewSource() { return *getODSOperands(0).begin(); }
+
+static LogicalResult Verify(StaticMemRefCastOp op) {
+  if (!op.operand().getType().cast<ShapedType>().hasStaticShape())
+    return op.emitOpError("operand must have static shape");
+  if (!op.getType().hasStaticShape())
+    return op.emitOpError("result must have static shape");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// DynamicMemRefCastOp
+//===----------------------------------------------------------------------===//
+
+Value DynamicMemRefCastOp::getViewSource() {
+  return *getODSOperands(0).begin();
+}
+
+static LogicalResult Verify(DynamicMemRefCastOp op) {
+  // Check if `sizes` and `strides` args are compatible with the result type.
+  if (op.sizes().size() != op.getType().getRank())
+    return op.emitOpError(
+        "`sizes` args count must be equal to the rank of the output memref");
+  return success();
 }
 
 #define GET_OP_CLASSES

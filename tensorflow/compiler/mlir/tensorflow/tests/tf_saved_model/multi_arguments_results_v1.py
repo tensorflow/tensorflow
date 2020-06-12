@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-# RUN: %p/multi_arguments_results_v1 | FileCheck -dump-input-on-failure %s
+# RUN: %p/multi_arguments_results_v1 | FileCheck %s
 
 # pylint: disable=missing-docstring,line-too-long
 from __future__ import absolute_import

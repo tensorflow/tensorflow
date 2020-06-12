@@ -49,7 +49,7 @@ _TF_BAZELRC_FILENAME = '.tf_configure.bazelrc'
 _TF_WORKSPACE_ROOT = ''
 _TF_BAZELRC = ''
 _TF_CURRENT_BAZEL_VERSION = None
-_TF_MIN_BAZEL_VERSION = '2.0.0'
+_TF_MIN_BAZEL_VERSION = '3.1.0'
 _TF_MAX_BAZEL_VERSION = '3.99.0'
 
 NCCL_LIB_PATHS = [
@@ -1038,7 +1038,7 @@ def set_tf_cuda_compute_capabilities(environ_cp):
           print('Invalid compute capability: %s' % compute_capability)
           all_valid = False
         else:
-          ver = int(m.group(2))
+          ver = int(sm_compute_match.group(2))
           if ver < 30:
             print(
                 'ERROR: TensorFlow only supports small CUDA compute'

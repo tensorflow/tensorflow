@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import copy
 import itertools
 import os
 
@@ -30,6 +31,7 @@ from tensorflow.python import tf2
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import packed_distributed_variable as packed
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute import tpu_values
@@ -39,6 +41,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
@@ -335,6 +338,20 @@ class DistributedDelegateTest(test.TestCase):
     self.assertEqual(7, abs(v))
     with self.assertRaises(TypeError):
       _ = v[2]
+
+  @test_util.run_in_graph_and_eager_modes
+  def testCopy(self):
+
+    class Foo(object):
+
+      def __init__(self, x):
+        self.x = x
+
+    v = values.DistributedDelegate((Foo(7), Foo(8)))
+    v_shallow_copy = copy.copy(v)
+    self.assertEqual(v.x, v_shallow_copy.x)
+    v_deep_copy = copy.deepcopy(v)
+    self.assertEqual(v.x, v_deep_copy.x)
 
 
 def _device_str(d):
@@ -687,6 +704,29 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
               context.executing_eagerly()):
         self.evaluate(
             distribution.experimental_local_results(distribution.run(assign)))
+
+  def testPackedVariable(self, distribution, synchronization, aggregation):
+    if context.num_gpus() > 1:
+      self.skipTest("b/158767088")
+    with distribution.scope():
+      v0 = variables_lib.Variable(
+          0., synchronization=synchronization, aggregation=aggregation)
+    self.assertEqual(v0._packed_var, None)
+
+    device_type = device.DeviceSpec.from_string(v0._devices[0]).device_type
+    for d in v0._devices:
+      if device.DeviceSpec.from_string(d).device_type != device_type:
+        self.skipTest("Packing variables on devices of different types "
+                      "is not supported yet.")
+
+    distribution._enable_packed_variable_in_eager_mode = True
+    with distribution.scope():
+      v1 = variables_lib.Variable(
+          0., synchronization=synchronization, aggregation=aggregation)
+    if ops.executing_eagerly_outside_functions():
+      self.assertIsInstance(v1._packed_var, packed.PackedDistributedVariable)
+    else:
+      self.assertEqual(v1._packed_var, None)
 
 
 class MirroredVariableTest(test.TestCase, parameterized.TestCase):

@@ -123,7 +123,6 @@ bool HasSameStaticShapes(Operation* op) {
 // operands are properly supported in declarative rewrite rule specification.
 
 DECL_CONVERT_OP(Assert);
-DECL_CONVERT_OP(Concat);
 DECL_CONVERT_OP(ConcatV2);
 DECL_CONVERT_OP(MatMul);
 DECL_CONVERT_OP(MatrixDiagV2);
@@ -182,25 +181,6 @@ LogicalResult ConvertTFRandomUniformOp::matchAndRewrite(
     }
   }
   return failure();
-}
-
-LogicalResult ConvertTFConcatOp::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  auto tf_concat_op = cast<TF::ConcatOp>(op);
-
-  auto values = tf_concat_op.values();
-  auto output_type = tf_concat_op.output().getType();
-  // Extract axis attribute from constant concat_dims tensor
-  ElementsAttr axis;
-  if (!matchPattern(tf_concat_op.concat_dim(), m_Constant(&axis)))
-    return failure();
-
-  StringAttr fused_activation_function =
-      StringAttr::get("NONE", rewriter.getContext());
-  rewriter.replaceOpWithNewOp<TFL::ConcatenationOp>(
-      op, output_type, values, mlir::TFL::ExtractSingleElementAsInteger(axis),
-      fused_activation_function);
-  return success();
 }
 
 // Converts any IntegerAttr to an IntegerAttr of an i32 type.
@@ -756,12 +736,12 @@ void LegalizeTF::runOnFunction() {
 
   // Add the generated patterns to the list.
   populateWithGenerated(context, &patterns);
-  patterns.insert<ConvertTFConcatOp, ConvertTFConcatV2Op, ConvertTFMatMulOp,
-                  ConvertTFMatrixDiagV2Op, ConvertTFMatrixDiagV3Op,
-                  ConvertTFPackOp, ConvertTFReshapeOp, ConvertTFSplitOp,
-                  ConvertTFSplitVOp, ConvertTFStridedSliceOp, ConvertTFUnpackOp,
-                  ConvertTFAssertOp, ConvertTFReciprocalOp,
-                  ConvertTFRandomUniformOp, ConvertTFBroadcastToOp>(context);
+  patterns
+      .insert<ConvertTFConcatV2Op, ConvertTFMatMulOp, ConvertTFMatrixDiagV2Op,
+              ConvertTFMatrixDiagV3Op, ConvertTFPackOp, ConvertTFReshapeOp,
+              ConvertTFSplitOp, ConvertTFSplitVOp, ConvertTFStridedSliceOp,
+              ConvertTFUnpackOp, ConvertTFAssertOp, ConvertTFReciprocalOp,
+              ConvertTFRandomUniformOp, ConvertTFBroadcastToOp>(context);
 
   // Ophint python converter converted tf node pattern.
   patterns.insert<LegalizeUnidirectionalSequenceLstm,

@@ -462,6 +462,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_seed",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:sendrecv_ops_gen",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
@@ -803,6 +804,7 @@ cuda_py_test(
     name = "def_function_test",
     srcs = ["def_function_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":def_function",
         "//tensorflow/python:client_testlib",

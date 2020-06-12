@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -verify-diagnostics | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -split-input-file -verify-diagnostics | FileCheck %s
 
 // Tests for TensorFlow ops with custom verifiers.
 
@@ -22,32 +22,6 @@ func @opaquetensorattr() -> () {
   "tf.opaqueStringTensor"(){bar = opaque<"tf", "0x68656C6C6F"> : tensor<2x1x4x!tf.string>} : () -> ()
 // CHECK: "tf.opaqueResourceTensor"() {bar = opaque<"tf", "0x68656C6C6F"> : tensor<2x1x4x!tf.resource>} : () -> ()
   "tf.opaqueResourceTensor"(){bar = opaque<"tf", "0x68656C6C6F"> : tensor<2x1x4x!tf.resource>} : () -> ()
-  return
-}
-
-//===--------------------------------------------------------------------===//
-//  Test raw TF operations (_tf.*)
-//===--------------------------------------------------------------------===//
-
-// Test of parsing !tf.resource type
-// CHECK-LABEL: func @testTFResource(%arg0: !tf.resource)
-func @testTFResource(!tf.resource) -> () {
-^bb0(%arg0: !tf.resource):
-  // CHECK: %0:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_Resource", name = "Const"} : () -> (tensor<*x!tf.resource>, !_tf.control)
-  %0:2 = "_tf.Const"() {device = "", name = "Const", dtype = "tfdtype$DT_Resource"} : () -> (tensor<*x!tf.resource>, !_tf.control)
-  // CHECK: %1 = "_tf.AssignAddVariableOp"(%arg0, %0#0) {device = "", name = "AssignAddVariableOp"} : (!tf.resource, tensor<*x!tf.resource>) -> !_tf.control
-  %1 = "_tf.AssignAddVariableOp"(%arg0, %0#0) {device = "", name = "AssignAddVariableOp"} : (!tf.resource, tensor<*x!tf.resource>) -> !_tf.control
-  return
-}
-
-// Test of parsing !tf.variant type
-// CHECK-LABEL: func @testTFVariant(%arg0: tensor<*x!tf.variant>)
-func @testTFVariant(tensor<*x!tf.variant>) -> () {
-^bb0(%arg0: tensor<*x!tf.variant>):
-  // CHECK: %0:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_VARIANT", name = "Const"} : () -> (!tf.variant, !_tf.control)
-  %0:2 = "_tf.Const"() {device = "", name = "Const", dtype = "tfdtype$DT_VARIANT"} : () -> (!tf.variant, !_tf.control)
-  // CHECK: %1 = "_tf.AssignAddVariableOp"(%arg0, %0#0) {device = "", name = "AssignAddVariableOp"} : (tensor<*x!tf.variant>, !tf.variant) -> !_tf.control
-  %1 = "_tf.AssignAddVariableOp"(%arg0, %0#0) {device = "", name = "AssignAddVariableOp"} : (tensor<*x!tf.variant>, !tf.variant) -> !_tf.control
   return
 }
 
@@ -1071,6 +1045,41 @@ func @testIfRegionThenConsumingElse(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> 
       // expected-note @+1 {{operand defined here}}
       %t = "tf.Acos"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
       "tf.Yield"(%t) : (tensor<2xf32>) -> ()
+    }) { is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
+
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
+// The regions for IfRegion themselves cannot have any arguments
+func @testInvalidIfRegionThenArg(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  %neg = "tf.Neg"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+  // expected-error @+1 {{then region cannot have any arguments}}
+  %0 = "tf.IfRegion"(%arg0) ({
+     ^bb(%arg_bb: tensor<2xf32>):
+     %t = "tf.Abs"(%arg_bb) : (tensor<2xf32>) -> tensor<2xf32>
+     "tf.Yield"(%t) : (tensor<2xf32>) -> ()
+    }, {
+     %e = "tf.Acos"(%neg) : (tensor<2xf32>) -> tensor<2xf32>
+     "tf.Yield"(%e) : (tensor<2xf32>) -> ()
+    }) { is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
+
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
+func @testInvalidIfRegionElseArg(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  %neg = "tf.Neg"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+  // expected-error @+1 {{else region cannot have any arguments}}
+  %0 = "tf.IfRegion"(%arg0) ({
+     %t = "tf.Abs"(%neg) : (tensor<2xf32>) -> tensor<2xf32>
+     "tf.Yield"(%t) : (tensor<2xf32>) -> ()
+    }, {
+     ^bb(%arg_bb: tensor<2xf32>):
+     %e = "tf.Acos"(%arg_bb) : (tensor<2xf32>) -> tensor<2xf32>
+     "tf.Yield"(%e) : (tensor<2xf32>) -> ()
     }) { is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
 
   return %0 : tensor<2xf32>

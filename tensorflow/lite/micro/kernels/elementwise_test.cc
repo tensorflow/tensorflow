@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/debug_log.h"
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
@@ -36,8 +36,8 @@ void TestElementwiseFloat(tflite::BuiltinOperator op,
   constexpr int output_size = 1;
   constexpr int tensors_size = input_size + output_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims, "input_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor")};
+      CreateFloatTensor(input_data, input_dims),
+      CreateFloatTensor(output_data, output_dims)};
 
   // Place a unique value in the uninitialized output buffer.
   for (int i = 0; i < output_dims_count; ++i) {
@@ -46,9 +46,8 @@ void TestElementwiseFloat(tflite::BuiltinOperator op,
 
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  tflite::ops::micro::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(op, /* version= */ 1);
+  tflite::AllOpsResolver resolver;
+  const TfLiteRegistration* registration = resolver.FindOp(op);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   void* user_data = nullptr;
@@ -102,8 +101,8 @@ void TestElementwiseBool(tflite::BuiltinOperator op,
   constexpr int output_size = 1;
   constexpr int tensors_size = input_size + output_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateBoolTensor(input_data, input_dims, "input_tensor"),
-      CreateBoolTensor(output_data, output_dims, "output_tensor")};
+      CreateBoolTensor(input_data, input_dims),
+      CreateBoolTensor(output_data, output_dims)};
 
   // Place false in the uninitialized output buffer.
   for (int i = 0; i < output_dims_count; ++i) {
@@ -112,9 +111,8 @@ void TestElementwiseBool(tflite::BuiltinOperator op,
 
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  tflite::ops::micro::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(op, /* version= */ 1);
+  tflite::AllOpsResolver resolver;
+  const TfLiteRegistration* registration = resolver.FindOp(op);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   void* user_data = nullptr;

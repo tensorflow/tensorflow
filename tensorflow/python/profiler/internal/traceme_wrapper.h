@@ -34,13 +34,15 @@ class TraceMeWrapper {
   // pybind11::str and pybind11::kwargs are taken by const reference to avoid
   // python reference-counting overhead.
   TraceMeWrapper(const pybind11::str& name, const pybind11::kwargs& kwargs)
-      : traceme_([&]() {
-          std::string name_and_metadata(name);
-          if (!kwargs.empty()) {
-            AppendMetadata(&name_and_metadata, kwargs);
-          }
-          return name_and_metadata;
-        }) {}
+      : traceme_(
+            [&]() {
+              std::string name_and_metadata(name);
+              if (!kwargs.empty()) {
+                AppendMetadata(&name_and_metadata, kwargs);
+              }
+              return name_and_metadata;
+            },
+            /*level=*/1) {}
 
   // pybind11::kwargs is taken by const reference to avoid python
   // reference-counting overhead.

@@ -26,6 +26,7 @@ include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops_base.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_utils.td"
+include "tensorflow/compiler/mlir/xla/ir/infer_fusibility_op_interface.td"
 
 def HLO_Dialect : Dialect {
   let name = "xla_hlo";
@@ -79,6 +80,25 @@ def HLO_IotaOp : HLO_Op<"iota", [NoSideEffect]>, BASE_HLO_IotaOp {
   let hasCustomHLOConverter = 1;
 }
 
+def HLO_DynamicIotaOp: HLO_Op<"dynamic_iota", [NoSideEffect]> {
+  let summary = "Create linear increasing values from 0 to length -1.";
+  let description = [{
+    Produces an HLO Tensor of the specified shape, with an incremental set of
+    values along the specified dimension starting at 0.
+
+    Requires:
+    - The output length of the tensor result.
+  }];
+
+  let arguments = (ins HLO_DimensionTensor:$output_shape, I64Attr:$iota_dimension);
+  let results = (outs HLO_Tensor:$result);
+
+  let hasCanonicalizer = 1;
+  // Cannot be exported to legacy formats.
+  let hasCustomHLOConverter = 1;
+}
+
+
 def HLO_CreateTokenOp : HLO_Op<"create_token", [NoSideEffect]> {
   string summary = "Create Token operator";
 
@@ -98,7 +118,7 @@ def HLO_CreateTokenOp : HLO_Op<"create_token", [NoSideEffect]> {
 
 class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
       Type TensorType>: HLO_Op<mnemonic,
-        !listconcat(traits, [InferShapedTypeOpInterface])> {
+        !listconcat(traits, [InferShapedTypeOpInterface, InferFusibilityOpInterface])> {
     let arguments = (ins TensorType:$operand);
     let results = (outs TensorType);
     let extraClassDeclaration = [{
@@ -112,6 +132,12 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
           OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
         return deriveShapeFromFirstOperand(&builder, getOperation(),
                                            &reifiedReturnShapes);
+      }
+      bool inferInputOutputShapeEquality(int input, int output) {
+        return true;
+      }
+      llvm::Optional<Value> inferEffectiveWorkloadShape() {
+        return getOperation()->getResult(0);
       }
     }];
 }
@@ -238,7 +264,7 @@ def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 
 class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
-        HLO_Op<mnemonic, !listconcat(traits, [InferShapedTypeOpInterface])> {
+        HLO_Op<mnemonic, !listconcat(traits, [InferShapedTypeOpInterface, InferFusibilityOpInterface])> {
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs
@@ -255,6 +281,15 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
         OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
       return deriveShapeFromFirstOperand(&builder, getOperation(),
                                          &reifiedReturnShapes);
+    }
+    bool inferInputsShapeEquality(int lhs, int rhs) {
+      return true;
+    }
+    bool inferInputOutputShapeEquality(int input, int output) {
+      return true;
+    }
+    llvm::Optional<Value> inferEffectiveWorkloadShape() {
+      return getOperation()->getResult(0);
     }
   }];
 
@@ -284,14 +319,17 @@ def HLO_ComplexOp: HLO_Op<"complex",
 
 def HLO_DivOp : HLO_BinaryElementwiseOp<"divide",
       [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_DivOp {
+  let hasFolder = 1;
 }
 
 def HLO_MaxOp : HLO_BinaryElementwiseOp<"maximum",
       [Commutative, NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_MaxOp {
+  let hasFolder = 1;
 }
 
 def HLO_MinOp : HLO_BinaryElementwiseOp<"minimum",
       [Commutative, NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_MinOp {
+  let hasFolder = 1;
 }
 
 def HLO_MulOp : HLO_BinaryElementwiseOp<"multiply",
@@ -320,7 +358,7 @@ def HLO_SubOp : HLO_BinaryElementwiseOp<"subtract",
 }
 
 //===----------------------------------------------------------------------===//
-// XLA binary elementwise op definitions.
+// XLA binary logical elementwise op definitions.
 //===----------------------------------------------------------------------===//
 
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
@@ -340,15 +378,6 @@ def HLO_XorOp : HLO_BinaryLogicalElementwiseOp<"xor">, BASE_HLO_XorOp;
 //===----------------------------------------------------------------------===//
 // XLA communication op definitions.
 //===----------------------------------------------------------------------===//
-
-// Represents a unique identifier for each Send/Recv instruction pair or
-// optionally for collective instructions (AllReduce, CollectivePermute,
-// AllToAll). Non-positive channel_id handle is equivalent to no channel id.
-def ChannelHandle : StructAttr<"ChannelHandle", HLO_Dialect, [
-                StructFieldAttr<"handle", I64Attr>,
-                StructFieldAttr<"type", I64Attr>]> {
-  let description = "two 64-bit integers 'handle' and 'type'";
-}
 
 // InfeedOp corresponds to 'InfeedWithToken' xla client API and not 'Infeed'.
 // InfeedWithToken allows ordering of infeed HLO instructions using tokens.
@@ -413,7 +442,7 @@ def HLO_SendOp : HLO_Op<"send", []> {
   let arguments = (ins
     HLO_TensorOrTuple:$operand,
     HLO_Token:$token,
-    ChannelHandle:$channel_id,
+    ChannelHandle<HLO_Dialect>:$channel_id,
     DefaultValuedAttr<BoolAttr, "false">:$is_host_transfer
   );
 
@@ -438,7 +467,7 @@ def HLO_RecvOp : HLO_Op<"recv", []> {
 
   let arguments = (ins
     HLO_Token:$token,
-    ChannelHandle:$channel_id,
+    ChannelHandle<HLO_Dialect>:$channel_id,
     DefaultValuedAttr<BoolAttr, "false">:$is_host_transfer
   );
 
@@ -526,16 +555,8 @@ def HLO_CaseOp: HLO_Op<"case", [RecursiveSideEffects]>,
 
 
 def HLO_WhileOp: HLO_Op<"while", [RecursiveSideEffects,
-                                  SameOperandsAndResultType]> {
-  string summary = "While operator";
-
-  string description = [{
-    Returns the result of executing a body function until the cond body returns
-    true.
-
-    See https://www.tensorflow.org/xla/operation_semantics#while.
-  }];
-
+                                  SameOperandsAndResultType]>,
+                 BASE_HLO_WhileOp {
   let arguments = (ins HLO_TensorOrTuple:$val);
 
   let regions = (region AnyRegion:$cond, AnyRegion:$body);
@@ -552,7 +573,7 @@ def HLO_AllReduceOp : HLO_Op<"all_reduce",
   let arguments = (ins
     HLO_Tensor:$operand,
     I64ElementsAttr:$replica_groups,
-    OptionalAttr<ChannelHandle>:$channel_id
+    OptionalAttr<ChannelHandle<HLO_Dialect>>:$channel_id
   );
   let regions = (region SizedRegion<1>:$computation);
   let results = (outs HLO_Tensor);
@@ -576,7 +597,8 @@ def HLO_AllToAllOp : HLO_Op<"all_to_all",
 def HLO_ReduceOp: HLO_Op<"reduce", [
       RecursiveSideEffects,
       SameVariadicOperandSize,
-      SingleBlockImplicitTerminator<"ReturnOp">
+      SingleBlockImplicitTerminator<"ReturnOp">,
+      InferFusibilityOpInterface
     ]>, BASE_HLO_ReduceOp {
   let arguments = (ins
     Variadic<HLO_TensorOrTuple>:$operands,
@@ -590,6 +612,15 @@ def HLO_ReduceOp: HLO_Op<"reduce", [
     "OpBuilder &, OperationState &state, ValueRange operands, "
     "ValueRange init_values, DenseIntElementsAttr dimensions"
   >];
+
+  let extraClassDeclaration = [{
+    bool isFusibleWithConsumer() {
+      return false;
+    }
+    llvm::Optional<Value> inferEffectiveWorkloadShape() {
+      return getOperation()->getOperand(0);
+    }
+  }];
 
   let hasFolder = 1;
 
@@ -612,7 +643,7 @@ def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]>, BASE_HLO
     I32Attr:$index
   );
 
-  let results = (outs HLO_TensorOrTuple);
+  let results = (outs HLO_TensorOrTokenOrTuple);
 
   let hasFolder = 1;
 
@@ -664,6 +695,7 @@ def HLO_SliceOp: HLO_Op<
 
   let results = (outs HLO_Tensor);
 
+  let hasCanonicalizer = 1;
   let hasFolder = 1;
 
   let builders = [OpBuilder<
@@ -789,23 +821,6 @@ def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_ScalarsToDimensionTensorOp : HLO_Op<"scalars_to_dimension_tensor",
-    [SameOperandsElementType, NoSideEffect]> {
-  string summary = "Converts a sequence of scalars into a 1d tensor.";
-
-  string description = [{
-    This is a useful operation that is currently missing in Standard. Used to
-    compute shape arguments to dynamic operations.
-  }];
-
-  let arguments = (ins Variadic<HLO_DimensionValue>:$scalars);
-  let results = (outs HLO_DimensionTensor);
-
-  // Cannot be exported to legacy formats.
-  let hasCustomHLOConverter = 1;
-  let hasCanonicalizer = 1;
-}
-
 def HLO_DynamicBroadcastInDimOp : HLO_Op<"dynamic_broadcast_in_dim",
       [NoSideEffect]> {
   string summary = "Broadcast a tensor into the given dynamic shape by adding dimensions.";
@@ -855,7 +870,7 @@ def HLO_ClampOp : HLO_Op<"clamp",
 }
 
 def HLO_ConcatenateOp : HLO_Op<"concatenate",
-    [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ConcatenateOp {
+    [NoSideEffect, SameOperandsAndResultElementType, DeclareOpInterfaceMethods<InferTypeOpInterface>]>, BASE_HLO_ConcatenateOp {
 
   let arguments = (ins
     Variadic<HLO_Tensor>:$val,
@@ -1352,6 +1367,29 @@ def HLO_DequantizeOp : HLO_Op<"dequantize", [NoSideEffect]>,
 
   let results = (outs TensorOf<[BF16]>:$output);
 
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_FusionOp : HLO_Op<"fusion", []> {
+  let summary = "Fusion operator";
+  let description = [{
+    Models the fusion instruction.
+
+    A fusion op is consists of a group of basic ops (represented as a region
+    attached to it). It serves as a hint to the backend that it is beneficial
+    to emit the contained ops into a single loop nest or kernel.
+  }];
+  let regions = (region SizedRegion<1>:$fused_computation);
+
+  let arguments = (ins
+    Variadic<HLO_TensorOrTuple>:$operands
+  );
+
+  let results = (outs
+    Variadic<HLO_TensorOrTuple>:$results
+  );
+
+  // FusionOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
 }
 

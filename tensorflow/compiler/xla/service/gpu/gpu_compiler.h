@@ -93,9 +93,13 @@ class GpuCompiler : public LLVMCompiler {
 
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override {
     // Capture just the pointer size, not the entire GpuCompiler object.
-    int64 pointer_size = pointer_size_;
-    return [pointer_size](const Shape& shape) {
-      return ShapeUtil::ByteSizeOf(shape, pointer_size);
+    return [pointer_size = pointer_size_](const Shape& shape) {
+      if (shape.is_static() || shape.IsTuple()) {
+        return ShapeUtil::ByteSizeOf(shape, pointer_size);
+      }
+      // Each dynamic dimension size is represented as a S32.
+      int64 metadata_size = sizeof(int32) * shape.dimensions_size();
+      return ShapeUtil::ByteSizeOf(shape, pointer_size) + metadata_size;
     };
   }
 

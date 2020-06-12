@@ -371,7 +371,233 @@ Status IrEmitterUnnested::HandleConvolution(HloInstruction* convolution) {
   return IrEmitter::HandleConvolution(convolution);
 }
 
+// Input = {dynamic array(with dynamic dimension meta data at the end)}
+// Output = {static array, dynamic_dim0, dynamic_dim1}
+Status IrEmitterUnnested::HandlePadToStatic(HloInstruction* pad_to_static) {
+  int unroll_factor = 1;
+  string ir_name = IrName(pad_to_static);
+  auto kernel_thunk = BuildKernelThunk(pad_to_static,
+                                       /*implements_whole_instruction=*/true,
+                                       /*unroll_factor=*/unroll_factor);
+  // pseudo code for padToStatic on a 2d array
+  //   int* source_array = input[0];
+  //   int* dest_array = output[0];
+  std::vector<llvm::Value*> dynamic_dims;
+  const Shape& data_shape = ShapeUtil::GetSubshape(pad_to_static->shape(), {0});
+  const Shape& input_shape = pad_to_static->operand(0)->shape();
+  llvm_ir::IrArray data_array = GetIrArray(*pad_to_static, *pad_to_static, {0});
+  llvm::Value* source_buffer = GetBasePointer(*pad_to_static->operand(0));
+  llvm::Value* raw_buffer =
+      b_.CreateBitCast(source_buffer, b_.getInt8Ty()->getPointerTo());
+  int64 raw_data_size =
+      ShapeUtil::ByteSizeOf(ShapeUtil::MakeStaticShape(input_shape));
+
+  //   int* dyn_dim0_size = source_array + meta_data_offset;
+  //   int* dyn_dim1_size = source_array + meta_data_offset + sizeof(int);
+  for (int64 i = 1; i < pad_to_static->shape().tuple_shapes_size(); ++i) {
+    // Dynamic size of each dimension is attached at the end of the source
+    // array(operand(0)). We need to extract these value.
+    const Shape& dim_shape =
+        ShapeUtil::GetSubshape(pad_to_static->shape(), {i});
+    TF_RET_CHECK(Shape::Equal()(dim_shape, ShapeUtil::MakeScalarShape(S32)));
+
+    const int64 dim_index = i - 1;
+    llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
+        b_.getInt8Ty(), raw_buffer, raw_data_size + dim_index * sizeof(int32));
+    llvm::Value* dyn_dim_size = b_.CreateLoad(
+        b_.CreateBitCast(metadata, b_.getInt32Ty()->getPointerTo()),
+        "dyn_dim_size");
+    dynamic_dims.push_back(dyn_dim_size);
+  }
+
+  // only one thread need to store the dynamic index
+  //   int thread_id = GetThreadId();
+  //   int block_id = GetBlockId();
+  //   if (thread_id == 0 && block_id == 0) {
+  //     *output[1] = *dyn_dim0_size;
+  //     *output[2] = *dyn_dim1_size;
+  //   }
+  KernelSupportLibrary{&b_}.If("is_thred_0", IsBlock0Thread0(&b_), [&] {
+    for (int64 i = 1; i < pad_to_static->shape().tuple_shapes_size(); ++i) {
+      llvm::Value* dest_dim_size_address = GetBasePointer(*pad_to_static, {i});
+      // output[i] stores dynamic_dim_(i-1)
+      b_.CreateStore(dynamic_dims[i - 1],
+                     b_.CreateBitCast(dest_dim_size_address,
+                                      b_.getInt32Ty()->getPointerTo()));
+    }
+  });
+
+  //     int dyn_element_total = 1;
+  //     dyn_element_total *= *dyn_dim0_size;
+  //     dyn_element_total *= *dyn_dim1_size;
+  llvm::Value* dyn_element_total = llvm::ConstantInt::get(b_.getInt32Ty(), 1);
+  for (llvm::Value* dynamic_dim : dynamic_dims) {
+    dyn_element_total = b_.CreateMul(dyn_element_total, dynamic_dim,
+                                     /*Name=*/"dyn_element_total");
+  }
+
+  //   linear_index = block_id * thread_per_block + thread_id;
+  //   if (linear_index < max_num_element) {
+  //     Index static_index =
+  //         delinerized(linerized_index, static_dim0_size, static_dim1_size);
+  //     if (linerized_index < dyn_element_total) {
+  //       Index dyn_index =
+  //           delinerized(linerized_index, *dyn_dim0_size, *dyn_dim1_size);
+  //       dest_array[dyn_index.dim0][dyn_index.dim1] =
+  //           source_array[static_index.dim0][static_index.dim1];
+  //     }
+  //   }
+  llvm_ir::LoopEmitter::BodyEmitter body_generator =
+      [&](const llvm_ir::IrArray::Index& array_index) -> Status {
+    llvm::Value* linearIndex =
+        array_index.Linearize(input_shape.dimensions(), &b_);
+    auto if_in_dyn_bounds = llvm_ir::EmitIfThenElse(
+        b_.CreateICmpULT(linearIndex, dyn_element_total),
+        llvm_ir::IrName(ir_name, "in_dyn_bounds"), &b_, false);
+    // Set IR builder insertion point to the body of the if structure.
+    llvm_ir::SetToFirstInsertPoint(if_in_dyn_bounds.true_block, &b_);
+    llvm_ir::IrArray::Index dyn_index(linearIndex, input_shape,
+                                      absl::MakeSpan(dynamic_dims), &b_);
+    data_array.EmitWriteArrayElement(
+        dyn_index,
+        GetIrArray(*pad_to_static->operand(0), *pad_to_static)
+            .EmitReadArrayElement(array_index, &b_, /*name=*/""),
+        &b_, /*use_linear_index=*/false);
+    return Status::OK();
+  };
+
+  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
+      input_shape, ir_emitter_context_->device_description(), unroll_factor);
+  UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
+                         ir_emitter_context_->llvm_module());
+  TF_RETURN_IF_ERROR(
+      ParallelLoopEmitter(body_generator, data_shape, launch_dimensions, &b_,
+                          unroll_factor)
+          .EmitLoop(ir_name,
+                    GetIndexTypeForKernel(
+                        pad_to_static, launch_dimensions.launch_bound(), &b_)));
+  thunk_sequence_->emplace_back(std::move(kernel_thunk));
+  return Status::OK();
+}
+
+// Input = {dynamic array(with dynamic dimension meta data at the end)}
+// Output = {static array, dynamic_dim0, dynamic_dim1}
+Status IrEmitterUnnested::HandleSliceToDynamic(
+    HloInstruction* slice_to_dynamic) {
+  int unroll_factor = 1;
+  string ir_name = IrName(slice_to_dynamic);
+  auto kernel_thunk = BuildKernelThunk(slice_to_dynamic,
+                                       /*implements_whole_instruction=*/true,
+                                       /*unroll_factor=*/unroll_factor);
+
+  std::vector<llvm::Value*> dynamic_dims;
+  const Shape& input_shape = slice_to_dynamic->operand(0)->shape();
+  const Shape& data_shape = slice_to_dynamic->shape();
+  int32 raw_data_size = ShapeUtil::ByteSizeOf(
+      ShapeUtil::MakeStaticShape(slice_to_dynamic->shape()));
+  // pseudo code for sliceToDynamic on a 2d array
+  //   int* source_array = input[0];
+  //   int* dest_array = output[0];
+  llvm::Value* dest_buffer = GetBasePointer(*slice_to_dynamic);
+  llvm::Value* raw_buffer =
+      b_.CreateBitCast(dest_buffer, b_.getInt8Ty()->getPointerTo());
+  llvm_ir::IrArray data_array =
+      GetIrArray(*slice_to_dynamic, *slice_to_dynamic);
+
+  // calculate the location where metadata needs to be inserted
+  //   int* dyn_dim0_size = dest_array + meta_data_offset;
+  //   int* dyn_dim1_size = dest_array + meta_data_offset + sizeof(int);
+  for (int64 i = 1; i < slice_to_dynamic->operand_count(); ++i) {
+    // const int64 dim_index = i - 1;
+    llvm::Value* source_buffer = GetBasePointer(*slice_to_dynamic->operand(i));
+    llvm::LoadInst* dyn_dim_size = b_.CreateLoad(source_buffer, "dyn_dim_size");
+    dynamic_dims.push_back(dyn_dim_size);
+  }
+
+  // only one thread need to store the dynamic index
+  //   int thread_id = GetThreadId();
+  //   int block_id = GetBlockId();
+  //   if (thread_id == 0 && block_id == 0) {
+  //     *dyn_dim0_size = *output[1];
+  //     *dyn_dim1_size = *output[2];
+  //   }
+  KernelSupportLibrary{&b_}.If("is_thred_0", IsBlock0Thread0(&b_), [&] {
+    for (int64 i = 1; i < slice_to_dynamic->operand_count(); ++i) {
+      const int64 dim_index = i - 1;
+      llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
+          b_.getInt8Ty(), raw_buffer,
+          raw_data_size + dim_index * sizeof(int32));
+      // output[i] stores dynamic_dim_(i-1)
+      b_.CreateStore(
+          dynamic_dims[dim_index],
+          b_.CreateBitCast(metadata, b_.getInt32Ty()->getPointerTo()));
+    }
+  });
+
+  //     int dyn_element_total = 1;
+  //     dyn_element_total *= dyn_dim0_size;
+  //     dyn_element_total *= dyn_dim1_size;
+  llvm::Value* dyn_element_total = llvm::ConstantInt::get(b_.getInt32Ty(), 1);
+  for (llvm::Value* dynamic_dim : dynamic_dims) {
+    dyn_element_total = b_.CreateMul(dyn_element_total, dynamic_dim,
+                                     /*Name=*/"dyn_element_total");
+  }
+
+  //   linear_index = block_id * thread_per_block + thread_id;
+  //   if (linear_index < max_num_element) {
+  //     Index static_index =
+  //         delinerized(linerized_index, static_dim0_size, static_dim1_size);
+  //     if (linerized_index < dyn_element_total) {
+  //       Index dyn_index =
+  //           delinerized(linerized_index, *dyn_dim0_size, *dyn_dim1_size);
+  //       dest_array[static_index.dim0][static_index.di] =
+  //           source_array[dyn_index.dim0][dyn_index.dim1];
+  //     }
+  //   }
+  llvm_ir::LoopEmitter::BodyEmitter body_generator =
+      [&](const llvm_ir::IrArray::Index& array_index) -> Status {
+    llvm::Value* linearIndex =
+        array_index.Linearize(input_shape.dimensions(), &b_);
+    auto if_in_dyn_bounds = llvm_ir::EmitIfThenElse(
+        b_.CreateICmpULT(linearIndex, dyn_element_total),
+        llvm_ir::IrName(ir_name, "in_dyn_bounds"), &b_, false);
+    // Set IR builder insertion point to the body of the if structure.
+    llvm_ir::SetToFirstInsertPoint(if_in_dyn_bounds.true_block, &b_);
+    llvm_ir::IrArray::Index dyn_index(linearIndex, input_shape,
+                                      absl::MakeSpan(dynamic_dims), &b_);
+
+    data_array.EmitWriteArrayElement(
+        array_index,
+        GetIrArray(*slice_to_dynamic->operand(0), *slice_to_dynamic)
+            .EmitReadArrayElement(dyn_index, &b_, /*name=*/"",
+                                  /*use_linear_index=*/false),
+        &b_);
+    return Status::OK();
+  };
+
+  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
+      input_shape, ir_emitter_context_->device_description(), unroll_factor);
+  UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
+                         ir_emitter_context_->llvm_module());
+
+  TF_RETURN_IF_ERROR(
+      ParallelLoopEmitter(body_generator, data_shape, launch_dimensions, &b_,
+                          unroll_factor)
+          .EmitLoop(ir_name, GetIndexTypeForKernel(
+                                 slice_to_dynamic,
+                                 launch_dimensions.launch_bound(), &b_)));
+  thunk_sequence_->emplace_back(std::move(kernel_thunk));
+
+  return Status::OK();
+}
+
 Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
+  if (custom_call->custom_call_target() == "PadToStatic") {
+    return HandlePadToStatic(custom_call);
+  }
+  if (custom_call->custom_call_target() == "SliceToDynamic") {
+    return HandleSliceToDynamic(custom_call);
+  }
   return ThunkEmitter(this).HandleCustomCall(custom_call);
 }
 
@@ -3150,6 +3376,15 @@ bool IsUnrollingColumnReductionBeneficial(const HloInstruction* unnested_hlo,
   return can_be_vectorized >= cannot_be_vectorized;
 }
 
+int64 NearestPowerOfTwo(int64 v) {
+  if (v < 0) {
+    return 0;
+  }
+  int64 upper = tensorflow::NextPowerOfTwo64(v);
+  int64 lower = upper >> 1;
+  return upper - v < v - lower ? upper : lower;
+}
+
 }  // namespace
 
 ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
@@ -3179,8 +3414,16 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
   int64 num_threads_y = reduction_dimensions.is_row_reduction ? 1 : kWarpSize;
   int64 num_threads_x = [&] {
     if (reduction_dimensions.is_row_reduction) {
+      // Use 512 as default block size (threads per block) for row reductions.
+      // For multi-output fusions, reduce the block size further to decrease
+      // register pressure when multiple outputs are computed by each thread.
+      int64 fan_out =
+          unnested_hlo->IsMultiOutputFusion()
+              ? unnested_hlo->fused_expression_root()->operand_count()
+              : 1;
+      int64 max_block_size = std::max(16LL, 512LL / NearestPowerOfTwo(fan_out));
       return std::min(
-          kWarpSize * kWarpSize,
+          max_block_size,
           RoundUpToNearest(CeilOfRatio(reduction_dimensions.dimensions[2],
                                        reduction_tiling[2]),
                            kWarpSize));
@@ -3292,6 +3535,9 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
       reduction_info.GetKernelMappingScheme();
   LaunchDimensions launch_dimensions(mapping_scheme.GetNumberOfBlocks(),
                                      mapping_scheme.GetThreadsPerBlock());
+  VLOG(3) << "Launch dimensions of " << unnested_hlo->name()
+          << ": number of blocks: " << mapping_scheme.GetNumberOfBlocks()
+          << " - threads per block: " << mapping_scheme.GetThreadsPerBlock();
   llvm::Type* index_ty = GetIndexTypeForKernel(
       unnested_hlo, launch_dimensions.launch_bound(), &b_);
   EmitPrologueForReduction(unnested_hlo, &reduction_info, reduce_instructions,

@@ -22,6 +22,7 @@ from __future__ import print_function
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import packed_distributed_variable as packed
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
@@ -182,6 +183,17 @@ class DistributedDelegate(DistributedValues):
                                              "_attribute_sentinel",
                                              "_distributed_container"):
       return super(DistributedDelegate, self).__getattr__(name)
+
+    # This allows copy.copy(DistributedDelegate). When copying an object,
+    # copy.copy doesn't invoke its __init__ method, instead it makes a new
+    # empty object, then copies the attributes over. copy.copy looks for
+    # attributes like "__getstate__" in case the object implements its custom
+    # copying. Since DistributedDelegate doesn't have those attributes defined,
+    # __getattr__ will be invoked, which tries to access "_values" attributes,
+    # but that doesn't exist either because this is an empty object, and again
+    # __getattr__ is invoked, leading to an infinite recursion.
+    if name == "_values":
+      raise AttributeError()
 
     # TODO(priyag): This needs to be made robust against pitfalls from mix use
     # __getattr__ and @property. See b/120402273.
@@ -408,6 +420,17 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     self._aggregation = aggregation
     super(DistributedVariable, self).__init__(values)
     self._common_name = self._primary.name.split(":")[0]
+
+    # Packed variable is used to reduce the overhead of function execution.
+    # For a DistributedVariable, only one variable handle is captured into a
+    # function graph. It's only supported in eager mode.
+    if ops.executing_eagerly_outside_functions() and getattr(
+        strategy, "_enable_packed_variable_in_eager_mode", False):
+      name = "%s/packed/" % self._common_name
+      self._packed_var = packed.PackedDistributedVariable(values, name=name)
+    else:
+      self._packed_var = None
+
     # tf.keras keeps track of variables initialized using this attribute. When
     # tf.keras gets the default session, it initializes all uninitialized vars.
     # We need to make _keras_initialized a member of DistributedVariable because
@@ -737,9 +760,7 @@ class MirroredVariable(DistributedVariable, Mirrored):
 
   def _update_replica(self, update_fn, value, **kwargs):
     if self.aggregation == vs.VariableAggregation.NONE:
-      raise ValueError(
-          values_util.aggregation_error_msg.format(
-              variable_type="MirroredVariable"))
+      return update_fn(self._get_on_device_or_primary(), value, **kwargs)
 
     def merge_fn(strategy, value, **kwargs):
       """Aggregate values and update all variables in cross replica context."""

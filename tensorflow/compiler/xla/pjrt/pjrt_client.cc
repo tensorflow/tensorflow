@@ -187,6 +187,7 @@ PjRtClient::PjRtClient(
       CHECK(local_devices_[idx] == nullptr) << idx;
       local_devices_[idx] = device.get();
     }
+    device->client_ = this;
   }
   for (int idx = 0; idx < local_devices_.size(); ++idx) {
     CHECK(local_devices_[idx] != nullptr) << idx;
@@ -692,6 +693,13 @@ PjRtBuffer::~PjRtBuffer() {
   for (int i = 0; i < ScopedHold::Type::kMaxValue; ++i) {
     CHECK_EQ(holds_[i], 0);
   }
+}
+
+int64 PjRtBuffer::OnDeviceSizeInBytes() const {
+  return client_->client()
+      ->backend()
+      .transfer_manager()
+      ->GetByteSizeRequirement(on_device_shape_);
 }
 
 void PjRtBuffer::WaitForOutstandingUsageHolds() {

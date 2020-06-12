@@ -247,9 +247,8 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
   // start_walltime_ns to normalize with CPU wall time.
   static void NormalizeTimeStamps(XPlaneBuilder* plane,
                                   uint64 start_walltime_ns) {
-    plane->ForEachLine([&](tensorflow::profiler::XLineBuilder line) {
-      line.SetTimestampNs(start_walltime_ns);
-    });
+    plane->ForEachLine(
+        [&](XLineBuilder line) { line.SetTimestampNs(start_walltime_ns); });
   }
 
   struct CorrelationInfo {
@@ -418,9 +417,12 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
         CreateXEvent(event, plane, start_gpu_ns, end_gpu_ns, &line);
         events_types_per_line[line_id].emplace(event.type);
       }
-      device_plane->ForEachLine([&](tensorflow::profiler::XLineBuilder line) {
+      device_plane->ForEachLine([&](XLineBuilder line) {
         line.SetName(
             GetDeviceXLineName(line.Id(), events_types_per_line[line.Id()]));
+      });
+      host_plane->ForEachLine([&](XLineBuilder line) {
+        line.SetName(absl::StrCat("Host Threads/", line.Id()));
       });
       events.clear();
     }

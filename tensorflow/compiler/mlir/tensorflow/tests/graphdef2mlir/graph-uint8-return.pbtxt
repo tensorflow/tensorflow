@@ -1,4 +1,4 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false -mlir-print-debuginfo %s -o - | FileCheck %s --dump-input-on-failure
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false -mlir-print-debuginfo %s -o - | FileCheck %s
 
 node {
   name: "PartitionedCall"

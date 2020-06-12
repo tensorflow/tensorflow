@@ -1397,23 +1397,17 @@ void TFE_ContextAddFunctionDef(TFE_Context* ctx,
         tensorflow::errors::InvalidArgument("Invalid FunctionDef proto");
     return;
   }
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  status->status = context->AddFunctionDef(function_def);
+  status->status = tensorflow::unwrap(ctx)->AddFunctionDef(function_def);
 }
 
 void TFE_ContextAddFunction(TFE_Context* ctx, TF_Function* function,
                             TF_Status* status) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  status->status = context->AddFunctionDef(function->fdef);
+  status->status = tensorflow::unwrap(ctx)->AddFunctionDef(function->fdef);
 }
 
 void TFE_ContextRemoveFunction(TFE_Context* ctx, const char* name,
                                TF_Status* status) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  status->status = context->RemoveFunction(name);
+  status->status = tensorflow::unwrap(ctx)->RemoveFunction(name);
 }
 
 unsigned char TFE_ContextHasFunction(TFE_Context* ctx, const char* name) {
@@ -1479,14 +1473,10 @@ const TFE_OpAttrs* TFE_OpGetAttrs(TFE_Op* op) {
 }
 
 void TFE_OpAddAttrs(TFE_Op* op, const TFE_OpAttrs* attrs) {
-  tensorflow::AttrValueMap m;
-  tensorflow::unwrap(attrs)->FillAttrValueMap(&m);
   tensorflow::EagerOperation* operation =
       OperationFromInterface(tensorflow::unwrap(op));
   tensorflow::AttrBuilder* destination = operation->MutableAttrs();
-  for (const auto& attribute : m) {
-    destination->Set(attribute.first, attribute.second);
-  }
+  destination->CopyAttributes(*tensorflow::unwrap(attrs));
 }
 
 void TFE_OpAttrsSerialize(const TFE_OpAttrs* attrs, TF_Buffer* buf,

@@ -505,11 +505,6 @@ def _in_place_subclassed_model_reset(model):
     setattr(model, name, fresh_layer)
     model._layers.append(fresh_layer)
 
-    # The base Layer __setattr__ will invalidate its attribute cache when
-    # `._layers` is assigned, but it has no way to know when the underlying list
-    # is mutated so we must explicitly signal the append.
-    model._attribute_sentinel.invalidate_all()
-
   # Cache original model build attributes (in addition to layers)
   if (not hasattr(model, '_original_attributes_cache') or
       model._original_attributes_cache is None):

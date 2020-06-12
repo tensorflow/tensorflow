@@ -17,9 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import distutils
-import itertools
-
 import numpy as np
 
 from tensorflow.python.eager import backprop
@@ -46,6 +43,16 @@ class ReduceTest(test_util.TensorFlowTestCase):
     with test_util.device(use_gpu=True):
       y_tf = self.evaluate(math_ops.reduce_sum(x))
       self.assertEqual(y_tf, 21)
+
+  def testReduceExtendType(self):
+    in_f32 = np.random.randn(1000, 1000).astype(np.float32)
+    in_bf16 = math_ops.cast(in_f32, dtypes.bfloat16)
+
+    out_f32 = self.evaluate(math_ops.reduce_sum(in_f32))
+    out_bf16 = self.evaluate(math_ops.reduce_sum(in_bf16))
+    expected = math_ops.cast(out_f32, dtypes.bfloat16)
+
+    self.assertAllClose(out_bf16, expected, 1e-3)
 
   def testReduceExplicitAxes(self):
     x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
@@ -75,8 +82,26 @@ class ReduceTest(test_util.TensorFlowTestCase):
     self.assertAllClose(
         self.evaluate(math_ops.reduce_variance(x, axis=0)), [0, 0, 0])
 
-    x = np.array([[0, 2, 1, 1], [1, 2, 0, 1]], "float32")
-    self.assertAllClose(self.evaluate(math_ops.reduce_variance(x)), 0.5)
+    x = [[1, 2, 1, 1], [1, 1, 0, 1]]
+    with self.assertRaisesRegexp(TypeError, "must be either real or complex"):
+      math_ops.reduce_variance(x)
+
+    x = [[1., 2., 1., 1.], [1., 1., 0., 1.]]
+    self.assertEqual(self.evaluate(math_ops.reduce_variance(x)), 0.25)
+    x_np = np.array(x)
+    self.assertEqual(np.var(x_np), 0.25)
+    self.assertEqual(self.evaluate(math_ops.reduce_variance(x_np)), 0.25)
+
+  def testReduceVarComplex(self):
+    # Ensure that complex values are handled to be consistent with numpy
+    complex_ys = [([0 - 1j, 0 + 1j], dtypes.float64),
+                  (np.array([0 - 1j, 0 + 1j], "complex64"), dtypes.float32),
+                  (np.array([0 - 1j, 0 + 1j], "complex128"), dtypes.float64)]
+    for y, dtype in complex_ys:
+      y_result = math_ops.reduce_variance(y)
+      self.assertEqual(np.var(y), 1.0)
+      self.assertEqual(self.evaluate(y_result), 1.0)
+      self.assertEqual(y_result.dtype, dtype)
 
   def testReduceStd(self):
     x = np.array([[0, 0, 0], [0, 0, 0]], "float32")
@@ -84,8 +109,26 @@ class ReduceTest(test_util.TensorFlowTestCase):
     self.assertAllClose(
         self.evaluate(math_ops.reduce_std(x, axis=0)), [0, 0, 0])
 
-    x = np.array([[1, 2, 1, 1], [1, 1, 0, 1]], "float32")
-    self.assertAllClose(self.evaluate(math_ops.reduce_std(x)), 0.5)
+    x = [[1, 2, 1, 1], [1, 1, 0, 1]]
+    with self.assertRaisesRegexp(TypeError, "must be either real or complex"):
+      math_ops.reduce_std(x)
+
+    x = [[1., 2., 1., 1.], [1., 1., 0., 1.]]
+    self.assertEqual(self.evaluate(math_ops.reduce_std(x)), 0.5)
+    x_np = np.array(x)
+    self.assertEqual(np.std(x_np), 0.5)
+    self.assertEqual(self.evaluate(math_ops.reduce_std(x_np)), 0.5)
+
+  def testReduceStdComplex(self):
+    # Ensure that complex values are handled to be consistent with numpy
+    complex_ys = [([0 - 1j, 0 + 1j], dtypes.float64),
+                  (np.array([0 - 1j, 0 + 1j], "complex64"), dtypes.float32),
+                  (np.array([0 - 1j, 0 + 1j], "complex128"), dtypes.float64)]
+    for y, dtype in complex_ys:
+      y_result = math_ops.reduce_std(y)
+      self.assertEqual(np.std(y), 1.0)
+      self.assertEqual(self.evaluate(y_result), 1.0)
+      self.assertEqual(y_result.dtype, dtype)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -380,6 +423,16 @@ class AddNTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(slc_as_dense, math_ops.add_n([slc]))
       self.assertAllEqual(2 * slc_as_dense, math_ops.add_n([slc, slc]))
 
+  def test_iterable(self):
+    """Test that add_n supports iterables (e.g. generators and dict values)."""
+    def fn():
+      yield 1
+      yield 2
+    values_dict = {"a": 1, "b": 2}
+    with test_util.use_gpu():
+      self.assertAllEqual(3, math_ops.add_n(fn()))
+      self.assertAllEqual(3, math_ops.add_n(values_dict.values()))
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class DivAndModTest(test_util.TensorFlowTestCase):
@@ -497,6 +550,13 @@ class DivAndModTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(tf3_result, expanded_nums)
     # Consistent with desire to get numerator
     self.assertAllEqual(tf_result, expanded_nums)
+
+  def testWithPythonValue(self):
+    # Test case for https://github.com/tensorflow/tensorflow/issues/39475
+    x = math_ops.divide(5, 2)
+    self.assertIsInstance(x, ops.Tensor)
+    x = math_ops.divide(5, array_ops.constant(2.0))
+    self.assertIsInstance(x, ops.Tensor)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -786,33 +846,6 @@ class RangeTest(test_util.TensorFlowTestCase):
     tensor = ops.convert_to_tensor(values)
     self.assertAllEqual((5,), tensor.get_shape().as_list())
     self.assertAllEqual(values, self.evaluate(tensor))
-
-
-@test_util.run_all_in_graph_and_eager_modes
-class LinspaceTest(test_util.TensorFlowTestCase):
-
-  def testLinspaceBroadcasts(self):
-    if distutils.version.LooseVersion(
-        np.version.version) < distutils.version.LooseVersion("1.16.0"):
-      self.skipTest("numpy doesn't support axes before version 1.16.0")
-
-    shapes = [(), (2,), (2, 2)]
-
-    types = [np.float64, np.int64]
-
-    for start_shape, stop_shape in itertools.product(shapes, repeat=2):
-      for num in [0, 1, 2, 20]:
-        ndims = max(len(start_shape), len(stop_shape))
-        for axis in range(-ndims, ndims):
-          for dtype in types:
-            start = np.ones(start_shape, dtype)
-            stop = 10 * np.ones(stop_shape, dtype)
-
-            np_ans = np.linspace(start, stop, num, axis=axis)
-            tf_ans = self.evaluate(
-                math_ops.linspace_nd(start, stop, num, axis=axis))
-
-            self.assertAllClose(np_ans, tf_ans)
 
 
 if __name__ == "__main__":
