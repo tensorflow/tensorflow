@@ -16,6 +16,14 @@ tf_fuzz_target(
     srcs = ["demo_fuzz.cc"],
 )
 
+tf_fuzz_target(
+    name = "status_fuzz",
+    srcs = ["status_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:status",
+    ],
+)
+
 # A trivial fuzzer with no pre-specified corpus.
 # TODO(mihaimaruseac): Move fuzz_session and the op fuzzers to a subdirectory
 tf_fuzz_target(
