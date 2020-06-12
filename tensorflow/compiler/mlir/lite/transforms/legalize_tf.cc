@@ -497,6 +497,14 @@ StatusOr<ConstantOp> CreateConstOpWithSingleValue(PatternRewriter* rewriter,
       attr = DenseElementsAttr::get(scalar_type, floatValues);
       break;
     }
+    case mlir::StandardTypes::BF16: {
+      auto floatType = mlir::FloatType::getBF16(element_type.getContext());
+      auto floatAttr =
+          mlir::FloatAttr::get(floatType, static_cast<float>(value));
+      std::vector<Attribute> floatValues({floatAttr});
+      attr = DenseElementsAttr::get(scalar_type, floatValues);
+      break;
+    }
     case mlir::StandardTypes::F32: {
       attr =
           DenseElementsAttr::get<float>(scalar_type, static_cast<float>(value));
