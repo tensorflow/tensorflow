@@ -312,6 +312,8 @@ TF_LITE_MICRO_TEST(OfflinePlannerBranchesAllOnline) {
   int version = 1;
   int subgraph = 0;
   constexpr int nbr_tensors = 4;
+  tflite::testing::MockOpResolver mock_resolver;
+  tflite::NodeAndRegistration* node_and_registration;
   const int32_t metadata_buffer[tflite::testing::kOfflinePlannerHeaderSize +
                                 nbr_tensors] = {version, subgraph,
                                                 nbr_tensors,  // header
@@ -340,9 +342,14 @@ TF_LITE_MICRO_TEST(OfflinePlannerBranchesAllOnline) {
   TfLiteContext context;
   constexpr size_t arena_size = 4096;
   uint8_t arena[arena_size];
-  tflite::MicroAllocator* allocator = tflite::MicroAllocator::Create(
-      &context, model, arena, arena_size, micro_test::reporter);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, allocator->FinishTensorAllocation());
+  tflite::MicroAllocator* allocator =
+      tflite::MicroAllocator::Create(arena, arena_size, micro_test::reporter);
+
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, allocator->StartModelAllocation(model, &context, mock_resolver,
+                                                 &node_and_registration));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
+                          allocator->FinishModelAllocation(model, &context));
 
   // Since all of the tensors are online planned and the model structure is
   // identical to that in TestAllocationForModelsWithBranches,
@@ -357,6 +364,8 @@ TF_LITE_MICRO_TEST(OfflinePlannerBranchesAllOnline) {
 
 TF_LITE_MICRO_TEST(OfflinePlannerBasic) {
   constexpr int nbr_tensors = 4;
+  tflite::testing::MockOpResolver mock_resolver;
+  tflite::NodeAndRegistration* node_and_registration;
   const int32_t metadata_buffer[tflite::testing::kOfflinePlannerHeaderSize +
                                 nbr_tensors] = {1,  0, nbr_tensors,
                                                 0,    // t0
@@ -389,9 +398,14 @@ TF_LITE_MICRO_TEST(OfflinePlannerBasic) {
   TfLiteContext context;
   constexpr size_t arena_size = 4096;
   uint8_t arena[arena_size];
-  tflite::MicroAllocator* allocator = tflite::MicroAllocator::Create(
-      &context, model, arena, arena_size, micro_test::reporter);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, allocator->FinishTensorAllocation());
+  tflite::MicroAllocator* allocator =
+      tflite::MicroAllocator::Create(arena, arena_size, micro_test::reporter);
+
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, allocator->StartModelAllocation(model, &context, mock_resolver,
+                                                 &node_and_registration));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
+                          allocator->FinishModelAllocation(model, &context));
 
   uint8_t* start = context.tensors[0].data.uint8;
   TF_LITE_MICRO_EXPECT_EQ(0, context.tensors[0].data.uint8 - start);
@@ -402,6 +416,8 @@ TF_LITE_MICRO_TEST(OfflinePlannerBasic) {
 
 TF_LITE_MICRO_TEST(OfflinePlannerOverlappingAllocation) {
   constexpr int nbr_tensors = 4;
+  tflite::testing::MockOpResolver mock_resolver;
+  tflite::NodeAndRegistration* node_and_registration;
   const int32_t metadata_buffer[tflite::testing::kOfflinePlannerHeaderSize +
                                 nbr_tensors] = {
       1, 0, nbr_tensors,  // header: version, subgraph, nbr tensors
@@ -434,9 +450,14 @@ TF_LITE_MICRO_TEST(OfflinePlannerOverlappingAllocation) {
   TfLiteContext context;
   constexpr size_t arena_size = 4096;
   uint8_t arena[arena_size];
-  tflite::MicroAllocator* allocator = tflite::MicroAllocator::Create(
-      &context, model, arena, arena_size, micro_test::reporter);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, allocator->FinishTensorAllocation());
+  tflite::MicroAllocator* allocator =
+      tflite::MicroAllocator::Create(arena, arena_size, micro_test::reporter);
+
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, allocator->StartModelAllocation(model, &context, mock_resolver,
+                                                 &node_and_registration));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
+                          allocator->FinishModelAllocation(model, &context));
 
   uint8_t* start = context.tensors[0].data.uint8;
   TF_LITE_MICRO_EXPECT_EQ(0, context.tensors[0].data.uint8 - start);
@@ -448,6 +469,8 @@ TF_LITE_MICRO_TEST(OfflinePlannerOverlappingAllocation) {
 
 TF_LITE_MICRO_TEST(OfflinePlannerOfflineOnline) {
   constexpr int nbr_tensors = 5;
+  tflite::testing::MockOpResolver mock_resolver;
+  tflite::NodeAndRegistration* node_and_registration;
   const int32_t metadata_buffer[tflite::testing::kOfflinePlannerHeaderSize +
                                 nbr_tensors] = {
       1, 0, nbr_tensors,  // header: version, subgraph, nbr tensors
@@ -482,9 +505,14 @@ TF_LITE_MICRO_TEST(OfflinePlannerOfflineOnline) {
   TfLiteContext context;
   constexpr size_t arena_size = 4096;
   uint8_t arena[arena_size];
-  tflite::MicroAllocator* allocator = tflite::MicroAllocator::Create(
-      &context, model, arena, arena_size, micro_test::reporter);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, allocator->FinishTensorAllocation());
+  tflite::MicroAllocator* allocator =
+      tflite::MicroAllocator::Create(arena, arena_size, micro_test::reporter);
+
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, allocator->StartModelAllocation(model, &context, mock_resolver,
+                                                 &node_and_registration));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
+                          allocator->FinishModelAllocation(model, &context));
 
   uint8_t* start = context.tensors[0].data.uint8;
   TF_LITE_MICRO_EXPECT_EQ(0, context.tensors[0].data.uint8 - start);

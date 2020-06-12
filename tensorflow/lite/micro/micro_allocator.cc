@@ -375,10 +375,9 @@ TfLiteStatus CreatePlan(ErrorReporter* error_reporter,
             planner->AddBuffer(error_reporter, aligned_bytes_required,
                                current->first_created, current->last_used));
       } else {
-        TF_LITE_ENSURE_STATUS(
-            planner->AddBuffer(error_reporter, aligned_bytes_required,
-                               current->first_created, current->last_used,
-                               current->offline_offset));
+        TF_LITE_ENSURE_STATUS(planner->AddBuffer(
+            error_reporter, aligned_bytes_required, current->first_created,
+            current->last_used, current->offline_offset));
       }
     }
   }
@@ -647,7 +646,7 @@ TfLiteStatus MicroAllocator::FinishModelAllocation(const Model* model,
   const SubGraph* subgraph = GetSubGraphFromModel(model);
   TFLITE_DCHECK(subgraph != nullptr);
 
-  TF_LITE_ENSURE_STATUS(CommitStaticMemoryPlan(subgraph, context));
+  TF_LITE_ENSURE_STATUS(CommitStaticMemoryPlan(model, subgraph, context));
   TF_LITE_ENSURE_STATUS(AllocateVariables(subgraph->tensors(), context->tensors,
                                           memory_allocator_));
 
@@ -874,7 +873,8 @@ const SubGraph* MicroAllocator::GetSubGraphFromModel(const Model* model) {
   return (*subgraphs)[0];
 }
 
-TfLiteStatus MicroAllocator::CommitStaticMemoryPlan(const SubGraph* subgraph,
+TfLiteStatus MicroAllocator::CommitStaticMemoryPlan(const Model* model,
+                                                    const SubGraph* subgraph,
                                                     TfLiteContext* context) {
   // Create static memory plan
   // 1. Calculate AllocationInfo to know the lifetime of each tensor/buffer.
@@ -891,7 +891,13 @@ TfLiteStatus MicroAllocator::CommitStaticMemoryPlan(const SubGraph* subgraph,
     AllocationInfoBuilder builder(error_reporter_, &tmp_allocator);
     TF_LITE_ENSURE_STATUS(
         builder.Init(subgraph->tensors()->size(), scratch_buffer_count_));
-    TF_LITE_ENSURE_STATUS(builder.AddTensors(subgraph, context->tensors));
+
+    int32_t* offline_planner_offsets = nullptr;
+    TF_LITE_ENSURE_STATUS(
+        builder.GetOfflinePlannedOffsets(model, &offline_planner_offsets));
+    TF_LITE_ENSURE_STATUS(builder.AddTensors(subgraph, offline_planner_offsets,
+                                             context->tensors));
+
     TF_LITE_ENSURE_STATUS(builder.AddScratchBuffers(scratch_buffer_handles_));
     const AllocationInfo* allocation_info = builder.Finish();
 
