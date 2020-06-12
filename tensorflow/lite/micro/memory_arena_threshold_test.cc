@@ -30,6 +30,7 @@ namespace {
 
 // Ensure memory doesn't expand more that 3%:
 constexpr float kAllocationThreshold = 0.03;
+constexpr float kAllocationTailMiscCeiling = 1024;
 const bool kIs64BitSystem = sizeof(void*) == 8;
 
 constexpr int kKeywordModelTensorArenaSize = 22 * 1024;
@@ -127,6 +128,17 @@ void ValidateModelAllocationThresholds(
       allocator.GetRecordedAllocation(tflite::RecordedAllocationType::kOpData)
           .used_bytes,
       thresholds.op_runtime_data_size);
+
+  // Ensure tail allocation recording is not missing any large chunks:
+  size_t tail_est_length = sizeof(TfLiteTensor) * thresholds.tensor_count +
+                           thresholds.tensor_quantization_data_size +
+                           thresholds.tensor_variable_buffer_data_size +
+                           sizeof(tflite::NodeAndRegistration) *
+                               thresholds.node_and_registration_count +
+                           thresholds.op_runtime_data_size;
+
+  TF_LITE_MICRO_EXPECT_LE(thresholds.tail_alloc_size - tail_est_length,
+                          kAllocationTailMiscCeiling);
 }
 
 }  // namespace
