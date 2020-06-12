@@ -65,6 +65,7 @@ ifeq ($(TARGET), stm32f4)
     tensorflow/lite/micro/micro_interpreter_test.cc \
     tensorflow/lite/micro/micro_allocator_test.cc \
     tensorflow/lite/micro/memory_helpers_test.cc \
+    tensorflow/lite/micro/memory_arena_threshold_test.cc \
     tensorflow/lite/micro/recording_micro_allocator_test.cc \
     tensorflow/lite/micro/kernels/logistic_test.cc \
     tensorflow/lite/micro/kernels/logical_test.cc \
