@@ -37,8 +37,8 @@ void ReduceTester::Test(tflite::BuiltinOperator reduce_op,
                         TfLiteDelegate* delegate) const {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
-  auto input_rng = std::bind(
-      std::uniform_real_distribution<float>(-15.0f, 15.0f), std::ref(rng));
+  auto input_rng =
+      std::bind(std::uniform_real_distribution<float>(), std::ref(rng));
 
   std::vector<char> buffer = CreateTfLiteModel(reduce_op);
   const Model* model = GetModel(buffer.data());
