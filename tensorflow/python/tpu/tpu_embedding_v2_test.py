@@ -34,6 +34,7 @@ from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import remote
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -719,7 +720,11 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
 
     self.assertAllClose(golden, weights0)
 
-  def test_enqueue_with_outside_compilation(self):
+  @parameterized.parameters([True, False])
+  def test_enqueue_with_outside_compilation(self, use_mlir):
+    if use_mlir:
+      config.enable_mlir_bridge()
+
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
     dataset = self._create_sparse_dataset(strategy)
     dataset_iter = iter(strategy.experimental_distribute_dataset(dataset))
@@ -749,7 +754,11 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
 
     self.assertAllClose(activations_oc0, activations0)
 
-  def test_enqueue_with_outside_compilation_in_control_flow(self):
+  @parameterized.parameters([True, False])
+  def test_enqueue_with_outside_compilation_in_control_flow(self, use_mlir):
+    if use_mlir:
+      config.enable_mlir_bridge()
+
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
     dataset = self._create_sparse_dataset(strategy)
     dataset_iter = iter(strategy.experimental_distribute_dataset(dataset))
