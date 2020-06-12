@@ -39,8 +39,7 @@ class TpuNodeContext final {
   template <typename T>
   using StatusOr = stream_executor::port::StatusOr<T>;
 
-  static StatusOr<std::unique_ptr<TpuNodeContext>> Initialize(
-      int device_ordinal);
+  static StatusOr<std::unique_ptr<TpuNodeContext>> Create(int device_ordinal);
 
   explicit TpuNodeContext(int device_ordinal, XLA_TpuNodeContext* node_context)
       : device_ordinal_(device_ordinal), node_context_(node_context) {
@@ -50,6 +49,8 @@ class TpuNodeContext final {
 
   TpuNodeContext(const TpuNodeContext&) = delete;
   TpuNodeContext& operator=(const TpuNodeContext&) = delete;
+
+  static Status Initialize(int device_ordinal);
 
   static Status StopChipHeartbeats();
 

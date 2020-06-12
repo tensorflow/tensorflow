@@ -62,6 +62,10 @@ xla::StatusOr<xla::Shape> TpuShapeRepresentation(const TensorShape& shape,
                                                  DataType type,
                                                  bool use_fast_memory);
 
+// Given a tensor, returns the shape of its representation on device,
+// fully padded. Contents of `shape` are undefined on error.
+Status TpuPaddedShapeFn(const Tensor& tensor, xla::Shape* shape);
+
 // A callback called on exit.
 void LogAndExit(int code);
 

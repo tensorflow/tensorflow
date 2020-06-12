@@ -36,6 +36,8 @@ class TpuPlatformInterface : public stream_executor::Platform {
   virtual Status Reset(bool only_tear_down) = 0;
 
   virtual int64 TpuMemoryLimit() = 0;
+
+  virtual bool ShouldRegisterTpuDeviceToDeviceCopy() = 0;
 };
 
 }  // namespace tpu
