@@ -2324,6 +2324,18 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_DeviceIndexOp : TF_Op<"DeviceIndex", [NoSideEffect]> {
+  let summary = "Return the index of device the op runs.";
+
+  let arguments = (ins
+    StrArrayAttr:$device_names
+  );
+
+  let results = (outs
+    I32Tensor:$index
+  );
+}
+
 def TF_DiagPartOp : TF_Op<"DiagPart", [NoSideEffect]> {
   let summary = "Returns the diagonal part of the tensor.";
 
