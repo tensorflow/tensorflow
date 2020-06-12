@@ -258,10 +258,6 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   StatusOr<llvm::Value*> EmitComplexPower(const HloInstruction* op,
                                           llvm::Value* a, llvm::Value* b,
                                           llvm::Value* c, llvm::Value* d);
-
-  // Evaluates a polynomial using Horner's method.
-  StatusOr<llvm::Value*> EvaluatePolynomial(
-      llvm::Type* type, llvm::Value* x, absl::Span<const double> coefficients);
 };
 
 }  // namespace xla
