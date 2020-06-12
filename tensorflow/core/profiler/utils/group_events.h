@@ -100,6 +100,8 @@ class EventNode {
     return consumer_context_;
   }
 
+  void SetIsRoot(bool is_root) { is_root_ = is_root; }
+
   bool IsRoot() const { return is_root_; }
 
   bool IsAsync() const { return is_async_; }
@@ -165,11 +167,14 @@ class EventForest {
   void ConnectInterThread(
       const std::vector<InterThreadConnectInfo>& connect_info_list);
 
-  // Creates event groups and populates event_group_name_map_. For each event of
-  // each event type in root_event_types in order, if it was not grouped yet, a
-  // new group is created with all the events reachable from the root event.
-  void CreateEventGroup(
+  void ProcessLegacyRootEvents(
       const std::vector<int64 /*EventType*/>& root_event_types);
+
+  // Creates event groups and populates event_group_name_map_. If a TF loop is
+  // used, each TF loop iteration becomes a root. Otherwise, top root events
+  // (i.e., none of their ancestors is a root event) are used as roots. A new
+  // group is created with all events reachable from a root.
+  void CreateEventGroup();
 
   // Sets the is_eager stat to true for the eagerly executed GPU kernel events.
   void MarkEagerlyExecutedGpuKernels();

@@ -2799,8 +2799,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     if not context.executing_eagerly():
       self.skipTest('eager only')
 
-    context.context().set_optimizer_experimental_options(
-        {'min_graph_nodes': -1, 'implementation_selector': True})
+    # testSharedRendezvous sets the disable_meta_optimizer flag to True
+    # if that subtest runs before this one, then having that set to True
+    # will cause this subtest to fail. To avoid that scenario, explicitly
+    # set the disable_meta_optimizer flag to false here
+    context.context().set_optimizer_experimental_options({
+        'min_graph_nodes': -1,
+        'implementation_selector': True,
+        'disable_meta_optimizer': False
+    })
 
     @function.defun_with_attributes(
         attributes={'api_implements': 'foo',

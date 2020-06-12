@@ -25,11 +25,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
@@ -41,23 +43,6 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 namespace {
-
-static const int64 kFunctionalOpEventTypes[] = {
-    HostEventType::kCallOp,
-    HostEventType::kNumericalGradientOpEvalRight,
-    HostEventType::kNumericalGradientOpEvalLeft,
-    HostEventType::kSymbolicGradientOp,
-    HostEventType::kRemoteCallOp,
-    HostEventType::kIfOp,
-    HostEventType::kCaseOp,
-    // TODO(b/154510598): Fix handling of the loop ops.
-    // HostEventType::kWhileOpEvalCond,
-    // HostEventType::kWhileOpStartBody,
-    // HostEventType::kForOp,
-    // HostEventType::kParallelForOp,
-    // HostEventType::kForeverOp,
-    HostEventType::kPartitionedCallOp,
-};
 
 // Creates stat metadata for the stats which may be added by grouping.
 void CreateStatMetadata(XPlane* plane) {
@@ -178,6 +163,97 @@ bool IsTfDataEvent(const EventNode& event_node) {
              HostEventType::kTfDataCapturedFunctionRunWithBorrowedArgs);
 }
 
+struct ContextTypeAndId {
+  int type;
+  uint64 id;
+};
+
+absl::optional<ContextTypeAndId> GetLegacyProducerContext(
+    const XEventVisitor& event) {
+  absl::optional<ContextTypeAndId> type_and_id;
+  absl::optional<int64> event_type = event.Type();
+  if (event_type.has_value()) {
+    switch (*event_type) {
+      case HostEventType::kTraceContext:
+      case HostEventType::kFunctionRun:
+      case HostEventType::kSessionRun:
+      case HostEventType::kRunGraph: {
+        absl::optional<XStatVisitor> stat = event.GetStat(StatType::kStepId);
+        if (stat.has_value()) {
+          type_and_id = {static_cast<int>(ContextType::kTfExecutor),
+                         static_cast<uint64>(stat->IntValue())};
+        }
+        break;
+      }
+      case HostEventType::kCallOp:
+      case HostEventType::kNumericalGradientOpEvalRight:
+      case HostEventType::kNumericalGradientOpEvalLeft:
+      case HostEventType::kSymbolicGradientOp:
+      case HostEventType::kRemoteCallOp:
+      case HostEventType::kIfOp:
+      case HostEventType::kCaseOp:
+      case HostEventType::kPartitionedCallOp: {
+        // TODO(b/154510598): Fix handling of the loop ops.
+        // case HostEventType::kWhileOpEvalCond:
+        // case HostEventType::kWhileOpStartBody:
+        // case HostEventType::kForOp:
+        // case HostEventType::kParallelForOp:
+        // case HostEventType::kForeverOp:
+        absl::optional<XStatVisitor> stat =
+            event.GetStat(StatType::kFunctionStepId);
+        if (stat.has_value()) {
+          type_and_id = {static_cast<int>(ContextType::kTfExecutor),
+                         static_cast<uint64>(stat->IntValue())};
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  return type_and_id;
+}
+
+absl::optional<ContextTypeAndId> GetLegacyConsumerContext(
+    const XEventVisitor& event) {
+  absl::optional<ContextTypeAndId> type_and_id;
+  absl::optional<int64> event_type = event.Type();
+  if (event_type.has_value()) {
+    switch (*event_type) {
+      case HostEventType::kExecutorStateProcess:
+      case HostEventType::kExecutorDoneCallback:
+      case HostEventType::kRunGraphDone: {
+        absl::optional<XStatVisitor> stat = event.GetStat(StatType::kStepId);
+        if (stat.has_value()) {
+          type_and_id = {static_cast<int>(ContextType::kTfExecutor),
+                         static_cast<uint64>(stat->IntValue())};
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  return type_and_id;
+}
+
+bool IsLegacyRootEvent(const XEventVisitor& event) {
+  static const auto* const kRootEvents = new absl::flat_hash_set<int64>{
+      HostEventType::kTraceContext, HostEventType::kFunctionRun,
+      HostEventType::kSessionRun, HostEventType::kRunGraph};
+  return event.Type().has_value() && kRootEvents->contains(*event.Type());
+}
+
+// Returns true if none of its ancestors is a root event.
+bool IsTopRoot(const EventNode* event) {
+  if (event->GetGroupId().has_value()) return false;
+  for (EventNode* cur = event->GetParent(); cur != nullptr;
+       cur = cur->GetParent()) {
+    if (cur->IsRoot()) return false;
+  }
+  return true;
+}
+
 }  // namespace
 
 EventNode::EventNode(const XPlaneVisitor* plane, XLine* raw_line,
@@ -190,6 +266,7 @@ EventNode::EventNode(const XPlaneVisitor* plane, XLine* raw_line,
   absl::optional<uint64> producer_id;
   absl::optional<int> consumer_type;
   absl::optional<uint64> consumer_id;
+
   visitor_.ForEachStat([&](const XStatVisitor& stat) {
     if (!stat.Type().has_value()) return;
     switch (*stat.Type()) {
@@ -197,13 +274,13 @@ EventNode::EventNode(const XPlaneVisitor* plane, XLine* raw_line,
         producer_type = stat.IntValue();
         break;
       case StatType::kProducerId:
-        producer_id = stat.UintValue();
+        producer_id = stat.IntOrUintValue();
         break;
       case StatType::kConsumerType:
         consumer_type = stat.IntValue();
         break;
       case StatType::kConsumerId:
-        consumer_id = stat.UintValue();
+        consumer_id = stat.IntOrUintValue();
         break;
       case StatType::kIsRoot:
         is_root_ = stat.IntValue();
@@ -215,6 +292,22 @@ EventNode::EventNode(const XPlaneVisitor* plane, XLine* raw_line,
         break;
     }
   });
+
+  // Support legacy traces.
+  if (!producer_type.has_value() || !producer_id.has_value()) {
+    if (auto producer_context = GetLegacyProducerContext(visitor_)) {
+      producer_type = producer_context->type;
+      producer_id = producer_context->id;
+    }
+  }
+  if (!consumer_type.has_value() || !consumer_id.has_value()) {
+    if (auto consumer_context = GetLegacyConsumerContext(visitor_)) {
+      consumer_type = consumer_context->type;
+      consumer_id = consumer_context->id;
+    }
+  }
+  is_root_ = is_root_ || IsLegacyRootEvent(visitor_);
+
   if (producer_type.has_value() && producer_id.has_value()) {
     producer_context_ = {*producer_type, *producer_id};
   }
@@ -375,24 +468,29 @@ void EventForest::ConnectInterThread(
   }
 }
 
-void EventForest::CreateEventGroup(
+void EventForest::ProcessLegacyRootEvents(
     const std::vector<int64 /*EventType*/>& root_event_types) {
-  for (EventNode* root_event : tf_loop_root_events_) {
-    ProcessRootEvent(next_group_id_++, root_event, &event_group_name_map_);
-  }
-  for (EventNode* root_event : root_events_) {
-    ProcessRootEvent(next_group_id_++, root_event, &event_group_name_map_);
-  }
   for (int64 root_event_type : root_event_types) {
     if (auto root_events = gtl::FindOrNull(event_node_map_, root_event_type)) {
       for (const auto& root_event : *root_events) {
-        // Skip if it already belongs to a group.
-        if (root_event->GetGroupId()) continue;
-        ProcessRootEvent(next_group_id_++, root_event.get(),
-                         &event_group_name_map_);
+        root_events_.push_back(root_event.get());
       }
-      // Only use the first root event type found.
-      if (!root_events->empty()) break;
+    }
+  }
+}
+
+void EventForest::CreateEventGroup() {
+  if (!tf_loop_root_events_.empty()) {
+    // If a TF loop is used, each TF loop iteration becomes a root.
+    for (EventNode* root_event : tf_loop_root_events_) {
+      ProcessRootEvent(next_group_id_++, root_event, &event_group_name_map_);
+    }
+    return;
+  }
+
+  for (EventNode* root_event : root_events_) {
+    if (IsTopRoot(root_event)) {
+      ProcessRootEvent(next_group_id_++, root_event, &event_group_name_map_);
     }
   }
 }
@@ -520,34 +618,14 @@ EventForest::EventForest(
   if (NeedsVirtualEventsForAsyncExecutor(root_event_types)) {
     CreateVirtualEventsForAsyncExecutor();
   }
-  CreateEventGroup(root_event_types);
+  ProcessLegacyRootEvents(root_event_types);
+  CreateEventGroup();
   MarkEagerlyExecutedGpuKernels();
   MarkEagerlyExecutedCpuTfOps();
 }
 
 std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList() {
   std::vector<InterThreadConnectInfo> connect_info_list = {
-      {HostEventType::kFunctionRun,
-       HostEventType::kExecutorStateProcess,
-       {StatType::kStepId}},
-      {HostEventType::kFunctionRun,
-       HostEventType::kExecutorDoneCallback,
-       {StatType::kStepId}},
-      {HostEventType::kSessionRun,
-       HostEventType::kExecutorStateProcess,
-       {StatType::kStepId}},
-      {HostEventType::kSessionRun,
-       HostEventType::kExecutorDoneCallback,
-       {StatType::kStepId}},
-      {HostEventType::kRunGraph,
-       HostEventType::kExecutorStateProcess,
-       {StatType::kStepId}},
-      {HostEventType::kRunGraph,
-       HostEventType::kExecutorDoneCallback,
-       {StatType::kStepId}},
-      {HostEventType::kRunGraph,
-       HostEventType::kRunGraphDone,
-       {StatType::kStepId}},
       {HostEventType::kExecutorStateProcess,
        HostEventType::kIteratorGetNextOp,
        {StatType::kStepId, StatType::kIterNum}},
@@ -560,16 +638,6 @@ std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList() {
       {HostEventType::kLocalExecutableExecuteOnLocalDevice,
        HostEventType::kLocalExecutableExecute,
        {StatType::kRunId}}};
-  for (int64 event_type : kFunctionalOpEventTypes) {
-    connect_info_list.push_back({event_type,
-                                 HostEventType::kExecutorStateProcess,
-                                 {StatType::kFunctionStepId},
-                                 {StatType::kStepId}});
-    connect_info_list.push_back({event_type,
-                                 HostEventType::kExecutorDoneCallback,
-                                 {StatType::kFunctionStepId},
-                                 {StatType::kStepId}});
-  }
   return connect_info_list;
 }
 
@@ -577,11 +645,7 @@ void GroupTfEvents(XSpace* space, EventGroupNameMap* event_group_name_map) {
   if (!space) return;
   std::vector<InterThreadConnectInfo> connect_info_list =
       CreateInterThreadConnectInfoList();
-  const std::vector<int64 /*EventType*/> root_event_types(
-      {HostEventType::kTraceContext, HostEventType::kFunctionRun,
-       HostEventType::kSessionRun, HostEventType::kRunGraph});
-  EventForest event_forest(connect_info_list, root_event_types,
-                           CreateTfXPlaneVisitor, space);
+  EventForest event_forest(connect_info_list, {}, CreateTfXPlaneVisitor, space);
   if (event_group_name_map) {
     *event_group_name_map = event_forest.GetEventGroupNameMap();
   }

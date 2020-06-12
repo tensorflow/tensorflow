@@ -648,11 +648,9 @@ class MirroredVariableUpdateTest(test.TestCase):
       def model_fn():
         return mirrored_var.assign(5.0)
 
-      with self.assertRaisesRegexp(
-          ValueError, "You must specify an aggregation method to update a "
-                      "MirroredVariable in Replica Context. You can do so by"):
-        self.evaluate(distribution.experimental_local_results(
-            distribution.extended.call_for_each_replica(model_fn)))
+      self.evaluate(distribution.experimental_local_results(
+          distribution.extended.call_for_each_replica(model_fn)))
+      self.assertEqual(5.0, self.evaluate(mirrored_var))
 
   def testAssignMirroredVarReplicaContextWithSum(self, distribution):
     # Test that we don't reduce a non-per-replica value with the "sum"

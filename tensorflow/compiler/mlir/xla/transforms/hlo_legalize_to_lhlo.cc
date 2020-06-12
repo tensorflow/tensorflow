@@ -44,8 +44,8 @@ constexpr StringRef kTempBufferAttr = "temp";
 template <typename T>
 using BaseOpConversion = BufferAssignmentOpConversionPattern<T>;
 using StdReturnOpConverter =
-    BufferAssignmentReturnOpConverter<mlir::ReturnOp, xla_lhlo::TerminatorOp,
-                                      xla_lhlo::CopyOp>;
+    detail::BufferAssignmentReturnOpConverter<mlir::ReturnOp, mlir::ReturnOp,
+                                              xla_lhlo::CopyOp, true>;
 
 Value InsertDynamicAllocAndDealloc(Location loc, Value result,
                                    Value shape_operand,
@@ -383,7 +383,6 @@ struct HloLegalizeToLhlo
     target.addLegalDialect<xla_lhlo::XlaLhloDialect>();
     target.addLegalDialect<StandardOpsDialect>();
     target.addLegalOp<ModuleOp>();
-    target.addIllegalOp<mlir::ReturnOp>();
     target.addIllegalOp<mlir::TensorLoadOp>();
     target.addIllegalOp<mlir::TensorStoreOp>();
     target.addLegalOp<ModuleTerminatorOp>();
@@ -393,6 +392,11 @@ struct HloLegalizeToLhlo
       auto inputs = op.getType().getInputs();
       return std::all_of(inputs.begin(), inputs.end(),
                          [](Type input) { return input.isa<MemRefType>(); });
+    });
+    target.addDynamicallyLegalOp<mlir::ReturnOp>([&](mlir::ReturnOp returnOp) {
+      return std::all_of(returnOp.operand_type_begin(),
+                         returnOp.operand_type_end(),
+                         [](Type type) { return type.isa<MemRefType>(); });
     });
 
     auto module = getOperation();
@@ -447,11 +451,13 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<xla_hlo::TanhOp>,
       HloToLhloReduceOpConverter,
       HloToLhloTensorLoadOpConverter,
-      HloToLhloTensorStoreOpConverter,
-      FunctionAndBlockSignatureConverter,
-      StdReturnOpConverter
+      HloToLhloTensorStoreOpConverter
   >(context, bufferAssignment, converter);
   // clang-format on
+  populateWithBufferAssignmentOpConversionPatterns<
+      mlir::ReturnOp, mlir::ReturnOp, xla_lhlo::CopyOp,
+      /*allowMemrefFunctionResults=*/false>(context, bufferAssignment,
+                                            converter, patterns);
 }
 
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass() {

@@ -56,6 +56,22 @@ XPlane* FindMutablePlaneWithName(XSpace* space, absl::string_view name);
 // new plane to the container.
 XPlane* FindOrAddMutablePlaneWithName(XSpace* space, absl::string_view name);
 
+// Sort lines in plane with a provided comparator.
+template <class Compare>
+void SortXLinesBy(XPlane* plane, Compare comp) {
+  std::sort(plane->mutable_lines()->pointer_begin(),
+            plane->mutable_lines()->pointer_end(), comp);
+}
+
+class XLinesComparatorByName {
+ public:
+  bool operator()(const XLine* a, const XLine* b) const {
+    auto& line_a = a->display_name().empty() ? a->name() : a->display_name();
+    auto& line_b = b->display_name().empty() ? b->name() : b->display_name();
+    return line_a < line_b;
+  }
+};
+
 // Sorts each XLine's XEvents by offset_ps (ascending) and duration_ps
 // (descending) so nested events are sorted from outer to innermost.
 void SortXPlane(XPlane* plane);

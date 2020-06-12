@@ -22,13 +22,13 @@ limitations under the License.
 #include "tensorflow/c/tf_attrtype.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/core/tpu/kernels/tpu_ops_common_c_api.h"
 
 typedef struct SE_Platform SE_Platform;
 typedef struct SE_StreamExecutor SE_StreamExecutor;
 typedef struct SE_Stream SE_Stream;
 typedef struct SE_Event SE_Event;
 typedef struct SE_Timer SE_Timer;
-typedef struct SE_Status SE_Status;
 
 typedef struct SE_PlatformId {
   void* id;  // aka stream_executor::Platform::Id

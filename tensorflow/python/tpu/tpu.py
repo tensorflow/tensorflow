@@ -639,6 +639,12 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
   def GetControlPivot(self):
     return self._pivot
 
+  def RequiresUniqueFunctionRetracing(self):
+    # More context: b/158152827. TPU stack uses the TPUReplicateContext to
+    # create replicated variable handles and cluster TPU computations, thus we
+    # always retrace a tf.function when the wrapped TPUReplicateContext changes.
+    return True
+
 
 class OutsideCompilationV2Context(control_flow_ops.ControlFlowContext):
   """The context for outside compilation in Tensorflow 2.0.

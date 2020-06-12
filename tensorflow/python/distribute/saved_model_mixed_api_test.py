@@ -27,7 +27,7 @@ from __future__ import print_function
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import saved_model_test_base as test_base
 from tensorflow.python.eager import test
-from tensorflow.python.keras.saving import saved_model_experimental as keras_saved_model
+from tensorflow.python.keras.saving import save
 
 _DEFAULT_FUNCTION_KEY = 'serving_default'
 
@@ -39,7 +39,7 @@ class SavedModelSaveAndLoadTest(test_base.TestSavedModelBase):
     super(SavedModelSaveAndLoadTest, self).setUp()
 
   def _save_model(self, model, saved_dir):
-    keras_saved_model.export_saved_model(model, saved_dir, serving_only=True)
+    save.save_model(model, saved_dir, save_format='tf')
 
   def _load_and_run_model(self,
                           distribution,

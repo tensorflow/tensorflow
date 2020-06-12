@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-tpu-sharding-identification | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-tpu-sharding-identification | FileCheck %s
 
 // Tests empty cluster func. Empty input/output sharding configuration
 // attributes must be added.

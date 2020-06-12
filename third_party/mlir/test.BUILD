@@ -97,7 +97,7 @@ cc_library(
     ],
     deps = [
         ":TestOpsIncGen",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:DerivedAttributeOpInterface",
         "@llvm-project//mlir:Dialect",
@@ -122,7 +122,7 @@ cc_library(
     ],
     deps = [
         ":TestDialect",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
@@ -136,7 +136,7 @@ cc_library(
         "lib/Pass/TestPassManager.cpp",
     ],
     deps = [
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
@@ -153,7 +153,7 @@ cc_library(
     deps = [
         ":TestDialect",
         ":TestVectorTransformPatternsIncGen",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:EDSC",
@@ -183,7 +183,7 @@ cc_library(
         "lib/Dialect/Affine/*.cpp",
     ]),
     deps = [
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:AffineTransforms",
         "@llvm-project//mlir:AffineUtils",

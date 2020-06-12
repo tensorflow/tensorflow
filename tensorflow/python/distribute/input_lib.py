@@ -1130,16 +1130,16 @@ class _SingleWorkerDatasetIteratorBase(object):
           real_data = control_flow_ops.cond(
               data.has_value(),
               lambda: data.get_value(),
-              lambda: _dummy_tensor_fn(data.value_structure),
+              lambda: _dummy_tensor_fn(data.element_spec),
               strict=True,
           )
           # Some dimensions in `replicas` will become unknown after we
           # conditionally return the real tensors or the dummy tensors. Recover
-          # the shapes from `data.value_structure`. We only need to do this in
+          # the shapes from `data.element_spec`. We only need to do this in
           # non eager mode because we always know the runtime shape of the
           # tensors in eager mode.
           if not context.executing_eagerly():
-            real_data = _recover_shape_fn(real_data, data.value_structure)
+            real_data = _recover_shape_fn(real_data, data.element_spec)
           result.append(real_data)
           # pylint: enable=cell-var-from-loop
           # pylint: enable=unnecessary-lambda

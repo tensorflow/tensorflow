@@ -768,6 +768,16 @@ class LoggingTest(PForTestCase):
 
 class TensorArrayTest(PForTestCase):
 
+  def setUp(self):
+    self._enabled = control_flow_v2_toggles.control_flow_v2_enabled()
+    control_flow_v2_toggles.disable_control_flow_v2()
+    super(TensorArrayTest, self).setUp()
+
+  def tearDown(self):
+    if self._enabled:
+      control_flow_v2_toggles.enable_control_flow_v2()
+    super(TensorArrayTest, self).tearDown()
+
   @test_util.run_v1_only("b/122612051")
   def test_create_outside_and_read(self):
 
@@ -1087,6 +1097,16 @@ class StackTest(PForTestCase):
 # TODO(agarwal): test nested while_loops. This currently requires converting a
 # tf.cond.
 class WhileV1Test(PForTestCase):
+
+  def setUp(self):
+    self._enabled = control_flow_v2_toggles.control_flow_v2_enabled()
+    control_flow_v2_toggles.disable_control_flow_v2()
+    super(WhileV1Test, self).setUp()
+
+  def tearDown(self):
+    if self._enabled:
+      control_flow_v2_toggles.enable_control_flow_v2()
+    super(WhileV1Test, self).tearDown()
 
   def test_while_outside_loop(self):
 
@@ -1472,6 +1492,65 @@ class WhileV2Test(PForTestCase):
     x = constant_op.constant(np.random.uniform(size=(1, 3)))
     y = constant_op.constant(np.random.uniform(size=(3, 3)))
     self.assertAllClose(_f(x, y, True), _f(x, y, False))
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class NestedControlFlowTest(PForTestCase):
+
+  def setUp(self):
+    self._enabled = control_flow_v2_toggles.control_flow_v2_enabled()
+    control_flow_v2_toggles.enable_control_flow_v2()
+    super(NestedControlFlowTest, self).setUp()
+
+  def tearDown(self):
+    if not self._enabled:
+      control_flow_v2_toggles.disable_control_flow_v2()
+    super(NestedControlFlowTest, self).tearDown()
+
+  def _cond(self, f=None, split=0):
+    if f is None:
+      f = lambda x, y: (x, y)
+
+    def _f(x, y):
+      return control_flow_ops.cond(y > split,
+                                   lambda: f(x, y),
+                                   lambda: (x + 1., y))
+    return _f
+
+  def _while(self, f=None):
+    if f is None:
+      f = lambda x, y: (x, y)
+
+    def _f(x, y):
+      return control_flow_ops.while_loop(
+          lambda j, _: j < y,
+          lambda j, t: (j + 1, t + array_ops.gather(f(x, y)[0], j)),
+          [0, x])[1], y
+
+    return _f
+
+  def _test_helper(self, f):
+    x = random_ops.random_uniform([5, 5])
+    y = constant_op.constant([4, -1, 2, -2, 2])
+
+    def loop_fn(i):
+      x_i = array_ops.gather(x, i)
+      y_i = array_ops.gather(y, i)
+      return f(x_i, y_i)
+
+    self._test_loop_fn(loop_fn, 5)
+
+  def test_cond_while(self):
+    self._test_helper(self._cond(self._while()))
+
+  def test_while_cond(self):
+    self._test_helper(self._while(self._cond()))
+
+  def test_while_while(self):
+    self._test_helper(self._while(self._while()))
+
+  def test_cond_cond(self):
+    self._test_helper(self._cond(self._cond()))
 
 
 @test_util.run_all_in_graph_and_eager_modes

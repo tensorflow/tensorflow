@@ -676,11 +676,24 @@ py_library(
 )
 
 py_library(
+    name = "packed_distributed_variable",
+    srcs = ["packed_distributed_variable.py"],
+    deps = [
+        ":device_util",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+py_library(
     name = "values",
     srcs = ["values.py"],
     deps = [
         ":device_util",
         ":distribute_lib",
+        ":packed_distributed_variable",
         ":reduce_util",
         ":values_util",
         "//tensorflow/python:array_ops",
@@ -1584,9 +1597,10 @@ distribute_py_test(
         "no_rocm",
     ],
     deps = [
+        ":combinations",
         ":saved_model_test_base",
+        "//tensorflow/python/eager:test",
         "//tensorflow/python/keras/saving",
-        "//tensorflow/python/saved_model",
     ],
 )
 
@@ -1695,30 +1709,54 @@ cuda_py_test(
 py_library(
     name = "multi_process_runner",
     srcs = ["multi_process_runner.py"],
+    srcs_version = "PY3",
     deps = [
         ":multi_process_lib",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:tf2",
         "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/eager:context",
+        "@absl_py//absl/logging",
+        "@dill_archive//:dill",
         "@six_archive//:six",
+        "@tblib_archive//:tblib",
     ],
 )
 
 py_library(
     name = "multi_process_lib",
     srcs = ["multi_process_lib.py"],
-    deps = ["@six_archive//:six"],
+    deps = ["//tensorflow/python:client_testlib"],
+)
+
+py_test(
+    name = "packed_distributed_variable_test",
+    srcs = ["packed_distributed_variable_test.py"],
+    tags = [
+        "nomac",  #TODO(b/145922293): It would cause a Python segfault on macos
+    ],
+    deps = [
+        ":device_util",
+        ":packed_distributed_variable",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+    ],
 )
 
 py_test(
     name = "multi_process_runner_test",
     srcs = ["multi_process_runner_test.py"],
     python_version = "PY3",
-    shard_count = 12,
     deps = [
         ":multi_process_runner",
         ":multi_worker_test_base",
         "//tensorflow/python/eager:test",
+        "@absl_py//absl/logging",
+        "@six_archive//:six",
     ],
 )
 
@@ -1726,6 +1764,7 @@ py_test(
     name = "multi_process_runner_no_init_test",
     srcs = ["multi_process_runner_no_init_test.py"],
     python_version = "PY3",
+    tags = ["no_oss"],
     deps = [
         ":multi_process_runner",
         ":multi_worker_test_base",

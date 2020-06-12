@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-tensor-array-ops-decomposition | FileCheck %s -dump-input-on-failure
+// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-tensor-array-ops-decomposition | FileCheck %s
 
 // Test read and write on a tensor list.
 

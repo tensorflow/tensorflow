@@ -88,7 +88,9 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":calibration_common",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/core/api",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",

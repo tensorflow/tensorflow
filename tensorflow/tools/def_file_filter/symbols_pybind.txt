@@ -82,6 +82,7 @@ tensorflow::Device::attributes
 [device_factory]  # device_lib, tfe, tf_session
 tensorflow::DeviceFactory::AddDevices
 tensorflow::DeviceFactory::ListAllPhysicalDevices
+tensorflow::DeviceFactory::GetAnyDeviceDetails
 
 [session_options]  # device_lib, tfe, tf_session
 tensorflow::SessionOptions::SessionOptions

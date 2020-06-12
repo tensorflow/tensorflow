@@ -36,6 +36,7 @@ tensorflow/third_party/coremltools.BUILD
 tensorflow/third_party/cub.BUILD
 tensorflow/third_party/curl.BUILD
 tensorflow/third_party/cython.BUILD
+tensorflow/third_party/dill.BUILD
 tensorflow/third_party/double_conversion.BUILD
 tensorflow/third_party/eigen.BUILD
 tensorflow/third_party/eigen3/BUILD
@@ -196,6 +197,7 @@ tensorflow/third_party/systemlibs/swig.BUILD
 tensorflow/third_party/systemlibs/syslibs_configure.bzl
 tensorflow/third_party/systemlibs/termcolor.BUILD
 tensorflow/third_party/systemlibs/zlib.BUILD
+tensorflow/third_party/tblib.BUILD
 tensorflow/third_party/tensorrt/BUILD
 tensorflow/third_party/tensorrt/BUILD.tpl
 tensorflow/third_party/tensorrt/LICENSE

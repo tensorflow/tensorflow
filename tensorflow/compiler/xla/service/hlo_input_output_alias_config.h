@@ -40,6 +40,15 @@ class HloInputOutputAliasConfig {
     kSystemAlias,
   };
 
+  static std::string AliasKindToString(AliasKind kind) {
+    switch (kind) {
+      case kUserAlias:
+        return "USER";
+      case kSystemAlias:
+        return "SYSTEM";
+    }
+  }
+
   // Defines the alias information for a given output buffer. A given output
   // buffer shape index can refer only to one parameter+index.
   struct Alias {
@@ -51,6 +60,16 @@ class HloInputOutputAliasConfig {
     AliasKind kind;
     int64 parameter_number;
     ShapeIndex parameter_index;
+
+    std::string ToString() {
+      if (kind == kUserAlias) {
+        return absl::StrFormat("(%lld, %s)", parameter_number,
+                               parameter_index.ToString());
+      }
+      return absl::StrFormat("(%lld, %s, %s)", parameter_number,
+                             parameter_index.ToString(),
+                             AliasKindToString(kind));
+    }
   };
 
   HloInputOutputAliasConfig() = default;
@@ -121,6 +140,8 @@ class HloInputOutputAliasConfig {
   const Shape& shape() const;
 
   string ToString() const;
+
+  string ToShortString() const;
 
  private:
   // A ShapeTree which indicates the list of buffers that's expected to be

@@ -23,12 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfjs/transforms/passes.h"
 
-namespace mlir {
-/// Create a pass to convert from the TFExecutor to the TF control dialect.
-std::unique_ptr<OperationPass<FuncOp>>
-CreateTFExecutorToControlDialectConversion();
-}  // namespace mlir
-
 namespace tensorflow {
 
 void AddTFToTFJSConversionPasses(mlir::OpPassManager* pm) {

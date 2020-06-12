@@ -1,4 +1,4 @@
-// RUN: tf-opt -tf-saved-model-optimize-global-tensors -split-input-file %s | FileCheck %s --dump-input=fail
+// RUN: tf-opt -tf-saved-model-optimize-global-tensors -split-input-file %s | FileCheck %s
 
 //===----------------------------------------------------------------------===//
 // Freezing.

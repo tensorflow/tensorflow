@@ -127,7 +127,7 @@ class TFL_OperandsHaveSameShapesOrBroadcastableShape<
     list<int> indices, int max_bcast_rank> :
   TFL_RuntimePredOpTrait<"operands do not have the same shape or "
       "broadcastable shapes within the rank " # max_bcast_rank,
-    CPred<"TFL::IsOperandsHaveSameShapesOrBroadcastableShape("
+    CPred<"TFL::VerifyOperandsHaveSameShapesOrBroadcastableShape("
             "$_op, llvm::ArrayRef<unsigned>({" # StrJoinInt<indices>.result #
             "}), " # max_bcast_rank # ")">>;
 
@@ -491,7 +491,8 @@ an output element, this operation computes \\(y = |x|\\).
 }
 
 def TFL_AddOp : TFL_Op<"add", [
-    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 5>,
+    TFL_RuntimePredOpTrait<"Operands do not have valid shapes",
+      CPred<"TFL::VerifyAddOpShapeConstraints(llvm::cast<AddOp>($_op))">>,
     ResultsBroadcastableShape,
     NoSideEffect,
     Commutative,
@@ -2171,7 +2172,8 @@ def TFL_MulOp : TFL_Op<"mul", [
     NoSideEffect,
     Commutative,
     BinaryOpSameElementTypeConstraint,
-    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 5>,
+    TFL_RuntimePredOpTrait<"Operands do not have valid shapes",
+      CPred<"TFL::VerifyMulOpShapeConstraints(llvm::cast<MulOp>($_op))">>,
     TFL_GpuTargetOp]> {
   let summary = "Multiplication operator";
 
@@ -2832,7 +2834,8 @@ def TFL_SquareOp: TFL_Op<"square", [
 def TFL_SubOp : TFL_Op<"sub", [
     ResultsBroadcastableShape,
     BinaryOpSameElementTypeConstraint,
-    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 5>,
+    TFL_RuntimePredOpTrait<"Operands do not have valid shapes",
+      CPred<"TFL::VerifySubOpShapeConstraints(llvm::cast<SubOp>($_op))">>,
     NoSideEffect]> {
   let summary = "Subtraction operator";
 

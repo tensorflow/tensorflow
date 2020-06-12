@@ -72,7 +72,7 @@ class Trace(object):
       The example above uses the keyword argument "step_num" to specify the
       training step being traced.
     """
-    if _pywrap_traceme.TraceMe.IsEnabled():
+    if _pywrap_traceme.enabled:
       # Creating _pywrap_traceme.TraceMe starts the clock.
       self._traceme = _pywrap_traceme.TraceMe(name, **kwargs)
     else:
