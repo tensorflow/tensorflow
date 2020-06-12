@@ -25,7 +25,7 @@ namespace xla {
 
 namespace py = pybind11;
 
-bool Traceback::enabled_ = true;
+bool Traceback::enabled_ = false;
 
 Traceback::~Traceback() {
   // We want Traceback objects to be safe to destroy without holding the
@@ -34,7 +34,7 @@ Traceback::~Traceback() {
 }
 
 std::string Traceback::Frame::ToString() const {
-  return absl::StrFormat("%s:%d (%s)", file_name, line_num, function_name);
+  return absl::StrFormat("%s;%s:%d", function_name, file_name, line_num);
 }
 
 std::string Traceback::ToString() const {
@@ -61,12 +61,12 @@ std::vector<Traceback::Frame> Traceback::Frames() const {
   return frames;
 }
 
-std::shared_ptr<Traceback> Traceback::Get() {
+std::unique_ptr<Traceback> Traceback::Get() {
   DCHECK(PyGILState_Check());
   if (!enabled_) {
     return nullptr;
   }
-  auto tb = std::make_shared<Traceback>();
+  auto tb = std::make_unique<Traceback>();
   const PyThreadState* thread_state = PyThreadState_GET();
   for (PyFrameObject* py_frame = thread_state->frame; py_frame != nullptr;
        py_frame = py_frame->f_back) {

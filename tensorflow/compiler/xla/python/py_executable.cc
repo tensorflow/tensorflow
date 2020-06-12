@@ -23,29 +23,10 @@ namespace py = pybind11;
 
 PyExecutable::PyExecutable(std::shared_ptr<PyClient> client,
                            std::unique_ptr<PjRtExecutable> executable,
-                           std::shared_ptr<Traceback> traceback)
+                           std::unique_ptr<Traceback> traceback)
     : client_(std::move(client)),
       executable_(std::move(executable)),
-      traceback_(std::move(traceback)) {
-  next_ = client_->executables_;
-  client_->executables_ = this;
-  prev_ = nullptr;
-  if (next_) {
-    next_->prev_ = this;
-  }
-}
-
-PyExecutable::~PyExecutable() {
-  if (client_->executables_ == this) {
-    client_->executables_ = next_;
-  }
-  if (prev_) {
-    prev_->next_ = next_;
-  }
-  if (next_) {
-    next_->prev_ = prev_;
-  }
-}
+      traceback_(std::move(traceback)) {}
 
 std::vector<ClientAndPtr<Device>> PyExecutable::LocalDevices() const {
   std::vector<ClientAndPtr<Device>> devices;
@@ -70,8 +51,8 @@ StatusOr<std::vector<std::unique_ptr<PyBuffer>>> PyExecutable::Execute(
   std::vector<std::unique_ptr<PyBuffer>> outputs;
   outputs.reserve(output_buffers.size());
   for (auto& buffer : output_buffers) {
-    outputs.push_back(
-        std::make_unique<PyBuffer>(client_, std::move(buffer), traceback));
+    outputs.push_back(std::make_unique<PyBuffer>(client_, std::move(buffer),
+                                                 std::move(traceback)));
   }
   return outputs;
 }
@@ -97,8 +78,8 @@ PyExecutable::ExecuteOnLocalDevices(
   for (int computation = 0; computation < output_buffers.size();
        ++computation) {
     for (auto& buffer : output_buffers[computation]) {
-      outputs[computation].push_back(
-          std::make_unique<PyBuffer>(client_, std::move(buffer), traceback));
+      outputs[computation].push_back(std::make_unique<PyBuffer>(
+          client_, std::move(buffer), std::move(traceback)));
     }
   }
   return outputs;

@@ -23,7 +23,6 @@ import atexit
 import collections
 import contextlib
 import enum  # pylint: disable=g-bad-import-order
-import gzip
 import inspect
 import os
 from typing import List, Sequence, Tuple, Union
@@ -681,11 +680,6 @@ def tracebacks(enabled=True):
     yield
   finally:
     Traceback.enabled = saved
-
-
-def heap_profile(client: Client) -> str:
-  """Returns a gzipped pprof protocol buffer containing a heap profile."""
-  return gzip.compress(client.heap_profile())
 
 
 # Perform one last garbage collection of deferred Python references. This is

@@ -695,13 +695,6 @@ PjRtBuffer::~PjRtBuffer() {
   }
 }
 
-int64 PjRtBuffer::OnDeviceSizeInBytes() const {
-  return client_->client()
-      ->backend()
-      .transfer_manager()
-      ->GetByteSizeRequirement(on_device_shape_);
-}
-
 void PjRtBuffer::WaitForOutstandingUsageHolds() {
   auto not_in_usage_hold = [&]() {
     mu_.AssertHeld();

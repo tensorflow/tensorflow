@@ -15,18 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/py_client.h"
 
-#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/python/types.h"
-#include "tensorflow/core/profiler/profile.pb.h"
 
 namespace xla {
 
 namespace py = pybind11;
-namespace pprof = tensorflow::tfprof::pprof;
 
 PyClient::PyClient(std::shared_ptr<PjRtClient> pjrt_client)
     : pjrt_client_(std::move(pjrt_client)) {}
@@ -128,153 +125,6 @@ StatusOr<std::unique_ptr<PyExecutable>> PyClient::Compile(
                                               std::move(options)));
   return std::make_unique<PyExecutable>(
       shared_from_this(), std::move(executable), std::move(traceback));
-}
-
-class ProfileBuilder {
- public:
-  ProfileBuilder();
-  pprof::Profile& profile() { return profile_; }
-
-  // Adds or returns the ID of `s` in the table.
-  int StringId(const std::string& s);
-
-  // Adds or returns the ID of a function.
-  int FunctionId(PyCodeObject* code);
-
-  // Adds or returns the ID of a code location.
-  int LocationId(PyCodeObject* code, int instruction);
-
- private:
-  pprof::Profile profile_;
-
-  absl::flat_hash_map<std::string, int> strings_;
-  absl::flat_hash_map<PyCodeObject*, int> functions_;
-  absl::flat_hash_map<std::pair<PyCodeObject*, int>, int> locations_;
-};
-
-ProfileBuilder::ProfileBuilder() { CHECK_EQ(0, StringId("")); }
-
-int ProfileBuilder::StringId(const std::string& s) {
-  auto ret = strings_.emplace(s, profile_.string_table_size());
-  if (ret.second) {
-    profile_.add_string_table(s);
-  }
-  return ret.first->second;
-}
-
-int ProfileBuilder::FunctionId(PyCodeObject* code) {
-  // +1 because id 0 is reserved.
-  auto ret = functions_.emplace(code, profile_.function_size() + 1);
-  if (ret.second) {
-    auto* function = profile_.add_function();
-    function->set_id(ret.first->second);
-    int name = StringId(py::str(code->co_name));
-    function->set_name(name);
-    function->set_system_name(name);
-    function->set_filename(StringId(py::str(code->co_filename)));
-    function->set_start_line(code->co_firstlineno);
-  }
-  return ret.first->second;
-}
-
-int ProfileBuilder::LocationId(PyCodeObject* code, int instruction) {
-  // +1 because id 0 is reserved.
-  auto ret = locations_.emplace(std::make_pair(code, instruction),
-                                profile_.location_size() + 1);
-  if (ret.second) {
-    auto* location = profile_.add_location();
-    location->set_id(ret.first->second);
-    auto* line = location->add_line();
-    line->set_function_id(FunctionId(code));
-    line->set_line(PyCode_Addr2Line(code, instruction));
-  }
-  return ret.first->second;
-}
-
-namespace {
-
-struct HeapProfileKey {
-  Traceback* traceback;
-  int64 size;
-  Device* device;
-  bool operator==(const HeapProfileKey& other) const;
-};
-
-bool HeapProfileKey::operator==(const HeapProfileKey& other) const {
-  if (size != other.size || device != other.device) {
-    return false;
-  }
-  if ((traceback == nullptr) != (other.traceback == nullptr)) {
-    return false;
-  }
-  if (traceback && traceback->raw_frames() != other.traceback->raw_frames()) {
-    return false;
-  }
-  return true;
-}
-
-template <typename H>
-H AbslHashValue(H h, const HeapProfileKey& key) {
-  if (key.traceback) {
-    h = H::combine_contiguous(std::move(h), key.traceback->raw_frames().begin(),
-                              key.traceback->raw_frames().size());
-  }
-  h = H::combine(std::move(h), key.size, key.device);
-  return h;
-}
-
-}  // namespace
-
-py::bytes PyClient::HeapProfile() {
-  absl::flat_hash_map<HeapProfileKey, int64> entries;
-  for (PyBuffer* buffer = buffers_; buffer; buffer = buffer->next_) {
-    HeapProfileKey key{buffer->traceback(),
-                       buffer->buffer()->OnDeviceSizeInBytes(),
-                       buffer->buffer()->device()};
-    ++entries[key];
-  }
-
-  for (PyExecutable* executable = executables_; executable;
-       executable = executable->next_) {
-    HeapProfileKey key{executable->traceback(),
-                       executable->SizeOfGeneratedCodeInBytes(), nullptr};
-    ++entries[key];
-  }
-
-  ProfileBuilder builder;
-  auto* allocations = builder.profile().add_sample_type();
-  allocations->set_type(builder.StringId("allocations"));
-  allocations->set_unit(builder.StringId("count"));
-  auto* space = builder.profile().add_sample_type();
-  space->set_type(builder.StringId("space"));
-  space->set_unit(builder.StringId("bytes"));
-
-  const int kind_string_id = builder.StringId("kind");
-  const int buffer_string_id = builder.StringId("buffer");
-  const int executable_string_id = builder.StringId("executable");
-  const int device_string_id = builder.StringId("device");
-  for (const auto& entry : entries) {
-    auto* sample = builder.profile().add_sample();
-    if (entry.first.traceback) {
-      for (const auto& frame : entry.first.traceback->raw_frames()) {
-        sample->add_location_id(builder.LocationId(frame.first, frame.second));
-      }
-    }
-    sample->add_value(entry.second);
-    sample->add_value(entry.first.size * entry.second);
-
-    auto* kind_label = sample->add_label();
-    kind_label->set_key(kind_string_id);
-    if (entry.first.device) {
-      kind_label->set_str(buffer_string_id);
-      auto* device_label = sample->add_label();
-      device_label->set_key(device_string_id);
-      device_label->set_num(entry.first.device->id());
-    } else {
-      kind_label->set_str(executable_string_id);
-    }
-  }
-  return builder.profile().SerializeAsString();
 }
 
 }  // namespace xla
