@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/protobuf/diagnostics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
@@ -200,8 +201,8 @@ TEST(ConvertXPlaneToOpStats, PropagateAndDedupErrors) {
 
   OpStats op_stats = ConvertXSpaceToOpStats(space);
 
-  EXPECT_EQ(1, op_stats.errors_size());
-  EXPECT_EQ(kError, op_stats.errors(/*index=*/0));
+  EXPECT_EQ(1, op_stats.diagnostics().errors_size());
+  EXPECT_EQ(kError, op_stats.diagnostics().errors(/*index=*/0));
 }
 
 }  // namespace

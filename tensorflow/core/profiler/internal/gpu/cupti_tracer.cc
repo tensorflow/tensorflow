@@ -1668,7 +1668,7 @@ Status CuptiTracer::ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
   if (dropped != 0) {
     uint32 device_id = -1;
     RETURN_IF_CUPTI_ERROR(cupti_interface_->GetDeviceId(context, &device_id));
-    collector_->OnEventsDropped("CUpti activity buffer", dropped);
+    collector_->OnEventsDropped("cupti activity buffer full", dropped);
   }
   return Status::OK();
 }

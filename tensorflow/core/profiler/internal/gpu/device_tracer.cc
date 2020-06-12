@@ -26,10 +26,12 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/platform/abi.h"
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -189,25 +191,28 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     if (event.device_id >= num_gpus_) return;
     if (event.source == CuptiTracerEventSource::DriverCallback) {
       if (num_callback_events_ > options_.max_callback_api_events) {
-        OnEventsDropped("trace collector", 1);
+        OnEventsDropped("total driver(callback) events reaches max", 1);
         return;
       }
       num_callback_events_++;
     } else {
       if (num_activity_events_ > options_.max_activity_api_events) {
-        OnEventsDropped("trace collector", 1);
+        OnEventsDropped("total device(activity) events reaches max", 1);
         return;
       }
       num_activity_events_++;
     }
     per_device_collector_[event.device_id].AddEvent(std::move(event));
   }
-  void OnEventsDropped(const std::string& reason, uint32 num_events) override {}
+  void OnEventsDropped(const std::string& reason, uint32 num_events) override {
+    absl::MutexLock lock(&mutex_);
+    dropped_events_[reason] += num_events;
+  }
   void Flush() override {}
   void Export(StepStats* step_stats) {
     LOG(INFO) << " GpuTracer has collected " << num_callback_events_
               << " callback api events and " << num_activity_events_
-              << " activity events.";
+              << " activity events. " << ReportDroppedEvents();
     for (int i = 0; i < num_gpus_; ++i) {
       per_device_collector_[i].Flush(i, start_walltime_ns_, start_gpu_ns_,
                                      step_stats);
@@ -216,7 +221,7 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
   void Export(XSpace* space) {
     LOG(INFO) << " GpuTracer has collected " << num_callback_events_
               << " callback api events and " << num_activity_events_
-              << " activity events.";
+              << " activity events. " << ReportDroppedEvents();
     uint64 end_gpu_ns = CuptiTracer::GetTimestamp();
     XPlaneBuilder host_plane(GetOrCreatePlane(space, kCuptiDriverApiPlaneName));
     host_plane.SetId(kCuptiDriverApiPlaneId);
@@ -232,10 +237,32 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     }
     NormalizeTimeStamps(&host_plane, start_walltime_ns_);
   }
+  std::string ReportDroppedEvents() {
+    absl::MutexLock lock(&mutex_);
+    string result;
+    for (const auto dropped : dropped_events_) {
+      absl::StrAppend(&result, " ", dropped.second, " events dropped because ",
+                      dropped.first, ";");
+    }
+    if (!result.empty()) result.back() = '.';
+    return result;
+  }
+  std::string ReportNumEventsIfDropped() {
+    std::string events_dropped = ReportDroppedEvents();
+    if (events_dropped.empty()) return "";
+    return absl::StrCat("Detected GPU events dropped on ", port::Hostname(),
+                        ": Profiler has collected ",
+                        num_callback_events_.load(), " driver events and ",
+                        num_activity_events_.load(), " device events.",
+                        events_dropped);
+  }
 
  private:
   std::atomic<int> num_callback_events_;
   std::atomic<int> num_activity_events_;
+  absl::Mutex mutex_;
+  absl::flat_hash_map<std::string, uint64> dropped_events_
+      ABSL_GUARDED_BY(mutex_);
   uint64 start_walltime_ns_;
   uint64 start_gpu_ns_;
   int num_gpus_;
@@ -669,7 +696,11 @@ Status GpuTracer::CollectData(XSpace* space) {
     case State::kStoppedOk: {
       std::string cupti_error = CuptiTracer::ErrorIfAny();
       if (!cupti_error.empty()) {
-        space->add_errors(cupti_error);
+        space->add_errors(std::move(cupti_error));
+      }
+      std::string events_dropped = cupti_collector_->ReportNumEventsIfDropped();
+      if (!events_dropped.empty()) {
+        space->add_warnings(std::move(events_dropped));
       }
       if (cupti_collector_) {
         cupti_collector_->Export(space);

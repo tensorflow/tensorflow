@@ -87,6 +87,7 @@ tf_proto_library(
     srcs = ["op_stats.proto"],
     cc_api_version = 2,
     protodeps = [
+        ":diagnostics_proto",
         ":kernel_stats_proto",
         ":op_metrics_proto",
         ":steps_db_proto",

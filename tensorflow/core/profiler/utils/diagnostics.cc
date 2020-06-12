@@ -49,7 +49,7 @@ void PopulateStepDiagnostics(const OpStats& op_stats, Diagnostics* diag) {
 }
 
 void PopulateOverviewDiagnostics(const OpStats& op_stats, Diagnostics* diag) {
-  *diag->mutable_errors() = op_stats.errors();
+  *diag->mutable_errors() = op_stats.diagnostics().errors();
   absl::c_sort(*diag->mutable_errors());
   if (diag->errors().empty()) {
     // Shows run-environment error only if there is no other existing error.
@@ -58,6 +58,7 @@ void PopulateOverviewDiagnostics(const OpStats& op_stats, Diagnostics* diag) {
       *diag->add_errors() = std::string(kNoDeviceTraceCollected);
     }
   }
+  *diag->mutable_warnings() = op_stats.diagnostics().warnings();
   PopulateStepDiagnostics(op_stats, diag);
 }
 
