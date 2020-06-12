@@ -19,9 +19,9 @@ cc_library(
     deps = [
         ":tpu_compile_op_support",
         ":tpu_mesh_state_interface",
+        ":tpu_program_group_interface",
         ":tpu_util",
         ":tpu_util_hdrs",
-        "@com_google_absl//absl/types:span",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/jit:shape_inference",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
@@ -30,16 +30,16 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:compile_only_client",
-        "//tensorflow/core/protobuf/tpu:dynamic_padding_proto_cc",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        # "//tensorflow/core/protobuf/tpu:compilation_result_proto_cc",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
+        "//tensorflow/core/protobuf/tpu:dynamic_padding_proto_cc",
         "//tensorflow/core/tpu:tpu_configuration",
         "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/stream_executor/tpu:tpu_platform_interface",
+        "@com_google_absl//absl/types:span",
     ],
     alwayslink = 1,
 )
@@ -154,11 +154,25 @@ cc_library(
         "tpu_compilation_cache_entry.h",
     ],
     deps = [
+        ":compiled_subgraph",
+        ":tpu_compilation_cache_proto_cc",
         ":tpu_executable_info_proto_cc",
         ":tpu_program_group",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/core:framework",
         "//tensorflow/core/lib/core:refcount",
         "//tensorflow/core/platform:casts",
+    ],
+)
+
+cc_library(
+    name = "tpu_compilation_cache_entry_impl",
+    srcs = [],
+    hdrs = ["tpu_compilation_cache_entry_impl.h"],
+    deps = [
+        ":compiled_subgraph",
+        ":tpu_compilation_cache_interface",
+        ":tpu_executable_info_proto_cc",
     ],
 )
 
@@ -171,6 +185,7 @@ cc_library(
     deps = [
         ":tpu_compilation_cache_entry",
         ":tpu_compilation_cache_external",
+        ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_proto_cc",
         "//tensorflow/core/lib/core:refcount",
         "//tensorflow/core/platform:status",
@@ -245,6 +260,35 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_compilation_cache_interface",
+    srcs = ["tpu_compilation_cache_interface.cc"],
+    hdrs = ["tpu_compilation_cache_interface.h"],
+    deps = [
+        ":compiled_subgraph",
+        ":tpu_compilation_cache_key",
+        ":tpu_compilation_cache_metrics_hdrs",
+        ":tpu_compilation_cache_proto_cc",
+        ":tpu_util",
+        ":tpu_util_hdrs",
+        ":trace_util_hdrs",
+        "//tensorflow/compiler/tf2xla:host_compute_metadata_proto_cc",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_call",
+        "//tensorflow/core/platform:casts",  # buildcleaner: keep
+        "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "tpu_compilation_cache_external",
     srcs = ["tpu_compilation_cache_external.cc"],
     hdrs = [
@@ -253,6 +297,8 @@ cc_library(
     deps = [
         ":compiled_subgraph",
         ":tpu_compilation_cache_entry",
+        ":tpu_compilation_cache_entry_impl",
+        ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_key",
         ":tpu_compilation_cache_metrics",  # buildcleaner: keep
         ":tpu_compilation_cache_metrics_hdrs",
@@ -352,6 +398,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:compile_only_client",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
