@@ -487,7 +487,7 @@ def skip_if_error(test_obj, error_type, messages=None):
     yield
   except error_type as e:
     if not messages or any(message in str(e) for message in messages):
-      test_obj.skipTest("Skipping error: {}".format(str(e)))
+      test_obj.skipTest("Skipping error: {}: {}".format(type(e), str(e)))
     else:
       raise
 
