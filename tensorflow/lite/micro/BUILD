@@ -48,6 +48,7 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/micro:micro_profiler",
         "//tensorflow/lite/micro/memory_planner",
         "//tensorflow/lite/micro/memory_planner:greedy_memory_planner",
         "//tensorflow/lite/schema:schema_fbs",
@@ -179,6 +180,24 @@ cc_library(
     build_for_embedded = True,
     copts = micro_copts(),
     deps = ["//tensorflow/lite/c:common"],
+)
+
+cc_library(
+    name = "micro_profiler",
+    srcs = [
+        "micro_profiler.cc",
+    ],
+    hdrs = [
+        "micro_profiler.h",
+    ],
+    build_for_embedded = True,
+    copts = micro_copts(),
+    deps = [
+        ":micro_compatibility",
+        ":micro_time",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/kernels/internal:compatibility",
+    ],
 )
 
 cc_library(
