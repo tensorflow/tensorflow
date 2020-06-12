@@ -12,11 +12,6 @@ package(
 )
 
 tf_fuzz_target(
-    name = "demo_fuzz",
-    srcs = ["demo_fuzz.cc"],
-)
-
-tf_fuzz_target(
     name = "status_fuzz",
     srcs = ["status_fuzz.cc"],
     deps = [

@@ -57,7 +57,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
   }
 
   tensorflow::Status s = tensorflow::Status(error_code, error_message);
-  const string actual_message = s.ToString();
+  const std::string actual_message = s.ToString();
   const std::size_t pos = actual_message.rfind(error_message);
   assert(pos != std::string::npos);  // Suffix is error message
   assert(pos > 0);                   // Prefix is error code
