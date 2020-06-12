@@ -88,8 +88,7 @@ class TraceMeProducer {
     trace_me_.AppendMetadata([&] {
       context_id_ =
           context_id.has_value() ? *context_id : TraceMe::NewActivityId();
-      return TraceMeEncode(
-          {{"$pt", static_cast<int>(context_type)}, {"$p", context_id_}});
+      return TraceMeEncode({{"_pt", context_type}, {"_p", context_id_}});
     });
   }
 
@@ -107,8 +106,7 @@ class TraceMeConsumer {
                   int level = 2)
       : trace_me_(name, level) {
     trace_me_.AppendMetadata([&] {
-      return TraceMeEncode(
-          {{"$ct", static_cast<int>(context_type)}, {"$c", context_id}});
+      return TraceMeEncode({{"_ct", context_type}, {"_c", context_id}});
     });
   }
 
