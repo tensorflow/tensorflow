@@ -190,6 +190,14 @@ void BuildProfilerSubmodule(py::module* m) {
       .def_static("is_enabled", &TraceMeWrapper::IsEnabled);
 }
 
+bool IsOptimizedBuild() {
+#if NDEBUG
+  return true;
+#else
+  return false;
+#endif  // NDEBUG
+}
+
 }  // namespace
 
 PYBIND11_MODULE(xla_extension, m) {
@@ -886,6 +894,8 @@ PYBIND11_MODULE(xla_extension, m) {
   m.def("get_distributed_runtime_client", &GetDistributedRuntimeClient);
 
   m.def("collect_garbage", []() { GlobalPyRefManager()->CollectGarbage(); });
+
+  m.def("is_optimized_build", &IsOptimizedBuild);
 }  // NOLINT(readability/fn_size)
 
 }  // namespace xla
