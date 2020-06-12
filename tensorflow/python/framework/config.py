@@ -25,7 +25,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 # No tf_export until TF is built against CUDA11 which is required for TF32.
-def tensor_float32_execution_allowed():
+def tensor_float_32_execution_allowed():
   """Get if TensorFloat-32 operations are enabled on supported hardware.
 
   Returns:
@@ -34,7 +34,7 @@ def tensor_float32_execution_allowed():
   return _pywrap_tf32_execution.is_allowed()
 
 # No tf_export until TF is built against CUDA11 which is required for TF32.
-def allow_tensor_float32_execution(allowed):
+def allow_tensor_float_32_execution(allowed):
   """Allow use of TensorFloat-32 with float32 ops on supported hardware.
 
   TensorFloat-32 is a math mode introduced with the NVIDIA Ampere architecture.
