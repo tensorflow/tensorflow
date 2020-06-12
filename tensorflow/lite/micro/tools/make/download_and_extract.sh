@@ -82,6 +82,41 @@ patch_kissfft() {
   echo "Finished patching kissfft"
 }
 
+# Fixes issues with CMSIS.
+patch_cmsis() {
+  # See the RFC at https://docs.google.com/document/d/14GRxeVEgSKgKBKAijO7oxnI49nLoTYBFQmPok-rG0cw
+  # for full details on the path qualification changes we have to make below to enable the CMSIS-NN
+  # library source files to compile in an environment like the Arduino IDE that doesn't suppport
+  # custom include paths.
+  # These include changes were found through trial and error while trying to get the Arduino
+  # library compiling with the CMSIS-NN kernels included.
+  find tensorflow/lite/micro/tools/make/downloads/cmsis \
+    -iname '*.c' -exec \
+    sed -i -E $'s@#include "arm_nnfunctions.h"@#include "cmsis/CMSIS/NN/Include/arm_nnfunctions.h"@g' {} \;
+
+  find tensorflow/lite/micro/tools/make/downloads/cmsis \
+    -iname '*.c' -exec \
+    sed -i -E $'s@#include "arm_nnsupportfunctions.h"@#include "cmsis/CMSIS/NN/Include/arm_nnsupportfunctions.h"@g' {} \; 
+
+  find tensorflow/lite/micro/tools/make/downloads/cmsis \
+    -iname '*.c' -exec \
+    sed -i -E $'s@#include "arm_nn_types.h"@#include "cmsis/CMSIS/NN/Include/arm_nn_types.h"@g' {} \;
+
+  find tensorflow/lite/micro/tools/make/downloads/cmsis \
+    -iname '*.*' -exec \
+    sed -i -E $'s@#include "arm_math.h"@#include "cmsis/CMSIS/DSP/Include/arm_math.h"@g' {} \;
+
+  find tensorflow/lite/micro/tools/make/downloads/cmsis \
+    -iname '*.*' -exec \
+    sed -i -E $'s@#include "arm_common_tables.h"@#include "cmsis/CMSIS/DSP/Include/arm_common_tables.h"@g' {} \;
+
+  find tensorflow/lite/micro/tools/make/downloads/cmsis \
+    -iname '*.*' -exec \
+    sed -i -E $'s@#include "arm_nn_tables.h"@#include "cmsis/CMSIS/NN/Include/arm_nn_tables.h"@g' {} \;
+
+  echo "Finished patching CMSIS"
+}
+
 # Create a header file containing an array with the first 10 images from the
 # CIFAR10 test dataset.
 patch_cifar10_dataset() {
@@ -183,6 +218,8 @@ download_and_extract() {
     patch_kissfft ${dir}
   elif [[ ${action} == "patch_cifar10_dataset" ]]; then
     patch_cifar10_dataset ${dir}
+  elif [[ ${action} == "patch_cmsis" ]]; then
+    patch_cmsis ${dir}
   elif [[ ${action} == "build_embarc_mli" ]]; then
     if [[ "${action_param1}" == *.tcf ]]; then
       cp ${action_param1} ${dir}/hw/arc.tcf
