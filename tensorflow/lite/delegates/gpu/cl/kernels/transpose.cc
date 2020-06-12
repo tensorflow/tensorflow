@@ -130,8 +130,9 @@ absl::Status Transpose::Compile(const CreationContext& creation_context) {
     element_wise_code += "{\n" + code + "\n}\n";
     RETURN_IF_ERROR(args_.Merge(std::move(link_args), postfix));
   }
-  RETURN_IF_ERROR(
-      args_.TransformToCLCode({{"dst_tensor", element_wise_code}}, &code));
+  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
+                                          {{"dst_tensor", element_wise_code}},
+                                          &code));
   code = absl::Substitute(code, args_.GetListOfArgs());
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,

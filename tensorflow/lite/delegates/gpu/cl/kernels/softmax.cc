@@ -91,7 +91,8 @@ Softmax& Softmax::operator=(Softmax&& kernel) {
 absl::Status Softmax::Compile(const CreationContext& creation_context) {
   std::string code =
       GetSoftmaxKernelCode(definition_, linked_operations_, &args_);
-  RETURN_IF_ERROR(args_.TransformToCLCode({}, &code));
+  RETURN_IF_ERROR(
+      args_.TransformToCLCode(creation_context.device->GetInfo(), {}, &code));
   code = absl::Substitute(code, args_.GetListOfArgs());
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,

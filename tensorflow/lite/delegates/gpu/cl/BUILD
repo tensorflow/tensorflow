@@ -43,6 +43,7 @@ cc_library(
     srcs = ["arguments.cc"],
     hdrs = ["arguments.h"],
     deps = [
+        ":cl_device",
         ":gpu_object",
         ":opencl_wrapper",
         ":tensor_type",
