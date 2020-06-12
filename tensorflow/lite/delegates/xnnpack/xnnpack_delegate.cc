@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
 
 namespace tflite {
 namespace xnnpack {
@@ -2585,6 +2586,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
       continue;  // Soft error (skip this node).
     }
 
+    // Prepare to unpack FP16 tensors.
     if (registration->builtin_code == kTfLiteBuiltinDequantize &&
         node->inputs->size == 1 && node->outputs->size == 1) {
       const TfLiteTensor& input_tensor =
@@ -2593,6 +2595,31 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
           context->tensors[node->outputs->data[0]];
       if (input_tensor.allocation_type == kTfLiteMmapRo &&
           input_tensor.type == kTfLiteFloat16 &&
+          output_tensor.type == kTfLiteFloat32) {
+        static_unpack_nodes_.insert(i);
+        quasi_static_tensors_producers[node->outputs->data[0]] = i;
+        quasi_static_tensors.insert(node->outputs->data[0]);
+
+        // Skip this node for now. If output of the node is consumed only by
+        // delegated nodes, it will be added to nodes_to_delegate in the end.
+        continue;
+      }
+    }
+
+    // Prepare to unpack sparse tensors.
+    // TODO(b/157729695): In the future, we also need to handle the case where a
+    // sparse tensor is fed to a TFLite op directly, and no Densify() op is
+    // inserted. For now this is not a problem because the Conv() op in tflite
+    // can only consume dense tensors.
+    if (registration->builtin_code == kTfLiteBuiltinDensify &&
+        node->inputs->size == 1 && node->outputs->size == 1) {
+      const TfLiteTensor& input_tensor =
+          context->tensors[node->inputs->data[0]];
+      const TfLiteTensor& output_tensor =
+          context->tensors[node->outputs->data[0]];
+      if (input_tensor.allocation_type == kTfLiteMmapRo &&
+          input_tensor.sparsity != nullptr &&
+          input_tensor.type == kTfLiteFloat32 &&
           output_tensor.type == kTfLiteFloat32) {
         static_unpack_nodes_.insert(i);
         quasi_static_tensors_producers[node->outputs->data[0]] = i;
@@ -2689,8 +2716,25 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
 
     float* unpacked_data =
         reinterpret_cast<float*>(static_unpacked_data_.data() + tensor_offset);
-    switch (input_tensor.type) {
-      case kTfLiteFloat16: {
+    switch (registration->builtin_code) {
+      case kTfLiteBuiltinDequantize: {
+        if (input_tensor.type != kTfLiteFloat16) {
+          TF_LITE_KERNEL_LOG(
+              context, "unexpected tensor %d data type (%s) in node %d",
+              node->inputs->data[0], TfLiteTypeGetName(input_tensor.type),
+              producer_index);
+          TfLiteIntArrayFree(nodes_to_delegate);
+          return nullptr;  // Hard error.
+        }
+
+        if (input_tensor.sparsity != nullptr) {
+          TF_LITE_KERNEL_LOG(context,
+                             "unexpected FP16 sparse tensor %d in node %d",
+                             node->inputs->data[0], producer_index);
+          TfLiteIntArrayFree(nodes_to_delegate);
+          return nullptr;  // Hard error.
+        }
+
         const uint16_t* packed_data =
             static_cast<const uint16_t*>(input_tensor.data.data);
         for (size_t i = 0; i < tensor_elements; i++) {
@@ -2698,11 +2742,42 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
         }
         break;
       }
+      case kTfLiteBuiltinDensify: {
+        if (input_tensor.type != kTfLiteFloat32) {
+          TF_LITE_KERNEL_LOG(
+              context, "unexpected tensor %d data type (%s) in node %d",
+              node->inputs->data[0], TfLiteTypeGetName(input_tensor.type),
+              producer_index);
+          TfLiteIntArrayFree(nodes_to_delegate);
+          return nullptr;  // Hard error.
+        }
+
+        if (input_tensor.sparsity == nullptr) {
+          TF_LITE_KERNEL_LOG(context, "unexpected dense tensor %d in node %d",
+                             node->inputs->data[0], producer_index);
+          TfLiteIntArrayFree(nodes_to_delegate);
+          return nullptr;  // Hard error.
+        }
+
+        const int dims_count = output_tensor.dims->size;
+        std::vector<int> vector_shape(dims_count);
+        for (int i = 0; i < dims_count; i++) {
+          vector_shape[i] = output_tensor.dims->data[i];
+        }
+
+        tflite::optimize::sparsity::FormatConverter<float> converter(
+            vector_shape, *input_tensor.sparsity);
+        converter.SparseToDense(input_tensor.data.f);
+        const std::vector<float> out = converter.GetData();
+        for (int i = 0; i < out.size(); i++) {
+          unpacked_data[i] = out[i];
+        }
+
+        break;
+      }
       default:
-        TF_LITE_KERNEL_LOG(context,
-                           "unexpected datatype (%s) in tensor %d in node %d",
-                           TfLiteTypeGetName(output_tensor.type),
-                           node->outputs->data[0], producer_index);
+        TF_LITE_KERNEL_LOG(context, "unexpected op registration %d at node %d",
+                           registration->builtin_code, producer_index);
         TfLiteIntArrayFree(nodes_to_delegate);
         return nullptr;  // Hard error.
     }

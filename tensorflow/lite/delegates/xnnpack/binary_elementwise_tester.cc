@@ -189,6 +189,9 @@ std::vector<char> BinaryElementwiseTester::CreateTfLiteModel(
   if (FP16Weights()) {
     operator_codes.emplace_back(
         CreateOperatorCode(builder, BuiltinOperator_DEQUANTIZE));
+  } else if (SparseWeights()) {
+    operator_codes.emplace_back(
+        CreateOperatorCode(builder, BuiltinOperator_DENSIFY));
   }
 
   std::vector<flatbuffers::Offset<Buffer>> buffers{{
@@ -210,7 +213,9 @@ std::vector<char> BinaryElementwiseTester::CreateTfLiteModel(
       std::vector<float> input1_data(ComputeSize(Input1Shape()));
       std::generate(input1_data.begin(), input1_data.end(), input1_rng);
 
-      input1_buffer = buffers.size();
+      if (!SparseWeights()) {
+        input1_buffer = buffers.size();
+      }
       buffers.push_back(CreateBuffer(
           builder, builder.CreateVector(
                        reinterpret_cast<const uint8_t*>(input1_data.data()),
@@ -233,7 +238,9 @@ std::vector<char> BinaryElementwiseTester::CreateTfLiteModel(
       std::vector<float> input2_data(ComputeSize(Input2Shape()));
       std::generate(input2_data.begin(), input2_data.end(), input2_rng);
 
-      input2_buffer = buffers.size();
+      if (!SparseWeights()) {
+        input2_buffer = buffers.size();
+      }
       buffers.push_back(CreateBuffer(
           builder, builder.CreateVector(
                        reinterpret_cast<const uint8_t*>(input2_data.data()),
@@ -250,6 +257,25 @@ std::vector<char> BinaryElementwiseTester::CreateTfLiteModel(
                      builder.CreateVector<int32_t>(Input1Shape().data(),
                                                    Input1Shape().size()),
                      TensorType_FLOAT16, 1));
+  } else if (SparseWeights() && Input1Static()) {
+    int dims_count = Input1Shape().size();
+    std::vector<flatbuffers::Offset<DimensionMetadata>> dim_metadata(
+        dims_count);
+    std::vector<int> traversal_order(dims_count);
+    for (int i = 0; i < dims_count; i++) {
+      traversal_order[i] = i;
+      dim_metadata[i] = CreateDimensionMetadata(builder, DimensionType_DENSE,
+                                                Input1Shape()[i]);
+    }
+    flatbuffers::Offset<SparsityParameters> sparsity_param =
+        CreateSparsityParameters(builder, builder.CreateVector(traversal_order),
+                                 0, builder.CreateVector(dim_metadata));
+    tensors.emplace_back(CreateTensor(
+        builder,
+        builder.CreateVector<int32_t>(Input1Shape().data(),
+                                      Input1Shape().size()),
+        TensorType_FLOAT32, /*buffer=*/1, /*name=*/0, /*quantization=*/0,
+        /*is_variable=*/false, /*sparsity=*/sparsity_param));
   }
   if (FP16Weights() && Input2Static()) {
     tensors.emplace_back(
@@ -257,6 +283,25 @@ std::vector<char> BinaryElementwiseTester::CreateTfLiteModel(
                      builder.CreateVector<int32_t>(Input2Shape().data(),
                                                    Input2Shape().size()),
                      TensorType_FLOAT16, 1));
+  } else if (SparseWeights() && Input2Static()) {
+    int dims_count = Input2Shape().size();
+    std::vector<flatbuffers::Offset<DimensionMetadata>> dim_metadata(
+        dims_count);
+    std::vector<int> traversal_order(dims_count);
+    for (int i = 0; i < dims_count; i++) {
+      traversal_order[i] = i;
+      dim_metadata[i] = CreateDimensionMetadata(builder, DimensionType_DENSE,
+                                                Input2Shape()[i]);
+    }
+    flatbuffers::Offset<SparsityParameters> sparsity_param =
+        CreateSparsityParameters(builder, builder.CreateVector(traversal_order),
+                                 0, builder.CreateVector(dim_metadata));
+    tensors.emplace_back(CreateTensor(
+        builder,
+        builder.CreateVector<int32_t>(Input2Shape().data(),
+                                      Input2Shape().size()),
+        TensorType_FLOAT32, /*buffer=*/1, /*name=*/0, /*quantization=*/0,
+        /*is_variable=*/false, /*sparsity=*/sparsity_param));
   }
   if (FP16Weights()) {
     const std::array<int32_t, 1> dequantize_inputs{{0}};
@@ -267,6 +312,15 @@ std::vector<char> BinaryElementwiseTester::CreateTfLiteModel(
                                       dequantize_inputs.size()),
         builder.CreateVector<int32_t>(dequantize_outputs.data(),
                                       dequantize_outputs.size())));
+  } else if (SparseWeights()) {
+    const std::array<int32_t, 1> densify_inputs{{0}};
+    const std::array<int32_t, 1> densify_outputs{{Input1Static() ? 1 : 2}};
+    operators.emplace_back(
+        CreateOperator(builder, /*opcode_index=*/1,
+                       builder.CreateVector<int32_t>(densify_inputs.data(),
+                                                     densify_inputs.size()),
+                       builder.CreateVector<int32_t>(densify_outputs.data(),
+                                                     densify_outputs.size())));
   }
   tensors.emplace_back(CreateTensor(
       builder,
