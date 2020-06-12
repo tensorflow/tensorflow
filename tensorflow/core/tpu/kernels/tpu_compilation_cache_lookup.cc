@@ -42,7 +42,7 @@ std::string GetName(CompilationCacheFetchTarget target) {
 }  // namespace
 
 TpuCompilationCacheLocalLookup::TpuCompilationCacheLocalLookup(
-    TpuCompilationCacheInterface* cache)
+    TpuCompilationCacheExternal* cache)
     : cache_(cache) {}
 
 TpuCompilationCacheLocalLookup::~TpuCompilationCacheLocalLookup() {
@@ -50,19 +50,17 @@ TpuCompilationCacheLocalLookup::~TpuCompilationCacheLocalLookup() {
 }
 
 Status TpuCompilationCacheLocalLookup::Lookup(
-    const string& proto_key,
-    std::unique_ptr<TpuCompilationCacheEntryRef>* entry,
+    const string& proto_key, std::unique_ptr<CompilationCacheEntryRef>* entry,
     CompilationCacheFetchTarget fetch_target) {
   profiler::TraceMe proto_lookup_traceme("Local TPU proto cache lookup",
                                          /*level=*/2);
-  Status s = cache_->Lookup<TpuCompilationCacheEntryRef, EntryRefImpl>(
-      proto_key, entry);
+  Status s = cache_->Lookup(proto_key, entry);
   VLOG(1) << "Looked up key " << proto_key << " in local subgraph cache status "
           << s;
   if (!s.ok()) {
     return s;
   }
-  s = (*entry)->ToSubEntryRef(fetch_target);
+  s = cache_->ToSubEntryRef(entry->get(), fetch_target);
 
   VLOG(1) << "Fetched subentry: " << GetName(fetch_target) << " with status "
           << s;
@@ -71,18 +69,17 @@ Status TpuCompilationCacheLocalLookup::Lookup(
 
 Status TpuCompilationCacheLocalLookup::Lookup(
     int64 uid, int proto_index,
-    std::unique_ptr<TpuCompilationCacheEntryRef>* entry,
+    std::unique_ptr<CompilationCacheEntryRef>* entry,
     CompilationCacheFetchTarget fetch_target) {
   profiler::TraceMe proto_lookup_traceme("Local TPU proto cache lookup by uid",
                                          /*level=*/2);
-  Status s = cache_->Lookup<TpuCompilationCacheEntryRef, EntryRefImpl>(
-      uid, proto_index, entry);
+  Status s = cache_->Lookup(uid, proto_index, entry);
   VLOG(1) << "Looked up uid " << uid << ", index " << proto_index
           << " in local subgraph cache status " << s;
   if (!s.ok()) {
     return s;
   }
-  s = (*entry)->ToSubEntryRef(fetch_target);
+  s = cache_->ToSubEntryRef(entry->get(), fetch_target);
   VLOG(1) << "Fetched subentry: " << GetName(fetch_target) << " with status "
           << s;
   return s;

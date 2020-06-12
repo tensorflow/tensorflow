@@ -25,9 +25,6 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 
-// Forward declaration to avoid circular dependency.
-class TpuCompilationCacheInterface;
-
 // Cache for compiled TPU program.
 //
 // Each key identifies a unique subgraph, and the value is the vector of
@@ -103,7 +100,10 @@ class TpuCompilationCacheInterface;
 // unmarked and set to most recently used.
 //
 struct CompiledSubgraph : public core::RefCounted {
-  TpuCompilationCacheInterface* parent = nullptr;  // Not owned.
+  // TODO(henrytan): once `TpuCompilationCache` and
+  // `TpuCompilationCacheExternal` inherits from `TpuCompilationCacheInterface`
+  // update void* with `TpuCompilationCacheInterface`
+  void* parent = nullptr;  // Not owned.
 
   bool initialized = false;
 
@@ -145,7 +145,7 @@ struct CompiledSubgraph : public core::RefCounted {
   // owning main entry.
   CompiledSubgraph* main_entry = nullptr;
 
-  // Compiled TPU program group.
+  // Compiled Tpu program.
   std::unique_ptr<TpuProgramGroupInterface> tpu_program_group;
 
   // Computes total program size.
