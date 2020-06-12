@@ -415,7 +415,7 @@ Status ReadVariableInputTensor(const Tensor& tensor, DataType type,
   if (!variable->initialized()) {
     return errors::FailedPrecondition(
         "Read variable failure ", variable->name(),
-        ". It could mean the variable is not initialized or the variable is on "
+        ". It could mean the variable is uninitialized or the variable is on "
         "another device ");
   }
   if (variable->type() != type) {
@@ -468,7 +468,7 @@ Status XlaOpKernelContext::GetVariableTypeAndShape(int index, DataType* type,
   if (!variable->initialized()) {
     return errors::InvalidArgument(
         "Read variable failure ", variable->name(),
-        ". It could mean the variable is not initialized or the variable is on "
+        ". It could mean the variable is uninitialized or the variable is on "
         "another device ");
   }
   *type = variable->type();

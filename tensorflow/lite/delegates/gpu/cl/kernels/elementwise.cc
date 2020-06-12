@@ -26,6 +26,67 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
+std::string GetOneInputCode(const OperationType& op_type,
+                            CalculationsPrecision precision,
+                            const std::string& input0) {
+  std::string result;
+  switch (op_type) {
+    case OperationType::ABS:
+      result = "$0 = fabs($0);\n";
+      break;
+    case OperationType::COS:
+      result = "$0 = cos($0);\n";
+      break;
+    case OperationType::EXP:
+      result = "$0 = exp($0);\n";
+      break;
+    case OperationType::HARD_SWISH:
+      result =
+          "$0 *= clamp($0 * (FLT)(0.16666667f) + (FLT)(0.5f), (FLT4)(0.0f), "
+          "(FLT4)(1.0f));\n";
+      break;
+    case OperationType::LOG:
+      result = "$0 = log($0);\n";
+      break;
+    case OperationType::RSQRT:
+      result = "$0 = (FLT4)(1.0f) / sqrt($0);\n";
+      break;
+    case OperationType::SIGMOID:
+      if (precision != CalculationsPrecision::F32) {
+        result =
+            "$0.x = convert_half(native_recip(1.0f + "
+            "native_exp(convert_float(-$0.x))));\n";
+        result +=
+            "$0.y = convert_half(native_recip(1.0f + "
+            "native_exp(convert_float(-$0.y))));\n";
+        result +=
+            "$0.z = convert_half(native_recip(1.0f + "
+            "native_exp(convert_float(-$0.z))));\n";
+        result +=
+            "$0.w = convert_half(native_recip(1.0f + "
+            "native_exp(convert_float(-$0.w))));\n";
+      } else {
+        result = "$0 = (FLT4)(1.0f) / ((FLT4)(1.0f) + exp(-($0)));\n";
+      }
+      break;
+    case OperationType::SIN:
+      result = "$0 = sin($0);\n";
+      break;
+    case OperationType::SQRT:
+      result = "$0 = sqrt($0);\n";
+      break;
+    case OperationType::SQUARE:
+      result = "$0 *= $0;\n";
+      break;
+    case OperationType::TANH:
+      result = "$0 = tanh($0);\n";
+      break;
+    default:
+      return "Unknown operation type;\n";
+  }
+  return absl::Substitute(result, input0);
+}
+
 std::string GetTwoInputCode(const OperationType& op_type,
                             const std::string& input0,
                             const std::string& input1) {
@@ -63,6 +124,12 @@ std::string GetTwoInputCode(const OperationType& op_type,
 }
 }  // namespace
 
+ElementwiseOneInput::ElementwiseOneInput(const OperationDef& definition,
+                                         const OperationType& op_type)
+    : ElementwiseOperation(definition), op_type_(op_type) {
+  code_ = GetOneInputCode(op_type, definition.precision, "in_out_value");
+}
+
 ElementwiseOneInput::ElementwiseOneInput(ElementwiseOneInput&& operation)
     : ElementwiseOperation(std::move(operation)),
       op_type_(operation.op_type_) {}
@@ -78,62 +145,7 @@ ElementwiseOneInput& ElementwiseOneInput::operator=(
 
 std::string ElementwiseOneInput::GetCoreCode(
     const LinkingContext& context) const {
-  std::string result;
-  switch (op_type_) {
-    case OperationType::ABS:
-      result = "$0 = fabs($0);\n";
-      break;
-    case OperationType::COS:
-      result = "$0 = cos($0);\n";
-      break;
-    case OperationType::EXP:
-      result = "$0 = exp($0);\n";
-      break;
-    case OperationType::HARD_SWISH:
-      result =
-          "$0 *= clamp($0 * (FLT)(0.16666667f) + (FLT)(0.5f), (FLT4)(0.0f), "
-          "(FLT4)(1.0f));\n";
-      break;
-    case OperationType::LOG:
-      result = "$0 = log($0);\n";
-      break;
-    case OperationType::RSQRT:
-      result = "$0 = (FLT4)(1.0f) / sqrt($0);\n";
-      break;
-    case OperationType::SIGMOID:
-      if (definition_.precision != CalculationsPrecision::F32) {
-        result =
-            "$0.x = convert_half(native_recip(1.0f + "
-            "native_exp(convert_float(-$0.x))));\n";
-        result +=
-            "$0.y = convert_half(native_recip(1.0f + "
-            "native_exp(convert_float(-$0.y))));\n";
-        result +=
-            "$0.z = convert_half(native_recip(1.0f + "
-            "native_exp(convert_float(-$0.z))));\n";
-        result +=
-            "$0.w = convert_half(native_recip(1.0f + "
-            "native_exp(convert_float(-$0.w))));\n";
-      } else {
-        result = "$0 = (FLT4)(1.0f) / ((FLT4)(1.0f) + exp(-($0)));\n";
-      }
-      break;
-    case OperationType::SIN:
-      result = "$0 = sin($0);\n";
-      break;
-    case OperationType::SQRT:
-      result = "$0 = sqrt($0);\n";
-      break;
-    case OperationType::SQUARE:
-      result = "$0 *= $0;\n";
-      break;
-    case OperationType::TANH:
-      result = "$0 = tanh($0);\n";
-      break;
-    default:
-      return "Unknown operation type;\n";
-  }
-  return absl::Substitute(result, context.var_name);
+  return GetOneInputCode(op_type_, definition_.precision, context.var_name);
 }
 
 ElementwiseOneInput CreateElementwiseOneInput(const OperationDef& definition,
@@ -141,6 +153,20 @@ ElementwiseOneInput CreateElementwiseOneInput(const OperationDef& definition,
   ElementwiseOneInput operation(definition, op_type);
   operation.SetLinkIndex(0);
   return operation;
+}
+
+ElementwiseOneRuntimeOneScalar::ElementwiseOneRuntimeOneScalar(
+    const OperationDef& definition, const OperationType& op_type,
+    float scalar_parameter, CalculationsPrecision scalar_precision)
+    : ElementwiseOperation(definition),
+      op_type_(op_type),
+      scalar_parameter_(FLT(scalar_precision, scalar_parameter)) {
+  if (definition.precision == CalculationsPrecision::F32) {
+    args_.AddFloat("scalar", scalar_parameter);
+  } else {
+    args_.AddHalf("scalar", half(scalar_parameter));
+  }
+  code_ = GetTwoInputCode(op_type, "in_out_value", "args.scalar");
 }
 
 ElementwiseOneRuntimeOneScalar::ElementwiseOneRuntimeOneScalar(
@@ -190,10 +216,61 @@ ElementwiseOneRuntimeOneScalar CreateElementwiseOneRuntimeOneScalar(
   const auto scalar_precision = creation_context.device->IsPowerVR()
                                     ? CalculationsPrecision::F32
                                     : definition.precision;
-  ElementwiseOneRuntimeOneScalar operation(
-      definition, op_type, FLT(scalar_precision, scalar_parameter));
+  ElementwiseOneRuntimeOneScalar operation(definition, op_type,
+                                           scalar_parameter, scalar_precision);
   operation.SetLinkIndex(0);
   return operation;
+}
+
+ElementwiseTwoInput::ElementwiseTwoInput(const OperationDef& definition,
+                                         const OperationType& op_type,
+                                         const BroadcastSettings& broadcast)
+    : ElementwiseOperation(definition),
+      op_type_(op_type),
+      broadcast_(broadcast),
+      use_constant_tensor_(false) {
+  auto src_desc =
+      absl::make_unique<TensorDescriptor>(definition.src_tensors[1]);
+  if (definition.IsBatchSupported()) {
+    src_desc->SetStateVar("BatchedWidth", "true");
+  }
+  args_.AddObjectRef("second_tensor", AccessType::READ, std::move(src_desc));
+  const std::string x_coord = broadcast.width ? "0" : "X_COORD";
+  const std::string y_coord = broadcast.height ? "0" : "Y_COORD";
+  const std::string s_coord = broadcast.channels ? "0" : "S_COORD";
+  code_ = absl::StrCat("FLT4 second_val = args.second_tensor.Read(", x_coord,
+                       ", ", y_coord, ", ", s_coord, ");\n");
+  if (broadcast.channels) {
+    code_ += "  second_val.y = second_val.x;\n";
+    code_ += "  second_val.z = second_val.x;\n";
+    code_ += "  second_val.w = second_val.x;\n";
+  }
+  code_ += GetTwoInputCode(op_type, "in_out_value", "second_val");
+}
+
+ElementwiseTwoInput::ElementwiseTwoInput(const OperationDef& definition,
+                                         const OperationType& op_type,
+                                         const BroadcastSettings& broadcast,
+                                         Tensor&& constant_tensor)
+    : ElementwiseOperation(definition),
+      op_type_(op_type),
+      broadcast_(broadcast),
+      use_constant_tensor_(true),
+      constant_tensor_(std::move(constant_tensor)) {
+  args_.AddObjectRef(
+      "second_tensor", AccessType::READ,
+      absl::make_unique<TensorDescriptor>(constant_tensor.GetDescriptor()));
+  const std::string x_coord = broadcast.width ? "0" : "X_COORD";
+  const std::string y_coord = broadcast.height ? "0" : "Y_COORD";
+  const std::string s_coord = broadcast.channels ? "0" : "S_COORD";
+  code_ = absl::StrCat("FLT4 second_val = args.second_tensor.Read(", x_coord,
+                       ", ", y_coord, ", ", s_coord, ");\n");
+  if (broadcast.channels) {
+    code_ += "  second_val.y = second_val.x;\n";
+    code_ += "  second_val.z = second_val.x;\n";
+    code_ += "  second_val.w = second_val.x;\n";
+  }
+  code_ += GetTwoInputCode(op_type, "in_out_value", "second_val");
 }
 
 ElementwiseTwoInput::ElementwiseTwoInput(ElementwiseTwoInput&& operation)
@@ -267,6 +344,16 @@ absl::Status ElementwiseTwoInput::BindArguments(CLKernel* kernel) {
   } else {
     RETURN_IF_ERROR(kernel->SetMemoryAuto(src_[1]->GetMemoryPtr()));
     RETURN_IF_ERROR(kernel->SetBytesAuto(src_[1]->GetWBatchedHSB()));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ElementwiseTwoInput::SetArgs(int link_id, Arguments* args) {
+  std::string tensor_name = absl::StrCat("second_tensor_link", link_id);
+  if (use_constant_tensor_) {
+    RETURN_IF_ERROR(args->SetObjectRef(tensor_name, &constant_tensor_));
+  } else {
+    RETURN_IF_ERROR(args->SetObjectRef(tensor_name, src_[1]));
   }
   return absl::OkStatus();
 }

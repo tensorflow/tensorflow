@@ -48,6 +48,7 @@ class Add : public ElementwiseOperation {
   std::string GetCoreCode(const LinkingContext& context) const override;
   std::string GetArgsDeclaration() const override;
   absl::Status BindArguments(CLKernel* kernel) override;
+  absl::Status SetArgs(int link_id, Arguments* args) override;
   bool IsLinkable() const override { return dst_depth_ == src_depthes_[0]; }
 
  private:

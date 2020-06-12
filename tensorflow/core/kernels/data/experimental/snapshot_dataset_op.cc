@@ -514,7 +514,7 @@ Status SnapshotDatasetV2Op::Dataset::Iterator::Reader::Initialize(
   TF_RETURN_IF_ERROR(ctx->env()->GetMatchingPaths(
       io::JoinPath(
           run_dir,
-          absl::StrFormat("%s%s", "*", snapshot_util::kShardDirectorySuffix)),
+          strings::Printf("%s%s", "*", snapshot_util::kShardDirectorySuffix)),
       &snapshot_shard_dirs));
   std::sort(snapshot_shard_dirs.begin(), snapshot_shard_dirs.end());
 
@@ -596,8 +596,8 @@ Status SnapshotDatasetV2Op::Dataset::Iterator::Writer::WriteMetadataFile(
 
   experimental::SnapshotMetadataRecord metadata;
   metadata.set_creation_timestamp(EnvTime::NowMicros());
-  metadata.set_graph_hash(absl::StrFormat("%d", dataset()->hash_));
-  metadata.set_run_id(absl::StrFormat("%d", run_id_));
+  metadata.set_graph_hash(strings::Printf("%llu", dataset()->hash_));
+  metadata.set_run_id(strings::Printf("%llu", run_id_));
   metadata.set_version(kFileFormatVersion);
   for (const auto& output_dtype : dataset()->output_dtypes()) {
     metadata.add_dtype(output_dtype);

@@ -1,4 +1,4 @@
-// RUN: xla-opt -transform-unranked-hlo -split-input-file %s | FileCheck --dump-input=fail %s
+// RUN: xla-opt -transform-unranked-hlo -split-input-file %s | FileCheck %s
 
 // Check the validity of expected IR.
 // CHECK-LABEL: @sqr_transform_result

@@ -165,6 +165,66 @@ TEST(LoggingOpResolverTest, CustomOps) {
   EXPECT_TRUE(reg->invoke == WrappingInvoke);
 }
 
+#ifdef GTEST_HAS_DEATH_TEST
+TEST(LoggingOpResolverTest, UnresolvedCustomOps) {
+  // No custom op registration.
+  MutableOpResolver base_resolver;
+
+  std::string custom_op_name = "unresolved_custom_op";
+
+  CustomOpsSet ops_to_replace = {
+      {custom_op_name, /*version*/ 1},
+  };
+
+#ifdef NDEBUG
+  LoggingOpResolver(BuiltinOpsSet(), ops_to_replace, base_resolver,
+                    WrappingInvoke);
+#else
+  EXPECT_DEATH(LoggingOpResolver(BuiltinOpsSet(), ops_to_replace, base_resolver,
+                                 WrappingInvoke),
+               "[unresolved_custom_op]");
+#endif  // DEBUG
+}
+
+TEST(LoggingOpResolverTest, UnresolvedBuiltinOps) {
+  // No builtin op registration.
+  MutableOpResolver base_resolver;
+
+  BuiltinOpsSet ops_to_replace = {
+      {BuiltinOperator_CONV_2D, /*version*/ 1},
+      {BuiltinOperator_ADD, /*version*/ 1},
+  };
+
+#ifdef NDEBUG
+  LoggingOpResolver resolver(ops_to_replace, CustomOpsSet(), base_resolver,
+                             WrappingInvoke);
+#else
+
+  EXPECT_DEATH(LoggingOpResolver resolver(ops_to_replace, CustomOpsSet(),
+                                          base_resolver, WrappingInvoke),
+               "[CONV_2D, ADD]");
+#endif  // NDEBUG
+}
+#endif  // GTEST_HAS_DEATH_TEST
+
+TEST(LoggingOpResolverTest, FlexOps) {
+  // No flex op registration.
+  MutableOpResolver base_resolver;
+
+  std::string custom_op_name = "FlexAdd";
+
+  CustomOpsSet ops_to_replace = {
+      {custom_op_name, /*version*/ 1},
+  };
+
+  LoggingOpResolver resolver(BuiltinOpsSet(), ops_to_replace, base_resolver,
+                             WrappingInvoke);
+
+  auto reg = resolver.FindOp(custom_op_name.c_str(), 1);
+
+  EXPECT_TRUE(!reg);
+}
+
 }  // namespace
 }  // namespace calibration
 }  // namespace optimize

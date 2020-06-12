@@ -1,4 +1,4 @@
-// RUN: xla-opt %s --test-lhlo-legalize-to-llvm -split-input-file | FileCheck %s --dump-input-on-failure
+// RUN: xla-opt %s --test-lhlo-legalize-to-llvm -split-input-file | FileCheck %s
 
 // CHECK-LABEL: func @static_memref_cast
 func @static_memref_cast(%buf : memref<10x1x5xf32>) {

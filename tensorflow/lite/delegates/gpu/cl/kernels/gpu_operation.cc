@@ -143,12 +143,14 @@ void GPUOperation::AddOperation(ElementwiseOperation* operation) {
 
 ElementwiseOperation::ElementwiseOperation(ElementwiseOperation&& operation)
     : GPUOperation(std::move(operation)),
+      code_(std::move(operation.code_)),
       kernel_(std::move(operation.kernel_)),
       work_group_size_(operation.work_group_size_) {}
 
 ElementwiseOperation& ElementwiseOperation::operator=(
     ElementwiseOperation&& operation) {
   if (this != &operation) {
+    code_ = std::move(operation.code_);
     kernel_ = std::move(operation.kernel_);
     std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
@@ -216,6 +218,14 @@ absl::Status BindArgs(CLKernel* kernel,
                       const std::vector<ElementwiseOperation*>& linked_ops) {
   for (auto linked_op : linked_ops) {
     RETURN_IF_ERROR(linked_op->BindArguments(kernel));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status SetArgs(const std::vector<ElementwiseOperation*>& linked_ops,
+                     Arguments* args) {
+  for (int i = 0; i < linked_ops.size(); ++i) {
+    RETURN_IF_ERROR(linked_ops[i]->SetArgs(i + 1, args));
   }
   return absl::OkStatus();
 }

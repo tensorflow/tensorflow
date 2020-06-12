@@ -407,7 +407,7 @@ TensorHandlePtr CollectiveSum(TFE_Context* context, TFE_TensorHandle* input,
   return TensorHandlePtr(result_handle);
 }
 
-TEST(PARALLEL_DEVICE, TestCollective) {
+void TestCollective(bool async) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   std::unique_ptr<TFE_ContextOptions, decltype(&TFE_DeleteContextOptions)> opts(
@@ -423,6 +423,9 @@ TEST(PARALLEL_DEVICE, TestCollective) {
   std::unique_ptr<TFE_Context, decltype(&TFE_DeleteContext)> context(
       TFE_NewContext(opts.get(), status.get()), TFE_DeleteContext);
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  std::unique_ptr<TFE_Executor, decltype(&TFE_DeleteExecutor)> executor(
+      TFE_NewExecutor(async), TFE_DeleteExecutor);
+  TFE_ContextSetExecutorForThread(context.get(), executor.get());
 
   const char* device_name = "/job:localhost/replica:0/task:0/device:CUSTOM:0";
   std::array<const char*, 2> underlying_devices{
@@ -452,7 +455,15 @@ TEST(PARALLEL_DEVICE, TestCollective) {
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
   ExpectScalarEq<float>(result_components[0].get(), 3.);
   ExpectScalarEq<float>(result_components[1].get(), 3.);
+  // Destroying the context's default executor first isn't safe.
+  context.reset();
 }
+
+TEST(PARALLEL_DEVICE, TestCollectiveSync) { TestCollective(/*async=*/false); }
+
+// Note that ops on the parallel device currently don't execute
+// asynchronously. The test is just that we don't get deadlocks.
+TEST(PARALLEL_DEVICE, TestCollectiveAsync) { TestCollective(/*async=*/true); }
 
 void RegisterCollectiveMulFunction(TFE_Context* context,
                                    const char* function_name, int group_size,

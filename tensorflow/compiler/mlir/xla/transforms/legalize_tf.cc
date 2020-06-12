@@ -4645,8 +4645,8 @@ class ConvertShapeOp : public OpRewritePattern<TF::ShapeOp> {
         continue;
       }
 
-      auto extent_op = rewriter.create<shape::GetExtentOp>(
-          op.getLoc(), shape_op, rewriter.getI64IntegerAttr(i));
+      auto extent_op =
+          rewriter.create<shape::GetExtentOp>(op.getLoc(), shape_op, i);
       auto index_op = rewriter.create<shape::SizeToIndexOp>(
           op.getLoc(), rewriter.getIndexType(), extent_op);
       auto int_op =

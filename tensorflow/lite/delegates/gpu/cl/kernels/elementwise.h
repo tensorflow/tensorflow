@@ -30,9 +30,8 @@ namespace cl {
 // log, sin, cos and etc.
 class ElementwiseOneInput : public ElementwiseOperation {
  public:
-  explicit ElementwiseOneInput(const OperationDef& definition,
-                               const OperationType& op_type)
-      : ElementwiseOperation(definition), op_type_(op_type) {}
+  ElementwiseOneInput(const OperationDef& definition,
+                      const OperationType& op_type);
 
   // Move only
   ElementwiseOneInput(ElementwiseOneInput&& operation);
@@ -56,10 +55,8 @@ class ElementwiseOneRuntimeOneScalar : public ElementwiseOperation {
  public:
   ElementwiseOneRuntimeOneScalar(const OperationDef& definition,
                                  const OperationType& op_type,
-                                 FLT scalar_parameter)
-      : ElementwiseOperation(definition),
-        op_type_(op_type),
-        scalar_parameter_(scalar_parameter) {}
+                                 float scalar_parameter,
+                                 CalculationsPrecision scalar_precision);
 
   // Move only
   ElementwiseOneRuntimeOneScalar(ElementwiseOneRuntimeOneScalar&& operation);
@@ -99,21 +96,12 @@ class ElementwiseTwoInput : public ElementwiseOperation {
   ElementwiseTwoInput() = default;
   ElementwiseTwoInput(const OperationDef& definition,
                       const OperationType& op_type,
-                      const BroadcastSettings& broadcast)
-      : ElementwiseOperation(definition),
-        op_type_(op_type),
-        broadcast_(broadcast),
-        use_constant_tensor_(false) {}
+                      const BroadcastSettings& broadcast);
 
   ElementwiseTwoInput(const OperationDef& definition,
                       const OperationType& op_type,
                       const BroadcastSettings& broadcast,
-                      Tensor&& constant_tensor)
-      : ElementwiseOperation(definition),
-        op_type_(op_type),
-        broadcast_(broadcast),
-        use_constant_tensor_(true),
-        constant_tensor_(std::move(constant_tensor)) {}
+                      Tensor&& constant_tensor);
 
   // Move only
   ElementwiseTwoInput(ElementwiseTwoInput&& operation);
@@ -125,6 +113,7 @@ class ElementwiseTwoInput : public ElementwiseOperation {
   std::string GetCoreCode(const LinkingContext& context) const override;
   std::string GetArgsDeclaration() const override;
   absl::Status BindArguments(CLKernel* kernel) override;
+  absl::Status SetArgs(int link_id, Arguments* args) override;
 
  private:
   int link_index_;

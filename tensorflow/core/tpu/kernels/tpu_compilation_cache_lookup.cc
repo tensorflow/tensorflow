@@ -42,7 +42,7 @@ std::string GetName(CompilationCacheFetchTarget target) {
 }  // namespace
 
 TpuCompilationCacheLocalLookup::TpuCompilationCacheLocalLookup(
-    TpuCompilationCacheInterface* cache)
+    TpuCompilationCacheExternal* cache)
     : cache_(cache) {}
 
 TpuCompilationCacheLocalLookup::~TpuCompilationCacheLocalLookup() {

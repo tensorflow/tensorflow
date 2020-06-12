@@ -18,8 +18,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import contextlib
+import multiprocessing as _multiprocessing
 import unittest
+
+from tensorflow.python.platform import test
+
+
+try:
+  multiprocessing = _multiprocessing.get_context('forkserver')
+except ValueError:
+  # forkserver is not available on Windows.
+  multiprocessing = _multiprocessing.get_context('spawn')
 
 
 class Process(object):
@@ -28,23 +37,14 @@ class Process(object):
   def __init__(self, *args, **kwargs):
     del args, kwargs
     raise unittest.SkipTest(
-        'TODO(b/141874796): Implement OSS version of `multi_process_lib`')
+        'TODO(b/150264776): Implement OSS version of `multi_process_lib`')
 
 
-def get_user_data():
-  """Returns the data commonly shared by parent process and subprocesses."""
-  # TODO(b/141874796): Implement OSS version of `multi_process_lib`.
-  pass
+def test_main():
+  """Main function to be called within `__main__` of a test file."""
+  test.main()
 
 
-@contextlib.contextmanager
-def context_manager(max_subprocess_count=20, barrier_parties=0):
-  """No-op in OSS. This exists to maintain testing compatibility."""
-  del max_subprocess_count, barrier_parties
-  yield
-
-
-def using_context_manager():
-  """Whether the context manager is being used."""
-  raise unittest.SkipTest(
-      'TODO(b/141874796): Implement OSS version of `multi_process_lib`')
+def initialized():
+  """Returns whether the module is initialized."""
+  return True

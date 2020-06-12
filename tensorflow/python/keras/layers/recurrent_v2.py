@@ -205,6 +205,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
   5. `use_bias` is `True`
   6. `reset_after` is `True`
   7. Inputs, if use masking, are strictly right-padded.
+  8. Eager execution is enabled in the outermost context.
 
   There are two variants of the GRU implementation. The default one is based on
   [v3](https://arxiv.org/abs/1406.1078v3) and has reset gate applied to hidden
@@ -928,6 +929,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
   4. `unroll` is `False`
   5. `use_bias` is `True`
   6. Inputs, if use masking, are strictly right-padded.
+  7. Eager execution is enabled in the outermost context.
 
   For example:
 

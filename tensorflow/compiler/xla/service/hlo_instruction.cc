@@ -1886,6 +1886,10 @@ Status HloInstruction::CopyAllControlDepsFrom(const HloInstruction* inst) {
 }
 
 void HloInstruction::AppendOperand(HloInstruction* operand) {
+  if (operand->parent() != nullptr) {
+    CHECK(!operand->parent()->IsMarkedAsDead(operand))
+        << "Operand " << operand->name() << " is already marked dead";
+  }
   operands_.push_back(operand);
   operand->AddUser(this);
 }

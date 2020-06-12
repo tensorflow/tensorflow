@@ -1,4 +1,4 @@
-// RUN: tf-mlir-translate -hlo-text-to-mlir-hlo %s -o - | FileCheck %s --dump-input-on-failure
+// RUN: tf-mlir-translate -hlo-text-to-mlir-hlo %s -o - | FileCheck %s
 
 HloModule main
 

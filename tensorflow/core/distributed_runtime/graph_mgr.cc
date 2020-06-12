@@ -49,7 +49,8 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/lib/connected_traceme.h"
+#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/core/util/env_var.h"
 
@@ -419,8 +420,13 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
                             CancellationManager* cancellation_manager,
                             const NamedTensors& in, StatusCallback done) {
   const uint64 start_time_usecs = Env::Default()->NowMicros();
-  profiler::TraceMe activity(
-      [step_id] { return absl::StrCat("RunGraph#id=", step_id, "#"); },
+  profiler::TraceMeProducer activity(
+      // To TraceMeConsumers in ExecutorState::Process/Finish or RunGraphDone.
+      [step_id] {
+        return profiler::TraceMeEncode(
+            "RunGraph", {{"id", step_id}, {"$r", 1} /*root_event*/});
+      },
+      profiler::ContextType::kTfExecutor, step_id,
       profiler::TraceMeLevel::kInfo);
   // Lookup an item. Holds one ref while executing.
   Item* item = nullptr;
@@ -486,10 +492,12 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
       cancellation_manager, session,
       [item, rendezvous, ce_handle, done, start_time_usecs, input_size,
        step_id](const Status& s) {
-        profiler::TraceMe activity(
+        profiler::TraceMeConsumer activity(
+            // From TraceMeProducer in GraphMgr::ExecuteAsync.
             [step_id] {
-              return absl::StrCat("RunGraphDone#id=", step_id, "#");
+              return profiler::TraceMeEncode("RunGraphDone", {{"id", step_id}});
             },
+            profiler::ContextType::kTfExecutor, step_id,
             profiler::TraceMeLevel::kInfo);
         done(s);
         metrics::RecordGraphInputTensors(input_size);

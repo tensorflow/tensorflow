@@ -48,6 +48,8 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        "//tensorflow/python:errors",
+        "//tensorflow/python:platform",
         "//tensorflow/python:util",
         "//tensorflow/python/profiler/internal:_pywrap_profiler",
     ],

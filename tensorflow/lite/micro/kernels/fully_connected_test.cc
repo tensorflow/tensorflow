@@ -44,10 +44,10 @@ TfLiteStatus TestFullyConnectedFloat(
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims, "input_tensor"),
-      CreateFloatTensor(weights_data, weights_dims, "weights_tensor"),
-      CreateFloatTensor(bias_data, bias_dims, "bias_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor"),
+      CreateFloatTensor(input_data, input_dims),
+      CreateFloatTensor(weights_data, weights_dims),
+      CreateFloatTensor(bias_data, bias_dims),
+      CreateFloatTensor(output_data, output_dims),
   };
 
   TfLiteContext context;
@@ -121,13 +121,11 @@ TfLiteStatus TestFullyConnectedQuantized(
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantizedTensor(input_data, input_dims, "input_tensor", input_min,
-                            input_max),
-      CreateQuantizedTensor(weights_data, weights_dims, "weights_tensor",
-                            weights_min, weights_max),
-      CreateQuantized32Tensor(bias_data, bias_dims, "bias_tensor", bias_scale),
-      CreateQuantizedTensor(output_data, output_dims, "output_tensor",
-                            output_min, output_max),
+      CreateQuantizedTensor(input_data, input_dims, input_min, input_max),
+      CreateQuantizedTensor(weights_data, weights_dims, weights_min,
+                            weights_max),
+      CreateQuantized32Tensor(bias_data, bias_dims, bias_scale),
+      CreateQuantizedTensor(output_data, output_dims, output_min, output_max),
   };
 
   TfLiteContext context;

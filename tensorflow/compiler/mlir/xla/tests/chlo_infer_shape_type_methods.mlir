@@ -1,4 +1,4 @@
-// RUN: xla-opt -test-xla-infer-shaped-type-methods -allow-unregistered-dialect -split-input-file -verify-diagnostics %s -o - | FileCheck --dump-input=fail %s
+// RUN: xla-opt -test-xla-infer-shaped-type-methods -allow-unregistered-dialect -split-input-file -verify-diagnostics %s -o - | FileCheck %s
 
 // CHECK-LABEL: @broadcast_add
 // Note that all broadcast_ops are expanded from the same template, so

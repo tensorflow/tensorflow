@@ -22,6 +22,7 @@ from __future__ import print_function
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import packed_distributed_variable as packed
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
@@ -419,6 +420,17 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     self._aggregation = aggregation
     super(DistributedVariable, self).__init__(values)
     self._common_name = self._primary.name.split(":")[0]
+
+    # Packed variable is used to reduce the overhead of function execution.
+    # For a DistributedVariable, only one variable handle is captured into a
+    # function graph. It's only supported in eager mode.
+    if ops.executing_eagerly_outside_functions() and getattr(
+        strategy, "_enable_packed_variable_in_eager_mode", False):
+      name = "%s/packed/" % self._common_name
+      self._packed_var = packed.PackedDistributedVariable(values, name=name)
+    else:
+      self._packed_var = None
+
     # tf.keras keeps track of variables initialized using this attribute. When
     # tf.keras gets the default session, it initializes all uninitialized vars.
     # We need to make _keras_initialized a member of DistributedVariable because
@@ -748,9 +760,7 @@ class MirroredVariable(DistributedVariable, Mirrored):
 
   def _update_replica(self, update_fn, value, **kwargs):
     if self.aggregation == vs.VariableAggregation.NONE:
-      raise ValueError(
-          values_util.aggregation_error_msg.format(
-              variable_type="MirroredVariable"))
+      return update_fn(self._get_on_device_or_primary(), value, **kwargs)
 
     def merge_fn(strategy, value, **kwargs):
       """Aggregate values and update all variables in cross replica context."""

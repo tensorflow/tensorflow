@@ -103,18 +103,12 @@ def _gen_kernel_image_hdr(name, mlir_op, tile_size, tags = [], same_shape = None
         )
 
 def _gen_mlir_op_impl(ctx):
-    type_to_dtype = {
-        "f16": "DT_HALF",
-        "f32": "DT_FLOAT",
-        "f64": "DT_DOUBLE",
-    }
     ctx.actions.run_shell(
         inputs = [ctx.file.template],
         outputs = [ctx.outputs.out],
-        command = "cat %s | sed s/f99/%s/g | sed s/DT_DTYPE/%s/g > %s" % (
+        command = "cat %s | sed s/f99/%s/g > %s" % (
             ctx.file.template.path,
             ctx.attr.type,
-            type_to_dtype[ctx.attr.type],
             ctx.outputs.out.path,
         ),
     )

@@ -2982,9 +2982,10 @@ class Function(object):
     if not executing_eagerly:
       # We want to force function retracing for each different
       # XLAControlFlowContext, so add `xla_context_id` to the cache key.
-      tpu_context = _enclosing_xla_context()
-      if tpu_context is not None:
-        xla_context_id = id(tpu_context)
+      xla_context = _enclosing_xla_context()
+      if xla_context is not None and \
+            xla_context.RequiresUniqueFunctionRetracing():
+        xla_context_id = id(xla_context)
 
       with ops.init_scope():
         # The graph, or whether we're executing eagerly, should be a part of the

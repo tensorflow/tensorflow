@@ -216,11 +216,8 @@ TEST_F(BufferDonationTest, SimpleWhileTupleTest) {
       HloInstruction::CreateGetTupleElement(f32v1_, while0, 1));
   builder.AddInstruction(HloInstruction::CreateTuple({gte0, gte1}));
   module->AddEntryComputation(builder.Build());
-  // Input output aliasing is only supported on TPU.
-#if defined(XLA_TEST_BACKEND_TPU)
   TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias({0}, 0, {0}));
   TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias({1}, 0, {1}));
-#endif
 
   auto arg = LiteralUtil::MakeTupleFromSlices(
       {LiteralUtil::CreateR0<int>(0), LiteralUtil::CreateR1<float>({1.1f})});

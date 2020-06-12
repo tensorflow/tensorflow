@@ -141,7 +141,8 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
       accumulator = None
     else:
       accumulator = self._combiner.restore(self._restore_updates())
-
+    if isinstance(data, (list, tuple)):
+      data = ops.convert_to_tensor_v2(data)
     if not isinstance(data,
                       (dataset_ops.DatasetV2,
                        np.ndarray,

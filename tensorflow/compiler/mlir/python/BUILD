@@ -29,7 +29,7 @@ cc_library(
         # place for core related components.
         "//tensorflow/compiler/mlir/tensorflow:graph_optimization_pass_registration",
         "//tensorflow/compiler/mlir/tensorflow:import_utils",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",

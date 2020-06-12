@@ -315,6 +315,7 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   float async_copy_elapsed_;
   float inst_elapsed_reduction_;
   int64 end_logical_time_;
+  int64 earliest_start_logical_time_;
   int64 current_logical_prefetch_time_;
 };
 
