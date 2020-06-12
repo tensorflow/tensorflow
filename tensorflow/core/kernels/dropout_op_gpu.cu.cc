@@ -27,26 +27,29 @@
 namespace tensorflow {
 
 template <class T, class U>
-__device__ void apply_dropout(T& out, half2 rng, half2 rate, half2 scale) {
-  half2 mask = make_half2(__low2half(rng) > __low2half(rate),
-                          __high2half(rng) > __high2half(rate));
+__device__ void apply_dropout(T& out, half2 rng, half2 rate, half2 scale, uint8* pmask) {
+  pmask[0] = (__low2half(rng) > __low2half(rate)) ? 1 : 0;
+  pmask[1] = (__high2half(rng) > __high2half(rate)) ? 1 : 0;
+  half2 mask = make_half2(pmask[0], pmask[1]);
   out = __hmul2(__hmul2(mask, scale), out);
 }
 
 template <class T, class U>
-__device__ void apply_dropout(T& out, half2 rng, half2 rate, float2 scale) {
+__device__ void apply_dropout(T& out, half2 rng, half2 rate, float2 scale, uint8* pmask) {
+  pmask[0] = (__low2half(rng) > __low2half(rate)) ? 1 : 0;
+  pmask[1] = (__high2half(rng) > __high2half(rate)) ? 1 : 0;
   out.x *= scale.x;
   out.y *= scale.y;
-
-  out.x = (__low2half(rng) > __low2half(rate)) ? U(out.x) : 0.0f;
-  out.y = (__high2half(rng) > __high2half(rate)) ? U(out.y) : 0.0f;
+  out.x = pmask[0] ? U(out.x) : 0.0f;
+  out.y = pmask[1] ? U(out.y) : 0.0f;
 }
 
 template <>
 __device__ void apply_dropout<half2, half>(half2& out, half2 rng, half2 rate,
-                                           float2 scale) {
-  half2 mask = make_half2(__low2half(rng) > __low2half(rate),
-                          __high2half(rng) > __high2half(rate));
+                                           float2 scale, uint8* pmask) {
+  pmask[0] = (__low2half(rng) > __low2half(rate)) ? 1 : 0;
+  pmask[1] = (__high2half(rng) > __high2half(rate)) ? 1 : 0;
+  half2 mask = make_half2(pmask[0], pmask[1]);
   out = __hmul2(__hmul2(mask, __float22half2_rn(scale)), out);
 }
 
@@ -61,7 +64,9 @@ __device__ void uint32_to_half4(uint32 x, uint32 y, half2& h1, half2& h2) {
 
 template <typename T, typename U, typename V>
 __global__ void RNGAndApplyDropoutKernel(random::PhiloxRandom gen, uint32 size,
-                                         T* _out, const T* _in, U rate,
+                                         T* _out, 
+                                         uint8* mask, 
+                                         const T* _in, U rate,
                                          V scale) {
   constexpr bool is_half2 = std::is_same<T, half2>::value;
   constexpr bool is_half = std::is_same<T, Eigen::half>::value;
@@ -90,6 +95,7 @@ __global__ void RNGAndApplyDropoutKernel(random::PhiloxRandom gen, uint32 size,
 
     const TT* p = in + offset;
     TT* pout = out + offset;
+    uint8* pmask = mask + offset*(is_half2 ? 2 : 1);
 
     static const int slen = is_half2 ? 2 : 4;
     union {
@@ -116,16 +122,25 @@ __global__ void RNGAndApplyDropoutKernel(random::PhiloxRandom gen, uint32 size,
       // RNG run), but we're not designing NSA-proof encryption here ...
       uint32_to_half4(sample[j], sample[(j + 2) & 3] ^ (j >= 2 ? -1 : 0),
                       rng_data[0], rng_data[1]);
-
+      uint8 mask[4];
       // Apply dropout, in pairs
-      apply_dropout<PackedType, TT>(preload.p[0], rng_data[0], rate, scale);
-      apply_dropout<PackedType, TT>(preload.p[1], rng_data[1], rate, scale);
+      apply_dropout<PackedType, TT>(preload.p[0], rng_data[0], rate, scale, mask);
+      apply_dropout<PackedType, TT>(preload.p[1], rng_data[1], rate, scale, mask+2);
 
       // Write out the results
       for (int i = 0; i < slen; i++) {
-        if (offset < size) pout[0] = preload.s[i];
+        if (offset < size) {
+          pout[0] = preload.s[i];
+          if(is_half2) {
+            pmask[0] = mask[2*i];
+            pmask[1] = mask[2*i+1];
+          } else {
+            pmask[0] = mask[i];
+          }
+        }
         offset += thread_step;
         pout += thread_step;
+        pmask += thread_step*(is_half2 ? 2 : 1);
       }
     }
     gen.Skip(total_thread_count - 1);
@@ -133,31 +148,28 @@ __global__ void RNGAndApplyDropoutKernel(random::PhiloxRandom gen, uint32 size,
 }
 
 template <typename T>
-__global__ void ApplyDropoutGradKernel(T* outgrads, const T* grads,
-                                       const T* ins, const T* outs, float rate,
+__global__ void ApplyDropoutGradKernel(T* outgrads, const T* grads, const uint8* mask, float rate,
                                        float scale, uint64 num_elements) {
   for (uint64 i = threadIdx.x + blockIdx.x * blockDim.x; i < num_elements;
        i += blockDim.x * gridDim.x)
-    outgrads[i] = grads[i] * T((outs[i] == T(0)) ? 0.0f : scale);
+    outgrads[i] = grads[i] * T(mask[i] ? scale : 0.0f);
 }
 
 template <>
 __global__ void ApplyDropoutGradKernel(Eigen::half* _outgrads,
                                        const Eigen::half* _grads,
-                                       const Eigen::half* _ins,
-                                       const Eigen::half* _outs, float rate,
+                                       const uint8* mask,
+                                       float rate,
                                        float scale, uint64 num_elements) {
   __half* outgrads = reinterpret_cast<__half*>(_outgrads);
   const __half* grads = reinterpret_cast<const __half*>(_grads);
-  const __half* outs = reinterpret_cast<const __half*>(_outs);
   for (uint64 i = threadIdx.x + blockIdx.x * blockDim.x; i < num_elements;
        i += blockDim.x * gridDim.x)
-    outgrads[i] = __float2half(
-        (outs[i] == __half(0.0f)) ? 0.0f : __half2float(grads[i]) * scale);
+    outgrads[i] = __float2half(mask[i] ? (__half2float(grads[i]) * scale) : 0.0f);
 }
 
 template <typename T>
-void ApplyDropout<GPUDevice, T>::operator()(const GPUDevice& d, T* out,
+void ApplyDropout<GPUDevice, T>::operator()(const GPUDevice& d, T* out, uint8* mask,
                                             const T* in, const float* unused,
                                             float rate, uint64 num_elements,
                                             random::PhiloxRandom gen,
@@ -182,20 +194,20 @@ void ApplyDropout<GPUDevice, T>::operator()(const GPUDevice& d, T* out,
     TF_CHECK_OK(GpuLaunchKernel(
         RNGAndApplyDropoutKernel<half2, half2, half2>, num_blocks,
         kThreadInBlock, 0, d.stream(), gen, num_elements,
-        reinterpret_cast<half2*>(out), reinterpret_cast<const half2*>(in),
+        reinterpret_cast<half2*>(out), mask, reinterpret_cast<const half2*>(in),
         __floats2half2_rn(rate, rate), __floats2half2_rn(scale, scale)));
   } else {
     TF_CHECK_OK(GpuLaunchKernel(
         RNGAndApplyDropoutKernel<T, half2, float2>, num_blocks, kThreadInBlock,
-        0, d.stream(), gen, num_elements, out, in,
+        0, d.stream(), gen, num_elements, out, mask, in,
         __floats2half2_rn(rate, rate), make_float2(scale, scale)));
   }
 }
 
 template <typename T>
 void ApplyDropoutGrad<GPUDevice, T>::operator()(const GPUDevice& d, T* outgrads,
-                                                const T* grads, const T* ins,
-                                                const T* outs, float rate,
+                                                const T* grads,
+                                                const uint8* mask, float rate,
                                                 uint64 num_elements) {
   float scale = 1. / (1 - rate);
   int64 kThreadInBlock = 1024;
@@ -203,31 +215,31 @@ void ApplyDropoutGrad<GPUDevice, T>::operator()(const GPUDevice& d, T* outgrads,
   TF_CHECK_OK(GpuLaunchKernel(
       ApplyDropoutGradKernel<T>,
       min(kMaxBlock, (num_elements + kThreadInBlock - 1) / kThreadInBlock),
-      kThreadInBlock, 0, d.stream(), outgrads, grads, ins, outs, rate, scale,
+      kThreadInBlock, 0, d.stream(), outgrads, grads, mask, rate, scale,
       num_elements));
 }
 
 template void ApplyDropout<GPUDevice, Eigen::half>::operator()(
-    const GPUDevice& d, Eigen::half* out, const Eigen::half* in,
+    const GPUDevice& d, Eigen::half* out, uint8* mask, const Eigen::half* in,
     const float* rng_data, float rate, uint64 num_elements,
     random::PhiloxRandom gen, bool);
 template void ApplyDropout<GPUDevice, float>::operator()(
-    const GPUDevice& d, float* out, const float* in, const float* rng_data,
+    const GPUDevice& d, float* out, uint8* mask, const float* in, const float* rng_data,
     float rate, uint64 num_elements, random::PhiloxRandom gen, bool);
 template void ApplyDropout<GPUDevice, double>::operator()(
-    const GPUDevice& d, double* out, const double* in, const float* rng_data,
+    const GPUDevice& d, double* out, uint8* mask, const double* in, const float* rng_data,
     float rate, uint64 num_elements, random::PhiloxRandom gen, bool);
 
 template void ApplyDropoutGrad<GPUDevice, Eigen::half>::operator()(
     const GPUDevice& d, Eigen::half* outgrads, const Eigen::half* grads,
-    const Eigen::half* ins, const Eigen::half* outs, float rate,
+    const uint8* mask, float rate,
     uint64 num_elements);
 template void ApplyDropoutGrad<GPUDevice, float>::operator()(
-    const GPUDevice& d, float* outgrads, const float* grads, const float* ins,
-    const float* outs, float rate, uint64 num_elements);
+    const GPUDevice& d, float* outgrads, const float* grads, 
+    const uint8* mask, float rate, uint64 num_elements);
 template void ApplyDropoutGrad<GPUDevice, double>::operator()(
     const GPUDevice& d, double* outgrads, const double* grads,
-    const double* ins, const double* outs, float rate, uint64 num_elements);
+    const uint8* mask, float rate, uint64 num_elements);
 
 };  // namespace tensorflow
 
