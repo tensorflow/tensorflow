@@ -40,10 +40,18 @@ Device BuildDeviceAndResource(const XPlaneVisitor& plane) {
   Device device;
   device.set_name(std::string(plane.Name()));
   device.set_device_id(plane.Id());
+
+  bool sort_by_ordinal = plane.Name() == kHostThreads;
+  int ordinal = 0;
   plane.ForEachLine([&](const XLineVisitor& line) {
     Resource resource;
     resource.set_resource_id(line.Id());
-    resource.set_name(std::string(line.Name()));
+    resource.set_name(std::string(line.DisplayName()));
+    if (sort_by_ordinal) {
+      // When sort_index is absent (i.e. 0), resource id will be used.
+      // Therefore sort_index starts with 1.
+      resource.set_sort_index(++ordinal);
+    }
     (*device.mutable_resources())[line.Id()] = resource;
   });
   return device;
