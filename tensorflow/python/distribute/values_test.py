@@ -706,11 +706,12 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
             distribution.experimental_local_results(distribution.run(assign)))
 
   def testPackedVariable(self, distribution, synchronization, aggregation):
-    if context.num_gpus() > 1:
-      self.skipTest("b/158767088")
     with distribution.scope():
       v0 = variables_lib.Variable(
           0., synchronization=synchronization, aggregation=aggregation)
+      if not isinstance(v0, values.DistributedVariable):
+        self.skipTest("This test doesn't apply to non DistributedVariables")
+
     self.assertEqual(v0._packed_var, None)
 
     device_type = device.DeviceSpec.from_string(v0._devices[0]).device_type
