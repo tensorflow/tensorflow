@@ -80,9 +80,7 @@ py_library(
     srcs = ["device_compatibility_check.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:device_lib",
-        "//tensorflow/python:gpu_util",
-        "//tensorflow/python/eager:context",
+        "//tensorflow/python:config",
     ],
 )
 
