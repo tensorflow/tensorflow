@@ -177,6 +177,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:sharding_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core/kernels:conv_grad_shape_utils",
+        "//tensorflow/core/lib/bfloat16",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:Dialect",

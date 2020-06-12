@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <limits>
 #include <numeric>
 
 #include "llvm/ADT/ArrayRef.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -54,6 +56,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -879,6 +882,31 @@ static Type GetAccumulationType(Type ty) {
   // Upcast 16 bit sum reductions to 32 bit to reduce the precision loss from
   // repeated floating point additions.
   return (ty.isF16() || ty.isBF16()) ? FloatType::getF32(ty.getContext()) : ty;
+}
+
+//===----------------------------------------------------------------------===//
+// Softplus op utilities.
+//===----------------------------------------------------------------------===//
+
+static DenseElementsAttr GetEpsilonValue(Type ty) {
+  auto element_ty = ty.cast<TensorType>().getElementType();
+  auto scalar_ty = RankedTensorType::get({}, element_ty);
+  if (element_ty.isF16()) {
+    uint16_t raw_epsilon = Eigen::NumTraits<Eigen::half>::epsilon().x;
+    auto value = APFloat(APFloat::IEEEhalf(), APInt(16, raw_epsilon));
+    return DenseElementsAttr::get(scalar_ty, value);
+  } else if (element_ty.isBF16()) {
+    uint16_t raw_epsilon = tensorflow::bfloat16::epsilon().value;
+    auto value = APFloat(APFloat::BFloat(), APInt(16, raw_epsilon));
+    return DenseElementsAttr::get(scalar_ty, value);
+  } else if (element_ty.isF32()) {
+    auto value = APFloat(std::numeric_limits<float>::epsilon());
+    return DenseElementsAttr::get(scalar_ty, value);
+  } else if (element_ty.isF64()) {
+    auto value = APFloat(std::numeric_limits<double>::epsilon());
+    return DenseElementsAttr::get(scalar_ty, value);
+  }
+  llvm_unreachable("unsupported element type for tf.SoftPlus");
 }
 
 //===----------------------------------------------------------------------===//

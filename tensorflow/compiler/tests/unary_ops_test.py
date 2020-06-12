@@ -1144,8 +1144,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
         rtol=rtol,
         atol=atol)
 
-  @test_util.disable_mlir_bridge(
-      "bf16 type not supported in CreateDenseElementsAttrFromLiteral")
   def testSoftplus(self):
     for dtype in self.float_types & {dtypes.float32, dtypes.float64}:
       self._assertSoftplusMatchesExpected([[-2, 0, 8]], dtype)

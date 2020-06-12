@@ -3993,3 +3993,87 @@ func @qr(%arg0: tensor<500x100x75xf32>) -> (tensor<500x100x75xf32>, tensor<500x7
   %0:2 = "tf.Qr"(%arg0) {full_matrices = false} : (tensor<500x100x75xf32>) -> (tensor<500x100x75xf32>, tensor<500x75x75xf32>)
   return %0#0, %0#1 : tensor<500x100x75xf32>, tensor<500x75x75xf32>
 }
+
+//===----------------------------------------------------------------------===//
+// tf.Softplus legalization
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @softplus_f16
+// CHECK-SAME: ([[FEATURES:%.*]]: tensor<8x16xf16>)
+func @softplus_f16(%arg0: tensor<8x16xf16>) -> tensor<8x16xf16> {
+  // CHECK-DAG: [[FEATURES_EXP:%.*]] = "xla_hlo.exponential"([[FEATURES]])
+  // CHECK-DAG: [[EPSILON:%.*]] = xla_hlo.constant dense<1.220700e-04> : tensor<f16>
+  // CHECK-DAG: [[EPSILON_LOG:%.*]] = "xla_hlo.log"([[EPSILON]])
+  // CHECK-DAG: [[TWO:%.*]] = xla_hlo.constant dense<2.000000e+00> : tensor<f16>
+  // CHECK:     [[THRESHOLD:%.*]] = xla_chlo.broadcast_add [[EPSILON_LOG]], [[TWO]]
+  // CHECK:     [[NEG_THRESHOLD:%.*]] = "xla_hlo.negate"([[THRESHOLD]])
+  // CHECK-DAG: [[COMPARE_GT:%.*]] = xla_chlo.broadcast_compare [[FEATURES]], [[NEG_THRESHOLD]] {comparison_direction = "GT"}
+  // CHECK-DAG: [[COMPARE_LT:%.*]] = xla_chlo.broadcast_compare [[FEATURES]], [[THRESHOLD]] {comparison_direction = "LT"}
+  // CHECK-DAG: [[FEATURES_EXP_LOG:%.*]] = "xla_hlo.log_plus_one"([[FEATURES_EXP]])
+  // CHECK:     [[ELSE_SELECT:%.*]] = "xla_hlo.select"([[COMPARE_LT]], [[FEATURES_EXP]], [[FEATURES_EXP_LOG]])
+  // CHECK:     [[ENTRY_SELECT:%.*]] = "xla_hlo.select"([[COMPARE_GT]], [[FEATURES]], [[ELSE_SELECT]])
+  %0 = "tf.Softplus"(%arg0) : (tensor<8x16xf16>) -> tensor<8x16xf16>
+
+  // CHECK:     return [[ENTRY_SELECT]] : tensor<8x16xf16>
+  return %0 : tensor<8x16xf16>
+}
+
+// CHECK-LABEL: func @softplus_bf16
+// CHECK-SAME: ([[FEATURES:%.*]]: tensor<8x16xbf16>)
+func @softplus_bf16(%arg0: tensor<8x16xbf16>) -> tensor<8x16xbf16> {
+  // CHECK-DAG: [[FEATURES_EXP:%.*]] = "xla_hlo.exponential"([[FEATURES]])
+  // CHECK-DAG: [[EPSILON:%.*]] = xla_hlo.constant dense<7.812500e-03> : tensor<bf16>
+  // CHECK-DAG: [[EPSILON_LOG:%.*]] = "xla_hlo.log"([[EPSILON]])
+  // CHECK-DAG: [[TWO:%.*]] = xla_hlo.constant dense<2.000000e+00> : tensor<bf16>
+  // CHECK:     [[THRESHOLD:%.*]] = xla_chlo.broadcast_add [[EPSILON_LOG]], [[TWO]]
+  // CHECK:     [[NEG_THRESHOLD:%.*]] = "xla_hlo.negate"([[THRESHOLD]])
+  // CHECK-DAG: [[COMPARE_GT:%.*]] = xla_chlo.broadcast_compare [[FEATURES]], [[NEG_THRESHOLD]] {comparison_direction = "GT"}
+  // CHECK-DAG: [[COMPARE_LT:%.*]] = xla_chlo.broadcast_compare [[FEATURES]], [[THRESHOLD]] {comparison_direction = "LT"}
+  // CHECK-DAG: [[FEATURES_EXP_LOG:%.*]] = "xla_hlo.log_plus_one"([[FEATURES_EXP]])
+  // CHECK:     [[ELSE_SELECT:%.*]] = "xla_hlo.select"([[COMPARE_LT]], [[FEATURES_EXP]], [[FEATURES_EXP_LOG]])
+  // CHECK:     [[ENTRY_SELECT:%.*]] = "xla_hlo.select"([[COMPARE_GT]], [[FEATURES]], [[ELSE_SELECT]])
+  %0 = "tf.Softplus"(%arg0) : (tensor<8x16xbf16>) -> tensor<8x16xbf16>
+
+  // CHECK:     return [[ENTRY_SELECT]] : tensor<8x16xbf16>
+  return %0 : tensor<8x16xbf16>
+}
+
+// CHECK-LABEL: func @softplus_f32
+// CHECK-SAME: ([[FEATURES:%.*]]: tensor<8x16xf32>)
+func @softplus_f32(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
+  // CHECK-DAG: [[FEATURES_EXP:%.*]] = "xla_hlo.exponential"([[FEATURES]])
+  // CHECK-DAG: [[EPSILON:%.*]] = xla_hlo.constant dense<1.1920929E-7> : tensor<f32>
+  // CHECK-DAG: [[EPSILON_LOG:%.*]] = "xla_hlo.log"([[EPSILON]])
+  // CHECK-DAG: [[TWO:%.*]] = xla_hlo.constant dense<2.000000e+00> : tensor<f32>
+  // CHECK:     [[THRESHOLD:%.*]] = xla_chlo.broadcast_add [[EPSILON_LOG]], [[TWO]]
+  // CHECK:     [[NEG_THRESHOLD:%.*]] = "xla_hlo.negate"([[THRESHOLD]])
+  // CHECK-DAG: [[COMPARE_GT:%.*]] = xla_chlo.broadcast_compare [[FEATURES]], [[NEG_THRESHOLD]] {comparison_direction = "GT"}
+  // CHECK-DAG: [[COMPARE_LT:%.*]] = xla_chlo.broadcast_compare [[FEATURES]], [[THRESHOLD]] {comparison_direction = "LT"}
+  // CHECK-DAG: [[FEATURES_EXP_LOG:%.*]] = "xla_hlo.log_plus_one"([[FEATURES_EXP]])
+  // CHECK:     [[ELSE_SELECT:%.*]] = "xla_hlo.select"([[COMPARE_LT]], [[FEATURES_EXP]], [[FEATURES_EXP_LOG]])
+  // CHECK:     [[ENTRY_SELECT:%.*]] = "xla_hlo.select"([[COMPARE_GT]], [[FEATURES]], [[ELSE_SELECT]])
+  %0 = "tf.Softplus"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+
+  // CHECK:     return [[ENTRY_SELECT]] : tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
+}
+
+// CHECK-LABEL: func @softplus_f64
+// CHECK-SAME: ([[FEATURES:%.*]]: tensor<8x16xf64>)
+func @softplus_f64(%arg0: tensor<8x16xf64>) -> tensor<8x16xf64> {
+  // CHECK-DAG: [[FEATURES_EXP:%.*]] = "xla_hlo.exponential"([[FEATURES]])
+  // CHECK-DAG: [[EPSILON:%.*]] = xla_hlo.constant dense<2.2204460492503131E-16> : tensor<f64>
+  // CHECK-DAG: [[EPSILON_LOG:%.*]] = "xla_hlo.log"([[EPSILON]])
+  // CHECK-DAG: [[TWO:%.*]] = xla_hlo.constant dense<2.000000e+00> : tensor<f64>
+  // CHECK:     [[THRESHOLD:%.*]] = xla_chlo.broadcast_add [[EPSILON_LOG]], [[TWO]]
+  // CHECK:     [[NEG_THRESHOLD:%.*]] = "xla_hlo.negate"([[THRESHOLD]])
+  // CHECK-DAG: [[COMPARE_GT:%.*]] = xla_chlo.broadcast_compare [[FEATURES]], [[NEG_THRESHOLD]] {comparison_direction = "GT"}
+  // CHECK-DAG: [[COMPARE_LT:%.*]] = xla_chlo.broadcast_compare [[FEATURES]], [[THRESHOLD]] {comparison_direction = "LT"}
+  // CHECK-DAG: [[FEATURES_EXP_LOG:%.*]] = "xla_hlo.log_plus_one"([[FEATURES_EXP]])
+  // CHECK:     [[ELSE_SELECT:%.*]] = "xla_hlo.select"([[COMPARE_LT]], [[FEATURES_EXP]], [[FEATURES_EXP_LOG]])
+  // CHECK:     [[ENTRY_SELECT:%.*]] = "xla_hlo.select"([[COMPARE_GT]], [[FEATURES]], [[ELSE_SELECT]])
+  %0 = "tf.Softplus"(%arg0) : (tensor<8x16xf64>) -> tensor<8x16xf64>
+
+  // CHECK:     return [[ENTRY_SELECT]] : tensor<8x16xf64>
+  return %0 : tensor<8x16xf64>
+}

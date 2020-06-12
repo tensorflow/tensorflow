@@ -618,3 +618,39 @@ def : Pat<(TF_SigmoidGradOp AnyRankedTensor:$l, AnyRankedTensor:$r),
           (HLO_MulOp
            (HLO_MulOp $r, $l),
            (HLO_SubOp (HLO_ConstOp (ConstantSplat<"1"> $l)), $l))>;
+
+//===----------------------------------------------------------------------===//
+// Softplus op.
+//===----------------------------------------------------------------------===//
+
+def EpsilonValue : NativeCodeCall<"GetEpsilonValue($0.getType())">;
+
+def : Pattern<(TF_SoftplusOp AnyTensor:$features),
+              [
+                (HLO_ExpOp:$features_exp $features),
+                (HLOClient_BroadcastAddOp:$threshold
+                 (HLO_LogOp (HLO_ConstOp (EpsilonValue $features))),
+                 (HLO_ConstOp (GetScalarOfType<2> $features)),
+                 (NullDenseIntElementsAttr)
+                ),
+                (HLO_SelectOp:$output
+                 (HLOClient_BroadcastCompareOp
+                  $features,
+                  (HLO_NegOp $threshold),
+                  (NullDenseIntElementsAttr),
+                  HLO_COMPARISON_DIRECTION_GT
+                 ),
+                 $features,
+                 (HLO_SelectOp
+                  (HLOClient_BroadcastCompareOp
+                   $features,
+                   $threshold,
+                   (NullDenseIntElementsAttr),
+                   HLO_COMPARISON_DIRECTION_LT
+                  ),
+                  $features_exp,
+                  (HLO_Log1pOp $features_exp)
+                 )
+                ),
+                (replaceWithValue $output)
+              ]>;
