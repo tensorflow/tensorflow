@@ -98,6 +98,8 @@ void parse_custom_options(const char *buffer, size_t length, int32_t *stride_h,
             plan->SetType((::xcore::ExecutionPlanType)plan_values[j].AsInt32());
           } else if (plan_key.compare("th") == 0) {
             plan->SetNumThreads(plan_values[j].AsInt32());
+          } else if (plan_key.compare("co") == 0) {
+            plan->SetNumChannels(plan_values[j].AsInt32());
           } else if (plan_key.compare("rc") == 0) {
             const auto &regions = plan_values[j].AsVector();
             for (int k = 0; k < regions.size(); k++) {
