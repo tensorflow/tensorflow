@@ -4610,45 +4610,16 @@ class ConvertShapeOp : public OpRewritePattern<TF::ShapeOp> {
   LogicalResult matchAndRewrite(TF::ShapeOp op,
                                 PatternRewriter &rewriter) const override {
     Value input = op.input();
-    auto input_ty = input.getType().dyn_cast<RankedTensorType>();
-    // If the shape is static it can be canonicalized.
-    if (!input_ty || input_ty.hasStaticShape()) {
-      return failure();
-    }
 
-    auto result_ty = op.getResult().getType().cast<RankedTensorType>();
-    auto element_ty = result_ty.getElementType();
-
-    int64_t rank = input_ty.getRank();
     auto shape_op = rewriter.create<shape::ShapeOfOp>(op.getLoc(), input);
+    auto result_ty = op.getResult().getType().cast<RankedTensorType>();
 
-    auto index_ty = RankedTensorType::get({1}, element_ty);
-    llvm::SmallVector<Value, 4> dim_values;
-    for (int64_t i = 0; i < rank; ++i) {
-      if (!input_ty.isDynamicDim(i)) {
-        auto dim_attr = DenseElementsAttr::get(
-            index_ty,
-            rewriter.getIntegerAttr(element_ty, input_ty.getDimSize(i)));
-        auto index = rewriter.create<xla_hlo::ConstOp>(op.getLoc(), dim_attr);
-        dim_values.push_back(index);
-        continue;
-      }
+    auto index_tensor =
+        RankedTensorType::get(result_ty.getShape(), rewriter.getIndexType());
+    auto extent_tensor = rewriter.create<shape::ToExtentTensorOp>(
+        op.getLoc(), index_tensor, shape_op);
 
-      auto extent_op =
-          rewriter.create<shape::GetExtentOp>(op.getLoc(), shape_op, i);
-      auto index_op = rewriter.create<shape::SizeToIndexOp>(
-          op.getLoc(), rewriter.getIndexType(), extent_op);
-      auto int_op =
-          rewriter.create<IndexCastOp>(op.getLoc(), element_ty, index_op);
-      auto from_tensor = rewriter.create<TensorFromElementsOp>(
-          op.getLoc(), int_op.getResult());
-      auto reshape_op =
-          rewriter.create<ReshapeOp>(op.getLoc(), index_ty, from_tensor);
-      dim_values.push_back(reshape_op);
-    }
-
-    rewriter.replaceOpWithNewOp<ConcatenateOp>(op, result_ty, dim_values,
-                                               rewriter.getI64IntegerAttr(0));
+    rewriter.replaceOpWithNewOp<IndexCastOp>(op, result_ty, extent_tensor);
     return success();
   }
 };
