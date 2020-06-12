@@ -3831,42 +3831,6 @@ func @random_shuffle_3D(%input: tensor<4x?x16xf32>) -> tensor<4x?x16xf32> {
 }
 
 //===----------------------------------------------------------------------===//
-// tf.VariableShape legalization
-//===----------------------------------------------------------------------===//
-
-// CHECK-LABLE: @variable_shape32
-func @variable_shape32(%input: tensor<!tf.resource<tensor<2x4x8xf32>>>) -> tensor<3xi32> {
-  // CHECK: [[CST:%.*]] = xla_hlo.constant dense<[2, 4, 8]> : tensor<3xi32>
-  // CHECK: [[CST_CAST:%.*]] = tensor_cast [[CST]]
-  %0 = "tf.VariableShape"(%input) : (tensor<!tf.resource<tensor<2x4x8xf32>>>) -> (tensor<3xi32>)
-  // CHECK: return [[CST_CAST]]
-  return %0: tensor<3xi32>
-}
-
-// CHECK-LABLE: @variable_shape64
-func @variable_shape64(%input: tensor<!tf.resource<tensor<2x4x8xf32>>>) -> tensor<3xi64> {
-  // CHECK: [[CST:%.*]] = xla_hlo.constant dense<[2, 4, 8]> : tensor<3xi64>
-  // CHECK: [[CST_CAST:%.*]] = tensor_cast [[CST]]
-  %0 = "tf.VariableShape"(%input) : (tensor<!tf.resource<tensor<2x4x8xf32>>>) -> (tensor<3xi64>)
-  // CHECK: return [[CST_CAST]]
-  return %0: tensor<3xi64>
-}
-
-// CHECK-LABEL: @variable_shape_unknown_resource
-func @variable_shape_unknown_resource(%input: tensor<!tf.resource>) -> tensor<?xi32> {
-  // CHECK: tf.VariableShape
-  %0 = "tf.VariableShape"(%input) : (tensor<!tf.resource>) -> (tensor<?xi32>)
-  return %0: tensor<?xi32>
-}
-
-// CHECK-LABEL: @variable_shape_unknown_resource_shape
-func @variable_shape_unknown_resource_shape(%input: tensor<!tf.resource<tensor<?x?xf32>>>) -> tensor<2xi32> {
-  // CHECK: tf.VariableShape
-  %0 = "tf.VariableShape"(%input) : (tensor<!tf.resource<tensor<?x?xf32>>>) -> (tensor<2xi32>)
-  return %0: tensor<2xi32>
-}
-
-//===----------------------------------------------------------------------===//
 // tf.AvgPool legalization
 //===----------------------------------------------------------------------===//
 

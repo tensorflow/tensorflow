@@ -4387,45 +4387,6 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
   }
 };
 
-// Converts tf.VariableShape op to a XLA HLO constant representing the variable
-// shape.
-class ConvertVariableShapeOp : public OpRewritePattern<TF::VariableShapeOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(TF::VariableShapeOp op,
-                                PatternRewriter &rewriter) const override {
-    // The input type should be a tensor<!tf.resource<resource-type>>. We need
-    // to get the inner resource type.
-    auto input_type = op.input().getType().cast<TensorType>();
-    auto subtypes =
-        input_type.getElementType().cast<TF::ResourceType>().getSubtypes();
-    // It can be missing; then we cannot convert.
-    if (subtypes.empty()) return failure();
-
-    auto resource_type = subtypes[0].cast<TensorType>();
-    if (!resource_type.hasStaticShape()) return failure();
-
-    auto resource_shape = resource_type.getShape();
-    Attribute const_attr;
-
-    // We need to match the original op result's element type.
-    auto element_type = op.getType().cast<TensorType>().getElementType();
-    unsigned bitwidth = element_type.cast<IntegerType>().getWidth();
-    if (bitwidth == 32) {
-      SmallVector<int32_t, 4> shape(resource_shape.begin(),
-                                    resource_shape.end());
-      const_attr = GetI32ElementsAttr(shape, &rewriter);
-    } else {
-      assert(bitwidth == 64);
-      const_attr = GetI64ElementsAttr(resource_shape, &rewriter);
-    }
-
-    rewriter.replaceOpWithNewOp<xla_hlo::ConstOp>(op, const_attr);
-    return success();
-  }
-};
-
 // Converts an XlaSharding op to a XLA HLO shard op with sharding attributes.
 class ConvertXlaShardingOp : public OpRewritePattern<TF::XlaShardingOp> {
  public:
@@ -5250,7 +5211,7 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
       ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,
       ConvertUnpackOp, ConvertUnsortedSegmentMaxOp, ConvertUnsortedSegmentMinOp,
       ConvertUnsortedSegmentProdOp, ConvertUnsortedSegmentSumOp,
-      ConvertRandomShuffleOp, ConvertVariableShapeOp, ConvertXlaShardingOp,
+      ConvertRandomShuffleOp, ConvertXlaShardingOp,
       ConvertXlaDynamicUpdateSliceOp>(op->getContext());
 
   // Populate with CHLO->HLO lowerings to account for TF ops legalized to
