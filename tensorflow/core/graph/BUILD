@@ -93,7 +93,6 @@ filegroup(
         "costmodel.h",
         "default_device.h",
         "edgeset.h",
-        "gpu_fusion_pass.h",
         "graph.h",
         "graph_def_builder.h",
         "graph_node_util.h",

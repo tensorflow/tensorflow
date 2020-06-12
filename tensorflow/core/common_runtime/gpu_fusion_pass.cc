@@ -40,7 +40,7 @@ limitations under the License.
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#include "tensorflow/core/graph/gpu_fusion_pass.h"
+#include "tensorflow/core/common_runtime/gpu_fusion_pass.h"
 
 namespace tensorflow {
 namespace gpu_fusion_pass {
