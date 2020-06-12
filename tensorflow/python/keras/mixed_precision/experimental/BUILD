@@ -211,6 +211,25 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "mixed_precision_graph_rewrite_test",
+    size = "small",
+    srcs = ["mixed_precision_graph_rewrite_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":loss_scale_optimizer",
+        ":policy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:config",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:mixed_precision",
+        "//tensorflow/python:tf2",
+        "//tensorflow/python/keras:testing_utils",
+        "//tensorflow/python/keras/optimizer_v2",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 py_library(
     name = "test_util",
     srcs = ["test_util.py"],
