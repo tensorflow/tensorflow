@@ -173,6 +173,22 @@ cc_library(
 )
 
 cc_library(
+    name = "reduce_tester",
+    testonly = 1,
+    srcs = ["reduce_tester.cc"],
+    hdrs = ["reduce_tester.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
     name = "softmax_tester",
     testonly = 1,
     srcs = ["softmax_tester.cc"],
@@ -423,6 +439,21 @@ cc_test(
     }),
     deps = [
         ":binary_elementwise_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "mean_test",
+    srcs = ["mean_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":reduce_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",

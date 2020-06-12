@@ -150,8 +150,9 @@ class Subgraph {
       }
 
       switch (registration->builtin_code) {
+        case kTfLiteBuiltinMean:
         case kTfLiteBuiltinPad:
-          // Ignore the second input (static padding), because it is
+          // Ignore the second input (static padding, or axes), because it is
           // represented as parameters of the XNNPACK operator rather than
           // extra input.
           {
@@ -723,6 +724,20 @@ class Subgraph {
     return kTfLiteOk;
   }
 
+  static TfLiteStatus CheckAxesTensorShape(TfLiteContext* context,
+                                           const TfLiteTensor& tensor,
+                                           int tensor_index, int node_index) {
+    if (tensor.dims->size != 1) {
+      TF_LITE_MAYBE_KERNEL_LOG(context,
+                               "unexpected number of shape dimensions (%d) in "
+                               "axes tensor #%d in node #%d: "
+                               "expected a 1D tensor",
+                               tensor.dims->size, tensor_index, node_index);
+      return kTfLiteError;
+    }
+    return kTfLiteOk;
+  }
+
   static TfLiteStatus CheckTensorNonDynamicAllocation(
       TfLiteContext* context, const TfLiteTensor& tensor, int tensor_index,
       int node_index) {
@@ -846,6 +861,13 @@ class Subgraph {
       case kTfLiteBuiltinMaximum:
         return VisitMaximumNode(subgraph, logging_context, node_index, node,
                                 context->tensors, xnnpack_tensors);
+      case kTfLiteBuiltinMean: {
+        const TfLiteReducerParams* reducer_params =
+            static_cast<const TfLiteReducerParams*>(node->builtin_data);
+
+        return VisitMeanNode(subgraph, logging_context, node_index, node,
+                             context->tensors, reducer_params, xnnpack_tensors);
+      }
       case kTfLiteBuiltinMinimum:
         return VisitMinimumNode(subgraph, logging_context, node_index, node,
                                 context->tensors, xnnpack_tensors);
@@ -1716,6 +1738,85 @@ class Subgraph {
       if (status != xnn_status_success) {
         TF_LITE_KERNEL_LOG(logging_context,
                            "failed to delegate MAXIMUM node #%d", node_index);
+        return kTfLiteError;
+      }
+    }
+
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus VisitMeanNode(
+      xnn_subgraph_t subgraph, TfLiteContext* logging_context, int node_index,
+      TfLiteNode* node, const TfLiteTensor* tensors,
+      const TfLiteReducerParams* reducer_params,
+      const std::vector<uint32_t>& xnnpack_tensors) {
+    TF_LITE_ENSURE_STATUS(
+        CheckNumInputsAndOutputs(logging_context, node, 2, 1, node_index));
+
+    const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, input_tensor, 4,
+                                           node->inputs->data[0]));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+
+    const TfLiteTensor& axes_tensor = tensors[node->inputs->data[1]];
+    TF_LITE_ENSURE_STATUS(CheckTensorType(logging_context, axes_tensor,
+                                          kTfLiteInt32, node->inputs->data[1],
+                                          node_index));
+    TF_LITE_ENSURE_STATUS(CheckAxesTensorShape(
+        logging_context, axes_tensor, node->inputs->data[1], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+        logging_context, axes_tensor, node->inputs->data[1], node_index));
+
+    const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, output_tensor, 4,
+                                           node->outputs->data[0]));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+
+    if (!reducer_params->keep_dims) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "unsupported MEAN reduction without keep_dims attributes in node %d",
+          node_index);
+      return kTfLiteError;
+    }
+
+    if (axes_tensor.dims->data[0] != 2) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "unsupported MEAN reduction along %d axes in node %d",
+          axes_tensor.dims->data[0], node_index);
+      return kTfLiteError;
+    }
+
+    const int32_t* axes_data =
+        reinterpret_cast<const int32_t*>(axes_tensor.data.data);
+    if (std::min(axes_data[0], axes_data[1]) != 1 ||
+        std::max(axes_data[0], axes_data[1]) != 2) {
+      TF_LITE_MAYBE_KERNEL_LOG(logging_context,
+                               "unsupported MEAN reduction along non-spatial "
+                               "axes %d and %d in node %d",
+                               std::min(axes_data[0], axes_data[1]),
+                               std::max(axes_data[0], axes_data[1]),
+                               node_index);
+      return kTfLiteError;
+    }
+
+    if (subgraph != nullptr) {
+      const xnn_status status = xnn_define_global_average_pooling_2d(
+          subgraph,
+          /*output_min=*/-std::numeric_limits<float>::infinity(),
+          /*output_max=*/+std::numeric_limits<float>::infinity(),
+          /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
+          /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
+      if (status != xnn_status_success) {
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate MEAN node #%d",
+                           node_index);
         return kTfLiteError;
       }
     }
