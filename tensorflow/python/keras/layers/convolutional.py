@@ -224,8 +224,8 @@ class Conv(Layer):
       tf_padding = self.padding.upper()
     else:
       tf_padding = self.padding
-    tf_dilations = self.dilation_rate
-    tf_strides = self.strides
+    tf_dilations = list(self.dilation_rate)
+    tf_strides = list(self.strides)
 
     tf_op_name = self.__class__.__name__
     if tf_op_name == 'Conv1D':
