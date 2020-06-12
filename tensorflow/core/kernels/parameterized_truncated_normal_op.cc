@@ -86,12 +86,6 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
       using Normal = random::NormalDistribution<random::PhiloxRandom, T>;
       Normal normal_dist;
 
-      // Vectorized intermediate calculations for uniform rejection sampling.
-      const int length =
-          std::max(Uniform::kResultElementCount, Normal::kResultElementCount);
-      Eigen::array<T, length> z;
-      Eigen::array<T, length> g;
-
       for (int64 b = start_batch; b < limit_batch; ++b) {
         // We are passed a flat array for each of the parameter tensors.
         // The input is either a scalar broadcasted to all batches or a vector
@@ -191,6 +185,14 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
           while (sample < limit_sample) {
             const auto rand = dist(&gen_copy);
             const int size = rand.size();
+
+            // Vectorized intermediate calculations for uniform rejection
+            // sampling.
+            // Simply allocate Uniform::kResultElementCount for the two arrays
+            // since they are only used by UniformDistribution.
+            Eigen::array<T, Uniform::kResultElementCount> z;
+            Eigen::array<T, Uniform::kResultElementCount> g;
+
             // NOTE(ringwalt): These loops seem to only generate packed AVX
             // instructions for float32.
             for (int i = 0; i < size; i++) {
