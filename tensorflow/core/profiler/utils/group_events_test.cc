@@ -470,6 +470,63 @@ TEST(GroupEventsTest, AsyncEventTest) {
       });
 }
 
+TEST(GroupEventsTest, WorkerTest) {
+  constexpr uint64 kEagerKernelExecuteDuration = 100;
+  constexpr uint64 kFunctionRunDuration = 50;
+  constexpr uint64 kFirstEagerKernelExecuteStartTime = 0;
+  constexpr uint64 kSecondEagerKernelExecuteStartTime = 200;
+  constexpr uint64 kThirdEagerKernelExecuteStartTime = 400;
+  constexpr uint64 kFourthEagerKernelExecuteStartTime = 600;
+  constexpr uint64 kFirstFunctionRunStartTime = 210;
+  constexpr uint64 kSecondFunctionRunStartTime = 610;
+
+  XSpace raw_space;
+  XPlane* raw_plane = raw_space.add_planes();
+  XPlaneBuilder plane(raw_plane);
+  plane.ReserveLines(1);
+  auto line = plane.GetOrCreateLine(0);
+  // Eager op. It doesn't belong to any group.
+  CreateXEvent(&plane, &line, HostEventType::kEagerKernelExecute,
+               kFirstEagerKernelExecuteStartTime, kEagerKernelExecuteDuration);
+  // First function. It creates the first group.
+  CreateXEvent(&plane, &line, HostEventType::kEagerKernelExecute,
+               kSecondEagerKernelExecuteStartTime, kEagerKernelExecuteDuration);
+  CreateXEvent(&plane, &line, HostEventType::kFunctionRun,
+               kFirstFunctionRunStartTime, kFunctionRunDuration);
+  // Eager op. It belongs to the first group.
+  CreateXEvent(&plane, &line, HostEventType::kEagerKernelExecute,
+               kThirdEagerKernelExecuteStartTime, kEagerKernelExecuteDuration);
+  // Second function. It creates the second group.
+  CreateXEvent(&plane, &line, HostEventType::kEagerKernelExecute,
+               kFourthEagerKernelExecuteStartTime, kEagerKernelExecuteDuration);
+  CreateXEvent(&plane, &line, HostEventType::kFunctionRun,
+               kSecondFunctionRunStartTime, kFunctionRunDuration);
+
+  GroupTfEvents(&raw_space, /*event_group_name_map=*/nullptr);
+  CreateTfXPlaneVisitor(raw_plane).ForEachLine(
+      [&](const tensorflow::profiler::XLineVisitor& line) {
+        EXPECT_EQ(line.NumEvents(), 6);
+        line.ForEachEvent(
+            [&](const tensorflow::profiler::XEventVisitor& event) {
+              absl::optional<int64> group_id;
+              if (absl::optional<XStatVisitor> stat =
+                      event.GetStat(StatType::kGroupId)) {
+                group_id = stat->IntValue();
+              }
+              if (event.TimestampPs() < kSecondEagerKernelExecuteStartTime) {
+                EXPECT_FALSE(group_id.has_value());
+              } else if (event.TimestampPs() <
+                         kFourthEagerKernelExecuteStartTime) {
+                EXPECT_TRUE(group_id.has_value());
+                EXPECT_EQ(*group_id, 0);
+              } else {
+                EXPECT_TRUE(group_id.has_value());
+                EXPECT_EQ(*group_id, 1);
+              }
+            });
+      });
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tensorflow

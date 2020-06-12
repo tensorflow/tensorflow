@@ -107,8 +107,6 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       // tf.data related.
       {"IteratorGetNextOp::DoCompute", kIteratorGetNextOp},
       {"IteratorGetNextAsOptionalOp::DoCompute", kIteratorGetNextAsOptionalOp},
-      // Virtual events for grouping.
-      {"AsyncExecutorTraceContext", kAsyncExecutorTraceContext},
       // GPU related.
       {"KernelLaunch", kKernelLaunch},
       {"KernelExecute", kKernelExecute},
