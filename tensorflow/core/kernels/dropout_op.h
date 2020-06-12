@@ -20,15 +20,15 @@ namespace tensorflow {
 
 template <typename Device, typename T>
 struct ApplyDropout {
-  void operator()(const Device& d, T* out, const T* in, const float* rng_data,
+  void operator()(const Device& d, T* out, uint8* mask, const T* in, const float* rng_data,
                   float rate, uint64 num_elements, random::PhiloxRandom gen,
                   bool seeded) {}
 };
 
 template <typename Device, typename T>
 struct ApplyDropoutGrad {
-  void operator()(const Device& d, T* outgrads, const T* grads, const T* ins,
-                  const T* outs, float rate, uint64 num_elements) {}
+  void operator()(const Device& d, T* outgrads, const T* grads, const uint8* mask,
+     float rate, uint64 num_elements) {}
 };
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -36,15 +36,15 @@ typedef Eigen::GpuDevice GPUDevice;
 
 template <typename T>
 struct ApplyDropout<GPUDevice, T> {
-  void operator()(const GPUDevice& d, T* out, const T* in,
+  void operator()(const GPUDevice& d, T* out, uint8* mask, const T* in,
                   const float* rng_data, float rate, uint64 num_elements,
                   random::PhiloxRandom gen, bool seeded);
 };
 
 template <typename T>
 struct ApplyDropoutGrad<GPUDevice, T> {
-  void operator()(const GPUDevice& d, T* outgrads, const T* grads, const T* ins,
-                  const T* outs, float rate, uint64 num_elements);
+  void operator()(const GPUDevice& d, T* outgrads, const T* grads, const uint8* mask,
+                  float rate, uint64 num_elements);
 };
 };
 #endif
