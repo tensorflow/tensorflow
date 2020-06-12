@@ -126,15 +126,6 @@ const char *getActivityUnifiedMemoryKindString(
     }                                                                       \
   } while (false)
 
-// GetCachedTID() caches the thread ID in thread-local storage (which is a
-// userspace construct) to avoid unnecessary system calls. Without this caching,
-// it can take roughly 98ns, while it takes roughly 1ns with this caching.
-int32 GetCachedTID() {
-  static thread_local int32 current_thread_id =
-      Env::Default()->GetCurrentThreadId();
-  return current_thread_id;
-}
-
 size_t Bytes2D(const CUDA_MEMCPY2D *p) { return p->Height * p->WidthInBytes; }
 
 size_t Bytes3D(const CUDA_MEMCPY3D *p) {
@@ -305,7 +296,7 @@ void AddKernelEventUponApiExit(CuptiTraceCollector *collector, uint32 device_id,
   event.name = cbdata->symbolName ? cbdata->symbolName : cbdata->functionName;
   event.start_time_ns = start_time;
   event.end_time_ns = end_time;
-  event.thread_id = GetCachedTID();
+  event.thread_id = Env::Default()->GetCurrentThreadId();
   event.device_id = device_id;
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
@@ -323,7 +314,7 @@ CuptiTracerEvent PopulateMemcpyCallbackEvent(
   event.source = CuptiTracerEventSource::DriverCallback;
   event.start_time_ns = start_time;
   event.end_time_ns = end_time;
-  event.thread_id = GetCachedTID();
+  event.thread_id = Env::Default()->GetCurrentThreadId();
   event.device_id = src_device;
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
@@ -387,7 +378,7 @@ void AddCudaMallocEventUponApiExit(CuptiTraceCollector *collector,
   event.name = cbdata->functionName;
   event.start_time_ns = start_time;
   event.end_time_ns = end_time;
-  event.thread_id = GetCachedTID();
+  event.thread_id = Env::Default()->GetCurrentThreadId();
   event.device_id = device_id;
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
@@ -406,7 +397,7 @@ void AddGenericEventUponApiExit(CuptiTraceCollector *collector,
   event.name = cbdata->functionName;
   event.start_time_ns = start_time;
   event.end_time_ns = end_time;
-  event.thread_id = GetCachedTID();
+  event.thread_id = Env::Default()->GetCurrentThreadId();
   event.device_id = device_id;
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
