@@ -348,8 +348,9 @@ absl::Status ElementwiseTwoInput::BindArguments(CLKernel* kernel) {
   return absl::OkStatus();
 }
 
-absl::Status ElementwiseTwoInput::SetArgs(int link_id, Arguments* args) {
-  std::string tensor_name = absl::StrCat("second_tensor_link", link_id);
+absl::Status ElementwiseTwoInput::SetArgs(const std::string& unique_postfix,
+                                          Arguments* args) {
+  std::string tensor_name = absl::StrCat("second_tensor", unique_postfix);
   if (use_constant_tensor_) {
     RETURN_IF_ERROR(args->SetObjectRef(tensor_name, &constant_tensor_));
   } else {
