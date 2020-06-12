@@ -106,8 +106,8 @@ void parse_custom_options(const char *buffer, size_t length, int32_t *stride_h,
               auto region =
                   regions[k]
                       .AsVector();  // values represent [top, left, rows, cols]
-              plan->regions.Append({region[0].AsInt32(), region[1].AsInt32(),
-                                    region[2].AsInt32(), region[3].AsInt32()});
+              plan->AppendRegion({region[0].AsInt32(), region[1].AsInt32(),
+                                  region[2].AsInt32(), region[3].AsInt32()});
             }
           }
         }
