@@ -4612,7 +4612,10 @@ class ConvertShapeOp : public OpRewritePattern<TF::ShapeOp> {
     Value input = op.input();
 
     auto shape_op = rewriter.create<shape::ShapeOfOp>(op.getLoc(), input);
-    auto result_ty = op.getResult().getType().cast<RankedTensorType>();
+    auto result_ty = op.getResult().getType().dyn_cast<RankedTensorType>();
+    if (!result_ty) {
+      return failure();
+    }
 
     auto index_tensor =
         RankedTensorType::get(result_ty.getShape(), rewriter.getIndexType());
