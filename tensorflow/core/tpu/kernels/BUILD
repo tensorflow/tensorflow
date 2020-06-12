@@ -114,7 +114,10 @@ cc_library(
     hdrs = [
         "tpu_compilation_cache_key.h",
     ],
-    deps = ["@com_google_absl//absl/types:optional"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
 )
 
 cc_library(

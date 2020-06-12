@@ -318,8 +318,7 @@ string TpuCompilationCacheInterface::FindCacheKey(
   if (iter != session_key_map_.end()) {
     return iter->second;
   }
-  VLOG(1) << "No matching cache key found for key "
-          << ConstructCompilationCacheKey(subgraph_key);
+  VLOG(1) << "No matching cache key found for key " << subgraph_key.ToString();
   return "";
 }
 
@@ -348,7 +347,7 @@ Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
   const string session_name = tpu::SessionNameFromMetadata(session_metadata);
 
   if (is_new_key) {
-    cache_key = ConstructCompilationCacheKey(subgraph_key);
+    cache_key = subgraph_key.ToString();
     tpu::TpuCompilationCacheMetrics::IncrementCacheLookupCount(
         /*is_cache_hit=*/false, session_name);
     const string msg =
