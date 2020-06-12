@@ -411,15 +411,17 @@ class MultiProcessRunner(object):
     if process.exitcode is None:
       # Force termination to dump worker processes stack trace.
       self.terminate_all(sig=signal.SIGTERM)
-      raise RuntimeError('%s-%d and possibly more subprocesses timed out.' %
-                         (task_type, task_id))
+      process_statuses = self._queue_to_list(self._process_status_queue)
+      raise SubprocessTimeoutError(
+          '%s-%d and possibly more subprocesses timed out.' %
+          (task_type, task_id), self._get_mpr_result(process_statuses))
 
   def join(self, timeout=_DEFAULT_TIMEOUT_SEC):
     """Joins all the processes with timeout.
 
     Args:
       timeout: if set and not all processes report status within roughly
-        `timeout` seconds, a `RuntimeError` exception will be thrown.
+        `timeout` seconds, a `SubprocessTimeoutError` exception will be raised.
 
     Returns:
       A MultiProcessRunnerResult object, which has two attributes,
@@ -429,8 +431,12 @@ class MultiProcessRunner(object):
       from subprocesses' stdout and stderr.
 
     Raises:
-      RuntimeError: if not all processes report status approximatelty within
-      `timeout` seconds, or there's an exception propagated from any subprocess.
+      SubprocessTimeoutError: if not all processes report status approximatelty
+      within `timeout` seconds. When this is raised, a
+      `MultiProcessRunnerResult` object can be retrieved by
+      `SubprocessTimeoutError`'s mpr_result attribute, which has the same
+      structure as above 'Returns' section describes.
+      Exception: if there is an Exception propagated from any subprocess.
     """
     if self._joined:
       raise ValueError("MultiProcessRunner can't be joined twice.")
@@ -456,13 +462,10 @@ class MultiProcessRunner(object):
       raise RuntimeError(
           'missing statuses from %d subproceses.' %
           (self._outstanding_subprocess_count - len(process_statuses)))
-    return_values = []
     for process_status in process_statuses:
       assert isinstance(process_status, _ProcessStatusInfo)
       if not process_status.is_successful:
         six.reraise(*process_status.exc_info)
-      if process_status.return_value is not None:
-        return_values.append(process_status.return_value)
 
     logging.info('Joining log reading threads.')
     for thread in self._reading_threads:
@@ -472,8 +475,14 @@ class MultiProcessRunner(object):
     # Clear the alarm.
     signal.alarm(0)
 
-    stdout = self._queue_to_list(self._streaming_queue)
+    return self._get_mpr_result(process_statuses)
 
+  def _get_mpr_result(self, process_statuses):
+    stdout = self._queue_to_list(self._streaming_queue)
+    return_values = []
+    for process_status in process_statuses:
+      if process_status.return_value is not None:
+        return_values.append(process_status.return_value)
     return MultiProcessRunnerResult(stdout=stdout, return_value=return_values)
 
   def terminate(self, task_type, task_id):
@@ -644,6 +653,19 @@ class _ProcFunc(object):
           return_value=return_value)
       self._resources.process_status_queue.put(info)
       self._close_streaming()
+
+
+class SubprocessTimeoutError(RuntimeError):
+  """An error that indicates there is at least one subprocess timing out.
+
+  When this is raised, a `MultiProcessRunnerResult` object can be retrieved by
+  `SubprocessTimeoutError`'s mpr_result attribute. See
+  `MultiProcessRunner.join()` for more information.
+  """
+
+  def __init__(self, msg, mpr_result):
+    super(SubprocessTimeoutError, self).__init__(msg)
+    self.mpr_result = mpr_result
 
 
 def _set_tf_config(task_type, task_id, cluster_spec, rpc_layer=None):

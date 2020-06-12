@@ -297,5 +297,29 @@ class MultiProcessRunnerTest(test.TestCase):
     with self.assertRaises(ValueError):
       multi_process_runner.barrier()
 
+  def test_stdout_available_when_timeout(self):
+
+    def proc_func():
+      for i in range(50):
+        logging.info('(logging) %s-%d, i: %d',
+                     multi_worker_test_base.get_task_type(), self._worker_idx(),
+                     i)
+        time.sleep(1)
+
+    with self.assertRaises(multi_process_runner.SubprocessTimeoutError) as cm:
+      multi_process_runner.run(
+          proc_func,
+          multi_worker_test_base.create_cluster_spec(num_workers=1, num_ps=1),
+          list_stdout=True,
+          timeout=5)
+
+    list_to_assert = cm.exception.mpr_result.stdout
+    for job in ['worker', 'ps']:
+      for iteration in range(0, 5):
+        self.assertTrue(
+            any('(logging) {}-0, i: {}'.format(job, iteration) in line
+                for line in list_to_assert))
+
+
 if __name__ == '__main__':
   multi_process_runner.test_main()
