@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/diagnostics.h"
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 
@@ -40,11 +41,20 @@ const absl::string_view kNoDeviceTraceCollected =
     "run on the device when sampling was turned on. You could try the sampling"
     " again later.";
 
+const absl::string_view kStepsDropped =
+    " steps dropped. This might happen when you profile many hosts and/or many "
+    "steps. You could try to profile shorter or reduce the number of hosts "
+    "you profile.";
+
 void PopulateStepDiagnostics(const OpStats& op_stats, Diagnostics* diag) {
   if (op_stats.step_db().use_incomplete_step()) {
     *diag->add_warnings() = std::string(kErrorIncompleteStep);
   } else if (op_stats.step_db().step_sequence().empty()) {
     *diag->add_warnings() = std::string(kErrorNoStepMarker);
+  }
+  if (op_stats.step_db().num_steps_dropped()) {
+    *diag->add_warnings() =
+        absl::StrCat(op_stats.step_db().num_steps_dropped(), kStepsDropped);
   }
 }
 
