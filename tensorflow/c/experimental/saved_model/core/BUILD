@@ -57,6 +57,7 @@ cc_library(
         ":concrete_function",
         ":saved_model_api",
         "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime/eager:context",
         "@com_google_absl//absl/types:optional",
     ],
 )
