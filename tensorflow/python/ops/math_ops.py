@@ -2752,7 +2752,7 @@ def reduce_all_v1(input_tensor,
   return reduce_all(input_tensor, axis, keepdims, name)
 
 
-@tf_export("reduce_all", "math.reduce_all", v1=[])
+@tf_export("math.reduce_all", "reduce_all", v1=[])
 @dispatch.add_dispatch_support
 def reduce_all(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the "logical and" of elements across dimensions of a tensor.
