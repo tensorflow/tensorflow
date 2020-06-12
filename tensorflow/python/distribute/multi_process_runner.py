@@ -282,7 +282,11 @@ class MultiProcessRunner(object):
     self._reading_threads.append(thread)
 
   def start(self):
-    """Starts processes, one for each task in `cluster_spec`."""
+    """Starts processes, one for each task in `cluster_spec`.
+
+    Note that this is best effort by the applicable multiprocessing library,
+    and it may take up to seconds for a subprocess to be successfully started.
+    """
     if self._processes:
       raise ValueError('MultiProcessRunner already started.')
     for task_type, addresses in self._cluster_spec.items():

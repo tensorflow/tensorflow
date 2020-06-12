@@ -125,16 +125,16 @@ class MultiProcessRunnerTest(test.TestCase):
 
   def test_process_that_exits(self):
 
-    def func_to_exit_in_5_sec():
+    def func_to_exit_in_25_sec():
       logging.error('foo')
-      time.sleep(10)
+      time.sleep(100)
       logging.error('bar')
 
     mpr = multi_process_runner.MultiProcessRunner(
-        func_to_exit_in_5_sec,
+        func_to_exit_in_25_sec,
         multi_worker_test_base.create_cluster_spec(num_workers=1),
         list_stdout=True,
-        max_run_time=5)
+        max_run_time=25)
 
     mpr.start()
     stdout = mpr.join().stdout
@@ -281,7 +281,7 @@ class MultiProcessRunnerTest(test.TestCase):
         multi_worker_test_base.create_cluster_spec(num_workers=2),
         list_stdout=True)
     mpr.start()
-    time.sleep(3)
+    time.sleep(60)
     mpr.terminate_all()
     with self.assertRaisesRegexp(ValueError, 'This is an error.'):
       mpr.join()
