@@ -40,9 +40,10 @@ constexpr int kKeywordModelNodeAndRegistrationCount = 15;
 
 // NOTE: These values are measured on x86-64:
 // TODO(b/158651472): Consider auditing these values on non-64 bit systems.
-constexpr int kKeywordModelTotalSize = 21440;
+constexpr int kKeywordModelTotalSize = 21472;
 constexpr int kKeywordModelHeadSize = 672;
-constexpr int kKeywordModelTailSize = 20768;
+constexpr int kKeywordModelTailSize = 20800;
+constexpr int kKeywordModelTfLiteTensorVariableBufferDataSize = 10240;
 constexpr int kKeywordModelTfLiteTensorQuantizationDataSize = 2160;
 constexpr int kKeywordModelOpRuntimeDataSize = 148;
 
@@ -54,9 +55,9 @@ constexpr int kTestConvModelNodeAndRegistrationCount = 7;
 
 // NOTE: These values are measured on x86-64:
 // TODO(b/158651472): Consider auditing these values on non-64 bit systems.
-constexpr int kTestConvModelTotalSize = 12096;
+constexpr int kTestConvModelTotalSize = 12128;
 constexpr int kTestConvModelHeadSize = 7744;
-constexpr int kTestConvModelTailSize = 4352;
+constexpr int kTestConvModelTailSize = 4384;
 constexpr int kTestConvModelTfLiteTensorQuantizationDataSize = 1216;
 constexpr int kTestConvModelOpRuntimeDataSize = 136;
 
@@ -66,6 +67,7 @@ struct ModelAllocationThresholds {
   size_t total_alloc_size = 0;
   size_t head_alloc_size = 0;
   size_t tail_alloc_size = 0;
+  size_t tensor_variable_buffer_data_size = 0;
   size_t tensor_quantization_data_size = 0;
   size_t op_runtime_data_size = 0;
 };
@@ -102,6 +104,12 @@ void ValidateModelAllocationThresholds(
               tflite::RecordedAllocationType::kTfLiteTensorArray)
           .used_bytes,
       sizeof(TfLiteTensor) * thresholds.tensor_count);
+  EnsureAllocatedSizeThreshold(
+      allocator
+          .GetRecordedAllocation(
+              tflite::RecordedAllocationType::kTfLiteTensorVariableBufferData)
+          .used_bytes,
+      thresholds.tensor_variable_buffer_data_size);
   EnsureAllocatedSizeThreshold(
       allocator
           .GetRecordedAllocation(tflite::RecordedAllocationType::
@@ -141,6 +149,8 @@ TF_LITE_MICRO_TEST(TestKeywordModelMemoryThreshold) {
   thresholds.total_alloc_size = kKeywordModelTotalSize;
   thresholds.head_alloc_size = kKeywordModelHeadSize;
   thresholds.tail_alloc_size = kKeywordModelTailSize;
+  thresholds.tensor_variable_buffer_data_size =
+      kKeywordModelTfLiteTensorVariableBufferDataSize;
   thresholds.tensor_quantization_data_size =
       kKeywordModelTfLiteTensorQuantizationDataSize;
   thresholds.op_runtime_data_size = kKeywordModelOpRuntimeDataSize;
