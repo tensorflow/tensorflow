@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/grappler/optimizers/data/hoist_data_discarding_ops.h"
+#include "tensorflow/core/grappler/optimizers/data/hoist_discard.h"
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -61,10 +61,10 @@ bool IsCardinalityPreserving(const NodeDef& node) {
 
 }  // namepsace
 
-Status HoistDataDiscardingOps::OptimizeAndCollectStats(Cluster* cluster,
-                                                       const GrapplerItem& item,
-                                                       GraphDef* output,
-                                                       OptimizationStats* stats) {
+Status HoistDiscard::OptimizeAndCollectStats(Cluster* cluster,
+                                             const GrapplerItem& item,
+                                             GraphDef* output,
+                                             OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
   bool updated;
@@ -84,9 +84,9 @@ Status HoistDataDiscardingOps::OptimizeAndCollectStats(Cluster* cluster,
           continue;
         }
         NodeDef hoisted_node = node;
-        if (!absl::StartsWith(node.name(), "hoist_data_dsicarding_op/")) {
+        if (!absl::StartsWith(node.name(), "hoist_discard/")) {
           graph_utils::SetUniqueGraphNodeName(
-            strings::StrCat("hoist_data_discarding_ops/", node.name()),
+            strings::StrCat("hoist_discard/", node.name()),
             graph.graph(), &hoisted_node
           );
         }
@@ -108,13 +108,13 @@ Status HoistDataDiscardingOps::OptimizeAndCollectStats(Cluster* cluster,
   return Status::OK();
 }
 
-void HoistDataDiscardingOps::Feedback(Cluster* cluster, const GrapplerItem& item,
-                                      const GraphDef& optimize_output,
-                                      double result) {
+void HoistDiscard::Feedback(Cluster* cluster, const GrapplerItem& item,
+                            const GraphDef& optimize_output,
+                            double result) {
   // no-op
 }
 
-REGISTER_GRAPH_OPTIMIZER_AS(HoistDataDiscardingOps, "hoist_data_discarding_ops");
+REGISTER_GRAPH_OPTIMIZER_AS(HoistDiscard, "hoist_discard");
 
 }  // namespace grappler
 }  // namespace tensorflow

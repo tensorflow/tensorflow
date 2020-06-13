@@ -23,12 +23,12 @@ namespace grappler {
 
 // This optimization hoists the data discarding ops (such as `skip`, `take` and
 //  `shard`) to avoid unnecessary computation.
-class HoistDataDiscardingOps : public TFDataOptimizerBase {
+class HoistDiscard : public TFDataOptimizerBase {
  public:
-  HoistDataDiscardingOps() = default;
-  ~HoistDataDiscardingOps() override = default;
+  HoistDiscard() = default;
+  ~HoistDiscard() override = default;
 
-  string name() const override { return "hoist_data_discarding_ops"; };
+  string name() const override { return "hoist_discard"; };
 
   bool UsesFunctionLibrary() const override { return false; }
 

@@ -42,7 +42,7 @@ constexpr std::array<const char*, 16> kTFDataOptimizations = {
     "filter_fusion",
     "filter_with_random_uniform_fusion",
     "map_and_filter_fusion",
-    "hoist_data_discarding_ops",
+    "hoist_discard",
     "hoist_random_uniform",
     "map_parallelization",
     "map_and_batch_fusion",

@@ -28,7 +28,7 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "hoist_data_discarding_ops"
+    name: "hoist_discard"
     mtype: "<type \'property\'>"
   }
   member {

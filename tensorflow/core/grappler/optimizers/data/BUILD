@@ -16,7 +16,7 @@ cc_library(
     deps = [
         ":filter_fusion",
         ":filter_with_random_uniform_fusion",
-        ":hoist_data_discarding_ops",
+        ":hoist_discard",
         ":hoist_random_uniform",
         ":inject_prefetch",
         ":latency_all_edges",
@@ -254,10 +254,10 @@ cc_library(
 )
 
 cc_library(
-    name = "hoist_data_discarding_ops",
-    srcs = ["hoist_data_discarding_ops.cc"],
+    name = "hoist_discard",
+    srcs = ["hoist_discard.cc"],
     hdrs = [
-        "hoist_data_discarding_ops.h",
+        "hoist_discard.h",
     ],
     deps = [
         ":function_utils",
@@ -277,12 +277,12 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "hoist_data_discarding_ops_test",
-    srcs = ["hoist_data_discarding_ops_test.cc"],
+    name = "hoist_discard_test",
+    srcs = ["hoist_discard_test.cc"],
     deps = [
         ":graph_test_utils",
         ":graph_utils",
-        ":hoist_data_discarding_ops",
+        ":hoist_discard",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
