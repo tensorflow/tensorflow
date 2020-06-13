@@ -130,8 +130,9 @@ class OptimizationOptions(options.OptionsBase):
       name="hoist_discard",
       ty=bool,
       docstring=
-      "Whether to hoist ops that will discard data (such as skip, take, shard)"
-      "out of map transformations. If None, defaults to False.")
+      "Whether to hoist ops that will discard data (such as skip, take, shard) "
+      "out of unary cardinality preserved transformations. "
+      "If None, defaults to False.")
 
   hoist_random_uniform = options.create_option(
       name="hoist_random_uniform",
