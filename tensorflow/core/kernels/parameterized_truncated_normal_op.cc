@@ -190,8 +190,8 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
             // sampling.
             // Simply allocate Uniform::kResultElementCount for the two arrays
             // since they are only used by UniformDistribution.
-            Eigen::array<T, Uniform::kResultElementCount> z;
-            Eigen::array<T, Uniform::kResultElementCount> g;
+            Eigen::array<T, size> z;
+            Eigen::array<T, size> g;
 
             // NOTE(ringwalt): These loops seem to only generate packed AVX
             // instructions for float32.
