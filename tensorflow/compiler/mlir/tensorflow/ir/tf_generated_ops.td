@@ -2984,6 +2984,63 @@ i.e. `exp(x) - 1` or `e^(x) - 1`, where `x` is the input tensor.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_FFTOp : TF_Op<"FFT", [NoSideEffect]> {
+  let summary = "Fast Fourier transform.";
+
+  let description = [{
+Computes the 1-dimensional discrete Fourier transform over the inner-most
+dimension of `input`.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Complex128, TF_Complex64]>:$input
+  );
+
+  let results = (outs
+    TensorOf<[TF_Complex128, TF_Complex64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tcomplex = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_FFT2DOp : TF_Op<"FFT2D", [NoSideEffect]> {
+  let summary = "2D fast Fourier transform.";
+
+  let description = [{
+Computes the 2-dimensional discrete Fourier transform over the inner-most
+2 dimensions of `input`.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Complex128, TF_Complex64]>:$input
+  );
+
+  let results = (outs
+    TensorOf<[TF_Complex128, TF_Complex64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tcomplex = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_FFT3DOp : TF_Op<"FFT3D", [NoSideEffect]> {
+  let summary = "3D fast Fourier transform.";
+
+  let description = [{
+Computes the 3-dimensional discrete Fourier transform over the inner-most 3
+dimensions of `input`.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Complex128, TF_Complex64]>:$input
+  );
+
+  let results = (outs
+    TensorOf<[TF_Complex128, TF_Complex64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tcomplex = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_FakeQuantWithMinMaxArgsOp : TF_Op<"FakeQuantWithMinMaxArgs", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = [{
 Fake-quantize the 'inputs' tensor, type float to 'outputs' tensor of same type.
@@ -3741,6 +3798,161 @@ table will be immutable.
   let results = (outs
     TF_ResourceTensor:$table_handle
   );
+}
+
+def TF_IFFTOp : TF_Op<"IFFT", [NoSideEffect]> {
+  let summary = "Inverse fast Fourier transform.";
+
+  let description = [{
+Computes the inverse 1-dimensional discrete Fourier transform over the
+inner-most dimension of `input`.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Complex128, TF_Complex64]>:$input
+  );
+
+  let results = (outs
+    TensorOf<[TF_Complex128, TF_Complex64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tcomplex = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_IFFT2DOp : TF_Op<"IFFT2D", [NoSideEffect]> {
+  let summary = "Inverse 2D fast Fourier transform.";
+
+  let description = [{
+Computes the inverse 2-dimensional discrete Fourier transform over the
+inner-most 2 dimensions of `input`.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Complex128, TF_Complex64]>:$input
+  );
+
+  let results = (outs
+    TensorOf<[TF_Complex128, TF_Complex64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tcomplex = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_IFFT3DOp : TF_Op<"IFFT3D", [NoSideEffect]> {
+  let summary = "Inverse 3D fast Fourier transform.";
+
+  let description = [{
+Computes the inverse 3-dimensional discrete Fourier transform over the
+inner-most 3 dimensions of `input`.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Complex128, TF_Complex64]>:$input
+  );
+
+  let results = (outs
+    TensorOf<[TF_Complex128, TF_Complex64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tcomplex = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_IRFFTOp : TF_Op<"IRFFT", [NoSideEffect]> {
+  let summary = "Inverse real-valued fast Fourier transform.";
+
+  let description = [{
+Computes the inverse 1-dimensional discrete Fourier transform of a real-valued
+signal over the inner-most dimension of `input`.
+
+The inner-most dimension of `input` is assumed to be the result of `RFFT`: the
+`fft_length / 2 + 1` unique components of the DFT of a real-valued signal. If
+`fft_length` is not provided, it is computed from the size of the inner-most
+dimension of `input` (`fft_length = 2 * (inner - 1)`). If the FFT length used to
+compute `input` is odd, it should be provided since it cannot be inferred
+properly.
+
+Along the axis `IRFFT` is computed on, if `fft_length / 2 + 1` is smaller
+than the corresponding dimension of `input`, the dimension is cropped. If it is
+larger, the dimension is padded with zeros.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Complex128, TF_Complex64]>:$input,
+    I32Tensor:$fft_length
+  );
+
+  let results = (outs
+    TF_F32OrF64Tensor:$output
+  );
+
+  TF_DerivedResultTypeAttr Treal = TF_DerivedResultTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tcomplex = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_IRFFT2DOp : TF_Op<"IRFFT2D", [NoSideEffect]> {
+  let summary = "Inverse 2D real-valued fast Fourier transform.";
+
+  let description = [{
+Computes the inverse 2-dimensional discrete Fourier transform of a real-valued
+signal over the inner-most 2 dimensions of `input`.
+
+The inner-most 2 dimensions of `input` are assumed to be the result of `RFFT2D`:
+The inner-most dimension contains the `fft_length / 2 + 1` unique components of
+the DFT of a real-valued signal. If `fft_length` is not provided, it is computed
+from the size of the inner-most 2 dimensions of `input`. If the FFT length used
+to compute `input` is odd, it should be provided since it cannot be inferred
+properly.
+
+Along each axis `IRFFT2D` is computed on, if `fft_length` (or
+`fft_length / 2 + 1` for the inner-most dimension) is smaller than the
+corresponding dimension of `input`, the dimension is cropped. If it is larger,
+the dimension is padded with zeros.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Complex128, TF_Complex64]>:$input,
+    I32Tensor:$fft_length
+  );
+
+  let results = (outs
+    TF_F32OrF64Tensor:$output
+  );
+
+  TF_DerivedResultTypeAttr Treal = TF_DerivedResultTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tcomplex = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_IRFFT3DOp : TF_Op<"IRFFT3D", [NoSideEffect]> {
+  let summary = "Inverse 3D real-valued fast Fourier transform.";
+
+  let description = [{
+Computes the inverse 3-dimensional discrete Fourier transform of a real-valued
+signal over the inner-most 3 dimensions of `input`.
+
+The inner-most 3 dimensions of `input` are assumed to be the result of `RFFT3D`:
+The inner-most dimension contains the `fft_length / 2 + 1` unique components of
+the DFT of a real-valued signal. If `fft_length` is not provided, it is computed
+from the size of the inner-most 3 dimensions of `input`. If the FFT length used
+to compute `input` is odd, it should be provided since it cannot be inferred
+properly.
+
+Along each axis `IRFFT3D` is computed on, if `fft_length` (or
+`fft_length / 2 + 1` for the inner-most dimension) is smaller than the
+corresponding dimension of `input`, the dimension is cropped. If it is larger,
+the dimension is padded with zeros.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Complex128, TF_Complex64]>:$input,
+    I32Tensor:$fft_length
+  );
+
+  let results = (outs
+    TF_F32OrF64Tensor:$output
+  );
+
+  TF_DerivedResultTypeAttr Treal = TF_DerivedResultTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tcomplex = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_IdentityNOp : TF_Op<"IdentityN", [NoSideEffect]> {
@@ -6332,6 +6544,66 @@ Since the DFT of a real signal is Hermitian-symmetric, `RFFT` only returns the
 followed by the `fft_length / 2` positive-frequency terms.
 
 Along the axis `RFFT` is computed on, if `fft_length` is smaller than the
+corresponding dimension of `input`, the dimension is cropped. If it is larger,
+the dimension is padded with zeros.
+  }];
+
+  let arguments = (ins
+    TF_F32OrF64Tensor:$input,
+    I32Tensor:$fft_length
+  );
+
+  let results = (outs
+    TensorOf<[TF_Complex128, TF_Complex64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Treal = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tcomplex = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_RFFT2DOp : TF_Op<"RFFT2D", [NoSideEffect]> {
+  let summary = "2D real-valued fast Fourier transform.";
+
+  let description = [{
+Computes the 2-dimensional discrete Fourier transform of a real-valued signal
+over the inner-most 2 dimensions of `input`.
+
+Since the DFT of a real signal is Hermitian-symmetric, `RFFT2D` only returns the
+`fft_length / 2 + 1` unique components of the FFT for the inner-most dimension
+of `output`: the zero-frequency term, followed by the `fft_length / 2`
+positive-frequency terms.
+
+Along each axis `RFFT2D` is computed on, if `fft_length` is smaller than the
+corresponding dimension of `input`, the dimension is cropped. If it is larger,
+the dimension is padded with zeros.
+  }];
+
+  let arguments = (ins
+    TF_F32OrF64Tensor:$input,
+    I32Tensor:$fft_length
+  );
+
+  let results = (outs
+    TensorOf<[TF_Complex128, TF_Complex64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Treal = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tcomplex = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_RFFT3DOp : TF_Op<"RFFT3D", [NoSideEffect]> {
+  let summary = "3D real-valued fast Fourier transform.";
+
+  let description = [{
+Computes the 3-dimensional discrete Fourier transform of a real-valued signal
+over the inner-most 3 dimensions of `input`.
+
+Since the DFT of a real signal is Hermitian-symmetric, `RFFT3D` only returns the
+`fft_length / 2 + 1` unique components of the FFT for the inner-most dimension
+of `output`: the zero-frequency term, followed by the `fft_length / 2`
+positive-frequency terms.
+
+Along each axis `RFFT3D` is computed on, if `fft_length` is smaller than the
 corresponding dimension of `input`, the dimension is cropped. If it is larger,
 the dimension is padded with zeros.
   }];
