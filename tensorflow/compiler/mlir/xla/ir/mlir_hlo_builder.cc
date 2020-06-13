@@ -19,10 +19,12 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/attribute_importer.h"
+#include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -137,6 +139,24 @@ StatusOr<XlaOp> MlirHloBuilder::GatherInternal(
       loc_, ty, GetValue(input), GetValue(start_indices),
       ConvertGatherDimensionNumbers(dimension_numbers, &builder_),
       GetI64ElementsAttr(slice_sizes, &builder_));
+  return MakeXlaOp(op);
+}
+
+StatusOr<XlaOp> MlirHloBuilder::ScatterInternal(
+    const Shape& shape, XlaOp input, XlaOp scatter_indices, XlaOp updates,
+    const XlaComputation& update_computation,
+    const ScatterDimensionNumbers& dimension_numbers, bool indices_are_sorted,
+    bool unique_indices) {
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  auto op = builder_.create<mlir::xla_hlo::ScatterOp>(
+      loc_, ty, GetValue(input), GetValue(scatter_indices), GetValue(updates),
+      ConvertScatterDimensionNumbers(dimension_numbers, &builder_),
+      builder_.getBoolAttr(indices_are_sorted),
+      builder_.getBoolAttr(unique_indices));
+
+  TF_RETURN_IF_ERROR(
+      ImportComputation(update_computation.proto(), &op.update_computation()));
   return MakeXlaOp(op);
 }
 
@@ -346,6 +366,18 @@ StatusOr<XlaOp> MlirHloBuilder::CreateOp(
   mlir::OperationState state(loc_, op_name, operand_values, {ty}, attributes);
   mlir::Operation* op = builder_.createOperation(state);
   return MakeXlaOp(op->getResult(0));
+}
+
+Status MlirHloBuilder::ImportComputation(const HloModuleProto& computation,
+                                         mlir::Region* region) {
+  TF_ASSIGN_OR_RETURN(auto module_config,
+                      xla::HloModule::CreateModuleConfigFromProto(
+                          computation, xla::DebugOptions()));
+  TF_ASSIGN_OR_RETURN(auto hlo_module, xla::HloModule::CreateFromProto(
+                                           computation, module_config));
+
+  return HloFunctionImporter::ImportAsRegion(*hlo_module->entry_computation(),
+                                             region, &builder_);
 }
 
 StatusOr<const Shape*> MlirHloBuilder::GetShapePtr(XlaOp op) const {

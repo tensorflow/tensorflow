@@ -129,6 +129,12 @@ class MlirHloBuilder : public XlaBuilder {
       const GatherDimensionNumbers& dimension_numbers,
       absl::Span<const int64> slice_sizes, bool indices_are_sorted) override;
 
+  StatusOr<XlaOp> ScatterInternal(
+      const Shape& shape, XlaOp input, XlaOp scatter_indices, XlaOp updates,
+      const XlaComputation& update_computation,
+      const ScatterDimensionNumbers& dimension_numbers, bool indices_are_sorted,
+      bool unique_indices) override;
+
   StatusOr<XlaOp> RngOpInternal(RandomDistribution distribution,
                                 absl::Span<const XlaOp> parameters,
                                 const Shape& shape) override;
@@ -195,6 +201,9 @@ class MlirHloBuilder : public XlaBuilder {
       const std::string& op_name, const Shape& shape,
       llvm::ArrayRef<XlaOp> operands,
       llvm::ArrayRef<mlir::NamedAttribute> attributes = {});
+
+  Status ImportComputation(const HloModuleProto& computation,
+                           mlir::Region* region);
 
   mlir::OpBuilder builder_;
   mlir::Location loc_;

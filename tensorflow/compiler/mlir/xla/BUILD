@@ -660,6 +660,7 @@ cc_library(
     deps = [
         ":attribute_importer",
         ":hlo",
+        ":hlo_module_importer",
         ":hlo_utils",
         ":type_to_shape",
         "//tensorflow/compiler/xla:comparison_util",

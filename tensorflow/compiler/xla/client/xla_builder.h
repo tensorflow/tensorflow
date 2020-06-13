@@ -653,6 +653,12 @@ class XlaBuilder {
                 const ScatterDimensionNumbers& dimension_numbers,
                 bool indices_are_sorted = false, bool unique_indices = false);
 
+  virtual StatusOr<XlaOp> ScatterInternal(
+      const Shape& shape, XlaOp input, XlaOp scatter_indices, XlaOp updates,
+      const XlaComputation& update_computation,
+      const ScatterDimensionNumbers& dimension_numbers, bool indices_are_sorted,
+      bool unique_indices);
+
   void Send(XlaOp operand, const ChannelHandle& handle);
   XlaOp SendWithToken(XlaOp operand, XlaOp token, const ChannelHandle& handle);
 
