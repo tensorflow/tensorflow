@@ -2384,6 +2384,9 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
 def TF_DeviceIndexOp : TF_Op<"DeviceIndex", [NoSideEffect]> {
   let summary = "Return the index of device the op runs.";
 
+  let description = [{
+  }];
+
   let arguments = (ins
     StrArrayAttr:$device_names
   );
