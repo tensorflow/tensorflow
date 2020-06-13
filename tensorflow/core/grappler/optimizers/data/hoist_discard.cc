@@ -32,31 +32,33 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-constexpr std::array<const char*, 3> kDataDiscarding = {
+const std::unordered_set<string> kDataDiscarding = {
     "ShardDataset", "SkipDataset", "TakeDataset",
 };
 
-constexpr std::array<const char*, 6> kCardinalityPreserving = {
+const std::unordered_set<string> kCardinalityPreserving = {
     "CacheDataset", "CacheDatasetV2", "PrefetchDataset",
     "MapDataset", "ParallelMapDataset", "ParallelMapDatasetV2",
 };
 
 bool IsDataDiscarding(const NodeDef& node) {
-  for (const auto& data_discarding_op : kDataDiscarding) {
-    if (node.op() == data_discarding_op) {
-      return true;
-    }
+  auto iter = kDataDiscarding.find(node.op());
+  if (iter == kDataDiscarding.end()) {
+    return false;
   }
-  return false;
+  return true;
 }
 
 bool IsCardinalityPreserving(const NodeDef& node) {
-  for (const auto& cardinality_preserving_op : kCardinalityPreserving) {
-    if (node.op() == cardinality_preserving_op) {
-      return true;
-    }
+  auto iter = kCardinalityPreserving.find(node.op());
+  if (iter == kCardinalityPreserving.end()) {
+    return false;
   }
-  return false;
+  auto attr_iter = node.attr().find("preserve_cardinality");
+  if (attr_iter != node.attr().end() && !attr_iter->second.b()) {
+    return false;
+  }
+  return true;
 }
 
 }  // namepsace
@@ -70,38 +72,32 @@ Status HoistDiscard::OptimizeAndCollectStats(Cluster* cluster,
   bool updated;
   do {
     updated = false;
-    for (NodeDef node : graph.graph()->node()) {
-      if (IsDataDiscarding(node)) {
-        NodeDef* start = &node;
+    for (int i = 0; i < graph.graph()->node_size(); i++) {
+      auto node = graph.graph()->mutable_node(i);
+      if (IsDataDiscarding(*node)) {
+        NodeDef* start = node;
         NodeDef* start_parent = graph_utils::GetInputNode(*start, graph);
-        while (IsCardinalityPreserving(*start_parent) &&
-               NumOutputs(*start_parent, graph.graph()) == 1) {
+        while (IsCardinalityPreserving(*start_parent)) {
           start = start_parent;
           start_parent = graph_utils::GetInputNode(*start, graph);
         }
-        // no cardinality preserving op with indegree 1.
-        if (start->name() == node.name()) {
+        if (start->name() == node->name()) {
           continue;
         }
-        NodeDef hoisted_node = node;
-        if (!absl::StartsWith(node.name(), "hoist_discard/")) {
-          graph_utils::SetUniqueGraphNodeName(
-            strings::StrCat("hoist_discard/", node.name()),
-            graph.graph(), &hoisted_node
-          );
+        auto parent = graph_utils::GetInputNode(*node, graph);
+        TF_RETURN_IF_ERROR(graph.UpdateFanouts(node->name(), parent->name()));
+        if (!absl::StartsWith(node->name(), "hoist_discard/")) {
+          TF_RETURN_IF_ERROR(graph.UpdateNodeName(node->name(),
+            strings::StrCat("hoist_discard/", node->name()), false));
         }
         for (const auto& attr_name : {"output_types", "output_shapes"}) {
           graph_utils::CopyAttribute(attr_name, *start_parent,
-                                     &hoisted_node);
+                                     node);
         }
-        *hoisted_node.mutable_input(0) = start_parent->name();
-        *start->mutable_input(0) = hoisted_node.name();
-
-        auto parent = graph_utils::GetInputNode(node, graph);
-        TF_RETURN_IF_ERROR(graph.UpdateFanouts(node.name(), parent->name()));
-        graph.DeleteNodes({node.name()});
-        graph.AddNode(std::move(hoisted_node));
+        *node->mutable_input(0) = start_parent->name();
+        *start->mutable_input(0) = node->name();
         updated = true;
+        break;
       }
     }
   } while (updated);
