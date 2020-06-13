@@ -630,9 +630,10 @@ class MeanMetricWrapper(Mean):
   def from_config(cls, config):
     # Note that while MeanMetricWrapper itself isn't public, objects of this
     # class may be created and added to the model by calling model.compile.
-    fn = config.pop('fn', None)
     if cls is MeanMetricWrapper:
-      return cls(get(fn), **config)
+      fn = get(config.pop('fn'))
+      return cls(fn, **config)
+
     return super(MeanMetricWrapper, cls).from_config(config)
 
 
