@@ -11292,6 +11292,50 @@ create these operators.
   TF_DerivedOperandSizeAttr num_args = TF_DerivedOperandSizeAttr<2>;
 }
 
+def TF__FusedMatMulOp : TF_Op<"_FusedMatMul", [NoSideEffect]> {
+  let summary = [{
+Performs a MatMul followed by a specified series of operations.
+  }];
+
+  let description = [{
+The inputs to the MatMul are specified by `a` and `b`. The series of operations
+that follows is specified by the `fused_ops` attribute, which is a list of TF op
+names specified as strings (e.g. "Relu"). They are performed in order, where the
+(first) input to each op is the output of the preceding op. The first input and
+the output of each fused_op must be of type T.
+
+Currently supported fused_op combinations are: ["BiasAdd"] and ["BiasAdd",A],
+where A is one of {"Elu","Relu","Relu6"}.
+
+* The first input to BiasAdd is the Conv2D result, and the additional BiasAdd
+input is specified by `args`.
+* If there is an op A specified, the output of the BiasAdd is the input to op A,
+and op A produces the _FusedConv2D output. Otherwise, the BiasAdd produces the
+_FusedConv2D output.
+
+*NOTE*: Do not invoke this operator directly in Python. Grappler is
+expected to create these operators.
+  }];
+
+  let arguments = (ins
+    F32Tensor:$a,
+    F32Tensor:$b,
+    Variadic<F32Tensor>:$args,
+
+    DefaultValuedAttr<BoolAttr, "false">:$transpose_a,
+    DefaultValuedAttr<BoolAttr, "false">:$transpose_b,
+    DefaultValuedAttr<StrArrayAttr, "{}">:$fused_ops,
+    DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon
+  );
+
+  let results = (outs
+    F32Tensor:$product
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandSizeAttr num_args = TF_DerivedOperandSizeAttr<2>;
+}
+
 def TF__HostComputeMlirOp : TF_Op<"_HostComputeMlir", []> {
   let summary = "A host-side computation called from a TPU device.";
 
