@@ -67,7 +67,7 @@ cuda_py_test(
         ":profiler_v2",
         "//tensorflow/python:constant_op",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/profiler:traceme",
+        "//tensorflow/python/profiler:trace",
     ],
 )
 
