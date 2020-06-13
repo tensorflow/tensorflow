@@ -542,6 +542,11 @@ class XlaBuilder {
                const XlaComputation& computation,
                absl::Span<const int64> dimensions_to_reduce);
 
+  virtual StatusOr<XlaOp> ReduceInternal(
+      const Shape& shape, absl::Span<const XlaOp> all_operands,
+      const XlaComputation& computation,
+      absl::Span<const int64> dimensions_to_reduce);
+
   XlaOp ReduceAll(XlaOp operand, XlaOp init_value,
                   const XlaComputation& computation);
 
@@ -557,6 +562,10 @@ class XlaBuilder {
       absl::Span<const int64> base_dilations,
       absl::Span<const int64> window_dilations,
       absl::Span<const std::pair<int64, int64>> padding);
+
+  virtual StatusOr<XlaOp> ReduceWindowInternal(
+      const Shape& shape, XlaOp operand, XlaOp init_value,
+      const XlaComputation& computation, Window window);
 
   XlaOp CrossReplicaSum(XlaOp operand,
                         absl::Span<const ReplicaGroup> replica_groups = {});

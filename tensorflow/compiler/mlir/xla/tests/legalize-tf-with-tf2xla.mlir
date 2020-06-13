@@ -236,6 +236,21 @@ func @mirror_pad(%arg0: tensor<2x3xcomplex<f64>>) -> tensor<4x7xcomplex<f64>> {
   return %1 : tensor<4x7xcomplex<f64>>
 }
 
+// CHECK-LABEL: bucketize
+func @bucketize(%arg0: tensor<2x5xf32>) -> tensor<2x5xi32> {
+  // CHECK-NOT: tf.Bucketize
+  %0 = "tf.Bucketize"(%arg0) {boundaries = [0.000000e+00 : f32, 3.000000e+00 : f32, 8.000000e+00 : f32, 1.100000e+01 : f32]} : (tensor<2x5xf32>) -> tensor<2x5xi32>
+  return %0 : tensor<2x5xi32>
+}
+
+// CHECK-LABEL: arg_min
+func @arg_min(%arg0: tensor<6xf64>) -> tensor<i32> {
+  // CHECK-NOT: ArgMin
+  %0 = xla_hlo.constant dense<0> : tensor<i32>
+  %1 = "tf.ArgMin"(%arg0, %0) : (tensor<6xf64>, tensor<i32>) -> tensor<i32>
+  return %1 : tensor<i32>
+}
+
 // TODO(hinsu): Add a test with a valid TF op for which tf2xla kernel is
 // available but doesn't support this instance.
 }

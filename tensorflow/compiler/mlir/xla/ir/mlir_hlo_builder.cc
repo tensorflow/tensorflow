@@ -132,6 +132,52 @@ StatusOr<XlaOp> MlirHloBuilder::FftInternal(
   return MakeXlaOp(op);
 }
 
+StatusOr<XlaOp> MlirHloBuilder::ReduceInternal(
+    const Shape& shape, absl::Span<const XlaOp> all_operands,
+    const XlaComputation& computation,
+    absl::Span<const int64> dimensions_to_reduce) {
+  // Reduce takes two set of variadic operands inputs and init_values.
+  // all_operands contains both of these so split operands into two parts.
+  int64_t num_args = all_operands.size() / 2;
+  auto op = builder_.create<mlir::xla_hlo::ReduceOp>(
+      loc_, GetValues(all_operands.first(num_args)),
+      GetValues(all_operands.subspan(num_args)),
+      GetI64ElementsAttr(dimensions_to_reduce, &builder_));
+  TF_RETURN_IF_ERROR(ImportComputation(computation.proto(), &op.body()));
+  if (op.getNumResults() == 1) return MakeXlaOp(op.getResult(0));
+  auto tuple = builder_.create<mlir::xla_hlo::TupleOp>(loc_, op.getResults());
+  return MakeXlaOp(tuple);
+}
+
+StatusOr<XlaOp> MlirHloBuilder::ReduceWindowInternal(
+    const Shape& shape, XlaOp operand, XlaOp init_value,
+    const XlaComputation& computation, Window window) {
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  llvm::SmallVector<int64, 4> sizes, strides, base_dilations, win_dilations;
+  llvm::SmallVector<int64, 8> padding;
+  for (const auto& dim : window.dimensions()) {
+    sizes.push_back(dim.size());
+    strides.push_back(dim.stride());
+    base_dilations.push_back(dim.base_dilation());
+    win_dilations.push_back(dim.window_dilation());
+    padding.push_back(dim.padding_low());
+    padding.push_back(dim.padding_high());
+  }
+  auto padding_ty =
+      mlir::RankedTensorType::get({static_cast<int64_t>(padding.size()) / 2, 2},
+                                  builder_.getIntegerType(64));
+  auto op = builder_.create<mlir::xla_hlo::ReduceWindowOp>(
+      loc_, ty, GetValue(operand), GetValue(init_value),
+      GetI64ElementsAttr(sizes, &builder_),
+      GetI64ElementsAttr(strides, &builder_),
+      GetI64ElementsAttr(base_dilations, &builder_),
+      GetI64ElementsAttr(win_dilations, &builder_),
+      mlir::DenseIntElementsAttr::get(padding_ty, padding));
+  TF_RETURN_IF_ERROR(ImportComputation(computation.proto(), &op.body()));
+  return MakeXlaOp(op);
+}
+
 XlaOp MlirHloBuilder::Iota(const Shape& shape, int64 iota_dimension) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(

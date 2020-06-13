@@ -124,6 +124,16 @@ class MlirHloBuilder : public XlaBuilder {
                               FftType fft_type,
                               absl::Span<const int64> fft_length) override;
 
+  StatusOr<XlaOp> ReduceInternal(
+      const Shape& shape, absl::Span<const XlaOp> all_operands,
+      const XlaComputation& computation,
+      absl::Span<const int64> dimensions_to_reduce) override;
+
+  StatusOr<XlaOp> ReduceWindowInternal(const Shape& shape, XlaOp operand,
+                                       XlaOp init_value,
+                                       const XlaComputation& computation,
+                                       Window window) override;
+
   XlaOp Iota(const Shape& shape, int64 iota_dimension) override;
 
   StatusOr<XlaOp> TransposeInternal(
