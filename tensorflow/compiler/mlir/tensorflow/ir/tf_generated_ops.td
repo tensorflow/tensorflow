@@ -1219,6 +1219,35 @@ subsequent operation and then be optimized away, however.)
   }];
 }
 
+def TF_BucketizeOp : TF_Op<"Bucketize", [NoSideEffect, SameOperandsAndResultShape]> {
+  let summary = "Bucketizes 'input' based on 'boundaries'.";
+
+  let description = [{
+For example, if the inputs are
+    boundaries = [0, 10, 100]
+    input = [[-5, 10000]
+             [150,   10]
+             [5,    100]]
+
+then the output will be
+    output = [[0, 3]
+              [3, 2]
+              [1, 3]]
+  }];
+
+  let arguments = (ins
+    TensorOf<[F32, F64, I32, I64]>:$input,
+
+    F32ArrayAttr:$boundaries
+  );
+
+  let results = (outs
+    I32Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_CaseOp : TF_Op<"Case", []> {
   let summary = [{
 An n-way switch statement which calls a single branch function.
@@ -4356,6 +4385,30 @@ convolutional neural networks (NIPS 2012)](http://papers.nips.cc/paper/4824-imag
 
   let arguments = (ins
     TensorOf<[BF16, F16, F32]>:$input,
+
+    DefaultValuedAttr<I64Attr, "5">:$depth_radius,
+    DefaultValuedAttr<F32Attr, "1.0f">:$bias,
+    DefaultValuedAttr<F32Attr, "1.0f">:$alpha,
+    DefaultValuedAttr<F32Attr, "0.5f">:$beta
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_LRNGradOp : TF_Op<"LRNGrad", [NoSideEffect]> {
+  let summary = "Gradients for Local Response Normalization.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32]>:$input_grads,
+    TensorOf<[BF16, F16, F32]>:$input_image,
+    TensorOf<[BF16, F16, F32]>:$output_image,
 
     DefaultValuedAttr<I64Attr, "5">:$depth_radius,
     DefaultValuedAttr<F32Attr, "1.0f">:$bias,
