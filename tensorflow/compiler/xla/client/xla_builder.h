@@ -502,6 +502,9 @@ class XlaBuilder {
 
   XlaOp Fft(XlaOp operand, FftType fft_type,
             absl::Span<const int64> fft_length);
+  virtual StatusOr<XlaOp> FftInternal(const Shape& shape, XlaOp operand,
+                                      FftType fft_type,
+                                      absl::Span<const int64> fft_length);
 
   XlaOp Infeed(const Shape& shape, const string& config = "");
   XlaOp InfeedWithToken(XlaOp token, const Shape& shape, const string& config);
@@ -594,7 +597,7 @@ class XlaBuilder {
       absl::Span<const std::pair<int64, int64>> padding, XlaOp source,
       XlaOp init_value, const XlaComputation& scatter);
 
-  XlaOp Iota(const Shape& shape, int64 iota_dimension);
+  virtual XlaOp Iota(const Shape& shape, int64 iota_dimension);
 
   XlaOp Iota(PrimitiveType type, int64 size);
 
@@ -607,6 +610,8 @@ class XlaBuilder {
       const Shape& shape, XlaOp operand, absl::Span<const int64> permutation);
 
   XlaOp Rev(XlaOp operand, absl::Span<const int64> dimensions);
+  virtual StatusOr<XlaOp> RevInternal(const Shape& shape, XlaOp operand,
+                                      absl::Span<const int64> dimensions);
 
   XlaOp Sort(absl::Span<const XlaOp> operands, const XlaComputation& comparator,
              int64 dimension = -1, bool is_stable = false);

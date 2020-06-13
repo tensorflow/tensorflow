@@ -214,6 +214,28 @@ func @sparse_to_dense(%arg0: tensor<3x2xi32>, %arg1: tensor<3xf32>, %arg2: tenso
   return %0 : tensor<3x3xf32>
 }
 
+// CHECK-LABEL: fft
+func @fft(%arg0: tensor<3x5x8xcomplex<f32>>) -> tensor<3x5x8xcomplex<f32>> {
+  // CHECK: "xla_hlo.fft"(%arg0)
+  %0 = "tf.FFT"(%arg0) : (tensor<3x5x8xcomplex<f32>>) -> tensor<3x5x8xcomplex<f32>>
+  return %0 : tensor<3x5x8xcomplex<f32>>
+}
+
+// CHECK-LABEL: reverse_sequence
+func @reverse_sequence(%arg0: tensor<4x2x3x1x1xi32>, %arg1: tensor<3xi32>) -> tensor<4x2x3x1x1xi32> {
+  // CHECK-NOT: tf.ReverseSequence
+  %0 = "tf.ReverseSequence"(%arg0, %arg1) {batch_dim = 2 : i64, seq_dim = 0 : i64}: (tensor<4x2x3x1x1xi32>, tensor<3xi32>) -> tensor<4x2x3x1x1xi32>
+  return %0 : tensor<4x2x3x1x1xi32>
+}
+
+// CHECK-LABEL: mirror_pad
+func @mirror_pad(%arg0: tensor<2x3xcomplex<f64>>) -> tensor<4x7xcomplex<f64>> {
+  %0 = xla_hlo.constant dense<[[1, 1], [2, 2]]> : tensor<2x2xi32>
+  // CHECK-NOT: tf.MirrorPad
+  %1 = "tf.MirrorPad"(%arg0, %0) {mode = "SYMMETRIC"} : (tensor<2x3xcomplex<f64>>, tensor<2x2xi32>) -> tensor<4x7xcomplex<f64>>
+  return %1 : tensor<4x7xcomplex<f64>>
+}
+
 // TODO(hinsu): Add a test with a valid TF op for which tf2xla kernel is
 // available but doesn't support this instance.
 }

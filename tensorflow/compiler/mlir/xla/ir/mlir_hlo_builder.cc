@@ -120,12 +120,45 @@ StatusOr<XlaOp> MlirHloBuilder::ConvGeneralDilatedInternal(
   return MakeXlaOp(op);
 }
 
+StatusOr<XlaOp> MlirHloBuilder::FftInternal(
+    const Shape& shape, XlaOp operand, FftType fft_type,
+    absl::Span<const int64> fft_length) {
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  auto op = builder_.create<mlir::xla_hlo::FftOp>(
+      loc_, ty, GetValue(operand),
+      builder_.getStringAttr(FftType_Name(fft_type)),
+      GetI64ElementsAttr(fft_length, &builder_));
+  return MakeXlaOp(op);
+}
+
+XlaOp MlirHloBuilder::Iota(const Shape& shape, int64 iota_dimension) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(
+        mlir::Type ty,
+        ConvertShapeToType<mlir::RankedTensorType>(shape, builder_));
+    auto op = builder_.create<mlir::xla_hlo::IotaOp>(
+        loc_, ty,
+        builder_.getIntegerAttr(builder_.getI64Type(), iota_dimension));
+    return MakeXlaOp(op);
+  });
+}
+
 StatusOr<XlaOp> MlirHloBuilder::TransposeInternal(
     const Shape& shape, XlaOp operand, absl::Span<const int64> permutation) {
   TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
                                          shape, builder_));
   auto op = builder_.create<mlir::xla_hlo::TransposeOp>(
       loc_, ty, GetValue(operand), GetI64ElementsAttr(permutation, &builder_));
+  return MakeXlaOp(op);
+}
+
+StatusOr<XlaOp> MlirHloBuilder::RevInternal(
+    const Shape& shape, XlaOp operand, absl::Span<const int64> dimensions) {
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  auto op = builder_.create<mlir::xla_hlo::ReverseOp>(
+      loc_, ty, GetValue(operand), GetI64ElementsAttr(dimensions, &builder_));
   return MakeXlaOp(op);
 }
 

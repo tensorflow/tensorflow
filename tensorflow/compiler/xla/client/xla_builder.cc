@@ -1323,18 +1323,24 @@ StatusOr<XlaOp> XlaBuilder::ConvGeneralDilatedInternal(
 XlaOp XlaBuilder::Fft(XlaOp operand, const FftType fft_type,
                       const absl::Span<const int64> fft_length) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferFftShape(
                                          *operand_shape, fft_type, fft_length));
-    *instr.mutable_shape() = shape.ToProto();
-    instr.set_fft_type(fft_type);
-    for (int64 i : fft_length) {
-      instr.add_fft_length(i);
-    }
-
-    return AddInstruction(std::move(instr), HloOpcode::kFft, {operand});
+    return FftInternal(shape, operand, fft_type, fft_length);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::FftInternal(
+    const Shape& shape, XlaOp operand, const FftType fft_type,
+    const absl::Span<const int64> fft_length) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  instr.set_fft_type(fft_type);
+  for (int64 i : fft_length) {
+    instr.add_fft_length(i);
+  }
+
+  return AddInstruction(std::move(instr), HloOpcode::kFft, {operand});
 }
 
 XlaOp XlaBuilder::Infeed(const Shape& shape, const string& config) {
@@ -1664,16 +1670,21 @@ StatusOr<XlaOp> XlaBuilder::TransposeInternal(
 
 XlaOp XlaBuilder::Rev(XlaOp operand, absl::Span<const int64> dimensions) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferReverseShape(
                                          *operand_shape, dimensions));
-    *instr.mutable_shape() = shape.ToProto();
-    for (int64 dim : dimensions) {
-      instr.add_dimensions(dim);
-    }
-    return AddInstruction(std::move(instr), HloOpcode::kReverse, {operand});
+    return RevInternal(shape, operand, dimensions);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::RevInternal(const Shape& shape, XlaOp operand,
+                                        absl::Span<const int64> dimensions) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  for (int64 dim : dimensions) {
+    instr.add_dimensions(dim);
+  }
+  return AddInstruction(std::move(instr), HloOpcode::kReverse, {operand});
 }
 
 XlaOp XlaBuilder::Sort(absl::Span<const XlaOp> operands,

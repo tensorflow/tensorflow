@@ -120,9 +120,18 @@ class MlirHloBuilder : public XlaBuilder {
       int64 feature_group_count, int64 batch_group_count,
       const PrecisionConfig* precision_config) override;
 
+  StatusOr<XlaOp> FftInternal(const Shape& shape, XlaOp operand,
+                              FftType fft_type,
+                              absl::Span<const int64> fft_length) override;
+
+  XlaOp Iota(const Shape& shape, int64 iota_dimension) override;
+
   StatusOr<XlaOp> TransposeInternal(
       const Shape& shape, XlaOp operand,
       absl::Span<const int64> permutation) override;
+
+  StatusOr<XlaOp> RevInternal(const Shape& shape, XlaOp operand,
+                              absl::Span<const int64> dimensions) override;
 
   StatusOr<XlaOp> GatherInternal(
       const Shape& shape, XlaOp input, XlaOp start_indices,
