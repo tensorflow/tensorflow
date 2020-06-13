@@ -15,8 +15,8 @@ limitations under the License.
 
 // A graph pass that rewrites graph to FUSE specific operations in ROCm mode.
 
-#ifndef TENSORFLOW_GRAPH_GPU_FUSION_PASS_H_
-#define TENSORFLOW_GRAPH_GPU_FUSION_PASS_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_FUSION_PASS_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_FUSION_PASS_H_
 
 #ifdef TENSORFLOW_USE_ROCM
 
@@ -26,4 +26,4 @@ limitations under the License.
 
 #endif  // TENSORFLOW_USE_ROCM
 
-#endif  // TENSORFLOW_GRAPH_GPU_FUSION_PASS_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_GPU_FUSION_PASS_H_
