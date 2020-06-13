@@ -794,6 +794,34 @@ This op is deprecated. Prefer `tf.nn.batch_normalization`.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_BatchToSpaceOp : TF_Op<"BatchToSpace", [NoSideEffect]> {
+  let summary = "BatchToSpace for 4-D tensors of type T.";
+
+  let description = [{
+This is a legacy version of the more general BatchToSpaceND.
+
+Rearranges (permutes) data from batch into blocks of spatial data, followed by
+cropping. This is the reverse transformation of SpaceToBatch. More specifically,
+this op outputs a copy of the input tensor where values from the `batch`
+dimension are moved in spatial blocks to the `height` and `width` dimensions,
+followed by cropping along the `height` and `width` dimensions.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+    TF_I32OrI64Tensor:$crops,
+
+    Confined<I64Attr, [IntMinValue<2>]>:$block_size
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+}
+
 def TF_BatchToSpaceNDOp : TF_Op<"BatchToSpaceND", [NoSideEffect]> {
   let summary = "BatchToSpace for N-D tensors of type T.";
 
@@ -8473,6 +8501,34 @@ def TF_SoftsignGradOp : TF_Op<"SoftsignGrad", [NoSideEffect, SameOperandsAndResu
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_SpaceToBatchOp : TF_Op<"SpaceToBatch", [NoSideEffect]> {
+  let summary = "SpaceToBatch for 4-D tensors of type T.";
+
+  let description = [{
+This is a legacy version of the more general SpaceToBatchND.
+
+Zero-pads and then rearranges (permutes) blocks of spatial data into batch.
+More specifically, this op outputs a copy of the input tensor where values from
+the `height` and `width` dimensions are moved to the `batch` dimension. After
+the zero-padding, both `height` and `width` of the input must be divisible by the
+block size.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+    TF_I32OrI64Tensor:$paddings,
+
+    Confined<I64Attr, [IntMinValue<2>]>:$block_size
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
 def TF_SpaceToBatchNDOp : TF_Op<"SpaceToBatchND", [NoSideEffect]> {
