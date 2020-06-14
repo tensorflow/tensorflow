@@ -530,6 +530,10 @@ void AlternateMemoryBestFitHeap::FindAliases(
   absl::flat_hash_map<const HloInstruction*, const AllocationValue*>
       values_by_defining_inst;
   for (AllocationValue& value : *allocation_values) {
+    // Skip the value if it doesn't have any uses.
+    if (value.uses().empty()) {
+      continue;
+    }
     CHECK_EQ(values_by_defining_inst.count(value.defining_instruction()), 0);
     values_by_defining_inst[value.defining_instruction()] = &value;
   }
