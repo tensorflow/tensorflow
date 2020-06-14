@@ -100,8 +100,6 @@ enum HostEventType {
   // tf.data related.
   kIteratorGetNextOp,
   kIteratorGetNextAsOptionalOp,
-  // Virtual events for grouping.
-  kAsyncExecutorTraceContext,
   // GPU related.
   kKernelLaunch,
   kKernelExecute,

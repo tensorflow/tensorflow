@@ -391,7 +391,8 @@ absl::Status Winograd4x4To36::Compile(const CreationContext& creation_context) {
   RETURN_IF_ERROR(UploadBt(creation_context.context));
   std::string code =
       GetWinograd4x4To36Code(definition_, linked_operations_, &args_);
-  RETURN_IF_ERROR(args_.TransformToCLCode({}, &code));
+  RETURN_IF_ERROR(
+      args_.TransformToCLCode(creation_context.device->GetInfo(), {}, &code));
   code = absl::Substitute(code, args_.GetListOfArgs());
   RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", options, *creation_context.context,

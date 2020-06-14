@@ -172,7 +172,11 @@ class MicroAllocator {
       const MicroOpResolver& op_resolver,
       NodeAndRegistration* node_and_registrations);
 
-  ErrorReporter* error_reporter();
+  // Allocates persistent tensor buffers for variable tensors in the subgraph.
+  virtual TfLiteStatus AllocateVariables(TfLiteContext* context,
+                                         const SubGraph* subgraph);
+
+  ErrorReporter* error_reporter() const;
 
  private:
   // Initializes the graph and allocates TfLiteContext tensor data.
@@ -185,8 +189,8 @@ class MicroAllocator {
 
   // Commits a memory plan for all non-persistent buffer allocations in the
   // 'head' section of the memory arena.
-  virtual TfLiteStatus CommitStaticMemoryPlan(const SubGraph* subgraph,
-                                              TfLiteContext* context);
+  virtual TfLiteStatus CommitStaticMemoryPlan(TfLiteContext* context,
+                                              const SubGraph* subgraph);
 
   // A simple memory allocator that always allocate from the arena tail or head.
   SimpleMemoryAllocator* memory_allocator_;

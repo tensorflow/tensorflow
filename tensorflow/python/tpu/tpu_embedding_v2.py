@@ -25,10 +25,10 @@ from absl import logging
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf.tpu import tpu_embedding_configuration_pb2
 from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import tpu_strategy
-from tensorflow.python.distribute import values as tf_values
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -1131,8 +1131,10 @@ class TPUEmbedding(tracking.AutoTrackable):
       # in the same (standard) order as self._strategy.extended.worker_devices.
       enqueue_ops = []
       for replica_id in range(self._strategy.num_replicas_in_sync):
-        replica_inputs = tf_values.select_replica(replica_id, flat_inputs)
-        replica_weights = tf_values.select_replica(replica_id, flat_weights)
+        replica_inputs = distribute_utils.select_replica(replica_id,
+                                                         flat_inputs)
+        replica_weights = distribute_utils.select_replica(replica_id,
+                                                          flat_weights)
         tpu_device = self._strategy.extended.worker_devices[replica_id]
         # TPU devices string are like /job:worker/replica:0/task:0/device:TPU:0
         # the device ordinal is the last number

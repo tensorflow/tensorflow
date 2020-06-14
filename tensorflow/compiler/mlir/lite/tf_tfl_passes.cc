@@ -94,12 +94,6 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addPass(mlir::TFL::CreatePrepareCompositeFunctionsPass());
   }
 
-  // This pass marks non-exported functions as symbol visibility 'private'
-  // those deemed read-only as immutable.
-  pass_manager->addPass(
-      mlir::tf_saved_model::
-          CreateMarkFunctionVisibilityUsingSavedModelLinkagePass());
-
   pass_manager->addPass(mlir::createInlinerPass());
   pass_manager->addPass(mlir::createSymbolDCEPass());
 
@@ -162,6 +156,7 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     // so that it can target constants introduced once TensorFlow Identity ops
     // are removed during legalization.
     pass_manager->addPass(mlir::TFL::CreateOptimizeFunctionalOpsPass());
+    pass_manager->addPass(mlir::createSymbolDCEPass());
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
     // This pass should be always at the end of the floating point model
@@ -237,6 +232,7 @@ void CreateTFLStandardPipeline(OpPassManager& pm,
       mlir::TFL::CreateLegalizeTFPass(/*run_tfl_runtime_verification=*/true));
   pm.addPass(mlir::TFL::CreateOptimizePass());
   pm.addPass(mlir::TFL::CreateOptimizeFunctionalOpsPass());
+  pm.addPass(mlir::createSymbolDCEPass());
 
   // Canonicalize, CSE etc.
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());

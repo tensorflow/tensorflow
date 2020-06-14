@@ -843,40 +843,6 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::Values(0, 20, 40, 80, 100),
                        ::testing::Values(0, 1, 2, 4, 10, 20, 40)));
 
-class SelfProcessingTimeTest : public ::testing::TestWithParam<int64> {};
-
-TEST_P(SelfProcessingTimeTest, Model) {
-  const int64 add_times = GetParam();
-  std::shared_ptr<Node> source = model::MakeSourceNode({0, "source", nullptr});
-  for (int i = 0; i < add_times; i++) {
-    source->add_processing_time(i);
-    source->record_element();
-  }
-  double self_processing_time =
-      (add_times == 0 ? 0.0 : (static_cast<double>(add_times) - 1.0) / 2.0);
-  EXPECT_EQ(source->SelfProcessingTime(), self_processing_time);
-}
-
-INSTANTIATE_TEST_SUITE_P(Test, SelfProcessingTimeTest,
-                         ::testing::Values(0, 1, 2, 5, 10, 20, 40));
-
-class SelfInputTimeTest : public ::testing::TestWithParam<int64> {};
-
-TEST_P(SelfInputTimeTest, Model) {
-  const int64 add_times = GetParam();
-  std::shared_ptr<Node> source = model::MakeSourceNode({0, "source", nullptr});
-  for (int i = 0; i < add_times; i++) {
-    source->record_input((1 + i) * i / 2 + 1);
-    source->record_element();
-  }
-  double self_input_time =
-      (add_times <= 1 ? 0.0 : static_cast<double>(add_times) / 2.0);
-  EXPECT_EQ(source->SelfInputTime(), self_input_time);
-}
-
-INSTANTIATE_TEST_SUITE_P(Test, SelfInputTimeTest,
-                         ::testing::Values(0, 1, 2, 5, 10, 20, 40));
-
 }  // namespace
 }  // namespace model
 }  // namespace data

@@ -32,6 +32,7 @@ from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
@@ -73,7 +74,7 @@ def _make_per_replica(values, devices, regroup=False):
     with ops.device(d):
       placed_v = array_ops.identity(v)
     index.append(placed_v)
-  return value_lib.regroup(index)
+  return distribute_utils.regroup(index)
 
 
 # pylint: disable=g-doc-args,g-doc-return-or-yield
@@ -88,7 +89,7 @@ def _fake_mirrored(value, devices):
   for d in devices:
     with ops.device(d):
       values.append(array_ops.identity(value))
-  return value_lib.regroup(
+  return distribute_utils.regroup(
       values,
       wrap_class=value_lib.Mirrored)
 
@@ -105,7 +106,7 @@ def _make_indexed_slices(values, indices, dense_shape, device):
 def _make_mirrored_indexed_slices(devices, values, indices, dense_shape):
   values = [_make_indexed_slices(values, indices, dense_shape, d)
             for d in devices]
-  return value_lib.regroup(
+  return distribute_utils.regroup(
       values,
       wrap_class=value_lib.Mirrored)
 

@@ -971,15 +971,6 @@ class DatasetBaseIterator : public IteratorBase {
     }
   }
 
-  // When modeling is enabled, this method records the fact that this iterator
-  // is called.
-  void RecordInput(IteratorContext* ctx) {
-    if (collect_resource_usage(ctx)) {
-      int64 now_nanos = EnvTime::NowNanos();
-      node_->record_input(now_nanos);
-    }
-  }
-
   // When modeling is enabled, this method records the fact that a thread of
   // this iterator has started work.
   void RecordStart(IteratorContext* ctx, bool stop_output = false) {

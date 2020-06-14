@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
+#include "tensorflow/core/profiler/utils/xplane_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -97,6 +98,7 @@ void ConvertCompleteEventsToXPlane(uint64 start_timestamp_ns,
       }
     }
   }
+  SortXLinesBy(raw_plane, XLinesComparatorByName());
 }
 
 }  // namespace profiler

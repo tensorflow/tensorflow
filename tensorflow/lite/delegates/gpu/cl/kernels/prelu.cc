@@ -29,6 +29,18 @@ PReLU::PReLU(const OperationDef& definition, const PReLUAttributes& attr,
     : ElementwiseOperation(definition) {
   if (attr.clip != 0) {
     clip_ = FLT(scalar_precision, attr.clip);
+    if (definition.precision == CalculationsPrecision::F32) {
+      args_.AddFloat("clip", attr.clip);
+    } else {
+      args_.AddHalf("clip", half(attr.clip));
+    }
+    code_ =
+        "in_out_value = clamp(in_out_value, (FLT4)(0.0f), (FLT4)(args.clip)) + "
+        "min((FLT4)(0.0f), in_out_value) * args.alpha.Read(S_COORD);";
+  } else {
+    code_ =
+        "in_out_value = max((FLT4)(0.0f), in_out_value) + min((FLT4)(0.0f), "
+        "in_out_value) * args.alpha.Read(S_COORD);";
   }
 }
 

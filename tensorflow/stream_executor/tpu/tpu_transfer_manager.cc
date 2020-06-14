@@ -27,8 +27,6 @@ limitations under the License.
 namespace tensorflow {
 
 using Status = stream_executor::port::Status;
-template <typename T>
-using StatusOr = stream_executor::port::StatusOr<T>;
 
 TpuTransferManager::TpuTransferManager() {
   manager_ = TpuTransferManager_New();

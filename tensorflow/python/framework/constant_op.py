@@ -32,8 +32,7 @@ from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.profiler import traceme
-from tensorflow.python.profiler.internal import _pywrap_traceme
+from tensorflow.python.profiler import trace
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -270,8 +269,8 @@ def _constant_impl(
   """Implementation of constant."""
   ctx = context.context()
   if ctx.executing_eagerly():
-    if _pywrap_traceme.enabled:
-      with traceme.TraceMe("tf.constant"):
+    if trace.enabled:
+      with trace.Trace("tf.constant"):
         return _constant_eager_impl(ctx, value, dtype, shape, verify_shape)
     return _constant_eager_impl(ctx, value, dtype, shape, verify_shape)
 

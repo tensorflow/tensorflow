@@ -350,12 +350,13 @@ void MultiOutputFusion::UpdateReachability(
     if (skip != nullptr && skip(instr)) {
       continue;
     }
-    if (reachability_->IsReachable(instr2, instr) &&
-        reachability_->IsReachable(instr1, instr)) {
+    bool instr2_instr = reachability_->IsReachable(instr2, instr);
+    bool instr1_instr = reachability_->IsReachable(instr1, instr);
+    if (instr2_instr && instr1_instr) {
       // If a candidate was already reachable by both, no update needed.
       continue;
     }
-    if (reachability_->IsReachable(instr2, instr)) {
+    if (instr2_instr) {
       reachability_->FastSetReachabilityToUnion({instr, instr1}, instr);
     }
     if (reachability_->IsReachable(instr1, instr)) {

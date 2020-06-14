@@ -39,11 +39,9 @@ TF_LITE_MICRO_TEST(TestRecordsTfLiteTensorArrayData) {
   tflite::NodeAndRegistration* node_and_registration;
   const tflite::Model* model = tflite::GetModel(kTestConvModelData);
   uint8_t arena[kTestConvArenaSize];
-  tflite::RecordingSimpleMemoryAllocator memory_allocator(
-      micro_test::reporter, arena, kTestConvArenaSize);
 
   tflite::RecordingMicroAllocator* micro_allocator =
-      tflite::RecordingMicroAllocator::Create(&memory_allocator,
+      tflite::RecordingMicroAllocator::Create(arena, kTestConvArenaSize,
                                               micro_test::reporter);
   TF_LITE_MICRO_EXPECT_NE(nullptr, micro_allocator);
   TF_LITE_MICRO_EXPECT_GE(kTfLiteOk, micro_allocator->StartModelAllocation(
@@ -68,11 +66,9 @@ TF_LITE_MICRO_TEST(TestRecordsTensorArrayQuantizationData) {
   tflite::NodeAndRegistration* node_and_registration;
   const tflite::Model* model = tflite::GetModel(kTestConvModelData);
   uint8_t arena[kTestConvArenaSize];
-  tflite::RecordingSimpleMemoryAllocator memory_allocator(
-      micro_test::reporter, arena, kTestConvArenaSize);
 
   tflite::RecordingMicroAllocator* micro_allocator =
-      tflite::RecordingMicroAllocator::Create(&memory_allocator,
+      tflite::RecordingMicroAllocator::Create(arena, kTestConvArenaSize,
                                               micro_test::reporter);
   TF_LITE_MICRO_EXPECT_NE(nullptr, micro_allocator);
   TF_LITE_MICRO_EXPECT_GE(kTfLiteOk, micro_allocator->StartModelAllocation(
@@ -126,11 +122,9 @@ TF_LITE_MICRO_TEST(TestRecordsNodeAndRegistrationArrayData) {
   tflite::NodeAndRegistration* node_and_registration;
   const tflite::Model* model = tflite::GetModel(kTestConvModelData);
   uint8_t arena[kTestConvArenaSize];
-  tflite::RecordingSimpleMemoryAllocator memory_allocator(
-      micro_test::reporter, arena, kTestConvArenaSize);
 
   tflite::RecordingMicroAllocator* micro_allocator =
-      tflite::RecordingMicroAllocator::Create(&memory_allocator,
+      tflite::RecordingMicroAllocator::Create(arena, kTestConvArenaSize,
                                               micro_test::reporter);
   TF_LITE_MICRO_EXPECT_NE(nullptr, micro_allocator);
   TF_LITE_MICRO_EXPECT_GE(kTfLiteOk, micro_allocator->StartModelAllocation(

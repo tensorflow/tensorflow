@@ -45,10 +45,10 @@ void TestSplitTwoOutputsFloat(
   constexpr int axis_size = 1;
   constexpr int tensors_size = input_size + output_size + axis_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantized32Tensor(axis_data, axis_dims, "axis_tensor", 1.0),
-      CreateFloatTensor(input_data, input_dims, "input_tensor"),
-      CreateFloatTensor(output1_data, output1_dims, "output1_tensor"),
-      CreateFloatTensor(output2_data, output2_dims, "output2_tensor")};
+      CreateQuantized32Tensor(axis_data, axis_dims, 1.0),
+      CreateFloatTensor(input_data, input_dims),
+      CreateFloatTensor(output1_data, output1_dims),
+      CreateFloatTensor(output2_data, output2_dims)};
 
   // Currently only support constant axis tensor.
   tensors[0].allocation_type = kTfLiteMmapRo;
@@ -141,12 +141,12 @@ void TestSplitFourOutputsFloat(
   constexpr int axis_size = 1;
   constexpr int tensors_size = input_size + output_size + axis_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantized32Tensor(axis_data, axis_dims, "axis_tensor", 1.0),
-      CreateFloatTensor(input_data, input_dims, "input_tensor"),
-      CreateFloatTensor(output1_data, output1_dims, "output1_tensor"),
-      CreateFloatTensor(output2_data, output2_dims, "output2_tensor"),
-      CreateFloatTensor(output3_data, output1_dims, "output3_tensor"),
-      CreateFloatTensor(output4_data, output1_dims, "output4_tensor")};
+      CreateQuantized32Tensor(axis_data, axis_dims, 1.0),
+      CreateFloatTensor(input_data, input_dims),
+      CreateFloatTensor(output1_data, output1_dims),
+      CreateFloatTensor(output2_data, output2_dims),
+      CreateFloatTensor(output3_data, output1_dims),
+      CreateFloatTensor(output4_data, output1_dims)};
 
   // Currently only support constant axis tensor.
   tensors[0].allocation_type = kTfLiteMmapRo;
@@ -243,12 +243,10 @@ void TestSplitTwoOutputsQuantized(
   constexpr int axis_size = 1;
   constexpr int tensors_size = input_size + output_size + axis_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantized32Tensor(axis_data, axis_dims, "axis_tensor", 1.0),
-      CreateQuantizedTensor(input_data, input_dims, "input_tensor", 0, 10),
-      CreateQuantizedTensor(output1_data, output1_dims, "output1_tensor", 0,
-                            10),
-      CreateQuantizedTensor(output2_data, output2_dims, "output2_tensor", 0,
-                            10)};
+      CreateQuantized32Tensor(axis_data, axis_dims, 1.0),
+      CreateQuantizedTensor(input_data, input_dims, 0, 10),
+      CreateQuantizedTensor(output1_data, output1_dims, 0, 10),
+      CreateQuantizedTensor(output2_data, output2_dims, 0, 10)};
 
   // Currently only support constant axis tensor.
   tensors[0].allocation_type = kTfLiteMmapRo;
@@ -332,12 +330,10 @@ void TestSplitTwoOutputsQuantized32(
   constexpr int axis_size = 1;
   constexpr int tensors_size = input_size + output_size + axis_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantized32Tensor(axis_data, axis_dims, "axis_tensor", 1.0),
-      CreateQuantized32Tensor(input_data, input_dims, "input_tensor", 1.0),
-      CreateQuantized32Tensor(output1_data, output1_dims, "output1_tensor",
-                              1.0),
-      CreateQuantized32Tensor(output2_data, output2_dims, "output2_tensor",
-                              1.0)};
+      CreateQuantized32Tensor(axis_data, axis_dims, 1.0),
+      CreateQuantized32Tensor(input_data, input_dims, 1.0),
+      CreateQuantized32Tensor(output1_data, output1_dims, 1.0),
+      CreateQuantized32Tensor(output2_data, output2_dims, 1.0)};
 
   // Currently only support constant axis tensor.
   tensors[0].allocation_type = kTfLiteMmapRo;

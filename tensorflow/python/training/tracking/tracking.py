@@ -20,6 +20,8 @@ from __future__ import print_function
 import functools
 import weakref
 
+from absl import logging
+
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
@@ -101,12 +103,20 @@ class AutoTrackable(base.Trackable):
     """Return a dict of `Function`s of a trackable."""
     functions = {}
     for attribute_name in dir(self):
+      # We get the attributes, suppressing warnings and exceptions.
+      logging_verbosity = logging.get_verbosity()
       try:
+        logging.set_verbosity(logging.FATAL)
         attribute_value = getattr(self, attribute_name, None)
       except Exception:  # pylint: disable=broad-except
         # We really don't want to throw an exception just because some object's
         # attribute accessor is broken.
         attribute_value = None
+      finally:
+        # We reset the verbosity setting in a `finally` block, to make
+        # sure it always happens, even if we make the exception catching above
+        # be less broad.
+        logging.set_verbosity(logging_verbosity)
       if isinstance(attribute_value, (def_function.Function,
                                       defun.ConcreteFunction)):
         functions[attribute_name] = attribute_value

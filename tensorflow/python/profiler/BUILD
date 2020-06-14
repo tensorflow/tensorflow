@@ -67,7 +67,7 @@ cuda_py_test(
         ":profiler_v2",
         "//tensorflow/python:constant_op",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/profiler:traceme",
+        "//tensorflow/python/profiler:trace",
     ],
 )
 
@@ -224,7 +224,10 @@ py_library(
     name = "trace",
     srcs = ["trace.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//perftools/accelerators/xprof/xprofilez/integration_tests:__pkg__",
+        "//tensorflow:internal",
+    ],
     deps = [
         "//tensorflow/python:tf_export",
         "//tensorflow/python/profiler/internal:_pywrap_traceme",

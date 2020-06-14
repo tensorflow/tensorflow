@@ -83,6 +83,11 @@ Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
 // of the NodeDef till BuildNodeDef is called, or Set is called with certain
 // uncommon types (see template specializations of Set to see which types
 // trigger a NodeDef creation).
+//
+// Setting attributes via `Set` may cause arena-allocated protocol buffer
+// messages to be destructed, which is not thread safe. This means that it is
+// currently not safe to set attributes on *different* AttrBuilder objects from
+// multiple threads. This does not apply to `CopyAttributes`.
 class AttrBuilder {
  public:
   AttrBuilder() {}
@@ -149,6 +154,12 @@ class AttrBuilder {
   // OpDef), this attr-value pair is not added to `m`.
   void FillAttrValueMapWithoutDefaults(AttrValueMap* m) const;
   const NodeDef& BuildNodeDef();
+
+  // Transfers the attributes from `other` to this AttrBuilder. Does not
+  // overwrite existing attributes. Since it does not require deserializing and
+  // re-serializing attributes, it is much more efficient than going through an
+  // AttrValueMap.
+  void CopyAttributes(const AttrBuilder& other);
 
  private:
   tensorflow::Fprint128 BuildCacheKeyForDevice(const StringPiece device) const;

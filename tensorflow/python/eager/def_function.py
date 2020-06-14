@@ -39,7 +39,7 @@ from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.profiler import traceme
+from tensorflow.python.profiler import trace
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
@@ -757,12 +757,11 @@ class Function(object):
   def __call__(self, *args, **kwds):
     """Calls the graph function and warn too frequent tracings."""
     if RUN_FUNCTIONS_EAGERLY:
-      with traceme.TraceMe(self._name,
-                           tf_function_call="eager"):
+      with trace.Trace(self._name, tf_function_call="eager"):
         return self._python_function(*args, **kwds)
 
     tracing_count = self._get_tracing_count()
-    with traceme.TraceMe(self._name) as tm:
+    with trace.Trace(self._name) as tm:
       if self._experimental_compile and (
           not control_flow_util.GraphOrParentsInXlaContext(
               ops.get_default_graph())):

@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
@@ -69,6 +70,7 @@ class Arguments {
   absl::Status Merge(Arguments&& args, const std::string& postfix);
 
   absl::Status TransformToCLCode(
+      const DeviceInfo& device_info,
       const std::map<std::string, std::string>& linkables, std::string* code);
 
   // Move only
@@ -78,7 +80,8 @@ class Arguments {
   Arguments& operator=(const Arguments&) = delete;
 
  private:
-  std::string AddActiveArgument(const std::string& arg_name);
+  std::string AddActiveArgument(const std::string& arg_name,
+                                bool use_f32_for_halfs);
   void AddGPUResources(const std::string& name, const GPUResources& resources);
 
   absl::Status SetGPUResources(const std::string& name,
@@ -86,7 +89,7 @@ class Arguments {
 
   absl::Status AddObjectArgs();
 
-  void ResolveArgsPass(std::string* code);
+  void ResolveArgsPass(const DeviceInfo& device_info, std::string* code);
   absl::Status ResolveSelectorsPass(
       const std::map<std::string, std::string>& linkables, std::string* code);
 
@@ -134,6 +137,9 @@ class Arguments {
     // many uniforms generated automatically and not used
     // to reduce amount of data transferred we adding this optimization
     bool active = false;
+
+    // some devices have issues with half parameters.
+    bool store_as_f32 = false;
 
     // offset to shared uniform storage.
     uint32_t offset = -1;

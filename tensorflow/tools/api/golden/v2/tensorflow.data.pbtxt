@@ -17,6 +17,14 @@ tf_module {
     mtype: "<type \'int\'>"
   }
   member {
+    name: "Iterator"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "IteratorSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Options"
     mtype: "<type \'type\'>"
   }

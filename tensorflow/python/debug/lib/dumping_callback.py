@@ -734,9 +734,20 @@ def enable_dump_debug_info(dump_root,
     dump_root: The directory path where the dumping information will be written.
     tensor_debug_mode: Debug mode for tensor values, as a string.
       The currently supported options are:
-        - "NO_TENSOR": (Default) Only traces the execution of ops' output
-          tensors, while not dumping the value of the ops' output tensors
-          or any form of concise summary of them.
+      - "NO_TENSOR": (Default) Only traces the output tensors of all executed
+        ops (including those executed eagerly at the Python level or as a part
+        of a TensorFlow graph) and functions, while not extracting any
+        information from the values of the tensors.
+      - "CURT_HEALTH": For each floating-dtype tensor (e.g., tensors of dtypes
+        such as `float32`, `float64` and `bfloat16`), extracts a binary bit
+        indicating whether it contains any -infinity, +infinity or NaN.
+      - "CONCISE_HEALTH": For each floating-dtype tensor, extract total
+        element count, and counts of -infinity, +infinity and NaN elements.
+      - "FULL_HEALTH": For each floating-dtype tensor, extracts the dtype,
+        rank (number of dimensions), total element count, and counts of
+        -infinity, +infinity and NaN elements.
+      - "SHAPE": For each tensor (regardless of dtype), extracts its dtype,
+        rank, total element count and shape.
     circular_buffer_size: Size of the circular buffers for execution events.
       These circular buffers are designed to reduce the overhead of debugging
       dumping. They hold the most recent debug events concerning eager execution

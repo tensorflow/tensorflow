@@ -260,6 +260,18 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "io_test",
+    srcs = ["io_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/experimental/ops:io",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+tf_py_test(
     name = "make_batched_features_dataset_test",
     size = "medium",
     srcs = ["make_batched_features_dataset_test.py"],

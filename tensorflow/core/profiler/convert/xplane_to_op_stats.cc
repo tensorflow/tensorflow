@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_op_metrics_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_step_events.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tf_functions.h"
+#include "tensorflow/core/profiler/protobuf/diagnostics.pb.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
@@ -114,11 +115,20 @@ void ProcessHostPlane(const XPlane* host_plane, bool use_device_step_events,
 
 }  // namespace
 
-void PropagateXSpaceErrorsToOpStats(const XSpace& space, OpStats* op_stats) {
-  if (space.errors().empty()) return;
-  absl::flat_hash_set<std::string> unique_errors;
-  unique_errors.insert(space.errors().begin(), space.errors().end());
-  *op_stats->mutable_errors() = {unique_errors.begin(), unique_errors.end()};
+void PropagateXSpaceDiagnosticsToOpStats(const XSpace& space,
+                                         OpStats* op_stats) {
+  if (!space.errors().empty()) {
+    absl::flat_hash_set<std::string> unique_errors;
+    unique_errors.insert(space.errors().begin(), space.errors().end());
+    *op_stats->mutable_diagnostics()->mutable_errors() = {unique_errors.begin(),
+                                                          unique_errors.end()};
+  }
+  if (!space.warnings().empty()) {
+    absl::flat_hash_set<std::string> unique_warnings;
+    unique_warnings.insert(space.warnings().begin(), space.warnings().end());
+    *op_stats->mutable_diagnostics()->mutable_warnings() = {
+        unique_warnings.begin(), unique_warnings.end()};
+  }
 }
 
 OpStats ConvertXSpaceToOpStats(const XSpace& space) {
@@ -127,7 +137,7 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space) {
       FindPlanesWithPrefix(space, kGpuPlanePrefix);
   OpStats op_stats;
   StepEvents step_events;
-  PropagateXSpaceErrorsToOpStats(space, &op_stats);
+  PropagateXSpaceDiagnosticsToOpStats(space, &op_stats);
   // Convert device planes.
   OpMetricsDbCombiner op_metrics_db_combiner(
       op_stats.mutable_device_op_metrics_db());

@@ -389,7 +389,6 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
   }
 
   // Quantize input from float to uint8 + quantization params (scaling factor).
-  float unused_min, unused_max;
   float* scaling_factors_ptr = GetTensorData<float>(scaling_factors);
   int32_t* input_offset_ptr = nullptr;
   int32_t* row_sums_ptr = nullptr;
@@ -400,18 +399,10 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
   int8_t* quant_data = GetTensorData<int8_t>(input_quantized);
   const int8_t* filter_data = GetTensorData<int8_t>(filter);
   const float* input_ptr = GetTensorData<float>(input);
-  // Quantize each batch independently.
+  tensor_utils::BatchQuantizeFloats(
+      input_ptr, batch_size, input_size, quant_data, scaling_factors_ptr,
+      input_offset_ptr, params->asymmetric_quantize_inputs);
   for (int b = 0; b < batch_size; ++b) {
-    const int offset = b * input_size;
-    if (params->asymmetric_quantize_inputs) {
-      tensor_utils::AsymmetricQuantizeFloats(
-          input_ptr + offset, input_size, quant_data + offset,
-          &scaling_factors_ptr[b], &input_offset_ptr[b]);
-    } else {
-      tensor_utils::SymmetricQuantizeFloats(
-          input_ptr + offset, input_size, quant_data + offset, &unused_min,
-          &unused_max, &scaling_factors_ptr[b]);
-    }
     // Incorporate scaling of the filter.
     scaling_factors_ptr[b] *= filter->params.scale;
   }

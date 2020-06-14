@@ -165,6 +165,16 @@ Below is the list of current operators and limitations:
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
+### `MEAN`
+
+* The first input and the output must be a 4D tensors in 32-bit
+  floating-point format.
+* The second input (the input with the axes specification) must be static
+  (use `kTfLiteMmapRo` allocation type).
+* Only [1, 2] or [2, 1] axes specification (i.e. reduction across spatial
+  dimensions) is supported.
+* Only `keep_dims = True` parameter value is supported.
+
 ### `MINIMUM`
 
 * Inputs and outputs must be in 32-bit floating-point format.

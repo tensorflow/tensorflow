@@ -537,7 +537,7 @@ inline void LstmStepHybrid(
     int n_batch, int n_cell, int n_input, int n_aux_input, int n_output,
     int output_batch_leading_dim, float* input_gate_scratch,
     float* forget_gate_scratch, float* cell_scratch, float* output_gate_scratch,
-    float* scaling_factors, float* product_scaling_factors,
+    float* scaling_factors, float* scaling_factors_scratch,
     float* recovered_cell_weights, int8_t* quantized_input_ptr,
     int8_t* quantized_aux_input_ptr, int8_t* quantized_output_state_ptr,
     int8_t* quantized_cell_state_ptr, float* output_state_ptr,
@@ -642,194 +642,119 @@ inline void LstmStepHybrid(
   }
 
   if (!tensor_utils::IsZeroVector(input_ptr, n_batch * n_input)) {
-    for (int b = 0; b < n_batch; ++b) {
-      const int offset = b * n_input;
-      if (asymmetric_quantize_inputs) {
-        tensor_utils::AsymmetricQuantizeFloats(
-            input_ptr + offset, n_input, quantized_input_ptr + offset,
-            &scaling_factors[b], &zero_points[b]);
-      } else {
-        float unused_min, unused_max;
-        tensor_utils::SymmetricQuantizeFloats(
-            input_ptr + offset, n_input, quantized_input_ptr + offset,
-            &unused_min, &unused_max, &scaling_factors[b]);
-      }
-    }
+    tensor_utils::BatchQuantizeFloats(input_ptr, n_batch, n_input,
+                                      quantized_input_ptr, scaling_factors,
+                                      zero_points, asymmetric_quantize_inputs);
     if (!use_cifg) {
-      for (int b = 0; b < n_batch; ++b) {
-        product_scaling_factors[b] =
-            scaling_factors[b] * input_to_input_weights_scale;
-      }
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
           input_to_input_weights_ptr, n_cell, n_input, quantized_input_ptr,
-          product_scaling_factors, n_batch, input_gate_scratch,
-          /*per_channel_scale=*/nullptr, zero_points, accum_scratch_ptr,
-          input_to_input_row_sums, compute_row_sums, context);
-    }
-
-    for (int b = 0; b < n_batch; ++b) {
-      product_scaling_factors[b] =
-          scaling_factors[b] * input_to_forget_weights_scale;
+          input_to_input_weights_scale, scaling_factors, n_batch,
+          input_gate_scratch, /*per_channel_scale=*/nullptr, zero_points,
+          accum_scratch_ptr, input_to_input_row_sums, compute_row_sums,
+          scaling_factors_scratch, context);
     }
 
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         input_to_forget_weights_ptr, n_cell, n_input, quantized_input_ptr,
-        product_scaling_factors, n_batch, forget_gate_scratch,
-        /*per_channel_scale=*/nullptr, zero_points, accum_scratch_ptr,
-        input_to_forget_row_sums, compute_row_sums, context);
-
-    for (int b = 0; b < n_batch; ++b) {
-      product_scaling_factors[b] =
-          scaling_factors[b] * input_to_cell_weights_scale;
-    }
+        input_to_forget_weights_scale, scaling_factors, n_batch,
+        forget_gate_scratch, /*per_channel_scale=*/nullptr, zero_points,
+        accum_scratch_ptr, input_to_forget_row_sums, compute_row_sums,
+        scaling_factors_scratch, context);
 
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         input_to_cell_weights_ptr, n_cell, n_input, quantized_input_ptr,
-        product_scaling_factors, n_batch, cell_scratch,
+        input_to_cell_weights_scale, scaling_factors, n_batch, cell_scratch,
         /*per_channel_scale=*/nullptr, zero_points, accum_scratch_ptr,
-        input_to_cell_row_sums, compute_row_sums, context);
-
-    for (int b = 0; b < n_batch; ++b) {
-      product_scaling_factors[b] =
-          scaling_factors[b] * input_to_output_weights_scale;
-    }
+        input_to_cell_row_sums, compute_row_sums, scaling_factors_scratch,
+        context);
 
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         input_to_output_weights_ptr, n_cell, n_input, quantized_input_ptr,
-        product_scaling_factors, n_batch, output_gate_scratch,
-        /*per_channel_scale=*/nullptr, zero_points, accum_scratch_ptr,
-        input_to_output_row_sums, compute_row_sums, context);
+        input_to_output_weights_scale, scaling_factors, n_batch,
+        output_gate_scratch, /*per_channel_scale=*/nullptr, zero_points,
+        accum_scratch_ptr, input_to_output_row_sums, compute_row_sums,
+        scaling_factors_scratch, context);
   }
 
   // For each batch and cell: compute aux_input_weight * aux_input.
   // Skip if auxiliary input is not available or all zeros.
   if (aux_input_ptr != nullptr &&
       !tensor_utils::IsZeroVector(aux_input_ptr, n_batch * n_aux_input)) {
-    for (int b = 0; b < n_batch; ++b) {
-      const int offset = b * n_aux_input;
-      if (asymmetric_quantize_inputs) {
-        tensor_utils::AsymmetricQuantizeFloats(
-            aux_input_ptr + offset, n_aux_input,
-            quantized_aux_input_ptr + offset, &scaling_factors[b],
-            &zero_points[b]);
-      } else {
-        float unused_min, unused_max;
-        tensor_utils::SymmetricQuantizeFloats(
-            aux_input_ptr + offset, n_aux_input,
-            quantized_aux_input_ptr + offset, &unused_min, &unused_max,
-            &scaling_factors[b]);
-      }
-    }
+    tensor_utils::BatchQuantizeFloats(aux_input_ptr, n_batch, n_aux_input,
+                                      quantized_aux_input_ptr, scaling_factors,
+                                      zero_points, asymmetric_quantize_inputs);
 
     if (!use_cifg) {
-      for (int b = 0; b < n_batch; ++b) {
-        product_scaling_factors[b] =
-            scaling_factors[b] * aux_input_to_input_weights_scale;
-      }
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
           aux_input_to_input_weights_ptr, n_cell, n_aux_input,
-          quantized_aux_input_ptr, product_scaling_factors, n_batch,
-          input_gate_scratch, /*per_channel_scale=*/nullptr, zero_points,
-          accum_scratch_ptr, aux_input_to_input_row_sums, compute_row_sums,
-          context);
+          quantized_aux_input_ptr, aux_input_to_input_weights_scale,
+          scaling_factors, n_batch, input_gate_scratch,
+          /*per_channel_scale=*/nullptr, zero_points, accum_scratch_ptr,
+          aux_input_to_input_row_sums, compute_row_sums,
+          scaling_factors_scratch, context);
     }
 
-    for (int b = 0; b < n_batch; ++b) {
-      product_scaling_factors[b] =
-          scaling_factors[b] * aux_input_to_forget_weights_scale;
-    }
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         aux_input_to_forget_weights_ptr, n_cell, n_aux_input,
-        quantized_aux_input_ptr, product_scaling_factors, n_batch,
-        forget_gate_scratch, /*per_channel_scale=*/nullptr, zero_points,
-        accum_scratch_ptr, aux_input_to_forget_row_sums, compute_row_sums,
+        quantized_aux_input_ptr, aux_input_to_forget_weights_scale,
+        scaling_factors, n_batch, forget_gate_scratch,
+        /*per_channel_scale=*/nullptr, zero_points, accum_scratch_ptr,
+        aux_input_to_forget_row_sums, compute_row_sums, scaling_factors_scratch,
         context);
 
-    for (int b = 0; b < n_batch; ++b) {
-      product_scaling_factors[b] =
-          scaling_factors[b] * aux_input_to_cell_weights_scale;
-    }
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         aux_input_to_cell_weights_ptr, n_cell, n_aux_input,
-        quantized_aux_input_ptr, product_scaling_factors, n_batch, cell_scratch,
-        /*per_channel_scale=*/nullptr, zero_points, accum_scratch_ptr,
-        aux_input_to_cell_row_sums, compute_row_sums, context);
-
-    for (int b = 0; b < n_batch; ++b) {
-      product_scaling_factors[b] =
-          scaling_factors[b] * aux_input_to_output_weights_scale;
-    }
+        quantized_aux_input_ptr, aux_input_to_cell_weights_scale,
+        scaling_factors, n_batch, cell_scratch, /*per_channel_scale=*/nullptr,
+        zero_points, accum_scratch_ptr, aux_input_to_cell_row_sums,
+        compute_row_sums, scaling_factors_scratch, context);
 
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         aux_input_to_output_weights_ptr, n_cell, n_aux_input,
-        quantized_aux_input_ptr, product_scaling_factors, n_batch,
-        output_gate_scratch, /*per_channel_scale=*/nullptr, zero_points,
-        accum_scratch_ptr, aux_input_to_output_row_sums, compute_row_sums,
+        quantized_aux_input_ptr, aux_input_to_output_weights_scale,
+        scaling_factors, n_batch, output_gate_scratch,
+        /*per_channel_scale=*/nullptr, zero_points, accum_scratch_ptr,
+        aux_input_to_output_row_sums, compute_row_sums, scaling_factors_scratch,
         context);
   }
 
   if (!tensor_utils::IsZeroVector(output_state_ptr, n_batch * n_output)) {
     // Save quantization and matmul computation for all zero input.
-    for (int b = 0; b < n_batch; ++b) {
-      const int offset = b * n_output;
-      if (asymmetric_quantize_inputs) {
-        tensor_utils::AsymmetricQuantizeFloats(
-            output_state_ptr + offset, n_output,
-            quantized_output_state_ptr + offset, &scaling_factors[b],
-            &zero_points[b]);
-      } else {
-        float unused_min, unused_max;
-        tensor_utils::SymmetricQuantizeFloats(
-            output_state_ptr + offset, n_output,
-            quantized_output_state_ptr + offset, &unused_min, &unused_max,
-            &scaling_factors[b]);
-      }
-    }
+    tensor_utils::BatchQuantizeFloats(
+        output_state_ptr, n_batch, n_output, quantized_output_state_ptr,
+        scaling_factors, zero_points, asymmetric_quantize_inputs);
     // For each batch and cell: compute recurrent_weight * output_state.
     if (!use_cifg) {
-      for (int b = 0; b < n_batch; ++b) {
-        product_scaling_factors[b] =
-            scaling_factors[b] * recurrent_to_input_weights_scale;
-      }
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
           recurrent_to_input_weights_ptr, n_cell, n_output,
-          quantized_output_state_ptr, product_scaling_factors, n_batch,
-          input_gate_scratch, /*per_channel_scale=*/nullptr, zero_points,
-          accum_scratch_ptr, recurrent_to_input_row_sums, compute_row_sums,
-          context);
+          quantized_output_state_ptr, recurrent_to_input_weights_scale,
+          scaling_factors, n_batch, input_gate_scratch,
+          /*per_channel_scale=*/nullptr, zero_points, accum_scratch_ptr,
+          recurrent_to_input_row_sums, compute_row_sums,
+          scaling_factors_scratch, context);
     }
 
-    for (int b = 0; b < n_batch; ++b) {
-      product_scaling_factors[b] =
-          scaling_factors[b] * recurrent_to_forget_weights_scale;
-    }
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         recurrent_to_forget_weights_ptr, n_cell, n_output,
-        quantized_output_state_ptr, product_scaling_factors, n_batch,
-        forget_gate_scratch, /*per_channel_scale=*/nullptr, zero_points,
-        accum_scratch_ptr, recurrent_to_forget_row_sums, compute_row_sums,
+        quantized_output_state_ptr, recurrent_to_forget_weights_scale,
+        scaling_factors, n_batch, forget_gate_scratch,
+        /*per_channel_scale=*/nullptr, zero_points, accum_scratch_ptr,
+        recurrent_to_forget_row_sums, compute_row_sums, scaling_factors_scratch,
         context);
 
-    for (int b = 0; b < n_batch; ++b) {
-      product_scaling_factors[b] =
-          scaling_factors[b] * recurrent_to_cell_weights_scale;
-    }
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         recurrent_to_cell_weights_ptr, n_cell, n_output,
-        quantized_output_state_ptr, product_scaling_factors, n_batch,
-        cell_scratch, /*per_channel_scale=*/nullptr, zero_points,
-        accum_scratch_ptr, recurrent_to_cell_row_sums, compute_row_sums,
-        context);
+        quantized_output_state_ptr, recurrent_to_cell_weights_scale,
+        scaling_factors, n_batch, cell_scratch, /*per_channel_scale=*/nullptr,
+        zero_points, accum_scratch_ptr, recurrent_to_cell_row_sums,
+        compute_row_sums, scaling_factors_scratch, context);
 
-    for (int b = 0; b < n_batch; ++b) {
-      product_scaling_factors[b] =
-          scaling_factors[b] * recurrent_to_output_weights_scale;
-    }
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         recurrent_to_output_weights_ptr, n_cell, n_output,
-        quantized_output_state_ptr, product_scaling_factors, n_batch,
-        output_gate_scratch, /*per_channel_scale=*/nullptr, zero_points,
-        accum_scratch_ptr, recurrent_to_output_row_sums, compute_row_sums,
+        quantized_output_state_ptr, recurrent_to_output_weights_scale,
+        scaling_factors, n_batch, output_gate_scratch,
+        /*per_channel_scale=*/nullptr, zero_points, accum_scratch_ptr,
+        recurrent_to_output_row_sums, compute_row_sums, scaling_factors_scratch,
         context);
   }
 
@@ -949,29 +874,17 @@ inline void LstmStepHybrid(
     }
     if (!tensor_utils::IsZeroVector(output_gate_scratch, n_batch * n_cell)) {
       // Save quantization and matmul computation for all zero input.
+      tensor_utils::BatchQuantizeFloats(
+          output_gate_scratch, n_batch, n_cell, quantized_cell_state_ptr,
+          scaling_factors, zero_points, asymmetric_quantize_inputs);
       for (int b = 0; b < n_batch; ++b) {
-        const int offset = b * n_cell;
-        if (asymmetric_quantize_inputs) {
-          tensor_utils::AsymmetricQuantizeFloats(
-              output_gate_scratch + offset, n_cell,
-              quantized_cell_state_ptr + offset, &scaling_factors[b],
-              &zero_points[b]);
-        } else {
-          float unused_min, unused_max;
-          tensor_utils::SymmetricQuantizeFloats(
-              output_gate_scratch + offset, n_cell,
-              quantized_cell_state_ptr + offset, &unused_min, &unused_max,
-              &scaling_factors[b]);
-        }
-      }
-      for (int b = 0; b < n_batch; ++b) {
-        product_scaling_factors[b] =
+        scaling_factors_scratch[b] =
             scaling_factors[b] * projection_weights_scale;
       }
       for (int b = 0; b < n_batch; b++) {
         tensor_utils::MatrixBatchVectorMultiplyAccumulate(
             projection_weights_ptr, n_output, n_cell,
-            quantized_cell_state_ptr + b * n_cell, &product_scaling_factors[b],
+            quantized_cell_state_ptr + b * n_cell, &scaling_factors_scratch[b],
             /*n_batch=*/1, output_ptr + b * output_batch_leading_dim,
             /*per_channel_scale=*/nullptr,
             asymmetric_quantize_inputs ? &zero_points[b] : nullptr,

@@ -125,8 +125,19 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   StatusOr<std::unique_ptr<PyExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options);
 
+  pybind11::bytes HeapProfile();
+
  private:
+  friend class PyBuffer;
+  friend class PyExecutable;
+
   std::shared_ptr<PjRtClient> pjrt_client_;
+
+  // Pointers to intrusive doubly-linked lists of buffers and executables, used
+  // to iterate over all known objects when heap profiling. The list structure
+  // is protected by the GIL.
+  PyBuffer* buffers_ = nullptr;
+  PyExecutable* executables_ = nullptr;
 };
 
 }  // namespace xla

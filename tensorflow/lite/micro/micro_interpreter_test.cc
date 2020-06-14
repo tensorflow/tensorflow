@@ -24,6 +24,45 @@ limitations under the License.
 #include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 
+namespace tflite {
+namespace {
+
+class MockProfiler : public tflite::Profiler {
+ public:
+  MockProfiler() : event_starts_(0), event_ends_(0) {}
+  ~MockProfiler() override = default;
+
+  // AddEvent is unused for Tf Micro.
+  void AddEvent(const char* tag, EventType event_type, uint64_t start,
+                uint64_t end, int64_t event_metadata1,
+                int64_t event_metadata2) override{};
+
+  // BeginEvent followed by code followed by EndEvent will profile the code
+  // enclosed. Multiple concurrent events are unsupported, so the return value
+  // is always 0. Event_metadata1 and event_metadata2 are unused. The tag
+  // pointer must be valid until EndEvent is called.
+  uint32_t BeginEvent(const char* tag, EventType event_type,
+                      int64_t event_metadata1,
+                      int64_t event_metadata2) override {
+    event_starts_++;
+    return 0;
+  }
+
+  // Event_handle is ignored since TF Micro does not support concurrent events.
+  void EndEvent(uint32_t event_handle) override { event_ends_++; }
+
+  int event_starts() { return event_starts_; }
+  int event_ends() { return event_ends_; }
+
+ private:
+  int event_starts_;
+  int event_ends_;
+  TF_LITE_REMOVE_VIRTUAL_DELETE
+};
+
+}  // namespace
+}  // namespace tflite
+
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(TestInterpreter) {
@@ -208,6 +247,33 @@ TF_LITE_MICRO_TEST(TestIncompleteInitialization) {
   tflite::MicroInterpreter interpreter(model, mock_resolver, allocator_buffer,
                                        allocator_buffer_size,
                                        micro_test::reporter);
+}
+
+// Test that an interpreter with a supplied profiler correctly calls the
+// profiler each time an operator is invoked.
+TF_LITE_MICRO_TEST(InterpreterWithProfilerShouldProfileOps) {
+  const tflite::Model* model = tflite::testing::GetComplexMockModel();
+  TF_LITE_MICRO_EXPECT_NE(nullptr, model);
+
+  tflite::testing::MockOpResolver mock_resolver;
+  constexpr size_t allocator_buffer_size = 2048;
+  uint8_t allocator_buffer[allocator_buffer_size];
+  tflite::MockProfiler profiler;
+  tflite::MicroInterpreter interpreter(model, mock_resolver, allocator_buffer,
+                                       allocator_buffer_size,
+                                       micro_test::reporter, &profiler);
+
+  TF_LITE_MICRO_EXPECT_EQ(profiler.event_starts(), 0);
+  TF_LITE_MICRO_EXPECT_EQ(profiler.event_ends(), 0);
+  TF_LITE_MICRO_EXPECT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+  TF_LITE_MICRO_EXPECT_EQ(interpreter.Invoke(), kTfLiteOk);
+#ifndef NDEBUG
+  TF_LITE_MICRO_EXPECT_EQ(profiler.event_starts(), 3);
+  TF_LITE_MICRO_EXPECT_EQ(profiler.event_ends(), 3);
+#else  // Profile events will not occur on release builds.
+  TF_LITE_MICRO_EXPECT_EQ(profiler.event_starts(), 0);
+  TF_LITE_MICRO_EXPECT_EQ(profiler.event_ends(), 0);
+#endif
 }
 
 TF_LITE_MICRO_TESTS_END
