@@ -48,7 +48,7 @@ bool ParseInputNodeQuantSpecs(absl::string_view node_names,
   std::vector<double> node_mins;
   if (!min_values.empty()) {
     std::vector<std::string> node_mins_str = absl::StrSplit(min_values, ',');
-    for (size_t i = 0; i < node_mins_str.size(); i++) {
+    for (int i : llvm::seq<int>(node_mins_str.size())) {
       double value;
       if (!absl::SimpleAtod(node_mins_str[i], &value)) {
         return true;
