@@ -429,23 +429,25 @@ PjRtBuffer::ScopedHold::~ScopedHold() {
 PjRtBuffer::ScopedHold::ScopedHold(ScopedHold&& other)
     : parent_(other.parent_),
       type_(other.type_),
+      state_(other.state_),
       buffer_or_(std::move(other.buffer_or_)) {
-  // Preserve the invariant that status is invalid if buffer != nullptr.
-  other.SetError(InvalidArgument("Buffer has been moved."));
+  // Preserve the invariant that status is invalid if buffer == nullptr.
+  other.SetState(kMoved);
 }
 
 void PjRtBuffer::ScopedHold::Acquire(
     StatusOr<std::shared_ptr<TrackedDeviceBuffer>>&& buffer_or) {
   CHECK(!ok());
   buffer_or_ = std::move(buffer_or);
+  SetState(buffer_or_.ok() ? kValid : kError);
   // Check the invariant holds.
   CHECK(!ok() || buffer_or_.ValueOrDie() != nullptr);
 }
 
 PjRtBuffer::ScopedHold::ForClosure PjRtBuffer::ScopedHold::ToClosure() {
   CHECK(ok());
-  ForClosure for_closure(parent_, type_, std::move(buffer_or_));
-  SetError(InvalidArgument("Buffer has been released"));
+  ForClosure for_closure(parent_, type_, state_, std::move(buffer_or_));
+  SetState(kReleased);
   return for_closure;
 }
 
@@ -456,14 +458,14 @@ void PjRtBuffer::ScopedHold::ConvertUsageHold(
   CHECK(type_ == kUsage);
   parent_->ConvertUsageHold(buffer().get(), usage_stream, std::move(event),
                             reference_held);
-  SetError(InvalidArgument("Buffer has been converted"));
+  SetState(kConverted);
 }
 
 void PjRtBuffer::ScopedHold::ConfirmDonation() {
   CHECK(ok());
   CHECK(type_ == kDonation);
   parent_->ConfirmDonation(buffer().get());
-  SetError(InvalidArgument("Buffer has been donated"));
+  SetState(kDonated);
 }
 
 void PjRtBuffer::ScopedHold::AddToInput(
