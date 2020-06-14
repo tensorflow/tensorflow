@@ -48,6 +48,12 @@ and the following optional parameters:
     'enable_op_profiling'. Note, the platform-wide tracing might not work if the
     tool runs as a commandline native binary. For example, on Android, the
     ATrace-based tracing only works when the tool is launched as an APK.
+*   `profiling_output_csv_file`: `str` (default="") \
+    File path to export profile data to as CSV.
+    The results are printed to `stdout` if option is not set.
+    Requires `enable_op_profiling` to be `true` and the path
+    to include the name of the output CSV; otherwise
+    results are printed to `stdout`.
 
 ### TFLite delegate parameters
 The tool supports all runtime/delegate parameters introduced by
