@@ -368,7 +368,7 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
         scales[index_scale.index()] *= index_scale.value();
       }
     } else if (auto type = op_type.dyn_cast<quant::UniformQuantizedType>()) {
-      for (size_t index = 0; index != axis_size; ++index) {
+      for (int index = 0, e = axis_size; index != e; ++index) {
         scales[index] *= type.getScale();
       }
     }
