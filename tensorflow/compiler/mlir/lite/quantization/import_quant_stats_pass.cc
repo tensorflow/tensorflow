@@ -158,7 +158,7 @@ void ImportQuantStatsPass::ImportAsStatsOps(OpBuilder b, Operation *op,
     InsertStatsOpAtResult(b, op->getResult(index), layer_stats, axis_stats,
                           axis);
   } else {
-    for (int i = 0; i < static_cast<int>(op->getNumResults()); ++i) {
+    for (int i = 0, e = op->getNumResults(); i < e; ++i) {
       if (IsQuantizableResult(op, i)) {
         InsertStatsOpAtResult(b, op->getResult(i), layer_stats, axis_stats,
                               axis);
