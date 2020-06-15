@@ -137,6 +137,7 @@ class MklLRNOp : public OpKernel {
       // that input is in NHWC layout with Channel being the last dimension.
       src_dnn_data.SetUsrMem(src_md, &src_tensor);
       src_dnn_data.SetOpMemDesc(input_dims, MEMORY_FORMAT::nhwc);
+      src_dnn_data.SetUsrMemDataHandle(&src_tensor, fwd_stream_);
 
       // dst_dnn_data has the same shape as input.
       dst_dnn_data.SetUsrMem(src_md);
@@ -157,7 +158,7 @@ class MklLRNOp : public OpKernel {
                            &output_tensor);
       OP_REQUIRES_OK(context, context->status());
       DCHECK(output_tensor != nullptr);
-      dst_dnn_data.SetUsrMemDataHandle(output_tensor);
+      dst_dnn_data.SetUsrMemDataHandle(output_tensor, fwd_stream_);
 
       // Handle workspace required for MKL-DNN.
       AllocateWorkspaceTensor(context, lrn_prim_desc, &workspace_dnn_data);
@@ -393,6 +394,7 @@ class MklLRNGradOp : public OpKernel {
           orig_input_dnn_shape.GetSizesAsMklDnnDims();
       orig_input_dnn_data.SetUsrMem(orig_input_md, &orig_input_tensor);
       orig_input_dnn_data.SetOpMemDesc(orig_input_dims, MEMORY_FORMAT::nhwc);
+      orig_input_dnn_data.SetUsrMemDataHandle(&orig_input_tensor, bwd_stream_);
 
       // output_dnn_data has the same shape as original input
       output_dnn_data.SetUsrMem(orig_input_md);
@@ -421,7 +423,7 @@ class MklLRNGradOp : public OpKernel {
                            orig_input_format, &output_tensor);
       OP_REQUIRES_OK(context, context->status());
       DCHECK(output_tensor != nullptr);
-      output_dnn_data.SetUsrMemDataHandle(output_tensor);
+      output_dnn_data.SetUsrMemDataHandle(output_tensor, bwd_stream_);
 
       // Create LRN primitive and add it to the net
       // At this point, workspace is enabled, so we don't need
