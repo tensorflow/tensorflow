@@ -189,7 +189,8 @@ class MicroAllocator {
 
   // Commits a memory plan for all non-persistent buffer allocations in the
   // 'head' section of the memory arena.
-  virtual TfLiteStatus CommitStaticMemoryPlan(TfLiteContext* context,
+  virtual TfLiteStatus CommitStaticMemoryPlan(const Model* model,
+                                              TfLiteContext* context,
                                               const SubGraph* subgraph);
 
   // A simple memory allocator that always allocate from the arena tail or head.

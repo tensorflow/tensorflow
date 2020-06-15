@@ -30,6 +30,14 @@ limitations under the License.
 namespace tflite {
 namespace testing {
 
+constexpr int kOfflinePlannerHeaderSize = 3;
+
+struct NodeConnection_ {
+  std::initializer_list<int32_t> input;
+  std::initializer_list<int32_t> output;
+};
+typedef struct NodeConnection_ NodeConnection;
+
 // A simple operator that returns the median of the input with the number of
 // times the kernel was invoked. The implementation below is deliberately
 // complicated, just to demonstrate how kernel memory planning works.
@@ -81,6 +89,12 @@ const Model* GetComplexMockModel();
 
 // Returns a simple flatbuffer model with two branches.
 const Model* GetSimpleModelWithBranch();
+
+// Returns a simple flatbuffer model with offline planned tensors
+const Model* GetModelWithOfflinePlanning(int num_tensors,
+                                         const int32_t* metadata_buffer,
+                                         NodeConnection* node_conn,
+                                         int num_conns);
 
 // Returns a flatbuffer model with `simple_stateful_op`
 const Model* GetSimpleStatefulModel();
