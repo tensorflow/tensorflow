@@ -21,6 +21,7 @@ from __future__ import print_function
 import os
 import shutil
 import tempfile
+import uuid
 
 from tensorflow.python.debug.lib import check_numerics_callback
 from tensorflow.python.debug.lib import debug_events_reader
@@ -35,6 +36,7 @@ class DumpingCallbackTestBase(test_util.TensorFlowTestCase):
   def setUp(self):
     super(DumpingCallbackTestBase, self).setUp()
     self.dump_root = tempfile.mkdtemp()
+    self.tfdbg_run_id = str(uuid.uuid4())
 
   def tearDown(self):
     if os.path.isdir(self.dump_root):

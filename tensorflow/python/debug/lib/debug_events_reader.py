@@ -863,6 +863,7 @@ class DebugDataReader(object):
     debug_event = next(metadata_iter).debug_event
     self._starting_wall_time = debug_event.wall_time
     self._tensorflow_version = debug_event.debug_metadata.tensorflow_version
+    self._tfdbg_run_id = debug_event.debug_metadata.tfdbg_run_id
 
   def _load_source_files(self):
     """Incrementally read the .source_files DebugEvent file."""
@@ -1070,6 +1071,10 @@ class DebugDataReader(object):
       TensorFlow version used by the debugged program, as a `str`.
     """
     return self._tensorflow_version
+
+  def tfdbg_run_id(self):
+    """Get the debugger run ID of the debugged TensorFlow program."""
+    return self._tfdbg_run_id
 
   def outermost_graphs(self):
     """Get the number of outer most graphs read so far."""
