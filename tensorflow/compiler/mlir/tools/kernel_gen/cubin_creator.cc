@@ -237,9 +237,13 @@ StatusOr<std::vector<uint8_t>> tensorflow::kernel_gen::GenerateCubinForTfCode(
   mlir::OwningModuleRef module = mlir::parseSourceString(tf_code, &context);
 
   TF_RETURN_IF_ERROR(LowerTfOpToLhloWithDynamicShapes(module.get()));
-  TF_RETURN_IF_ERROR(
-      xla::mlir_gpu::LowerLHLOToGPU(module.get(), tile_sizes, unroll_factors,
-                                    /*collapseParallelLoops=*/false));
+  {
+    xla::mlir_gpu::LowerLHLOToGPUOptions options;
+    options.tile_sizes = tile_sizes;
+    options.unroll_factors = unroll_factors;
+    options.collapse_parallel_loops = false;
+    TF_RETURN_IF_ERROR(xla::mlir_gpu::LowerLHLOToGPU(module.get(), options));
+  }
   TF_RETURN_IF_ERROR(xla::mlir_gpu::LowerKernelBodiesToNVVM(module.get()));
   // TODO(b/156985522): Figure out why we get a segfault when generating Tanh
   // with 'same_shape' containing {0, 1}. We would also get the crash if we

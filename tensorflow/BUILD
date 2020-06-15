@@ -531,6 +531,7 @@ package_group(
 
 # Packages that use composite tensors or dispatch.
 # TODO(b/154762408) Remove this package group once it's no longer needed.
+# If this is modified, then copy.bara.sky must also be modified.
 package_group(name = "composite_tensor_whitelist")
 
 # Packages that use private types symbols, until they are exported.
@@ -539,6 +540,11 @@ package_group(
     name = "types_whitelist",
     packages = ["//learning/deepmind/tensorflow/replicator/..."],
 )
+
+# Packages that use StructuredTensors.
+# TODO(b/159007891) Remove this package once StructuredTensor is exported.
+# If this is modified, then copy.bara.sky must also be modified.
+package_group(name = "structured_tensor_whitelist")
 
 filegroup(
     name = "intel_binary_blob",

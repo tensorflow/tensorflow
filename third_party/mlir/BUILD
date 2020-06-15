@@ -2126,6 +2126,7 @@ cc_library(
         ":Analysis",
         ":ControlFlowInterfaces",
         ":IR",
+        ":LinalgOps",
         ":LoopLikeInterface",
         ":Pass",
         ":SCFDialect",

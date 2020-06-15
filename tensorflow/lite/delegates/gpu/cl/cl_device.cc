@@ -105,8 +105,18 @@ OpenCLVersion ParseCLVersion(const std::string& version) {
     } else {
       return OpenCLVersion::CL_1_0;
     }
+  } else if (major == 2) {
+    if (minor == 2) {
+      return OpenCLVersion::CL_2_2;
+    } else if (minor == 1) {
+      return OpenCLVersion::CL_2_1;
+    } else {
+      return OpenCLVersion::CL_2_0;
+    }
+  } else if (major == 3) {
+    return OpenCLVersion::CL_3_0;
   } else {
-    return OpenCLVersion::CL_2_0;
+    return OpenCLVersion::CL_1_0;
   }
 }
 
@@ -227,6 +237,12 @@ std::string OpenCLVersionToString(OpenCLVersion version) {
       return "1.2";
     case OpenCLVersion::CL_2_0:
       return "2.0";
+    case OpenCLVersion::CL_2_1:
+      return "2.1";
+    case OpenCLVersion::CL_2_2:
+      return "2.2";
+    case OpenCLVersion::CL_3_0:
+      return "3.0";
   }
 }
 

@@ -192,7 +192,7 @@ cc_library(
             "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
         ],
         "//tensorflow:linux_s390x": [
-            "@llvm-project//llvm:system_z_target",  # fixdeps: keep
+            "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
         ],
         "//conditions:default": [
         ],

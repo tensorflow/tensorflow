@@ -415,7 +415,7 @@ class LhloBroadcastInDimConverter
   LogicalResult matchAndRewrite(
       xla_lhlo::BroadcastInDimOp op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
-    xla_lhlo::BroadcastInDimOp::OperandAdaptor operand_adaptor(args);
+    xla_lhlo::BroadcastInDimOp::Adaptor operand_adaptor(args);
     auto result_type = operand_adaptor.output().getType().cast<MemRefType>();
     auto result_shape = result_type.getShape();
 
@@ -476,7 +476,7 @@ class LhloBroadcastInDimConverter
   std::pair<Value, SmallVector<int64_t, 2>> InsertReshapeIfNecessary(
       xla_lhlo::BroadcastInDimOp op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const {
-    xla_lhlo::BroadcastInDimOp::OperandAdaptor operand_adaptor(args);
+    xla_lhlo::BroadcastInDimOp::Adaptor operand_adaptor(args);
     Value operand = operand_adaptor.operand();
     auto operand_type = operand_adaptor.operand().getType().cast<MemRefType>();
     auto operand_shape = operand_type.getShape();

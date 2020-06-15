@@ -412,10 +412,10 @@ cc_binary(
     linkopts = llvm_linkopts,
     stamp = 0,
     deps = [
+        ":Support",
+        ":TableGen",
         ":config",
-        ":support",
-        ":tablegen",
-        ":utils_tablegen",
+        ":tblgen",
     ],
 )
 
@@ -429,7 +429,7 @@ cc_binary(
     copts = llvm_copts,
     linkopts = llvm_linkopts,
     stamp = 0,
-    deps = [":support"],
+    deps = [":Support"],
 )
 
 llvm_target_list = [
@@ -624,24 +624,18 @@ gentbl(
     ]),
 )
 
-[[
-    [gentbl(
-        name = target["name"] + "CommonTableGen",
-        tbl_outs = target["tbl_outs"],
-        tblgen = ":llvm-tblgen",
-        td_file = "lib/Target/" + target["dir_name"] + "/" + target["short_name"] + ".td",
-        td_srcs = [
-            ":common_target_td_sources",
-        ] + glob([
-            "lib/Target/" + target["dir_name"] + "/*.td",
-        ]),
-        deps = target.get("tbl_deps", []),
-    )],
-    [alias(
-        name = target["lower_name"] + "_target_gen",
-        actual = target["name"] + "CommonTableGen",
-    )],
-] for target in llvm_target_list]
+[gentbl(
+    name = target["name"] + "CommonTableGen",
+    tbl_outs = target["tbl_outs"],
+    tblgen = ":llvm-tblgen",
+    td_file = "lib/Target/" + target["dir_name"] + "/" + target["short_name"] + ".td",
+    td_srcs = [
+        ":common_target_td_sources",
+    ] + glob([
+        "lib/Target/" + target["dir_name"] + "/*.td",
+    ]),
+    deps = target.get("tbl_deps", []),
+) for target in llvm_target_list]
 
 # This target is used to provide *.def files to x86_code_gen.
 # Files with '.def' extension are not allowed in 'srcs' of 'cc_library' rule.
@@ -678,7 +672,7 @@ cc_binary(
     copts = llvm_copts,
     linkopts = llvm_linkopts,
     deps = [
-        ":support",
+        ":Support",
     ],
 )
 
@@ -716,11 +710,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "aarch64_asm_parser",
-    actual = ":AArch64AsmParser",
-)
-
 cc_library(
     name = "AArch64CodeGen",
     srcs = glob([
@@ -755,11 +744,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "aarch64_code_gen",
-    actual = ":AArch64CodeGen",
-)
-
 cc_library(
     name = "AArch64Desc",
     srcs = glob([
@@ -775,22 +759,17 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm-project/llvm/lib/Target/AArch64"],
     deps = [
+        ":AArch64CommonTableGen",
         ":AArch64Info",
         ":AArch64Utils",
         ":BinaryFormat",
         ":MC",
         ":Support",
-        ":aarch64_target_gen",
         ":attributes_gen",
         ":config",
         ":intrinsic_enums_gen",
         ":intrinsics_impl_gen",
     ],
-)
-
-alias(
-    name = "aarch64_desc",
-    actual = ":AArch64Desc",
 )
 
 cc_library(
@@ -818,11 +797,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "aarch64_disassembler",
-    actual = ":AArch64Disassembler",
-)
-
 cc_library(
     name = "AArch64Info",
     srcs = glob([
@@ -841,16 +815,11 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm-project/llvm/lib/Target/AArch64"],
     deps = [
+        ":CodeGen",
         ":Support",
-        ":code_gen",
+        ":Target",
         ":config",
-        ":target",
     ],
-)
-
-alias(
-    name = "aarch64_info",
-    actual = ":AArch64Info",
 )
 
 cc_library(
@@ -869,16 +838,11 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm-project/llvm/lib/Target/AArch64"],
     deps = [
+        ":AArch64CommonTableGen",
+        ":MC",
         ":Support",
-        ":aarch64_target_gen",
         ":config",
-        ":mc",
     ],
-)
-
-alias(
-    name = "aarch64_utils",
-    actual = ":AArch64Utils",
 )
 
 cc_library(
@@ -904,11 +868,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "amdgpu_asm_parser",
-    actual = ":AMDGPUAsmParser",
 )
 
 cc_library(
@@ -948,11 +907,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "amdgpu_code_gen",
-    actual = ":AMDGPUCodeGen",
-)
-
 cc_library(
     name = "AMDGPUDesc",
     srcs = glob([
@@ -976,11 +930,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "amdgpu_desc",
-    actual = ":AMDGPUDesc",
 )
 
 cc_library(
@@ -1008,11 +957,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "amdgpu_disassembler",
-    actual = ":AMDGPUDisassembler",
-)
-
 cc_library(
     name = "AMDGPUInfo",
     srcs = glob([
@@ -1028,17 +972,12 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm-project/llvm/lib/Target/AMDGPU"],
     deps = [
+        ":AMDGPUCommonTableGen",
+        ":Core",
         ":Support",
-        ":amdgpu_target_gen",
         ":config",
-        ":core",
         ":r600_target_gen",
     ],
-)
-
-alias(
-    name = "amdgpu_info",
-    actual = ":AMDGPUInfo",
 )
 
 cc_library(
@@ -1056,19 +995,14 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm-project/llvm/lib/Target/AMDGPU"],
     deps = [
+        ":AMDGPUCommonTableGen",
         ":BinaryFormat",
         ":Core",
         ":MC",
         ":Support",
-        ":amdgpu_target_gen",
         ":config",
         ":r600_target_gen",
     ],
-)
-
-alias(
-    name = "amdgpu_utils",
-    actual = ":AMDGPUUtils",
 )
 
 cc_library(
@@ -1101,11 +1035,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "arc_code_gen",
-    actual = ":ARCCodeGen",
-)
-
 cc_library(
     name = "ARCDesc",
     srcs = glob([
@@ -1126,11 +1055,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "arc_desc",
-    actual = ":ARCDesc",
 )
 
 cc_library(
@@ -1155,11 +1079,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "arc_disassembler",
-    actual = ":ARCDisassembler",
-)
-
 cc_library(
     name = "ARCInfo",
     srcs = glob([
@@ -1178,11 +1097,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "arc_info",
-    actual = ":ARCInfo",
 )
 
 cc_library(
@@ -1208,11 +1122,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "arm_asm_parser",
-    actual = ":ARMAsmParser",
 )
 
 cc_library(
@@ -1249,11 +1158,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "arm_code_gen",
-    actual = ":ARMCodeGen",
-)
-
 cc_library(
     name = "ARMDesc",
     srcs = glob([
@@ -1271,23 +1175,18 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm-project/llvm/lib/Target/ARM"],
     deps = [
+        ":ARMCommonTableGen",
         ":ARMInfo",
         ":ARMUtils",
         ":BinaryFormat",
         ":MC",
         ":MCDisassembler",
         ":Support",
-        ":arm_target_gen",
         ":attributes_gen",
         ":config",
         ":intrinsic_enums_gen",
         ":intrinsics_impl_gen",
     ],
-)
-
-alias(
-    name = "arm_desc",
-    actual = ":ARMDesc",
 )
 
 cc_library(
@@ -1314,11 +1213,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "arm_disassembler",
-    actual = ":ARMDisassembler",
-)
-
 cc_library(
     name = "ARMInfo",
     srcs = glob([
@@ -1335,16 +1229,11 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm-project/llvm/lib/Target/ARM"],
     deps = [
+        ":ARMCommonTableGen",
         ":Support",
-        ":arm_target_gen",
+        ":Target",
         ":config",
-        ":target",
     ],
-)
-
-alias(
-    name = "arm_info",
-    actual = ":ARMInfo",
 )
 
 cc_library(
@@ -1363,16 +1252,11 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm-project/llvm/lib/Target/ARM"],
     deps = [
+        ":ARMCommonTableGen",
+        ":MC",
         ":Support",
-        ":arm_target_gen",
         ":config",
-        ":mc",
     ],
-)
-
-alias(
-    name = "arm_utils",
-    actual = ":ARMUtils",
 )
 
 cc_library(
@@ -1397,11 +1281,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "avr_asm_parser",
-    actual = ":AVRAsmParser",
 )
 
 cc_library(
@@ -1432,11 +1311,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "avr_code_gen",
-    actual = ":AVRCodeGen",
-)
-
 cc_library(
     name = "AVRDesc",
     srcs = glob([
@@ -1457,11 +1331,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "avr_desc",
-    actual = ":AVRDesc",
 )
 
 cc_library(
@@ -1486,11 +1355,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "avr_disassembler",
-    actual = ":AVRDisassembler",
-)
-
 cc_library(
     name = "AVRInfo",
     srcs = glob([
@@ -1509,11 +1373,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "avr_info",
-    actual = ":AVRInfo",
 )
 
 cc_library(
@@ -1537,11 +1396,6 @@ cc_library(
         ":TransformUtils",
         ":config",
     ],
-)
-
-alias(
-    name = "aggressive_inst_combine",
-    actual = ":AggressiveInstCombine",
 )
 
 cc_library(
@@ -1570,11 +1424,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "analysis",
-    actual = ":Analysis",
-)
-
 cc_library(
     name = "AsmParser",
     srcs = glob([
@@ -1595,11 +1444,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "asm_parser",
-    actual = ":AsmParser",
 )
 
 cc_library(
@@ -1634,11 +1478,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "asm_printer",
-    actual = ":AsmPrinter",
-)
-
 cc_library(
     name = "BPFAsmParser",
     srcs = glob([
@@ -1661,11 +1500,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "bpf_asm_parser",
-    actual = ":BPFAsmParser",
 )
 
 cc_library(
@@ -1696,11 +1530,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "bpf_code_gen",
-    actual = ":BPFCodeGen",
-)
-
 cc_library(
     name = "BPFDesc",
     srcs = glob([
@@ -1721,11 +1550,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "bpf_desc",
-    actual = ":BPFDesc",
 )
 
 cc_library(
@@ -1750,11 +1574,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "bpf_disassembler",
-    actual = ":BPFDisassembler",
-)
-
 cc_library(
     name = "BPFInfo",
     srcs = glob([
@@ -1773,11 +1592,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "bpf_info",
-    actual = ":BPFInfo",
 )
 
 cc_library(
@@ -1802,11 +1616,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "binary_format",
-    actual = ":BinaryFormat",
-)
-
 cc_library(
     name = "BitReader",
     srcs = glob([
@@ -1828,11 +1637,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "bit_reader",
-    actual = ":BitReader",
 )
 
 cc_library(
@@ -1862,11 +1666,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "bit_writer",
-    actual = ":BitWriter",
-)
-
 cc_library(
     name = "BitstreamReader",
     srcs = glob([
@@ -1885,11 +1684,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "bitstream_reader",
-    actual = ":BitstreamReader",
 )
 
 cc_library(
@@ -1913,11 +1707,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "cf_guard",
-    actual = ":CFGuard",
-)
-
 cc_library(
     name = "CodeGen",
     srcs = glob([
@@ -1938,6 +1727,7 @@ cc_library(
         ":BitReader",
         ":BitWriter",
         ":Core",
+        ":Instrumentation",
         ":MC",
         ":ProfileData",
         ":Scalar",
@@ -1945,13 +1735,7 @@ cc_library(
         ":Target",
         ":TransformUtils",
         ":config",
-        ":instrumentation",
     ],
-)
-
-alias(
-    name = "code_gen",
-    actual = ":CodeGen",
 )
 
 cc_library(
@@ -2001,11 +1785,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "core",
-    actual = ":Core",
-)
-
 cc_library(
     name = "Coroutines",
     srcs = glob([
@@ -2031,11 +1810,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "coroutines",
-    actual = ":Coroutines",
-)
-
 cc_library(
     name = "Coverage",
     srcs = glob([
@@ -2057,11 +1831,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "coverage",
-    actual = ":Coverage",
 )
 
 cc_library(
@@ -2089,11 +1858,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "dwarf_linker",
-    actual = ":DWARFLinker",
-)
-
 cc_library(
     name = "DebugInfoCodeView",
     srcs = glob([
@@ -2109,16 +1873,11 @@ cc_library(
     ]),
     copts = llvm_copts,
     deps = [
+        ":BinaryFormat",
         ":DebugInfoMSF",
         ":Support",
-        ":binary_format",
         ":config",
     ],
-)
-
-alias(
-    name = "debug_info_code_view",
-    actual = ":DebugInfoCodeView",
 )
 
 cc_library(
@@ -2144,11 +1903,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "debug_info_dwarf",
-    actual = ":DebugInfoDWARF",
-)
-
 cc_library(
     name = "DebugInfoGSYM",
     srcs = glob([
@@ -2172,11 +1926,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "debug_info_gsym",
-    actual = ":DebugInfoGSYM",
-)
-
 cc_library(
     name = "DebugInfoMSF",
     srcs = glob([
@@ -2195,11 +1944,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "debug_info_msf",
-    actual = ":DebugInfoMSF",
 )
 
 cc_library(
@@ -2226,11 +1970,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "debug_info_pdb",
-    actual = ":DebugInfoPDB",
-)
-
 cc_library(
     name = "Demangle",
     srcs = glob([
@@ -2246,11 +1985,6 @@ cc_library(
     ]),
     copts = llvm_copts,
     deps = [":config"],
-)
-
-alias(
-    name = "demangle",
-    actual = ":Demangle",
 )
 
 cc_library(
@@ -2273,11 +2007,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "dlltool_driver",
-    actual = ":DlltoolDriver",
 )
 
 cc_library(
@@ -2305,11 +2034,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "execution_engine",
-    actual = ":ExecutionEngine",
-)
-
 cc_library(
     name = "Extensions",
     srcs = glob([
@@ -2325,11 +2049,6 @@ cc_library(
     ]),
     copts = llvm_copts,
     deps = [":config"],
-)
-
-alias(
-    name = "extensions",
-    actual = ":Extensions",
 )
 
 cc_library(
@@ -2352,11 +2071,6 @@ cc_library(
         ":TransformUtils",
         ":config",
     ],
-)
-
-alias(
-    name = "frontend_open_mp",
-    actual = ":FrontendOpenMP",
 )
 
 cc_library(
@@ -2383,11 +2097,6 @@ cc_library(
         ":Target",
         ":config",
     ],
-)
-
-alias(
-    name = "fuzz_mutate",
-    actual = ":FuzzMutate",
 )
 
 cc_library(
@@ -2417,11 +2126,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "global_i_sel",
-    actual = ":GlobalISel",
-)
-
 cc_library(
     name = "HexagonAsmParser",
     srcs = glob([
@@ -2444,11 +2148,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "hexagon_asm_parser",
-    actual = ":HexagonAsmParser",
 )
 
 cc_library(
@@ -2484,11 +2183,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "hexagon_code_gen",
-    actual = ":HexagonCodeGen",
-)
-
 cc_library(
     name = "HexagonDesc",
     srcs = glob([
@@ -2509,11 +2203,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "hexagon_desc",
-    actual = ":HexagonDesc",
 )
 
 cc_library(
@@ -2540,11 +2229,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "hexagon_disassembler",
-    actual = ":HexagonDisassembler",
-)
-
 cc_library(
     name = "HexagonInfo",
     srcs = glob([
@@ -2563,11 +2247,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "hexagon_info",
-    actual = ":HexagonInfo",
 )
 
 cc_library(
@@ -2608,11 +2287,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "ipo",
-    actual = ":IPO",
-)
-
 cc_library(
     name = "IRReader",
     srcs = glob([
@@ -2636,11 +2310,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "ir_reader",
-    actual = ":IRReader",
-)
-
 cc_library(
     name = "InstCombine",
     srcs = glob([
@@ -2658,16 +2327,11 @@ cc_library(
     deps = [
         ":Analysis",
         ":Core",
+        ":InstCombineTableGen",
         ":Support",
         ":TransformUtils",
         ":config",
-        ":instcombine_transforms_gen",
     ],
-)
-
-alias(
-    name = "inst_combine",
-    actual = ":InstCombine",
 )
 
 cc_library(
@@ -2699,11 +2363,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "instrumentation",
-    actual = ":Instrumentation",
-)
-
 cc_library(
     name = "Interpreter",
     srcs = glob([
@@ -2727,11 +2386,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "interpreter",
-    actual = ":Interpreter",
-)
-
 cc_library(
     name = "JITLink",
     srcs = glob([
@@ -2752,11 +2406,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "jit_link",
-    actual = ":JITLink",
 )
 
 cc_library(
@@ -2798,11 +2447,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "lto",
-    actual = ":LTO",
-)
-
 cc_library(
     name = "LanaiAsmParser",
     srcs = glob([
@@ -2825,11 +2469,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "lanai_asm_parser",
-    actual = ":LanaiAsmParser",
 )
 
 cc_library(
@@ -2863,11 +2502,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "lanai_code_gen",
-    actual = ":LanaiCodeGen",
-)
-
 cc_library(
     name = "LanaiDesc",
     srcs = glob([
@@ -2889,11 +2523,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "lanai_desc",
-    actual = ":LanaiDesc",
 )
 
 cc_library(
@@ -2920,11 +2549,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "lanai_disassembler",
-    actual = ":LanaiDisassembler",
-)
-
 cc_library(
     name = "LanaiInfo",
     srcs = glob([
@@ -2943,11 +2567,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "lanai_info",
-    actual = ":LanaiInfo",
 )
 
 cc_library(
@@ -2974,11 +2593,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "lib_driver",
-    actual = ":LibDriver",
-)
-
 cc_library(
     name = "LineEditor",
     srcs = glob([
@@ -2997,11 +2611,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "line_editor",
-    actual = ":LineEditor",
 )
 
 cc_library(
@@ -3026,11 +2635,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "linker",
-    actual = ":Linker",
-)
-
 cc_library(
     name = "MC",
     srcs = glob([
@@ -3049,15 +2653,8 @@ cc_library(
         ":BinaryFormat",
         ":DebugInfoCodeView",
         ":Support",
-        ":binary_format",
         ":config",
-        ":debug_info_code_view",
     ],
-)
-
-alias(
-    name = "mc",
-    actual = ":MC",
 )
 
 cc_library(
@@ -3081,11 +2678,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "mca",
-    actual = ":MCA",
-)
-
 cc_library(
     name = "MCDisassembler",
     srcs = glob([
@@ -3105,11 +2697,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "mc_disassembler",
-    actual = ":MCDisassembler",
 )
 
 cc_library(
@@ -3137,11 +2724,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "mcjit",
-    actual = ":MCJIT",
-)
-
 cc_library(
     name = "MCParser",
     srcs = glob([
@@ -3161,11 +2743,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "mc_parser",
-    actual = ":MCParser",
 )
 
 cc_library(
@@ -3194,11 +2771,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "mir_parser",
-    actual = ":MIRParser",
-)
-
 cc_library(
     name = "MLPolicies",
     srcs = glob([
@@ -3218,11 +2790,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "ml_policies",
-    actual = ":MLPolicies",
 )
 
 cc_library(
@@ -3247,11 +2814,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "msp430_asm_parser",
-    actual = ":MSP430AsmParser",
 )
 
 cc_library(
@@ -3282,11 +2844,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "msp430_code_gen",
-    actual = ":MSP430CodeGen",
-)
-
 cc_library(
     name = "MSP430Desc",
     srcs = glob([
@@ -3307,11 +2864,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "msp430_desc",
-    actual = ":MSP430Desc",
 )
 
 cc_library(
@@ -3336,11 +2888,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "msp430_disassembler",
-    actual = ":MSP430Disassembler",
-)
-
 cc_library(
     name = "MSP430Info",
     srcs = glob([
@@ -3359,11 +2906,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "msp430_info",
-    actual = ":MSP430Info",
 )
 
 cc_library(
@@ -3388,11 +2930,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "mips_asm_parser",
-    actual = ":MipsAsmParser",
 )
 
 cc_library(
@@ -3425,11 +2962,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "mips_code_gen",
-    actual = ":MipsCodeGen",
-)
-
 cc_library(
     name = "MipsDesc",
     srcs = glob([
@@ -3450,11 +2982,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "mips_desc",
-    actual = ":MipsDesc",
 )
 
 cc_library(
@@ -3479,11 +3006,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "mips_disassembler",
-    actual = ":MipsDisassembler",
-)
-
 cc_library(
     name = "MipsInfo",
     srcs = glob([
@@ -3502,11 +3024,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "mips_info",
-    actual = ":MipsInfo",
 )
 
 cc_library(
@@ -3542,11 +3059,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "nvptx_code_gen",
-    actual = ":NVPTXCodeGen",
-)
-
 cc_library(
     name = "NVPTXDesc",
     srcs = glob([
@@ -3562,17 +3074,12 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm-project/llvm/lib/Target/NVPTX"],
     deps = [
-        "nvptx_target_gen",
         ":MC",
+        ":NVPTXCommonTableGen",
         ":NVPTXInfo",
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "nvptx_desc",
-    actual = ":NVPTXDesc",
 )
 
 cc_library(
@@ -3592,18 +3099,13 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm-project/llvm/lib/Target/NVPTX"],
     deps = [
-        "nvptx_target_gen",
+        ":Core",
+        ":NVPTXCommonTableGen",
         ":Support",
+        ":Target",
         ":attributes_gen",
         ":config",
-        ":core",
-        ":target",
     ],
-)
-
-alias(
-    name = "nvptx_info",
-    actual = ":NVPTXInfo",
 )
 
 cc_library(
@@ -3628,11 +3130,6 @@ cc_library(
         ":TransformUtils",
         ":config",
     ],
-)
-
-alias(
-    name = "objc_arc",
-    actual = ":ObjCARC",
 )
 
 cc_library(
@@ -3661,11 +3158,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "object",
-    actual = ":Object",
-)
-
 cc_library(
     name = "ObjectYAML",
     srcs = glob([
@@ -3689,11 +3181,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "object_yaml",
-    actual = ":ObjectYAML",
-)
-
 cc_library(
     name = "Option",
     srcs = glob([
@@ -3714,11 +3201,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "option",
-    actual = ":Option",
-)
-
 cc_library(
     name = "OrcError",
     srcs = glob([
@@ -3737,11 +3219,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "orc_error",
-    actual = ":OrcError",
 )
 
 cc_library(
@@ -3772,11 +3249,6 @@ cc_library(
         ":TransformUtils",
         ":config",
     ],
-)
-
-alias(
-    name = "orc_jit",
-    actual = ":OrcJIT",
 )
 
 cc_library(
@@ -3812,11 +3284,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "passes",
-    actual = ":Passes",
-)
-
 cc_library(
     name = "PowerPCAsmParser",
     srcs = glob([
@@ -3839,11 +3306,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "powerpc_asm_parser",
-    actual = ":PowerPCAsmParser",
 )
 
 cc_library(
@@ -3877,11 +3339,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "powerpc_code_gen",
-    actual = ":PowerPCCodeGen",
-)
-
 cc_library(
     name = "PowerPCDesc",
     srcs = glob([
@@ -3899,19 +3356,14 @@ cc_library(
     deps = [
         ":BinaryFormat",
         ":MC",
+        ":PowerPCCommonTableGen",
         ":PowerPCInfo",
         ":Support",
         ":attributes_gen",
         ":config",
         ":intrinsic_enums_gen",
         ":intrinsics_impl_gen",
-        ":powerpc_target_gen",
     ],
-)
-
-alias(
-    name = "powerpc_desc",
-    actual = ":PowerPCDesc",
 )
 
 cc_library(
@@ -3936,11 +3388,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "powerpc_disassembler",
-    actual = ":PowerPCDisassembler",
-)
-
 cc_library(
     name = "PowerPCInfo",
     srcs = glob([
@@ -3958,18 +3405,13 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm-project/llvm/lib/Target/PowerPC"],
     deps = [
+        ":Core",
+        ":PowerPCCommonTableGen",
         ":Support",
+        ":Target",
         ":attributes_gen",
         ":config",
-        ":core",
-        ":powerpc_target_gen",
-        ":target",
     ],
-)
-
-alias(
-    name = "powerpc_info",
-    actual = ":PowerPCInfo",
 )
 
 cc_library(
@@ -3991,11 +3433,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "profile_data",
-    actual = ":ProfileData",
 )
 
 cc_library(
@@ -4021,11 +3458,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "riscv_asm_parser",
-    actual = ":RISCVAsmParser",
 )
 
 cc_library(
@@ -4059,11 +3491,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "riscv_code_gen",
-    actual = ":RISCVCodeGen",
-)
-
 cc_library(
     name = "RISCVDesc",
     srcs = glob([
@@ -4085,11 +3512,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "riscv_desc",
-    actual = ":RISCVDesc",
 )
 
 cc_library(
@@ -4114,11 +3536,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "riscv_disassembler",
-    actual = ":RISCVDisassembler",
-)
-
 cc_library(
     name = "RISCVInfo",
     srcs = glob([
@@ -4137,11 +3554,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "riscv_info",
-    actual = ":RISCVInfo",
 )
 
 cc_library(
@@ -4164,11 +3576,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "riscv_utils",
-    actual = ":RISCVUtils",
-)
-
 cc_library(
     name = "Remarks",
     srcs = glob([
@@ -4188,11 +3595,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "remarks",
-    actual = ":Remarks",
 )
 
 cc_library(
@@ -4219,16 +3621,11 @@ cc_library(
     copts = llvm_copts,
     deps = [
         ":MC",
+        ":MCDisassembler",
         ":Object",
         ":Support",
         ":config",
-        ":mc_disassembler",
     ],
-)
-
-alias(
-    name = "runtime_dyld",
-    actual = ":RuntimeDyld",
 )
 
 cc_library(
@@ -4256,15 +3653,10 @@ cc_library(
         ":Core",
         ":InstCombine",
         ":Support",
+        ":Target",
         ":TransformUtils",
         ":config",
-        ":target",
     ],
-)
-
-alias(
-    name = "scalar",
-    actual = ":Scalar",
 )
 
 cc_library(
@@ -4293,11 +3685,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "selection_dag",
-    actual = ":SelectionDAG",
-)
-
 cc_library(
     name = "SparcAsmParser",
     srcs = glob([
@@ -4320,11 +3707,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "sparc_asm_parser",
-    actual = ":SparcAsmParser",
 )
 
 cc_library(
@@ -4355,11 +3737,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "sparc_code_gen",
-    actual = ":SparcCodeGen",
-)
-
 cc_library(
     name = "SparcDesc",
     srcs = glob([
@@ -4380,11 +3757,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "sparc_desc",
-    actual = ":SparcDesc",
 )
 
 cc_library(
@@ -4409,11 +3781,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "sparc_disassembler",
-    actual = ":SparcDisassembler",
-)
-
 cc_library(
     name = "SparcInfo",
     srcs = glob([
@@ -4432,11 +3799,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "sparc_info",
-    actual = ":SparcInfo",
 )
 
 cc_library(
@@ -4470,11 +3832,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "support",
-    actual = ":Support",
-)
-
 cc_library(
     name = "Symbolize",
     srcs = glob([
@@ -4499,11 +3856,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "symbolize",
-    actual = ":Symbolize",
-)
-
 cc_library(
     name = "SystemZAsmParser",
     srcs = glob([
@@ -4526,11 +3878,6 @@ cc_library(
         ":SystemZInfo",
         ":config",
     ],
-)
-
-alias(
-    name = "system_z_asm_parser",
-    actual = ":SystemZAsmParser",
 )
 
 cc_library(
@@ -4563,11 +3910,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "system_z_code_gen",
-    actual = ":SystemZCodeGen",
-)
-
 cc_library(
     name = "SystemZDesc",
     srcs = glob([
@@ -4587,13 +3929,8 @@ cc_library(
         ":Support",
         ":SystemZInfo",
         ":config",
-        ":system_z_target_gen",
+        ":SystemZCommonTableGen",
     ],
-)
-
-alias(
-    name = "system_z_desc",
-    actual = ":SystemZDesc",
 )
 
 cc_library(
@@ -4620,11 +3957,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "system_z_disassembler",
-    actual = ":SystemZDisassembler",
-)
-
 cc_library(
     name = "SystemZInfo",
     srcs = glob([
@@ -4643,13 +3975,8 @@ cc_library(
     deps = [
         ":Support",
         ":config",
-        ":system_z_target_gen",
+        ":SystemZCommonTableGen",
     ],
-)
-
-alias(
-    name = "system_z_info",
-    actual = ":SystemZInfo",
 )
 
 cc_library(
@@ -4669,15 +3996,10 @@ cc_library(
     ]),
     copts = llvm_copts,
     deps = [
+        ":MC",
         ":Support",
         ":config",
-        ":mc",
     ],
-)
-
-alias(
-    name = "tablegen",
-    actual = ":TableGen",
 )
 
 cc_library(
@@ -4708,11 +4030,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "target",
-    actual = ":Target",
-)
-
 cc_library(
     name = "TestingSupport",
     srcs = glob([
@@ -4731,11 +4048,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "testing_support",
-    actual = ":TestingSupport",
 )
 
 cc_library(
@@ -4773,11 +4085,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "text_api",
-    actual = ":TextAPI",
-)
-
 cc_library(
     name = "TransformUtils",
     srcs = glob([
@@ -4802,11 +4109,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "transform_utils",
-    actual = ":TransformUtils",
-)
-
 cc_library(
     name = "VEAsmParser",
     srcs = glob([
@@ -4829,11 +4131,6 @@ cc_library(
         ":VEInfo",
         ":config",
     ],
-)
-
-alias(
-    name = "ve_asm_parser",
-    actual = ":VEAsmParser",
 )
 
 cc_library(
@@ -4865,11 +4162,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "ve_code_gen",
-    actual = ":VECodeGen",
-)
-
 cc_library(
     name = "VEDesc",
     srcs = glob([
@@ -4890,11 +4182,6 @@ cc_library(
         ":VEInfo",
         ":config",
     ],
-)
-
-alias(
-    name = "ve_desc",
-    actual = ":VEDesc",
 )
 
 cc_library(
@@ -4919,11 +4206,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "ve_disassembler",
-    actual = ":VEDisassembler",
-)
-
 cc_library(
     name = "VEInfo",
     srcs = glob([
@@ -4942,11 +4224,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "ve_info",
-    actual = ":VEInfo",
 )
 
 cc_library(
@@ -4968,16 +4245,11 @@ cc_library(
     deps = [
         ":Analysis",
         ":Core",
+        ":Scalar",
         ":Support",
         ":TransformUtils",
         ":config",
-        ":scalar",
     ],
-)
-
-alias(
-    name = "vectorize",
-    actual = ":Vectorize",
 )
 
 cc_library(
@@ -5001,11 +4273,6 @@ cc_library(
         ":WebAssemblyInfo",
         ":config",
     ],
-)
-
-alias(
-    name = "web_assembly_asm_parser",
-    actual = ":WebAssemblyAsmParser",
 )
 
 cc_library(
@@ -5040,11 +4307,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "web_assembly_code_gen",
-    actual = ":WebAssemblyCodeGen",
-)
-
 cc_library(
     name = "WebAssemblyDesc",
     srcs = glob([
@@ -5065,11 +4327,6 @@ cc_library(
         ":WebAssemblyInfo",
         ":config",
     ],
-)
-
-alias(
-    name = "web_assembly_desc",
-    actual = ":WebAssemblyDesc",
 )
 
 cc_library(
@@ -5096,11 +4353,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "web_assembly_disassembler",
-    actual = ":WebAssemblyDisassembler",
-)
-
 cc_library(
     name = "WebAssemblyInfo",
     srcs = glob([
@@ -5121,11 +4373,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "web_assembly_info",
-    actual = ":WebAssemblyInfo",
-)
-
 cc_library(
     name = "WindowsManifest",
     srcs = glob([
@@ -5144,11 +4391,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "windows_manifest",
-    actual = ":WindowsManifest",
 )
 
 cc_library(
@@ -5173,11 +4415,6 @@ cc_library(
         ":X86Info",
         ":config",
     ],
-)
-
-alias(
-    name = "x86_asm_parser",
-    actual = ":X86AsmParser",
 )
 
 cc_library(
@@ -5213,11 +4450,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "x86_code_gen",
-    actual = ":X86CodeGen",
-)
-
 cc_library(
     name = "X86Desc",
     srcs = glob([
@@ -5242,11 +4474,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "x86_desc",
-    actual = ":X86Desc",
-)
-
 cc_library(
     name = "X86Disassembler",
     srcs = glob([
@@ -5269,11 +4496,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "x86_disassembler",
-    actual = ":X86Disassembler",
-)
-
 cc_library(
     name = "X86Info",
     srcs = glob([
@@ -5290,16 +4512,11 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm-project/llvm/lib/Target/X86"],
     deps = [
+        ":MC",
         ":Support",
+        ":X86CommonTableGen",
         ":config",
-        ":mc",
-        ":x86_target_gen",
     ],
-)
-
-alias(
-    name = "x86_info",
-    actual = ":X86Info",
 )
 
 cc_library(
@@ -5332,11 +4549,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "x_core_code_gen",
-    actual = ":XCoreCodeGen",
-)
-
 cc_library(
     name = "XCoreDesc",
     srcs = glob([
@@ -5357,11 +4569,6 @@ cc_library(
         ":XCoreInfo",
         ":config",
     ],
-)
-
-alias(
-    name = "x_core_desc",
-    actual = ":XCoreDesc",
 )
 
 cc_library(
@@ -5386,11 +4593,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "x_core_disassembler",
-    actual = ":XCoreDisassembler",
-)
-
 cc_library(
     name = "XCoreInfo",
     srcs = glob([
@@ -5409,11 +4611,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "x_core_info",
-    actual = ":XCoreInfo",
 )
 
 cc_library(
@@ -5435,11 +4632,6 @@ cc_library(
         ":Support",
         ":config",
     ],
-)
-
-alias(
-    name = "x_ray",
-    actual = ":XRay",
 )
 
 cc_library(
@@ -5480,124 +4672,4 @@ cc_library(
         ":config",
         ":gtest",
     ],
-)
-
-alias(
-    name = "aarch64_target",
-    actual = ":aarch64_code_gen",
-)
-
-alias(
-    name = "aarch64_target_disassembler",
-    actual = ":aarch64_disassembler",
-)
-
-alias(
-    name = "arm_target",
-    actual = ":arm_code_gen",
-)
-
-alias(
-    name = "arm_target_disassembler",
-    actual = ":arm_disassembler",
-)
-
-alias(
-    name = "codegen",
-    actual = ":code_gen",
-)
-
-alias(
-    name = "frontend_openmp",
-    actual = ":frontend_open_mp",
-)
-
-alias(
-    name = "ipo_transforms",
-    actual = ":ipo",
-)
-
-alias(
-    name = "ir",
-    actual = ":core",
-)
-
-alias(
-    name = "machine_code",
-    actual = ":mc",
-)
-
-alias(
-    name = "machine_code_disassembler",
-    actual = ":mc_disassembler",
-)
-
-alias(
-    name = "nvptx_target",
-    actual = ":nvptx_code_gen",
-)
-
-alias(
-    name = "objcarc_transforms",
-    actual = ":objc_arc",
-)
-
-alias(
-    name = "orcjit",
-    actual = ":orc_jit",
-)
-
-alias(
-    name = "powerpc_target",
-    actual = ":powerpc_code_gen",
-)
-
-alias(
-    name = "powerpc_target_disassembler",
-    actual = ":powerpc_disassembler",
-)
-
-alias(
-    name = "system_z_target",
-    actual = ":system_z_code_gen",
-)
-
-alias(
-    name = "system_z_target_disassembler",
-    actual = ":system_z_disassembler",
-)
-
-alias(
-    name = "scalar_transforms",
-    actual = ":scalar",
-)
-
-alias(
-    name = "target_base",
-    actual = ":target",
-)
-
-alias(
-    name = "x86_target",
-    actual = ":x86_code_gen",
-)
-
-alias(
-    name = "x86_target_disassembler",
-    actual = ":x86_disassembler",
-)
-
-alias(
-    name = "all_targets",
-    actual = ":AllTargetsCodeGens",
-)
-
-alias(
-    name = "instcombine_transforms_gen",
-    actual = ":InstCombineTableGen",
-)
-
-alias(
-    name = "utils_tablegen",
-    actual = ":tblgen",
 )

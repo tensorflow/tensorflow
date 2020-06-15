@@ -157,42 +157,6 @@ TEST(ConvertXPlaneToOpStats, GpuStepDbTest) {
   EXPECT_EQ(precision_stats.compute_32bit_ps(), 40);
 }
 
-TEST(ConcertXPlaneToOpStats, TfFunctionTest) {
-  XSpace space;
-  XPlaneBuilder host_plane_builder(space.add_planes());
-  host_plane_builder.SetName(kHostThreads);
-  host_plane_builder.ReserveLines(1);
-  std::string kFunctionName = "increment";
-
-  auto main_thread = host_plane_builder.GetOrCreateLine(0);
-  CreateTfFunctionCallEvent(&host_plane_builder, &main_thread, kFunctionName,
-                            10, 100, "traced-nonXla", 1);
-  CreateTfFunctionCallEvent(&host_plane_builder, &main_thread, kFunctionName,
-                            150, 20, "notTraced-nonXla", 1);
-  CreateTfFunctionCallEvent(&host_plane_builder, &main_thread, kFunctionName,
-                            200, 80, "traced-nonXla", 2);
-
-  OpStats op_stats = ConvertXSpaceToOpStats(space);
-  const TfFunctionDb& tf_function_db = op_stats.tf_function_db();
-
-  EXPECT_EQ(tf_function_db.tf_functions().size(), 1);
-  EXPECT_EQ(tf_function_db.tf_functions().count(kFunctionName), 1);
-  const TfFunction& tf_function =
-      tf_function_db.tf_functions().at(kFunctionName);
-  EXPECT_EQ(tf_function.total_tracing_count(), 2);
-  EXPECT_EQ(tf_function.compiler(), OTHER_COMPILER);
-  const auto& metrics = tf_function.metrics();
-  EXPECT_EQ(metrics.size(), 2);
-  EXPECT_EQ(metrics.count(TRACED_MODE), 1);
-  EXPECT_EQ(metrics.count(NOT_TRACED_MODE), 1);
-  const auto& traced_mode = metrics.at(TRACED_MODE);
-  EXPECT_EQ(traced_mode.count(), 2);
-  EXPECT_EQ(traced_mode.self_time_ps(), 180);
-  const auto& not_traced_mode = metrics.at(NOT_TRACED_MODE);
-  EXPECT_EQ(not_traced_mode.count(), 1);
-  EXPECT_EQ(not_traced_mode.self_time_ps(), 20);
-}
-
 TEST(ConvertXPlaneToOpStats, PropagateAndDedupErrors) {
   XSpace space;
   static constexpr char kError[] = "host: error";
