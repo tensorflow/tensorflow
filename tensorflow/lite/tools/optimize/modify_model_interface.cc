@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <sstream>
 #include <unordered_set>
+#include <typeinfo>
 
 #include "absl/memory/memory.h"
 #include "flatbuffers/flexbuffers.h"
@@ -92,16 +93,19 @@ std::vector<TensorOpTensor> GetInputTensors(const TensorType& input_type,
                              "modify_model_interface currently only supports "
                              "int8 and int16 quantized models.");
       }
-      // Usually the input model has to have the same quantization layers as the
-      // ones we're trying to remove.
-      if (quant_output->type != input_type) {
-        // An exception from this is when we are setting the input or output
-        // type to uint8.
-        if (!(quant_output->type == TensorType_INT8 &&
-              input_type == TensorType_UINT8)) {
+
+      // The input type must be the same as the model quantization type
+      if (input_type != quant_output->type) {
+        // An exception, allow for UINT8 input type for INT8 quantized model.
+        if (!(input_type == TensorType_UINT8 &&
+            quant_output->type == TensorType_INT8)) {
           TF_LITE_REPORT_ERROR(
-              error_reporter,
-              "Model's type incompatible with output type argument.");
+          error_reporter,
+          "The %s input type is incompatible with %s quantized models. "
+          "To resolve this error, change the input_type to a compatible one. "
+          "See: modify_model_interface.cc",
+          EnumNameTensorType(input_type),
+          EnumNameTensorType(quant_output->type));
         }
       }
       if (quant_output->quantization == nullptr) {
@@ -165,12 +169,17 @@ std::vector<TensorOpTensor> GetOutputTensors(const TensorType& output_type,
                              "int8 and int16 quantized models.");
         return {};
       }
-      if (dequant_input->type != output_type) {
-        if (!(dequant_input->type == TensorType_INT8 &&
-              output_type == TensorType_UINT8)) {
+      if (output_type != dequant_input->type) {
+        // An exception, allow for UINT8 input type for INT8 quantized model.
+        if (!(output_type == TensorType_UINT8 &&
+            dequant_input->type == TensorType_INT8)) {
           TF_LITE_REPORT_ERROR(
-              error_reporter,
-              "Model's type incompatible with output type argument.");
+          error_reporter,
+          "The %s output type is incompatible with %s quantized models. "
+          "To resolve this error, change the output_type to a compatible one. "
+          "See: modify_model_interface.cc",
+          EnumNameTensorType(output_type),
+          EnumNameTensorType(dequant_input->type));
         }
       }
       if (dequant_input->quantization == nullptr) {
