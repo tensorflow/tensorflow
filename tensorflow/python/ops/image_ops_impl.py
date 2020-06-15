@@ -867,7 +867,7 @@ def central_crop(image, central_fraction):
 @tf_export('image.pad_to_bounding_box')
 @dispatch.add_dispatch_support
 def pad_to_bounding_box(image, offset_height, offset_width, target_height,
-                        target_width):
+                        target_width, mode="CONSTANT", name=None, constant_values=0):
   """Pad `image` with zeros to the specified `height` and `width`.
 
   Adds `offset_height` rows of zeros on top, `offset_width` columns of
@@ -962,7 +962,7 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
             0, 0, offset_height, after_padding_height, offset_width,
             after_padding_width, 0, 0
         ]), [4, 2])
-    padded = array_ops.pad(image, paddings)
+    padded = array_ops.pad(image, paddings, mode=mode, name=name, constant_values=constant_values)
 
     padded_shape = [
         None if _is_tensor(i) else i
