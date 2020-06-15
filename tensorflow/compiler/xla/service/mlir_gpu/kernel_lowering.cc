@@ -387,10 +387,7 @@ struct ParallelLoopCollapsingToFirstDim
 };
 }  // namespace
 
-Status LowerLHLOToGPU(mlir::ModuleOp module,
-                      llvm::ArrayRef<unsigned> tile_sizes,
-                      llvm::ArrayRef<unsigned> unroll_factors,
-                      bool collapseParallelLoops) {
+Status LowerLHLOToGPU(mlir::ModuleOp module, LowerLHLOToGPUOptions options) {
   mlir::PassManager pm(module.getContext());
   applyPassManagerCLOptions(pm);
 
@@ -399,14 +396,15 @@ Status LowerLHLOToGPU(mlir::ModuleOp module,
   // needed.
   llvm::SmallVector<unsigned, 4> tiling_for_unrolling;
   llvm::SmallVector<int64_t, 4> as_int64;
-  if (!unroll_factors.empty()) {
-    tiling_for_unrolling.reserve(tile_sizes.size());
-    for (auto pair : llvm::zip(tile_sizes, unroll_factors)) {
+  if (!options.unroll_factors.empty()) {
+    tiling_for_unrolling.reserve(options.tile_sizes.size());
+    for (auto pair : llvm::zip(options.tile_sizes, options.unroll_factors)) {
       tiling_for_unrolling.push_back(std::get<0>(pair) * std::get<1>(pair));
       as_int64.push_back(std::get<1>(pair));
     }
   } else {
-    tiling_for_unrolling.append(tile_sizes.begin(), tile_sizes.end());
+    tiling_for_unrolling.append(options.tile_sizes.begin(),
+                                options.tile_sizes.end());
   }
 
   // Legalize from HLO to LHLO.
@@ -441,11 +439,11 @@ Status LowerLHLOToGPU(mlir::ModuleOp module,
   pm.addPass(absl::make_unique<StoreForwardingPass>());
   // Remove now unused temporary buffers.
   pm.addPass(absl::make_unique<DeadTempBufferRemoval>());
-  if (!unroll_factors.empty()) {
+  if (!options.unroll_factors.empty()) {
     pm.addPass(::mlir::createParallelLoopTilingPass(as_int64));
   }
   // Project all loop dimensions to X if necessary.
-  if (collapseParallelLoops) {
+  if (options.collapse_parallel_loops) {
     pm.addPass(absl::make_unique<ParallelLoopCollapsingToFirstDim>());
   }
   // Some basic cleanup.
@@ -464,7 +462,9 @@ Status LowerLHLOToGPU(mlir::ModuleOp module,
   pm.addPass(::mlir::createGpuKernelOutliningPass());
   // Make sure the kernel signature resembled the original function's
   // signature
-  pm.addPass(absl::make_unique<FixKernelFunctionSignatures>());
+  if (options.fix_signature) {
+    pm.addPass(absl::make_unique<FixKernelFunctionSignatures>());
+  }
   if (failed(pm.run(module))) {
     return InternalError("Lowering to GPU kernels failed.");
   }
