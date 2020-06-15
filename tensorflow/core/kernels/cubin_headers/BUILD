@@ -32,6 +32,7 @@ gen_kernel_library(
     name = "tanh",
     tile_size = "256",
     types = [
+        "f16",
         "f32",
         "f64",
     ],
