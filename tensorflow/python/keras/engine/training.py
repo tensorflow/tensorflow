@@ -2078,7 +2078,11 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
           save_relative_paths=True,
           all_model_checkpoint_paths=[filepath])
 
-  def load_weights(self, filepath, by_name=False, skip_mismatch=False):
+  def load_weights(self,
+                   filepath,
+                   by_name=False,
+                   skip_mismatch=False,
+                   options=None):
     """Loads all layer weights, either from a TensorFlow or an HDF5 weight file.
 
     If `by_name` is False weights are loaded based on the network's
@@ -2108,6 +2112,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         skip_mismatch: Boolean, whether to skip loading of layers where there is
             a mismatch in the number of weights, or a mismatch in the shape of
             the weight (only valid when `by_name=True`).
+        options: Optional `tf.train.CheckpointOptions` object that specifies
+            options for loading weights.
 
     Returns:
         When loading a weight file in TensorFlow format, returns the same status
@@ -2145,7 +2151,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         # The checkpoint is not readable in TensorFlow format. Try HDF5.
         save_format = 'h5'
     if save_format == 'tf':
-      status = self._trackable_saver.restore(filepath)
+      status = self._trackable_saver.restore(filepath, options)
       if by_name:
         raise NotImplementedError(
             'Weights may only be loaded based on topology into Models when '

@@ -90,7 +90,7 @@ KERAS_OBJECT_IDENTIFIERS = (
     '_tf_keras_rnn_layer')
 
 
-def load(path, compile=True):  # pylint: disable=redefined-builtin
+def load(path, compile=True, options=None):  # pylint: disable=redefined-builtin
   """Loads Keras objects from a SavedModel.
 
   Any Keras layer or model saved to the SavedModel will be loaded back
@@ -107,13 +107,18 @@ def load(path, compile=True):  # pylint: disable=redefined-builtin
   Args:
     path: Path to SavedModel.
     compile: If true, compile the model after loading it.
+    options: Optional `tf.saved_model.LoadOptions` object that specifies
+      options for loading from SavedModel.
+
 
   Returns:
     Object loaded from SavedModel.
   """
   # TODO(kathywu): Add saving/loading of optimizer, compiled losses and metrics.
   # TODO(kathywu): Add code to load from objects that contain all endpoints
-  model = tf_load.load_internal(path, loader_cls=KerasObjectLoader)
+
+  model = tf_load.load_internal(
+      path, options=options, loader_cls=KerasObjectLoader)
 
   # pylint: disable=protected-access
   if isinstance(model, training_lib.Model) and compile:
