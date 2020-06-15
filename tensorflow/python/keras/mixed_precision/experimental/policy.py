@@ -20,6 +20,7 @@ from __future__ import print_function
 import contextlib
 
 import six
+import threading 
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import backend
@@ -35,7 +36,7 @@ from tensorflow.python.util.tf_export import keras_export
 # Default value of certain arguments, indicating the default behavior for
 # that argument should be used.
 USE_DEFAULT = 'USE_DEFAULT'
-
+_thread_local = threading.local()
 
 @keras_export('keras.mixed_precision.experimental.Policy', v1=[])
 class Policy(object):
@@ -482,7 +483,7 @@ class Policy(object):
 # floatx should be used as the policy if the V2 dtype behavior is enabled,
 # or "_infer" otherwise.
 # TODO(reedwm): Make this thread local?
-_global_policy = None
+_thread_local._global_policy = None
 
 
 @keras_export('keras.mixed_precision.experimental.global_policy', v1=[])
@@ -506,17 +507,17 @@ def global_policy():
   Returns:
     The global Policy.
   """
-  if _global_policy is None:
+  if _thread_local._global_policy is None:
     if base_layer_utils.v2_dtype_behavior_enabled():
       return Policy(backend.floatx())
     else:
       return Policy('_infer')
-  return _global_policy
+  return _thread_local._global_policy
 
 
 def policy_defaults_to_floatx():
   """Returns True if `global_policy()` will use the current value of floatx."""
-  return _global_policy is None and base_layer_utils.v2_dtype_behavior_enabled()
+  return _thread_local._global_policy is None and base_layer_utils.v2_dtype_behavior_enabled()
 
 
 def _check_if_mixed_precision_graph_rewrite_is_enabled(policy):
@@ -548,7 +549,6 @@ def set_policy(policy):
   Args:
     policy: A Policy, or a string that will be converted to a Policy..
   """
-  global _global_policy
   if not base_layer_utils.v2_dtype_behavior_enabled():
     raise ValueError('The global policy can only be set in TensorFlow 2 or if '
                      'V2 dtype behavior has been set. To enable V2 dtype '
@@ -559,7 +559,7 @@ def set_policy(policy):
   is_mixed_policy = policy is not None and policy.should_cast_variables
   if is_mixed_policy:
     _check_if_mixed_precision_graph_rewrite_is_enabled(policy)
-  _global_policy = policy
+  _thread_local._global_policy = policy
   mixed_precision_global_state.using_mixed_precision_policy = is_mixed_policy
 
 
@@ -574,7 +574,7 @@ def policy_scope(policy):
   Yields:
     Nothing.
   """
-  old_policy = _global_policy
+  old_policy = _thread_local._global_policy
   try:
     set_policy(policy)
     yield
