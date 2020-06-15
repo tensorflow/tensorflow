@@ -115,6 +115,9 @@ StatusOr<mlir::FuncOp> HloFunctionImporter::ImportAsFunc(
   llvm::ArrayRef<mlir::NamedAttribute> attrs;
   auto function = mlir::FuncOp::create(mlir::UnknownLoc::get(context_),
                                        computation_name, func_type, attrs);
+  auto visibility = computation_name == "main" ? FuncOp::Visibility::Public
+                                               : FuncOp::Visibility::Private;
+  function.setVisibility(visibility);
   module_.push_back(function);
 
   // Add to the map right away for function calls.
