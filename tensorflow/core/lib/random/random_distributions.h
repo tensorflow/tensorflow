@@ -23,7 +23,7 @@ limitations under the License.
 #include <algorithm>
 #include <type_traits>
 
-#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -72,9 +72,12 @@ typename Distribution::ResultType VectorizedFormat(
     }
   }
 
-  auto tensor_result =
-      typename TTypes<typename Distribution::ResultElementType>::Tensor(
-          &result[0], kResultElementCount);
+  typedef Eigen::TensorMap<
+      Eigen::Tensor<typename Distribution::ResultElementType, 1,
+                    Eigen::RowMajor, Eigen::DenseIndex>,
+      Eigen::Aligned>
+      Tensor;
+  auto tensor_result = Tensor(&result[0], kResultElementCount);
   tensor_result = tensor_result - typename Distribution::ResultElementType(1.0);
   return result;
 }

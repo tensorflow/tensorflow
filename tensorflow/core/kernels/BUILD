@@ -2411,6 +2411,7 @@ tf_kernel_library(
     prefix = "candidate_sampler_ops",
     deps = [
         ":range_sampler",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
 )
@@ -2421,9 +2422,9 @@ cc_library(
     hdrs = ["range_sampler.h"],
     visibility = ["//visibility:private"],
     deps = [
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/framework:numeric_types",
     ],
 )
 
@@ -2433,6 +2434,7 @@ tf_cc_test(
     srcs = ["range_sampler_test.cc"],
     deps = [
         ":range_sampler",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
