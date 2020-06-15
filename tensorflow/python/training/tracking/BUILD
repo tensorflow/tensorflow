@@ -98,8 +98,6 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras:engine",
-        "//tensorflow/python/keras/layers",
     ],
 )
 
@@ -149,7 +147,6 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/keras:backend",
         "//tensorflow/python/training/saving:checkpoint_options",
         "//tensorflow/python/training/saving:functional_saver",
         "//tensorflow/python/training/saving:saveable_object_util",
@@ -188,10 +185,6 @@ tf_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras:engine",
-        "//tensorflow/python/keras/layers",
-        "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/training/saving:checkpoint_options",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
