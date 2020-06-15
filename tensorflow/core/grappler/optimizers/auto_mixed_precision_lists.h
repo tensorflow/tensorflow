@@ -100,6 +100,9 @@ class AutoMixedPrecisionLists {
       list.insert("Conv3DBackpropInput");
       list.insert("Conv3DBackpropInputV2");
     }
+#if TENSORFLOW_USE_ROCM
+      list.insert("_ROCmFusedConvolutionBiasActivation");
+#endif
     UpdateList(&list, to_add, to_remove);
     return list;
   }
@@ -162,6 +165,19 @@ class AutoMixedPrecisionLists {
         "Tanh",
         "TanhGrad",
     };
+#if TENSORFLOW_USE_ROCM
+      list.insert("_FusedMulAdd");
+      list.insert("_FusedMulAdd2");
+      list.insert("_FusedMulSub");
+      list.insert("_FusedMulSub2");
+      list.insert("_FusedMulSubRev");
+      list.insert("_ROCmFusedAddRelu");
+      list.insert("_ROCmFusedAddNReluGrad");
+      list.insert("_ROCmFusedBatchNormActivationForward");
+      list.insert("_ROCmFusedBatchNormActivationInference");
+      list.insert("_ROCmFusedBatchNormActivationBackward");
+      list.insert("_ROCmFusedConvolutionBiasBatchNormActivation");
+#endif
     UpdateList(&list, to_add, to_remove);
     return list;
   }
