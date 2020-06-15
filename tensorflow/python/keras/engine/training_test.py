@@ -1563,10 +1563,7 @@ class TrainingTest(keras_parameterized.TestCase):
     self.assertEqual(self.evaluate(layer.v), 1.)
 
   @keras_parameterized.run_all_keras_modes(
-      always_skip_v1=True,
-      # TODO(kaftan): this is failing with KerasTensors
-      # in a way that seems orthogonal to what the code is testing
-      skip_keras_tensors=True)
+      always_skip_v1=True)
   @parameterized.named_parameters(
       ('numpy_array', 'numpy_array'),
       ('dataset_array', 'dataset_array'),
