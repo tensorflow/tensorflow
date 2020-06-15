@@ -435,6 +435,37 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "tracking_util_with_v1_optimizers_test",
+    srcs = ["tracking_util_with_v1_optimizers_test.py"],
+    tags = [
+        "notsan",  # b/74395663
+    ],
+    deps = [
+        "//tensorflow/python:checkpoint_management",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:saver",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:training_lib",
+        "//tensorflow/python:training_util",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/keras/layers:core",
+        "//tensorflow/python/training/tracking",
+        "//tensorflow/python/training/tracking:graph_view",
+        "//tensorflow/python/training/tracking:util",
+    ],
+)
+
 py_library(
     name = "get_config_samples",
     srcs = ["get_config_samples.py"],
