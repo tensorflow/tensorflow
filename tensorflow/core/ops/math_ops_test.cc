@@ -120,7 +120,7 @@ TEST(MathOpsTest, BroadcastBinaryOps_ShapeFn) {
     INFER_OK(op, "[1];[?]", "[d1_0]");
     INFER_OK(op, "[?];[2]", incompatible_shape_error ? "[d1_0]" : "?");
     INFER_OK(op, "[2];[?]", incompatible_shape_error ? "[d0_0]" : "?");
-    INFER_OK(op, "[?];[?]", incompatible_shape_error ? "[?]" : "?");
+    INFER_OK(op, "[?];[?]", "[?]");
     INFER_OK(op, "[];[?]", "[d1_0]");
     INFER_OK(op, "[?];[]", "[d0_0]");
 
