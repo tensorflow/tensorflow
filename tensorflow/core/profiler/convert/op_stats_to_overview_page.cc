@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_function.pb.h"
-#include "tensorflow/core/profiler/utils/errors.h"
+#include "tensorflow/core/profiler/utils/diagnostics.h"
 #include "tensorflow/core/profiler/utils/html_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
@@ -97,6 +97,9 @@ void ComputeFaqTips(OverviewPageRecommendation* re) {
 }
 
 void ComputeDocumentationTips(OverviewPageRecommendation* re) {
+  *re->add_documentation_tips() = MakeOverviewPageTipDocLink(
+      "https://www.tensorflow.org/guide/data_performance_analysis",
+      "Analyze tf.data performance with the TF Profiler");
   *re->add_documentation_tips() = MakeOverviewPageTipDocLink(
       "https://www.tensorflow.org/guide/"
       "data_performance",
@@ -172,7 +175,6 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
     op->set_flop_rate(
         SafeDivide(metrics->flops(), PicosToNanos(metrics->time_ps())));
   }
-  SetRemarks(op_stats, &analysis);
   uint64 total_device_compute_ps =
       op_stats.device_op_metrics_db().precision_stats().compute_16bit_ps() +
       op_stats.device_op_metrics_db().precision_stats().compute_32bit_ps();
@@ -294,20 +296,8 @@ OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
       bottleneck.input_classification(), bottleneck.input_statement(), "",
       hardware_type, TfFunctionRecommendationHtml(op_stats.tf_function_db()),
       overview_page.mutable_recommendation());
+  PopulateOverviewDiagnostics(op_stats, overview_page.mutable_diagnostics());
   return overview_page;
-}
-
-void SetRemarks(const OpStats& op_stats, OverviewPageAnalysis* analysis) {
-  if (op_stats.step_db().use_incomplete_step()) {
-    analysis->set_remark_text(absl::StrCat("WARNING: ", kErrorIncompleteStep));
-    analysis->set_remark_color("red");
-  } else if (op_stats.step_db().step_sequence().empty()) {
-    analysis->set_remark_text(absl::StrCat("WARNING: ", kErrorNoStepMarker));
-    analysis->set_remark_color("red");
-  } else {
-    analysis->set_remark_text("");
-    analysis->set_remark_color("black");
-  }
 }
 
 }  // namespace profiler

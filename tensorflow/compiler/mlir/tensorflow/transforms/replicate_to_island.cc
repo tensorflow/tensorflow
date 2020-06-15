@@ -37,17 +37,36 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace mlir {
 namespace TFDevice {
 namespace {
 constexpr char kDeviceAttr[] = "device";
+constexpr char kReplicaIdAttr[] = "_xla_replica_id";
 
 struct ReplicateToIslandPass
     : public PassWrapper<ReplicateToIslandPass, FunctionPass> {
   void runOnFunction() override;
 };
+
+// Returns whether op requires `_xla_replica_id` attribute.
+bool RequiresReplicaIDAttribute(Operation* op) {
+  return llvm::isa<TF::EnqueueTPUEmbeddingSparseTensorBatchOp>(op) ||
+         llvm::isa<TF::EnqueueTPUEmbeddingRaggedTensorBatchOp>(op);
+}
+
+// Adds integer attribute that represents replica id for replicated ops that
+// require replica id attribute.
+void AddReplicaIdToOpsInReplicatedRegion(OpBuilder* builder, Region* region,
+                                         const int replica_id) {
+  region->walk([&](Operation* replicated_op) {
+    if (RequiresReplicaIDAttribute(replicated_op))
+      replicated_op->setAttr(kReplicaIdAttr,
+                             builder->getI32IntegerAttr(replica_id));
+  });
+}
 
 // Creates islands per replica from `tf_device.replicate` region. If for a
 // `tf_device.launch` op the device is an aliased device of the
@@ -89,6 +108,14 @@ llvm::SmallVector<tf_executor::IslandOp, 8> ExpandReplicateIntoReplicas(
 
     // Copy over replicate region into replica island.
     replicate_op.body().cloneInto(&replica.body(), mapping);
+
+    // TODO(b/157624749): Replace this with better abstraction to
+    // differentiate ops for different replicas.
+    // Some ops, such as XlaHostCompute op or TPU Embedding ops, require
+    // replica id to be added as an op attribute to be used during
+    // execution. Handle such ops separately and add an integer attribute
+    // that represents replica id.
+    AddReplicaIdToOpsInReplicatedRegion(builder, &replica.body(), i);
 
     // Map aliased devices to explicit devices based on replica.
     if (has_devices) {

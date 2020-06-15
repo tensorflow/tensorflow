@@ -44,8 +44,7 @@ template <typename CppType>
 }
 
 mlir::APFloat ConvertToAPFloat(bfloat16 val) {
-  // bfloat16 values are stored as double in MLIR.
-  return llvm::APFloat(static_cast<double>(val));
+  return llvm::APFloat(llvm::APFloat::BFloat(), llvm::APInt(16, val.value));
 }
 
 mlir::APFloat ConvertToAPFloat(half val) {

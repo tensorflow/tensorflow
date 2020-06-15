@@ -27,13 +27,14 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import parameter_server_strategy
+from tensorflow.python.distribute import ps_values
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_test_lib
-from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -533,8 +534,8 @@ class ParameterServerStrategyTestBase(
 
       for expected_value in expected_values:
         next_element = iterator.get_next()
-        computed_value = sess.run([values.select_replica(r, next_element)
-                                   for r in range(len(devices))])
+        computed_value = sess.run([distribute_utils.select_replica(
+            r, next_element) for r in range(len(devices))])
         if ignore_order:
           self.assertCountEqual(expected_value, computed_value)
         else:
@@ -542,7 +543,7 @@ class ParameterServerStrategyTestBase(
 
       with self.assertRaises(errors.OutOfRangeError):
         next_element = iterator.get_next()
-        sess.run([values.select_replica(r, next_element)
+        sess.run([distribute_utils.select_replica(r, next_element)
                   for r in range(len(devices))])
 
       # After re-initializing the iterator, should be able to iterate again.
@@ -551,8 +552,8 @@ class ParameterServerStrategyTestBase(
 
         for expected_value in expected_values:
           next_element = iterator.get_next()
-          computed_value = sess.run([values.select_replica(r, next_element)
-                                     for r in range(len(devices))])
+          computed_value = sess.run([distribute_utils.select_replica(
+              r, next_element) for r in range(len(devices))])
           if ignore_order:
             self.assertCountEqual(expected_value, computed_value)
           else:
@@ -796,8 +797,8 @@ class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
                        msg=('created_step %s type %s vs. get_step %s type %s' %
                             (id(created_step), created_step.__class__.__name__,
                              id(get_step), get_step.__class__.__name__)))
-      self.assertIs(values.AggregatingVariable, type(created_step))
-      self.assertIs(values.AggregatingVariable, type(get_step))
+      self.assertIs(ps_values.AggregatingVariable, type(created_step))
+      self.assertIs(ps_values.AggregatingVariable, type(get_step))
       self.assertIs(strategy, created_step.distribute_strategy)
 
   @combinations.generate(combinations.combine(mode=['graph']))
@@ -828,7 +829,7 @@ class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
           _ = v * v
         v, = tape.watched_variables()
         w = strategy.extended.value_container(v)
-        self.assertIs(values.AggregatingVariable, type(w))
+        self.assertIs(ps_values.AggregatingVariable, type(w))
 
       strategy.extended.call_for_each_replica(f)
 

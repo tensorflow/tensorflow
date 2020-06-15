@@ -525,11 +525,16 @@ static bool RuntimeVerifierWriterMain(raw_ostream &os, RecordKeeper &records) {
       auto *val = trait.getDef().getValue("tflRuntimePredicate");
       if (!val) continue;
 
+      auto desc = trait.getDef().getValueAsString("tflRuntimeDescription");
+
       mlir::tblgen::Pred pred(dyn_cast<llvm::DefInit>(val->getValue()));
       os << tgfmt(
           "  if (!($0)) {\n    "
-          "    return ::mlir::LogicalResult::Failure;\n  }\n",
-          &verify_ctx, tgfmt(pred.getCondition(), &verify_ctx));
+          "    if (failure_on_operand_type_mismatch) {\n"
+          "      return top.emitOpError(\"failed to verify that $1\");\n"
+          "    } else {\n"
+          "      return ::mlir::LogicalResult::Failure;\n  }\n  }\n",
+          &verify_ctx, tgfmt(pred.getCondition(), &verify_ctx), desc);
     }
     os << "  return top.verify();\n}\n";
   }

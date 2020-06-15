@@ -76,9 +76,13 @@ class GrpcEagerServiceImpl : public AsyncServiceInterface {
       EagerCall<RunComponentFunctionRequest, RunComponentFunctionResponse>*
           call) {
     env_->compute_pool->Schedule([this, call]() {
-      local_impl_.RunComponentFunction(
-          &call->request, &call->response,
-          [call](const Status& s) { call->SendResponse(ToGrpcStatus(s)); });
+      auto call_opts = std::make_shared<CallOptions>();
+      call->SetCancelCallback([call_opts]() { call_opts->StartCancel(); });
+      local_impl_.RunComponentFunction(call_opts.get(), &call->request,
+                                       &call->response,
+                                       [call, call_opts](const Status& s) {
+                                         call->SendResponse(ToGrpcStatus(s));
+                                       });
     });
     Call<GrpcEagerServiceImpl, grpc::EagerService::AsyncService,
          RunComponentFunctionRequest, RunComponentFunctionResponse>::
@@ -86,7 +90,7 @@ class GrpcEagerServiceImpl : public AsyncServiceInterface {
             &service_, cq_.get(),
             &grpc::EagerService::AsyncService::RequestRunComponentFunction,
             &GrpcEagerServiceImpl::RunComponentFunctionHandler,
-            /*supports_cancel=*/false);
+            /*supports_cancel=*/true);
   }
 
   // Called when a new request has been received as part of a StreamingEnqueue

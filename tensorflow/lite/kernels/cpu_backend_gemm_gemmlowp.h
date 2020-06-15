@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_CPU_BACKEND_GEMM_GEMMLOWP_H_
 #define TENSORFLOW_LITE_KERNELS_CPU_BACKEND_GEMM_GEMMLOWP_H_
 
-#ifndef TFLITE_WITH_RUY
+#ifndef TFLITE_WITH_RUY_ONLY
 
 #include <cstdint>
 #include <type_traits>
@@ -188,6 +188,6 @@ struct GemmImplUsingGemmlowp<LhsScalar, RhsScalar, AccumScalar, DstScalar,
 }  // namespace cpu_backend_gemm
 }  // namespace tflite
 
-#endif  // not TFLITE_WITH_RUY
+#endif  // not TFLITE_WITH_RUY_ONLY
 
 #endif  // TENSORFLOW_LITE_KERNELS_CPU_BACKEND_GEMM_GEMMLOWP_H_

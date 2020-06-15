@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 
-#ifdef TFLITE_WITH_RUY
+#ifdef TFLITE_WITH_RUY_ONLY
 #include "ruy/context.h"  // from @ruy
 #include "ruy/thread_pool.h"  // from @ruy
 #else
@@ -29,7 +29,7 @@ limitations under the License.
 namespace tflite {
 namespace cpu_backend_threadpool {
 
-#ifdef TFLITE_WITH_RUY
+#ifdef TFLITE_WITH_RUY_ONLY
 
 using Task = ruy::Task;
 
@@ -41,7 +41,7 @@ void Execute(int tasks_count, TaskType* tasks,
       tasks_count, tasks);
 }
 
-#else  // not TFLITE_WITH_RUY
+#else  // not TFLITE_WITH_RUY_ONLY
 
 using Task = gemmlowp::Task;
 

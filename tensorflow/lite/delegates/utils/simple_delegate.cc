@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/delegates/utils.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -30,7 +31,8 @@ TfLiteRegistration GetDelegateKernelRegistration(
   TfLiteRegistration kernel_registration;
   kernel_registration.profiling_string = nullptr;
   kernel_registration.builtin_code = kTfLiteBuiltinDelegate;
-  kernel_registration.custom_name = delegate->name();
+  kernel_registration.custom_name = delegate->Name();
+  kernel_registration.version = 1;
   kernel_registration.free = [](TfLiteContext* context, void* buffer) -> void {
     delete reinterpret_cast<SimpleDelegateKernelInterface*>(buffer);
   };
@@ -66,7 +68,7 @@ TfLiteRegistration GetDelegateKernelRegistration(
     SimpleDelegateKernelInterface* delegate_kernel =
         reinterpret_cast<SimpleDelegateKernelInterface*>(node->user_data);
     TFLITE_DCHECK(delegate_kernel != nullptr);
-    return delegate_kernel->Invoke(context, node);
+    return delegate_kernel->Eval(context, node);
   };
 
   return kernel_registration;
@@ -76,6 +78,7 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context,
                              TfLiteDelegate* base_delegate) {
   auto* delegate =
       reinterpret_cast<SimpleDelegateInterface*>(base_delegate->data_);
+  TF_LITE_ENSURE_STATUS(delegate->Initialize(context));
   delegates::IsNodeSupportedFn node_supported_fn =
       [=](TfLiteContext* context, TfLiteNode* node,
           TfLiteRegistration* registration,
@@ -86,31 +89,19 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context,
   delegates::GraphPartitionHelper helper(context, node_supported_fn);
   TF_LITE_ENSURE_STATUS(helper.Partition(nullptr));
 
-  const auto delegate_partitions = helper.GetFirstNLargestPartitions();
-
-  // To avoid creating a new TfLiteIntArray and free it later, we reserve one
-  // element to represent TfLiteIntArray.size which is the 1st element of
-  // TfLiteIntArray C struct.
-  std::vector<int> supported_nodes(1);
-  for (const auto partition : delegate_partitions) {
-    auto* nodes = partition->nodes_to_replace;
-    supported_nodes.insert(supported_nodes.end(), nodes->data,
-                           nodes->data + nodes->size);
-  }
-  // Set first element to the number of nodes to replace.
-  supported_nodes[0] = supported_nodes.size() - 1;
+  std::vector<int> supported_nodes = helper.GetNodesOfFirstNLargestPartitions();
 
   TFLITE_LOG_PROD(tflite::TFLITE_LOG_INFO,
                   "%s delegate: %d nodes delegated out of %d nodes with "
                   "%d partitions.\n",
-                  delegate->name(), supported_nodes[0],
-                  helper.num_total_nodes(), delegate_partitions.size());
+                  delegate->Name(), supported_nodes.size(),
+                  helper.num_total_nodes(), helper.num_partitions());
   TfLiteRegistration delegate_kernel_registration =
       GetDelegateKernelRegistration(delegate);
 
   return context->ReplaceNodeSubsetsWithDelegateKernels(
       context, delegate_kernel_registration,
-      reinterpret_cast<TfLiteIntArray*>(supported_nodes.data()), base_delegate);
+      BuildTfLiteIntArray(supported_nodes).get(), base_delegate);
 }
 }  // namespace
 
@@ -136,5 +127,4 @@ void TfLiteDelegateFactory::DeleteSimpleDelegate(TfLiteDelegate* delegate) {
   delete simple_delegate;
   delete delegate;
 }
-
 }  // namespace tflite

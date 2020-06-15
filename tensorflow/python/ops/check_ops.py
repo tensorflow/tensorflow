@@ -765,9 +765,9 @@ def assert_near_v2(x, y, rtol=None, atol=None, message=None, summarize=None,
       statically known.
 
   @compatibility(numpy)
-  Similar to `numpy.assert_allclose`, except tolerance depends on data type.
-  This is due to the fact that `TensorFlow` is often used with `32bit`, `64bit`,
-  and even `16bit` data.
+  Similar to `numpy.testing.assert_allclose`, except tolerance depends on data
+  type. This is due to the fact that `TensorFlow` is often used with `32bit`,
+  `64bit`, and even `16bit` data.
   @end_compatibility
   """
   return assert_near(x=x, y=y, rtol=rtol, atol=atol, summarize=summarize,
@@ -818,9 +818,9 @@ def assert_near(
     Op that raises `InvalidArgumentError` if `x` and `y` are not close enough.
 
   @compatibility(numpy)
-  Similar to `numpy.assert_allclose`, except tolerance depends on data type.
-  This is due to the fact that `TensorFlow` is often used with `32bit`, `64bit`,
-  and even `16bit` data.
+  Similar to `numpy.testing.assert_allclose`, except tolerance depends on data
+  type. This is due to the fact that `TensorFlow` is often used with `32bit`,
+  `64bit`, and even `16bit` data.
   @end_compatibility
   """
   message = message or ''
@@ -828,12 +828,15 @@ def assert_near(
     x = ops.convert_to_tensor(x, name='x')
     y = ops.convert_to_tensor(y, name='y', dtype=x.dtype)
 
-    eps = np.finfo(x.dtype.as_numpy_dtype).eps
+    dtype = x.dtype
+    if dtype.is_complex:
+      dtype = dtype.real_dtype
+    eps = np.finfo(dtype.as_numpy_dtype).eps
     rtol = 10 * eps if rtol is None else rtol
     atol = 10 * eps if atol is None else atol
 
-    rtol = ops.convert_to_tensor(rtol, name='rtol', dtype=x.dtype)
-    atol = ops.convert_to_tensor(atol, name='atol', dtype=x.dtype)
+    rtol = ops.convert_to_tensor(rtol, name='rtol', dtype=dtype)
+    atol = ops.convert_to_tensor(atol, name='atol', dtype=dtype)
 
     if context.executing_eagerly():
       x_name = _shape_and_dtype_str(x)

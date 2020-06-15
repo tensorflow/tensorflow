@@ -1,4 +1,4 @@
-// RUN: tf-opt -tf-functional-to-executor-conversion %s | FileCheck %s --dump-input=fail
+// RUN: tf-opt -tf-functional-to-executor-conversion %s | FileCheck %s
 
 func @multiple_return(%arg0 : tensor<*xi32>, %arg1 : tensor<i32>) -> (tensor<*xi32>, tensor<*xi32>) {
   %1 = "tf.Add"(%arg0, %arg1) {} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>

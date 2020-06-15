@@ -239,7 +239,7 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
 
       # this is the error message we expect the function to raise
-      err_msg = "A grayscale image must be at least two-dimensional"
+      err_msg = "must be at least two-dimensional"
       with self.assertRaisesRegexp(ValueError, err_msg):
         image_ops.grayscale_to_rgb(x_tf)
 
@@ -1682,7 +1682,7 @@ class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
     for x_shape in ([3, 5], [1, 3, 5, 1, 1]):
       self._assertRaises(x, x_shape, offset_height, offset_width, target_height,
                          target_width,
-                         "'image' must have either 3 or 4 dimensions.")
+                         "must have either 3 or 4 dimensions.")
 
   @test_util.run_deprecated_v1
   def testZeroLengthInput(self):
@@ -2022,7 +2022,7 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
     for x_shape in ([3, 5], [1, 3, 5, 1, 1]):
       self._assertRaises(x, x_shape, offset_height, offset_width, target_height,
                          target_width,
-                         "'image' must have either 3 or 4 dimensions.")
+                         "must have either 3 or 4 dimensions.")
 
   @test_util.run_deprecated_v1
   def testZeroLengthInput(self):
@@ -3734,11 +3734,11 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
 
     for x_shape in ([3, 5],):
       self._assertRaises(x, x_shape, target_height, target_width,
-                         "'image' must have either 3 or 4 dimensions.")
+                         "must have either 3 or 4 dimensions.")
 
     for x_shape in ([1, 3, 5, 1, 1],):
       self._assertRaises(x, x_shape, target_height, target_width,
-                         "'image' must have either 3 or 4 dimensions.")
+                         "must have either 3 or 4 dimensions.")
 
   @test_util.run_deprecated_v1
   def testZeroLengthInput(self):

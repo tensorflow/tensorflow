@@ -32,6 +32,7 @@ from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
@@ -58,6 +59,8 @@ from tensorflow.python.tpu import training_loop
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
+
+_XLA_OP_BY_OP_INPUTS_LIMIT = 200
 
 
 @contextlib.contextmanager
@@ -318,10 +321,6 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     self.steps_per_run = steps_per_run
     self._require_static_shapes = True
 
-    # TPUStrategy handles the graph replication in TF-XLA bridge, so we don't
-    # need to retrace functions for each device.
-    self._retrace_functions_for_each_device = False
-
     self.experimental_enable_get_next_as_optional = True
     self._prefetch_on_host = False
 
@@ -365,7 +364,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     return self._input_workers_obj
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
-    values.validate_colocate(colocate_with_variable, self)
+    distribute_utils. validate_colocate(colocate_with_variable, self)
 
   def _make_dataset_iterator(self, dataset):
     """Make iterators for each of the TPU hosts."""
@@ -425,7 +424,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       per_replica_values.append(
           value_fn(distribute_lib.ValueContext(replica_id,
                                                self._num_replicas_in_sync)))
-    return values.regroup(per_replica_values, always_wrap=True)
+    return distribute_utils.regroup(per_replica_values, always_wrap=True)
 
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
   # TODO(sourabhbajaj): Remove the initial_loop_values parameter when we have
@@ -464,7 +463,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       per_replica_inputs = multi_worker_iterator.get_next()
       replicate_inputs = []
       for replica_id in range(self._num_replicas_in_sync):
-        select_replica = lambda x: values.select_replica(replica_id, x)  # pylint: disable=cell-var-from-loop
+        select_replica = lambda x: distribute_utils.select_replica(  # pylint: disable=g-long-lambda
+            replica_id, x)   # pylint: disable=cell-var-from-loop
         replicate_inputs.append((nest.map_structure(
             select_replica, per_replica_inputs),))
 
@@ -650,11 +650,10 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           value_list.append(v)
       return value_list
 
-    return values.create_mirrored_variable(self._container_strategy(),
-                                           _real_mirrored_creator,
-                                           tpu_values.TPUMirroredVariable,
-                                           tpu_values.TPUSyncOnReadVariable,
-                                           **kwargs)
+    return distribute_utils.create_mirrored_variable(
+        self._container_strategy(), _real_mirrored_creator,
+        tpu_values.TPUMirroredVariable, tpu_values.TPUSyncOnReadVariable,
+        **kwargs)
 
   def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
     if (isinstance(value, values.DistributedValues) or
@@ -676,8 +675,18 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       return cross_device_ops_lib.reduce_non_distributed_value(
           reduce_op, value, destinations, self._num_replicas_in_sync)
 
+    # Currently XLA op by op mode has a limit for the number of inputs for a
+    # single op, thus we break one `add_n` op into a group of `add_n` ops to
+    # work around the constraint.
     # TODO(cjfj): Detect when it is possible to use `cross_replica_sum`.
-    output = math_ops.add_n(value.values)
+    if len(value.values) <= _XLA_OP_BY_OP_INPUTS_LIMIT:
+      output = math_ops.add_n(value.values)
+    else:
+      output = array_ops.zeros_like(
+          value.values[0], dtype=value.values[0].dtype)
+      for i in range(0, len(value.values), _XLA_OP_BY_OP_INPUTS_LIMIT):
+        output += math_ops.add_n(value.values[i:i + _XLA_OP_BY_OP_INPUTS_LIMIT])
+
     if reduce_op == reduce_util.ReduceOp.MEAN:
       output *= (1. / len(value.values))
 
@@ -714,10 +723,10 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
            distribute_lib.UpdateContext(i), \
            ops.name_scope(name):
         # If args and kwargs are not mirrored, the value is returned as is.
-        updates.append(fn(v,
-                          *values.select_replica_mirrored(i, args),
-                          **values.select_replica_mirrored(i, kwargs)))
-    return values.update_regroup(self, updates, group)
+        updates.append(
+            fn(v, *distribute_utils.select_replica_mirrored(i, args),
+               **distribute_utils.select_replica_mirrored(i, kwargs)))
+    return distribute_utils.update_regroup(self, updates, group)
 
   def read_var(self, var):
     assert isinstance(var, tpu_values.TPUVariableMixin) or isinstance(
@@ -885,8 +894,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       for i in range(strategy.num_replicas_in_sync):
         replicate_inputs.append(
             [constant_op.constant(i, dtype=dtypes.int32),
-             values.select_replica(i, args),
-             values.select_replica(i, kwargs)])
+             distribute_utils.select_replica(i, args),
+             distribute_utils.select_replica(i, kwargs)])
 
       # Construct and pass `maximum_shapes` so that we could support dynamic
       # shapes using dynamic padder.
@@ -897,7 +906,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           if tensor_util.is_tensor(input_tensor):
             rank = input_tensor.get_shape().rank
           else:
-            rank = np.rank(input_tensor)
+            rank = np.ndim(input_tensor)
           maximum_shape = tensor_shape.TensorShape([None] * rank)
           maximum_shapes.append(maximum_shape)
         maximum_shapes = nest.pack_sequence_as(replicate_inputs[0],
@@ -933,7 +942,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
             nest.pack_sequence_as(result[0], nest.flatten(replica_output))
             for replica_output in replicate_outputs
         ]
-      return values.regroup(replicate_outputs)
+      return distribute_utils.regroup(replicate_outputs)
 
     if context.executing_eagerly():
       tpu_function = def_function.function(tpu_function)

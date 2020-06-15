@@ -118,9 +118,14 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     else:
       self._oov_value = -1
 
+    if max_tokens is not None:
+      num_mask_tokens = (0 if mask_token is None else 1)
+      vocab_size = max_tokens - (num_oov_indices + num_mask_tokens)
+    else:
+      vocab_size = None
+
     super(IndexLookup, self).__init__(
-        combiner=_IndexLookupCombiner(self.max_tokens, self.mask_token),
-        **kwargs)
+        combiner=_IndexLookupCombiner(vocab_size, self.mask_token), **kwargs)
 
     self._output_dtype = dtypes.int64
 

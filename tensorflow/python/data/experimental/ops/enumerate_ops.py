@@ -21,7 +21,7 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-@deprecation.deprecated(None, "Use `tf.data.Dataset.enumerate()")
+@deprecation.deprecated(None, "Use `tf.data.Dataset.enumerate()`.")
 @tf_export("data.experimental.enumerate_dataset")
 def enumerate_dataset(start=0):
   """A transformation that enumerates the elements of a dataset.

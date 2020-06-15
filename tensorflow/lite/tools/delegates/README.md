@@ -31,26 +31,31 @@ TFLite delegate.
     This option is currently supported by the Hexagon and CoreML delegate.
 
 ### GPU delegate provider
+
+Only Android and iOS devices support GPU delegate.
+
+#### Common options
 *   `use_gpu`: `bool` (default=false) \
     Whether to use the
     [GPU accelerator delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/gpu).
-    This option is currently only available on Android and iOS devices.
 *   `gpu_precision_loss_allowed`: `bool` (default=true) \
-    Whethre to allow the GPU delegate to carry out computation with some
+    Whether to allow the GPU delegate to carry out computation with some
     precision loss (i.e. processing in FP16) or not. If allowed, the performance
     will increase.
 *   `gpu_experimental_enable_quant`: `bool` (default=true) \
-    Whether to allow the GPU delegate to run a quantized model or not. \
-    This option is currently only available on Android.
+    Whether to allow the GPU delegate to run a 8-bit quantized model or not.
+
+#### Android options
 *  `gpu_backend`: `string` (default="") \
     Force the GPU delegate to use a particular backend for execution, and fail
     if unsuccessful. Should be one of: cl, gl. By default, the GPU delegate will
-    try OpenCL first and then OpenGL if the former fails.\
-    Note this option is only available on Android.
+    try OpenCL first and then OpenGL if the former fails.
+
+#### iOS options
 *   `gpu_wait_type`: `string` (default="") \
-    Which GPU wait_type option to use, when using GPU delegate on iOS. Should be
-    one of the following: passive, active, do_not_wait, aggressive. When left
-    blank, passive mode is used by default.
+    Which GPU wait_type option to use. Should be one of the following: passive,
+    active, do_not_wait, aggressive. When left blank, passive mode is used by
+    default.
 
 ### NNAPI delegate provider
 *   `use_nnapi`: `bool` (default=false) \

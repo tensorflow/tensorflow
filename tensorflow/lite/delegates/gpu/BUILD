@@ -80,6 +80,7 @@ objc_library(
     name = "metal_delegate",
     srcs = ["metal_delegate.mm"],
     hdrs = ["metal_delegate.h"],
+    module_name = "TensorFlowLiteCMetal",
     sdk_frameworks = ["Metal"],
     deps = [
         "//tensorflow/lite:kernel_api",
@@ -89,6 +90,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_builder",
         "//tensorflow/lite/delegates/gpu/common:model_transformer",
+        "//tensorflow/lite/delegates/gpu/common:quantization_util",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
@@ -243,6 +245,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_builder",
         "//tensorflow/lite/delegates/gpu/common:model_transformer",
+        "//tensorflow/lite/delegates/gpu/common:quantization_util",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/gl:api2",
         "//tensorflow/lite/kernels/internal:optimized_base",

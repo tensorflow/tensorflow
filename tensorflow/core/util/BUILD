@@ -505,6 +505,16 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "incremental_barrier",
+    srcs = ["incremental_barrier.cc"],
+    hdrs = ["incremental_barrier.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/functional:bind_front",
+    ],
+)
+
 # Tests.
 
 tf_cc_test(
@@ -629,6 +639,20 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+tf_cc_test(
+    name = "incremental_barrier_test",
+    srcs = ["incremental_barrier_test.cc"],
+    deps = [
+        ":incremental_barrier",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform",
+        "@com_google_absl//absl/functional:bind_front",
+        "@com_google_absl//absl/time",
     ],
 )
 

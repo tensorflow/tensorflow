@@ -1,4 +1,4 @@
-// RUN: tf-opt -pass-pipeline='func(canonicalize)' %s | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt -pass-pipeline='func(canonicalize)' %s | FileCheck %s
 
 // Checks that tfl.reshape should be removed if its output's only user is
 // another tfl.reshape

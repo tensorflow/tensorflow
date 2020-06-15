@@ -17,6 +17,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 
 namespace mlir {
 namespace TFL {
@@ -47,12 +48,18 @@ void ConvertMlirQuantOpsToTFLQuantOps(FuncOp func) {
       auto dcast = b.create<DequantizeOp>(dq.getLoc(), dq.getResult().getType(),
                                           dq.arg());
       dq.getResult().replaceAllUsesWith(dcast);
+      if (auto extra_attr = op->getAttr(mlir::quant::kVolatileOpAttrName)) {
+        dcast.setAttr(mlir::quant::kVolatileOpAttrName, extra_attr);
+      }
       dq.erase();
     } else if (auto q = llvm::dyn_cast<quant::QuantizeCastOp>(op)) {
       auto out_type = q.getResult().getType();
       auto qcast = b.create<QuantizeOp>(q.getLoc(), out_type, q.arg(),
                                         TypeAttr::get(out_type));
       q.getResult().replaceAllUsesWith(qcast);
+      if (auto extra_attr = op->getAttr(mlir::quant::kVolatileOpAttrName)) {
+        qcast.setAttr(mlir::quant::kVolatileOpAttrName, extra_attr);
+      }
       q.erase();
     }
   });

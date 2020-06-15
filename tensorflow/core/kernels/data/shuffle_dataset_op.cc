@@ -72,7 +72,7 @@ constexpr char kEpochNumRandomSamples[] = "epoch_num_random_samples";
 constexpr char kShuffleDatasetV1[] = "ShuffleDataset";
 constexpr char kShuffleDatasetV2[] = "ShuffleDatasetV2";
 constexpr char kShuffleDatasetV3[] = "ShuffleDatasetV3";
-constexpr char kShuffleAndRepeatDatasetV1[] = "ShuffleAndRepeatDatasetV1";
+constexpr char kShuffleAndRepeatDatasetV1[] = "ShuffleAndRepeatDataset";
 constexpr char kShuffleAndRepeatDatasetV2[] = "ShuffleAndRepeatDatasetV2";
 
 ShuffleDatasetOpBase::ShuffleDatasetOpBase(OpKernelConstruction* ctx)

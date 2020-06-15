@@ -86,7 +86,8 @@ def _get_end_to_end_test_cases():
           "vocab_data":
               np.array([["fire"], ["earth"], ["earth"], ["earth"], ["earth"],
                         ["wind"], ["wind"], ["wind"], ["and"], ["and"]]),
-          "input_data": np.array([[1], [2], [3], [4], [4], [3], [1], [5]]),
+          "input_data":
+              np.array([[1], [2], [3], [4], [4], [3], [1], [5]]),
           "kwargs": {
               "max_tokens": None,
               "num_oov_indices": 1,
@@ -122,6 +123,78 @@ def _get_end_to_end_test_cases():
               "dtype": dtypes.int64,
           },
           "expected_output": [[2], [3], [4], [5], [5], [4], [2], [1]],
+          "input_dtype":
+              dtypes.int64
+      },
+      {
+          "testcase_name":
+              "test_strings_hard_vocab_cap",
+          # Create an array where 'earth' is the most frequent term, followed by
+          # 'wind', then 'and', then 'fire'. This ensures that the vocab
+          # accumulator is sorting by frequency.
+          "vocab_data":
+              np.array([["fire"], ["earth"], ["earth"], ["earth"], ["earth"],
+                        ["wind"], ["wind"], ["wind"], ["and"], ["and"]]),
+          "input_data":
+              np.array([["earth"], ["wind"], ["and"], ["fire"], ["fire"],
+                        ["and"], ["earth"], ["michigan"]]),
+          "kwargs": {
+              "max_tokens": 5,
+              "num_oov_indices": 1,
+              "mask_token": "",
+              "oov_token": "[OOV]",
+              "dtype": dtypes.string,
+          },
+          "expected_output": [[2], [3], [4], [1], [1], [4], [2], [1]],
+          "input_dtype":
+              dtypes.string
+      },
+      {
+          "testcase_name":
+              "test_inverse_strings_hard_vocab_cap",
+          # Create an array where 'earth' is the most frequent term, followed by
+          # 'wind', then 'and', then 'fire'. This ensures that the vocab
+          # accumulator is sorting by frequency.
+          "vocab_data":
+              np.array([["fire"], ["earth"], ["earth"], ["earth"], ["earth"],
+                        ["wind"], ["wind"], ["wind"], ["and"], ["and"]]),
+          "input_data":
+              np.array([[1], [2], [3], [4], [4], [3], [1], [5]]),
+          "kwargs": {
+              "max_tokens": 5,
+              "num_oov_indices": 1,
+              "mask_token": "",
+              "oov_token": "[OOV]",
+              "dtype": dtypes.string,
+              "invert": True
+          },
+          "expected_output":
+              np.array([[b"earth"], [b"wind"], [b"and"], [b"[OOV]"], [b"[OOV]"],
+                        [b"and"], [b"earth"], [b"[OOV]"]]),
+          "input_dtype":
+              dtypes.int64
+      },
+      {
+          "testcase_name":
+              "test_ints_hard_vocab_cap",
+          # Create an array where 1138 is the most frequent term, followed by
+          # 1729, then 725, then 42. This ensures that the vocab accumulator
+          # is sorting by frequency.
+          "vocab_data":
+              np.array([[42], [1138], [1138], [1138], [1138], [1729], [1729],
+                        [1729], [725], [725]],
+                       dtype=np.int64),
+          "input_data":
+              np.array([[1138], [1729], [725], [42], [42], [725], [1138], [4]],
+                       dtype=np.int64),
+          "kwargs": {
+              "max_tokens": 5,
+              "num_oov_indices": 1,
+              "mask_token": 0,
+              "oov_token": -1,
+              "dtype": dtypes.int64,
+          },
+          "expected_output": [[2], [3], [4], [1], [1], [4], [2], [1]],
           "input_dtype":
               dtypes.int64
       },

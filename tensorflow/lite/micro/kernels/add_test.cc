@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
@@ -69,9 +69,9 @@ void ValidateAddGoldens(TfLiteTensor* tensors, int tensors_size,
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
-  ::tflite::ops::micro::AllOpsResolver resolver;
+  ::tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(::tflite::BuiltinOperator_ADD, 1);
+      resolver.FindOp(::tflite::BuiltinOperator_ADD);
 
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
@@ -129,9 +129,9 @@ void TestAddFloat(const int* input1_dims_data, const float* input1_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input1_data, input1_dims, "input1_tensor"),
-      CreateFloatTensor(input2_data, input2_dims, "input2_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor"),
+      CreateFloatTensor(input1_data, input1_dims),
+      CreateFloatTensor(input2_data, input2_dims),
+      CreateFloatTensor(output_data, output_dims),
   };
 
   ValidateAddGoldens(tensors, tensors_size, expected_output, output_data,
@@ -156,15 +156,14 @@ void TestAddQuantized(const int* input1_dims_data, const float* input1_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      tflite::testing::CreateQuantizedTensor(
-          input1_data, input1_quantized, input1_dims, input1_scale,
-          input1_zero_point, "input1_tensor"),
-      tflite::testing::CreateQuantizedTensor(
-          input2_data, input2_quantized, input2_dims, input2_scale,
-          input2_zero_point, "input2_tensor"),
+      tflite::testing::CreateQuantizedTensor(input1_data, input1_quantized,
+                                             input1_dims, input1_scale,
+                                             input1_zero_point),
+      tflite::testing::CreateQuantizedTensor(input2_data, input2_quantized,
+                                             input2_dims, input2_scale,
+                                             input2_zero_point),
       tflite::testing::CreateQuantizedTensor(output_data, output_dims,
-                                             output_scale, output_zero_point,
-                                             "output_tensor"),
+                                             output_scale, output_zero_point),
   };
   tflite::AsymmetricQuantize(golden, golden_quantized,
                              ElementCount(*output_dims), output_scale,

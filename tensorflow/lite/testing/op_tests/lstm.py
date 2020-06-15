@@ -48,7 +48,7 @@ def make_lstm_tests(options):
     input_vec_size = parameters["input_vec_size"]
     num_cells = parameters["num_cells"]
     inputs_after_split = []
-    for i in xrange(time_step_size):
+    for i in range(time_step_size):
       one_timestamp_input = tf.compat.v1.placeholder(
           dtype=parameters["dtype"],
           name="split_{}".format(i),
@@ -82,7 +82,7 @@ def make_lstm_tests(options):
     time_step_size = parameters["time_step_size"]
     input_vec_size = parameters["input_vec_size"]
     input_values = []
-    for _ in xrange(time_step_size):
+    for _ in range(time_step_size):
       tensor_data = create_tensor_data(parameters["dtype"],
                                        [num_batchs, input_vec_size], 0, 1)
       input_values.append(tensor_data)

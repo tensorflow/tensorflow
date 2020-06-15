@@ -28,6 +28,7 @@ from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import op_selector
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -174,20 +175,23 @@ def custom_gradient(f=None):
 
   Args:
     f: function `f(*x)` that returns a tuple `(y, grad_fn)` where:
-       - `x` is a sequence of `Tensor` inputs to the function.
-       - `y` is a `Tensor` or sequence of `Tensor` outputs of applying
-         TensorFlow operations in `f` to `x`.
+       - `x` is a sequence of (nested structures of) `Tensor` inputs to the
+         function.
+       - `y` is a (nested structure of) `Tensor` outputs of applying TensorFlow
+         operations in `f` to `x`.
        - `grad_fn` is a function with the signature `g(*grad_ys)` which returns
-         a list of `Tensor`s - the derivatives of `Tensor`s in `y` with respect
-         to the `Tensor`s in `x`.  `grad_ys` is a `Tensor` or sequence of
-         `Tensor`s the same size as `y` holding the initial value gradients for
-         each `Tensor` in `y`. In a pure mathematical sense, a vector-argument
-         vector-valued function `f`'s derivatives should be its Jacobian matrix
-         `J`. Here we are expressing the Jacobian `J` as a function `grad_fn`
-         which defines how `J` will transform a vector `grad_ys` when
-         left-multiplied with it (`grad_ys * J`). This functional representation
-         of a matrix is convenient to use for chain-rule calculation
-         (in e.g. the back-propagation algorithm).
+         a list of `Tensor`s the same size as (flattened) `x` - the derivatives
+         of `Tensor`s in `y` with respect to the `Tensor`s in `x`.  `grad_ys` is
+         a sequence of `Tensor`s the same size as (flattened) `y` holding the
+         initial value gradients for each `Tensor` in `y`.
+
+         In a pure mathematical sense, a vector-argument vector-valued function
+         `f`'s derivatives should be its Jacobian matrix `J`. Here we are
+         expressing the Jacobian `J` as a function `grad_fn` which defines how
+         `J` will transform a vector `grad_ys` when left-multiplied with it
+         (`grad_ys * J`, the vector-Jacobian product, or VJP). This functional
+         representation of a matrix is convenient to use for chain-rule
+         calculation (in e.g. the back-propagation algorithm).
 
          If `f` uses `Variable`s (that are not part of the
          inputs), i.e. through `get_variable`, then `grad_fn` should have
@@ -208,6 +212,8 @@ def custom_gradient(f=None):
   @Bind.decorator
   def decorated(wrapped, args, kwargs):
     """Decorated function with custom gradient."""
+    # raise ValueError("PW: trap")
+
     if context.executing_eagerly():
       return _eager_mode_decorator(wrapped, args, kwargs)
     else:
@@ -306,7 +312,7 @@ def _graph_mode_decorator(f, args, kwargs):
         "The custom_gradient decorator currently supports keywords "
         "arguments only when eager execution is enabled.")
   name = "CustomGradient-%s" % ops.uid()
-  args = [ops.convert_to_tensor(x) for x in args]
+  args = nest.map_structure(ops.convert_to_tensor, args)
 
   # Checking global and local variables attempts to ensure that no non-resource
   # Variables are added to the graph.
@@ -317,6 +323,7 @@ def _graph_mode_decorator(f, args, kwargs):
   ])
   with tape_lib.VariableWatcher() as variable_watcher:
     result, grad_fn = f(*args)
+  args = nest.flatten(args)
   after_vars = set([
       v.ref() for v in current_var_scope.global_variables() +
       current_var_scope.local_variables()
@@ -351,13 +358,8 @@ def _graph_mode_decorator(f, args, kwargs):
                     "argument 'variables'.")
   if variables_in_signature and not variables:
     # User seems to intend to use variables but none were captured.
-    if not variable_scope.get_variable_scope().use_resource:
-      raise TypeError("If using @custom_gradient with a function that "
-                      "uses variables, the enclosing variable scope must "
-                      "have use_resource=True.")
-    else:
-      logging.warn("@custom_gradient grad_fn has 'variables' in signature, but "
-                   "no ResourceVariables were used on the forward pass.")
+    logging.warn("@custom_gradient grad_fn has 'variables' in signature, but "
+                 "no ResourceVariables were used on the forward pass.")
   flat_result = nest.flatten(result)
   flat_result_len = len(flat_result)
 
@@ -408,6 +410,7 @@ def _eager_mode_decorator(f, args, kwargs):
   """Implement custom gradient decorator for eager mode."""
   with tape_lib.VariableWatcher() as variable_watcher:
     result, grad_fn = f(*args, **kwargs)
+  args = nest.flatten(args)
   all_inputs = list(args) + list(kwargs.values())
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
@@ -447,7 +450,7 @@ def _eager_mode_decorator(f, args, kwargs):
       raise ValueError(
           "custom_gradient function expected to return", arg_count,
           "gradients but returned", len(flat_grads), "instead.")
-    return nest.flatten(input_grads) + variable_grads
+    return flat_grads + variable_grads
 
   tape_lib.record_operation(f.__name__, flat_result, recorded_inputs,
                             actual_grad_fn)
@@ -482,28 +485,47 @@ def recompute_grad(f):
   def inner(*args, **kwargs):
     """Inner function closure for calculating gradients."""
     current_var_scope = variable_scope.get_variable_scope()
+    with tape_lib.stop_recording():
+      result = f(*args, **kwargs)
 
-    result = f(*args, **kwargs)
+    def grad_wrapper(*wrapper_args, **grad_kwargs):
+      """Wrapper function to accomodate lack of kwargs in graph mode decorator."""
 
-    def grad(*dresult, **grad_kwargs):
-      """Gradient function calculation for inner function."""
-      variables = grad_kwargs.get("variables")
-      with backprop.GradientTape() as t:
-        id_args = [gen_array_ops.identity(x) for x in args]
-        t.watch(id_args)
+      @custom_gradient
+      def inner_recompute_grad(*dresult):
+        """Nested custom gradient function for computing grads in reverse and forward mode autodiff."""
+        # Gradient calculation for reverse mode autodiff.
+        variables = grad_kwargs.get("variables")
+        with backprop.GradientTape() as t:
+          id_args = [gen_array_ops.identity(x) for x in args]
+          t.watch(id_args)
+          if variables is not None:
+            t.watch(variables)
+          with ops.control_dependencies(dresult):
+            with variable_scope.variable_scope(current_var_scope):
+              result = f(*id_args, **kwargs)
+        kw_vars = []
         if variables is not None:
-          t.watch(variables)
-        with ops.control_dependencies(dresult):
-          with variable_scope.variable_scope(current_var_scope):
-            result = f(*id_args, **kwargs)
-      kw_vars = []
-      if variables is not None:
-        kw_vars = list(variables)
-      grads = t.gradient(
-          result, list(id_args) + kw_vars, output_gradients=dresult)
-      return grads[:len(id_args)], grads[len(id_args):]
+          kw_vars = list(variables)
+        grads = t.gradient(
+            result,
+            list(id_args) + kw_vars,
+            output_gradients=dresult,
+            unconnected_gradients=UnconnectedGradients.ZERO)
 
-    return result, grad
+        def transpose(*t_args, **t_kwargs):
+          """Gradient function calculation for forward mode autodiff."""
+          # Just throw an error since gradients / activations are not stored on tape for recompute.
+          raise NotImplementedError(
+              "recompute_grad tried to transpose grad of {}. "
+              "Consider not using recompute_grad in forward mode"
+              "autodiff".format(f.__name__))
+
+        return (grads[:len(id_args)], grads[len(id_args):]), transpose
+
+      return inner_recompute_grad(*wrapper_args)
+
+    return result, grad_wrapper
 
   return inner
 

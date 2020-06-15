@@ -1,4 +1,4 @@
-// RUN: tf-opt %s | tf-opt | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s | tf-opt | FileCheck %s
 
 module attributes {tf_saved_model.semantics} {
 
@@ -36,6 +36,19 @@ module attributes {tf_saved_model.semantics} {
   }
 
   func @f() {
+    return
+  }
+
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  // CHECK: func @f
+  func @f(
+    %arg0: tensor<f32> {tf.resource_name = "resource"}
+  ) attributes { tf_saved_model.exported_names = ["foo.some_func"] } {
     return
   }
 

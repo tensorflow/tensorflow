@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import inspect
 import sys
 import textwrap
 
@@ -67,10 +68,11 @@ class OriginInfoTest(test.TestCase):
     module_path = tf_inspect.getsourcefile(test_fn)
 
     # Origin line numbers below should match those in basic_definitions.py
+    fn_start = inspect.getsourcelines(test_fn)[1]
 
     definition_loc = origin_info.LineLocation('test_filename', 1)
     self.assertIn(definition_loc, source_map)
-    self.assertEqual(source_map[definition_loc].loc.lineno, 23)
+    self.assertEqual(source_map[definition_loc].loc.lineno, fn_start)
     self.assertEqual(source_map[definition_loc].loc.filename, module_path)
     self.assertEqual(source_map[definition_loc].function_name,
                      'simple_function')
@@ -81,10 +83,11 @@ class OriginInfoTest(test.TestCase):
     module_path = tf_inspect.getsourcefile(test_fn)
 
     # Origin line numbers below should match those in basic_definitions.py
+    fn_start = inspect.getsourcelines(test_fn)[1]
 
     call_loc = origin_info.LineLocation('test_filename', 3)
     self.assertIn(call_loc, source_map)
-    self.assertEqual(source_map[call_loc].loc.lineno, 55)
+    self.assertEqual(source_map[call_loc].loc.lineno, fn_start + 2)
     self.assertEqual(source_map[call_loc].loc.filename, module_path)
     self.assertEqual(source_map[call_loc].function_name,
                      'function_with_multiline_call')
@@ -92,7 +95,7 @@ class OriginInfoTest(test.TestCase):
 
     second_arg_loc = origin_info.LineLocation('test_filename', 5)
     self.assertIn(second_arg_loc, source_map)
-    self.assertEqual(source_map[second_arg_loc].loc.lineno, 57)
+    self.assertEqual(source_map[second_arg_loc].loc.lineno, fn_start + 4)
     self.assertEqual(source_map[second_arg_loc].loc.filename, module_path)
     self.assertEqual(source_map[second_arg_loc].function_name,
                      'function_with_multiline_call')
@@ -150,42 +153,43 @@ class OriginInfoTest(test.TestCase):
     origin_info.resolve_entity(node, source, test_fn)
 
     # The line numbers below should match those in basic_definitions.py
+    fn_start = inspect.getsourcelines(test_fn)[1]
 
     def_origin = anno.getanno(node, anno.Basic.ORIGIN)
-    self.assertEqual(def_origin.loc.lineno, 23)
+    self.assertEqual(def_origin.loc.lineno, fn_start)
     self.assertEqual(def_origin.loc.col_offset, 0)
     self.assertEqual(def_origin.source_code_line, 'def simple_function(x):')
     self.assertIsNone(def_origin.comment)
 
     docstring_origin = anno.getanno(node.body[0], anno.Basic.ORIGIN)
-    self.assertEqual(docstring_origin.loc.lineno, 24)
+    self.assertEqual(docstring_origin.loc.lineno, fn_start + 1)
     self.assertEqual(docstring_origin.loc.col_offset, 2)
     self.assertEqual(docstring_origin.source_code_line, '  """Docstring."""')
     self.assertIsNone(docstring_origin.comment)
 
     ret_origin = anno.getanno(node.body[1], anno.Basic.ORIGIN)
-    self.assertEqual(ret_origin.loc.lineno, 25)
+    self.assertEqual(ret_origin.loc.lineno, fn_start + 2)
     self.assertEqual(ret_origin.loc.col_offset, 2)
     self.assertEqual(ret_origin.source_code_line, '  return x  # comment')
     self.assertEqual(ret_origin.comment, 'comment')
 
   def test_resolve_entity_nested_function(self):
-
     test_fn = basic_definitions.nested_functions
     node, source = parser.parse_entity(
         test_fn, inspect_utils.getfutureimports(test_fn))
     origin_info.resolve_entity(node, source, test_fn)
 
     # The line numbers below should match those in basic_definitions.py
+    fn_start = inspect.getsourcelines(test_fn)[1]
 
     inner_def_origin = anno.getanno(node.body[1], anno.Basic.ORIGIN)
-    self.assertEqual(inner_def_origin.loc.lineno, 31)
+    self.assertEqual(inner_def_origin.loc.lineno, fn_start + 3)
     self.assertEqual(inner_def_origin.loc.col_offset, 2)
     self.assertEqual(inner_def_origin.source_code_line, '  def inner_fn(y):')
     self.assertIsNone(inner_def_origin.comment)
 
     inner_ret_origin = anno.getanno(node.body[1].body[0], anno.Basic.ORIGIN)
-    self.assertEqual(inner_ret_origin.loc.lineno, 32)
+    self.assertEqual(inner_ret_origin.loc.lineno, fn_start + 4)
     self.assertEqual(inner_ret_origin.loc.col_offset, 4)
     self.assertEqual(inner_ret_origin.source_code_line, '    return y')
     self.assertIsNone(inner_ret_origin.comment)
@@ -193,58 +197,59 @@ class OriginInfoTest(test.TestCase):
   def test_resolve_entity_indented_block(self):
 
     test_fn = basic_definitions.SimpleClass.simple_method
-    node, source = parser.parse_entity(
-        test_fn, inspect_utils.getfutureimports(test_fn))
+    node, source = parser.parse_entity(test_fn,
+                                       inspect_utils.getfutureimports(test_fn))
     origin_info.resolve_entity(node, source, test_fn)
 
     # The line numbers below should match those in basic_definitions.py
+    fn_start = inspect.getsourcelines(test_fn)[1]
 
     def_origin = anno.getanno(node, anno.Basic.ORIGIN)
-    self.assertEqual(def_origin.loc.lineno, 46)
+    self.assertEqual(def_origin.loc.lineno, fn_start)
     self.assertEqual(def_origin.loc.col_offset, 2)
     self.assertEqual(def_origin.source_code_line, 'def simple_method(self):')
     self.assertIsNone(def_origin.comment)
 
     ret_origin = anno.getanno(node.body[0], anno.Basic.ORIGIN)
-    self.assertEqual(ret_origin.loc.lineno, 47)
+    self.assertEqual(ret_origin.loc.lineno, fn_start + 1)
     self.assertEqual(ret_origin.loc.col_offset, 4)
     self.assertEqual(ret_origin.source_code_line, '  return self')
     self.assertIsNone(ret_origin.comment)
 
   def test_resolve_entity_decorated_function(self):
-
     test_fn = basic_definitions.decorated_function
-    node, source = parser.parse_entity(
-        test_fn, inspect_utils.getfutureimports(test_fn))
+    node, source = parser.parse_entity(test_fn,
+                                       inspect_utils.getfutureimports(test_fn))
     origin_info.resolve_entity(node, source, test_fn)
 
     # The line numbers below should match those in basic_definitions.py
+    fn_start = inspect.getsourcelines(test_fn)[1]
 
     def_origin = anno.getanno(node, anno.Basic.ORIGIN)
     if sys.version_info >= (3, 8):
-      self.assertEqual(def_origin.loc.lineno, 67)
-      self.assertEqual(
-          def_origin.source_code_line, 'def decorated_function(x):')
+      self.assertEqual(def_origin.loc.lineno, fn_start + 2)
+      self.assertEqual(def_origin.source_code_line,
+                       'def decorated_function(x):')
     else:
-      self.assertEqual(def_origin.loc.lineno, 65)
+      self.assertEqual(def_origin.loc.lineno, fn_start)
       self.assertEqual(def_origin.source_code_line, '@basic_decorator')
     self.assertEqual(def_origin.loc.col_offset, 0)
     self.assertIsNone(def_origin.comment)
 
     if_origin = anno.getanno(node.body[0], anno.Basic.ORIGIN)
-    self.assertEqual(if_origin.loc.lineno, 68)
+    self.assertEqual(if_origin.loc.lineno, fn_start + 3)
     self.assertEqual(if_origin.loc.col_offset, 2)
     self.assertEqual(if_origin.source_code_line, '  if x > 0:')
     self.assertIsNone(if_origin.comment)
 
     ret1_origin = anno.getanno(node.body[0].body[0], anno.Basic.ORIGIN)
-    self.assertEqual(ret1_origin.loc.lineno, 69)
+    self.assertEqual(ret1_origin.loc.lineno, fn_start + 4)
     self.assertEqual(ret1_origin.loc.col_offset, 4)
     self.assertEqual(ret1_origin.source_code_line, '    return 1')
     self.assertIsNone(ret1_origin.comment)
 
     ret2_origin = anno.getanno(node.body[1], anno.Basic.ORIGIN)
-    self.assertEqual(ret2_origin.loc.lineno, 70)
+    self.assertEqual(ret2_origin.loc.lineno, fn_start + 5)
     self.assertEqual(ret2_origin.loc.col_offset, 2)
     self.assertEqual(ret2_origin.source_code_line, '  return 2')
     self.assertIsNone(ret2_origin.comment)

@@ -1,4 +1,4 @@
-// RUN: xla-gpu-opt %s | FileCheck %s -dump-input-on-failure
+// RUN: xla-gpu-opt %s | FileCheck %s
 HloModule Complex
 
 ENTRY %Complex (real: f32[2,2]{0,1}, imag: f32[2,2]{0,1}) -> c64[2,2] {

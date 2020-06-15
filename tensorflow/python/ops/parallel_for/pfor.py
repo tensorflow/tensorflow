@@ -24,6 +24,7 @@ import string
 import sys
 import traceback
 
+import numpy as np
 import six
 
 from tensorflow.compiler.tf2xla.python import xla
@@ -75,7 +76,19 @@ flags.DEFINE_bool(
 
 def _stack(t, length):
   """stacks `t` `length` times."""
-  assert t.dtype != dtypes.variant
+  # Note that this stacking may currently be triggered, for example, when a
+  # loop invariant tensor with dtype variant is input to a while_loop which then
+  # produces a loop dependent output. Simply stacking the variants may not be
+  # suitable since operations on stacked handles may expect a vectorized version
+  # of the variant.
+  # Given that variant types are generic, we are currently unable to figure out
+  # which particular variant type is being considered here and hence it may not
+  # be safe to allow stacking it.
+  if t.dtype == dtypes.variant:
+    raise NotImplementedError(
+        "Vectorization tried to stack variant tensor %s. "
+        "This is likely because vectorization of that variant "
+        "is not fully supported yet." % t)
   ones = array_ops.ones_like(array_ops.shape(t))
   ones = array_ops.reshape(ones, [-1])
   length = array_ops.reshape(length, [-1])
@@ -104,6 +117,15 @@ passthrough_stateful_ops = set([
 ])
 
 
+# Ops which we will treat like stateful for the purpose of vectorization.
+# Typically this is used to force pfor converters to run for these ops.
+force_stateful_ops = set([
+    # We vectorize this since we need to change the element shape set on the
+    # list.
+    "TensorListReserve",
+])
+
+
 def _is_stateful_pfor_op(op):
   if isinstance(op, WhileOp):
     return op.is_stateful
@@ -112,6 +134,8 @@ def _is_stateful_pfor_op(op):
     return False
   if op.type in passthrough_stateful_ops:
     return False
+  if op.type in force_stateful_ops:
+    return True
   assert hasattr(op, "op_def") and op.op_def is not None, op
   return op.op_def.is_stateful
 
@@ -3481,9 +3505,10 @@ def _stack_tensor_list_shape(shape, pfor_input):
   # Note that negative values in the shape are used to signify unknown shapes
   # and are handled in a special way.
   if shape_value is not None:
-    if shape_value == -1 or -1 in shape_value:
+    shape_value = np.asarray(shape_value)
+    if -1 in shape_value:
       return constant_op.constant(-1)
-    elif not shape_value:
+    elif not shape_value.size:
       return first_dim
   else:
     shape = array_ops.reshape(shape, [-1])
@@ -3989,7 +4014,8 @@ def _convert_if(pfor_input):
     # Compute indices for cond being True or False.
     if pfor_input.pfor.all_indices_partitioned:
       else_indices, then_indices = data_flow_ops.dynamic_partition(
-          array_ops.range(len(pfor_input.pfor.all_indices)), cond_int, 2)
+          math_ops.range(pfor_input.pfor.loop_len_vector[0]),
+          cond_int, 2)
     else:
       else_indices, then_indices = false_indices, true_indices
     # Partition inputs
@@ -4078,9 +4104,16 @@ class WhileV2(object):
     with ops.name_scope("while_init"):
       for inp in self._pfor_input.inputs:
         inputs.append(inp.t)
-        output_tas.append(tensor_array_ops.TensorArray(inp.t.dtype, loop_len))
+        output_tas.append(tensor_array_ops.TensorArray(
+            inp.t.dtype,
+            size=loop_len,
+            dynamic_size=False,
+            infer_shape=True))
     # See documentation for __call__ for the structure of init_values.
-    return [True, self._pfor.all_indices] + inputs + output_tas
+    indices = (
+        math_ops.range(self._pfor.loop_len_vector[0])
+        if self._pfor.all_indices_partitioned else self._pfor.all_indices)
+    return [True, indices] + inputs + output_tas
 
   def _process_cond_unstacked(self, conditions, indices, inputs, output_tas):
     """Handles case when condition is pfor loop invariant."""
@@ -4145,12 +4178,16 @@ class WhileV2(object):
       # However once we make a new input loop variant, we might make other
       # outputs loop variant. Hence we need to iterate till we get fixed point.
       while True:
+        if self._pfor.all_indices_partitioned:
+          indices = array_ops.gather(self._pfor.all_indices, new_indices)
+        else:
+          indices = new_indices
         body_pfor = PFor(
             loop_var=self._pfor.loop_var,
             loop_len=array_ops.size(new_indices),
             pfor_ops=self._body_func.graph.get_operations(),
             fallback_to_while_loop=self._pfor.fallback_to_while_loop,
-            all_indices=new_indices,
+            all_indices=indices,
             all_indices_partitioned=(self._pfor.all_indices_partitioned or
                                      cond_stacked),
             pfor_config=self._pfor.pfor_config)

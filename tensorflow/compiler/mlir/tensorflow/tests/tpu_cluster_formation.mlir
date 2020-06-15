@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-tpu-cluster-formation | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-tpu-cluster-formation | FileCheck %s
 
 
 // Test ops in cluster only have `_tpu_replicate` and `device` attributes
