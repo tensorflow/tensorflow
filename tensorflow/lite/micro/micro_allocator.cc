@@ -466,6 +466,8 @@ TfLiteStatus InitializeTfLiteTensorFromFlatbuffer(
   TF_LITE_ENSURE_STATUS(BytesRequiredForTensor(
       flatbuffer_tensor, &result->bytes, &type_size, error_reporter));
 
+  // TODO(b/159043126): Cleanup endian casting by doing all endian casting in
+  // one spot:
   if (flatbuffer_tensor.shape() == nullptr) {
     // flatbuffer_tensor.shape() can return a nullptr in the case of a scalar
     // tensor.
@@ -513,6 +515,10 @@ TfLiteStatus InitializeTfLiteTensorFromFlatbuffer(
                            "Unable to allocate TfLiteAffineQuantization.\n");
       return kTfLiteError;
     }
+
+    // TODO(b/153688719): Reduce tail allocation by using a global zero-point
+    // buffer. This value can not be reused from the flatbuffer since the
+    // zero_point is stored as a int64_t.
     quantization->zero_point =
         reinterpret_cast<TfLiteIntArray*>(allocator->AllocateFromTail(
             TfLiteIntArrayGetSizeInBytes(channels), alignof(TfLiteIntArray)));
@@ -522,22 +528,14 @@ TfLiteStatus InitializeTfLiteTensorFromFlatbuffer(
       return kTfLiteError;
     }
 
-    quantization->scale = reinterpret_cast<TfLiteFloatArray*>(
-        allocator->AllocateFromTail(TfLiteFloatArrayGetSizeInBytes(channels),
-                                    alignof(TfLiteFloatArray)));
-    if (quantization->scale == nullptr) {
-      TF_LITE_REPORT_ERROR(error_reporter,
-                           "Unable to allocate quantization->scale.\n");
-      return kTfLiteError;
-    }
+    // TODO(b/159043126): Check for big endian before casting flatbuffer values.
+    quantization->scale = const_cast<TfLiteFloatArray*>(
+        reinterpret_cast<const TfLiteFloatArray*>(src_quantization->scale()));
 
     quantization->zero_point->size = channels;
-    quantization->scale->size = channels;
     int* zero_point_data = quantization->zero_point->data;
-    float* scale_data = quantization->scale->data;
     for (int i = 0; i < channels; i++) {
       zero_point_data[i] = src_quantization->zero_point()->Get(i);
-      scale_data[i] = src_quantization->scale()->Get(i);
     }
     // TODO(rocky): Need to add a micro_allocator test case that fails when
     // this is not copied:
@@ -815,8 +813,10 @@ TfLiteStatus MicroAllocator::PrepareNodeAndRegistrationDataFromFlatbuffer(
     }
 
     // Disregard const qualifier to workaround with existing API.
+    // TODO(b/159043126): Check for big endian before casting flatbuffer values.
     TfLiteIntArray* inputs_array = const_cast<TfLiteIntArray*>(
         reinterpret_cast<const TfLiteIntArray*>(op->inputs()));
+    // TODO(b/159043126): Check for big endian before casting flatbuffer values.
     TfLiteIntArray* outputs_array = const_cast<TfLiteIntArray*>(
         reinterpret_cast<const TfLiteIntArray*>(op->outputs()));
 
