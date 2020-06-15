@@ -33,6 +33,9 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
   using StreamMap =
       absl::flat_hash_map<stream_executor::internal::StreamInterface*,
                           SE_Stream*>;
+  using EventMap =
+      absl::flat_hash_map<stream_executor::internal::EventInterface*,
+                          SE_Event*>;
 
   static const ::stream_executor::Platform::Id kId;
   static constexpr char kName[] = "TPU";
@@ -54,6 +57,8 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
   int VisibleDeviceCount() const override;
 
   int64 TpuMemoryLimit() override;
+
+  bool ShouldRegisterTpuDeviceToDeviceCopy() override;
 
   bool Initialized() const override {
     return TpuPlatform_Initialized(platform_);
@@ -109,11 +114,14 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
 
   StreamMap* stream_map() { return &stream_map_; }
 
+  EventMap* event_map() { return &event_map_; }
+
  private:
   SE_Platform* platform_;
 
   stream_executor::ExecutorCache executor_cache_;
   StreamMap stream_map_;
+  EventMap event_map_;
 };
 
 }  // namespace tensorflow

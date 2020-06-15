@@ -420,7 +420,7 @@ func @fusedBatchNormGradV3_Training_NCHW(%arg0: tensor<8x8x8x8xf32>, %arg1: tens
 // CHECK-LABEL: func @biasAdd_NHWC
 func @biasAdd_NHWC(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>) -> tensor<1x32x10x32xi32> {
   // CHECK: %[[ARG0_SHAPE:.+]] = shape.shape_of %arg0
-  // CHECK: %[[ARG0_EXTENTS:.+]] = "shape.to_extent_tensor"(%[[ARG0_SHAPE]])
+  // CHECK: %[[ARG0_EXTENTS:.+]] = shape.to_extent_tensor %[[ARG0_SHAPE]]
   // CHECK: %[[ARG1_BCAST:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%arg1, %[[ARG0_EXTENTS]])
   // CHECK-SAME:   {broadcast_dimensions = dense<3> : tensor<1xi64>}
   // CHECK: %[[RESULT:.+]] = xla_hlo.add %arg0, %[[ARG1_BCAST]]
@@ -431,7 +431,7 @@ func @biasAdd_NHWC(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>) -> tens
 // CHECK-LABEL: func @biasAdd_NCHW
 func @biasAdd_NCHW(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>) -> tensor<1x32x10x32xi32> {
   // CHECK: %[[ARG0_SHAPE:.+]] = shape.shape_of %arg0
-  // CHECK: %[[ARG0_EXTENTS:.+]] = "shape.to_extent_tensor"(%[[ARG0_SHAPE]])
+  // CHECK: %[[ARG0_EXTENTS:.+]] = shape.to_extent_tensor %[[ARG0_SHAPE]]
   // CHECK: %[[ARG1_BCAST:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%arg1, %[[ARG0_EXTENTS]])
   // CHECK-SAME:   {broadcast_dimensions = dense<1> : tensor<1xi64>}
   // CHECK: %[[RESULT:.+]] = xla_hlo.add %arg0, %[[ARG1_BCAST]]
@@ -442,7 +442,7 @@ func @biasAdd_NCHW(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>) -> tens
 // CHECK-LABEL: func @biasAdd_dynamic
 func @biasAdd_dynamic(%arg0: tensor<?x?x?x?xi32>, %arg1: tensor<?xi32>) -> tensor<?x?x?x?xi32> {
   // CHECK: %[[ARG0_SHAPE:.+]] = shape.shape_of %arg0
-  // CHECK: %[[ARG0_EXTENTS:.+]] = "shape.to_extent_tensor"(%[[ARG0_SHAPE]])
+  // CHECK: %[[ARG0_EXTENTS:.+]] = shape.to_extent_tensor %[[ARG0_SHAPE]]
   // CHECK: %[[ARG1_BCAST:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%arg1, %[[ARG0_EXTENTS]])
   // CHECK-SAME:   {broadcast_dimensions = dense<1> : tensor<1xi64>}
   // CHECK: %[[RESULT:.+]] = xla_hlo.add %arg0, %[[ARG1_BCAST]]
@@ -1445,7 +1445,7 @@ func @simple_softmax(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   // CHECK: %[[CASTED_MAX:.*]] = "xla_hlo.convert"(%[[MAX]]) : (tensor<2xf32>) -> tensor<2xf32>
 
   // CHECK: %[[RESULT_SHAPE:.+]] = shape.shape_of %[[ARG0]]
-  // CHECK: %[[RESULT_EXTENTS:.+]] = "shape.to_extent_tensor"(%[[RESULT_SHAPE]]) : (!shape.shape) -> tensor<2xindex>
+  // CHECK: %[[RESULT_EXTENTS:.+]] = shape.to_extent_tensor %[[RESULT_SHAPE]] : tensor<2xindex>
   // CHECK: %[[BCAST_MAX:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%[[CASTED_MAX]], %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
   // CHECK: %[[SHIFTED_INP:.*]] = xla_hlo.subtract %[[ARG0]], %[[BCAST_MAX]]
   // CHECK: %[[EXP:.*]] = "xla_hlo.exponential"(%[[SHIFTED_INP]])
@@ -1460,7 +1460,7 @@ func @simple_softmax(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   // CHECK: %[[CASTED_SUM:.*]] = "xla_hlo.convert"(%[[SUM]]) : (tensor<2xf32>) -> tensor<2xf32>
 
   // CHECK: %[[RESULT_SHAPE:.+]] = shape.shape_of %[[ARG0]]
-  // CHECK: %[[RESULT_EXTENTS:.+]] = "shape.to_extent_tensor"(%[[RESULT_SHAPE]]) : (!shape.shape) -> tensor<2xindex>
+  // CHECK: %[[RESULT_EXTENTS:.+]] = shape.to_extent_tensor %[[RESULT_SHAPE]] : tensor<2xindex>
   // CHECK: %[[BCAST_SUM:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%[[CASTED_SUM]], %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
   // CHECK: %[[RESULT:.*]] = xla_hlo.divide %[[EXP]], %[[BCAST_SUM]]
   // CHECK: return %[[RESULT]]
@@ -1517,7 +1517,7 @@ func @simple_logsoftmax(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   // CHECK: %[[CASTED_SUM:.*]] = "xla_hlo.convert"(%[[SUM]]) : (tensor<2xf32>) -> tensor<2xf32>
   // CHECK: %[[LOG:.*]] = "xla_hlo.log"(%[[CASTED_SUM]]) : (tensor<2xf32>) -> tensor<2xf32>
   // CHECK: %[[RESULT_SHAPE:.+]] = shape.shape_of %[[ARG0]]
-  // CHECK: %[[RESULT_EXTENTS:.+]] = "shape.to_extent_tensor"(%[[RESULT_SHAPE]]) : (!shape.shape) -> tensor<2xindex>
+  // CHECK: %[[RESULT_EXTENTS:.+]] = shape.to_extent_tensor %[[RESULT_SHAPE]] : tensor<2xindex>
   // CHECK: %[[BCAST_SUM:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%[[LOG]], %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
   // CHECK: %[[RESULT:.*]] = xla_hlo.subtract {{.*}}, %[[BCAST_SUM]]
   // CHECK: return %[[RESULT]]
@@ -1544,58 +1544,34 @@ func @rfft_1D(%arg0: tensor<8xf32>) -> tensor<8xcomplex<f32>> {
 
 // CHECK-LABEL: func @shape_1D
 func @shape_1D(%arg0: tensor<?xf32>) -> tensor<1xi32> {
-  // CHECK-DAG: [[SHAPE:%.+]] = shape.shape_of %arg0
-  // CHECK-DAG: [[EXTENT:%.+]] = shape.get_extent [[SHAPE]], 0
-  // CHECK-DAG: [[TO_INDEX:%.+]] = shape.size_to_index [[EXTENT]]
-  // CHECK-DAG: [[CAST:%.+]] = index_cast [[TO_INDEX]]
-  // CHECK-DAG: [[TENSOR:%.+]] = tensor_from_elements([[CAST]])
-  // CHECK-DAG: [[RESHAPE:%.+]] = "xla_hlo.reshape"([[TENSOR]])
-  // CHECK-DAG: [[CONCAT:%.+]] = "xla_hlo.concatenate"([[RESHAPE]]) {dimension = 0 : i64}
+  // CHECK: [[SHAPE:%.+]] = shape.shape_of %arg0
+  // CHECK: [[TENSOR:%.+]] = shape.to_extent_tensor [[SHAPE]]
+  // CHECK: [[CAST:%.+]] = index_cast [[TENSOR]]
   %0 = "tf.Shape"(%arg0) : (tensor<?xf32>) -> tensor<1xi32>
 
-  // CHECK: return [[CONCAT]]
+  // CHECK: return [[CAST]]
   return %0 : tensor<1xi32>
 }
 
 // CHECK-LABEL: func @shape_2D
 func @shape_2D(%arg0: tensor<?x?xf32>) -> tensor<2xi32> {
-  // CHECK-DAG: [[SHAPE:%.+]] = shape.shape_of %arg0
-  // CHECK-DAG: [[EXTENT0:%.+]] = shape.get_extent [[SHAPE]], 0
-  // CHECK-DAG: [[EXTENT1:%.+]] = shape.get_extent [[SHAPE]], 1
-  // CHECK-DAG: [[TO_INDEX0:%.+]] = shape.size_to_index [[EXTENT0]]
-  // CHECK-DAG: [[TO_INDEX1:%.+]] = shape.size_to_index [[EXTENT1]]
-  // CHECK-DAG: [[CAST0:%.+]] = index_cast [[TO_INDEX0]]
-  // CHECK-DAG: [[CAST1:%.+]] = index_cast [[TO_INDEX1]]
-  // CHECK-DAG: [[TENSOR0:%.+]] = tensor_from_elements([[CAST0]])
-  // CHECK-DAG: [[TENSOR1:%.+]] = tensor_from_elements([[CAST1]])
-  // CHECK-DAG: [[RESHAPE0:%.+]] = "xla_hlo.reshape"([[TENSOR0]])
-  // CHECK-DAG: [[RESHAPE1:%.+]] = "xla_hlo.reshape"([[TENSOR1]])
-  // CHECK-DAG: [[CONCAT:%.+]] = "xla_hlo.concatenate"([[RESHAPE0]], [[RESHAPE1]]) {dimension = 0 : i64}
+  // CHECK: [[SHAPE:%.+]] = shape.shape_of %arg0
+  // CHECK: [[TENSOR:%.+]] = shape.to_extent_tensor [[SHAPE]]
+  // CHECK: [[CAST:%.+]] = index_cast [[TENSOR]]
   %0 = "tf.Shape"(%arg0) : (tensor<?x?xf32>) -> tensor<2xi32>
 
-  // CHECK: return [[CONCAT]]
-  return %0 : tensor<2xi32>
-}
-
-// CHECK-LABEL: func @shape_with_const
-func @shape_with_const(%arg0: tensor<?x3xf32>) -> tensor<2xi32> {
-  // CHECK-DAG: [[SHAPE:%.+]] = shape.shape_of %arg0
-  // CHECK-DAG: [[EXTENT:%.+]] = shape.get_extent [[SHAPE]], 0
-  // CHECK-DAG: [[TO_INDEX:%.+]] = shape.size_to_index [[EXTENT]]
-  // CHECK-DAG: [[CAST:%.+]] = index_cast [[TO_INDEX]]
-  // CHECK-DAG: [[TENSOR:%.+]] = tensor_from_elements([[CAST]])
-  // CHECK-DAG: [[RESHAPE:%.+]] = "xla_hlo.reshape"([[TENSOR]])
-  // CHECK-DAG: [[CONST:%.+]] = xla_hlo.constant dense<3>
-  // CHECK-DAG: [[CONCAT:%.+]] = "xla_hlo.concatenate"([[RESHAPE]], [[CONST]]) {dimension = 0 : i64}
-  %0 = "tf.Shape"(%arg0) : (tensor<?x3xf32>) -> tensor<2xi32>
-
-  // CHECK: return [[CONCAT]]
+  // CHECK: return [[CAST]]
   return %0 : tensor<2xi32>
 }
 
 // CHECK-LABEL: func @shape_rankless
 func @shape_rankless(%arg0: tensor<*xf32>) -> tensor<?xi32> {
+  // CHECK: [[SHAPE:%.+]] = shape.shape_of %arg0
+  // CHECK: [[TENSOR:%.+]] = shape.to_extent_tensor [[SHAPE]]
+  // CHECK: [[CAST:%.+]] = index_cast [[TENSOR]]
   %0 = "tf.Shape"(%arg0) : (tensor<*xf32>) -> tensor<?xi32>
+
+  // CHECK: return [[CAST]]
   return %0 : tensor<?xi32>
 }
 
@@ -1884,7 +1860,7 @@ func @neg_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 func @sigmoid(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK-DAG: [[SCALAR:%.+]] = xla_hlo.constant dense<5.000000e-01> : tensor<f32>
   // CHECK-DAG: [[SHAPE:%.+]] = shape.shape_of %arg0 : tensor<2xf32>
-  // CHECK-DAG: [[SHAPE_VAL:%.+]] = "shape.to_extent_tensor"([[SHAPE]]) : (!shape.shape) -> tensor<1xindex>
+  // CHECK-DAG: [[SHAPE_VAL:%.+]] = shape.to_extent_tensor [[SHAPE]] : tensor<1xindex>
   // CHECK-DAG: [[HALF:%.+]] = "xla_hlo.dynamic_broadcast_in_dim"([[SCALAR]], [[SHAPE_VAL]]) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<f32>, tensor<1xindex>) -> tensor<2xf32>
   // CHECK-DAG: [[R1:%.+]] =  xla_hlo.multiply %arg0, [[HALF]] : tensor<2xf32>
   // CHECK-DAG: [[R2:%.+]] =  "xla_hlo.tanh"([[R1]]) : (tensor<2xf32>) -> tensor<2xf32>
@@ -1906,7 +1882,7 @@ func @sigmoid_complex(%arg0: tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>> {
 func @sigmoid_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK-DAG: [[SCALAR:%.+]] = xla_hlo.constant dense<5.000000e-01> : tensor<f32>
   // CHECK-DAG: [[SHAPE:%.+]] = shape.shape_of %arg0 : tensor<*xf32>
-  // CHECK-DAG: [[SHAPE_VAL:%.+]] = "shape.to_extent_tensor"([[SHAPE]]) : (!shape.shape) -> tensor<?xindex>
+  // CHECK-DAG: [[SHAPE_VAL:%.+]] = shape.to_extent_tensor [[SHAPE]] : tensor<?xindex>
   // CHECK-DAG: [[HALF:%.+]] = "xla_hlo.dynamic_broadcast_in_dim"([[SCALAR]], [[SHAPE_VAL]]) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<f32>, tensor<?xindex>) -> tensor<*xf32>
   // CHECK-DAG: [[R1:%.+]] =  xla_hlo.multiply %arg0, [[HALF]] : tensor<*xf32>
   // CHECK-DAG: [[R2:%.+]] =  "xla_hlo.tanh"([[R1]]) : (tensor<*xf32>) -> tensor<*xf32>
@@ -3827,42 +3803,6 @@ func @random_shuffle_3D(%input: tensor<4x?x16xf32>) -> tensor<4x?x16xf32> {
 }
 
 //===----------------------------------------------------------------------===//
-// tf.VariableShape legalization
-//===----------------------------------------------------------------------===//
-
-// CHECK-LABLE: @variable_shape32
-func @variable_shape32(%input: tensor<!tf.resource<tensor<2x4x8xf32>>>) -> tensor<3xi32> {
-  // CHECK: [[CST:%.*]] = xla_hlo.constant dense<[2, 4, 8]> : tensor<3xi32>
-  // CHECK: [[CST_CAST:%.*]] = tensor_cast [[CST]]
-  %0 = "tf.VariableShape"(%input) : (tensor<!tf.resource<tensor<2x4x8xf32>>>) -> (tensor<3xi32>)
-  // CHECK: return [[CST_CAST]]
-  return %0: tensor<3xi32>
-}
-
-// CHECK-LABLE: @variable_shape64
-func @variable_shape64(%input: tensor<!tf.resource<tensor<2x4x8xf32>>>) -> tensor<3xi64> {
-  // CHECK: [[CST:%.*]] = xla_hlo.constant dense<[2, 4, 8]> : tensor<3xi64>
-  // CHECK: [[CST_CAST:%.*]] = tensor_cast [[CST]]
-  %0 = "tf.VariableShape"(%input) : (tensor<!tf.resource<tensor<2x4x8xf32>>>) -> (tensor<3xi64>)
-  // CHECK: return [[CST_CAST]]
-  return %0: tensor<3xi64>
-}
-
-// CHECK-LABEL: @variable_shape_unknown_resource
-func @variable_shape_unknown_resource(%input: tensor<!tf.resource>) -> tensor<?xi32> {
-  // CHECK: tf.VariableShape
-  %0 = "tf.VariableShape"(%input) : (tensor<!tf.resource>) -> (tensor<?xi32>)
-  return %0: tensor<?xi32>
-}
-
-// CHECK-LABEL: @variable_shape_unknown_resource_shape
-func @variable_shape_unknown_resource_shape(%input: tensor<!tf.resource<tensor<?x?xf32>>>) -> tensor<2xi32> {
-  // CHECK: tf.VariableShape
-  %0 = "tf.VariableShape"(%input) : (tensor<!tf.resource<tensor<?x?xf32>>>) -> (tensor<2xi32>)
-  return %0: tensor<2xi32>
-}
-
-//===----------------------------------------------------------------------===//
 // tf.AvgPool legalization
 //===----------------------------------------------------------------------===//
 
@@ -4024,4 +3964,88 @@ func @qr(%arg0: tensor<500x100x75xf32>) -> (tensor<500x100x75xf32>, tensor<500x7
   // CHECK-NOT: "tf.Qr"
   %0:2 = "tf.Qr"(%arg0) {full_matrices = false} : (tensor<500x100x75xf32>) -> (tensor<500x100x75xf32>, tensor<500x75x75xf32>)
   return %0#0, %0#1 : tensor<500x100x75xf32>, tensor<500x75x75xf32>
+}
+
+//===----------------------------------------------------------------------===//
+// tf.Softplus legalization
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @softplus_f16
+// CHECK-SAME: ([[FEATURES:%.*]]: tensor<8x16xf16>)
+func @softplus_f16(%arg0: tensor<8x16xf16>) -> tensor<8x16xf16> {
+  // CHECK-DAG: [[FEATURES_EXP:%.*]] = "xla_hlo.exponential"([[FEATURES]])
+  // CHECK-DAG: [[EPSILON:%.*]] = xla_hlo.constant dense<1.220700e-04> : tensor<f16>
+  // CHECK-DAG: [[EPSILON_LOG:%.*]] = "xla_hlo.log"([[EPSILON]])
+  // CHECK-DAG: [[TWO:%.*]] = xla_hlo.constant dense<2.000000e+00> : tensor<f16>
+  // CHECK:     [[THRESHOLD:%.*]] = xla_chlo.broadcast_add [[EPSILON_LOG]], [[TWO]]
+  // CHECK:     [[NEG_THRESHOLD:%.*]] = "xla_hlo.negate"([[THRESHOLD]])
+  // CHECK-DAG: [[COMPARE_GT:%.*]] = xla_chlo.broadcast_compare [[FEATURES]], [[NEG_THRESHOLD]] {comparison_direction = "GT"}
+  // CHECK-DAG: [[COMPARE_LT:%.*]] = xla_chlo.broadcast_compare [[FEATURES]], [[THRESHOLD]] {comparison_direction = "LT"}
+  // CHECK-DAG: [[FEATURES_EXP_LOG:%.*]] = "xla_hlo.log_plus_one"([[FEATURES_EXP]])
+  // CHECK:     [[ELSE_SELECT:%.*]] = "xla_hlo.select"([[COMPARE_LT]], [[FEATURES_EXP]], [[FEATURES_EXP_LOG]])
+  // CHECK:     [[ENTRY_SELECT:%.*]] = "xla_hlo.select"([[COMPARE_GT]], [[FEATURES]], [[ELSE_SELECT]])
+  %0 = "tf.Softplus"(%arg0) : (tensor<8x16xf16>) -> tensor<8x16xf16>
+
+  // CHECK:     return [[ENTRY_SELECT]] : tensor<8x16xf16>
+  return %0 : tensor<8x16xf16>
+}
+
+// CHECK-LABEL: func @softplus_bf16
+// CHECK-SAME: ([[FEATURES:%.*]]: tensor<8x16xbf16>)
+func @softplus_bf16(%arg0: tensor<8x16xbf16>) -> tensor<8x16xbf16> {
+  // CHECK-DAG: [[FEATURES_EXP:%.*]] = "xla_hlo.exponential"([[FEATURES]])
+  // CHECK-DAG: [[EPSILON:%.*]] = xla_hlo.constant dense<7.812500e-03> : tensor<bf16>
+  // CHECK-DAG: [[EPSILON_LOG:%.*]] = "xla_hlo.log"([[EPSILON]])
+  // CHECK-DAG: [[TWO:%.*]] = xla_hlo.constant dense<2.000000e+00> : tensor<bf16>
+  // CHECK:     [[THRESHOLD:%.*]] = xla_chlo.broadcast_add [[EPSILON_LOG]], [[TWO]]
+  // CHECK:     [[NEG_THRESHOLD:%.*]] = "xla_hlo.negate"([[THRESHOLD]])
+  // CHECK-DAG: [[COMPARE_GT:%.*]] = xla_chlo.broadcast_compare [[FEATURES]], [[NEG_THRESHOLD]] {comparison_direction = "GT"}
+  // CHECK-DAG: [[COMPARE_LT:%.*]] = xla_chlo.broadcast_compare [[FEATURES]], [[THRESHOLD]] {comparison_direction = "LT"}
+  // CHECK-DAG: [[FEATURES_EXP_LOG:%.*]] = "xla_hlo.log_plus_one"([[FEATURES_EXP]])
+  // CHECK:     [[ELSE_SELECT:%.*]] = "xla_hlo.select"([[COMPARE_LT]], [[FEATURES_EXP]], [[FEATURES_EXP_LOG]])
+  // CHECK:     [[ENTRY_SELECT:%.*]] = "xla_hlo.select"([[COMPARE_GT]], [[FEATURES]], [[ELSE_SELECT]])
+  %0 = "tf.Softplus"(%arg0) : (tensor<8x16xbf16>) -> tensor<8x16xbf16>
+
+  // CHECK:     return [[ENTRY_SELECT]] : tensor<8x16xbf16>
+  return %0 : tensor<8x16xbf16>
+}
+
+// CHECK-LABEL: func @softplus_f32
+// CHECK-SAME: ([[FEATURES:%.*]]: tensor<8x16xf32>)
+func @softplus_f32(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
+  // CHECK-DAG: [[FEATURES_EXP:%.*]] = "xla_hlo.exponential"([[FEATURES]])
+  // CHECK-DAG: [[EPSILON:%.*]] = xla_hlo.constant dense<1.1920929E-7> : tensor<f32>
+  // CHECK-DAG: [[EPSILON_LOG:%.*]] = "xla_hlo.log"([[EPSILON]])
+  // CHECK-DAG: [[TWO:%.*]] = xla_hlo.constant dense<2.000000e+00> : tensor<f32>
+  // CHECK:     [[THRESHOLD:%.*]] = xla_chlo.broadcast_add [[EPSILON_LOG]], [[TWO]]
+  // CHECK:     [[NEG_THRESHOLD:%.*]] = "xla_hlo.negate"([[THRESHOLD]])
+  // CHECK-DAG: [[COMPARE_GT:%.*]] = xla_chlo.broadcast_compare [[FEATURES]], [[NEG_THRESHOLD]] {comparison_direction = "GT"}
+  // CHECK-DAG: [[COMPARE_LT:%.*]] = xla_chlo.broadcast_compare [[FEATURES]], [[THRESHOLD]] {comparison_direction = "LT"}
+  // CHECK-DAG: [[FEATURES_EXP_LOG:%.*]] = "xla_hlo.log_plus_one"([[FEATURES_EXP]])
+  // CHECK:     [[ELSE_SELECT:%.*]] = "xla_hlo.select"([[COMPARE_LT]], [[FEATURES_EXP]], [[FEATURES_EXP_LOG]])
+  // CHECK:     [[ENTRY_SELECT:%.*]] = "xla_hlo.select"([[COMPARE_GT]], [[FEATURES]], [[ELSE_SELECT]])
+  %0 = "tf.Softplus"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+
+  // CHECK:     return [[ENTRY_SELECT]] : tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
+}
+
+// CHECK-LABEL: func @softplus_f64
+// CHECK-SAME: ([[FEATURES:%.*]]: tensor<8x16xf64>)
+func @softplus_f64(%arg0: tensor<8x16xf64>) -> tensor<8x16xf64> {
+  // CHECK-DAG: [[FEATURES_EXP:%.*]] = "xla_hlo.exponential"([[FEATURES]])
+  // CHECK-DAG: [[EPSILON:%.*]] = xla_hlo.constant dense<2.2204460492503131E-16> : tensor<f64>
+  // CHECK-DAG: [[EPSILON_LOG:%.*]] = "xla_hlo.log"([[EPSILON]])
+  // CHECK-DAG: [[TWO:%.*]] = xla_hlo.constant dense<2.000000e+00> : tensor<f64>
+  // CHECK:     [[THRESHOLD:%.*]] = xla_chlo.broadcast_add [[EPSILON_LOG]], [[TWO]]
+  // CHECK:     [[NEG_THRESHOLD:%.*]] = "xla_hlo.negate"([[THRESHOLD]])
+  // CHECK-DAG: [[COMPARE_GT:%.*]] = xla_chlo.broadcast_compare [[FEATURES]], [[NEG_THRESHOLD]] {comparison_direction = "GT"}
+  // CHECK-DAG: [[COMPARE_LT:%.*]] = xla_chlo.broadcast_compare [[FEATURES]], [[THRESHOLD]] {comparison_direction = "LT"}
+  // CHECK-DAG: [[FEATURES_EXP_LOG:%.*]] = "xla_hlo.log_plus_one"([[FEATURES_EXP]])
+  // CHECK:     [[ELSE_SELECT:%.*]] = "xla_hlo.select"([[COMPARE_LT]], [[FEATURES_EXP]], [[FEATURES_EXP_LOG]])
+  // CHECK:     [[ENTRY_SELECT:%.*]] = "xla_hlo.select"([[COMPARE_GT]], [[FEATURES]], [[ELSE_SELECT]])
+  %0 = "tf.Softplus"(%arg0) : (tensor<8x16xf64>) -> tensor<8x16xf64>
+
+  // CHECK:     return [[ENTRY_SELECT]] : tensor<8x16xf64>
+  return %0 : tensor<8x16xf64>
 }

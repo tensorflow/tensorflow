@@ -24,6 +24,7 @@ cc_library(
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/tools/optimize/sparsity:format_converter",
         "@FP16",
         "@XNNPACK",
     ],
@@ -49,6 +50,7 @@ cc_library(
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/tools/optimize/sparsity:format_converter",
         "@FP16",
         "@XNNPACK",
     ],
@@ -125,6 +127,22 @@ cc_library(
 )
 
 cc_library(
+    name = "leaky_relu_tester",
+    testonly = 1,
+    srcs = ["leaky_relu_tester.cc"],
+    hdrs = ["leaky_relu_tester.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
     name = "pad_tester",
     testonly = 1,
     srcs = ["pad_tester.cc"],
@@ -145,6 +163,22 @@ cc_library(
     testonly = 1,
     srcs = ["pool_2d_tester.cc"],
     hdrs = ["pool_2d_tester.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "reduce_tester",
+    testonly = 1,
+    srcs = ["reduce_tester.cc"],
+    hdrs = ["reduce_tester.h"],
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
@@ -354,6 +388,21 @@ cc_test(
 )
 
 cc_test(
+    name = "leaky_relu_test",
+    srcs = ["leaky_relu_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":leaky_relu_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "logistic_test",
     srcs = ["logistic_test.cc"],
     linkopts = select({
@@ -392,6 +441,21 @@ cc_test(
     }),
     deps = [
         ":binary_elementwise_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "mean_test",
+    srcs = ["mean_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":reduce_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",

@@ -48,6 +48,7 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/micro:micro_profiler",
         "//tensorflow/lite/micro/memory_planner",
         "//tensorflow/lite/micro/memory_planner:greedy_memory_planner",
         "//tensorflow/lite/schema:schema_fbs",
@@ -182,6 +183,24 @@ cc_library(
 )
 
 cc_library(
+    name = "micro_profiler",
+    srcs = [
+        "micro_profiler.cc",
+    ],
+    hdrs = [
+        "micro_profiler.h",
+    ],
+    build_for_embedded = True,
+    copts = micro_copts(),
+    deps = [
+        ":micro_compatibility",
+        ":micro_time",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/kernels/internal:compatibility",
+    ],
+)
+
+cc_library(
     name = "micro_utils",
     srcs = [
         "micro_utils.cc",
@@ -205,6 +224,7 @@ cc_library(
     ],
     hdrs = [
         "recording_micro_allocator.h",
+        "recording_micro_interpreter.h",
         "recording_simple_memory_allocator.h",
     ],
     build_for_embedded = True,
@@ -359,5 +379,19 @@ tflite_micro_cc_test(
     deps = [
         ":micro_time",
         "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "memory_arena_threshold_test",
+    srcs = [
+        "memory_arena_threshold_test.cc",
+    ],
+    deps = [
+        ":op_resolvers",
+        ":recording_allocators",
+        "//tensorflow/lite/micro/benchmarks:keyword_scrambled_model_data",
+        "//tensorflow/lite/micro/testing:micro_test",
+        "//tensorflow/lite/micro/testing:test_conv_model",
     ],
 )

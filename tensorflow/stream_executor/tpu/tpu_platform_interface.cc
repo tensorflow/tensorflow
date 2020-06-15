@@ -15,19 +15,30 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
 
+#include <atomic>
+
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 
 namespace tensorflow {
 namespace tpu {
 
+namespace {
+TpuPlatformInterface* tpu_registered_platform = nullptr;
+}  // namespace
+
 /* static */
 TpuPlatformInterface* TpuPlatformInterface::GetRegisteredPlatform() {
+  if (tpu_registered_platform != nullptr) {
+    return tpu_registered_platform;
+  }
+
   // Prefer TpuPlatform if it's registered.
   auto status_or_tpu_platform =
       stream_executor::MultiPlatformManager::PlatformWithName("TPU");
   if (status_or_tpu_platform.ok()) {
-    return static_cast<TpuPlatformInterface*>(
-        status_or_tpu_platform.ValueOrDie());
+    tpu_registered_platform =
+        static_cast<TpuPlatformInterface*>(status_or_tpu_platform.ValueOrDie());
+    return tpu_registered_platform;
   }
   if (status_or_tpu_platform.status().code() != error::NOT_FOUND) {
     LOG(WARNING) << "Error when getting the TPU platform: "
@@ -52,7 +63,9 @@ TpuPlatformInterface* TpuPlatformInterface::GetRegisteredPlatform() {
     LOG(WARNING) << other_tpu_platforms.size()
                  << " TPU platforms registered, selecting "
                  << other_tpu_platforms[0]->Name();
-    return static_cast<TpuPlatformInterface*>(other_tpu_platforms[0]);
+    tpu_registered_platform =
+        static_cast<TpuPlatformInterface*>(other_tpu_platforms[0]);
+    return tpu_registered_platform;
   }
 
   LOG(WARNING) << "No TPU platform registered";

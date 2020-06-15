@@ -118,14 +118,14 @@ bool TpuExecutor::StopTimer(Stream* stream, ::stream_executor::Timer* timer) {
 stream_executor::Event::Status TpuExecutor::PollForEventStatus(
     stream_executor::Event* event) {
   return stream_executor::Event::Status(TpuExecutor_PollForEventStatus(
-      executor_, event_map_.at(event->implementation())));
+      executor_, event_map().at(event->implementation())));
 }
 
 Status TpuExecutor::RecordEvent(Stream* stream,
                                 ::stream_executor::Event* event) {
   StatusHelper status;
   TpuExecutor_RecordEvent(executor_, stream_map().at(stream->implementation()),
-                          event_map_.at(event->implementation()),
+                          event_map().at(event->implementation()),
                           status.c_status);
   return status.status();
 }
@@ -134,7 +134,7 @@ Status TpuExecutor::WaitForEvent(Stream* stream,
                                  ::stream_executor::Event* event) {
   StatusHelper status;
   TpuExecutor_WaitForEvent(executor_, stream_map().at(stream->implementation()),
-                           event_map_.at(event->implementation()),
+                           event_map().at(event->implementation()),
                            status.c_status);
   return status.status();
 }
@@ -168,7 +168,7 @@ std::unique_ptr<::stream_executor::internal::EventInterface>
 TpuExecutor::CreateEventImplementation() {
   SE_Event* tpu_event = TpuEvent_New(executor_);
   auto ptr = absl::make_unique<TpuEvent>(tpu_event);
-  event_map_[ptr.get()] = tpu_event;
+  event_map()[ptr.get()] = tpu_event;
   return ptr;
 }
 

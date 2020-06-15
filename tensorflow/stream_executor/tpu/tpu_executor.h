@@ -48,9 +48,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   using StreamExecutorInterface =
       ::stream_executor::internal::StreamExecutorInterface;
 
-  using EventMap =
-      absl::flat_hash_map<stream_executor::internal::EventInterface*,
-                          SE_Event*>;
   using TimerMap =
       absl::flat_hash_map<stream_executor::internal::TimerInterface*,
                           SE_Timer*>;
@@ -225,11 +222,14 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   }
 
  private:
-  EventMap event_map_;
   TimerMap timer_map_;
 
   TpuPlatform::StreamMap& stream_map() {
     return *(static_cast<TpuPlatform*>(platform_)->stream_map());
+  }
+
+  TpuPlatform::EventMap& event_map() {
+    return *(static_cast<TpuPlatform*>(platform_)->event_map());
   }
 
   ::tensorflow::tpu::TpuPlatformInterface* platform_;

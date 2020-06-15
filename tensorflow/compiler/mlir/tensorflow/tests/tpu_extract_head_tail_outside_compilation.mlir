@@ -7,6 +7,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func @head_single_outside_compiled_op(%arg0: tensor<i32>) {
     // CHECK:      "tf_device.launch"
     // CHECK-NEXT:   "tf.A"
+    // CHECK-NOT:    _xla_outside_compilation
     // CHECK-NEXT:   tf_device.return
     // CHECK-NEXT: device = "/job:worker/replica:0/task:0/device:CPU:0"
     //
@@ -27,6 +28,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func @head_single_outside_compiled_op_no_operands() {
     // CHECK:      %[[LAUNCH_OUT:.*]] = "tf_device.launch"
     // CHECK-NEXT:   %[[A_OUT:.*]] = "tf.A"
+    // CHECK-NOT:    _xla_outside_compilation
     // CHECK-NEXT:   tf_device.return %[[A_OUT]]
     // CHECK-NEXT: device = "/job:worker/replica:0/task:0/device:CPU:0"
     //
@@ -49,6 +51,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     %a = "tf.A"() : () -> tensor<i32>
     // CHECK-NEXT: %[[LAUNCH_OUT:.*]] = "tf_device.launch"
     // CHECK-NEXT:   %[[B_OUT:.*]] = "tf.B"
+    // CHECK-NOT:    _xla_outside_compilation
     // CHECK-NEXT:   tf_device.return %[[B_OUT]]
     // CHECK-NEXT: device = "/job:worker/replica:0/task:0/device:CPU:0"
     //
@@ -69,6 +72,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func @head_aliased_output() -> (tensor<i32>, tensor<i32>, tensor<i32>) {
     // CHECK:      %[[LAUNCH_OUT:.*]] = "tf_device.launch"
     // CHECK-NEXT:   %[[A_OUT:.*]] = "tf.A"
+    // CHECK-NOT:    _xla_outside_compilation
     // CHECK-NEXT:   tf_device.return %[[A_OUT]]
     // CHECK-NEXT: device = "/job:worker/replica:0/task:0/device:CPU:0"
     //
@@ -96,8 +100,11 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func @head_all_cluster_op(%arg0: tensor<i32>) -> tensor<i32> {
     // CHECK:      %[[LAUNCH_OUT:.*]] = "tf_device.launch"
     // CHECK-NEXT:   %[[A_OUT:.*]] = "tf.A"
+    // CHECK-NOT:    _xla_outside_compilation
     // CHECK-NEXT:   %[[B_OUT:.*]] = "tf.B"(%[[A_OUT]])
+    // CHECK-NOT:    _xla_outside_compilation
     // CHECK-NEXT:   %[[C_OUT:.*]] = "tf.C"(%[[B_OUT]], %arg0)
+    // CHECK-NOT:    _xla_outside_compilation
     // CHECK-NEXT:   tf_device.return %[[C_OUT]]
     // CHECK-NEXT: device = "/job:worker/replica:0/task:0/device:CPU:0"
     //
@@ -117,8 +124,11 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func @head_multiple_outside_compiled_ops(%arg0: tensor<i32>) {
     // CHECK:      %[[LAUNCH_OUT:.*]] = "tf_device.launch"
     // CHECK-NEXT:   %[[A_OUT:.*]] = "tf.A"
+    // CHECK-NOT:    _xla_outside_compilation
     // CHECK-NEXT:   %[[B_OUT:.*]] = "tf.B"(%[[A_OUT]])
+    // CHECK-NOT:    _xla_outside_compilation
     // CHECK-NEXT:   "tf.C"
+    // CHECK-NOT:    _xla_outside_compilation
     // CHECK-NEXT:   tf_device.return %[[B_OUT]]
     // CHECK-NEXT: device = "/job:worker/replica:0/task:0/device:CPU:0"
     //
@@ -141,6 +151,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     //
     // CHECK-NEXT:   %[[LAUNCH_OUT:.*]] = "tf_device.launch"()
     // CHECK-NEXT:     %[[A_OUT:.*]] = "tf.A"(%[[RI]])
+    // CHECK-NOT:      _xla_outside_compilation
     // CHECK-NEXT:     tf_device.return %[[A_OUT]]
     // CHECK-NEXT:   device = "TPU_REPLICATED_HOST"
     //
@@ -173,6 +184,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     //
     // CHECK:      "tf_device.launch"
     // CHECK-NEXT:   "tf.B"(%[[CLUSTER_OUT]])
+    // CHECK-NOT:    _xla_outside_compilation
     // CHECK-NEXT:   tf_device.return
     // CHECK-NEXT: device = "/job:worker/replica:0/task:0/device:CPU:0"
     "tf_device.cluster"() ( {
@@ -199,6 +211,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     //
     // CHECK:      %[[LAUNCH_OUT:.*]] = "tf_device.launch"
     // CHECK-NEXT:   %[[B_OUT:.*]] = "tf.B"(%[[CLUSTER_OUT]])
+    // CHECK-NOT:    _xla_outside_compilation
     // CHECK-NEXT:   tf_device.return %[[B_OUT]]
     // CHECK-NEXT: device = "/job:worker/replica:0/task:0/device:CPU:0"
     %cluster = "tf_device.cluster"() ( {
@@ -226,7 +239,9 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     //
     // CHECK:      "tf_device.launch"
     // CHECK-NEXT:   %[[C_OUT:.*]] = "tf.C"(%arg0, %[[CLUSTER_OUT]]#1)
+    // CHECK-NOT:    _xla_outside_compilation
     // CHECK-NEXT:   "tf.D"(%[[C_OUT]], %arg0, %[[CLUSTER_OUT]]#0)
+    // CHECK-NOT:    _xla_outside_compilation
     // CHECK-NEXT:   tf_device.return
     // CHECK-NEXT: device = "/job:worker/replica:0/task:0/device:CPU:0"
     "tf_device.cluster"() ( {
@@ -258,6 +273,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     //
     // CHECK:      %[[LAUNCH_OUT:.*]] = "tf_device.launch"
     // CHECK-NEXT:   %[[D_OUT:.*]] = "tf.D"(%[[CLUSTER_OUT]]#0, %[[A_OUT]])
+    // CHECK-NOT:    _xla_outside_compilation
     // CHECK-NEXT:   tf_device.return
     // CHECK-NEXT: device = "/job:worker/replica:0/task:0/device:CPU:0"
     %cluster:5 = "tf_device.cluster"() ( {
@@ -286,6 +302,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     //
     // CHECK-NEXT:   "tf_device.launch"()
     // CHECK-NEXT:     %[[B_OUT:.*]] = "tf.B"(%[[CLUSTER_OUT]], %[[RI]])
+    // CHECK-NOT:      _xla_outside_compilation
     // CHECK-NEXT:     tf_device.return
     // CHECK-NEXT:   device = "TPU_REPLICATED_HOST"
     tf_device.replicate([%arg0, %arg1] as %ri : tensor<i32>) {n = 2 : i32} {
@@ -320,6 +337,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func @head_tail_simple_extraction(%arg0: tensor<i32>) -> tensor<i32> {
     // CHECK:      %[[HEAD_LAUNCH_OUT:.*]] = "tf_device.launch"
     // CHECK-NEXT:   %[[A_OUT:.*]] = "tf.A"(%arg0)
+    // CHECK-NOT:      _xla_outside_compilation
     // CHECK-NEXT:   tf_device.return %[[A_OUT]]
     // CHECK-NEXT: device = "/job:worker/replica:0/task:0/device:CPU:0"
     //
@@ -335,6 +353,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     //
     // CHECK:      %[[TAIL_LAUNCH_OUT:.*]] = "tf_device.launch"
     // CHECK-NEXT:   %[[C_OUT:.*]] = "tf.C"(%[[CLUSTER_OUT]])
+    // CHECK-NOT:    _xla_outside_compilation
     // CHECK-NEXT:   tf_device.return %[[C_OUT]]
     // CHECK-NEXT: device = "/job:worker/replica:0/task:0/device:CPU:0"
     %cluster = "tf_device.cluster"() ( {
@@ -353,6 +372,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     //
     // CHECK-NEXT:   %[[HEAD_LAUNCH_OUT:.*]] = "tf_device.launch"()
     // CHECK-NEXT:     %[[A_OUT:.*]] = "tf.A"(%[[RI]])
+    // CHECK-NOT:      _xla_outside_compilation
     // CHECK-NEXT:     tf_device.return %[[A_OUT]]
     // CHECK-NEXT:   device = "TPU_REPLICATED_HOST"
     //
@@ -370,6 +390,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     //
     // CHECK-NEXT:   "tf_device.launch"()
     // CHECK-NEXT:     "tf.D"(%[[HEAD_LAUNCH_OUT]], %[[CLUSTER_OUT]], %[[RI]])
+    // CHECK-NOT:      _xla_outside_compilation
     // CHECK-NEXT:     tf_device.return
     // CHECK-NEXT:   device = "TPU_REPLICATED_HOST"
     tf_device.replicate([%arg0, %arg1] as %ri : tensor<i32>) {n = 2 : i32} {

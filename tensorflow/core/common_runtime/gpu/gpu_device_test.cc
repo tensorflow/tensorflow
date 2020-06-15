@@ -464,6 +464,23 @@ TEST_F(GPUDeviceTest, CopyTensorInSameDevice) {
   }
 }
 
+TEST_F(GPUDeviceTest, DeviceDetails) {
+  DeviceFactory* factory = DeviceFactory::GetFactory("GPU");
+  std::vector<string> devices;
+  TF_ASSERT_OK(factory->ListPhysicalDevices(&devices));
+  EXPECT_GE(devices.size(), 1);
+  for (int i = 0; i < devices.size(); i++) {
+    std::unordered_map<string, string> details;
+    TF_ASSERT_OK(factory->GetDeviceDetails(i, &details));
+    EXPECT_NE(details["device_name"], "");
+#if TENSORFLOW_USE_ROCM
+    EXPECT_EQ(details.count("compute_capability"), 0);
+#else
+    EXPECT_NE(details["compute_capability"], "");
+#endif
+  }
+}
+
 class GPUKernelTrackerTest : public ::testing::Test {
  protected:
   void Init(const GPUKernelTracker::Params& params) {

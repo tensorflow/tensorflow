@@ -1007,12 +1007,10 @@ def _map_subgraph_network(inputs, outputs):
 
 def _should_skip_first_node(layer):
   """Returns True if the first layer node should not be saved or loaded."""
-  # Networks that are constructed with an Input layer/shape start with a
-  # pre-existing node linking their input to output. This node is excluded from
-  # the network config.
-  return (isinstance(layer, Functional) and
-          # Filter out Sequential models without an input shape.
-          isinstance(layer._layers[0], input_layer_module.InputLayer))
+  # Networks start with a pre-existing node linking their input to output.
+  # For a sequential model, it is first created with _is_graph_network = False,
+  # we have to keep the _is_graph_network check here.
+  return isinstance(layer, Functional) and layer._is_graph_network
 
 
 def _deserialize_keras_tensors(kwargs, layer_map):

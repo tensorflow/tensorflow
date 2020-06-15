@@ -37,7 +37,7 @@ class Container(object):
   def __init__(self, output_names=None):
     self._output_names = output_names
 
-  def build(self, y_pred):
+  def _build(self, y_pred):
     if self._output_names is None:
       # In Subclass API, output names like 'output_1' are used for
       # `Metric` names.
@@ -131,9 +131,9 @@ class LossesContainer(Container):
     ]
     return [self._loss_metric] + per_output_metrics
 
-  def build(self, y_pred):
+  def _build(self, y_pred):
     """One-time setup of loss objects."""
-    super(LossesContainer, self).build(y_pred)
+    super(LossesContainer, self)._build(y_pred)
 
     self._losses = self._maybe_broadcast_to_outputs(y_pred, self._losses)
     self._losses = self._conform_to_outputs(y_pred, self._losses)
@@ -184,7 +184,7 @@ class LossesContainer(Container):
     sample_weight = self._conform_to_outputs(y_pred, sample_weight)
 
     if not self._built:
-      self.build(y_pred)
+      self._build(y_pred)
 
     y_pred = nest.flatten(y_pred)
     y_true = nest.flatten(y_true)
@@ -295,9 +295,9 @@ class MetricsContainer(Container):
       return []
     return self._metrics_in_order
 
-  def build(self, y_pred, y_true):
+  def _build(self, y_pred, y_true):
     """One-time setup of metric objects."""
-    super(MetricsContainer, self).build(y_pred)
+    super(MetricsContainer, self)._build(y_pred)
 
     self._metrics = self._maybe_broadcast_to_outputs(y_pred, self._metrics)
     self._metrics = self._conform_to_outputs(y_pred, self._metrics)
@@ -385,7 +385,7 @@ class MetricsContainer(Container):
     sample_weight = self._conform_to_outputs(y_pred, sample_weight)
 
     if not self._built:
-      self.build(y_pred, y_true)
+      self._build(y_pred, y_true)
 
     y_pred = nest.flatten(y_pred)
     y_true = nest.flatten(y_true) if y_true is not None else []

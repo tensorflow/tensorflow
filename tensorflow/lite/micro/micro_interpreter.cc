@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/micro/micro_allocator.h"
 #include "tensorflow/lite/micro/micro_op_resolver.h"
+#include "tensorflow/lite/micro/micro_profiler.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -75,26 +76,28 @@ MicroInterpreter::MicroInterpreter(const Model* model,
                                    const MicroOpResolver& op_resolver,
                                    uint8_t* tensor_arena,
                                    size_t tensor_arena_size,
-                                   ErrorReporter* error_reporter)
+                                   ErrorReporter* error_reporter,
+                                   tflite::Profiler* profiler)
     : model_(model),
       op_resolver_(op_resolver),
       error_reporter_(error_reporter),
       allocator_(*MicroAllocator::Create(tensor_arena, tensor_arena_size,
                                          error_reporter)),
       context_helper_(error_reporter_, &allocator_) {
-  Init();
+  Init(profiler);
 }
 
 MicroInterpreter::MicroInterpreter(const Model* model,
                                    const MicroOpResolver* op_resolver,
                                    MicroAllocator* allocator,
-                                   ErrorReporter* error_reporter)
+                                   ErrorReporter* error_reporter,
+                                   tflite::Profiler* profiler)
     : model_(model),
       op_resolver_(*op_resolver),
       error_reporter_(error_reporter),
       allocator_(*allocator),
       context_helper_(error_reporter_, &allocator_) {
-  Init();
+  Init(profiler);
 }
 
 MicroInterpreter::~MicroInterpreter() {
@@ -112,7 +115,7 @@ MicroInterpreter::~MicroInterpreter() {
   }
 }
 
-void MicroInterpreter::Init() {
+void MicroInterpreter::Init(tflite::Profiler* profiler) {
   const flatbuffers::Vector<flatbuffers::Offset<SubGraph>>* subgraphs =
       model_->subgraphs();
   if (subgraphs->size() != 1) {
@@ -126,6 +129,7 @@ void MicroInterpreter::Init() {
   context_.impl_ = static_cast<void*>(&context_helper_);
   context_.ReportError = context_helper_.ReportOpError;
   context_.recommended_num_threads = 1;
+  context_.profiler = profiler;
 
   initialization_status_ = kTfLiteOk;
 }
@@ -266,7 +270,16 @@ TfLiteStatus MicroInterpreter::Invoke() {
     auto* registration = node_and_registrations_[i].registration;
 
     if (registration->invoke) {
-      TfLiteStatus invoke_status = registration->invoke(&context_, node);
+      TfLiteStatus invoke_status;
+#ifndef NDEBUG  // Omit profiler overhead from release builds.
+      // The case where profiler == nullptr is handled by ScopedOperatorProfile.
+      tflite::Profiler* profiler =
+          reinterpret_cast<tflite::Profiler*>(context_.profiler);
+      ScopedOperatorProfile scoped_profiler(
+          profiler, OpNameFromRegistration(registration), i);
+#endif
+      invoke_status = registration->invoke(&context_, node);
+
       if (invoke_status == kTfLiteError) {
         TF_LITE_REPORT_ERROR(
             error_reporter_,

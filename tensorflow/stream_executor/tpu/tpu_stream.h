@@ -17,12 +17,35 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_STREAM_H_
 
 #include "tensorflow/stream_executor/stream_executor_internal.h"
+#include "tensorflow/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/stream_executor/tpu/status_helper.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
+#include "tensorflow/stream_executor/tpu/tpu_stream_interface.h"
 
-class TpuStream : public stream_executor::internal::StreamInterface {
+class TpuStream : public tensorflow::tpu::TpuStreamInterface {
  public:
+  using Status = stream_executor::port::Status;
+
   explicit TpuStream(SE_Stream* stream) : stream_(stream) {}
   ~TpuStream() override { TpuStream_Free(stream_); }
+
+  bool IsSameSharedMemoryLocation(
+      tensorflow::tpu::TpuStreamInterface* other) override {
+    return TpuStream_IsSameSharedMemoryLocation(
+        stream_, static_cast<TpuStream*>(other)->stream_);
+  }
+
+  Status EnqueueOnTpuDeviceSendRecvLocal(
+      stream_executor::DeviceMemoryBase send_buffer,
+      stream_executor::DeviceMemoryBase recv_buffer) override {
+    StatusHelper status;
+    TpuStream_TpuEnqueueOnDeviceSendRecvLocal(
+        stream_,
+        TpuConversions::DeviceMemoryBaseToSE_DeviceMemoryBase(send_buffer),
+        TpuConversions::DeviceMemoryBaseToSE_DeviceMemoryBase(recv_buffer),
+        status.c_status);
+    return status.status();
+  }
 
  private:
   SE_Stream* stream_;

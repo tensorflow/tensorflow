@@ -54,7 +54,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTFOptimizePass();
 
 // Creates pass to rewrite RecvTPUEmbeddingActivationsOp and
 // SendTPUEmbeddingGradients ops to internal variants.
-std::unique_ptr<OperationPass<FuncOp>> CreateRewriteTPUEmbeddingOps();
+std::unique_ptr<OperationPass<FuncOp>> CreateRewriteTPUEmbeddingOpsPass();
 
 // Performs specific fusion for GPU targets.
 std::unique_ptr<OperationPass<FuncOp>> CreateGpuOpFusionPass();
@@ -148,8 +148,10 @@ CreateTensorArrayOpsDecompositionPass();
 // Create a pass that legalize HLO to TF dialect.
 std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeHloToTfPass();
 
-// Creates a pass that performs fusion of common sequences of ops.
-std::unique_ptr<OperationPass<FuncOp>> CreateOpFusionPass();
+// Matches sequence of ops to TensorFlow fused kernels. This pass should not be
+// generally used beyond exporting to runtimes that supports these ops. In the
+// future these fusions may be codegen'd automatically.
+std::unique_ptr<OperationPass<FuncOp>> CreateFusedKernelMatcherPass();
 }  // namespace TF
 
 namespace tf_executor {

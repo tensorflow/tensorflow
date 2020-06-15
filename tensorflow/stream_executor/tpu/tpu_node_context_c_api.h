@@ -23,6 +23,8 @@ XLA_TpuNodeContext* TpuNodeContext_Create(int device_ordinal,
                                           SE_Status* status);
 void TpuNodeContext_Free(XLA_TpuNodeContext* node_context);
 
+void TpuNodeContext_Initialize(int device_ordinal, SE_Status* status);
+
 void TpuNodeContext_StopChipHeartbeats(SE_Status* status);
 void TpuNodeContext_CloseTpuHost(SE_Status* status);
 

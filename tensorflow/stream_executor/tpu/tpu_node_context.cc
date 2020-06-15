@@ -27,7 +27,8 @@ namespace tpu {
 using stream_executor::port::Status;
 using stream_executor::port::StatusOr;
 
-/*static*/ StatusOr<std::unique_ptr<TpuNodeContext>> TpuNodeContext::Initialize(
+/*static*/
+StatusOr<std::unique_ptr<TpuNodeContext>> TpuNodeContext::Create(
     int device_ordinal) {
   StatusHelper status;
   XLA_TpuNodeContext* node_context =
@@ -40,6 +41,13 @@ using stream_executor::port::StatusOr;
 }
 
 TpuNodeContext::~TpuNodeContext() { TpuNodeContext_Free(node_context_); }
+
+/* static */
+Status TpuNodeContext::Initialize(int device_ordinal) {
+  StatusHelper status;
+  TpuNodeContext_Initialize(device_ordinal, status.c_status);
+  return status.status();
+}
 
 /* static */
 Status TpuNodeContext::StopChipHeartbeats() {

@@ -52,6 +52,7 @@ tpu_py_test(
     ],
     disable_experimental = True,
     python_version = "PY3",
+    tags = ["no_oss"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

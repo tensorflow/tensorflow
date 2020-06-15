@@ -1473,14 +1473,10 @@ const TFE_OpAttrs* TFE_OpGetAttrs(TFE_Op* op) {
 }
 
 void TFE_OpAddAttrs(TFE_Op* op, const TFE_OpAttrs* attrs) {
-  tensorflow::AttrValueMap m;
-  tensorflow::unwrap(attrs)->FillAttrValueMap(&m);
   tensorflow::EagerOperation* operation =
       OperationFromInterface(tensorflow::unwrap(op));
   tensorflow::AttrBuilder* destination = operation->MutableAttrs();
-  for (const auto& attribute : m) {
-    destination->Set(attribute.first, attribute.second);
-  }
+  destination->CopyAttributes(*tensorflow::unwrap(attrs));
 }
 
 void TFE_OpAttrsSerialize(const TFE_OpAttrs* attrs, TF_Buffer* buf,

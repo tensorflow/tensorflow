@@ -22,13 +22,13 @@ limitations under the License.
 #include "tensorflow/c/tf_attrtype.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/core/tpu/kernels/tpu_ops_common_c_api.h"
 
 typedef struct SE_Platform SE_Platform;
 typedef struct SE_StreamExecutor SE_StreamExecutor;
 typedef struct SE_Stream SE_Stream;
 typedef struct SE_Event SE_Event;
 typedef struct SE_Timer SE_Timer;
-typedef struct SE_Status SE_Status;
 
 typedef struct SE_PlatformId {
   void* id;  // aka stream_executor::Platform::Id
@@ -148,6 +148,7 @@ SE_StreamExecutor* TpuPlatform_GetExecutor(SE_Platform* platform,
 SE_PlatformId TpuPlatform_Id(SE_Platform* platform);
 int64_t TpuPlatform_VisibleDeviceCount(SE_Platform* platform);
 int64_t TpuPlatform_TpuMemoryLimit(SE_Platform* platform);
+bool TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopy(SE_Platform* platform);
 
 void TpuExecutor_Init(SE_StreamExecutor* executor, int device_ordinal,
                       SE_DeviceOptions* device_options, SE_Status* status);
@@ -231,6 +232,11 @@ SE_Stream* TpuStream_New(SE_StreamExecutor* parent);
 void TpuStream_Free(SE_Stream*);
 void* TpuStream_Stream(SE_Stream*);
 bool TpuStream_Status(SE_Stream*);
+bool TpuStream_IsSameSharedMemoryLocation(SE_Stream*, SE_Stream*);
+void TpuStream_TpuEnqueueOnDeviceSendRecvLocal(SE_Stream* stream,
+                                               SE_DeviceMemoryBase send_buffer,
+                                               SE_DeviceMemoryBase recv_buffer,
+                                               SE_Status* status);
 
 SE_Event* TpuEvent_New(SE_StreamExecutor* parent);
 void TpuEvent_Free(SE_Event*);

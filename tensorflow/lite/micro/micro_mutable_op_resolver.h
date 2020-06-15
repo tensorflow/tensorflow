@@ -133,10 +133,14 @@ class MicroMutableOpResolver : public MicroOpResolver {
   //    override).
 
   TfLiteStatus AddConv2D() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function once cl/313453102 lands.
     return AddBuiltin(BuiltinOperator_CONV_2D,
-                      *tflite::ops::micro::Register_CONV_2D(), ParseOpData);
+                      *tflite::ops::micro::Register_CONV_2D(), ParseConv2D);
+  }
+
+  TfLiteStatus AddDepthwiseConv2D() {
+    return AddBuiltin(BuiltinOperator_DEPTHWISE_CONV_2D,
+                      *tflite::ops::micro::Register_DEPTHWISE_CONV_2D(),
+                      ParseDepthwiseConv2D);
   }
 
   TfLiteStatus AddDequantize() {
@@ -153,7 +157,7 @@ class MicroMutableOpResolver : public MicroOpResolver {
 
   TfLiteStatus AddLogistic() {
     // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function once cl/313453102 lands.
+    // function.
     return AddBuiltin(BuiltinOperator_LOGISTIC,
                       *tflite::ops::micro::Register_LOGISTIC(), ParseOpData);
   }
@@ -164,10 +168,8 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddReshape() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function once cl/313453102 lands.
     return AddBuiltin(BuiltinOperator_RESHAPE,
-                      *tflite::ops::micro::Register_RESHAPE(), ParseOpData);
+                      *tflite::ops::micro::Register_RESHAPE(), ParseReshape);
   }
 
   TfLiteStatus AddSoftmax() {

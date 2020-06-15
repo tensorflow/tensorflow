@@ -52,77 +52,6 @@ Status MakeIteratorFromInputElement(
 Status IsNodeStateful(const FunctionLibraryDefinition& library,
                       const NodeDef& node);
 
-// `InstantiatedCapturedFunction` encapsulates all the runtime support needed
-// to execute a tensorflow function.
-//
-// While `CapturedFunction` encapsulates constant attributes of the function,
-// such as its name and captured arguments, `InstantiatedCapturedFunction`
-// encapsulates runtime aspects, such as `FunctionLibraryRuntime` and function
-// handle.
-//
-// The `Iterator` related classes use `InstantiatedCapturedFunction` to execute
-// functions outside of the normal `OpKernel::Compute()` context.
-class InstantiatedCapturedFunction {
- public:
-  ~InstantiatedCapturedFunction();
-
-  // Runs the instantiated captured function. This method takes ownership of
-  // the tensors in `args`, in order to be able to deallocate them as early as
-  // possible. Use `RunWithBorrowedArgs()` if the caller needs to retain
-  // ownership of the `args`.
-  Status Run(IteratorContext* ctx, std::vector<Tensor>&& args,
-             std::vector<Tensor>* rets) const;
-
-  // Synchronously runs the captured function on the given `args`, and stores
-  // the results in `*rets`. Prefer to use `Run()` or `RunAsync()` when
-  // possible.
-  Status RunWithBorrowedArgs(IteratorContext* ctx,
-                             const std::vector<Tensor>& args,
-                             std::vector<Tensor>* rets) const;
-
-  // Synchronously runs the captured function on the given `args`, and stores
-  // the results in `*rets`. Prefer to use `Run()` or `RunAsync()` when
-  // possible. This can be useful for calling a captured
-  // function in cases where an `IteratorContext*` is not available
-  // (such as a destructor).
-  // TODO(b/144278100): Avoid running functions without IteratorContext.
-  Status RunInstantiated(const std::vector<Tensor>& args,
-                         std::vector<Tensor>* rets);
-
-  // Asynchronously runs the captured function on the given `args`, stores
-  // the results in `*rets`, and calls the given `done` callback when the
-  // function returns. This method takes ownership of the tensors in `args`,
-  // in order to be able to deallocate them as early as possible.
-  void RunAsync(IteratorContext* ctx, std::vector<Tensor>&& args,
-                std::vector<Tensor>* rets,
-                FunctionLibraryRuntime::DoneCallback done,
-                const std::shared_ptr<model::Node>& node) const;
-
- private:
-  InstantiatedCapturedFunction(
-      FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
-      DataTypeVector ret_types,
-      std::function<void(std::function<void()>)> runner,
-      CapturedFunction* captured_func, bool is_multi_device);
-
-  // Determines whether a rendezvous object should be created when running the
-  // instantiated function.
-  bool ShouldCreateRendezvous() const;
-
-  friend class CapturedFunction;
-
-  FunctionLibraryRuntime* const lib_;
-  const FunctionLibraryRuntime::Handle f_handle_;
-  const DataTypeVector ret_types_;
-  // Note: We capture the runner at function instantiation time to be able to
-  // run the function without `IteratorContext` via `RunInstantiated`.
-  std::function<void(std::function<void()>)> captured_runner_;
-  CapturedFunction* const captured_func_;
-  bool const is_multi_device_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(InstantiatedCapturedFunction);
-};
-
 struct ShortCircuitInfo {
   std::vector<int> indices;
   std::vector<bool> can_move;
@@ -218,12 +147,6 @@ class CapturedFunction {
                          instantiated_captured_function);
 
   // Determines whether the captured function is stateful.
-  //
-  // TODO(jsimsa): Remove this method once all users of `CapturedFunction`
-  // migrate to `CheckExternalState`.
-  bool IsStateful() const;
-
-  // Determines whether the captured function is stateful.
   Status CheckExternalState() const;
 
   // Returns the additional captured inputs that will be passed to the function.
@@ -256,11 +179,90 @@ class CapturedFunction {
   CapturedFunction(std::shared_ptr<const FunctionMetadata> metadata,
                    std::vector<Tensor> captured_inputs);
 
+  Status IsMultiDevice(IteratorContext* ctx, bool* is_multi_device) const;
+
   const std::shared_ptr<const FunctionMetadata> metadata_;
   const std::vector<Tensor> captured_inputs_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CapturedFunction);
 };
+
+// `InstantiatedCapturedFunction` encapsulates all the runtime support needed
+// to execute a tensorflow function.
+//
+// While `CapturedFunction` encapsulates constant attributes of the function,
+// such as its name and captured arguments, `InstantiatedCapturedFunction`
+// encapsulates runtime aspects, such as `FunctionLibraryRuntime` and function
+// handle.
+//
+// The `Iterator` related classes use `InstantiatedCapturedFunction` to execute
+// functions outside of the normal `OpKernel::Compute()` context.
+class InstantiatedCapturedFunction {
+ public:
+  // Creates a new instance of the `InstantiatedCapturedFunction` class from the
+  // given inputs.
+  static Status Create(
+      FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
+      DataTypeVector ret_types,
+      std::function<void(std::function<void()>)> runner,
+      CapturedFunction* captured_func, bool is_multi_device,
+      std::unique_ptr<InstantiatedCapturedFunction>* out_function);
+
+  // Runs the instantiated captured function. This method takes ownership of
+  // the tensors in `args`, in order to be able to deallocate them as early as
+  // possible. Use `RunWithBorrowedArgs()` if the caller needs to retain
+  // ownership of the `args`.
+  Status Run(IteratorContext* ctx, std::vector<Tensor>&& args,
+             std::vector<Tensor>* rets) const;
+
+  // Synchronously runs the captured function on the given `args`, and stores
+  // the results in `*rets`. Prefer to use `Run()` or `RunAsync()` when
+  // possible.
+  Status RunWithBorrowedArgs(IteratorContext* ctx,
+                             const std::vector<Tensor>& args,
+                             std::vector<Tensor>* rets) const;
+
+  // Synchronously runs the captured function on the given `args`, and stores
+  // the results in `*rets`. Prefer to use `Run()` or `RunAsync()` when
+  // possible. This can be useful for calling a captured function in cases where
+  // an `IteratorContext*` is not available (such as a destructor).
+  //
+  // TODO(b/144278100): Avoid running functions without IteratorContext.
+  Status RunInstantiated(const std::vector<Tensor>& args,
+                         std::vector<Tensor>* rets);
+
+  // Asynchronously runs the captured function on the given `args`, stores the
+  // results in `*rets`, and calls the given `done` callback when the function
+  // returns. This method takes ownership of the tensors in `args`, in order to
+  // be able to deallocate them as early as possible.
+  void RunAsync(IteratorContext* ctx, std::vector<Tensor>&& args,
+                std::vector<Tensor>* rets,
+                FunctionLibraryRuntime::DoneCallback done,
+                const std::shared_ptr<model::Node>& node) const;
+
+ private:
+  InstantiatedCapturedFunction(
+      FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
+      DataTypeVector ret_types,
+      std::function<void(std::function<void()>)> runner,
+      CapturedFunction* captured_func, bool is_multi_device);
+
+  // Determines whether a rendezvous object should be created when running the
+  // instantiated function.
+  bool ShouldCreateRendezvous() const;
+
+  FunctionLibraryRuntime* const lib_;  // Not owned.
+  const FunctionLibraryRuntime::Handle f_handle_;
+  const DataTypeVector ret_types_;
+  // Note: We capture the runner at function instantiation time to be able to
+  // run the function without `IteratorContext` via `RunInstantiated`.
+  std::function<void(std::function<void()>)> captured_runner_;
+  CapturedFunction* const captured_func_;  // Not owned.
+  const bool is_multi_device_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(InstantiatedCapturedFunction);
+};
+
 }  // namespace data
 
 // TODO(b/114112161): Remove these aliases when all users have moved over to the

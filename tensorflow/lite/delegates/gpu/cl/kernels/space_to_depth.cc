@@ -66,12 +66,7 @@ std::string GetSpaceToDepthCode(
   c += "    tmp[i] = t_ar[src_c % 4];\n";
   c += "  }\n";
   c += "  FLT4 result = (FLT4)(tmp[0], tmp[1], tmp[2], tmp[3]);\n";
-  const LinkingContext context = {
-      .var_name = "result",
-      .x_coord = "X",
-      .y_coord = "Y",
-      .s_coord = "Z",
-  };
+  const LinkingContext context{"result", "X", "Y", "Z"};
   c += PostProcess(linked_operations, context);
   c += "  " + dst_tensor.WriteWHS("result", "X", "Y", "Z");
   c += "}\n";

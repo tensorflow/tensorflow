@@ -65,7 +65,7 @@ from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import resource_variable_ops
 
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.profiler import traceme
+from tensorflow.python.profiler import trace
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lazy_loader
@@ -1650,8 +1650,7 @@ class ConcreteFunction(object):
 
   def _call_impl(self, args, kwargs, cancellation_manager=None):
     """See `__call__` for details."""
-    with traceme.TraceMe(self._func_graph.name,
-                         tf_function_call="concrete"):
+    with trace.Trace(self._func_graph.name, tf_function_call="concrete"):
       # Construct the list of input tensors: check if the structured signature
       # applies first; and if not, then use the flat signature.
       if self._function_spec is not None:

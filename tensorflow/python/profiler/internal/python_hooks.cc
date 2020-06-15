@@ -199,9 +199,9 @@ void PythonHooks::ClearProfilerInAllThreads() {
 
 void PythonHooks::EnableTraceMe(bool enable) {
   const char* kModuleName =
-      "tensorflow.python.profiler.internal._pywrap_traceme";
+      "tensorflow.python.profiler.trace";
   auto trace_module = py::module::import(kModuleName);
-  trace_module.attr("enabled") = enable;
+  trace_module.attr("enabled") = py::bool_(enable);
 }
 
 }  // namespace profiler

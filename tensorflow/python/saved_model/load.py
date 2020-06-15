@@ -22,8 +22,8 @@ import functools
 import os
 
 from tensorflow.core.protobuf import graph_debug_info_pb2
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
-from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
@@ -87,10 +87,11 @@ class _WrapperFunction(function.ConcreteFunction):
   def _call_flat(self, args, captured_inputs, cancellation_manager=None):
 
     def get_in_replica_handle(x):
-      return x.handle if ds_values.is_distributed_variable(x) else x
+      return x.handle if distribute_utils.is_distributed_variable(x) else x
 
     def get_cross_replica_handle(x):
-      return _unused_handle() if ds_values.is_distributed_variable(x) else x
+      return _unused_handle() if distribute_utils.is_distributed_variable(x)   \
+          else x
 
     if ds_context.get_replica_context() is not None:  # in-replica context
       captured_inputs = list(map(get_in_replica_handle, captured_inputs))
@@ -201,7 +202,7 @@ class Loader(object):
       if bound_inputs:
         for bound_input, internal_capture in zip(
             bound_inputs, concrete_function.inputs[-len(bound_inputs):]):
-          if ds_values.is_distributed_variable(bound_input):
+          if distribute_utils.is_distributed_variable(bound_input):
             concrete_function.graph.capture_distributed_variable(
                 bound_input, internal_capture)
           else:
@@ -227,7 +228,7 @@ class Loader(object):
     """Resolves a node id into a tensor to be captured for a function."""
     with ops.init_scope():
       obj = self._nodes[node_id]
-      if ds_values.is_distributed_variable(obj):
+      if distribute_utils.is_distributed_variable(obj):
         return obj
       elif resource_variable_ops.is_resource_variable(obj):
         return obj.handle

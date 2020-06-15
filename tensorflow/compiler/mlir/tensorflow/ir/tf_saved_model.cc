@@ -334,7 +334,7 @@ SmallVector<StringRef, 2> GetExportedNames(Operation *op) {
 bool IsExported(Operation *op) {
   auto exported_names =
       op->getAttrOfType<ArrayAttr>("tf_saved_model.exported_names");
-  return exported_names && exported_names.size() != 0;
+  return exported_names && !exported_names.empty();
 }
 
 bool HasTfSavedModelSemantics(ModuleOp module) {

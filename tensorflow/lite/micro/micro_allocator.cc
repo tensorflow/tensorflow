@@ -80,23 +80,6 @@ class MicroBuiltinDataAllocator : public BuiltinDataAllocator {
   TF_LITE_REMOVE_VIRTUAL_DELETE
 };
 
-TfLiteStatus AllocateVariables(
-    const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* flatbuffer_tensors,
-    TfLiteTensor* runtime_tensors, SimpleMemoryAllocator* allocator) {
-  for (size_t i = 0; i < flatbuffer_tensors->size(); ++i) {
-    if (flatbuffer_tensors->Get(i)->is_variable()) {
-      runtime_tensors[i].data.data = allocator->AllocateFromTail(
-          runtime_tensors[i].bytes, kBufferAlignment);
-      // Allocation failure.
-      if (runtime_tensors[i].data.data == nullptr) {
-        return kTfLiteError;
-      }
-    }
-    tflite::ResetVariableTensor(&(runtime_tensors[i]));
-  }
-  return kTfLiteOk;
-}
-
 #if !defined(__clang__)
 // Helper function to check flatbuffer metadata correctness. This function is
 // not called by default. Hence it's not linked in to the final binary code.
@@ -562,9 +545,6 @@ TfLiteStatus InitializeTfLiteTensorFromFlatbuffer(
 
     result->quantization = {kTfLiteAffineQuantization, quantization};
   }
-  if (flatbuffer_tensor.name() != nullptr) {
-    result->name = flatbuffer_tensor.name()->c_str();
-  }
   return kTfLiteOk;
 }
 
@@ -646,9 +626,8 @@ TfLiteStatus MicroAllocator::FinishModelAllocation(const Model* model,
   const SubGraph* subgraph = GetSubGraphFromModel(model);
   TFLITE_DCHECK(subgraph != nullptr);
 
-  TF_LITE_ENSURE_STATUS(CommitStaticMemoryPlan(model, subgraph, context));
-  TF_LITE_ENSURE_STATUS(AllocateVariables(subgraph->tensors(), context->tensors,
-                                          memory_allocator_));
+  TF_LITE_ENSURE_STATUS(CommitStaticMemoryPlan(model, context, subgraph));
+  TF_LITE_ENSURE_STATUS(AllocateVariables(context, subgraph));
 
   model_is_allocating_ = false;
   return kTfLiteOk;
@@ -853,7 +832,29 @@ TfLiteStatus MicroAllocator::PrepareNodeAndRegistrationDataFromFlatbuffer(
   return kTfLiteOk;
 }
 
-ErrorReporter* MicroAllocator::error_reporter() { return error_reporter_; }
+TfLiteStatus MicroAllocator::AllocateVariables(TfLiteContext* context,
+                                               const SubGraph* subgraph) {
+  for (size_t i = 0; i < context->tensors_size; ++i) {
+    if (subgraph->tensors()->Get(i)->is_variable()) {
+      context->tensors[i].data.data = memory_allocator_->AllocateFromTail(
+          context->tensors[i].bytes, kBufferAlignment);
+      // Allocation failure.
+      if (context->tensors[i].data.data == nullptr) {
+        TF_LITE_REPORT_ERROR(error_reporter_,
+                             "Failed to allocate variable tensor of size %d",
+                             context->tensors[i].bytes);
+        return kTfLiteError;
+      }
+    }
+    tflite::ResetVariableTensor(&(context->tensors[i]));
+  }
+
+  return kTfLiteOk;
+}
+
+ErrorReporter* MicroAllocator::error_reporter() const {
+  return error_reporter_;
+}
 
 TfLiteStatus MicroAllocator::InitGraphAndContextTensorData(
     const Model* model, TfLiteContext* context, const SubGraph* subgraph) {
@@ -874,8 +875,8 @@ const SubGraph* MicroAllocator::GetSubGraphFromModel(const Model* model) {
 }
 
 TfLiteStatus MicroAllocator::CommitStaticMemoryPlan(const Model* model,
-                                                    const SubGraph* subgraph,
-                                                    TfLiteContext* context) {
+                                                    TfLiteContext* context,
+                                                    const SubGraph* subgraph) {
   // Create static memory plan
   // 1. Calculate AllocationInfo to know the lifetime of each tensor/buffer.
   // 2. Add them into the planner (such as the GreedyMemoryPlanner).

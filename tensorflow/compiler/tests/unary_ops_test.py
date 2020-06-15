@@ -918,16 +918,12 @@ class UnaryOpsTest(xla_test.XLATestCase):
           np.array([1, 0x100000003f800000], np.int64),
           expected=np.array([1, 0x100000003f800000], np.uint64))
 
-  @test_util.disable_mlir_bridge(
-      "TODO(b/153812660): Handle tf.InvertPermutation compilation")
   def testInvertPermutation(self):
     self._assertOpOutputMatchesExpected(
         array_ops.invert_permutation,
         np.array([1, 2, 0], np.int32),
         expected=np.array([2, 0, 1], dtype=np.int32))
 
-  @test_util.disable_mlir_bridge(
-      "TODO(b/153812660): Handle tf.InvertPermutation compilation")
   def testInvertPermutationTwiceIsNoop(self):
     self._assertOpOutputMatchesExpected(
         lambda x: array_ops.invert_permutation(array_ops.invert_permutation(x)),
@@ -1144,8 +1140,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
         rtol=rtol,
         atol=atol)
 
-  @test_util.disable_mlir_bridge(
-      "bf16 type not supported in CreateDenseElementsAttrFromLiteral")
   def testSoftplus(self):
     for dtype in self.float_types & {dtypes.float32, dtypes.float64}:
       self._assertSoftplusMatchesExpected([[-2, 0, 8]], dtype)

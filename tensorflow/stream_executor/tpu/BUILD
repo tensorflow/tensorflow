@@ -15,6 +15,7 @@ cc_library(
         "//tensorflow/c:tf_attrtype",
         "//tensorflow/c:tf_datatype",
         "//tensorflow/c:tf_status",
+        "//tensorflow/core/tpu/kernels:tpu_ops_common_c_api_hdrs",
     ],
 )
 
@@ -60,9 +61,11 @@ cc_library(
     name = "tpu_stream",
     hdrs = ["tpu_stream.h"],
     deps = [
+        ":c_api_conversions",
+        ":status_helper",
         ":tpu_executor_c_api_hdrs",
+        ":tpu_stream_interface",
         "//tensorflow/stream_executor:stream",
-        "//tensorflow/stream_executor/lib",
     ],
 )
 
@@ -221,7 +224,10 @@ cc_library(
     name = "tpu_stream_interface",
     hdrs = ["tpu_stream_interface.h"],
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow/stream_executor:stream_executor_internal"],
+    deps = [
+        "//tensorflow/stream_executor:device_memory",
+        "//tensorflow/stream_executor:stream_executor_internal",
+    ],
 )
 
 cc_library(

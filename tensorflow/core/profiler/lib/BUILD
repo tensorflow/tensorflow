@@ -175,6 +175,7 @@ filegroup(
     name = "mobile_srcs",
     srcs = [
         "annotated_traceme.h",
+        "connected_traceme.h",
         "profiler_session.cc",
         "profiler_session.h",
         "scoped_annotation.h",

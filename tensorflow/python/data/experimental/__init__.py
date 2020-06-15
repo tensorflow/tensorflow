@@ -63,6 +63,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@group_by_window
 @@ignore_errors
 @@latency_stats
+@@load
 @@make_batched_features_dataset
 @@make_csv_dataset
 @@make_saveable_from_iterator
@@ -73,6 +74,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@prefetch_to_device
 @@rejection_resample
 @@sample_from_datasets
+@@save
 @@scan
 @@shuffle_and_repeat
 @@snapshot
@@ -114,6 +116,8 @@ from tensorflow.python.data.experimental.ops.grouping import Reducer
 from tensorflow.python.data.experimental.ops.interleave_ops import choose_from_datasets
 from tensorflow.python.data.experimental.ops.interleave_ops import parallel_interleave
 from tensorflow.python.data.experimental.ops.interleave_ops import sample_from_datasets
+from tensorflow.python.data.experimental.ops.io import load
+from tensorflow.python.data.experimental.ops.io import save
 from tensorflow.python.data.experimental.ops.iterator_ops import CheckpointInputPipelineHook
 from tensorflow.python.data.experimental.ops.iterator_ops import make_saveable_from_iterator
 from tensorflow.python.data.experimental.ops.optimization_options import MapVectorizationOptions

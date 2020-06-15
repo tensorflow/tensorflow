@@ -44,6 +44,7 @@ import android.media.ImageReader;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.Process;
 import android.support.annotation.NonNull;
 import android.text.SpannableString;
 import android.text.SpannableStringBuilder;
@@ -60,7 +61,6 @@ import android.widget.ListView;
 import android.widget.NumberPicker;
 import android.widget.TextView;
 import android.widget.Toast;
-import androidx.core.content.ContextCompat;
 import android.support.v13.app.FragmentCompat;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -638,7 +638,7 @@ public class Camera2BasicFragment extends Fragment
 
   private boolean allPermissionsGranted() {
     for (String permission : getRequiredPermissions()) {
-      if (ContextCompat.checkSelfPermission(getActivity(), permission)
+      if (getActivity().checkPermission(permission, Process.myPid(), Process.myUid())
           != PackageManager.PERMISSION_GRANTED) {
         return false;
       }

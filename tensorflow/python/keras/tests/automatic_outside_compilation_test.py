@@ -28,6 +28,7 @@ from tensorflow.python.distribute import tpu_strategy as tpu_strategy_lib
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import initializers
@@ -41,10 +42,32 @@ from tensorflow.python.keras.layers import pooling as pool_layer_lib
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import summary_ops_v2
+from tensorflow.python.platform import flags
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.tpu import tpu_strategy_util
 
 NUM_CLASSES = 4
+
+FLAGS = flags.FLAGS
+flags.DEFINE_string('tpu', '', 'Name of TPU to connect to.')
+flags.DEFINE_string('project', None, 'Name of GCP project with TPU.')
+flags.DEFINE_string('zone', None, 'Name of GCP zone with TPU.')
+
+
+def get_tpu_cluster_resolver():
+  resolver = tpu_cluster_resolver.TPUClusterResolver(
+      tpu=FLAGS.tpu,
+      zone=FLAGS.zone,
+      project=FLAGS.project,
+  )
+  return resolver
+
+
+def get_tpu_strategy():
+  resolver = get_tpu_cluster_resolver()
+  remote.connect_to_cluster(resolver)
+  tpu_strategy_util.initialize_tpu_system(resolver)
+  return tpu_strategy_lib.TPUStrategy(resolver)
 
 
 class LayerForScalarSummary(base_layer.Layer):
@@ -139,9 +162,7 @@ class AutoOutsideCompilationWithKerasTest(test.TestCase):
     self.summary_dir = self.get_temp_dir()
 
   def testV2SummaryWithImageModel(self):
-    resolver = tpu_cluster_resolver.TPUClusterResolver('')
-    tpu_strategy_util.initialize_tpu_system(resolver)
-    strategy = tpu_strategy_lib.TPUStrategy(resolver)
+    strategy = get_tpu_strategy()
 
     with strategy.scope():
       model = mnist_model((28, 28, 3))
@@ -184,9 +205,7 @@ class AutoOutsideCompilationWithKerasTest(test.TestCase):
           5)
 
   def testV2SummaryWithKerasFit(self):
-    resolver = tpu_cluster_resolver.TPUClusterResolver('')
-    tpu_strategy_util.initialize_tpu_system(resolver)
-    strategy = tpu_strategy_lib.TPUStrategy(resolver)
+    strategy = get_tpu_strategy()
 
     with strategy.scope():
       model = CustomModel()
@@ -225,9 +244,7 @@ class AutoOutsideCompilationWithKerasTest(test.TestCase):
               'custom_model/layer_for_scalar_summary/custom_scalar_summary'], 5)
 
   def testSummaryWithCustomTrainingLoop(self):
-    resolver = tpu_cluster_resolver.TPUClusterResolver('')
-    tpu_strategy_util.initialize_tpu_system(resolver)
-    strategy = tpu_strategy_lib.TPUStrategy(resolver)
+    strategy = get_tpu_strategy()
 
     with strategy.scope():
       model = distribute_strategy_test.get_model()

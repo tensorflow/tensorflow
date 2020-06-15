@@ -1,5 +1,10 @@
 licenses(["notice"])  # Apache 2.0
 
+package_group(
+    name = "micro_top_level",
+    packages = ["//tensorflow/lite/micro"],
+)
+
 cc_library(
     name = "micro_benchmark",
     hdrs = [
@@ -46,6 +51,9 @@ cc_library(
     ],
     hdrs = [
         "keyword_scrambled_model_data.h",
+    ],
+    visibility = [
+        ":micro_top_level",
     ],
 )
 

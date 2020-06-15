@@ -871,12 +871,12 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     Status* status = &instantiate_status[i];
     string unique_name = name_generator.GetName();
     ComponentFunctionData* comp_data = &data->glue_[pair.first];
-    runner([this, &pair, comp_data, unique_name, data_lib_def, &control_ret,
-            &options, status, &counter, &data] {
+    runner([this, &pair, dev_set, comp_data, unique_name, data_lib_def,
+            &control_ret, &options, status, &counter, &data] {
       const string& target = pair.first;
 
       const string& device_type =
-          device_set()->FindDeviceByName(target)->device_type();
+          dev_set->FindDeviceByName(target)->device_type();
       Graph* subgraph = pair.second.get();
 
       status->Update(UpdateArgAndRetvalMetadata(

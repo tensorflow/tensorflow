@@ -107,8 +107,6 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       // tf.data related.
       {"IteratorGetNextOp::DoCompute", kIteratorGetNextOp},
       {"IteratorGetNextAsOptionalOp::DoCompute", kIteratorGetNextAsOptionalOp},
-      // Virtual events for grouping.
-      {"AsyncExecutorTraceContext", kAsyncExecutorTraceContext},
       // GPU related.
       {"KernelLaunch", kKernelLaunch},
       {"KernelExecute", kKernelExecute},
@@ -150,12 +148,12 @@ const StatTypeMap& GetStatTypeMap() {
       {"kpi_name", kKpiName},
       {"kpi_value", kKpiValue},
       // XPlane semantics related.
-      {"$pt", kProducerType},
-      {"$ct", kConsumerType},
-      {"$p", kProducerId},
-      {"$c", kConsumerId},
-      {"$r", kIsRoot},
-      {"$a", kIsAsync},
+      {"_pt", kProducerType},
+      {"_ct", kConsumerType},
+      {"_p", kProducerId},
+      {"_c", kConsumerId},
+      {"_r", kIsRoot},
+      {"_a", kIsAsync},
       // Device trace arguments.
       {"device_id", kDeviceId},
       {"context_id", kContextId},

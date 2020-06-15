@@ -89,8 +89,8 @@ config_setting(
     # sparse matrix multiplications. You will also need appropriate -mavx*
     # options, as required by specific op you use.
     name = "xsmm",
-    values = {
-        "define": "tensorflow_xsmm=1",
+    define_values = {
+        "tensorflow_xsmm": "1",
     },
 )
 
@@ -99,8 +99,8 @@ config_setting(
     # use libxsmm for forward convolutions. You will also need appropriate
     # -mavx* # options, as required by specific op you use.
     name = "xsmm_convolutions",
-    values = {
-        "define": "tensorflow_xsmm_convolutions=1",
+    define_values = {
+        "tensorflow_xsmm_convolutions": "1",
     },
 )
 
@@ -110,8 +110,8 @@ config_setting(
     # backward convolutions (and possibly more in the future). You will also
     # need appropriate -mavx* options, as required by specific op you use.
     name = "xsmm_backward_convolutions",
-    values = {
-        "define": "tensorflow_xsmm_backward_convolutions=1",
+    define_values = {
+        "tensorflow_xsmm_backward_convolutions": "1",
     },
 )
 
@@ -122,15 +122,15 @@ config_setting(
     # (https://en.wikipedia.org/wiki/CPUID). Default Eigen contraction kernel is
     # Eigen::internal::gebp_kernel (general block-panel kernel).
     name = "no_mkldnn_contraction_kernel",
-    values = {
-        "define": "tensorflow_mkldnn_contraction_kernel=0",
+    define_values = {
+        "tensorflow_mkldnn_contraction_kernel": "0",
     },
 )
 
 config_setting(
     name = "mlir_generated_gpu_kernels_enabled",
-    values = {
-        "define": "tensorflow_enable_mlir_generated_gpu_kernels=1",
+    define_values = {
+        "tensorflow_enable_mlir_generated_gpu_kernels": "1",
     },
 )
 
@@ -4150,6 +4150,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "mlir_generated_cwise_op",
     gpu_srcs = ["mlir_generated_cwise_op_gpu_tanh.cu.cc"],
+    tags = ["manual"],
     deps = if_cuda([
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",

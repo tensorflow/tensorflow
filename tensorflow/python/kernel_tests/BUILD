@@ -1440,6 +1440,7 @@ tf_py_test(
     size = "small",
     srcs = ["variables_test.py"],
     tags = ["no_windows"],  # b/133869052
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

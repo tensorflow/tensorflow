@@ -136,6 +136,19 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
     self.assertIn(self.device.components[0], outputs[0].backing_device)
     self.assertIn(self.device.components[1], outputs[1].backing_device)
 
+  def test_collective_reduce_async(self):
+    # Note that ops on the parallel device currently don't execute
+    # asynchronously. The test is just that we don't get deadlocks.
+    with context.async_scope(), ops.device(self.device.name):
+      x = self.device.pack(
+          [constant_op.constant(-1.5),
+           constant_op.constant(3.5)])
+      reduced = _collective_sum(x, num_replicas=2)
+      outputs = self.device.unpack(reduced)
+    self.assertAllClose([2., 2.], outputs)
+    self.assertIn(self.device.components[0], outputs[0].backing_device)
+    self.assertIn(self.device.components[1], outputs[1].backing_device)
+
   def test_checkpointing(self):
     prefix = os.path.join(self.get_temp_dir(), "ckpt")
     with self.device.scope():
@@ -147,8 +160,6 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
     save_path = checkpoint.save(prefix)
     with ops.device(self.device.name):
       v.assign(constant_op.constant(0.))
-    # Make sure the checkpoint is actually written before we try to read it
-    context.async_wait()
     checkpoint.restore(save_path).assert_consumed()
     with ops.device(self.device.name):
       outputs = self.device.unpack(v)

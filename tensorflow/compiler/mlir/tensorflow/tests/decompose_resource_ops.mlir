@@ -370,7 +370,6 @@ func @decompose_resource_gather_op(%indices : tensor<5xi32>) -> tensor<2x5x16xi3
 
 // Tests that composite tf.ResourceScatterUpdate operation is decomposed.
 
-
 // CHECK-LABEL: @decompose_resource_scatter_update_op
 // CHECK-SAME: ([[INDEX:%.+]]: tensor<2x?xi32>, [[UPDATE:%.+]]: tensor<?x?x?xi32>)
 func @decompose_resource_scatter_update_op(%indices : tensor<2x?xi32>, %updates: tensor<?x?x?xi32>) {
@@ -383,4 +382,35 @@ func @decompose_resource_scatter_update_op(%indices : tensor<2x?xi32>, %updates:
   "tf.ResourceScatterUpdate"(%resource, %indices, %updates) : (tensor<*x!tf.resource>, tensor<2x?xi32>, tensor<?x?x?xi32>) -> ()
 
   return
+}
+
+// -----
+
+// Tests that tf.VariableShape operation is decomposed.
+
+// CHECK-LABEL: @decompose_variable_shape_i32
+func @decompose_variable_shape_i32(%input: tensor<!tf.resource<tensor<?x?x?xf32>>>) -> tensor<3xi32> {
+  %0 = "tf.VariableShape"(%input) : (tensor<!tf.resource<tensor<?x?x?xf32>>>) -> tensor<3xi32>
+  // CHECK: %[[READ:.*]] = "tf.ReadVariableOp"(%arg0)
+  // CHECK: %[[SHAPE:.*]] = "tf.Shape"(%[[READ]])
+  // CHECK: return %[[SHAPE]]
+  return %0 : tensor<3xi32>
+}
+
+// CHECK-LABEL: @decompose_variable_shape_i64
+func @decompose_variable_shape_i64(%input: tensor<!tf.resource<tensor<?x?x?xf32>>>) -> tensor<3xi64> {
+  %0 = "tf.VariableShape"(%input) : (tensor<!tf.resource<tensor<?x?x?xf32>>>) -> tensor<3xi64>
+  // CHECK: %[[READ:.*]] = "tf.ReadVariableOp"(%arg0)
+  // CHECK: %[[SHAPE:.*]] = "tf.Shape"(%[[READ]])
+  // CHECK: return %[[SHAPE]]
+  return %0 : tensor<3xi64>
+}
+
+// CHECK-LABEL: @decompose_variable_shape_no_subtype
+func @decompose_variable_shape_no_subtype(%input: tensor<!tf.resource>) -> tensor<3xi32> {
+  %0 = "tf.VariableShape"(%input) : (tensor<!tf.resource>) -> tensor<3xi32>
+  // CHECK: "tf.VariableShape"
+  // CHECK-NOT: "tf.ReadVariableOp"
+  // CHECK-NOT: "tf.Shape"
+  return %0 : tensor<3xi32>
 }
