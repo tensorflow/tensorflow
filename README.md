@@ -20,7 +20,7 @@ TinyML 번역서의 한국 독자들을 위한 한글 소스코드 저장소를 
     ![](./images/training_audio.gif)
     ![](./images/cross_entropy.gif)
 
-- __Ch12: 마술 지팡이 제스쳐 인식하기__ [train_magic_wand_model.ipynb](https://colab.research.google.com/github/yunho0130/tensorflow-lite/blob/master/tensorflow/lite/micro/examples/magic_wand⁩/train⁩/train_magic_wand_model.ipynb)
+- __Ch12: 마술 지팡이 제스쳐 인식하기__ [train_magic_wand_model.ipynb](https://colab.research.google.com/github/yunho0130/tensorflow-lite/blob/master/tensorflow/lite/micro/examples/magic_wand⁩/train⁩/train_magic_wand_model_kor.ipynb)
 
     ![](./images/training.gif)
     ![](./images/tensorboard.gif)
