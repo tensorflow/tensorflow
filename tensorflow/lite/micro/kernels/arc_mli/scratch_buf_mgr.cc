@@ -250,8 +250,11 @@ TfLiteStatus arc_scratch_buffer_calc_slice_size_io(
              (out->capacity >= out_height * line_size_out);
   if (fit) {
     // in case both tensors completely fit in the capacity, there is no need for
-    // slicing
-    *in_slice_height = in_height;
+    // slicing. As padding can affect effective input region, we also derive it 
+    // from output height, and rely on a clipping logic which intend to reduce
+    // last smaller slice. I.e the only slice is a kind of 
+    // "smaller last slice that need to be corrected"
+    *in_slice_height = std::max(in_height, out_height * stride_height);
     *out_slice_height = out_height;
   } else {
     // First compute how many lines fit into the input tensor, and compute how
