@@ -92,7 +92,6 @@ void GetSymmetricQuantizationParams(
   min = std::min(min, 0.0f);
   max = std::max(max, 0.0f);
   const float scale = std::max(std::abs(max), std::abs(min)) / half_quant_range;
-  int64_t zero_point = 0;
   quantization_params->min = std::vector<float>(1, min);
   quantization_params->max = std::vector<float>(1, max);
   quantization_params->scale = std::vector<float>(1, scale);
