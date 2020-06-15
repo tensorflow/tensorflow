@@ -802,6 +802,26 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     conv_params.fixed_work_group_size = false;
     conv_params.src_depth_loop_size = 1;
     conv_params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
+  } else if (device.IsIntel()) {
+    conv_params.block_size = int3(1, 1, 4);
+    conv_params.work_group_size = int3(8, 2, 1);
+    conv_params.work_group_launch_order = int3(0, 1, 2);
+    conv_params.fixed_work_group_size = true;
+    conv_params.src_depth_loop_size = 1;
+    conv_params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
+    if (dst_depth % 4 == 0 || dst_depth >= 8) {
+      conv_params.block_size.z = 4;
+    } else if (dst_depth % 2 == 0 || dst_depth >= 4) {
+      conv_params.block_size.z = 2;
+    } else {
+      conv_params.block_size.z = dst_depth;
+    }
+    if (src_depth % 2 == 0) {
+      conv_params.src_depth_loop_size = 2;
+    }
+    if (src_depth % 4 == 0 && conv_params.block_size.z <= 2) {
+      conv_params.src_depth_loop_size = 4;
+    }
   } else {
     conv_params.block_size = int3(1, 1, 4);
     conv_params.work_group_size = int3(8, 2, 1);
