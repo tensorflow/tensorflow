@@ -202,16 +202,58 @@ StatusOr<DeviceAssignment> PjRtClient::GetDefaultDeviceAssignment(
 
 StatusOr<absl::flat_hash_set<int>> PjRtClient::GetParametersThatMustBeDonated(
     const LocalExecutable& executable, bool tuple_inputs) const {
-  // TODO(b/149489114) support buffer donation on CPU/GPU when XLA supports it.
+  HloComputation* computation =
+      executable.executable()->module().entry_computation();
+  int number_of_parameters = [&]() -> int {
+    if (tuple_inputs) {
+      CHECK_EQ(computation->num_parameters(), 1);
+      const Shape& input_tuple_shape =
+          computation->parameter_instruction(0)->shape();
+      CHECK(input_tuple_shape.IsTuple());
+      return input_tuple_shape.tuple_shapes_size();
+    } else {
+      return computation->num_parameters();
+    }
+  }();
+  // If any buffer in a parameter is aliased we will donate the entire input
+  // parameter.
+  absl::flat_hash_set<int> parameters_to_donate;
   const HloInputOutputAliasConfig& config =
       executable.executable()->module().input_output_alias_config();
   TF_RETURN_IF_ERROR(config.ForEachAliasWithStatus(
-      [](const ShapeIndex& output_index,
-         const HloInputOutputAliasConfig::Alias& alias) {
-        return InvalidArgument(
-            "Buffer aliasing is not supported by XLA for non-TPU backends.");
+      [&](const ShapeIndex& output_index,
+          const HloInputOutputAliasConfig::Alias& alias) {
+        if (tuple_inputs) {
+          if (alias.parameter_number != 0) {
+            return InvalidArgument(
+                "Unexpected parameter number %d in alias config with tupled "
+                "inputs",
+                alias.parameter_number);
+          }
+          const ShapeIndex& index = alias.parameter_index;
+          if (!index.empty()) {
+            int this_parameter = index.data()[0];
+            if (this_parameter >= number_of_parameters) {
+              return InvalidArgument(
+                  "Unexpected parameter index %s in alias config with tupled "
+                  "inputs and %d parameters",
+                  index.ToString(), number_of_parameters);
+            }
+            parameters_to_donate.insert(this_parameter);
+          }
+        } else {
+          int this_parameter = alias.parameter_number;
+          if (this_parameter >= number_of_parameters) {
+            return InvalidArgument(
+                "Unexpected parameter number %d in alias config without tupled "
+                "inputs and %d parameters",
+                this_parameter, number_of_parameters);
+          }
+          parameters_to_donate.insert(this_parameter);
+        }
+        return Status::OK();
       }));
-  return absl::flat_hash_set<int>();
+  return parameters_to_donate;
 }
 
 namespace {
