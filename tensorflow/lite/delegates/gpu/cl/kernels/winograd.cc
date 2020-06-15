@@ -19,7 +19,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_format.h"
-#include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
@@ -36,7 +35,6 @@ namespace {
 
 std::string GetWinograd4x4To36Code(
     const OperationDef& op_def,
-    const std::vector<ElementwiseOperation*>& linked_operations,
     Arguments* args) {
   std::string c = GetCommonDefines(op_def.precision);
 
@@ -82,12 +80,7 @@ std::string GetWinograd4x4To36Code(
   args->AddInt("tiles_total");
   args->AddInt("tiles_x");
 
-  std::string linked_args = GetArgsDeclaration(linked_operations);
-  if (linked_args[0] == ',') {
-    linked_args[0] = ' ';
-  }
   c += "__kernel void main_function(\n";
-  c += linked_args;
   c += "$0) {\n";
   c += "  int DST_X = get_global_id(0);\n";
   c += "  int DST_Y = get_global_id(1);\n";
@@ -181,14 +174,12 @@ std::string GetWinograd4x4To36Code(
   const LinkingContext context{"r0", "DST_X", "DST_Y", "DST_Z"};
   c += "  {\n";
   c += "    FLT4 r0 = TO_FLT4(I0 + Bt[2] * I2 + Bt[4] * I4);\n";
-  c += PostProcess(linked_operations, context);
   c += "    args.dst_tensor.Write(r0, DST_X, DST_Y, DST_Z);\n";
   c += "    DST_Y++;\n";
   c += "  }\n";
   c += "  {\n";
   c += "    FLT4 r0 = TO_FLT4(Bt[7] * I1 + Bt[8] * I2 + Bt[9] * I3 + Bt[10] * "
        "I4);\n";
-  c += PostProcess(linked_operations, context);
   c += "    args.dst_tensor.Write(r0, DST_X, DST_Y, DST_Z);\n";
   c += "    DST_Y++;\n";
   c += "  }\n";
@@ -196,7 +187,6 @@ std::string GetWinograd4x4To36Code(
   c += "    FLT4 r0 = TO_FLT4(Bt[13] * I1 + Bt[14] * I2 + Bt[15] * I3 + Bt[16] "
        "* "
        "I4);\n";
-  c += PostProcess(linked_operations, context);
   c += "    args.dst_tensor.Write(r0, DST_X, DST_Y, DST_Z);\n";
   c += "    DST_Y++;\n";
   c += "  }\n";
@@ -204,7 +194,6 @@ std::string GetWinograd4x4To36Code(
   c += "    FLT4 r0 = TO_FLT4(Bt[19] * I1 + Bt[20] * I2 + Bt[21] * I3 + Bt[22] "
        "* "
        "I4);\n";
-  c += PostProcess(linked_operations, context);
   c += "    args.dst_tensor.Write(r0, DST_X, DST_Y, DST_Z);\n";
   c += "    DST_Y++;\n";
   c += "  }\n";
@@ -212,13 +201,11 @@ std::string GetWinograd4x4To36Code(
   c += "    FLT4 r0 = TO_FLT4(Bt[25] * I1 + Bt[26] * I2 + Bt[27] * I3 + Bt[28] "
        "* "
        "I4);\n";
-  c += PostProcess(linked_operations, context);
   c += "    args.dst_tensor.Write(r0, DST_X, DST_Y, DST_Z);\n";
   c += "    DST_Y++;\n";
   c += "  }\n";
   c += "  {\n";
   c += "    FLT4 r0 = TO_FLT4(Bt[31] * I1 + Bt[33] * I3 + I5);\n";
-  c += PostProcess(linked_operations, context);
   c += "    args.dst_tensor.Write(r0, DST_X, DST_Y, DST_Z);\n";
   c += "    DST_Y++;\n";
   c += "  }\n";
@@ -389,11 +376,13 @@ absl::Status Winograd4x4To36::Compile(const CreationContext& creation_context) {
     options.push_back(CompilerOptions::POWERVR_FP16);
   }
   RETURN_IF_ERROR(UploadBt(creation_context.context));
-  std::string code =
-      GetWinograd4x4To36Code(definition_, linked_operations_, &args_);
+  std::string code = GetWinograd4x4To36Code(definition_, &args_);
+  std::string element_wise_code;
   RETURN_IF_ERROR(
-      args_.TransformToCLCode(creation_context.device->GetInfo(), {}, &code));
-  code = absl::Substitute(code, args_.GetListOfArgs());
+      MergeOperations(linked_operations_, &args_, &element_wise_code));
+  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
+                                          {{"dst_tensor", element_wise_code}},
+                                          &code));
   RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", options, *creation_context.context,
       *creation_context.device, &kernel_));
@@ -445,10 +434,8 @@ absl::Status Winograd4x4To36::BindArguments() {
   RETURN_IF_ERROR(args_.SetInt("padding_y", -padding_.prepended.h));
   RETURN_IF_ERROR(args_.SetInt("tiles_total", tiles_total));
   RETURN_IF_ERROR(args_.SetInt("tiles_x", tiles_x));
-  kernel_.ResetBindingCounter();
-  RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(args_.Bind(kernel_.kernel(), kernel_.GetBindingCounter()));
-  return absl::OkStatus();
+  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
+  return args_.Bind(kernel_.kernel());
 }
 
 int3 Winograd4x4To36::GetGridSize() const {

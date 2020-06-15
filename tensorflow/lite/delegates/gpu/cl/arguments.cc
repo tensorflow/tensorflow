@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
@@ -445,6 +446,7 @@ absl::Status Arguments::TransformToCLCode(
   RETURN_IF_ERROR(AddObjectArgs());
   RETURN_IF_ERROR(ResolveSelectorsPass(linkables, code));
   ResolveArgsPass(device_info, code);
+  *code = absl::Substitute(*code, GetListOfArgs());
   return absl::OkStatus();
 }
 
