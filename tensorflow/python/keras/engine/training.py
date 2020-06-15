@@ -134,6 +134,7 @@ def disable_multi_worker(method):
 
 
 def inject_functional_model_class(cls):
+  """Inject `Functional` into the hierarchy of this class if needed."""
   from tensorflow.python.keras.engine import functional  # pylint: disable=g-import-not-at-top
   from tensorflow.python.keras.engine import training_v1  # pylint: disable=g-import-not-at-top
   if cls == Model or cls == training_v1.Model:
@@ -141,6 +142,10 @@ def inject_functional_model_class(cls):
 
   cls.__bases__ = tuple(inject_functional_model_class(base)
                         for base in cls.__bases__)
+  # Trigger any `__new__` class swapping that needed to happen on `Functional`
+  # but did not because functional was not in the class hierarchy.
+  cls.__new__(cls)
+
   return cls
 
 
@@ -628,8 +633,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       if self.compiled_metrics is not None:
         metrics += self.compiled_metrics.metrics
 
-    all_layers = self._gather_unique_layers()
-    for l in all_layers:
+    for l in self._flatten_layers():
       metrics.extend(l._metrics)  # pylint: disable=protected-access
     return metrics
 
@@ -1016,7 +1020,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         and validation metrics values (if applicable).
 
     Raises:
-        RuntimeError: If the model was never compiled.
+        RuntimeError: 1. If the model was never compiled or,
+        2. If `model.fit` is  wrapped in `tf.function`.
+
         ValueError: In case of mismatch between the provided input data
             and what the model expects.
     """
@@ -1031,9 +1037,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       # Create the validation data using the training data. Only supported for
       # `Tensor` and `NumPy` input.
       (x, y, sample_weight), validation_data = (
-          data_adapter.train_validation_split((x, y, sample_weight),
-                                              validation_split=validation_split,
-                                              shuffle=False))
+          data_adapter.train_validation_split(
+              (x, y, sample_weight), validation_split=validation_split))
 
     with self.distribute_strategy.scope(), \
          training_utils.RespectCompiledTrainableState(self):
@@ -1233,15 +1238,21 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     Computation is done in batches (see the `batch_size` arg.)
 
     Arguments:
-        x: Input data. It could be: - A Numpy array (or array-like), or a list
-          of arrays (in case the model has multiple inputs). - A TensorFlow
-          tensor, or a list of tensors (in case the model has multiple inputs).
-          - A dict mapping input names to the corresponding array/tensors, if
-          the model has named inputs. - A `tf.data` dataset. - A generator or
-          `keras.utils.Sequence` instance. A more detailed description of
-          unpacking behavior for iterator types (Dataset, generator, Sequence)
-          is given in the `Unpacking behavior for iterator-like inputs` section
-          of `Model.fit`.
+        x: Input data. It could be:
+          - A Numpy array (or array-like), or a list of arrays
+            (in case the model has multiple inputs).
+          - A TensorFlow tensor, or a list of tensors
+            (in case the model has multiple inputs).
+          - A dict mapping input names to the corresponding array/tensors,
+            if the model has named inputs.
+          - A `tf.data` dataset. Should return a tuple
+            of either `(inputs, targets)` or
+            `(inputs, targets, sample_weights)`.
+          - A generator or `keras.utils.Sequence` returning `(inputs, targets)`
+            or `(inputs, targets, sample_weights)`.
+          A more detailed description of unpacking behavior for iterator types
+          (Dataset, generator, Sequence) is given in the `Unpacking behavior
+          for iterator-like inputs` section of `Model.fit`.
         y: Target data. Like the input data `x`, it could be either Numpy
           array(s) or TensorFlow tensor(s). It should be consistent with `x`
           (you cannot have Numpy inputs and tensor targets, or inversely). If
@@ -1297,6 +1308,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         the display labels for the scalar outputs.
 
     Raises:
+        RuntimeError: If `model.evaluate` is wrapped in `tf.function`.
         ValueError: in case of invalid arguments.
     """
     _keras_api_gauge.get_cell('evaluate').set(True)
@@ -1518,6 +1530,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         Numpy array(s) of predictions.
 
     Raises:
+        RuntimeError: If `model.predict` is wrapped in `tf.function`.
         ValueError: In case of mismatch between the provided
             input data and the model's expectations,
             or in case a stateful model receives a number of samples
@@ -1645,6 +1658,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         the display labels for the scalar outputs.
 
     Raises:
+      RuntimeError: If `model.train_on_batch` is wrapped in `tf.function`.
       ValueError: In case of invalid user-provided arguments.
     """
     self._assert_compile_was_called()
@@ -1705,6 +1719,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         the display labels for the scalar outputs.
 
     Raises:
+        RuntimeError: If `model.test_on_batch` is wrapped in `tf.function`.
         ValueError: In case of invalid user-provided arguments.
     """
     self._assert_compile_was_called()
@@ -1739,6 +1754,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         Numpy array(s) of predictions.
 
     Raises:
+        RuntimeError: If `model.predict_on_batch` is wrapped in `tf.function`.
         ValueError: In case of mismatch between given number of inputs and
           expectations of the model.
     """
@@ -2310,7 +2326,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
   @property
   def layers(self):
-    return self._unique_sublayers()
+    return list(self._flatten_layers(include_self=False, recursive=False))
 
   def get_layer(self, name=None, index=None):
     """Retrieves a layer based on either its name (unique) or index.
@@ -2365,14 +2381,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     specs = nest.pack_sequence_as(inputs, specs)
 
     self._saved_model_inputs_spec = specs
-
-  def _get_save_spec(self, dynamic_batch=True):
-    if self._saved_model_inputs_spec is None:
-      return None
-
-    return nest.map_structure(
-        lambda t: tf_utils.get_tensor_spec(t, dynamic_batch=dynamic_batch),
-        self._saved_model_inputs_spec)
 
   def _assert_weights_created(self):
     """Asserts that all the weights for the model have been created.

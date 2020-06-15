@@ -35,7 +35,7 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             ":context_interface",
@@ -145,6 +145,24 @@ cc_library(
 )
 
 cc_library(
+    name = "c_api_unified_internal",
+    hdrs = [
+        "c_api_unified_experimental_internal.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        "//tensorflow/c:c_api_internal",
+        "//tensorflow/c:tf_status",
+        "//tensorflow/core/platform:casts",
+        "//tensorflow/core/platform:types",
+    ],
+)
+
+cc_library(
     name = "tensor_handle_interface",
     hdrs = ["tensor_handle_interface.h"],
     visibility = [
@@ -184,7 +202,6 @@ cc_library(
         ":operation_interface",
         ":tensor_handle_interface",
         "//tensorflow/c:tensor_interface",
-        "//tensorflow/c/experimental/saved_model/core:saved_model_api",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -319,6 +336,7 @@ tf_cuda_cc_test(
     tags = [
         "noguitar",  # TODO(b/155445984): flaky
         #"guitar",
+        "notap",  # TODO(b/156981931): flaky
         "multi_gpu",
     ],
     deps = [
@@ -349,7 +367,10 @@ tf_cuda_cc_test(
     # TODO(b/136478427): Figure out how to correctly shut the server down
     args = ["--heap_check=local"],
     extra_copts = tfe_xla_copts(),
-    tags = ["noasan"],  # leaks gRPC server instances
+    tags = [
+        "no_windows",
+        "noasan",  # leaks gRPC server instances
+    ],
     deps = [
         ":c_api",
         ":c_api_experimental",
@@ -357,10 +378,46 @@ tf_cuda_cc_test(
         ":c_api_test_util",
         ":tfe_tensorhandle_internal",
         "//tensorflow/c:c_test_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:function_optimization_registry",
+        "//tensorflow/core/common_runtime/eager:eager_operation",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "c_api_distributed_test",
+    size = "small",
+    srcs = [
+        "c_api_distributed_test.cc",
+    ],
+    # TODO(b/136478427): Figure out how to correctly shut the server down
+    args = ["--heap_check=local"],
+    extra_copts = tfe_xla_copts(),
+    tags = [
+        "no_windows",
+        "noasan",  # leaks gRPC server instances
+    ],
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        ":c_api_internal",
+        ":c_api_test_util",
+        ":tfe_tensorhandle_internal",
+        "//tensorflow/c:c_test_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:function_optimization_registry",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "@com_google_absl//absl/strings",
@@ -376,7 +433,10 @@ tf_cuda_cc_test(
     # TODO(b/136478427): Figure out how to correctly shut the server down
     args = ["--heap_check=local"],
     extra_copts = tfe_xla_copts(),
-    tags = ["noasan"],  # leaks gRPC server instances
+    tags = [
+        "no_windows",
+        "noasan",  # leaks gRPC server instances
+    ],
     deps = [
         ":c_api",
         ":c_api_experimental",
@@ -412,7 +472,7 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             ":c_api",
@@ -448,6 +508,8 @@ tf_cuda_library(
         "//conditions:default": [],
     }) + [
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core/distributed_runtime/eager:eager_client",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
@@ -505,6 +567,7 @@ tf_cuda_cc_test(
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_test_util",
         "//tensorflow/cc/profiler",
+        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",

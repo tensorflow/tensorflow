@@ -35,10 +35,10 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/fully_connected.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/max_unpooling.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/mean.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/mul.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/padding.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/pooling.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/prelu.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/quantize_and_dequantize.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/relu.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/reshape.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/resize.h"
@@ -53,22 +53,6 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 namespace {
-
-bool IsWidthBroadcastedForSecondInput(const std::vector<Value*>& inputs) {
-  return inputs.size() == 2 &&
-         inputs[0]->tensor.shape.w != inputs[1]->tensor.shape.w &&
-         inputs[1]->tensor.shape.w == 1;
-}
-bool IsHeightBroadcastedForSecondInput(const std::vector<Value*>& inputs) {
-  return inputs.size() == 2 &&
-         inputs[0]->tensor.shape.h != inputs[1]->tensor.shape.h &&
-         inputs[1]->tensor.shape.h == 1;
-}
-bool IsChannelsBroadcastedForSecondInput(const std::vector<Value*>& inputs) {
-  return inputs.size() == 2 &&
-         inputs[0]->tensor.shape.c != inputs[1]->tensor.shape.c &&
-         inputs[1]->tensor.shape.c == 1;
-}
 
 std::vector<ComputeTaskDescriptorPtr> SelectDepthWiseConv(
     int id, ValueId input_id, ValueId output_id,
@@ -94,6 +78,12 @@ std::vector<ComputeTaskDescriptorPtr> SelectConvolutionTransposed(
     return ConvolutionTransposed(id, input_id, output_id, attr, device_info,
                                  options);
   }
+}
+
+std::vector<ComputeTaskDescriptorPtr> SelectQuantizeAndDequantize(
+    int id, ValueId input_id, ValueId output_id,
+    const QuantizeAndDequantizeAttributes& attr) {
+  return QuantizeAndDequantize(id, input_id, output_id, attr);
 }
 
 std::vector<ComputeTaskDescriptorPtr> SelectPReLU(
@@ -198,18 +188,22 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
   auto op_type = OperationTypeFromString(node->operation.type);
   switch (op_type) {
     case OperationType::ADD: {
-      const auto srcs = graph.FindInputs(node_id);
-      ElementwiseBroadcastSettings broadcast;
-      broadcast.width = IsWidthBroadcastedForSecondInput(srcs);
-      broadcast.height = IsHeightBroadcastedForSecondInput(srcs);
-      broadcast.channels = IsChannelsBroadcastedForSecondInput(srcs);
-      if (broadcast.width || broadcast.height || broadcast.channels) {
-        *tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0], op_type,
-                                          broadcast);
-      } else {
-        *tasks = Add(node_id, inputs, outputs[0],
-                     absl::any_cast<AddAttributes>(node->operation.attributes),
-                     options);
+      if (inputs.size() == 1) {
+        if (node->operation.attributes.has_value()) {
+          auto attr = absl::any_cast<AddAttributes>(node->operation.attributes);
+          *tasks = ElementwiseWithOneInputAndConstantArguent(
+              node_id, inputs[0], outputs[0], options, op_type, attr.param);
+        } else {
+          return absl::UnimplementedError(
+              "Missing attributes for single input op: " +
+              node->operation.type);
+        }
+      } else if (inputs.size() == 2) {
+        const auto srcs = graph.FindInputs(node_id);
+        *tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0],
+                                          srcs[1]->tensor.shape, op_type);
+      } else {  // more than 2 inputs
+        *tasks = Add(node_id, inputs, outputs[0], options);
       }
       break;
     }
@@ -294,24 +288,21 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
                     absl::any_cast<MeanAttributes>(node->operation.attributes));
       break;
     case OperationType::MUL:
-      if (node->operation.attributes.has_value()) {
-        *tasks = Multiply(
-            node_id, inputs[0], outputs[0],
-            absl::any_cast<MultiplyAttributes>(node->operation.attributes),
-            options);
-      } else {
-        if (inputs.size() == 2) {
-          const auto srcs = graph.FindInputs(node_id);
-          ElementwiseBroadcastSettings broadcast;
-          broadcast.width = IsWidthBroadcastedForSecondInput(srcs);
-          broadcast.height = IsHeightBroadcastedForSecondInput(srcs);
-          broadcast.channels = IsChannelsBroadcastedForSecondInput(srcs);
-          *tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0],
-                                            op_type, broadcast);
+      if (inputs.size() == 1) {
+        if (node->operation.attributes.has_value()) {
+          auto attr =
+              absl::any_cast<MultiplyAttributes>(node->operation.attributes);
+          *tasks = ElementwiseWithOneInputAndConstantArguent(
+              node_id, inputs[0], outputs[0], options, op_type, attr.param);
         } else {
           return absl::UnimplementedError(
-              "No support of multiply with more than 2 inputs");
+              "Missing attributes for single input op: " +
+              node->operation.type);
         }
+      } else if (inputs.size() == 2) {
+        const auto srcs = graph.FindInputs(node_id);
+        *tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0],
+                                          srcs[1]->tensor.shape, op_type);
       }
       break;
     case OperationType::PAD: {
@@ -335,6 +326,12 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     case OperationType::RELU:
       *tasks = ReLU(node_id, inputs[0], outputs[0],
                     absl::any_cast<ReLUAttributes>(node->operation.attributes));
+      break;
+    case OperationType::QUANTIZE_AND_DEQUANTIZE:
+      *tasks = SelectQuantizeAndDequantize(
+          node_id, inputs[0], outputs[0],
+          absl::any_cast<QuantizeAndDequantizeAttributes>(
+              node->operation.attributes));
       break;
     case OperationType::RESHAPE:
       *tasks = SelectReshape(
@@ -385,26 +382,27 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     case OperationType::POW:
     case OperationType::SQUARED_DIFF:
     case OperationType::SUB: {
-      const ElementwiseAttributes* attr =
-          absl::any_cast<ElementwiseAttributes>(&node->operation.attributes);
-      if (attr) {
-        *tasks = ElementwiseWithOneInputAndConstantArguent(
-            node_id, inputs[0], outputs[0], options, op_type, *attr);
-      } else {
+      if (inputs.size() == 1) {
+        if (node->operation.attributes.has_value()) {
+          auto attr =
+              absl::any_cast<ElementwiseAttributes>(node->operation.attributes);
+          *tasks = ElementwiseWithOneInputAndConstantArguent(
+              node_id, inputs[0], outputs[0], options, op_type, attr.param);
+        } else {
+          return absl::UnimplementedError(
+              "Missing attributes for single input op: " +
+              node->operation.type);
+        }
+      } else if (inputs.size() == 2) {
         const auto srcs = graph.FindInputs(node_id);
-        ElementwiseBroadcastSettings broadcast;
-        broadcast.width = IsWidthBroadcastedForSecondInput(srcs);
-        broadcast.height = IsHeightBroadcastedForSecondInput(srcs);
-        broadcast.channels = IsChannelsBroadcastedForSecondInput(srcs);
-        *tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0], op_type,
-                                          broadcast);
+        *tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0],
+                                          srcs[1]->tensor.shape, op_type);
       }
     } break;
     case OperationType::BATCH_NORMALIZATION:
     case OperationType::BATCH_TO_SPACE:
     case OperationType::CONST:
     case OperationType::LSTM:
-    case OperationType::QUANTIZE_AND_DEQUANTIZE:
     case OperationType::SPACE_TO_BATCH:
     case OperationType::TRANSPOSE:
     case OperationType::UNKNOWN:

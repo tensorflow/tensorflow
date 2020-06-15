@@ -32,6 +32,7 @@ from six.moves import range
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python.convert import ConverterError
+from tensorflow.lite.python.convert import mlir_quantize
 from tensorflow.lite.python.interpreter import Interpreter
 from tensorflow.python import keras
 from tensorflow.python.client import session
@@ -1149,6 +1150,47 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     }
     quantized_converter.convert()
 
+  def testTrainingTimeAndPostTrainingCalibrateAndQuantize(self):
+    with ops.Graph().as_default():
+      inp, output, calibration_gen = self._getCalibrationQuantizeModel()
+      sess = session.Session()
+
+    # Convert float model.
+    float_converter = lite.TFLiteConverter.from_session(sess, [inp], [output])
+    float_tflite = float_converter.convert()
+    self.assertTrue(float_tflite)
+
+    converter = lite.TFLiteConverter.from_session(sess, [inp], [output])
+
+    # extra flags to trigger training time quantization conversion
+    converter.inference_type = lite_constants.INT8
+    converter.inference_input_type = lite_constants.FLOAT
+    converter.inference_output_type = lite_constants.FLOAT
+    input_arrays = converter.get_input_arrays()
+    converter.quantized_input_stats = {
+        input_arrays[0]: (0., 1.)
+    }
+    # trigger post-training quantization
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    converter.representative_dataset = calibration_gen
+    converter._experimental_new_quantizer = True
+    quantized_tflite = converter.convert()
+    self.assertTrue(quantized_tflite)
+    self.assertLess(len(quantized_tflite), len(float_tflite))
+
+    # calibration only api
+    converter._experimental_calibrate_only = True
+    calibrated_tflite = converter.convert()
+    quantized_tflite = mlir_quantize(calibrated_tflite, fully_quantize=True)
+    interpreter = Interpreter(model_content=quantized_tflite)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    self.assertEqual(np.int8, input_details[0]['dtype'])
+    self.assertEqual((1., 0.), input_details[0]['quantization'])
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(np.int8, output_details[0]['dtype'])
+
   def testFloatTocoConverter(self):
     """Tests deprecated test TocoConverter."""
     with ops.Graph().as_default():
@@ -1725,7 +1767,7 @@ class FromSavedModelTest(TestModels):
     log = io.BytesIO() if six.PY2 else io.StringIO()
     handler = logging.StreamHandler(log)
     logging.root.addHandler(handler)
-    warning_message = 'Please consider switching to use new converter'
+    warning_message = 'Please consider switching to the new converter'
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_saved_model(saved_model_dir)
     converter.experimental_new_converter = False

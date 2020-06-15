@@ -583,7 +583,7 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase,
     self.assertEqual(traces[-1].op_name, "Op_%d" % (expected_end - 1))
 
 
-class DataObjectsTest(test_util.TensorFlowTestCase):
+class DataObjectsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def jsonRoundTripCheck(self, obj):
     self.assertEqual(
@@ -660,6 +660,22 @@ class DataObjectsTest(test_util.TensorFlowTestCase):
     self.assertIsNone(json["output_tensor_ids"])
     self.assertIsNone(json["debug_tensor_values"])
 
+  @parameterized.named_parameters(
+      ("EmptyList", []),
+      ("None", None),
+  )
+  def testExecutionWithNoOutputTensorsReturnsZeroForNumOutputs(
+      self, output_tensor_ids):
+    execution = debug_events_reader.Execution(
+        debug_events_reader.ExecutionDigest(1234, 5678, "FooOp"),
+        "localhost", ("a1", "b2"),
+        debug_event_pb2.TensorDebugMode.FULL_HEALTH,
+        graph_id="abcd",
+        input_tensor_ids=[13, 37],
+        output_tensor_ids=output_tensor_ids,
+        debug_tensor_values=None)
+    self.assertEqual(execution.num_outputs, 0)
+
   def testDebuggedDeviceToJons(self):
     debugged_device = debug_events_reader.DebuggedDevice("/TPU:3", 4)
     self.assertEqual(debugged_device.to_json(), {
@@ -696,6 +712,24 @@ class DataObjectsTest(test_util.TensorFlowTestCase):
             "outer_graph_id": "a0b1",
             "inner_graph_ids": ["c2d3", "c2d3e4"],
         })
+
+  @parameterized.named_parameters(
+      ("EmptyList", []),
+      ("None", None),
+  )
+  def testGraphOpDigestWithNoOutpusReturnsNumOutputsZero(
+      self, output_tensor_ids):
+    op_creation_digest = debug_events_reader.GraphOpCreationDigest(
+        1234,
+        5678,
+        "deadbeef",
+        "FooOp",
+        "Model_1/Foo_2",
+        output_tensor_ids,
+        "machine.cluster", ("a1", "a2"),
+        input_names=None,
+        device_name=None)
+    self.assertEqual(op_creation_digest.num_outputs, 0)
 
   def testGraphOpCreationDigestNoInputNoDeviceNameToJson(self):
     op_creation_digest = debug_events_reader.GraphOpCreationDigest(

@@ -55,7 +55,7 @@ look for the inputs and outputs in the graph. To visualize a `.pb` file, use the
 [`import_pb_to_tensorboard.py`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/tools/import_pb_to_tensorboard.py)
 script like below:
 
-```
+```sh
 python import_pb_to_tensorboard.py --model_dir <model path> --log_dir <log dir path>
 ```
 
@@ -68,7 +68,7 @@ script in our repository.
 *   [Clone the TensorFlow repository](https://www.tensorflow.org/install/source)
 *   Run the `visualize.py` script with bazel:
 
-```
+```sh
 bazel run //tensorflow/lite/tools:visualize model.tflite visualized_model.html
 ```
 
@@ -101,8 +101,8 @@ random data to feed to the interpreter.
 
 #### How do I reduce the size of my converted TensorFlow Lite model?
 
-[Post-training quantization](../performance/post_training_quantization.md) can be
-used during conversion to TensorFlow Lite to reduce the size of the model.
+[Post-training quantization](../performance/post_training_quantization.md) can
+be used during conversion to TensorFlow Lite to reduce the size of the model.
 Post-training quantization quantizes weights to 8-bits of precision from
 floating-point and dequantizes them during runtime to perform floating point
 computations. However, note that this could have some accuracy implications.

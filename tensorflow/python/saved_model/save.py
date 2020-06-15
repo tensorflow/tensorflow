@@ -26,7 +26,7 @@ from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.core.protobuf import saved_object_graph_pb2
-from tensorflow.python.distribute import values as ds_values
+from tensorflow.python.distribute import distribute_utils as ds_utils
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
@@ -273,13 +273,13 @@ class _SaveableView(object):
         # pylint: enable=protected-access
         resource_map[obj.resource_handle] = new_resource
         self.captured_tensor_node_ids[obj.resource_handle] = node_id
-      elif (ds_values.is_distributed_variable(obj) or
+      elif (ds_utils.is_distributed_variable(obj) or
             resource_variable_ops.is_resource_variable(obj)):
-        obj_to_copy = obj._primary if ds_values.is_distributed_variable(  # pylint: disable=protected-access
+        obj_to_copy = obj._primary if ds_utils.is_distributed_variable(  # pylint: disable=protected-access
             obj) else obj
         new_variable = resource_variable_ops.copy_to_graph_uninitialized(
             obj_to_copy)
-        if ds_values.is_distributed_variable(obj):
+        if ds_utils.is_distributed_variable(obj):
           self.captured_tensor_node_ids[obj] = node_id
           for v in obj.values:
             object_map[v] = new_variable

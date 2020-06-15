@@ -21,8 +21,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/operation_interface.h"
 #include "tensorflow/c/eager/tensor_handle_interface.h"
-#include "tensorflow/c/experimental/saved_model/core/saved_model_api.h"
 #include "tensorflow/c/tensor_interface.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"
@@ -84,11 +84,10 @@ class AbstractContextInterface {
   // Create an operation to perform op execution
   virtual AbstractOperationInterface* CreateOperation() = 0;
 
-  // Load a SavedModelAPI object from the given directory and tags
-  virtual std::unique_ptr<SavedModelAPI> LoadSavedModelAPI(
-      const std::string& directory,
-      const absl::optional<std::unordered_set<std::string>>& tags,
-      tensorflow::Status* status) = 0;
+  // Returns whether the runtime is backed by TFRT or the legacy TF Eager
+  // Runtime. This is necessary to decouple runtime-dependent
+  // code that is layered on top of the runtime.
+  virtual bool UsesTFRT() = 0;
 
   // List attributes of available devices
   virtual void ListDevices(std::vector<DeviceAttributes>* devices) = 0;
@@ -100,6 +99,17 @@ class AbstractContextInterface {
   virtual void StartStep() = 0;
   // Destroy the step resource container for a training step.
   virtual void EndStep() = 0;
+
+  // Block until all pending nodes are finished.
+  virtual Status AsyncWait() = 0;
+
+  // Add a function (serialized FunctionDef protocol buffer) so that it can
+  // be executed as an op. Return error if the function with the same name
+  // already exists.
+  virtual Status AddFunctionDef(const FunctionDef& fdef) = 0;
+  // Remove a function. 'func' argument is the name of a previously added
+  // FunctionDef. The name is in fdef.signature.name.
+  virtual Status RemoveFunction(const string& func) = 0;
 
  protected:
   virtual ~AbstractContextInterface() {}

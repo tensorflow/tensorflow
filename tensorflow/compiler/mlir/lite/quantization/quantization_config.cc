@@ -45,7 +45,7 @@ bool ParseInputNodeQuantSpecs(absl::string_view node_names,
                               absl::string_view inference_type,
                               QuantizationSpecs* quant_specs) {
   std::vector<std::string> input_nodes = absl::StrSplit(node_names, ',');
-  std::vector<double> node_mins;
+  std::vector<llvm::Optional<double>> node_mins;
   if (!min_values.empty()) {
     std::vector<std::string> node_mins_str = absl::StrSplit(min_values, ',');
     for (int i = 0; i < node_mins_str.size(); i++) {
@@ -57,7 +57,7 @@ bool ParseInputNodeQuantSpecs(absl::string_view node_names,
     }
   }
 
-  std::vector<double> node_maxs;
+  std::vector<llvm::Optional<double>> node_maxs;
   if (!max_values.empty()) {
     std::vector<std::string> node_maxs_str = absl::StrSplit(max_values, ',');
     for (int i = 0; i < node_maxs_str.size(); i++) {
@@ -79,11 +79,11 @@ bool ParseInputNodeQuantSpecs(absl::string_view node_names,
                                 quant_specs);
 }
 
-bool GetInputNodeQuantSpecs(const std::vector<std::string>& node_names,
-                            const std::vector<double>& node_mins,
-                            const std::vector<double>& node_maxs,
-                            tensorflow::DataType inference_type,
-                            QuantizationSpecs* quant_specs) {
+bool GetInputNodeQuantSpecs(
+    const std::vector<std::string>& node_names,
+    const std::vector<llvm::Optional<double>>& node_mins,
+    const std::vector<llvm::Optional<double>>& node_maxs,
+    tensorflow::DataType inference_type, QuantizationSpecs* quant_specs) {
   quant_specs->inference_type = inference_type;
 
   // If min/max are not specified, just return;

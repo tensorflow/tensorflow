@@ -3,9 +3,12 @@ syntax = "proto3";
 package tensorflow.profiler;
 
 import "google/protobuf/any.proto";
+import "tensorflow/core/profiler/protobuf/diagnostics.proto";
 
 // Generic hardware bottleneck.
 message BottleneckAnalysis {
+  // Percentage of step time that is spent on input.
+  double input_percent = 7;
   // Indicates if input is a bottleneck. Possible values:  "host", "device",
   // "both", or "unknown"
   string input_classification = 1;
@@ -136,6 +139,8 @@ message InputPipelineAnalysisResult {
   StepSummary step_time_summary = 2;
   // Summary of all input-related stall as percentage of step duration.
   StepSummary input_percent_summary = 3;
+  // Overall percentage of step time that is waiting for input.
+  double overall_input_percent = 11;
   // Details of each step. Can be unpacked into a PerGenericStepDetails.
   repeated google.protobuf.Any step_details = 4;
   // The breakdown of the input processing time.
@@ -147,7 +152,7 @@ message InputPipelineAnalysisResult {
   // Breakdown of the step time. Can be unpacked into a
   // GenericStepTimeBreakdown.
   google.protobuf.Any step_time_breakdown = 8;
-  // Error messages.
-  repeated string error_messages = 10;
-  reserved 1;
+  // Error and warning messages for diagnosing profiling issues.
+  Diagnostics diagnostics = 12;
+  reserved 1, 10;
 }

@@ -1,4 +1,4 @@
-// RUN: tf-opt -tf-saved-model-optimize-global-tensors -split-input-file %s | FileCheck %s --dump-input=fail
+// RUN: tf-opt -tf-saved-model-optimize-global-tensors -split-input-file %s | FileCheck %s
 
 //===----------------------------------------------------------------------===//
 // Freezing.
@@ -136,3 +136,9 @@ module attributes {tf_saved_model.semantics} {
   }
 
 }
+
+// -----
+
+// Test running the pass on a module that does not have
+// tf_saved_model.semantics.
+module {}

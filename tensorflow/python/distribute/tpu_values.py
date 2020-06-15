@@ -90,19 +90,6 @@ class TPUVariableMixin(object):
   def _get_as_operand(self):
     return self.read_value()
 
-  def _get_closest(self):
-    if enclosing_tpu_context() is None:
-      return super(TPUVariableMixin, self)._get_closest()
-    else:
-      return self._primary
-
-  def numpy(self):
-    if context.executing_eagerly():
-      return self.read_value().numpy()
-    else:
-      raise NotImplementedError(
-          "numpy() is only available when eager execution is enabled.")
-
   def _is_mirrored(self):
     raise NotImplementedError(
         "`TPUVariableMixin._is_mirrored()` must be implemented by subclasses.")
@@ -112,7 +99,7 @@ class TPUVariableMixin(object):
     # If we're in a tpu.rewrite(), return the replicated handle.
     tpu_context = enclosing_tpu_context()
     if tpu_context is None or context.executing_eagerly():
-      return self._get_closest().handle
+      return self._get_on_device_or_primary().handle
     else:
       return tpu_context.get_replicated_var_handle(self._handle_id,
                                                    self._values,

@@ -35,22 +35,33 @@ mlir::DenseIntElementsAttr getBroadcastDimensionsAttr(mlir::Builder* b,
                                                       mlir::Value y,
                                                       bool allow_empty = true);
 
-/// Get a constant splat for the given value type.
+// Get a constant splat for the given value of type. Requires value to be of
+// type static shaped RankedTensorType.
+template <typename T>
+static ElementsAttr getSplat(Builder* b, RankedTensorType ty, T constant) {
+  Type element_ty = getElementTypeOrSelf(ty);
+
+  if (element_ty.isSignlessInteger())
+    return DenseElementsAttr::get(ty, b->getIntegerAttr(element_ty, constant));
+
+  if (element_ty.isa<FloatType>())
+    return DenseElementsAttr::get(ty, b->getFloatAttr(element_ty, constant));
+
+  if (auto complex_ty = element_ty.dyn_cast<ComplexType>()) {
+    auto complex_element_ty = complex_ty.getElementType();
+    if (complex_element_ty.isF32())
+      return DenseElementsAttr::get(ty,
+                                    static_cast<std::complex<float>>(constant));
+    if (complex_element_ty.isF64())
+      return DenseElementsAttr::get(
+          ty, static_cast<std::complex<double>>(constant));
+  }
+  llvm_unreachable("unhandled element type");
+}
+
 template <typename T>
 static ElementsAttr getSplat(Builder* b, Value val, T constant) {
-  auto valType = val.getType().cast<TensorType>();
-  auto valElementType = getElementTypeOrSelf(val.getType());
-
-  // Handle integer elements.
-  Attribute elementAttr;
-  if (valElementType.isSignlessInteger())
-    elementAttr = b->getIntegerAttr(valElementType, constant);
-  else if (valElementType.isa<FloatType>())
-    elementAttr = b->getFloatAttr(valElementType, constant);
-  else
-    llvm_unreachable("unhandled element type");
-
-  return DenseElementsAttr::get(valType, elementAttr);
+  return getSplat(b, val.getType().cast<RankedTensorType>(), constant);
 }
 
 // Returns DenseElementsAttr of rank zero with the given element type and the

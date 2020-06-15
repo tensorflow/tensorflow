@@ -41,13 +41,19 @@ class SpmdPartitioningTest : public HloTestBase {
     SpmdPartitionerOptions options;
     options.conv_halo_exchange_always_on_lhs = conv_halo_exchange_always_on_lhs;
     options.allow_module_signature_change = true;
+    auto collective_ops_creator =
+        GetDefaultCollectiveOpsCreator(num_devices, /*num_replicas=*/1);
+    // Do not use all-gather for pattern-matching purpose, as the partitioner
+    // might create reshape/transposes around it.
+    collective_ops_creator.create_cross_partition_all_gather = nullptr;
 
     TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(
                                          hlo_module, GetModuleConfigForTest()));
     HloPassPipeline pass("spmd-partitioning");
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
-    pass.AddPass<SpmdPartitioner>(num_devices, /*num_replicas=*/1, options);
+    pass.AddPass<SpmdPartitioner>(num_devices, /*num_replicas=*/1, options,
+                                  collective_ops_creator);
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
     TF_RETURN_IF_ERROR(pass.Run(module.get()).status());
@@ -640,6 +646,43 @@ ENTRY entry {
       op::Select(op::Compare(index_in_padded, op::Broadcast(op::Constant())),
                  pre_masking, op::Broadcast(op::Constant()));
   EXPECT_THAT(root, AllOf(op::Shape("f32[2,2]{1,0}"),
+                          op::ReduceWindow(masked, op::Constant())));
+}
+
+TEST_F(SpmdPartitioningTest, ReduceWindowTiledOneSideHaloBeyondNeighbor) {
+  const char* const hlo_string = R"(
+HloModule module
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add = f32[] add(a, b)
+}
+
+ENTRY entry {
+  param = f32[9,2] parameter(0), sharding={devices=[5,1]0,1,2,3,4}
+  constant.1 = f32[] constant(0), sharding={replicated}
+  ROOT reduce-window = f32[5,2]{1,0} reduce-window(param, constant.1),
+    window={size=4x1 stride=2x1 pad=3_0x0_0}, to_apply=sum,
+    sharding={devices=[5,1]0,1,2,3,4}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/5));
+  VLOG(1) << module->ToString();
+  auto halo0 = AllOf(op::Shape("f32[1,2]"),
+                     op::CollectivePermute(op::Slice(op::Parameter(0))));
+  auto halo1 =
+      AllOf(op::Shape("f32[2,2]"), op::CollectivePermute(op::Parameter(0)));
+  auto pre_mask =
+      AllOf(op::Shape("f32[4,2]"),
+            op::Slice(AllOf(op::Shape("f32[5,2]"),
+                            op::Concatenate(halo0, halo1, op::Parameter(0)))));
+  auto masked =
+      op::Select(op::Compare(op::Add(op::Iota(), op::Broadcast(op::Multiply())),
+                             op::Broadcast(op::Constant())),
+                 pre_mask, op::Broadcast(op::Constant()));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Shape("f32[1,2]{1,0}"),
                           op::ReduceWindow(masked, op::Constant())));
 }
 
@@ -1257,6 +1300,35 @@ ENTRY entry {
                           op::Shape("f32[1,1,64,256]")));
 }
 
+TEST_F(SpmdPartitioningTest, ConvolutionLhsTiledRhsTiledWindowReversal) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[5,128,64] parameter(0), sharding={devices=[2,1,1]0,1}
+  %rhs = f32[5,128,256] parameter(1), sharding={devices=[2,1,1]1,0}
+  ROOT %conv = f32[1,64,256] convolution(%lhs, %rhs),
+    window={size=5 rhs_reversal=1}, dim_labels=0fb_0io->0bf,
+    sharding={replicated}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  auto lhs_masked =
+      AllOf(op::Shape("f32[3,128,64]"), op::Select(_, op::Parameter(0), _));
+  auto rhs_left_padded = op::Slice(op::Concatenate(
+      op::CollectivePermute(op::Slice(op::Parameter(1))), op::Parameter(1)));
+  auto rhs_masked =
+      AllOf(op::Shape("f32[3,128,256]"), op::Select(_, rhs_left_padded, _));
+
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              AllOf(op::AllReduce(op::Convolution(lhs_masked, rhs_masked)),
+                    op::Shape("f32[1,64,256]")));
+}
+
 TEST_F(SpmdPartitioningTest, DotLhsTiledRhsTiledWithReshard) {
   const char* const hlo_string = R"(
 HloModule module
@@ -1710,10 +1782,9 @@ TEST_F(SpmdPartitioningTest, PadAlongNonPartitionedDimension) {
 HloModule module
 
 ENTRY entry {
-  %param0 = f32[128,14,257] parameter(0)
-  %param0.copy = f32[128,14,257] copy(%param0), sharding={devices=[1,1,2]0,1}
+  %param0 = f32[128,14,257] parameter(0), sharding={devices=[1,1,2]0,1}
   %const = f32[] constant(0)
-  ROOT %pad = f32[128,17,257] pad(%param0.copy, %const), padding=0_0x1_2x0_0,
+  ROOT %pad = f32[128,17,257] pad(%param0, %const), padding=0_0x1_2x0_0,
     sharding={devices=[1,1,2]0,1}
 })";
 
@@ -1722,12 +1793,62 @@ ENTRY entry {
   VLOG(1) << module->ToString();
 
   auto root = module->entry_computation()->root_instruction();
-  auto param0 = AllOf(
-      op::Copy(op::DynamicSlice(op::Pad(op::Parameter(), op::Constant()),
-                                op::Constant(), op::Constant(), op::Reshape())),
-      op::Shape("f32[128,14,129]"));
+  auto param0 = AllOf(op::Parameter(), op::Shape("f32[128,14,129]"));
   EXPECT_THAT(root, AllOf(op::Pad(param0, op::Constant()),
                           op::Shape("f32[128,17,129]")));
+}
+
+TEST_F(SpmdPartitioningTest, PadAlongPartitionedDimension) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[14,257] parameter(0), sharding={devices=[1,2]0,1}
+  %const = f32[] constant(0)
+  ROOT %pad = f32[14,259] pad(%param0, %const), padding=0_0x0_2,
+    sharding={devices=[1,2]0,1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  auto root = module->entry_computation()->root_instruction();
+  auto param0 = AllOf(op::Parameter(), op::Shape("f32[14,129]"));
+  auto after_halo_exchange =
+      AllOf(op::Shape("f32[14,130]"),
+            op::Concatenate(param0, op::CollectivePermute(op::Slice(param0))));
+  auto pad = AllOf(op::Shape("f32[14,131]"),
+                   op::Pad(after_halo_exchange, op::Constant()));
+  EXPECT_THAT(root, op::DynamicSlice(pad, op::Constant(), _));
+}
+
+TEST_F(SpmdPartitioningTest, PadAlongPartitionedDimensionWithInteriorPadding) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[7] parameter(0), sharding={devices=[2]0,1}
+  %param1 = f32[] parameter(1), sharding={replicated}
+  ROOT %pad = f32[22] pad(%param0, %param1), padding=2_1_2,
+    sharding={devices=[2]0,1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+
+  auto param0 = AllOf(op::Parameter(), op::Shape("f32[4]"));
+  auto after_halo_exchange =
+      AllOf(op::Shape("f32[4]"),
+            op::DynamicSlice(
+                AllOf(op::Shape("f32[5]"),
+                      op::Concatenate(op::CollectivePermute(op::Slice(param0)),
+                                      param0)),
+                _));
+  auto pad = op::Pad(after_halo_exchange, op::Parameter(1));
+  EXPECT_THAT(root, op::DynamicSlice(pad, _));
 }
 
 TEST_F(SpmdPartitioningTest, SliceAlongNonPartitionedDimension) {
@@ -1873,6 +1994,385 @@ ENTRY %cluster_2013453984438090939__.47
   auto sort = FindInstruction(module.get(), "sort");
   EXPECT_EQ(sort->operand(0)->shape().dimensions(1), 4000);
   EXPECT_EQ(sort->operand(1)->shape().dimensions(1), 4000);
+}
+
+TEST_F(SpmdPartitioningTest, PartitionSortInTopK) {
+  const char* const hlo_string = R"(
+HloModule module
+
+%compare-greater-than.8 (p.0.lhs.9: bf16[], p.0.rhs.10: bf16[], p.1.lhs.11: 
+   s32[], p.1.rhs.12: s32[]) -> pred[] {
+  %p.1.lhs.11 = s32[] parameter(2)
+  %p.1.rhs.12 = s32[] parameter(3)
+  %p.0.lhs.9 = bf16[] parameter(0)
+  %convert.13 = f32[] convert(bf16[] %p.0.lhs.9)
+  %bitcast-convert.16 = s32[] bitcast-convert(f32[] %convert.13)
+  %constant.20 = s32[] constant(0)
+  %compare.21 = pred[] compare(s32[] %bitcast-convert.16, s32[] %constant.20),
+    direction=LT
+  %constant.15 = u32[] constant(2147483647)
+  %bitcast-convert.17 = u32[] bitcast-convert(f32[] %convert.13)
+  %subtract.18 = u32[] subtract(u32[] %constant.15, u32[] %bitcast-convert.17)
+  %bitcast-convert.19 = s32[] bitcast-convert(u32[] %subtract.18)
+  %select.22 = s32[] select(pred[] %compare.21, s32[] %bitcast-convert.19, s32[]
+    %bitcast-convert.16)
+  %p.0.rhs.10 = bf16[] parameter(1)
+  %convert.14 = f32[] convert(bf16[] %p.0.rhs.10)
+  %bitcast-convert.24 = s32[] bitcast-convert(f32[] %convert.14)
+  %constant.28 = s32[] constant(0)
+  %compare.29 = pred[] compare(s32[] %bitcast-convert.24, s32[] %constant.28),
+    direction=LT
+  %constant.23 = u32[] constant(2147483647)
+  %bitcast-convert.25 = u32[] bitcast-convert(f32[] %convert.14)
+  %subtract.26 = u32[] subtract(u32[] %constant.23, u32[] %bitcast-convert.25)
+  %bitcast-convert.27 = s32[] bitcast-convert(u32[] %subtract.26)
+  %select.30 = s32[] select(pred[] %compare.29, s32[] %bitcast-convert.27, s32[]
+    %bitcast-convert.24)
+  ROOT %compare.31 = pred[] compare(s32[] %select.22, s32[] %select.30),
+    direction=GT
+}
+
+ENTRY entry
+  (arg_tuple.1: ()) -> (bf16[2,2000], s32[2,2000]) {
+  %arg_tuple.1 = bf16[2,209664] parameter(0)
+  %copy.arg_tuple.1 = bf16[2,209664] copy(%arg_tuple.1), sharding={devices=[1,2]0,1}
+  %iota.7 = s32[2,209664] iota(), iota_dimension=1,
+    metadata={op_type="TopKV2" op_name="TopKV2"}
+  %sort.32 = (bf16[2,209664], s32[2,209664])
+    sort(bf16[2,209664] %copy.arg_tuple.1, s32[2,209664] %iota.7),
+    dimensions={1}, is_stable=true, to_apply=%compare-greater-than.8,
+    metadata={op_type="TopKV2" op_name="TopKV2"}
+  %get-tuple-element.33 = bf16[2,209664]
+    get-tuple-element((bf16[2,209664], s32[2,209664]) %sort.32),
+    index=0, metadata={op_type="TopKV2" op_name="TopKV2"}
+  %slice.34 = bf16[2,2000] slice(bf16[2,209664]
+    %get-tuple-element.33), slice={[0:2], [0:2000]},
+    metadata={op_type="TopKV2" op_name="TopKV2"}
+  %get-tuple-element.35 = s32[2,209664]
+    get-tuple-element((bf16[2,209664], s32[2,209664]) %sort.32),
+    index=1, metadata={op_type="TopKV2" op_name="TopKV2"}
+  %slice.36 = s32[2,2000] slice(s32[2,209664]
+    %get-tuple-element.35), slice={[0:2], [0:2000]},
+    metadata={op_type="TopKV2" op_name="TopKV2"}
+  ROOT %tuple.46 = (bf16[2,2000], s32[2,2000])
+    tuple(bf16[2,2000] %slice.34, s32[2,2000]
+    %slice.36), sharding={{replicated}, {replicated}},
+    metadata={op_name="XLA_Retvals"}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  auto sort = FindInstruction(module.get(), "sort");
+  EXPECT_EQ(sort->operand(0)->shape().dimensions(1), 104832);
+  EXPECT_EQ(sort->operand(1)->shape().dimensions(1), 104832);
+  auto final_sort = FindInstruction(module.get(), "sort.1");
+  EXPECT_EQ(final_sort->operand(0)->shape().dimensions(1), 4000);
+  EXPECT_EQ(final_sort->operand(1)->shape().dimensions(1), 4000);
+}
+
+TEST_F(SpmdPartitioningTest, PartitionSortInTopKWhenComparisonWithSelect) {
+  const char* const hlo_string = R"(
+HloModule module
+
+%compare-greater-than.8 (p.0.lhs.2566: bf16[],
+  p.0.rhs.2567: bf16[], p.1.lhs.2586: s32[], p.1.rhs.2587: s32[]) -> pred[] {
+  %p.0.lhs.2566 = bf16[] parameter(0)
+  %convert.164 = f32[] convert(bf16[] %p.0.lhs.2566)
+  %bitcast-convert.48 = s32[] bitcast-convert(f32[] %convert.164)
+  %constant.285 = s32[] constant(0)
+  %compare.84 = pred[] compare(s32[] %bitcast-convert.48, s32[] %constant.285),
+    direction=LT
+  %constant.286 = u32[] constant(2147483647)
+  %bitcast-convert.49 = u32[] bitcast-convert(f32[] %convert.164)
+  %subtract.84 = u32[] subtract(u32[] %constant.286, u32[] %bitcast-convert.49)
+  %bitcast-convert.50 = s32[] bitcast-convert(u32[] %subtract.84)
+  %select.40 = s32[] select(pred[] %compare.84, s32[] %bitcast-convert.50,
+    s32[] %bitcast-convert.48)
+  %p.0.rhs.2567 = bf16[] parameter(1)
+  %convert.165 = f32[] convert(bf16[] %p.0.rhs.2567)
+  %bitcast-convert.51 = s32[] bitcast-convert(f32[] %convert.165)
+  %compare.85 = pred[] compare(s32[] %bitcast-convert.51, s32[] %constant.285),
+    direction=LT
+  %bitcast-convert.52 = u32[] bitcast-convert(f32[] %convert.165)
+  %subtract.85 = u32[] subtract(u32[] %constant.286, u32[] %bitcast-convert.52)
+  %bitcast-convert.53 = s32[] bitcast-convert(u32[] %subtract.85)
+  %select.41 = s32[] select(pred[] %compare.85, s32[] %bitcast-convert.53,
+    s32[] %bitcast-convert.51)
+  %compare.86 = pred[] compare(s32[] %select.40, s32[] %select.41), direction=GT
+  %compare.1645 = pred[] compare(s32[] %select.41, s32[] %select.40), direction=GT
+  %compare.1646 = pred[] compare(pred[] %compare.86, pred[] %compare.1645),
+    direction=EQ
+  %p.1.lhs.2586 = s32[] parameter(2)
+  %p.1.rhs.2587 = s32[] parameter(3)
+  %compare.1647 = pred[] compare(s32[] %p.1.lhs.2586, s32[] %p.1.rhs.2587),
+    direction=LT
+  ROOT %select.1054 = pred[] select(pred[] %compare.1646, pred[] %compare.1647,
+    pred[] %compare.86)
+}
+
+ENTRY entry
+  (arg_tuple.1: ()) -> (bf16[2,2000], s32[2,2000]) {
+  %arg_tuple.1 = bf16[2,209664] parameter(0)
+  %copy.arg_tuple.1 = bf16[2,209664] copy(%arg_tuple.1), sharding={devices=[1,2]0,1}
+  %iota.7 = s32[2,209664] iota(), iota_dimension=1,
+    metadata={op_type="TopKV2" op_name="TopKV2"}
+  %sort.32 = (bf16[2,209664], s32[2,209664])
+    sort(bf16[2,209664] %copy.arg_tuple.1, s32[2,209664] %iota.7),
+    dimensions={1}, is_stable=true, to_apply=%compare-greater-than.8,
+    metadata={op_type="TopKV2" op_name="TopKV2"}
+  %get-tuple-element.33 = bf16[2,209664]
+    get-tuple-element((bf16[2,209664], s32[2,209664]) %sort.32),
+    index=0, metadata={op_type="TopKV2" op_name="TopKV2"}
+  %slice.34 = bf16[2,2000] slice(bf16[2,209664]
+    %get-tuple-element.33), slice={[0:2], [0:2000]},
+    metadata={op_type="TopKV2" op_name="TopKV2"}
+  %get-tuple-element.35 = s32[2,209664]
+    get-tuple-element((bf16[2,209664], s32[2,209664]) %sort.32),
+    index=1, metadata={op_type="TopKV2" op_name="TopKV2"}
+  %slice.36 = s32[2,2000] slice(s32[2,209664]
+    %get-tuple-element.35), slice={[0:2], [0:2000]},
+    metadata={op_type="TopKV2" op_name="TopKV2"}
+  ROOT %tuple.46 = (bf16[2,2000], s32[2,2000])
+    tuple(bf16[2,2000] %slice.34, s32[2,2000]
+    %slice.36), sharding={{replicated}, {replicated}},
+    metadata={op_name="XLA_Retvals"}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  auto sort = FindInstruction(module.get(), "sort");
+  EXPECT_EQ(sort->operand(0)->shape().dimensions(1), 104832);
+  EXPECT_EQ(sort->operand(1)->shape().dimensions(1), 104832);
+  auto final_sort = FindInstruction(module.get(), "sort.1");
+  EXPECT_EQ(final_sort->operand(0)->shape().dimensions(1), 4000);
+  EXPECT_EQ(final_sort->operand(1)->shape().dimensions(1), 4000);
+}
+
+TEST_F(SpmdPartitioningTest, NoPartitionSortInTopKWhenSecondOperandIsNotIota) {
+  const char* const hlo_string = R"(
+HloModule module
+
+%compare-greater-than.8 (p.0.lhs.2566: bf16[],
+  p.0.rhs.2567: bf16[], p.1.lhs.2586: s32[], p.1.rhs.2587: s32[]) -> pred[] {
+  %p.0.lhs.2566 = bf16[] parameter(0)
+  %convert.164 = f32[] convert(bf16[] %p.0.lhs.2566)
+  %bitcast-convert.48 = s32[] bitcast-convert(f32[] %convert.164)
+  %constant.285 = s32[] constant(0)
+  %compare.84 = pred[] compare(s32[] %bitcast-convert.48, s32[] %constant.285),
+    direction=LT
+  %constant.286 = u32[] constant(2147483647)
+  %bitcast-convert.49 = u32[] bitcast-convert(f32[] %convert.164)
+  %subtract.84 = u32[] subtract(u32[] %constant.286, u32[] %bitcast-convert.49)
+  %bitcast-convert.50 = s32[] bitcast-convert(u32[] %subtract.84)
+  %select.40 = s32[] select(pred[] %compare.84, s32[] %bitcast-convert.50,
+    s32[] %bitcast-convert.48)
+  %p.0.rhs.2567 = bf16[] parameter(1)
+  %convert.165 = f32[] convert(bf16[] %p.0.rhs.2567)
+  %bitcast-convert.51 = s32[] bitcast-convert(f32[] %convert.165)
+  %compare.85 = pred[] compare(s32[] %bitcast-convert.51, s32[] %constant.285),
+    direction=LT
+  %bitcast-convert.52 = u32[] bitcast-convert(f32[] %convert.165)
+  %subtract.85 = u32[] subtract(u32[] %constant.286, u32[] %bitcast-convert.52)
+  %bitcast-convert.53 = s32[] bitcast-convert(u32[] %subtract.85)
+  %select.41 = s32[] select(pred[] %compare.85, s32[] %bitcast-convert.53,
+    s32[] %bitcast-convert.51)
+  %compare.86 = pred[] compare(s32[] %select.40, s32[] %select.41), direction=GT
+  %compare.1645 = pred[] compare(s32[] %select.41, s32[] %select.40), direction=GT
+  %compare.1646 = pred[] compare(pred[] %compare.86, pred[] %compare.1645),
+    direction=EQ
+  %p.1.lhs.2586 = s32[] parameter(2)
+  %p.1.rhs.2587 = s32[] parameter(3)
+  %compare.1647 = pred[] compare(s32[] %p.1.lhs.2586, s32[] %p.1.rhs.2587),
+    direction=LT
+  ROOT %select.1054 = pred[] select(pred[] %compare.1646, pred[] %compare.1647,
+    pred[] %compare.86)
+}
+
+ENTRY entry {
+  %arg_tuple.1 = bf16[2,209664] parameter(0)
+  %arg_tuple.2 = s32[2,209664] parameter(1)
+  %copy.arg_tuple.1 = bf16[2,209664] copy(%arg_tuple.1), sharding={devices=[1,2]0,1}
+  %sort.32 = (bf16[2,209664], s32[2,209664])
+    sort(bf16[2,209664] %copy.arg_tuple.1, s32[2,209664] %arg_tuple.2),
+    dimensions={1}, is_stable=true, to_apply=%compare-greater-than.8,
+    metadata={op_type="TopKV2" op_name="TopKV2"}
+  %get-tuple-element.33 = bf16[2,209664]
+    get-tuple-element((bf16[2,209664], s32[2,209664]) %sort.32),
+    index=0, metadata={op_type="TopKV2" op_name="TopKV2"}
+  %slice.34 = bf16[2,2000] slice(bf16[2,209664]
+    %get-tuple-element.33), slice={[0:2], [0:2000]},
+    metadata={op_type="TopKV2" op_name="TopKV2"}
+  %get-tuple-element.35 = s32[2,209664]
+    get-tuple-element((bf16[2,209664], s32[2,209664]) %sort.32),
+    index=1, metadata={op_type="TopKV2" op_name="TopKV2"}
+  %slice.36 = s32[2,2000] slice(s32[2,209664]
+    %get-tuple-element.35), slice={[0:2], [0:2000]},
+    metadata={op_type="TopKV2" op_name="TopKV2"}
+  ROOT %tuple.46 = (bf16[2,2000], s32[2,2000])
+    tuple(bf16[2,2000] %slice.34, s32[2,2000]
+    %slice.36), sharding={{replicated}, {replicated}},
+    metadata={op_name="XLA_Retvals"}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  std::cout << module->ToString();
+  auto sort = FindInstruction(module.get(), "sort");
+  EXPECT_EQ(sort->operand(0)->shape().dimensions(1), 209664);
+  EXPECT_EQ(sort->operand(1)->shape().dimensions(1), 209664);
+}
+
+TEST_F(SpmdPartitioningTest, NoPartitionSortInTopKWhenNoPartitionInSortDim) {
+  const char* const hlo_string = R"(
+HloModule module
+
+%compare-greater-than.8 (p.0.lhs.2566: bf16[],
+  p.0.rhs.2567: bf16[], p.1.lhs.2586: s32[], p.1.rhs.2587: s32[]) -> pred[] {
+  %p.0.lhs.2566 = bf16[] parameter(0)
+  %convert.164 = f32[] convert(bf16[] %p.0.lhs.2566)
+  %bitcast-convert.48 = s32[] bitcast-convert(f32[] %convert.164)
+  %constant.285 = s32[] constant(0)
+  %compare.84 = pred[] compare(s32[] %bitcast-convert.48, s32[] %constant.285),
+    direction=LT
+  %constant.286 = u32[] constant(2147483647)
+  %bitcast-convert.49 = u32[] bitcast-convert(f32[] %convert.164)
+  %subtract.84 = u32[] subtract(u32[] %constant.286, u32[] %bitcast-convert.49)
+  %bitcast-convert.50 = s32[] bitcast-convert(u32[] %subtract.84)
+  %select.40 = s32[] select(pred[] %compare.84, s32[] %bitcast-convert.50,
+    s32[] %bitcast-convert.48)
+  %p.0.rhs.2567 = bf16[] parameter(1)
+  %convert.165 = f32[] convert(bf16[] %p.0.rhs.2567)
+  %bitcast-convert.51 = s32[] bitcast-convert(f32[] %convert.165)
+  %compare.85 = pred[] compare(s32[] %bitcast-convert.51, s32[] %constant.285),
+    direction=LT
+  %bitcast-convert.52 = u32[] bitcast-convert(f32[] %convert.165)
+  %subtract.85 = u32[] subtract(u32[] %constant.286, u32[] %bitcast-convert.52)
+  %bitcast-convert.53 = s32[] bitcast-convert(u32[] %subtract.85)
+  %select.41 = s32[] select(pred[] %compare.85, s32[] %bitcast-convert.53,
+    s32[] %bitcast-convert.51)
+  %compare.86 = pred[] compare(s32[] %select.40, s32[] %select.41), direction=GT
+  %compare.1645 = pred[] compare(s32[] %select.41, s32[] %select.40), direction=GT
+  %compare.1646 = pred[] compare(pred[] %compare.86, pred[] %compare.1645),
+    direction=EQ
+  %p.1.lhs.2586 = s32[] parameter(2)
+  %p.1.rhs.2587 = s32[] parameter(3)
+  %compare.1647 = pred[] compare(s32[] %p.1.lhs.2586, s32[] %p.1.rhs.2587),
+    direction=LT
+  ROOT %select.1054 = pred[] select(pred[] %compare.1646, pred[] %compare.1647,
+    pred[] %compare.86)
+}
+
+ENTRY entry
+  (arg_tuple.1: ()) -> (bf16[2,2000], s32[2,2000]) {
+  %arg_tuple.1 = bf16[2,209664] parameter(0)
+  %copy.arg_tuple.1 = bf16[2,209664] copy(%arg_tuple.1), sharding={devices=[2,1]0,1}
+  %iota.7 = s32[2,209664] iota(), iota_dimension=1,
+    metadata={op_type="TopKV2" op_name="TopKV2"}
+  %sort.32 = (bf16[2,209664], s32[2,209664])
+    sort(bf16[2,209664] %copy.arg_tuple.1, s32[2,209664] %iota.7),
+    dimensions={1}, is_stable=true, to_apply=%compare-greater-than.8,
+    metadata={op_type="TopKV2" op_name="TopKV2"}
+  %get-tuple-element.33 = bf16[2,209664]
+    get-tuple-element((bf16[2,209664], s32[2,209664]) %sort.32),
+    index=0, metadata={op_type="TopKV2" op_name="TopKV2"}
+  %slice.34 = bf16[2,2000] slice(bf16[2,209664]
+    %get-tuple-element.33), slice={[0:2], [0:2000]},
+    metadata={op_type="TopKV2" op_name="TopKV2"}
+  %get-tuple-element.35 = s32[2,209664]
+    get-tuple-element((bf16[2,209664], s32[2,209664]) %sort.32),
+    index=1, metadata={op_type="TopKV2" op_name="TopKV2"}
+  %slice.36 = s32[2,2000] slice(s32[2,209664]
+    %get-tuple-element.35), slice={[0:2], [0:2000]},
+    metadata={op_type="TopKV2" op_name="TopKV2"}
+  ROOT %tuple.46 = (bf16[2,2000], s32[2,2000])
+    tuple(bf16[2,2000] %slice.34, s32[2,2000]
+    %slice.36), sharding={{replicated}, {replicated}},
+    metadata={op_name="XLA_Retvals"}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  std::cout << module->ToString();
+  auto sort = FindInstruction(module.get(), "sort");
+  EXPECT_EQ(sort->operand(0)->shape().dimensions(1), 209664);
+  EXPECT_EQ(sort->operand(1)->shape().dimensions(1), 209664);
+}
+
+TEST_F(SpmdPartitioningTest, NoPartitionSortInTopKWhenSliceInOtherDim) {
+  const char* const hlo_string = R"(
+HloModule module
+
+%compare-greater-than.8 (p.0.lhs.2566: bf16[],
+  p.0.rhs.2567: bf16[], p.1.lhs.2586: s32[], p.1.rhs.2587: s32[]) -> pred[] {
+  %p.0.lhs.2566 = bf16[] parameter(0)
+  %convert.164 = f32[] convert(bf16[] %p.0.lhs.2566)
+  %bitcast-convert.48 = s32[] bitcast-convert(f32[] %convert.164)
+  %constant.285 = s32[] constant(0)
+  %compare.84 = pred[] compare(s32[] %bitcast-convert.48, s32[] %constant.285),
+    direction=LT
+  %constant.286 = u32[] constant(2147483647)
+  %bitcast-convert.49 = u32[] bitcast-convert(f32[] %convert.164)
+  %subtract.84 = u32[] subtract(u32[] %constant.286, u32[] %bitcast-convert.49)
+  %bitcast-convert.50 = s32[] bitcast-convert(u32[] %subtract.84)
+  %select.40 = s32[] select(pred[] %compare.84, s32[] %bitcast-convert.50,
+    s32[] %bitcast-convert.48)
+  %p.0.rhs.2567 = bf16[] parameter(1)
+  %convert.165 = f32[] convert(bf16[] %p.0.rhs.2567)
+  %bitcast-convert.51 = s32[] bitcast-convert(f32[] %convert.165)
+  %compare.85 = pred[] compare(s32[] %bitcast-convert.51, s32[] %constant.285),
+    direction=LT
+  %bitcast-convert.52 = u32[] bitcast-convert(f32[] %convert.165)
+  %subtract.85 = u32[] subtract(u32[] %constant.286, u32[] %bitcast-convert.52)
+  %bitcast-convert.53 = s32[] bitcast-convert(u32[] %subtract.85)
+  %select.41 = s32[] select(pred[] %compare.85, s32[] %bitcast-convert.53,
+    s32[] %bitcast-convert.51)
+  %compare.86 = pred[] compare(s32[] %select.40, s32[] %select.41), direction=GT
+  %compare.1645 = pred[] compare(s32[] %select.41, s32[] %select.40), direction=GT
+  %compare.1646 = pred[] compare(pred[] %compare.86, pred[] %compare.1645),
+    direction=EQ
+  %p.1.lhs.2586 = s32[] parameter(2)
+  %p.1.rhs.2587 = s32[] parameter(3)
+  %compare.1647 = pred[] compare(s32[] %p.1.lhs.2586, s32[] %p.1.rhs.2587),
+    direction=LT
+  ROOT %select.1054 = pred[] select(pred[] %compare.1646, pred[] %compare.1647,
+    pred[] %compare.86)
+}
+
+ENTRY entry {
+  %arg_tuple.1 = bf16[2,209664] parameter(0)
+  %copy.arg_tuple.1 = bf16[2,209664] copy(%arg_tuple.1), sharding={devices=[1,2]0,1}
+  %iota.7 = s32[2,209664] iota(), iota_dimension=1,
+    metadata={op_type="TopKV2" op_name="TopKV2"}
+  %sort.32 = (bf16[2,209664], s32[2,209664])
+    sort(bf16[2,209664] %copy.arg_tuple.1, s32[2,209664] %iota.7),
+    dimensions={1}, is_stable=true, to_apply=%compare-greater-than.8,
+    metadata={op_type="TopKV2" op_name="TopKV2"}
+  %get-tuple-element.33 = bf16[2,209664]
+    get-tuple-element((bf16[2,209664], s32[2,209664]) %sort.32),
+    index=0, metadata={op_type="TopKV2" op_name="TopKV2"}
+  %slice.34 = bf16[1,209664] slice(bf16[2,209664]
+    %get-tuple-element.33), slice={[0:1], [0:209664]},
+    metadata={op_type="TopKV2" op_name="TopKV2"}
+  %get-tuple-element.35 = s32[2,209664]
+    get-tuple-element((bf16[2,209664], s32[2,209664]) %sort.32),
+    index=1, metadata={op_type="TopKV2" op_name="TopKV2"}
+  %slice.36 = s32[1,209664] slice(s32[2,209664]
+    %get-tuple-element.35), slice={[0:1], [0:209664]},
+    metadata={op_type="TopKV2" op_name="TopKV2"}
+  ROOT %tuple.46 = (bf16[1,209664], s32[1,209664])
+    tuple(bf16[1,209664] %slice.34, s32[1,209664]
+    %slice.36), sharding={{replicated}, {replicated}},
+    metadata={op_name="XLA_Retvals"}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  auto sort = FindInstruction(module.get(), "sort");
+  EXPECT_EQ(sort->operand(0)->shape().dimensions(1), 209664);
+  EXPECT_EQ(sort->operand(1)->shape().dimensions(1), 209664);
 }
 
 TEST_F(SpmdPartitioningTest, ShardableTranspose) {
@@ -3169,7 +3669,7 @@ ENTRY entry {
                     op::Shape("f32[9,9]")));
 }
 
-TEST_F(SpmdPartitioningTest, TiledReverse) {
+TEST_F(SpmdPartitioningTest, TiledReversePassthrough) {
   const char* const hlo_string = R"(
 HloModule module
 
@@ -3187,6 +3687,62 @@ ENTRY entry {
                           op::Reverse(op::DynamicSlice(
                               op::Pad(op::Constant(), op::Constant()),
                               op::Reshape(), op::Constant()))));
+}
+
+TEST_F(SpmdPartitioningTest, TiledReversePassthroughViaReversedSharding) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  param = f32[4] parameter(0), sharding={devices=[2]0,1}
+  ROOT reverse = f32[4] reverse(param), dimensions={0},
+    sharding={devices=[2]1,0}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Shape("f32[2]"), op::Reverse(op::Parameter(0))));
+}
+
+TEST_F(SpmdPartitioningTest, TiledReverseSwapShards) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  param = f32[4] parameter(0), sharding={devices=[2]0,1}
+  ROOT reverse = f32[4] reverse(param), dimensions={0},
+    sharding={devices=[2]0,1}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              AllOf(op::Shape("f32[2]"),
+                    op::Reverse(op::CollectivePermute(op::Parameter(0)))));
+}
+
+TEST_F(SpmdPartitioningTest, TiledReverseHaloExchange) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  param = f32[3] parameter(0), sharding={devices=[2]0,1}
+  ROOT reverse = f32[3] reverse(param), dimensions={0},
+    sharding={devices=[2]1,0}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  auto halo_exchange_concat =
+      op::Concatenate(AllOf(op::Shape("f32[1]"),
+                            op::CollectivePermute(op::Slice(op::Parameter(0)))),
+                      op::Parameter(0));
+  auto after_halo_exchange = op::Slice(halo_exchange_concat);
+  EXPECT_THAT(root,
+              AllOf(op::Shape("f32[2]"), op::Reverse(after_halo_exchange)));
 }
 
 TEST_F(SpmdPartitioningTest, MixWithManualPartitioning) {

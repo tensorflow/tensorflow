@@ -29,6 +29,14 @@ def ExtractSingleElementAsFloat : NativeCodeCall<
 // Checks if the value has only one user.
 def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
 
+// Checks if the value has rank at most 'n'.
+class HasRankAtMost<int n> : Constraint<
+    CPred<"$0.getType().cast<ShapedType>().getRank() <= " # n>>;
+
+// Checks value is not produce by a TLF_QUant with
+// different quantization attribute
+def NotFromQuantOpDifferentQuant : Constraint<CPred<"NotFromQuantOpDifferentQuant($0,$1)">>;
+
 //===----------------------------------------------------------------------===//
 // Ternary ops patterns.
 //===----------------------------------------------------------------------===//
@@ -160,7 +168,10 @@ foreach BinaryOp = [TFL_DivOp, TFL_MulOp] in
 // This pattern applies when the same quantize/dequantize have been used twice
 // with the same scale. We want to remove the redundancy.
 // TODO(fengliuai): move this to the sanity check of pre-quantize pass.
-def : Pat<(TFL_QuantizeOp (TFL_DequantizeOp $in), $qt), (replaceWithValue $in)>;
+def eliminate_dq_q_pairs : Pat<
+  (TFL_QuantizeOp (TFL_DequantizeOp $in), $qt), 
+  (replaceWithValue $in), 
+  [(NotFromQuantOpDifferentQuant $in, $qt)]>;
 
 
 // Constraint that makes sure both operands are the same operands.
@@ -347,7 +358,9 @@ foreach BinaryOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp] in {
              // The result of the new "BinaryOp" will have the same shape as
              // `input`. In other words, the shape of the `Reshape` op are not
              // changed after the transformation.
-             (IsTailOfShape $rhs, $input)]>;
+             (IsTailOfShape $rhs, $input),
+             (HasRankAtMost<5> $input),
+             (HasRankAtMost<5> $rhs)]>;
 }
 
 foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,

@@ -48,6 +48,9 @@ struct FreezeGlobalTensorsPass
 
 void FreezeGlobalTensorsPass::runOnOperation() {
   auto module = getOperation();
+  if (!tf_saved_model::HasTfSavedModelSemantics(module)) {
+    return;
+  }
   SymbolTable symbol_table(module);
   DenseSet<Operation*> frozen_global_tensors;
 
@@ -66,7 +69,9 @@ void FreezeGlobalTensorsPass::runOnOperation() {
       // previous optimize global tensors pass). If not, this pass has to fail
       // since it cannot perform one of its goals.
       if (global_tensor.is_mutable()) {
-        global_tensor.emitError() << "is not immutable";
+        global_tensor.emitError() << "is not immutable, try running "
+                                     "tf-saved-model-optimize-global-tensors "
+                                     "to prove tensors are immutable";
         return signalPassFailure();
       }
 

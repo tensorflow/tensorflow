@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/platform/casts.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace internal {
@@ -57,7 +58,7 @@ T* dyncast(S source) {
 // GraphContext and vice-versa).
 class AbstractTensor {
  protected:
-  enum AbstractTensorKind { kGraphTensor, kEagerTensor, kMLIRTensor };
+  enum AbstractTensorKind { kMlirTensor, kGraphTensor, kEagerTensor };
   explicit AbstractTensor(AbstractTensorKind kind) : kind_(kind) {}
 
  public:
@@ -100,7 +101,7 @@ class AbstractFunction {
 // on a given context, with the same or different input tensors.
 class AbstractOp {
  protected:
-  enum AbstractOpKind { kGraphOp, kEagerOp };
+  enum AbstractOpKind { kMlirOp, kGraphOp, kEagerOp };
   explicit AbstractOp(AbstractOpKind kind) : kind_(kind) {}
 
  public:
@@ -128,7 +129,7 @@ class AbstractOp {
 // eager implementation or to a graph implementation.
 struct ExecutionContext {
  protected:
-  enum ExecutionContextKind { kGraphContext, kEagerContext };
+  enum ExecutionContextKind { kMlirContext, kGraphContext, kEagerContext };
   explicit ExecutionContext(ExecutionContextKind kind) : k(kind) {}
 
  public:
@@ -148,6 +149,17 @@ struct ExecutionContext {
   // Creates an empty AbstractOperation suitable to use with this context.
   virtual AbstractOp* CreateOperation() = 0;
 
+  // Add a function parameter and return the corresponding tensor.
+  // This is only valid with an ExecutionContext obtained from a TracingContext,
+  // it'll always error out with an eager context.
+  virtual AbstractTensor* AddParameter(TF_DataType dtype, TF_Status* s) = 0;
+
+  // Finalize this context and make a function out of it. The context is in a
+  // invalid state after this call and must be destroyed.
+  // This is only valid with an ExecutionContext obtained from a TracingContext,
+  // it'll always error out with an eager context.
+  virtual AbstractFunction* Finalize(OutputList* outputs, TF_Status* s) = 0;
+
   // Registers a functions with this context, after this the function is
   // available to be called/referenced by its name in this context.
   virtual void RegisterFunction(AbstractFunction* func, TF_Status* s) = 0;
@@ -155,6 +167,11 @@ struct ExecutionContext {
  private:
   const ExecutionContextKind k;
 };
+
+typedef ExecutionContext* (*FactoryFunction)(const char* fn_name, TF_Status*);
+void SetDefaultTracingEngine(const char* name);
+void RegisterTracingEngineFactory(const ::tensorflow::string& name,
+                                  FactoryFunction factory);
 
 // Create utilities to wrap/unwrap: this convert from the C opaque types to the
 // C++ implementation, and back.

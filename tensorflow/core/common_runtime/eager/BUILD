@@ -47,7 +47,7 @@ tf_cuda_library(
     visibility = ["//tensorflow:internal"],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             "//tensorflow/core:core_cpu_lib",
@@ -77,13 +77,11 @@ tf_cuda_library(
         "//tensorflow/c/eager:context_interface",
         "//tensorflow/c/eager:tensor_handle_interface",
         "//tensorflow/c/eager:operation_interface",
-        "//tensorflow/c/experimental/saved_model/core:saved_model_api",
-        "//tensorflow/c/experimental/saved_model/core:tf_saved_model_impl",
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
         "//tensorflow/core/distributed_runtime:worker_env",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             "@com_google_absl//absl/types:optional",
@@ -147,7 +145,7 @@ tf_cuda_library(
         "//tensorflow/core/platform:platform_port",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             "//tensorflow/core:core_cpu_lib",
@@ -181,7 +179,7 @@ tf_cuda_library(
         ":eager_executor",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             "@com_google_absl//absl/types:variant",
@@ -207,7 +205,7 @@ tf_cuda_library(
         ":tensor_handle_data",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             "@com_google_absl//absl/strings",
@@ -290,7 +288,9 @@ KERNEL_AND_DEVICE_DEPS = [
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:protos_all_cc",
     "//tensorflow/core/profiler/lib:annotated_traceme",
+    "//tensorflow/core/profiler/lib:connected_traceme",
     "//tensorflow/core/profiler/lib:traceme",
+    "//tensorflow/core/profiler/lib:traceme_encode",
     "//tensorflow/core/grappler/optimizers:meta_optimizer",
 ]
 
@@ -312,7 +312,7 @@ tf_cuda_library(
         "@farmhash_archive//:farmhash",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//tensorflow:windows": KERNEL_AND_DEVICE_DEPS,
         "//conditions:default": KERNEL_AND_DEVICE_DEPS + [
@@ -381,7 +381,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             "//tensorflow/core/distributed_runtime/eager:remote_mgr",
@@ -498,7 +498,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             "//tensorflow/core/distributed_runtime/eager:remote_mgr",
@@ -527,7 +527,7 @@ tf_cuda_library(
         "@farmhash_archive//:farmhash",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             "//tensorflow/core:core_cpu",

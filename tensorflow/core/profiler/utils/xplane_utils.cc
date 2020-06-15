@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
@@ -41,45 +40,11 @@ Timespan XEventTimespan(const XEvent& event) {
   return Timespan(event.offset_ps(), event.duration_ps());
 }
 
-// Creates a Timespan from a non-empty XLine.
-Timespan XLineTimespan(const XLine& line) {
-  uint64 begin_ps = kuint64max, end_ps = 0;
-  for (const XEvent& event : line.events()) {
-    // Don't use XEventTimespan. We need the absolute event start time as lines
-    // might have different timestamps.
-    Timespan span(line.timestamp_ns() * 1000 + event.offset_ps(),
-                  event.duration_ps());
-    begin_ps = std::min(span.begin_ps(), begin_ps);
-    end_ps = std::max(span.end_ps(), end_ps);
-  }
-  return Timespan::FromEndPoints(begin_ps, end_ps);
-}
-
 // Functor that compares XEvents of the same XLine for sorting by timespan.
 struct XEventsComparator {
   bool operator()(const XEvent* a, const XEvent* b) const {
     return XEventTimespan(*a) < XEventTimespan(*b);
   }
-};
-
-// Functor that compares XLines of the same XPlane for sorting by timespan.
-class XLinesComparator {
- public:
-  bool operator()(const XLine* a, const XLine* b) const {
-    return CachedXLineTimespan(a) < CachedXLineTimespan(b);
-  }
-
- private:
-  Timespan CachedXLineTimespan(const XLine* line) const {
-    DCHECK_GT(line->events_size(), 0);
-    Timespan& line_timespan = line_timespan_[line];
-    if (line_timespan.Instant()) {
-      line_timespan = XLineTimespan(*line);
-    }
-    return line_timespan;
-  }
-
-  mutable absl::flat_hash_map<const XLine*, Timespan> line_timespan_;
 };
 
 }  // namespace
@@ -138,71 +103,6 @@ void AddOrUpdateStrStat(int64 metadata_id, absl::string_view value,
   stat->set_str_value(std::string(value));
 }
 
-XEventBuilder CreateXEvent(
-    XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
-    absl::string_view event_name, int64 offset_ps, int64 duration_ps,
-    const absl::flat_hash_map<StatType, int64 /*stat_value*/>& stats) {
-  auto event_builder = line_builder->AddEvent(
-      *plane_builder->GetOrCreateEventMetadata(event_name));
-  event_builder.SetOffsetPs(offset_ps);
-  event_builder.SetDurationPs(duration_ps);
-  for (const auto& stat_type_and_value : stats) {
-    event_builder.AddStatValue(*plane_builder->GetOrCreateStatMetadata(
-                                   GetStatTypeStr(stat_type_and_value.first)),
-                               stat_type_and_value.second);
-  }
-  return event_builder;
-}
-
-XEventBuilder CreateXEvent(
-    XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
-    HostEventType event_type, int64 offset_ps, int64 duration_ps,
-    const absl::flat_hash_map<StatType, int64 /*stat_value*/>& stats) {
-  return CreateXEvent(plane_builder, line_builder,
-                      GetHostEventTypeStr(event_type), offset_ps, duration_ps,
-                      stats);
-}
-
-XEventBuilder CreateXEventWithStringViewMetadataValue(
-    XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
-    absl::string_view event_name, int64 offset_ps, int64 duration_ps,
-    const absl::flat_hash_map<StatType, absl::string_view /*stat_value*/>&
-        stats) {
-  auto event_builder = line_builder->AddEvent(
-      *plane_builder->GetOrCreateEventMetadata(event_name));
-  event_builder.SetOffsetPs(offset_ps);
-  event_builder.SetDurationPs(duration_ps);
-  for (const auto& stat_type_and_value : stats) {
-    event_builder.AddStatValue(*plane_builder->GetOrCreateStatMetadata(
-                                   GetStatTypeStr(stat_type_and_value.first)),
-                               stat_type_and_value.second);
-  }
-  return event_builder;
-}
-
-XEventBuilder CreateXEventWithIntAndStringViewMetadataValue(
-    XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
-    absl::string_view event_name, int64 offset_ps, int64 duration_ps,
-    const absl::flat_hash_map<StatType, int64 /*stat_value*/>& int_stats,
-    const absl::flat_hash_map<StatType, absl::string_view /*stat_value*/>&
-        str_stats) {
-  auto event_builder = line_builder->AddEvent(
-      *plane_builder->GetOrCreateEventMetadata(event_name));
-  event_builder.SetOffsetPs(offset_ps);
-  event_builder.SetDurationPs(duration_ps);
-  for (const auto& stat_type_and_value : int_stats) {
-    event_builder.AddStatValue(*plane_builder->GetOrCreateStatMetadata(
-                                   GetStatTypeStr(stat_type_and_value.first)),
-                               stat_type_and_value.second);
-  }
-  for (const auto& stat_type_and_value : str_stats) {
-    event_builder.AddStatValue(*plane_builder->GetOrCreateStatMetadata(
-                                   GetStatTypeStr(stat_type_and_value.first)),
-                               stat_type_and_value.second);
-  }
-  return event_builder;
-}
-
 void RemovePlaneWithName(XSpace* space, absl::string_view name) {
   auto* planes = space->mutable_planes();
   planes->erase(
@@ -250,8 +150,6 @@ void SortXPlane(XPlane* plane) {
     std::sort(events.pointer_begin(), events.pointer_end(),
               XEventsComparator());
   }
-  std::sort(plane->mutable_lines()->pointer_begin(),
-            plane->mutable_lines()->pointer_end(), XLinesComparator());
 }
 
 void SortXSpace(XSpace* space) {
@@ -306,9 +204,8 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
                          EnvTime::kNanosToPicos;
       }
       dst_line.SetNameIfEmpty(line.Name());
-      if (!line.DisplayName().empty()) {
-        dst_line.SetDisplayNameIfEmpty(line.DisplayName());
-      }
+      // Don't override dst_line's display name because if both lines have name,
+      // but no display name, line's name will became display name of dst_line.
     }
 
     line.ForEachEvent([&](const tensorflow::profiler::XEventVisitor& event) {
@@ -344,24 +241,6 @@ uint64 GetStartTimestampNs(const XPlane& plane) {
     plane_timestamp = std::min<int64>(plane_timestamp, line.timestamp_ns());
   }
   return plane_timestamp;
-}
-
-void CreateTfFunctionCallEvent(XPlaneBuilder* plane_builder,
-                               XLineBuilder* line_builder,
-                               absl::string_view function_name, int64 offset_ps,
-                               int64 duration_ps,
-                               absl::string_view execution_mode,
-                               int64 tracing_count) {
-  XEventBuilder event_builder = CreateXEventWithStringViewMetadataValue(
-      plane_builder, line_builder, function_name, offset_ps, duration_ps,
-      {{StatType::kTfFunctionCall, execution_mode}});
-  if (tracing_count >= 0) {
-    // Adds the tracing_count stats only if tracing_count is valid.
-    event_builder.AddStatValue(
-        *plane_builder->GetOrCreateStatMetadata(
-            GetStatTypeStr(StatType::kTfFunctionTracingCount)),
-        tracing_count);
-  }
 }
 
 }  // namespace profiler

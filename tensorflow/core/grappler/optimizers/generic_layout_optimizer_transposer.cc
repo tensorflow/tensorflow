@@ -739,28 +739,13 @@ Status Conv2DBackpropInputTransposer::TransposeNode(
     VLOG(3) << fanin_node->GetName() << " is not a vector.";
     return Status::OK();
   }
-  int vector_size = fanin_shape.dim(0).size();
-  if (vector_size == -1) {
-    VLOG(3) << "The number of elements in " << fanin_node->GetName()
-            << " is unknown.";
-    return Status::OK();
-  }
-  if (vector_size != 2 && vector_size != 4) {
-    return errors::InvalidArgument(
-        fanin_node->GetName(), " must be a vector of size 2 or 4, but found ",
-        vector_size);
-  }
 
   VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
           << "' with op '" << node->GetOp() << "' from data format '"
           << context->src_format << "' to '" << context->dst_format << "'";
   TF_RETURN_IF_ERROR(UpdateNode(context, node));
-  // Do not permute a input_sizes of size 2 because it represents HW regardless
-  // of whether NCHW or NHWC.
-  if (vector_size != 2) {
-    TF_RETURN_IF_ERROR(
-        UpdateFaninEdgesWithOp(context, {0}, node, kOpDataFormatVecPermute));
-  }
+  TF_RETURN_IF_ERROR(
+      UpdateFaninEdgesWithOp(context, {0}, node, kOpDataFormatVecPermute));
   TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {2}, node, kOpTranspose));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
   return context->graph_view->GetMutationBuilder()->Apply();

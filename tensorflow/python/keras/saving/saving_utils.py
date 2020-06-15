@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import copy
 import os
 import six
@@ -31,6 +30,7 @@ from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+from tensorflow.python.util.compat import collections_abc
 
 
 def extract_model_metrics(model):
@@ -79,7 +79,8 @@ def model_input_signature(model, keep_original_batch_size=False):
     return None
   input_specs = _enforce_names_consistency(input_specs)
   # Return a list with a single element as the model's input signature.
-  if isinstance(input_specs, collections.Sequence) and len(input_specs) == 1:
+  if isinstance(input_specs,
+                collections_abc.Sequence) and len(input_specs) == 1:
     # Note that the isinstance check filters out single-element dictionaries,
     # which should also be wrapped as a single-element list.
     return input_specs

@@ -68,8 +68,9 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
   int output_shift_1 = 0;
   int32_t output_multiplier_2 = 0;
   int output_shift_2 = 0;
-  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt16) {
-    double real_multiplier_1 = static_cast<double>(input->params.scale) *
+  if (output->type == kTfLiteInt8 || output->type == kTfLiteUInt8 ||
+      output->type == kTfLiteInt16) {
+    double real_multiplier_1 = static_cast<double>(input->params.scale) /
                                static_cast<double>(output->params.scale);
     double real_multiplier_2 = static_cast<double>(input->params.scale) *
                                static_cast<double>(alpha->params.scale) /
@@ -100,6 +101,21 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
           op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
           GetTensorShape(alpha), GetTensorData<uint8_t>(alpha),
           GetTensorShape(output), GetTensorData<uint8_t>(output));
+      return kTfLiteOk;
+    } break;
+    case kTfLiteInt8: {
+      PreluParams op_params;
+      op_params.input_offset = -input->params.zero_point;
+      op_params.alpha_offset = -alpha->params.zero_point;
+      op_params.output_offset = output->params.zero_point;
+      op_params.output_multiplier_1 = output_multiplier_1;
+      op_params.output_shift_1 = output_shift_1;
+      op_params.output_multiplier_2 = output_multiplier_2;
+      op_params.output_shift_2 = output_shift_2;
+      reference_ops::BroadcastPrelu4DSlow(
+          op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+          GetTensorShape(alpha), GetTensorData<int8_t>(alpha),
+          GetTensorShape(output), GetTensorData<int8_t>(output));
       return kTfLiteOk;
     } break;
     default:

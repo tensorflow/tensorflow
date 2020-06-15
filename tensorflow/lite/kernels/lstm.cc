@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
@@ -1008,7 +1007,7 @@ TfLiteStatus PrecomputeZeroPointTimesWeightWithBias(
   TF_LITE_ENSURE_EQ(context, weight_shape.DimensionsCount(), 2);
   const int row = weight_shape.Dims(0);
   const int col = weight_shape.Dims(1);
-  *output = absl::make_unique<int32_t[]>(row);
+  output->reset(new int32_t[row]);
   if (bias_tensor == nullptr) {
     memset(output->get(), 0, row * sizeof(int32_t));
   } else {

@@ -78,10 +78,17 @@ class ConvolutionNodeNameTest(xla_test.XLATestCase):
 
     xla_names = _GetNodeNames(use_xla=True)
     no_xla_names = _GetNodeNames(use_xla=False)
-    self.assertListEqual(
-        xla_names,
-        no_xla_names,
-    )
+
+    # CPU path creates some additional nodes to handle dilations.
+    # TODO(b/138804006): Remove this when CPU & GPU support dilations.
+    filtered_no_xla_names = []
+    for name in no_xla_names:
+      if ("dilation_rate" in name or "filter_shape" in name or "stack" in name):
+        continue
+      else:
+        filtered_no_xla_names.append(name)
+
+    self.assertListEqual(xla_names, filtered_no_xla_names)
 
   def testConv1DNodeNameMatch(self):
     input_sizes = [8, 16, 3]

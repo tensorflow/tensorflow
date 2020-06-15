@@ -48,7 +48,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule((module_str)));
-  AllGatherDecomposer decomposer(/*partition_count=*/4);
+  AllGatherDecomposer decomposer;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(
@@ -71,7 +71,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule((module_str)));
-  AllGatherDecomposer decomposer(/*partition_count=*/4);
+  AllGatherDecomposer decomposer;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(
@@ -94,7 +94,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule((module_str)));
-  AllGatherDecomposer decomposer(/*partition_count=*/4);
+  AllGatherDecomposer decomposer;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(
@@ -117,11 +117,11 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule((module_str)));
-  AllGatherDecomposer decomposer(/*partition_count=*/4);
+  AllGatherDecomposer decomposer;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
   EXPECT_TRUE(changed);
   auto id =
-      AllOf(op::Shape("s32[]"),
+      AllOf(op::Shape("u32[]"),
             op::Reshape(op::DynamicSlice(op::Constant(), op::ReplicaId())));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::AllReduce(op::DynamicUpdateSlice(
@@ -143,13 +143,12 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule((module_str)));
-  AllGatherDecomposer decomposer(/*partition_count=*/4);
+  AllGatherDecomposer decomposer;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
   EXPECT_TRUE(changed);
-  LOG(ERROR) << module->ToString();
   auto global_id =
       op::Add(op::PartitionId(), op::Multiply(op::ReplicaId(), op::Constant()));
-  auto id = AllOf(op::Shape("s32[]"),
+  auto id = AllOf(op::Shape("u32[]"),
                   op::Reshape(op::DynamicSlice(op::Constant(), global_id)));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::AllReduce(op::DynamicUpdateSlice(

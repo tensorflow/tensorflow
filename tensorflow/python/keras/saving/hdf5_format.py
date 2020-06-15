@@ -876,7 +876,7 @@ def _legacy_weights(layer):
       non_trainable_weights.
   """
   weights = layer.trainable_weights + layer.non_trainable_weights
-  if any([not isinstance(w, variables_module.Variable) for w in weights]):
+  if any(not isinstance(w, variables_module.Variable) for w in weights):
     raise NotImplementedError(
         'Save or restore weights that is not an instance of `tf.Variable` is '
         'not supported in h5, use `save_format=\'tf\'` instead. Got a model '

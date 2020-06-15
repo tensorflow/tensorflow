@@ -16,9 +16,11 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/gpu/cupti_tracer.h"
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mem.h"
@@ -123,15 +125,6 @@ const char *getActivityUnifiedMemoryKindString(
       }                                                                     \
     }                                                                       \
   } while (false)
-
-// GetCachedTID() caches the thread ID in thread-local storage (which is a
-// userspace construct) to avoid unnecessary system calls. Without this caching,
-// it can take roughly 98ns, while it takes roughly 1ns with this caching.
-int32 GetCachedTID() {
-  static thread_local int32 current_thread_id =
-      Env::Default()->GetCurrentThreadId();
-  return current_thread_id;
-}
 
 size_t Bytes2D(const CUDA_MEMCPY2D *p) { return p->Height * p->WidthInBytes; }
 
@@ -303,7 +296,7 @@ void AddKernelEventUponApiExit(CuptiTraceCollector *collector, uint32 device_id,
   event.name = cbdata->symbolName ? cbdata->symbolName : cbdata->functionName;
   event.start_time_ns = start_time;
   event.end_time_ns = end_time;
-  event.thread_id = GetCachedTID();
+  event.thread_id = Env::Default()->GetCurrentThreadId();
   event.device_id = device_id;
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
@@ -321,7 +314,7 @@ CuptiTracerEvent PopulateMemcpyCallbackEvent(
   event.source = CuptiTracerEventSource::DriverCallback;
   event.start_time_ns = start_time;
   event.end_time_ns = end_time;
-  event.thread_id = GetCachedTID();
+  event.thread_id = Env::Default()->GetCurrentThreadId();
   event.device_id = src_device;
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
@@ -385,7 +378,7 @@ void AddCudaMallocEventUponApiExit(CuptiTraceCollector *collector,
   event.name = cbdata->functionName;
   event.start_time_ns = start_time;
   event.end_time_ns = end_time;
-  event.thread_id = GetCachedTID();
+  event.thread_id = Env::Default()->GetCurrentThreadId();
   event.device_id = device_id;
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
@@ -404,7 +397,7 @@ void AddGenericEventUponApiExit(CuptiTraceCollector *collector,
   event.name = cbdata->functionName;
   event.start_time_ns = start_time;
   event.end_time_ns = end_time;
-  event.thread_id = GetCachedTID();
+  event.thread_id = Env::Default()->GetCurrentThreadId();
   event.device_id = device_id;
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
@@ -614,15 +607,42 @@ class CuptiDriverApiHookWithActivityApi : public CuptiDriverApiHook {
     // Grab timestamp for API exit. API entry timestamp saved in cbdata.
     uint64 end_tsc = CuptiTracer::GetTimestamp();
     uint64 start_tsc = *cbdata->correlationData;
+    TrackContext(cbid, cbdata->context);
     return AddDriverApiCallbackEvent(collector_, cupti_interface_, device_id,
                                      start_tsc, end_tsc, domain, cbid, cbdata);
   }
-  Status Flush() override { return Status::OK(); }
+  Status SyncAndFlush() override {
+    if (option_.sync_devices_before_stop) {
+      CuptiApiTracingDisabler disabler;
+      absl::MutexLock lock(&mutex_);
+      for (auto &ctx : contexts_) {
+        cuCtxPushCurrent(ctx);
+        cuCtxSynchronize();  // Ignore error here for best effort.
+        CUcontext current;
+        cuCtxPopCurrent(&current);
+      }
+    }
+    return Status::OK();
+  }
 
  private:
+  void TrackContext(CUpti_CallbackId cbid, CUcontext ctx) {
+    if (!option_.sync_devices_before_stop) return;
+    if (ctx == NULL) return;
+    absl::MutexLock lock(&mutex_);
+    if (cbid == CUPTI_DRIVER_TRACE_CBID_cuCtxDestroy_v2 ||
+        cbid == CUPTI_DRIVER_TRACE_CBID_cuCtxDestroy) {
+      contexts_.erase(ctx);
+    } else {
+      contexts_.emplace(ctx);
+    }
+  }
+
   const CuptiTracerOptions option_;
   CuptiInterface *cupti_interface_;
   CuptiTraceCollector *collector_;
+  absl::Mutex mutex_;
+  absl::flat_hash_set<CUcontext> contexts_ TF_GUARDED_BY(mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(CuptiDriverApiHookWithActivityApi);
 };
@@ -1158,7 +1178,7 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
     return AddDriverApiCallbackEvent(collector_, cupti_interface_, device_id,
                                      start_tsc, end_tsc, domain, cbid, cbdata);
   }
-  Status Flush() override {
+  Status SyncAndFlush() override {
     for (auto &recorder : cuda_event_recorders_) {
       TF_RETURN_IF_ERROR(recorder->Stop());
     }
@@ -1236,6 +1256,11 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
   std::vector<std::unique_ptr<CudaEventRecorder>> cuda_event_recorders_;
   TF_DISALLOW_COPY_AND_ASSIGN(CuptiDriverApiHookWithCudaEvent);
 };
+
+/*static*/ std::string ErrorWithHostname(absl::string_view error_message) {
+  return absl::StrCat(port::Hostname(), ": ", error_message);
+}
+
 }  // namespace
 
 /*static*/ Status CuptiDriverApiHook::AddDriverApiCallbackEvent(
@@ -1397,7 +1422,7 @@ void CuptiTracer::Disable() {
   }
   cupti_interface_->CleanUp();
   Finalize().IgnoreError();
-  cupti_driver_api_hook_->Flush().IgnoreError();
+  cupti_driver_api_hook_->SyncAndFlush().IgnoreError();
   collector_->Flush();
   collector_ = nullptr;
   option_.reset();
@@ -1634,18 +1659,20 @@ Status CuptiTracer::ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
   if (dropped != 0) {
     uint32 device_id = -1;
     RETURN_IF_CUPTI_ERROR(cupti_interface_->GetDeviceId(context, &device_id));
-    collector_->OnEventsDropped("CUpti activity buffer", dropped);
+    collector_->OnEventsDropped("cupti activity buffer full", dropped);
   }
   return Status::OK();
 }
 
 /*static*/ std::string CuptiTracer::ErrorIfAny() {
   if (CuptiTracer::NumGpus() == 0) {
-    return "No GPU detected.";
+    return ErrorWithHostname("No GPU detected.");
   } else if (CuptiTracer::GetCuptiTracerSingleton()->NeedRootAccess()) {
-    return "Insufficient privilege to run libcupti (you need root permission).";
+    return ErrorWithHostname(
+        "Insufficient privilege to run libcupti (you need root permission).");
   } else if (CuptiTracer::GetTimestamp() == 0) {
-    return "Failed to load libcupti (is it installed and accessible?)";
+    return ErrorWithHostname(
+        "Failed to load libcupti (is it installed and accessible?)");
   }
   return "";
 }

@@ -35,6 +35,11 @@ limitations under the License.
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
+#if !defined(IS_MOBILE_PLATFORM)
+#include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
+#endif  // !IS_MOBILE_PLATFORM
+
 namespace tensorflow {
 namespace data {
 namespace {
@@ -466,17 +471,15 @@ Status FunctionMetadata::Create(
 
   auto attr = fdef->attr().find(FunctionLibraryDefinition::kIntsOnDeviceAttr);
   if (attr != fdef->attr().end() && attr->second.b()) {
-    LOG(WARNING)
-        << "Disabling multi-device execution for a function that uses the "
-        << FunctionLibraryDefinition::kIntsOnDeviceAttr << " attribute.";
+    VLOG(1) << "Disabling multi-device execution for a function that uses the "
+            << FunctionLibraryDefinition::kIntsOnDeviceAttr << " attribute.";
     (*out_metadata)->use_multi_device_function_ = false;
     return Status::OK();
   }
   auto validate_arg = [](const OpDef::ArgDef& arg) {
     if (!arg.number_attr().empty() || !arg.type_list_attr().empty()) {
-      LOG(WARNING) << "Disabling multi-device execution for a function with "
-                      "a vector argument "
-                   << arg.name() << ".";
+      VLOG(1) << "Disabling multi-device execution for a function with "
+              << "a vector argument " << arg.name() << ".";
       return false;
     }
     return true;
@@ -562,9 +565,7 @@ Status CapturedFunction::Instantiate(
   if (!metadata_->use_inter_op_parallelism()) {
     inst_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
   }
-  bool is_multi_device = false;
-  TF_RETURN_IF_ERROR(IsMultiDevice(ctx, &is_multi_device));
-  inst_opts.is_multi_device_function = is_multi_device;
+  inst_opts.is_multi_device_function = metadata_->use_multi_device_function();
 
   // We infer the target device from the function library runtime.
   DCHECK(lib->device() != nullptr);
@@ -615,6 +616,28 @@ Status CapturedFunction::Instantiate(
     for (size_t i = 0; i < fdef->signature().output_arg_size(); ++i) {
       inst_opts.output_devices.push_back(inst_opts.target);
     }
+
+#if !defined(IS_MOBILE_PLATFORM)
+    grappler::GrapplerItem::OptimizationOptions optimization_options;
+    optimization_options.allow_pruning_stateful_and_dataset_ops = false;
+    ConfigProto config_proto = inst_opts.config_proto;
+    // Layout optimizations are excluded because they assume that ops without
+    // explicit device assignment will be placed on GPU (if available) but
+    // that's not the case for operations within tf.data functions.
+    config_proto.mutable_graph_options()
+        ->mutable_rewrite_options()
+        ->set_layout_optimizer(RewriterConfig::OFF);
+    // TODO(b/120437209): Re-enable constant folding.
+    config_proto.mutable_graph_options()
+        ->mutable_rewrite_options()
+        ->set_constant_folding(RewriterConfig::OFF);
+    inst_opts.optimize_graph_fn =
+        std::bind(tensorflow::grappler::OptimizeGraph, std::placeholders::_1,
+                  std::placeholders::_2, std::placeholders::_3,
+                  std::placeholders::_4, std::placeholders::_5,
+                  std::move(config_proto), fdef->signature().name(),
+                  std::move(optimization_options), std::placeholders::_6);
+#endif  // !IS_MOBILE_PLATFORM
   }
 
   FunctionLibraryRuntime::Handle f_handle;
@@ -625,21 +648,107 @@ Status CapturedFunction::Instantiate(
   DataTypeVector ret_types;
   TF_RETURN_IF_ERROR(lib->GetRetTypes(f_handle, &ret_types));
 
-  *instantiated_captured_function =
-      absl::WrapUnique<InstantiatedCapturedFunction>(
-          new InstantiatedCapturedFunction(lib, f_handle, std::move(ret_types),
-                                           *ctx->runner(), this,
-                                           is_multi_device));
-  return Status::OK();
+  bool is_multi_device;
+  TF_RETURN_IF_ERROR(IsMultiDevice(ctx, &is_multi_device));
+  return InstantiatedCapturedFunction::Create(
+      lib, f_handle, std::move(ret_types), *ctx->runner(), this,
+      is_multi_device, instantiated_captured_function);
 }
-
-bool CapturedFunction::IsStateful() const { return !CheckExternalState().ok(); }
 
 Status CapturedFunction::CheckExternalState() const {
   for (const auto& name : lib_def()->ListFunctionNames()) {
     TF_RETURN_IF_ERROR(
         IsFunctionStateful(*lib_def(), *(lib_def()->Find(name))));
   }
+  return Status::OK();
+}
+
+CapturedFunction::CapturedFunction(
+    std::shared_ptr<const FunctionMetadata> metadata,
+    std::vector<Tensor> captured_inputs)
+    : metadata_(std::move(metadata)),
+      captured_inputs_(std::move(captured_inputs)) {}
+
+Status CapturedFunction::IsMultiDevice(IteratorContext* ctx,
+                                       bool* is_multi_device) const {
+  if (!metadata_->use_multi_device_function()) {
+    *is_multi_device = false;
+    return Status::OK();
+  }
+
+  const FunctionDef* fdef;
+  TF_RETURN_IF_ERROR(
+      LookupFunction(*metadata_->lib_def(), metadata_->func().name(), &fdef));
+
+  Device* current_device = ctx->flr()->device();
+  DeviceType current_device_type(current_device->device_type());
+  DeviceNameUtils::ParsedName current_device_name;
+  if (!DeviceNameUtils::ParseFullName(current_device->name(),
+                                      &current_device_name)) {
+    return errors::InvalidArgument("Failed to parse device name: ",
+                                   current_device->name());
+  }
+
+  // Check if any of the captured inputs are placed on a device not compatible
+  // with the current device. For non-captured inputs, we assume they are placed
+  // on the current device.
+  for (const auto& input : captured_inputs_) {
+    DataType dtype = input.dtype();
+    if (dtype == DT_RESOURCE) {
+      const ResourceHandle& handle = input.flat<ResourceHandle>()(0);
+      DeviceNameUtils::ParsedName resource_device_name;
+      if (!DeviceNameUtils::ParseFullName(handle.device(),
+                                          &resource_device_name)) {
+        return errors::InvalidArgument("Failed to parse device name: ",
+                                       handle.device());
+      }
+      if (!DeviceNameUtils::AreCompatibleDevNames(current_device_name,
+                                                  resource_device_name)) {
+        *is_multi_device = true;
+        return Status::OK();
+      }
+    }
+  }
+
+  // Check if all ops could be placed on the current device.
+  for (const auto& name : metadata_->lib_def()->ListFunctionNames()) {
+    const FunctionDef* fdef;
+    TF_RETURN_IF_ERROR(LookupFunction(*metadata_->lib_def(), name, &fdef));
+    for (const auto& node : fdef->node_def()) {
+      // Check if the op has a kernel available for the current device.
+      if (!KernelDefAvailable(current_device_type, node)) {
+        *is_multi_device = true;
+        return Status::OK();
+      }
+      // If the op has a requested device, check if the requested device is
+      // compatible with the current device.
+      if (!node.device().empty()) {
+        DeviceNameUtils::ParsedName node_device_name;
+        if (!DeviceNameUtils::ParseFullName(node.device(), &node_device_name)) {
+          return errors::InvalidArgument("Failed to parse device name: ",
+                                         node.device());
+        }
+        if (!DeviceNameUtils::AreCompatibleDevNames(current_device_name,
+                                                    node_device_name)) {
+          *is_multi_device = true;
+          return Status::OK();
+        }
+      }
+    }
+  }
+
+  *is_multi_device = false;
+  return Status::OK();
+}
+
+/* static */
+Status InstantiatedCapturedFunction::Create(
+    FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
+    DataTypeVector ret_types, std::function<void(std::function<void()>)> runner,
+    CapturedFunction* captured_func, bool is_multi_device,
+    std::unique_ptr<InstantiatedCapturedFunction>* out_function) {
+  out_function->reset(new InstantiatedCapturedFunction(
+      lib, f_handle, ret_types, runner, captured_func, is_multi_device));
   return Status::OK();
 }
 
@@ -653,13 +762,6 @@ InstantiatedCapturedFunction::InstantiatedCapturedFunction(
       captured_runner_(std::move(runner)),
       captured_func_(captured_func),
       is_multi_device_(is_multi_device) {}
-
-// NOTE: We don't release f_handle_ here and instead delegate the function
-// handle releasing to the FunctionHandleCache. This is because in some cases
-// (RepeatDatasetOp in particular), we want to keep the function state (e.g.
-// random number generator) even after the Iterator is reset after going through
-// one epoch.
-InstantiatedCapturedFunction::~InstantiatedCapturedFunction() {}
 
 Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
                                          std::vector<Tensor>&& args,
@@ -858,84 +960,6 @@ bool InstantiatedCapturedFunction::ShouldCreateRendezvous() const {
   // functions. For multi-device functions the appropriate rendezvous will be
   // created by the process FLR.
   return lib_->device()->device_type() != DEVICE_CPU && !is_multi_device_;
-}
-
-CapturedFunction::CapturedFunction(
-    std::shared_ptr<const FunctionMetadata> metadata,
-    std::vector<Tensor> captured_inputs)
-    : metadata_(std::move(metadata)),
-      captured_inputs_(std::move(captured_inputs)) {}
-
-Status CapturedFunction::IsMultiDevice(IteratorContext* ctx,
-                                       bool* is_multi_device) {
-  if (!metadata_->use_multi_device_function()) {
-    *is_multi_device = false;
-    return Status::OK();
-  }
-
-  const FunctionDef* fdef;
-  TF_RETURN_IF_ERROR(
-      LookupFunction(*metadata_->lib_def(), metadata_->func().name(), &fdef));
-
-  Device* current_device = ctx->flr()->device();
-  DeviceType current_device_type(current_device->device_type());
-  DeviceNameUtils::ParsedName current_device_name;
-  if (!DeviceNameUtils::ParseFullName(current_device->name(),
-                                      &current_device_name)) {
-    return errors::InvalidArgument("Failed to parse device name: ",
-                                   current_device->name());
-  }
-
-  // Check if any of the captured inputs are placed on a device not compatible
-  // with the current device. For non-captured inputs, we assume they are placed
-  // on the current device.
-  for (const auto& input : captured_inputs_) {
-    DataType dtype = input.dtype();
-    if (dtype == DT_RESOURCE) {
-      const ResourceHandle& handle = input.flat<ResourceHandle>()(0);
-      DeviceNameUtils::ParsedName resource_device_name;
-      if (!DeviceNameUtils::ParseFullName(handle.device(),
-                                          &resource_device_name)) {
-        return errors::InvalidArgument("Failed to parse device name: ",
-                                       handle.device());
-      }
-      if (!DeviceNameUtils::AreCompatibleDevNames(current_device_name,
-                                                  resource_device_name)) {
-        *is_multi_device = true;
-        return Status::OK();
-      }
-    }
-  }
-
-  // Check if all ops could be placed on the current device.
-  for (const auto& name : metadata_->lib_def()->ListFunctionNames()) {
-    const FunctionDef* fdef;
-    TF_RETURN_IF_ERROR(LookupFunction(*metadata_->lib_def(), name, &fdef));
-    for (const auto& node : fdef->node_def()) {
-      // Check if the op has a kernel available for the current device.
-      if (!KernelDefAvailable(current_device_type, node)) {
-        *is_multi_device = true;
-        return Status::OK();
-      }
-      // If the op has a requested device, check if the requested device is
-      // compatible with the current device.
-      if (!node.device().empty()) {
-        DeviceNameUtils::ParsedName node_device_name;
-        if (!DeviceNameUtils::ParseFullName(node.device(), &node_device_name)) {
-          return errors::InvalidArgument("Failed to parse device name: ",
-                                         node.device());
-        }
-        if (!DeviceNameUtils::AreCompatibleDevNames(current_device_name,
-                                                    node_device_name)) {
-          *is_multi_device = true;
-          return Status::OK();
-        }
-      }
-    }
-  }
-
-  *is_multi_device = false;
-  return Status::OK();
 }
 
 }  // namespace data

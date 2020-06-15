@@ -36,47 +36,36 @@ def IsSameSizePred : CPred<
 def IsSameSizeConstraint : Constraint<IsSameSizePred, "inputs are same size">;
 
 
-def : Pat<(HLO_AndOp HLO_PredTensor:$l, HLO_PredTensor:$r,
-                     IsNullAttr:$broadcast_dimensions),
+def : Pat<(HLO_AndOp HLO_PredTensor:$l, HLO_PredTensor:$r),
           (AndOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(HLO_AddOp HLO_FpTensor:$l, HLO_FpTensor:$r,
-                     IsNullAttr:$broadcast_dimensions),
+def : Pat<(HLO_AddOp HLO_FpTensor:$l, HLO_FpTensor:$r),
           (AddFOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(HLO_SubOp HLO_FpTensor:$l, HLO_FpTensor:$r,
-                     IsNullAttr:$broadcast_dimensions),
+def : Pat<(HLO_SubOp HLO_FpTensor:$l, HLO_FpTensor:$r),
           (SubFOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(HLO_MulOp HLO_FpTensor:$l, HLO_FpTensor:$r,
-                     IsNullAttr:$broadcast_dimensions),
+def : Pat<(HLO_MulOp HLO_FpTensor:$l, HLO_FpTensor:$r),
           (MulFOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(HLO_DivOp HLO_FpTensor:$l, HLO_FpTensor:$r,
-                     IsNullAttr:$broadcast_dimensions),
+def : Pat<(HLO_DivOp HLO_FpTensor:$l, HLO_FpTensor:$r),
           (DivFOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(HLO_RemOp HLO_FpTensor:$l, HLO_FpTensor:$r,
-                     IsNullAttr:$broadcast_dimensions),
+def : Pat<(HLO_RemOp HLO_FpTensor:$l, HLO_FpTensor:$r),
           (RemFOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(HLO_AddOp HLO_IntTensor:$l, HLO_IntTensor:$r,
-                     IsNullAttr:$broadcast_dimensions),
+def : Pat<(HLO_AddOp HLO_IntTensor:$l, HLO_IntTensor:$r),
           (AddIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(HLO_SubOp HLO_IntTensor:$l, HLO_IntTensor:$r,
-                     IsNullAttr:$broadcast_dimensions),
+def : Pat<(HLO_SubOp HLO_IntTensor:$l, HLO_IntTensor:$r),
           (SubIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(HLO_MulOp HLO_IntTensor:$l, HLO_IntTensor:$r,
-                     IsNullAttr:$broadcast_dimensions),
+def : Pat<(HLO_MulOp HLO_IntTensor:$l, HLO_IntTensor:$r),
           (MulIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(HLO_DivOp HLO_IntTensor:$l, HLO_IntTensor:$r,
-                     IsNullAttr:$broadcast_dimensions),
+def : Pat<(HLO_DivOp HLO_IntTensor:$l, HLO_IntTensor:$r),
           (SignedDivIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(HLO_RemOp HLO_IntTensor:$l, HLO_IntTensor:$r,
-                     IsNullAttr:$broadcast_dimensions),
+def : Pat<(HLO_RemOp HLO_IntTensor:$l, HLO_IntTensor:$r),
           (SignedRemIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;

@@ -32,8 +32,6 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/c/eager/operation_interface.h"
 #include "tensorflow/c/eager/tensor_handle_interface.h"
-#include "tensorflow/c/experimental/saved_model/core/saved_model_api.h"
-#include "tensorflow/c/experimental/saved_model/core/tf_saved_model_impl.h"
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
 #include "tensorflow/core/common_runtime/colocation_graph.h"
@@ -81,7 +79,8 @@ EagerContext::EagerContext(
     bool device_mgr_owned, Rendezvous* rendezvous,
     const CustomKernelCreator* custom_kernel_creator,
     DistributedFunctionLibraryRuntime* cluster_flr)
-    : default_device_placement_policy_(default_device_placement_policy),
+    : opts_(opts),
+      default_device_placement_policy_(default_device_placement_policy),
       default_mirroring_policy_(default_mirroring_policy),
       local_device_manager_(device_mgr, device_mgr_owned),
       host_cpu_device_(device_mgr->HostCPU()),
@@ -189,19 +188,6 @@ AbstractTensorInterface* EagerContext::CreateTensor(
     TF_DeleteTensor(tensor_wrapper);
     return result;
   }
-}
-
-std::unique_ptr<SavedModelAPI> EagerContext::LoadSavedModelAPI(
-    const std::string& directory,
-    const absl::optional<std::unordered_set<std::string>>& tags,
-    tensorflow::Status* status) {
-  auto result = std::make_unique<TFSavedModelAPIImpl>();
-  auto load_status = TFSavedModelAPIImpl::Load(directory, tags, result.get());
-  if (!load_status.ok()) {
-    status->Update(load_status);
-    result.reset();
-  }
-  return result;
 }
 
 void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
@@ -598,6 +584,8 @@ std::vector<const FunctionDef*> EagerContext::ListRegisteredFunctions() {
 
 void EagerContext::ClearRunMetadata() { run_metadata_.Clear(); }
 
+bool EagerContext::UsesTFRT() { return false; }
+
 void EagerContext::ListDevices(
     std::vector<tensorflow::DeviceAttributes>* devices) {
   local_device_mgr()->ListDeviceAttributes(devices);
@@ -935,8 +923,11 @@ Status EagerContext::FindOrCreateCompositeDevice(
   }
 
   Status s;
-  auto device = CompositeDevice::MakeDevice(underlying_devices,
-                                            composite_devices_.size(), &s);
+  // Create a CompositeDevice on the same task as the host CPU, in order to
+  // trigger packed TensorHandle copy from a client to a remote worker.
+  auto device =
+      CompositeDevice::MakeDevice(underlying_devices, composite_devices_.size(),
+                                  HostCPU()->parsed_name(), &s);
   TF_RETURN_IF_ERROR(s);
   *composite_device = device.get();
   pflr_->AddCompositeDevice(*composite_device);
@@ -1048,7 +1039,7 @@ void EagerContext::IncrementContextViewId() {
 // Set collective ops related state in the context. Passing nullptr to
 // `new_server` will reuse the existing GRPC server in context.
 Status EagerContext::StoreCollectiveOpsServer(
-    std::unique_ptr<ServerInterface> new_server, DeviceMgr* device_mgr,
+    std::unique_ptr<ServerInterface> new_server, const DeviceMgr* device_mgr,
     CollectiveExecutorMgrInterface* rpc_collective_executor_mgr) {
   collective_executor_mgr_.Reset(rpc_collective_executor_mgr);
 
@@ -1173,7 +1164,7 @@ Status EagerContext::InitializeRemoteMaster(
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     std::unique_ptr<DynamicDeviceMgr> remote_device_manager,
     const std::vector<string>& remote_contexts, uint64 context_id,
-    Rendezvous* r, DeviceMgr* local_device_mgr, int keep_alive_secs,
+    Rendezvous* r, const DeviceMgr* local_device_mgr, int keep_alive_secs,
     DistributedFunctionLibraryRuntime* cluster_flr,
     std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
         remote_mgr) {
@@ -1272,7 +1263,7 @@ Status EagerContext::SetMasterContextState(
     std::shared_ptr<WorkerSession> worker_session,
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     std::unique_ptr<DynamicDeviceMgr> remote_device_manager, uint64 context_id,
-    uint64 context_view_id, Rendezvous* r, DeviceMgr* local_device_mgr,
+    uint64 context_view_id, Rendezvous* r, const DeviceMgr* local_device_mgr,
     int keep_alive_secs, DistributedFunctionLibraryRuntime* cluster_flr,
     std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
         remote_mgr) {
@@ -1284,7 +1275,13 @@ Status EagerContext::SetMasterContextState(
   use_send_tensor_rpc_ =
       ReadBoolFromEnvVar("TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC", true);
 
-  local_device_manager_.Reset(local_device_mgr);
+  if (local_device_mgr != local_device_manager_.Get()) {
+    if (local_device_manager_.Owned()) {
+      old_local_device_managers_.push_back(
+          std::move(local_device_manager_.owned_object));
+    }
+    local_device_manager_.Reset(local_device_mgr);
+  }
   host_cpu_device_ = local_device_manager_.Get()->HostCPU();
 
   if (rendezvous_ != nullptr) rendezvous_->Unref();

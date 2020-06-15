@@ -50,14 +50,18 @@ HloComputation* MakeBinaryAdd(PrimitiveType type, HloModule* module) {
   return reduction;
 }
 
-Status DecomposeAllGather(HloAllGatherInstruction* ag, int64 partition_count,
-                          HloComputation* comp) {
+Status DecomposeAllGather(HloAllGatherInstruction* ag, HloComputation* comp) {
+  const int64 shard_size =
+      ag->operand(0)->shape().dimensions(ag->all_gather_dimension());
+  const int64 ag_size = ag->shape().dimensions(ag->all_gather_dimension());
+  TF_RET_CHECK(ag_size % shard_size == 0);
+  int64 partition_count = ag_size / shard_size;
   auto zero = comp->AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::Zero(ag->shape().element_type())));
   zero = comp->AddInstruction(
       HloInstruction::CreateBroadcast(ag->shape(), zero, {}));
   auto zero_index = comp->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::Zero(S32)));
+      HloInstruction::CreateConstant(LiteralUtil::Zero(U32)));
   std::vector<HloInstruction*> start_indices(ag->shape().rank(), zero_index);
   auto shard_id_from_subgroup = [&](HloInstruction* replica_or_global_id) {
     if (ag->replica_groups().empty()) {
@@ -79,19 +83,19 @@ Status DecomposeAllGather(HloAllGatherInstruction* ag, int64 partition_count,
     }
     // Create a table of shard IDs for each replica_or_global_id, then slice it
     // using replica_or_global_id.
-    std::vector<int32> shard_ids(ag->replica_groups().size() *
-                                 ag->replica_groups()[0].replica_ids_size());
+    std::vector<uint32> shard_ids(ag->replica_groups().size() *
+                                  ag->replica_groups()[0].replica_ids_size());
     for (const auto& group : ag->replica_groups()) {
       for (int64 i = 0; i < group.replica_ids_size(); ++i) {
         shard_ids[group.replica_ids(i)] = i;
       }
     }
     auto id_table = comp->AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateR1<int32>(shard_ids)));
+        LiteralUtil::CreateR1<uint32>(shard_ids)));
     auto shard_id = comp->AddInstruction(HloInstruction::CreateDynamicSlice(
-        ShapeUtil::MakeShape(S32, {1}), id_table, {replica_or_global_id}, {1}));
+        ShapeUtil::MakeShape(U32, {1}), id_table, {replica_or_global_id}, {1}));
     shard_id = comp->AddInstruction(
-        HloInstruction::CreateReshape(ShapeUtil::MakeShape(S32, {}), shard_id));
+        HloInstruction::CreateReshape(ShapeUtil::MakeShape(U32, {}), shard_id));
     return shard_id;
   };
   HloInstruction* shard_id;
@@ -100,7 +104,7 @@ Status DecomposeAllGather(HloAllGatherInstruction* ag, int64 partition_count,
       auto pid = comp->AddInstruction(HloInstruction::CreatePartitionId());
       auto rid = comp->AddInstruction(HloInstruction::CreateReplicaId());
       auto pcount = comp->AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR0<int32>(partition_count)));
+          LiteralUtil::CreateR0<uint32>(partition_count)));
       auto global_id = comp->AddInstruction(HloInstruction::CreateBinary(
           pid->shape(), HloOpcode::kAdd, pid,
           comp->AddInstruction(HloInstruction::CreateBinary(
@@ -119,8 +123,7 @@ Status DecomposeAllGather(HloAllGatherInstruction* ag, int64 partition_count,
       comp->AddInstruction(HloInstruction::CreateBinary(
           shard_id->shape(), HloOpcode::kMultiply, shard_id,
           comp->AddInstruction(HloInstruction::CreateConstant(
-              LiteralUtil::CreateR0<int32>(ag->operand(0)->shape().dimensions(
-                  ag->all_gather_dimension()))))));
+              LiteralUtil::CreateR0<uint32>(shard_size)))));
   auto dus = comp->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
       zero->shape(), zero, ag->mutable_operand(0), start_indices));
   auto ar = comp->AddInstruction(HloInstruction::CreateAllReduce(
@@ -143,7 +146,7 @@ StatusOr<bool> AllGatherDecomposer::Run(HloModule* module) {
       }
       auto ag = Cast<HloAllGatherInstruction>(hlo);
       if (should_decompose_(*ag)) {
-        TF_RETURN_IF_ERROR(DecomposeAllGather(ag, partition_count_, comp));
+        TF_RETURN_IF_ERROR(DecomposeAllGather(ag, comp));
         changed = true;
       }
     }

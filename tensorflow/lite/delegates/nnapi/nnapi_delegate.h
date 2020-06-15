@@ -20,8 +20,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
 typedef struct ANeuralNetworksMemory ANeuralNetworksMemory;
@@ -90,8 +90,32 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // of number of nodes and selecting them until the limit is reached.
     int max_number_delegated_partitions = 3;
 
-    // allow fp32 compuation to be run in fp16
+    // allow fp32 compuation to be run in fp16.
     bool allow_fp16 = false;
+
+    // Specifies the relative priority for executions of the model.
+    // Available values are {ANEURALNETWORKS_PRIORITY_LOW,
+    // ANEURALNETWORKS_PRIORITY_MEDIUM, ANEURALNETWORKS_PRIORITY_HIGH,
+    // ANEURALNETWORKS_PRIORITY_DEFAULT}.
+    int execution_priority = ANEURALNETWORKS_PRIORITY_DEFAULT;
+
+    // Specifies the maximum expected duration in nanosecond for compiling the
+    // model. If the device is not able to complete the compilation within the
+    // specified duration, the compilation may be aborted. If set to 0, the
+    // timeout duration is considered infinite.
+    uint64_t max_compilation_timeout_duration_ns = 0;
+
+    // Specifies the maximum expected duration in nanosecond for executing the
+    // model. If the device is not able to complete the execution within the
+    // specified duration, the execution may be aborted. If set to 0, the
+    // timeout duration is considered infinite.
+    uint64_t max_execution_timeout_duration_ns = 0;
+
+    // Specifies the maximum expected duration in nanosecond for WHILE loops in
+    // the execution. If a WHILE loop condition model does not output false
+    // within the specified duration, the execution will be aborted. If set to
+    // 0, the default timeout for loops will be used.
+    uint64_t max_execution_loop_timeout_duration_ns = 0;
   };
 
   // Uses default options.
@@ -156,8 +180,6 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
  private:
   // Encapsulates all delegate data.
   struct Data {
-    // Preferred Power/perf trade-off.
-    Options::ExecutionPreference execution_preference;
     // Pointer to NNAPI implementation to be used by this delegate as
     // set when building the StatefulNnApiDelegate instance.
     // Will generally be the NnApiInstance() singleton but can be overridden
@@ -165,6 +187,8 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // The ownership of the nnapi instance is left to the caller of
     // the StatefulNnApiDelegate constructor.
     const NnApi* nnapi;
+    // Preferred Power/perf trade-off.
+    Options::ExecutionPreference execution_preference;
     // Selected NNAPI accelerator name.
     std::string accelerator_name;
     // The cache dir for NNAPI model.
@@ -177,7 +201,7 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     std::vector<MemoryRegistration> tensor_memory_map;
     // Contains a non zero value if any NNAPI method call
     // operation returned a non zero result code.
-    int nnapi_errno;
+    int nnapi_errno = ANEURALNETWORKS_NO_ERROR;
     // Cache of kernels already built in StatefulNnApiDelegate::DoPrepare
     // when trying to understand if all nodes are supported by the target
     // accelerators.
@@ -187,9 +211,21 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // Maximum number of NNAPI partition to delegate. Zero or negative means
     // no limit. Copied from StatefulNnApiDelegate::Options
     int max_number_delegated_partitions;
-    // allow fp32 computation to be run in fp32
-    bool allow_fp16 = false;
+    // allow fp32 computation to be run in fp16.
+    bool allow_fp16;
+    // Specifies the relative priority for executions of the model.
+    int execution_priority = ANEURALNETWORKS_PRIORITY_DEFAULT;
+    // Specifies the maximum expected duration in nanosecond for compiling the
+    // model.
+    uint64_t max_compilation_timeout_duration_ns = 0;
+    // Specifies the maximum expected duration in nanosecond for executing the
+    // model.
+    uint64_t max_execution_timeout_duration_ns = 0;
+    // Specifies the maximum expected duration in nanosecond for WHILE loops in
+    // the execution
+    uint64_t max_execution_loop_timeout_duration_ns = 0;
 
+    explicit Data(const NnApi* nnapi);
     ~Data();
 
     // Caches an initialised NNAPIDelegateKernel.
@@ -197,7 +233,7 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
                              NNAPIDelegateKernel* delegate_state);
     // Returns a cached NNAPIDelegateKernel if available and removes it
     // from the cache transferring the ownership to the caller.
-    absl::optional<NNAPIDelegateKernel*> GetCachedDelegateKernel(
+    NNAPIDelegateKernel* MaybeGetCachedDelegateKernel(
         const TfLiteDelegateParams* delegate_params);
   };
 

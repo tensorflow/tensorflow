@@ -34,6 +34,7 @@ BenchmarkParams BenchmarkModel::DefaultParams() {
   params.AddParam("max_secs", BenchmarkParam::Create<float>(150.0f));
   params.AddParam("run_delay", BenchmarkParam::Create<float>(-1.0f));
   params.AddParam("num_threads", BenchmarkParam::Create<int32_t>(1));
+  params.AddParam("use_caching", BenchmarkParam::Create<bool>(false));
   params.AddParam("benchmark_name", BenchmarkParam::Create<std::string>(""));
   params.AddParam("output_prefix", BenchmarkParam::Create<std::string>(""));
   params.AddParam("warmup_runs", BenchmarkParam::Create<int32_t>(1));
@@ -82,6 +83,11 @@ std::vector<Flag> BenchmarkModel::GetFlags() {
           "the end of the run but will not start the next run."),
       CreateFlag<float>("run_delay", &params_, "delay between runs in seconds"),
       CreateFlag<int32_t>("num_threads", &params_, "number of threads"),
+      CreateFlag<bool>(
+          "use_caching", &params_,
+          "Enable caching of prepacked weights matrices in matrix "
+          "multiplication routines. Currently implies the use of the Ruy "
+          "library."),
       CreateFlag<std::string>("benchmark_name", &params_, "benchmark name"),
       CreateFlag<std::string>("output_prefix", &params_,
                               "benchmark output prefix"),
@@ -107,6 +113,8 @@ void BenchmarkModel::LogParams() {
   TFLITE_LOG(INFO) << "Inter-run delay (seconds): ["
                    << params_.Get<float>("run_delay") << "]";
   TFLITE_LOG(INFO) << "Num threads: [" << params_.Get<int32_t>("num_threads")
+                   << "]";
+  TFLITE_LOG(INFO) << "Use caching: [" << params_.Get<bool>("use_caching")
                    << "]";
   TFLITE_LOG(INFO) << "Benchmark name: ["
                    << params_.Get<std::string>("benchmark_name") << "]";

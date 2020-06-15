@@ -29,6 +29,7 @@ from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
 from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import input_ops
 from tensorflow.python.distribute import reduce_util
@@ -316,7 +317,7 @@ class DistributedIteratorBase(distribute_types.Iterator):
           # Make `replicas` a flat list of values across all replicas.
           replicas.extend(
               self._iterators[i].get_next_as_list_static_shapes(new_name))
-      return values.regroup(replicas)
+      return distribute_utils.regroup(replicas)
 
     out_of_range_replicas = []
     def out_of_range_fn(worker_index, device):
@@ -349,34 +350,7 @@ class DistributedIteratorBase(distribute_types.Iterator):
             results.append(result)
     replicas = results
 
-    # Some dimensions in `replicas` will become unknown after we conditionally
-    # return the real tensors or the dummy tensors. We fix the input shapes by
-    # using the shapes from `out_of_range_replicas` because it is calling
-    # get_next() inside.
-    flattened_replicas = nest.flatten(replicas)
-    for i, replica_data in enumerate(nest.flatten(out_of_range_replicas)):
-      for target, source in zip(
-          nest.flatten(flattened_replicas[i], expand_composites=True),
-          nest.flatten(replica_data, expand_composites=True)):
-        target.set_shape(source.get_shape())
-      # `SparseTensor` shape is not determined by the shape of its component
-      # tensors. Rather, its shape depends on a tensor's values.
-      if sparse_tensor.is_sparse(replica_data) and replica_data.get_shape():
-        dense_shape = replica_data.get_shape()
-        with ops.device(flattened_replicas[i].op.device):
-          # For partially defined shapes, fill in missing values from tensor.
-          if not dense_shape.is_fully_defined():
-            dense_shape = array_ops.stack([
-                flattened_replicas[i].dense_shape[j] if dim is None else dim
-                for j, dim in enumerate(dense_shape.as_list())
-            ])
-          flattened_replicas[i] = sparse_tensor.SparseTensor(
-              indices=flattened_replicas[i].indices,
-              values=flattened_replicas[i].values,
-              dense_shape=dense_shape)
-    replicas = nest.pack_sequence_as(replicas, flattened_replicas)
-
-    return values.regroup(replicas)
+    return distribute_utils.regroup(replicas)
 
 
 class DistributedIteratorV1(DistributedIteratorBase):
@@ -604,7 +578,7 @@ class _IterableInput(distribute_types.Iterable):
       else:
         raise ValueError("Dataset iteration within a tf.function is"
                          " not supported for multiple workers.")
-      state = reduce_fn(state, values.regroup(data))
+      state = reduce_fn(state, distribute_utils.regroup(data))
       has_data, data = _get_next_as_optional(iterator, self._strategy)
       return has_data, data, state
 
@@ -1048,6 +1022,34 @@ def _dummy_tensor_fn(value_structure):
   return nest.map_structure(create_dummy_tensor, value_structure)
 
 
+def _recover_shape_fn(data, value_structure):
+  """Recover the shape of `data` the same as shape of `value_structure`."""
+
+  flattened_data = nest.flatten(data)
+  for i, spec in enumerate(nest.flatten(value_structure)):
+    for target, source in zip(
+        nest.flatten(flattened_data[i], expand_composites=True),
+        nest.flatten(spec, expand_composites=True)):
+      target.set_shape(source.shape)
+    # `SparseTensor` shape is not determined by the shape of its component
+    # tensors. Rather, its shape depends on a tensor's values.
+    if isinstance(spec, sparse_tensor.SparseTensorSpec) and spec.shape:
+      dense_shape = spec.shape
+      with ops.device(flattened_data[i].op.device):
+        # For partially defined shapes, fill in missing values from tensor.
+        if not dense_shape.is_fully_defined():
+          dense_shape = array_ops.stack([
+              flattened_data[i].dense_shape[j] if dim is None else dim
+              for j, dim in enumerate(dense_shape.as_list())
+          ])
+        flattened_data[i] = sparse_tensor.SparseTensor(
+            indices=flattened_data[i].indices,
+            values=flattened_data[i].values,
+            dense_shape=dense_shape)
+  data = nest.pack_sequence_as(data, flattened_data)
+  return data
+
+
 class _SingleWorkerDatasetIteratorBase(object):
   """Iterator for a single `tf.data.Dataset`."""
 
@@ -1129,9 +1131,16 @@ class _SingleWorkerDatasetIteratorBase(object):
           real_data = control_flow_ops.cond(
               data.has_value(),
               lambda: data.get_value(),
-              lambda: _dummy_tensor_fn(data.value_structure),
+              lambda: _dummy_tensor_fn(data.element_spec),
               strict=True,
           )
+          # Some dimensions in `replicas` will become unknown after we
+          # conditionally return the real tensors or the dummy tensors. Recover
+          # the shapes from `data.element_spec`. We only need to do this in
+          # non eager mode because we always know the runtime shape of the
+          # tensors in eager mode.
+          if not context.executing_eagerly():
+            real_data = _recover_shape_fn(real_data, data.element_spec)
           result.append(real_data)
           # pylint: enable=cell-var-from-loop
           # pylint: enable=unnecessary-lambda

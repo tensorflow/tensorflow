@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tfl-post-quantize | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt %s -tfl-post-quantize | FileCheck %s
 
 // CHECK-LABEL: RemoveUnused
 func @RemoveUnused(%arg0: tensor<4xf32>, %arg1: tensor<i32>) -> (tensor<2xf32>,tensor<2xf32>) {
@@ -17,6 +17,16 @@ func @RemoveUnused(%arg0: tensor<4xf32>, %arg1: tensor<i32>) -> (tensor<2xf32>,t
 
 // CHECK-NEXT: %[[split:.*]]:4 = "tfl.split"(%arg1, %arg0)
 // CHECK-NEXT: return %[[split]]#0, %[[split]]#1
+}
+
+// CHECK-LABEL: RemoveTrival
+func @RemoveTrival(%arg0: tensor<384x512x!quant.uniform<i8:f32, 1.0:-128>>, %arg1: tensor<128x512x!quant.uniform<i8<-127:127>:f32, 1.0>>, %arg2: none) -> tensor<384x128x!quant.uniform<i8:f32, 2.0>> {
+  %1 = "tfl.fully_connected"(%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<384x512x!quant.uniform<i8:f32, 1.0:-128>>, tensor<128x512x!quant.uniform<i8<-127:127>:f32, 1.0>>, none) -> tensor<384x128x!quant.uniform<i8:f32, 1.0>>
+  %2 = "tfl.quantize"(%1) {qtype = tensor<384x128x!quant.uniform<i8:f32, 2.0>>} : (tensor<384x128x!quant.uniform<i8:f32, 1.0>>) -> tensor<384x128x!quant.uniform<i8:f32, 2.0>>
+  return %2 : tensor<384x128x!quant.uniform<i8:f32, 2.0>>
+
+// CHECK-NEXT: %[[fc:.*]] = "tfl.fully_connected"{{.*}} -> tensor<384x128x!quant.uniform<i8:f32, 2.000000e+00>>
+// CHECK-NEXT: return %[[fc]]
 }
 
 func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x1001xf32> {

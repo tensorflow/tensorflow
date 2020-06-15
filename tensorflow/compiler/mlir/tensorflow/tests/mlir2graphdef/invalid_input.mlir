@@ -1,4 +1,4 @@
-// RUN: not tf-mlir-translate -split-input-file -mlir-to-graphdef %s -o - 2>&1 | FileCheck %s --dump-input=fail
+// RUN: not tf-mlir-translate -split-input-file -mlir-to-graphdef %s -o - 2>&1 | FileCheck %s
 
 // Tests function with multiple blocks.
 

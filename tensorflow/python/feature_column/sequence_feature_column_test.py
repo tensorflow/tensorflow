@@ -24,7 +24,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.client import session
-from tensorflow.python.feature_column import dense_features
+from tensorflow.python.feature_column import feature_column_lib as fc_lib
 from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.feature_column import sequence_feature_column as sfc
 from tensorflow.python.feature_column import serialization
@@ -32,7 +32,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
@@ -111,54 +110,6 @@ class ConcatenateContextInputTest(test.TestCase, parameterized.TestCase):
       sfc.concatenate_context_input(context_input, seq_input)
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class DenseFeaturesTest(test.TestCase):
-  """Tests DenseFeatures with sequence feature columns."""
-
-  def test_embedding_column(self):
-    """Tests that error is raised for sequence embedding column."""
-    vocabulary_size = 3
-    sparse_input = sparse_tensor.SparseTensorValue(
-        # example 0, ids [2]
-        # example 1, ids [0, 1]
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=(2, 0, 1),
-        dense_shape=(2, 2))
-
-    categorical_column_a = sfc.sequence_categorical_column_with_identity(
-        key='aaa', num_buckets=vocabulary_size)
-    embedding_column_a = fc.embedding_column(
-        categorical_column_a, dimension=2)
-
-    input_layer = dense_features.DenseFeatures([embedding_column_a])
-    with self.assertRaisesRegexp(
-        ValueError,
-        r'In embedding_column: aaa_embedding\. categorical_column must not be '
-        r'of type SequenceCategoricalColumn\.'):
-      _ = input_layer({'aaa': sparse_input})
-
-  def test_indicator_column(self):
-    """Tests that error is raised for sequence indicator column."""
-    vocabulary_size = 3
-    sparse_input = sparse_tensor.SparseTensorValue(
-        # example 0, ids [2]
-        # example 1, ids [0, 1]
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=(2, 0, 1),
-        dense_shape=(2, 2))
-
-    categorical_column_a = sfc.sequence_categorical_column_with_identity(
-        key='aaa', num_buckets=vocabulary_size)
-    indicator_column_a = fc.indicator_column(categorical_column_a)
-
-    input_layer = dense_features.DenseFeatures([indicator_column_a])
-    with self.assertRaisesRegexp(
-        ValueError,
-        r'In indicator_column: aaa_indicator\. categorical_column must not be '
-        r'of type SequenceCategoricalColumn\.'):
-      _ = input_layer({'aaa': sparse_input})
-
-
 def _assert_sparse_tensor_value(test_case, expected, actual):
   _assert_sparse_tensor_indices_shape(test_case, expected, actual)
 
@@ -181,7 +132,8 @@ def _get_sequence_dense_tensor(column, features):
 
 
 def _get_sequence_dense_tensor_state(column, features):
-  state_manager = fc._StateManagerImpl(Layer(), trainable=True)
+  state_manager = fc._StateManagerImpl(
+      fc_lib.DenseFeatures(column), trainable=True)
   column.create_state(state_manager)
   dense_tensor, lengths = column.get_sequence_dense_tensor(
       fc.FeatureTransformationCache(features), state_manager)

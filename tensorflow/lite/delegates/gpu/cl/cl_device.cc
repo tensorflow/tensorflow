@@ -105,8 +105,18 @@ OpenCLVersion ParseCLVersion(const std::string& version) {
     } else {
       return OpenCLVersion::CL_1_0;
     }
+  } else if (major == 2) {
+    if (minor == 2) {
+      return OpenCLVersion::CL_2_2;
+    } else if (minor == 1) {
+      return OpenCLVersion::CL_2_1;
+    } else {
+      return OpenCLVersion::CL_2_0;
+    }
+  } else if (major == 3) {
+    return OpenCLVersion::CL_3_0;
   } else {
-    return OpenCLVersion::CL_2_0;
+    return OpenCLVersion::CL_1_0;
   }
 }
 
@@ -131,6 +141,9 @@ Vendor ParseVendor(const std::string& device_name,
   } else if (d_name.find("advanced micro devices") != std::string::npos ||
              v_name.find("advanced micro devices") != std::string::npos) {
     return Vendor::AMD;
+  } else if (d_name.find("intel") != std::string::npos ||
+             v_name.find("intel") != std::string::npos) {
+    return Vendor::INTEL;
   } else {
     return Vendor::UNKNOWN;
   }
@@ -207,6 +220,8 @@ std::string VendorToString(Vendor v) {
       return "NVIDIA";
     case Vendor::AMD:
       return "AMD";
+    case Vendor::INTEL:
+      return "Intel";
     case Vendor::UNKNOWN:
       return "unknown vendor";
   }
@@ -222,6 +237,12 @@ std::string OpenCLVersionToString(OpenCLVersion version) {
       return "1.2";
     case OpenCLVersion::CL_2_0:
       return "2.0";
+    case OpenCLVersion::CL_2_1:
+      return "2.1";
+    case OpenCLVersion::CL_2_2:
+      return "2.2";
+    case OpenCLVersion::CL_3_0:
+      return "3.0";
   }
 }
 
@@ -507,6 +528,8 @@ bool CLDevice::IsNvidia() const { return info_.vendor == Vendor::NVIDIA; }
 bool CLDevice::IsMali() const { return info_.vendor == Vendor::MALI; }
 
 bool CLDevice::IsAMD() const { return info_.vendor == Vendor::AMD; }
+
+bool CLDevice::IsIntel() const { return info_.vendor == Vendor::INTEL; }
 
 bool CLDevice::SupportsOneLayerTextureArray() const {
   return !IsAdreno() || info_.adreno_info.support_one_layer_texture_array;

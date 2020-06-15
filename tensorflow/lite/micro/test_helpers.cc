@@ -15,11 +15,18 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/test_helpers.h"
 
+#include <cstdarg>
+#include <cstddef>
+#include <cstdint>
 #include <initializer_list>
+#include <new>
 
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/core/api/tensor_utils.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -472,6 +479,141 @@ const Model* BuildComplexMockModel() {
 
 }  // namespace
 
+const TfLiteRegistration* SimpleStatefulOp::getRegistration() {
+  static TfLiteRegistration r;
+  r.init = Init;
+  r.prepare = Prepare;
+  r.invoke = Invoke;
+  return &r;
+}
+
+void* SimpleStatefulOp::Init(TfLiteContext* context, const char* buffer,
+                             size_t length) {
+  TFLITE_DCHECK(context->AllocateBufferForEval == nullptr);
+  TFLITE_DCHECK(context->GetScratchBuffer == nullptr);
+  TFLITE_DCHECK(context->RequestScratchBufferInArena == nullptr);
+
+  void* raw;
+  TFLITE_DCHECK(context->AllocatePersistentBuffer(context, sizeof(OpData),
+                                                  &raw) == kTfLiteOk);
+  OpData* data = reinterpret_cast<OpData*>(raw);
+  *data = {};
+  return raw;
+}
+
+TfLiteStatus SimpleStatefulOp::Prepare(TfLiteContext* context,
+                                       TfLiteNode* node) {
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+
+  // Make sure that the input is in uint8 with at least 1 data entry.
+  const TfLiteTensor* input = tflite::GetInput(context, node, kInputTensor);
+  if (input->type != kTfLiteUInt8) return kTfLiteError;
+  if (NumElements(input->dims) == 0) return kTfLiteError;
+
+  // Allocate a temporary buffer with the same size of input for sorting.
+  TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
+      context, sizeof(uint8_t) * NumElements(input->dims),
+      &data->sorting_buffer));
+  return kTfLiteOk;
+}
+
+TfLiteStatus SimpleStatefulOp::Invoke(TfLiteContext* context,
+                                      TfLiteNode* node) {
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+  data->invoke_count += 1;
+
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const uint8_t* input_data = GetTensorData<uint8_t>(input);
+  int size = NumElements(input->dims);
+
+  uint8_t* sorting_buffer = reinterpret_cast<uint8_t*>(
+      context->GetScratchBuffer(context, data->sorting_buffer));
+  // Copy inputs data to the sorting buffer. We don't want to mutate the input
+  // tensor as it might be used by a another node.
+  for (int i = 0; i < size; i++) {
+    sorting_buffer[i] = input_data[i];
+  }
+
+  // In place insertion sort on `sorting_buffer`.
+  for (int i = 1; i < size; i++) {
+    for (int j = i; j > 0 && sorting_buffer[j] < sorting_buffer[j - 1]; j--) {
+      std::swap(sorting_buffer[j], sorting_buffer[j - 1]);
+    }
+  }
+
+  TfLiteTensor* median = GetOutput(context, node, kMedianTensor);
+  uint8_t* median_data = GetTensorData<uint8_t>(median);
+  TfLiteTensor* invoke_count = GetOutput(context, node, kInvokeCount);
+  int32_t* invoke_count_data = GetTensorData<int32_t>(invoke_count);
+
+  median_data[0] = sorting_buffer[size / 2];
+  invoke_count_data[0] = data->invoke_count;
+  return kTfLiteOk;
+}
+
+const TfLiteRegistration* MockCustom::getRegistration() {
+  static TfLiteRegistration r;
+  r.init = Init;
+  r.prepare = Prepare;
+  r.invoke = Invoke;
+  r.free = Free;
+  return &r;
+}
+
+void* MockCustom::Init(TfLiteContext* context, const char* buffer,
+                       size_t length) {
+  // We don't support delegate in TFL micro. This is a weak check to test if
+  // context struct being zero-initialized.
+  TFLITE_DCHECK(context->ReplaceNodeSubsetsWithDelegateKernels == nullptr);
+  freed_ = false;
+  // Do nothing.
+  return nullptr;
+}
+
+void MockCustom::Free(TfLiteContext* context, void* buffer) { freed_ = true; }
+
+TfLiteStatus MockCustom::Prepare(TfLiteContext* context, TfLiteNode* node) {
+  return kTfLiteOk;
+}
+
+TfLiteStatus MockCustom::Invoke(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input = tflite::GetInput(context, node, 0);
+  const int32_t* input_data = input->data.i32;
+  const TfLiteTensor* weight = tflite::GetInput(context, node, 1);
+  const uint8_t* weight_data = weight->data.uint8;
+  TfLiteTensor* output = GetOutput(context, node, 0);
+  int32_t* output_data = output->data.i32;
+  output_data[0] =
+      0;  // Catch output tensor sharing memory with an input tensor
+  output_data[0] = input_data[0] + weight_data[0];
+  return kTfLiteOk;
+}
+
+bool MockCustom::freed_ = false;
+
+const TfLiteRegistration* MockOpResolver::FindOp(BuiltinOperator op) const {
+  return nullptr;
+}
+
+const TfLiteRegistration* MockOpResolver::FindOp(const char* op) const {
+  if (strcmp(op, "mock_custom") == 0) {
+    return MockCustom::getRegistration();
+  } else if (strcmp(op, "simple_stateful_op") == 0) {
+    return SimpleStatefulOp::getRegistration();
+  } else {
+    return nullptr;
+  }
+}
+
+MicroOpResolver::BuiltinParseFunction MockOpResolver::GetOpDataParser(
+    tflite::BuiltinOperator) const {
+  // TODO(b/149408647): Figure out an alternative so that we do not have any
+  // references to ParseOpData in the micro code and the signature for
+  // MicroOpResolver::BuiltinParseFunction can be changed to be different from
+  // ParseOpData.
+  return ParseOpData;
+}
+
 const Model* GetSimpleMockModel() {
   static Model* model = nullptr;
   if (!model) {
@@ -616,22 +758,19 @@ TfLiteFloatArray* FloatArrayFromFloats(const float* floats) {
   return reinterpret_cast<TfLiteFloatArray*>(const_cast<float*>(floats));
 }
 
-TfLiteTensor CreateTensor(TfLiteIntArray* dims, const char* name,
-                          bool is_variable) {
+TfLiteTensor CreateTensor(TfLiteIntArray* dims, bool is_variable) {
   TfLiteTensor result;
   result.dims = dims;
-  result.name = name;
   result.params = {};
   result.quantization = {kTfLiteNoQuantization, nullptr};
   result.is_variable = is_variable;
   result.allocation_type = kTfLiteMemNone;
-  result.allocation = nullptr;
   return result;
 }
 
 TfLiteTensor CreateFloatTensor(const float* data, TfLiteIntArray* dims,
-                               const char* name, bool is_variable) {
-  TfLiteTensor result = CreateTensor(dims, name, is_variable);
+                               bool is_variable) {
+  TfLiteTensor result = CreateTensor(dims, is_variable);
   result.type = kTfLiteFloat32;
   result.data.f = const_cast<float*>(data);
   result.bytes = ElementCount(*dims) * sizeof(float);
@@ -647,8 +786,8 @@ void PopulateFloatTensor(TfLiteTensor* tensor, float* begin, float* end) {
 }
 
 TfLiteTensor CreateBoolTensor(const bool* data, TfLiteIntArray* dims,
-                              const char* name, bool is_variable) {
-  TfLiteTensor result = CreateTensor(dims, name, is_variable);
+                              bool is_variable) {
+  TfLiteTensor result = CreateTensor(dims, is_variable);
   result.type = kTfLiteBool;
   result.data.b = const_cast<bool*>(data);
   result.bytes = ElementCount(*dims) * sizeof(bool);
@@ -656,8 +795,8 @@ TfLiteTensor CreateBoolTensor(const bool* data, TfLiteIntArray* dims,
 }
 
 TfLiteTensor CreateInt32Tensor(const int32_t* data, TfLiteIntArray* dims,
-                               const char* name, bool is_variable) {
-  TfLiteTensor result = CreateTensor(dims, name, is_variable);
+                               bool is_variable) {
+  TfLiteTensor result = CreateTensor(dims, is_variable);
   result.type = kTfLiteInt32;
   result.data.i32 = const_cast<int32_t*>(data);
   result.bytes = ElementCount(*dims) * sizeof(int32_t);
@@ -666,8 +805,8 @@ TfLiteTensor CreateInt32Tensor(const int32_t* data, TfLiteIntArray* dims,
 
 TfLiteTensor CreateQuantizedTensor(const uint8_t* data, TfLiteIntArray* dims,
                                    float scale, int zero_point,
-                                   const char* name, bool is_variable) {
-  TfLiteTensor result = CreateTensor(dims, name, is_variable);
+                                   bool is_variable) {
+  TfLiteTensor result = CreateTensor(dims, is_variable);
   result.type = kTfLiteUInt8;
   result.data.uint8 = const_cast<uint8_t*>(data);
   result.params = {scale, zero_point};
@@ -678,8 +817,8 @@ TfLiteTensor CreateQuantizedTensor(const uint8_t* data, TfLiteIntArray* dims,
 
 TfLiteTensor CreateQuantizedTensor(const int8_t* data, TfLiteIntArray* dims,
                                    float scale, int zero_point,
-                                   const char* name, bool is_variable) {
-  TfLiteTensor result = CreateTensor(dims, name, is_variable);
+                                   bool is_variable) {
+  TfLiteTensor result = CreateTensor(dims, is_variable);
   result.type = kTfLiteInt8;
   result.data.int8 = const_cast<int8_t*>(data);
   result.params = {scale, zero_point};
@@ -690,8 +829,8 @@ TfLiteTensor CreateQuantizedTensor(const int8_t* data, TfLiteIntArray* dims,
 
 TfLiteTensor CreateQuantizedTensor(const int16_t* data, TfLiteIntArray* dims,
                                    float scale, int zero_point,
-                                   const char* name, bool is_variable) {
-  TfLiteTensor result = CreateTensor(dims, name, is_variable);
+                                   bool is_variable) {
+  TfLiteTensor result = CreateTensor(dims, is_variable);
   result.type = kTfLiteInt16;
   result.data.i16 = const_cast<int16_t*>(data);
   result.params = {scale, zero_point};
@@ -700,29 +839,21 @@ TfLiteTensor CreateQuantizedTensor(const int16_t* data, TfLiteIntArray* dims,
   return result;
 }
 
-TfLiteTensor CreateQuantized32Tensor(const int32_t* data, TfLiteIntArray* dims,
-                                     float scale, const char* name,
-                                     bool is_variable) {
-  TfLiteTensor result = CreateTensor(dims, name, is_variable);
+TfLiteTensor CreateQuantizedBiasTensor(const float* data, int32_t* quantized,
+                                       TfLiteIntArray* dims, float input_scale,
+                                       float weights_scale, bool is_variable) {
+  float bias_scale = input_scale * weights_scale;
+  tflite::SymmetricQuantize(data, quantized, ElementCount(*dims), bias_scale);
+  TfLiteTensor result = CreateTensor(dims, is_variable);
   result.type = kTfLiteInt32;
-  result.data.i32 = const_cast<int32_t*>(data);
+  result.data.i32 = const_cast<int32_t*>(quantized);
   // Quantized int32 tensors always have a zero point of 0, since the range of
   // int32 values is large, and because zero point costs extra cycles during
   // processing.
-  result.params = {scale, 0};
+  result.params = {bias_scale, 0};
   result.quantization = {kTfLiteAffineQuantization, nullptr};
   result.bytes = ElementCount(*dims) * sizeof(int32_t);
   return result;
-}
-
-TfLiteTensor CreateQuantizedBiasTensor(const float* data, int32_t* quantized,
-                                       TfLiteIntArray* dims, float input_scale,
-                                       float weights_scale, const char* name,
-                                       bool is_variable) {
-  float bias_scale = input_scale * weights_scale;
-  tflite::SymmetricQuantize(data, quantized, ElementCount(*dims), bias_scale);
-  return CreateQuantized32Tensor(quantized, dims, bias_scale, name,
-                                 is_variable);
 }
 
 // Quantizes int32 bias tensor with per-channel weights determined by input
@@ -731,7 +862,7 @@ TfLiteTensor CreatePerChannelQuantizedBiasTensor(
     const float* input, int32_t* quantized, TfLiteIntArray* dims,
     float input_scale, float* weight_scales, float* scales, int* zero_points,
     TfLiteAffineQuantization* affine_quant, int quantized_dimension,
-    const char* name, bool is_variable) {
+    bool is_variable) {
   int input_size = ElementCount(*dims);
   int num_channels = dims->data[quantized_dimension];
   // First element is reserved for array length
@@ -750,7 +881,7 @@ TfLiteTensor CreatePerChannelQuantizedBiasTensor(
   affine_quant->zero_point = IntArrayFromInts(zero_points);
   affine_quant->quantized_dimension = quantized_dimension;
 
-  TfLiteTensor result = CreateTensor(dims, name, is_variable);
+  TfLiteTensor result = CreateTensor(dims, is_variable);
   result.type = kTfLiteInt32;
   result.data.i32 = const_cast<int32_t*>(quantized);
   result.quantization = {kTfLiteAffineQuantization, affine_quant};
@@ -761,7 +892,7 @@ TfLiteTensor CreatePerChannelQuantizedBiasTensor(
 TfLiteTensor CreateSymmetricPerChannelQuantizedTensor(
     const float* input, int8_t* quantized, TfLiteIntArray* dims, float* scales,
     int* zero_points, TfLiteAffineQuantization* affine_quant,
-    int quantized_dimension, const char* name, bool is_variable) {
+    int quantized_dimension, bool is_variable) {
   int channel_count = dims->data[quantized_dimension];
   scales[0] = static_cast<float>(channel_count);
   zero_points[0] = channel_count;
@@ -777,7 +908,7 @@ TfLiteTensor CreateSymmetricPerChannelQuantizedTensor(
   affine_quant->zero_point = IntArrayFromInts(zero_points);
   affine_quant->quantized_dimension = quantized_dimension;
 
-  TfLiteTensor result = CreateTensor(dims, name, is_variable);
+  TfLiteTensor result = CreateTensor(dims, is_variable);
   result.type = kTfLiteInt8;
   result.data.int8 = const_cast<int8_t*>(quantized);
   result.quantization = {kTfLiteAffineQuantization, affine_quant};

@@ -1,0 +1,5 @@
+func @relu(%arg0: tensor<?xf99>) -> tensor<?xf99> {
+  %0 = "tf.Relu"(%arg0) { }
+    : (tensor<?xf99>) -> tensor<?xf99>
+  return %0 : tensor<?xf99>
+}

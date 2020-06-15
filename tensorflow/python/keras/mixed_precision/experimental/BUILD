@@ -80,9 +80,7 @@ py_library(
     srcs = ["device_compatibility_check.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:device_lib",
-        "//tensorflow/python:gpu_util",
-        "//tensorflow/python/eager:context",
+        "//tensorflow/python:config",
     ],
 )
 
@@ -125,11 +123,14 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:ps_values",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/types",
     ],
 )
 
@@ -207,6 +208,25 @@ cuda_py_test(
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
+    ],
+)
+
+cuda_py_test(
+    name = "mixed_precision_graph_rewrite_test",
+    size = "small",
+    srcs = ["mixed_precision_graph_rewrite_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":loss_scale_optimizer",
+        ":policy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:config",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:mixed_precision",
+        "//tensorflow/python:tf2",
+        "//tensorflow/python/keras:testing_utils",
+        "//tensorflow/python/keras/optimizer_v2",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

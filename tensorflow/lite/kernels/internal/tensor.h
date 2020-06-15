@@ -119,6 +119,8 @@ class SequentialTensorWriter {
   T* output_ptr_;
 };
 
+// String ops are not yet supported on platforms w/ static memory.
+#ifndef TF_LITE_STATIC_MEMORY
 template <>
 class SequentialTensorWriter<string> {
  public:
@@ -138,6 +140,7 @@ class SequentialTensorWriter<string> {
   TfLiteTensor* output_;
   DynamicBuffer buffer_;
 };
+#endif  // TF_LITE_STATIC_MEMORY
 
 }  // namespace tflite
 

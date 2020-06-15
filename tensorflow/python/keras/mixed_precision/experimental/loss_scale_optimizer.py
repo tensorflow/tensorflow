@@ -395,13 +395,19 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
           self._apply_gradients,
           args=(grads, wrapped_vars, name, experimental_aggregate_gradients))
 
+    def do_not_apply_fn():
+      # Normally self._optimizer.iterations is incremented in
+      # self._optimizer.apply_gradients(). Since that is not called in this
+      # branch, we increment it here instead.
+      return self._optimizer.iterations.assign_add(1, read_value=False)
+
     # Note: We must call this cond() in a cross-replica context.
     # DistributionStrategy does not support having a cond in a replica context
     # with a branch that calls `merge_call`, and self._optimizer.apply_gradients
     # calls `merge_call`.
     maybe_apply_op = smart_cond.smart_cond(should_apply_grads,
                                            apply_fn,
-                                           control_flow_ops.no_op)
+                                           do_not_apply_fn)
     return control_flow_ops.group(maybe_apply_op, loss_scale_update_op)
 
   def _apply_gradients(self, grads, wrapped_vars, name,

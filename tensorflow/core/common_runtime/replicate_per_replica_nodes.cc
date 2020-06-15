@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/replicate_per_replica_nodes.h"
 
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_builder.h"
 
 namespace tensorflow {
 namespace {
@@ -42,7 +43,9 @@ class ReplicateHelper {
       Node* replicated_node = graph->AddNode(node_def, &status);
       TF_RETURN_IF_ERROR(status);
       replicated_node->set_assigned_device_name(device);
-      replicated_node->AddAttr("sub_index", i);
+      if (replicated_node->IsArg()) {
+        replicated_node->AddAttr("sub_index", i);
+      }
       replicated_nodes[i] = replicated_node;
     }
     replicated_nodes_map_.emplace(node, std::move(replicated_nodes));
@@ -113,12 +116,36 @@ class ReplicateHelper {
           // This happens when the dst node runs on a host CPU and
           // captures a function with an arg node assigned to the same
           // composite device (e.g. ScanDataset).
-          // For this case, we only need to add an edge connecting the arg
-          // node in the outer function and the corresponding arg in the
-          // inner function, since the host CPU only needs one copy of the
-          // ResourceHandle.
-          graph->AddEdge(src_replicated_nodes.at(0), edge->src_output(), dst,
-                         edge->dst_input());
+          // For this case, we insert a PackOp between replicated nodes and the
+          // dst node. The dst node is responsible for unpacking the packed
+          // tensor.
+          // Add '/Packed' as a substring to the name of the new node, which
+          // could be helpful when debugging the graph.
+          NodeDefBuilder pack_builder(
+              graph->NewName(absl::StrCat(edge->src()->name(), "/Packed")),
+              "Pack");
+          const int num_replicas = src_replicated_nodes.size();
+          pack_builder.Attr("N", num_replicas);
+          const DataType dtype = edge->src()->output_type(edge->src_output());
+          pack_builder.Attr("T", dtype);
+          std::vector<NodeDefBuilder::NodeOut> inputs;
+          inputs.reserve(src_replicated_nodes.size());
+          for (Node* replicated_node : src_replicated_nodes) {
+            inputs.emplace_back(NodeDefBuilder::NodeOut{
+                replicated_node->name(), edge->src_output(), dtype});
+          }
+          pack_builder.Input(inputs);
+          NodeDef pack_def;
+          TF_RETURN_IF_ERROR(pack_builder.Finalize(&pack_def));
+          Status status;
+          Node* pack_node = graph->AddNode(pack_def, &status);
+          TF_RETURN_IF_ERROR(status);
+          pack_node->set_assigned_device_name(dst->assigned_device_name());
+          for (int i = 0; i < src_replicated_nodes.size(); ++i) {
+            graph->AddEdge(src_replicated_nodes[i], edge->src_output(),
+                           pack_node, i);
+          }
+          graph->AddEdge(pack_node, /*x=*/0, dst, edge->dst_input());
         } else {
           return errors::InvalidArgument(
               "Dst node should be assigned to an allowed device. Found an "
@@ -214,7 +241,9 @@ Status ReplicatePerReplicaNodesInFunctionGraph(
       // Reuse the original nodes if there is only one allowed device.
       for (Node* n : cluster_nodes) {
         n->set_assigned_device_name(allowed_devices.at(0));
-        n->AddAttr("sub_index", 0);
+        if (n->IsArg()) {
+          n->AddAttr("sub_index", 0);
+        }
       }
       continue;
     }
