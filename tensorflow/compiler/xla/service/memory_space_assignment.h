@@ -909,10 +909,6 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   static MemorySpaceAssignment::Allocation* GetLiveAllocationAt(
       const MemorySpaceAssignment::AllocationSequence& allocations, int64 time);
 
-  // Returns true if this buffer is allowed to be placed in the alternate
-  // memory.
-  bool IsIntervalAllowedInAlternateMemory(const BufferInterval& interval) const;
-
   // Returns true if the use is allowed in the alternate memory.
   bool IsUseAllowedInAlternateMemory(const AllocationValue& value,
                                      const HloUse& use) const;
