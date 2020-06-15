@@ -1877,9 +1877,8 @@ def executing_eagerly():
   True
   False
 
-  Inside `tf.function` after
+  Inside `tf.function` after `tf.config.run_functions_eagerly(True)` is called:
 
-  `tf.config.run_functions_eagerly(True)` is called:
   >>> tf.config.run_functions_eagerly(True)
   >>> @tf.function
   ... def fn():
