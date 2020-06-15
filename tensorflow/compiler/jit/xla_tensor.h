@@ -39,8 +39,6 @@ class XlaTensor {
   // fails.
   static XlaTensor* FromTensor(const Tensor* tensor);
 
-  static bool RefCountIsOne(const Tensor& tensor);
-
   // Create a DeviceMemoryBase from a Tensor. The Tensor can be an XlaTensor, in
   // which case the returned value is shaped_buffer()->root_buffer(), or a
   // normal Tensor in which case the returned value is
