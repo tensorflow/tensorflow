@@ -254,10 +254,8 @@ cudnnConvolutionBwdFilterAlgo_t ToConvBackwardFilterAlgo(
     // Based on cudnn.h, the following is not implemented.
     // case CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD:
     case CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED:
+    case CUDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT_TILING:
       return algo;
-    // Produces incorrect results for some shapes. Disabled for now, see
-    // NVIDIA bug 2072856. TODO(csigg): Only disable for subset of shapes.
-    // case CUDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT_TILING:
     default:
       LOG(FATAL)
           << "Unsupported Cudnn convolution backward algorithm for filter: "
