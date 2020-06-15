@@ -201,13 +201,18 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     self._new_worker = server_lib.WorkerServer(
         port=port, master_address=self._master._address, protocol=PROTOCOL)
 
-    # The dataset starts over now that we read from the new worker.
-    for i in range(num_elements):
+    # There may have been some elements prefetched from the first worker
+    # before it was stopped.
+    while True:
       val = next(iterator).numpy()
-      if val == midpoint and i != midpoint:
-        # There may have been one last element prefetched from the first worker
-        # before it was stopped.
-        val = next(iterator).numpy()
+      if val == 0:
+        break
+
+    # The dataset starts over now that we read from the new worker.
+    # TODO(b/157086991): Iterate until end of sequence when we support
+    # detecting lost workers.
+    for i in range(1, num_elements // 2):
+      val = next(iterator).numpy()
       self.assertEqual(i, val)
 
   @combinations.generate(test_base.eager_only_combinations())
@@ -291,7 +296,7 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testSharedJobNameRepeat(self):
-    num_elements = 10
+    num_elements = 100
     num_repetitions = 3
     master_address = self.create_cluster(1)
     ds = dataset_ops.Dataset.range(num_elements)
@@ -302,9 +307,9 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     results = []
     iter1 = iter(ds1)
     iter2 = iter(ds2)
-    for _ in range(((num_elements * num_repetitions) // 2) - 1):
+    for _ in range(((num_elements * num_repetitions) // 3)):
       results.append(next(iter1).numpy())
-    for _ in range(((num_elements * num_repetitions) // 2) - 1):
+    for _ in range(((num_elements * num_repetitions) // 3)):
       results.append(next(iter2).numpy())
     for elem in iter1:
       results.append(elem.numpy())
