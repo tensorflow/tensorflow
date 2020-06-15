@@ -209,8 +209,10 @@ void CreateHeadComputation(OpBuilder* builder, tf_device::ClusterOp cluster,
                            llvm::ArrayRef<Operation*> head_outside_compiled_ops,
                            llvm::StringRef host_device) {
   Block* launch_block = new Block;
-  for (Operation* head_outside_compiled_op : head_outside_compiled_ops)
+  for (Operation* head_outside_compiled_op : head_outside_compiled_ops) {
+    head_outside_compiled_op->removeAttr(kXlaOutsideCompilationAttr);
     head_outside_compiled_op->moveBefore(launch_block, launch_block->end());
+  }
 
   tf_device::LaunchOp launch = CreateLaunchForBlock(
       builder, cluster, /*before=*/true, launch_block, host_device);
@@ -294,8 +296,10 @@ void CreateTailComputation(OpBuilder* builder, tf_device::ClusterOp cluster,
                            llvm::ArrayRef<Operation*> tail_outside_compiled_ops,
                            llvm::StringRef host_device) {
   Block* launch_block = new Block;
-  for (Operation* tail_outside_compiled_op : tail_outside_compiled_ops)
+  for (Operation* tail_outside_compiled_op : tail_outside_compiled_ops) {
+    tail_outside_compiled_op->removeAttr(kXlaOutsideCompilationAttr);
     tail_outside_compiled_op->moveBefore(launch_block, launch_block->begin());
+  }
 
   tf_device::LaunchOp launch = CreateLaunchForBlock(
       builder, cluster, /*before=*/false, launch_block, host_device);

@@ -32,8 +32,6 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/c/eager/operation_interface.h"
 #include "tensorflow/c/eager/tensor_handle_interface.h"
-#include "tensorflow/c/experimental/saved_model/core/saved_model_api.h"
-#include "tensorflow/c/experimental/saved_model/core/tf_saved_model_impl.h"
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
 #include "tensorflow/core/common_runtime/colocation_graph.h"
@@ -190,19 +188,6 @@ AbstractTensorInterface* EagerContext::CreateTensor(
     TF_DeleteTensor(tensor_wrapper);
     return result;
   }
-}
-
-std::unique_ptr<SavedModelAPI> EagerContext::LoadSavedModelAPI(
-    const std::string& directory,
-    const absl::optional<std::unordered_set<std::string>>& tags,
-    tensorflow::Status* status) {
-  auto result = std::make_unique<TFSavedModelAPIImpl>();
-  auto load_status = TFSavedModelAPIImpl::Load(directory, tags, result.get());
-  if (!load_status.ok()) {
-    status->Update(load_status);
-    result.reset();
-  }
-  return result;
 }
 
 void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
@@ -598,6 +583,8 @@ std::vector<const FunctionDef*> EagerContext::ListRegisteredFunctions() {
 }
 
 void EagerContext::ClearRunMetadata() { run_metadata_.Clear(); }
+
+bool EagerContext::UsesTFRT() { return false; }
 
 void EagerContext::ListDevices(
     std::vector<tensorflow::DeviceAttributes>* devices) {

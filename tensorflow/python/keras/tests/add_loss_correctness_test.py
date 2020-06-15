@@ -69,7 +69,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
     self.y = np.array([[0.5], [2.], [3.5]], dtype='float32')
     self.w = np.array([[1.25], [0.5], [1.25]], dtype='float32')
 
-  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
+  @keras_parameterized.run_all_keras_modes
   def test_loss_on_model_fit(self):
     inputs = Input(shape=(1,))
     targets = Input(shape=(1,))
@@ -85,8 +85,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
     self.assertAllClose(history.history['loss'], [2., 1.8, 1.6, 1.4, 1.2], 1e-3)
 
   @keras_parameterized.run_with_all_model_types(exclude_models=['sequential'])
-  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True,
-                                           always_skip_v1=True)
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_loss_callable_on_model_fit(self):
     model = testing_utils.get_model_from_layers([testing_utils.Bias()],
                                                 input_shape=(1,))
@@ -145,7 +144,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
       loss = [train_step(self.x, self.y) for _ in range(5)]
       self.assertAllClose(loss, [0., -0.05, -0.1, -0.15, -0.2], 1e-3)
 
-  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
+  @keras_parameterized.run_all_keras_modes
   def test_loss_with_sample_weight_on_model_fit(self):
     inputs = Input(shape=(1,))
     targets = Input(shape=(1,))
@@ -182,7 +181,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
       loss = [train_step(self.x, self.y, self.w) for _ in range(5)]
       self.assertAllClose(loss, [2., 1.8, 1.6, 1.4, 1.2], 1e-3)
 
-  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
+  @keras_parameterized.run_all_keras_modes
   def test_loss_with_sample_weight_in_model_call(self):
 
     class MyModel(Model):
@@ -210,7 +209,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
     eval_out = model.evaluate([self.x, self.y, self.w])
     self.assertAlmostEqual(eval_out, 1.0, 3)
 
-  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
+  @keras_parameterized.run_all_keras_modes
   def test_loss_with_sample_weight_in_layer_call(self):
 
     class MyLayer(layers.Layer):
@@ -245,7 +244,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
     output = model.test_on_batch([self.x, self.y, self.w])
     self.assertAlmostEqual(output, 1.0, 3)
 
-  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
+  @keras_parameterized.run_all_keras_modes
   def test_loss_on_layer(self):
 
     class MyLayer(layers.Layer):
@@ -266,7 +265,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
     loss = model.train_on_batch(np.ones((2, 3)), np.ones((2, 3)))
     self.assertEqual(loss, 2 * 3)
 
-  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
+  @keras_parameterized.run_all_keras_modes
   @keras_parameterized.run_with_all_model_types
   def test_activity_regularizer(self):
     loss = {}
@@ -300,7 +299,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
       loss[reg] = model.evaluate(x, y)
     self.assertLess(loss[None], loss['l2'])
 
-  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
+  @keras_parameterized.run_all_keras_modes
   @keras_parameterized.run_with_all_model_types
   def test_activity_regularizer_loss_value(self):
     layer = layers.Dense(
@@ -319,7 +318,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
     loss = model.test_on_batch(x)
     self.assertAlmostEqual(0.01, loss, places=4)
 
-  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
+  @keras_parameterized.run_all_keras_modes
   def test_activity_regularizer_batch_independent(self):
     inputs = layers.Input(shape=(10,))
     x = layers.Dense(10, activation='relu', activity_regularizer='l2')(inputs)
@@ -335,7 +334,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
     loss_big_batch = model.test_on_batch(np.ones((20, 10), 'float32'))
     self.assertAlmostEqual(loss_small_batch, loss_big_batch, places=4)
 
-  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
+  @keras_parameterized.run_all_keras_modes
   def test_with_shared_layer(self):
 
     class LayerWithLoss(layers.Layer):
@@ -352,7 +351,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
     self.assertEqual(len(m2.losses), 2)
     self.assertAllClose(m2.losses, [6, 12])
 
-  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
+  @keras_parameterized.run_all_keras_modes
   def test_with_shared_nested_layer(self):
 
     class LayerWithLoss(layers.Layer):
@@ -378,7 +377,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
     self.assertEqual(len(m2.losses), 2)
     self.assertAllClose(m2.losses, [6, 12])
 
-  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
+  @keras_parameterized.run_all_keras_modes
   def test_clear_losses(self):
 
     class LayerWithSharedNestedLossLayer(layers.Layer):
@@ -429,7 +428,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
       self.assertEqual(len(model.get_losses_for(x4)), 2)
       self.assertEqual(len(model.get_losses_for(None)), 1)
 
-  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
+  @keras_parameterized.run_all_keras_modes
   def test_invalid_constant_input(self):
     with context.eager_mode():
       inputs = Input(shape=(1,))
@@ -440,7 +439,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
           'Expected a symbolic Tensors or a callable for the loss value'):
         model.add_loss(1.)
 
-  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
+  @keras_parameterized.run_all_keras_modes
   def test_invalid_variable_input(self):
     with context.eager_mode():
       inputs = Input(shape=(1,))

@@ -272,6 +272,16 @@ static py::object TF_ListPhysicalDevices() {
   return tensorflow::PyoOrThrow(result);
 }
 
+static std::unordered_map<string, string> TF_GetDeviceDetails(int index) {
+  tensorflow::Safe_TF_StatusPtr status = tensorflow::make_safe(TF_NewStatus());
+  std::unordered_map<string, string> device_details;
+  tensorflow::Status s =
+      tensorflow::DeviceFactory::GetAnyDeviceDetails(index, &device_details);
+  tensorflow::Set_TF_Status_from_Status(status.get(), s);
+  MaybeRaiseRegisteredFromTFStatus(status.get());
+  return device_details;
+}
+
 static py::object TFE_ClearScalarCache() {
   tensorflow::TFE_TensorHandleCache::Get()->Clear();
   return py::none();
@@ -353,6 +363,14 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TF_GetXlaConstantFoldingDisabled", &TF_GetXlaConstantFoldingDisabled);
   m.def("TF_SetXlaMinClusterSize", &TF_SetXlaMinClusterSize);
   m.def("TF_IsXlaEnabled", [] { return tensorflow::IsXlaEnabled(); });
+
+  // MLIR Logic
+  m.def("TF_IsMlirBridgeEnabled", [] {
+    return tensorflow::GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge;
+  });
+  m.def("TF_EnableMlirBridge", [](bool enabled) {
+    tensorflow::GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge = enabled;
+  });
 
   // // TFE_Context Logic
   m.def(
@@ -812,6 +830,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
   });
   m.def("TF_ListPhysicalDevices", &tensorflow::TF_ListPhysicalDevices);
+  m.def("TF_GetDeviceDetails", &tensorflow::TF_GetDeviceDetails);
   m.def("TF_DeleteDeviceList", &TF_DeleteDeviceList,
         py::return_value_policy::reference);
   m.def("TF_DeviceListCount", &TF_DeviceListCount);

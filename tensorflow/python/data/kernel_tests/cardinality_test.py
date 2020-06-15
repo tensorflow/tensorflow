@@ -27,9 +27,20 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
+# pylint: disable=g-long-lambda
 def _test_combinations():
-  # pylint: disable=g-long-lambda
-  cases = [
+  v1_only_cases = [
+      ("Map1", lambda: dataset_ops.Dataset.range(5).map(lambda x: x),
+       dataset_ops.UNKNOWN),
+      ("Map2", lambda: dataset_ops.Dataset.range(5).map(
+          lambda x: x, num_parallel_calls=1), dataset_ops.UNKNOWN),
+  ]
+  v2_only_cases = [
+      ("Map1", lambda: dataset_ops.Dataset.range(5).map(lambda x: x), 5),
+      ("Map2", lambda: dataset_ops.Dataset.range(5).map(
+          lambda x: x, num_parallel_calls=1), 5),
+  ]
+  v1_and_v2_cases = [
       ("Batch1",
        lambda: dataset_ops.Dataset.range(5).batch(2, drop_remainder=True), 2),
       ("Batch2",
@@ -83,9 +94,6 @@ def _test_combinations():
           lambda _: dataset_ops.Dataset.from_tensors(0),
           cycle_length=1,
           num_parallel_calls=1), dataset_ops.UNKNOWN),
-      ("Map1", lambda: dataset_ops.Dataset.range(5).map(lambda x: x), 5),
-      ("Map2", lambda: dataset_ops.Dataset.range(5).map(
-          lambda x: x, num_parallel_calls=1), 5),
       ("PaddedBatch1", lambda: dataset_ops.Dataset.range(5).padded_batch(
           2, [], drop_remainder=True), 2),
       ("PaddedBatch2", lambda: dataset_ops.Dataset.range(5).padded_batch(
@@ -149,22 +157,32 @@ def _test_combinations():
           (dataset_ops.Dataset.range(5), dataset_ops.Dataset.range(3).filter(
               lambda _: True))), dataset_ops.UNKNOWN),
   ]
-
-  def reduce_fn(x, y):
+  def reduce_cases_to_combinations(x, y):
     name, dataset_fn, expected_result = y
     return x + combinations.combine(
         dataset_fn=combinations.NamedObject(name, dataset_fn),
         expected_result=expected_result)
 
-  return functools.reduce(reduce_fn, cases, [])
+  def cases_to_combinations(cases):
+    return functools.reduce(reduce_cases_to_combinations, cases, [])
+
+  v1_only_combinations = combinations.times(
+      combinations.combine(tf_api_version=1, mode=["eager", "graph"]),
+      cases_to_combinations(v1_only_cases))
+  v2_only_combinations = combinations.times(
+      combinations.combine(tf_api_version=2, mode=["eager", "graph"]),
+      cases_to_combinations(v2_only_cases))
+  v1_and_v2_combinations = combinations.times(
+      combinations.combine(tf_api_version=[1, 2], mode=["eager", "graph"]),
+      cases_to_combinations(v1_and_v2_cases))
+
+  return v1_only_combinations + v2_only_combinations + v1_and_v2_combinations
 
 
 class CardinalityTest(test_base.DatasetTestBase, parameterized.TestCase):
   """Tests for `tf.data.Dataset.cardinality()`."""
 
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         _test_combinations()))
+  @combinations.generate(_test_combinations())
   def testCardinality(self, dataset_fn, expected_result):
     dataset = dataset_fn()
     self.assertEqual(self.evaluate(dataset.cardinality()), expected_result)

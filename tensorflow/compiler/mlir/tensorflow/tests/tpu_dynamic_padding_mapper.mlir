@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-tpu-dynamic-padding | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-tpu-dynamic-padding | FileCheck %s
 
 // Test single argument with padding map lifted to associated encapsulated
 // function.

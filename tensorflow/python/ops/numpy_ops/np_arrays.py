@@ -27,7 +27,17 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.numpy_ops import np_dtypes
 
 
-def convert_to_tensor(value, dtype=None):
+def convert_to_tensor(value, dtype=None, dtype_hint=None):
+  """Wrapper over `tf.convert_to_tensor`.
+
+     Args:
+       value: value to convert
+       dtype: (optional) the type we would like it to be converted to.
+       dtype_hint: (optional) soft preference for the type we would like it to
+         be converted to. `tf.convert_to_tensor` will attempt to convert value
+         to this type first, but will not fail if conversion is not possible
+         falling back to inferring the type instead.
+  """
   # A safer version of `tf.convert_to_tensor` to work around b/149876037.
   # TODO(wangpeng): Remove this function once the bug is fixed.
   if (dtype is None and isinstance(value, six.integer_types) and
@@ -35,7 +45,7 @@ def convert_to_tensor(value, dtype=None):
     dtype = dtypes.uint64
   elif (dtype is None and isinstance(value, float)):
     dtype = np_dtypes.default_float_type()
-  return ops.convert_to_tensor(value, dtype=dtype)
+  return ops.convert_to_tensor(value, dtype=dtype, dtype_hint=dtype_hint)
 
 
 class ndarray(object):  # pylint: disable=invalid-name
@@ -244,49 +254,3 @@ def ndarray_to_tensor(arr, dtype=None, name=None, as_ref=False):
 ops.register_tensor_conversion_function(ndarray, ndarray_to_tensor)
 
 
-# Don't use a namedtuple since nest considers that a tuple and unflattens and
-# flattens it.
-class ShardedNdArray(object):
-  """Wrapper over ndarray that can contain tensors on multiple devices.
-
-    This is returned by extensions.pmap, and contains the individual tensors on
-    different devices.
-  """
-
-  def __init__(self, tensors):
-    """Initializes the ShardedNdArray.
-
-    Note that the tensors should be ordered in the way the pmap producing these
-    tensors is run.
-
-    Args:
-      tensors: list or tuple of eager tensors, one for each device.
-    """
-
-    if not isinstance(tensors, (list, tuple)) or not tensors:
-      raise ValueError(
-          'Unable to create a ShardedNdArray without a list of tensors.')
-    self.tensors = tensors
-    self.n_devices = len(tensors)
-
-  def __getitem__(self, i):
-    return self.tensors[i]
-
-  @property
-  def shape(self):
-    return (self.n_devices,) + self.tensors[0]._shape_tuple()  # pylint: disable=protected-access
-
-  @property
-  def dtype(self):
-    return self.tensors[0].dtype
-
-
-def convert_sharded_tensor_to_eager_tensor(value, *args, **kwargs):
-  del args, kwargs
-  # TODO(nareshmodi): Consider a collective op to gather the tensors from the
-  # various devices for performance reasons.
-  return array_ops.stack(value.tensors)
-
-
-ops.register_tensor_conversion_function(ShardedNdArray,
-                                        convert_sharded_tensor_to_eager_tensor)

@@ -250,6 +250,21 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "gpu_dyn_shape_test",
+    srcs = ["gpu_dyn_shape_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
     name = "gpu_ftz_test",
     srcs = ["gpu_ftz_test.cc"],
     tags = tf_cuda_tests_tags(),

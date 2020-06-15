@@ -38,12 +38,6 @@ limitations under the License.
 #include "tensorflow/lite/tools/optimize/quantize_weights.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
-namespace mlir {
-/// Create a pass to convert from the TFExecutor to the TF control dialect.
-std::unique_ptr<OperationPass<FuncOp>>
-CreateTFExecutorToControlDialectConversion();
-}  // namespace mlir
-
 namespace tensorflow {
 
 using mlir::MLIRContext;

@@ -124,10 +124,9 @@ void PrintInterpreterState(MicroInterpreter* interpreter) {
   for (size_t tensor_index = 0; tensor_index < interpreter->tensors_size();
        tensor_index++) {
     TfLiteTensor* tensor = interpreter->tensor(static_cast<int>(tensor_index));
-    printf("Tensor %3zu %-20s %10s %15s %10zu bytes (%4.1f MB) ", tensor_index,
-           tensor->name, TensorTypeName(tensor->type),
-           AllocTypeName(tensor->allocation_type), tensor->bytes,
-           static_cast<double>(tensor->bytes / (1 << 20)));
+    printf("Tensor %3zu %10s %15s %10zu bytes (%4.1f MB) ", tensor_index,
+           TensorTypeName(tensor->type), AllocTypeName(tensor->allocation_type),
+           tensor->bytes, static_cast<double>(tensor->bytes / (1 << 20)));
     PrintTfLiteIntVector(tensor->dims);
   }
   printf("\n");

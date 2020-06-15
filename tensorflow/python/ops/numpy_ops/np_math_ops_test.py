@@ -326,6 +326,21 @@ class MathTest(test.TestCase, parameterized.TestCase):
     run_test(0, -5, endpoint=False)
     run_test(0, -5, base=2.0)
 
+  def testGeomSpace(self):
+
+    def run_test(start, stop, **kwargs):
+      arg1 = start
+      arg2 = stop
+      self.match(
+          np_math_ops.geomspace(arg1, arg2, **kwargs),
+          np.geomspace(arg1, arg2, **kwargs),
+          msg='geomspace({}, {})'.format(arg1, arg2))
+
+    run_test(1, 1000, num=5)
+    run_test(1, 1000, num=5, endpoint=False)
+    run_test(-1, -1000, num=5)
+    run_test(-1, -1000, num=5, endpoint=False)
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

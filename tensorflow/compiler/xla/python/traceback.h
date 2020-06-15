@@ -29,7 +29,7 @@ namespace xla {
 class Traceback {
  public:
   // Require GIL.
-  static std::unique_ptr<Traceback> Get();
+  static std::shared_ptr<Traceback> Get();
 
   // Require GIL.
   static bool enabled() { return enabled_; }
@@ -56,6 +56,11 @@ class Traceback {
     std::string ToString() const;
   };
   std::vector<Frame> Frames() const;
+
+  const absl::InlinedVector<std::pair<PyCodeObject*, int>, 32>& raw_frames()
+      const {
+    return frames_;
+  }
 
  private:
   absl::InlinedVector<std::pair<PyCodeObject*, int>, 32> frames_;

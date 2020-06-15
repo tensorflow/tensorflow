@@ -68,9 +68,11 @@ def save(model, filepath, overwrite, include_optimizer, signatures=None,
     orig_optimizer = model.optimizer
     model.optimizer = None
 
-  # Trace all functions and signatures with `training=0` instead of using the
-  # default learning phase placeholder.
-  with K.learning_phase_scope(0):
+  # Trace all functions and signatures with `training=0` instead of using an
+  # already-set learning phase placeholder.
+  # This is needed for compatibility reasons until learning phase setting
+  # is removed from the public apis.
+  with K.deprecated_internal_learning_phase_scope(0):
     # When saving a model involving batch norm layer within a strategy scope,
     # the replica context is not available when calling `add_update()`, and thus
     # we use the default replica context here.

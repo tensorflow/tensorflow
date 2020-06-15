@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -tf-annotate-parameter-replication | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -split-input-file -tf-annotate-parameter-replication | FileCheck %s
 
 // Tests that an operand from outside the replicated region is annotated.
 

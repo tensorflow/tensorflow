@@ -489,13 +489,20 @@ table SubGraphMetadata {
   // A description explains details about what the subgraph does.
   description:string;
 
-  // Metadata of all input tensors used in this subgraph.
+  // Metadata of all input tensors used in this subgraph. It matches extactly
+  // the input tensors specified by `SubGraph.inputs` in the TFLite
+  // schema.fbs file[2]. The number of `TensorMetadata` in the array should
+  // equal to the number of indices in `SubGraph.inputs`.
   //
+  // [2]: tensorflow/lite/schema/schema.fbs
   // <Codegen usage>:
   // Determines how to process the inputs.
   input_tensor_metadata:[TensorMetadata];
 
-  // Metadata of all output tensors used in this subgraph.
+  // Metadata of all output tensors used in this subgraph. It matches extactly
+  // the output tensors specified by `SubGraph.outputs` in the TFLite
+  // schema.fbs file[2]. The number of `TensorMetadata` in the array should
+  // equal to the number of indices in `SubGraph.outputs`.
   //
   // <Codegen usage>:
   // Determines how to process the outputs.

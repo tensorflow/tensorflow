@@ -293,6 +293,7 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   EXPECT_EQ(device_plane->event_metadata_size(), 4);
   // Check if device capacity is serialized.
   XPlaneVisitor plane = CreateTfXPlaneVisitor(device_plane);
+<<<<<<< HEAD
 #if GOOGLE_CUDA
   EXPECT_NE(plane.GetStats(kDevCapClockRateKHz), nullptr);
   EXPECT_NE(plane.GetStats(kDevCapCoreCount), nullptr);
@@ -301,6 +302,14 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   EXPECT_NE(plane.GetStats(kDevCapComputeCapMajor), nullptr);
   EXPECT_NE(plane.GetStats(kDevCapComputeCapMinor), nullptr);
 #endif
+=======
+  EXPECT_TRUE(plane.GetStat(kDevCapClockRateKHz).has_value());
+  EXPECT_TRUE(plane.GetStat(kDevCapCoreCount).has_value());
+  EXPECT_TRUE(plane.GetStat(kDevCapMemoryBandwidth).has_value());
+  EXPECT_TRUE(plane.GetStat(kDevCapMemorySize).has_value());
+  EXPECT_TRUE(plane.GetStat(kDevCapComputeCapMajor).has_value());
+  EXPECT_TRUE(plane.GetStat(kDevCapComputeCapMinor).has_value());
+>>>>>>> upstream/master
 
   // Check if the device events timestamps are set.
   int total_events = 0;

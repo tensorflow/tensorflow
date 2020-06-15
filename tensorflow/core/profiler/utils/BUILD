@@ -13,10 +13,14 @@ package_group(
 )
 
 cc_library(
-    name = "errors",
-    srcs = ["errors.cc"],
-    hdrs = ["errors.h"],
+    name = "diagnostics",
+    srcs = ["diagnostics.cc"],
+    hdrs = ["diagnostics.h"],
     deps = [
+        "//tensorflow/core/profiler/protobuf:diagnostics_proto_cc",
+        "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -279,8 +283,11 @@ cc_library(
         ":xplane_visitor",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],

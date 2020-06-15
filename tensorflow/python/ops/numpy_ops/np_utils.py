@@ -119,7 +119,7 @@ def result_type(*arrays_and_dtypes):
   def maybe_get_dtype(x):
     # Don't put np.ndarray in this list, because np.result_type looks at the
     # value (not just dtype) of np.ndarray to decide the result type.
-    if isinstance(x, (np_arrays.ndarray, np_arrays.ShardedNdArray, ops.Tensor,
+    if isinstance(x, (np_arrays.ndarray, ops.Tensor,
                       indexed_slices.IndexedSlices)):
       return _to_numpy_type(x.dtype)
     elif isinstance(x, dtypes.DType):

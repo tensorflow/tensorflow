@@ -229,7 +229,7 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
              const auto status = self->ReadNBytes(bytes_to_read, &result);
              if (!status.ok() && !tensorflow::errors::IsOutOfRange(status)) {
                result.clear();
-               tensorflow::MaybeRaiseRegisteredFromStatus(status);
+               tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
              }
              py::gil_scoped_acquire acquire;
              return py::bytes(result);

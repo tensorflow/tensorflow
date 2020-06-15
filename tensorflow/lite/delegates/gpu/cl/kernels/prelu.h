@@ -75,6 +75,12 @@ absl::Status PReLU::UploadParameters(
   create_info.data_type = definition_.GetPrimaryDataType();
   RETURN_IF_ERROR(
       CreateLinearStorage(create_info, parameters, context, &alpha_));
+
+  LinearStorage lt;
+  RETURN_IF_ERROR(CreateLinearStorage(create_info, parameters, context, &lt));
+  args_.AddObject("alpha", AccessType::READ,
+                  absl::make_unique<LinearStorage>(std::move(lt)));
+
   return absl::OkStatus();
 }
 

@@ -27,8 +27,8 @@ from tensorflow.python import pywrap_tfe
 from tensorflow.python.autograph.core import ag_ctx as autograph_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import shared_variable_creator
-from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -160,8 +160,8 @@ def _call_for_each_replica(distribution, fn, args, kwargs):
         shared_variable_store, index)
     t = _MirroredReplicaThread(
         distribution, coord, index, devices, variable_creator_fn, fn,
-        values.select_replica(index, args),
-        values.select_replica(index, kwargs))
+        distribute_utils.select_replica(index, args),
+        distribute_utils.select_replica(index, kwargs))
     threads.append(t)
 
   for t in threads:
@@ -209,8 +209,10 @@ def _call_for_each_replica(distribution, fn, args, kwargs):
             raise RuntimeError("Some replicas made a different number of "
                                "replica_context().merge_call() calls.")
           # get_replica_context().merge_call() case
-          merge_args = values.regroup(tuple(t.merge_args for t in threads))
-          merge_kwargs = values.regroup(tuple(t.merge_kwargs for t in threads))
+          merge_args = distribute_utils.regroup(
+              tuple(t.merge_args for t in threads))
+          merge_kwargs = distribute_utils.regroup(
+              tuple(t.merge_kwargs for t in threads))
           # We capture the name_scope of the MRT when we call merge_fn
           # to ensure that if we have opened a name scope in the MRT,
           # it will be respected when executing the merge function. We only
@@ -228,13 +230,13 @@ def _call_for_each_replica(distribution, fn, args, kwargs):
             merge_result = threads[0].merge_fn(distribution, *merge_args,
                                                **merge_kwargs)
           for r, t in enumerate(threads):
-            t.merge_result = values.select_replica(r, merge_result)
+            t.merge_result = distribute_utils.select_replica(r, merge_result)
   finally:
     for t in threads:
       t.should_run.set()
     coord.join(threads)
 
-  return values.regroup(tuple(t.main_result for t in threads))
+  return distribute_utils.regroup(tuple(t.main_result for t in threads))
 
 
 class _MirroredReplicaThread(threading.Thread):

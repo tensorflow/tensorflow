@@ -76,13 +76,11 @@ std::string GetSoftmaxKernelCode(
 
 Softmax::Softmax(Softmax&& kernel)
     : GPUOperation(std::move(kernel)),
-      args_(std::move(kernel.args_)),
       kernel_(std::move(kernel.kernel_)),
       work_group_size_(kernel.work_group_size_) {}
 
 Softmax& Softmax::operator=(Softmax&& kernel) {
   if (this != &kernel) {
-    args_ = std::move(kernel.args_);
     kernel_ = std::move(kernel.kernel_);
     std::swap(work_group_size_, kernel.work_group_size_);
     GPUOperation::operator=(std::move(kernel));
@@ -93,7 +91,8 @@ Softmax& Softmax::operator=(Softmax&& kernel) {
 absl::Status Softmax::Compile(const CreationContext& creation_context) {
   std::string code =
       GetSoftmaxKernelCode(definition_, linked_operations_, &args_);
-  RETURN_IF_ERROR(args_.TransformToCLCode(&code));
+  RETURN_IF_ERROR(
+      args_.TransformToCLCode(creation_context.device->GetInfo(), {}, &code));
   code = absl::Substitute(code, args_.GetListOfArgs());
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,

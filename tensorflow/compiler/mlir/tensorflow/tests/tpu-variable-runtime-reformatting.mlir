@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -tf-tpu-variable-runtime-reformatting| FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -split-input-file -tf-tpu-variable-runtime-reformatting| FileCheck %s
 
 // Tests that the pass can correctly transform a training loop with 2 replicas.
 
