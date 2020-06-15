@@ -286,16 +286,34 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       module.Module._TF_MODULE_IGNORED_PROPERTIES
   ))
 
+  # When loading from a SavedModel, Layers typically can be revived into a
+  # generic Layer wrapper. Sometimes, however, layers may implement methods
+  # that go beyond this wrapper, as in the case of PreprocessingLayers'
+  # `adapt` method. When this is the case, layer implementers can override
+  # must_restore_from_config to return True; layers with this property must
+  # be restored into their actual objects (and will fail if the object is
+  # not available to the restoration code).
+  _must_restore_from_config = False
+
   @trackable.no_automatic_dependency_tracking
-  def __init__(self, trainable=True, name=None, dtype=None, dynamic=False,
+  def __init__(self,
+               trainable=True,
+               name=None,
+               dtype=None,
+               dynamic=False,
                **kwargs):
     # These properties should be set by the user via keyword arguments.
     # note that 'dtype', 'input_shape' and 'batch_input_shape'
     # are only applicable to input layers: do not pass these keywords
     # to non-input layers.
     allowed_kwargs = {
-        'input_dim', 'input_shape', 'batch_input_shape', 'batch_size',
-        'weights', 'activity_regularizer', 'autocast'
+        'input_dim',
+        'input_shape',
+        'batch_input_shape',
+        'batch_size',
+        'weights',
+        'activity_regularizer',
+        'autocast',
     }
     # Validate optional keyword arguments.
     generic_utils.validate_kwargs(kwargs, allowed_kwargs)
@@ -637,7 +655,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         Python dictionary.
     """
     all_args = tf_inspect.getfullargspec(self.__init__).args
-    config = {'name': self.name, 'trainable': self.trainable}
+    config = {
+        'name': self.name,
+        'trainable': self.trainable,
+    }
     if hasattr(self, '_batch_input_shape'):
       config['batch_input_shape'] = self._batch_input_shape
     config['dtype'] = policy.serialize(self._dtype_policy)

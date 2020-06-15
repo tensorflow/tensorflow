@@ -407,6 +407,7 @@ class KerasObjectLoader(tf_load.Loader):
     #       found.
     class_name = metadata.get('class_name')
     config = metadata.get('config')
+    must_restore_from_config = metadata.get('must_restore_from_config')
     if not generic_utils.validate_config(config):
       return None
 
@@ -414,7 +415,18 @@ class KerasObjectLoader(tf_load.Loader):
       obj = layers_module.deserialize(
           generic_utils.serialize_keras_class_and_config(class_name, config))
     except ValueError:
-      return None
+      if must_restore_from_config:
+        raise RuntimeError(
+            'Unable to restore a layer of class {cls}. Layers of '
+            'class {cls} require that the class be provided to '
+            'the model loading code, either by registering the '
+            'class using @keras.utils.register_keras_serializable '
+            'on the class def and including that file in your '
+            'program, or by passing the class in a '
+            'keras.utils.CustomObjectScope that wraps this load '
+            'call.'.format(cls=class_name))
+      else:
+        return None
 
     # Use the dtype, name, and trainable status. Often times these are not
     # specified in custom configs, so retrieve their values from the metadata.
