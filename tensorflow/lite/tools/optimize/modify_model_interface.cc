@@ -405,30 +405,8 @@ TfLiteStatus ModifyModelInterface(const string& input_file,
       absl::make_unique<flatbuffers::FlatBufferBuilder>();
   flatbuffers::FlatBufferBuilder builder;
 
-  tflite::TensorType input_override_type;
-  tflite::TensorType output_override_type;
-
-  switch (input_type) {
-    case tflite::TensorType_UINT8:
-    case tflite::TensorType_INT8:
-    case tflite::TensorType_INT16:
-      input_override_type = input_type;
-      break;
-    default:
-      return kTfLiteError;
-  }
-  switch (output_type) {
-    case tflite::TensorType_UINT8:
-    case tflite::TensorType_INT8:
-    case tflite::TensorType_INT16:
-      output_override_type = output_type;
-      break;
-    default:
-      return kTfLiteError;
-  }
-
   auto status = ModifyModelInterface(&builder, tflite_model.get(),
-                                     input_override_type, output_override_type);
+                                     input_type, output_type);
   TFLITE_DCHECK_EQ(status, kTfLiteOk);
 
   WriteFile(output_file, builder.GetBufferPointer(), builder.GetSize());
