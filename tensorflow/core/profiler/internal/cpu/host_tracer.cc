@@ -146,7 +146,7 @@ Status HostTracer::CollectData(XSpace* space) {
     return errors::Internal("TraceMeRecorder not stopped");
   }
   MakeCompleteEvents(&events_);
-  XPlane* plane = GetOrCreatePlane(space, kHostThreads);
+  XPlane* plane = FindOrAddMutablePlaneWithName(space, kHostThreadsPlaneName);
   plane->set_id(kHostPlaneId);
   ConvertCompleteEventsToXPlane(start_timestamp_ns_, events_, plane);
   events_.clear();

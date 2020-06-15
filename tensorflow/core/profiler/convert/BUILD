@@ -47,6 +47,7 @@ tf_cc_test(
         "//tensorflow/core/profiler/utils:time_utils",
         "//tensorflow/core/profiler/utils:xplane_builder",
         "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_test_utils",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -171,6 +172,7 @@ tf_cc_test(
         "//tensorflow/core/profiler/utils:time_utils",
         "//tensorflow/core/profiler/utils:xplane_builder",
         "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_test_utils",
         "@com_google_absl//absl/strings",
     ],
 )

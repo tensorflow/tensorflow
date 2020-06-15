@@ -223,11 +223,12 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
               << " callback api events and " << num_activity_events_
               << " activity events. " << ReportDroppedEvents();
     uint64 end_gpu_ns = CuptiTracer::GetTimestamp();
-    XPlaneBuilder host_plane(GetOrCreatePlane(space, kCuptiDriverApiPlaneName));
+    XPlaneBuilder host_plane(
+        FindOrAddMutablePlaneWithName(space, kCuptiDriverApiPlaneName));
     host_plane.SetId(kCuptiDriverApiPlaneId);
     for (int device_ordinal = 0; device_ordinal < num_gpus_; ++device_ordinal) {
-      std::string name = absl::StrCat(kGpuPlanePrefix, device_ordinal);
-      XPlaneBuilder device_plane(GetOrCreatePlane(space, name));
+      std::string name = GpuPlaneName(device_ordinal);
+      XPlaneBuilder device_plane(FindOrAddMutablePlaneWithName(space, name));
       device_plane.SetId(kGpuPlaneBaseId + device_ordinal);
       per_device_collector_[device_ordinal].Flush(start_gpu_ns_, end_gpu_ns,
                                                   &device_plane, &host_plane);

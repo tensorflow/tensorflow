@@ -41,7 +41,7 @@ Device BuildDeviceAndResource(const XPlaneVisitor& plane) {
   device.set_name(std::string(plane.Name()));
   device.set_device_id(plane.Id());
 
-  bool sort_by_ordinal = plane.Name() == kHostThreads;
+  bool sort_by_ordinal = (plane.Name() == kHostThreadsPlaneName);
   int ordinal = 0;
   plane.ForEachLine([&](const XLineVisitor& line) {
     Resource resource;

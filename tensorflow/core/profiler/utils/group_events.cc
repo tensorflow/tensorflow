@@ -54,13 +54,13 @@ void CreateStatMetadata(XPlane* plane) {
 }
 
 // Returns event type if it is a KernelLaunch or KernelExecute event.
-absl::optional<int64> GetKernelEventType(const XPlaneVisitor& visitor,
+absl::optional<int64> GetKernelEventType(bool is_host_plane,
+                                         const XPlaneVisitor& visitor,
                                          const XEvent& event) {
   for (const auto& stat : event.stats()) {
     if (visitor.GetStatType(stat) == StatType::kCorrelationId) {
-      // TODO(b/149095099): avoid string comparison.
-      return visitor.Name() == kHostThreads ? HostEventType::kKernelLaunch
-                                            : HostEventType::kKernelExecute;
+      return is_host_plane ? HostEventType::kKernelLaunch
+                           : HostEventType::kKernelExecute;
     }
   }
   return absl::nullopt;
@@ -72,14 +72,15 @@ bool IsTfOpEvent(const XPlaneVisitor& visitor, const XEvent& event) {
   return tf_op.category == Category::kTensorFlow;
 }
 
-int64 GetEventType(const XPlaneVisitor& visitor, const XEvent& event) {
+int64 GetEventType(bool is_host_plane, const XPlaneVisitor& visitor,
+                   const XEvent& event) {
   if (absl::optional<int64> event_type = visitor.GetEventType(event)) {
     return *event_type;
   } else if (absl::optional<int64> kernel_event_type =
-                 GetKernelEventType(visitor, event)) {
+                 GetKernelEventType(is_host_plane, visitor, event)) {
     // KernelLaunch and KernelExecute event types are not supported by
     // XPlaneVisitor and should be checked separately.
-    // TODO(148346217): Make XPlaneVisitor support KernelLaunch and
+    // TODO(b/148346217): Make XPlaneVisitor support KernelLaunch and
     // KernelExecute event types.
     return *kernel_event_type;
   } else if (IsTfOpEvent(visitor, event)) {
@@ -396,6 +397,8 @@ bool EventNode::StartsBefore(const EventNode& other) const {
 void EventForest::ConnectIntraThread(const XPlaneVisitor& visitor,
                                      XPlane* plane,
                                      ContextGroupMap* context_groups) {
+  // TODO(b/149095099): avoid string comparison.
+  bool is_host_plane = (visitor.Name() == kHostThreadsPlaneName);
   for (auto& line : *plane->mutable_lines()) {
     std::vector<EventNode*> parent_nodes;
     for (auto& event : *line.mutable_events()) {
@@ -418,7 +421,7 @@ void EventForest::ConnectIntraThread(const XPlaneVisitor& visitor,
       }
       parent_nodes.push_back(cur_node.get());
       // event_node_map_ keeps cur_node alive.
-      event_node_map_[GetEventType(visitor, event)].push_back(
+      event_node_map_[GetEventType(is_host_plane, visitor, event)].push_back(
           std::move(cur_node));
     }
   }

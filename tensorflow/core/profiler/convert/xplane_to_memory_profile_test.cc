@@ -32,9 +32,8 @@ namespace {
 // activities within one memory allocator captured in host trace.
 TEST(ConvertXPlaneToMemoryProfile, OneAllocatorMultiActivitiesTest) {
   XSpace space;
-  XPlane* host_plane = space.add_planes();
+  XPlane* host_plane = GetOrCreateHostXPlane(&space);
   XPlaneBuilder host_plane_builder(host_plane);
-  host_plane_builder.SetName(kHostThreads);
   host_plane_builder.ReserveLines(1);
 
   auto tf_executor_thread = host_plane_builder.GetOrCreateLine(0);

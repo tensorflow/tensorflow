@@ -26,11 +26,11 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-const absl::string_view kHostThreads = "/host:CPU";
+const absl::string_view kHostThreadsPlaneName = "/host:CPU";
 const absl::string_view kGpuPlanePrefix = "/device:GPU:";
 const absl::string_view kCuptiDriverApiPlaneName = "/host:CUPTI";
-const absl::string_view kMetadataPlane = "/host:metadata";
-const absl::string_view kTFStreamzPlane = "/host:tfstreamz";
+const absl::string_view kMetadataPlaneName = "/host:metadata";
+const absl::string_view kTFStreamzPlaneName = "/host:tfstreamz";
 
 const absl::string_view kStepLineName = "Steps";
 const absl::string_view kTensorFlowNameScopeLineName = "TensorFlow Name Scope";
