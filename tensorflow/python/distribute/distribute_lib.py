@@ -602,6 +602,43 @@ class RunOptions(
                  cls).__new__(cls, experimental_enable_dynamic_batch_size,
                               experimental_bucketizing_dynamic_shape)
 
+
+@tf_export("distribute.InputOptions", v1=[])
+class InputOptions(
+    collections.namedtuple("InputOptions", [
+        "experimental_prefetch_to_device",
+    ])):
+  """Run options for `experimental_distribute_dataset(s_from_function)`.
+
+  This can be used to hold some strategy specific configs.
+
+  ```python
+  # Setup TPUStrategy
+  resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
+  tf.config.experimental_connect_to_cluster(resolver)
+  tf.tpu.experimental.initialize_tpu_system(resolver)
+  strategy = tf.distribute.experimental.TPUStrategy(resolver)
+
+  dataset = tf.data.Dataset.range(16)
+  distributed_dataset_on_host = (
+      strategy.experimental_distribute_dataset(
+          dataset,
+          tf.distribute.InputOptions(
+              experimental_prefetch_to_device=False)))
+  ```
+
+  Attributes:
+    experimental_prefetch_to_device: Boolean. Currently only applies to
+      TPUStrategy. Defaults to True. If True, dataset elements will be
+      prefetched to accelerator device memory. When False, dataset elements are
+      prefetched to host device memory. Must be False when using TPUEmbedding
+      API.
+  """
+
+  def __new__(cls, experimental_prefetch_to_device=True):
+    return super(InputOptions, cls).__new__(cls,
+                                            experimental_prefetch_to_device)
+
 # ------------------------------------------------------------------------------
 # Base classes for all distribution strategies.
 
@@ -821,7 +858,7 @@ class StrategyBase(object):
       args = (input_iterator.get_next(),) if input_iterator is not None else ()
     return self.run(fn, args=args)
 
-  def experimental_distribute_dataset(self, dataset):
+  def experimental_distribute_dataset(self, dataset, options=None):
     """Distributes a tf.data.Dataset instance provided via `dataset`.
 
     The returned distributed dataset can be iterated over similar to how
@@ -910,14 +947,17 @@ class StrategyBase(object):
     Args:
       dataset: `tf.data.Dataset` that will be sharded across all replicas using
         the rules stated above.
+      options: `tf.distribute.InputOptions` used to control options on how this
+        dataset is distributed.
 
     Returns:
       A "distributed `Dataset`", which acts like a `tf.data.Dataset` except
       it produces "per-replica" values.
     """
-    return self._extended._experimental_distribute_dataset(dataset)  # pylint: disable=protected-access
+    return self._extended._experimental_distribute_dataset(dataset, options)  # pylint: disable=protected-access
 
-  def experimental_distribute_datasets_from_function(self, dataset_fn):
+  def experimental_distribute_datasets_from_function(self, dataset_fn,
+                                                     options=None):
     """Distributes `tf.data.Dataset` instances created by calls to `dataset_fn`.
 
     `dataset_fn` will be called once for each worker in the strategy. Each
@@ -973,13 +1013,15 @@ class StrategyBase(object):
     Args:
       dataset_fn: A function taking a `tf.distribute.InputContext` instance and
         returning a `tf.data.Dataset`.
+      options: `tf.distribute.InputOptions` used to control options on how this
+        dataset is distributed.
 
     Returns:
       A "distributed `Dataset`", which acts like a `tf.data.Dataset` except
       it produces "per-replica" values.
     """
     return self._extended._experimental_distribute_datasets_from_function(  # pylint: disable=protected-access
-        dataset_fn)
+        dataset_fn, options)
 
   def run(self, fn, args=(), kwargs=None, options=None):
     """Run `fn` on each replica, with the given arguments.
@@ -1943,10 +1985,11 @@ class StrategyExtendedV2(object):
   def _make_input_fn_iterator(self, input_fn, replication_mode):
     raise NotImplementedError("must be implemented in descendants")
 
-  def _experimental_distribute_dataset(self, dataset):
+  def _experimental_distribute_dataset(self, dataset, options):
     raise NotImplementedError("must be implemented in descendants")
 
-  def _experimental_distribute_datasets_from_function(self, dataset_fn):
+  def _experimental_distribute_datasets_from_function(self, dataset_fn,
+                                                      options):
     raise NotImplementedError("must be implemented in descendants")
 
   def _experimental_distribute_values_from_function(self, value_fn):
@@ -2693,10 +2736,11 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
   def variable_created_in_scope(self, v):
     return v._distribute_strategy is None  # pylint: disable=protected-access
 
-  def _experimental_distribute_dataset(self, dataset):
+  def _experimental_distribute_dataset(self, dataset, options):
     return dataset
 
-  def _experimental_distribute_datasets_from_function(self, dataset_fn):
+  def _experimental_distribute_datasets_from_function(self, dataset_fn,
+                                                      options):
     return dataset_fn(InputContext())
 
   def _experimental_distribute_values_from_function(self, value_fn):

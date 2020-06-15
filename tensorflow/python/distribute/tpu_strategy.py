@@ -308,13 +308,14 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     # device 0 for each replica.
     # TODO(cjfj): Create `InputWorkers` lazily, allowing users to place the
     # input onto a different logical device?
-    input_worker_devices = collections.OrderedDict()
+    self._device_input_worker_devices = collections.OrderedDict()
+    self._host_input_worker_devices = collections.OrderedDict()
     for tpu_device in self._tpu_devices[:, 0]:
       host_device = device_util.get_host_for_device(tpu_device)
-      input_worker_devices.setdefault(host_device, [])
-      input_worker_devices[host_device].append(tpu_device)
-    self._input_worker_devices = tuple(input_worker_devices.items())
-    self._input_workers_obj = None
+      self._device_input_worker_devices.setdefault(host_device, [])
+      self._device_input_worker_devices[host_device].append(tpu_device)
+      self._host_input_worker_devices.setdefault(host_device, [])
+      self._host_input_worker_devices[host_device].append(host_device)
 
     # TODO(sourabhbajaj): Remove this once performance of running one step
     # at a time is comparable to multiple steps.
@@ -322,7 +323,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     self._require_static_shapes = True
 
     self.experimental_enable_get_next_as_optional = True
-    self._prefetch_on_host = False
+    self._prefetch_to_device = True
 
     self._logical_device_stack = [0]
 
@@ -339,38 +340,18 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
   # memory and b) TPU Embedding enqueue operation are CPU ops and this avoids
   # a copy back to the host for dense tensors
   def _set_prefetch_on_host(self, value):
-    if self._prefetch_on_host == value:
-      return
-    if self._input_workers_obj is not None:
-      raise RuntimeError("Unable to change prefetch on host behavior as "
-                         "InputWorkers are already created.")
-    self._prefetch_on_host = value
-    if value:
-      # To prefetch on the host, we must set all the input worker devices to the
-      # corresponding host devices.
-      self._input_worker_devices = tuple([
-          tuple([host,
-                 [device_util.get_host_for_device(d) for d in devices]])
-          for host, devices in self._input_worker_devices])
-      # Force creation of the workers.
-      workers = self._input_workers
-      del workers
-
-  @property
-  def _input_workers(self):
-    if self._input_workers_obj is None:
-      self._input_workers_obj = input_lib.InputWorkers(
-          self._input_worker_devices)
-    return self._input_workers_obj
+    self._prefetch_to_device = not value
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     distribute_utils. validate_colocate(colocate_with_variable, self)
 
   def _make_dataset_iterator(self, dataset):
     """Make iterators for each of the TPU hosts."""
+    input_workers = input_lib.InputWorkers(
+        tuple(self._device_input_worker_devices.items()))
     return input_lib.DatasetIterator(
         dataset,
-        self._input_workers,
+        input_workers,
         self._container_strategy(),
         split_batch_by=self._num_replicas_in_sync)
 
@@ -379,7 +360,9 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       input_fn,
       replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
     input_contexts = []
-    num_workers = self._input_workers.num_workers
+    input_workers = input_lib.InputWorkers(
+        tuple(self._device_input_worker_devices.items()))
+    num_workers = input_workers.num_workers
     for i in range(num_workers):
       input_contexts.append(distribute_lib.InputContext(
           num_input_pipelines=num_workers,
@@ -387,7 +370,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           num_replicas_in_sync=self._num_replicas_in_sync))
     return input_lib.InputFunctionIterator(
         input_fn,
-        self._input_workers,
+        input_workers,
         input_contexts,
         self._container_strategy())
 
@@ -396,16 +379,29 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         numpy_input, numpy_dataset.SingleDevice(self._host_device),
         session)
 
-  def _experimental_distribute_dataset(self, dataset):
+  def _get_input_workers(self, options):
+    prefetch_to_device = self._prefetch_to_device
+    if options:
+      prefetch_to_device = options.experimental_prefetch_to_device
+    if prefetch_to_device:
+      return input_lib.InputWorkers(
+          tuple(self._device_input_worker_devices.items()))
+    else:
+      return input_lib.InputWorkers(
+          tuple(self._host_input_worker_devices.items()))
+
+  def _experimental_distribute_dataset(self, dataset, options):
     return input_lib.get_distributed_dataset(
         dataset,
-        self._input_workers,
+        self._get_input_workers(options),
         self._container_strategy(),
         split_batch_by=self._num_replicas_in_sync)
 
-  def _experimental_distribute_datasets_from_function(self, dataset_fn):
+  def _experimental_distribute_datasets_from_function(self, dataset_fn,
+                                                      options):
+    input_workers = self._get_input_workers(options)
     input_contexts = []
-    num_workers = self._input_workers.num_workers
+    num_workers = input_workers.num_workers
     for i in range(num_workers):
       input_contexts.append(distribute_lib.InputContext(
           num_input_pipelines=num_workers,
@@ -414,7 +410,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     return input_lib.get_distributed_datasets_from_function(
         dataset_fn,
-        self._input_workers,
+        input_workers,
         input_contexts,
         self._container_strategy())
 
