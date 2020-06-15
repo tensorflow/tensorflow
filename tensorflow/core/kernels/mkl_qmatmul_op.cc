@@ -91,12 +91,15 @@ limitations under the License.
 // https://software.intel.com/en-us/articles/lower-numerical-precision-deep-learning-inference-and-training
 #ifdef INTEL_MKL
 
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/mkl_matmul_ops_common.h"
 #include "tensorflow/core/kernels/mkl_quantized_conv_ops.h"
 #include "tensorflow/core/kernels/no_op.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/util/mkl_threadpool.h"
+#include "tensorflow/core/util/work_sharder.h"
 
 namespace {
 enum {
@@ -437,6 +440,26 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
                     ((max_input - min_input) *
                      std::max(std::abs(max_weight), std::abs(min_weight)));
 
+#ifdef ENABLE_MKLDNN_THREADPOOL
+        auto parallel_func = [&](int64 start, int64 end) {
+          for (int64 j = start; j < end; j++) {
+            int x = 0;
+            for (int64 i = 0; i < k; ++i) {
+              x += wt_buf[i * n + j];
+            }
+            comp_bias[j] =
+                ((bias_buf[j] * out_scale) + static_cast<float>(x * qa_amin));
+          }
+        };
+
+        const float kArithCost = 2.5f;
+        const float kMovCost = 1.0f;
+        float shard_cost = 4 * kArithCost + kMovCost;
+        const DeviceBase::CpuWorkerThreads& worker_threads =
+            *(context->device()->tensorflow_cpu_worker_threads());
+        Shard(worker_threads.num_threads, worker_threads.workers, n, shard_cost,
+              parallel_func);
+#else
 #pragma omp parallel for schedule(static)
         for (int j = 0; j < n; ++j) {
           int x = 0;
@@ -446,7 +469,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
           comp_bias[j] =
               ((bias_buf[j] * out_scale) + static_cast<float>(x * qa_amin));
         }
-
+#endif  // ENABLE_MKLDNN_THREADPOOL
         return reinterpret_cast<Tbias*>(comp_bias_);
 
       } else if (mode_ == QUANTIZE_MODE_SCALED) {

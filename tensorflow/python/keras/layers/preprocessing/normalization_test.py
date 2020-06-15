@@ -232,7 +232,7 @@ class NormalizationTest(keras_parameterized.TestCase,
 
     cls = get_layer_class()
     layer = cls(axis=-1)
-    layer.build((2,))
+    layer.build((None, 2))
     layer.mean.assign([1.3, 2.0])
     with self.assertRaisesRegex(RuntimeError, "without also setting 'count'"):
       layer.adapt(np.array([[1, 2]]), reset_state=False)
@@ -244,7 +244,7 @@ class NormalizationTest(keras_parameterized.TestCase,
 
     cls = get_layer_class()
     layer = cls(axis=-1)
-    layer.build((2,))
+    layer.build((None, 2))
     layer.variance.assign([1.3, 2.0])
     with self.assertRaisesRegex(RuntimeError, "without also setting 'count'"):
       layer.adapt(np.array([[1, 2]]), reset_state=False)
@@ -252,7 +252,7 @@ class NormalizationTest(keras_parameterized.TestCase,
   def test_weight_setting_continued_adapt_failure(self):
     cls = get_layer_class()
     layer = cls(axis=-1)
-    layer.build((2,))
+    layer.build((None, 2))
     layer.set_weights([np.array([1.3, 2.0]), np.array([0.0, 1.0]), np.array(0)])
     with self.assertRaisesRegex(RuntimeError, "without also setting 'count'"):
       layer.adapt(np.array([[1, 2]]), reset_state=False)
@@ -260,10 +260,20 @@ class NormalizationTest(keras_parameterized.TestCase,
   def test_weight_setting_no_count_continued_adapt_failure(self):
     cls = get_layer_class()
     layer = cls(axis=-1)
-    layer.build((2,))
+    layer.build((None, 2))
     layer.set_weights([np.array([1.3, 2.0]), np.array([0.0, 1.0])])
     with self.assertRaisesRegex(RuntimeError, "without also setting 'count'"):
       layer.adapt(np.array([[1, 2]]), reset_state=False)
+
+  def test_1d_data(self):
+    data = [0, 2, 0, 2]
+    cls = get_layer_class()
+    layer = cls(axis=-1)
+    layer.adapt(data)
+    output = layer(data)
+    self.assertListEqual(output.shape.as_list(), [4, 1])
+    if context.executing_eagerly():
+      self.assertAllClose(output.numpy(), [[-1], [1], [-1], [1]])
 
 
 if __name__ == "__main__":

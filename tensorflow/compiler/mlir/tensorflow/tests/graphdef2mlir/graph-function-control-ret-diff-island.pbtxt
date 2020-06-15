@@ -1,4 +1,4 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -o - | FileCheck %s --dump-input=fail
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -o - | FileCheck %s
 
 # Verify for functions with control return values, the island with only a
 # consumed control return value has its control output added to the GraphOps

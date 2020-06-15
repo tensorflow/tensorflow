@@ -57,6 +57,15 @@ void EnsureUniqueVariableTensorBuffer(TfLiteContext* context,
   }
 }
 
+void VerifyRegistrationAndNodeAllocation(
+    NodeAndRegistration* node_and_registration, size_t count) {
+  for (size_t i = 0; i < count; i++) {
+    TF_LITE_MICRO_EXPECT_NE(nullptr, node_and_registration[i].registration);
+    TF_LITE_MICRO_EXPECT_NE(nullptr, node_and_registration[i].node.inputs);
+    TF_LITE_MICRO_EXPECT_NE(nullptr, node_and_registration[i].node.outputs);
+  }
+}
+
 }  // namespace
 }  // namespace testing
 }  // namespace tflite
@@ -146,23 +155,55 @@ TF_LITE_MICRO_TEST(TestMissingQuantization) {
   TF_LITE_MICRO_EXPECT_EQ(nullptr, allocated_tensor.data.i32);
 }
 
-TF_LITE_MICRO_TEST(TestFinishTensorAllocation) {
+TF_LITE_MICRO_TEST(TestFailsWhenModelStartsTwice) {
   const tflite::Model* model = tflite::testing::GetSimpleMockModel();
   TfLiteContext context;
-  constexpr size_t arena_size =
-      760 /* minimal arena size at the time of writting */ +
-      16 /* alignment */ + 100 /* leave some headroom for future proof */;
+  tflite::testing::MockOpResolver mock_resolver;
+  tflite::NodeAndRegistration* node_and_registration;
+  constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
-  tflite::MicroAllocator* allocator = tflite::MicroAllocator::Create(
-      &context, model, arena, arena_size, micro_test::reporter);
+  tflite::MicroAllocator* allocator =
+      tflite::MicroAllocator::Create(arena, arena_size, micro_test::reporter);
   TF_LITE_MICRO_EXPECT_NE(nullptr, allocator);
-  TF_LITE_MICRO_EXPECT_EQ(4, context.tensors_size);
-  // Memory planning hasn't been finalized, so the used bytes is unknown.
-  TF_LITE_MICRO_EXPECT_EQ(0, allocator->used_bytes());
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, allocator->StartModelAllocation(model, &context, mock_resolver,
+                                                 &node_and_registration));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteError, allocator->StartModelAllocation(
+                                            model, &context, mock_resolver,
+                                            &node_and_registration));
+}
 
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, allocator->FinishTensorAllocation());
-  // No allocation to be done afterwards.
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteError, allocator->FinishTensorAllocation());
+TF_LITE_MICRO_TEST(TestFailsWhenModelFinishesBeforeStart) {
+  const tflite::Model* model = tflite::testing::GetSimpleMockModel();
+  TfLiteContext context;
+  tflite::testing::MockOpResolver mock_resolver;
+  tflite::NodeAndRegistration* node_and_registration;
+  constexpr size_t arena_size = 1024;
+  uint8_t arena[arena_size];
+  tflite::MicroAllocator* allocator =
+      tflite::MicroAllocator::Create(arena, arena_size, micro_test::reporter);
+  TF_LITE_MICRO_EXPECT_NE(nullptr, allocator);
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteError,
+                          allocator->FinishModelAllocation(model, &context));
+}
+
+TF_LITE_MICRO_TEST(TestMockModelAllocation) {
+  const tflite::Model* model = tflite::testing::GetSimpleMockModel();
+  TfLiteContext context;
+  tflite::testing::MockOpResolver mock_resolver;
+  tflite::NodeAndRegistration* node_and_registration;
+  constexpr size_t arena_size = 1024;
+  uint8_t arena[arena_size];
+  tflite::MicroAllocator* allocator =
+      tflite::MicroAllocator::Create(arena, arena_size, micro_test::reporter);
+  TF_LITE_MICRO_EXPECT_NE(nullptr, allocator);
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, allocator->StartModelAllocation(model, &context, mock_resolver,
+                                                 &node_and_registration));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
+                          allocator->FinishModelAllocation(model, &context));
+
+  TF_LITE_MICRO_EXPECT_EQ(4, context.tensors_size);
 
   // NOTE: Tensor indexes match the values in GetSimpleMockModel().
   tflite::testing::VerifyMockTensor(&context.tensors[0]);
@@ -183,17 +224,27 @@ TF_LITE_MICRO_TEST(TestFinishTensorAllocation) {
   TF_LITE_MICRO_EXPECT_NE(context.tensors[3].data.raw,
                           context.tensors[2].data.raw);
   TF_LITE_MICRO_EXPECT_LE(allocator->used_bytes(), 760 + 100);
+
+  // SimpleMockModel has 2 operators:
+  tflite::testing::VerifyRegistrationAndNodeAllocation(node_and_registration,
+                                                       /*count=*/2);
 }
 
 TF_LITE_MICRO_TEST(TestAllocationForModelsWithBranches) {
   const tflite::Model* model = tflite::testing::GetSimpleModelWithBranch();
   TfLiteContext context;
+  tflite::testing::MockOpResolver mock_resolver;
+  tflite::NodeAndRegistration* node_and_registration;
   constexpr size_t arena_size = 4096;
   uint8_t arena[arena_size];
-  tflite::MicroAllocator* allocator = tflite::MicroAllocator::Create(
-      &context, model, arena, arena_size, micro_test::reporter);
+  tflite::MicroAllocator* allocator =
+      tflite::MicroAllocator::Create(arena, arena_size, micro_test::reporter);
   TF_LITE_MICRO_EXPECT_NE(nullptr, allocator);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, allocator->FinishTensorAllocation());
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, allocator->StartModelAllocation(model, &context, mock_resolver,
+                                                 &node_and_registration));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
+                          allocator->FinishModelAllocation(model, &context));
 
   uint8_t* start = context.tensors[0].data.uint8;
   // Check test_helpers.cc BuildSimpleModelWithBranch for model structure.
@@ -208,21 +259,29 @@ TF_LITE_MICRO_TEST(TestAllocationForModelsWithBranches) {
   TF_LITE_MICRO_EXPECT_EQ(96, context.tensors[2].data.uint8 - start);
   // t3 reuses the same memory from t0 as t0 is not an input to any node.
   TF_LITE_MICRO_EXPECT_EQ(0, context.tensors[3].data.uint8 - start);
+
+  // SimpleModelWithBranch has 3 operators:
+  tflite::testing::VerifyRegistrationAndNodeAllocation(node_and_registration,
+                                                       /*count=*/3);
 }
 
-TF_LITE_MICRO_TEST(TestFinishComplexTensorAllocation) {
+TF_LITE_MICRO_TEST(TestAllocationForComplexModelAllocation) {
   const tflite::Model* model = tflite::testing::GetComplexMockModel();
   TfLiteContext context;
+  tflite::testing::MockOpResolver mock_resolver;
+  tflite::NodeAndRegistration* node_and_registration;
   constexpr size_t arena_size = 2048;
   uint8_t arena[arena_size];
-  tflite::MicroAllocator* allocator = tflite::MicroAllocator::Create(
-      &context, model, arena, arena_size, micro_test::reporter);
+  tflite::MicroAllocator* allocator =
+      tflite::MicroAllocator::Create(arena, arena_size, micro_test::reporter);
   TF_LITE_MICRO_EXPECT_NE(nullptr, allocator);
-  TF_LITE_MICRO_EXPECT_EQ(10, context.tensors_size);
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, allocator->StartModelAllocation(model, &context, mock_resolver,
+                                                 &node_and_registration));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
+                          allocator->FinishModelAllocation(model, &context));
 
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, allocator->FinishTensorAllocation());
-  // No allocation to be done afterwards.
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteError, allocator->FinishTensorAllocation());
+  TF_LITE_MICRO_EXPECT_EQ(10, context.tensors_size);
 
   // NOTE: Tensor indexes match the values in GetComplexMockModel().
   tflite::testing::VerifyMockTensor(&context.tensors[0]);
@@ -243,17 +302,10 @@ TF_LITE_MICRO_TEST(TestFinishComplexTensorAllocation) {
   tflite::testing::EnsureUniqueVariableTensorBuffer(&context, 1);
   tflite::testing::EnsureUniqueVariableTensorBuffer(&context, 4);
   tflite::testing::EnsureUniqueVariableTensorBuffer(&context, 7);
-}
 
-TF_LITE_MICRO_TEST(TestDoubleInitFails) {
-  const tflite::Model* model = tflite::testing::GetComplexMockModel();
-  TfLiteContext context;
-  constexpr size_t arena_size = 2048;
-  uint8_t arena[arena_size];
-  tflite::MicroAllocator* allocator = tflite::MicroAllocator::Create(
-      &context, model, arena, arena_size, micro_test::reporter);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, allocator);
-  TF_LITE_MICRO_EXPECT_EQ(10, context.tensors_size);
+  // ComplexMockModel has 3 operators:
+  tflite::testing::VerifyRegistrationAndNodeAllocation(node_and_registration,
+                                                       /*count=*/3);
 }
 
 TF_LITE_MICRO_TESTS_END

@@ -202,7 +202,6 @@ cc_library(
         ":operation_interface",
         ":tensor_handle_interface",
         "//tensorflow/c:tensor_interface",
-        "//tensorflow/c/experimental/saved_model/core:saved_model_api",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

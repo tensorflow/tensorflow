@@ -22,6 +22,8 @@ import json
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine.base_preprocessing_layer import Combiner
 from tensorflow.python.keras.engine.base_preprocessing_layer import CombinerPreprocessingLayer
@@ -56,7 +58,6 @@ class Normalization(CombinerPreprocessingLayer):
         normalization (diving the input by a single scalar value). 0 (the batch
         axis) is not allowed.
 
-
   Examples:
 
   Calculate the mean and variance by analyzing the dataset in `adapt`.
@@ -86,7 +87,9 @@ class Normalization(CombinerPreprocessingLayer):
     self.axis = axis
 
   def build(self, input_shape):
-
+    input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    if len(input_shape) == 1:
+      input_shape = input_shape + [1]
     self._broadcast_shape = [1 for _ in range(len(input_shape))]
     if isinstance(self.axis, (tuple, list)):
       mean_and_var_shape = []
@@ -122,6 +125,9 @@ class Normalization(CombinerPreprocessingLayer):
     super(Normalization, self).build(input_shape)
 
   def call(self, inputs):
+    inputs = ops.convert_to_tensor_v2(inputs)
+    if inputs.shape.rank == 1:
+      inputs = array_ops.expand_dims(inputs, 1)
     # If the inputs are not floats, cast them to floats. This avoids issues
     # with int-float multiplication and division below.
     if inputs.dtype != K.floatx():
@@ -169,6 +175,9 @@ class _NormalizingCombiner(Combiner):
 
   def compute(self, values, accumulator=None):
     """Compute a step in this computation, returning a new accumulator."""
+    values = np.array(values)
+    if values.ndim == 1:
+      values = np.expand_dims(values, 1)
 
     # This is the shape of all reduced axes (not specified in 'axis').
     if self.axis is None:

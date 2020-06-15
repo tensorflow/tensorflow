@@ -52,8 +52,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras.engine import base_layer
-from tensorflow.python.keras.layers import core as core_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
@@ -214,6 +212,15 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
         func()  # Warmup.
       self._run(func, 30000)
 
+  def _benchmark_add_operator_overload(self, a, b):
+    def func():
+      return memoryview(a + b)
+
+    with ops.device("GPU:0" if context.num_gpus() else "CPU:0"):
+      for _ in range(1000):
+        func()  # Warmup.
+      self._run(func, 30000)
+
   def benchmark_add_float_scalars(self):
     self._benchmark_add(42.0, 24.0)
 
@@ -224,6 +231,11 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     tensor_a = constant_op.constant(42.0)
     tensor_b = constant_op.constant(24.0)
     self._benchmark_add(tensor_a, tensor_b)
+
+  def benchmark_add_float_scalar_tensor_overloaded_operator(self):
+    tensor_a = constant_op.constant(42.0)
+    tensor_b = constant_op.constant(24.0)
+    self._benchmark_add_operator_overload(tensor_a, tensor_b)
 
   def benchmark_add_int32_scalar_tensor(self):
     tensor_a = constant_op.constant(42)
@@ -1420,43 +1432,12 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
 
     self._run(fn, 10000)
 
-  # TODO(b/157587712): Move to keras when benchmarks are setup.
-  def benchmark_tf_keras_layer_call_overhead(self):
-
-    class OnlyOverheadLayer(base_layer.Layer):
-
-      def call(self, x):
-        return x
-
-    layer = OnlyOverheadLayer()
-    x = ops.convert_to_tensor([[1.]])
+  def benchmark_tf_nn_convolution_overhead(self):
+    inputs = array_ops.ones((1, 1, 1, 1))
+    filters = array_ops.ones((1, 1, 1, 1))
 
     def fn():
-      layer(x)
-
-    self._run(fn, 10000)
-
-  # TODO(b/157587712): Move to keras when benchmarks are setup.
-  def benchmark_tf_keras_dense_overhead(self):
-
-    layer = core_layers.Dense(1)
-    x = ops.convert_to_tensor([[1.]])
-    layer(x)  # Warmup call to `build` layer.
-
-    def fn():
-      layer(x)
-
-    self._run(fn, 10000)
-
-  # TODO(b/157587712): Move to keras when benchmarks are setup.
-  def benchmark_tf_keras_flatten_overhead(self):
-
-    layer = core_layers.Flatten()
-    x = ops.convert_to_tensor([[[1.]]])
-    layer(x)  # Warmup call to `build` layer.
-
-    def fn():
-      layer(x)
+      nn_ops.convolution_v2(inputs, filters)
 
     self._run(fn, 10000)
 

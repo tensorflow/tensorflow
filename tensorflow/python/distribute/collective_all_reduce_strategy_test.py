@@ -28,11 +28,11 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_utils
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_test_lib
-from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -362,8 +362,8 @@ class CollectiveAllReduceStrategyTestBase(
 
       for expected_value in expected_values:
         next_element = iterator.get_next()
-        computed_value = sess.run([values.select_replica(r, next_element)
-                                   for r in range(len(devices))])
+        computed_value = sess.run([distribute_utils.select_replica(
+            r, next_element) for r in range(len(devices))])
         if ignore_order:
           self.assertCountEqual(list(expected_value), list(computed_value))
         else:
@@ -371,7 +371,7 @@ class CollectiveAllReduceStrategyTestBase(
 
       with self.assertRaises(errors.OutOfRangeError):
         next_element = iterator.get_next()
-        sess.run([values.select_replica(r, next_element)
+        sess.run([distribute_utils.select_replica(r, next_element)
                   for r in range(len(devices))])
 
       # After re-initializing the iterator, should be able to iterate again.
@@ -380,8 +380,9 @@ class CollectiveAllReduceStrategyTestBase(
 
         for expected_value in expected_values:
           next_element = iterator.get_next()
-          computed_value = sess.run([values.select_replica(r, next_element)
-                                     for r in range(len(devices))])
+          computed_value = sess.run([
+              distribute_utils.select_replica(r, next_element)
+              for r in range(len(devices))])
           if ignore_order:
             self.assertCountEqual(list(expected_value), list(computed_value))
           else:

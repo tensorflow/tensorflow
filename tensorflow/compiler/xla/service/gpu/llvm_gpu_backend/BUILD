@@ -39,20 +39,20 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@llvm-project//llvm:Analysis",
+        "@llvm-project//llvm:BitReader",
+        "@llvm-project//llvm:BitWriter",
+        "@llvm-project//llvm:CodeGen",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:IPO",
+        "@llvm-project//llvm:IRReader",
+        "@llvm-project//llvm:Linker",
+        "@llvm-project//llvm:NVPTXCodeGen",  # buildcleaner: keep
+        "@llvm-project//llvm:ObjCARC",  # buildcleaner: keep
+        "@llvm-project//llvm:Scalar",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:Target",
         "@llvm-project//llvm:amdgpu_code_gen",
-        "@llvm-project//llvm:analysis",
-        "@llvm-project//llvm:bit_reader",
-        "@llvm-project//llvm:bit_writer",
-        "@llvm-project//llvm:codegen",
-        "@llvm-project//llvm:ipo_transforms",
-        "@llvm-project//llvm:ir",
-        "@llvm-project//llvm:ir_reader",
-        "@llvm-project//llvm:linker",
-        "@llvm-project//llvm:nvptx_target",  # buildcleaner: keep
-        "@llvm-project//llvm:objcarc_transforms",  # buildcleaner: keep
-        "@llvm-project//llvm:scalar_transforms",
-        "@llvm-project//llvm:support",
-        "@llvm-project//llvm:target_base",
     ],
 )
 
@@ -70,7 +70,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:resource_loader",
-        "@llvm-project//llvm:ir",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
     ],
 )

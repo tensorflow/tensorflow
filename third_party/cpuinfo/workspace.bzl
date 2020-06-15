@@ -2,6 +2,11 @@
 
 load("//third_party:repo.bzl", "third_party_http_archive")
 
+# Sanitize a dependency so that it works correctly from code that includes
+# TensorFlow as a submodule.
+def clean_dep(dep):
+    return str(Label(dep))
+
 def repo():
     third_party_http_archive(
         name = "cpuinfo",
@@ -12,4 +17,5 @@ def repo():
             "https://github.com/pytorch/cpuinfo/archive/6cecd15784fcb6c5c0aa7311c6248879ce2cb8b2.zip",
         ],
         build_file = "//third_party/cpuinfo:BUILD.bazel",
+        patch_file = clean_dep("//third_party/cpuinfo:cpuinfo.patch"),
     )

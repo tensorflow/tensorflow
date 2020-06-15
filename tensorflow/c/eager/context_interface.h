@@ -21,8 +21,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/operation_interface.h"
 #include "tensorflow/c/eager/tensor_handle_interface.h"
-#include "tensorflow/c/experimental/saved_model/core/saved_model_api.h"
 #include "tensorflow/c/tensor_interface.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"
@@ -84,11 +84,10 @@ class AbstractContextInterface {
   // Create an operation to perform op execution
   virtual AbstractOperationInterface* CreateOperation() = 0;
 
-  // Load a SavedModelAPI object from the given directory and tags
-  virtual std::unique_ptr<SavedModelAPI> LoadSavedModelAPI(
-      const std::string& directory,
-      const absl::optional<std::unordered_set<std::string>>& tags,
-      tensorflow::Status* status) = 0;
+  // Returns whether the runtime is backed by TFRT or the legacy TF Eager
+  // Runtime. This is necessary to decouple runtime-dependent
+  // code that is layered on top of the runtime.
+  virtual bool UsesTFRT() = 0;
 
   // List attributes of available devices
   virtual void ListDevices(std::vector<DeviceAttributes>* devices) = 0;

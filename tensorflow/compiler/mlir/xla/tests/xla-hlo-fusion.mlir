@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -xla-hlo-fusion -split-input-file | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt %s -xla-hlo-fusion -split-input-file | FileCheck %s
 
 // CHECK-LABEL: func @multi_outputs_same
 func @multi_outputs_same(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> (tensor<?x?xf32>, tensor<?x?xf32>) {

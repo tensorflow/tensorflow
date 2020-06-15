@@ -151,7 +151,7 @@ gentbl(
 )
 
 gentbl(
-    name = "instcombine_transforms_gen",
+    name = "InstCombineTableGen",
     tbl_outs = [(
         "-gen-searchable-tables",
         "lib/Transforms/InstCombine/InstCombineTables.inc",
@@ -383,15 +383,20 @@ gentbl(
 )
 
 cc_library(
-    name = "utils_tablegen",
+    name = "tblgen",
     srcs = glob([
+        "utils/TableGen/*.cpp",
+        "utils/TableGen/*.h",
         "utils/TableGen/GlobalISel/*.cpp",
     ]),
     hdrs = glob([
         "utils/TableGen/GlobalISel/*.h",
     ]),
     deps = [
-        ":tablegen",
+        ":MC",
+        ":Support",
+        ":TableGen",
+        ":config",
     ],
 )
 
@@ -431,6 +436,7 @@ llvm_target_list = [
         "name": "AArch64",
         "lower_name": "aarch64",
         "short_name": "AArch64",
+        "dir_name": "AArch64",
         "tbl_outs": [
             ("-gen-register-bank", "lib/Target/AArch64/AArch64GenRegisterBank.inc"),
             ("-gen-register-info", "lib/Target/AArch64/AArch64GenRegisterInfo.inc"),
@@ -443,7 +449,8 @@ llvm_target_list = [
             ("-gen-dag-isel", "lib/Target/AArch64/AArch64GenDAGISel.inc"),
             ("-gen-fast-isel", "lib/Target/AArch64/AArch64GenFastISel.inc"),
             ("-gen-global-isel", "lib/Target/AArch64/AArch64GenGlobalISel.inc"),
-            ("-gen-global-isel-combiner -combiners=AArch64PreLegalizerCombinerHelper", "lib/Target/AArch64/AArch64GenGICombiner.inc"),
+            ("-gen-global-isel-combiner -combiners=AArch64PreLegalizerCombinerHelper", "lib/Target/AArch64/AArch64GenPreLegalizeGICombiner.inc"),
+            ("-gen-global-isel-combiner -combiners=AArch64PostLegalizerCombinerHelper", "lib/Target/AArch64/AArch64GenPostLegalizeGICombiner.inc"),
             ("-gen-callingconv", "lib/Target/AArch64/AArch64GenCallingConv.inc"),
             ("-gen-subtarget", "lib/Target/AArch64/AArch64GenSubtargetInfo.inc"),
             ("-gen-disassembler", "lib/Target/AArch64/AArch64GenDisassemblerTables.inc"),
@@ -454,19 +461,19 @@ llvm_target_list = [
         "name": "AMDGPU",
         "lower_name": "amdgpu",
         "short_name": "AMDGPU",
+        "dir_name": "AMDGPU",
         "tbl_outs": [
             ("-gen-register-bank", "lib/Target/AMDGPU/AMDGPUGenRegisterBank.inc"),
             ("-gen-register-info", "lib/Target/AMDGPU/AMDGPUGenRegisterInfo.inc"),
             ("-gen-instr-info", "lib/Target/AMDGPU/AMDGPUGenInstrInfo.inc"),
+            ("-gen-emitter", "lib/Target/AMDGPU/AMDGPUGenMCCodeEmitter.inc"),
+            ("-gen-pseudo-lowering", "lib/Target/AMDGPU/AMDGPUGenMCPseudoLowering.inc"),
+            ("-gen-asm-writer", "lib/Target/AMDGPU/AMDGPUGenAsmWriter.inc"),
+            ("-gen-asm-matcher", "lib/Target/AMDGPU/AMDGPUGenAsmMatcher.inc"),
             ("-gen-dag-isel", "lib/Target/AMDGPU/AMDGPUGenDAGISel.inc"),
             ("-gen-callingconv", "lib/Target/AMDGPU/AMDGPUGenCallingConv.inc"),
             ("-gen-subtarget", "lib/Target/AMDGPU/AMDGPUGenSubtargetInfo.inc"),
-            ("-gen-emitter", "lib/Target/AMDGPU/AMDGPUGenMCCodeEmitter.inc"),
-            ("-gen-dfa-packetizer", "lib/Target/AMDGPU/AMDGPUGenDFAPacketizer.inc"),
-            ("-gen-asm-writer", "lib/Target/AMDGPU/AMDGPUGenAsmWriter.inc"),
-            ("-gen-asm-matcher", "lib/Target/AMDGPU/AMDGPUGenAsmMatcher.inc"),
             ("-gen-disassembler", "lib/Target/AMDGPU/AMDGPUGenDisassemblerTables.inc"),
-            ("-gen-pseudo-lowering", "lib/Target/AMDGPU/AMDGPUGenMCPseudoLowering.inc"),
             ("-gen-searchable-tables", "lib/Target/AMDGPU/AMDGPUGenSearchableTables.inc"),
         ],
         "tbl_deps": [
@@ -474,24 +481,10 @@ llvm_target_list = [
         ],
     },
     {
-        "name": "AMDGPU",
-        "lower_name": "amdgpu_r600",
-        "short_name": "R600",
-        "tbl_outs": [
-            ("-gen-asm-writer", "lib/Target/AMDGPU/R600GenAsmWriter.inc"),
-            ("-gen-callingconv", "lib/Target/AMDGPU/R600GenCallingConv.inc"),
-            ("-gen-dag-isel", "lib/Target/AMDGPU/R600GenDAGISel.inc"),
-            ("-gen-dfa-packetizer", "lib/Target/AMDGPU/R600GenDFAPacketizer.inc"),
-            ("-gen-instr-info", "lib/Target/AMDGPU/R600GenInstrInfo.inc"),
-            ("-gen-emitter", "lib/Target/AMDGPU/R600GenMCCodeEmitter.inc"),
-            ("-gen-register-info", "lib/Target/AMDGPU/R600GenRegisterInfo.inc"),
-            ("-gen-subtarget", "lib/Target/AMDGPU/R600GenSubtargetInfo.inc"),
-        ],
-    },
-    {
         "name": "ARM",
         "lower_name": "arm",
         "short_name": "ARM",
+        "dir_name": "ARM",
         "tbl_outs": [
             ("-gen-register-bank", "lib/Target/ARM/ARMGenRegisterBank.inc"),
             ("-gen-register-info", "lib/Target/ARM/ARMGenRegisterInfo.inc"),
@@ -513,6 +506,7 @@ llvm_target_list = [
         "name": "NVPTX",
         "lower_name": "nvptx",
         "short_name": "NVPTX",
+        "dir_name": "NVPTX",
         "tbl_outs": [
             ("-gen-register-info", "lib/Target/NVPTX/NVPTXGenRegisterInfo.inc"),
             ("-gen-instr-info", "lib/Target/NVPTX/NVPTXGenInstrInfo.inc"),
@@ -525,6 +519,7 @@ llvm_target_list = [
         "name": "PowerPC",
         "lower_name": "powerpc",
         "short_name": "PPC",
+        "dir_name": "PowerPC",
         "tbl_outs": [
             ("-gen-asm-writer", "lib/Target/PowerPC/PPCGenAsmWriter.inc"),
             ("-gen-asm-matcher", "lib/Target/PowerPC/PPCGenAsmMatcher.inc"),
@@ -542,6 +537,7 @@ llvm_target_list = [
         "name": "X86",
         "lower_name": "x86",
         "short_name": "X86",
+        "dir_name": "X86",
         "tbl_outs": [
             ("-gen-register-bank", "lib/Target/X86/X86GenRegisterBank.inc"),
             ("-gen-register-info", "lib/Target/X86/X86GenRegisterInfo.inc"),
@@ -556,6 +552,7 @@ llvm_target_list = [
             ("-gen-callingconv", "lib/Target/X86/X86GenCallingConv.inc"),
             ("-gen-subtarget", "lib/Target/X86/X86GenSubtargetInfo.inc"),
             ("-gen-x86-EVEX2VEX-tables", "lib/Target/X86/X86GenEVEX2VEXTables.inc"),
+            ("-gen-exegesis", "lib/Target/X86/X86GenExegesis.inc"),
         ],
     },
 ]
@@ -588,25 +585,45 @@ gentbl(
     ]),
 )
 
-[
-    gentbl(
-        name = target["lower_name"] + "_target_gen",
+gentbl(
+    name = "r600_target_gen",
+    tbl_outs = [
+        ("-gen-asm-writer", "lib/Target/AMDGPU/R600GenAsmWriter.inc"),
+        ("-gen-callingconv", "lib/Target/AMDGPU/R600GenCallingConv.inc"),
+        ("-gen-dag-isel", "lib/Target/AMDGPU/R600GenDAGISel.inc"),
+        ("-gen-dfa-packetizer", "lib/Target/AMDGPU/R600GenDFAPacketizer.inc"),
+        ("-gen-instr-info", "lib/Target/AMDGPU/R600GenInstrInfo.inc"),
+        ("-gen-emitter", "lib/Target/AMDGPU/R600GenMCCodeEmitter.inc"),
+        ("-gen-register-info", "lib/Target/AMDGPU/R600GenRegisterInfo.inc"),
+        ("-gen-subtarget", "lib/Target/AMDGPU/R600GenSubtargetInfo.inc"),
+    ],
+    tblgen = ":llvm-tblgen",
+    td_file = "lib/Target/AMDGPU/R600.td",
+    td_srcs = [
+        ":common_target_td_sources",
+    ] + glob([
+        "lib/Target/AMDGPU/*.td",
+    ]),
+)
+
+[[
+    [gentbl(
+        name = target["name"] + "CommonTableGen",
         tbl_outs = target["tbl_outs"],
         tblgen = ":llvm-tblgen",
-        td_file = ("lib/Target/" + target["name"] + "/" + target["short_name"] +
-                   ".td"),
-        td_srcs = glob([
-            "lib/Target/" + target["name"] + "/*.td",
-            "include/llvm/CodeGen/*.td",
-            "include/llvm/IR/Intrinsics*.td",
-            "include/llvm/TableGen/*.td",
-            "include/llvm/Target/*.td",
-            "include/llvm/Target/GlobalISel/*.td",
+        td_file = "lib/Target/" + target["dir_name"] + "/" + target["short_name"] + ".td",
+        td_srcs = [
+            ":common_target_td_sources",
+        ] + glob([
+            "lib/Target/" + target["dir_name"] + "/*.td",
         ]),
         deps = target.get("tbl_deps", []),
-    )
-    for target in llvm_target_list
-]
+    )],
+    [alias(
+        name = target["lower_name"] + "_target_gen",
+        actual = target["name"] + "CommonTableGen",
+    )],
+] for target in llvm_target_list]
 
 # This target is used to provide *.def files to x86_code_gen.
 # Files with '.def' extension are not allowed in 'srcs' of 'cc_library' rule.
@@ -648,17 +665,14 @@ cc_binary(
 )
 
 cc_library(
-    name = "all_targets",
+    name = "AllTargetsCodeGens",
     deps = [
-        ":aarch64_code_gen",
-        ":amdgpu_code_gen",
-        ":arm_code_gen",
-        ":nvptx_code_gen",
-        ":powerpc_code_gen",
-        ":x86_code_gen",
+        target["name"] + "CodeGen"
+        for target in llvm_target_list
     ],
 )
 
+########################## Begin generated content ##########################
 cc_library(
     name = "AArch64AsmParser",
     srcs = glob([
@@ -997,10 +1011,10 @@ cc_library(
     copts = llvm_copts + ["-Iexternal/llvm-project/llvm/lib/Target/AMDGPU"],
     deps = [
         ":Support",
-        ":amdgpu_r600_target_gen",
         ":amdgpu_target_gen",
         ":config",
         ":core",
+        ":r600_target_gen",
     ],
 )
 
@@ -1028,9 +1042,9 @@ cc_library(
         ":Core",
         ":MC",
         ":Support",
-        ":amdgpu_r600_target_gen",
         ":amdgpu_target_gen",
         ":config",
+        ":r600_target_gen",
     ],
 )
 
@@ -5540,4 +5554,19 @@ alias(
 alias(
     name = "x86_target_disassembler",
     actual = ":x86_disassembler",
+)
+
+alias(
+    name = "all_targets",
+    actual = ":AllTargetsCodeGens",
+)
+
+alias(
+    name = "instcombine_transforms_gen",
+    actual = ":InstCombineTableGen",
+)
+
+alias(
+    name = "utils_tablegen",
+    actual = ":tblgen",
 )

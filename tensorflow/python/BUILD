@@ -1070,6 +1070,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:script_ops_op_lib",
+        "//tensorflow/core/platform:logging",
         "//third_party/python_runtime:headers",
     ],
 )
@@ -1369,6 +1370,7 @@ py_library(
         ":tensor_shape",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:execute",
+        "//tensorflow/python/profiler:traceme",
     ],
 )
 
@@ -5623,6 +5625,19 @@ tf_py_test(
     ],
 )
 
+cc_library(
+    name = "stack_trace",
+    srcs = ["util/stack_trace.cc"],
+    hdrs = ["util/stack_trace.h"],
+    deps = [
+        ":py_util",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
 py_library(
     name = "util",
     srcs = glob(
@@ -6633,6 +6648,7 @@ tf_py_test(
     deps = [
         ":client",
         ":client_testlib",
+        ":control_flow_v2_toggles",
         ":framework",
         ":framework_for_generated_wrappers",
         ":math_ops",
@@ -6650,9 +6666,11 @@ tf_py_test(
     python_version = "PY3",
     tags = ["no_rocm"],
     deps = [
-        "client_testlib",
-        "framework_test_lib",
+        ":client_testlib",
+        ":control_flow_v2_toggles",
         ":convert_to_constants",
+        ":framework_test_lib",
+        ":math_ops",
     ],
 )
 

@@ -24,12 +24,7 @@ from tensorflow.python.ops.numpy_ops import np_random as random
 # pylint: disable=wildcard-import
 
 from tensorflow.python.ops.numpy_ops.np_array_ops import *
-# TODO(wangpeng): Move ShardedNdArray, convert_to_tensor, tensor_to_ndarray out
-# of here.
-from tensorflow.python.ops.numpy_ops.np_arrays import convert_to_tensor
 from tensorflow.python.ops.numpy_ops.np_arrays import ndarray
-from tensorflow.python.ops.numpy_ops.np_arrays import ShardedNdArray
-from tensorflow.python.ops.numpy_ops.np_arrays import tensor_to_ndarray
 from tensorflow.python.ops.numpy_ops.np_dtypes import *
 from tensorflow.python.ops.numpy_ops.np_math_ops import *
 from tensorflow.python.ops.numpy_ops.np_utils import finfo

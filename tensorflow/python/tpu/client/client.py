@@ -19,11 +19,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import datetime
 import logging
 import os
 import time
-from concurrent import futures
 
+from absl import flags
+from concurrent import futures
 from six.moves.urllib import request
 from six.moves.urllib.error import HTTPError
 
@@ -34,12 +36,30 @@ try:
 except ImportError:
   _GOOGLE_API_CLIENT_INSTALLED = False
 
+FLAGS = flags.FLAGS
+
+flags.DEFINE_bool('runtime_oom_exit', True,
+                  'Exit the script when the TPU runtime is OOM.')
+
 _GKE_ENV_VARIABLE = 'KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS'
 _ENDPOINTS_SEPARATOR = ','
 _DEFAULT_ENV_VARIABLE = 'TPU_NAME'
 _DISCOVERY_SERVICE_URL_ENV_VARIABLE = 'TPU_API_DISCOVERY_URL'
 _GCE_METADATA_ENDPOINT = 'http://metadata.google.internal'
 _DEFAULT_ENDPOINT_PORT = '8470'
+_OOM_EVENT_COOL_TIME_SEC = 90
+
+
+def _utcnow():
+  """A wrapper function around datetime.datetime.utcnow.
+
+  This function is created for unit testing purpose. It's not easy to do
+  StubOutWithMock with datetime.datetime package.
+
+  Returns:
+    datetime.datetime
+  """
+  return datetime.datetime.utcnow()
 
 
 def _environment_discovery_url():
@@ -140,6 +160,32 @@ class Client(object):
         self._zone = zone_path.split('/')[-1]
       self._discovery_url = _environment_discovery_url() or discovery_url
 
+  def _symptom_msg(self, msg):
+    """Return the structured Symptom message."""
+    return 'Symptom: ' + msg
+
+  def _oom_event(self):
+    """Check if a runtime OOM event is reported."""
+    symptoms = self.symptoms()
+    if not symptoms:
+      return False
+    for symptom in reversed(symptoms):
+      if symptom['symptomType'] != 'OUT_OF_MEMORY':
+        continue
+      oom_datetime_str = symptom['createTime'].split('.')[0]
+      oom_datetime = datetime.datetime.strptime(oom_datetime_str,
+                                                '%Y-%m-%dT%H:%M:%S')
+      time_diff = _utcnow() - oom_datetime
+      if time_diff < datetime.timedelta(seconds=_OOM_EVENT_COOL_TIME_SEC):
+        logging.warning(self._symptom_msg(
+            'a recent runtime OOM has occured ~{} seconds ago. The model '
+            'script will terminate automatically. To prevent future OOM '
+            'events, please consider reducing the model size. To disable this '
+            'behavior, set flag --runtime_oom_exit=false when starting the '
+            'script.'.format(time_diff.seconds)))
+        return True
+    return False
+
   def _tpu_service(self):
     """Creates a new Cloud TPU API object.
 
@@ -213,7 +259,13 @@ class Client(object):
     state = self.state()
     if state and state in ['TERMINATED', 'PREEMPTED']:
       return False
+    elif FLAGS.runtime_oom_exit and self._oom_event():
+      return False
     return True
+
+  def symptoms(self):
+    """Return Cloud TPU Symptoms of the TPU."""
+    return self._get_tpu_property('symptoms')
 
   def state(self):
     """Return state of the TPU."""

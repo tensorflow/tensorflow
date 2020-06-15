@@ -159,7 +159,7 @@ class MathTest(test.TestCase, parameterized.TestCase):
         actual.shape, expected.shape,
         'Shape mismatch.\nActual: {}\nExpected: {}\n{}'.format(
             actual.shape, expected.shape, msg))
-    np.testing.assert_almost_equal(actual.tolist(), expected.tolist())
+    np.testing.assert_allclose(actual.tolist(), expected.tolist(), rtol=1e-6)
 
   def testArgsort(self):
     self._testUnaryOp(np_math_ops.argsort, np.argsort, 'argsort')
@@ -325,6 +325,21 @@ class MathTest(test.TestCase, parameterized.TestCase):
     run_test(0, -5, num=10)
     run_test(0, -5, endpoint=False)
     run_test(0, -5, base=2.0)
+
+  def testGeomSpace(self):
+
+    def run_test(start, stop, **kwargs):
+      arg1 = start
+      arg2 = stop
+      self.match(
+          np_math_ops.geomspace(arg1, arg2, **kwargs),
+          np.geomspace(arg1, arg2, **kwargs),
+          msg='geomspace({}, {})'.format(arg1, arg2))
+
+    run_test(1, 1000, num=5)
+    run_test(1, 1000, num=5, endpoint=False)
+    run_test(-1, -1000, num=5)
+    run_test(-1, -1000, num=5, endpoint=False)
 
 
 if __name__ == '__main__':

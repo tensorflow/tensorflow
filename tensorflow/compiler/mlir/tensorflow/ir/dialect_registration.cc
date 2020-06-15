@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -23,8 +22,6 @@ limitations under the License.
 namespace mlir {
 
 // Static initialization for TF dialect registration.
-static DialectRegistration<TFControlFlow::TFControlFlowDialect>
-    tf_control_flow_ops;
 static DialectRegistration<TF::TensorFlowDialect> tf_ops;
 static DialectRegistration<tf_executor::TensorFlowExecutorDialect>
     tf_executor_dialect;

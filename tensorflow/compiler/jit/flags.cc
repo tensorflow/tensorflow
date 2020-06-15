@@ -33,6 +33,7 @@ MarkForCompilationPassFlags* mark_for_compilation_flags;
 XlaDeviceFlags* device_flags;
 XlaOpsCommonFlags* ops_flags;
 IntroduceFloatingPointJitterPassFlags* jitter_flags;
+MlirCommonFlags* mlir_flags;
 
 std::vector<Flag>* flag_list;
 absl::once_flag flags_init;
@@ -166,6 +167,9 @@ void AllocateAndParseFlags() {
   jitter_flags = new IntroduceFloatingPointJitterPassFlags;
   jitter_flags->jitter_amount = 1e-5;
 
+  mlir_flags = new MlirCommonFlags;
+  mlir_flags->tf_mlir_enable_mlir_bridge = false;
+
   auto setter_for_jitter_tensor_names = [](string sequence) {
     jitter_flags->tensor_names = absl::StrSplit(sequence, ',');
     return true;
@@ -211,7 +215,11 @@ void AllocateAndParseFlags() {
        Flag("tf_introduce_floating_point_jitter_amount",
             &jitter_flags->jitter_amount,
             "The amount of jitter to introduce.  This amount is added to each "
-            "element in the tensors named in `tensor_names.")});
+            "element in the tensors named in `tensor_names."),
+
+       Flag("tf_mlir_enable_mlir_bridge",
+            &mlir_flags->tf_mlir_enable_mlir_bridge,
+            "Enables experimental MLIR-Based TensorFlow Compiler Bridge.")});
 
   AppendMarkForCompilationPassFlagsInternal(flag_list);
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", *flag_list);
@@ -248,6 +256,11 @@ const IntroduceFloatingPointJitterPassFlags&
 GetIntroduceFloatingPointJitterPassFlags() {
   absl::call_once(flags_init, &AllocateAndParseFlags);
   return *jitter_flags;
+}
+
+MlirCommonFlags* GetMlirCommonFlags() {
+  absl::call_once(flags_init, &AllocateAndParseFlags);
+  return mlir_flags;
 }
 
 void AppendMarkForCompilationPassFlags(std::vector<Flag>* flag_list) {

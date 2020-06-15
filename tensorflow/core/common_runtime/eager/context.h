@@ -34,7 +34,6 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/c/eager/context_interface.h"
-#include "tensorflow/c/experimental/saved_model/core/saved_model_api.h"
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -186,14 +185,7 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
       Status* status) override;
   AbstractOperationInterface* CreateOperation() override;
 
-  // Loads a SavedModelAPI from `directory`, with a metagraphdef fitting
-  // the optional "tags". On success status->ok() will be true, and the
-  // returned pointer is non-null. On failure, `status` will be set to
-  // an appropriate error, and nullptr is returned.
-  std::unique_ptr<SavedModelAPI> LoadSavedModelAPI(
-      const std::string& directory,
-      const absl::optional<std::unordered_set<std::string>>& tags,
-      tensorflow::Status* status) override;
+  bool UsesTFRT() override;
 
   void ListDevices(std::vector<DeviceAttributes>* devices) override;
 

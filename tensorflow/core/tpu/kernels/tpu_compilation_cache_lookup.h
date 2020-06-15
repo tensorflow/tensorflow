@@ -67,14 +67,14 @@ class TpuCompilationCacheLookup : public ResourceBase {
 };
 
 // Forward declaration to break cycle dependency graph.
-class TpuCompilationCacheInterface;
+class TpuCompilationCacheExternal;
 
 // Class for looking up ISA protos when the execute and compile Op are in the
 // same address space. The proto is simply looked up in the compilation cache,
 // without any serialization taking place.
 class TpuCompilationCacheLocalLookup : public TpuCompilationCacheLookup {
  public:
-  explicit TpuCompilationCacheLocalLookup(TpuCompilationCacheInterface* cache);
+  explicit TpuCompilationCacheLocalLookup(TpuCompilationCacheExternal* cache);
   ~TpuCompilationCacheLocalLookup() override;
 
   Status Lookup(const string& proto_key,
@@ -90,7 +90,7 @@ class TpuCompilationCacheLocalLookup : public TpuCompilationCacheLookup {
  private:
   // The subgraph compilation cache, in the same process address space where the
   // lookups are happening.
-  TpuCompilationCacheInterface* cache_;
+  TpuCompilationCacheExternal* cache_;
 };
 
 }  // namespace tpu

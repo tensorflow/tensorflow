@@ -228,4 +228,6 @@ def path_to_image(path, image_size, num_channels, interpolation):
   img = io_ops.read_file(path)
   img = image_ops.decode_image(
       img, channels=num_channels, expand_animations=False)
-  return image_ops.resize_images_v2(img, image_size, method=interpolation)
+  img = image_ops.resize_images_v2(img, image_size, method=interpolation)
+  img.set_shape((image_size[0], image_size[1], num_channels))
+  return img

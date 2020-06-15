@@ -1,6 +1,8 @@
 # Description:
 #   Implementation of Keras benchmarks.
 
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
@@ -29,5 +31,15 @@ py_test(
     deps = [
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "eager_microbenchmarks_test",
+    size = "medium",
+    srcs = ["eager_microbenchmarks_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/python/keras",
     ],
 )

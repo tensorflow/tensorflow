@@ -967,6 +967,23 @@ REGISTER_OP("_FusedMatMul")
     // --------------------------------------------- //
     .SetShapeFn(shape_inference::MatMulShape)
     .Doc(R"doc(
+Performs a MatMul followed by a specified series of operations.
+
+The inputs to the MatMul are specified by `a` and `b`. The series of operations
+that follows is specified by the `fused_ops` attribute, which is a list of TF op
+names specified as strings (e.g. "Relu"). They are performed in order, where the
+(first) input to each op is the output of the preceding op. The first input and
+the output of each fused_op must be of type T.
+
+Currently supported fused_op combinations are: ["BiasAdd"] and ["BiasAdd",A],
+where A is one of {"Elu","Relu","Relu6"}.
+
+* The first input to BiasAdd is the Conv2D result, and the additional BiasAdd
+input is specified by `args`.
+* If there is an op A specified, the output of the BiasAdd is the input to op A,
+and op A produces the _FusedConv2D output. Otherwise, the BiasAdd produces the
+_FusedConv2D output.
+
 *NOTE*: Do not invoke this operator directly in Python. Grappler is
 expected to create these operators.
 )doc");

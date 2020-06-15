@@ -32,6 +32,8 @@ ABSL_CONST_INIT extern const absl::string_view kErrorNoStepMarker;
 
 ABSL_CONST_INIT extern const absl::string_view kNoDeviceTraceCollected;
 
+ABSL_CONST_INIT extern const absl::string_view kStepsDropped;
+
 void PopulateStepDiagnostics(const OpStats& op_stats, Diagnostics* diag);
 
 void PopulateOverviewDiagnostics(const OpStats& op_stats, Diagnostics* diag);

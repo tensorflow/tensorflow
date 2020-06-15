@@ -1,10 +1,10 @@
 // Run optimize pass only and check the results.
-// RUN: tf-opt %s -tfl-optimize | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt %s -tfl-optimize | FileCheck %s
 // Run optimize pass and then canonicalize pass, and make sure some folding is applied.
 // RUN: tf-opt %s -tfl-optimize -canonicalize | FileCheck --check-prefix=FOLD %s
 
 // Run legalize pass and then optimize pass, and make sure some fusing is applied.
-// RUN: tf-opt %s -tfl-legalize-tf -tfl-optimize | FileCheck --check-prefix=Fusing --dump-input-on-failure %s
+// RUN: tf-opt %s -tfl-legalize-tf -tfl-optimize | FileCheck --check-prefix=Fusing %s
 
 // CHECK-LABEL: fusedConv2dRelu
 func @fusedConv2dRelu(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x3x3xf32>, %arg2: tensor<16xf32>) -> tensor<256x30x30x16xf32> {

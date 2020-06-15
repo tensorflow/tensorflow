@@ -23,13 +23,19 @@ class GetScalarOfType<int value> : NativeCodeCall<
 
 // Creates a tf.ReadVariable op that reads a resource `$2` that has the same
 // element type as `$1`. The op created will use location of `$0`.
-def CreateTFReadVariableOp: NativeCodeCall<
+def CreateTFReadVariableOp : NativeCodeCall<
     "$_builder.create<TF::ReadVariableOp>("
     "  $0.getLoc(),"
     "  GetResourceSubtypeOrDefault("
     "    $2, $1.getType().cast<TensorType>().getElementType()),"
     "  $2)"
     >;
+
+def CheckHasResourceSubtype : Constraint<CPred<"HasResourceSubtype($0)">>;
+
+def CreateTFReadVariableOpFromResourceHandle : NativeCodeCall<
+    "$_builder.create<TF::ReadVariableOp>("
+    "$0.getLoc(), GetResourceSubtype($1), $1)">;
 
 def DecomposeAssignAddVariableOp :
   Pat<
@@ -315,3 +321,9 @@ def DecomposeResourceScatterUpdate : Pat<
       $updates
     )
   )>;
+
+// Pattern to decompose tf.VariableShape into tf.ReadVariable and tf.Shape.
+def DecomposeVariableShape : Pat<
+  (TF_VariableShapeOp:$src_op $resource),
+  (TF_ShapeOp (CreateTFReadVariableOpFromResourceHandle $src_op, $resource)),
+  [(CheckHasResourceSubtype $resource)]>;

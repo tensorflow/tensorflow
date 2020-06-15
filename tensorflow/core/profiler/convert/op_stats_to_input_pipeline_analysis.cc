@@ -637,10 +637,7 @@ void OutputAnalysis(double output_percent, std::string* output_classification,
         "you would need to reduce both the output time and other time.");
   } else {
     *output_classification = "device";
-    *output_statement =
-        absl::StrCat("Your program is NOT output-bound because only ",
-                     tc_outfeed_percent_str,
-                     "% of the total step time sampled is spent on output.");
+    *output_statement = "";
   }
 }
 

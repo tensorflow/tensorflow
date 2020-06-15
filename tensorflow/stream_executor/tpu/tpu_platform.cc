@@ -106,6 +106,10 @@ int64 TpuPlatform::TpuMemoryLimit() {
   return TpuPlatform_TpuMemoryLimit(platform_);
 }
 
+bool TpuPlatform::ShouldRegisterTpuDeviceToDeviceCopy() {
+  return TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopy(platform_);
+}
+
 }  // namespace tensorflow
 
 void RegisterTpuPlatform() {

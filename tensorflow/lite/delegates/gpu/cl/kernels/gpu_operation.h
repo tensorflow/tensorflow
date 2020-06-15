@@ -159,11 +159,20 @@ class ElementwiseOperation : public GPUOperation {
   virtual absl::Status BindArguments(CLKernel* kernel) {
     return absl::OkStatus();
   }
+  virtual absl::Status SetArgs(const std::string& unique_postfix,
+                               Arguments* args) {
+    return absl::OkStatus();
+  }
+
+  Arguments&& MoveArgs() { return std::move(args_); }
+  std::string GetCode() const { return code_; }
 
   // ovveride to return false if for any reason operation can not be linked.
   virtual bool IsLinkable() const { return true; }
 
  protected:
+  bool check_src_channels_size_ = false;
+  std::string code_;
   absl::Status BindArguments();
   int3 GetGridSize() const;
   CLKernel kernel_;
@@ -184,6 +193,13 @@ std::string PostProcess(const std::vector<ElementwiseOperation*>& linked_ops,
 // Every ElementwiseOperation can bind her arguments.
 absl::Status BindArgs(CLKernel* kernel,
                       const std::vector<ElementwiseOperation*>& linked_ops);
+
+absl::Status MergeOperations(
+    const std::vector<ElementwiseOperation*>& linked_ops,
+    Arguments* merged_args, std::string* merged_code);
+
+absl::Status SetArguments(const std::vector<ElementwiseOperation*>& linked_ops,
+                          Arguments* args);
 
 }  // namespace cl
 }  // namespace gpu
