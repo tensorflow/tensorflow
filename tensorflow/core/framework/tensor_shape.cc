@@ -187,7 +187,7 @@ void TensorShapeBase<Shape>::InitDims(gtl::ArraySlice<int64> dim_sizes) {
                 "bad overflow check");
   bool large_size = false;
   for (auto s : dim_sizes) {
-    if (static_cast<size_t>(s) > static_cast<size_t>(kMaxSmall)) {
+    if (s > kMaxSmall) {
       large_size = true;
       break;
     }

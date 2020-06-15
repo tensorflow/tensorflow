@@ -85,7 +85,7 @@ Status InputBuffer::ReadNBytes(int64 bytes_to_read, string* result) {
   result->resize(bytes_to_read);
   size_t bytes_read = 0;
   Status status = ReadNBytes(bytes_to_read, &(*result)[0], &bytes_read);
-  if (static_cast<int64>(bytes_read) < bytes_to_read) result->resize(bytes_read);
+  if (bytes_read < bytes_to_read) result->resize(bytes_read);
   return status;
 }
 
@@ -204,7 +204,7 @@ Status InputBuffer::Hint(int64 bytes_to_read) {
   }
 
   // The internal buffer is too small. Do nothing.
-  if (bytes_to_read > static_cast<int64>(size_)) {
+  if (bytes_to_read > size_) {
     return Status::OK();
   }
 
@@ -230,7 +230,7 @@ Status InputBuffer::Hint(int64 bytes_to_read) {
   limit_ += data.size();
   file_pos_ += data.size();
 
-  if (errors::IsOutOfRange(s) && data.size() == static_cast<size_t>(bytes_to_read)) {
+  if (errors::IsOutOfRange(s) && data.size() == bytes_to_read) {
     return Status::OK();
   } else {
     return s;
