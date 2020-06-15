@@ -241,8 +241,7 @@ def _distribute(processing_mode,
     # TODO(b/157105111): Make this an autotuned parallel map when we have a way
     # to limit memory usage.
     dataset = dataset.map(
-        lambda x: compression_ops.uncompress(x, output_spec=uncompressed_spec),
-        num_parallel_calls=4)
+        lambda x: compression_ops.uncompress(x, output_spec=uncompressed_spec))
 
     # Disable autosharding for shared jobs.
     if job_name:
