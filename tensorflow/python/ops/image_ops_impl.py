@@ -910,6 +910,10 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
     offset_width: Number of columns of zeros to add on the left.
     target_height: Height of output image.
     target_width: Width of output image.
+    mode: One of "CONSTANT", "REFLECT", or "SYMMETRIC" (case-insensitive)
+    name: A name for the operation (optional).
+    constant_values: In "CONSTANT" mode, the scalar pad value to use. Must be
+      same type as `tensor`.
 
   Returns:
     If `image` was 4-D, a 4-D float Tensor of shape
@@ -1063,7 +1067,7 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
     'image.resize_with_crop_or_pad',
     v1=['image.resize_with_crop_or_pad', 'image.resize_image_with_crop_or_pad'])
 @dispatch.add_dispatch_support
-def resize_image_with_crop_or_pad(image, target_height, target_width):
+def resize_image_with_crop_or_pad(image, target_height, target_width, mode="CONSTANT", name=None, constant_values=0):
   """Crops and/or pads an image to a target width and height.
 
   Resizes an image to a target width and height by either centrally
@@ -1080,6 +1084,10 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
       of shape `[height, width, channels]`.
     target_height: Target height.
     target_width: Target width.
+    mode: One of "CONSTANT", "REFLECT", or "SYMMETRIC" (case-insensitive)
+    name: A name for the operation (optional).
+    constant_values: In "CONSTANT" mode, the scalar pad value to use. Must be
+      same type as `tensor`.
 
   Raises:
     ValueError: if `target_height` or `target_width` are zero or negative.
@@ -1157,7 +1165,7 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
 
     # Maybe pad if needed.
     resized = pad_to_bounding_box(cropped, offset_pad_height, offset_pad_width,
-                                  target_height, target_width)
+                                  target_height, target_width, mode=mode, name=name, constant_values=constant_values)
 
     # In theory all the checks below are redundant.
     if resized.get_shape().ndims is None:
