@@ -33,7 +33,7 @@ to
 [announce@tensorflow.org](https://groups.google.com/a/tensorflow.org/forum/#!forum/announce).
 See all the [mailing lists](https://www.tensorflow.org/community/forums).
 
-## Install
+## Installation
 
 See the [TensorFlow install guide](https://www.tensorflow.org/install) for the
 [pip package](https://www.tensorflow.org/install/pip), to
