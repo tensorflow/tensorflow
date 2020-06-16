@@ -62,6 +62,8 @@ typedef struct {
     } broadcast;
     struct {
       bool pot_scale_int16;
+      int32_t num_dims;
+      bool need_broadcast;
     } addsub;
   } options;
 } OpSignature;
