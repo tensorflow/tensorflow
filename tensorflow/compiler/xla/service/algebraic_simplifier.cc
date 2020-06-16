@@ -573,6 +573,7 @@ void AlgebraicSimplifierVisitor::ReplaceWithBitcast(HloInstruction* instruction,
 
   auto bitcast = computation_->AddInstruction(
       HloInstruction::CreateBitcast(instruction->shape(), operand));
+  bitcast->set_metadata(instruction->metadata());
   TF_CHECK_OK(ReplaceInstruction(instruction, bitcast));
 }
 
