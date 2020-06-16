@@ -3602,6 +3602,7 @@ cc_library(
     ]),
     copts = llvm_copts,
     deps = [
+        ":Core",
         ":MC",
         ":MCDisassembler",
         ":Object",
