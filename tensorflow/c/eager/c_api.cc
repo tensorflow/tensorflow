@@ -713,8 +713,8 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
     status->status = tfrt::ListOpHandlerChains(
         opts->session_options.options, &op_handler_chains, &device_attributes);
     if (!status->status.ok()) return nullptr;
-    return tensorflow::wrap(
-        new tfrt::ContextInterface(op_handler_chains, device_attributes));
+    return tensorflow::wrap(new tfrt::ContextInterface(
+        op_handler_chains, device_attributes, opts->async));
 #else
     status->status = tensorflow::errors::Unimplemented("TFRT is not supported");
     return nullptr;
