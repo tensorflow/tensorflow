@@ -327,6 +327,8 @@ string GetTempFilename(const string& extension) {
   }
   LOG(FATAL) << "No temp directory found.";
 #endif
+  // Return an empty string to indicate that we can not create temp file name.
+  return "";
 }
 
 bool GetTestUndeclaredOutputsDir(string* dir) {

@@ -152,6 +152,12 @@ TF_CAPI_EXPORT extern TF_StringStream* TF_GetChildren(const char* filename,
 // The caller is responsible for freeing the list (see TF_StringStreamDone).
 TF_CAPI_EXPORT extern TF_StringStream* TF_GetLocalTempDirectories(void);
 
+// Creates a temporary file name with an extension.
+// The caller is responsible for freeing the returned pointer.
+TF_CAPI_EXPORT extern void TF_GetTempFileName(const char* extension,
+                                              std::string* name,
+                                              TF_Status* status);
+
 // Returns the number of nanoseconds since the Unix epoch.
 TF_CAPI_EXPORT extern uint64_t TF_NowNanos(void);
 
