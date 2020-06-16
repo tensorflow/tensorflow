@@ -299,9 +299,19 @@ def update_confusion_matrix_variables(variables_to_update,
                      '`multi_label` is True.')
   if variables_to_update is None:
     return
-  y_true = math_ops.cast(y_true, dtype=dtypes.float32)
-  y_pred = math_ops.cast(y_pred, dtype=dtypes.float32)
-  thresholds = ops.convert_to_tensor_v2(thresholds, dtype=dtypes.float32)
+  if not any(
+      key for key in variables_to_update if key in list(ConfusionMatrix)):
+    raise ValueError(
+        'Please provide at least one valid confusion matrix '
+        'variable to update. Valid variable key options are: "{}". '
+        'Received: "{}"'.format(
+            list(ConfusionMatrix), variables_to_update.keys()))
+
+  variable_dtype = list(variables_to_update.values())[0].dtype
+
+  y_true = math_ops.cast(y_true, dtype=variable_dtype)
+  y_pred = math_ops.cast(y_pred, dtype=variable_dtype)
+  thresholds = ops.convert_to_tensor_v2(thresholds, dtype=variable_dtype)
   num_thresholds = thresholds.shape[0]
   if multi_label:
     one_thresh = math_ops.equal(
@@ -313,14 +323,6 @@ def update_confusion_matrix_variables(variables_to_update,
      y_true], _ = ragged_assert_compatible_and_get_flat_values([y_pred, y_true],
                                                                sample_weight)
     one_thresh = math_ops.cast(True, dtype=dtypes.bool)
-
-  if not any(
-      key for key in variables_to_update if key in list(ConfusionMatrix)):
-    raise ValueError(
-        'Please provide at least one valid confusion matrix '
-        'variable to update. Valid variable key options are: "{}". '
-        'Received: "{}"'.format(
-            list(ConfusionMatrix), variables_to_update.keys()))
 
   invalid_keys = [
       key for key in variables_to_update if key not in list(ConfusionMatrix)
@@ -344,6 +346,7 @@ def update_confusion_matrix_variables(variables_to_update,
       y_pred, y_true = tf_losses_utils.squeeze_or_expand_dimensions(
           y_pred, y_true)
     else:
+      sample_weight = math_ops.cast(sample_weight, dtype=variable_dtype)
       y_pred, y_true, sample_weight = (
           tf_losses_utils.squeeze_or_expand_dimensions(
               y_pred, y_true, sample_weight=sample_weight))
@@ -401,7 +404,7 @@ def update_confusion_matrix_variables(variables_to_update,
 
   if sample_weight is not None:
     sample_weight = weights_broadcast_ops.broadcast_weights(
-        math_ops.cast(sample_weight, dtype=dtypes.float32), y_pred)
+        math_ops.cast(sample_weight, dtype=variable_dtype), y_pred)
     weights_tiled = array_ops.tile(
         array_ops.reshape(sample_weight, thresh_tiles), data_tiles)
   else:
@@ -422,9 +425,9 @@ def update_confusion_matrix_variables(variables_to_update,
 
   def weighted_assign_add(label, pred, weights, var):
     label_and_pred = math_ops.cast(
-        math_ops.logical_and(label, pred), dtype=dtypes.float32)
+        math_ops.logical_and(label, pred), dtype=var.dtype)
     if weights is not None:
-      label_and_pred *= weights
+      label_and_pred *= math_ops.cast(weights, dtype=var.dtype)
     return var.assign_add(math_ops.reduce_sum(label_and_pred, 1))
 
   loop_vars = {

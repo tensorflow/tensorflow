@@ -59,16 +59,26 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeControlFlowPass();
 /// Lowers from HLO dialect to Standard dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeToStdPass();
 
-// Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
-// buffers if necessary.
-std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass();
+/// Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
+/// buffers if necessary. If `results_escape_functions` is set to true,
+/// allocated buffers for function results will be returned and escape the
+/// function. Otherwise, the signature is rewritten with extra arguments for the
+/// buffers that are to be used for results.
+std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass(
+    bool results_escape_functions = false);
 
 // Lowers from HLO dialect to Linalg dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass();
 
+// Transforms unranked HLO operations to ranked ones where possible.
+std::unique_ptr<OperationPass<FuncOp>> createTransformUnrankedHloPass();
+
 // Sinks constants implicitly captured in control flow regions. This is
 // necessary to export to XLA.
 std::unique_ptr<OperationPass<FuncOp>> createSinkConstantsToControlFlowPass();
+
+// fuse xla_hlo ops to kLoop/kInput fusion patterns
+std::unique_ptr<OperationPass<FuncOp>> createXlaHloFusionPass();
 
 }  // namespace xla_hlo
 

@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/lstm.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/max_unpooling.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/mean.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/multiply_add.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/padding.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/pooling.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/prelu.h"
@@ -155,28 +154,6 @@ absl::Status SelectMean(const MeanAttributes& attr, const OperationDef& op_def,
   }
   Mean operation = CreateMean(op_def);
   *ptr = absl::make_unique<Mean>(std::move(operation));
-  return absl::OkStatus();
-}
-
-absl::Status SelectMultiplyScalar(const MultiplyAttributes& attr,
-                                  const CreationContext& creation_context,
-                                  const OperationDef& op_def,
-                                  std::unique_ptr<GPUOperation>* ptr) {
-  MultiplyAdd operation;
-  RETURN_IF_ERROR(
-      CreateMultiplyAdd(creation_context, op_def, attr, &operation));
-  *ptr = absl::make_unique<MultiplyAdd>(std::move(operation));
-  return absl::OkStatus();
-}
-
-absl::Status SelectBroadcastAdd(const AddAttributes& attr,
-                                const CreationContext& creation_context,
-                                const OperationDef& op_def,
-                                std::unique_ptr<GPUOperation>* ptr) {
-  MultiplyAdd operation;
-  RETURN_IF_ERROR(
-      CreateMultiplyAdd(creation_context, op_def, attr, &operation));
-  *ptr = absl::make_unique<MultiplyAdd>(std::move(operation));
   return absl::OkStatus();
 }
 

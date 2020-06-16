@@ -93,6 +93,8 @@ std::string CompilerOptionToString(const CLDevice& device,
       return "-cl-fast-relaxed-math";
     case CompilerOptions::CL_OPT_DISABLE:
       return "-cl-opt-disable";
+    case CompilerOptions::CL_2_0:
+      return "-cl-std=CL2.0";
   }
 }
 

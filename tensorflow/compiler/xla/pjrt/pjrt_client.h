@@ -47,6 +47,8 @@ limitations under the License.
 
 namespace xla {
 
+class PjRtClient;
+
 class Device {
  public:
   explicit Device(int id, std::unique_ptr<LocalDeviceState> local_device_state,
@@ -86,12 +88,17 @@ class Device {
 
   virtual std::string DebugString() const;
 
+  PjRtClient* client() const { return client_; }
+
  private:
+  friend class PjRtClient;
+
   const int id_;
   const std::unique_ptr<LocalDeviceState> local_device_state_;
   const int host_id_;
   const std::string platform_name_;
   const std::string device_kind_;
+  PjRtClient* client_ = nullptr;
 };
 
 // Forward declaration.
@@ -113,7 +120,7 @@ using PjRtCrossHostRecvNotifier =
 //
 // It is the responsibility of the client of this API to keep the PjRtClient
 // alive as long as any of the other runtime objects are alive.
-class PjRtClient : public std::enable_shared_from_this<PjRtClient> {
+class PjRtClient {
  public:
   // `allocator` may null, in which case the platform default allocator is used.
   explicit PjRtClient(
@@ -266,6 +273,18 @@ class PjRtBuffer {
   class ScopedHold {
    public:
     enum Type { kUsage = 0, kExternalReference, kDonation, kMaxValue };
+    // Use a State enum instead of encoding the state in an error Status to
+    // avoid creating Status values in non-error cases. Creating a Status
+    // entails several allocations and can add O(us) to every use of a hold.
+    enum State {
+      kUninitialized = 0,
+      kValid,
+      kMoved,
+      kConverted,
+      kReleased,
+      kDonated,
+      kError
+    };
 
     ~ScopedHold();
     ScopedHold(ScopedHold&& other);
@@ -274,11 +293,32 @@ class PjRtBuffer {
 
     Type type() const { return type_; }
 
-    Status status() const { return buffer_or_.status(); }
-    bool ok() const { return buffer_or_.ok(); }
+    Status status() const {
+      // Lazily create Status values only when they are requested.
+      switch (state_) {
+        case kUninitialized:
+          return InvalidArgument("Buffer has not been initialized");
+        case kValid:
+          return Status::OK();
+        case kMoved:
+          return InvalidArgument("Buffer has been moved.");
+        case kConverted:
+          return InvalidArgument("Buffer has been converted");
+        case kReleased:
+          return InvalidArgument("Buffer has been released");
+        case kDonated:
+          return InvalidArgument("Buffer has been donated");
+        case kError:
+          return buffer_or_.status();
+        default:
+          CHECK(false) << "Unexpected state value " << state_;
+      }
+    }
+    bool ok() const { return state_ == kValid; }
 
     // Access to the underlying device buffer storage. Requires this->ok().
     const std::shared_ptr<TrackedDeviceBuffer>& buffer() const {
+      CHECK_EQ(state_, kValid);
       CHECK_NE(buffer_or_.ValueOrDie(), nullptr);
       return buffer_or_.ValueOrDie();
     }
@@ -322,22 +362,22 @@ class PjRtBuffer {
     // Helper struct that makes it possible to move a ScopedHold through a
     // closure.
     using ForClosure =
-        std::tuple<PjRtBuffer*, Type,
+        std::tuple<PjRtBuffer*, Type, State,
                    StatusOr<std::shared_ptr<TrackedDeviceBuffer>>>;
 
-    ScopedHold(PjRtBuffer* parent, Type type) : parent_(parent), type_(type) {
-      SetError(InvalidArgument("Buffer has not been initialized"));
-    }
+    ScopedHold(PjRtBuffer* parent, Type type)
+        : parent_(parent), type_(type), state_(kUninitialized) {}
     explicit ScopedHold(const ForClosure& closure_helper)
         : parent_(std::get<0>(closure_helper)),
           type_(std::get<1>(closure_helper)),
-          buffer_or_(std::get<2>(closure_helper)) {
+          state_(std::get<2>(closure_helper)),
+          buffer_or_(std::get<3>(closure_helper)) {
       // Check the buffer is not in an error state.
       CHECK(buffer_or_.ValueOrDie() != nullptr);
     }
 
-    // Sets error status.
-    void SetError(Status s) { buffer_or_ = s; }
+    // Sets buffer state.
+    void SetState(State state) { state_ = state; }
 
     // Sets buffer_or_. Called by parent_ to initialize the hold.
     void Acquire(StatusOr<std::shared_ptr<TrackedDeviceBuffer>>&& buffer_or);
@@ -349,8 +389,10 @@ class PjRtBuffer {
 
     PjRtBuffer* const parent_;
     const Type type_;
-    // There is an invariant that if buffer_or_.ok() then
+
+    // There is an invariant that if ok() then
     // buffer_or_.ValueOrDie() != nullptr.
+    State state_;
     StatusOr<std::shared_ptr<TrackedDeviceBuffer>> buffer_or_;
   };
 
@@ -401,6 +443,9 @@ class PjRtBuffer {
   bool IsEmptyTuple() const {
     return on_host_shape_.IsTuple() && on_host_shape_.tuple_shapes_size() == 0;
   }
+
+  // Returns the size of the on-device representation of this buffer in bytes.
+  int64 OnDeviceSizeInBytes() const;
 
   // Returns the buffer's value as an XLA Literal. If the value has previously
   // been prefetched to the host, then returns the prefetched version, otherwise

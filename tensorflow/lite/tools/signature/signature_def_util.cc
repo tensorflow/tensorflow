@@ -132,7 +132,7 @@ Status GetSignatureDefMap(const Model* model,
     SerializedSignatureDefMap signature_defs;
     auto status = ReadSignatureDefMap(model, metadata, &signature_defs);
     if (status != tensorflow::Status::OK()) {
-      return tensorflow::errors::Internal("Error reading signature def map: %s",
+      return tensorflow::errors::Internal("Error reading signature def map: ",
                                           status.error_message());
     }
     for (const auto& entry : signature_defs) {

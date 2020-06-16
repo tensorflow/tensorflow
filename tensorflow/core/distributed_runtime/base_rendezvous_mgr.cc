@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
@@ -373,11 +374,14 @@ void BaseRemoteRendezvous::RecvLocalAsyncInternal(const ParsedKey& parsed,
 
 void BaseRemoteRendezvous::StartAbort(const Status& s) {
   CHECK(!s.ok());
-  // Use a "derived" status as the status for the rendezvous. Derived
-  // status messages are ignored when aggregating errors across devices: this
-  // allows us to prefer our original status message over any cancellation
-  // related errors.
-  Status derived_status = StatusGroup::MakeDerived(s);
+  // If the status passed in is a cancelled or aborted error, mark it as
+  // "derived" for the rendezvous. Derived status messages are ignored when
+  // aggregating errors across devices: this allows us to prefer our original
+  // status message over any cancellation related errors.
+  Status derived_status = s;
+  if (errors::IsCancelled(s) || errors::IsAborted(s)) {
+    derived_status = StatusGroup::MakeDerived(s);
+  }
 
   local_->StartAbort(derived_status);
   {

@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -59,6 +60,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/platform/logging.h"
@@ -66,6 +68,17 @@ limitations under the License.
 
 namespace mlir {
 namespace TF {
+
+// Propagates underscore and device attributes from src to dst.
+// TODO(b/158769932): This should be a general feature instead post some policy
+// discussion.
+static void PropagateAttributes(Operation *src, Operation *dst) {
+  auto device = mlir::Identifier::get("device", src->getContext());
+  for (auto named_attr : src->getAttrs()) {
+    if (*named_attr.first.begin() == '_' || named_attr.first == device)
+      dst->setAttr(named_attr.first, named_attr.second);
+  }
+}
 
 //===----------------------------------------------------------------------===//
 // TF op helper functions
@@ -755,6 +768,15 @@ static LogicalResult Verify(BiasAddGradOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// BiasAddV1Op
+//===----------------------------------------------------------------------===//
+
+void BiasAddV1Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                              MLIRContext *context) {
+  results.insert<BiasAddV1ToBiasAdd>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // BitcastOp
 //===----------------------------------------------------------------------===//
 
@@ -776,11 +798,49 @@ static LogicalResult Verify(BroadcastToOp op) {
 }
 
 //===----------------------------------------------------------------------===//
-// CastOp
+// CaseOp
 //===----------------------------------------------------------------------===//
 
+class FoldConstantCaseOp : public OpRewritePattern<TF::CaseOp> {
+ public:
+  explicit FoldConstantCaseOp(MLIRContext *context)
+      : OpRewritePattern<TF::CaseOp>(context) {}
+  LogicalResult matchAndRewrite(TF::CaseOp op,
+                                PatternRewriter &rewriter) const override;
+};
+
+LogicalResult FoldConstantCaseOp::matchAndRewrite(
+    TF::CaseOp op, PatternRewriter &rewriter) const {
+  // Extract the constant cond value.
+  DenseIntElementsAttr branch;
+  if (!matchPattern(op.branch_index(), m_Constant(&branch))) return failure();
+
+  // Only attempt to fold scalar valued case statements.
+  // TODO(jpienaar): This can be removed if CaseOp's verifier covers it.
+  if (!branch.getType().cast<RankedTensorType>().getShape().empty())
+    return failure();
+
+  int index = *branch.getValues<int>().begin();
+  // TODO(jpienaar): This can be removed if CaseOp's verifier covers it.
+  if (index >= op.branches().size()) return failure();
+
+  auto func = op.branches()[index].cast<SymbolRefAttr>();
+  auto empty = rewriter.getStringAttr("");
+  auto call_op = rewriter.create<PartitionedCallOp>(
+      op.getLoc(), op.getResultTypes(), op.getOperands().drop_front(), func,
+      /*config=*/empty, /*config_proto=*/empty, /*executor_type=*/empty);
+  PropagateAttributes(op.getOperation(), call_op);
+  rewriter.replaceOp(op, call_op.getResults());
+  return success();
+}
+
+void CaseOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                         MLIRContext *context) {
+  results.insert<FoldConstantCaseOp>(context);
+}
+
 //===----------------------------------------------------------------------===//
-// LeakyReluOp
+// CastOp
 //===----------------------------------------------------------------------===//
 
 OpFoldResult CastOp::fold(ArrayRef<Attribute> operands) {
@@ -811,6 +871,11 @@ static LogicalResult Verify(OpT op) {
 
   return VerifyTypesCompatibility(values,
                                   /*mask_one_dim=*/true, op.getOperation());
+}
+
+void ConcatOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                           MLIRContext *context) {
+  results.insert<ConvertToConcatV2>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1937,6 +2002,10 @@ static LogicalResult Verify(IfRegionOp op) {
     return failure();
   if (failed(VerifyRegionResults(op, op.else_branch(), "else")))
     return failure();
+  if (op.then_branch().front().getNumArguments() != 0)
+    return op.emitOpError() << "then region cannot have any arguments";
+  if (op.else_branch().front().getNumArguments() != 0)
+    return op.emitOpError() << "else region cannot have any arguments";
   return success();
 }
 
@@ -3996,6 +4065,15 @@ struct TFInlinerInterface : public DialectInlinerInterface {
   //===--------------------------------------------------------------------===//
   // Analysis Hooks
   //===--------------------------------------------------------------------===//
+
+  // Defines the legality of inlinining 'src' region into the 'dest' region
+  // attached to a TF operation
+  bool isLegalToInline(Region *dest, Region *src,
+                       BlockAndValueMapping &valueMapping) const final {
+    // Allow inlining in regions attached to region based control flow
+    // operations only if the src region is a single block region
+    return isa<IfRegionOp>(dest->getParentOp()) && llvm::hasSingleElement(*src);
+  }
 
   // Defines the legality of inlining TF operations.
   bool isLegalToInline(Operation *, Region *,

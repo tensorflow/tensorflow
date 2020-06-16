@@ -869,6 +869,8 @@ def _is_undefined_dimension(d):
   return isinstance(d, tensor_shape.Dimension) and d.value is None
 
 
+@tf_export("__operators__.getitem", v1=[])
+@dispatch.add_dispatch_support
 def _slice_helper(tensor, slice_spec, var=None):
   """Overload for Tensor.__getitem__.
 
@@ -913,6 +915,15 @@ def _slice_helper(tensor, slice_spec, var=None):
     - `tf.newaxis` is `None` as in NumPy.
     - An implicit ellipsis is placed at the end of the `slice_spec`
     - NumPy advanced indexing is currently not supported.
+
+  Purpose in the API:
+
+    This method is exposed in TensorFlow's API so that library developers
+    can register dispatching for `Tensor.__getitem__` to allow it to handle
+    custom composite tensors & other custom objects.
+
+    The API symbol is not intended to be called by users directly and does
+    appear in TensorFlow's generated documentation.
 
   Args:
     tensor: An ops.Tensor object.
@@ -3173,6 +3184,7 @@ def sparse_placeholder(dtype, shape=None, name=None):
       # `SparseTensor`
       dense_shape_default = tensor_shape.TensorShape(
           tuple(None if dim == -1 else dim for dim in shape))
+      shape = tuple(tensor_shape.dimension_value(dim) for dim in shape)
       shape = tuple(-1 if dim is None else dim for dim in shape)
       shape = ops.convert_to_tensor(
           shape, dtype=dtypes.int64, name=default_shape_name)
@@ -4400,7 +4412,7 @@ def where_v2(condition, x=None, y=None, name=None):
 
   The `condition` tensor acts as a mask that chooses whether the corresponding
   element / row in the output should be taken from `x`
-  (if the elemment in `condition is True) or `y` (if it is false).
+  (if the element in `condition is True) or `y` (if it is false).
 
   >>> tf.where([True, False, False, True], [1,2,3,4], [100,200,300,400])
   <tf.Tensor: shape=(4,), dtype=int32, numpy=array([  1, 200, 300,   4],

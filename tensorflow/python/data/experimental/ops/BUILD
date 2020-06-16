@@ -165,6 +165,18 @@ py_library(
 )
 
 py_library(
+    name = "io",
+    srcs = [
+        "io.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_library(
     name = "iterator_ops",
     srcs = [
         "iterator_ops.py",
@@ -493,6 +505,7 @@ py_library(
         ":get_single_element",
         ":grouping",
         ":interleave_ops",
+        ":io",
         ":map_defun",
         ":matching_files",
         ":optimization",

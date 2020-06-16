@@ -26,7 +26,7 @@ namespace TF {
 
 namespace AttrKind {
 
-// List of supported custom TensorFlow Attributes kinds, necessary for
+// List of supported custom TensorFlow Attribute kinds, necessary for
 // isa/dyn_cast.
 enum Kind {
   FIRST_USED_TENSORFLOW_ATTR = Attribute::FIRST_TENSORFLOW_ATTR,

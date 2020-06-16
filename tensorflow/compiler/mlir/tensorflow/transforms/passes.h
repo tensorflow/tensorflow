@@ -32,9 +32,19 @@ std::unique_ptr<OperationPass<FuncOp>>
 CreateFunctionalToExecutorDialectConversionPass();
 
 namespace TF {
-// Transforms functional control flow operations in the standard TensorFlow
-// dialect to MLIR Control Flow Graph (CFG) form.
+// Transforms functional control flow operations in the TensorFlow dialect to
+// MLIR Control Flow Graph (CFG) form.
 std::unique_ptr<OperationPass<FuncOp>> CreateTFFunctionalControlFlowToCFG();
+
+// Transforms functional control flow operations in the TensorFlow dialect to
+// their region based counterparts.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTFFunctionalControlFlowToRegions();
+
+// Transforms region bases control flow operations in the TensorFlow dialect to
+// their functional counterparts.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTFRegionControlFlowToFunctional();
 
 // Materialize the MlirPassthroughOp by replacing it with the MLIR module
 // attached as an attribute.
@@ -51,6 +61,10 @@ std::unique_ptr<OperationPass<FuncOp>> CreateBatchMatMulToEinsumPass();
 
 // Optimizes Tensorflow graph.
 std::unique_ptr<OperationPass<FuncOp>> CreateTFOptimizePass();
+
+// Creates pass to rewrite RecvTPUEmbeddingActivationsOp and
+// SendTPUEmbeddingGradients ops to internal variants.
+std::unique_ptr<OperationPass<FuncOp>> CreateRewriteTPUEmbeddingOpsPass();
 
 // Performs specific fusion for GPU targets.
 std::unique_ptr<OperationPass<FuncOp>> CreateGpuOpFusionPass();
@@ -73,6 +87,9 @@ struct StandardPipelineOptions
   Option<bool> enable_inliner{*this, "enable-inliner",
                               llvm::cl::desc("Enable inliner."),
                               llvm::cl::init(false)};
+  Option<bool> form_clusters{*this, "form-clusters",
+                             llvm::cl::desc("Enable Cluster Formation pass."),
+                             llvm::cl::init(false)};
 };
 
 // Propagates the pass manager with the passes involved in transforming or
@@ -140,14 +157,12 @@ CreateTensorArrayOpsDecompositionPass();
 
 // Create a pass that legalize HLO to TF dialect.
 std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeHloToTfPass();
+
+// Matches sequence of ops to TensorFlow fused kernels. This pass should not be
+// generally used beyond exporting to runtimes that supports these ops. In the
+// future these fusions may be codegen'd automatically.
+std::unique_ptr<OperationPass<FuncOp>> CreateFusedKernelMatcherPass();
 }  // namespace TF
-
-namespace TFControlFlow {
-// Raises from the "TensorFlow Control Flow" dialect to the standard TensorFlow
-// dialect.
-std::unique_ptr<OperationPass<FuncOp>> CreateRaiseTFControlFlowPass();
-
-}  // namespace TFControlFlow
 
 namespace tf_executor {
 class GraphOp;
@@ -265,10 +280,19 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTPUMergeVariablesWithExecutePass();
 // run-time according to compilation result.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUVariableReformattingPass();
 
+// Creates a pass that groups outside compiled operations (CPU ops inside TPU
+// cluster) into clusters that can be extracted and run on the CPU.
+std::unique_ptr<OperationPass<FuncOp>> CreateTPUOutsideCompilationClusterPass();
+
 // Creates a pass that extracts outside compilation (CPU ops inside TPU cluster)
 // at head/tail of TPU cluster to run before/after TPU computation.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUExtractHeadTailOutsideCompilationPass();
+
+// Creates a pass that expands outside compilation cluster at the head/tail of
+// TPU computation by adding outside compilation attribute to identity/cast ops
+// that are only used for host computation.
+std::unique_ptr<OperationPass<FuncOp>> CreateTPUHostComputationExpansionPass();
 
 // Creates a pass that extract outside compilation (CPU ops inside TPU cluster)
 // ops to a separate parallel_execute region to run on CPU.

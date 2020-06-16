@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/register.h"
 
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/builtin_op_kernels.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace ops {

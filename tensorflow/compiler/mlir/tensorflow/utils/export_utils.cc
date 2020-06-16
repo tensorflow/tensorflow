@@ -379,13 +379,13 @@ Status ConvertAttributes(
         func_call_attrs[string(name)] = value;
         continue;
       }
-      case mlir::StandardAttributes::Bool:
-        TF_RETURN_IF_ERROR(
-            ConvertAttribute(attr.cast<mlir::BoolAttr>(), &value));
-        break;
       case mlir::StandardAttributes::Integer:
-        TF_RETURN_IF_ERROR(
-            ConvertAttribute(attr.cast<mlir::IntegerAttr>(), &value));
+        if (auto boolAttr = attr.dyn_cast<mlir::BoolAttr>()) {
+          TF_RETURN_IF_ERROR(ConvertAttribute(boolAttr, &value));
+        } else {
+          TF_RETURN_IF_ERROR(
+              ConvertAttribute(attr.cast<mlir::IntegerAttr>(), &value));
+        }
         break;
       case mlir::StandardAttributes::Float:
         TF_RETURN_IF_ERROR(

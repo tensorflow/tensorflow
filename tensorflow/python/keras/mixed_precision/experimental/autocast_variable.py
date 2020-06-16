@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.distribute import ps_values as ps_distribute_values
 from tensorflow.python.distribute import values as distribute_values
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
@@ -437,7 +438,7 @@ def create_autocast_variable(variable):
     An AutoCastVariable that wraps the variable.
   """
   if not isinstance(variable, (distribute_values.DistributedVariable,
-                               distribute_values.AggregatingVariable)):
+                               ps_distribute_values.AggregatingVariable)):
     return AutoCastVariable(variable)
 
   class AutoCastDistributedVariable(AutoCastVariable, variable.__class__):
@@ -448,7 +449,8 @@ def create_autocast_variable(variable):
     """
 
     def __repr__(self):
-      if issubclass(distribute_values.AggregatingVariable, variable.__class__):
+      if issubclass(ps_distribute_values.AggregatingVariable,
+                    variable.__class__):
         # AggregatingVariable's __repr__ simply calls super.__repr__. So we do
         # the same here for consistency, which calls AutoCastVariable.__repr__.
         return super(AutoCastDistributedVariable, self).__repr__()

@@ -14,18 +14,27 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/reference/sub.h"
 
+#include <stddef.h>
+#include <stdint.h>
+
+#include <algorithm>
 #include <limits>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
+#include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/add.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/add.h"
+#include "tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -326,11 +335,11 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
         TF_LITE_SUB(reference_ops, Add, uint8_t);
       }
     } else {
-      if (op_params.broadcast_category ==
-          BroadcastableOpCategory::kGenericBroadcast) {
-        TF_LITE_SUB(optimized_ops, BroadcastAdd4DSlow, uint8_t);
-      } else if (need_broadcast) {
-        TF_LITE_SUB(optimized_ops, BroadcastAddFivefold, uint8_t);
+      if (need_broadcast) {
+        optimized_ops::BroadcastAddDispatch(
+            op_params, GetTensorShape(input1), GetTensorData<uint8_t>(input1),
+            GetTensorShape(input2), GetTensorData<uint8_t>(input2),
+            GetTensorShape(output), GetTensorData<uint8_t>(output));
       } else {
         TF_LITE_SUB(optimized_ops, Add, uint8_t);
       }

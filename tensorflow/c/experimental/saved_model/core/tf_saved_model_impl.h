@@ -23,14 +23,13 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/c/experimental/saved_model/core/concrete_function.h"
 #include "tensorflow/c/experimental/saved_model/core/saved_model_api.h"
+#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
 class TFSavedModelAPIImpl : public SavedModelAPI {
  public:
-  TFSavedModelAPIImpl() = default;
-
   Status GetFunction(const std::string& function_path,
                      ConcreteFunction** function) override;
 
@@ -40,13 +39,14 @@ class TFSavedModelAPIImpl : public SavedModelAPI {
   static Status Load(
       const std::string& directory,
       const absl::optional<std::unordered_set<std::string>>& tags,
-      TFSavedModelAPIImpl* out);
+      EagerContext* context, std::unique_ptr<TFSavedModelAPIImpl>* out);
 
   std::vector<ConcreteFunction*> ListFunctions() override;
 
   ~TFSavedModelAPIImpl() override = default;
 
  private:
+  TFSavedModelAPIImpl() = default;
   std::vector<ConcreteFunction> functions_;
 };
 

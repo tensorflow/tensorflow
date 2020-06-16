@@ -34,7 +34,8 @@ from tensorflow.python.platform import test
 
 class ClipTest(test.TestCase):
 
-  def DISABLED_testClipByValueGradient(self):
+  @test_util.run_deprecated_v1
+  def testClipByValueGradient(self):
     inputs = constant_op.constant([1.0, 2.0, 3.0, 4.0], dtype=dtypes.float32)
     outputs_1 = clip_ops.clip_by_value(inputs, 0.5, 3.5)
     min_val = constant_op.constant([0.5, 0.5, 0.5, 0.5], dtype=dtypes.float32)
@@ -61,10 +62,15 @@ class ClipTest(test.TestCase):
     self.assertAllClose(np_ans, tf_ans)
 
   # [Tensor, Scalar, Scalar]
-  def DISABLED_testClipByValue0Type(self):
+  def testClipByValue0Type(self):
     for dtype in [
-        dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int8,
-        dtypes.int16, dtypes.int32, dtypes.int64, dtypes.uint8, dtypes.uint16
+        dtypes.float16,
+        dtypes.float32,
+        dtypes.float64,
+        dtypes.int16,
+        dtypes.int32,
+        dtypes.int64,
+        dtypes.uint8,
     ]:
       with self.cached_session(use_gpu=True):
         x = constant_op.constant([1, 2, 3, 4, 5, 6], shape=[2, 3], dtype=dtype)
@@ -77,10 +83,15 @@ class ClipTest(test.TestCase):
       self.assertAllClose(np_ans, tf_ans)
 
   # [Tensor, Tensor, Scalar]
-  def DISABLED_testClipByValue1Type(self):
+  def testClipByValue1Type(self):
     for dtype in [
-        dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int8,
-        dtypes.int16, dtypes.int32, dtypes.int64, dtypes.uint8, dtypes.uint16
+        dtypes.float16,
+        dtypes.float32,
+        dtypes.float64,
+        dtypes.int16,
+        dtypes.int32,
+        dtypes.int64,
+        dtypes.uint8,
     ]:
       with self.cached_session(use_gpu=True):
         x = constant_op.constant([1, 2, 3, 4, 5, 6], shape=[2, 3], dtype=dtype)
@@ -94,10 +105,15 @@ class ClipTest(test.TestCase):
       self.assertAllClose(np_ans, tf_ans)
 
   # [Tensor, Scalar, Tensor]
-  def DISABLED_testClipByValue2Type(self):
+  def testClipByValue2Type(self):
     for dtype in [
-        dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int8,
-        dtypes.int16, dtypes.int32, dtypes.int64, dtypes.uint8, dtypes.uint16
+        dtypes.float16,
+        dtypes.float32,
+        dtypes.float64,
+        dtypes.int16,
+        dtypes.int32,
+        dtypes.int64,
+        dtypes.uint8,
     ]:
       with self.cached_session(use_gpu=True):
         x = constant_op.constant([1, 2, 3, 4, 5, 6], shape=[2, 3], dtype=dtype)
@@ -111,10 +127,15 @@ class ClipTest(test.TestCase):
       self.assertAllClose(np_ans, tf_ans)
 
   # [Tensor, Tensor, Tensor]
-  def DISABLED_testClipByValue3Type(self):
+  def testClipByValue3Type(self):
     for dtype in [
-        dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int8,
-        dtypes.int16, dtypes.int32, dtypes.int64, dtypes.uint8, dtypes.uint16
+        dtypes.float16,
+        dtypes.float32,
+        dtypes.float64,
+        dtypes.int16,
+        dtypes.int32,
+        dtypes.int64,
+        dtypes.uint8,
     ]:
       with self.cached_session(use_gpu=True):
         x = constant_op.constant([1, 2, 3, 4, 5, 6], shape=[2, 3], dtype=dtype)

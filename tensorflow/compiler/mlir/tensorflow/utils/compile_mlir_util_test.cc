@@ -184,7 +184,7 @@ TEST(CompileSerializedMlirToXlaHloTest, CompileTimeConstantFoldedSuccess) {
   // only be lowered when tf.Shape is folded into a constant.
   constexpr char mlir_module[] = R"(
     module attributes {tf.versions = {producer = 179 : i32}} {
-      func @main(%arg0: tensor<10x19xf32>, %arg1: tensor<19x10xf32> {tf_device.is_same_data_across_replicas = true}) -> tensor<10x19xf32> {
+      func @main(%arg0: tensor<10x19xf32>, %arg1: tensor<19x10xf32> {xla_hlo.is_same_data_across_replicas}) -> tensor<10x19xf32> {
         %0 = "tf.Shape"(%arg0) : (tensor<10x19xf32>) -> tensor<2xi64>
         %1 = "tf.Reshape"(%arg1, %0) : (tensor<19x10xf32>, tensor<2xi64>) -> tensor<10x19xf32>
         return %1 : tensor<10x19xf32>

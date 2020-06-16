@@ -641,7 +641,8 @@ def _GatherV2Grad(op, grad):
   # For axis 0 gathers, build an appropriately shaped IndexedSlices.
   if axis_static == 0:
     if context.executing_eagerly():
-      params_tail_shape = params_shape.cpu()[1:]
+      with ops.device("/cpu:0"):
+        params_tail_shape = array_ops.identity(params_shape)[1:]
     else:
       params_tail_shape = params_shape[1:]
     values_shape = array_ops.concat([indices_size, params_tail_shape], 0)

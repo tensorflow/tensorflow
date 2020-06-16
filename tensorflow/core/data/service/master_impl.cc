@@ -315,5 +315,19 @@ Status DataServiceMasterImpl::GetTasks(const GetTasksRequest* request,
   return Status::OK();
 }
 
+Status DataServiceMasterImpl::GetWorkers(const GetWorkersRequest* request,
+                                         GetWorkersResponse* response) {
+  mutex_lock l(mu_);
+  VLOG(3) << "Enter GetWorkers";
+  for (auto& worker : workers_) {
+    WorkerInfo* info = response->add_workers();
+    info->set_address(worker.address());
+    info->set_id(worker.worker_id());
+  }
+  VLOG(3) << "Returning list of " << workers_.size()
+          << " workers from GetWorkers";
+  return Status::OK();
+}
+
 }  // namespace data
 }  // namespace tensorflow

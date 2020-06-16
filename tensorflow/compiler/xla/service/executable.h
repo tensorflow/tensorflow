@@ -63,10 +63,6 @@ class ExecutionInput {
   explicit ExecutionInput(xla::Shape shape) : buffers_(std::move(shape)) {}
   explicit ExecutionInput(ShapeTree<MaybeOwningDeviceMemory> buffers)
       : buffers_(std::move(buffers)) {}
-  ExecutionInput(ShapeTree<MaybeOwningDeviceMemory> buffers,
-                 std::vector<ShapeIndex> owner_held_indices)
-      : buffers_(std::move(buffers)),
-        unowned_indices_(std::move(owner_held_indices)) {}
   ExecutionInput(ExecutionInput&&) = default;
 
   ~ExecutionInput() {
@@ -280,6 +276,10 @@ class Executable {
       const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments);
 
+  StatusOr<ExecutionOutput> ExecuteOnStreamWrapper(
+      const ServiceExecutableRunOptions* run_options,
+      std::vector<ExecutionInput> arguments);
+
   StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStreamWrapper(
       const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments);
@@ -322,7 +322,7 @@ class Executable {
   // not supported by the executable.
   //
   // Does not include the size of used libraries (e.g. cuDNN, Eigen, etc.).
-  virtual int64 SizeOfGeneratedCodeInBytes();
+  virtual int64 SizeOfGeneratedCodeInBytes() const;
 
   // Dumping helpers.
   void set_hlo_proto(std::unique_ptr<xla::HloProto> hlo_proto) {
@@ -330,6 +330,15 @@ class Executable {
   }
   bool dumping_snapshot() const { return hlo_proto_ != nullptr; }
   HloProto const* hlo_proto() const { return hlo_proto_.get(); }
+
+  // Gather unused but donated buffers, return them to the caller of this API.
+  // We don't free buffers inside this function since the caller could have
+  // different preferences for buffer deallocation. For example, in TensorFlow,
+  // buffers are mostly efficiently deallocated as soon as a program has been
+  // launched. However, in XRT, the buffers are expected to be deallocated after
+  // the program has finished since XRT doesn't support async deallocation.
+  void MarkToBeReleasedArguments(absl::Span<ExecutionInput> arguments,
+                                 ExecutionOutput& result);
 
  protected:
   // HloModule this was compiled from. BufferAssignment keeps pointers to

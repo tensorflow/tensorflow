@@ -21,9 +21,11 @@ limitations under the License.
 #include <cmath>
 
 #include "structmember.h"  // NOLINT // For PyMemberDef
+#include "pybind11/pybind11.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -32,6 +34,7 @@ limitations under the License.
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 #include "tensorflow/python/lib/core/numpy.h"
+#include "tensorflow/python/lib/core/py_exception_registry.h"
 #include "tensorflow/python/lib/core/py_seq_tensor.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
 
@@ -300,7 +303,15 @@ TFE_TensorHandle* ConvertToEagerTensorUncached(TFE_Context* ctx,
       strstr(device_name, "/device:CPU:0") != nullptr) {
     handle = make_safe(TFE_TensorHandleCopyToDevice(handle.get(), ctx,
                                                     device_name, status.get()));
-    if (MaybeRaiseExceptionFromTFStatus(status.get(), PyExc_RuntimeError)) {
+    const TF_Code code = TF_GetCode(status.get());
+    if (code != TF_OK) {
+      // Instead of raising a generic RuntimeError, raise an exception type
+      // based on the status error code.
+      PyObject* exception = PyExceptionRegistry::Lookup(code);
+      PyErr_SetObject(exception,
+                      pybind11::make_tuple(pybind11::none(), pybind11::none(),
+                                           TF_Message(status.get()))
+                          .ptr());
       return nullptr;
     }
   }

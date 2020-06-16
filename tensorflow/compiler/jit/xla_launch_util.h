@@ -165,7 +165,7 @@ class XlaComputationLaunchContext {
   se::DeviceMemoryAllocator* xla_allocator_;
   bool allocate_xla_tensors_;
   bool use_multiple_streams_;
-  std::vector<std::unique_ptr<xla::ShapedBuffer>> arg_buffers_;
+  std::deque<xla::ShapedBuffer> arg_buffers_;
   std::vector<xla::ShapedBuffer*> arg_ptrs_;
 };
 

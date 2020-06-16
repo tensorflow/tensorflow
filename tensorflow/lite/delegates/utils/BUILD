@@ -26,10 +26,10 @@ cc_test(
     name = "simple_delegate_test",
     srcs = ["simple_delegate_test.cc"],
     deps = [
-        ":simple_delegate",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates/utils/dummy_delegate",
         "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_googletest//:gtest_main",
     ],

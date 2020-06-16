@@ -86,6 +86,10 @@ benefit from XNNPACK delegate.
 
 Below is the list of current operators and limitations:
 
+### `ABS`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
 ### `ADD`
 
 * Inputs and outputs must be in 32-bit floating-point format.
@@ -99,6 +103,10 @@ Below is the list of current operators and limitations:
 * 1x1 pooling is not supported.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
+
+### `CEIL`
+
+* Inputs and outputs must be in 32-bit floating-point format.
 
 ### `CONV_2D`
 
@@ -116,6 +124,12 @@ Below is the list of current operators and limitations:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
+### `DIV`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
+
 ### `FULLY_CONNECTED`
 
 * Inputs and outputs must be in 32-bit floating-point format.
@@ -124,7 +138,15 @@ Below is the list of current operators and limitations:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
+### `FLOOR`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
 ### `HARD_SWISH`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
+### `LEAKY_RELU`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
@@ -139,11 +161,33 @@ Below is the list of current operators and limitations:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
+### `MAXIMUM`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
+### `MEAN`
+
+* The first input and the output must be a 4D tensors in 32-bit
+  floating-point format.
+* The second input (the input with the axes specification) must be static
+  (use `kTfLiteMmapRo` allocation type).
+* Only [1, 2] or [2, 1] axes specification (i.e. reduction across spatial
+  dimensions) is supported.
+* Only `keep_dims = True` parameter value is supported.
+
+### `MINIMUM`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
 ### `MUL`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
+
+### `NEG`
+
+* Inputs and outputs must be in 32-bit floating-point format.
 
 ### `PAD`
 
@@ -171,10 +215,28 @@ Below is the list of current operators and limitations:
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
+### `ROUND`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
 ### `SOFTMAX`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 * Only `beta = 1.0` is supported.
+
+### `SQUARE`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
+### `SQUARED_DIFFERENCE`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
+### `SUB`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
 
 ### Other limitations
 

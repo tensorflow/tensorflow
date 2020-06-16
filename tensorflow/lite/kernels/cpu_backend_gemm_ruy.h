@@ -17,10 +17,10 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_CPU_BACKEND_GEMM_RUY_H_
 
 #include "ruy/matrix.h"  // from @ruy
-#include "ruy/path.h"  // from @ruy
 #include "ruy/ruy.h"  // from @ruy
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 
 namespace tflite {
 namespace cpu_backend_gemm {
@@ -42,7 +42,7 @@ inline ruy::CachePolicy ToRuyCachePolicy(CachePolicy cache_policy) {
 
 template <typename Scalar, typename DataPointer>
 void MakeRuyMatrix(const MatrixParams<Scalar>& params, DataPointer data_ptr,
-                   ruy::Matrix<Scalar>* dst) {
+                   ruy::Matrix<Scalar>* dst, bool use_caching = false) {
   ruy::Order ruy_order = params.order == Order::kColMajor
                              ? ruy::Order::kColMajor
                              : ruy::Order::kRowMajor;
@@ -52,9 +52,9 @@ void MakeRuyMatrix(const MatrixParams<Scalar>& params, DataPointer data_ptr,
   // It does care whether we assign to it a Scalar* or a const Scalar*.
   dst->set_data(data_ptr);
   dst->set_zero_point(params.zero_point);
-#ifdef TFLITE_WITH_RUY_GEMV
-  dst->set_cache_policy(ToRuyCachePolicy(params.cache_policy));
-#endif
+  if (use_caching) {
+    dst->set_cache_policy(ToRuyCachePolicy(params.cache_policy));
+  }
 }
 
 template <typename GemmParamsType, typename RuySpecType>
@@ -88,8 +88,8 @@ struct GemmImplUsingRuy {
     ruy::Matrix<LhsScalar> ruy_lhs;
     ruy::Matrix<RhsScalar> ruy_rhs;
     ruy::Matrix<DstScalar> ruy_dst;
-    MakeRuyMatrix(lhs_params, lhs_data, &ruy_lhs);
-    MakeRuyMatrix(rhs_params, rhs_data, &ruy_rhs);
+    MakeRuyMatrix(lhs_params, lhs_data, &ruy_lhs, context->use_caching());
+    MakeRuyMatrix(rhs_params, rhs_data, &ruy_rhs, context->use_caching());
     MakeRuyMatrix(dst_params, dst_data, &ruy_dst);
 
     ruy::MulParams<AccumScalar, DstScalar> ruy_mul_params;

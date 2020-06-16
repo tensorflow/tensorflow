@@ -90,7 +90,7 @@ KERAS_OBJECT_IDENTIFIERS = (
     '_tf_keras_rnn_layer')
 
 
-def load(path, compile=True):  # pylint: disable=redefined-builtin
+def load(path, compile=True, options=None):  # pylint: disable=redefined-builtin
   """Loads Keras objects from a SavedModel.
 
   Any Keras layer or model saved to the SavedModel will be loaded back
@@ -107,13 +107,18 @@ def load(path, compile=True):  # pylint: disable=redefined-builtin
   Args:
     path: Path to SavedModel.
     compile: If true, compile the model after loading it.
+    options: Optional `tf.saved_model.LoadOptions` object that specifies
+      options for loading from SavedModel.
+
 
   Returns:
     Object loaded from SavedModel.
   """
   # TODO(kathywu): Add saving/loading of optimizer, compiled losses and metrics.
   # TODO(kathywu): Add code to load from objects that contain all endpoints
-  model = tf_load.load_internal(path, loader_cls=KerasObjectLoader)
+
+  model = tf_load.load_internal(
+      path, options=options, loader_cls=KerasObjectLoader)
 
   # pylint: disable=protected-access
   if isinstance(model, training_lib.Model) and compile:
@@ -402,6 +407,7 @@ class KerasObjectLoader(tf_load.Loader):
     #       found.
     class_name = metadata.get('class_name')
     config = metadata.get('config')
+    must_restore_from_config = metadata.get('must_restore_from_config')
     if not generic_utils.validate_config(config):
       return None
 
@@ -409,7 +415,18 @@ class KerasObjectLoader(tf_load.Loader):
       obj = layers_module.deserialize(
           generic_utils.serialize_keras_class_and_config(class_name, config))
     except ValueError:
-      return None
+      if must_restore_from_config:
+        raise RuntimeError(
+            'Unable to restore a layer of class {cls}. Layers of '
+            'class {cls} require that the class be provided to '
+            'the model loading code, either by registering the '
+            'class using @keras.utils.register_keras_serializable '
+            'on the class def and including that file in your '
+            'program, or by passing the class in a '
+            'keras.utils.CustomObjectScope that wraps this load '
+            'call.'.format(cls=class_name))
+      else:
+        return None
 
     # Use the dtype, name, and trainable status. Often times these are not
     # specified in custom configs, so retrieve their values from the metadata.
@@ -546,8 +563,11 @@ class KerasObjectLoader(tf_load.Loader):
     config = json_utils.decode(
         self._proto.nodes[model_id].user_object.metadata)['config']
     if isinstance(model, models_lib.Sequential):
-      if config['layers'][0]['class_name'] != 'InputLayer':
-        if 'batch_input_shape' in config['layers'][0]['config']:
+      if not isinstance(layers[0], input_layer.InputLayer):
+        if config['layers'][0]['class_name'] == 'InputLayer':
+          layers.insert(0, input_layer.InputLayer.from_config(
+              config['layers'][0]['config']))
+        elif 'batch_input_shape' in config['layers'][0]['config']:
           batch_input_shape = config['layers'][0]['config']['batch_input_shape']
           layers.insert(0, input_layer.InputLayer(
               input_shape=batch_input_shape[1:],

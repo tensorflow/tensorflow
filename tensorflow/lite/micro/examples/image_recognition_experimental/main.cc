@@ -56,7 +56,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  tflite::MicroOpResolver<4> micro_op_resolver;
+  tflite::MicroMutableOpResolver<4> micro_op_resolver;
 
   micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_CONV_2D,
                                tflite::ops::micro::Register_CONV_2D());

@@ -12,12 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <gtest/gtest.h>
 #include <cstdint>
+#include <initializer_list>
+#include <vector>
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -269,6 +273,16 @@ TEST(PadOpTest, SimpleDynamicTest) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 4,
                                                0, 0, 0, 0, 0}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST(PadOpTest, DynamicUnequalDimensions) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  PadOpDynamicModel m({TensorType_FLOAT32, {}}, {3, 2}, {TensorType_FLOAT32});
+  m.SetInput({1, 2, 3, 4});
+  m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
+  ASSERT_NE(m.InvokeUnchecked(), kTfLiteOk) << "Unequal dimensions.";
 }
 
 TEST(PadOpTest, AdvancedConstTest) {
@@ -554,6 +568,17 @@ TEST(PadV2OpTest, SimpleDynamicTest) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 4,
                                                0, 0, 0, 0, 0}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST(PadV2OpTest, DynamicUnequalDimensions) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  PadV2OpDynamicModel<float> m({TensorType_FLOAT32, {}}, {4, 2}, 0.0,
+                               {TensorType_FLOAT32});
+  m.SetInput({1, 2, 3, 4});
+  m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
+  ASSERT_NE(m.InvokeUnchecked(), kTfLiteOk) << "Unequal dimensions";
 }
 
 TEST(PadV2OpTest, SimpleDynamicValuedTest) {

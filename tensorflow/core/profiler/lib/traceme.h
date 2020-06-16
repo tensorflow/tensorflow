@@ -227,6 +227,18 @@ class TraceMe {
 #endif
   }
 
+  // Records the time of an instant activity.
+  template <typename NameGeneratorT>
+  static void InstantActivity(NameGeneratorT name_generator, int level = 1) {
+#if !defined(IS_MOBILE_PLATFORM)
+    if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
+      uint64 now = EnvTime::NowNanos();
+      TraceMeRecorder::Record({kCompleteActivity, name_generator(),
+                               /*start_time=*/now, /*end_time=*/now});
+    }
+#endif
+  }
+
   static bool Active(int level = 1) {
 #if !defined(IS_MOBILE_PLATFORM)
     return TraceMeRecorder::Active(level);

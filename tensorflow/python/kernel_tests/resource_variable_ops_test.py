@@ -1072,8 +1072,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
           dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="var5",
           container=ops.get_default_graph()._container)
       with self.assertRaisesOpError(
-          "(Resource .*/var5/.* does not exist|Read of uninitialized variable)"
-      ):
+          "(Resource .*/var5/.* does not exist|uninitialized)"):
         resource_variable_ops.read_variable_op(x, v.dtype.base_dtype).eval()
 
   @test_util.run_deprecated_v1

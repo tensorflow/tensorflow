@@ -181,22 +181,22 @@ template <typename T>
 class MklSlicePrimitive : public MklPrimitive {
  public:
   explicit MklSlicePrimitive(const MklSliceParams& sliceParams)
-      : cpu_engine_(ENGINE_CPU, 0) {
-    context_.slice_stream.reset(new CPU_STREAM(cpu_engine_));
+      : MklPrimitive(engine(ENGINE_CPU, 0)) {
     Setup(sliceParams);
   }
 
   ~MklSlicePrimitive() {}
 
-  void Execute(const MklSliceParams& sliceParams) {
+  void Execute(const MklSliceParams& sliceParams,
+               std::shared_ptr<stream> slice_stream) {
     context_.src_mem->set_data_handle(sliceParams.from->get_data_handle());
     context_.dst_mem->set_data_handle(sliceParams.to->get_data_handle());
 
 #ifdef ENABLE_MKLDNN_V1
-    execute_primitives(context_.slice_primitives, context_.slice_stream,
+    execute_primitives(context_.slice_primitives, slice_stream,
                        context_.slice_primitives_args);
 #else
-    context_.slice_stream->submit(context_.slice_primitives);
+    slice_stream->submit(context_.slice_primitives);
 #endif
 
     // We should set it back to DummyData so as to make the primitive
@@ -227,8 +227,6 @@ class MklSlicePrimitive : public MklPrimitive {
     SliceContext()
         : src_mem(nullptr), dst_mem(nullptr), reorder_prim(nullptr) {}
   } context_;
-
-  engine cpu_engine_;
 
   void Setup(const MklSliceParams& sliceParams) {
     // Actually, DummyData will not be used in computation,
@@ -465,7 +463,7 @@ class MklSliceOp : public OpKernel {
       auto op_md =
           MklDnnData<T>::CreateBlockedMemDesc(input_dims, input_strides);
 #ifdef ENABLE_MKLDNN_V1
-      src.CheckReorderToOpMem(op_md, cpu_engine);
+      src.CheckReorderToOpMem(op_md, cpu_engine, context);
 #else
       auto op_pd = memory::primitive_desc(op_md, cpu_engine);
       src.CheckReorderToOpMem(op_pd);
@@ -492,7 +490,9 @@ class MklSliceOp : public OpKernel {
       MklSlicePrimitive<T>* reorder_prim =
           MklSlicePrimitiveFactory<T>::Get(sliceParams);
       // Execute slice reorder.
-      reorder_prim->Execute(sliceParams);
+      std::shared_ptr<stream> slice_stream;
+      slice_stream.reset(CreateStream(context, reorder_prim->GetEngine()));
+      reorder_prim->Execute(sliceParams, slice_stream);
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +

@@ -253,6 +253,23 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "io_ops",
+    srcs = ["io_ops.cc"],
+    hdrs = ["io_ops.h"],
+    deps = [
+        ":snapshot_util",
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/framework:op_requires",
+        "//tensorflow/core/kernels/data:captured_function",
+        "//tensorflow/core/kernels/data:iterator_ops",
+        "//tensorflow/core/kernels/data:name_utils",
+    ],
+)
+
+tf_kernel_library(
     name = "lmdb_dataset_op",
     srcs = ["lmdb_dataset_op.cc"],
     hdrs = ["lmdb_dataset_op.h"],
@@ -381,6 +398,7 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:functional_ops_op_lib",
+        "//tensorflow/core:lib",
         "//tensorflow/core/kernels/data:dataset_utils",
         "//tensorflow/core/kernels/data:name_utils",
         "//tensorflow/core/kernels/data:parallel_map_dataset_op",
@@ -540,9 +558,23 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "snapshot_util_test",
+    size = "small",
+    srcs = ["snapshot_util_test.cc"],
+    deps = [
+        ":snapshot_util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 tf_kernel_library(
     name = "snapshot_dataset_op",
     srcs = ["snapshot_dataset_op.cc"],
+    hdrs = ["snapshot_dataset_op.h"],
     deps = [
         ":snapshot_util",
         "//tensorflow/core:core_cpu_internal",
@@ -551,10 +583,15 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/framework:op_requires",
         "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/kernels/data:captured_function",
         "//tensorflow/core/kernels/data:dataset_utils",
+        "//tensorflow/core/kernels/data:name_utils",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
     ],
 )
@@ -702,6 +739,7 @@ tf_kernel_library(
         ":group_by_reducer_dataset_op",
         ":group_by_window_dataset_op",
         ":ignore_errors_dataset_op",
+        ":io_ops",
         ":lmdb_dataset_op",
         ":map_and_batch_dataset_op",
         ":matching_files_dataset_op",

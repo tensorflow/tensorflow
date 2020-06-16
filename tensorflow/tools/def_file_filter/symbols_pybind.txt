@@ -82,6 +82,7 @@ tensorflow::Device::attributes
 [device_factory]  # device_lib, tfe, tf_session
 tensorflow::DeviceFactory::AddDevices
 tensorflow::DeviceFactory::ListAllPhysicalDevices
+tensorflow::DeviceFactory::GetAnyDeviceDetails
 
 [session_options]  # device_lib, tfe, tf_session
 tensorflow::SessionOptions::SessionOptions
@@ -93,10 +94,11 @@ tensorflow::DoQuantizeTrainingOnSerializedGraphDef
 tensorflow::SessionState::kTensorHandleResourceTypeName
 
 [server_lib] # server_lib
+tensorflow::data::GrpcDataServerBase::Join
 tensorflow::data::GrpcDataServerBase::Start
 tensorflow::data::GrpcDataServerBase::Stop
 tensorflow::data::GrpcDataServerBase::BoundPort
-tensorflow::data::MasterGrpcDataServer::NumTasks
+tensorflow::data::MasterGrpcDataServer::NumWorkers
 tensorflow::data::NewMasterServer
 tensorflow::data::NewWorkerServer
 
@@ -365,3 +367,4 @@ tensorflow::grappler::CostAnalyzer::GenerateReport
 
 [flags] # tfe
 tensorflow::IsXlaEnabled
+tensorflow::GetMlirCommonFlags
