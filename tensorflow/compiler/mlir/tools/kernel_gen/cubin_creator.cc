@@ -125,7 +125,8 @@ Status LowerTfOpToLhloWithDynamicShapes(mlir::ModuleOp module) {
   pm.addNestedPass<mlir::FuncOp>(
       absl::make_unique<MaterializeBroadcastsPass>());
   pm.addNestedPass<mlir::FuncOp>(absl::make_unique<UnfuseBatchNormPass>());
-  pm.addPass(mlir::xla_hlo::createLegalizeToLhloPass());
+  pm.addPass(mlir::xla_hlo::createLegalizeToLhloPass(
+      /*results_escape_functions=*/true));
   pm.addNestedPass<mlir::FuncOp>(mlir::xla_lhlo::createLhloCopyRemovalPass());
 
   if (failed(pm.run(module))) {
@@ -148,7 +149,12 @@ struct PropagateStaticKnowledge
     // We do not change the signature so that we keep a somewhat stable ABI
     // that is easy to undertand by tools.
     mlir::LLVM::LLVMFuncOp func = getOperation();
+
+    // This only works if the function is local and we can rewrite it.
+    if (func.isExternal()) return;
+
     mlir::OpBuilder b(func.getBody());
+    // Steal the LLVM representation of the index type from the third argument.
     auto index_type = func.getArgument(3).getType();
     mlir::Value one = b.create<mlir::LLVM::ConstantOp>(
         func.getLoc(), index_type, b.getIntegerAttr(b.getIndexType(), 1));
@@ -156,10 +162,21 @@ struct PropagateStaticKnowledge
         func.getLoc(), index_type, b.getIntegerAttr(b.getIndexType(), 0));
     uint32_t arg_pos = 0;
     std::vector<uint32_t> positions;
-    for (mlir::Type arg_type : func_type.getInputs()) {
+    // Collect the agument and return types of the surrounding function.
+    auto arg_types = llvm::to_vector<4>(llvm::concat<const mlir::Type>(
+        func_type.getInputs(), func_type.getResults()));
+    for (mlir::Type arg_type : arg_types) {
+      if (!arg_type.isa<mlir::MemRefType>()) {
+        func.emitError() << "argument of surrounding func is not ranked memref";
+        signalPassFailure();
+        return;
+      }
       positions.push_back(arg_pos);
+      // Replace the offset with zero. Offset is argument number 3.
       func.getArgument(arg_pos + 2).replaceAllUsesWith(zero);
-      arg_pos += 3 + arg_type.cast<mlir::ShapedType>().getRank() * 2;
+      // Forward over base_ptr, aligned_ptr, offset, size and stride arguments.
+      arg_pos += 3 + arg_type.cast<mlir::MemRefType>().getRank() * 2;
+      // Replace the last stride with constant 1.
       func.getArgument(arg_pos - 1).replaceAllUsesWith(one);
     }
 
@@ -169,17 +186,17 @@ struct PropagateStaticKnowledge
     if (!same_shape.empty()) {
       auto first = same_shape.front();
       auto first_offset = positions.at(first);
-      mlir::ShapedType first_type =
-          func_type.getInput(first).cast<mlir::ShapedType>();
+      auto first_type = arg_types[first].cast<mlir::ShapedType>();
       uint32_t rank = first_type.getRank();
       for (auto same : same_shape.drop_front(1)) {
         uint32_t same_offset = positions.at(same);
-        auto same_type = func_type.getInput(same).cast<mlir::ShapedType>();
+        auto same_type = arg_types[same].cast<mlir::ShapedType>();
         if (same_type.getRank() != rank) {
           func.emitOpError() << "same shape constraints on arguments with "
                                 "non-matching shapes: #"
                              << first << " and #" << same;
           signalPassFailure();
+          continue;
         }
 
         for (uint32_t i = 0; i < 2 * rank; ++i) {
@@ -245,14 +262,8 @@ StatusOr<std::vector<uint8_t>> tensorflow::kernel_gen::GenerateCubinForTfCode(
     TF_RETURN_IF_ERROR(xla::mlir_gpu::LowerLHLOToGPU(module.get(), options));
   }
   TF_RETURN_IF_ERROR(xla::mlir_gpu::LowerKernelBodiesToNVVM(module.get()));
-  // TODO(b/156985522): Figure out why we get a segfault when generating Tanh
-  // with 'same_shape' containing {0, 1}. We would also get the crash if we
-  // unconditionally call PropagateStaticShapeKnowledgeToKernel while
-  // 'same_shape' is empty.
-  if (!same_shape.empty()) {
-    TF_RETURN_IF_ERROR(
-        PropagateStaticShapeKnowledgeToKernel(module.get(), same_shape));
-  }
+  TF_RETURN_IF_ERROR(
+      PropagateStaticShapeKnowledgeToKernel(module.get(), same_shape));
 
   mlir::OwningModuleRef kernel_module =
       xla::mlir_gpu::ExtractKernelModule(*module).ValueOrDie();
