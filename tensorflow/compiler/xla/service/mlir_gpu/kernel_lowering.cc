@@ -43,6 +43,7 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/BufferPlacement.h"  // from @llvm-project
@@ -278,15 +279,34 @@ struct MoveScalarComputationsIntoGpuLaunch
   }
 };
 
-// TODO(herhut): Make this a proper thing.
-struct FixKernelFunctionSignatures
-    : mlir::PassWrapper<FixKernelFunctionSignatures, mlir::FunctionPass> {
+// Sort the operands to the kernel for a deterministic order. First operands
+// that are defined by function arguments, followed by operands that are
+// returned from the function. This only works for simple functions without
+// control flow and can be used in cases where the kernel is extracted and used
+// independently of the host-side code.
+struct RewriteKernelSignature
+    : mlir::PassWrapper<RewriteKernelSignature, mlir::FunctionPass> {
   void runOnFunction() override {
     mlir::FuncOp func = getFunction();
     mlir::ModuleOp module = func.getParentOfType<mlir::ModuleOp>();
     getFunction().walk([&](mlir::gpu::LaunchFuncOp launchOp) {
       mlir::gpu::GPUFuncOp kernel =
           module.lookupSymbol<mlir::gpu::GPUFuncOp>(launchOp.kernel());
+
+      if (kernel.getNumFuncArguments() !=
+          func.getNumArguments() + func.getNumResults()) {
+        kernel.emitError()
+            << "number of kernel arguments does not match number"
+            << "of arguments and results of surrounding function";
+        signalPassFailure();
+        return;
+      }
+      if (func.getBlocks().size() != 1) {
+        func.emitError() << "surrounding function has more than one block";
+        signalPassFailure();
+        return;
+      }
+
       // Compute a map from function arguments to kernel function operands.
       mlir::BlockAndValueMapping func_to_kernel;
       for (mlir::BlockArgument arg : func.getArguments()) {
@@ -297,27 +317,54 @@ struct FixKernelFunctionSignatures
           }
         }
       }
+      // Also add function results that are computed by the launch.
+      mlir::Operation* returnOp = func.getBody().back().getTerminator();
+      for (mlir::Value result : returnOp->getOperands()) {
+        for (int i = 0, e = launchOp.getNumKernelOperands(); i < e; ++i) {
+          if (launchOp.getKernelOperand(i) == result) {
+            func_to_kernel.map(result, kernel.getArgument(i));
+            break;
+          }
+        }
+      }
 
-      // Create a new kernel function with modified signature. We know that it
-      // will have the same signature as the original function, so just reuse it
-      // here.
+      // Create a new kernel function with modified signature. It will have the
+      // parameters and result types of the original funcion as its parameter
+      // type and otherwise will be void.
       auto gpu_module = kernel.getParentOfType<mlir::gpu::GPUModuleOp>();
       mlir::OpBuilder kernel_builder(gpu_module.body());
+      auto operand_types = llvm::to_vector<4>(llvm::concat<const mlir::Type>(
+          func.getType().getInputs(), func.getType().getResults()));
       auto new_kernel = kernel_builder.create<mlir::gpu::GPUFuncOp>(
-          kernel.getLoc(), kernel.getName(), func.getType());
+          kernel.getLoc(), kernel.getName(),
+          kernel_builder.getFunctionType(operand_types, {}));
       new_kernel.setAttr(mlir::gpu::GPUDialect::getKernelFuncAttrName(),
                          kernel_builder.getUnitAttr());
 
       // Create a map from old kernel argument to new one.
       mlir::BlockAndValueMapping old_kernel_to_new;
-      for (int i = 0, e = kernel.getNumFuncArguments(); i < e; ++i) {
+      for (int i = 0, e = func.getNumArguments(); i < e; ++i) {
         mlir::Value func_arg = func.getArgument(i);
         mlir::Value new_kernel_arg = new_kernel.getArgument(i);
         mlir::Value old_kernel_arg = func_to_kernel.lookupOrNull(func_arg);
         if (!old_kernel_arg) {
           kernel.emitOpError()
               << "argument " << i
-              << "to kernel is not an argument to the containing function";
+              << " to containing function is not an argument to the kernel";
+          signalPassFailure();
+          return;
+        }
+        old_kernel_to_new.map(old_kernel_arg, new_kernel_arg);
+      }
+      for (int i = 0, e = returnOp->getNumOperands(); i < e; ++i) {
+        mlir::Value ret_op = returnOp->getOperand(i);
+        mlir::Value new_kernel_arg =
+            new_kernel.getArgument(func.getNumArguments() + i);
+        mlir::Value old_kernel_arg = func_to_kernel.lookupOrNull(ret_op);
+        if (!old_kernel_arg) {
+          kernel.emitOpError()
+              << "result " << i
+              << " of containing function is not an argument to the kernel";
           signalPassFailure();
           return;
         }
@@ -328,13 +375,16 @@ struct FixKernelFunctionSignatures
       kernel_builder.setInsertionPointToEnd(&new_kernel.body().front());
       kernel_builder.create<mlir::BranchOp>(
           new_kernel.getLoc(), &*std::next(new_kernel.body().begin()));
-      // Now create a new launchOp calling the new kernel. We can just forward
-      // the arguments of the function to the launch, as we fixed the
-      // signature.
+      // Now create a new launchOp calling the new kernel. We need to forward
+      // the arguments of the surrounding function and operands to the return.
+      mlir::SmallVector<mlir::Value, 4> new_operands;
+      new_operands.reserve(new_kernel.getNumFuncArguments());
+      new_operands.append(func.args_begin(), func.args_end());
+      new_operands.append(returnOp->operand_begin(), returnOp->operand_end());
       mlir::OpBuilder launch_builder(launchOp);
       launch_builder.create<mlir::gpu::LaunchFuncOp>(
           launchOp.getLoc(), new_kernel, launchOp.getGridSizeOperandValues(),
-          launchOp.getBlockSizeOperandValues(), func.getArguments());
+          launchOp.getBlockSizeOperandValues(), new_operands);
       // Launch does not have results, so we can just erase it. And the kernel
       // also needs to go.
       launchOp.erase();
@@ -418,7 +468,6 @@ Status LowerLHLOToGPU(mlir::ModuleOp module, LowerLHLOToGPUOptions options) {
   // Transform LHLO operations to LinAlg.
   pm.addPass(::mlir::xla_lhlo::createLegalizeLhloToLinalgPass());
   // Fuse linalg operations.
-  // TODO(herhut): Make tiling conigurable.
   pm.addPass(::mlir::xla_lhlo::createLhloFuseLinalg(/*use_parallel_loops=*/true,
                                                     tiling_for_unrolling));
   // Legalize reduce operations directly to GPU dialect.
@@ -462,8 +511,8 @@ Status LowerLHLOToGPU(mlir::ModuleOp module, LowerLHLOToGPUOptions options) {
   pm.addPass(::mlir::createGpuKernelOutliningPass());
   // Make sure the kernel signature resembled the original function's
   // signature
-  if (options.fix_signature) {
-    pm.addPass(absl::make_unique<FixKernelFunctionSignatures>());
+  if (options.rewrite_signature) {
+    pm.addPass(absl::make_unique<RewriteKernelSignature>());
   }
   if (failed(pm.run(module))) {
     return InternalError("Lowering to GPU kernels failed.");
