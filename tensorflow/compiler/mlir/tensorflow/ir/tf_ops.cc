@@ -838,6 +838,11 @@ static LogicalResult Verify(BatchToSpaceOp op) {
   return success();
 }
 
+void BatchToSpaceOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<BatchToSpaceToBatchToSpaceND>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // BiasAddOp
 //===----------------------------------------------------------------------===//
