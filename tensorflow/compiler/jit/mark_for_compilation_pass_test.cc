@@ -271,60 +271,6 @@ TEST(XlaCompilationTest, FunctionCalls) {
   EXPECT_TRUE(clusters.find("D") == clusters.cend());
 }
 
-TEST(XlaCompilationTest, CallXlaDeviceFuncWithResourceOp) {
-  FunctionDef compilable = FunctionDefHelper::Define(
-      "FnWithResourceOp", {"var:resource", "val:float"}, {"retval:float"}, {},
-      {{{"assign_op"},
-        "AssignVariableOp",
-        {"var", "val"},
-        {{"dtype", DT_FLOAT}}},
-       {{"retval"}, "Identity", {"val"}, {{"T", DT_FLOAT}}, {"assign_op"}}});
-
-  FunctionDefLibrary flib;
-  *flib.add_function() = compilable;
-  FunctionLibraryDefinition flib_def(OpRegistry::Global(), flib);
-
-  std::unique_ptr<Graph> graph(new Graph(&flib_def));
-  {
-    GraphDefBuilder builder(GraphDefBuilder::kFailImmediately, &flib_def);
-    Node* resource =
-        ops::SourceOp("VarHandleOp", builder.opts()
-                                         .WithName("varhandle")
-                                         .WithAttr("dtype", DT_FLOAT)
-                                         .WithAttr("shape", TensorShape({})));
-
-    Tensor const_tensor(DT_FLOAT, TensorShape({}));
-    const_tensor.scalar<float>()() = 42.0f;
-    Node* value = ops::SourceOp("Const", builder.opts()
-                                             .WithName("const")
-                                             .WithAttr("value", const_tensor)
-                                             .WithAttr("dtype", DT_FLOAT));
-
-    Node* call = ops::BinaryOp("FnWithResourceOp", resource, value,
-                               builder.opts().WithName("A"));
-    Node* tanh0 = ops::UnaryOp("Tanh", call, builder.opts().WithName("tanh0"));
-    Node* tanh1 = ops::UnaryOp("Tanh", tanh0, builder.opts().WithName("tanh1"));
-    ops::UnaryOp("Tanh", tanh1, builder.opts().WithName("tanh2"));
-    TF_EXPECT_OK(GraphDefBuilderToGraph(builder, graph.get()));
-  }
-
-  string xla_cpu_device = "/job:worker/replica:0/task:0/device:XLA_CPU:0";
-  testing::FindNodeByName(graph.get(), "A")
-      ->set_assigned_device_name(xla_cpu_device);
-  testing::FindNodeByName(graph.get(), "tanh0")
-      ->set_assigned_device_name(xla_cpu_device);
-  testing::FindNodeByName(graph.get(), "tanh1")
-      ->set_assigned_device_name(xla_cpu_device);
-  testing::FindNodeByName(graph.get(), "tanh2")
-      ->set_assigned_device_name(xla_cpu_device);
-
-  TF_ASSERT_OK(
-      MarkForCompilationPassTestHelper::MarkForCompilation(&graph, &flib_def));
-  auto clusters = GetClusters(*graph);
-
-  EXPECT_EQ(clusters["A"], "");
-}
-
 static Status GradForUnaryCwise(FunctionDef* g,
                                 std::vector<FunctionDefHelper::Node> nodes) {
   for (auto& n : nodes) {
@@ -1132,8 +1078,7 @@ TEST(XlaCompilationTest, DontClusterMergingNodesOnCPU) {
   EXPECT_EQ(clusters["MatMul1_dev1"], "");
 }
 
-// TODO(b/117085735): This form of clustering should be prevented.
-TEST(XlaCompilationTest, NOT_DontClusterSpreadingNodes) {
+TEST(XlaCompilationTest, DontClusterSpreadingNodes) {
   // MatMulSource below creates data for nodes on GPU0 and GPU1 and is placed
   // on GPU0. However, it should not be clustered with the next node on
   // GPU0, because that will prevent the node on GPU1 from beginning its work as
@@ -1351,32 +1296,6 @@ const char* kGPU0 = "/job:worker/replica:0/task:0/device:GPU:0";
 const char* kXLA_GPU0 = "/job:worker/replica:0/task:0/device:XLA_GPU:0";
 const char* kGPU1 = "/job:worker/replica:0/task:0/device:GPU:1";
 
-TEST(XlaCompilationTest, CreateCombinedCpuGpuClusters) {
-  Scope root = Scope::NewRootScope().ExitOnError();
-  Output a = ops::Placeholder(root.WithOpName("test/a"), DT_FLOAT);
-  Output b = ops::Placeholder(root.WithOpName("test/b"), DT_FLOAT);
-
-  Output x = ops::Add(root.WithOpName("test/x"), a, b);
-  Output y = ops::MatMul(root.WithOpName("test/y"), a, b);
-  Output z = ops::Add(root.WithOpName("test/z"), x, y);
-
-  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-  TF_ASSERT_OK(root.ToGraph(graph.get()));
-
-  FindNodeByName(graph.get(), "test/x")->set_assigned_device_name(kGPU0);
-  FindNodeByName(graph.get(), "test/y")->set_assigned_device_name(kCPU0);
-  FindNodeByName(graph.get(), "test/z")->set_assigned_device_name(kGPU0);
-
-  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
-
-  std::unordered_map<string, string> clusters = GetClusters(*graph);
-
-  EXPECT_EQ(clusters["test/x"], "");
-
-  EXPECT_EQ(clusters["test/x"], clusters["test/y"]);
-  EXPECT_EQ(clusters["test/y"], clusters["test/z"]);
-}
-
 TEST(XlaCompilationTest, DontCreateGpu0AndGpu1Clusters) {
   Scope root = Scope::NewRootScope().ExitOnError();
   Output a = ops::Placeholder(root.WithOpName("test/a"), DT_FLOAT);
@@ -1421,6 +1340,7 @@ TEST(XlaCompilationTest, DontCreateCombinedCpuUnknownClusters) {
   EXPECT_EQ(clusters["test/y"], "");
 }
 
+// TODO(tpopp): See if this test case should be deleted or changed
 TEST(XlaCompilationTest, ClusterResourceOpsWhenSafe) {
   Scope root = Scope::NewRootScope().ExitOnError();
   Output a = ops::Placeholder(root.WithOpName("test/a"), DT_FLOAT);
@@ -1523,38 +1443,6 @@ TEST(XlaCompilationTest, DontClusterNodesWithForwardFromAttr) {
 
   std::unordered_map<string, string> clusters = GetClusters(*graph);
 
-  EXPECT_EQ(clusters["test/z"], "");
-}
-
-// Note, this relies on other implementation details to test the
-// specific heuristic we care about here, so other changes might be at fault if
-// this CL breaks. What we care about is that if a ShapeConsumingOp can be
-// connected with a producer or consumer and cannot be clustered with both, it
-// should be clustered with the producer.
-TEST(XlaCompilationTest, ClusterShapeConsumerWithProducer) {
-  Scope root = Scope::NewRootScope().ExitOnError();
-  Output a = ops::Placeholder(root.WithOpName("test/a"), DT_FLOAT);
-  Output b = ops::Placeholder(root.WithOpName("test/b"), DT_FLOAT);
-
-  Output x = ops::MatMul(root.WithOpName("test/x"), a, b);
-  Output y = ops::Size(root.WithOpName("test/y"), x);
-  Output z = ops::Add(root.WithOpName("test/z"), y, y);
-
-  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-  TF_ASSERT_OK(root.ToGraph(graph.get()));
-
-  // Ensure that the "Size" op can only be clustered with either the producer or
-  // consumer by putting them on different devices.
-  FindNodeByName(graph.get(), "test/x")->set_assigned_device_name(kGPU0);
-  FindNodeByName(graph.get(), "test/y")->set_assigned_device_name(kCPU0);
-  FindNodeByName(graph.get(), "test/z")->set_assigned_device_name(kGPU1);
-
-  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
-
-  std::unordered_map<string, string> clusters = GetClusters(*graph);
-
-  EXPECT_EQ(clusters["test/y"], "");
-  EXPECT_EQ(clusters["test/x"], "");
   EXPECT_EQ(clusters["test/z"], "");
 }
 
