@@ -73,6 +73,7 @@ py_test(
         "//tensorflow/python/keras/mixed_precision/experimental:loss_scale_optimizer",
         "//tensorflow/python/keras/optimizer_v2",
     ],
+    tags = ["no_rocm"],
 )
 
 py_library(
