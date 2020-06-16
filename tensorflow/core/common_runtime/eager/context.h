@@ -639,6 +639,8 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
   // Not owned.
   std::unordered_map<std::thread::id, EagerExecutor*> thread_local_executor_
       TF_GUARDED_BY(executor_map_mu_);
+  std::unordered_map<std::thread::id, std::unordered_set<EagerExecutor*>>
+      has_cleanup_ TF_GUARDED_BY(executor_map_mu_);
 
   const bool log_memory_;
 
