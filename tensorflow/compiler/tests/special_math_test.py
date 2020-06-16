@@ -106,13 +106,13 @@ class Log1pTest(xla_test.XLATestCase, parameterized.TestCase):
     self._test_range(-40., -20., dtype, rtol, atol, is_negative=False)
     self._test_range(-40., -20., dtype, rtol, atol, is_negative=True)
 
-  @parameterized.parameters((np.float32, 1e-7, 0.),
+  @parameterized.parameters((np.float32, 2e-7, 0.),
                             (np.float64, 1e-15, 0.))
   def testGreaterThanNegativeTwentyExponent(self, dtype, rtol, atol):
     self._test_range(-20., -10., dtype, rtol, atol, is_negative=False)
     self._test_range(-20., -10., dtype, rtol, atol, is_negative=True)
 
-  @parameterized.parameters((np.float32, 1e-7, 0.),
+  @parameterized.parameters((np.float32, 2e-7, 0.),
                             (np.float64, 1e-15, 0.))
   def testGreaterThanNegativeTenExponent(self, dtype, rtol, atol):
     self._test_range(-10., -5., dtype, rtol, atol, is_negative=False)
