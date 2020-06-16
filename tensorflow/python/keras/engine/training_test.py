@@ -3383,18 +3383,6 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     self.assertEqual([m.name for m in outer_model.metrics],
                      ['loss', 'acc2', 'mean', 'mean1', 'mean2'])
 
-  def test_subclassed_model_with_empty_list_attr(self):
-
-    class ModelSubclass(training_module.Model):
-
-      def __init__(self):
-        self.empty_list = []
-        inputs = layers_module.Input(shape=())
-        outputs = inputs + 1
-        super(ModelSubclass, self).__init__(inputs, outputs)
-
-    ModelSubclass()  # empty_list attr assignment should not raise
-
 
 class BareUpdateLayer(layers_module.Layer):
 
