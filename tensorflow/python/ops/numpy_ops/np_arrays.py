@@ -13,6 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """ndarray class."""
+
+# pylint: disable=g-direct-tensorflow-import
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -151,13 +154,16 @@ def _slice_helper(tensor, slice_spec, var=None):
 def convert_to_tensor(value, dtype=None, dtype_hint=None):
   """Wrapper over `tf.convert_to_tensor`.
 
-     Args:
-       value: value to convert
-       dtype: (optional) the type we would like it to be converted to.
-       dtype_hint: (optional) soft preference for the type we would like it to
-         be converted to. `tf.convert_to_tensor` will attempt to convert value
-         to this type first, but will not fail if conversion is not possible
-         falling back to inferring the type instead.
+  Args:
+    value: value to convert
+    dtype: (optional) the type we would like it to be converted to.
+    dtype_hint: (optional) soft preference for the type we would like it to be
+      converted to. `tf.convert_to_tensor` will attempt to convert value to this
+      type first, but will not fail if conversion is not possible falling back
+      to inferring the type instead.
+
+  Returns:
+    Value converted to tf.Tensor.
   """
   # A safer version of `tf.convert_to_tensor` to work around b/149876037.
   # TODO(wangpeng): Remove this function once the bug is fixed.
@@ -250,8 +256,12 @@ class ndarray(object):  # pylint: disable=invalid-name
 
   @property
   def shape(self):
-    """Returns a tuple of array dimensions."""
-    return self.data._shape_tuple()  # pylint: disable=protected-access
+    """Returns a tuple or tf.Tensor of array dimensions."""
+    shape = self.data.shape
+    if shape.is_fully_defined():
+      return tuple(shape.as_list())
+    else:
+      return array_ops.shape(self.data)
 
   @property
   def dtype(self):
@@ -259,19 +269,30 @@ class ndarray(object):  # pylint: disable=invalid-name
 
   @property
   def ndim(self):
-    return self.data.shape.ndims
+    ndims = self.data.shape.ndims
+    if ndims is None:
+      return array_ops.rank(self.data)
+    else:
+      return ndims
 
   @property
   def size(self):
     """Returns the number of elements in the array."""
-    return np.prod(self.shape)
+    shape = self.shape
+    if isinstance(shape, ops.Tensor):
+      return array_ops.size(self.data)
+    else:
+      return np.prod(self.shape)
 
   @property
   def T(self):  # pylint: disable=invalid-name
     return self.transpose()
 
   def __len__(self):
-    if self.shape:
+    shape = self.shape
+    if isinstance(shape, ops.Tensor):
+      raise TypeError('len() of symbolic tensor undefined')
+    elif shape:
       return self.shape[0]
     else:
       raise TypeError('len() of unsized object.')
@@ -320,6 +341,8 @@ class ndarray(object):  # pylint: disable=invalid-name
     return tensor_to_ndarray(result_t)
 
   def __iter__(self):
+    if not isinstance(self.data, ops.EagerTensor):
+      raise TypeError('Iteration over symbolic tensor is not allowed')
     for i in range(self.shape[0]):
       result_t = self.data[i]
       yield tensor_to_ndarray(result_t)
@@ -356,6 +379,8 @@ class ndarray(object):  # pylint: disable=invalid-name
       ValueError: If the array does not have size 1.
     """
     # TODO(wangpeng): Handle graph mode
+    if not isinstance(self.data, ops.EagerTensor):
+      raise TypeError('Indexing using symbolic tensor is not allowed')
     return np.asscalar(self.data.numpy())
 
   def tolist(self):
@@ -384,5 +409,3 @@ def ndarray_to_tensor(arr, dtype=None, name=None, as_ref=False):
 
 
 ops.register_tensor_conversion_function(ndarray, ndarray_to_tensor)
-
-

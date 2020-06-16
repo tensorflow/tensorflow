@@ -223,9 +223,10 @@ def full(shape, fill_value, dtype=None):  # pylint: disable=redefined-outer-name
   Raises:
     ValueError: if `fill_value` can not be broadcast to shape `shape`.
   """
+  if not isinstance(shape, np_arrays.ndarray):
+    shape = asarray(np_arrays.convert_to_tensor(shape, dtype_hint=np.int32))
+  shape = atleast_1d(shape).data
   fill_value = asarray(fill_value, dtype=dtype)
-  if np_utils.isscalar(shape):
-    shape = array_ops.reshape(shape, [1])
   return np_arrays.tensor_to_ndarray(
       array_ops.broadcast_to(fill_value.data, shape))
 
@@ -808,16 +809,21 @@ def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: d
 @np_utils.np_doc(np.std)
 def std(a, axis=None, keepdims=None):  # pylint: disable=missing-function-docstring
   return _reduce(
-      math_ops.reduce_std, a, axis=axis, dtype=None, keepdims=keepdims,
+      math_ops.reduce_std,
+      a,
+      axis=axis,
+      dtype=None,
+      keepdims=keepdims,
       promote_int=_TO_FLOAT)
 
 
 @np_utils.np_doc(np.ravel)
 def ravel(a):  # pylint: disable=missing-docstring
   a = asarray(a)
-  if a.ndim == 1:
-    return a
-  return np_utils.tensor_to_ndarray(array_ops.reshape(a.data, [-1]))
+  out = np_utils.cond(
+      math_ops.equal(a.ndim, 1), lambda: a.data,
+      lambda: array_ops.reshape(a.data, [-1]))
+  return np_utils.tensor_to_ndarray(out)
 
 
 setattr(np_arrays.ndarray, 'ravel', ravel)
@@ -846,7 +852,8 @@ def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
   a = asarray(a).data
   original_shape = a._shape_as_list()  # pylint: disable=protected-access
   # Best effort recovery of the shape.
-  if original_shape is not None and None not in original_shape:
+  known_shape = original_shape is not None and None not in original_shape
+  if known_shape:
     if not original_shape:
       original_shape = (repeats,)
     else:
@@ -865,7 +872,8 @@ def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
 
   repeats = asarray(repeats).data
   result = array_ops.repeat(a, repeats, axis)
-  result.set_shape(original_shape)
+  if known_shape:
+    result.set_shape(original_shape)
 
   return np_utils.tensor_to_ndarray(result)
 
@@ -1287,7 +1295,13 @@ def broadcast_to(array, shape):  # pylint: disable=redefined-outer-name
 
 
 @np_utils.np_doc(np.stack)
-def stack(arrays, axis=0):
+def stack(arrays, axis=0):  # pylint: disable=missing-function-docstring
+  if isinstance(arrays, (np_arrays.ndarray, ops.Tensor)):
+    arrays = asarray(arrays)
+    if axis == 0:
+      return arrays
+    else:
+      return swapaxes(arrays, 0, axis)
   arrays = _promote_dtype(*arrays)  # pylint: disable=protected-access
   unwrapped_arrays = [
       a.data if isinstance(a, np_arrays.ndarray) else a for a in arrays
@@ -1450,6 +1464,8 @@ def tri(N, M=None, k=0, dtype=None):  # pylint: disable=invalid-name,missing-doc
 @np_utils.np_doc(np.tril)
 def tril(m, k=0):  # pylint: disable=missing-docstring
   m = asarray(m).data
+  if m.shape.ndims is None:
+    raise ValueError('Argument to tril should have known rank')
   m_shape = m.shape.as_list()
 
   if len(m_shape) < 2:
@@ -1470,6 +1486,8 @@ def tril(m, k=0):  # pylint: disable=missing-docstring
 @np_utils.np_doc(np.triu)
 def triu(m, k=0):  # pylint: disable=missing-docstring
   m = asarray(m).data
+  if m.shape.ndims is None:
+    raise ValueError('Argument to triu should have known rank')
   m_shape = m.shape.as_list()
 
   if len(m_shape) < 2:
