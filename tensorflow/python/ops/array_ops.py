@@ -3184,6 +3184,7 @@ def sparse_placeholder(dtype, shape=None, name=None):
       # `SparseTensor`
       dense_shape_default = tensor_shape.TensorShape(
           tuple(None if dim == -1 else dim for dim in shape))
+      shape = tuple(tensor_shape.dimension_value(dim) for dim in shape)
       shape = tuple(-1 if dim is None else dim for dim in shape)
       shape = ops.convert_to_tensor(
           shape, dtype=dtypes.int64, name=default_shape_name)

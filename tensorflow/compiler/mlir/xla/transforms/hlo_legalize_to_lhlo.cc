@@ -40,7 +40,6 @@ namespace mlir {
 namespace xla_hlo {
 namespace {
 
-constexpr StringRef kTempBufferAttr = "temp";
 template <typename T>
 using BaseOpConversion = BufferAssignmentOpConversionPattern<T>;
 using StdReturnOpConverter =
@@ -59,7 +58,6 @@ Value InsertDynamicAllocAndDealloc(Location loc, Value result,
       MemRefType::get(result_type.getShape(), result_type.getElementType());
 
   Operation* op = result.getDefiningOp();
-  auto block = op->getBlock();
 
   // Extract the required element out of the vector.
   SmallVector<Value, 4> dynamic_operands;
@@ -80,12 +78,6 @@ Value InsertDynamicAllocAndDealloc(Location loc, Value result,
   // Insert in front of op to ensure sizes are available.
   OpBuilder allocBuilder(op);
   auto alloc = allocBuilder.create<AllocOp>(loc, memref_type, dynamic_operands);
-
-  alloc.setAttr(kTempBufferAttr, rewriter->getBoolAttr(true));
-
-  allocBuilder.setInsertionPoint(block, std::prev(block->end()));
-  allocBuilder.create<DeallocOp>(loc, alloc);
-
   return alloc;
 }
 

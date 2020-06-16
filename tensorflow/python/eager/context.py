@@ -427,7 +427,7 @@ class Context(object):
       raise ValueError(
           "execution_mode should be None/SYNC/ASYNC. Got %s" % execution_mode)
     if execution_mode is None:
-      execution_mode = SYNC
+      execution_mode = ASYNC if is_tfrt_enabled() else SYNC
     self._default_is_async = execution_mode == ASYNC
     self._lazy_remote_inputs_copy = None
     self._use_tfrt = is_tfrt_enabled()
@@ -451,7 +451,6 @@ class Context(object):
     self._inter_op_parallelism_threads = None
     self._soft_device_placement = None
     self._log_device_placement = None
-    self._enable_mlir_bridge = None
     self._enable_mlir_graph_optimization = None
     self._optimizer_experimental_options = {}
 
@@ -927,8 +926,7 @@ class Context(object):
     if self._log_device_placement is not None:
       config.log_device_placement = self._log_device_placement
 
-    if self._enable_mlir_bridge is not None:
-      config.experimental.enable_mlir_bridge = self._enable_mlir_bridge
+    config.experimental.enable_mlir_bridge = pywrap_tfe.TF_IsMlirBridgeEnabled()
     if self._enable_mlir_graph_optimization is not None:
       config.experimental.enable_mlir_graph_optimization = (
           self._enable_mlir_graph_optimization)
@@ -1466,7 +1464,7 @@ class Context(object):
 
   @property
   def enable_mlir_bridge(self):
-    return self._enable_mlir_bridge
+    return pywrap_tfe.TF_IsMlirBridgeEnabled()
 
   @property
   def enable_mlir_graph_optimization(self):
@@ -1474,7 +1472,7 @@ class Context(object):
 
   @enable_mlir_bridge.setter
   def enable_mlir_bridge(self, enabled):
-    self._enable_mlir_bridge = enabled
+    pywrap_tfe.TF_EnableMlirBridge(enabled)
     self._thread_local_data.function_call_options = None
 
   @enable_mlir_graph_optimization.setter

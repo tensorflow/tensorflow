@@ -27,8 +27,9 @@ namespace tflite {
 enum class RecordedAllocationType {
   kTfLiteTensorArray,
   kTfLiteTensorArrayQuantizationData,
+  kTfLiteTensorVariableBufferData,
   kNodeAndRegistrationArray,
-  kOpData
+  kOpData,
 };
 
 // Container for holding information about allocation recordings by a given
@@ -78,6 +79,8 @@ class RecordingMicroAllocator : public MicroAllocator {
       const Model* model, const SubGraph* subgraph,
       const MicroOpResolver& op_resolver,
       NodeAndRegistration* node_and_registrations) override;
+  TfLiteStatus AllocateVariables(TfLiteContext* context,
+                                 const SubGraph* subgraph) override;
 
   void SnapshotAllocationUsage(RecordedAllocation& recorded_allocation);
   void RecordAllocationUsage(RecordedAllocation& recorded_allocation);
@@ -94,6 +97,7 @@ class RecordingMicroAllocator : public MicroAllocator {
 
   RecordedAllocation recorded_tflite_tensor_array_data_;
   RecordedAllocation recorded_tflite_tensor_array_quantization_data_;
+  RecordedAllocation recorded_tflite_tensor_variable_buffer_data_;
   RecordedAllocation recorded_node_and_registration_array_data_;
   RecordedAllocation recorded_op_data_;
 

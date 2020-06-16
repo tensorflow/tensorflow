@@ -186,10 +186,9 @@ class EventForest {
   // iteraton to `tf_loop_root_events_`.
   void ProcessTensorFlowLoop();
 
-  // Creates virtual events of HostEventType::kAsyncExecutorTraceContext. A
-  // virtual event is created for every FunctionRun and the following eager ops
-  // (e.g., for Keras callback).
-  void CreateVirtualEventsForAsyncExecutor();
+  // Processes the worker thread by grouping a FunctionRun with the following
+  // eager ops (e.g., for Keras callback).
+  void ProcessWorker();
 
   EventNodeMap event_node_map_;
   std::vector<XPlaneVisitor> visitors_;

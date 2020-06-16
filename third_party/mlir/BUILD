@@ -756,6 +756,25 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "ShapeToSCF",
+    srcs = glob([
+        "lib/Conversion/ShapeToSCF/*.cpp",
+        "lib/Conversion/ShapeToSCF/*.h",
+    ]) + ["lib/Conversion/PassDetail.h"],
+    hdrs = ["include/mlir/Conversion/ShapeToSCF/ShapeToSCF.h"],
+    includes = ["include"],
+    deps = [
+        ":ConversionPassIncGen",
+        ":IR",
+        ":Pass",
+        ":SCFDialect",
+        ":Shape",
+        ":StandardOps",
+        ":Transforms",
+    ],
+)
+
 gentbl(
     name = "ShapeTransformsPassIncGen",
     strip_include_prefix = "include",
@@ -1297,6 +1316,29 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "VectorToROCDL",
+    srcs = [
+        "lib/Conversion/PassDetail.h",
+        "lib/Conversion/VectorToROCDL/VectorToROCDL.cpp",
+    ],
+    hdrs = [
+        "include/mlir/Conversion/VectorToROCDL/VectorToROCDL.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":ConversionPassIncGen",
+        ":GPUDialect",
+        ":LLVMDialect",
+        ":LLVMTransforms",
+        ":Pass",
+        ":ROCDLDialect",
+        ":StandardOps",
+        ":Transforms",
+        ":VectorOps",
+    ],
+)
+
 gentbl(
     name = "GPUToROCDLTGen",
     strip_include_prefix = "lib/Conversion/GPUToROCDL",
@@ -1336,6 +1378,7 @@ cc_library(
         ":Transforms",
         ":VectorOps",
         ":VectorToLLVM",
+        ":VectorToROCDL",
         ":VectorToSCF",
         "@llvm-project//llvm:Support",
     ],
@@ -2102,6 +2145,7 @@ cc_library(
         ":Analysis",
         ":ControlFlowInterfaces",
         ":IR",
+        ":LinalgOps",
         ":LoopLikeInterface",
         ":Pass",
         ":SCFDialect",
@@ -2588,6 +2632,7 @@ cc_library(
         ":Parser",
         ":Pass",
         ":SCFTransforms",
+        ":ShapeToSCF",
         ":ShapeToStandard",
         ":ShapeTransforms",
         ":StandardOpsTransforms",
@@ -2688,6 +2733,7 @@ cc_library(
         ":SPIRVPassIncGen",
         ":SPIRVToLLVM",
         ":Shape",
+        ":ShapeToSCF",
         ":ShapeToStandard",
         ":ShapeTransforms",
         ":ShapeTransformsPassIncGen",
@@ -2699,6 +2745,7 @@ cc_library(
         ":TransformsPassIncGen",
         ":VectorOps",
         ":VectorToLLVM",
+        ":VectorToROCDL",
         ":VectorToSCF",
     ],
 )
@@ -2857,10 +2904,7 @@ cc_binary(
 cc_binary(
     name = "mlir-cuda-runner",
     srcs = ["tools/mlir-cuda-runner/mlir-cuda-runner.cpp"],
-    data = [
-        ":tools/libcuda-runtime-wrappers.so",
-        "@llvm-project//mlir/test/mlir-cpu-runner:libmlir_runner_utils.so",
-    ],
+    data = [":tools/libcuda-runtime-wrappers.so"],
     deps = [
         ":AllPassesAndDialectsNoRegistration",
         ":ExecutionEngineUtils",
@@ -3259,6 +3303,7 @@ cc_library(
         ":LinalgTransforms",
         ":Pass",
         ":StandardOps",
+        ":StandardOpsTransforms",
         ":Support",
         ":Transforms",
         ":VectorToLLVM",

@@ -3305,12 +3305,22 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "memory_space_assignment_utils",
+    srcs = ["memory_space_assignment_utils.cc"],
+    hdrs = ["memory_space_assignment_utils.h"],
+    deps = [
+        ":heap_simulator",
+    ],
+)
+
+cc_library(
     name = "memory_space_assignment",
     srcs = ["memory_space_assignment.cc"],
     hdrs = ["memory_space_assignment.h"],
     deps = [
         ":heap_simulator",
         ":hlo_cost_analysis",
+        ":memory_space_assignment_utils",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/core/lib/math:math_util",
     ],

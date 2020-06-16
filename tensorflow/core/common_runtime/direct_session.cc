@@ -511,11 +511,11 @@ Status DirectSession::RunInternal(
                                             model_metadata.version());
           return profiler::TraceMeEncode("SessionRun",
                                          {{"id", step_id},
-                                          {"$r", 1} /*root_event*/,
+                                          {"_r", 1} /*root_event*/,
                                           {"model_id", model_id}});
         } else {
           return profiler::TraceMeEncode(
-              "SessionRun", {{"id", step_id}, {"$r", 1} /*root_event*/});
+              "SessionRun", {{"id", step_id}, {"_r", 1} /*root_event*/});
         }
       },
       profiler::ContextType::kTfExecutor, step_id,

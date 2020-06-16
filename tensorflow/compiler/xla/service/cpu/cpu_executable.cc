@@ -350,16 +350,7 @@ StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
                        std::move(buffers)),
                    hlo_execution_profile});
 
-  // TODO(cheshire): Duplication with other executables.
-  for (ExecutionInput& argument : arguments) {
-    for (auto& index_buffer : *argument.MutableBuffers()) {
-      absl::optional<se::OwningDeviceMemory> maybe_owning_buffer =
-          index_buffer.second.Release();
-      if (maybe_owning_buffer) {
-        result.AddToBeReleased(std::move(*maybe_owning_buffer));
-      }
-    }
-  }
+  MarkToBeReleasedArguments(absl::MakeSpan(arguments), result);
   return std::move(result);
 }
 

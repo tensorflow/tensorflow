@@ -41,6 +41,7 @@ from tensorflow.python.util.tf_export import keras_export
 class PreprocessingLayer(Layer):
   """Base class for PreprocessingLayers."""
   __metaclass__ = abc.ABCMeta
+  _must_restore_from_config = True
 
   @abc.abstractmethod
   def adapt(self, data, reset_state=True):

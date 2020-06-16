@@ -50,9 +50,9 @@ def dot(a, b):  # pylint: disable=missing-docstring
             math_ops.equal(array_ops.rank(b), 0)),
         lambda: a * b,
         lambda: np_utils.cond(  # pylint: disable=g-long-lambda
-            math_ops.equal(array_ops.rank(b), 1), lambda: math_ops.tensordot(
-                a, b, axes=[[-1], [-1]]), lambda: math_ops.tensordot(
-                    a, b, axes=[[-1], [-2]])))
+            math_ops.equal(array_ops.rank(b), 1),
+            lambda: math_ops.tensordot(a, b, axes=[[-1], [-1]]),
+            lambda: math_ops.tensordot(a, b, axes=[[-1], [-2]])))
 
   return _bin_op(f, a, b)
 
@@ -204,8 +204,8 @@ def matmul(x1, x2):  # pylint: disable=missing-docstring
       return np_utils.cond(
           math_ops.equal(array_ops.rank(x2), 1),
           lambda: math_ops.tensordot(x1, x2, axes=1),
-          lambda: np_utils.cond(
-              math_ops.equal(array_ops.rank(x1), 1),  # pylint: disable=g-long-lambda
+          lambda: np_utils.cond(  # pylint: disable=g-long-lambda
+              math_ops.equal(array_ops.rank(x1), 1),
               lambda: math_ops.tensordot(  # pylint: disable=g-long-lambda
                   x1, x2, axes=[[0], [-2]]),
               lambda: math_ops.matmul(x1, x2)))
@@ -352,14 +352,30 @@ def hypot(x1, x2):
 def kron(a, b):  # pylint: disable=missing-function-docstring
   # pylint: disable=protected-access,g-complex-comprehension
   a, b = np_array_ops._promote_dtype(a, b)
-  ndim = max(a.ndim, b.ndim)
-  if a.ndim < ndim:
-    a = np_array_ops.reshape(a, np_array_ops._pad_left_to(ndim, a.shape))
-  if b.ndim < ndim:
-    b = np_array_ops.reshape(b, np_array_ops._pad_left_to(ndim, b.shape))
-  a_reshaped = np_array_ops.reshape(a, [i for d in a.shape for i in (d, 1)])
-  b_reshaped = np_array_ops.reshape(b, [i for d in b.shape for i in (1, d)])
-  out_shape = tuple(np.multiply(a.shape, b.shape))
+  t_a = np_utils.cond(
+      a.ndim < b.ndim,
+      lambda: np_array_ops.reshape(  # pylint: disable=g-long-lambda
+          a.data, np_array_ops._pad_left_to(b.ndim, a.shape)),
+      lambda: a.data)
+  t_b = np_utils.cond(
+      b.ndim < a.ndim,
+      lambda: np_array_ops.reshape(  # pylint: disable=g-long-lambda
+          b.data, np_array_ops._pad_left_to(a.ndim, b.shape)),
+      lambda: b.data)
+
+  def _make_shape(shape, prepend):
+    ones = array_ops.ones_like(shape)
+    if prepend:
+      shapes = [ones, shape]
+    else:
+      shapes = [shape, ones]
+    return array_ops.reshape(array_ops.stack(shapes, axis=1), [-1])
+
+  a_shape = array_ops.shape(t_a)
+  b_shape = array_ops.shape(t_b)
+  a_reshaped = np_array_ops.reshape(t_a, _make_shape(a_shape, False))
+  b_reshaped = np_array_ops.reshape(t_b, _make_shape(b_shape, True))
+  out_shape = a_shape * b_shape
   return np_array_ops.reshape(a_reshaped * b_reshaped, out_shape)
 
 
@@ -454,7 +470,8 @@ def _tf_gcd(x1, x2):  # pylint: disable=missing-function-docstring
   if (not np.issubdtype(x1.dtype.as_numpy_dtype, np.integer) or
       not np.issubdtype(x2.dtype.as_numpy_dtype, np.integer)):
     raise ValueError('Arguments to gcd must be integers.')
-  shape = array_ops.broadcast_static_shape(x1.shape, x2.shape)
+  shape = array_ops.broadcast_dynamic_shape(
+      array_ops.shape(x1), array_ops.shape(x2))
   x1 = array_ops.broadcast_to(x1, shape)
   x2 = array_ops.broadcast_to(x2, shape)
   value, _ = control_flow_ops.while_loop(_gcd_cond_fn, _gcd_body_fn,
@@ -607,7 +624,7 @@ def signbit(x):
 
   def f(x):
     if x.dtype == dtypes.bool:
-      return array_ops.fill(x.shape, False)
+      return array_ops.fill(array_ops.shape(x), False)
     return x < 0
 
   return _scalar(f, x)
@@ -866,7 +883,11 @@ def square(x):
 def diff(a, n=1, axis=-1):  # pylint: disable=missing-function-docstring
 
   def f(a):
+    # TODO(agarwal): transpose and reshape to N, H, 1 and do a 1D convolution
+    # TODO(agarwal): avoid depending on static rank.
     nd = a.shape.rank
+    if nd is None:
+      raise ValueError('diff currently requires known rank for input `a`')
     if (axis + nd if axis < 0 else axis) >= nd:
       raise ValueError('axis %s is out of bounds for array of dimension %s' %
                        (axis, nd))
@@ -887,8 +908,10 @@ def diff(a, n=1, axis=-1):  # pylint: disable=missing-function-docstring
 
 
 def _flip_args(f):
+
   def _f(a, b):
     return f(b, a)
+
   return _f
 
 
@@ -910,6 +933,7 @@ setattr(np_arrays.ndarray, '__rtruediv__', _flip_args(true_divide))
 
 
 def _comparison(tf_fun, x1, x2, cast_bool_to_int=False):
+  """Helper function for comparision."""
   dtype = np_utils.result_type(x1, x2)
   # Cast x1 and x2 to the result_type if needed.
   x1 = np_array_ops.array(x1, dtype=dtype)
@@ -953,12 +977,18 @@ def less_equal(x1, x2):
 
 
 @np_utils.np_doc(np.array_equal)
-def array_equal(a1, a2):
+def array_equal(a1, a2):  # pylint: disable=missing-function-docstring
 
-  def f(a1, a2):
-    if a1.shape != a2.shape:
-      return constant_op.constant(False)
-    return math_ops.reduce_all(math_ops.equal(a1, a2))
+  def f(x1, x2):
+    return np_utils.cond(
+        math_ops.equal(array_ops.rank(x1), array_ops.rank(x2)),
+        lambda: np_utils.cond(  # pylint: disable=g-long-lambda
+            np_utils.reduce_all(
+                math_ops.equal(array_ops.shape(x1), array_ops.shape(x2))
+            ),
+            lambda: math_ops.reduce_all(math_ops.equal(x1, x2)),
+            lambda: constant_op.constant(False)),
+        lambda: constant_op.constant(False))
 
   return _comparison(f, a1, a2)
 
@@ -1001,7 +1031,13 @@ setattr(np_arrays.ndarray, '__ne__', not_equal)
 
 @np_utils.np_doc(np.linspace)
 def linspace(  # pylint: disable=missing-docstring
-    start, stop, num=50, endpoint=True, retstep=False, dtype=float, axis=0):
+    start,
+    stop,
+    num=50,
+    endpoint=True,
+    retstep=False,
+    dtype=float,
+    axis=0):
   if dtype:
     dtype = np_utils.result_type(dtype)
   start = np_array_ops.array(start, dtype=dtype).data
@@ -1054,10 +1090,14 @@ def geomspace(start, stop, num=50, endpoint=True, dtype=None, axis=0):  # pylint
   start_sign = 1 - np_array_ops.sign(np_array_ops.real(start))
   stop_sign = 1 - np_array_ops.sign(np_array_ops.real(stop))
   signflip = 1 - start_sign * stop_sign // 2
-  res = signflip * logspace(log10(signflip * start),
-                            log10(signflip * stop), num,
-                            endpoint=endpoint, base=10.0,
-                            dtype=computation_dtype, axis=0)
+  res = signflip * logspace(
+      log10(signflip * start),
+      log10(signflip * stop),
+      num,
+      endpoint=endpoint,
+      base=10.0,
+      dtype=computation_dtype,
+      axis=0)
   if axis != 0:
     res = np_array_ops.moveaxis(res, 0, axis)
   return np_utils.tensor_to_ndarray(math_ops.cast(res, dtype))

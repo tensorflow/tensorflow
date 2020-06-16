@@ -77,8 +77,6 @@ tf_cuda_library(
         "//tensorflow/c/eager:context_interface",
         "//tensorflow/c/eager:tensor_handle_interface",
         "//tensorflow/c/eager:operation_interface",
-        "//tensorflow/c/experimental/saved_model/core:saved_model_api",
-        "//tensorflow/c/experimental/saved_model/core:tf_saved_model_impl",
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
         "//tensorflow/core/distributed_runtime:worker_env",
     ] + select({

@@ -36,8 +36,7 @@ TEST(GroupEventsTest, GroupGpuTraceTest) {
   constexpr int64 kCorrelationId = 100;
 
   XSpace space;
-  XPlaneBuilder host_plane_builder(space.add_planes());
-  host_plane_builder.SetName(kHostThreads);
+  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
   host_plane_builder.ReserveLines(2);
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
@@ -78,8 +77,7 @@ TEST(GroupEventsTest, GroupTensorFlowLoopTest) {
   constexpr int64 kCorrelationId = 100;
 
   XSpace space;
-  XPlaneBuilder host_plane_builder(space.add_planes());
-  host_plane_builder.SetName(kHostThreads);
+  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
   host_plane_builder.ReserveLines(1);
 
   auto tf_executor_thread = host_plane_builder.GetOrCreateLine(0);
@@ -125,8 +123,7 @@ TEST(GroupEventsTest, GroupMultipleTensorFlowLoopsTest) {
   constexpr int64 kSecondIterNumStart = 0;
 
   XSpace space;
-  XPlaneBuilder host_plane_builder(space.add_planes());
-  host_plane_builder.SetName(kHostThreads);
+  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
   host_plane_builder.ReserveLines(2);
 
   auto first_tf_executor_thread = host_plane_builder.GetOrCreateLine(0);
@@ -163,9 +160,8 @@ TEST(GroupEventsTest, GroupFunctionalOp) {
   constexpr int64 kFunctionStepId = 1;
 
   XSpace space;
-  XPlane* host_plane = space.add_planes();
+  XPlane* host_plane = GetOrCreateHostXPlane(&space);
   XPlaneBuilder host_plane_builder(host_plane);
-  host_plane_builder.SetName(kHostThreads);
   host_plane_builder.ReserveLines(2);
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
@@ -209,9 +205,8 @@ TEST(GroupEventsTest, EagerOpTest) {
   constexpr int64 kCorrelationId = 100;
 
   XSpace space;
-  XPlane* host_plane = space.add_planes();
+  XPlane* host_plane = GetOrCreateHostXPlane(&space);
   XPlaneBuilder host_plane_builder(host_plane);
-  host_plane_builder.SetName(kHostThreads);
   host_plane_builder.ReserveLines(1);
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
@@ -255,9 +250,8 @@ TEST(GroupEventsTest, FunctionOpTest) {
   constexpr int64 kCorrelationId = 100;
 
   XSpace space;
-  XPlane* host_plane = space.add_planes();
+  XPlane* host_plane = GetOrCreateHostXPlane(&space);
   XPlaneBuilder host_plane_builder(host_plane);
-  host_plane_builder.SetName(kHostThreads);
   host_plane_builder.ReserveLines(2);
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
@@ -465,6 +459,63 @@ TEST(GroupEventsTest, AsyncEventTest) {
               } else {
                 EXPECT_TRUE(group_id.has_value());
                 EXPECT_EQ(*group_id, 0);
+              }
+            });
+      });
+}
+
+TEST(GroupEventsTest, WorkerTest) {
+  constexpr uint64 kEagerKernelExecuteDuration = 100;
+  constexpr uint64 kFunctionRunDuration = 50;
+  constexpr uint64 kFirstEagerKernelExecuteStartTime = 0;
+  constexpr uint64 kSecondEagerKernelExecuteStartTime = 200;
+  constexpr uint64 kThirdEagerKernelExecuteStartTime = 400;
+  constexpr uint64 kFourthEagerKernelExecuteStartTime = 600;
+  constexpr uint64 kFirstFunctionRunStartTime = 210;
+  constexpr uint64 kSecondFunctionRunStartTime = 610;
+
+  XSpace raw_space;
+  XPlane* raw_plane = raw_space.add_planes();
+  XPlaneBuilder plane(raw_plane);
+  plane.ReserveLines(1);
+  auto line = plane.GetOrCreateLine(0);
+  // Eager op. It doesn't belong to any group.
+  CreateXEvent(&plane, &line, HostEventType::kEagerKernelExecute,
+               kFirstEagerKernelExecuteStartTime, kEagerKernelExecuteDuration);
+  // First function. It creates the first group.
+  CreateXEvent(&plane, &line, HostEventType::kEagerKernelExecute,
+               kSecondEagerKernelExecuteStartTime, kEagerKernelExecuteDuration);
+  CreateXEvent(&plane, &line, HostEventType::kFunctionRun,
+               kFirstFunctionRunStartTime, kFunctionRunDuration);
+  // Eager op. It belongs to the first group.
+  CreateXEvent(&plane, &line, HostEventType::kEagerKernelExecute,
+               kThirdEagerKernelExecuteStartTime, kEagerKernelExecuteDuration);
+  // Second function. It creates the second group.
+  CreateXEvent(&plane, &line, HostEventType::kEagerKernelExecute,
+               kFourthEagerKernelExecuteStartTime, kEagerKernelExecuteDuration);
+  CreateXEvent(&plane, &line, HostEventType::kFunctionRun,
+               kSecondFunctionRunStartTime, kFunctionRunDuration);
+
+  GroupTfEvents(&raw_space, /*event_group_name_map=*/nullptr);
+  CreateTfXPlaneVisitor(raw_plane).ForEachLine(
+      [&](const tensorflow::profiler::XLineVisitor& line) {
+        EXPECT_EQ(line.NumEvents(), 6);
+        line.ForEachEvent(
+            [&](const tensorflow::profiler::XEventVisitor& event) {
+              absl::optional<int64> group_id;
+              if (absl::optional<XStatVisitor> stat =
+                      event.GetStat(StatType::kGroupId)) {
+                group_id = stat->IntValue();
+              }
+              if (event.TimestampPs() < kSecondEagerKernelExecuteStartTime) {
+                EXPECT_FALSE(group_id.has_value());
+              } else if (event.TimestampPs() <
+                         kFourthEagerKernelExecuteStartTime) {
+                EXPECT_TRUE(group_id.has_value());
+                EXPECT_EQ(*group_id, 0);
+              } else {
+                EXPECT_TRUE(group_id.has_value());
+                EXPECT_EQ(*group_id, 1);
               }
             });
       });

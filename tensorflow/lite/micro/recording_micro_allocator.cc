@@ -51,6 +51,8 @@ RecordedAllocation RecordingMicroAllocator::GetRecordedAllocation(
       return recorded_tflite_tensor_array_data_;
     case RecordedAllocationType::kTfLiteTensorArrayQuantizationData:
       return recorded_tflite_tensor_array_quantization_data_;
+    case RecordedAllocationType::kTfLiteTensorVariableBufferData:
+      return recorded_tflite_tensor_variable_buffer_data_;
     case RecordedAllocationType::kNodeAndRegistrationArray:
       return recorded_node_and_registration_array_data_;
     case RecordedAllocationType::kOpData:
@@ -80,15 +82,18 @@ void RecordingMicroAllocator::PrintAllocations() const {
       "[RecordingMicroAllocator] Arena allocation tail %d bytes",
       recording_memory_allocator_->GetTailUsedBytes());
   PrintRecordedAllocation(RecordedAllocationType::kTfLiteTensorArray,
-                          "TfLiteTensor struct allocation", "tensors");
+                          "TfLiteTensor struct", "tensors");
   PrintRecordedAllocation(
       RecordedAllocationType::kTfLiteTensorArrayQuantizationData,
-      "TfLiteTensor quantization data allocations", "allocations");
+      "TfLiteTensor quantization data", "allocations");
+  PrintRecordedAllocation(
+      RecordedAllocationType::kTfLiteTensorVariableBufferData,
+      "TfLiteTensor variable buffer data", "allocations");
   PrintRecordedAllocation(RecordedAllocationType::kNodeAndRegistrationArray,
-                          "NodeAndRegistration struct allocation",
+                          "NodeAndRegistration struct",
                           "NodeAndRegistration structs");
   PrintRecordedAllocation(RecordedAllocationType::kOpData,
-                          "Operator runtime data allocation", "OpData structs");
+                          "Operator runtime data", "OpData structs");
 }
 
 void RecordingMicroAllocator::PrintRecordedAllocation(
@@ -151,6 +156,16 @@ RecordingMicroAllocator::PrepareNodeAndRegistrationDataFromFlatbuffer(
           model, subgraph, op_resolver, node_and_registrations);
 
   RecordAllocationUsage(recorded_op_data_);
+  return status;
+}
+
+TfLiteStatus RecordingMicroAllocator::AllocateVariables(
+    TfLiteContext* context, const SubGraph* subgraph) {
+  SnapshotAllocationUsage(recorded_tflite_tensor_variable_buffer_data_);
+
+  TfLiteStatus status = MicroAllocator::AllocateVariables(context, subgraph);
+
+  RecordAllocationUsage(recorded_tflite_tensor_variable_buffer_data_);
   return status;
 }
 

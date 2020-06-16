@@ -424,7 +424,7 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
       // To TraceMeConsumers in ExecutorState::Process/Finish or RunGraphDone.
       [step_id] {
         return profiler::TraceMeEncode(
-            "RunGraph", {{"id", step_id}, {"$r", 1} /*root_event*/});
+            "RunGraph", {{"id", step_id}, {"_r", 1} /*root_event*/});
       },
       profiler::ContextType::kTfExecutor, step_id,
       profiler::TraceMeLevel::kInfo);

@@ -47,7 +47,7 @@ def _canonicalize_axes(axes, rank):
     canonicalizer = (
         lambda axis: cond(axis < 0, lambda: axis + rank, lambda: axis))
   else:
-    canonicalizer = lambda axis: axis+rank if axis < 0 else axis
+    canonicalizer = lambda axis: axis + rank if axis < 0 else axis
 
   return [canonicalizer(axis) for axis in axes]
 
@@ -100,9 +100,16 @@ def finfo(dtype):
 
 def isscalar(val):
   """Returns whether `val` is a scalar value or scalar Tensor."""
-  if isinstance(val, (np.ndarray, np_arrays.ndarray, ops.Tensor)):
-    return len(val.shape) == 0  # pylint: disable=g-explicit-length-test
-  return np.isscalar(val)
+  if isinstance(val, np_arrays.ndarray):
+    val = val.data
+  if isinstance(val, ops.Tensor):
+    ndims = val.shape.ndims
+    if ndims is not None:
+      return ndims == 0
+    else:
+      return math_ops.equal(array_ops.rank(val), 0)
+  else:
+    return np.isscalar(val)
 
 
 # Can't use np_doc because np.result_type is a builtin function.
@@ -119,8 +126,8 @@ def result_type(*arrays_and_dtypes):
   def maybe_get_dtype(x):
     # Don't put np.ndarray in this list, because np.result_type looks at the
     # value (not just dtype) of np.ndarray to decide the result type.
-    if isinstance(x, (np_arrays.ndarray, ops.Tensor,
-                      indexed_slices.IndexedSlices)):
+    if isinstance(
+        x, (np_arrays.ndarray, ops.Tensor, indexed_slices.IndexedSlices)):
       return _to_numpy_type(x.dtype)
     elif isinstance(x, dtypes.DType):
       return _to_numpy_type(x)
@@ -277,8 +284,11 @@ def np_doc(np_fun, np_fun_name=None):
       #   for name in np_sig.parameters:
       #     if name not in sig.parameters:
       #       unsupported_params.append(name)
-    f.__doc__ = _np_doc_helper(f, np_fun, np_fun_name=np_fun_name,
-                               unsupported_params=unsupported_params)
+    f.__doc__ = _np_doc_helper(
+        f,
+        np_fun,
+        np_fun_name=np_fun_name,
+        unsupported_params=unsupported_params)
     return f
 
   return decorator
@@ -287,9 +297,9 @@ def np_doc(np_fun, np_fun_name=None):
 def _np_doc_helper(f, np_f, np_fun_name=None, unsupported_params=None):
   """Helper to get docs."""
   if not unsupported_params and not _has_docstring(f) and _has_docstring(np_f):
-      # TODO(wangpeng): It looks like code snippets in numpy doc don't work
-      # correctly with doctest. Fix that and remove the reformatting of the np_f
-      # comment, here and below.
+    # TODO(wangpeng): It looks like code snippets in numpy doc don't work
+    # correctly with doctest. Fix that and remove the reformatting of the np_f
+    # comment, here and below.
     return np_f.__doc__.replace('>>>', '>')
   assert np_f or np_fun_name
   if not np_fun_name:

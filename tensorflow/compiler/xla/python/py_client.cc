@@ -107,25 +107,29 @@ StatusOr<std::unique_ptr<PyBuffer>> PyClient::BufferFromPyal(
   std::shared_ptr<PythonRefManager::ManagedPyObjects> py_buffer_ref =
       GlobalPyRefManager()->ManageReference(std::move(c->array));
 
+  std::unique_ptr<PjRtBuffer> buffer;
+  {
+    py::gil_scoped_release gil_release;
+    TF_ASSIGN_OR_RETURN(
+        buffer, PjRtBuffer::FromHostBuffer(c->buf_ptr, c->shape, force_copy,
+                                           std::move(py_buffer_ref),
+                                           pjrt_client_.get(), device));
+  }
   auto traceback = Traceback::Get();
-
-  py::gil_scoped_release gil_release;
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<PjRtBuffer> buffer,
-      PjRtBuffer::FromHostBuffer(c->buf_ptr, c->shape, force_copy,
-                                 std::move(py_buffer_ref), pjrt_client_.get(),
-                                 device));
   return std::make_unique<PyBuffer>(shared_from_this(), std::move(buffer),
                                     std::move(traceback));
 }
 
 StatusOr<std::unique_ptr<PyExecutable>> PyClient::Compile(
     const XlaComputation& computation, CompileOptions options) {
+  std::unique_ptr<PjRtExecutable> executable;
+  {
+    py::gil_scoped_release gil_release;
+    TF_ASSIGN_OR_RETURN(executable,
+                        PjRtExecutable::Compile(computation, pjrt_client_.get(),
+                                                std::move(options)));
+  }
   auto traceback = Traceback::Get();
-  py::gil_scoped_release gil_release;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
-                      PjRtExecutable::Compile(computation, pjrt_client_.get(),
-                                              std::move(options)));
   return std::make_unique<PyExecutable>(
       shared_from_this(), std::move(executable), std::move(traceback));
 }
@@ -226,6 +230,7 @@ H AbslHashValue(H h, const HeapProfileKey& key) {
 }  // namespace
 
 py::bytes PyClient::HeapProfile() {
+  CHECK(PyGILState_Check());
   absl::flat_hash_map<HeapProfileKey, int64> entries;
   for (PyBuffer* buffer = buffers_; buffer; buffer = buffer->next_) {
     HeapProfileKey key{buffer->traceback(),

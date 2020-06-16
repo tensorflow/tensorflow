@@ -387,7 +387,7 @@ void KernelAndDeviceFunc::RunAsync(
       // To TraceMeConsumers in ExecutorState::Process/Finish.
       [&] {
         return profiler::TraceMeEncode(
-            "FunctionRun", {{"id", opts->step_id}, {"$r", 1} /*root_event*/});
+            "FunctionRun", {{"id", opts->step_id}, {"_r", 1} /*root_event*/});
       },
       profiler::ContextType::kTfExecutor, opts->step_id,
       profiler::TraceMeLevel::kInfo);

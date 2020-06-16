@@ -202,16 +202,58 @@ StatusOr<DeviceAssignment> PjRtClient::GetDefaultDeviceAssignment(
 
 StatusOr<absl::flat_hash_set<int>> PjRtClient::GetParametersThatMustBeDonated(
     const LocalExecutable& executable, bool tuple_inputs) const {
-  // TODO(b/149489114) support buffer donation on CPU/GPU when XLA supports it.
+  HloComputation* computation =
+      executable.executable()->module().entry_computation();
+  int number_of_parameters = [&]() -> int {
+    if (tuple_inputs) {
+      CHECK_EQ(computation->num_parameters(), 1);
+      const Shape& input_tuple_shape =
+          computation->parameter_instruction(0)->shape();
+      CHECK(input_tuple_shape.IsTuple());
+      return input_tuple_shape.tuple_shapes_size();
+    } else {
+      return computation->num_parameters();
+    }
+  }();
+  // If any buffer in a parameter is aliased we will donate the entire input
+  // parameter.
+  absl::flat_hash_set<int> parameters_to_donate;
   const HloInputOutputAliasConfig& config =
       executable.executable()->module().input_output_alias_config();
   TF_RETURN_IF_ERROR(config.ForEachAliasWithStatus(
-      [](const ShapeIndex& output_index,
-         const HloInputOutputAliasConfig::Alias& alias) {
-        return InvalidArgument(
-            "Buffer aliasing is not supported by XLA for non-TPU backends.");
+      [&](const ShapeIndex& output_index,
+          const HloInputOutputAliasConfig::Alias& alias) {
+        if (tuple_inputs) {
+          if (alias.parameter_number != 0) {
+            return InvalidArgument(
+                "Unexpected parameter number %d in alias config with tupled "
+                "inputs",
+                alias.parameter_number);
+          }
+          const ShapeIndex& index = alias.parameter_index;
+          if (!index.empty()) {
+            int this_parameter = index.data()[0];
+            if (this_parameter >= number_of_parameters) {
+              return InvalidArgument(
+                  "Unexpected parameter index %s in alias config with tupled "
+                  "inputs and %d parameters",
+                  index.ToString(), number_of_parameters);
+            }
+            parameters_to_donate.insert(this_parameter);
+          }
+        } else {
+          int this_parameter = alias.parameter_number;
+          if (this_parameter >= number_of_parameters) {
+            return InvalidArgument(
+                "Unexpected parameter number %d in alias config without tupled "
+                "inputs and %d parameters",
+                this_parameter, number_of_parameters);
+          }
+          parameters_to_donate.insert(this_parameter);
+        }
+        return Status::OK();
       }));
-  return absl::flat_hash_set<int>();
+  return parameters_to_donate;
 }
 
 namespace {
@@ -429,23 +471,25 @@ PjRtBuffer::ScopedHold::~ScopedHold() {
 PjRtBuffer::ScopedHold::ScopedHold(ScopedHold&& other)
     : parent_(other.parent_),
       type_(other.type_),
+      state_(other.state_),
       buffer_or_(std::move(other.buffer_or_)) {
-  // Preserve the invariant that status is invalid if buffer != nullptr.
-  other.SetError(InvalidArgument("Buffer has been moved."));
+  // Preserve the invariant that status is invalid if buffer == nullptr.
+  other.SetState(kMoved);
 }
 
 void PjRtBuffer::ScopedHold::Acquire(
     StatusOr<std::shared_ptr<TrackedDeviceBuffer>>&& buffer_or) {
   CHECK(!ok());
   buffer_or_ = std::move(buffer_or);
+  SetState(buffer_or_.ok() ? kValid : kError);
   // Check the invariant holds.
   CHECK(!ok() || buffer_or_.ValueOrDie() != nullptr);
 }
 
 PjRtBuffer::ScopedHold::ForClosure PjRtBuffer::ScopedHold::ToClosure() {
   CHECK(ok());
-  ForClosure for_closure(parent_, type_, std::move(buffer_or_));
-  SetError(InvalidArgument("Buffer has been released"));
+  ForClosure for_closure(parent_, type_, state_, std::move(buffer_or_));
+  SetState(kReleased);
   return for_closure;
 }
 
@@ -456,14 +500,14 @@ void PjRtBuffer::ScopedHold::ConvertUsageHold(
   CHECK(type_ == kUsage);
   parent_->ConvertUsageHold(buffer().get(), usage_stream, std::move(event),
                             reference_held);
-  SetError(InvalidArgument("Buffer has been converted"));
+  SetState(kConverted);
 }
 
 void PjRtBuffer::ScopedHold::ConfirmDonation() {
   CHECK(ok());
   CHECK(type_ == kDonation);
   parent_->ConfirmDonation(buffer().get());
-  SetError(InvalidArgument("Buffer has been donated"));
+  SetState(kDonated);
 }
 
 void PjRtBuffer::ScopedHold::AddToInput(

@@ -258,4 +258,16 @@ StatusOr<ExecutionOutput> Executable::ExecuteAsyncOnStreamWrapper(
 
 int64 Executable::SizeOfGeneratedCodeInBytes() const { return -1; }
 
+void Executable::MarkToBeReleasedArguments(absl::Span<ExecutionInput> arguments,
+                                           ExecutionOutput& result) {
+  for (ExecutionInput& argument : arguments) {
+    for (auto& index_buffer : *argument.MutableBuffers()) {
+      if (absl::optional<se::OwningDeviceMemory> maybe_owning_buffer =
+              index_buffer.second.Release()) {
+        result.AddToBeReleased(std::move(*maybe_owning_buffer));
+      }
+    }
+  }
+}
+
 }  // namespace xla

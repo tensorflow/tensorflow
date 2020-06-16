@@ -1225,6 +1225,11 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadAllAttemptsFail) {
 }
 
 TEST(GcsFileSystemTest, NewWritableFile_UploadReturns410) {
+  std::vector<string> results;
+  TF_EXPECT_OK(
+      Env::Default()->GetMatchingPaths("/tmp/tmp_file_tensorflow*", &results));
+  const int64 tmp_files_before = results.size();
+
   std::vector<HttpRequest*> requests(
       {new FakeHttpRequest(
            "Uri: https://www.googleapis.com/upload/storage/v1/b/bucket/o?"
@@ -1268,21 +1273,31 @@ TEST(GcsFileSystemTest, NewWritableFile_UploadReturns410) {
                    kTestTimeoutConfig, *kAllowedLocationsDefault,
                    nullptr /* gcs additional header */);
 
-  std::unique_ptr<WritableFile> file;
-  TF_EXPECT_OK(fs.NewWritableFile("gs://bucket/path/writeable.txt", &file));
+  {
+    std::unique_ptr<WritableFile> file;
+    TF_EXPECT_OK(fs.NewWritableFile("gs://bucket/path/writeable.txt", &file));
 
-  TF_EXPECT_OK(file->Append("content1,"));
-  TF_EXPECT_OK(file->Append("content2"));
-  const auto& status = file->Close();
-  EXPECT_EQ(errors::Code::UNAVAILABLE, status.code());
-  EXPECT_TRUE(
-      absl::StrContains(status.error_message(),
-                        "Upload to gs://bucket/path/writeable.txt failed, "
-                        "caused by: Not found: important HTTP error 410"))
-      << status;
-  EXPECT_TRUE(absl::StrContains(
-      status.error_message(), "when uploading gs://bucket/path/writeable.txt"))
-      << status;
+    TF_EXPECT_OK(file->Append("content1,"));
+    TF_EXPECT_OK(file->Append("content2"));
+    const auto& status = file->Close();
+    EXPECT_EQ(errors::Code::UNAVAILABLE, status.code());
+    EXPECT_TRUE(
+        absl::StrContains(status.error_message(),
+                          "Upload to gs://bucket/path/writeable.txt failed, "
+                          "caused by: Not found: important HTTP error 410"))
+        << status;
+    EXPECT_TRUE(
+        absl::StrContains(status.error_message(),
+                          "when uploading gs://bucket/path/writeable.txt"))
+        << status;
+  }
+
+  // Check that no new tempfiles were left over after failure and destruction
+  // of the file.
+  results.clear();
+  TF_EXPECT_OK(
+      Env::Default()->GetMatchingPaths("/tmp/tmp_file_tensorflow*", &results));
+  EXPECT_EQ(tmp_files_before, results.size());
 }
 
 TEST(GcsFileSystemTest, NewWritableFile_NoObjectName) {

@@ -29,6 +29,7 @@ PyBuffer::PyBuffer(std::shared_ptr<PyClient> client,
     : client_(std::move(client)),
       buffer_(std::move(buffer)),
       traceback_(std::move(traceback)) {
+  CHECK(PyGILState_Check());
   next_ = client_->buffers_;
   client_->buffers_ = this;
   prev_ = nullptr;
@@ -38,6 +39,7 @@ PyBuffer::PyBuffer(std::shared_ptr<PyClient> client,
 }
 
 PyBuffer::~PyBuffer() {
+  CHECK(PyGILState_Check());
   if (client_->buffers_ == this) {
     client_->buffers_ = next_;
   }
@@ -57,10 +59,12 @@ StatusOr<std::unique_ptr<PyBuffer>> PyBuffer::CopyToDevice(
     const ClientAndPtr<Device>& dst_device) const {
   CHECK(dst_device.get() != nullptr);
   GlobalPyRefManager()->CollectGarbage();
+  std::unique_ptr<PjRtBuffer> out;
+  {
+    py::gil_scoped_release gil_release;
+    TF_ASSIGN_OR_RETURN(out, buffer_->CopyToDevice(dst_device.get()));
+  }
   auto traceback = Traceback::Get();
-  py::gil_scoped_release gil_release;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> out,
-                      buffer_->CopyToDevice(dst_device.get()));
   return std::make_unique<PyBuffer>(dst_device.client, std::move(out),
                                     std::move(traceback));
 }

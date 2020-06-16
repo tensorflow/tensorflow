@@ -40,14 +40,22 @@ void PopulateEncodingParams(const std::vector<int>& block_size,
                             std::vector<int>* traversal_order,
                             std::vector<TfLiteDimensionType>* format,
                             std::vector<int>* b_map, std::vector<int>* b_size) {
-  *traversal_order = {0, 1};
-  *format = {kTfLiteDimDense, kTfLiteDimSparseCSR};
+  const int dims_count = block_size.size();
+  traversal_order->resize(dims_count);
+  format->resize(dims_count);
+  for (int i = 0; i < dims_count; i++) {
+    (*traversal_order)[i] = i;
+  }
+  for (int i = 0; i < dims_count - 1; i++) {
+    (*format)[i] = kTfLiteDimDense;
+  }
+  (*format)[dims_count - 1] = kTfLiteDimSparseCSR;
   *b_map = {};
   *b_size = {};
   int block_rank = 0;
-  for (int i = 0; i < 2; i++) {
+  for (int i = 0; i < dims_count; i++) {
     if (block_size[i] != 1) {
-      traversal_order->push_back(block_rank + 2);
+      traversal_order->push_back(block_rank + dims_count);
       format->push_back(kTfLiteDimDense);
       block_rank++;
       b_map->push_back(i);
@@ -58,27 +66,18 @@ void PopulateEncodingParams(const std::vector<int>& block_size,
 
 float CalculateRandomSparsity(const ElementsAttr& attr,
                               const ShapedType& type) {
-  int num_elements = 1;
-  for (int i = 0; i < 2; i++) {
-    num_elements *= type.getDimSize(i);
-  }
+  int num_elements = type.getNumElements();
   int num_zeros = 0;
 
   if (type.getElementType().isF32()) {
-    std::vector<float> data;
-    data.reserve(type.getNumElements());
-    for (const auto val : attr.getValues<float>()) data.push_back(val);
-    for (int i = 0; i < data.size(); i++) {
-      if (data[i] == 0) {
+    for (const auto val : attr.getValues<float>()) {
+      if (val == 0.f) {
         num_zeros++;
       }
     }
   } else if (type.getElementType().isa<quant::QuantizedType>()) {
-    std::vector<int8_t> data;
-    data.reserve(type.getNumElements());
-    for (const auto val : attr.getValues<int8_t>()) data.push_back(val);
-    for (int i = 0; i < data.size(); i++) {
-      if (data[i] == 0) {
+    for (const auto val : attr.getValues<int8_t>()) {
+      if (val == 0) {
         num_zeros++;
       }
     }
@@ -150,9 +149,10 @@ InspectResult InspectWeight(
     type = cst.getType().cast<ShapedType>();
   }
 
-  // TODO(b/147449640): Add ability to encode weights more than 2-D, e.g. Conv
-  // weights.
-  if (type.getRank() != 2) {
+  // Currently we only support compressing weights of ops:
+  //   Conv, DepthwiseConv, TransposeConv, whose filter has rank 4, and
+  //   FullyConnected, whose filter has rank 2.
+  if (type.getRank() != 2 && type.getRank() != 4) {
     result.can_compress = false;
     return result;
   }
@@ -195,9 +195,11 @@ std::vector<T> BuildSparsityParameterAttribute(
     attr = cst.value();
     type = cst.getType().cast<ShapedType>();
   }
-  std::vector<int> shape(2);
-  shape[0] = type.getDimSize(0);
-  shape[1] = type.getDimSize(1);
+  const int dims_count = type.getRank();
+  std::vector<int> shape(dims_count);
+  for (int i = 0; i < dims_count; i++) {
+    shape[i] = type.getDimSize(i);
+  }
 
   std::vector<int> traversal_order = {};
   std::vector<TfLiteDimensionType> format = {};
@@ -271,10 +273,13 @@ void DenseToSparse::runOnFunction() {
         continue;
       }
 
+      ShapedType type;
       if (isa<ConstOp>(inst)) {
         supported_block_size = sparse_op.GetFloatBlockSize();
+        type = dyn_cast<ConstOp>(inst).getType().cast<ShapedType>();
       } else if (isa<QConstOp>(inst)) {
         supported_block_size = sparse_op.GetQuantizedBlockSize();
+        type = dyn_cast<QConstOp>(inst).getType().cast<ShapedType>();
       } else {
         continue;
       }
@@ -286,7 +291,7 @@ void DenseToSparse::runOnFunction() {
 
       // The weight is not block sparse. Encode with random sparsity.
       if (result.selected_block_size.empty()) {
-        result.selected_block_size = {1, 1};
+        result.selected_block_size = std::vector<int>(type.getRank(), 1);
       }
 
       builder.setInsertionPoint(op);

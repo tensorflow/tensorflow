@@ -29,6 +29,7 @@ from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
 from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import input_ops
 from tensorflow.python.distribute import reduce_util
@@ -316,7 +317,7 @@ class DistributedIteratorBase(distribute_types.Iterator):
           # Make `replicas` a flat list of values across all replicas.
           replicas.extend(
               self._iterators[i].get_next_as_list_static_shapes(new_name))
-      return values.regroup(replicas)
+      return distribute_utils.regroup(replicas)
 
     out_of_range_replicas = []
     def out_of_range_fn(worker_index, device):
@@ -349,7 +350,7 @@ class DistributedIteratorBase(distribute_types.Iterator):
             results.append(result)
     replicas = results
 
-    return values.regroup(replicas)
+    return distribute_utils.regroup(replicas)
 
 
 class DistributedIteratorV1(DistributedIteratorBase):
@@ -577,7 +578,7 @@ class _IterableInput(distribute_types.Iterable):
       else:
         raise ValueError("Dataset iteration within a tf.function is"
                          " not supported for multiple workers.")
-      state = reduce_fn(state, values.regroup(data))
+      state = reduce_fn(state, distribute_utils.regroup(data))
       has_data, data = _get_next_as_optional(iterator, self._strategy)
       return has_data, data, state
 

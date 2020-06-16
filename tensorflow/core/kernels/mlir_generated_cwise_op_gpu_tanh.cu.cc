@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/cubin_headers/tanh_f16_kernel.h"
 #include "tensorflow/core/kernels/cubin_headers/tanh_f32_kernel.h"
 #include "tensorflow/core/kernels/cubin_headers/tanh_f64_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -102,6 +103,14 @@ class MlirGenerateTanhOp : public OpKernel {
   std::mutex mu_;
 };
 
+class MlirGenerateTanhF16Op : public MlirGenerateTanhOp {
+ public:
+  explicit MlirGenerateTanhF16Op(OpKernelConstruction* ctx)
+      : MlirGenerateTanhOp(ctx) {
+    cubin_data_ = kTanhF16Kernel;
+  }
+};
+
 class MlirGenerateTanhF32Op : public MlirGenerateTanhOp {
  public:
   explicit MlirGenerateTanhF32Op(OpKernelConstruction* ctx)
@@ -119,6 +128,9 @@ class MlirGenerateTanhF64Op : public MlirGenerateTanhOp {
 };
 }  // namespace
 
+REGISTER_KERNEL_BUILDER(
+    Name("Tanh").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
+    MlirGenerateTanhF16Op);
 REGISTER_KERNEL_BUILDER(
     Name("Tanh").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     MlirGenerateTanhF32Op);

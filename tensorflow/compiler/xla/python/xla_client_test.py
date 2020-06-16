@@ -1909,11 +1909,6 @@ def TestFactory(xla_backend, cloud_tpu=False):
       out = ops.Add(p1, p2)
       c.setup_alias([], 0, [])
       c = c.build(out)
-      if self.backend.platform != "tpu":
-        with self.assertRaisesRegex(
-            RuntimeError, "Buffer aliasing is not supported "
-            "by XLA for non-TPU backends"):
-          self.backend.compile(c)
 
   tests.append(AliasTest)
 

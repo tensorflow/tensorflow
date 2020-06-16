@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/diagnostics.h"
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 
@@ -40,16 +41,25 @@ const absl::string_view kNoDeviceTraceCollected =
     "run on the device when sampling was turned on. You could try the sampling"
     " again later.";
 
+const absl::string_view kStepsDropped =
+    " steps dropped. This might happen when you profile many hosts and/or many "
+    "steps. You could try to profile shorter or reduce the number of hosts "
+    "you profile.";
+
 void PopulateStepDiagnostics(const OpStats& op_stats, Diagnostics* diag) {
   if (op_stats.step_db().use_incomplete_step()) {
     *diag->add_warnings() = std::string(kErrorIncompleteStep);
   } else if (op_stats.step_db().step_sequence().empty()) {
     *diag->add_warnings() = std::string(kErrorNoStepMarker);
   }
+  if (op_stats.step_db().num_steps_dropped()) {
+    *diag->add_warnings() =
+        absl::StrCat(op_stats.step_db().num_steps_dropped(), kStepsDropped);
+  }
 }
 
 void PopulateOverviewDiagnostics(const OpStats& op_stats, Diagnostics* diag) {
-  *diag->mutable_errors() = op_stats.errors();
+  *diag->mutable_errors() = op_stats.diagnostics().errors();
   absl::c_sort(*diag->mutable_errors());
   if (diag->errors().empty()) {
     // Shows run-environment error only if there is no other existing error.
@@ -58,6 +68,7 @@ void PopulateOverviewDiagnostics(const OpStats& op_stats, Diagnostics* diag) {
       *diag->add_errors() = std::string(kNoDeviceTraceCollected);
     }
   }
+  *diag->mutable_warnings() = op_stats.diagnostics().warnings();
   PopulateStepDiagnostics(op_stats, diag);
 }
 

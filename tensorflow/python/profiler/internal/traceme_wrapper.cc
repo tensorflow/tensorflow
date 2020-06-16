@@ -23,10 +23,8 @@ namespace py = ::pybind11;
 using ::tensorflow::profiler::TraceMeWrapper;
 
 PYBIND11_MODULE(_pywrap_traceme, m) {
-  // This variable will be modified by PythonHooks::Start/Stop(). such
-  // arrangement will reduce the number of calls through pybind11.
-  m.attr("enabled") = py::bool_(false);
   py::class_<TraceMeWrapper>(m, "TraceMe", py::module_local())
       .def(py::init<const py::str&, const py::kwargs&>())
-      .def("SetMetadata", &TraceMeWrapper::SetMetadata);
+      .def("SetMetadata", &TraceMeWrapper::SetMetadata)
+      .def("Stop", &TraceMeWrapper::Stop);
 };

@@ -31,6 +31,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_test_base
@@ -1026,8 +1027,9 @@ class MirroredStrategyDefunTest(test.TestCase):
       result = distribution.extended.call_for_each_replica(
           model_fn, args=[mock_model] + inputs)
       for r in range(len(devices)):
-        device_result = values.select_replica(r, result)
-        device_expected_result = values.select_replica(r, expected_result)
+        device_result = distribute_utils.select_replica(r, result)
+        device_expected_result = distribute_utils.select_replica(
+            r, expected_result)
         self.assertAllClose(device_expected_result,
                             self.evaluate(device_result))
 

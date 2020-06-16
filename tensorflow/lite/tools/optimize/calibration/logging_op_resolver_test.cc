@@ -70,7 +70,7 @@ TEST(LoggingOpResolverTest, KernelInvokesAreReplaced) {
   };
 
   LoggingOpResolver resolver(ops_to_replace, CustomOpsSet(), base_resolver,
-                             WrappingInvoke);
+                             WrappingInvoke, /*error_reporter=*/nullptr);
 
   auto reg = resolver.FindOp(BuiltinOperator_CONV_2D, 1);
 
@@ -104,7 +104,7 @@ TEST(LoggingOpResolverTest, OriginalKernelInvokesAreRetained) {
   };
 
   LoggingOpResolver resolver(ops_to_replace, CustomOpsSet(), base_resolver,
-                             WrappingInvoke);
+                             WrappingInvoke, /*error_reporter=*/nullptr);
   auto kernel_invoke =
       resolver.GetWrappedKernelInvoke(BuiltinOperator_CONV_2D, 1);
   EXPECT_TRUE(kernel_invoke == ConvEval);
@@ -131,7 +131,7 @@ TEST(LoggingOpResolverTest, OnlyOpsInReplacementSetAreReplaces) {
   };
 
   LoggingOpResolver resolver(ops_to_replace, CustomOpsSet(), base_resolver,
-                             WrappingInvoke);
+                             WrappingInvoke, /*error_reporter=*/nullptr);
   auto reg = resolver.FindOp(BuiltinOperator_CONV_2D, 1);
   EXPECT_EQ(reg->builtin_code, BuiltinOperator_CONV_2D);
   EXPECT_TRUE(reg->prepare == ConvPrepare);
@@ -155,7 +155,7 @@ TEST(LoggingOpResolverTest, CustomOps) {
   };
 
   LoggingOpResolver resolver(BuiltinOpsSet(), ops_to_replace, base_resolver,
-                             WrappingInvoke);
+                             WrappingInvoke, /*error_reporter=*/nullptr);
 
   auto reg = resolver.FindOp(custom_op_name.c_str(), 1);
 
@@ -165,7 +165,6 @@ TEST(LoggingOpResolverTest, CustomOps) {
   EXPECT_TRUE(reg->invoke == WrappingInvoke);
 }
 
-#ifdef GTEST_HAS_DEATH_TEST
 TEST(LoggingOpResolverTest, UnresolvedCustomOps) {
   // No custom op registration.
   MutableOpResolver base_resolver;
@@ -176,14 +175,9 @@ TEST(LoggingOpResolverTest, UnresolvedCustomOps) {
       {custom_op_name, /*version*/ 1},
   };
 
-#ifdef NDEBUG
+  // Expect no death.
   LoggingOpResolver(BuiltinOpsSet(), ops_to_replace, base_resolver,
-                    WrappingInvoke);
-#else
-  EXPECT_DEATH(LoggingOpResolver(BuiltinOpsSet(), ops_to_replace, base_resolver,
-                                 WrappingInvoke),
-               "[unresolved_custom_op]");
-#endif  // DEBUG
+                    WrappingInvoke, /*error_reporter=*/nullptr);
 }
 
 TEST(LoggingOpResolverTest, UnresolvedBuiltinOps) {
@@ -195,17 +189,10 @@ TEST(LoggingOpResolverTest, UnresolvedBuiltinOps) {
       {BuiltinOperator_ADD, /*version*/ 1},
   };
 
-#ifdef NDEBUG
+  // Expect no death.
   LoggingOpResolver resolver(ops_to_replace, CustomOpsSet(), base_resolver,
-                             WrappingInvoke);
-#else
-
-  EXPECT_DEATH(LoggingOpResolver resolver(ops_to_replace, CustomOpsSet(),
-                                          base_resolver, WrappingInvoke),
-               "[CONV_2D, ADD]");
-#endif  // NDEBUG
+                             WrappingInvoke, /*error_reporter=*/nullptr);
 }
-#endif  // GTEST_HAS_DEATH_TEST
 
 TEST(LoggingOpResolverTest, FlexOps) {
   // No flex op registration.
@@ -218,7 +205,7 @@ TEST(LoggingOpResolverTest, FlexOps) {
   };
 
   LoggingOpResolver resolver(BuiltinOpsSet(), ops_to_replace, base_resolver,
-                             WrappingInvoke);
+                             WrappingInvoke, /*error_reporter=*/nullptr);
 
   auto reg = resolver.FindOp(custom_op_name.c_str(), 1);
 

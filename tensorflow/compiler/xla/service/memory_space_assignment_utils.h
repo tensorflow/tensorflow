@@ -12,21 +12,23 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <cstdint>
-#include <cstdlib>
 
-// This is a demo fuzzer to test that the entire framework functions correctly.
-// Once we start moving the existing fuzzers to this framework we will delete
-// this.
-// TODO(mihaimaruseac): Delete this when no longer needed
-void DemoFuzzer(const uint8_t* data, size_t size) {
-  // Trigger a small bug that should be found by the fuzzer quite quickly
-  if (size > 10 && size % 3 == 2)
-    if (data[0] > data[1])
-      if (data[5] % data[2] == data[3]) abort();
-}
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_UTILS_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_UTILS_H_
 
-extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  DemoFuzzer(data, size);
-  return 0;
-}
+#include "tensorflow/compiler/xla/service/heap_simulator.h"
+
+namespace xla {
+
+// Encapsulates common utility methods for memory space assignment.
+class MemorySpaceAssignmentUtils {
+ public:
+  // Returns true if this buffer is allowed to be placed in the alternate
+  // memory.
+  static bool IsIntervalAllowedInAlternateMemory(
+      const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval);
+};
+
+}  // namespace xla
+
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_UTILS_H_

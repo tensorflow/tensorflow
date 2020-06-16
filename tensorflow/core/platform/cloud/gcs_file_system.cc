@@ -416,7 +416,10 @@ class GcsWritableFile : public WritableFile {
                   std::ofstream::binary | std::ofstream::app);
   }
 
-  ~GcsWritableFile() override { Close().IgnoreError(); }
+  ~GcsWritableFile() override {
+    Close().IgnoreError();
+    std::remove(tmp_content_filename_.c_str());
+  }
 
   Status Append(StringPiece data) override {
     TF_RETURN_IF_ERROR(CheckWritable());
@@ -431,9 +434,11 @@ class GcsWritableFile : public WritableFile {
 
   Status Close() override {
     if (outfile_.is_open()) {
-      TF_RETURN_IF_ERROR(Sync());
-      outfile_.close();
-      std::remove(tmp_content_filename_.c_str());
+      Status sync_status = Sync();
+      if (sync_status.ok()) {
+        outfile_.close();
+      }
+      return sync_status;
     }
     return Status::OK();
   }

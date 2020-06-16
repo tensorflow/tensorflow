@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import type_spec as type_spec_module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.util import nest
@@ -210,10 +211,20 @@ class _KerasTensorIterator(object):
 def keras_tensor_to_placeholder(x):
   """TODO(kaftan): Docstring."""
   if isinstance(x, KerasTensor):
-    def tensor_spec_to_placeholder(tensorspec):
-      return array_ops.placeholder(tensorspec.dtype, tensorspec.shape)
-    ph = nest.map_structure(tensor_spec_to_placeholder, x.type_spec,
-                            expand_composites=True)
+    spec = x.type_spec
+    if isinstance(spec, sparse_tensor.SparseTensorSpec):
+      # nest.map_structure loses dense shape information for sparse tensors.
+      # So, we special-case sparse placeholder creation.
+      # This only preserves shape information for top-level sparse tensors;
+      # not for sparse tensors that are nested inside another composite
+      # tensor.
+      return array_ops.sparse_placeholder(dtype=spec.dtype, shape=spec.shape)
+
+    def component_to_placeholder(component):
+      return array_ops.placeholder(component.dtype, component.shape)
+
+    ph = nest.map_structure(
+        component_to_placeholder, spec, expand_composites=True)
     return ph
   else:
     return x

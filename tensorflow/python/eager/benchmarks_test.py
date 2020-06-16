@@ -1432,6 +1432,15 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
 
     self._run(fn, 10000)
 
+  def benchmark_tf_nn_convolution_overhead(self):
+    inputs = array_ops.ones((1, 1, 1, 1))
+    filters = array_ops.ones((1, 1, 1, 1))
+
+    def fn():
+      nn_ops.convolution_v2(inputs, filters)
+
+    self._run(fn, 10000)
+
 
 if __name__ == "__main__":
   test.main()

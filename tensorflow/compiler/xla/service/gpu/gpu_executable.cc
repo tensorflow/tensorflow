@@ -541,15 +541,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
       buffer_allocations.TearDown(buffers_in_result, assignment_.get()));
 
   // Free allocations for arguments.
-  for (ExecutionInput& argument : arguments) {
-    for (auto& index_buffer : *argument.MutableBuffers()) {
-      if (absl::optional<se::OwningDeviceMemory> owning =
-              index_buffer.second.Release()) {
-        result.AddToBeReleased(std::move(*owning));
-      }
-    }
-  }
-
+  MarkToBeReleasedArguments(absl::MakeSpan(arguments), result);
   return std::move(result);
 }
 

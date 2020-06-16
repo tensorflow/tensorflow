@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
@@ -283,7 +284,11 @@ absl::Status Arguments::SetHalf(const std::string& name, half value) {
   }
   it->second.value = value;
   if (it->second.active) {
-    shared_half4s_data_[it->second.offset] = value;
+    if (it->second.store_as_f32) {
+      shared_float4s_data_[it->second.offset] = value;
+    } else {
+      shared_half4s_data_[it->second.offset] = value;
+    }
   }
   return absl::OkStatus();
 }
@@ -436,10 +441,12 @@ absl::Status Arguments::Merge(Arguments&& args, const std::string& postfix) {
 }
 
 absl::Status Arguments::TransformToCLCode(
+    const DeviceInfo& device_info,
     const std::map<std::string, std::string>& linkables, std::string* code) {
   RETURN_IF_ERROR(AddObjectArgs());
   RETURN_IF_ERROR(ResolveSelectorsPass(linkables, code));
-  ResolveArgsPass(code);
+  ResolveArgsPass(device_info, code);
+  *code = absl::Substitute(*code, GetListOfArgs());
   return absl::OkStatus();
 }
 
@@ -568,7 +575,8 @@ absl::Status Arguments::Bind(cl_kernel kernel, int offset) {
   return absl::OkStatus();
 }
 
-std::string Arguments::AddActiveArgument(const std::string& arg_name) {
+std::string Arguments::AddActiveArgument(const std::string& arg_name,
+                                         bool use_f32_for_halfs) {
   if (auto it = int_values_.find(arg_name); it != int_values_.end()) {
     int int_index;
     if (it->second.active) {
@@ -603,26 +611,39 @@ std::string Arguments::AddActiveArgument(const std::string& arg_name) {
       half_index = it->second.offset;
     } else {
       it->second.active = true;
-      it->second.offset = shared_half4s_data_.size();
+      if (use_f32_for_halfs) {
+        it->second.store_as_f32 = true;
+        it->second.offset = shared_float4s_data_.size();
+        shared_float4s_data_.push_back(it->second.value);
+      } else {
+        it->second.offset = shared_half4s_data_.size();
+        shared_half4s_data_.push_back(it->second.value);
+      }
       half_index = it->second.offset;
-      shared_half4s_data_.push_back(it->second.value);
     }
     std::string index = std::to_string(half_index / 4);
     std::string postfixes[4] = {"x", "y", "z", "w"};
-    return "shared_half4_" + index + "." + postfixes[half_index % 4];
+    if (it->second.store_as_f32) {
+      return "(half)(shared_float4_" + index + "." + postfixes[half_index % 4] +
+             ")";
+    } else {
+      return "shared_half4_" + index + "." + postfixes[half_index % 4];
+    }
   }
   return arg_name;
 }
 
-void Arguments::ResolveArgsPass(std::string* code) {
-  std::string result;
+void Arguments::ResolveArgsPass(const DeviceInfo& device_info,
+                                std::string* code) {
+  bool use_f32_for_half_arguments = device_info.vendor == Vendor::POWERVR;
   size_t position = 0;
   size_t next_position = code->find(kArgsPrefix);
   while (next_position != std::string::npos) {
     size_t arg_pos = next_position;
     next_position += strlen(kArgsPrefix);
     std::string object_name = GetNextWord(*code, next_position);
-    std::string new_name = AddActiveArgument(object_name);
+    std::string new_name =
+        AddActiveArgument(object_name, use_f32_for_half_arguments);
     code->replace(arg_pos, object_name.size() + strlen(kArgsPrefix), new_name);
     position = arg_pos + new_name.size();
     next_position = code->find(kArgsPrefix, position);

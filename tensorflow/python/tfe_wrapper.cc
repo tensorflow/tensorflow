@@ -364,6 +364,14 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TF_SetXlaMinClusterSize", &TF_SetXlaMinClusterSize);
   m.def("TF_IsXlaEnabled", [] { return tensorflow::IsXlaEnabled(); });
 
+  // MLIR Logic
+  m.def("TF_IsMlirBridgeEnabled", [] {
+    return tensorflow::GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge;
+  });
+  m.def("TF_EnableMlirBridge", [](bool enabled) {
+    tensorflow::GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge = enabled;
+  });
+
   // // TFE_Context Logic
   m.def(
       "TFE_NewContext",

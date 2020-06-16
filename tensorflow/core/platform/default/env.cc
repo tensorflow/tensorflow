@@ -135,15 +135,8 @@ class PosixEnv : public Env {
   }
 
   int32 GetCurrentThreadId() override {
-#ifdef __APPLE__
-    uint64_t tid64;
-    pthread_threadid_np(nullptr, &tid64);
-    return static_cast<int32>(tid64);
-#elif defined(__FreeBSD__)
-    return pthread_getthreadid_np();
-#else
-    return static_cast<int32>(pthread_self());
-#endif
+    static thread_local int32 current_thread_id = GetCurrentThreadIdInternal();
+    return current_thread_id;
   }
 
   bool GetCurrentThreadName(string* name) override {
@@ -232,6 +225,20 @@ class PosixEnv : public Env {
 
  private:
   void GetLocalTempDirectories(std::vector<string>* list) override;
+
+  int32 GetCurrentThreadIdInternal() {
+#ifdef __APPLE__
+    uint64_t tid64;
+    pthread_threadid_np(nullptr, &tid64);
+    return static_cast<int32>(tid64);
+#elif defined(__FreeBSD__)
+    return pthread_getthreadid_np();
+#elif defined(__NR_gettid)
+    return static_cast<int32>(syscall(__NR_gettid));
+#else
+    return std::hash<std::thread::id>()(std::this_thread::get_id());
+#endif
+  }
 };
 
 }  // namespace

@@ -18,7 +18,6 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
-#include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 
@@ -122,17 +121,11 @@ Transpose& Transpose::operator=(Transpose&& operation) {
 absl::Status Transpose::Compile(const CreationContext& creation_context) {
   std::string code = GetTransposeCode(definition_, attr_, &args_);
   std::string element_wise_code;
-  for (int i = 0; i < linked_operations_.size(); ++i) {
-    std::string code = linked_operations_[i]->GetCode();
-    std::string postfix = absl::StrCat("_link", i + 1);
-    auto&& link_args = linked_operations_[i]->MoveArgs();
-    link_args.RenameArgs(postfix, &code);
-    element_wise_code += "{\n" + code + "\n}\n";
-    RETURN_IF_ERROR(args_.Merge(std::move(link_args), postfix));
-  }
   RETURN_IF_ERROR(
-      args_.TransformToCLCode({{"dst_tensor", element_wise_code}}, &code));
-  code = absl::Substitute(code, args_.GetListOfArgs());
+      MergeOperations(linked_operations_, &args_, &element_wise_code));
+  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
+                                          {{"dst_tensor", element_wise_code}},
+                                          &code));
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
@@ -141,9 +134,8 @@ absl::Status Transpose::Compile(const CreationContext& creation_context) {
 absl::Status Transpose::BindArguments() {
   RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
   RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
-  RETURN_IF_ERROR(SetArgs(linked_operations_, &args_));
-  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
-  return absl::OkStatus();
+  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
+  return args_.Bind(kernel_.kernel());
 }
 
 int3 Transpose::GetGridSize() const {

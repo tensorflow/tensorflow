@@ -15,11 +15,11 @@ summary table of the choices and the benefits they provide:
 
 | Technique            | Benefits                  | Hardware         |
 | -------------------- | ------------------------- | ---------------- |
-| Dynamic range        | 4x smaller, 2-3x speedup  | CPU              |
+| Dynamic range        | 4x smaller, 2x-3x speedup | CPU              |
 : quantization         :                           :                  :
 | Full integer         | 4x smaller, 3x+ speedup   | CPU, Edge TPU,   |
 : quantization         :                           : Microcontrollers :
-| Float16 quantization | 2x smaller, potential GPU | CPU, GPU         |
+| Float16 quantization | 2x smaller, GPU           | CPU, GPU         |
 :                      : acceleration              :                  :
 
 The following decision tree can help determine which post-training quantization
@@ -34,7 +34,7 @@ weights from floating point to integer, which has 8-bits of precision:
 
 <pre>
 import tensorflow as tf
-converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+converter = tf.lite.TFLiteConverter.from_keras_model(keras_model)
 <b>converter.optimizations = [tf.lite.Optimize.DEFAULT]</b>
 tflite_quant_model = converter.convert()
 </pre>
@@ -48,16 +48,7 @@ activations based on their range to 8-bits and perform computations with 8-bit
 weights and activations. This optimization provides latencies close to fully
 fixed-point inference. However, the outputs are still stored using floating
 point so that the speedup with dynamic-range ops is less than a full fixed-point
-computation. Dynamic-range ops are available for the most compute-intensive
-operators in a network:
-
-*   `tf.keras.layers.Dense`
-*   `tf.keras.layers.Conv2D`
-*   `tf.keras.layers.LSTM`
-*   `tf.nn.embedding_lookup`
-*   `tf.compat.v1.nn.rnn_cell.BasicRNNCell`
-*   `tf.compat.v1.nn.bidirectional_dynamic_rnn`
-*   `tf.compat.v1.nn.dynamic_rnn`
+computation.
 
 ### Full integer quantization
 
@@ -77,7 +68,7 @@ the following steps:
 
 <pre>
 import tensorflow as tf
-converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+converter = tf.lite.TFLiteConverter.from_keras_model(keras_model)
 <b>converter.optimizations = [tf.lite.Optimize.DEFAULT]
 def representative_dataset_gen():
   for _ in range(num_calibration_steps):
@@ -105,7 +96,7 @@ the following steps:
 
 <pre>
 import tensorflow as tf
-converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+converter = tf.lite.TFLiteConverter.from_keras_model(keras_model)
 converter.optimizations = [tf.lite.Optimize.DEFAULT]
 def representative_dataset_gen():
   for _ in range(num_calibration_steps):
@@ -129,9 +120,9 @@ quantization of weights, use the following steps:
 
 <pre>
 import tensorflow as tf
-converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+converter = tf.lite.TFLiteConverter.from_keras_model(keras_model)
 <b>converter.optimizations = [tf.lite.Optimize.DEFAULT]
-converter.target_spec.supported_types = [tf.lite.constants.FLOAT16]</b>
+converter.target_spec.supported_types = [tf.float16]</b>
 tflite_quant_model = converter.convert()
 </pre>
 

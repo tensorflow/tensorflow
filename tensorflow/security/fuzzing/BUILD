@@ -12,8 +12,11 @@ package(
 )
 
 tf_fuzz_target(
-    name = "demo_fuzz",
-    srcs = ["demo_fuzz.cc"],
+    name = "status_fuzz",
+    srcs = ["status_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:status",
+    ],
 )
 
 # A trivial fuzzer with no pre-specified corpus.

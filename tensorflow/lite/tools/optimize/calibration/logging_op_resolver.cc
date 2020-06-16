@@ -17,7 +17,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
@@ -27,7 +27,7 @@ namespace calibration {
 LoggingOpResolver::LoggingOpResolver(
     const BuiltinOpsSet& builtin_ops_to_replace,
     const CustomOpsSet& custom_ops_to_replace, const OpResolver& base_resolver,
-    KernelEvalFuncPtr logging_eval_fn) {
+    KernelEvalFuncPtr logging_eval_fn, ErrorReporter* error_reporter) {
   std::vector<std::string> unresolved_builtin_ops;
   std::vector<std::string> unresolved_custom_ops;
 
@@ -63,6 +63,7 @@ LoggingOpResolver::LoggingOpResolver(
   }
 
   if (!unresolved_builtin_ops.empty() || !unresolved_custom_ops.empty()) {
+    if (!error_reporter) return;
     std::string error_message =
         "Failed to initialize op resolver for calibration:";
     if (!unresolved_builtin_ops.empty())
@@ -72,11 +73,7 @@ LoggingOpResolver::LoggingOpResolver(
       absl::StrAppend(&error_message, "\nThere are unresolved custom ops: [",
                       absl::StrJoin(unresolved_builtin_ops, ", "), "]");
     }
-#ifdef NDEBUG
-    LOG(ERROR) << error_message;
-#else
-    DLOG(FATAL) << error_message;
-#endif  // NDEBUG
+    TF_LITE_REPORT_ERROR(error_reporter, error_message.c_str());
   }
 }
 
