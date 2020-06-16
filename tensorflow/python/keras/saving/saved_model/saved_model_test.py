@@ -809,6 +809,36 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     self.evaluate(variables.variables_initializer(loaded.variables))
     self.assertAllClose(model.predict(f), loaded.predict(f))
 
+  def test_load_with_partially_failed_serialization(self):
+
+    class BadCustomLayer(keras.layers.Layer):
+
+      def __call__(self, inputs):
+        return inputs
+
+    class Model(keras.models.Model):
+
+      def __init__(self):
+        super(Model, self).__init__()
+        self.layer = BadCustomLayer()
+
+      @def_function.function(
+          input_signature=[tensor_spec.TensorSpec([None, 1])])
+      def call(self, inputs):
+        return self.layer(inputs)
+
+    model = Model()
+    inp = constant_op.constant([[1.0]])
+    model(inp)
+    saved_model_dir = self._save_model_dir()
+    tf_save.save(model, saved_model_dir)
+
+    loaded = keras_load.load(saved_model_dir)
+    self.assertAllEqual([[1.0]], self.evaluate(loaded(inp)))
+    with self.assertRaisesRegexp(ValueError,
+                                 'call function was not serialized'):
+      loaded.layer(inp)
+
 
 class TestLayerCallTracing(test.TestCase, parameterized.TestCase):
 
