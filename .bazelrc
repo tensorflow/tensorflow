@@ -30,6 +30,7 @@
 #     short_logs:       Only log errors during build, skip warnings.
 #     monolithic:       Build all TF C++ code into a single shared object.
 #     dynamic_kernels:  Try to link all kernels dynamically (experimental).
+#     libc++:           Link against libc++ instead of stdlibc++
 #
 #
 # TF version options;
@@ -79,6 +80,14 @@
 #     elinux_armhf:    Embedded Linux options for armhf (ARMv7) CPU support.
 
 
+# Allow builds using libc++ as a linker library
+# This is mostly for OSSFuzz, so we also pass in the flags from environment to clean build file
+build:libc++ --action_env=CC
+build:libc++ --action_env=CXX
+build:libc++ --action_env=CXXFLAGS=-stdlib=libc++
+build:libc++ --action_env=PATH
+build:libc++ --define force_libcpp=enabled
+build:libc++ --linkopt -fuse-ld=lld
 
 # Android configs. Bazel needs to have --cpu and --fat_apk_cpu both set to the
 # target CPU to build transient dependencies correctly. See
