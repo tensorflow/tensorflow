@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -tf-tpu-dynamic-layout-pass | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -split-input-file -tf-tpu-dynamic-layout-pass | FileCheck %s
 
 // Tests that the pass can transform non-replicated execution.
 

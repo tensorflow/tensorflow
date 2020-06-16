@@ -19,6 +19,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
+#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 
 namespace tflite {
 namespace gpu {
@@ -27,6 +28,7 @@ namespace {
 struct TestDescriptor : public GPUObjectDescriptor {
   absl::Status PerformSelector(const std::string& selector,
                                const std::vector<std::string>& args,
+                               const std::vector<std::string>& template_args,
                                std::string* result) const override {
     if (selector == "Length") {
       *result = "length";
@@ -45,7 +47,7 @@ struct TestDescriptor : public GPUObjectDescriptor {
     }
   }
 
-  GPUResources GetGPUResources() const override {
+  GPUResources GetGPUResources(AccessType access_type) const override {
     GPUResources resources;
     resources.ints.push_back("length");
     GPUBufferDescriptor desc;
@@ -60,7 +62,8 @@ struct TestDescriptor : public GPUObjectDescriptor {
 TEST(ArgumentsTest, TestSelectorResolve) {
   TestDescriptor descriptor;
   Arguments args;
-  args.AddObjectRef("object", absl::make_unique<TestDescriptor>(descriptor));
+  args.AddObjectRef("object", AccessType::WRITE,
+                    absl::make_unique<TestDescriptor>(descriptor));
   std::string sample_code = R"(
   if (a < 3) {
     value = args.object.Read(id);
@@ -71,7 +74,7 @@ TEST(ArgumentsTest, TestSelectorResolve) {
     value = object_buffer[id];
   }
 )";
-  ASSERT_OK(args.TransformToCLCode(&sample_code));
+  ASSERT_OK(args.TransformToCLCode({}, &sample_code));
   EXPECT_EQ(sample_code, expected_result);
 
   std::string cl_arguments = args.GetListOfArgs();
@@ -82,13 +85,22 @@ TEST(ArgumentsTest, TestSelectorResolve) {
 TEST(ArgumentsTest, TestNoSelector) {
   TestDescriptor descriptor;
   Arguments args;
-  args.AddObjectRef("object", absl::make_unique<TestDescriptor>(descriptor));
+  args.AddObjectRef("object", AccessType::WRITE,
+                    absl::make_unique<TestDescriptor>(descriptor));
   std::string sample_code = R"(
   if (a < 3) {
     value = args.object.Write(id);
   }
 )";
-  EXPECT_FALSE(args.TransformToCLCode(&sample_code).ok());
+  EXPECT_FALSE(args.TransformToCLCode({}, &sample_code).ok());
+}
+
+TEST(ArgumentsTest, TestRenameArgs) {
+  Arguments linkable_args;
+  linkable_args.AddFloat("alpha", 0.5f);
+  std::string linkable_code = "in_out_value += args.alpha;\n";
+  linkable_args.RenameArgs("_link0", &linkable_code);
+  EXPECT_EQ(linkable_code, "in_out_value += args.alpha_link0;\n");
 }
 
 }  // namespace cl

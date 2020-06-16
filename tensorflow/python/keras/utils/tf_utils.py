@@ -179,6 +179,8 @@ def map_structure_with_atomic(is_atomic_fn, map_fn, nested):
         'Received non-atomic and non-sequence element: {}'.format(nested))
   if nest._is_mapping(nested):
     values = [nested[k] for k in nest._sorted(nested)]
+  elif nest._is_attrs(nested):
+    values = _astuple(nested)
   else:
     values = nested
   mapped_values = [
@@ -533,3 +535,15 @@ def to_numpy_or_python_type(tensors):
     return t  # Don't turn ragged or sparse tensors to NumPy.
 
   return nest.map_structure(_to_single_numpy_or_python_type, tensors)
+
+
+def _astuple(attrs):
+  """Converts the given attrs to tuple non-recursively."""
+  cls = type(attrs)
+  fields = getattr(cls, '__attrs_attrs__', None)
+  if fields is None:
+    raise ValueError('%r is not an attrs-decorated class.' % cls)
+  values = []
+  for field in fields:
+    values.append(getattr(attrs, field.name))
+  return tuple(values)

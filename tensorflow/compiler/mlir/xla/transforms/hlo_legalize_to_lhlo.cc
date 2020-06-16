@@ -40,12 +40,11 @@ namespace mlir {
 namespace xla_hlo {
 namespace {
 
-constexpr StringRef kTempBufferAttr = "temp";
 template <typename T>
 using BaseOpConversion = BufferAssignmentOpConversionPattern<T>;
 using StdReturnOpConverter =
-    BufferAssignmentReturnOpConverter<mlir::ReturnOp, xla_lhlo::TerminatorOp,
-                                      xla_lhlo::CopyOp>;
+    detail::BufferAssignmentReturnOpConverter<mlir::ReturnOp, mlir::ReturnOp,
+                                              xla_lhlo::CopyOp, true>;
 
 Value InsertDynamicAllocAndDealloc(Location loc, Value result,
                                    Value shape_operand,
@@ -59,7 +58,6 @@ Value InsertDynamicAllocAndDealloc(Location loc, Value result,
       MemRefType::get(result_type.getShape(), result_type.getElementType());
 
   Operation* op = result.getDefiningOp();
-  auto block = op->getBlock();
 
   // Extract the required element out of the vector.
   SmallVector<Value, 4> dynamic_operands;
@@ -80,12 +78,6 @@ Value InsertDynamicAllocAndDealloc(Location loc, Value result,
   // Insert in front of op to ensure sizes are available.
   OpBuilder allocBuilder(op);
   auto alloc = allocBuilder.create<AllocOp>(loc, memref_type, dynamic_operands);
-
-  alloc.setAttr(kTempBufferAttr, rewriter->getBoolAttr(true));
-
-  allocBuilder.setInsertionPoint(block, std::prev(block->end()));
-  allocBuilder.create<DeallocOp>(loc, alloc);
-
   return alloc;
 }
 
@@ -383,7 +375,6 @@ struct HloLegalizeToLhlo
     target.addLegalDialect<xla_lhlo::XlaLhloDialect>();
     target.addLegalDialect<StandardOpsDialect>();
     target.addLegalOp<ModuleOp>();
-    target.addIllegalOp<mlir::ReturnOp>();
     target.addIllegalOp<mlir::TensorLoadOp>();
     target.addIllegalOp<mlir::TensorStoreOp>();
     target.addLegalOp<ModuleTerminatorOp>();
@@ -393,6 +384,11 @@ struct HloLegalizeToLhlo
       auto inputs = op.getType().getInputs();
       return std::all_of(inputs.begin(), inputs.end(),
                          [](Type input) { return input.isa<MemRefType>(); });
+    });
+    target.addDynamicallyLegalOp<mlir::ReturnOp>([&](mlir::ReturnOp returnOp) {
+      return std::all_of(returnOp.operand_type_begin(),
+                         returnOp.operand_type_end(),
+                         [](Type type) { return type.isa<MemRefType>(); });
     });
 
     auto module = getOperation();
@@ -423,6 +419,7 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<xla_hlo::CompareOp>,
       HloToLhloOpConverter<xla_hlo::ComplexOp>,
       HloToLhloOpConverter<xla_hlo::ConstOp>,
+      HloToLhloOpConverter<xla_hlo::ConvOp>,
       HloToLhloOpConverter<xla_hlo::ConvertOp>,
       HloToLhloOpConverter<xla_hlo::CopyOp>,
       HloToLhloOpConverter<xla_hlo::CosOp>,
@@ -446,11 +443,13 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<xla_hlo::TanhOp>,
       HloToLhloReduceOpConverter,
       HloToLhloTensorLoadOpConverter,
-      HloToLhloTensorStoreOpConverter,
-      FunctionAndBlockSignatureConverter,
-      StdReturnOpConverter
+      HloToLhloTensorStoreOpConverter
   >(context, bufferAssignment, converter);
   // clang-format on
+  populateWithBufferAssignmentOpConversionPatterns<
+      mlir::ReturnOp, mlir::ReturnOp, xla_lhlo::CopyOp,
+      /*allowMemrefFunctionResults=*/false>(context, bufferAssignment,
+                                            converter, patterns);
 }
 
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass() {

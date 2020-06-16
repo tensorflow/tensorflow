@@ -2395,559 +2395,633 @@ REGISTER_TEST(NodeMerge_PadWithFusedConv2D_Common_InOutput, DT_BFLOAT16,
               BFloat16Input, BFloat16Output2);
 #endif
 #undef REGISTER_TEST
-// clang-format on
 
-TEST_F(MklLayoutPassTest, NodeRewrite_Conv2DGradFilter_Positive) {
-  InitGraph(
-      "node { name: 'A' op: 'Input'}"
-      "node { name: 'B' op: 'Int32Input'}"
-      "node { name: 'C' op: 'Input'}"
-      "node { name: 'D' op: 'Conv2DBackpropFilter'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " attr { key: 'data_format'      value { s: 'NCHW' } }"
-      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
-      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
-      " attr { key: 'padding'          value { s: 'SAME' } }"
-      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
-      " input: ['A', 'B', 'C']}"
-      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
-      " input: ['A', 'D'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Int32Input);C(Input);D(_MklConv2DBackpropFilter);"
-            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|"
-            "A->D;A->E;A:control->DMT/_0:control;A:control->DMT/_1:control;"
-            "A:control->DMT/_2:control;B->D:1;C->D:2;D->E:1;DMT/_0->D:3;"
-            "DMT/_1->D:4;DMT/_2->D:5");
+#define REGISTER_TEST(NAME, T, INPUT)                                                \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                            \
+  InitGraph(                                                                         \
+      "node { name: 'A' op: '" #INPUT "'}"                                           \
+      "node { name: 'B' op: 'Int32Input'}"                                           \
+      "node { name: 'C' op: '" #INPUT "'}"                                           \
+      "node { name: 'D' op: 'Conv2DBackpropFilter'"                                  \
+      " attr { key: 'T'                value { type: " #T " } }"                     \
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"                        \
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"                         \
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"      \
+      " attr { key: 'padding'          value { s: 'SAME' } }"                        \
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"      \
+      " input: ['A', 'B', 'C']}"                                                     \
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"         \
+      " input: ['A', 'D'] }");                                                       \
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                           \
+            "A(" #INPUT ");B(Int32Input);C(" #INPUT ");D(_MklConv2DBackpropFilter);" \
+            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|"                     \
+            "A->D;A->E;A:control->DMT/_0:control;A:control->DMT/_1:control;"         \
+            "A:control->DMT/_2:control;B->D:1;C->D:2;D->E:1;DMT/_0->D:3;"            \
+            "DMT/_1->D:4;DMT/_2->D:5");                                              \
 }
+REGISTER_TEST_ALL_TYPES(NodeRewrite_Conv2DGradFilter_Positive);
+#undef REGISTER_TEST
 
-TEST_F(MklLayoutPassTest, NodeRewrite_Conv2DGradInput_Positive) {
-  InitGraph(
-      "node { name: 'A' op: 'Input'}"
-      "node { name: 'B' op: 'Int32Input'}"
-      "node { name: 'C' op: 'Input'}"
-      "node { name: 'D' op: 'Conv2DBackpropInput'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " attr { key: 'data_format'      value { s: 'NCHW' } }"
-      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
-      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
-      " attr { key: 'padding'          value { s: 'SAME' } }"
-      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
-      " input: ['B', 'A', 'C']}"
-      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
-      " input: ['A', 'D'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Int32Input);C(Input);D(_MklConv2DBackpropInput);"
-            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|"
-            "A->D:1;A->E;B->D;B:control->DMT/_0:control;"
-            "B:control->DMT/_1:control;B:control->DMT/_2:control;C->D:2;"
-            "D->E:1;DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");
+#define REGISTER_TEST(NAME, T, INPUT)                                               \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                           \
+  InitGraph(                                                                        \
+      "node { name: 'A' op: '" #INPUT "'}"                                          \
+      "node { name: 'B' op: 'Int32Input'}"                                          \
+      "node { name: 'C' op: '" #INPUT "'}"                                          \
+      "node { name: 'D' op: 'Conv2DBackpropInput'"                                  \
+      " attr { key: 'T'                value { type: " #T " } }"                    \
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"                       \
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"                        \
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"     \
+      " attr { key: 'padding'          value { s: 'SAME' } }"                       \
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"     \
+      " input: ['B', 'A', 'C']}"                                                    \
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"        \
+      " input: ['A', 'D'] }");                                                      \
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                          \
+            "A(" #INPUT ");B(Int32Input);C(" #INPUT ");D(_MklConv2DBackpropInput);" \
+            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|"                    \
+            "A->D:1;A->E;B->D;B:control->DMT/_0:control;"                           \
+            "B:control->DMT/_1:control;B:control->DMT/_2:control;C->D:2;"           \
+            "D->E:1;DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                          \
 }
+REGISTER_TEST_ALL_TYPES(NodeRewrite_Conv2DGradInput_Positive);
+#undef REGISTER_TEST
 
-TEST_F(MklLayoutPassTest,
-       NodeRewrite_DepthwiseConv2dNativeGradFilter_Positive) {
-  InitGraph(
-      "node { name: 'A' op: 'Input'}"
-      "node { name: 'B' op: 'Int32Input'}"
-      "node { name: 'C' op: 'Input'}"
-      "node { name: 'D' op: 'DepthwiseConv2dNativeBackpropFilter'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " attr { key: 'data_format'      value { s: 'NCHW' } }"
-      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
-      " attr { key: 'padding'          value { s: 'SAME' } }"
-      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
-      " input: ['A', 'B', 'C']}"
-      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
-      " input: ['A', 'D'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Int32Input);C(Input);D(_"
-            "MklDepthwiseConv2dNativeBackpropFilter);"
-            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|"
-            "A->D;A->E;A:control->DMT/_0:control;A:control->DMT/_1:control;"
-            "A:control->DMT/_2:control;B->D:1;C->D:2;D->E:1;DMT/_0->D:3;"
-            "DMT/_1->D:4;DMT/_2->D:5");
+#define REGISTER_TEST(NAME, T, INPUT)                                           \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                       \
+  InitGraph(                                                                    \
+      "node { name: 'A' op: '" #INPUT "'}"                                      \
+      "node { name: 'B' op: 'Int32Input'}"                                      \
+      "node { name: 'C' op: '" #INPUT "'}"                                      \
+      "node { name: 'D' op: 'DepthwiseConv2dNativeBackpropFilter'"              \
+      " attr { key: 'T'                value { type: " #T " } }"                \
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"                   \
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }" \
+      " attr { key: 'padding'          value { s: 'SAME' } }"                   \
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }" \
+      " input: ['A', 'B', 'C']}"                                                \
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"    \
+      " input: ['A', 'D'] }");                                                  \
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                      \
+            "A(" #INPUT ");B(Int32Input);C(" #INPUT ");D(_"                     \
+            "MklDepthwiseConv2dNativeBackpropFilter);"                          \
+            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|"                \
+            "A->D;A->E;A:control->DMT/_0:control;A:control->DMT/_1:control;"    \
+            "A:control->DMT/_2:control;B->D:1;C->D:2;D->E:1;DMT/_0->D:3;"       \
+            "DMT/_1->D:4;DMT/_2->D:5");                                         \
 }
+REGISTER_TEST_ALL_TYPES(NodeRewrite_DepthwiseConv2dNativeGradFilter_Positive);
+#undef REGISTER_TEST
 
-TEST_F(MklLayoutPassTest, NodeRewrite_DepthwiseConv2dNativeGradInput_Positive) {
-  InitGraph(
-      "node { name: 'A' op: 'Input'}"
-      "node { name: 'B' op: 'Int32Input'}"
-      "node { name: 'C' op: 'Input'}"
-      "node { name: 'D' op: 'DepthwiseConv2dNativeBackpropInput'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " attr { key: 'data_format'      value { s: 'NCHW' } }"
-      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
-      " attr { key: 'padding'          value { s: 'SAME' } }"
-      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
-      " input: ['B', 'A', 'C']}"
-      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
-      " input: ['A', 'D'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Int32Input);C(Input);D(_"
-            "MklDepthwiseConv2dNativeBackpropInput);"
-            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|"
-            "A->D:1;A->E;B->D;B:control->DMT/_0:control;"
-            "B:control->DMT/_1:control;B:control->DMT/_2:control;C->D:2;"
-            "D->E:1;DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");
+#define REGISTER_TEST(NAME, T, INPUT)                                           \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                       \
+  InitGraph(                                                                    \
+      "node { name: 'A' op: '" #INPUT "'}"                                      \
+      "node { name: 'B' op: 'Int32Input'}"                                      \
+      "node { name: 'C' op: '" #INPUT "'}"                                      \
+      "node { name: 'D' op: 'DepthwiseConv2dNativeBackpropInput'"               \
+      " attr { key: 'T'                value { type: " #T " } }"                \
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"                   \
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }" \
+      " attr { key: 'padding'          value { s: 'SAME' } }"                   \
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }" \
+      " input: ['B', 'A', 'C']}"                                                \
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"    \
+      " input: ['A', 'D'] }");                                                  \
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                      \
+            "A(" #INPUT ");B(Int32Input);C(" #INPUT ");D(_"                     \
+            "MklDepthwiseConv2dNativeBackpropInput);"                           \
+            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|"                \
+            "A->D:1;A->E;B->D;B:control->DMT/_0:control;"                       \
+            "B:control->DMT/_1:control;B:control->DMT/_2:control;C->D:2;"       \
+            "D->E:1;DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                      \
 }
-
-// Check that we never rewrite BiasAddGrad.
-TEST_F(MklLayoutPassTest, NodeRewrite_BiasAddGrad_Positive) {
-  InitGraph(
-      "node { name: 'A' op: 'Input'}"
-      "node { name: 'B' op: 'Input'}"
-      "node { name: 'C' op: 'Polygamma'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " input: ['A', 'B']}"
-      "node { name: 'D' op: 'Zeta'"
-      " attr {key: 'T'                 value { type: DT_FLOAT } }"
-      " input: ['C', 'A']}"
-      "node { name: 'E' op: 'BiasAddGrad'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " attr { key: 'data_format'      value { s: 'NCHW' } }"
-      " input: ['D'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Input);C(Polygamma);D(Zeta);E(BiasAddGrad)|"
-            "A->C;A->D:1;B->C:1;C->D;D->E");
-}
+REGISTER_TEST_ALL_TYPES(NodeRewrite_DepthwiseConv2DGradInput_Positive);
+#undef REGISTER_TEST
 
 // Check that we never rewrite BiasAddGrad.
-TEST_F(MklLayoutPassTest, NodeRewrite_BiasAddGrad_Positive1) {
-  InitGraph(
-      "node { name: 'A' op: 'Input'}"
-      "node { name: 'B' op: 'Input'}"
-      "node { name: 'C' op: 'MatMul'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " attr { key: 'transpose_a'      value { b: false } }"
-      " attr { key: 'transpose_b'      value { b: false } }"
-      " input: ['A', 'B']}"
-      "node { name: 'D' op: 'Zeta'"
-      " attr {key: 'T'                 value { type: DT_FLOAT } }"
-      " input: ['C', 'A']}"
-      "node { name: 'E' op: 'BiasAddGrad'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " attr { key: 'data_format'      value { s: 'NCHW' } }"
-      " input: ['D'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Input);C(_MklMatMul);D(Zeta);E(BiasAddGrad)"
-            "|A->C;A->D:1;B->C:1;C->D;D->E");
+#define REGISTER_TEST(NAME, T, INPUT)                                          \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                      \
+  InitGraph(                                                                   \
+      "node { name: 'A' op: '" #INPUT "'}"                                     \
+      "node { name: 'B' op: '" #INPUT "'}"                                     \
+      "node { name: 'C' op: 'Polygamma'"                                       \
+      " attr { key: 'T'                value { type: " #T " } }"               \
+      " input: ['A', 'B']}"                                                    \
+      "node { name: 'D' op: 'Zeta'"                                            \
+      " attr {key: 'T'                 value { type: " #T " } }"               \
+      " input: ['C', 'A']}"                                                    \
+      "node { name: 'E' op: 'BiasAddGrad'"                                     \
+      " attr { key: 'T'                value { type: " #T " } }"               \
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"                  \
+      " input: ['D'] }");                                                      \
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                     \
+            "A(" #INPUT ");B(" #INPUT ");C(Polygamma);D(Zeta);E(BiasAddGrad)|" \
+            "A->C;A->D:1;B->C:1;C->D;D->E");                                   \
 }
+REGISTER_TEST_ALL_TYPES(NodeRewrite_BiasAddGrad_Positive);
+#undef REGISTER_TEST
 
 // Check that we never rewrite BiasAddGrad.
-TEST_F(MklLayoutPassTest, NodeRewrite_BiasAddGrad_Positive2) {
-  InitGraph(
-      "node { name: 'A' op: 'Input'}"
-      "node { name: 'B' op: 'Input'}"
-      "node { name: 'M' op: '_MklInput'}"
-      "node { name: 'N' op: '_MklInput'}"
-      "node { name: 'C' op: '_MklConv2D'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " attr { key: 'data_format'      value { s: 'NCHW' } }"
-      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
-      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
-      " attr { key: 'padding'          value { s: 'SAME' } }"
-      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
-      " input: ['A', 'B', 'M', 'N']}"
-      "node { name: 'D' op: 'Zeta'"
-      " attr {key: 'T'                 value { type: DT_FLOAT } }"
-      " input: ['C', 'A']}"
-      "node { name: 'E' op: 'BiasAddGrad'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " attr { key: 'data_format'      value { s: 'NCHW' } }"
-      " input: ['D'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Input);C(_MklConv2D);D(Zeta);E(BiasAddGrad);"
-            "M(_MklInput);N(_MklInput)|A->C;A->D:1;B->C:1;C->D;D->E;"
-            "M->C:2;N->C:3");
+#define REGISTER_TEST(NAME, T, INPUT)                                          \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                      \
+  InitGraph(                                                                   \
+      "node { name: 'A' op: '" #INPUT "'}"                                     \
+      "node { name: 'B' op: '" #INPUT "'}"                                     \
+      "node { name: 'C' op: 'MatMul'"                                          \
+      " attr { key: 'T'                value { type: " #T " } }"               \
+      " attr { key: 'transpose_a'      value { b: false } }"                   \
+      " attr { key: 'transpose_b'      value { b: false } }"                   \
+      " input: ['A', 'B']}"                                                    \
+      "node { name: 'D' op: 'Zeta'"                                            \
+      " attr {key: 'T'                 value { type: " #T " } }"               \
+      " input: ['C', 'A']}"                                                    \
+      "node { name: 'E' op: 'BiasAddGrad'"                                     \
+      " attr { key: 'T'                value { type: " #T " } }"               \
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"                  \
+      " input: ['D'] }");                                                      \
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                     \
+            "A(" #INPUT ");B(" #INPUT ");C(_MklMatMul);D(Zeta);E(BiasAddGrad)" \
+            "|A->C;A->D:1;B->C:1;C->D;D->E");                                  \
 }
+REGISTER_TEST_ALL_TYPES(NodeRewrite_BiasAddGrad_Positive1);
+#undef REGISTER_TEST
+
+// Check that we never rewrite BiasAddGrad.
+#define REGISTER_TEST(NAME, T, INPUT)                                           \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                       \
+  InitGraph(                                                                    \
+      "node { name: 'A' op: '" #INPUT "'}"                                      \
+      "node { name: 'B' op: '" #INPUT "'}"                                      \
+      "node { name: 'M' op: '_MklInput'}"                                       \
+      "node { name: 'N' op: '_MklInput'}"                                       \
+      "node { name: 'C' op: '_MklConv2D'"                                       \
+      " attr { key: 'T'                value { type: " #T " } }"                \
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"                   \
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"                    \
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }" \
+      " attr { key: 'padding'          value { s: 'SAME' } }"                   \
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }" \
+      " input: ['A', 'B', 'M', 'N']}"                                           \
+      "node { name: 'D' op: 'Zeta'"                                             \
+      " attr {key: 'T'                 value { type: " #T " } }"                \
+      " input: ['C', 'A']}"                                                     \
+      "node { name: 'E' op: 'BiasAddGrad'"                                      \
+      " attr { key: 'T'                value { type: " #T " } }"                \
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"                   \
+      " input: ['D'] }");                                                       \
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                      \
+            "A(" #INPUT ");B(" #INPUT ");C(_MklConv2D);D(Zeta);E(BiasAddGrad);" \
+            "M(_MklInput);N(_MklInput)|A->C;A->D:1;B->C:1;C->D;D->E;"           \
+            "M->C:2;N->C:3");                                                   \
+}
+REGISTER_TEST_ALL_TYPES(NodeRewrite_BiasAddGrad_Positive2);
+#undef REGISTER_TEST
 
 // Concat Op test: Concat with no Mkl layer feeding it
-TEST_F(MklLayoutPassTest, NodeRewrite_Concat_Basic) {
-  InitGraph(
-      "node { name: 'A' op: 'Const' "
-      " attr { key: 'dtype' value { type: DT_INT32 } }"
-      " attr { key: 'value' value { "
-      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "
-      "    int_val: 0 } } } }"
-      "node { name: 'B' op: 'InputList'"
-      " attr { key: 'N'                value { i: 2 } }}"
-      "node { name: 'C' op: 'Input'}"
-      "node { name: 'D' op: 'Concat'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " attr { key: 'N'                value { i: 2 } }"
-      " input: ['A', 'B:0', 'B:1']}"
-      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
-      " input: ['C', 'D'] }");
-  EXPECT_EQ(
-      DoMklLayoutOptimizationPass(),
-      "A(Const);B(InputList);C(Input);D(_MklConcat);DMT/_0(Const);"
-      "DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D;A:control->DMT/_0:control;"
-      "A:control->DMT/_1:control;A:control->DMT/_2:control;B->D:1;"
-      "B:1->D:2;C->E;D->E:1;DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");
+#define REGISTER_TEST(NAME, T, INPUT)                                        \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                    \
+  InitGraph(                                                                 \
+      "node { name: 'A' op: 'Const' "                                        \
+      " attr { key: 'dtype' value { type: DT_INT32 } }"                      \
+      " attr { key: 'value' value { "                                        \
+      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "       \
+      "    int_val: 0 } } } }"                                               \
+      "node { name: 'B' op: '" #INPUT "List'"                                \
+      " attr { key: 'N'                value { i: 2 } }}"                    \
+      "node { name: 'C' op: '" #INPUT "'}"                                   \
+      "node { name: 'D' op: 'Concat'"                                        \
+      " attr { key: 'T'                value { type: " #T " } }"             \
+      " attr { key: 'N'                value { i: 2 } }"                     \
+      " input: ['A', 'B:0', 'B:1']}"                                         \
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: " #T " } }" \
+      " input: ['C', 'D'] }");                                               \
+  EXPECT_EQ(                                                                 \
+      DoMklLayoutOptimizationPass(),                                         \
+      "A(Const);B(" #INPUT "List);C(" #INPUT ");D(_MklConcat);DMT/_0(Const);"\
+      "DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D;A:control->DMT/_0:control;"  \
+      "A:control->DMT/_1:control;A:control->DMT/_2:control;B->D:1;"          \
+      "B:1->D:2;C->E;D->E:1;DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");           \
 }
+REGISTER_TEST_ALL_TYPES(NodeRewrite_Concat_Basic);
+#undef REGISTER_TEST
 
 // Concat with 2 Mkl layers feeding it
-TEST_F(MklLayoutPassTest, NodeRewrite_Concat_Input_Mkl) {
-  InitGraph(
-      "node { name: 'A' op: 'Input'}"
-      "node { name: 'B' op: 'Input'}"
-      "node { name: 'C' op: 'Input'}"
-      "node { name: 'D' op: 'Input'}"
-      "node { name: 'E' op: 'Conv2D'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " attr { key: 'data_format'      value { s: 'NCHW' } }"
-      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
-      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
-      " attr { key: 'padding'          value { s: 'SAME' } }"
-      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
-      " input: ['A', 'B']}"
-      "node { name: 'F' op: 'Conv2D'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " attr { key: 'data_format'      value { s: 'NCHW' } }"
-      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
-      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
-      " attr { key: 'padding'          value { s: 'SAME' } }"
-      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
-      " input: ['C', 'D']}"
-      "node { name: 'G' op: 'Const' "
-      " attr { key: 'dtype' value { type: DT_INT32 } }"
-      " attr { key: 'value' value { "
-      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "
-      "    int_val: 0 } } } }"
-      "node { name: 'H' op: 'Concat'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " attr { key: 'N'                value { i: 2 } }"
-      " input: ['G', 'E', 'F']}"
-      "node { name: 'I' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
-      " input: ['A', 'H'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Input);C(Input);D(Input);DMT/_0(Const);DMT/_1(Const);"
-            "DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);E(_MklConv2D);"
-            "F(_MklConv2D);G(Const);H(_MklConcat);I(Zeta)|A->E;A->I;"
-            "A:control->DMT/_0:control;A:control->DMT/_1:control;"
-            "B->E:1;C->F;C:control->DMT/_2:control;C:control->DMT/_3:control;"
-            "D->F:1;DMT/_0->E:2;DMT/_1->E:3;DMT/_2->F:2;DMT/_3->F:3;"
-            "DMT/_4->H:3;E->H:1;E:2->H:4;F->H:2;F:2->H:5;G->H;"
-            "G:control->DMT/_4:control;H->I:1");
+#define REGISTER_TEST(NAME, T, INPUT)                                           \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                       \
+  InitGraph(                                                                    \
+      "node { name: 'A' op: '" #INPUT "'}"                                      \
+      "node { name: 'B' op: '" #INPUT "'}"                                      \
+      "node { name: 'C' op: '" #INPUT "'}"                                      \
+      "node { name: 'D' op: '" #INPUT "'}"                                      \
+      "node { name: 'E' op: 'Conv2D'"                                           \
+      " attr { key: 'T'                value { type: " #T " } }"                \
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"                   \
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"                    \
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }" \
+      " attr { key: 'padding'          value { s: 'SAME' } }"                   \
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }" \
+      " input: ['A', 'B']}"                                                     \
+      "node { name: 'F' op: 'Conv2D'"                                           \
+      " attr { key: 'T'                value { type: " #T " } }"                \
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"                   \
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"                    \
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }" \
+      " attr { key: 'padding'          value { s: 'SAME' } }"                   \
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }" \
+      " input: ['C', 'D']}"                                                     \
+      "node { name: 'G' op: 'Const' "                                           \
+      " attr { key: 'dtype' value { type: DT_INT32 } }"                         \
+      " attr { key: 'value' value { "                                           \
+      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "          \
+      "    int_val: 0 } } } }"                                                  \
+      "node { name: 'H' op: 'Concat'"                                           \
+      " attr { key: 'T'                value { type: " #T " } }"                \
+      " attr { key: 'N'                value { i: 2 } }"                        \
+      " input: ['G', 'E', 'F']}"                                                \
+      "node { name: 'I' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"    \
+      " input: ['A', 'H'] }");                                                  \
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                      \
+            "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(" #INPUT ");"          \
+            "DMT/_0(Const);DMT/_1(Const);"                                      \
+            "DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);E(_MklConv2D);"          \
+            "F(_MklConv2D);G(Const);H(_MklConcat);I(Zeta)|A->E;A->I;"           \
+            "A:control->DMT/_0:control;A:control->DMT/_1:control;"              \
+            "B->E:1;C->F;C:control->DMT/_2:control;C:control->DMT/_3:control;"  \
+            "D->F:1;DMT/_0->E:2;DMT/_1->E:3;DMT/_2->F:2;DMT/_3->F:3;"           \
+            "DMT/_4->H:3;E->H:1;E:2->H:4;F->H:2;F:2->H:5;G->H;"                 \
+            "G:control->DMT/_4:control;H->I:1");                                \
 }
+REGISTER_TEST_ALL_TYPES(NodeRewrite_Concat_Input_Mkl);
+#undef REGISTER_TEST
 
 // Concat with 1 Mkl and 1 non-Mkl layer feeding it
-TEST_F(MklLayoutPassTest, NodeRewrite_Concat_Input_MixedMkl) {
-  InitGraph(
-      "node { name: 'A' op: 'Input'}"
-      "node { name: 'B' op: 'Input'}"
-      "node { name: 'C' op: 'Input'}"
-      "node { name: 'D' op: 'Input'}"
-      "node { name: 'E' op: 'Conv2D'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " attr { key: 'data_format'      value { s: 'NCHW' } }"
-      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
-      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
-      " attr { key: 'padding'          value { s: 'SAME' } }"
-      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
-      " input: ['A', 'B']}"
-      "node { name: 'F' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
-      " input: ['C', 'D']}"
-      "node { name: 'G' op: 'Const' "
-      " attr { key: 'dtype' value { type: DT_INT32 } }"
-      " attr { key: 'value' value { "
-      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "
-      "    int_val: 0 } } } }"
-      "node { name: 'H' op: 'Concat'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " attr { key: 'N'                value { i: 2 } }"
-      " input: ['G', 'E', 'F']}"
-      "node { name: 'I' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
-      " input: ['A', 'H'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Input);C(Input);D(Input);DMT/_0(Const);DMT/_1(Const);"
-            "DMT/_2(Const);DMT/_3(Const);E(_MklConv2D);F(Zeta);G(Const);"
-            "H(_MklConcat);I(Zeta)|A->E;A->I;A:control->DMT/_0:control;"
-            "A:control->DMT/_1:control;B->E:1;C->F;D->F:1;DMT/_0->E:2;"
-            "DMT/_1->E:3;DMT/_2->H:3;DMT/_3->H:5;E->H:1;E:2->H:4;F->H:2;"
-            "G->H;G:control->DMT/_2:control;G:control->DMT/_3:control;H->I:1");
+#define REGISTER_TEST(NAME, T, INPUT)                                           \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                       \
+REGISTER_TEST_ALL_TYPES(NodeRewrite_Concat_Input_MixedMkl) {                    \
+  InitGraph(                                                                    \
+      "node { name: 'A' op: '" #INPUT "'}"                                      \
+      "node { name: 'B' op: '" #INPUT "'}"                                      \
+      "node { name: 'C' op: '" #INPUT "'}"                                      \
+      "node { name: 'D' op: '" #INPUT "'}"                                      \
+      "node { name: 'E' op: 'Conv2D'"                                           \
+      " attr { key: 'T'                value { type: " #T " } }"                \
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"                   \
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"                    \
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }" \
+      " attr { key: 'padding'          value { s: 'SAME' } }"                   \
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }" \
+      " input: ['A', 'B']}"                                                     \
+      "node { name: 'F' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"    \
+      " input: ['C', 'D']}"                                                     \
+      "node { name: 'G' op: 'Const' "                                           \
+      " attr { key: 'dtype' value { type: DT_INT32 } }"                         \
+      " attr { key: 'value' value { "                                           \
+      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "          \
+      "    int_val: 0 } } } }"                                                  \
+      "node { name: 'H' op: 'Concat'"                                           \
+      " attr { key: 'T'                value { type: " #T " } }"                \
+      " attr { key: 'N'                value { i: 2 } }"                        \
+      " input: ['G', 'E', 'F']}"                                                \
+      "node { name: 'I' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"    \
+      " input: ['A', 'H'] }");                                                  \
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                      \
+            "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(" #INPUT ");"          \
+            "DMT/_0(Const);DMT/_1(Const);"                                      \
+            "DMT/_2(Const);DMT/_3(Const);E(_MklConv2D);F(Zeta);G(Const);"       \
+            "H(_MklConcat);I(Zeta)|A->E;A->I;A:control->DMT/_0:control;"        \
+            "A:control->DMT/_1:control;B->E:1;C->F;D->F:1;DMT/_0->E:2;"         \
+            "DMT/_1->E:3;DMT/_2->H:3;DMT/_3->H:5;E->H:1;E:2->H:4;F->H:2;"       \
+            "G->H;G:control->DMT/_2:control;G:control->DMT/_3:control;H->I:1"); \
 }
 
 // ConcatV2 Op test: ConcatV2 with no Mkl layer feeding it
-TEST_F(MklLayoutPassTest, NodeRewrite_ConcatV2_Basic) {
-  InitGraph(
-      "node { name: 'A' op: 'Const' "
-      " attr { key: 'dtype' value { type: DT_INT32 } }"
-      " attr { key: 'value' value { "
-      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "
-      "    int_val: 0 } } } }"
-      "node { name: 'B' op: 'InputList'"
-      " attr { key: 'N'                value { i: 2 } }}"
-      "node { name: 'C' op: 'Input'}"
-      "node { name: 'D' op: 'ConcatV2'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " attr { key: 'Tidx'             value { type: DT_INT32 } }"
-      " attr { key: 'N'                value { i: 2 } }"
-      " input: ['B:0', 'B:1', 'A']}"
-      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
-      " input: ['C', 'D'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Const);B(InputList);C(Input);D(_MklConcatV2);DMT/_0(Const);"
-            "DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D:2;B->D;B:1->D:1;"
-            "B:control->DMT/_0:control;B:control->DMT/_1:control;"
-            "B:control->DMT/_2:control;C->E;D->E:1;DMT/_0->D:3;"
-            "DMT/_1->D:4;DMT/_2->D:5");
+#define REGISTER_TEST(NAME, T, INPUT)                                        \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                    \
+  InitGraph(                                                                 \
+      "node { name: 'A' op: 'Const' "                                        \
+      " attr { key: 'dtype' value { type: DT_INT32 } }"                      \
+      " attr { key: 'value' value { "                                        \
+      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "       \
+      "    int_val: 0 } } } }"                                               \
+      "node { name: 'B' op: '" #INPUT "List'"                                \
+      " attr { key: 'N'                value { i: 2 } }}"                    \
+      "node { name: 'C' op: '" #INPUT "'}"                                   \
+      "node { name: 'D' op: 'ConcatV2'"                                      \
+      " attr { key: 'T'                value { type: " #T " } }"             \
+      " attr { key: 'Tidx'             value { type: DT_INT32 } }"           \
+      " attr { key: 'N'                value { i: 2 } }"                     \
+      " input: ['B:0', 'B:1', 'A']}"                                         \
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: " #T " } }" \
+      " input: ['C', 'D'] }");                                               \
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
+            "A(Const);B(" #INPUT "List);C(" #INPUT ");D(_MklConcatV2);"      \
+            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D:2;B->D;" \
+            "B:1->D:1;B:control->DMT/_0:control;B:control->DMT/_1:control;"  \
+            "B:control->DMT/_2:control;C->E;D->E:1;DMT/_0->D:3;"             \
+            "DMT/_1->D:4;DMT/_2->D:5");                                      \
 }
+REGISTER_TEST_ALL_TYPES(NodeRewrite_ConcatV2_Basic);
+#undef REGISTER_TEST
 
 // ConcatV2 with 2 Mkl layers feeding it
-TEST_F(MklLayoutPassTest, NodeRewrite_ConcatV2_Input_Mkl) {
-  InitGraph(
-      "node { name: 'A' op: 'Input'}"
-      "node { name: 'B' op: 'Input'}"
-      "node { name: 'C' op: 'Input'}"
-      "node { name: 'D' op: 'Input'}"
-      "node { name: 'E' op: 'Conv2D'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " attr { key: 'data_format'      value { s: 'NCHW' } }"
-      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
-      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
-      " attr { key: 'padding'          value { s: 'SAME' } }"
-      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
-      " input: ['A', 'B']}"
-      "node { name: 'F' op: 'Conv2D'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " attr { key: 'data_format'      value { s: 'NCHW' } }"
-      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
-      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
-      " attr { key: 'padding'          value { s: 'SAME' } }"
-      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
-      " input: ['C', 'D']}"
-      "node { name: 'G' op: 'Const' "
-      " attr { key: 'dtype' value { type: DT_INT32 } }"
-      " attr { key: 'value' value { "
-      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "
-      "    int_val: 0 } } } }"
-      "node { name: 'H' op: 'ConcatV2'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " attr { key: 'Tidx'             value { type: DT_INT32 } }"
-      " attr { key: 'N'                value { i: 2 } }"
-      " input: ['E', 'F', 'G']}"
-      "node { name: 'I' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
-      " input: ['A', 'H'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Input);C(Input);D(Input);DMT/_0(Const);DMT/_1(Const);"
-            "DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);E(_MklConv2D);"
-            "F(_MklConv2D);G(Const);H(_MklConcatV2);I(Zeta)|A->E;A->I;"
-            "A:control->DMT/_0:control;A:control->DMT/_1:control;B->E:1;C->F;"
-            "C:control->DMT/_2:control;C:control->DMT/_3:control;"
-            "D->F:1;DMT/_0->E:2;DMT/_1->E:3;DMT/_2->F:2;DMT/_3->F:3;"
-            "DMT/_4->H:5;E->H;E:2->H:3;E:control->DMT/_4:control;F->H:1;"
-            "F:2->H:4;G->H:2;H->I:1");
+#define REGISTER_TEST(NAME, T, INPUT)                                           \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                       \
+  InitGraph(                                                                    \
+      "node { name: 'A' op: '" #INPUT "'}"                                      \
+      "node { name: 'B' op: '" #INPUT "'}"                                      \
+      "node { name: 'C' op: '" #INPUT "'}"                                      \
+      "node { name: 'D' op: '" #INPUT "'}"                                      \
+      "node { name: 'E' op: 'Conv2D'"                                           \
+      " attr { key: 'T'                value { type: " #T " } }"                \
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"                   \
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"                    \
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }" \
+      " attr { key: 'padding'          value { s: 'SAME' } }"                   \
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }" \
+      " input: ['A', 'B']}"                                                     \
+      "node { name: 'F' op: 'Conv2D'"                                           \
+      " attr { key: 'T'                value { type: " #T " } }"                \
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"                   \
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"                    \
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }" \
+      " attr { key: 'padding'          value { s: 'SAME' } }"                   \
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }" \
+      " input: ['C', 'D']}"                                                     \
+      "node { name: 'G' op: 'Const' "                                           \
+      " attr { key: 'dtype' value { type: DT_INT32 } }"                         \
+      " attr { key: 'value' value { "                                           \
+      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "          \
+      "    int_val: 0 } } } }"                                                  \
+      "node { name: 'H' op: 'ConcatV2'"                                         \
+      " attr { key: 'T'                value { type: " #T " } }"                \
+      " attr { key: 'Tidx'             value { type: DT_INT32 } }"              \
+      " attr { key: 'N'                value { i: 2 } }"                        \
+      " input: ['E', 'F', 'G']}"                                                \
+      "node { name: 'I' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"    \
+      " input: ['A', 'H'] }");                                                  \
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                      \
+            "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(" #INPUT ");"          \
+            "DMT/_0(Const);DMT/_1(Const);"                                      \
+            "DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);E(_MklConv2D);"          \
+            "F(_MklConv2D);G(Const);H(_MklConcatV2);I(Zeta)|A->E;A->I;"         \
+            "A:control->DMT/_0:control;A:control->DMT/_1:control;B->E:1;C->F;"  \
+            "C:control->DMT/_2:control;C:control->DMT/_3:control;"              \
+            "D->F:1;DMT/_0->E:2;DMT/_1->E:3;DMT/_2->F:2;DMT/_3->F:3;"           \
+            "DMT/_4->H:5;E->H;E:2->H:3;E:control->DMT/_4:control;F->H:1;"       \
+            "F:2->H:4;G->H:2;H->I:1");                                          \
 }
+REGISTER_TEST_ALL_TYPES(NodeRewrite_ConcatV2_Input_Mkl);
+#undef REGISTER_TEST
 
 // ConcatV2 with 1 Mkl and 1 non-Mkl layer feeding it
-TEST_F(MklLayoutPassTest, NodeRewrite_ConcatV2_Input_MixedMkl) {
-  InitGraph(
-      "node { name: 'A' op: 'Input'}"
-      "node { name: 'B' op: 'Input'}"
-      "node { name: 'C' op: 'Input'}"
-      "node { name: 'D' op: 'Input'}"
-      "node { name: 'E' op: 'Conv2D'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " attr { key: 'data_format'      value { s: 'NCHW' } }"
-      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
-      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
-      " attr { key: 'padding'          value { s: 'SAME' } }"
-      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
-      " input: ['A', 'B']}"
-      "node { name: 'F' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
-      " input: ['C', 'D']}"
-      "node { name: 'G' op: 'Const' "
-      " attr { key: 'dtype' value { type: DT_INT32 } }"
-      " attr { key: 'value' value { "
-      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "
-      "    int_val: 0 } } } }"
-      "node { name: 'H' op: 'ConcatV2'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " attr { key: 'Tidx'             value { type: DT_INT32 } }"
-      " attr { key: 'N'                value { i: 2 } }"
-      " input: ['E', 'F', 'G']}"
-      "node { name: 'I' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
-      " input: ['A', 'H'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Input);C(Input);D(Input);DMT/_0(Const);DMT/_1(Const);"
-            "DMT/_2(Const);DMT/_3(Const);E(_MklConv2D);F(Zeta);G(Const);"
-            "H(_MklConcatV2);I(Zeta)|A->E;A->I;A:control->DMT/_0:control;"
-            "A:control->DMT/_1:control;B->E:1;C->F;D->F:1;DMT/_0->E:2;"
-            "DMT/_1->E:3;DMT/_2->H:4;DMT/_3->H:5;E->H;E:2->H:3;"
-            "E:control->DMT/_2:control;E:control->DMT/_3:control;F->H:1;"
-            "G->H:2;H->I:1");
+#define REGISTER_TEST(NAME, T, INPUT)                                           \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                       \
+  InitGraph(                                                                    \
+      "node { name: 'A' op: '" #INPUT "'}"                                      \
+      "node { name: 'B' op: '" #INPUT "'}"                                      \
+      "node { name: 'C' op: '" #INPUT "'}"                                      \
+      "node { name: 'D' op: '" #INPUT "'}"                                      \
+      "node { name: 'E' op: 'Conv2D'"                                           \
+      " attr { key: 'T'                value { type: " #T " } }"                \
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"                   \
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"                    \
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }" \
+      " attr { key: 'padding'          value { s: 'SAME' } }"                   \
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }" \
+      " input: ['A', 'B']}"                                                     \
+      "node { name: 'F' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"    \
+      " input: ['C', 'D']}"                                                     \
+      "node { name: 'G' op: 'Const' "                                           \
+      " attr { key: 'dtype' value { type: DT_INT32 } }"                         \
+      " attr { key: 'value' value { "                                           \
+      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "          \
+      "    int_val: 0 } } } }"                                                  \
+      "node { name: 'H' op: 'ConcatV2'"                                         \
+      " attr { key: 'T'                value { type: " #T " } }"                \
+      " attr { key: 'Tidx'             value { type: DT_INT32 } }"              \
+      " attr { key: 'N'                value { i: 2 } }"                        \
+      " input: ['E', 'F', 'G']}"                                                \
+      "node { name: 'I' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"    \
+      " input: ['A', 'H'] }");                                                  \
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                      \
+            "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(" #INPUT ");"          \
+            "DMT/_0(Const);DMT/_1(Const);"                                      \
+            "DMT/_2(Const);DMT/_3(Const);E(_MklConv2D);F(Zeta);G(Const);"       \
+            "H(_MklConcatV2);I(Zeta)|A->E;A->I;A:control->DMT/_0:control;"      \
+            "A:control->DMT/_1:control;B->E:1;C->F;D->F:1;DMT/_0->E:2;"         \
+            "DMT/_1->E:3;DMT/_2->H:4;DMT/_3->H:5;E->H;E:2->H:3;"                \
+            "E:control->DMT/_2:control;E:control->DMT/_3:control;F->H:1;"       \
+            "G->H:2;H->I:1");                                                   \
 }
+REGISTER_TEST_ALL_TYPES(NodeRewrite_ConcatV2_Input_MixedMkl);
+#undef REGISTER_TEST
 
-TEST_F(MklLayoutPassTest, NodeRewrite_Relu_Positive) {
-  InitGraph(
-      "node { name: 'A' op: 'Input'}"
-      "node { name: 'B' op: 'Relu'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " input: ['A'] }"
-      "node { name: 'C' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
-      " input: ['A', 'B'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(_MklRelu);C(Zeta);DMT/_0(Const)|A->B;A->C;"
-            "A:control->DMT/_0:control;B->C:1;DMT/_0->B:1");
+#define REGISTER_TEST(NAME, T, INPUT)                                        \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                    \
+  InitGraph(                                                                 \
+      "node { name: 'A' op: '" #INPUT "'}"                                   \
+      "node { name: 'B' op: 'Relu'"                                          \
+      " attr { key: 'T'                value { type: " #T " } }"             \
+      " input: ['A'] }"                                                      \
+      "node { name: 'C' op: 'Zeta' attr { key: 'T' value { type: " #T " } }" \
+      " input: ['A', 'B'] }");                                               \
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
+            "A(" #INPUT ");B(_MklRelu);C(Zeta);DMT/_0(Const)|A->B;A->C;"     \
+            "A:control->DMT/_0:control;B->C:1;DMT/_0->B:1");                 \
 }
+REGISTER_TEST_ALL_TYPES(NodeRewrite_Relu_Positive);
+#undef REGISTER_TEST
 
-TEST_F(MklLayoutPassTest, NodeRewrite_ReluGrad_Positive) {
-  InitGraph(
-      "node { name: 'A' op: 'Input'}"
-      "node { name: 'B' op: 'Input'}"
-      "node { name: 'C' op: 'ReluGrad'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " input: ['A', 'B'] }"
-      "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
-      " input: ['A', 'C'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Input);C(_MklReluGrad);D(Zeta);DMT/_0(Const);"
-            "DMT/_1(Const)|A->C;A->D;A:control->DMT/_0:control;"
-            "A:control->DMT/_1:control;B->C:1;C->D:1;DMT/_0->C:2;DMT/_1->C:3");
+#define REGISTER_TEST(NAME, T, INPUT)                                            \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                        \
+  InitGraph(                                                                     \
+      "node { name: 'A' op: '" #INPUT "'}"                                       \
+      "node { name: 'B' op: '" #INPUT "'}"                                       \
+      "node { name: 'C' op: 'ReluGrad'"                                          \
+      " attr { key: 'T'                value { type: " #T " } }"                 \
+      " input: ['A', 'B'] }"                                                     \
+      "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"     \
+      " input: ['A', 'C'] }");                                                   \
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                       \
+            "A(" #INPUT ");B(" #INPUT ");C(_MklReluGrad);D(Zeta);DMT/_0(Const);" \
+            "DMT/_1(Const)|A->C;A->D;A:control->DMT/_0:control;"                 \
+            "A:control->DMT/_1:control;B->C:1;C->D:1;DMT/_0->C:2;DMT/_1->C:3");  \
 }
+REGISTER_TEST_ALL_TYPES(NodeRewrite_ReluGrad_Positive);
+#undef REGISTER_TEST
 
-TEST_F(MklLayoutPassTest, NodeRewrite_ReluReluGrad_Positive) {
-  InitGraph(
-      "node { name: 'A' op: 'Input'}"
-      "node { name: 'B' op: 'Relu'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " input: ['A'] }"
-      "node { name: 'C' op: 'ReluGrad'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " input: ['A', 'B'] }"
-      "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
-      " input: ['A', 'C'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(_MklRelu);C(_MklReluGrad);D(Zeta);DMT/_0(Const);"
-            "DMT/_1(Const)|A->B;A->C;A->D;A:control->DMT/_0:control;"
-            "A:control->DMT/_1:control;B->C:1;B:1->C:3;C->D:1;DMT/_0->B:1;"
-            "DMT/_1->C:2");
+#define REGISTER_TEST(NAME, T, INPUT)                                          \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                      \
+  InitGraph(                                                                   \
+      "node { name: 'A' op: '" #INPUT "'}"                                     \
+      "node { name: 'B' op: 'Relu'"                                            \
+      " attr { key: 'T'                value { type: " #T " } }"               \
+      " input: ['A'] }"                                                        \
+      "node { name: 'C' op: 'ReluGrad'"                                        \
+      " attr { key: 'T'                value { type: " #T " } }"               \
+      " input: ['A', 'B'] }"                                                   \
+      "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"   \
+      " input: ['A', 'C'] }");                                                 \
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                     \
+            "A(" #INPUT ");B(_MklRelu);C(_MklReluGrad);D(Zeta);DMT/_0(Const);" \
+            "DMT/_1(Const)|A->B;A->C;A->D;A:control->DMT/_0:control;"          \
+            "A:control->DMT/_1:control;B->C:1;B:1->C:3;C->D:1;DMT/_0->B:1;"    \
+            "DMT/_1->C:2");                                                    \
 }
+REGISTER_TEST_ALL_TYPES(NodeRewrite_ReluReluGrad_Positive);
+#undef REGISTER_TEST
 
-TEST_F(MklLayoutPassTest, NodeRewrite_Relu6_Positive) {
-  InitGraph(
-      "node { name: 'A' op: 'Input'}"
-      "node { name: 'B' op: 'Relu6'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " input: ['A'] }"
-      "node { name: 'C' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
-      " input: ['A', 'B'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(_MklRelu6);C(Zeta);DMT/_0(Const)|A->B;A->C;"
-            "A:control->DMT/_0:control;B->C:1;DMT/_0->B:1");
+#define REGISTER_TEST(NAME, T, INPUT)                                        \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                    \
+  InitGraph(                                                                 \
+      "node { name: 'A' op: '" #INPUT "'}"                                   \
+      "node { name: 'B' op: 'Relu6'"                                         \
+      " attr { key: 'T'                value { type: " #T " } }"             \
+      " input: ['A'] }"                                                      \
+      "node { name: 'C' op: 'Zeta' attr { key: 'T' value { type: " #T " } }" \
+      " input: ['A', 'B'] }");                                               \
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
+            "A(" #INPUT ");B(_MklRelu6);C(Zeta);DMT/_0(Const)|A->B;A->C;"    \
+            "A:control->DMT/_0:control;B->C:1;DMT/_0->B:1");                 \
 }
+REGISTER_TEST_ALL_TYPES(NodeRewrite_Relu6_Positive);
+#undef REGISTER_TEST
 
-TEST_F(MklLayoutPassTest, NodeRewrite_Relu6Grad_Positive) {
-  InitGraph(
-      "node { name: 'A' op: 'Input'}"
-      "node { name: 'B' op: 'Input'}"
-      "node { name: 'C' op: 'Relu6Grad'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " input: ['A', 'B'] }"
-      "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
-      " input: ['A', 'C'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Input);C(_MklRelu6Grad);D(Zeta);DMT/_0(Const);"
-            "DMT/_1(Const)|A->C;A->D;A:control->DMT/_0:control;"
-            "A:control->DMT/_1:control;B->C:1;C->D:1;DMT/_0->C:2;DMT/_1->C:3");
+#define REGISTER_TEST(NAME, T, INPUT)                                             \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                         \
+  InitGraph(                                                                      \
+      "node { name: 'A' op: '" #INPUT "'}"                                        \
+      "node { name: 'B' op: '" #INPUT "'}"                                        \
+      "node { name: 'C' op: 'Relu6Grad'"                                          \
+      " attr { key: 'T'                value { type: " #T " } }"                  \
+      " input: ['A', 'B'] }"                                                      \
+      "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"      \
+      " input: ['A', 'C'] }");                                                    \
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                        \
+            "A(" #INPUT ");B(" #INPUT ");C(_MklRelu6Grad);D(Zeta);DMT/_0(Const);" \
+            "DMT/_1(Const)|A->C;A->D;A:control->DMT/_0:control;"                  \
+            "A:control->DMT/_1:control;B->C:1;C->D:1;DMT/_0->C:2;DMT/_1->C:3");   \
 }
+REGISTER_TEST_ALL_TYPES(NodeRewrite_Relu6Grad_Positive);
+#undef REGISTER_TEST
 
-TEST_F(MklLayoutPassTest, NodeRewrite_Relu6Relu6Grad_Positive) {
-  InitGraph(
-      "node { name: 'A' op: 'Input'}"
-      "node { name: 'B' op: 'Relu6'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " input: ['A'] }"
-      "node { name: 'C' op: 'Relu6Grad'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " input: ['A', 'B'] }"
-      "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
-      " input: ['A', 'C'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(_MklRelu6);C(_MklRelu6Grad);D(Zeta);DMT/_0(Const);"
-            "DMT/_1(Const)|A->B;A->C;A->D;A:control->DMT/_0:control;"
-            "A:control->DMT/_1:control;B->C:1;B:1->C:3;C->D:1;DMT/_0->B:1;"
-            "DMT/_1->C:2");
+#define REGISTER_TEST(NAME, T, INPUT)                                            \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                        \
+  InitGraph(                                                                     \
+      "node { name: 'A' op: '" #INPUT "'}"                                       \
+      "node { name: 'B' op: 'Relu6'"                                             \
+      " attr { key: 'T'                value { type: " #T " } }"                 \
+      " input: ['A'] }"                                                          \
+      "node { name: 'C' op: 'Relu6Grad'"                                         \
+      " attr { key: 'T'                value { type: " #T " } }"                 \
+      " input: ['A', 'B'] }"                                                     \
+      "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"     \
+      " input: ['A', 'C'] }");                                                   \
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                       \
+            "A(" #INPUT ");B(_MklRelu6);C(_MklRelu6Grad);D(Zeta);DMT/_0(Const);" \
+            "DMT/_1(Const)|A->B;A->C;A->D;A:control->DMT/_0:control;"            \
+            "A:control->DMT/_1:control;B->C:1;B:1->C:3;C->D:1;DMT/_0->B:1;"      \
+            "DMT/_1->C:2");                                                      \
 }
+REGISTER_TEST_ALL_TYPES(NodeRewrite_Relu6Relu6Grad_Positive);
+#undef REGISTER_TEST
 
-TEST_F(MklLayoutPassTest, NodeRewrite_LeakyRelu_Positive) {
-  InitGraph(
-      "node { name: 'A' op: 'Input'}"
-      "node { name: 'B' op: 'LeakyRelu'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " attr { key: 'alpha'            value { f: 0.1 } }"
-      " input: ['A'] }"
-      "node { name: 'C' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
-      " input: ['A', 'B'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(_MklLeakyRelu);C(Zeta);DMT/_0(Const)|A->B;A->C;"
-            "A:control->DMT/_0:control;B->C:1;DMT/_0->B:1");
+#define REGISTER_TEST(NAME, T, INPUT)                                         \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                     \
+  InitGraph(                                                                  \
+      "node { name: 'A' op: '" #INPUT "'}"                                    \
+      "node { name: 'B' op: 'LeakyRelu'"                                      \
+      " attr { key: 'T'                value { type: " #T " } }"              \
+      " attr { key: 'alpha'            value { f: 0.1 } }"                    \
+      " input: ['A'] }"                                                       \
+      "node { name: 'C' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"  \
+      " input: ['A', 'B'] }");                                                \
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                    \
+            "A(" #INPUT ");B(_MklLeakyRelu);C(Zeta);DMT/_0(Const)|A->B;A->C;" \
+            "A:control->DMT/_0:control;B->C:1;DMT/_0->B:1");                  \
 }
+REGISTER_TEST_ALL_TYPES(NodeRewrite_LeakyRelu_Positive);
+#undef REGISTER_TEST
 
-TEST_F(MklLayoutPassTest, NodeRewrite_LeakyRelu_Negative) {
-  InitGraph(
-      "node { name: 'A' op: 'Input'}"
-      "node { name: 'B' op: 'LeakyRelu'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " attr { key: 'alpha'            value { f: 2.0 } }"
-      " input: ['A'] }"
-      "node { name: 'C' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
-      " input: ['A', 'B'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(LeakyRelu);C(Zeta)|A->B;A->C;B->C:1");
+#define REGISTER_TEST(NAME, T, INPUT)                                        \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                    \
+  InitGraph(                                                                 \
+      "node { name: 'A' op: '" #INPUT "'}"                                   \
+      "node { name: 'B' op: 'LeakyRelu'"                                     \
+      " attr { key: 'T'                value { type: " #T " } }"             \
+      " attr { key: 'alpha'            value { f: 2.0 } }"                   \
+      " input: ['A'] }"                                                      \
+      "node { name: 'C' op: 'Zeta' attr { key: 'T' value { type: " #T " } }" \
+      " input: ['A', 'B'] }");                                               \
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
+            "A(" #INPUT ");B(LeakyRelu);C(Zeta)|A->B;A->C;B->C:1");          \
 }
+REGISTER_TEST_ALL_TYPES(NodeRewrite_LeakyRelu_Negative);
+#undef REGISTER_TEST
 
-TEST_F(MklLayoutPassTest, NodeRewrite_LeakyReluGrad_Positive) {
-  InitGraph(
-      "node { name: 'A' op: 'Input'}"
-      "node { name: 'B' op: 'Input'}"
-      "node { name: 'C' op: 'LeakyReluGrad'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " attr { key: 'alpha'            value { f: 0.1 } }"
-      " input: ['A', 'B'] }"
-      "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
-      " input: ['A', 'C'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Input);C(_MklLeakyReluGrad);D(Zeta);DMT/_0(Const);"
-            "DMT/_1(Const)|A->C;A->D;A:control->DMT/_0:control;"
-            "A:control->DMT/_1:control;B->C:1;C->D:1;DMT/_0->C:2;DMT/_1->C:3");
+#define REGISTER_TEST(NAME, T, INPUT)                                                 \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                             \
+  InitGraph(                                                                          \
+      "node { name: 'A' op: '" #INPUT "'}"                                            \
+      "node { name: 'B' op: '" #INPUT "'}"                                            \
+      "node { name: 'C' op: 'LeakyReluGrad'"                                          \
+      " attr { key: 'T'                value { type: " #T " } }"                      \
+      " attr { key: 'alpha'            value { f: 0.1 } }"                            \
+      " input: ['A', 'B'] }"                                                          \
+      "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"          \
+      " input: ['A', 'C'] }");                                                        \
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                            \
+            "A(" #INPUT ");B(" #INPUT ");C(_MklLeakyReluGrad);D(Zeta);DMT/_0(Const);" \
+            "DMT/_1(Const)|A->C;A->D;A:control->DMT/_0:control;"                      \
+            "A:control->DMT/_1:control;B->C:1;C->D:1;DMT/_0->C:2;DMT/_1->C:3");       \
 }
+REGISTER_TEST_ALL_TYPES(NodeRewrite_LeakyReluGrad_Positive);
+#undef REGISTER_TEST
 
-TEST_F(MklLayoutPassTest, NodeRewrite_LeakyReluGrad_Negative) {
-  InitGraph(
-      "node { name: 'A' op: 'Input'}"
-      "node { name: 'B' op: 'Input'}"
-      "node { name: 'C' op: 'LeakyReluGrad'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " attr { key: 'alpha'            value { f: 2.0 } }"
-      " input: ['A', 'B'] }"
-      "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
-      " input: ['A', 'C'] }");
-  EXPECT_EQ(
-      DoMklLayoutOptimizationPass(),
-      "A(Input);B(Input);C(LeakyReluGrad);D(Zeta)|A->C;A->D;B->C:1;C->D:1");
+#define REGISTER_TEST(NAME, T, INPUT)                                                  \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                              \
+  InitGraph(                                                                           \
+      "node { name: 'A' op: '" #INPUT "'}"                                             \
+      "node { name: 'B' op: '" #INPUT "'}"                                             \
+      "node { name: 'C' op: 'LeakyReluGrad'"                                           \
+      " attr { key: 'T'                value { type: " #T " } }"                       \
+      " attr { key: 'alpha'            value { f: 2.0 } }"                             \
+      " input: ['A', 'B'] }"                                                           \
+      "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"           \
+      " input: ['A', 'C'] }");                                                         \
+  EXPECT_EQ(                                                                           \
+      DoMklLayoutOptimizationPass(),                                                   \
+      "A(" #INPUT ");B(" #INPUT ");C(LeakyReluGrad);D(Zeta)|A->C;A->D;B->C:1;C->D:1"); \
 }
+REGISTER_TEST_ALL_TYPES(NodeRewrite_LeakyReluGrad_Negative);
+#undef REGISTER_TEST
 
-TEST_F(MklLayoutPassTest, NodeRewrite_LeakyReluLeakyReluGrad_Positive) {
-  InitGraph(
-      "node { name: 'A' op: 'Input'}"
-      "node { name: 'B' op: 'LeakyRelu'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " attr { key: 'alpha'            value { f: 0.1 } }"
-      " input: ['A'] }"
-      "node { name: 'C' op: 'LeakyReluGrad'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " attr { key: 'alpha'            value { f: 0.1 } }"
-      " input: ['A', 'B'] }"
-      "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
-      " input: ['A', 'C'] }");
-  EXPECT_EQ(
-      DoMklLayoutOptimizationPass(),
-      "A(Input);B(_MklLeakyRelu);C(_MklLeakyReluGrad);D(Zeta);DMT/_0(Const);"
-      "DMT/_1(Const)|A->B;A->C;A->D;A:control->DMT/_0:control;"
-      "A:control->DMT/_1:control;B->C:1;B:1->C:3;C->D:1;DMT/_0->B:1;"
-      "DMT/_1->C:2");
+#define REGISTER_TEST(NAME, T, INPUT)                                              \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                          \
+  InitGraph(                                                                       \
+      "node { name: 'A' op: '" #INPUT "'}"                                         \
+      "node { name: 'B' op: 'LeakyRelu'"                                           \
+      " attr { key: 'T'                value { type: " #T " } }"                   \
+      " attr { key: 'alpha'            value { f: 0.1 } }"                         \
+      " input: ['A'] }"                                                            \
+      "node { name: 'C' op: 'LeakyReluGrad'"                                       \
+      " attr { key: 'T'                value { type: " #T " } }"                   \
+      " attr { key: 'alpha'            value { f: 0.1 } }"                         \
+      " input: ['A', 'B'] }"                                                       \
+      "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"       \
+      " input: ['A', 'C'] }");                                                     \
+  EXPECT_EQ(                                                                       \
+      DoMklLayoutOptimizationPass(),                                               \
+      "A(" #INPUT ");B(_MklLeakyRelu);C(_MklLeakyReluGrad);D(Zeta);DMT/_0(Const);" \
+      "DMT/_1(Const)|A->B;A->C;A->D;A:control->DMT/_0:control;"                    \
+      "A:control->DMT/_1:control;B->C:1;B:1->C:3;C->D:1;DMT/_0->B:1;"              \
+      "DMT/_1->C:2");                                                              \
 }
+REGISTER_TEST_ALL_TYPES(NodeRewrite_LeakyReluLeakyReluGrad_Positive);
+#undef REGISTER_TEST
+// clang-format on
 
 TEST_F(MklLayoutPassTest, NodeRewrite_AvgPool_Positive) {
   InitGraph(

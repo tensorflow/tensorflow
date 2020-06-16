@@ -26,7 +26,7 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-using XStatValue = absl::variant<int64, absl::string_view>;
+using XStatValue = absl::variant<int64, uint64, absl::string_view>;
 
 void CreateXEvent(
     XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
@@ -36,7 +36,7 @@ void CreateXEvent(
 void CreateXEvent(
     XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
     HostEventType event_type, int64 offset_ps, int64 duration_ps,
-    std::initializer_list<std::pair<StatType, XStatValue>> stats);
+    std::initializer_list<std::pair<StatType, XStatValue>> stats = {});
 
 void CreateTfFunctionCallEvent(XPlaneBuilder* plane_builder,
                                XLineBuilder* line_builder,

@@ -36,7 +36,7 @@ TEST(FloatModel, WithXnnpackDelegate) {
 
   ASSERT_EQ(interpreter->AllocateTensors(), kTfLiteOk);
 
-#if TFLITE_HAS_ATTRIBUTE_WEAK
+#if TFLITE_HAS_ATTRIBUTE_WEAK || defined(TFLITE_BUILD_WITH_XNNPACK_DELEGATE)
   // As the graph is fully delegated by XNNPACK delegate, we will expect the
   // following:
   EXPECT_EQ(1, interpreter->execution_plan().size());

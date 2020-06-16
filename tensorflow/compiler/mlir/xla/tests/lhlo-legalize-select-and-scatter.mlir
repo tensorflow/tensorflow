@@ -4,7 +4,7 @@
 // Lowering to STD dialect and store forwarding pass would be required to get
 // rid of them. This is exactly what is done in the real MLIR GPU pipeline, but
 // here we disable verification with `verify-each=0` to check the output IR.
-// RUN: xla-opt %s -lhlo-legalize-to-parallel-loops -canonicalize --verify-each=0 | FileCheck %s --dump-input-on-failure
+// RUN: xla-opt %s -lhlo-legalize-to-parallel-loops -canonicalize --verify-each=0 | FileCheck %s
 
 func @select_and_scatter(%arg: memref<112x112xf32>,
                          %src: memref<56x56xf32>,

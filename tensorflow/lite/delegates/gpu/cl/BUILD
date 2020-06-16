@@ -43,8 +43,10 @@ cc_library(
     srcs = ["arguments.cc"],
     hdrs = ["arguments.h"],
     deps = [
+        ":cl_device",
         ":gpu_object",
         ":opencl_wrapper",
+        ":tensor_type",
         ":util",
         "//tensorflow/lite/delegates/gpu/common:access_type",
         "//tensorflow/lite/delegates/gpu/common:status",
@@ -65,6 +67,7 @@ cc_test(
     deps = [
         ":arguments",
         ":gpu_object",
+        ":tensor_type",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",

@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import collections
 import functools
 import sys
 import threading
@@ -102,7 +103,8 @@ tf_export("data.UNKNOWN_CARDINALITY").export_constant(__name__, "UNKNOWN")
 
 @tf_export("data.Dataset", v1=[])
 @six.add_metaclass(abc.ABCMeta)
-class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
+class DatasetV2(collections.Iterable, tracking_base.Trackable,
+                composite_tensor.CompositeTensor):
   """Represents a potentially large set of elements.
 
   The `tf.data.Dataset` API supports writing descriptive and efficient input
@@ -399,12 +401,12 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     return dataset
 
   def __iter__(self):
-    """Creates an `Iterator` for enumerating the elements of this dataset.
+    """Creates an iterator for elements of this dataset.
 
-    The returned iterator implements the Python iterator protocol.
+    The returned iterator implements the Python Iterator protocol.
 
     Returns:
-      An `Iterator` over the elements of this dataset.
+      An `tf.data.Iterator` for the elements of this dataset.
 
     Raises:
       RuntimeError: If not inside of tf.function and not executing eagerly.
@@ -740,7 +742,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     Note: The current implementation of `Dataset.from_generator()` uses
     `tf.numpy_function` and inherits the same constraints. In particular, it
-    requires the `Dataset`- and `Iterator`-related operations to be placed
+    requires the dataset and iterator related operations to be placed
     on a device in the same process as the Python program that called
     `Dataset.from_generator()`. The body of `generator` will not be
     serialized in a `GraphDef`, and you should not use this method if you
@@ -2208,7 +2210,7 @@ class DatasetV1(DatasetV2):
       "code base as there are in general no guarantees about the "
       "interoperability of TF 1 and TF 2 code.")
   def make_one_shot_iterator(self):
-    """Creates an `Iterator` for enumerating the elements of this dataset.
+    """Creates an iterator for elements of this dataset.
 
     Note: The returned iterator will be initialized automatically.
     A "one-shot" iterator does not currently support re-initialization. For
@@ -2231,7 +2233,7 @@ class DatasetV1(DatasetV2):
     ```
 
     Returns:
-      An `Iterator` over the elements of this dataset.
+      An `tf.data.Iterator` for elements of this dataset.
     """
     return self._make_one_shot_iterator()
 
@@ -2301,7 +2303,7 @@ class DatasetV1(DatasetV2):
       "are in general no guarantees about the interoperability of TF 1 and TF "
       "2 code.")
   def make_initializable_iterator(self, shared_name=None):
-    """Creates an `Iterator` for enumerating the elements of this dataset.
+    """Creates an iterator for elements of this dataset.
 
     Note: The returned iterator will be in an uninitialized state,
     and you must run the `iterator.initializer` operation before using it:
@@ -2328,7 +2330,7 @@ class DatasetV1(DatasetV2):
         devices (e.g. when using a remote server).
 
     Returns:
-      An `Iterator` over the elements of this dataset.
+      A `tf.data.Iterator` for elements of this dataset.
 
     Raises:
       RuntimeError: If eager execution is enabled.
@@ -2676,7 +2678,7 @@ def _ensure_same_dataset_graph(dataset):
 
 @tf_export(v1=["data.make_one_shot_iterator"])
 def make_one_shot_iterator(dataset):
-  """Creates a `tf.compat.v1.data.Iterator` for enumerating dataset elements.
+  """Creates an iterator for elements of `dataset`.
 
   Note: The returned iterator will be initialized automatically.
   A "one-shot" iterator does not support re-initialization.
@@ -2685,7 +2687,7 @@ def make_one_shot_iterator(dataset):
     dataset: A `tf.data.Dataset`.
 
   Returns:
-    A `tf.compat.v1.data.Iterator` over the elements of this dataset.
+    A `tf.data.Iterator` for elements of `dataset`.
   """
   try:
     # Call the defined `_make_one_shot_iterator()` if there is one, because some
@@ -2697,7 +2699,7 @@ def make_one_shot_iterator(dataset):
 
 @tf_export(v1=["data.make_initializable_iterator"])
 def make_initializable_iterator(dataset, shared_name=None):
-  """Creates a `tf.compat.v1.data.Iterator` for enumerating the elements of a dataset.
+  """Creates an iterator for elements of `dataset`.
 
   Note: The returned iterator will be in an uninitialized state,
   and you must run the `iterator.initializer` operation before using it:
@@ -2716,7 +2718,7 @@ def make_initializable_iterator(dataset, shared_name=None):
       (e.g. when using a remote server).
 
   Returns:
-    A `tf.compat.v1.data.Iterator` over the elements of `dataset`.
+    A `tf.data.Iterator` for elements of `dataset`.
 
   Raises:
     RuntimeError: If eager execution is enabled.
@@ -2731,10 +2733,10 @@ def make_initializable_iterator(dataset, shared_name=None):
 
 @tf_export("data.experimental.get_structure")
 def get_structure(dataset_or_iterator):
-  """Returns the type specification of an element of a `Dataset` or `Iterator`.
+  """Returns the type signature for elements of the input dataset / iterator.
 
   Args:
-    dataset_or_iterator: A `tf.data.Dataset` or `tf.data.Iterator`.
+    dataset_or_iterator: A `tf.data.Dataset` or an `tf.data.Iterator`.
 
   Returns:
     A nested structure of `tf.TypeSpec` objects matching the structure of an
@@ -2742,21 +2744,20 @@ def get_structure(dataset_or_iterator):
     components.
 
   Raises:
-    TypeError: If `dataset_or_iterator` is not a `Dataset` or `Iterator` object.
+    TypeError: If input is not a `tf.data.Dataset` or an `tf.data.Iterator`
+      object.
   """
   try:
     return dataset_or_iterator.element_spec  # pylint: disable=protected-access
   except AttributeError:
-    raise TypeError("`dataset_or_iterator` must be a Dataset or Iterator "
-                    "object, but got %s." % type(dataset_or_iterator))
+    raise TypeError("`dataset_or_iterator` must be a `tf.data.Dataset` or "
+                    "tf.data.Iterator object, but got %s." %
+                    type(dataset_or_iterator))
 
 
 @tf_export(v1=["data.get_output_classes"])
 def get_legacy_output_classes(dataset_or_iterator):
-  """Returns the output classes of a `Dataset` or `Iterator` elements.
-
-  This utility method replaces the deprecated-in-V2
-  `tf.compat.v1.Dataset.output_classes` property.
+  """Returns the output classes for elements of the input dataset / iterator.
 
   Args:
     dataset_or_iterator: A `tf.data.Dataset` or `tf.data.Iterator`.
@@ -2773,10 +2774,7 @@ def get_legacy_output_classes(dataset_or_iterator):
 
 @tf_export(v1=["data.get_output_shapes"])
 def get_legacy_output_shapes(dataset_or_iterator):
-  """Returns the output shapes of a `Dataset` or `Iterator` elements.
-
-  This utility method replaces the deprecated-in-V2
-  `tf.compat.v1.Dataset.output_shapes` property.
+  """Returns the output shapes for elements of the input dataset / iterator.
 
   Args:
     dataset_or_iterator: A `tf.data.Dataset` or `tf.data.Iterator`.
@@ -2793,10 +2791,7 @@ def get_legacy_output_shapes(dataset_or_iterator):
 
 @tf_export(v1=["data.get_output_types"])
 def get_legacy_output_types(dataset_or_iterator):
-  """Returns the output shapes of a `Dataset` or `Iterator` elements.
-
-  This utility method replaces the deprecated-in-V2
-  `tf.compat.v1.Dataset.output_types` property.
+  """Returns the output shapes for elements of the input dataset / iterator.
 
   Args:
     dataset_or_iterator: A `tf.data.Dataset` or `tf.data.Iterator`.

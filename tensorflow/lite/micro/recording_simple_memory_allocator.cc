@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/recording_simple_memory_allocator.h"
 
+#include <new>
+
+#include "tensorflow/lite/kernels/internal/compatibility.h"
+
 namespace tflite {
 
 RecordingSimpleMemoryAllocator::RecordingSimpleMemoryAllocator(
@@ -25,6 +29,20 @@ RecordingSimpleMemoryAllocator::RecordingSimpleMemoryAllocator(
       alloc_count_(0) {}
 
 RecordingSimpleMemoryAllocator::~RecordingSimpleMemoryAllocator() {}
+
+RecordingSimpleMemoryAllocator* RecordingSimpleMemoryAllocator::Create(
+    ErrorReporter* error_reporter, uint8_t* buffer_head, size_t buffer_size) {
+  TFLITE_DCHECK(error_reporter != nullptr);
+  TFLITE_DCHECK(buffer_head != nullptr);
+  RecordingSimpleMemoryAllocator tmp =
+      RecordingSimpleMemoryAllocator(error_reporter, buffer_head, buffer_size);
+
+  uint8_t* allocator_buffer =
+      tmp.AllocateFromTail(sizeof(RecordingSimpleMemoryAllocator),
+                           alignof(RecordingSimpleMemoryAllocator));
+  // Use the default copy constructor to populate internal states.
+  return new (allocator_buffer) RecordingSimpleMemoryAllocator(tmp);
+}
 
 size_t RecordingSimpleMemoryAllocator::GetRequestedBytes() const {
   return requested_bytes_;

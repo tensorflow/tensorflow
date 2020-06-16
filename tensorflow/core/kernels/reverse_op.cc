@@ -113,9 +113,9 @@ DoHandleReverseCase(OpKernelContext* context, const Tensor& input,
     static_assert(sizeof(complex128) == 16, "complex128 must be 16 bytes");
     ReverseRows<complex128, NUM_CHANNELS>(context, input, result);
   } else {
-    context->CtxFailure(
-        errors::InvalidArgument("%s has unexpected size of %d bytes",
-                                DataTypeString(input.dtype()), sizeof(T)));
+    context->CtxFailure(errors::InvalidArgument(DataTypeString(input.dtype()),
+                                                " has unexpected size of ",
+                                                sizeof(T), " bytes"));
   }
 }
 

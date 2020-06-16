@@ -129,9 +129,9 @@ void TestSubFloat(const int* input1_dims_data, const float* input1_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input1_data, input1_dims, "input1_tensor"),
-      CreateFloatTensor(input2_data, input2_dims, "input2_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor"),
+      CreateFloatTensor(input1_data, input1_dims),
+      CreateFloatTensor(input2_data, input2_dims),
+      CreateFloatTensor(output_data, output_dims),
   };
 
   ValidateSubGoldens(tensors, tensors_size, expected_output, output_data,
@@ -156,15 +156,14 @@ void TestSubQuantized(const int* input1_dims_data, const float* input1_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      tflite::testing::CreateQuantizedTensor(
-          input1_data, input1_quantized, input1_dims, input1_scale,
-          input1_zero_point, "input1_tensor"),
-      tflite::testing::CreateQuantizedTensor(
-          input2_data, input2_quantized, input2_dims, input2_scale,
-          input2_zero_point, "input2_tensor"),
+      tflite::testing::CreateQuantizedTensor(input1_data, input1_quantized,
+                                             input1_dims, input1_scale,
+                                             input1_zero_point),
+      tflite::testing::CreateQuantizedTensor(input2_data, input2_quantized,
+                                             input2_dims, input2_scale,
+                                             input2_zero_point),
       tflite::testing::CreateQuantizedTensor(output_data, output_dims,
-                                             output_scale, output_zero_point,
-                                             "output_tensor"),
+                                             output_scale, output_zero_point),
   };
   tflite::AsymmetricQuantize(golden, golden_quantized,
                              ElementCount(*output_dims), output_scale,

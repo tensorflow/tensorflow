@@ -346,19 +346,23 @@ void MultiOutputFusion::UpdateReachability(
     HloInstruction* instr1, HloInstruction* instr2,
     absl::Span<HloInstruction* const> instrs_to_update,
     const std::function<bool(HloInstruction*)>& skip) {
+  auto instr1_i = reachability_->GetIndex(instr1);
+  auto instr2_i = reachability_->GetIndex(instr2);
   for (auto instr : instrs_to_update) {
     if (skip != nullptr && skip(instr)) {
       continue;
     }
-    if (reachability_->IsReachable(instr2, instr) &&
-        reachability_->IsReachable(instr1, instr)) {
+    auto instr_i = reachability_->GetIndex(instr);
+    bool instr2_instr = reachability_->IsReachable(instr2_i, instr_i);
+    bool instr1_instr = reachability_->IsReachable(instr1_i, instr_i);
+    if (instr2_instr && instr1_instr) {
       // If a candidate was already reachable by both, no update needed.
       continue;
     }
-    if (reachability_->IsReachable(instr2, instr)) {
+    if (instr2_instr) {
       reachability_->FastSetReachabilityToUnion({instr, instr1}, instr);
     }
-    if (reachability_->IsReachable(instr1, instr)) {
+    if (reachability_->IsReachable(instr1_i, instr_i)) {
       reachability_->FastSetReachabilityToUnion({instr, instr2}, instr);
     }
   }

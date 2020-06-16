@@ -20,9 +20,9 @@ from __future__ import print_function
 
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import numpy_dataset
-from tensorflow.python.distribute import values
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -233,7 +233,7 @@ class OneDeviceStrategy(distribute_lib.Strategy):
     return super(OneDeviceStrategy, self).scope()
 
 
-@tf_export(v1=["distribute.OneDeviceStrategy"])  # pylint: disable=missing-docstring
+@tf_export(v1=["distribute.OneDeviceStrategy"])  # pylint: disable=empty-docstring
 class OneDeviceStrategyV1(distribute_lib.StrategyV1):
 
   __doc__ = OneDeviceStrategy.__doc__.replace(
@@ -272,7 +272,7 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
         return next_creator(**kwargs)
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
-    values.validate_colocate(colocate_with_variable, self)
+    distribute_utils.validate_colocate(colocate_with_variable, self)
 
   def _make_dataset_iterator(self, dataset):
     """Make iterator from dataset without splitting the batch."""

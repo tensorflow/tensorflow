@@ -27,8 +27,9 @@ namespace tflite {
 enum class RecordedAllocationType {
   kTfLiteTensorArray,
   kTfLiteTensorArrayQuantizationData,
+  kTfLiteTensorVariableBufferData,
   kNodeAndRegistrationArray,
-  kOpData
+  kOpData,
 };
 
 // Container for holding information about allocation recordings by a given
@@ -44,43 +45,59 @@ typedef struct RecordedAllocation {
 
 // Utility subclass of MicroAllocator that records all allocations
 // inside the arena. A summary of allocations can be logged through the
-// ErrorReporter by invoking LogAllocations(). Individual allocation recordings
-// can be retrieved by type through the GetRecordedAllocation() function. This
-// class should only be used for auditing memory usage or integration testing.
+// ErrorReporter by invoking LogAllocations(). This special allocator requires
+// an instance of RecordingSimpleMemoryAllocator to capture allocations in the
+// head and tail. Arena allocation recording can be retrieved by type through
+// the GetRecordedAllocation() function. This class should only be used for
+// auditing memory usage or integration testing.
 class RecordingMicroAllocator : public MicroAllocator {
  public:
-  RecordingMicroAllocator(TfLiteContext* context, const Model* model,
-                          RecordingSimpleMemoryAllocator* memory_allocator,
-                          ErrorReporter* error_reporter);
+  static RecordingMicroAllocator* Create(uint8_t* tensor_arena,
+                                         size_t arena_size,
+                                         ErrorReporter* error_reporter);
 
   // Returns the recorded allocations information for a given allocation type.
   RecordedAllocation GetRecordedAllocation(
-      RecordedAllocationType allocation_type);
+      RecordedAllocationType allocation_type) const;
+
+  const RecordingSimpleMemoryAllocator* GetSimpleMemoryAllocator() const;
 
   // Logs out through the ErrorReporter all allocation recordings by type
   // defined in RecordedAllocationType.
-  void PrintAllocations();
+  void PrintAllocations() const;
 
  protected:
-  TfLiteStatus AllocateTfLiteTensorArray() override;
-  TfLiteStatus PopulateTfLiteTensorArrayFromFlatbuffer() override;
+  TfLiteStatus AllocateTfLiteTensorArray(TfLiteContext* context,
+                                         const SubGraph* subgraph) override;
+  TfLiteStatus PopulateTfLiteTensorArrayFromFlatbuffer(
+      const Model* model, TfLiteContext* context,
+      const SubGraph* subgraph) override;
   TfLiteStatus AllocateNodeAndRegistrations(
+      const SubGraph* subgraph,
       NodeAndRegistration** node_and_registrations) override;
   TfLiteStatus PrepareNodeAndRegistrationDataFromFlatbuffer(
+      const Model* model, const SubGraph* subgraph,
       const MicroOpResolver& op_resolver,
       NodeAndRegistration* node_and_registrations) override;
+  TfLiteStatus AllocateVariables(TfLiteContext* context,
+                                 const SubGraph* subgraph) override;
 
   void SnapshotAllocationUsage(RecordedAllocation& recorded_allocation);
   void RecordAllocationUsage(RecordedAllocation& recorded_allocation);
 
  private:
-  void PrintRecordedAllocation(RecordedAllocationType allocation_type,
-                               const char* allocation_name);
+  RecordingMicroAllocator(RecordingSimpleMemoryAllocator* memory_allocator,
+                          ErrorReporter* error_reporter);
 
-  RecordingSimpleMemoryAllocator* recording_memory_allocator_;
+  void PrintRecordedAllocation(RecordedAllocationType allocation_type,
+                               const char* allocation_name,
+                               const char* allocation_description) const;
+
+  const RecordingSimpleMemoryAllocator* recording_memory_allocator_;
 
   RecordedAllocation recorded_tflite_tensor_array_data_;
   RecordedAllocation recorded_tflite_tensor_array_quantization_data_;
+  RecordedAllocation recorded_tflite_tensor_variable_buffer_data_;
   RecordedAllocation recorded_node_and_registration_array_data_;
   RecordedAllocation recorded_op_data_;
 

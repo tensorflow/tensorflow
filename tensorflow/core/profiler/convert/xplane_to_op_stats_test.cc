@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/protobuf/diagnostics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
@@ -86,6 +87,9 @@ TEST(ConvertXPlaneToOpStats, RunEnvironment) {
 }
 
 TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
+  constexpr int64 kStepNum = 123;
+  constexpr int64 kStepId = 0;
+
   XSpace space;
   XPlaneBuilder host_plane_builder(space.add_planes());
   host_plane_builder.SetName(kHostThreads);
@@ -93,14 +97,14 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
-               0, 100, {{StatType::kStepNum, 123}});
+               0, 100, {{StatType::kStepNum, kStepNum}});
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
-               10, 90, {{StatType::kStepId, 0}});
+               10, 90, {{StatType::kStepId, kStepId}});
 
   auto tf_executor_thread = host_plane_builder.GetOrCreateLine(1);
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 20, 80,
-               {{StatType::kStepId, 0}});
+               {{StatType::kStepId, kStepId}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 70);
 
   GroupTfEvents(&space, /*event_group_name_map=*/nullptr);
@@ -111,6 +115,10 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
 }
 
 TEST(ConvertXPlaneToOpStats, GpuStepDbTest) {
+  constexpr int64 kStepNum = 123;
+  constexpr int64 kStepId = 0;
+  constexpr int64 kCorrelationId = 100;
+
   XSpace space;
   XPlaneBuilder host_plane_builder(space.add_planes());
   host_plane_builder.SetName(kHostThreads);
@@ -118,16 +126,16 @@ TEST(ConvertXPlaneToOpStats, GpuStepDbTest) {
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
-               0, 100, {{StatType::kStepNum, 123}});
+               0, 100, {{StatType::kStepNum, kStepNum}});
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
-               10, 90, {{StatType::kStepId, 0}});
+               10, 90, {{StatType::kStepId, kStepId}});
 
   auto tf_executor_thread = host_plane_builder.GetOrCreateLine(1);
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 20, 20,
-               {{StatType::kStepId, 0}});
+               {{StatType::kStepId, kStepId}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 10,
-               {{StatType::kCorrelationId, 100}});
+               {{StatType::kCorrelationId, kCorrelationId}});
 
   XPlaneBuilder device_plane_builder(space.add_planes());
   device_plane_builder.SetName(absl::StrCat(kGpuPlanePrefix, ":0"));
@@ -135,7 +143,7 @@ TEST(ConvertXPlaneToOpStats, GpuStepDbTest) {
 
   auto stream = device_plane_builder.GetOrCreateLine(0);
   CreateXEvent(&device_plane_builder, &stream, "matmul", 50, 40,
-               {{StatType::kCorrelationId, 100}});
+               {{StatType::kCorrelationId, kCorrelationId}});
 
   GroupTfEvents(&space, /*event_group_name_map=*/nullptr);
   OpStats op_stats = ConvertXSpaceToOpStats(space);
@@ -193,8 +201,8 @@ TEST(ConvertXPlaneToOpStats, PropagateAndDedupErrors) {
 
   OpStats op_stats = ConvertXSpaceToOpStats(space);
 
-  EXPECT_EQ(1, op_stats.errors_size());
-  EXPECT_EQ(kError, op_stats.errors(/*index=*/0));
+  EXPECT_EQ(1, op_stats.diagnostics().errors_size());
+  EXPECT_EQ(kError, op_stats.diagnostics().errors(/*index=*/0));
 }
 
 }  // namespace

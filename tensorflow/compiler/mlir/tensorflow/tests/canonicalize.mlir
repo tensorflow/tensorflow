@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -pass-pipeline='func(canonicalize)' | FileCheck %s -dump-input-on-failure
+// RUN: tf-opt %s -pass-pipeline='func(canonicalize)' | FileCheck %s
 
 // CHECK-LABEL: func @tfAssertTrue
 func @tfAssertTrue(%arg0: tensor<1x1x6x2xf32>) {
@@ -131,6 +131,16 @@ func @testSameCastTypeAcrossBasicBlocks(tensor<8x16x32x64xf32>) -> tensor<8x16x3
   return %1: tensor<8x16x32x64xf32>
 
 // CHECK: return %arg0
+}
+
+// CHECK-LABEL: testConcatCanonicalization
+func @testConcatCanonicalization(%arg0: tensor<2x1xi32>, %arg1: tensor<2x1xi32>) -> tensor<2x2xi32> {
+  // CHECK: %[[AXIS:.*]] = "tf.Const"
+  %0 = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK: "tf.ConcatV2"(%arg0, %arg1, %[[AXIS]])
+  %1 = "tf.Concat"(%0, %arg0, %arg1) : (tensor<i32>, tensor<2x1xi32>, tensor<2x1xi32>) -> tensor<2x2xi32>
+  return %1 : tensor<2x2xi32>
 }
 
 // CHECK-LABEL: testLogOfSoftmax
@@ -549,4 +559,30 @@ func @foldFill() -> (tensor<3x2x1xf32>, tensor<*xf32>, tensor<*xcomplex<f32>>) {
   %4 = "tf.Fill"(%0, %complex_cst) : (tensor<3xi32>, tensor<complex<f32>>) -> tensor<*xcomplex<f32>>
 
   return %2, %3, %4 : tensor<3x2x1xf32>, tensor<*xf32>, tensor<*xcomplex<f32>>
+}
+
+// CHECK-LABEL: foldCase
+func @foldCase(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>) {
+  %2 = constant dense<1> : tensor<i32>
+  %3 = constant dense<0> : tensor<i32>
+
+  // CHECK: PartitionedCall
+  // CHECK-SAME: device = "noodle"
+  // CHECK-SAME: f = @add
+  %4 = "tf.Case"(%2, %arg0, %arg1) {branches = [@sub, @add], output_shapes = [#tf.shape<>], device = "noodle"} : (tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK: PartitionedCall
+  // CHECK-SAME: _cluster_launch = "not_ready"
+  // CHECK-SAME: f = @sub
+  %5 = "tf.Case"(%3, %4, %arg1) {branches = [@sub, @add], output_shapes = [#tf.shape<>], _cluster_launch = "not_ready"} : (tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  return %5 : tensor<f32>
+}
+
+func @add(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = "tf.Add"(%arg0, %arg1): (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+func @sub(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = "tf.Sub"(%arg0, %arg1) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
 }

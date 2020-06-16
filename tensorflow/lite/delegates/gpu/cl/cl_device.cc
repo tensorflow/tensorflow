@@ -131,6 +131,9 @@ Vendor ParseVendor(const std::string& device_name,
   } else if (d_name.find("advanced micro devices") != std::string::npos ||
              v_name.find("advanced micro devices") != std::string::npos) {
     return Vendor::AMD;
+  } else if (d_name.find("intel") != std::string::npos ||
+             v_name.find("intel") != std::string::npos) {
+    return Vendor::INTEL;
   } else {
     return Vendor::UNKNOWN;
   }
@@ -207,6 +210,8 @@ std::string VendorToString(Vendor v) {
       return "NVIDIA";
     case Vendor::AMD:
       return "AMD";
+    case Vendor::INTEL:
+      return "Intel";
     case Vendor::UNKNOWN:
       return "unknown vendor";
   }
@@ -507,6 +512,8 @@ bool CLDevice::IsNvidia() const { return info_.vendor == Vendor::NVIDIA; }
 bool CLDevice::IsMali() const { return info_.vendor == Vendor::MALI; }
 
 bool CLDevice::IsAMD() const { return info_.vendor == Vendor::AMD; }
+
+bool CLDevice::IsIntel() const { return info_.vendor == Vendor::INTEL; }
 
 bool CLDevice::SupportsOneLayerTextureArray() const {
   return !IsAdreno() || info_.adreno_info.support_one_layer_texture_array;

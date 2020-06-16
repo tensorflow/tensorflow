@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
+#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
@@ -108,6 +109,20 @@ void ReplaceAllWords(const std::string& old_word, const std::string& new_word,
     str->replace(position, old_word.size(), new_word);
     position = str->find(old_word, position + new_word.size());
   }
+}
+
+std::string RenameArg(const std::vector<std::string>& object_names,
+                      const std::string& postfix, const std::string& arg_name) {
+  for (const auto& object_name : object_names) {
+    if (absl::StartsWith(arg_name, object_name) &&
+        arg_name.size() > object_name.size() &&
+        arg_name[object_name.size()] == '_') {
+      return object_name + postfix +
+             arg_name.substr(object_name.size(),
+                             arg_name.size() - object_name.size());
+    }
+  }
+  return arg_name + postfix;
 }
 
 void AppendArgument(const std::string& arg, std::string* args) {
@@ -268,7 +283,11 @@ absl::Status Arguments::SetHalf(const std::string& name, half value) {
   }
   it->second.value = value;
   if (it->second.active) {
-    shared_half4s_data_[it->second.offset] = value;
+    if (it->second.store_as_f32) {
+      shared_float4s_data_[it->second.offset] = value;
+    } else {
+      shared_half4s_data_[it->second.offset] = value;
+    }
   }
   return absl::OkStatus();
 }
@@ -361,10 +380,71 @@ absl::Status Arguments::SetGPUResources(
   return absl::OkStatus();
 }
 
-absl::Status Arguments::TransformToCLCode(std::string* code) {
+void Arguments::RenameArgs(const std::string& postfix,
+                           std::string* code) const {
+  size_t next_position = code->find(kArgsPrefix);
+  while (next_position != std::string::npos) {
+    size_t arg_pos = next_position + strlen(kArgsPrefix);
+    std::string arg_name = GetNextWord(*code, arg_pos);
+    code->replace(arg_pos, arg_name.size(), arg_name + postfix);
+    next_position = code->find(kArgsPrefix, arg_pos + arg_name.size());
+  }
+}
+
+absl::Status Arguments::Merge(Arguments&& args, const std::string& postfix) {
+  std::vector<std::string> object_names;
+  object_names.reserve(args.object_refs_.size() + args.objects_.size());
+  for (auto& v : args.object_refs_) {
+    object_names.push_back(v.first);
+    const std::string name = v.first + postfix;
+    if (object_refs_.find(name) != object_refs_.end()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Object reference name collision. Name - ", name));
+    }
+    object_refs_[name] = {v.second.access_type, std::move(v.second.descriptor)};
+  }
+  for (auto& v : args.objects_) {
+    object_names.push_back(v.first);
+    const std::string name = v.first + postfix;
+    if (objects_.find(name) != objects_.end()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Object name collision. Name - ", name));
+    }
+    objects_[name] = {v.second.access_type, std::move(v.second.obj_ptr)};
+  }
+  for (const auto& v : args.int_values_) {
+    AddInt(RenameArg(object_names, postfix, v.first), v.second.value);
+  }
+  for (const auto& v : args.float_values_) {
+    AddFloat(RenameArg(object_names, postfix, v.first), v.second.value);
+  }
+  for (const auto& v : args.half_values_) {
+    AddHalf(RenameArg(object_names, postfix, v.first), v.second.value);
+  }
+  for (const auto& v : args.buffers_) {
+    AddBuffer(RenameArg(object_names, postfix, v.first), v.second);
+  }
+  for (const auto& v : args.images2d_) {
+    AddImage2D(RenameArg(object_names, postfix, v.first), v.second);
+  }
+  for (const auto& v : args.image2d_arrays_) {
+    AddImage2DArray(RenameArg(object_names, postfix, v.first), v.second);
+  }
+  for (const auto& v : args.images3d_) {
+    AddImage3D(RenameArg(object_names, postfix, v.first), v.second);
+  }
+  for (const auto& v : args.image_buffers_) {
+    AddImageBuffer(RenameArg(object_names, postfix, v.first), v.second);
+  }
+  return absl::OkStatus();
+}
+
+absl::Status Arguments::TransformToCLCode(
+    const DeviceInfo& device_info,
+    const std::map<std::string, std::string>& linkables, std::string* code) {
   RETURN_IF_ERROR(AddObjectArgs());
-  RETURN_IF_ERROR(ResolveSelectorsPass(code));
-  ResolveArgsPass(code);
+  RETURN_IF_ERROR(ResolveSelectorsPass(linkables, code));
+  ResolveArgsPass(device_info, code);
   return absl::OkStatus();
 }
 
@@ -480,10 +560,21 @@ absl::Status Arguments::Bind(cl_kernel kernel, int offset) {
     }
     offset++;
   }
+  for (int i = 0; i < shared_half4s_data_.size() / 4; ++i) {
+    const int error_code = clSetKernelArg(kernel, offset, sizeof(int16_t) * 4,
+                                          &shared_half4s_data_[i * 4]);
+    if (error_code != CL_SUCCESS) {
+      return absl::UnknownError(absl::StrCat(
+          "Failed to set kernel arguments - ", CLErrorCodeToString(error_code),
+          "(at index - ", offset, ")"));
+    }
+    offset++;
+  }
   return absl::OkStatus();
 }
 
-std::string Arguments::AddActiveArgument(const std::string& arg_name) {
+std::string Arguments::AddActiveArgument(const std::string& arg_name,
+                                         bool use_f32_for_halfs) {
   if (auto it = int_values_.find(arg_name); it != int_values_.end()) {
     int int_index;
     if (it->second.active) {
@@ -518,26 +609,39 @@ std::string Arguments::AddActiveArgument(const std::string& arg_name) {
       half_index = it->second.offset;
     } else {
       it->second.active = true;
-      it->second.offset = shared_half4s_data_.size();
+      if (use_f32_for_halfs) {
+        it->second.store_as_f32 = true;
+        it->second.offset = shared_float4s_data_.size();
+        shared_float4s_data_.push_back(it->second.value);
+      } else {
+        it->second.offset = shared_half4s_data_.size();
+        shared_half4s_data_.push_back(it->second.value);
+      }
       half_index = it->second.offset;
-      shared_half4s_data_.push_back(it->second.value);
     }
     std::string index = std::to_string(half_index / 4);
     std::string postfixes[4] = {"x", "y", "z", "w"};
-    return "shared_half4_" + index + "." + postfixes[half_index % 4];
+    if (it->second.store_as_f32) {
+      return "(half)(shared_float4_" + index + "." + postfixes[half_index % 4] +
+             ")";
+    } else {
+      return "shared_half4_" + index + "." + postfixes[half_index % 4];
+    }
   }
   return arg_name;
 }
 
-void Arguments::ResolveArgsPass(std::string* code) {
-  std::string result;
+void Arguments::ResolveArgsPass(const DeviceInfo& device_info,
+                                std::string* code) {
+  bool use_f32_for_half_arguments = device_info.vendor == Vendor::POWERVR;
   size_t position = 0;
   size_t next_position = code->find(kArgsPrefix);
   while (next_position != std::string::npos) {
     size_t arg_pos = next_position;
     next_position += strlen(kArgsPrefix);
     std::string object_name = GetNextWord(*code, next_position);
-    std::string new_name = AddActiveArgument(object_name);
+    std::string new_name =
+        AddActiveArgument(object_name, use_f32_for_half_arguments);
     code->replace(arg_pos, object_name.size() + strlen(kArgsPrefix), new_name);
     position = arg_pos + new_name.size();
     next_position = code->find(kArgsPrefix, position);
@@ -561,6 +665,7 @@ void Arguments::ResolveObjectNames(const std::string& object_name,
 }
 
 absl::Status Arguments::ResolveSelector(
+    const std::map<std::string, std::string>& linkables,
     const std::string& object_name, const std::string& selector,
     const std::vector<std::string>& args,
     const std::vector<std::string>& template_args, std::string* result) {
@@ -576,14 +681,38 @@ absl::Status Arguments::ResolveSelector(
     return absl::NotFoundError(
         absl::StrCat("No object with name - ", object_name));
   }
-  RETURN_IF_ERROR(
-      desc_ptr->PerformSelector(selector, args, template_args, result));
   auto names = desc_ptr->GetGPUResources(access_type).GetNames();
-  ResolveObjectNames(object_name, names, result);
+  const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(desc_ptr);
+  if (tensor_desc && selector == "Write") {
+    if (auto it = linkables.find(object_name); it != linkables.end()) {
+      if (access_type != AccessType::WRITE &&
+          access_type != AccessType::READ_WRITE) {
+        return absl::FailedPreconditionError(absl::StrCat(
+            "Object with name - ", object_name, " should have Write access."));
+      }
+      std::string value_name, x_coord, y_coord, s_coord;
+      RETURN_IF_ERROR(tensor_desc->GetLinkingContextFromWriteSelector(
+          args, &value_name, &x_coord, &y_coord, &s_coord));
+      // x_coord can have batch size property of link_object
+      ResolveObjectNames(object_name, names, &x_coord);
+      *result = it->second;
+      ReplaceAllWords("in_out_value", value_name, result);
+      ReplaceAllWords("X_COORD", x_coord, result);
+      ReplaceAllWords("Y_COORD", y_coord, result);
+      ReplaceAllWords("S_COORD", s_coord, result);
+      RETURN_IF_ERROR(ResolveSelectorsPass({}, result));
+    }
+  }
+  std::string patch;
+  RETURN_IF_ERROR(
+      desc_ptr->PerformSelector(selector, args, template_args, &patch));
+  ResolveObjectNames(object_name, names, &patch);
+  *result += patch;
   return absl::OkStatus();
 }
 
-absl::Status Arguments::ResolveSelectorsPass(std::string* code) {
+absl::Status Arguments::ResolveSelectorsPass(
+    const std::map<std::string, std::string>& linkables, std::string* code) {
   std::string result;
   size_t position = 0;
   size_t next_position = code->find(kArgsPrefix);
@@ -614,8 +743,8 @@ absl::Status Arguments::ResolveSelectorsPass(std::string* code) {
       RETURN_IF_ERROR(ParseArgsInsideBrackets(*code, next_position,
                                               &close_bracket_pos, &args));
       std::string patch;
-      RETURN_IF_ERROR(ResolveSelector(object_name, selector_name, args,
-                                      template_args, &patch));
+      RETURN_IF_ERROR(ResolveSelector(linkables, object_name, selector_name,
+                                      args, template_args, &patch));
       code->replace(arg_pos, close_bracket_pos - arg_pos, patch);
       position = arg_pos + patch.size();
     } else {

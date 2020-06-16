@@ -468,10 +468,6 @@ Status XlaComputationLaunchContext::PopulateOutputs(
             << "Invalid input for outputs " << i << ": " << input_index;
         ctx->set_output(i, ctx->input(input_index));
       } else {
-        if (MustAliasOutput(input_output_alias, output_num)) {
-          DCHECK(output.buffer({output_num}).is_null())
-              << "Expected output buffer to be aliased, but it is not nil.";
-        }
         if (allocate_xla_tensors_) {
           TF_RETURN_IF_ERROR(SetBufferForTensorUnderAllocateXlaTensors(
               input_output_alias, output_num, ctx, i, shape, &output,

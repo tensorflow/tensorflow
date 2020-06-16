@@ -337,8 +337,6 @@ class XlaBuilder {
   // Note: Aliasing API is 'may-alias' and only donated buffer at runtime will
   // be aliased with output. If a buffer is not donated at runtime, a copy will
   // be inserted by XLA to prevent buffer clobbering.
-  //
-  // Only works on TPU backend.
   void SetUpAlias(const ShapeIndex& output_index, int64 param_number,
                   const ShapeIndex& param_index) {
     input_output_aliases_.push_back({output_index, param_number, param_index});
@@ -504,6 +502,9 @@ class XlaBuilder {
 
   XlaOp Fft(XlaOp operand, FftType fft_type,
             absl::Span<const int64> fft_length);
+  virtual StatusOr<XlaOp> FftInternal(const Shape& shape, XlaOp operand,
+                                      FftType fft_type,
+                                      absl::Span<const int64> fft_length);
 
   XlaOp Infeed(const Shape& shape, const string& config = "");
   XlaOp InfeedWithToken(XlaOp token, const Shape& shape, const string& config);
@@ -541,6 +542,11 @@ class XlaBuilder {
                const XlaComputation& computation,
                absl::Span<const int64> dimensions_to_reduce);
 
+  virtual StatusOr<XlaOp> ReduceInternal(
+      const Shape& shape, absl::Span<const XlaOp> all_operands,
+      const XlaComputation& computation,
+      absl::Span<const int64> dimensions_to_reduce);
+
   XlaOp ReduceAll(XlaOp operand, XlaOp init_value,
                   const XlaComputation& computation);
 
@@ -556,6 +562,10 @@ class XlaBuilder {
       absl::Span<const int64> base_dilations,
       absl::Span<const int64> window_dilations,
       absl::Span<const std::pair<int64, int64>> padding);
+
+  virtual StatusOr<XlaOp> ReduceWindowInternal(
+      const Shape& shape, XlaOp operand, XlaOp init_value,
+      const XlaComputation& computation, Window window);
 
   XlaOp CrossReplicaSum(XlaOp operand,
                         absl::Span<const ReplicaGroup> replica_groups = {});
@@ -596,7 +606,7 @@ class XlaBuilder {
       absl::Span<const std::pair<int64, int64>> padding, XlaOp source,
       XlaOp init_value, const XlaComputation& scatter);
 
-  XlaOp Iota(const Shape& shape, int64 iota_dimension);
+  virtual XlaOp Iota(const Shape& shape, int64 iota_dimension);
 
   XlaOp Iota(PrimitiveType type, int64 size);
 
@@ -609,6 +619,8 @@ class XlaBuilder {
       const Shape& shape, XlaOp operand, absl::Span<const int64> permutation);
 
   XlaOp Rev(XlaOp operand, absl::Span<const int64> dimensions);
+  virtual StatusOr<XlaOp> RevInternal(const Shape& shape, XlaOp operand,
+                                      absl::Span<const int64> dimensions);
 
   XlaOp Sort(absl::Span<const XlaOp> operands, const XlaComputation& comparator,
              int64 dimension = -1, bool is_stable = false);
@@ -654,6 +666,12 @@ class XlaBuilder {
                 const XlaComputation& update_computation,
                 const ScatterDimensionNumbers& dimension_numbers,
                 bool indices_are_sorted = false, bool unique_indices = false);
+
+  virtual StatusOr<XlaOp> ScatterInternal(
+      const Shape& shape, XlaOp input, XlaOp scatter_indices, XlaOp updates,
+      const XlaComputation& update_computation,
+      const ScatterDimensionNumbers& dimension_numbers, bool indices_are_sorted,
+      bool unique_indices);
 
   void Send(XlaOp operand, const ChannelHandle& handle);
   XlaOp SendWithToken(XlaOp operand, XlaOp token, const ChannelHandle& handle);

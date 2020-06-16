@@ -26,6 +26,7 @@ from __future__ import print_function
 
 import os
 import shutil
+import sys
 
 from absl.testing import parameterized
 import numpy as np
@@ -375,9 +376,16 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
         keras.layers.BatchNormalization(input_shape=(1,)))
     self.evaluate(variables.variables_initializer(model.variables))
     saved_model_dir = self._save_model_dir()
-    model.save(saved_model_dir, save_format='tf')
-    loaded = keras_load.load(saved_model_dir)
-    self.evaluate(variables.variables_initializer(loaded.variables))
+
+    with self.captureWritesToStream(sys.stderr) as captured_logs:
+      model.save(saved_model_dir, save_format='tf')
+      loaded = keras_load.load(saved_model_dir)
+
+    # Assert that saving does not log deprecation warnings
+    # (even if it needs to set learning phase for compat reasons)
+    if context.executing_eagerly():
+      self.assertNotIn('deprecated', captured_logs.contents())
+
     input_arr = array_ops.constant([[11], [12], [13]], dtype=dtypes.float32)
     input_arr2 = array_ops.constant([[14], [15], [16]], dtype=dtypes.float32)
     self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0])

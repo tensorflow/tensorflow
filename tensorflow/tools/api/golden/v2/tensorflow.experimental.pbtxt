@@ -1,6 +1,10 @@
 path: "tensorflow.experimental"
 tf_module {
   member {
+    name: "Optional"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "dlpack"
     mtype: "<type \'module\'>"
   }

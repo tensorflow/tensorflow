@@ -90,8 +90,8 @@ void TestDequantizeToFloat(const int* input_dims_data, const float* input_data,
   const int tensors_size = 2;
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input_data, input_data_quantized, input_dims, scale,
-                            zero_point, "input_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor"),
+                            zero_point),
+      CreateFloatTensor(output_data, output_dims),
   };
 
   ValidateDequantizeGoldens(tensors, tensors_size, expected_output_data,
@@ -113,8 +113,8 @@ void TestDequantizeToInt32(const int* input_dims_data, const float* input_data,
   const int tensors_size = 2;
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input_data, input_data_quantized, input_dims,
-                            input_scale, input_zero_point, "input_tensor"),
-      CreateInt32Tensor(output_data, output_dims, "output_tensor"),
+                            input_scale, input_zero_point),
+      CreateInt32Tensor(output_data, output_dims),
   };
 
   TfLiteQuantizationParams output_quant;
