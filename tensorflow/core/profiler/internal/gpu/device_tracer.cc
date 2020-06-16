@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/parse_annotation.h"
 #include "tensorflow/core/profiler/internal/profiler_factory.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
@@ -225,11 +226,10 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     uint64 end_gpu_ns = CuptiTracer::GetTimestamp();
     XPlaneBuilder host_plane(
         FindOrAddMutablePlaneWithName(space, kCuptiDriverApiPlaneName));
-    host_plane.SetId(kCuptiDriverApiPlaneId);
     for (int device_ordinal = 0; device_ordinal < num_gpus_; ++device_ordinal) {
       std::string name = GpuPlaneName(device_ordinal);
       XPlaneBuilder device_plane(FindOrAddMutablePlaneWithName(space, name));
-      device_plane.SetId(kGpuPlaneBaseId + device_ordinal);
+      device_plane.SetId(device_ordinal);
       per_device_collector_[device_ordinal].Flush(start_gpu_ns_, end_gpu_ns,
                                                   &device_plane, &host_plane);
       per_device_collector_[device_ordinal].GetDeviceCapabilities(

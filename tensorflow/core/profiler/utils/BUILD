@@ -145,6 +145,9 @@ cc_library(
 cc_library(
     name = "trace_utils",
     hdrs = ["trace_utils.h"],
+    deps = [
+        "//tensorflow/core:lib",
+    ],
 )
 
 cc_library(
