@@ -246,10 +246,40 @@ class MicroBenchmarksBase(test.Benchmark):
 
     self._run(fn, 10000)
 
-  def benchmark_layers_normalization_batch_normalization_overhead(self):
+  def benchmark_layers_batch_norm_fused_inf(self):
 
-    layer = normalization.BatchNormalization()
-    x = array_ops.ones((1, 1))
+    layer = normalization.BatchNormalization(fused=True)
+    x = array_ops.ones((1, 1, 1, 1))
+
+    def fn():
+      layer(x)
+
+    self._run(fn, 10000)
+
+  def benchmark_layers_batch_norm_fused_train(self):
+
+    layer = normalization.BatchNormalization(fused=True)
+    x = array_ops.ones((1, 1, 1, 1))
+
+    def fn():
+      layer(x, training=True)
+
+    self._run(fn, 10000)
+
+  def benchmark_layers_batch_norm_nonfused_inf(self):
+
+    layer = normalization.BatchNormalization(fused=False)
+    x = array_ops.ones((1, 1, 1, 1))
+
+    def fn():
+      layer(x)
+
+    self._run(fn, 10000)
+
+  def benchmark_layers_batch_norm_nonfused_train(self):
+
+    layer = normalization.BatchNormalization(fused=False)
+    x = array_ops.ones((1, 1, 1, 1))
 
     def fn():
       layer(x, training=True)
