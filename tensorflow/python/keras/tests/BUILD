@@ -360,6 +360,21 @@ cuda_py_test(
 )
 
 tf_py_test(
+    name = "serialization_util_test",
+    size = "small",
+    srcs = ["serialization_util_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:util",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/keras/layers:core",
+    ],
+)
+
+tf_py_test(
     name = "temporal_sample_weights_correctness_test",
     srcs = ["temporal_sample_weights_correctness_test.py"],
     python_version = "PY3",
