@@ -311,6 +311,7 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
         self.assertAllClose(3., self.evaluate(x.assign_sub(3.)))
 
         # Assign multiple times
+        # This currently only works if no strategy is used
         if not ds_context.has_strategy():
           assign = x.assign(1.)
           self.assertAllClose(1., self.evaluate(assign))
