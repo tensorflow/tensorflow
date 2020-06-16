@@ -509,6 +509,13 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("PLATFORM", GpuAllocatorConfig::Kind::kPlatform)
       .value("BFC", GpuAllocatorConfig::Kind::kBFC);
 
+  py::enum_<PjRtBuffer::HostBufferSemantics>(m, "HostBufferSemantics")
+      .value("IMMUTABLE_ONLY_DURING_CALL",
+             PjRtBuffer::HostBufferSemantics::kImmutableOnlyDuringCall)
+      .value("IMMUTABLE_UNTIL_TRANSFER_COMPLETES",
+             PjRtBuffer::HostBufferSemantics::kImmutableUntilTransferCompletes)
+      .value("ZERO_COPY", PjRtBuffer::HostBufferSemantics::kZeroCopy);
+
   py::class_<PyClient, std::shared_ptr<PyClient>> py_local_client(m, "Client");
   py_local_client.def_property_readonly("platform", &PyClient::platform_name)
       .def("device_count", &PyClient::device_count)
@@ -527,7 +534,9 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("create_host_to_device_channel_handle",
            &PyClient::CreateHostToDeviceChannelHandle)
       .def("buffer_from_pyval", &PyClient::BufferFromPyal, py::arg("argument"),
-           py::arg("device") = nullptr, py::arg("force_copy") = false)
+           py::arg("device") = nullptr, py::arg("force_copy") = false,
+           py::arg("host_buffer_semantics") =
+               PjRtBuffer::HostBufferSemantics::kZeroCopy)
       .def("compile", &PyClient::Compile, py::arg("computation"),
            py::arg("compile_options") = CompileOptions())
       .def("heap_profile", &PyClient::HeapProfile);

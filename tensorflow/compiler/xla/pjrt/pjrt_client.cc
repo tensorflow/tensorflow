@@ -95,6 +95,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -154,18 +155,35 @@ StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
   return xla_assignment;
 }
 
+class CpuAllocator : public tensorflow::Allocator {
+ public:
+  CpuAllocator() = default;
+
+  string Name() override { return "cpu"; }
+
+  void* AllocateRaw(size_t alignment, size_t num_bytes) override {
+    return tensorflow::port::AlignedMalloc(num_bytes, alignment);
+  }
+  void DeallocateRaw(void* ptr) override {
+    return tensorflow::port::AlignedFree(ptr);
+  }
+};
+
 PjRtClient::PjRtClient(
     std::string platform_name, LocalClient* client,
     std::vector<std::unique_ptr<Device>> devices, int host_id,
     std::unique_ptr<se::DeviceMemoryAllocator> allocator,
     std::unique_ptr<tensorflow::Allocator> host_memory_allocator,
+    bool should_stage_host_to_device_transfers,
     std::unique_ptr<GpuExecutableRunOptions> gpu_run_options)
     : platform_name_(std::move(platform_name)),
       client_(client),
+      host_memory_allocator_(std::move(host_memory_allocator)),
       devices_(std::move(devices)),
       host_id_(host_id),
       owned_allocator_(std::move(allocator)),
-      host_memory_allocator_(std::move(host_memory_allocator)),
+      should_stage_host_to_device_transfers_(
+          should_stage_host_to_device_transfers),
       gpu_run_options_(std::move(gpu_run_options)),
       h2d_transfer_pool_(tensorflow::Env::Default(), "py_xla_h2d_transfer",
                          client->device_count()) {
@@ -173,6 +191,10 @@ PjRtClient::PjRtClient(
     allocator_ = owned_allocator_.get();
   } else {
     allocator_ = client_->backend().memory_allocator();
+  }
+
+  if (!host_memory_allocator_) {
+    host_memory_allocator_ = std::make_unique<CpuAllocator>();
   }
 
   for (const std::unique_ptr<Device>& device : devices_) {
@@ -526,7 +548,8 @@ void PjRtBuffer::ScopedHold::AddToInput(
 
 /* static */
 StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostBuffer(
-    const void* data, const Shape& shape, bool force_copy,
+    const void* data, const Shape& shape,
+    HostBufferSemantics host_buffer_semantics,
     std::shared_ptr<void> buffer_reference, PjRtClient* client,
     Device* device) {
   tensorflow::profiler::TraceMe traceme("PjRtBuffer::FromHostBuffer");
@@ -537,34 +560,63 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostBuffer(
   }
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                       device->GetLocalDeviceState());
-
-  // If we are on the host platform and the input buffer is sufficiently
-  // aligned, we can simply point to the input array's data without any further
-  // copies. At the time of writing we require a 16-byte alignment because XLA
-  // may generate code which requires it.
-  if (!force_copy &&
-      ((absl::bit_cast<std::uintptr_t>(data) &
-        (cpu_function_runtime::kMinAlign - 1)) == 0) &&
-      local_device->executor()->platform()->id() == se::host::kHostPlatformId) {
-    std::function<void()> on_delete_callback =
-        [buffer_reference{std::move(buffer_reference)}]() {
-          // Frees buffer_reference.
-        };
-    se::DeviceMemoryBase buffer(const_cast<void*>(data),
-                                ShapeUtil::ByteSizeOf(shape));
-    absl::Span<const std::shared_ptr<BufferSequencingEvent>> definition_events;
-    auto device_buffer = std::make_shared<TrackedDeviceBuffer>(
-        /*allocator=*/nullptr, local_device->device_ordinal(),
-        std::initializer_list<se::DeviceMemoryBase>{buffer}, definition_events,
-        std::move(on_delete_callback));
-    return absl::make_unique<PjRtBuffer>(shape, shape, std::move(device_buffer),
-                                         client, device);
-  }
+  int64 size = ShapeUtil::ByteSizeOf(shape);
 
   TransferManager* transfer_manager =
       client->client()->backend().transfer_manager();
   TF_ASSIGN_OR_RETURN(Shape compact_shape,
                       transfer_manager->ChooseCompactLayoutForShape(shape));
+
+  // The CPU platform is special because the "host" and the "device" are in the
+  // same memory space. If the input shape is in the correct layout and we don't
+  // want to defer the copy onto a thread, we can use the following fast
+  // path.
+  bool is_cpu_platform =
+      local_device->executor()->platform()->id() == se::host::kHostPlatformId;
+  if (is_cpu_platform) {
+    // If we are on the host platform and the input buffer is sufficiently
+    // aligned, we can simply point to the input array's data without any
+    // further copies. At the time of writing we require a 16-byte alignment
+    // because XLA may generate code which requires it.
+    bool can_use_zero_copy =
+        host_buffer_semantics == HostBufferSemantics::kZeroCopy &&
+        ((absl::bit_cast<std::uintptr_t>(data) &
+          (cpu_function_runtime::kMinAlign - 1)) == 0);
+    if (shape.layout() == compact_shape.layout() &&
+        (host_buffer_semantics ==
+             HostBufferSemantics::kImmutableOnlyDuringCall ||
+         can_use_zero_copy)) {
+      std::function<void()> on_delete_callback;
+      se::DeviceMemoryBase buffer;
+      // If we are on the host platform and the input buffer is sufficiently
+      // aligned, we can simply point to the input array's data without any
+      // further copies. At the time of writing we require a 16-byte alignment
+      // because XLA may generate code which requires it.
+      if (can_use_zero_copy) {
+        on_delete_callback = [buffer_reference{std::move(buffer_reference)}]() {
+          // Frees buffer_reference.
+        };
+        buffer = se::DeviceMemoryBase(const_cast<void*>(data), size);
+      } else {
+        void* staging_buffer = client->host_memory_allocator()->AllocateRaw(
+            cpu_function_runtime::kMinAlign, size);
+        on_delete_callback = [staging_buffer, client]() {
+          client->host_memory_allocator()->DeallocateRaw(staging_buffer);
+        };
+        buffer = se::DeviceMemoryBase(staging_buffer, size);
+        std::memcpy(staging_buffer, data, size);
+      }
+      absl::Span<const std::shared_ptr<BufferSequencingEvent>>
+          definition_events;
+      auto device_buffer = std::make_shared<TrackedDeviceBuffer>(
+          /*allocator=*/nullptr, local_device->device_ordinal(),
+          std::initializer_list<se::DeviceMemoryBase>{buffer},
+          definition_events, std::move(on_delete_callback));
+      return absl::make_unique<PjRtBuffer>(
+          shape, shape, std::move(device_buffer), client, device);
+    }
+  }
+
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtBuffer> py_buffer,
       AllocateDestinationBuffer(compact_shape, device, local_device,
@@ -573,17 +625,41 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostBuffer(
   ScopedHold device_buffer(py_buffer->GetBufferWithUsageHold());
   CHECK(device_buffer.ok());
 
+  // If necessary, allocate a host-side buffer for staging host-to-device
+  // transfers. On GPU this is a buffer in pinned memory.
+  std::shared_ptr<void> staging_buffer;
+  if (host_buffer_semantics == HostBufferSemantics::kImmutableOnlyDuringCall ||
+      client->should_stage_host_to_device_transfers()) {
+    void* ptr = client->host_memory_allocator()->AllocateRaw(
+        tensorflow::Allocator::kAllocatorAlignment, size);
+    staging_buffer = std::shared_ptr<void>(ptr, [client](void* ptr) {
+      client->host_memory_allocator()->DeallocateRaw(ptr);
+    });
+  }
+
+  // Copy the buffer into a staging buffer before returning control to the
+  // caller if the caller only guaranteed that the buffer is valid for the
+  // duration of the call. Otherwise, we stage (if necessary) on a separate
+  // thread.
+  if (host_buffer_semantics == HostBufferSemantics::kImmutableOnlyDuringCall) {
+    std::memcpy(staging_buffer.get(), data, size);
+    buffer_reference.reset();
+    data = nullptr;
+  }
+
   // The host to device transfer is performed on a thread pool, mostly because
   // it includes linearization that may be slow. It is OK to capture the
   // py_buffer pointer because the py_buffer can't be deleted until all the
   // usage holds have gone away.
   // TODO(misard) assess if it would be preferable to introduce a heuristic to
   // put the transfer into the calling thread for small literals.
-  auto transfer_h2d = [client, transfer_manager, local_device,
-                       movable_device_buffer{device_buffer.ToClosure()}, data,
-                       shape, py_buffer{py_buffer.get()}, compact_shape,
+  auto transfer_h2d = [client, transfer_manager, local_device, data, size,
+                       movable_device_buffer{device_buffer.ToClosure()}, shape,
+                       py_buffer{py_buffer.get()}, compact_shape,
                        on_device_shape{py_buffer->on_device_shape()},
-                       buffer_reference{std::move(buffer_reference)}]() {
+                       staging_buffer{std::move(staging_buffer)},
+                       buffer_reference{std::move(buffer_reference)},
+                       host_buffer_semantics]() {
     ScopedHold device_buffer(movable_device_buffer);
     // This function uses TF_CHECK_OK and ValueOrDie() since we have no way
     // to report failures from a callback. However, the operations here are
@@ -593,20 +669,16 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostBuffer(
 
     ShapedBuffer buffer = device_buffer->AsShapedBuffer(
         compact_shape, on_device_shape, client->client()->platform());
-
-    std::shared_ptr<void> staging_buffer;
-
     // If applicable on the backend, stage the transfer via host memory
     // allocated via the host_memory_allocator. On GPU, this is pinned
     // memory.
-    if (client->host_memory_allocator()) {
-      int64 size = ShapeUtil::ByteSizeOf(shape);
-      void* ptr = client->host_memory_allocator()->AllocateRaw(
-          tensorflow::Allocator::kAllocatorAlignment, size);
-      staging_buffer = std::shared_ptr<void>(ptr, [client](void* ptr) {
-        client->host_memory_allocator()->DeallocateRaw(ptr);
-      });
-      std::memcpy(ptr, data, size);
+    if (staging_buffer) {
+      // If we didn't already copy the input buffer into the staging buffer,
+      // do so now.
+      if (host_buffer_semantics !=
+          HostBufferSemantics::kImmutableOnlyDuringCall) {
+        std::memcpy(staging_buffer.get(), data, size);
+      }
       BorrowingLiteral literal(static_cast<const char*>(staging_buffer.get()),
                                shape);
       TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
@@ -626,9 +698,15 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostBuffer(
 
     local_device->ThenRelease(
         local_device->host_to_device_stream(),
-        std::make_pair(buffer_reference, std::move(staging_buffer)));
+        std::make_pair(std::move(buffer_reference), std::move(staging_buffer)));
   };
-  client->h2d_transfer_pool()->Schedule(transfer_h2d);
+  if (is_cpu_platform) {
+    // Using the h2d_transfer_pool would be a double thread hop; the code
+    // already defers its work onto a stream (= thread on CPU).
+    transfer_h2d();
+  } else {
+    client->h2d_transfer_pool()->Schedule(transfer_h2d);
+  }
   return py_buffer;
 }
 
