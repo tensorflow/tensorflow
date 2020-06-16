@@ -9495,6 +9495,14 @@ func DebugIdentityV2CircularBufferSize(value int64) DebugIdentityV2Attr {
 	}
 }
 
+// DebugIdentityV2TfdbgRunId sets the optional tfdbg_run_id attribute to value.
+// If not specified, defaults to ""
+func DebugIdentityV2TfdbgRunId(value string) DebugIdentityV2Attr {
+	return func(m optionalAttr) {
+		m["tfdbg_run_id"] = value
+	}
+}
+
 // Debug Identity V2 Op.
 //
 // Provides an identity mapping from input to output, while writing the content of
