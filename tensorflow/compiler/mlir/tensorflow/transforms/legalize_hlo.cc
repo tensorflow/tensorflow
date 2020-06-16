@@ -489,9 +489,9 @@ LogicalResult MatchReduceOpInput(xla_hlo::ReduceOp reduce_op) {
   return success();
 }
 
-// TODO(b/157192370): This "xla_hlo::ReduceOp" can corresponds to many TF ops
-// with different ops in reduce_op.body. Now we only match to "tf.Max" and
-// "tf.Sum".
+// TODO(jingpu): This "xla_hlo::ReduceOp" can corresponds to many TF ops
+// with different ops in reduce_op.body. Now we only match to "tf.Max", "tf.Min"
+// and "tf.Sum".
 class ConvertReduceOpToTfSum : public OpConversionPattern<xla_hlo::ReduceOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
@@ -504,15 +504,13 @@ class ConvertReduceOpToTfSum : public OpConversionPattern<xla_hlo::ReduceOp> {
     Operation *first_op = &reduce_op.body().front().front();
     if (!llvm::isa<xla_hlo::AddOp>(first_op)) return failure();
 
-    // In `MatchReduceOpInput` function, we only match that the
+    // In `MatchReduceOpInput` function, we already match that the
     // "xla_hlo::ReduceOp" only has one input, one init_value and one result.
     auto input = reduce_op.operands()[0];
     // Get reduction dimension.
     DenseIntElementsAttr dimension = reduce_op.dimensions();
     SmallVector<int64_t, 4> reduce_dims;
-    const int64_t input_rank = input.getType().cast<ShapedType>().getRank();
     for (const int64_t &dim : dimension.getValues<int64_t>()) {
-      if (dim < 0 || dim >= input_rank) return failure();
       reduce_dims.emplace_back(dim);
     }
 
@@ -545,15 +543,13 @@ class ConvertReduceOpToTfMax : public OpConversionPattern<xla_hlo::ReduceOp> {
     Operation *first_op = &reduce_op.body().front().front();
     if (!llvm::isa<xla_hlo::MaxOp>(first_op)) return failure();
 
-    // In `MatchReduceOpInput` function, we only match that the
+    // In `MatchReduceOpInput` function, we already match that the
     // "xla_hlo::ReduceOp" only has one input, one init_value and one result.
     auto input = reduce_op.operands()[0];
     // Get reduction dimension.
     DenseIntElementsAttr dimension = reduce_op.dimensions();
     SmallVector<int64_t, 4> reduce_dims;
-    const int64_t input_rank = input.getType().cast<ShapedType>().getRank();
     for (const int64_t &dim : dimension.getValues<int64_t>()) {
-      if (dim < 0 || dim >= input_rank) return failure();
       reduce_dims.emplace_back(dim);
     }
 
@@ -570,6 +566,47 @@ class ConvertReduceOpToTfMax : public OpConversionPattern<xla_hlo::ReduceOp> {
     auto reduction_indices = rewriter.create<ConstOp>(
         reduce_op.getLoc(), dim_type, rewriter.getI64TensorAttr(reduce_dims));
     rewriter.replaceOpWithNewOp<MaxOp>(
+        reduce_op, reduce_op.getType(0), input, reduction_indices,
+        /*keep_dim=*/rewriter.getBoolAttr(false));
+    return success();
+  };
+};
+
+class ConvertReduceOpToTfMin : public OpConversionPattern<xla_hlo::ReduceOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      xla_hlo::ReduceOp reduce_op, ArrayRef<Value> args,
+      ConversionPatternRewriter &rewriter) const final {
+    if (failed(MatchReduceOpInput(reduce_op))) return failure();
+
+    Operation *first_op = &reduce_op.body().front().front();
+    if (!llvm::isa<xla_hlo::MinOp>(first_op)) return failure();
+
+    // In `MatchReduceOpInput` function, we already match that the
+    // "xla_hlo::ReduceOp" only has one input, one init_value and one result.
+    Value input = reduce_op.operands()[0];
+    // Get reduction dimension.
+    DenseIntElementsAttr dimension = reduce_op.dimensions();
+    SmallVector<int64_t, 4> reduce_dims;
+    for (const int64_t &dim : dimension.getValues<int64_t>()) {
+      reduce_dims.emplace_back(dim);
+    }
+
+    // Check initial value is +INF.
+    DenseFPElementsAttr init_value;
+    if (!matchPattern(reduce_op.init_values()[0], m_Constant(&init_value)) ||
+        !init_value.isSplat() ||
+        !init_value.getSplatValue<APFloat>().isInfinity() ||
+        init_value.getSplatValue<APFloat>().isNegative())
+      return failure();
+
+    auto dim_type = RankedTensorType::get(
+        {static_cast<int64_t>(reduce_dims.size())}, rewriter.getI64Type());
+    auto reduction_indices = rewriter.create<ConstOp>(
+        reduce_op.getLoc(), dim_type, rewriter.getI64TensorAttr(reduce_dims));
+    rewriter.replaceOpWithNewOp<MinOp>(
         reduce_op, reduce_op.getType(0), input, reduction_indices,
         /*keep_dim=*/rewriter.getBoolAttr(false));
     return success();
@@ -709,7 +746,7 @@ void LegalizeHloToTf::runOnFunction() {
   OwningRewritePatternList patterns;
   populateWithGenerated(&context, &patterns);
   patterns.insert<ConvertConvOp, ConvertSliceOp, ConvertReduceOpToTfMax,
-                  ConvertReduceOpToTfSum>(&context);
+                  ConvertReduceOpToTfMin, ConvertReduceOpToTfSum>(&context);
 
   ConversionTarget target(context);
   target.addLegalDialect<TensorFlowDialect>();
