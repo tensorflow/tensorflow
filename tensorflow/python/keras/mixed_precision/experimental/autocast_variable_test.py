@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import contextlib
 import os
 
 from absl.testing import parameterized
@@ -43,15 +42,9 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent as gradient_descent_v1
 from tensorflow.python.training.tracking import util as trackable_utils
 
-class DummyStrategy(object):
-  @contextlib.contextmanager
-  def scope(self):
-    yield
-
 maybe_distribute = combinations.combine(
     distribution=[
-        combinations.NamedDistribution(
-            "Dummy", lambda: DummyStrategy(), required_gpus=None),
+        strategy_combinations.default_strategy,
         strategy_combinations.mirrored_strategy_with_cpu_1_and_2
     ])
 
