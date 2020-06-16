@@ -2455,6 +2455,25 @@ Status AlgebraicSimplifierVisitor::HandleMultiply(HloInstruction* multiply) {
     return Status::OK();
   }
 
+  {
+    HloInstruction *convert_operand, *operand;
+    // Mul(Convert(Pred), operand) => select(pred, operand, 0)
+    if (Match(multiply,
+              m::MultiplyAnyOrder(
+                  m::Op(&operand),
+                  m::Convert(
+                      m::Op(&convert_operand)
+                          .WithShape(m::Shape().WithElementType(PRED)))))) {
+      HloInstruction* zero_like_multiply =
+          BroadcastZeros(computation_, multiply->shape().element_type(),
+                         multiply->shape().dimensions());
+      return ReplaceWithNewInstruction(
+          multiply, HloInstruction::CreateTernary(
+                        multiply->shape(), HloOpcode::kSelect, convert_operand,
+                        operand, zero_like_multiply));
+    }
+  }
+
   VLOG(10) << "trying transform [(A * C1) * C2 => A * (C1 * C2)]";
   HloInstruction *a, *c1, *c2;
   if (Match(multiply,
