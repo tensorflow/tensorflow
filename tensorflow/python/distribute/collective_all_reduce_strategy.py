@@ -112,9 +112,12 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
         "num_replicas_per_worker").set(self.extended._num_gpus_per_worker)
 
   @classmethod
-  def _from_local_devices(cls, devices):
+  def _from_local_devices(
+      cls,
+      devices,
+      communication=cross_device_ops_lib.CollectiveCommunication.AUTO):
     """A convenience method to create an object with a list of devices."""
-    obj = cls()
+    obj = cls(communication)
     obj.extended._initialize_local(TFConfigClusterResolver(), devices=devices)  # pylint: disable=protected-access
     return obj
 

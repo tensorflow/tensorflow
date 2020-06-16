@@ -521,10 +521,13 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
         devices = ["/device:CPU:0"]
 
       if use_strategy_object:
-        strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
-            communication=communication)
+        strategy = (
+            collective_all_reduce_strategy.CollectiveAllReduceStrategy
+            ._from_local_devices(devices, communication=communication))  # pylint: disable=protected-access
         strategy.extended._collective_keys = collective_keys
         strategy.extended._cross_device_ops._collective_keys = collective_keys
+        strategy.extended._host_cross_device_ops._collective_keys = (
+            collective_keys)
         return strategy, devices, ""
       else:
         collective_all_reduce_ops = cross_device_ops_lib.CollectiveAllReduce(
