@@ -30,6 +30,7 @@ from tensorflow.python.eager import tape
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.tpu import tpu
 
 
@@ -173,6 +174,16 @@ class TPUMirroredVariable(TPUVariableMixin, values.MirroredVariable):
   """Holds a map from replica to TPU variables whose values are kept in sync."""
 
   def assign_sub(self, value, use_locking=False, name=None, read_value=True):
+    if (enclosing_tpu_context() and
+        self.aggregation == variable_scope.VariableAggregation.NONE):
+      return _make_raw_assign_fn(
+          gen_resource_variable_ops.assign_sub_variable_op)(
+              self,
+              value=value,
+              use_locking=use_locking,
+              name=name,
+              read_value=read_value)
+
     assign_sub_fn = _make_raw_assign_fn(
         gen_resource_variable_ops.assign_sub_variable_op)
     return self._update(
@@ -183,6 +194,16 @@ class TPUMirroredVariable(TPUVariableMixin, values.MirroredVariable):
         read_value=read_value)
 
   def assign_add(self, value, use_locking=False, name=None, read_value=True):
+    if (enclosing_tpu_context() and
+        self.aggregation == variable_scope.VariableAggregation.NONE):
+      return _make_raw_assign_fn(
+          gen_resource_variable_ops.assign_add_variable_op)(
+              self,
+              value=value,
+              use_locking=use_locking,
+              name=name,
+              read_value=read_value)
+
     assign_add_fn = _make_raw_assign_fn(
         gen_resource_variable_ops.assign_add_variable_op)
     return self._update(
@@ -193,6 +214,15 @@ class TPUMirroredVariable(TPUVariableMixin, values.MirroredVariable):
         read_value=read_value)
 
   def assign(self, value, use_locking=False, name=None, read_value=True):
+    if (enclosing_tpu_context() and
+        self.aggregation == variable_scope.VariableAggregation.NONE):
+      return _make_raw_assign_fn(gen_resource_variable_ops.assign_variable_op)(
+          self,
+          value=value,
+          use_locking=use_locking,
+          name=name,
+          read_value=read_value)
+
     assign_fn = _make_raw_assign_fn(
         gen_resource_variable_ops.assign_variable_op)
     return self._update(
