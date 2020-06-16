@@ -368,6 +368,56 @@ func @decompose_resource_gather_op(%indices : tensor<5xi32>) -> tensor<2x5x16xi3
 
 // -----
 
+// Tests that composite tf.ResourceApplyCenteredRMSProp operation is decomposed.
+
+// CHECK-LABEL: func @decompose_resource_apply_centered_RMS_prop
+// CHECK-SAME:  [[VAR:%.*]]: tensor<f32>, [[MG:%.*]]: tensor<f32>, [[MS:%.*]]: tensor<f32>, [[MOM:%.*]]: tensor<f32>, [[LR:%.*]]: tensor<f32>, [[RHO:%.*]]: tensor<f32>, [[MOMENTUM:%.*]]: tensor<f32>, [[EPSILON:%.*]]: tensor<f32>, [[GRAD:%.*]]: tensor<f32>
+func @decompose_resource_apply_centered_RMS_prop(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>, %arg3: tensor<f32>, %arg4: tensor<f32>, %arg5: tensor<f32>, %arg6: tensor<f32>, %arg7: tensor<f32>, %arg8: tensor<f32>) -> () {
+  // CHECK: [[ONE:%.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>}
+  // CHECK: [[VAR_HANDLE:%.*]] = "tf.VarHandleOp"
+  // CHECK: [[MG_HANDLE:%.*]] = "tf.VarHandleOp"
+  // CHECK: [[MS_HANDLE:%.*]] = "tf.VarHandleOp"
+  // CHECK: [[MOM_HANDLE:%.*]] = "tf.VarHandleOp"
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
+  %1 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
+  %2 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
+  %3 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
+
+  // CHECK: [[GRADSQ:%.*]] = "tf.Mul"([[GRAD]], [[GRAD]])
+  // CHECK: [[SB:%.*]] = "tf.Sub"([[ONE]], [[RHO]])
+  // CHECK: [[GRAD_SUB:%.*]] = "tf.Mul"([[GRADSQ]], [[SB]])
+  // CHECK: [[MS:%.*]] = "tf.ReadVariableOp"([[MS_HANDLE]])
+  // CHECK: [[MS_RHO:%.*]] = "tf.Mul"([[MS]], [[RHO]])
+  // CHECK: [[MS_NEW:%.*]] = "tf.Add"([[GRAD_SUB]], [[MS_RHO]])
+  // CHECK: "tf.AssignVariableOp"([[MS_HANDLE]], [[MS_NEW]])
+
+  // CHECK: [[SUB_RHO:%.*]] = "tf.Sub"([[ONE]], [[RHO]])
+  // CHECK: [[SUB_GRAD:%.*]] = "tf.Mul"([[GRAD]], [[SUB_RHO]])
+  // CHECK: [[MG:%.*]] = "tf.ReadVariableOp"([[MG_HANDLE]])
+  // CHECK: [[MG_RHO:%.*]] = "tf.Mul"([[MG]], [[RHO]])
+  // CHECK: [[MG_NEW:%.*]] = "tf.Add"([[SUB_GRAD]], [[MG_RHO]])
+  // CHECK: "tf.AssignVariableOp"([[MG_HANDLE]], [[MG_NEW]])
+
+  // CHECK: [[MOM:%.*]] = "tf.ReadVariableOp"([[MOM_HANDLE]])
+  // CHECK: [[MOM_MOM:%.*]] = "tf.Mul"([[MOMENTUM]], [[MOM]])
+  // CHECK: [[LR_GRAD:%.*]] = "tf.Mul"([[LR]], [[GRAD]])
+
+  // CHECK: [[MG_MG:%.*]] = "tf.Mul"([[MG_NEW]], [[MG_NEW]])
+  // CHECK: [[MG_NEW:%.*]] = "tf.Add"([[MG_MG]], [[EPSILON]])
+  // CHECK: [[MG_SUB:%.*]] = "tf.Sub"([[MS_NEW]], [[MG_NEW]])
+  // CHECK: [[MG_SQRT:%.*]] = "tf.Sqrt"([[MG_SUB]])
+  // CHECK: [[MOM_DIV:%.*]] = "tf.Div"([[LR_GRAD]], [[MG_SQRT]])
+  // CHECK: [[MOM_NEW:%.*]] = "tf.Add"([[MOM_MOM]], [[MOM_DIV]])
+
+  // CHECK: [[VAR:%.*]] = "tf.ReadVariableOp"([[VAR_HANDLE]])
+  // CHECK: [[VAR_NEW:%.*]] = "tf.Sub"([[VAR]], [[MOM_NEW]])
+
+  "tf.ResourceApplyCenteredRMSProp"(%0, %1, %2, %3, %arg4, %arg5, %arg6, %arg7, %arg8) {use_locking = false} : (tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> ()
+  return
+}
+
+// -----
+
 // Tests that composite tf.ResourceScatterUpdate operation is decomposed.
 
 // CHECK-LABEL: @decompose_resource_scatter_update_op
