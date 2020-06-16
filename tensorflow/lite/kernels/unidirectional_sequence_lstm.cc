@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <math.h>
+
 #include <cstddef>
 
 #include "tensorflow/lite/c/builtin_op_data.h"

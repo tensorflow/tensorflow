@@ -17,10 +17,10 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_CPU_BACKEND_GEMM_RUY_H_
 
 #include "ruy/matrix.h"  // from @ruy
-#include "ruy/path.h"  // from @ruy
 #include "ruy/ruy.h"  // from @ruy
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 
 namespace tflite {
 namespace cpu_backend_gemm {
