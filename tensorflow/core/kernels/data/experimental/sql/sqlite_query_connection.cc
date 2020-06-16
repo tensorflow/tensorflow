@@ -68,7 +68,7 @@ Status SqliteQueryConnection::GetNext(IteratorContext* ctx,
 
 Status SqliteQueryConnection::PrepareQuery() {
   TF_RETURN_IF_ERROR(db_->Prepare(query_, &stmt_));
-  int column_count = stmt_.ColumnCount();
+  size_t column_count = stmt_.ColumnCount();
   if (column_count != output_types_.size()) {
     stmt_ = SqliteStatement();
     return errors::InvalidArgument(tensorflow::strings::Printf(

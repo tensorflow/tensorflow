@@ -438,8 +438,8 @@ bool HasUnusedOutputs(const NodeDef& func_node, const FunctionDef& func,
   int num_outputs = func.signature().output_arg_size();
   const absl::flat_hash_set<int> active_outputs =
       GetActiveOutputs(func_node, ctx, /*size_hind*/ num_outputs);
-
-  return active_outputs.size() != num_outputs;
+  int active_outputs_size = active_outputs.size(); 
+  return active_outputs_size != num_outputs;
 }
 
 // Return pruned FunctionDefLibrary with functions that are reachable from
@@ -563,7 +563,8 @@ void RemoveUnusedOutputsTypes(const FunctionSpecialization& specialization,
   if (tout == nullptr || !tout->has_list()) return;
 
   // Nothing to do if all outputs are active.
-  if (specialization.active_outputs.size() == tout->list().type_size()) return;
+  int specialization_active_outputs_size = specialization.active_outputs.size();
+  if (specialization_active_outputs_size == tout->list().type_size()) return;
 
   // Clear input types for the specialized node.
   auto* attr = specialized_func_node->mutable_attr();
@@ -1142,7 +1143,8 @@ void AddFrameForwardingControlEdge(const std::vector<ControlFlowInfo>& info,
                                    Node* caller, Graph* g) {
   // All nodes added to the graph by v2 control flow lowering and function
   // inlining are guaranteed to have control edges to nested function calls.
-  if (caller->id() >= info.size()) return;
+  int info_size = info.size();
+  if (caller->id() >= info_size ) return;
 
   // Check if a lowered node is executing inside a while loop.
   const Node* frame = info[caller->id()].frame;
