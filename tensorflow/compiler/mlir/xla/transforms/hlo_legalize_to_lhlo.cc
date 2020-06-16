@@ -368,6 +368,15 @@ class HloToLhloTensorStoreOpConverter
 
 struct HloLegalizeToLhlo
     : public PassWrapper<HloLegalizeToLhlo, OperationPass<ModuleOp>> {
+ public:
+  HloLegalizeToLhlo() = default;
+  HloLegalizeToLhlo(const HloLegalizeToLhlo& o) {
+    this->results_escape_function = o.results_escape_function.getValue();
+  }
+  explicit HloLegalizeToLhlo(bool results_escape_function) {
+    this->results_escape_function.setValue(results_escape_function);
+  }
+
   void runOnOperation() override {
     OwningRewritePatternList patterns;
     auto& context = getContext();
@@ -398,10 +407,28 @@ struct HloLegalizeToLhlo
       OwningRewritePatternList patterns;
       populateHLOToLHLOConversionPattern(func.getContext(), &bufferAssignment,
                                          &converter, &patterns);
+      if (results_escape_function) {
+        populateWithBufferAssignmentOpConversionPatterns<
+            mlir::ReturnOp, mlir::ReturnOp, xla_lhlo::CopyOp,
+            /*allowMemrefFunctionResults=*/true>(&context, &bufferAssignment,
+                                                 &converter, &patterns);
+      } else {
+        populateWithBufferAssignmentOpConversionPatterns<
+            mlir::ReturnOp, mlir::ReturnOp, xla_lhlo::CopyOp,
+            /*allowMemrefFunctionResults=*/false>(&context, &bufferAssignment,
+                                                  &converter, &patterns);
+      }
       return WalkResult(
           applyPartialConversion(func, target, patterns, &converter));
     });
   }
+
+ private:
+  Option<bool> results_escape_function{
+      *this, "results-escape-function",
+      llvm::cl::desc(
+          "Allocate the results of functions within the functions body"),
+      llvm::cl::init(false)};
 };
 }  // namespace
 
@@ -446,14 +473,11 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloTensorStoreOpConverter
   >(context, bufferAssignment, converter);
   // clang-format on
-  populateWithBufferAssignmentOpConversionPatterns<
-      mlir::ReturnOp, mlir::ReturnOp, xla_lhlo::CopyOp,
-      /*allowMemrefFunctionResults=*/false>(context, bufferAssignment,
-                                            converter, patterns);
 }
 
-std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass() {
-  return absl::make_unique<HloLegalizeToLhlo>();
+std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass(
+    bool results_escape_function) {
+  return absl::make_unique<HloLegalizeToLhlo>(results_escape_function);
 }
 
 static PassRegistration<HloLegalizeToLhlo> legalize_pass(
