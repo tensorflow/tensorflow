@@ -707,14 +707,8 @@ gentbl(
 
 cc_library(
     name = "Shape",
-    srcs = glob(
-        [
-            "lib/Dialect/Shape/IR/*.cpp",
-        ],
-    ),
-    hdrs = glob([
-        "include/mlir/Dialect/Shape/IR/*.h",
-    ]),
+    srcs = glob(["lib/Dialect/Shape/IR/*.cpp"]),
+    hdrs = ["include/mlir/Dialect/Shape/IR/Shape.h"],
     includes = ["include"],
     deps = [
         ":CallOpInterfaces",
@@ -737,22 +731,16 @@ cc_library(
         "lib/Conversion/ShapeToStandard/*.cpp",
         "lib/Conversion/ShapeToStandard/*.h",
     ]) + ["lib/Conversion/PassDetail.h"],
-    hdrs = glob([
-        "include/mlir/Conversion/ShapeToStandard/*.h",
-    ]),
+    hdrs = ["include/mlir/Conversion/ShapeToStandard/ShapeToStandard.h"],
     includes = ["include"],
     deps = [
-        ":Affine",
         ":ConversionPassIncGen",
-        ":IR",
         ":Pass",
         ":SCFDialect",
         ":Shape",
         ":StandardOps",
         ":Support",
         ":Transforms",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -793,18 +781,15 @@ cc_library(
         "lib/Dialect/Shape/Transforms/*.cpp",
         "lib/Dialect/Shape/Transforms/*.h",
     ]),
-    hdrs = glob(["include/mlir/Dialect/Shape/Transforms/*.h"]),
+    hdrs = ["include/mlir/Dialect/Shape/Transforms/Passes.h"],
     includes = ["include"],
     deps = [
-        #":Analysis",
-        #":ControlFlowInterfaces",
         ":IR",
         ":Pass",
         ":Shape",
         ":ShapeTransformsPassIncGen",
         ":Support",
         ":Transforms",
-        #"@llvm-project//llvm:Support",
     ],
 )
 
@@ -820,9 +805,7 @@ cc_library(
     hdrs = glob([
         "include/mlir/Dialect/StandardOps/IR/*.h",
         "include/mlir/Dialect/StandardOps/EDSC/*.h",
-    ]) + [
-        "include/mlir/Transforms/InliningUtils.h",
-    ],
+    ]) + ["include/mlir/Transforms/InliningUtils.h"],
     includes = ["include"],
     deps = [
         ":CallOpInterfaces",
