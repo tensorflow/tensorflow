@@ -194,7 +194,8 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
-        "no_mac",  # TODO(b/159077703): Enable Python API Flex support on MacOS.
+        # TODO(b/111881877): Enable in oss after resolving op registry issues.
+        "no_oss",
         "no_windows",
     ],
     deps = [

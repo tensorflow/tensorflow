@@ -14,9 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/interpreter_builder.h"
 
-#if !defined(__ANDROID__) && !defined(__APPLE__) && !defined(_WIN32)
-#include <dlfcn.h>
-#endif
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -117,20 +114,6 @@ const char* kEmptyTensorName = "";
 // For flex delegate, see also the strong override in
 // lite/delegates/flex/delegate.cc.
 TFLITE_ATTRIBUTE_WEAK Interpreter::TfLiteDelegatePtr AcquireFlexDelegate() {
-#if !defined(__ANDROID__) && !defined(__APPLE__) && !defined(_WIN32)
-  // If _pywrap_tensorflow_internal.so is available, use
-  // TF_AcquireFlexDelegate() to initialize flex delegate.
-  void* lib_tf_internal =
-      dlopen("_pywrap_tensorflow_internal.so", RTLD_NOW | RTLD_LOCAL);
-  if (lib_tf_internal) {
-    auto TF_AcquireFlexDelegate =
-        reinterpret_cast<Interpreter::TfLiteDelegatePtr (*)()>(
-            dlsym(lib_tf_internal, "TF_AcquireFlexDelegate"));
-    if (TF_AcquireFlexDelegate) {
-      return TF_AcquireFlexDelegate();
-    }
-  }
-#endif
   return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
 }
 

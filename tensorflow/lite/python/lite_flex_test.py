@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import parameterized
-import numpy as np
 
 from tensorflow.lite.python import lite
 from tensorflow.lite.python.interpreter import Interpreter
@@ -42,7 +41,8 @@ class FromSessionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       ('DisableMlirConverter', False))  # disable mlir
   def testFlexMode(self, enable_mlir):
     with ops.Graph().as_default():
-      in_tensor = array_ops.placeholder(shape=[1, 4], dtype=dtypes.float32)
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
       out_tensor = in_tensor + in_tensor
       sess = session.Session()
 
@@ -54,22 +54,19 @@ class FromSessionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
-    # Check the model works with TensorFlow ops.
+    # Ensures the model contains TensorFlow ops.
+    # TODO(nupurgarg): Check values once there is a Python delegate interface.
     interpreter = Interpreter(model_content=tflite_model)
-    interpreter.allocate_tensors()
-    input_details = interpreter.get_input_details()
-    test_input = np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32)
-    interpreter.set_tensor(input_details[0]['index'], test_input)
-    interpreter.invoke()
-
-    output_details = interpreter.get_output_details()
-    expected_output = np.array([[2.0, 4.0, 6.0, 8.0]], dtype=np.float32)
-    output_data = interpreter.get_tensor(output_details[0]['index'])
-    self.assertTrue((expected_output == output_data).all())
+    with self.assertRaises(RuntimeError) as error:
+      interpreter.allocate_tensors()
+    self.assertIn(
+        'Regular TensorFlow ops are not supported by this interpreter.',
+        str(error.exception))
 
   def testDeprecatedFlags(self):
     with ops.Graph().as_default():
-      in_tensor = array_ops.placeholder(shape=[1, 4], dtype=dtypes.float32)
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
       out_tensor = in_tensor + in_tensor
       sess = session.Session()
 
@@ -86,18 +83,14 @@ class FromSessionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
-    # Check the model works with TensorFlow ops.
+    # Ensures the model contains TensorFlow ops.
+    # TODO(nupurgarg): Check values once there is a Python delegate interface.
     interpreter = Interpreter(model_content=tflite_model)
-    interpreter.allocate_tensors()
-    input_details = interpreter.get_input_details()
-    test_input = np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32)
-    interpreter.set_tensor(input_details[0]['index'], test_input)
-    interpreter.invoke()
-
-    output_details = interpreter.get_output_details()
-    expected_output = np.array([[2.0, 4.0, 6.0, 8.0]], dtype=np.float32)
-    output_data = interpreter.get_tensor(output_details[0]['index'])
-    self.assertTrue((expected_output == output_data).all())
+    with self.assertRaises(RuntimeError) as error:
+      interpreter.allocate_tensors()
+    self.assertIn(
+        'Regular TensorFlow ops are not supported by this interpreter.',
+        str(error.exception))
 
 
 class FromConcreteFunctionTest(test_util.TensorFlowTestCase,
@@ -121,18 +114,14 @@ class FromConcreteFunctionTest(test_util.TensorFlowTestCase,
     converter.experimental_new_converter = enable_mlir
     tflite_model = converter.convert()
 
-    # Check the model works with TensorFlow ops.
+    # Ensures the model contains TensorFlow ops.
+    # TODO(nupurgarg): Check values once there is a Python delegate interface.
     interpreter = Interpreter(model_content=tflite_model)
-    interpreter.allocate_tensors()
-    input_details = interpreter.get_input_details()
-    test_input = np.array([4.0], dtype=np.float32)
-    interpreter.set_tensor(input_details[0]['index'], test_input)
-    interpreter.invoke()
-
-    output_details = interpreter.get_output_details()
-    expected_output = np.array([24.0], dtype=np.float32)
-    output_data = interpreter.get_tensor(output_details[0]['index'])
-    self.assertTrue((expected_output == output_data).all())
+    with self.assertRaises(RuntimeError) as error:
+      interpreter.allocate_tensors()
+    self.assertIn(
+        'Regular TensorFlow ops are not supported by this interpreter.',
+        str(error.exception))
 
 
 if __name__ == '__main__':
