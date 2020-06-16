@@ -411,6 +411,7 @@ func @decompose_resource_apply_centered_RMS_prop(%arg0: tensor<f32>, %arg1: tens
 
   // CHECK: [[VAR:%.*]] = "tf.ReadVariableOp"([[VAR_HANDLE]])
   // CHECK: [[VAR_NEW:%.*]] = "tf.Sub"([[VAR]], [[MOM_NEW]])
+  // CHECK: "tf.AssignVariableOp"([[VAR_HANDLE]], [[VAR_NEW]])
 
   "tf.ResourceApplyCenteredRMSProp"(%0, %1, %2, %3, %arg4, %arg5, %arg6, %arg7, %arg8) {use_locking = false} : (tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> ()
   return

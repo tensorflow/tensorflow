@@ -387,9 +387,6 @@ def DecomposeResourceApplyCenteredRMSProp :
      ),
      (TF_AssignVariableOp $mom_resource, $mom_new),
      // var <- var - mom
-     (TF_AssignSubVariableOp $var_resource,
-        (TF_SubOp (CreateTFReadVariableOp $src_op, $grad, $var_resource),
-                  $mom_new)
-     )
+     (TF_AssignSubVariableOp $var_resource, $mom_new)
    ]
    >;
