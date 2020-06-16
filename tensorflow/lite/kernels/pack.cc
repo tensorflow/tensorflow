@@ -57,7 +57,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   for (int i = 1; i < data->values_count; ++i) {
     const TfLiteTensor* input = GetInput(context, node, i);
     TF_LITE_ENSURE(context, HaveSameShapes(input0, input));
-    TF_LITE_ENSURE_EQ(context, input0->type, input->type);
+    TF_LITE_ENSURE_TYPES_EQ(context, input0->type, input->type);
   }
 
   // Resize output. rank R will become rank R + 1
@@ -73,7 +73,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
 
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-  TF_LITE_ENSURE_EQ(context, output->type, input0->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, output->type, input0->type);
 
   // Guarantee input/output quantization params match as we do not support
   // packing quantized tensors.

@@ -122,7 +122,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context,
                  data_type == kTfLiteFloat32 || data_type == kTfLiteUInt8 ||
                      data_type == kTfLiteInt8 || data_type == kTfLiteInt16);
-  TF_LITE_ENSURE_EQ(context, output->type, data_type);
+  TF_LITE_ENSURE_TYPES_EQ(context, output->type, data_type);
   if (!is_hybrid) {
     TF_LITE_ENSURE(context,
                    filter->type == data_type || data_type == kTfLiteInt16);
@@ -134,15 +134,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   if (hasBias) {
     bias = GetInput(context, node, kBiasTensor);
     if (data_type == kTfLiteUInt8 || data_type == kTfLiteInt8) {
-      TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteInt32);
+      TF_LITE_ENSURE_TYPES_EQ(context, bias->type, kTfLiteInt32);
       TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
     } else if (data_type == kTfLiteInt16) {
-      TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteInt64);
+      TF_LITE_ENSURE_TYPES_EQ(context, bias->type, kTfLiteInt64);
       TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
       TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
       TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
     } else {
-      TF_LITE_ENSURE_EQ(context, bias->type, data_type);
+      TF_LITE_ENSURE_TYPES_EQ(context, bias->type, data_type);
     }
     TF_LITE_ENSURE_EQ(context, NumDimensions(bias), 1);
     TF_LITE_ENSURE_EQ(context, SizeOfDimension(filter, 3),
@@ -520,9 +520,9 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
         return EvalHybridPerChannel<kernel_type>(context, node, params, data,
                                                  input, filter, bias, output);
       } else {
-        context->ReportError(
-            context, "Type %d with filter type %d not currently supported.",
-            input->type, filter->type);
+        TF_LITE_KERNEL_LOG(
+            context, "Type %s with filter type %s not currently supported.",
+            TfLiteTypeGetName(input->type), TfLiteTypeGetName(filter->type));
         return kTfLiteError;
       }
       break;

@@ -100,8 +100,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
 
-  TF_LITE_ENSURE_EQ(context, limit->type, dtype);
-  TF_LITE_ENSURE_EQ(context, delta->type, dtype);
+  TF_LITE_ENSURE_TYPES_EQ(context, limit->type, dtype);
+  TF_LITE_ENSURE_TYPES_EQ(context, delta->type, dtype);
 
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   output->type = dtype;

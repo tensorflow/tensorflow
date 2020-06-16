@@ -88,7 +88,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                             input->dims->data + input->dims->size);
       subgraph->ResizeInputTensor(i, dims);
       TfLiteTensor* subgraph_input = subgraph->tensor(subgraph->inputs()[i]);
-      TF_LITE_ENSURE_EQ(context, input->type, subgraph_input->type);
+      TF_LITE_ENSURE_TYPES_EQ(context, input->type, subgraph_input->type);
     }
     // Note: The `Prepare` function is responsible to run `AllocateTensors` on
     // both subgraphs. It's intentionally not to break out of the loop when

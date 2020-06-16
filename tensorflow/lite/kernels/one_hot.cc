@@ -136,8 +136,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       op_context.output->type = op_context.dtype;
       break;
     default:
-      context->ReportError(context, "Unknown output data type: %d",
-                           op_context.dtype);
+      TF_LITE_KERNEL_LOG(context, "Unknown output data type: %s",
+                         TfLiteTypeGetName(op_context.dtype));
       return kTfLiteError;
   }
 
@@ -148,8 +148,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumElements(op_context.depth), 1);
   TF_LITE_ENSURE_EQ(context, NumElements(op_context.on_value), 1);
   TF_LITE_ENSURE_EQ(context, NumElements(op_context.off_value), 1);
-  TF_LITE_ENSURE_EQ(context, op_context.on_value->type, op_context.dtype);
-  TF_LITE_ENSURE_EQ(context, op_context.off_value->type, op_context.dtype);
+  TF_LITE_ENSURE_TYPES_EQ(context, op_context.on_value->type, op_context.dtype);
+  TF_LITE_ENSURE_TYPES_EQ(context, op_context.off_value->type,
+                          op_context.dtype);
 
   if (!IsConstantTensor(op_context.depth)) {
     SetTensorToDynamic(op_context.output);

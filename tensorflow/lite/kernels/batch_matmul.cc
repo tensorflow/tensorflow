@@ -282,7 +282,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* rhs_data = GetInput(context, node, kInputRHSTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  TF_LITE_ENSURE_EQ(context, lhs_data->type, kTfLiteFloat32);
+  TF_LITE_ENSURE_TYPES_EQ(context, lhs_data->type, kTfLiteFloat32);
   TF_LITE_ENSURE(context, rhs_data->type == kTfLiteFloat32 ||
                               rhs_data->type == kTfLiteInt8);
   // Support dimensions between 2 and 4, inclusive.

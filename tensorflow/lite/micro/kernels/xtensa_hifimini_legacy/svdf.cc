@@ -348,7 +348,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, activation_state->type, kTfLiteInt16);
 
   // Validate output tensor:
-  TF_LITE_ENSURE_EQ(context, output->type, kTfLiteInt8);
+  TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteInt8);
 
   // Calculate effective scales.
   auto* input_params =

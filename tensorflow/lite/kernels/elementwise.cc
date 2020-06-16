@@ -45,7 +45,7 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
   if (!IsSupportedType(input->type)) {
     context->ReportError(context, "Current data type %d is not supported.",
                          input->type);
@@ -60,7 +60,7 @@ inline TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node,
                              T func(T), TfLiteType expected_type) {
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
-  TF_LITE_ENSURE_EQ(context, input->type, expected_type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, expected_type);
   const int64_t num_elements = NumElements(input);
   const T* in_data = GetTensorData<T>(input);
   T* out_data = GetTensorData<T>(output);

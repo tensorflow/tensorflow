@@ -58,7 +58,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   TfLiteIntArray* output_shape = TfLiteIntArrayCopy(input->dims);
-  TF_LITE_ENSURE_EQ(context, output->type, input->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, output->type, input->type);
 
   return context->ResizeTensor(context, output, output_shape);
 }

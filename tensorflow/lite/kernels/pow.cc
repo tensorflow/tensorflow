@@ -58,11 +58,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  TF_LITE_ENSURE_EQ(context, input1->type, input2->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input1->type, input2->type);
 
   const TfLiteType type = input1->type;
   if (type != kTfLiteInt32 && type != kTfLiteFloat32) {
-    context->ReportError(context, "Unsupported data type %d.", type);
+    TF_LITE_KERNEL_LOG(context, "Unsupported data type %s.",
+                       TfLiteTypeGetName(type));
     return kTfLiteError;
   }
   output->type = type;

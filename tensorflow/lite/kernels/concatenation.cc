@@ -81,7 +81,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
 
   TfLiteTensor* output = GetOutput(context, node, 0);
-  TF_LITE_ENSURE_EQ(context, output->type, input_type);
+  TF_LITE_ENSURE_TYPES_EQ(context, output->type, input_type);
 
   if (input_type == kTfLiteInt8) {
     // Make sure there is no re-scaling needed for Int8 quantized kernel. This

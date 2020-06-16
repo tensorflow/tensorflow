@@ -223,8 +223,8 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
       TF_LITE_ENSURE_EQ(context, input_layer_norm_coefficients->dims->size, 1);
       TF_LITE_ENSURE_EQ(context, input_layer_norm_coefficients->dims->data[0],
                         n_cell);
-      TF_LITE_ENSURE_EQ(context, input_layer_norm_coefficients->type,
-                        kTfLiteFloat32);
+      TF_LITE_ENSURE_TYPES_EQ(context, input_layer_norm_coefficients->type,
+                              kTfLiteFloat32);
     }
 
     const TfLiteTensor* forget_layer_norm_coefficients =
@@ -233,8 +233,8 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
     TF_LITE_ENSURE_EQ(context, forget_layer_norm_coefficients->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, forget_layer_norm_coefficients->dims->data[0],
                       n_cell);
-    TF_LITE_ENSURE_EQ(context, forget_layer_norm_coefficients->type,
-                      kTfLiteFloat32);
+    TF_LITE_ENSURE_TYPES_EQ(context, forget_layer_norm_coefficients->type,
+                            kTfLiteFloat32);
 
     const TfLiteTensor* cell_layer_norm_coefficients =
         GetInput(context, node, lstm::full::kCellLayerNormCoefficientsTensor);
@@ -242,8 +242,8 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
     TF_LITE_ENSURE_EQ(context, cell_layer_norm_coefficients->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, cell_layer_norm_coefficients->dims->data[0],
                       n_cell);
-    TF_LITE_ENSURE_EQ(context, cell_layer_norm_coefficients->type,
-                      kTfLiteFloat32);
+    TF_LITE_ENSURE_TYPES_EQ(context, cell_layer_norm_coefficients->type,
+                            kTfLiteFloat32);
 
     const TfLiteTensor* output_layer_norm_coefficients =
         GetInput(context, node, lstm::full::kOutputLayerNormCoefficientsTensor);
@@ -251,8 +251,8 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
     TF_LITE_ENSURE_EQ(context, output_layer_norm_coefficients->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, output_layer_norm_coefficients->dims->data[0],
                       n_cell);
-    TF_LITE_ENSURE_EQ(context, output_layer_norm_coefficients->type,
-                      kTfLiteFloat32);
+    TF_LITE_ENSURE_TYPES_EQ(context, output_layer_norm_coefficients->type,
+                            kTfLiteFloat32);
   }
 
   return kTfLiteOk;
@@ -290,7 +290,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Inferring batch size, number of outputs and sequence length and
   // number of cells from the input tensors.
   const TfLiteTensor* input = GetInput(context, node, lstm::full::kInputTensor);
-  TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteFloat32);
   TF_LITE_ENSURE(context, input->dims->size > 1);
   const auto* params =
       reinterpret_cast<TfLiteUnidirectionalSequenceLSTMParams*>(
@@ -659,8 +659,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           CpuBackendContext::GetFromContext(context));
     }
     default:
-      context->ReportError(context, "Type %d is not currently supported.",
-                           input_to_output_weights->type);
+      TF_LITE_KERNEL_LOG(context, "Type %s is not currently supported.",
+                         TfLiteTypeGetName(input_to_output_weights->type));
       return kTfLiteError;
   }
   return kTfLiteOk;

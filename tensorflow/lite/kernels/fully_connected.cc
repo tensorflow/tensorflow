@@ -101,13 +101,13 @@ inline TfLiteStatus CheckTypes(TfLiteContext* context,
 
   if (is_quantized) {
     if (is_shuffled) {
-      TF_LITE_ENSURE_EQ(context, input->type, kTfLiteUInt8);
-      TF_LITE_ENSURE_EQ(context, filter->type, kTfLiteUInt8);
-      TF_LITE_ENSURE_EQ(context, output->type, kTfLiteInt16);
+      TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteUInt8);
+      TF_LITE_ENSURE_TYPES_EQ(context, filter->type, kTfLiteUInt8);
+      TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteInt16);
       TF_LITE_ENSURE_EQ(context, is_optional_bias_int, true);
     } else if (is_hybrid) {
-      TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
-      TF_LITE_ENSURE_EQ(context, output->type, kTfLiteFloat32);
+      TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteFloat32);
+      TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteFloat32);
       TF_LITE_ENSURE_EQ(context, is_optional_bias_float, true);
     } else {
       TF_LITE_ENSURE(context, input->type == kTfLiteUInt8 ||
@@ -120,9 +120,9 @@ inline TfLiteStatus CheckTypes(TfLiteContext* context,
     }
   } else {
     // Only float32 is supported currently
-    TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
-    TF_LITE_ENSURE_EQ(context, output->type, kTfLiteFloat32);
-    TF_LITE_ENSURE_EQ(context, filter->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_TYPES_EQ(context, filter->type, kTfLiteFloat32);
     TF_LITE_ENSURE_EQ(context, is_optional_bias_float, true);
   }
 
