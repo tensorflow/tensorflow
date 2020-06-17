@@ -302,9 +302,11 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       }
       auto result = dataset()->traceme_metadata_;
       result.push_back(std::make_pair(
-          "max_batch_results", strings::Printf("%lld", max_batch_results)));
-      result.push_back(
-          std::make_pair("parallelism", strings::Printf("%lld", parallelism)));
+          "max_batch_results",
+          strings::Printf("%lld", static_cast<long long>(max_batch_results))));
+      result.push_back(std::make_pair(
+          "parallelism",
+          strings::Printf("%lld", static_cast<long long>(parallelism))));
       return result;
     }
 

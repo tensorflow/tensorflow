@@ -486,7 +486,7 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
         // Times 2 because HBM is DDR memory; it gets two data bits per each
         // data lane.
         auto memory_bandwidth =
-            2ULL * (*mem_clock_khz) * 1000 * (*mem_bus_width_bits) / 8;
+            uint64{2} * (*mem_clock_khz) * 1000 * (*mem_bus_width_bits) / 8;
         device_plane->AddStatValue(
             *device_plane->GetOrCreateStatMetadata(
                 GetStatTypeStr(StatType::kDevCapMemoryBandwidth)),
