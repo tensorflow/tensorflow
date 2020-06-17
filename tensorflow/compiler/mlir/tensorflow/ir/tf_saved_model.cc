@@ -76,23 +76,6 @@ static LogicalResult Verify(GlobalTensorOp global_tensor) {
   return success();
 }
 
-static LogicalResult Verify(SessionInitializerOp session_initializer) {
-  mlir::SymbolTable symbol_table(
-      session_initializer.getParentOfType<ModuleOp>());
-
-  auto init_func_op =
-      symbol_table.lookup<mlir::FuncOp>(session_initializer.initializer());
-  if (!init_func_op)
-    return session_initializer.emitOpError()
-           << "the initializer function does not exist";
-
-  if (!init_func_op.getType().getResults().empty())
-    return session_initializer.emitOpError()
-           << "the initializer function should have no output";
-
-  return success();
-}
-
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.cc.inc"
 
@@ -237,14 +220,6 @@ static LogicalResult VerifySavedModelModule(
       }
     }
   }
-
-  auto session_initializers = module.getOps<SessionInitializerOp>();
-  if (std::distance(session_initializers.begin(), session_initializers.end()) >
-      1) {
-    return (*++session_initializers.begin()).emitError()
-           << "there must be no more than one session_initializer op";
-  }
-
   SymbolTable symbol_table(module);
   auto symbol_uses = SymbolTable::getSymbolUses(&module.getBodyRegion());
   if (!symbol_uses.hasValue()) {
