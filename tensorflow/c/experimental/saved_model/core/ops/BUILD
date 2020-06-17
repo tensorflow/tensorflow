@@ -77,6 +77,9 @@ tf_cc_test(
     srcs = [
         "variable_ops_test.cc",
     ],
+    tags = [
+        "no_windows",  # TODO(b/159210739): Remove this tag after fixing the bug.
+    ],
     deps = [
         ":owned_eager_context",
         ":owned_tensor",
