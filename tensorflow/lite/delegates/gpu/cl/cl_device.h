@@ -178,6 +178,7 @@ class CLDevice {
   bool SupportsExtension(const std::string& extension) const;
   bool SupportsFP32RTN() const;
   bool SupportsFP16RTN() const;
+  bool IsCL20OrHigher() const;
   bool IsAdreno() const;
   bool IsAdreno3xx() const;
   bool IsAdreno4xx() const;

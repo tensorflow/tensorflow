@@ -495,6 +495,12 @@ std::string CLDevice::GetPlatformVersion() const {
   return GetPlatformInfo(platform_id_, CL_PLATFORM_VERSION);
 }
 
+bool CLDevice::IsCL20OrHigher() const {
+  return info_.cl_version != OpenCLVersion::CL_1_0 &&
+         info_.cl_version != OpenCLVersion::CL_1_1 &&
+         info_.cl_version != OpenCLVersion::CL_1_2;
+}
+
 bool CLDevice::IsAdreno() const { return info_.vendor == Vendor::QUALCOMM; }
 
 bool CLDevice::IsAdreno3xx() const {
