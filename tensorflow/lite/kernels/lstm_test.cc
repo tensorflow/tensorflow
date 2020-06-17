@@ -104,10 +104,10 @@ class LSTMOpModel : public SingleOpModel {
       projection_bias_ = AddNullInput();
     }
 
-    // Adding the 2 input state tensors.
-    input_activation_state_ =
+    // Adding the 2 state tensors.
+    output_state_ =
         AddInput(TensorData{TensorType_FLOAT32, {n_batch_, n_output_}}, true);
-    input_cell_state_ =
+    cell_state_ =
         AddInput(TensorData{TensorType_FLOAT32, {n_batch_, n_cell_}}, true);
 
     // Layer norm weights.
@@ -266,12 +266,10 @@ class LSTMOpModel : public SingleOpModel {
 
   int projection_weights_;
   int projection_bias_;
-  int input_activation_state_;
-  int input_cell_state_;
-
-  int output_;
   int output_state_;
   int cell_state_;
+
+  int output_;
 
   int n_batch_;
   int n_input_;
@@ -553,7 +551,7 @@ TEST_F(NoCifgNoPeepholeNoProjectionNoClippingOmittedLayerNormLstmTest,
                        {0, 0},  // projection_weight tensor
                        {0},     // projection_bias tensor
 
-                       {n_batch, n_output},  // activation_state tensor
+                       {n_batch, n_output},  // output_state tensor
                        {n_batch, n_cell},    // cell_state tensor
 
                        {0},  // input_layer_norm_coefficient tensor
@@ -1697,7 +1695,7 @@ TEST_F(NoCifgPeepholeProjectionNoClippingLayerNormLstmTest,
           {n_output, n_cell},  // projection_weight tensor
           {0},                 // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
 
           {n_cell},  // input_layer_norm_coefficient tensor
@@ -1768,7 +1766,7 @@ TEST_P(NoCifgPeepholeProjectionNoClippingLayerNormLstmTest,
           {n_output, n_cell},  // projection_weight tensor
           {0},                 // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
 
           {n_cell},  // input_layer_norm_coefficient tensor
@@ -1841,7 +1839,7 @@ TEST_P(NoCifgPeepholeProjectionNoClippingLayerNormLstmInt8Test,
           {n_output, n_cell},  // projection_weight tensor
           {0},                 // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
 
           {n_cell},  // input_layer_norm_coefficient tensor
@@ -1955,7 +1953,7 @@ TEST_F(CifgPeepholeProjectionNoClippingLayerNormLstmTest,
           {n_output, n_cell},  // projection_weight tensor
           {0},                 // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
 
           {0},       // input_layer_norm_coefficient tensor
@@ -2026,7 +2024,7 @@ TEST_P(CifgPeepholeProjectionNoClippingLayerNormLstmTest,
           {n_output, n_cell},  // projection_weight tensor
           {0},                 // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
 
           {0},       // input_layer_norm_coefficient tensor
@@ -2098,7 +2096,7 @@ TEST_P(CifgPeepholeProjectionNoClippingLayerNormLstmInt8Test,
           {n_output, n_cell},  // projection_weight tensor
           {0},                 // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
 
           {0},       // input_layer_norm_coefficient tensor
@@ -2216,13 +2214,13 @@ class LSTMIntegerOpModel : public SingleOpModel {
       projection_bias_ = AddNullInput();
     }
 
-    // Adding the 2 input state tensors.
-    input_activation_state_ = AddInput({TensorType_INT16, input_shapes[18],
-                                        ranges[18].first, ranges[18].second},
-                                       true);
-    input_cell_state_ = AddInput({TensorType_INT16, input_shapes[19],
-                                  ranges[19].first, ranges[19].second},
-                                 true);
+    // Adding the 2 state tensors.
+    output_state_ = AddInput({TensorType_INT16, input_shapes[18],
+                              ranges[18].first, ranges[18].second},
+                             true);
+    cell_state_ = AddInput({TensorType_INT16, input_shapes[19],
+                            ranges[19].first, ranges[19].second},
+                           true);
 
     // Layer norm weights.
     if (use_layer_norm) {
@@ -2386,8 +2384,6 @@ class LSTMIntegerOpModel : public SingleOpModel {
 
   int projection_weights_;
   int projection_bias_;
-  int input_activation_state_;
-  int input_cell_state_;
 
   int intermediates_[5];
 
@@ -2483,7 +2479,7 @@ TEST(LSTMIntegerOpModel, NoCifgYesLayerNormNoYesProjectionNoPeephole) {
       {n_output, n_cell},  // projection_weight tensor
       {0},                 // projection_bias tensor
 
-      {n_batch, n_output},  // activation_state tensor
+      {n_batch, n_output},  // output_state tensor
       {n_batch, n_cell},    // cell_state tensor
 
       {n_cell},  // input_layer_norm_coefficient tensor
@@ -2517,14 +2513,14 @@ TEST(LSTMIntegerOpModel, NoCifgYesLayerNormNoYesProjectionNoPeephole) {
       {-0.5, 0.5},  // projection_weight tensor
       {-1, 1},      // projection_bias tensor
 
-      {-1.0, 32767.0 / 32768},  // activation_state tensor
+      {-1.0, 32767.0 / 32768},  // output_state tensor
       {-1, 1},                  // cell_state tensor
 
       {-1.00001, 1.0},  // input_layer_norm_coefficient tensor
       {-1.00001, 1.0},  // forget_layer_norm_coefficient tensor
       {-1.00001, 1.0},  // cell_layer_norm_coefficient tensor
       {-1.00001, 1.0},  // output_layer_norm_coefficient tensor
-      // Output scale is the same as input activation scale and only activation
+      // Output scale is the same as output_state scale and only output_state
       // scale is used in the op, so this is only provided for clarity.
       {-1.0, 32767.0 / 32768},  // output tensor.
   };
@@ -2685,7 +2681,7 @@ TEST(LSTMIntegerOpModel, NoCifgYesLayerNormNoYesProjectionYesPeephole) {
       {n_output, n_cell},  // projection_weight tensor
       {0},                 // projection_bias tensor
 
-      {n_batch, n_output},  // activation_state tensor
+      {n_batch, n_output},  // output_state tensor
       {n_batch, n_cell},    // cell_state tensor
 
       {n_cell},  // input_layer_norm_coefficient tensor
@@ -2719,14 +2715,14 @@ TEST(LSTMIntegerOpModel, NoCifgYesLayerNormNoYesProjectionYesPeephole) {
       {-0.5, 0.5},  // projection_weight tensor
       {-1, 1},      // projection_bias tensor
 
-      {-1.0, 32767.0 / 32768},  // activation_state tensor
+      {-1.0, 32767.0 / 32768},  // output_state tensor
       {-1, 1},                  // cell_state tensor
 
       {-0.5, 0.5},  // input_layer_norm_coefficient tensor
       {-0.5, 0.5},  // forget_layer_norm_coefficient tensor
       {-1.0, 1.0},  // cell_layer_norm_coefficient tensor
       {-1.0, 1.0},  // output_layer_norm_coefficient tensor
-      // Output scale is the same as input activation scale and only activation
+      // Output scale is the same as output_state scale and only output_state
       // scale is used in the op, so this is only provided for clarity.
       {-1.0, 32767.0 / 32768},  // output tensor.
   };
@@ -2892,13 +2888,13 @@ class LSTMIntegerOpModel8x8_8 : public SingleOpModel {
       projection_bias_ = AddNullInput();
     }
 
-    // Adding the 2 input state tensors.
-    input_activation_state_ = AddInput({TensorType_INT16, input_shapes[18],
-                                        ranges[18].first, ranges[18].second},
-                                       true);
-    input_cell_state_ = AddInput({TensorType_INT16, input_shapes[19],
-                                  ranges[19].first, ranges[19].second},
-                                 true);
+    // Adding the 2 state tensors.
+    output_state_ = AddInput({TensorType_INT16, input_shapes[18],
+                              ranges[18].first, ranges[18].second},
+                             true);
+    cell_state_ = AddInput({TensorType_INT16, input_shapes[19],
+                            ranges[19].first, ranges[19].second},
+                           true);
 
     // Layer norm weights.
     if (use_layer_norm) {
@@ -3062,8 +3058,6 @@ class LSTMIntegerOpModel8x8_8 : public SingleOpModel {
 
   int projection_weights_;
   int projection_bias_;
-  int input_activation_state_;
-  int input_cell_state_;
 
   int intermediates_[12];
 
@@ -3160,7 +3154,7 @@ TEST(LSTMIntegerOpModel8x8_8, CifgYesLayerNormNoYesProjectionNoPeephole) {
       {n_output, n_cell},  // projection_weight tensor
       {n_output},          // projection_bias tensor
 
-      {n_batch, n_output},  // activation_state tensor
+      {n_batch, n_output},  // output_state tensor
       {n_batch, n_cell},    // cell_state tensor
 
       {0},       // input_layer_norm_coefficient tensor
@@ -3194,14 +3188,14 @@ TEST(LSTMIntegerOpModel8x8_8, CifgYesLayerNormNoYesProjectionNoPeephole) {
       {-0.5, 0.5},  // projection_weight tensor
       {-1, 1},      // projection_bias tensor
 
-      {-1.0, 32767.0 / 32768},  // activation_state tensor
+      {-1.0, 32767.0 / 32768},  // output_state tensor
       {-1.0, 32767.0 / 32768},  // cell_state tensor
 
       {-1.00001, 1.0},  // input_layer_norm_coefficient tensor
       {-1.00001, 1.0},  // forget_layer_norm_coefficient tensor
       {-1.00001, 1.0},  // cell_layer_norm_coefficient tensor
       {-1.00001, 1.0},  // output_layer_norm_coefficient tensor
-      // Output scale is the same as input activation scale and only activation
+      // Output scale is the same as output_state scale and only output_state
       // scale is used in the op, so this is only provided for clarity.
       {-1.0, 32767.0 / 32768},  // output tensor.
   };

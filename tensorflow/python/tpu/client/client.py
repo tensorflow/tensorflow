@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import datetime
+import json
 import logging
 import os
 import time
@@ -48,6 +49,7 @@ _DISCOVERY_SERVICE_URL_ENV_VARIABLE = 'TPU_API_DISCOVERY_URL'
 _GCE_METADATA_ENDPOINT = 'http://metadata.google.internal'
 _DEFAULT_ENDPOINT_PORT = '8470'
 _OOM_EVENT_COOL_TIME_SEC = 90
+_VERSION_SWITCHER_ENDPOINT = 'http://{}:8475/requestversion'
 
 
 def _utcnow():
@@ -277,6 +279,22 @@ class Client(object):
 
   def runtime_version(self):
     """Return runtime version of the TPU."""
+
+    if not self._use_api:
+      # Fallback on getting version directly from TPU.
+      url = _VERSION_SWITCHER_ENDPOINT.format(
+          self.network_endpoints()[0]['ipAddress'])
+      try:
+        req = request.Request(url)
+        resp = request.urlopen(req)
+        version_details = json.loads(resp.read())
+        return version_details.get('currentVersion')
+      except HTTPError as e:
+        status_code = e.code
+        if status_code == 404:
+          return None
+        else:
+          raise e
     return self._get_tpu_property('tensorflowVersion')
 
   def accelerator_type(self):
@@ -350,7 +368,7 @@ class Client(object):
           be sent.
       """
       ip_address = worker['ipAddress']
-      url = 'http://{}:8475/requestversion/{}?restartType={}'.format(
+      url = (_VERSION_SWITCHER_ENDPOINT + '/{}?restartType={}').format(
           ip_address, version, restart_type)
       req = request.Request(url, data=b'')
       try:

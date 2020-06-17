@@ -275,6 +275,49 @@ class NormalizationTest(keras_parameterized.TestCase,
     if context.executing_eagerly():
       self.assertAllClose(output.numpy(), [[-1], [1], [-1], [1]])
 
+  @parameterized.parameters(
+      {"axis": 0},
+      {"axis": (-1, 0)},
+  )
+  def test_zeros_fail_init(self, axis):
+    cls = get_layer_class()
+    with self.assertRaisesRegex(ValueError,
+                                "The argument 'axis' may not be 0."):
+      cls(axis=axis)
+
+  @parameterized.parameters(
+      # Out of bounds
+      {"axis": 3},
+      {"axis": -3},
+      # In a tuple
+      {"axis": (1, 3)},
+      {"axis": (1, -3)},
+  )
+  def test_bad_axis_fail_build(self, axis):
+    cls = get_layer_class()
+    layer = cls(axis=axis)
+    with self.assertRaisesRegex(ValueError,
+                                r"in the range \[1-ndim, ndim-1\]."):
+      layer.build([None, 2, 3])
+
+  @parameterized.parameters(
+      # Results should be identical no matter how the axes are specified (3d).
+      {"axis": (1, 2)},
+      {"axis": (2, 1)},
+      {"axis": (1, -1)},
+      {"axis": (-1, 1)},
+  )
+  def test_axis_permutations(self, axis):
+    cls = get_layer_class()
+    layer = cls(axis=axis)
+    # data.shape = [2, 2, 3]
+    data = np.array([[[0., 1., 2.], [0., 2., 6.]],
+                     [[2., 3., 4.], [3., 6., 10.]]])
+    expect = np.array([[[-1., -1., -1.], [-1., -1., -1.]],
+                       [[1., 1., 1.], [1., 1., 1.]]])
+    layer.adapt(data)
+    self.assertAllClose(expect, layer(data))
+
 
 if __name__ == "__main__":
   test.main()

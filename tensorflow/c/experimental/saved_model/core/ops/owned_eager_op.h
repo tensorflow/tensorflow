@@ -18,13 +18,13 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/c/eager/operation_interface.h"
+#include "tensorflow/c/eager/immediate_execution_operation.h"
 
 namespace tensorflow {
 namespace internal {
 
-struct AbstractOperationInterfaceDeleter {
-  void operator()(AbstractOperationInterface* p) const {
+struct ImmediateExecutionOperationDeleter {
+  void operator()(ImmediateExecutionOperation* p) const {
     if (p != nullptr) {
       p->Release();
     }
@@ -34,8 +34,8 @@ struct AbstractOperationInterfaceDeleter {
 }  // namespace internal
 
 using AbstractOpPtr =
-    std::unique_ptr<AbstractOperationInterface,
-                    internal::AbstractOperationInterfaceDeleter>;
+    std::unique_ptr<ImmediateExecutionOperation,
+                    internal::ImmediateExecutionOperationDeleter>;
 
 }  // namespace tensorflow
 

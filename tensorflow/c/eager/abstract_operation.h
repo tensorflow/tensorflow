@@ -12,24 +12,29 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_C_EAGER_OPERATION_INTERFACE_H_
-#define TENSORFLOW_C_EAGER_OPERATION_INTERFACE_H_
+#ifndef TENSORFLOW_C_EAGER_ABSTRACT_OPERATION_H_
+#define TENSORFLOW_C_EAGER_ABSTRACT_OPERATION_H_
 
 #include "absl/types/span.h"
-#include "tensorflow/c/eager/tensor_handle_interface.h"
+#include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/tensor_interface.h"
-#include "tensorflow/core/framework/device_attributes.pb.h"
-#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"
-
-struct TFE_Op;
 
 namespace tensorflow {
 
 // Abstract interface to an operation.
-class AbstractOperationInterface {
+// This interface allows building and executing an operation in either
+// tracing or immediate execution mode.
+class AbstractOperation {
+ protected:
+  enum AbstractOperationKind { kTracing, kImmediateExecution };
+  explicit AbstractOperation(AbstractOperationKind kind) : kind_(kind) {}
+  virtual ~AbstractOperation() {}
+
  public:
+  AbstractOperationKind getKind() const { return kind_; }
+
   // Release any underlying resources, including the interface object.
   //
   // WARNING: The destructor of this class is marked as protected to disallow
@@ -38,7 +43,6 @@ class AbstractOperationInterface {
   // clients MUST call Release() in order to destroy an instance of this class.
   virtual void Release() = 0;
 
-  virtual void Clear() = 0;
   virtual Status Reset(const char* op, const char* raw_device_name) = 0;
 
   virtual const string& Name() const = 0;
@@ -66,12 +70,10 @@ class AbstractOperationInterface {
   // existing and given constraints will be performed.
   virtual Status SetDeviceName(const char* name) = 0;
 
-  virtual Status AddInput(AbstractTensorHandleInterface* input) = 0;
-  virtual Status AddInputList(
-      absl::Span<AbstractTensorHandleInterface*> inputs) = 0;
-  virtual Status Execute(absl::Span<AbstractTensorHandleInterface*> retvals,
+  virtual Status AddInput(AbstractTensorHandle* input) = 0;
+  virtual Status AddInputList(absl::Span<AbstractTensorHandle*> inputs) = 0;
+  virtual Status Execute(absl::Span<AbstractTensorHandle*> retvals,
                          int* num_retvals) = 0;
-  virtual const tensorflow::OpDef* OpDef() const = 0;
 
   virtual Status SetAttrString(const char* attr_name, const char* data,
                                size_t length) = 0;
@@ -82,7 +84,7 @@ class AbstractOperationInterface {
   virtual Status SetAttrShape(const char* attr_name, const int64_t* dims,
                               const int num_dims) = 0;
   virtual Status SetAttrFunction(const char* attr_name,
-                                 const AbstractOperationInterface* value) = 0;
+                                 const AbstractOperation* value) = 0;
   virtual Status SetAttrFunctionName(const char* attr_name, const char* value,
                                      size_t length) = 0;
   virtual Status SetAttrTensor(const char* attr_name,
@@ -102,19 +104,12 @@ class AbstractOperationInterface {
   virtual Status SetAttrShapeList(const char* attr_name, const int64_t** dims,
                                   const int* num_dims, int num_values) = 0;
   virtual Status SetAttrFunctionList(
-      const char* attr_name,
-      absl::Span<const AbstractOperationInterface*> values) = 0;
+      const char* attr_name, absl::Span<const AbstractOperation*> values) = 0;
 
-  virtual Status InputLength(const char* input_name, int* length) = 0;
-  virtual Status OutputLength(const char* output_name, int* length) = 0;
-
-  // Experimental
-  virtual Status SetUseXla(bool enable) = 0;
-
- protected:
-  virtual ~AbstractOperationInterface() {}
+ private:
+  const AbstractOperationKind kind_;
 };
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_C_EAGER_OPERATION_INTERFACE_H_
+#endif  // TENSORFLOW_C_EAGER_ABSTRACT_OPERATION_H_

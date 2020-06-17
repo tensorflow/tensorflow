@@ -33,7 +33,7 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/c/eager/context_interface.h"
+#include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -135,7 +135,7 @@ class CustomDevice {
 // TensorHandles may be placed either on custom or physical devices.
 using VariantDevice = absl::variant<Device*, CustomDevice*>;
 
-class EagerContext : public AbstractContextInterface, public core::RefCounted {
+class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
  public:
   static constexpr uint64 kInvalidContextId = 0;
 
@@ -178,12 +178,14 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
                                         MemoryReleaser memory_releaser,
                                         void* memory_releaser_arg) override;
 
-  AbstractTensorHandleInterface* CreateLocalHandle(
+  ImmediateExecutionTensorHandle* CreateLocalHandle(
       AbstractTensorInterface* t) override;
-  AbstractTensorHandleInterface* CopyTensorHandleToDevice(
-      AbstractTensorHandleInterface* handle, const char* device_name,
+  ImmediateExecutionTensorHandle* CopyTensorHandleToDevice(
+      ImmediateExecutionTensorHandle* handle, const char* device_name,
       Status* status) override;
-  AbstractOperationInterface* CreateOperation() override;
+  ImmediateExecutionOperation* CreateOperation() override;
+
+  Status RegisterFunction(AbstractFunction* f) override;
 
   bool UsesTFRT() override;
 
@@ -716,7 +718,7 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
   std::function<void()> resource_deallocator_ = nullptr;
 };
 
-inline EagerContext* ContextFromInterface(AbstractContextInterface* context) {
+inline EagerContext* ContextFromInterface(ImmediateExecutionContext* context) {
   return down_cast<EagerContext*>(context);
 }
 

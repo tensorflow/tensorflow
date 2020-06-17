@@ -100,13 +100,12 @@ class UnidirectionalLSTMOpModel : public SingleOpModel {
       projection_bias_ = AddNullInput();
     }
 
-    // Adding the 2 input state tensors.
-    input_activation_state_ =
+    // Adding the 2 state tensors.
+    output_state_ =
         AddInput(TensorData{TensorType_FLOAT32, {n_output_ * n_batch_}},
                  /*is_variable=*/true);
-    input_cell_state_ =
-        AddInput(TensorData{TensorType_FLOAT32, {n_cell_ * n_batch_}},
-                 /*is_variable=*/true);
+    cell_state_ = AddInput(TensorData{TensorType_FLOAT32, {n_cell_ * n_batch_}},
+                           /*is_variable=*/true);
 
     // Layer norm weights.
     if (is_layer_norm) {
@@ -256,8 +255,8 @@ class UnidirectionalLSTMOpModel : public SingleOpModel {
   int projection_weights_;
   int projection_bias_;
 
-  int input_activation_state_;
-  int input_cell_state_;
+  int output_state_;
+  int cell_state_;
 
   int input_layer_norm_coefficients_;
   int forget_layer_norm_coefficients_;
@@ -537,7 +536,7 @@ TEST_F(NoCifgNoPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
           {0, 0},  // projection_weight tensor
           {0},     // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
       });
 
@@ -599,7 +598,7 @@ TEST_F(NoCifgNoPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
           {0, 0},  // projection_weight tensor
           {0},     // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
       });
 
@@ -665,7 +664,7 @@ TEST_P(NoCifgNoPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
           {0, 0},  // projection_weight tensor
           {0},     // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
       },
       TensorType_UINT8, GetParam());
@@ -728,7 +727,7 @@ TEST_P(NoCifgNoPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
           {0, 0},  // projection_weight tensor
           {0},     // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
       },
       TensorType_INT8, GetParam());
@@ -840,7 +839,7 @@ TEST_F(CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
           {0, 0},  // projection_weight tensor
           {0},     // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
       });
 
@@ -901,7 +900,7 @@ TEST_P(CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
           {0, 0},  // projection_weight tensor
           {0},     // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
       },
       TensorType_UINT8, GetParam());
@@ -964,7 +963,7 @@ TEST_P(CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
           {0, 0},  // projection_weight tensor
           {0},     // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
       },
       TensorType_INT8, GetParam());
@@ -1626,7 +1625,7 @@ TEST_F(NoCifgPeepholeProjectionClippingUnidirectionalLstmTest,
           {n_output, n_cell},  // projection_weight tensor
           {0},                 // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
       });
 
@@ -1695,7 +1694,7 @@ TEST_P(NoCifgPeepholeProjectionClippingUnidirectionalLstmTest,
           {n_output, n_cell},  // projection_weight tensor
           {0},                 // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
       },
       TensorType_UINT8, GetParam());
@@ -1766,7 +1765,7 @@ TEST_P(NoCifgPeepholeProjectionClippingUnidirectionalLstmTest,
           {n_output, n_cell},  // projection_weight tensor
           {0},                 // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
       },
       TensorType_INT8, GetParam());
@@ -2437,7 +2436,7 @@ TEST_F(NoCifgPeepholeProjectionAndBiasClippingUnidirectionalLstmTest,
           {n_output, n_cell},  // projection_weight tensor
           {n_output},          // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
       });
 
@@ -2643,7 +2642,7 @@ TEST_F(CifgPeepholeNoProjectionNoClippingLayerNormUnidirectionalLstmTest,
           {0, 0},  // projection_weight tensor
           {0},     // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
 
           {0},       // input_layer_norm_coefficient tensor
@@ -2714,7 +2713,7 @@ TEST_F(CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
           {0, 0},  // projection_weight tensor
           {0},     // projection_bias tensor
 
-          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_output},  // output_state tensor
           {n_batch, n_cell},    // cell_state tensor
 
           {0},  // input_layer_norm_coefficient tensor

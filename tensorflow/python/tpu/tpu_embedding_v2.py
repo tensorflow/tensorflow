@@ -1024,11 +1024,8 @@ class TPUEmbedding(tracking.AutoTrackable):
   def _raise_error_for_inputs_not_on_cpu(self, features):
     """Checks all tensors in features to see are placed on the CPU."""
 
-    # expand_composites here is important, we need to check the device of each
-    # underlying tensor.
-    for path, input_tensor in nest.flatten_with_joined_string_paths(
-        features, expand_composites=True):
-      spec = tf_device.DeviceSpec.from_string(input_tensor.device)
+    def check_device(path, device_string):
+      spec = tf_device.DeviceSpec.from_string(device_string)
       if spec.device_type == "TPU":
         raise ValueError(
             "Received input tensor {} which is on a TPU input device {}. Input "
@@ -1037,7 +1034,18 @@ class TPUEmbedding(tracking.AutoTrackable):
             "setting the 'experimental_prefetch_to_device' option of the "
             "dataset distribution function. See the documentation of the "
             "enqueue method for an example.".format(
-                path, input_tensor.device))
+                path, device_string))
+
+    # expand_composites here is important, we need to check the device of each
+    # underlying tensor.
+    for path, input_tensor in nest.flatten_with_joined_string_paths(
+        features, expand_composites=True):
+      if (input_tensor.op.type == "Identity" and
+          input_tensor.op.inputs[0].op.type == "TPUReplicatedInput"):
+        for tensor in input_tensor.op.inputs[0].op.inputs:
+          check_device(path, tensor.device)
+      else:
+        check_device(path, input_tensor.device)
 
   def enqueue(self, features, weights=None, training=True, name=None):
     """Enqueues id tensors for embedding lookup.

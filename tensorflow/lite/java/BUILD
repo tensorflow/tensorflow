@@ -408,6 +408,7 @@ tflite_jni_binary(
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/delegates/nnapi/java/src/main/native",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "//tensorflow/lite/java/src/main/native",
     ],
 )

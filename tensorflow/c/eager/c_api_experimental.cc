@@ -38,7 +38,7 @@ using tensorflow::string;
 void TFE_OpReset(TFE_Op* op_to_reset, const char* op_or_function_name,
                  const char* raw_device_name, TF_Status* status) {
   if (op_to_reset) {
-    tensorflow::AbstractOperationInterface* op =
+    tensorflow::ImmediateExecutionOperation* op =
         tensorflow::unwrap(op_to_reset);
     op->Clear();
     status->status = op->Reset(op_or_function_name, raw_device_name);

@@ -83,6 +83,8 @@ MicroInterpreter::MicroInterpreter(const Model* model,
       error_reporter_(error_reporter),
       allocator_(*MicroAllocator::Create(tensor_arena, tensor_arena_size,
                                          error_reporter)),
+      tensors_allocated_(false),
+      initialization_status_(kTfLiteError),
       context_helper_(error_reporter_, &allocator_) {
   Init(profiler);
 }
@@ -96,6 +98,8 @@ MicroInterpreter::MicroInterpreter(const Model* model,
       op_resolver_(*op_resolver),
       error_reporter_(error_reporter),
       allocator_(*allocator),
+      tensors_allocated_(false),
+      initialization_status_(kTfLiteError),
       context_helper_(error_reporter_, &allocator_) {
   Init(profiler);
 }
