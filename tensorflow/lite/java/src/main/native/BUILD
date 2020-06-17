@@ -45,12 +45,25 @@ cc_library(
     srcs = [
         "builtin_ops_jni.cc",
     ],
+    hdrs = ["op_resolver.h"],
     copts = tflite_copts(),
     deps = [
         ":native_framework_only",
+        "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:builtin_ops",
     ],
     alwayslink = 1,
+)
+
+# TODO(b/153652701): Generate this target to give CreateOpResolver a custom namespace.
+cc_library(
+    name = "selected_ops_jni",
+    srcs = ["selected_ops_jni.cc"],
+    hdrs = ["op_resolver.h"],
+    copts = tflite_copts(),
+    deps = [
+        "//tensorflow/lite:framework",
+    ],
 )
 
 exports_files(
