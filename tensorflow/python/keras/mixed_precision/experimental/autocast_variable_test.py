@@ -304,8 +304,8 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
         self.assertAllClose(3., self.evaluate(x.assign_sub(3.)))
 
         # Assign multiple times
-        # This currently only works if no strategy is used
-        if not ds_context.has_strategy():
+        # This currently doesn't work in graph mode
+        if context.executing_eagerly() or ops.inside_function():
           assign = x.assign(1.)
           self.assertAllClose(1., self.evaluate(assign))
           self.assertAllClose(0., self.evaluate(assign.assign(0.)))
@@ -344,6 +344,20 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
         run_and_check()
 
   @combinations.generate(maybe_distribute)
+  def test_assign_tf_function(self, distribution):
+    with distribution.scope():
+      x = get_var(0., dtypes.float32)
+      x = autocast_variable.create_autocast_variable(x)
+
+      @def_function.function
+      def run_assign():
+        return x.assign(1.).assign_add(3.).assign_add(3.).assign_sub(2.)
+
+      with ops.get_default_graph()._enable_auto_casting_variables(
+          dtypes.float16):
+        self.assertAllClose(5., self.evaluate(run_assign()))
+
+  @combinations.generate(maybe_distribute)
   def test_assign_stays_in_true_dtype(self, distribution):
     with distribution.scope():
       x = get_var(1., dtypes.float32)
@@ -357,18 +371,18 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
           dtypes.float16):
         # Variable should be increased, despite it appearing to be the same
         # float16 value.
-        self.assertEqual(1. + small_val,
-                         self.evaluate(x.assign(1. + small_tensor)))
+        self.evaluate(x.assign(1. + small_tensor))
+        self.assertEqual(1. + small_val, self.evaluate(x._variable))
         self.assertEqual(1., self.evaluate(x.value()))
-      self.assertEqual(1. + small_val, self.evaluate(x.value()))
+      self.assertEqual(1. + small_val, self.evaluate(x))
 
       self.evaluate(x.assign(1.))
       with ops.get_default_graph()._enable_auto_casting_variables(
           dtypes.float16):
-        self.assertEqual(1. + small_val,
-                         self.evaluate(x.assign_add(small_tensor)))
+        self.evaluate(x.assign_add(small_tensor))
+        self.assertEqual(1. + small_val, self.evaluate(x._variable))
         self.assertEqual(1., self.evaluate(x.value()))
-      self.assertEqual(1. + small_val, self.evaluate(x.value()))
+      self.assertEqual(1. + small_val, self.evaluate(x))
 
   @combinations.generate(maybe_distribute)
   def test_checkpoint(self, distribution):
