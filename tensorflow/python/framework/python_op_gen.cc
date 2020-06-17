@@ -179,6 +179,7 @@ class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
   void AddRawOpExport(const string& parameters);
 
   void GenerateTypeVars();
+  string GetTypeAnnotatedParams();
 
   void AddAttrForArg(const string& attr, int arg_index) {
     gtl::InsertIfNotPresent(&inferred_attrs_, attr,
@@ -343,10 +344,15 @@ string GenEagerPythonOp::Code() {
   }
 
   string parameters;
-  for (const auto& param : params_no_default_) {
-    if (!parameters.empty()) strings::StrAppend(&parameters, ", ");
-    strings::StrAppend(&parameters, param.GetRenameTo());
+  if (type_annotate_ops.find(op_def_.name()) != type_annotate_ops.end()) {
+    strings::StrAppend(&parameters, GetTypeAnnotatedParams());
+  } else {
+    for (const auto& param : params_no_default_) {
+      if (!parameters.empty()) strings::StrAppend(&parameters, ", ");
+      strings::StrAppend(&parameters, param.GetRenameTo());
+    }
   }
+
   string parameters_with_defaults = parameters;
   for (const auto& param_and_default : params_with_default_) {
     if (!parameters.empty()) strings::StrAppend(&parameters, ", ");
@@ -397,6 +403,63 @@ string GenEagerPythonOp::Code() {
   }
 
   return prelude_ + result_;
+}
+
+string GenEagerPythonOp::GetTypeAnnotatedParams() {
+  // holds mappings from param name to its type annotation
+  std::unordered_map<string, string> param_type_map;
+  for (int i = 0; i<op_def_.attr_size(); ++i) {
+    const auto& attr(op_def_.attr(i));
+    if (attr.type() == "type") {
+      bool has_dtype_half = false;
+      for (int t : attr.allowed_values().list().type()) {
+        if (t == 19) { // DT_HALF = 19;
+          has_dtype_half = true;
+          break;
+        }
+      }
+
+      // Do not add type annotations to an arg that can be of type half
+      if (has_dtype_half) continue;
+
+      const string type_var_name = "TV_" + op_def_.name() + "_" + attr.name();
+      param_type_map[attr.name()] = type_var_name;
+    }
+  }
+
+  for (int i = 0; i < api_def_.arg_order_size(); ++i) {
+    const auto& arg = *FindInputArg(api_def_.arg_order(i), op_def_);
+    // Do not add type annotations to args that accept multiple tensors
+    if (!arg.number_attr().empty()) continue;
+    string type_annotation;
+    if (param_type_map.find(arg.type_attr()) != param_type_map.end()) {
+      // Get the correct TypeVar if input maps to an attr
+      strings::StrAppend(&type_annotation, "_ops.Tensor[", param_type_map[arg.type_attr()], "]");
+    } else {
+      // Get the dtype of the tensor
+      const string py_dtype = python_op_gen_internal::DataTypeToPython(arg.type(), "_dtypes.");
+      if (dtypes_map.find(py_dtype) != dtypes_map.end()) {
+        strings::StrAppend(&type_annotation, "_ops.Tensor[", dtypes_map[py_dtype], "]");
+      }
+    }
+
+    param_type_map[arg.name()] = type_annotation;
+  }
+
+  // Add type annotations to params
+  string parameters;
+  for (const auto& param : params_no_default_) {
+    if (!parameters.empty()) strings::StrAppend(&parameters, ", ");
+    strings::StrAppend(&parameters, param.GetRenameTo());
+
+    if (param_type_map.find(param.GetName()) != param_type_map.end()) {
+      if(!param_type_map[param.GetName()].empty()){
+        strings::StrAppend(&parameters, ": ", param_type_map[param.GetName()]);
+      }
+    }
+  }
+
+  return parameters;
 }
 
 // Generate TypeVars using attrs
