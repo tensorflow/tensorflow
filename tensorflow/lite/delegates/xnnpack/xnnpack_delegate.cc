@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
 
 namespace tflite {
@@ -52,6 +53,8 @@ class Delegate {
           pthreadpool_create(static_cast<size_t>(options->num_threads)));
     }
 #endif
+    TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
+                         "Created TensorFlow Lite XNNPACK delegate for CPU.");
   }
 
   TfLiteIntArray* PrepareOpsToDelegate(TfLiteContext* context);
