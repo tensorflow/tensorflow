@@ -3286,7 +3286,6 @@ cc_library(
         ":LinalgTransforms",
         ":Pass",
         ":StandardOps",
-        ":StandardOpsTransforms",
         ":Support",
         ":Transforms",
         ":VectorToLLVM",
