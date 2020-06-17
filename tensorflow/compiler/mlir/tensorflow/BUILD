@@ -398,6 +398,73 @@ cc_library(
 )
 
 cc_library(
+    name = "lift_variables_lib",
+    srcs = [
+        "transforms/lift_variables.cc",
+    ],
+    hdrs = [
+        "transforms/lift_variables.h",
+    ],
+    deps = [
+        ":convert_tensor",
+        ":tensorflow",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:threadpool_options",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "lift_variables_pass",
+    hdrs = [
+        "transforms/lift_variables_pass.h",
+    ],
+    deps = [
+        ":lift_variables_lib",
+        ":tensorflow",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "lift_variables_test_pass",
+    hdrs = [
+        "transforms/lift_variables_test_pass.h",
+    ],
+    deps = [
+        ":lift_variables_lib",
+        ":tensorflow",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:threadpool_options",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "tensorflow_passes",
     srcs = [
         "transforms/annotate_parameter_replication.cc",
@@ -520,9 +587,11 @@ cc_library(
 cc_library(
     name = "tensorflow_test_passes",
     srcs = [
+        "transforms/lift_variables_test_pass_registration.cc",
         "transforms/lower_tf_pass.cc",
     ],
     deps = [
+        ":lift_variables_test_pass",
         ":lower_tf_lib",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",

@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/memory_profile.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
@@ -443,9 +442,23 @@ void ProcessActiveAllocations(int64 peak_bytes_profile_step_id,
           << memory_profile->active_allocations_size();
 }
 
+void SampleSnapshots(
+    int64 max_num_snapshots,
+    protobuf::RepeatedPtrField<MemoryProfileSnapshot>* snapshots) {
+  if (snapshots->size() <= max_num_snapshots) return;
+  absl::c_partial_sort(
+      *snapshots, snapshots->begin() + max_num_snapshots,
+      [](const MemoryProfileSnapshot& a, const MemoryProfileSnapshot& b) {
+        return a.aggregation_stats().free_memory_bytes() <
+               b.aggregation_stats().free_memory_bytes();
+      });
+  snapshots->erase(snapshots->begin() + max_num_snapshots, snapshots->end());
+}
+
 // Post-process the memory profile to correctly update proto fields, and break
 // down peak memory usage for each allocator.
-void ProcessMemoryProfileProto(MemoryProfile* memory_profile) {
+void ProcessMemoryProfileProto(int64 max_num_snapshots,
+                               MemoryProfile* memory_profile) {
   memory_profile->set_num_hosts(1);
   // Add sorted memory ids within memory profile data to the selection list.
   for (const auto& id_and_allocator_profile :
@@ -460,12 +473,13 @@ void ProcessMemoryProfileProto(MemoryProfile* memory_profile) {
        *memory_profile->mutable_memory_profile_per_allocator()) {
     PerAllocatorMemoryProfile* allocator_memory_profile =
         &id_and_allocator_profile.second;
+    protobuf::RepeatedPtrField<MemoryProfileSnapshot>* snapshots =
+        allocator_memory_profile->mutable_memory_profile_snapshots();
     // Sort the memory_profile_snapshots by time_offset_ps (ascending) in proto.
-    absl::c_sort(
-        *allocator_memory_profile->mutable_memory_profile_snapshots(),
-        [](const MemoryProfileSnapshot& a, const MemoryProfileSnapshot& b) {
-          return a.time_offset_ps() < b.time_offset_ps();
-        });
+    absl::c_sort(*snapshots, [](const MemoryProfileSnapshot& a,
+                                const MemoryProfileSnapshot& b) {
+      return a.time_offset_ps() < b.time_offset_ps();
+    });
 
     UpdateStepId(memory_profile->step_count(), allocator_memory_profile);
     UpdateDeallocation(allocator_memory_profile);
@@ -476,14 +490,16 @@ void ProcessMemoryProfileProto(MemoryProfile* memory_profile) {
     int64 peak_step_id =
         GetPeakMemoryStep(peak_bytes_profile, allocator_memory_profile);
     ProcessActiveAllocations(peak_step_id, allocator_memory_profile);
+    SampleSnapshots(max_num_snapshots, snapshots);
   }
 }
 
 }  // namespace
 
-MemoryProfile ConvertXPlaneToMemoryProfile(const XPlane& host_plane) {
+MemoryProfile ConvertXPlaneToMemoryProfile(const XPlane& host_plane,
+                                           int64 max_num_snapshots) {
   MemoryProfile memory_profile = GenerateMemoryProfile(&host_plane);
-  ProcessMemoryProfileProto(&memory_profile);
+  ProcessMemoryProfileProto(max_num_snapshots, &memory_profile);
   return memory_profile;
 }
 

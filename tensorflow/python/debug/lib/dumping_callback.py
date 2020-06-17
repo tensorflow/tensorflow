@@ -69,6 +69,10 @@ def _debug_identity_v2_grad(op, dy):
   return dy
 
 
+def _get_tfdbg_run_id():
+  return str(uuid.uuid4())[:8]
+
+
 def _get_id():
   """Get a short unique ID."""
   return str(uuid.uuid4())
@@ -88,6 +92,7 @@ class _DumpingCallback(object):
                op_regex,
                tensor_dtypes):
     self._dump_root = dump_root
+    self._tfdbg_run_id = _get_tfdbg_run_id()
     self._tensor_debug_mode = tensor_debug_mode
     self._circular_buffer_size = circular_buffer_size
     self._op_regex = op_regex
@@ -149,6 +154,10 @@ class _DumpingCallback(object):
       self._writer = None
 
   @property
+  def tfdbg_run_id(self):
+    return self._tfdbg_run_id
+
+  @property
   def tensor_debug_mode(self):
     return self._tensor_debug_mode
 
@@ -161,6 +170,7 @@ class _DumpingCallback(object):
     if not self._writer:
       self._writer = debug_events_writer.DebugEventsWriter(
           self._dump_root,
+          self._tfdbg_run_id,
           circular_buffer_size=self._circular_buffer_size)
     return self._writer
 
@@ -365,6 +375,8 @@ class _DumpingCallback(object):
       if tf_compat.forward_compatible(2020, 6, 24):
         debug_identity_op_kwargs[
             "circular_buffer_size"] = self._circular_buffer_size
+      if tf_compat.forward_compatible(2020, 7, 1):
+        debug_identity_op_kwargs["tfdbg_run_id"] = self._tfdbg_run_id
       if tensor_debug_mode == debug_event_pb2.TensorDebugMode.NO_TENSOR:
         if (not self._should_dump_tensor(op_type, tensor.dtype) or
             not tensor.dtype.is_numpy_compatible):
@@ -873,7 +885,8 @@ def disable_dump_debug_info():
   """
   if hasattr(_state, "dumping_callback"):
     dump_root = _state.dumping_callback.dump_root
-    debug_events_writer.DebugEventsWriter(dump_root).Close()
+    tfdbg_run_id = _state.dumping_callback.tfdbg_run_id
+    debug_events_writer.DebugEventsWriter(dump_root, tfdbg_run_id).Close()
     op_callbacks.remove_op_callback(_state.dumping_callback.callback)
     function_lib.remove_function_callback(
         _state.dumping_callback.function_callback)

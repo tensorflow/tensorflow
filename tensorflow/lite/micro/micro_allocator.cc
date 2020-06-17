@@ -39,15 +39,18 @@ namespace {
 // Used to hold information used during allocation calculations.
 struct AllocationInfo {
   size_t bytes;
+  void** output_ptr;
   int first_created;
   int last_used;
+  int32_t offline_offset;
   bool needs_allocating;
-  void** output_ptr;
 };
 
 // We align tensor buffers to 16-byte boundaries, since this is a common
 // requirement for SIMD extensions.
 constexpr int kBufferAlignment = 16;
+
+constexpr char kOfflineMemAllocMetadata[] = "OfflineMemoryAllocation";
 
 // Instance of a zero-length int to pass as tensor dims for a flatbuffer
 // Tensor with no shape. Note that the second member of a TfLiteArray is a
@@ -77,6 +80,71 @@ class MicroBuiltinDataAllocator : public BuiltinDataAllocator {
   TF_LITE_REMOVE_VIRTUAL_DELETE
 };
 
+#if !defined(__clang__)
+// Helper function to check flatbuffer metadata correctness. This function is
+// not called by default. Hence it's not linked in to the final binary code.
+TfLiteStatus CheckOfflinePlannedOffsets(const Model* model,
+                                        ErrorReporter* error_reporter) {
+  // Suppress compile warning for unused function
+  (void)CheckOfflinePlannedOffsets;
+
+  if (model->metadata()) {
+    for (size_t i = 0; i < model->metadata()->size(); ++i) {
+      auto metadata = model->metadata()->Get(i);
+      if (strncmp(metadata->name()->c_str(), kOfflineMemAllocMetadata,
+                  strlen(kOfflineMemAllocMetadata)) == 0) {
+        auto* subgraphs = model->subgraphs();
+        const SubGraph* subgraph = (*subgraphs)[0];
+        const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors =
+            subgraph->tensors();
+        const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers =
+            model->buffers();
+        int nbr_tflite_tensors = tensors->size();
+        auto* buffer = (*buffers)[metadata->buffer()];
+        auto* array = buffer->data();
+        const uint32_t* metadata_buffer = (uint32_t*)array->data();
+        int version = metadata_buffer[0];
+        int subgraph_idx = metadata_buffer[1];
+        const int nbr_offline_offsets = metadata_buffer[2];
+        int* offline_planner_offsets = (int*)&metadata_buffer[3];
+
+        TF_LITE_REPORT_ERROR(error_reporter, "==== Model metadata info: =====");
+        TF_LITE_REPORT_ERROR(error_reporter,
+                             "Offline planner metadata found, version %d, "
+                             "subgraph %d, nbr offline offsets %d",
+                             version, subgraph_idx, nbr_offline_offsets);
+        for (int j = 0; j < nbr_offline_offsets; ++j) {
+          TF_LITE_REPORT_ERROR(
+              error_reporter,
+              "Offline planner tensor index %d, offline offset: %d", j,
+              offline_planner_offsets[j]);
+        }
+
+        if (version != 1) {
+          TF_LITE_REPORT_ERROR(error_reporter, "Version not supported! (%d)\n",
+                               version);
+          return kTfLiteError;
+        }
+        if (subgraph_idx != 0) {
+          TF_LITE_REPORT_ERROR(error_reporter,
+                               "Only 1 subgraph supported! Subgraph idx (%d)\n",
+                               subgraph_idx);
+          return kTfLiteError;
+        }
+        if (nbr_tflite_tensors != nbr_offline_offsets) {
+          TF_LITE_REPORT_ERROR(error_reporter,
+                               "Nbr of offline buffer offsets (%d) in metadata "
+                               "not equal nbr tensors (%d)\n",
+                               nbr_offline_offsets, nbr_tflite_tensors);
+          return kTfLiteError;
+        }
+      }
+    }
+  }
+  return kTfLiteOk;
+}
+#endif
+
 // A helper class to construct AllocationInfo array. This array contains the
 // lifetime of tensors / scratch_buffer and will be used to calculate the memory
 // plan. Methods need to be called in order from `Init`, `Add*`, to `Finish`.
@@ -94,9 +162,17 @@ class AllocationInfoBuilder {
     return Allocate();
   }
 
+  // Check if model contains offline planned buffer offsets.
+  //  - If there's no metadata available, offline_planner_offsets is not set
+  //  - If there's metadata available, offline_planner_offsets will point to the
+  //    first offset in the metadata buffer list.
+  TfLiteStatus GetOfflinePlannedOffsets(const Model* model,
+                                        int32_t** offline_planner_offsets);
+
   // Add allocaiton information for the tensors.
-  TfLiteStatus AddTensors(const SubGraph* subgraph,
+  TfLiteStatus AddTensors(const SubGraph* subgraph, int32_t* offline_offsets,
                           TfLiteTensor* runtime_tensors);
+
   // Add allocation information for the scratch buffers.
   TfLiteStatus AddScratchBuffers(internal::ScratchBufferHandle* buffer_handles);
 
@@ -130,6 +206,7 @@ TfLiteStatus AllocationInfoBuilder::Allocate() {
 }
 
 TfLiteStatus AllocationInfoBuilder::AddTensors(const SubGraph* subgraph,
+                                               int32_t* offline_offsets,
                                                TfLiteTensor* runtime_tensors) {
   // Set up allocation info for all tensors.
   for (size_t i = 0; i < tensor_count_; ++i) {
@@ -141,6 +218,11 @@ TfLiteStatus AllocationInfoBuilder::AddTensors(const SubGraph* subgraph,
     current->last_used = -1;
     current->needs_allocating = (runtime_tensors[i].data.data == nullptr) &&
                                 (!subgraph->tensors()->Get(i)->is_variable());
+    if (offline_offsets) {
+      current->offline_offset = offline_offsets[i];
+    } else {
+      current->offline_offset = kOnlinePlannedBuffer;
+    }
   }
 
   for (size_t i = 0; i < subgraph->inputs()->size(); ++i) {
@@ -198,6 +280,52 @@ TfLiteStatus AllocationInfoBuilder::AddTensors(const SubGraph* subgraph,
   return kTfLiteOk;
 }
 
+// The tensor offsets will be encoded in the metadata:[Metadata] field of the
+// Model. The following encoding applies:
+//
+// | Metadata component |                 Value                                |
+// |    name:string     | “OfflineMemoryAllocation”                            |
+// |    buffer:unit     | Index of buffer containing memory allocation data    |
+//
+// The buffer contents for the memory allocation is a list of 32-bit integers.
+// The number of tensors, n, must be equal to the number of tensors defined in
+// the model. The following encoding applies:
+//
+// |  Offset |                            Value                                |
+// |    0    | Offline allocation format version – set to 0                    |
+// |    1    | Subgraph index to which this allocation applies                 |
+// |    2    | Number offsets following: n                                     |
+// |    3    | Arena byte offset of tensor #0 or -1 to allocate at runtime     |
+// |    4    | Arena byte offset of tensor #1 or -1 to allocate at runtime     |
+// | 3+(n-1) | Arena byte offset of tensor #(n-1) or -1 to allocate at runtime |
+TfLiteStatus AllocationInfoBuilder::GetOfflinePlannedOffsets(
+    const Model* model, int32_t** offline_planner_offsets) {
+  if (model->metadata()) {
+    for (size_t i = 0; i < model->metadata()->size(); ++i) {
+      auto metadata = model->metadata()->Get(i);
+      if (strncmp(metadata->name()->c_str(), kOfflineMemAllocMetadata,
+                  strlen(kOfflineMemAllocMetadata)) == 0) {
+        const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers =
+            model->buffers();
+        auto* buffer = (*buffers)[metadata->buffer()];
+        auto* array = buffer->data();
+        const uint32_t* metadata_buffer = (uint32_t*)array->data();
+        const size_t nbr_tensors = (size_t)metadata_buffer[2];
+        *offline_planner_offsets = (int32_t*)&metadata_buffer[3];
+
+        if (tensor_count_ != nbr_tensors) {
+          TF_LITE_REPORT_ERROR(reporter_,
+                               "Nbr of offline buffer offsets (%d) in metadata "
+                               "not equal nbr tensors (%d)\n",
+                               nbr_tensors, tensor_count_);
+          return kTfLiteError;
+        }
+      }
+    }
+  }
+  return kTfLiteOk;
+}
+
 TfLiteStatus AllocationInfoBuilder::AddScratchBuffers(
     internal::ScratchBufferHandle* buffer_handles) {
   // Set up allocation info for buffers.
@@ -210,11 +338,13 @@ TfLiteStatus AllocationInfoBuilder::AddScratchBuffers(
     current->first_created = handle->node_idx;
     current->last_used = handle->node_idx;
     current->needs_allocating = true;
+    current->offline_offset = kOnlinePlannedBuffer;
   }
   return kTfLiteOk;
 }
 
-TfLiteStatus CreatePlan(ErrorReporter* error_reporter, MemoryPlanner* planner,
+TfLiteStatus CreatePlan(ErrorReporter* error_reporter,
+                        GreedyMemoryPlanner* planner,
                         const AllocationInfo* allocation_info,
                         size_t allocation_info_size) {
   // Add the tensors to our allocation plan.
@@ -223,9 +353,15 @@ TfLiteStatus CreatePlan(ErrorReporter* error_reporter, MemoryPlanner* planner,
     if (current->needs_allocating) {
       size_t aligned_bytes_required =
           AlignSizeUp(current->bytes, kBufferAlignment);
-      TF_LITE_ENSURE_STATUS(
-          planner->AddBuffer(error_reporter, aligned_bytes_required,
-                             current->first_created, current->last_used));
+      if (current->offline_offset == kOnlinePlannedBuffer) {
+        TF_LITE_ENSURE_STATUS(
+            planner->AddBuffer(error_reporter, aligned_bytes_required,
+                               current->first_created, current->last_used));
+      } else {
+        TF_LITE_ENSURE_STATUS(planner->AddBuffer(
+            error_reporter, aligned_bytes_required, current->first_created,
+            current->last_used, current->offline_offset));
+      }
     }
   }
   return kTfLiteOk;
@@ -330,6 +466,8 @@ TfLiteStatus InitializeTfLiteTensorFromFlatbuffer(
   TF_LITE_ENSURE_STATUS(BytesRequiredForTensor(
       flatbuffer_tensor, &result->bytes, &type_size, error_reporter));
 
+  // TODO(b/159043126): Cleanup endian casting by doing all endian casting in
+  // one spot:
   if (flatbuffer_tensor.shape() == nullptr) {
     // flatbuffer_tensor.shape() can return a nullptr in the case of a scalar
     // tensor.
@@ -377,6 +515,10 @@ TfLiteStatus InitializeTfLiteTensorFromFlatbuffer(
                            "Unable to allocate TfLiteAffineQuantization.\n");
       return kTfLiteError;
     }
+
+    // TODO(b/153688719): Reduce tail allocation by using a global zero-point
+    // buffer. This value can not be reused from the flatbuffer since the
+    // zero_point is stored as a int64_t.
     quantization->zero_point =
         reinterpret_cast<TfLiteIntArray*>(allocator->AllocateFromTail(
             TfLiteIntArrayGetSizeInBytes(channels), alignof(TfLiteIntArray)));
@@ -386,22 +528,14 @@ TfLiteStatus InitializeTfLiteTensorFromFlatbuffer(
       return kTfLiteError;
     }
 
-    quantization->scale = reinterpret_cast<TfLiteFloatArray*>(
-        allocator->AllocateFromTail(TfLiteFloatArrayGetSizeInBytes(channels),
-                                    alignof(TfLiteFloatArray)));
-    if (quantization->scale == nullptr) {
-      TF_LITE_REPORT_ERROR(error_reporter,
-                           "Unable to allocate quantization->scale.\n");
-      return kTfLiteError;
-    }
+    // TODO(b/159043126): Check for big endian before casting flatbuffer values.
+    quantization->scale = const_cast<TfLiteFloatArray*>(
+        reinterpret_cast<const TfLiteFloatArray*>(src_quantization->scale()));
 
     quantization->zero_point->size = channels;
-    quantization->scale->size = channels;
     int* zero_point_data = quantization->zero_point->data;
-    float* scale_data = quantization->scale->data;
     for (int i = 0; i < channels; i++) {
       zero_point_data[i] = src_quantization->zero_point()->Get(i);
-      scale_data[i] = src_quantization->scale()->Get(i);
     }
     // TODO(rocky): Need to add a micro_allocator test case that fails when
     // this is not copied:
@@ -466,7 +600,6 @@ TfLiteStatus MicroAllocator::StartModelAllocation(
 
   const SubGraph* subgraph = GetSubGraphFromModel(model);
   TFLITE_DCHECK(subgraph != nullptr);
-
   model_is_allocating_ = true;
 
   TF_LITE_ENSURE_STATUS(
@@ -491,7 +624,7 @@ TfLiteStatus MicroAllocator::FinishModelAllocation(const Model* model,
   const SubGraph* subgraph = GetSubGraphFromModel(model);
   TFLITE_DCHECK(subgraph != nullptr);
 
-  TF_LITE_ENSURE_STATUS(CommitStaticMemoryPlan(context, subgraph));
+  TF_LITE_ENSURE_STATUS(CommitStaticMemoryPlan(model, context, subgraph));
   TF_LITE_ENSURE_STATUS(AllocateVariables(context, subgraph));
 
   model_is_allocating_ = false;
@@ -680,8 +813,10 @@ TfLiteStatus MicroAllocator::PrepareNodeAndRegistrationDataFromFlatbuffer(
     }
 
     // Disregard const qualifier to workaround with existing API.
+    // TODO(b/159043126): Check for big endian before casting flatbuffer values.
     TfLiteIntArray* inputs_array = const_cast<TfLiteIntArray*>(
         reinterpret_cast<const TfLiteIntArray*>(op->inputs()));
+    // TODO(b/159043126): Check for big endian before casting flatbuffer values.
     TfLiteIntArray* outputs_array = const_cast<TfLiteIntArray*>(
         reinterpret_cast<const TfLiteIntArray*>(op->outputs()));
 
@@ -739,7 +874,8 @@ const SubGraph* MicroAllocator::GetSubGraphFromModel(const Model* model) {
   return (*subgraphs)[0];
 }
 
-TfLiteStatus MicroAllocator::CommitStaticMemoryPlan(TfLiteContext* context,
+TfLiteStatus MicroAllocator::CommitStaticMemoryPlan(const Model* model,
+                                                    TfLiteContext* context,
                                                     const SubGraph* subgraph) {
   // Create static memory plan
   // 1. Calculate AllocationInfo to know the lifetime of each tensor/buffer.
@@ -756,7 +892,13 @@ TfLiteStatus MicroAllocator::CommitStaticMemoryPlan(TfLiteContext* context,
     AllocationInfoBuilder builder(error_reporter_, &tmp_allocator);
     TF_LITE_ENSURE_STATUS(
         builder.Init(subgraph->tensors()->size(), scratch_buffer_count_));
-    TF_LITE_ENSURE_STATUS(builder.AddTensors(subgraph, context->tensors));
+
+    int32_t* offline_planner_offsets = nullptr;
+    TF_LITE_ENSURE_STATUS(
+        builder.GetOfflinePlannedOffsets(model, &offline_planner_offsets));
+    TF_LITE_ENSURE_STATUS(builder.AddTensors(subgraph, offline_planner_offsets,
+                                             context->tensors));
+
     TF_LITE_ENSURE_STATUS(builder.AddScratchBuffers(scratch_buffer_handles_));
     const AllocationInfo* allocation_info = builder.Finish();
 

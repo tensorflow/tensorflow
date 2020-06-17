@@ -23,6 +23,7 @@ import threading
 from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.module import module
@@ -136,7 +137,7 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
     self.assertIn(self.device.components[0], outputs[0].backing_device)
     self.assertIn(self.device.components[1], outputs[1].backing_device)
 
-  def test_collective_reduce_async(self):
+  def test_collective_reduce_async_scope(self):
     # Note that ops on the parallel device currently don't execute
     # asynchronously. The test is just that we don't get deadlocks.
     with context.async_scope(), ops.device(self.device.name):
@@ -148,6 +149,27 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
     self.assertAllClose([2., 2.], outputs)
     self.assertIn(self.device.components[0], outputs[0].backing_device)
     self.assertIn(self.device.components[1], outputs[1].backing_device)
+
+  def test_collective_reduce_async_context(self):
+    previous = config.get_synchronous_execution()
+    try:
+      context._reset_context()
+      config.set_synchronous_execution(False)
+      self.setUp()
+      # Note that ops on the parallel device currently don't execute
+      # asynchronously. The test is just that we don't get deadlocks.
+      with ops.device(self.device.name):
+        x = self.device.pack(
+            [constant_op.constant(-1.5),
+             constant_op.constant(3.5)])
+        reduced = _collective_sum(x, num_replicas=2)
+        outputs = self.device.unpack(reduced)
+      self.assertAllClose([2., 2.], outputs)
+      self.assertIn(self.device.components[0], outputs[0].backing_device)
+      self.assertIn(self.device.components[1], outputs[1].backing_device)
+    finally:
+      context._reset_context()
+      config.set_synchronous_execution(previous)
 
   def test_checkpointing(self):
     prefix = os.path.join(self.get_temp_dir(), "ckpt")

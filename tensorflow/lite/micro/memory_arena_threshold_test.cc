@@ -41,11 +41,11 @@ constexpr int kKeywordModelNodeAndRegistrationCount = 15;
 
 // NOTE: These values are measured on x86-64:
 // TODO(b/158651472): Consider auditing these values on non-64 bit systems.
-constexpr int kKeywordModelTotalSize = 21472;
+constexpr int kKeywordModelTotalSize = 21040;
 constexpr int kKeywordModelHeadSize = 672;
-constexpr int kKeywordModelTailSize = 20800;
+constexpr int kKeywordModelTailSize = 20368;
 constexpr int kKeywordModelTfLiteTensorVariableBufferDataSize = 10240;
-constexpr int kKeywordModelTfLiteTensorQuantizationDataSize = 2160;
+constexpr int kKeywordModelTfLiteTensorQuantizationDataSize = 1728;
 constexpr int kKeywordModelOpRuntimeDataSize = 148;
 
 constexpr int kTestConvModelArenaSize = 12 * 1024;
@@ -56,10 +56,10 @@ constexpr int kTestConvModelNodeAndRegistrationCount = 7;
 
 // NOTE: These values are measured on x86-64:
 // TODO(b/158651472): Consider auditing these values on non-64 bit systems.
-constexpr int kTestConvModelTotalSize = 12128;
+constexpr int kTestConvModelTotalSize = 11680;
 constexpr int kTestConvModelHeadSize = 7744;
-constexpr int kTestConvModelTailSize = 4384;
-constexpr int kTestConvModelTfLiteTensorQuantizationDataSize = 1216;
+constexpr int kTestConvModelTailSize = 3936;
+constexpr int kTestConvModelTfLiteTensorQuantizationDataSize = 768;
 constexpr int kTestConvModelOpRuntimeDataSize = 136;
 
 struct ModelAllocationThresholds {
@@ -73,11 +73,17 @@ struct ModelAllocationThresholds {
   size_t op_runtime_data_size = 0;
 };
 
-void EnsureAllocatedSizeThreshold(size_t actual, size_t expected) {
+void EnsureAllocatedSizeThreshold(const char* allocation_type, size_t actual,
+                                  size_t expected) {
   // TODO(b/158651472): Better auditing of non-64 bit systems:
   if (kIs64BitSystem) {
     // 64-bit systems should check floor and ceiling to catch memory savings:
     TF_LITE_MICRO_EXPECT_NEAR(actual, expected, kAllocationThreshold);
+    if (actual != expected) {
+      TF_LITE_REPORT_ERROR(micro_test::reporter,
+                           "%s threshold failed: %ld != %ld", allocation_type,
+                           actual, expected);
+    }
   } else {
     // Non-64 bit systems should just expect allocation does not exceed the
     // ceiling:
@@ -91,33 +97,37 @@ void ValidateModelAllocationThresholds(
   allocator.PrintAllocations();
 
   EnsureAllocatedSizeThreshold(
-      allocator.GetSimpleMemoryAllocator()->GetUsedBytes(),
+      "Total", allocator.GetSimpleMemoryAllocator()->GetUsedBytes(),
       thresholds.total_alloc_size);
   EnsureAllocatedSizeThreshold(
-      allocator.GetSimpleMemoryAllocator()->GetHeadUsedBytes(),
+      "Head", allocator.GetSimpleMemoryAllocator()->GetHeadUsedBytes(),
       thresholds.head_alloc_size);
   EnsureAllocatedSizeThreshold(
-      allocator.GetSimpleMemoryAllocator()->GetTailUsedBytes(),
+      "Tail", allocator.GetSimpleMemoryAllocator()->GetTailUsedBytes(),
       thresholds.tail_alloc_size);
   EnsureAllocatedSizeThreshold(
+      "TfLiteTensor",
       allocator
           .GetRecordedAllocation(
               tflite::RecordedAllocationType::kTfLiteTensorArray)
           .used_bytes,
       sizeof(TfLiteTensor) * thresholds.tensor_count);
   EnsureAllocatedSizeThreshold(
+      "VariableBufferData",
       allocator
           .GetRecordedAllocation(
               tflite::RecordedAllocationType::kTfLiteTensorVariableBufferData)
           .used_bytes,
       thresholds.tensor_variable_buffer_data_size);
   EnsureAllocatedSizeThreshold(
+      "QuantizationData",
       allocator
           .GetRecordedAllocation(tflite::RecordedAllocationType::
                                      kTfLiteTensorArrayQuantizationData)
           .used_bytes,
       thresholds.tensor_quantization_data_size);
   EnsureAllocatedSizeThreshold(
+      "NodeAndRegistration",
       allocator
           .GetRecordedAllocation(
               tflite::RecordedAllocationType::kNodeAndRegistrationArray)
@@ -125,6 +135,7 @@ void ValidateModelAllocationThresholds(
       sizeof(tflite::NodeAndRegistration) *
           thresholds.node_and_registration_count);
   EnsureAllocatedSizeThreshold(
+      "OpData",
       allocator.GetRecordedAllocation(tflite::RecordedAllocationType::kOpData)
           .used_bytes,
       thresholds.op_runtime_data_size);

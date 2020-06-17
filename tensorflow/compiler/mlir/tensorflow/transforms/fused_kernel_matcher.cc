@@ -32,11 +32,15 @@ namespace TF {
 
 namespace {
 
-// Note: This implements fusions performed in the old Remapper Grappler pass.
-// That pass has specific cases for GPU and based on different target
-// configurations on both CPU and GPU (Intel MKL, ROCm, etc.). This MLIR pass
-// covers the general CPU case and at the moment does not account for any
-// target-specific configurations.
+// Note: This implements the fusions performed in the old Remapper Grappler
+// pass. That pass has specific cases for GPU and based on different
+// target configurations on both CPU and GPU (Intel MKL, ROCm, etc.). This MLIR
+// pass covers (some of) the general CPU case and at the moment does not account
+// for any target-specific configurations.
+
+// This pass is being ported over from the Grappler Remapper pass based on
+// need/usage. File a bug to request porting over additional fusions.
+
 // TODO(b/158265178): Support GPU-specific fusions.
 // TODO(b/158266710): Support CPU MKL configurations.
 

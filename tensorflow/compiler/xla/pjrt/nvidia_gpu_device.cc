@@ -316,6 +316,7 @@ StatusOr<std::shared_ptr<PjRtClient>> GetNvidiaGpuClient(
       "gpu", xla_client, std::move(devices),
       /*node_id=*/node_id, std::move(allocator),
       std::move(host_memory_allocator),
+      /*should_stage_host_to_device_transfers=*/true,
       /*gpu_run_options=*/std::move(gpu_run_options));
   return pyclient;
 }

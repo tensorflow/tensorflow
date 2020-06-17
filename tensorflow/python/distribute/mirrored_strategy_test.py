@@ -635,8 +635,6 @@ class MirroredVariableUpdateTest(test.TestCase):
 
   def testAssignMirroredVarReplicaContextWithoutAggregationType(self,
                                                                 distribution):
-    # Test that we always have an aggregation type set on the mirrored variable
-    # if we assign to it in replica mode.
     def var_fn():
       v = variable_scope.variable(1.0, name="foo")
       return v

@@ -129,7 +129,7 @@ void PropagateXSpaceDiagnosticsToOpStats(const XSpace& space,
 }
 
 OpStats ConvertXSpaceToOpStats(const XSpace& space) {
-  const XPlane* host_plane = FindPlaneWithName(space, kHostThreads);
+  const XPlane* host_plane = FindPlaneWithName(space, kHostThreadsPlaneName);
   std::vector<const XPlane*> device_planes =
       FindPlanesWithPrefix(space, kGpuPlanePrefix);
   OpStats op_stats;

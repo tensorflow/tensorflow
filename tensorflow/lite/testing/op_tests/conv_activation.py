@@ -41,6 +41,7 @@ def make_conv_activation_tests(activation_op):
             "channel_multiplier": [1, 2],
             "fully_quantize": [False],
             "quantize_mode_16x8": [False],
+            "dynamic_range_quantize": [False],
         },
         # TODO(b/134702301): The fully_quantize param is just ignored by the
         # MLIR testing path now, resulting in duplicate tests. Either ignore
@@ -56,6 +57,7 @@ def make_conv_activation_tests(activation_op):
             "channel_multiplier": [1, 2],
             "fully_quantize": [True],
             "quantize_mode_16x8": [False],
+            "dynamic_range_quantize": [False],
         },
         {
             "input_shape": [[1, 3, 4, 3]],
@@ -68,6 +70,20 @@ def make_conv_activation_tests(activation_op):
             "channel_multiplier": [1, 2],
             "fully_quantize": [True],
             "quantize_mode_16x8": [True],
+            "dynamic_range_quantize": [False],
+        },
+        {
+            "input_shape": [[1, 3, 4, 3]],
+            "filter_shape": [[1, 1], [2, 3], [3, 3]],
+            "strides": [[1, 1, 1, 1], [1, 2, 3, 1]],
+            "dilations": [[1, 1, 1, 1]],
+            "padding": ["SAME", "VALID"],
+            "data_format": ["NHWC"],
+            "constant_filter": [True],
+            "channel_multiplier": [1, 2],
+            "fully_quantize": [False],
+            "quantize_mode_16x8": [False],
+            "dynamic_range_quantize": [True],
         },
     ]
 

@@ -65,14 +65,14 @@ class StrategyReduceTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(fn_graph().numpy(), 1.0 * strategy.num_replicas_in_sync)
 
 
+@combinations.generate(
+    combinations.combine(
+        strategy=[strategy_combinations.multi_worker_mirrored_two_workers],
+        mode=['eager']))
 class DistributedCollectiveAllReduceStrategyTest(
     strategy_test_lib.DistributionTestBase,
     parameterized.TestCase):
 
-  @combinations.generate(
-      combinations.combine(
-          strategy=[strategy_combinations.multi_worker_mirrored_two_workers],
-          mode=['eager']))
   def testDatasetFromFunction(self, strategy):
     def dataset_fn(input_context):
       global_batch_size = 10
@@ -94,6 +94,45 @@ class DistributedCollectiveAllReduceStrategyTest(
     self.assertEqual(
         sum_value.numpy(),
         expected_sum_on_workers[multi_worker_test_base.get_task_index()])
+
+  def testReduceHostTensor(self, strategy):
+    reduced = strategy.reduce(
+        reduce_util.ReduceOp.SUM, array_ops.identity(1.), axis=None)
+    self.assertEqual(reduced.numpy(), 2.)
+
+  def testReduceToHostTensor(self, strategy):
+    value = array_ops.identity(1.)
+    reduced = strategy.extended.reduce_to(reduce_util.ReduceOp.SUM, value,
+                                          value)
+    self.assertEqual(reduced.numpy(), 2.)
+
+  def testBatchReduceToHostTensor(self, strategy):
+    value = array_ops.identity(1.)
+    reduced = strategy.extended.batch_reduce_to(reduce_util.ReduceOp.SUM,
+                                                [(value, value),
+                                                 (value, value)])
+    self.assertAllEqual(reduced, [2., 2.])
+
+  def testReduceDeviceTensors(self, strategy):
+    value = strategy.run(lambda: array_ops.identity(1.))
+    reduced = strategy.reduce(reduce_util.ReduceOp.SUM, value, axis=None)
+    self.assertEqual(reduced.numpy(), 2.)
+
+  def testReduceToDeviceTensors(self, strategy):
+    value = strategy.run(lambda: array_ops.identity(1.))
+    reduced = strategy.extended.reduce_to(reduce_util.ReduceOp.SUM, value,
+                                          value)
+    self.assertEqual(reduced.numpy(), 2.)
+
+  def testBatchReduceToDeviceTensors(self, strategy):
+    value = strategy.run(lambda: array_ops.identity(1.))
+    reduced = strategy.extended.batch_reduce_to(reduce_util.ReduceOp.SUM,
+                                                [(value, value),
+                                                 (value, value)])
+    self.assertAllEqual(reduced, [2., 2.])
+
+  # TODO(crccw): add a test that mixes device and host tensors after multi
+  # worker strategy combinations can run on a fixed number of GPUs.
 
 
 if __name__ == '__main__':

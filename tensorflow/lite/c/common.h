@@ -205,6 +205,7 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
 // the current function, while also reporting the location of the error.
 // `a` and `b` may be evaluated more than once, so no side effects or
 // extremely expensive computations should be done.
+// NOTE: Use TF_LITE_ENSURE_TYPES_EQ if comparing TfLiteTypes.
 #define TF_LITE_ENSURE_EQ(context, a, b)                                   \
   do {                                                                     \
     if ((a) != (b)) {                                                      \

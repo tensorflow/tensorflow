@@ -1040,6 +1040,10 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
           data_adapter.train_validation_split(
               (x, y, sample_weight), validation_split=validation_split))
 
+    if validation_data:
+      val_x, val_y, val_sample_weight = (
+          data_adapter.unpack_x_y_sample_weight(validation_data))
+
     with self.distribute_strategy.scope(), \
          training_utils.RespectCompiledTrainableState(self):
       # Creates a `tf.data.Dataset` and handles batch and epoch iteration.
@@ -1102,8 +1106,21 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
         # Run validation.
         if validation_data and self._should_eval(epoch, validation_freq):
-          val_x, val_y, val_sample_weight = (
-              data_adapter.unpack_x_y_sample_weight(validation_data))
+          # Create data_handler for evaluation and cache it.
+          if getattr(self, '_eval_data_handler', None) is None:
+            self._eval_data_handler = data_adapter.DataHandler(
+                x=val_x,
+                y=val_y,
+                sample_weight=val_sample_weight,
+                batch_size=validation_batch_size or batch_size,
+                steps_per_epoch=validation_steps,
+                initial_epoch=0,
+                epochs=1,
+                max_queue_size=max_queue_size,
+                workers=workers,
+                use_multiprocessing=use_multiprocessing,
+                model=self,
+                steps_per_execution=self._steps_per_execution)
           val_logs = self.evaluate(
               x=val_x,
               y=val_y,
@@ -1123,6 +1140,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         if self.stop_training:
           break
 
+      # If eval data_hanlder exists, delete it after all epochs are done.
+      if getattr(self, '_eval_data_handler', None) is not None:
+        del self._eval_data_handler
       callbacks.on_train_end(logs=training_logs)
       return self.history
 
@@ -1318,20 +1338,23 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     _disallow_inside_tf_function('evaluate')
 
     with self.distribute_strategy.scope():
-      # Creates a `tf.data.Dataset` and handles batch and epoch iteration.
-      data_handler = data_adapter.DataHandler(
-          x=x,
-          y=y,
-          sample_weight=sample_weight,
-          batch_size=batch_size,
-          steps_per_epoch=steps,
-          initial_epoch=0,
-          epochs=1,
-          max_queue_size=max_queue_size,
-          workers=workers,
-          use_multiprocessing=use_multiprocessing,
-          model=self,
-          steps_per_execution=self._steps_per_execution)
+      if getattr(self, '_eval_data_handler', None) is not None:
+        data_handler = self._eval_data_handler
+      else:
+        # Creates a `tf.data.Dataset` and handles batch and epoch iteration.
+        data_handler = data_adapter.DataHandler(
+            x=x,
+            y=y,
+            sample_weight=sample_weight,
+            batch_size=batch_size,
+            steps_per_epoch=steps,
+            initial_epoch=0,
+            epochs=1,
+            max_queue_size=max_queue_size,
+            workers=workers,
+            use_multiprocessing=use_multiprocessing,
+            model=self,
+            steps_per_execution=self._steps_per_execution)
 
       # Container that configures and calls `tf.keras.Callback`s.
       if not isinstance(callbacks, callbacks_module.CallbackList):
@@ -2078,7 +2101,11 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
           save_relative_paths=True,
           all_model_checkpoint_paths=[filepath])
 
-  def load_weights(self, filepath, by_name=False, skip_mismatch=False):
+  def load_weights(self,
+                   filepath,
+                   by_name=False,
+                   skip_mismatch=False,
+                   options=None):
     """Loads all layer weights, either from a TensorFlow or an HDF5 weight file.
 
     If `by_name` is False weights are loaded based on the network's
@@ -2108,6 +2135,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         skip_mismatch: Boolean, whether to skip loading of layers where there is
             a mismatch in the number of weights, or a mismatch in the shape of
             the weight (only valid when `by_name=True`).
+        options: Optional `tf.train.CheckpointOptions` object that specifies
+            options for loading weights.
 
     Returns:
         When loading a weight file in TensorFlow format, returns the same status
@@ -2145,7 +2174,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         # The checkpoint is not readable in TensorFlow format. Try HDF5.
         save_format = 'h5'
     if save_format == 'tf':
-      status = self._trackable_saver.restore(filepath)
+      status = self._trackable_saver.restore(filepath, options)
       if by_name:
         raise NotImplementedError(
             'Weights may only be loaded based on topology into Models when '

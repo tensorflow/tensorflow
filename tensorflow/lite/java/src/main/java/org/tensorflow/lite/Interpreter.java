@@ -507,6 +507,8 @@ public final class Interpreter implements AutoCloseable {
     }
   }
 
+  // for Object.finalize, see https://bugs.openjdk.java.net/browse/JDK-8165641
+  @SuppressWarnings("deprecation")
   @Override
   protected void finalize() throws Throwable {
     try {

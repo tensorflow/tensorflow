@@ -968,17 +968,18 @@ Status ForEachMutableSubshapeHelper(
   // `shape`'s list of dimensions is isomorphic to the identity I.
   //
   // Let `shape`'s layout be L.  A layout is a permutation which maps a
-  // minor-to-major physical layout to the order of a shape's logical dims.
-  // Therefore inverse of a layout maps from logical to physical dims, and so
-  // the physical layout of I is simply L'.I = L', where L' is the inverse of L.
+  // minor-to-major physical dimension ordering to a shape's logical dimension
+  // ordering.  Therefore the inverse of a layout maps from logical to physical
+  // dims, and so the physical ordering of I is simply L'.I = L', where L' is
+  // the inverse of L.
   //
   // Let the argument `permutation` be P.  This is a permutation over `shape`'s
   // dimensions, so our return value will be a shape with dims P.I = P.  Our
-  // goal is to construct a layout permutation L* that we can apply to P such
-  // that the physical dimension ordering of the returned shape is the same
-  // as that of the original shape, namely L'.
+  // goal is to construct a layout permutation L* for this shape. The physical
+  // dimension ordering of this returned shape must be the same as that of the
+  // original shape, namely L'.
   //
-  // Our returned shape has dims P and layout L*, so its in-memory layout is
+  // Our returned shape has dims P and layout L*, so its in-memory ordering is
   // L*'.P.  Setting this equal to L' and solving for L*, we get:
   //
   //   L*'.P = L'    =>

@@ -54,9 +54,7 @@ bool ApplyGeneralTransformations(ModelTransformer* transformer) {
          transformer->Apply("merge_convolution_with_add",
                             NewMergeConvolutionWithAdd().get()) &&
          transformer->Apply("merge_mul_with_convolution",
-                            NewMergeMulWithConvolution().get()) &&
-         transformer->Apply("merge_add_with_convolution",
-                            NewMergeAddWithConvolution().get());
+                            NewMergeMulWithConvolution().get());
 }
 
 }  // namespace gpu

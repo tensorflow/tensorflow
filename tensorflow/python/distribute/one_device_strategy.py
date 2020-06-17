@@ -297,13 +297,14 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
     del destinations
     return tensor
 
-  def _experimental_distribute_dataset(self, dataset):
+  def _experimental_distribute_dataset(self, dataset, options):
     # Note that split_batch_by argument is not passed because it is always 1 in
     # this strategy, and adding it adds unnecessary overhead to the dataset.
     return input_lib.get_distributed_dataset(dataset, self._input_workers,
                                              self._container_strategy())
 
-  def _experimental_distribute_datasets_from_function(self, dataset_fn):
+  def _experimental_distribute_datasets_from_function(self, dataset_fn,
+                                                      options):
     return input_lib.get_distributed_datasets_from_function(
         dataset_fn,
         self._input_workers,

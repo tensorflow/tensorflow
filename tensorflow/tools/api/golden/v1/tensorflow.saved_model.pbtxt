@@ -182,7 +182,7 @@ tf_module {
   }
   member_method {
     name: "load_v2"
-    argspec: "args=[\'export_dir\', \'tags\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'export_dir\', \'tags\', \'options\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "main_op_with_restore"

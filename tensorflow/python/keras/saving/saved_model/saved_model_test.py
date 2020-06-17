@@ -108,6 +108,11 @@ class LayerWithUpdate(keras.layers.Layer):
     return inputs * 2.
 
 
+@generic_utils.register_keras_serializable('Testing')
+class GlobalLayerThatShouldFailIfNotAdded(keras.layers.Layer):
+  _must_restore_from_config = True
+
+
 @keras_parameterized.run_all_keras_modes
 class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
 
@@ -330,6 +335,35 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     self.assertEqual({-1: 2}, loaded.input_spec['a'].axes)
     self.assertAllEqual([None, 2, 3], loaded.input_spec['b'].shape)
     self.assertEqual('float16', loaded.input_spec['b'].dtype)
+
+  def test_must_restore_from_config_fails_if_layer_is_not_in_scope(self):
+
+    class LayerThatShouldFailIfNotAdded(keras.layers.Layer):
+      _must_restore_from_config = True
+
+    layer = LayerThatShouldFailIfNotAdded()
+    saved_model_dir = self._save_model_dir()
+    tf_save.save(layer, saved_model_dir)
+    with self.assertRaisesRegex(RuntimeError, 'Unable to restore a layer of'):
+      _ = keras_load.load(saved_model_dir)
+
+  def test_must_restore_from_config_custom_object_scope(self):
+
+    class LayerThatShouldFailIfNotAdded(keras.layers.Layer):
+      _must_restore_from_config = True
+
+    layer = LayerThatShouldFailIfNotAdded()
+    saved_model_dir = self._save_model_dir()
+    tf_save.save(layer, saved_model_dir)
+    with generic_utils.CustomObjectScope(
+        {'LayerThatShouldFailIfNotAdded': LayerThatShouldFailIfNotAdded}):
+      _ = keras_load.load(saved_model_dir)
+
+  def test_must_restore_from_config_registration(self):
+    layer = GlobalLayerThatShouldFailIfNotAdded()
+    saved_model_dir = self._save_model_dir()
+    tf_save.save(layer, saved_model_dir)
+    _ = keras_load.load(saved_model_dir)
 
   def test_multi_input_model(self):
     input_1 = keras.layers.Input(shape=(3,))
@@ -774,6 +808,36 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     loaded = keras_load.load(saved_model_dir)
     self.evaluate(variables.variables_initializer(loaded.variables))
     self.assertAllClose(model.predict(f), loaded.predict(f))
+
+  def test_load_with_partially_failed_serialization(self):
+
+    class BadCustomLayer(keras.layers.Layer):
+
+      def __call__(self, inputs):
+        return inputs
+
+    class Model(keras.models.Model):
+
+      def __init__(self):
+        super(Model, self).__init__()
+        self.layer = BadCustomLayer()
+
+      @def_function.function(
+          input_signature=[tensor_spec.TensorSpec([None, 1])])
+      def call(self, inputs):
+        return self.layer(inputs)
+
+    model = Model()
+    inp = constant_op.constant([[1.0]])
+    model(inp)
+    saved_model_dir = self._save_model_dir()
+    tf_save.save(model, saved_model_dir)
+
+    loaded = keras_load.load(saved_model_dir)
+    self.assertAllEqual([[1.0]], self.evaluate(loaded(inp)))
+    with self.assertRaisesRegexp(ValueError,
+                                 'call function was not serialized'):
+      loaded.layer(inp)
 
 
 class TestLayerCallTracing(test.TestCase, parameterized.TestCase):

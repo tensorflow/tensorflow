@@ -15,15 +15,21 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/reference/batch_matmul.h"
 
+#include <stddef.h>
+
+#include <algorithm>
 #include <cstdint>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/batch_matmul.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
@@ -276,7 +282,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* rhs_data = GetInput(context, node, kInputRHSTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  TF_LITE_ENSURE_EQ(context, lhs_data->type, kTfLiteFloat32);
+  TF_LITE_ENSURE_TYPES_EQ(context, lhs_data->type, kTfLiteFloat32);
   TF_LITE_ENSURE(context, rhs_data->type == kTfLiteFloat32 ||
                               rhs_data->type == kTfLiteInt8);
   // Support dimensions between 2 and 4, inclusive.

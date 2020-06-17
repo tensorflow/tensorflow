@@ -736,7 +736,7 @@ def assert_no_new_tensors(f):
         return isinstance(obj,
                           (ops.Tensor, variables.Variable,
                            tensor_shape.Dimension, tensor_shape.TensorShape))
-      except ReferenceError:
+      except (ReferenceError, AttributeError):
         # If the object no longer exists, we don't care about it.
         return False
 

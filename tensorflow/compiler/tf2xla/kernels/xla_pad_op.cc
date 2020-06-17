@@ -65,14 +65,6 @@ class XlaPadOp : public XlaOpKernel {
 
     auto non_negative = [](int64 x) { return x >= 0; };
     OP_REQUIRES(
-        context, absl::c_all_of(padding_low, non_negative),
-        errors::InvalidArgument("padding_low must be non-negative, got [",
-                                absl::StrJoin(padding_low, ","), "]"));
-    OP_REQUIRES(
-        context, absl::c_all_of(padding_high, non_negative),
-        errors::InvalidArgument("padding_high must be non-negative, got [",
-                                absl::StrJoin(padding_high, ","), "]"));
-    OP_REQUIRES(
         context, absl::c_all_of(padding_interior, non_negative),
         errors::InvalidArgument("padding_interior must be non-negative, got [",
                                 absl::StrJoin(padding_interior, ","), "]"));
