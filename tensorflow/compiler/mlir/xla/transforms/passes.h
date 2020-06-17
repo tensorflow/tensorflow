@@ -115,6 +115,13 @@ std::unique_ptr<Pass> createLhloCopyRemovalPass();
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToParallelLoopsPass();
 
 }  // namespace xla_lhlo
+
+namespace xla {
+
+/// Lowers the standard TanhOp to an approximation that does not use intrinsics.
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeTanhToApproximationPass();
+
+}  // namespace xla
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_PASSES_H_
