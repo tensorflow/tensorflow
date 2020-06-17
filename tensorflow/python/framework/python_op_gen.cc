@@ -45,6 +45,36 @@ const int kRightMargin = 78;
 
 constexpr char kEagerFallbackSuffix[] = "_eager_fallback";
 
+std::unordered_map<string, string> dtypes_map {
+      {"_dtypes.float16", "_dtypes.Float16"},
+      {"_dtypes.float32", "_dtypes.Float32"},
+      {"_dtypes.float64", "_dtypes.Float64"},
+      {"_dtypes.bfloat16", "_dtypes.BFloat16"},
+      {"_dtypes.complex64", "_dtypes.Complex64"},
+      {"_dtypes.complex128", "_dtypes.Complex128"},
+      {"_dtypes.int8", "_dtypes.Int8"},
+      {"_dtypes.uint8", "_dtypes.UInt8"},
+      {"_dtypes.uint16", "_dtypes.UInt16"},
+      {"_dtypes.uint32", "_dtypes.UInt32"},
+      {"_dtypes.uint64", "_dtypes.UInt64"},
+      {"_dtypes.int16", "_dtypes.Int16"},
+      {"_dtypes.int32", "_dtypes.Int32"},
+      {"_dtypes.int64", "_dtypes.Int64"},
+      {"_dtypes.bool", "_dtypes.Bool"},
+      {"_dtypes.string", "_dtypes.String"},
+      {"_dtypes.qint8", "_dtypes.QInt8"},
+      {"_dtypes.quint8", "_dtypes.QUInt8"},
+      {"_dtypes.qint16", "_dtypes.QInt16"},
+      {"_dtypes.quint16", "_dtypes.QUInt16"},
+      {"_dtypes.qint32", "_dtypes.QInt32"},
+      {"_dtypes.resource", "_dtypes.Resource"},
+      {"_dtypes.variant", "_dtypes.Variant"}
+};
+
+// Add op name to this set to add type annotations
+std::unordered_set<string> type_annotate_ops {
+};
+
 string AttrVarName(const string& attr_name,
                    std::unordered_map<string, string>* attr_expressions) {
   const string var = strings::StrCat("_attr_", attr_name);
