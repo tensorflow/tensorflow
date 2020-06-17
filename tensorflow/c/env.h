@@ -154,8 +154,7 @@ TF_CAPI_EXPORT extern TF_StringStream* TF_GetLocalTempDirectories(void);
 
 // Creates a temporary file name with an extension.
 // The caller is responsible for freeing the returned pointer.
-TF_CAPI_EXPORT extern void TF_GetTempFileName(const char* extension,
-                                              char** name);
+TF_CAPI_EXPORT extern char* TF_GetTempFileName(const char* extension);
 
 // Returns the number of nanoseconds since the Unix epoch.
 TF_CAPI_EXPORT extern uint64_t TF_NowNanos(void);
