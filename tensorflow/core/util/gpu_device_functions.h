@@ -820,6 +820,11 @@ __device__ inline tensorflow::uint64 GpuAtomicMax(tensorflow::uint64* ptr,
   return detail::GpuAtomicCasHelper(
       ptr, [value](tensorflow::uint64 a) { return max(a, value); });
 }
+
+__device__ inline int64 GpuAtomicMax(int64* ptr, int64 value) {
+  return detail::GpuAtomicCasHelper(ptr,
+                                    [value](int64 a) { return max(a, value); });
+}
 #endif
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicMax, CudaAtomicMax);
 
@@ -884,6 +889,11 @@ __device__ inline tensorflow::uint64 GpuAtomicMin(tensorflow::uint64* ptr,
                                                   tensorflow::uint64 value) {
   return detail::GpuAtomicCasHelper(
       ptr, [value](tensorflow::uint64 a) { return min(a, value); });
+}
+
+__device__ inline int64 GpuAtomicMin(int64* ptr, int64 value) {
+  return detail::GpuAtomicCasHelper(ptr,
+                                    [value](int64 a) { return min(a, value); });
 }
 #endif
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicMin, CudaAtomicMin);
