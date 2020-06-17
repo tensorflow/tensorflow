@@ -540,7 +540,10 @@ tf_py_test(
     size = "medium",
     srcs = ["callbacks_v1_test.py"],
     python_version = "PY3",
-    tags = ["notsan"],
+    tags = [
+        "no_rocm",  # FAILS on ROCm 3.5
+        "notsan",
+    ],
     deps = [
         ":callbacks",
         ":callbacks_v1",
