@@ -153,6 +153,8 @@ enum StatType {
   kIsEager,
   kTfFunctionCall,
   kTfFunctionTracingCount,
+  kFlops,
+  kBytesAccessed,
   // Performance counter related.
   kRawValue,
   kScaledValue,
