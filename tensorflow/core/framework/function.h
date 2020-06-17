@@ -344,6 +344,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   static constexpr const char* const kDeviceRetOp = "_DeviceRetval";
   static constexpr const char* const kIntsOnDeviceAttr =
       "experimental_ints_on_device";
+  static constexpr const char* const kSharedRendezvousAttr =
+      "shared_rendezvous";
 
   static constexpr const char* const kGradientOp = "SymbolicGradient";
   static constexpr const char* const kFuncAttr = "f";

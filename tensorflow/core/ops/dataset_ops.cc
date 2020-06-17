@@ -415,6 +415,11 @@ REGISTER_OP("AnonymousSeedGenerator")
       return Status::OK();
     });
 
+REGISTER_OP("DatasetCardinality")
+    .Input("input_dataset: variant")
+    .Output("cardinality: int64")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("DeleteSeedGenerator")
     .Input("handle: resource")
     .Input("deleter: variant")

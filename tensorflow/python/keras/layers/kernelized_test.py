@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import functools
 import math
+import os
+import shutil
 
 from absl.testing import parameterized
 import numpy as np
@@ -35,7 +37,10 @@ from tensorflow.python.keras import backend as keras_backend
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.engine import input_layer
+from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import kernelized as kernel_layers
+from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.utils import kernelized_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -64,6 +69,22 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
         self.assertAllClose(expected, actual, atol=atol)
     else:
       self.assertAllClose(expected, actual, atol=atol)
+
+  @test_util.run_v2_only
+  def test_state_saving_and_loading(self):
+    input_data = np.random.random((1, 2))
+    rff_layer = kernel_layers.RandomFourierFeatures(output_dim=10, scale=3.0)
+    inputs = input_layer.Input((2,))
+    outputs = rff_layer(inputs)
+    model = training.Model(inputs, outputs)
+    output_data = model.predict(input_data)
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir)
+    saved_model_dir = os.path.join(temp_dir, 'rff_model')
+    model.save(saved_model_dir)
+    new_model = save.load_model(saved_model_dir)
+    new_output_data = new_model.predict(input_data)
+    self.assertAllClose(output_data, new_output_data, atol=1e-4)
 
   def test_invalid_output_dim(self):
     with self.assertRaisesRegexp(
@@ -246,7 +267,7 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
     num_trainable_vars = 1 if trainable else 0
     self.assertLen(rff_layer.trainable_variables, num_trainable_vars)
     if trainable:
-      self.assertEqual('random_fourier_features/random_features_scale:0',
+      self.assertEqual('random_fourier_features/kernel_scale:0',
                        rff_layer.trainable_variables[0].name)
     self.assertLen(rff_layer.non_trainable_variables, 3 - num_trainable_vars)
 

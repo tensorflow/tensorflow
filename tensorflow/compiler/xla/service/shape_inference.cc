@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -1856,7 +1857,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   switch (fft_type) {
     case FFT:
     case IFFT:
-      if (in.element_type() != C64) {
+      if (!primitive_util::IsComplexType(in.element_type())) {
         return InvalidArgument("%s requires complex input type, found %s.",
                                FftType_Name(fft_type),
                                PrimitiveType_Name(in.element_type()));
@@ -1864,8 +1865,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       RET_CHECK_RANK(in);
       return in;
     case RFFT: {
-      if (in.element_type() != F32) {
-        return InvalidArgument("RFFT requires F32 input type, found %s.",
+      if (in.element_type() != F32 && in.element_type() != F64) {
+        return InvalidArgument("RFFT requires F32 or F64 input type, found %s.",
                                PrimitiveType_Name(in.element_type()));
       }
       RET_CHECK_RANK(in);
@@ -1880,7 +1881,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
               fft_length[i]);
         }
       }
-      Shape result = ShapeUtil::ChangeElementType(in, C64);
+      Shape result = ShapeUtil::ChangeElementType(
+          in, in.element_type() == F32 ? C64 : C128);
       // Preserve the size of zero-sized dimensions.
       if (fft_length[fft_rank - 1] != 0) {
         result.set_dimensions(result.dimensions_size() - 1,
@@ -1889,8 +1891,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       return result;
     }
     case IRFFT: {
-      if (in.element_type() != C64) {
-        return InvalidArgument("IRFFT requires C64 input type, found %s.",
+      if (!primitive_util::IsComplexType(in.element_type())) {
+        return InvalidArgument("IRFFT requires complex input type, found %s.",
                                PrimitiveType_Name(in.element_type()));
       }
       RET_CHECK_RANK(in);

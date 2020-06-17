@@ -29,6 +29,11 @@ from tensorflow.python.platform import test
 class TestImageNetUtils(keras_parameterized.TestCase):
 
   def test_preprocess_input(self):
+    # Test invalid mode check
+    x = np.random.uniform(0, 255, (10, 10, 3))
+    with self.assertRaises(ValueError):
+      utils.preprocess_input(x, mode='some_unknown_mode')
+
     # Test image batch with float and int image input
     x = np.random.uniform(0, 255, (2, 10, 10, 3))
     xint = x.astype('int32')

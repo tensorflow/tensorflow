@@ -68,7 +68,17 @@ pod is used in your app. Alternatively, if you want to depend on the nightly
 builds, you can write:
 
 ```ruby
-pod 'TensorFlowLiteSwift', '0.0.1-nightly'
+pod 'TensorFlowLiteSwift', '~> 0.0.1-nightly'
+```
+
+For nightly version, by default
+[GPU](https://www.tensorflow.org/lite/performance/gpu) and
+[Core ML delegates](https://www.tensorflow.org/lite/performance/coreml_delegate)
+are excluded from the pod to reduce the binary size. You can include them by
+specifying subspec:
+
+```ruby
+pod 'TensorFlowLiteSwift', '~> 0.0.1-nightly', :subspecs => ['CoreML', 'Metal']
 ```
 
 This will allow you to use the latest features added to TensorFlow Lite. Note

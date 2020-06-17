@@ -164,6 +164,14 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
                               ShapeIndex index = {}) const;
   float optimal_seconds(const HloInstruction& hlo) const;
 
+  // Get bytes read/written by this HLO. If memory_space is provided, it returns
+  // the bytes read/written from/to the given memory space only.
+  int64 GetBytesRead(const HloInstruction& hlo,
+                     absl::optional<int64> memory_space = absl::nullopt) const;
+  int64 GetBytesWritten(
+      const HloInstruction& hlo,
+      absl::optional<int64> memory_space = absl::nullopt) const;
+
   const Properties& properties() const { return properties_sum_; }
   const float property(const string& key) const {
     return GetProperty(key, properties());

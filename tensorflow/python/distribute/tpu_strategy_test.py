@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
@@ -29,6 +30,8 @@ from tensorflow.python.eager import function
 from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
 from tensorflow.python.framework import config
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -522,6 +525,69 @@ class TPUStrategyTest(test.TestCase):
     result = sparse_lookup(dataset)
     self.assertAllEqual(result, [[0.0, 2.0], [1.5, 5.0]])
 
+  def test_per_device_tracing_of_mirrored_variables(self):
+    # Define trace_count as a list to avoid python scoping error
+    trace_count = [0]
+
+    strategy = get_tpu_strategy()
+    with strategy.scope():
+      variable = variables.Variable(0.0)
+
+    @def_function.function
+    def add_one():
+      trace_count[0] = trace_count[0] + 1
+      return math_ops.add(variable, constant_op.constant(1.0))
+
+    @def_function.function
+    def update_variable():
+      for device in set(strategy.extended.worker_devices):
+        with ops.device(device):
+          add_one()
+
+    with strategy.scope():
+      update_variable.get_concrete_function()
+      self.assertEqual(trace_count[0], len(strategy.extended.worker_devices))
+
+  def test_prefetch_to_device_default(self):
+    strategy = get_tpu_strategy()
+    dataset = dataset_ops.Dataset.range(
+        strategy.num_replicas_in_sync * 2,
+        output_type=dtypes.float32).batch(strategy.num_replicas_in_sync)
+
+    # Check default, should prefetch to TPU.
+    dataset_item = next(iter(strategy.experimental_distribute_dataset(dataset)))
+    dataset_location = tf_device.DeviceSpec.from_string(
+        dataset_item.values[0].device)
+    self.assertEqual(dataset_location.device_type, "TPU")
+
+  def test_prefetch_to_device_tpu(self):
+    strategy = get_tpu_strategy()
+    dataset = dataset_ops.Dataset.range(
+        strategy.num_replicas_in_sync * 2,
+        output_type=dtypes.float32).batch(strategy.num_replicas_in_sync)
+
+    input_options = distribute_lib.InputOptions(
+        experimental_prefetch_to_device=True)
+    dataset_item = next(iter(strategy.experimental_distribute_dataset(
+        dataset, options=input_options)))
+    dataset_location = tf_device.DeviceSpec.from_string(
+        dataset_item.values[0].device)
+    self.assertEqual(dataset_location.device_type, "TPU")
+
+  def test_prefetch_to_device_cpu(self):
+    strategy = get_tpu_strategy()
+    dataset = dataset_ops.Dataset.range(
+        strategy.num_replicas_in_sync * 2,
+        output_type=dtypes.float32).batch(strategy.num_replicas_in_sync)
+
+    # Should be CPU when prefetch_to_device is False.
+    input_options = distribute_lib.InputOptions(
+        experimental_prefetch_to_device=False)
+    dataset_item = next(iter(strategy.experimental_distribute_dataset(
+        dataset, options=input_options)))
+    dataset_location = tf_device.DeviceSpec.from_string(
+        dataset_item.values[0].device)
+    self.assertEqual(dataset_location.device_type, "CPU")
 
 if __name__ == "__main__":
   test.main()

@@ -200,8 +200,7 @@ class LossesContainer(Container):
         continue
 
       y_t, y_p, sw = match_dtype_and_rank(y_t, y_p, sw)
-      sw = apply_mask(y_p, sw)
-
+      sw = apply_mask(y_p, sw, get_mask(y_p))
       loss_value = loss_obj(y_t, y_p, sample_weight=sw)
 
       loss_metric_value = loss_value
@@ -401,12 +400,13 @@ class MetricsContainer(Container):
         continue
 
       y_t, y_p, sw = match_dtype_and_rank(y_t, y_p, sw)
-      sw = apply_mask(y_p, sw)
+      mask = get_mask(y_p)
+      sw = apply_mask(y_p, sw, mask)
 
       for metric_obj in metric_objs:
         if metric_obj is None:
           continue
-        metric_obj.update_state(y_t, y_p)
+        metric_obj.update_state(y_t, y_p, sample_weight=mask)
 
       for weighted_metric_obj in weighted_metric_objs:
         if weighted_metric_obj is None:
@@ -460,6 +460,9 @@ class MetricsContainer(Container):
           metric_obj = metrics_mod.sparse_categorical_crossentropy
         else:
           metric_obj = metrics_mod.categorical_crossentropy
+
+    if isinstance(metric_obj, losses_mod.Loss):
+      metric_obj._allow_sum_over_batch_size = True  # pylint: disable=protected-access
 
     if not isinstance(metric_obj, metrics_mod.Metric):
       if isinstance(metric, six.string_types):
@@ -620,10 +623,13 @@ def match_dtype_and_rank(y_t, y_p, sw):
   return y_t, y_p, sw
 
 
-def apply_mask(y_p, sw):
+def get_mask(y_p):
+  """Returns Keras mask from tensor."""
+  return getattr(y_p, '_keras_mask', None)
+
+
+def apply_mask(y_p, sw, mask):
   """Applies any mask on predictions to sample weights."""
-  # Handle Keras mask on outputs.
-  mask = getattr(y_p, '_keras_mask', None)
   if mask is not None:
     mask = math_ops.cast(mask, y_p.dtype)
     if sw is not None:

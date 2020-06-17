@@ -35,9 +35,7 @@ from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.layers.preprocessing import category_encoding
 from tensorflow.python.keras.layers.preprocessing import category_encoding_v1
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
-from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 
@@ -109,6 +107,32 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     output_dataset = model.predict(sparse_tensor_data, steps=1)
     self.assertAllEqual(expected_output, output_dataset)
 
+  def test_sparse_input_with_weights(self):
+    input_array = np.array([[1, 2, 3, 4], [4, 3, 1, 4]], dtype=np.int64)
+    weights_array = np.array([[.1, .2, .3, .4], [.2, .1, .4, .3]])
+    sparse_tensor_data = sparse_ops.from_dense(input_array)
+    sparse_weight_data = sparse_ops.from_dense(weights_array)
+
+    # pyformat: disable
+    expected_output = [[0, .1, .2, .3, .4, 0],
+                       [0, .4, 0, .1, .5, 0]]
+    # pyformat: enable
+    max_tokens = 6
+    expected_output_shape = [None, max_tokens]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int64, sparse=True)
+    weight_data = keras.Input(shape=(None,), dtype=dtypes.float32, sparse=True)
+
+    layer = get_layer_class()(
+        max_tokens=max_tokens, output_mode=category_encoding.COUNT)
+    int_data = layer(input_data, count_weights=weight_data)
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+
+    model = keras.Model(inputs=[input_data, weight_data], outputs=int_data)
+    output_dataset = model.predict([sparse_tensor_data, sparse_weight_data],
+                                   steps=1)
+    self.assertAllClose(expected_output, output_dataset)
+
   def test_sparse_input_sparse_output(self):
     sp_inp = sparse_tensor.SparseTensor(
         indices=[[0, 0], [1, 1], [2, 0], [2, 1], [3, 1]],
@@ -145,6 +169,33 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     self.assertAllEqual(
         sparse_ops.sparse_tensor_to_dense(sp_output_dataset, default_value=0),
         output_dataset)
+
+  def test_sparse_input_sparse_output_with_weights(self):
+    indices = [[0, 0], [1, 1], [2, 0], [2, 1], [3, 1]]
+    sp_inp = sparse_tensor.SparseTensor(
+        indices=indices, values=[0, 2, 1, 1, 0], dense_shape=[4, 2])
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int64, sparse=True)
+    sp_weight = sparse_tensor.SparseTensor(
+        indices=indices, values=[.1, .2, .4, .3, .2], dense_shape=[4, 2])
+    weight_data = keras.Input(shape=(None,), dtype=dtypes.float32, sparse=True)
+
+    # The expected output should be (X for missing value):
+    # [[1, X, X, X]
+    #  [X, X, 1, X]
+    #  [X, 2, X, X]
+    #  [1, X, X, X]]
+    expected_indices = [[0, 0], [1, 2], [2, 1], [3, 0]]
+    expected_values = [.1, .2, .7, .2]
+    max_tokens = 6
+
+    layer = get_layer_class()(
+        max_tokens=max_tokens, output_mode=category_encoding.COUNT, sparse=True)
+    int_data = layer(input_data, count_weights=weight_data)
+
+    model = keras.Model(inputs=[input_data, weight_data], outputs=int_data)
+    sp_output_dataset = model.predict([sp_inp, sp_weight], steps=1)
+    self.assertAllClose(expected_values, sp_output_dataset.values)
+    self.assertAllEqual(expected_indices, sp_output_dataset.indices)
 
   def test_ragged_input(self):
     input_array = ragged_factory_ops.constant([[1, 2, 3], [3, 1]])
@@ -200,20 +251,18 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
         sparse_ops.sparse_tensor_to_dense(sp_output_dataset, default_value=0),
         output_dataset)
 
-  # Keras functional model doesn't support dense layer stacked with sparse out.
-  def DISABLED_test_sparse_output_and_dense_layer(self):
+  def test_sparse_output_and_dense_layer(self):
     input_array = constant_op.constant([[1, 2, 3], [3, 3, 0]])
 
     max_tokens = 4
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     encoding_layer = get_layer_class()(
-        max_tokens=max_tokens, output_mode=category_encoding.COUNT, sparse=True)
+        max_tokens=max_tokens, output_mode=category_encoding.COUNT,
+        sparse=True)
     int_data = encoding_layer(input_data)
-    output_data = math_ops.cast(int_data, dtypes.float32)
-    weights = variables.Variable([[.1], [.2], [.3], [.4]], dtype=dtypes.float32)
-    weights_mult = lambda x: sparse_ops.sparse_tensor_dense_matmul(x, weights)
-    output_data = keras.layers.Lambda(weights_mult)(output_data)
+    dense_layer = keras.layers.Dense(units=1)
+    output_data = dense_layer(int_data)
 
     model = keras.Model(inputs=input_data, outputs=output_data)
     _ = model.predict(input_array, steps=1)
@@ -352,6 +401,7 @@ class CategoryEncodingAdaptTest(keras_parameterized.TestCase,
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     layer = get_layer_class()(
         max_tokens=None, output_mode=category_encoding.BINARY)
+    layer.adapt([1, 2])
     _ = layer(input_data)
     with self.assertRaisesRegex(RuntimeError, "num_elements cannot be changed"):
       layer.set_num_elements(5)
@@ -362,6 +412,7 @@ class CategoryEncodingAdaptTest(keras_parameterized.TestCase,
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     layer = get_layer_class()(
         max_tokens=None, output_mode=category_encoding.BINARY)
+    layer.adapt(vocab_data)
     _ = layer(input_data)
     with self.assertRaisesRegex(RuntimeError, "can't be adapted"):
       layer.adapt(vocab_data)
@@ -372,6 +423,7 @@ class CategoryEncodingAdaptTest(keras_parameterized.TestCase,
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     layer = get_layer_class()(
         max_tokens=None, output_mode=category_encoding.BINARY)
+    layer.adapt([1, 2])
     _ = layer(input_data)
     with self.assertRaisesRegex(RuntimeError, "num_elements cannot be changed"):
       layer._set_state_variables(state_variables)
@@ -687,6 +739,21 @@ class CategoryEncodingCombinerTest(
                                                    expected_accumulator_output)
     self.validate_accumulator_computation(combiner, data, expected_accumulator)
     self.validate_accumulator_extract(combiner, data, expected_extract_output)
+
+  def test_1d_data(self):
+    data = [1, 2, 3]
+    cls = get_layer_class()
+    layer = cls()
+    layer.adapt(data)
+    output = layer(data)
+    self.assertListEqual(output.shape.as_list(), [3, 4])
+
+  def test_no_adapt_exception(self):
+    cls = get_layer_class()
+    layer = cls()
+    with self.assertRaisesRegex(
+        RuntimeError, r".*you need to call.*"):
+      _ = layer([1, 2, 3])
 
 
 if __name__ == "__main__":

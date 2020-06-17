@@ -189,9 +189,9 @@ class WhileStatementTest(ControlFlowTestBase):
         symbols={'TestClass': TestClass})
     with self.converted(
         test_fn, control_flow, {'TestClass': TestClass}) as result:
-      # TODO(b/128519776): Better error message.
-      with self.assertRaisesRegex(AttributeError, 'subattr'):
-        result.test_fn(constant_op.constant(0), constant_op.constant(5))
+      with self.assertRaisesRegex(
+          ValueError, "'tc.subattr' must be defined before the loop"):
+        result.test_fn(constant_op.constant(0), 0)
 
   def test_composite_state_slice_initialized_in_loop(self):
 
@@ -209,9 +209,9 @@ class WhileStatementTest(ControlFlowTestBase):
     self.assertTransformedResult(test_fn, (0, constant_op.constant(10)),
                                  {'subkey': 14})
     with self.converted(test_fn, control_flow, {}) as result:
-      # TODO(b/128519776): Better error message.
-      with self.assertRaisesRegex(KeyError, 'subkey'):
-        result.test_fn(constant_op.constant(0), constant_op.constant(5))
+      with self.assertRaisesRegex(
+          ValueError, r"'d\[k\]' must be defined before the loop"):
+        result.test_fn(constant_op.constant(0), 0)
 
   def test_composite_state_literal_slice_initialized_in_loop(self):
 
@@ -228,9 +228,9 @@ class WhileStatementTest(ControlFlowTestBase):
     self.assertTransformedResult(test_fn, (0, constant_op.constant(10)),
                                  {'subkey': 14})
     with self.converted(test_fn, control_flow, {}) as result:
-      # TODO(b/128519776): Better error message.
-      with self.assertRaisesRegex(KeyError, 'subkey'):
-        result.test_fn(constant_op.constant(0), constant_op.constant(5))
+      with self.assertRaisesRegex(
+          ValueError, r"'d\['subkey'\]' must be defined before the loop"):
+        result.test_fn(constant_op.constant(0), 0)
 
   def test_composite_state_slice_aliased_to_local(self):
 
@@ -245,7 +245,7 @@ class WhileStatementTest(ControlFlowTestBase):
     self.assertTransformedResult(test_fn, (0, constant_op.constant(10)),
                                  {'subkey': 11})
     with self.converted(test_fn, control_flow, {}) as result:
-      # TODO(b/128519776): Better error message.
+      # TODO(b/136999953): Better error message.
       # Note that this error happens at execution time.
       with self.assertRaises(errors.InaccessibleTensorError):
         graph_fn = def_function.function(result.test_fn, autograph=False)
@@ -671,11 +671,9 @@ class ForStatementTest(ControlFlowTestBase):
         symbols={'TestClass': TestClass})
     with self.converted(
         test_fn, control_flow, {'TestClass': TestClass}) as result:
-      # TODO(b/128519776): Better error message.
       with self.assertRaisesRegex(
-          AttributeError, '\'TestClass\' object has no attribute \'x\''):
-        result.test_fn(
-            constant_op.constant(list(range(5))), constant_op.constant(5))
+          ValueError, "'tc.x' must be defined before the loop"):
+        result.test_fn(constant_op.constant(list(range(5))), 0)
 
   def test_tuple_unpacking(self):
     def test_fn(x_list):

@@ -1,4 +1,4 @@
-// RUN: tf-opt -tf-switch-fold %s | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt -tf-switch-fold %s | FileCheck %s
 
 // CHECK-LABEL: test_single_branch_direct_f
 // CHECK-NOT: Switch

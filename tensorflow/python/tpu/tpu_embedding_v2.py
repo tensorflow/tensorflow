@@ -25,12 +25,13 @@ from absl import logging
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf.tpu import tpu_embedding_configuration_pb2
 from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import tpu_strategy
-from tensorflow.python.distribute import values as tf_values
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -137,6 +138,18 @@ class TPUEmbedding(tracking.AutoTrackable):
         feature_config=feature_config,
         batch_size=1024,
         optimizer=tf.tpu.experimental.embedding.SGD(0.1))
+  ```
+
+  When creating a distributed dataset that is to be passed to the enqueue
+  operation a special input option must be specified:
+
+  ```python
+  distributed_dataset = (
+      strategy.experimental_distribute_datasets_from_function(
+          dataset_fn=...,
+          options=tf.distribute.InputOptions(
+              experimental_prefetch_to_device=False))
+  dataset_iterator = iter(distributed_dataset)
   ```
 
   To use this API on TPU you should use a custom training loop. Below is an
@@ -308,10 +321,6 @@ class TPUEmbedding(tracking.AutoTrackable):
 
       # We need to list of host devices for the load/retrieve operations.
       self._hosts = get_list_of_hosts(self._strategy)
-
-      # TODO(bfontain) Remove this once we have an official way of splitting
-      # prefetch between host and device.
-      self._strategy.extended._set_prefetch_on_host(True)  # pylint: disable=protected-access
 
       # We generally use the per core batch size, but will have the user pass
       # in a global batch size.
@@ -507,7 +516,11 @@ class TPUEmbedding(tracking.AutoTrackable):
     with strategy.scope():
       embedding = tf.tpu.experimental.embedding.TPUEmbedding(...)
 
-    distributed_dataset = strategy.experimental_distribute_dataset(...)
+    distributed_dataset = (
+        strategy.experimental_distribute_datasets_from_function(
+            dataset_fn=...,
+            options=tf.distribute.InputOptions(
+                experimental_prefetch_to_device=False))
     dataset_iterator = iter(distributed_dataset)
 
     @tf.function
@@ -594,7 +607,11 @@ class TPUEmbedding(tracking.AutoTrackable):
     with strategy.scope():
       embedding = tf.tpu.experimental.embedding.TPUEmbedding(...)
 
-    distributed_dataset = strategy.experimental_distribute_dataset(...)
+    distributed_dataset = (
+        strategy.experimental_distribute_datasets_from_function(
+            dataset_fn=...,
+            options=tf.distribute.InputOptions(
+                experimental_prefetch_to_device=False))
     dataset_iterator = iter(distributed_dataset)
 
     @tf.function
@@ -696,17 +713,33 @@ class TPUEmbedding(tracking.AutoTrackable):
       """Create all variables."""
       shape = (table.vocabulary_size, table.dim)
 
-      # We use functools.partial here for the initial_value so that we have a
-      # variable creation that is compatible with both the sharded variable
-      # creator and the normal variable creator. The sharded variable creator
-      # will extract the shape of the tensor from the functool.partial object to
-      # decide on the sharding.
-      parameters = tf_variables.Variable(
-          name=table.name,
-          initial_value=functools.partial(
-              table.initializer, shape=shape, dtype=dtypes.float32),
-          trainable=not self._using_tpu)
-      slot_vars = table.optimizer._create_slots(parameters)  # pylint: disable=protected-access
+      def getter(name, shape, dtype, initializer, trainable):
+        return tf_variables.Variable(
+            name=name,
+            initial_value=functools.partial(initializer, shape, dtype=dtype),
+            trainable=trainable)
+
+      def variable_creator(name, initializer, trainable=True):
+        # use add_variable_with_custom_getter here so that we take advantage of
+        # the checkpoint loading to allow restore before the variables get
+        # created which avoids double initialization.
+        return self._add_variable_with_custom_getter(
+            name=name,
+            initializer=initializer,
+            shape=shape,
+            dtype=dtypes.float32,
+            getter=getter,
+            trainable=trainable)
+
+      parameters = variable_creator(table.name, table.initializer,
+                                    trainable=not self._using_tpu)
+
+      def slot_creator(name, initializer):
+        return variable_creator(table.name + "/" + name,
+                                initializer,
+                                False)
+
+      slot_vars = table.optimizer._create_slots(parameters, slot_creator)  # pylint: disable=protected-access
       slot_vars["parameters"] = parameters
       return slot_vars
 
@@ -988,6 +1021,24 @@ class TPUEmbedding(tracking.AutoTrackable):
                                                  input_tensor.op.name,
                                                  input_tensor.op.type))
 
+  def _raise_error_for_inputs_not_on_cpu(self, features):
+    """Checks all tensors in features to see are placed on the CPU."""
+
+    # expand_composites here is important, we need to check the device of each
+    # underlying tensor.
+    for path, input_tensor in nest.flatten_with_joined_string_paths(
+        features, expand_composites=True):
+      spec = tf_device.DeviceSpec.from_string(input_tensor.device)
+      if spec.device_type == "TPU":
+        raise ValueError(
+            "Received input tensor {} which is on a TPU input device {}. Input "
+            "tensors for TPU embeddings must be placed on the CPU. Please "
+            "ensure that your dataset is prefetching tensors to the host by "
+            "setting the 'experimental_prefetch_to_device' option of the "
+            "dataset distribution function. See the documentation of the "
+            "enqueue method for an example.".format(
+                path, input_tensor.device))
+
   def enqueue(self, features, weights=None, training=True, name=None):
     """Enqueues id tensors for embedding lookup.
 
@@ -1005,7 +1056,11 @@ class TPUEmbedding(tracking.AutoTrackable):
     with strategy.scope():
       embedding = tf.tpu.experimental.embedding.TPUEmbedding(...)
 
-    distributed_dataset = strategy.experimental_distribute_dataset(...)
+    distributed_dataset = (
+        strategy.experimental_distribute_datasets_from_function(
+            dataset_fn=...,
+            options=tf.distribute.InputOptions(
+                experimental_prefetch_to_device=False))
     dataset_iterator = iter(distributed_dataset)
 
     @tf.function
@@ -1075,6 +1130,7 @@ class TPUEmbedding(tracking.AutoTrackable):
       flat_weights = nest.flatten(weights)
     flat_features = nest.flatten_with_joined_string_paths(self._feature_config)
 
+    self._raise_error_for_inputs_not_on_cpu(features)
     in_tpu_context = self._raise_error_for_incorrect_control_flow_context()
     # If we are in a tpu_context, automatically apply outside compilation.
     if in_tpu_context:
@@ -1115,8 +1171,10 @@ class TPUEmbedding(tracking.AutoTrackable):
       # in the same (standard) order as self._strategy.extended.worker_devices.
       enqueue_ops = []
       for replica_id in range(self._strategy.num_replicas_in_sync):
-        replica_inputs = tf_values.select_replica(replica_id, flat_inputs)
-        replica_weights = tf_values.select_replica(replica_id, flat_weights)
+        replica_inputs = distribute_utils.select_replica(replica_id,
+                                                         flat_inputs)
+        replica_weights = distribute_utils.select_replica(replica_id,
+                                                          flat_weights)
         tpu_device = self._strategy.extended.worker_devices[replica_id]
         # TPU devices string are like /job:worker/replica:0/task:0/device:TPU:0
         # the device ordinal is the last number

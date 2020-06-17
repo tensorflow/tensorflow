@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 
@@ -83,8 +84,12 @@ TfLiteStatus BytesRequiredForTensor(const tflite::Tensor& flatbuffer_tensor,
                                     size_t* bytes, size_t* type_size,
                                     ErrorReporter* error_reporter) {
   int element_count = 1;
-  for (size_t n = 0; n < flatbuffer_tensor.shape()->Length(); ++n) {
-    element_count *= flatbuffer_tensor.shape()->Get(n);
+  // If flatbuffer_tensor.shape == nullptr, then flatbuffer_tensor is a scalar
+  // so has 1 element.
+  if (flatbuffer_tensor.shape() != nullptr) {
+    for (size_t n = 0; n < flatbuffer_tensor.shape()->Length(); ++n) {
+      element_count *= flatbuffer_tensor.shape()->Get(n);
+    }
   }
 
   TfLiteType tf_lite_type;

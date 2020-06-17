@@ -37,6 +37,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_autotune_level(4);
   opts.set_xla_cpu_multi_thread_eigen(true);
   opts.set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
+  opts.set_xla_gpu_asm_extra_flags("");
   opts.set_xla_eliminate_hlo_implicit_broadcast(true);
   opts.set_xla_dump_hlo_as_html(false);
   opts.set_xla_dump_include_timestamp(true);
@@ -71,9 +72,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_force_host_platform_device_count(1);
   opts.set_xla_gpu_deterministic_reductions(false);
   opts.set_xla_cpu_enable_xprof_traceme(true);
-  // TODO(b/155295372): disable ptxas fallback by default.
-  opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(true);
-  opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_error(false);
+  opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(false);
 
   return opts;
 }
@@ -433,6 +432,11 @@ static void AllocateFlags() {
       flag_values->xla_gpu_disable_gpuasm_optimizations(),
       "In XLA:GPU run ptxas in -O0 (default is -O3)."));
   flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_asm_extra_flags",
+      string_setter_for(&DebugOptions::set_xla_gpu_asm_extra_flags), "",
+      "Pass extra parameters to the GPU assembler tool (i.e., ptxas for CUDA). "
+      "If multiple parameters, separate them by comma."));
+  flag_objects->push_back(tensorflow::Flag(
       "xla_fuel", setter_for_xla_fuel, /*default_value_for_display=*/"",
       "Sets compiler fuel, useful for bisecting bugs in passes.  Format "
       "--xla_fuel=PASS1=NUM1,PASS2=NUM2,..."));
@@ -567,15 +571,6 @@ static void AllocateFlags() {
       "that falling back to the driver can have drawbacks like using more "
       "memory and/or other bugs during compilation, so we recommend setting "
       "this flag to false."));
-  flag_objects->push_back(tensorflow::Flag(
-      "xla_gpu_unsafe_fallback_to_driver_on_ptxas_error",
-      bool_setter_for(
-          &DebugOptions::set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_error),
-      flag_values->xla_gpu_unsafe_fallback_to_driver_on_ptxas_error(),
-      "If true, XLA GPU falls back to the driver if there is an error when "
-      "running ptxas. Note that falling back to the driver can have drawbacks "
-      "like using more memory and/or other bugs during compilation, so we "
-      "recommend setting this flag to false."));
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }
 

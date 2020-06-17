@@ -89,23 +89,25 @@ class TextVectorization(CombinerPreprocessingLayer):
   to create the vocabulary.
 
   The processing of each sample contains the following steps:
-    1) standardize each sample (usually lowercasing + punctuation stripping)
-    2) split each sample into substrings (usually words)
-    3) recombine substrings into tokens (usually ngrams)
-    4) index tokens (associate a unique int value with each token)
-    5) transform each sample using this index, either into a vector of ints or
+
+    1. standardize each sample (usually lowercasing + punctuation stripping)
+    2. split each sample into substrings (usually words)
+    3. recombine substrings into tokens (usually ngrams)
+    4. index tokens (associate a unique int value with each token)
+    5. transform each sample using this index, either into a vector of ints or
        a dense float vector.
 
   Some notes on passing Callables to customize splitting and normalization for
   this layer:
-    1) Any callable can be passed to this Layer, but if you want to serialize
+
+    1. Any callable can be passed to this Layer, but if you want to serialize
        this object you should only pass functions that are registered Keras
        serializables (see `tf.keras.utils.register_keras_serializable` for more
        details).
-    2) When using a custom callable for `standardize`, the data received
+    2. When using a custom callable for `standardize`, the data received
        by the callable will be exactly as passed to this layer. The callable
        should return a tensor of the same shape as the input.
-    3) When using a custom callable for `split`, the data received by the
+    3. When using a custom callable for `split`, the data received by the
        callable will have the 1st dimension squeezed out - instead of
        `[["string to split"], ["another string to split"]]`, the Callable will
        see `["string to split", "another string to split"]`. The callable should
@@ -157,42 +159,43 @@ class TextVectorization(CombinerPreprocessingLayer):
   Example:
   This example instantiates a TextVectorization layer that lowercases text,
   splits on whitespace, strips punctuation, and outputs integer vocab indices.
-  ```
-  max_features = 5000  # Maximum vocab size.
-  max_len = 40  # Sequence length to pad the outputs to.
 
-  # Create the layer.
-  vectorize_layer = text_vectorization.TextVectorization(
-    max_tokens=max_features,
-    output_mode='int',
-    output_sequence_length=max_len)
+  >>> text_dataset = tf.data.Dataset.from_tensor_slices(["foo", "bar", "baz"])
+  >>> max_features = 5000  # Maximum vocab size.
+  >>> max_len = 4  # Sequence length to pad the outputs to.
+  >>> embedding_dims = 2
+  >>>
+  >>> # Create the layer.
+  >>> vectorize_layer = TextVectorization(
+  ...  max_tokens=max_features,
+  ...  output_mode='int',
+  ...  output_sequence_length=max_len)
+  >>>
+  >>> # Now that the vocab layer has been created, call `adapt` on the text-only
+  >>> # dataset to create the vocabulary. You don't have to batch, but for large
+  >>> # datasets this means we're not keeping spare copies of the dataset.
+  >>> vectorize_layer.adapt(text_dataset.batch(64))
+  >>>
+  >>> # Create the model that uses the vectorize text layer
+  >>> model = tf.keras.models.Sequential()
+  >>>
+  >>> # Start by creating an explicit input layer. It needs to have a shape of
+  >>> # (1,) (because we need to guarantee that there is exactly one string
+  >>> # input per batch), and the dtype needs to be 'string'.
+  >>> model.add(tf.keras.Input(shape=(1,), dtype=tf.string))
+  >>>
+  >>> # The first layer in our model is the vectorization layer. After this
+  >>> # layer, we have a tensor of shape (batch_size, max_len) containing vocab
+  >>> # indices.
+  >>> model.add(vectorize_layer)
+  >>>
+  >>> # Now, the model can map strings to integers, and you can add an embedding
+  >>> # layer to map these integers to learned embeddings.
+  >>> input_data = [["foo qux bar"], ["qux baz"]]
+  >>> model.predict(input_data)
+  array([[2, 1, 4, 0],
+         [1, 3, 0, 0]])
 
-  # Now that the vocab layer has been created, call `adapt` on the text-only
-  # dataset to create the vocabulary. You don't have to batch, but for large
-  # datasets this means we're not keeping spare copies of the dataset in memory.
-  vectorize_layer.adapt(text_dataset.batch(64))
-
-  # Create the model that uses the vectorize text layer
-  model = tf.keras.models.Sequential()
-
-  # Start by creating an explicit input layer. It needs to have a shape of (1,)
-  # (because we need to guarantee that there is exactly one string input per
-  # batch), and the dtype needs to be 'string'.
-  model.add(tf.keras.Input(shape=(1,), dtype=tf.string))
-
-  # The first layer in our model is the vectorization layer. After this layer,
-  # we have a tensor of shape (batch_size, max_len) containing vocab indices.
-  model.add(vectorize_layer)
-
-  # Next, we add a layer to map those vocab indices into a space of
-  # dimensionality 'embedding_dims'. Note that we're using max_features+1 here,
-  # since there's an OOV token that gets added to the vocabulary in
-  # vectorize_layer.
-  model.add(tf.keras.layers.Embedding(max_features+1, embedding_dims))
-
-  # At this point, you have embedded float data representing your tokens, and
-  # can add whatever other layers you need to create your model.
-  ```
   """
   # TODO(momernick): Add an examples section to the docstring.
 
@@ -340,7 +343,7 @@ class TextVectorization(CombinerPreprocessingLayer):
 
   def compute_output_signature(self, input_spec):
     output_shape = self.compute_output_shape(input_spec.shape.as_list())
-    output_dtype = K.floatx() if self._output_mode == TFIDF else dtypes.int64
+    output_dtype = dtypes.int64 if self._output_mode == INT else K.floatx()
     return tensor_spec.TensorSpec(shape=output_shape, dtype=output_dtype)
 
   def adapt(self, data, reset_state=True):
@@ -490,11 +493,12 @@ class TextVectorization(CombinerPreprocessingLayer):
     # in None for undefined shape axes. If using 'and !=', this causes the
     # expression to evaluate to False instead of True if the shape is undefined;
     # the expression needs to evaluate to True in that case.
-    if self._split is not None and not input_shape[1] == 1:  # pylint: disable=g-comparison-negation
-      raise RuntimeError(
-          "When using TextVectorization to tokenize strings, the first "
-          "dimension of the input array must be 1, got shape "
-          "{}".format(input_shape))
+    if self._split is not None:
+      if input_shape.ndims > 1 and not input_shape[-1] == 1:  # pylint: disable=g-comparison-negation
+        raise RuntimeError(
+            "When using TextVectorization to tokenize strings, the innermost "
+            "dimension of the input array must be 1, got shape "
+            "{}".format(input_shape))
 
     super(TextVectorization, self).build(input_shape)
 
@@ -536,7 +540,8 @@ class TextVectorization(CombinerPreprocessingLayer):
       # If we are splitting, we validate that the 1st axis is of dimension 1 and
       # so can be squeezed out. We do this here instead of after splitting for
       # performance reasons - it's more expensive to squeeze a ragged tensor.
-      inputs = array_ops.squeeze(inputs, axis=1)
+      if inputs.shape.ndims > 1:
+        inputs = array_ops.squeeze(inputs, axis=-1)
       if self._split == SPLIT_ON_WHITESPACE:
         # This treats multiple whitespaces as one whitespace, and strips leading
         # and trailing whitespace.
@@ -561,8 +566,6 @@ class TextVectorization(CombinerPreprocessingLayer):
   def call(self, inputs):
     if isinstance(inputs, (list, tuple, np.ndarray)):
       inputs = ops.convert_to_tensor(inputs)
-    if inputs.shape.rank == 1:
-      inputs = array_ops.expand_dims(inputs, axis=-1)
 
     self._called = True
     inputs = self._preprocess(inputs)
@@ -570,9 +573,7 @@ class TextVectorization(CombinerPreprocessingLayer):
     # If we're not doing any output processing, return right away.
     if self._output_mode is None:
       return inputs
-
     indexed_data = self._index_lookup_layer(inputs)
-
     if self._output_mode == INT:
       # Once we have the dense tensor, we can return it if we weren't given a
       # fixed output sequence length. If we were, though, we have to dynamically
@@ -585,7 +586,6 @@ class TextVectorization(CombinerPreprocessingLayer):
         dense_data = indexed_data
 
       if self._output_sequence_length is None:
-        dense_data.set_shape(tensor_shape.TensorShape((None, None)))
         return dense_data
       else:
         sequence_len = K.shape(dense_data)[1]
@@ -596,8 +596,9 @@ class TextVectorization(CombinerPreprocessingLayer):
             sequence_len < self._output_sequence_length,
             true_fn=pad_fn,
             false_fn=slice_fn)
-        output_tensor.set_shape(
-            tensor_shape.TensorShape((None, self._output_sequence_length)))
+        output_shape = output_tensor.shape.as_list()
+        output_shape[-1] = self._output_sequence_length
+        output_tensor.set_shape(tensor_shape.TensorShape(output_shape))
         return output_tensor
 
     # If we're not returning integers here, we rely on the vectorization layer

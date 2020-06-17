@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/profiling/profiler.h"
+
 #include <unistd.h>
 
 #include <chrono>  // NOLINT(build/c++11)
@@ -20,7 +22,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
@@ -51,6 +52,20 @@ void ParentFunction(tflite::Profiler* profiler) {
 TEST(ProfilerTest, NoProfilesAreCollectedWhenDisabled) {
   BufferedProfiler profiler(1024);
   ParentFunction(&profiler);
+  auto profile_events = profiler.GetProfileEvents();
+  EXPECT_EQ(0, profile_events.size());
+}
+
+TEST(ProfilerTest, NoProfilesAreCollectedWhenEventTypeUnsupported) {
+  BufferedProfiler profiler(1024);
+  tflite::Profiler* p = &profiler;
+  p->AddEvent("Hello",
+              Profiler::EventType::GENERAL_RUNTIME_INSTRUMENTATION_EVENT,
+              /*start*/ 0, /*end*/ 1,
+              /*event_metadata*/ 2);
+  auto handler = p->BeginEvent(
+      "begin", Profiler::EventType::GENERAL_RUNTIME_INSTRUMENTATION_EVENT, 0);
+  p->EndEvent(handler);
   auto profile_events = profiler.GetProfileEvents();
   EXPECT_EQ(0, profile_events.size());
 }

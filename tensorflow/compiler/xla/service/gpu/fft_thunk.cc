@@ -60,16 +60,18 @@ StatusOr<se::DeviceMemory<uint8>> FftScratchAllocator::AllocateBytes(
 
 namespace {
 
-se::fft::Type FftTypeToSeType(FftType type) {
+se::fft::Type FftTypeToSeType(FftType type, bool double_precision) {
   switch (type) {
     case FftType::FFT:
-      return se::fft::Type::kC2CForward;
+      return double_precision ? se::fft::Type::kZ2ZForward
+                              : se::fft::Type::kC2CForward;
     case FftType::IFFT:
-      return se::fft::Type::kC2CInverse;
+      return double_precision ? se::fft::Type::kZ2ZInverse
+                              : se::fft::Type::kC2CInverse;
     case FftType::IRFFT:
-      return se::fft::Type::kC2R;
+      return double_precision ? se::fft::Type::kZ2D : se::fft::Type::kC2R;
     case FftType::RFFT:
-      return se::fft::Type::kR2C;
+      return double_precision ? se::fft::Type::kD2Z : se::fft::Type::kR2C;
     default:
       LOG(FATAL) << "unsupported fft type";
   }
@@ -78,12 +80,16 @@ se::fft::Type FftTypeToSeType(FftType type) {
 string FftTypeToString(se::fft::Type type) {
   switch (type) {
     case se::fft::Type::kC2CForward:
+    case se::fft::Type::kZ2ZForward:
       return "FFT";
     case se::fft::Type::kC2CInverse:
+    case se::fft::Type::kZ2ZInverse:
       return "IFFT";
     case se::fft::Type::kC2R:
+    case se::fft::Type::kZ2D:
       return "IRFFT";
     case se::fft::Type::kR2C:
+    case se::fft::Type::kD2Z:
       return "RFFT";
     default:
       LOG(FATAL) << "unknown fft type";
@@ -98,7 +104,9 @@ FftThunk::FftThunk(FftType fft_type, absl::Span<const int64> fft_length,
                    const Shape& input_shape, const Shape& output_shape,
                    const HloInstruction* hlo)
     : Thunk(Kind::kFft, hlo),
-      fft_type_(FftTypeToSeType(fft_type)),
+      fft_type_(
+          FftTypeToSeType(fft_type, input_shape.element_type() == F64 ||
+                                        input_shape.element_type() == C128)),
       fft_length_(fft_length.begin(), fft_length.end()),
       scale_factor_(1.0f),
       input_buffer_(input_buffer),
@@ -166,6 +174,15 @@ Status FftThunk::ExecuteOnStream(const ExecuteParams& params) {
           stream.ThenFft(fft_plan_.get(), input_data, &output_data).ok();
       break;
     }
+    case se::fft::Type::kZ2ZForward: {
+      se::DeviceMemory<complex128> input_data(
+          buffer_allocations.GetDeviceAddress(input_buffer_));
+      se::DeviceMemory<complex128> output_data(
+          buffer_allocations.GetDeviceAddress(output_buffer_));
+      launch_ok =
+          stream.ThenFft(fft_plan_.get(), input_data, &output_data).ok();
+      break;
+    }
     case se::fft::Type::kC2CInverse: {
       se::DeviceMemory<complex64> input_data(
           buffer_allocations.GetDeviceAddress(input_buffer_));
@@ -181,6 +198,22 @@ Status FftThunk::ExecuteOnStream(const ExecuteParams& params) {
       }
       break;
     }
+    case se::fft::Type::kZ2ZInverse: {
+      se::DeviceMemory<complex128> input_data(
+          buffer_allocations.GetDeviceAddress(input_buffer_));
+      se::DeviceMemory<complex128> output_data(
+          buffer_allocations.GetDeviceAddress(output_buffer_));
+      launch_ok =
+          stream.ThenFft(fft_plan_.get(), input_data, &output_data).ok();
+      if (launch_ok) {
+        launch_ok =
+            stream
+                .ThenBlasScal(ShapeUtil::ElementsIn(output_shape_),
+                              complex128(scale_factor_), &output_data, 1)
+                .ok();
+      }
+      break;
+    }
     case se::fft::Type::kR2C: {
       se::DeviceMemory<float> input_data(
           buffer_allocations.GetDeviceAddress(input_buffer_));
@@ -190,10 +223,34 @@ Status FftThunk::ExecuteOnStream(const ExecuteParams& params) {
           stream.ThenFft(fft_plan_.get(), input_data, &output_data).ok();
       break;
     }
+    case se::fft::Type::kD2Z: {
+      se::DeviceMemory<double> input_data(
+          buffer_allocations.GetDeviceAddress(input_buffer_));
+      se::DeviceMemory<complex128> output_data(
+          buffer_allocations.GetDeviceAddress(output_buffer_));
+      launch_ok =
+          stream.ThenFft(fft_plan_.get(), input_data, &output_data).ok();
+      break;
+    }
     case se::fft::Type::kC2R: {
       se::DeviceMemory<complex64> input_data(
           buffer_allocations.GetDeviceAddress(input_buffer_));
       se::DeviceMemory<float> output_data(
+          buffer_allocations.GetDeviceAddress(output_buffer_));
+      launch_ok =
+          stream.ThenFft(fft_plan_.get(), input_data, &output_data).ok();
+      if (launch_ok) {
+        launch_ok = stream
+                        .ThenBlasScal(ShapeUtil::ElementsIn(output_shape_),
+                                      scale_factor_, &output_data, 1)
+                        .ok();
+      }
+      break;
+    }
+    case se::fft::Type::kZ2D: {
+      se::DeviceMemory<complex128> input_data(
+          buffer_allocations.GetDeviceAddress(input_buffer_));
+      se::DeviceMemory<double> output_data(
           buffer_allocations.GetDeviceAddress(output_buffer_));
       launch_ok =
           stream.ThenFft(fft_plan_.get(), input_data, &output_data).ok();

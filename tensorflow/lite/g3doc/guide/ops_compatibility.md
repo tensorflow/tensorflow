@@ -9,8 +9,8 @@ Since the set of TensorFlow Lite operations is smaller than TensorFlow's, not
 every model is convertible. Even for supported operations, very specific usage
 patterns are sometimes expected, for performance reasons. We expect to expand
 the set of supported operations in future TensorFlow Lite releases. Additional
-ops can be included by [using select TensorFlow ops](ops_select.md), at
-the cost of binary size.
+ops can be included by [using select TensorFlow ops](ops_select.md), at the cost
+of binary size.
 
 The best way to understand how to build a TensorFlow model that can be used with
 TensorFlow Lite is to carefully consider how operations are converted and
@@ -23,7 +23,7 @@ quantized (`uint8`, `int8`) inference, but many ops do not yet for other types
 like `tf.float16` and strings.
 
 Apart from using different version of the operations, the other difference
-between floating-point and quantized models lies in the way they are converted.
+between floating-point and quantized models is the way they are converted.
 Quantized conversion requires dynamic range information for tensors. This
 requires "fake-quantization" during model training, getting range information
 via a calibration data set, or doing "on-the-fly" range estimation. See
@@ -32,16 +32,16 @@ via a calibration data set, or doing "on-the-fly" range estimation. See
 ## Data format and broadcasting
 
 At the moment TensorFlow Lite supports only TensorFlow's "NHWC" format, and
-broadcasting is only support in a limited number of ops (tf.add, tf.mul, tf.sub,
-and tf.div).
+broadcasting is only support in a limited number of ops (`tf.add`, `tf.mul`,
+`tf.sub`, and `tf.div`).
 
 ## Compatible operations
 
 The following TensorFlow operations are usually mapped to their TensorFlow Lite
 counterparts:
 
-*   `tf.batch_to_space_nd` —As long as the input tensor is 4D (1 batch + 2
-    spatial + 1 other) and the crops attribute is not used.
+*   `tf.batch_to_space_nd` —As long as the input tensor is 3D or 4D (1 batch + 1
+    or 2 spatial + 1 other) and the crops attribute is not used.
 *   `tf.exp`
 *   `tf.fake_quant`
 *   `tf.matmul` —As the second argument is constant and transposition is not
@@ -58,28 +58,28 @@ counterparts:
 *   `tf.nn.softmax` —As long as tensors are 2D and axis is the last dimension.
 *   `tf.nn.top_k`
 *   `tf.one_hot`
-*   `tf.pad` —As long as mode and constant_values are not used.
-*   `tf.reduce_mean` —As long as the reduction_indices attribute is not used.
+*   `tf.pad` —As long as `mode` and `constant_values` are not used.
+*   `tf.reduce_mean` —As long as the `reduction_indices` attribute is not used.
 *   `tf.reshape`
 *   `tf.sigmoid`
-*   `tf.space_to_batch_nd` —As long as the input tensor is 4D (1 batch + 2
-    spatial + 1 other).
+*   `tf.space_to_batch_nd` —As long as the input tensor is 3D or 4D (1 batch + 1
+    or 2 spatial + 1 other).
 *   `tf.space_to_depth`
 *   `tf.split` —As long as num is not provided and `num_or_size_split` contains
     number of splits as a 0D tensor.
-*   `tf.squeeze` —As long as axis is not provided.
+*   `tf.squeeze` —As long as `axis` is not provided.
 *   `tf.squared_difference`
-*   `tf.strided_slice` —As long as `ellipsis_mask and new_axis_mask` are not
+*   `tf.strided_slice` —As long as `ellipsis_mask` and `new_axis_mask` are not
     used.
-*   `tf.transpose` —As long as conjugate is not used.
+*   `tf.transpose` —As long as `conjugate` is not used.
 
 ## Straight-forward conversions, constant-folding and fusing
 
 A number of TensorFlow operations can be processed by TensorFlow Lite even
 though they have no direct equivalent. This is the case for operations that can
-be simply removed from the graph (tf.identity), replaced by tensors
-(tf.placeholder), or fused into more complex operations (tf.nn.bias_add). Even
-some supported operations may sometimes be removed through one of these
+be simply removed from the graph (`tf.identity`), replaced by tensors
+(`tf.placeholder`), or fused into more complex operations (`tf.nn.bias_add`).
+Even some supported operations may sometimes be removed through one of these
 processes.
 
 Here is a non-exhaustive list of TensorFlow operations that are usually removed
@@ -115,7 +115,7 @@ from the graph:
 *   `tf.nn.relu`
 *   `tf.nn.relu6`
 
-Note: Many of those operations don't have TensorFlow Lite equivalents and the
+Note: Many of those operations don't have TensorFlow Lite equivalents, and the
 corresponding model will not be convertible if they can't be elided or fused.
 
 ## Unsupported operations
@@ -213,7 +213,7 @@ Options {
 
 ```
 Inputs {
-  0: 4D tensor
+  0: 3D-4D tensor
   1: 1D tensor
   2: 2D tensor
 }
@@ -343,10 +343,10 @@ Outputs {
 **FLOOR**
 
 ```
-inputs {
+Inputs {
   0: tensor
 }
-outputs: {
+Outputs: {
   0: result of computing element-wise floor of the input tensor
 }
 ```
@@ -939,7 +939,7 @@ Options {
 
 ```
 Inputs {
-  0: 4D tensor
+  0: 3D-4D tensor
   1: 1D tensor
   2: 2D tensor
 }

@@ -535,8 +535,10 @@ def _get_resource_inputs(op):
 
   # Note: A resource handle that is not written to is treated as read-only. We
   # don't have a special way of denoting an unused resource.
-  return ([(t, ResourceType.READ_ONLY) for t in reads] +
-          [(t, ResourceType.READ_WRITE) for t in writes])
+  for t in reads:
+    yield (t, ResourceType.READ_ONLY)
+  for t in writes:
+    yield (t, ResourceType.READ_WRITE)
 
 
 def automatic_control_dependencies(f):

@@ -84,6 +84,7 @@ def _device_link_impl(ctx):
     cubins = []
     images = []
     for arch in ctx.attr.gpu_archs:
+        arch = arch.replace("compute_", "sm_")  # PTX is JIT-linked at runtime.
         cubin = ctx.actions.declare_file("%s_%s.cubin" % (name, arch))
         register_h = ctx.actions.declare_file("%s_register_%s.h" % (name, arch))
         ctx.actions.run(

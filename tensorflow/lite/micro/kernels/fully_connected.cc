@@ -93,7 +93,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
   TF_LITE_ENSURE_MSG(context, input->type == filter->type,
                      "Hybrid models are not supported on TFLite Micro.");
 
@@ -217,6 +217,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace fully_connected
 
 TfLiteRegistration* Register_FULLY_CONNECTED() {
+  // TODO(b/149408647): Once we remove AddBuiltin from MicroOpResolver and
+  // completely switch to the templated AddBuiltin from MicroMutableOpResolver,
+  // this struct no longer needs to be static and can be returned by value.
   static TfLiteRegistration r = {/*init=*/fully_connected::Init,
                                  /*free=*/nullptr,
                                  /*prepare=*/fully_connected::Prepare,
