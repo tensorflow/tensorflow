@@ -1099,8 +1099,6 @@ class StrategyBase(object):
     `Dataset` (i.e. if a worker has two replicas, two batches will be dequeued
     from the `Dataset` every step).
 
-    `replication_mode` determines how to replicate the dataset pipeline.
-
     This method can be used for several purposes. For example, where
 >>>>>>> 87a7ad3be2... Adding per-replica dataset distribution
     `experimental_distribute_dataset` is unable to shard the input files, this

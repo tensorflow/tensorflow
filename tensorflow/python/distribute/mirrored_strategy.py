@@ -532,22 +532,6 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         input_contexts,
         self._container_strategy())
 
-  def _experimental_distribute_datasets_from_function_per_replica(self, dataset_fn):
-    input_contexts = []
-    num_replicas = self.worker_devices
-    for i in range(len(num_replicas)):
-      input_contexts.append(distribute_lib.InputContext(
-          num_input_pipelines=len(num_replicas),
-          input_pipeline_id=i,
-          num_replicas_in_sync=self._num_replicas_in_sync))
-
-    return input_lib.get_distributed_datasets_from_function_per_replica(
-        dataset_fn,
-        self._input_workers,
-        input_contexts,
-        self._container_strategy())
-
-
   def _experimental_distribute_values_from_function(self, value_fn):
     per_replica_values = []
     for replica_id in range(self._num_replicas_in_sync):
