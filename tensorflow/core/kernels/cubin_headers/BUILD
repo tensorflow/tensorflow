@@ -37,5 +37,4 @@ gen_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
 )
