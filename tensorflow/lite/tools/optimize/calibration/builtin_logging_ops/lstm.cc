@@ -302,9 +302,8 @@ TfLiteStatus EvalFloat(
     const TfLiteTensor* cell_bias, const TfLiteTensor* output_gate_bias,
     const TfLiteTensor* projection_weights, const TfLiteTensor* projection_bias,
     const TfLiteLSTMParams* params, bool forward_sequence, bool time_major,
-    int output_offset, TfLiteTensor* scratch_buffer,
-    TfLiteTensor* activation_state, TfLiteTensor* cell_state,
-    TfLiteTensor* output, Logger* logger,
+    int output_offset, TfLiteTensor* scratch_buffer, TfLiteTensor* output_state,
+    TfLiteTensor* cell_state, TfLiteTensor* output, Logger* logger,
     const std::vector<int>& intermediate_tensor_indexes,
     ErrorReporter* error_reporter) {
   TF_LITE_ASSERT(input->dims->size >= 2 && input->dims->size <= 3);
@@ -390,10 +389,10 @@ TfLiteStatus EvalFloat(
           GetTensorData<float>(projection_weights),
           GetTensorData<float>(projection_bias), params, n_batch, n_cell,
           n_input, aux_input_size, n_output, output_batch_leading_dim,
-          GetTensorData<float>(activation_state),
-          GetTensorData<float>(cell_state), input_gate_scratch,
-          forget_gate_scratch, cell_gate_scratch, output_gate_scratch,
-          output_ptr_time, logger, intermediate_tensor_indexes, error_reporter);
+          GetTensorData<float>(output_state), GetTensorData<float>(cell_state),
+          input_gate_scratch, forget_gate_scratch, cell_gate_scratch,
+          output_gate_scratch, output_ptr_time, logger,
+          intermediate_tensor_indexes, error_reporter);
     }
   } else {
     for (int b = 0; b < n_batch; b++) {
@@ -414,9 +413,9 @@ TfLiteStatus EvalFloat(
         float* output_ptr = GetTensorData<float>(output) +
                             time_offset * output_step + output_offset;
 
-        // Offset the {activation,cell}_state pointers to the right batch.
-        float* activation_state_ptr = GetTensorData<float>(activation_state) +
-                                      b * output_batch_leading_dim;
+        // Offset the {output,cell}_state pointers to the right batch.
+        float* output_state_ptr =
+            GetTensorData<float>(output_state) + b * output_batch_leading_dim;
         float* cell_state_ptr = GetTensorData<float>(cell_state) + b * n_cell;
         // Offset the scratch pointers to the right batch.
         float* input_gate_scratch_ptr =
@@ -452,7 +451,7 @@ TfLiteStatus EvalFloat(
             GetTensorData<float>(projection_weights),
             GetTensorData<float>(projection_bias), params, /*n_batch=*/1,
             n_cell, n_input, aux_input_size, n_output, output_batch_leading_dim,
-            activation_state_ptr, cell_state_ptr, input_gate_scratch_ptr,
+            output_state_ptr, cell_state_ptr, input_gate_scratch_ptr,
             forget_gate_scratch_ptr, cell_gate_scratch_ptr,
             output_gate_scratch_ptr, output_ptr, logger,
             intermediate_tensor_indexes, error_reporter);
@@ -541,11 +540,11 @@ TfLiteStatus lstm_eval(TfLiteContext* context, TfLiteNode* node, Logger* logger,
   // Index the scratch buffers pointers to the global scratch buffer.
   TfLiteTensor* scratch_buffer = GetTemporary(context, node, /*index=*/0);
 
-  TfLiteTensor* activation_state = GetVariableInput(
-      context, node, ops::builtin::lstm::full::kInputActivationStateTensor);
-  TF_LITE_ENSURE(context, activation_state != nullptr);
+  TfLiteTensor* output_state = GetVariableInput(
+      context, node, ops::builtin::lstm::full::kOutputStateTensor);
+  TF_LITE_ENSURE(context, output_state != nullptr);
   TfLiteTensor* cell_state = GetVariableInput(
-      context, node, ops::builtin::lstm::full::kInputCellStateTensor);
+      context, node, ops::builtin::lstm::full::kCellStateTensor);
   TF_LITE_ENSURE(context, cell_state != nullptr);
 
   TfLiteTensor* output =
@@ -574,8 +573,8 @@ TfLiteStatus lstm_eval(TfLiteContext* context, TfLiteNode* node, Logger* logger,
           forget_gate_bias, cell_bias, output_gate_bias, projection_weights,
           projection_bias, params, /*forward_sequence=*/true,
           /*time_major=*/true,
-          /*output_offset=*/0, scratch_buffer, activation_state, cell_state,
-          output, logger, intermediate_tensor_indexes, error_reporter);
+          /*output_offset=*/0, scratch_buffer, output_state, cell_state, output,
+          logger, intermediate_tensor_indexes, error_reporter);
     }
     case kTfLiteUInt8:
     case kTfLiteInt8:

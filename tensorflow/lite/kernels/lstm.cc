@@ -68,19 +68,19 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_16(
   const float cell_clip = params->cell_clip;
   const float proj_clip = params->proj_clip;
 
-  const TfLiteTensor* cell_tensor =
-      GetVariableInput(context, node, kInputCellStateTensor);
-  TF_LITE_ENSURE(context, cell_tensor != nullptr);
+  const TfLiteTensor* cell_state =
+      GetVariableInput(context, node, kCellStateTensor);
+  TF_LITE_ENSURE(context, cell_state != nullptr);
   const TfLiteTensor* output_tensor = GetOutput(context, node, kOutputTensor);
 
-  auto* cell_params =
-      static_cast<TfLiteAffineQuantization*>(cell_tensor->quantization.params);
+  auto* cell_state_params =
+      static_cast<TfLiteAffineQuantization*>(cell_state->quantization.params);
   auto* proj_params = static_cast<TfLiteAffineQuantization*>(
       output_tensor->quantization.params);
   if (cell_clip > 0.0) {
-    integer_lstm_param->quantized_cell_clip = static_cast<int32_t>(
-        std::min(std::max(cell_clip / cell_params->scale->data[0], -32768.0f),
-                 32767.0f));
+    integer_lstm_param->quantized_cell_clip = static_cast<int32_t>(std::min(
+        std::max(cell_clip / cell_state_params->scale->data[0], -32768.0f),
+        32767.0f));
   } else {
     integer_lstm_param->quantized_cell_clip = 0;
   }
@@ -134,9 +134,9 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_16(
   const TfLiteTensor* projection_weights =
       GetOptionalInputTensor(context, node, kProjectionWeightsTensor);
 
-  TfLiteTensor* activation_state =
-      GetVariableInput(context, node, kInputActivationStateTensor);
-  TF_LITE_ENSURE(context, activation_state != nullptr);
+  TfLiteTensor* output_state =
+      GetVariableInput(context, node, kOutputStateTensor);
+  TF_LITE_ENSURE(context, output_state != nullptr);
 
   // Since we have already checked that weights are all there or none, we can
   // check the existence of only one to get the condition.
@@ -187,7 +187,7 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_16(
   float layer_norm_forget_scale = default_scale;
   float layer_norm_cell_scale = default_scale;
   float layer_norm_output_scale = default_scale;
-  float activation_scale = default_scale;
+  float output_state_scale = default_scale;
   int cell_scale = 1;
 
   // Effective scales.
@@ -231,7 +231,7 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_16(
   if (use_projection) {
     proj_weight_scale = projection_weights->params.scale;
   }
-  activation_scale = activation_state->params.scale;
+  output_state_scale = output_state->params.scale;
 
   input_to_forget_weight_scale = input_to_forget_weights->params.scale;
   input_to_cell_weight_scale = input_to_cell_weights->params.scale;
@@ -240,12 +240,8 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_16(
   recurrent_to_cell_weight_scale = recurrent_to_cell_weights->params.scale;
   recurrent_to_output_weight_scale = recurrent_to_output_weights->params.scale;
 
-  // Get cell state.
-  TfLiteTensor* cell_state =
-      GetVariableInput(context, node, kInputCellStateTensor);
-  TF_LITE_ENSURE(context, cell_state != nullptr);
+  // Check cell state (already used above)
   TF_LITE_ENSURE(context, CheckedLog2(cell_state->params.scale, &cell_scale));
-
   TF_LITE_ENSURE(context, cell_scale <= -9);
   integer_lstm_param->cell_scale = cell_scale;
   input_scale = input->params.scale;
@@ -255,31 +251,32 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_16(
     effective_input_to_input_scale =
         input_to_input_weight_scale * input_scale / intermediate_scale[0];
     effective_recurrent_to_input_scale = recurrent_to_input_weight_scale *
-                                         activation_scale /
+                                         output_state_scale /
                                          intermediate_scale[0];
   }
   effective_input_to_forget_scale =
       input_to_forget_weight_scale * input_scale / intermediate_scale[1];
   effective_recurrent_to_forget_scale = recurrent_to_forget_weight_scale *
-                                        activation_scale /
+                                        output_state_scale /
                                         intermediate_scale[1];
 
   effective_input_to_cell_scale =
       input_to_cell_weight_scale * input_scale / intermediate_scale[2];
-  effective_recurrent_to_cell_scale =
-      recurrent_to_cell_weight_scale * activation_scale / intermediate_scale[2];
+  effective_recurrent_to_cell_scale = recurrent_to_cell_weight_scale *
+                                      output_state_scale /
+                                      intermediate_scale[2];
 
   effective_input_to_output_scale =
       input_to_output_weight_scale * input_scale / intermediate_scale[3];
   effective_recurrent_to_output_scale = recurrent_to_output_weight_scale *
-                                        activation_scale /
+                                        output_state_scale /
                                         intermediate_scale[3];
 
   effective_hidden_scale =
       std::pow(2, -15) / intermediate_scale[4] * std::pow(2, -15);
 
   effective_proj_scale =
-      proj_weight_scale * intermediate_scale[4] / activation_scale;
+      proj_weight_scale * intermediate_scale[4] / output_state_scale;
 
   if (use_peephole) {
     if (!use_cifg) {
@@ -419,11 +416,10 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_8(
   const TfLiteTensor* projection_bias =
       GetOptionalInputTensor(context, node, kProjectionBiasTensor);
 
-  TfLiteTensor* activation_state =
-      GetVariableInput(context, node, kInputActivationStateTensor);
-  TF_LITE_ENSURE(context, activation_state != nullptr);
-  TfLiteTensor* cell_state =
-      GetVariableInput(context, node, kInputCellStateTensor);
+  TfLiteTensor* output_state =
+      GetVariableInput(context, node, kOutputStateTensor);
+  TF_LITE_ENSURE(context, output_state != nullptr);
+  TfLiteTensor* cell_state = GetVariableInput(context, node, kCellStateTensor);
   TF_LITE_ENSURE(context, cell_state != nullptr);
 
   // Since we have already checked that weights are all there or none, we can
@@ -456,7 +452,7 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_8(
   int32_t* output_bias_ptr = nullptr;
   int32_t* proj_bias_ptr = nullptr;
   int16_t* cell_ptr = nullptr;
-  int8_t* activation_ptr = nullptr;
+  int8_t* output_state_ptr = nullptr;
 
   // Scales.
   const float default_scale = 1.0;
@@ -477,7 +473,7 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_8(
   float layer_norm_forget_scale = default_scale;
   float layer_norm_cell_scale = default_scale;
   float layer_norm_output_scale = default_scale;
-  float activation_scale = default_scale;
+  float output_state_scale = default_scale;
 
   // Effective scales.
   float effective_input_to_input_scale = default_scale;
@@ -495,7 +491,7 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_8(
 
   // Zero points
   int input_zp = 0;
-  int activation_zp = 0;
+  int output_state_zp = 0;
 
   // Populate all the values.
   if (!use_cifg) {
@@ -537,7 +533,7 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_8(
       proj_bias_ptr = projection_bias->data.i32;
     }
   }
-  activation_scale = activation_state->params.scale;
+  output_state_scale = output_state->params.scale;
 
   input_to_forget_weight_ptr = input_to_forget_weights->data.int8;
   input_to_forget_weight_scale = input_to_forget_weights->params.scale;
@@ -554,11 +550,11 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_8(
   forget_bias_ptr = forget_gate_bias->data.i32;
   cell_bias_ptr = cell_bias->data.i32;
   output_bias_ptr = output_gate_bias->data.i32;
-  activation_ptr = activation_state->data.int8;
+  output_state_ptr = output_state->data.int8;
   cell_ptr = cell_state->data.i16;
   input_scale = input->params.scale;
   input_zp = input->params.zero_point;
-  activation_zp = activation_state->params.zero_point;
+  output_state_zp = output_state->params.zero_point;
 
   std::vector<float> intermediate_scale;
   for (int i = 0; i < 12; ++i) {
@@ -575,27 +571,28 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_8(
     effective_input_to_input_scale =
         input_to_input_weight_scale * input_scale / intermediate_scale[1];
     effective_recurrent_to_input_scale = recurrent_to_input_weight_scale *
-                                         activation_scale /
+                                         output_state_scale /
                                          intermediate_scale[2];
   }
   effective_input_to_forget_scale =
       input_to_forget_weight_scale * input_scale / intermediate_scale[4];
   effective_recurrent_to_forget_scale = recurrent_to_forget_weight_scale *
-                                        activation_scale /
+                                        output_state_scale /
                                         intermediate_scale[5];
 
   effective_input_to_cell_scale =
       input_to_cell_weight_scale * input_scale / intermediate_scale[7];
-  effective_recurrent_to_cell_scale =
-      recurrent_to_cell_weight_scale * activation_scale / intermediate_scale[8];
+  effective_recurrent_to_cell_scale = recurrent_to_cell_weight_scale *
+                                      output_state_scale /
+                                      intermediate_scale[8];
 
   effective_input_to_output_scale =
       input_to_output_weight_scale * input_scale / intermediate_scale[10];
   effective_recurrent_to_output_scale = recurrent_to_output_weight_scale *
-                                        activation_scale /
+                                        output_state_scale /
                                         intermediate_scale[11];
   effective_proj_scale =
-      proj_weight_scale * std::pow(2, -15) / activation_scale;
+      proj_weight_scale * std::pow(2, -15) / output_state_scale;
 
   if (use_peephole) {
     if (!use_cifg) {
@@ -698,18 +695,16 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_8(
   const float cell_clip = params->cell_clip;
   const float proj_clip = params->proj_clip;
 
-  const TfLiteTensor* cell_tensor =
-      GetInput(context, node, kInputCellStateTensor);
   const TfLiteTensor* output_tensor = GetOutput(context, node, kOutputTensor);
 
-  auto* cell_params = reinterpret_cast<TfLiteAffineQuantization*>(
-      cell_tensor->quantization.params);
+  auto* cell_state_params = reinterpret_cast<TfLiteAffineQuantization*>(
+      cell_state->quantization.params);
   auto* proj_params = reinterpret_cast<TfLiteAffineQuantization*>(
       output_tensor->quantization.params);
-  TF_LITE_ENSURE_EQ(context, cell_params->scale->data[0], 1.0 / 32768);
+  TF_LITE_ENSURE_EQ(context, cell_state_params->scale->data[0], 1.0 / 32768);
   if (cell_clip > 0.0 && cell_clip < 1.0) {
     integer_lstm_param->quantized_cell_clip =
-        static_cast<int>(cell_clip / cell_params->scale->data[0]);
+        static_cast<int>(cell_clip / cell_state_params->scale->data[0]);
   } else {
     integer_lstm_param->quantized_cell_clip = 0;
   }
@@ -1026,12 +1021,12 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
                                                        OpData* op_data,
                                                        TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  const TfLiteTensor* activation_state =
-      GetVariableInput(context, node, kInputActivationStateTensor);
-  TF_LITE_ENSURE(context, activation_state != nullptr);
+  const TfLiteTensor* output_state =
+      GetVariableInput(context, node, kOutputStateTensor);
+  TF_LITE_ENSURE(context, output_state != nullptr);
 
   const int32_t input_zero_point = -input->params.zero_point;
-  const int32_t activation_zero_point = -activation_state->params.zero_point;
+  const int32_t output_state_zero_point = -output_state->params.zero_point;
 
   const TfLiteTensor* input_to_input_weights =
       GetOptionalInputTensor(context, node, kInputToInputWeightsTensor);
@@ -1083,8 +1078,8 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
   TF_LITE_ENSURE_OK(
       context,
       PrecomputeZeroPointTimesWeightWithBias(
-          context, activation_zero_point, recurrent_to_forget_weights, nullptr,
-          &(integer_lstm_params->recurrent_to_forget_effective_bias)));
+          context, output_state_zero_point, recurrent_to_forget_weights,
+          nullptr, &(integer_lstm_params->recurrent_to_forget_effective_bias)));
 
   // Modulation gate.
   const TfLiteTensor* cell_gate_bias =
@@ -1097,7 +1092,7 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
   TF_LITE_ENSURE_OK(
       context,
       PrecomputeZeroPointTimesWeightWithBias(
-          context, activation_zero_point, recurrent_to_cell_weights, nullptr,
+          context, output_state_zero_point, recurrent_to_cell_weights, nullptr,
           &(integer_lstm_params->recurrent_to_cell_effective_bias)));
 
   // Output gate.
@@ -1112,8 +1107,8 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
   TF_LITE_ENSURE_OK(
       context,
       PrecomputeZeroPointTimesWeightWithBias(
-          context, activation_zero_point, recurrent_to_output_weights, nullptr,
-          &(integer_lstm_params->recurrent_to_output_effective_bias)));
+          context, output_state_zero_point, recurrent_to_output_weights,
+          nullptr, &(integer_lstm_params->recurrent_to_output_effective_bias)));
 
   // Input gate. The calculation is only meaningful for non-cifg case.
   const TfLiteTensor* input_gate_bias =
@@ -1126,7 +1121,7 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
   TF_LITE_ENSURE_OK(
       context,
       PrecomputeZeroPointTimesWeightWithBias(
-          context, activation_zero_point, recurrent_to_input_weights, nullptr,
+          context, output_state_zero_point, recurrent_to_input_weights, nullptr,
           &(integer_lstm_params->recurrent_to_input_effective_bias)));
 
   // Projection bias. The calculation is only meaningful for with projection.
@@ -1198,20 +1193,19 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       context, CheckInputTensorDimensions(context, node, n_input, n_output,
                                           n_cell, use_layer_norm, is_integer));
 
-  // Get the pointer to output, activation_state and cell_state tensors.
+  // Get the pointer to output, output_state and cell_state tensors.
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  TfLiteTensor* activation_state =
-      GetVariableInput(context, node, kInputActivationStateTensor);
-  TF_LITE_ENSURE(context, activation_state != nullptr);
-  TfLiteTensor* cell_state =
-      GetVariableInput(context, node, kInputCellStateTensor);
+  TfLiteTensor* output_state =
+      GetVariableInput(context, node, kOutputStateTensor);
+  TF_LITE_ENSURE(context, output_state != nullptr);
+  TfLiteTensor* cell_state = GetVariableInput(context, node, kCellStateTensor);
   TF_LITE_ENSURE(context, cell_state != nullptr);
 
   // Check the shape of input state tensors.
   // These tensor may be 1D or 2D. It's fine as long as the total size is
   // correct.
-  TF_LITE_ENSURE_EQ(context, NumElements(activation_state), n_batch * n_output);
+  TF_LITE_ENSURE_EQ(context, NumElements(output_state), n_batch * n_output);
   TF_LITE_ENSURE_EQ(context, NumElements(cell_state), n_batch * n_cell);
 
   // Resize the output tensors.
@@ -1275,7 +1269,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   if (is_hybrid_op) {
     op_data->compute_row_sums = true;
     // Allocate temporary tensors to store quantized values of input,
-    // activation_state and cell_state tensors.
+    // output_state and cell_state tensors.
     node->temporaries->data[1] = op_data->scratch_tensor_index + 1;
     TfLiteTensor* input_quantized = GetTemporary(context, node, /*index=*/1);
     input_quantized->type = input_to_output_weights->type;
@@ -1286,17 +1280,17 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                                        input_quantized_size));
     }
     node->temporaries->data[2] = op_data->scratch_tensor_index + 2;
-    TfLiteTensor* activation_state_quantized =
+    TfLiteTensor* output_state_quantized =
         GetTemporary(context, node, /*index=*/2);
-    activation_state_quantized->type = input_to_output_weights->type;
-    activation_state_quantized->allocation_type = kTfLiteArenaRw;
-    if (!TfLiteIntArrayEqual(activation_state_quantized->dims,
-                             activation_state->dims)) {
-      TfLiteIntArray* activation_state_quantized_size =
-          TfLiteIntArrayCopy(activation_state->dims);
-      TF_LITE_ENSURE_OK(
-          context, context->ResizeTensor(context, activation_state_quantized,
-                                         activation_state_quantized_size));
+    output_state_quantized->type = input_to_output_weights->type;
+    output_state_quantized->allocation_type = kTfLiteArenaRw;
+    if (!TfLiteIntArrayEqual(output_state_quantized->dims,
+                             output_state->dims)) {
+      TfLiteIntArray* output_state_quantized_size =
+          TfLiteIntArrayCopy(output_state->dims);
+      TF_LITE_ENSURE_OK(context,
+                        context->ResizeTensor(context, output_state_quantized,
+                                              output_state_quantized_size));
     }
     node->temporaries->data[3] = op_data->scratch_tensor_index + 3;
     TfLiteTensor* cell_state_quantized =
@@ -1540,11 +1534,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* projection_bias =
       GetOptionalInputTensor(context, node, kProjectionBiasTensor);
 
-  TfLiteTensor* activation_state =
-      GetVariableInput(context, node, kInputActivationStateTensor);
-  TF_LITE_ENSURE(context, activation_state != nullptr);
-  TfLiteTensor* cell_state =
-      GetVariableInput(context, node, kInputCellStateTensor);
+  TfLiteTensor* output_state =
+      GetVariableInput(context, node, kOutputStateTensor);
+  TF_LITE_ENSURE(context, output_state != nullptr);
+  TfLiteTensor* cell_state = GetVariableInput(context, node, kCellStateTensor);
   TF_LITE_ENSURE(context, cell_state != nullptr);
 
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
@@ -1569,7 +1562,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           forget_gate_bias, cell_bias, output_gate_bias, projection_weights,
           projection_bias, params, /*forward_sequence=*/true,
           /*time_major=*/true,
-          /*output_offset=*/0, scratch_buffer, activation_state, cell_state,
+          /*output_offset=*/0, scratch_buffer, output_state, cell_state,
           output);
     }
     case kTfLiteUInt8:
@@ -1580,7 +1573,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         TfLiteTensor* scratch_buffer = GetTemporary(context, node, /*index=*/0);
         TfLiteTensor* input_quantized =
             GetTemporary(context, node, /*index=*/1);
-        TfLiteTensor* activation_state_quantized =
+        TfLiteTensor* output_state_quantized =
             GetTemporary(context, node, /*index=*/2);
         TfLiteTensor* cell_state_quantized =
             GetTemporary(context, node, /*index=*/3);
@@ -1614,8 +1607,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             /*time_major=*/true, /*output_offset=*/0, scratch_buffer,
             scaling_factors, prod_scaling_factors, recovered_cell_weights,
             input_quantized,
-            /*aux_input_quantized=*/nullptr, activation_state_quantized,
-            cell_state_quantized, activation_state, cell_state,
+            /*aux_input_quantized=*/nullptr, output_state_quantized,
+            cell_state_quantized, output_state, cell_state,
             output_scratch_buffer, output, zero_points, row_sums, row_sums_size,
             &op_data->compute_row_sums,
             CpuBackendContext::GetFromContext(context));
@@ -1638,9 +1631,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
               forget_layer_norm_coefficients, cell_layer_norm_coefficients,
               output_layer_norm_coefficients, input_gate_bias, forget_gate_bias,
               cell_bias, output_gate_bias, projection_weights, projection_bias,
-              params, &op_data->integer_lstm_param, activation_state,
-              cell_state, output, scratch0, scratch1, scratch2, scratch3,
-              scratch4, scratch5, CpuBackendContext::GetFromContext(context));
+              params, &op_data->integer_lstm_param, output_state, cell_state,
+              output, scratch0, scratch1, scratch2, scratch3, scratch4,
+              scratch5, CpuBackendContext::GetFromContext(context));
         } else {
           TfLiteTensor* scratch0 = GetTemporary(context, node, /*index=*/0);
           TfLiteTensor* scratch1 = GetTemporary(context, node, /*index=*/1);
@@ -1660,7 +1653,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
               forget_layer_norm_coefficients, cell_layer_norm_coefficients,
               output_layer_norm_coefficients, input_gate_bias, forget_gate_bias,
               cell_bias, output_gate_bias, projection_weights, projection_bias,
-              params, activation_state, cell_state, output,
+              params, output_state, cell_state, output,
               &op_data->integer_lstm_param, scratch0, scratch1, scratch2,
               scratch3, scratch4, scratch5, scratch6, scratch7);
           return kTfLiteOk;
