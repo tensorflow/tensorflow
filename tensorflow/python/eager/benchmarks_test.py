@@ -50,6 +50,7 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -1440,6 +1441,19 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       nn_ops.convolution_v2(inputs, filters)
 
     self._run(fn, 10000)
+
+  def benchmark_tf_tensor_shape_creation_overhead(self):
+    # A `TensorShape` is created the first time `EagerTensor.shape` is
+    # called, which puts `TensorShape.__init__` on the hotpath. The
+    # `TensorShape` is created from `EagerTensor._shape_tuple`.
+
+    x = array_ops.ones((1, 1))
+    shape_tuple = x._shape_tuple()
+
+    def fn():
+      tensor_shape.TensorShape(shape_tuple)
+
+    self._run(fn, 100000)
 
 
 if __name__ == "__main__":
