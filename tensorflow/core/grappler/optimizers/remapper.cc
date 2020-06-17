@@ -1783,7 +1783,6 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
 // Remove this once TF-MKL supports _FusedConv2D with these operations.
 #ifndef INTEL_MKL
     // Remap Conv2D+Squeeze+BiasAdd into the _FusedConv2D+Squeeze.
-
     ContractionWithSqueezeAndBiasAdd contract_with_squeeze_and_bias;
     if (allow_non_differentiable_rewrites &&
         FindConv2DWithSqueezeAndBias(ctx, i, &contract_with_squeeze_and_bias)) {
