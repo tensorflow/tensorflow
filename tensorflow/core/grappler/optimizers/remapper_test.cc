@@ -452,6 +452,9 @@ TEST_F(RemapperTest, FuseMatMulWithBias) {
 TEST_F(RemapperTest, FuseConv2DWithBiasAndActivationOnGPU) {
   using ::tensorflow::ops::Placeholder;
 
+#if !(GOOGLE_CUDA)
+  GTEST_SKIP() << "No CUDA, skip FuseConv2DWithBiasAndActivation on GPU";
+#endif  // !GOOGLE_CUDA
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
   auto input_shape = Placeholder::Shape({8, 32, 32, 3});
