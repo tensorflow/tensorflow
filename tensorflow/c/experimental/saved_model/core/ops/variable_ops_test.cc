@@ -30,6 +30,13 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+AbstractTensorHandlePtr CreateScalarTensorHandle(EagerContext* context,
+                                                 float value) {
+  AbstractTensorPtr tensor(context->CreateFloatScalar(value));
+  AbstractTensorHandlePtr handle(context->CreateLocalHandle(tensor.get()));
+  return handle;
+}
+
 class VariableOpsTest : public ::testing::Test {
  public:
   VariableOpsTest()
@@ -71,6 +78,29 @@ TEST_F(VariableOpsTest, DestroyVariableSuccessful) {
 
   // Destroy the variable
   TF_EXPECT_OK(internal::DestroyResource(context(), handle.get()));
+}
+
+// Sanity check for handle assignment and reading
+TEST_F(VariableOpsTest, AssignVariableAndReadSuccessful) {
+  // Create a DT_Resource TensorHandle that points to a scalar DT_FLOAT tensor
+  AbstractTensorHandlePtr variable;
+  TF_EXPECT_OK(internal::CreateUninitializedResourceVariable(
+      context(), DT_FLOAT, {}, &variable));
+
+  // Create a Scalar float TensorHandle with value 42, and assign it to
+  // the variable.
+  AbstractTensorHandlePtr my_value = CreateScalarTensorHandle(context(), 42.0);
+  TF_EXPECT_OK(internal::AssignVariable(context(), variable.get(), DT_FLOAT,
+                                        my_value.get()));
+
+  // Read back the value from the variable, and check that it is 42.
+  AbstractTensorHandlePtr read_value_handle;
+  TF_EXPECT_OK(internal::ReadVariable(context(), variable.get(), DT_FLOAT,
+                                      &read_value_handle));
+  Status status;
+  AbstractTensorPtr read_value(read_value_handle->Resolve(&status));
+  TF_EXPECT_OK(status);
+  EXPECT_FLOAT_EQ(42.0, *static_cast<float*>(read_value->Data()));
 }
 
 }  // namespace

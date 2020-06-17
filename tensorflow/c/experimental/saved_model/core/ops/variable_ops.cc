@@ -58,6 +58,36 @@ Status CreateUninitializedResourceVariable(AbstractContextInterface* ctx,
   return Status();
 }
 
+Status AssignVariable(AbstractContextInterface* ctx,
+                      AbstractTensorHandleInterface* variable_handle,
+                      DataType dtype, AbstractTensorHandleInterface* value) {
+  AbstractOpPtr assign_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(assign_op->Reset("AssignVariableOp", nullptr));
+  TF_RETURN_IF_ERROR(assign_op->SetAttrType("dtype", dtype));
+  TF_RETURN_IF_ERROR(assign_op->AddInput(variable_handle));
+  TF_RETURN_IF_ERROR(assign_op->AddInput(value));
+
+  int num_retvals = 0;
+  TF_RETURN_IF_ERROR(assign_op->Execute({}, &num_retvals));
+  return Status();
+}
+
+Status ReadVariable(AbstractContextInterface* ctx,
+                    AbstractTensorHandleInterface* variable_handle,
+                    DataType dtype, AbstractTensorHandlePtr* output) {
+  AbstractOpPtr read_op = AbstractOpPtr(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(read_op->Reset("ReadVariableOp", nullptr));
+  TF_RETURN_IF_ERROR(read_op->SetAttrType("dtype", dtype));
+  TF_RETURN_IF_ERROR(read_op->AddInput(variable_handle));
+
+  AbstractTensorHandleInterface* value = nullptr;
+  int num_retvals = 1;
+  TF_RETURN_IF_ERROR(
+      read_op->Execute(absl::MakeSpan(&value, num_retvals), &num_retvals));
+  output->reset(value);
+  return Status();
+}
+
 Status DestroyResource(AbstractContextInterface* ctx,
                        AbstractTensorHandleInterface* handle) {
   AbstractOpPtr destroy_op = AbstractOpPtr(ctx->CreateOperation());
