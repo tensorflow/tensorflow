@@ -1979,7 +1979,11 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     save.save_model(self, filepath, overwrite, include_optimizer, save_format,
                     signatures, options)
 
-  def save_weights(self, filepath, overwrite=True, save_format=None):
+  def save_weights(self,
+                   filepath,
+                   overwrite=True,
+                   save_format=None,
+                   options=None):
     """Saves all layer weights.
 
     Either saves in HDF5 or in TensorFlow format based on the `save_format`
@@ -2032,6 +2036,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         save_format: Either 'tf' or 'h5'. A `filepath` ending in '.h5' or
             '.keras' will default to HDF5 if `save_format` is `None`. Otherwise
             `None` defaults to 'tf'.
+        options: Optional `tf.train.CheckpointOptions` object that specifies
+            options for saving weights.
 
     Raises:
         ImportError: If h5py is not available when attempting to save in HDF5
@@ -2093,7 +2099,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
              'the TensorFlow format the optimizer\'s state will not be '
              'saved.\n\nConsider using a TensorFlow optimizer from `tf.train`.')
             % (optimizer,))
-      self._trackable_saver.save(filepath, session=session)
+      self._trackable_saver.save(filepath, session=session, options=options)
       # Record this checkpoint so it's visible from tf.train.latest_checkpoint.
       checkpoint_management.update_checkpoint_state_internal(
           save_dir=os.path.dirname(filepath),
