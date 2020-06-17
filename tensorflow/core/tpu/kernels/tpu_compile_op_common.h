@@ -153,7 +153,7 @@ class TpuCompileOpKernelCommon {
   int num_computations_;
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(TpuCompileOpKernelCommon);
+  TF_DISALLOW_COPY_AND_ASSIGN(TpuCompileOpKernelCommon);
 };
 
 }  // namespace tpu
