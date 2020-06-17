@@ -18,14 +18,14 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/c/eager/context_interface.h"
+#include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 
 namespace tensorflow {
 namespace internal {
 
-struct AbstractContextInterfaceDeleter {
-  void operator()(AbstractContextInterface* p) const {
+struct ImmediateExecutionContextDeleter {
+  void operator()(ImmediateExecutionContext* p) const {
     if (p != nullptr) {
       p->Release();
     }
@@ -43,8 +43,8 @@ struct EagerContextDeleter {
 }  // namespace internal
 
 using AbstractContextPtr =
-    std::unique_ptr<AbstractContextInterface,
-                    internal::AbstractContextInterfaceDeleter>;
+    std::unique_ptr<ImmediateExecutionContext,
+                    internal::ImmediateExecutionContextDeleter>;
 
 using EagerContextPtr =
     std::unique_ptr<EagerContext, internal::EagerContextDeleter>;

@@ -12,15 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_C_EAGER_CONTEXT_INTERFACE_H_
-#define TENSORFLOW_C_EAGER_CONTEXT_INTERFACE_H_
+#ifndef TENSORFLOW_C_EAGER_IMMEDIATE_EXECUTION_CONTEXT_H_
+#define TENSORFLOW_C_EAGER_IMMEDIATE_EXECUTION_CONTEXT_H_
 
 #include <vector>
 
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
-#include "tensorflow/c/eager/operation_interface.h"
-#include "tensorflow/c/eager/tensor_handle_interface.h"
+#include "tensorflow/c/eager/abstract_context.h"
+#include "tensorflow/c/eager/immediate_execution_operation.h"
+#include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/numeric_types.h"
@@ -34,16 +35,9 @@ namespace tensorflow {
 //
 // A context is responsible for creating key objects such as Tensors,
 // TensorHandles & Operations.
-class AbstractContextInterface {
+class ImmediateExecutionContext : public AbstractContext {
  public:
-  // Release any underlying resources, including the interface object.
-  //
-  // WARNING: The destructor of this class is marked as protected to disallow
-  // clients from directly destroying this object since it may manage it's own
-  // lifetime through ref counting. Thus clients MUST call Release() in order to
-  // destroy an instance of this class.
-  virtual void Release() = 0;
-
+  static constexpr AbstractContextKind kKind = kImmediateExecution;
   // Optimized scalar creation functions
   virtual AbstractTensorInterface* CreateInt64Scalar(int64 value) = 0;
   virtual AbstractTensorInterface* CreateUint64Scalar(uint64 value) = 0;
@@ -74,15 +68,15 @@ class AbstractContextInterface {
                                                 void* memory_releaser_arg) = 0;
 
   // Create a handle to wrap and manage a Tensor
-  virtual AbstractTensorHandleInterface* CreateLocalHandle(
+  virtual ImmediateExecutionTensorHandle* CreateLocalHandle(
       AbstractTensorInterface* t) = 0;
   // Copy the handle to another device.
-  virtual AbstractTensorHandleInterface* CopyTensorHandleToDevice(
-      AbstractTensorHandleInterface* handle, const char* device_name,
+  virtual ImmediateExecutionTensorHandle* CopyTensorHandleToDevice(
+      ImmediateExecutionTensorHandle* handle, const char* device_name,
       Status* status) = 0;
 
   // Create an operation to perform op execution
-  virtual AbstractOperationInterface* CreateOperation() = 0;
+  ImmediateExecutionOperation* CreateOperation() override = 0;
 
   // Returns whether the runtime is backed by TFRT or the legacy TF Eager
   // Runtime. This is necessary to decouple runtime-dependent
@@ -107,14 +101,12 @@ class AbstractContextInterface {
   // be executed as an op. Return error if the function with the same name
   // already exists.
   virtual Status AddFunctionDef(const FunctionDef& fdef) = 0;
-  // Remove a function. 'func' argument is the name of a previously added
-  // FunctionDef. The name is in fdef.signature.name.
-  virtual Status RemoveFunction(const string& func) = 0;
 
  protected:
-  virtual ~AbstractContextInterface() {}
+  ImmediateExecutionContext() : AbstractContext(kKind) {}
+  ~ImmediateExecutionContext() override {}
 };
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_C_EAGER_CONTEXT_INTERFACE_H_
+#endif  // TENSORFLOW_C_EAGER_IMMEDIATE_EXECUTION_CONTEXT_H_

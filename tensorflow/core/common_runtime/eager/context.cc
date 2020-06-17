@@ -30,8 +30,6 @@ limitations under the License.
 
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tensor_internal.h"
-#include "tensorflow/c/eager/operation_interface.h"
-#include "tensorflow/c/eager/tensor_handle_interface.h"
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
 #include "tensorflow/core/common_runtime/colocation_graph.h"

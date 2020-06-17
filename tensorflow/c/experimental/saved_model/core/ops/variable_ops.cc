@@ -16,7 +16,8 @@ limitations under the License.
 #include "tensorflow/c/experimental/saved_model/core/ops/variable_ops.h"
 
 #include "absl/types/span.h"
-#include "tensorflow/c/eager/context_interface.h"
+#include "tensorflow/c/eager/abstract_tensor_handle.h"
+#include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/experimental/saved_model/core/ops/owned_eager_op.h"
 #include "tensorflow/c/experimental/saved_model/core/ops/owned_tensor_handle.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -32,7 +33,7 @@ namespace internal {
 static const char kNoSharingResourceID[] =
     "cd2c89b7-88b7-44c8-ad83-06c2a9158347";
 
-Status CreateUninitializedResourceVariable(AbstractContextInterface* ctx,
+Status CreateUninitializedResourceVariable(ImmediateExecutionContext* ctx,
                                            DataType dtype, TensorShape shape,
                                            AbstractTensorHandlePtr* handle) {
   AbstractOpPtr varhandle_op = AbstractOpPtr(ctx->CreateOperation());
@@ -50,17 +51,20 @@ Status CreateUninitializedResourceVariable(AbstractContextInterface* ctx,
   TF_RETURN_IF_ERROR(varhandle_op->SetAttrString(
       "shared_name", kNoSharingResourceID, strlen(kNoSharingResourceID)));
 
-  AbstractTensorHandleInterface* var_handle = nullptr;
+  AbstractTensorHandle* var_handle = nullptr;
   int num_retvals = 1;
   TF_RETURN_IF_ERROR(varhandle_op->Execute(
       absl::MakeSpan(&var_handle, num_retvals), &num_retvals));
-  handle->reset(var_handle);
+  if (var_handle->getKind() != ImmediateExecutionTensorHandle::kKind) {
+    return errors::Internal("Unexpected tensor handle kind.");
+  }
+  handle->reset(reinterpret_cast<ImmediateExecutionTensorHandle*>(var_handle));
   return Status();
 }
 
-Status AssignVariable(AbstractContextInterface* ctx,
-                      AbstractTensorHandleInterface* variable_handle,
-                      DataType dtype, AbstractTensorHandleInterface* value) {
+Status AssignVariable(ImmediateExecutionContext* ctx,
+                      ImmediateExecutionTensorHandle* variable_handle,
+                      DataType dtype, ImmediateExecutionTensorHandle* value) {
   AbstractOpPtr assign_op(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(assign_op->Reset("AssignVariableOp", nullptr));
   TF_RETURN_IF_ERROR(assign_op->SetAttrType("dtype", dtype));
@@ -72,24 +76,27 @@ Status AssignVariable(AbstractContextInterface* ctx,
   return Status();
 }
 
-Status ReadVariable(AbstractContextInterface* ctx,
-                    AbstractTensorHandleInterface* variable_handle,
+Status ReadVariable(ImmediateExecutionContext* ctx,
+                    ImmediateExecutionTensorHandle* variable_handle,
                     DataType dtype, AbstractTensorHandlePtr* output) {
   AbstractOpPtr read_op = AbstractOpPtr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(read_op->Reset("ReadVariableOp", nullptr));
   TF_RETURN_IF_ERROR(read_op->SetAttrType("dtype", dtype));
   TF_RETURN_IF_ERROR(read_op->AddInput(variable_handle));
 
-  AbstractTensorHandleInterface* value = nullptr;
+  AbstractTensorHandle* value = nullptr;
   int num_retvals = 1;
   TF_RETURN_IF_ERROR(
       read_op->Execute(absl::MakeSpan(&value, num_retvals), &num_retvals));
-  output->reset(value);
+  if (value->getKind() != ImmediateExecutionTensorHandle::kKind) {
+    return errors::Internal("Unexpected tensor handle kind.");
+  }
+  output->reset(reinterpret_cast<ImmediateExecutionTensorHandle*>(value));
   return Status();
 }
 
-Status DestroyResource(AbstractContextInterface* ctx,
-                       AbstractTensorHandleInterface* handle) {
+Status DestroyResource(ImmediateExecutionContext* ctx,
+                       ImmediateExecutionTensorHandle* handle) {
   AbstractOpPtr destroy_op = AbstractOpPtr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(destroy_op->Reset("DestroyResourceOp", nullptr));
   TF_RETURN_IF_ERROR(destroy_op->SetAttrBool("ignore_lookup_error", true));

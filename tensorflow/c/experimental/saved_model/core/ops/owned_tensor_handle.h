@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/c/eager/tensor_handle_interface.h"
+#include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 
 namespace tensorflow {
@@ -33,7 +33,7 @@ struct TensorHandleDeleter {
 };
 
 struct AbstractTensorHandleDeleter {
-  void operator()(AbstractTensorHandleInterface* p) const {
+  void operator()(ImmediateExecutionTensorHandle* p) const {
     if (p != nullptr) {
       p->Release();
     }
@@ -46,7 +46,7 @@ using TensorHandlePtr =
     std::unique_ptr<TensorHandle, internal::TensorHandleDeleter>;
 
 using AbstractTensorHandlePtr =
-    std::unique_ptr<AbstractTensorHandleInterface,
+    std::unique_ptr<ImmediateExecutionTensorHandle,
                     internal::AbstractTensorHandleDeleter>;
 
 }  // namespace tensorflow

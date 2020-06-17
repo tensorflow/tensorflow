@@ -12,9 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_C_EAGER_TENSOR_HANDLE_INTERFACE_H_
-#define TENSORFLOW_C_EAGER_TENSOR_HANDLE_INTERFACE_H_
+#ifndef TENSORFLOW_C_EAGER_IMMEDIATE_EXECUTION_TENSOR_HANDLE_H_
+#define TENSORFLOW_C_EAGER_IMMEDIATE_EXECUTION_TENSOR_HANDLE_H_
 
+#include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"
@@ -30,15 +31,9 @@ namespace tensorflow {
 // files. The interface lists the common functionality that must be provided by
 // any concrete implementation. However, in cases where the true concrete class
 // is needed a static_cast can be applied.
-class AbstractTensorHandleInterface {
+class ImmediateExecutionTensorHandle : public AbstractTensorHandle {
  public:
-  // Release any underlying resources, including the interface object.
-  //
-  // WARNING: The destructor of this class is marked as protected to disallow
-  // clients from directly destroying this object since it may manage it's own
-  // lifetime through ref counting. Thus this must be allocated on the heap and
-  // clients MUST call Release() in order to destroy an instance of this class.
-  virtual void Release() = 0;
+  static constexpr AbstractTensorHandleKind kKind = kImmediateExecution;
 
   // Returns tensor dtype.
   virtual tensorflow::DataType DataType() const = 0;
@@ -57,12 +52,13 @@ class AbstractTensorHandleInterface {
   virtual AbstractTensorInterface* Resolve(Status* status) = 0;
 
   // Return a copy of the handle.
-  virtual AbstractTensorHandleInterface* Copy() = 0;
+  virtual ImmediateExecutionTensorHandle* Copy() = 0;
 
  protected:
-  virtual ~AbstractTensorHandleInterface() {}
+  ImmediateExecutionTensorHandle() : AbstractTensorHandle(kKind) {}
+  ~ImmediateExecutionTensorHandle() override {}
 };
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_C_EAGER_TENSOR_HANDLE_INTERFACE_H_
+#endif  // TENSORFLOW_C_EAGER_IMMEDIATE_EXECUTION_TENSOR_HANDLE_H_
