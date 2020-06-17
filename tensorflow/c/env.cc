@@ -147,14 +147,8 @@ TF_StringStream* TF_GetLocalTempDirectories() {
   return list;
 }
 
-void TF_GetTempFileName(const char* extension, std::string* name,
-                        TF_Status* status) {
-  *name = ::tensorflow::io::GetTempFilename(extension);
-  if (name->length() == 0) {
-    TF_SetStatus(status, TF_INTERNAL, "Can not get temp file name");
-  } else {
-    TF_SetStatus(status, TF_OK, "");
-  }
+void TF_GetTempFileName(const char* extension, char** name) {
+  *name = strdup(::tensorflow::io::GetTempFilename(extension).c_str());
 }
 
 TF_CAPI_EXPORT extern uint64_t TF_NowNanos(void) {
