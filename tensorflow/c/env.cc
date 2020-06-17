@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/types.h"
 
 struct TF_StringStream {
@@ -148,9 +149,9 @@ TF_StringStream* TF_GetLocalTempDirectories() {
 
 void TF_GetTempFileName(const char* extension, std::string* name,
                         TF_Status* status) {
-  *name = ::tensorflow::Env::Default()->GetTempFilename(extension);
-  if (*name.length() == 0) {
-    TF_SetStatus(status, TF_INTERNAL, "Can not create temp file name");
+  *name = ::tensorflow::io::GetTempFilename(extension);
+  if (name->length() == 0) {
+    TF_SetStatus(status, TF_INTERNAL, "Can not get temp file name");
   } else {
     TF_SetStatus(status, TF_OK, "");
   }

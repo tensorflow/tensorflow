@@ -20,6 +20,8 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include <string>
+
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/tf_file_statistics.h"
 
