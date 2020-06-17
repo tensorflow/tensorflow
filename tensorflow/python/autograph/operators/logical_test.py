@@ -19,9 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.autograph.operators import logical
-from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
@@ -84,18 +82,6 @@ class LogicalOperatorsTest(test.TestCase):
     with self.cached_session() as sess:
       t = logical.not_(self._tf_false())
       self.assertEqual(self.evaluate(t), True)
-
-  # Test case for GitHub issue 40471
-  def test_equal_output_shapes(self):
-
-    @def_function.function(input_signature=[
-        tensor_spec.TensorSpec([None, 10, 1]),
-        tensor_spec.TensorSpec([None, 1, 4])])
-    def f(x, y):
-      z = x == y
-      return z
-
-    self.assertAllEqual(f.get_concrete_function().output_shapes, [None, 10, 4])
 
 
 if __name__ == '__main__':
