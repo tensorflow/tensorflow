@@ -299,32 +299,21 @@ class QuantizationMode(object):
 
     inference_input_type = input_ty if input_ty else constants.FLOAT
     inference_output_type = output_ty if output_ty else constants.FLOAT
-    if self.post_training_int8_no_float():
+
+    if self.post_training_int8_no_float() \
+      or self.post_training_int16x8_no_float():
       return True, {
           "inference_input_type": inference_input_type,
           "inference_output_type": inference_output_type,
-          "activations_type": constants.INT8,
+          "activations_type": self.activations_type(),
           "allow_float": False
       }
-    elif self.post_training_int8_allow_float():
+    elif self.post_training_int8_allow_float() \
+      or self.post_training_int16x8_allow_float():
       return True, {
           "inference_input_type": inference_input_type,
           "inference_output_type": inference_output_type,
-          "activations_type": constants.INT8,
-          "allow_float": True
-      }
-    elif self.post_training_int16x8_no_float():
-      return True, {
-          "inference_input_type": inference_input_type,
-          "inference_output_type": inference_output_type,
-          "activations_type": constants.INT16,
-          "allow_float": False
-      }
-    elif self.post_training_int16x8_allow_float():
-      return True, {
-          "inference_input_type": inference_input_type,
-          "inference_output_type": inference_output_type,
-          "activations_type": constants.INT16,
+          "activations_type": self.activations_type(),
           "allow_float": True
       }
     else:
