@@ -113,3 +113,6 @@ ENV TF_NEED_ROCM 1
 # By default, HIP runtime "hides" 256MB from the TF Runtime, but with recent changes (update to ROCm2.3, dynamic loading of roc* libs, et al)
 # it seems that we need to up the threshold slightly to 320MB
 ENV HIP_HIDDEN_FREE_MEM=320
+
+# Super hacky workaround to JIRA ticket - 241253
+COPY math_functions.h $ROCM_PATH/hip/include/hip/hcc_detail/math_functions.h
