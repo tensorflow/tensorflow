@@ -1,8 +1,7 @@
+#include "lib_ops/api/arg_min_max.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-
-#include "lib_ops/api/arg_min_max.h"
 
 namespace tflite {
 namespace ops {
@@ -34,7 +33,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   auto* op = reinterpret_cast<::xcore::arg_min_max::ArgMax16*>(node->user_data);
 
-  op->Eval(input->data.i16, output->data.i32, length);
+  op->Eval(output->data.i32, input->data.i16, length);
 
   return kTfLiteOk;
 }
