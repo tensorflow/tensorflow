@@ -245,13 +245,18 @@ class ArithmeticOptimizerStage : public GraphOptimizerStage<string> {
   // Update consumers of node to take new_input as input instead.
   void UpdateConsumers(NodeDef* node, const string& new_input) {
     const string& node_name = node->name();
-    const auto consumers = ctx().node_map->GetOutputs(node_name);
+    UpdateConsumers(node_name, new_input);
+  }
+
+  void UpdateConsumers(const string& old_input, const string& new_input) {
+    const absl::flat_hash_set<NodeDef*> consumers =
+        ctx().node_map->GetOutputs(NodeName(old_input));
     for (NodeDef* consumer : consumers) {
       for (int i = 0; i < consumer->input_size(); ++i) {
-        if (consumer->input(i) == node_name &&
+        if (consumer->input(i) == old_input &&
             consumer->name() != NodeName(new_input)) {
           consumer->set_input(i, new_input);
-          ctx().node_map->UpdateInput(consumer->name(), node_name, new_input);
+          ctx().node_map->UpdateInput(consumer->name(), old_input, new_input);
         }
       }
       AddToOptimizationQueue(consumer);
@@ -1501,6 +1506,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
   // We use an ordinary set sorted on port and node name, so the order, and
   // hence the node name used for the hoisted chain, will be deterministic.
   using ChainLinkSet = std::set<ChainLink>;
+  using PortNodeMap = absl::flat_hash_map<int, NodeDef*>;
 
   bool IsSupported(const NodeDef* node) const override {
     if (IsInPreserveSet(*node)) return false;
@@ -1530,11 +1536,14 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
     int prefix_length;
     std::set<string> ctrl_inputs;
     ChainLinkSet tails;
+    PortNodeMap reshapes;
     TF_RETURN_IF_ERROR(
-        FindCommonUnaryOpChain(*node, &prefix_length, &tails, &ctrl_inputs));
+        FindCommonUnaryOpChain(*node, &prefix_length, &tails, &reshapes,
+            &ctrl_inputs));
     if (prefix_length > 0 && !tails.empty()) {
       TF_RETURN_IF_ERROR(
           HoistUnaryOpChain(prefix_length, tails, &ctrl_inputs, node));
+      TF_RETURN_IF_ERROR(AddReshapes(reshapes, node));
     }
     return Status::OK();
   }
@@ -1555,7 +1564,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
   // Returns the length of the common unary chain of ops that can be
   // hoisted to the other side of concat or split.
   Status FindCommonUnaryOpChain(const NodeDef& root_node, int* prefix_length,
-                                ChainLinkSet* tails,
+                                ChainLinkSet* tails, PortNodeMap* reshapes,
                                 std::set<string>* ctrl_inputs) const {
     *prefix_length = 0;
     // Follow the chains starting at each concat input or split output as long
@@ -1564,11 +1573,12 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
     //   2. The ops are unary elementwise op.
     //   3. The op output has only a single consumer (concat only).
     ChainLinkSet cur_tails;
-    TF_RETURN_IF_ERROR(InitializeChains(root_node, &cur_tails));
+    ctrl_inputs->clear();
+    TF_RETURN_IF_ERROR(
+        InitializeChains(root_node, &cur_tails, reshapes, ctrl_inputs));
     if (cur_tails.size() < 2) {
       return Status::OK();
     }
-    ctrl_inputs->clear();
     bool stop = false;
     while (!stop && !cur_tails.empty() &&
            OpsAreSafeToHoist(root_node, cur_tails)) {
@@ -1578,7 +1588,8 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
       GatherControlInputs(ctrl_inputs, *tails);
 
       // Advance tail pointers to the next level.
-      TF_RETURN_IF_ERROR(AdvanceTails(*tails, &cur_tails, &stop));
+      TF_RETURN_IF_ERROR(
+          AdvanceTails(*tails, &cur_tails, reshapes, ctrl_inputs, &stop));
     }
     return Status::OK();
   }
@@ -1609,11 +1620,16 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
                            const ChainLinkSet& ops) const {
     for (const auto& link : ops) {
       const NodeDef* node = link.node;
-      for (int i = node->input_size() - 1; i >= 0; --i) {
-        const string& input = node->input(i);
-        if (!IsControlInput(input)) break;
-        ctrl_inputs->insert(input);
-      }
+      GatherControlInputs(node, ctrl_inputs);
+    }
+  }
+
+  void GatherControlInputs(const NodeDef* node,
+                           std::set<string>* ctrl_inputs) const {
+    for (int i = node->input_size() - 1; i >= 0; --i) {
+      const string& input = node->input(i);
+      if (!IsControlInput(input)) break;
+      ctrl_inputs->insert(input);
     }
   }
 
@@ -1630,7 +1646,9 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
     }
   }
 
-  Status InitializeChains(const NodeDef& node, ChainLinkSet* tails) const {
+  Status InitializeChains(const NodeDef& node, ChainLinkSet* tails,
+                          PortNodeMap* reshapes,
+                          std::set<string>* ctrl_inputs) const {
     if (node_is_concat_) {
       // Handle concat nodes by looking backwards in the graph.
       TF_RETURN_IF_ERROR(CheckAttrExists(node, "N"));
@@ -1650,7 +1668,9 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
         }
         NodeDef* tail;
         TF_RETURN_IF_ERROR(GetInputNode(node.input(input_port), &tail));
-        tails->insert(ChainLink(tail, input_port));
+        // Remember original port.
+        TF_RETURN_IF_ERROR(UpdateReshapesAndTails(
+            tail, input_port, reshapes, tails, ctrl_inputs));
       }
       return Status::OK();
     } else {
@@ -1660,7 +1680,9 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
         if (IsControlInput(output->input(0))) continue;
         TensorId tensor_id = ParseTensorName(output->input(0));
         if (tensor_id.node() == node.name()) {
-          tails->insert(ChainLink(output, tensor_id.index()));
+          // Remember original port.
+          TF_RETURN_IF_ERROR(UpdateReshapesAndTails(
+              output, tensor_id.index(), reshapes, tails, ctrl_inputs));
         } else {
           // This output node has a non-control input other than the split node,
           // abort.
@@ -1703,6 +1725,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
   }
 
   Status AdvanceTails(const ChainLinkSet& tails, ChainLinkSet* new_tails,
+                      PortNodeMap* reshapes, std::set<string>* ctrl_inputs,
                       bool* stop) const {
     *stop = true;
     new_tails->clear();
@@ -1715,7 +1738,8 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
         NodeDef* new_tail;
         TF_RETURN_IF_ERROR(GetInputNode(tail->input(0), &new_tail));
         // Remember original port.
-        new_tails->insert(ChainLink(new_tail, link.port_origin));
+        TF_RETURN_IF_ERROR(UpdateReshapesAndTails(
+            new_tail, link.port_origin, reshapes, new_tails, ctrl_inputs));
       } else {
         for (NodeDef* new_tail : ctx().node_map->GetOutputs(tail->name())) {
           const TensorId tensor = ParseTensorName(new_tail->input(0));
@@ -1725,7 +1749,8 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
           // Skip control outputs.
           if (tensor.index() >= 0) {
             // Remember original port.
-            new_tails->insert(ChainLink(new_tail, link.port_origin));
+            TF_RETURN_IF_ERROR(UpdateReshapesAndTails(
+                new_tail, link.port_origin, reshapes, new_tails, ctrl_inputs));
           }
         }
       }
@@ -1814,6 +1839,133 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
 
   bool IsAlreadyOptimized(const NodeDef& node) const {
     return optimized_nodes_.find(node.name()) != optimized_nodes_.end();
+  }
+
+  Status UpdateReshapesAndTails(const NodeDef* wrapped_node, const int port,
+                                PortNodeMap* reshapes, ChainLinkSet* tails,
+                                std::set<string>* ctrl_inputs) const {
+    NodeDef* unwrapped_node = nullptr;
+    TF_RETURN_IF_ERROR(UnwrapReshape(
+        wrapped_node, port, reshapes, ctrl_inputs, &unwrapped_node));
+    tails->insert(ChainLink(unwrapped_node, port));
+    return Status::OK();
+  }
+
+  Status UnwrapReshape(const NodeDef* wrapped_node, const int port,
+                       PortNodeMap* reshapes, std::set<string>* ctrl_inputs,
+                       NodeDef** return_node) const {
+    // If wrapped_node is not reshape, return the wrapped_node directly.
+    if (!IsReshape(*wrapped_node)) {
+      *return_node = const_cast<NodeDef*>(wrapped_node);
+      return Status::OK();
+    }
+
+    // Unwarp the all the reshape node.
+    if (node_is_concat_) {
+      TF_RETURN_IF_ERROR(UnwrapReshapeInput(wrapped_node, port, reshapes,
+                                            ctrl_inputs, return_node));
+    } else {
+      TF_RETURN_IF_ERROR(UnwrapReshapeOutput(wrapped_node, port, reshapes,
+                                             ctrl_inputs, return_node));
+    }
+    return Status::OK();
+  }
+
+  Status UnwrapReshapeInput(const NodeDef* wrapped_node, const int port,
+      PortNodeMap* reshapes, std::set<string>* ctrl_inputs,
+      NodeDef** return_node) const {
+    CHECK(IsReshape(*wrapped_node));
+
+    NodeDef* unwrapped_node = const_cast<NodeDef*>(wrapped_node);
+    // Record the last reshape node.
+    reshapes->insert(std::make_pair(port, unwrapped_node));
+
+    // Skip the reshape chain.
+    while (IsReshape(*unwrapped_node)) {
+      GatherControlInputs(unwrapped_node, ctrl_inputs);
+      TF_RETURN_IF_ERROR(
+          GetInputNode(unwrapped_node->input(0), &unwrapped_node));
+    }
+
+    *return_node = unwrapped_node;
+    return Status::OK();
+  }
+
+  Status UnwrapReshapeOutput(const NodeDef* wrapped_node, const int port,
+      PortNodeMap* reshapes, std::set<string>* ctrl_inputs,
+      NodeDef** return_node) const {
+    CHECK(IsReshape(*wrapped_node));
+
+    NodeDef* unwrapped_node = const_cast<NodeDef*>(wrapped_node);
+    NodeDef* wrap = nullptr;
+    // Skip the reshape chain.
+    while (IsReshape(*unwrapped_node)) {
+      const absl::flat_hash_set<NodeDef*>& outputs =
+          ctx().node_map->GetOutputs(unwrapped_node->name());
+      if (outputs.size() != 1) {
+        break;
+      }
+      GatherControlInputs(unwrapped_node, ctrl_inputs);
+      wrap = unwrapped_node;
+      unwrapped_node = *(outputs.begin());
+    }
+
+    // Record the last reshape node.
+    reshapes->insert_or_assign(port, wrap);
+    *return_node = unwrapped_node;
+    return Status::OK();
+  }
+
+  Status AddReshapes(const PortNodeMap& reshapes, NodeDef* root_node) {
+    for (auto link : reshapes) {
+      AddReshape(link.second, root_node, link.first);
+    }
+    return Status::OK();
+  }
+
+  Status AddReshape(NodeDef* reshape, NodeDef* root_node, int port) {
+    if (node_is_concat_) {
+      return AddReshapeForConcate(reshape, root_node, port);
+    } else {
+      return AddReshapeForSplit(reshape, root_node, port);
+    }
+  }
+
+  Status AddReshapeForConcate(
+      NodeDef* reshape, NodeDef* concate_node, int port) {
+    // Replace concate input with reshape
+    const int offset = concate_node->op() == "Concat" ? 1 : 0;
+    port += offset;
+    const string concate_input = concate_node->input(port);
+    concate_node->set_input(port, reshape->name());
+    ctx().node_map->UpdateInput(
+        concate_node->name(), concate_input, reshape->name());
+
+    // Replace reshape input with concate input
+    const string reshape_input = reshape->input(0);
+    reshape->set_input(0, concate_input);
+    ctx().node_map->UpdateInput(
+        reshape->name(), reshape_input, concate_input);
+
+    AddToOptimizationQueue(reshape);
+    return Status::OK();
+  }
+
+  Status AddReshapeForSplit(
+      NodeDef* reshape, NodeDef* split_node, int port) {
+    // Replace reshape outputs with split outputs
+    const string split_name =
+        (port == 0) ? split_node->name()
+                    : strings::StrCat(split_node->name(), ":", port);
+    UpdateConsumers(split_name, reshape->name());
+
+    // Replace split output with reshape
+    const string reshape_input = reshape->input(0);
+    reshape->set_input(0, split_name);
+    ctx().node_map->UpdateInput(
+        reshape->name(), reshape_input, split_name);
+
+    return Status::OK();
   }
 
  private:

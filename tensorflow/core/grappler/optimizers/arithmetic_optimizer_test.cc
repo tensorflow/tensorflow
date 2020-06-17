@@ -3936,6 +3936,345 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryIntoSplit) {
   }
 }
 
+TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryFromConcatWithReshape) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output a = ops::Const(s.WithOpName("a"), 3.14f, {32});
+  Output b = ops::Const(s.WithOpName("b"), 1.0f, {32});
+  Output c = ops::Const(s.WithOpName("c"), 42.0f, {4, 8});
+  Output axis = ops::Const(s.WithOpName("axis"), 0, {});
+  Output ctrl1 = ops::Placeholder(
+      s.WithOpName("ctrl1"), DT_BOOL, ops::Placeholder::Shape({}));
+  Output ctrl2 = ops::Placeholder(
+      s.WithOpName("ctrl2"), DT_BOOL, ops::Placeholder::Shape({}));
+  Output ctrl3 = ops::Placeholder(
+      s.WithOpName("ctrl3"), DT_BOOL, ops::Placeholder::Shape({}));
+  Output ctrl4 = ops::Placeholder(
+      s.WithOpName("ctrl4"), DT_BOOL, ops::Placeholder::Shape({}));
+  Output ctrl5 = ops::Placeholder(
+      s.WithOpName("ctrl5"), DT_BOOL, ops::Placeholder::Shape({}));
+  Output new_shape = ops::Const(s.WithOpName("new_shape"), 32, {1});
+  Output temp_shape = ops::Const(s.WithOpName("temp_shape"), {8, 2, 2}, {3});
+  // Test case with chains of length 1.
+  // Rewrites
+  //       Concat({Exp(a), Exp(b), Reshape(Exp(c))})
+  // into
+  //       Exp(Concat({a, b, Reshape(c)})).
+
+  Output sin_a =
+      ops::Sin(s.WithOpName("sin_a").WithControlDependencies(ctrl3), a);
+  Output exp_a =
+      ops::Exp(s.WithOpName("exp_a").WithControlDependencies(ctrl1), sin_a);
+  Output exp_b = ops::Exp(s.WithOpName("exp_b"), b);
+  Output exp_c =
+      ops::Exp(s.WithOpName("exp_c").WithControlDependencies(ctrl2), c);
+
+  Output reshape_c = ops::Reshape(
+      s.WithOpName("reshape_c").WithControlDependencies(ctrl4),
+      exp_c,
+      new_shape);
+
+  Output concat =
+      ops::Concat(s.WithOpName("concat"), {exp_a, exp_b, reshape_c}, axis);
+  Output id = ops::Identity(s.WithOpName("id"), concat);
+
+  // Test case with chains of length 2.
+  // Rewrites
+  //       Concat({Cos(Exp(a)), Cos(Exp(b)), Reshape1(Cos(Reshape2(Exp(c)))})
+  // into
+  //       Cos(Exp(Concat({a, b, Reshape1(c)}))).
+  Output exp_a2 =
+      ops::Exp(s.WithOpName("exp_a2").WithControlDependencies(ctrl1), sin_a);
+  Output exp_b2 = ops::Exp(s.WithOpName("exp_b2"), b);
+  Output exp_c2 =
+      ops::Exp(s.WithOpName("exp_c2").WithControlDependencies(ctrl2), c);
+
+  Output reshape_temp = ops::Reshape(
+      s.WithOpName("reshape_temp").WithControlDependencies(ctrl4),
+      exp_c2,
+      temp_shape);
+
+  Output cos_exp_a2 = ops::Cos(
+      s.WithOpName("cos_exp_a2").WithControlDependencies(ctrl1), exp_a2);
+  Output cos_exp_b2 = ops::Cos(
+      s.WithOpName("cos_exp_b2").WithControlDependencies(ctrl3), exp_b2);
+  Output cos_exp_c2 = ops::Cos(s.WithOpName("cos_exp_c2"), reshape_temp);
+
+  Output reshape_c2 = ops::Reshape(
+      s.WithOpName("reshape_c2").WithControlDependencies(ctrl5),
+      cos_exp_c2,
+      new_shape);
+
+  Output concat2 = ops::Concat(s.WithOpName("concat2"),
+                               {cos_exp_a2, cos_exp_b2, reshape_c2}, axis);
+  Output id2 = ops::Identity(s.WithOpName("id2"), concat2);
+
+  GrapplerItem item;
+  item.fetch = {"id", "id2"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyHoistCWiseUnaryChains(&optimizer);
+  OptimizeTwiceAndPrune(&optimizer, &item, &output);
+
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    // The following node should be pruned.
+    EXPECT_NE(node.name(), "reshape_temp");
+    if (node.name() == "reshape_c") {
+      ASSERT_EQ(node.input_size(), 3);
+      EXPECT_EQ(node.input(0), "c");
+      EXPECT_EQ(node.input(1), "new_shape");
+      EXPECT_EQ(node.input(2), "^ctrl4");
+      found++;
+    }
+    if (node.name() == "concat") {
+      ASSERT_EQ(node.input_size(), 7);
+      EXPECT_EQ(node.input(0), "sin_a");
+      EXPECT_EQ(node.input(1), "b");
+      EXPECT_EQ(node.input(2), "reshape_c");
+      EXPECT_EQ(node.input(3), "axis");
+      EXPECT_EQ(node.input(4), "^ctrl1");
+      EXPECT_EQ(node.input(5), "^ctrl2");
+      EXPECT_EQ(node.input(6), "^ctrl4");
+      found++;
+    }
+    if (node.name() == "exp_a") {
+      ASSERT_EQ(node.input_size(), 2);
+      EXPECT_EQ(node.input(0), "concat");
+      EXPECT_EQ(node.input(1), "^ctrl1");
+      found++;
+    }
+    if (node.name() == "id") {
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "exp_a");
+      found++;
+    }
+
+    if (node.name() == "reshape_c2") {
+      ASSERT_EQ(node.input_size(), 3);
+      EXPECT_EQ(node.input(0), "c");
+      EXPECT_EQ(node.input(1), "new_shape");
+      EXPECT_EQ(node.input(2), "^ctrl5");
+      found++;
+    }
+    if (node.name() == "concat2") {
+      ASSERT_EQ(node.input_size(), 9);
+      EXPECT_EQ(node.input(0), "sin_a");
+      EXPECT_EQ(node.input(1), "b");
+      EXPECT_EQ(node.input(2), "reshape_c2");
+      EXPECT_EQ(node.input(3), "axis");
+      EXPECT_EQ(node.input(4), "^ctrl1");
+      EXPECT_EQ(node.input(5), "^ctrl2");
+      EXPECT_EQ(node.input(6), "^ctrl3");
+      EXPECT_EQ(node.input(7), "^ctrl4");
+      EXPECT_EQ(node.input(8), "^ctrl5");
+      found++;
+    }
+    if (node.name() == "exp_a2") {
+      ASSERT_EQ(node.input_size(), 2);
+      EXPECT_EQ(node.input(0), "concat2");
+      EXPECT_EQ(node.input(1), "^ctrl1");
+      found++;
+    }
+    if (node.name() == "cos_exp_a2") {
+      ASSERT_EQ(node.input_size(), 2);
+      EXPECT_EQ(node.input(0), "exp_a2");
+      EXPECT_EQ(node.input(1), "^ctrl1");
+      found++;
+    }
+    if (node.name() == "id2") {
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "cos_exp_a2");
+      found++;
+    }
+  }
+  EXPECT_EQ(found, 9);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  ASSERT_EQ(tensors.size(), tensors_expected.size());
+  EXPECT_EQ(tensors.size(), item.fetch.size());
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectTensorNear<float>(tensors[i], tensors_expected[i], 1e-6);
+  }
+}
+
+TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryIntoSplitWithReshape) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output x = ops::Const(s.WithOpName("x"), 3.1415f, {32});
+  Output axis = ops::Const(s.WithOpName("axis"), 0, {});
+  Output ctrl1 = ops::Placeholder(
+      s.WithOpName("ctrl1"), DT_BOOL, ops::Placeholder::Shape({}));
+  Output ctrl2 = ops::Placeholder(
+      s.WithOpName("ctrl2"), DT_BOOL, ops::Placeholder::Shape({}));
+  Output ctrl3 = ops::Placeholder(
+      s.WithOpName("ctrl3"), DT_BOOL, ops::Placeholder::Shape({}));
+  Output ctrl4 = ops::Placeholder(
+      s.WithOpName("ctrl4"), DT_BOOL, ops::Placeholder::Shape({}));
+  Output ctrl5 = ops::Placeholder(
+      s.WithOpName("ctrl5"), DT_BOOL, ops::Placeholder::Shape({}));
+  Output new_shape = ops::Const(s.WithOpName("new_shape"), {8, 2}, {2});
+  Output temp_shape = ops::Const(s.WithOpName("temp_shape"), {2, 2, 4}, {3});
+  // Test case with chains of length 1.
+  // Rewrites
+  //          [Sin(Reshape(y)) for y in Split(x)]
+  // into
+  //          [Reshape(y) for y in Split(Sin(x))].
+  ops::Split split1(s.WithOpName("split1"), axis, x, 2);
+  Output sin_a =
+      ops::Sin(s.WithOpName("sin_a").WithControlDependencies(ctrl1), split1[0]);
+  Output id_a = ops::Identity(s.WithOpName("id_a"), sin_a);
+
+  Output reshape_b = ops::Reshape(
+      s.WithOpName("reshape_b").WithControlDependencies(ctrl4),
+      split1[1],
+      new_shape);
+
+  Output sin_b = ops::Sin(s.WithOpName("sin_b"), reshape_b);
+  Output exp_b = ops::Exp(s.WithOpName("exp_b"), sin_b);
+  Output id_b = ops::Identity(s.WithOpName("id_b"), exp_b);
+
+  // Test case with SplitV and chains of length 2.
+  // Rewrites
+  //          [Reshape1(Cos(Reshape2(Exp(y)))) for y in Split(x)]
+  // into
+  //          [Reshape1(y) for y in Split(Cos(Exp(x)))].
+  Output size_splits2 = ops::Const(s.WithOpName("size_splits2"), {16, 16}, {2});
+  ops::SplitV split2(s.WithOpName("split2"), x, size_splits2, axis, 2);
+  Output exp_a2 = ops::Exp(
+      s.WithOpName("exp_a2").WithControlDependencies(ctrl1), split2[0]);
+  Output exp_b2 = ops::Exp(s.WithOpName("exp_b2"), split2[1]);
+
+  Output reshape_temp = ops::Reshape(
+      s.WithOpName("reshape_temp").WithControlDependencies(ctrl4),
+      exp_b2,
+      temp_shape);
+
+  Output cos_exp_a2 = ops::Cos(
+      s.WithOpName("cos_exp_a2").WithControlDependencies(ctrl2), exp_a2);
+  Output cos_exp_b2 = ops::Cos(
+      s.WithOpName("cos_exp_b2").WithControlDependencies(ctrl3), reshape_temp);
+
+  Output reshape_b2 = ops::Reshape(
+      s.WithOpName("reshape_b2").WithControlDependencies(ctrl5),
+      cos_exp_b2,
+      new_shape);
+
+  Output id_a2 = ops::Identity(s.WithOpName("id_a2"), cos_exp_a2);
+  Output id_b2 = ops::Identity(s.WithOpName("id_b2"), reshape_b2);
+
+  GrapplerItem item;
+  item.fetch = {"id_a", "id_b", "id_a2", "id_b2"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyHoistCWiseUnaryChains(&optimizer);
+  OptimizeTwiceAndPrune(&optimizer, &item, &output);
+
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    // The following 7 nodes should be pruned.
+    EXPECT_NE(node.name(), "sin_a");
+    EXPECT_NE(node.name(), "sin_b");
+    EXPECT_NE(node.name(), "exp_a2");
+    EXPECT_NE(node.name(), "exp_b2");
+    EXPECT_NE(node.name(), "cos_exp_a2");
+    EXPECT_NE(node.name(), "cos_exp_b2");
+    EXPECT_NE(node.name(), "reshape_temp");
+
+    if (node.name() == "split1") {
+      ASSERT_EQ(node.input_size(), 2);
+      EXPECT_EQ(node.input(0), "axis");
+      EXPECT_EQ(node.input(1), "ArithmeticOptimizer/_sin_a_split1");
+      found++;
+    }
+    if (node.name() == "ArithmeticOptimizer/_sin_a_split1") {
+      EXPECT_EQ(node.op(), "Sin");
+      ASSERT_EQ(node.input_size(), 3);
+      EXPECT_EQ(node.input(0), "x");
+      EXPECT_EQ(node.input(1), "^ctrl1");
+      EXPECT_EQ(node.input(2), "^ctrl4");
+      found++;
+    }
+    if (node.name() == "id_a") {
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "split1");
+      found++;
+    }
+    if (node.name() == "reshape_b") {
+      ASSERT_EQ(node.input_size(), 3);
+      EXPECT_EQ(node.input(0), "split1:1");
+      EXPECT_EQ(node.input(1), "new_shape");
+      EXPECT_EQ(node.input(2), "^ctrl4");
+      found++;
+    }
+    if (node.name() == "exp_b") {
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "reshape_b");
+      found++;
+    }
+    if (node.name() == "id_b") {
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "exp_b");
+      found++;
+    }
+    if (node.name() == "ArithmeticOptimizer/_exp_a2_split2") {
+      EXPECT_EQ(node.op(), "Exp");
+      ASSERT_EQ(node.input_size(), 6);
+      EXPECT_EQ(node.input(0), "x");
+      EXPECT_EQ(node.input(1), "^ctrl1");
+      EXPECT_EQ(node.input(2), "^ctrl2");
+      EXPECT_EQ(node.input(3), "^ctrl3");
+      EXPECT_EQ(node.input(4), "^ctrl4");
+      EXPECT_EQ(node.input(5), "^ctrl5");
+      found++;
+    }
+    if (node.name() == "ArithmeticOptimizer/_cos_exp_a2_split2") {
+      EXPECT_EQ(node.op(), "Cos");
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "ArithmeticOptimizer/_exp_a2_split2");
+      found++;
+    }
+    if (node.name() == "split2") {
+      ASSERT_EQ(node.input_size(), 3);
+      EXPECT_EQ(node.input(0), "ArithmeticOptimizer/_cos_exp_a2_split2");
+      EXPECT_EQ(node.input(1), "size_splits2");
+      EXPECT_EQ(node.input(2), "axis");
+      found++;
+    }
+    if (node.name() == "id_a2") {
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "split2");
+      found++;
+    }
+    if (node.name() == "reshape_b2") {
+      ASSERT_EQ(node.input_size(), 3);
+      EXPECT_EQ(node.input(0), "split2:1");
+      EXPECT_EQ(node.input(1), "new_shape");
+      EXPECT_EQ(node.input(2), "^ctrl5");
+      found++;
+    }
+    if (node.name() == "id_b2") {
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "reshape_b2");
+      found++;
+    }
+  }
+  EXPECT_EQ(found, 12);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  ASSERT_EQ(tensors.size(), tensors_expected.size());
+  EXPECT_EQ(tensors.size(), item.fetch.size());
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectTensorNear<float>(tensors[i], tensors_expected[i], 1e-6);
+  }
+}
+
 TEST_F(ArithmeticOptimizerTest, RemoveIdempotent) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output a = ops::Const(s.WithOpName("a"), 3.14f, {32});
