@@ -54,8 +54,9 @@ echo 'OpenMPI version:'
 mpirun --version
 
 # Install OpenSSH for MPI to communicate between containers
-apt-get clean && apt-get update && apt-get install -y --no-install-recommends --fix-missing \
-    openssh-client openssh-server libnuma-dev && \
+apt-get clean && apt-get update && \
+    apt-get install -y --no-install-recommends --fix-missing \
+        openssh-client openssh-server libnuma-dev && \
     rm -rf /var/lib/apt/lists/*
 if [[ $?  == "0" ]]; then
     echo "PASS: OpenSSH installation"
@@ -70,7 +71,7 @@ else
 fi
 mkdir -p /var/run/sshd
 # Allow OpenSSH to talk to containers without asking for confirmation
-cat /etc/ssh/ssh_config | grep -v StrictHostKeyChecking > /etc/ssh/ssh_config.new
+grep -v StrictHostKeyChecking /etc/ssh/ssh_config > /etc/ssh/ssh_config.new
 echo " StrictHostKeyChecking no" >> /etc/ssh/ssh_config.new
 mv /etc/ssh/ssh_config.new /etc/ssh/ssh_config
 

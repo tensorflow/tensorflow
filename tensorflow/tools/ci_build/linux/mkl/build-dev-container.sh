@@ -201,21 +201,20 @@ function test_container()
   debug "ID of the running docker container: ${CONTAINER_ID}"
 
   debug "Performing basic sanity checks on the running container..."
-  TEST_CMD_1=$(${DOCKER_BINARY} exec ${CONTAINER_ID} bash -c "${PYTHON} -c 'from tensorflow.python import _pywrap_util_port; print(_pywrap_util_port.IsMklEnabled())'")
-  # Make TEST_CMD backward compatible with older code
-  TEST_CMD_2=$(${DOCKER_BINARY} exec ${CONTAINER_ID} bash -c "${PYTHON} -c 'from tensorflow.python import pywrap_tensorflow; print(pywrap_tensorflow.IsMklEnabled())'")
-
-  if [ "${TEST_CMD_1}" = "True" -o "${TEST_CMD_2}" = "True" ] ; then
-      echo "PASS: MKL enabled test in ${TEMP_IMAGE_NAME}"
-  else
-      die "FAIL: MKL enabled test in ${TEMP_IMAGE_NAME}"
-  fi
+  {
+    ${DOCKER_BINARY} exec ${CONTAINER_ID} bash -c "${PYTHON} -c 'from tensorflow.python import _pywrap_util_port; print(_pywrap_util_port.IsMklEnabled())'"
+    echo "PASS: MKL enabled test in ${TEMP_IMAGE_NAME}"
+  } || {
+    ${DOCKER_BINARY} exec ${CONTAINER_ID} bash -c "${PYTHON} -c 'from tensorflow.python import pywrap_tensorflow; print(pywrap_tensorflow.IsMklEnabled())'"
+    echo "PASS: Old MKL enabled in ${TEMP_IMAGE_NAME}"
+  } || {
+    die "FAIL: MKL enabled test in ${TEMP_IMAGE_NAME}"
+  }
 
   # Test to check if horovod is installed successfully
   if [[ ${ENABLE_HOROVOD} == "yes" ]]; then
       debug "Test horovod in the container..."
-      HOROVOD_TEST_CMD=$(${DOCKER_BINARY} exec ${CONTAINER_ID} bash -c "${PYTHON} -c 'import horovod.tensorflow as hvd;'")
-      ${HOROVOD_TEST_CMD}
+      ${DOCKER_BINARY} exec ${CONTAINER_ID} bash -c "${PYTHON} -c 'import horovod.tensorflow as hvd;'"
       if [[ $? == "0" ]]; then
           echo "PASS: HOROVOD installation test in ${TEMP_IMAGE_NAME}"
       else
