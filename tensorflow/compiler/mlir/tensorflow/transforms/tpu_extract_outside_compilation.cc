@@ -108,18 +108,6 @@ tf_device::LaunchOp CreateLaunchOpForOutsideCluster(
   return launch_op;
 }
 
-// Propagates the return from `parallel_execute_op` to parent replicate
-// op if it exists.
-void PropagateParallelExecuteReturnToReplicate(
-    tf_device::ParallelExecuteOp parallel_execute_op) {
-  // Update the return for the parallel_execute op parent.
-  auto replicate = llvm::dyn_cast_or_null<tf_device::ReplicateOp>(
-      parallel_execute_op.getParentOp());
-  if (replicate)
-    replicate.GetBody().getTerminator()->setOperands(
-        parallel_execute_op.execute_outputs());
-}
-
 // Extracts all externally provided operands of `cluster_ops`.
 llvm::SmallSetVector<Value, 4> GetExternalOperands(
     llvm::ArrayRef<Operation*> cluster_ops) {
@@ -305,7 +293,16 @@ void CreateParallelExecuteFromOutsideClusters(
   tpu_cluster.getOperation()->moveBefore(
       parallel_execute_tpu_block.getTerminator());
 
-  PropagateParallelExecuteReturnToReplicate(parallel_execute_op);
+  // Remap cluster results with parallel_execute results if user is outside of
+  // parallel_execute.
+  for (auto result :
+       llvm::zip(tpu_cluster.getResults(), parallel_execute_op.getResults())) {
+    Value tpu_cluster_result = std::get<0>(result);
+    Value parallel_execute_result = std::get<1>(result);
+    for (auto& use : llvm::make_early_inc_range(tpu_cluster_result.getUses()))
+      if (!parallel_execute_op.getOperation()->isProperAncestor(use.getOwner()))
+        use.set(parallel_execute_result);
+  }
 }
 
 void TPUExtractOutsideCompilation::runOnFunction() {
