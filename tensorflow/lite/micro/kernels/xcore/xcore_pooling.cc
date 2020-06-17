@@ -158,12 +158,16 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
+  const TfLiteTensor* input = GetInput(context, node, 0);
   const TfLiteTensor* bss = GetInput(context, node, 1);
 
   auto* op =
       reinterpret_cast<::xcore::pooling::AvgPool_Global*>(node->user_data);
 
-  op->Init(unpack<4, int32_t>(&bss->data.uint8[0]),   // bias
+  op->Init(input->dims->data[1],                      // X_h
+           input->dims->data[2],                      // X_w
+           input->dims->data[3],                      // C_in
+           unpack<4, int32_t>(&bss->data.uint8[0]),   // bias
            unpack<2, uint32_t>(&bss->data.uint8[5]),  // shift
            unpack<1, uint32_t>(&bss->data.uint8[4])   // scal
   );
