@@ -43,3 +43,14 @@ cuda_py_test(
         "//tensorflow/python/keras",
     ],
 )
+
+py_test(
+    name = "bidirectional_lstm_benchmark_test",
+    size = "medium",
+    srcs = ["bidirectional_lstm_benchmark_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/python/keras",
+        "//third_party/py/numpy",
+    ],
+)
