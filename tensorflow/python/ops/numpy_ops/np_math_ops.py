@@ -309,6 +309,16 @@ def cross(a, b, axisa=-1, axisb=-1, axisc=-1, axis=None):  # pylint: disable=mis
   return _bin_op(f, a, b)
 
 
+@np_utils.np_doc_only(np.vdot)
+def vdot(a, b):  # pylint: disable=missing-docstring
+  a, b = np_array_ops._promote_dtype(a, b)
+  a = np_array_ops.reshape(a, [-1])
+  b = np_array_ops.reshape(b, [-1])
+  if a.dtype == np_dtypes.complex128 or a.dtype == np_dtypes.complex64:
+    a = conj(a)
+  return dot(a, b)
+
+
 @np_utils.np_doc(np.power)
 def power(x1, x2):
   return _bin_op(math_ops.pow, x1, x2)
