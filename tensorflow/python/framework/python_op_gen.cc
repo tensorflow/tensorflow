@@ -178,6 +178,8 @@ class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
 
   void AddRawOpExport(const string& parameters);
 
+  void GenerateTypeVars();
+
   void AddAttrForArg(const string& attr, int arg_index) {
     gtl::InsertIfNotPresent(&inferred_attrs_, attr,
                             op_def_.input_arg(arg_index).name());
@@ -395,6 +397,53 @@ string GenEagerPythonOp::Code() {
   }
 
   return prelude_ + result_;
+}
+
+// Generate TypeVars using attrs
+void GenEagerPythonOp::GenerateTypeVars() {
+  bool added_typevar = false;
+  for (int i = 0; i<op_def_.attr_size(); ++i) {
+    const auto& attr(op_def_.attr(i));
+    if (attr.type() == "type") {
+      std::vector<string> allowed_types;
+      bool has_dtype_half = false;
+      for (int t : attr.allowed_values().list().type()) {
+        if (t == 19) { // DT_HALF = 19;
+          has_dtype_half = true;
+          break;
+        }
+        DataType dtype = static_cast<DataType>(t);
+        const string py_dtype = python_op_gen_internal::DataTypeToPython(dtype, "_dtypes.");
+        if (dtypes_map.find(py_dtype) != dtypes_map.end()) {
+          allowed_types.emplace_back(dtypes_map[py_dtype]);
+        }
+      }
+
+      // Do not create a type variable that includes the dtype half
+      if (has_dtype_half) continue;
+
+      // If all dtypes are allowed, add them all
+      if (allowed_types.empty()) {
+        for (std::pair<string, string> map_dtype : dtypes_map) {
+          allowed_types.emplace_back(map_dtype.second);
+        }
+      }
+
+      std::sort(allowed_types.begin(), allowed_types.end());
+
+      string typevar_dtypes;
+      for (std::vector<string>::iterator it = allowed_types.begin(); it != allowed_types.end(); ++it) {
+        if (!typevar_dtypes.empty()) strings::StrAppend(&typevar_dtypes, ", ");
+        strings::StrAppend(&typevar_dtypes, *it);
+      }
+
+      const string type_var_name = "TV_" + op_def_.name() + "_" + attr.name();
+      strings::StrAppend(&result_, type_var_name, " = TypeVar(\"", type_var_name, "\", ", typevar_dtypes,")\n");
+      added_typevar = true;
+    }
+  }
+
+  if(added_typevar) strings::StrAppend(&result_, "\n");
 }
 
 void GenEagerPythonOp::HandleGraphMode(
@@ -720,6 +769,9 @@ void GenEagerPythonOp::AddEagerFunctionTeardown(
 bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
     const string& parameters, const std::vector<string>& output_sizes,
     const string& eager_not_allowed_error) {
+  if (type_annotate_ops.find(op_def_.name()) != type_annotate_ops.end()) {
+    GenerateTypeVars();
+  }
   if (api_def_.visibility() == ApiDef::VISIBLE) {
     strings::StrAppend(&result_, "@_dispatch.add_dispatch_list\n");
   }
@@ -1047,6 +1099,7 @@ from tensorflow.python.util.deprecation import deprecated_endpoints
 from tensorflow.python.util import dispatch as _dispatch
 from tensorflow.python.util.tf_export import tf_export
 
+from typing import TypeVar
 )");
 
   for (const auto& op_def : ops.op()) {
