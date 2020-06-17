@@ -180,7 +180,7 @@ class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
 
   void GenerateTypeVars();
   string GetTypeAnnotatedParams();
-
+  void AddReturnTypeAnnotation();
   void AddAttrForArg(const string& attr, int arg_index) {
     gtl::InsertIfNotPresent(&inferred_attrs_, attr,
                             op_def_.input_arg(arg_index).name());
@@ -413,7 +413,7 @@ string GenEagerPythonOp::GetTypeAnnotatedParams() {
     if (attr.type() == "type") {
       bool has_dtype_half = false;
       for (int t : attr.allowed_values().list().type()) {
-        if (t == 19) { // DT_HALF = 19;
+        if (t == 19) { // DT_HALF = 19
           has_dtype_half = true;
           break;
         }
@@ -471,7 +471,7 @@ void GenEagerPythonOp::GenerateTypeVars() {
       std::vector<string> allowed_types;
       bool has_dtype_half = false;
       for (int t : attr.allowed_values().list().type()) {
-        if (t == 19) { // DT_HALF = 19;
+        if (t == 19) { // DT_HALF = 19
           has_dtype_half = true;
           break;
         }
@@ -507,6 +507,51 @@ void GenEagerPythonOp::GenerateTypeVars() {
   }
 
   if(added_typevar) strings::StrAppend(&result_, "\n");
+}
+
+void GenEagerPythonOp::AddReturnTypeAnnotation() {
+  string return_type = "";
+  if (op_def_.output_arg_size() == 1) {
+    const auto& arg = op_def_.output_arg(0);
+    // If the "type" field is set, the return Tensor has a single DataType
+    if (arg.type() != 0) {
+      const string py_dtype = python_op_gen_internal::DataTypeToPython(arg.type(), "_dtypes.");
+      if (dtypes_map.find(py_dtype) != dtypes_map.end()) {
+        strings::StrAppend(&return_type, "_ops.Tensor[", dtypes_map[py_dtype], "]");
+      }
+    }
+    else {
+      for (int i = 0; i<op_def_.attr_size(); ++i) {
+        const auto& attr(op_def_.attr(i));
+        if (arg.type_attr() == attr.name() && attr.type() == "type") {
+          std::vector<string> allowed_types;
+          for (int t : attr.allowed_values().list().type()) {
+            // Do not add type annotations when return type can be half
+            if (t == 19) return; // DT_HALF = 19
+            DataType dtype = static_cast<DataType>(t);
+            const string py_dtype = python_op_gen_internal::DataTypeToPython(dtype, "_dtypes.");
+            allowed_types.emplace_back(py_dtype);
+          }
+
+          std::sort(allowed_types.begin(), allowed_types.end());
+
+          string typevar_dtypes;
+          for (std::vector<string>::iterator it = allowed_types.begin(); it != allowed_types.end(); ++it) {
+            if (!typevar_dtypes.empty()) strings::StrAppend(&typevar_dtypes, ", ");
+            strings::StrAppend(&typevar_dtypes, *it);
+          }
+
+          const string type_var_name = "TV_" + op_def_.name() + "_" + attr.name();
+          strings::StrAppend(&return_type, "_ops.Tensor[", type_var_name, "]");
+        }
+      }
+    }
+
+    if (!return_type.empty()) {
+      result_.erase(result_.length() - 2);
+      strings::StrAppend(&result_, " -> ", return_type, ":\n");
+    }
+  }
 }
 
 void GenEagerPythonOp::HandleGraphMode(
@@ -841,6 +886,9 @@ bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
 
   AddExport();
   AddDefLine(function_name_, parameters);
+  if (type_annotate_ops.find(op_def_.name()) != type_annotate_ops.end()) {
+    AddReturnTypeAnnotation();
+  }
   AddDocStringDescription();
   AddDocStringArgs();
   AddDocStringInputs();
