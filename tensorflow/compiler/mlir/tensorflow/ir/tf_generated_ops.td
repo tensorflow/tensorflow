@@ -3862,7 +3862,7 @@ table will be immutable.
   );
 
   let results = (outs
-    TF_ResourceTensor:$table_handle
+    Res<TF_ResourceTensor, "", [TF_TableRead]>:$table_handle
   );
 }
 
@@ -4814,7 +4814,7 @@ table. It must also be of the same type as the table values.
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$table_handle,
+    Arg<TF_ResourceTensor, "", [TF_TableRead]>:$table_handle,
     TF_Tensor:$keys,
     TF_Tensor:$default_value
   );
@@ -4838,7 +4838,7 @@ The tensor `values` must be of the type of the table values.
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$table_handle,
+    Arg<TF_ResourceTensor, "", [TF_TableWrite]>:$table_handle,
     TF_Tensor:$keys,
     TF_Tensor:$values
   );

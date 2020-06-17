@@ -91,14 +91,17 @@ class TF_ResourceBase<string resourceKind> :
 def TF_VariableResource : TF_ResourceBase<"Variable">;
 def TF_StackResource : TF_ResourceBase<"Stack">;
 def TF_TensorArrayResource : TF_ResourceBase<"TensorArray">;
+def TF_TableResource : TF_ResourceBase<"Table">;
 
 def TF_VariableRead : MemRead<TF_VariableResource>;
 def TF_StackRead : MemRead<TF_StackResource>;
 def TF_TensorArrayRead : MemRead<TF_TensorArrayResource>;
+def TF_TableRead : MemRead<TF_TableResource>;
 
 def TF_VariableWrite : MemWrite<TF_VariableResource>;
 def TF_StackWrite : MemWrite<TF_StackResource>;
 def TF_TensorArrayWrite : MemWrite<TF_TensorArrayResource>;
+def TF_TableWrite: MemWrite<TF_TableResource>;
 
 //===----------------------------------------------------------------------===//
 // TensorFlow op definitions
