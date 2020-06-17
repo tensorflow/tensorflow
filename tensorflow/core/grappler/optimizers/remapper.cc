@@ -1667,7 +1667,6 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
     return false;
   };
 
-
 #ifdef INTEL_MKL
   return is_batch_norm_candidate() || is_batch_norm_fusion_candidate() ||
          IsConv2DWithAdd(ctx, node_index);
@@ -1816,7 +1815,6 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       continue;
     }
 #endif  // !INTEL_MKL
-
 
     // Remap FusedBatchNorm+<SideInput>+<Activation> into the _FusedBatchNormEx.
     FusedBatchNormEx fused_batch_norm_ex;
