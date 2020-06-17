@@ -12,12 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stddef.h>
+#include <stdint.h>
+
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
-#include "tensorflow/lite/string_util.h"
 
 namespace tflite {
 namespace ops {
@@ -64,8 +66,8 @@ TfLiteStatus SelectPrepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   // Input must be bool.
-  TF_LITE_ENSURE(context, input_condition->type == kTfLiteBool);
-  TF_LITE_ENSURE_EQ(context, input_x->type, input_y->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input_condition->type, kTfLiteBool);
+  TF_LITE_ENSURE_TYPES_EQ(context, input_x->type, input_y->type);
   output->type = input_x->type;
 
   bool same_shape = HaveSameShapes(input_condition, input_x) &&

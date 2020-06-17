@@ -113,7 +113,7 @@ void BreakUpIslands::runOnFunction() {
     state.addOperands(operands);
     Operation* new_op = builder.createOperation(state);
     item.replaceAllUsesWith(new_op);
-    new_op->setAttrs(item.getAttrList());
+    new_op->setAttrs(item.getMutableAttrDict());
     item.erase();
   }
 }
@@ -219,7 +219,7 @@ void BreakUpIslands::BreakUpIsland(
   }
 
   // Skip islands that are already only a single op.
-  if (hasSingleElement(island_body)) return;
+  if (island_op.WrapsSingleOp()) return;
 
   auto control_type = tf_executor::ControlType::get(&getContext());
   auto island_control_inputs = llvm::to_vector<4>(island_op.controlInputs());

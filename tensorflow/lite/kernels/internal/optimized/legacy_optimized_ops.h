@@ -2946,6 +2946,18 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
                 output_data, DimsToShape(im2col_dims), im2col_data);
 }
 
+inline void TransposeConvV2(
+    const ConvParams& params, const RuntimeShape& input_shape,
+    const float* input_data, const RuntimeShape& hwoi_ordered_filter_shape,
+    const float* hwoi_ordered_filter_data, const RuntimeShape& output_shape,
+    float* output_data, const RuntimeShape& col2im_shape, float* col2im_data,
+    CpuBackendContext* cpu_backend_context) {
+  TransposeConvV2(params, input_shape, input_data, hwoi_ordered_filter_shape,
+                  hwoi_ordered_filter_data, /*bias_shape*/ RuntimeShape(),
+                  /*bias_data*/ nullptr, output_shape, output_data,
+                  col2im_shape, col2im_data, cpu_backend_context);
+}
+
 template <typename T>
 void TransposeIm2col(const T* input_data, const Dims<4>& input_dims,
                      const Dims<4>& filter_dims, int stride_width,

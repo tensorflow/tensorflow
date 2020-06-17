@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -48,7 +49,8 @@ void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
       quant_specs.default_ranges.second.hasValue()) {
     pass_manager->addPass(mlir::TFL::CreateDefaultQuantParamsPass(
         quant_specs.default_ranges.first.getValueOr(0.0),
-        quant_specs.default_ranges.second.getValueOr(0.0)));
+        quant_specs.default_ranges.second.getValueOr(0.0),
+        quant_specs.IsSignedInferenceType()));
     pass_manager->addPass(mlir::TFL::CreateQuantizePass());
     pass_manager->addPass(
         mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
@@ -57,49 +59,30 @@ void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
 
 void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
                                 mlir::OpPassManager* pass_manager) {
-  pass_manager->addPass(mlir::tf_executor::CreateSwitchFoldPass());
-  if (pass_config.skip_control_dialect) {
-    // Merge islands.
-    pass_manager->addPass(
-        mlir::tf_executor::CreateTFExecutorIslandCoarseningPass());
-    // Assuming island coarsening above results in a graph with a single island,
-    // a canonicalization can be ran to hoist the ops of the single island out.
-    pass_manager->addPass(mlir::createCanonicalizerPass());
+  mlir::TF::StandardPipelineOptions standard_pipeline_options;
+  standard_pipeline_options.enable_inliner = false;
+  standard_pipeline_options.form_clusters = pass_config.form_clusters;
+  mlir::TF::CreateTFStandardPipeline(*pass_manager, standard_pipeline_options);
+  pass_manager->addPass(mlir::TFL::CreateDeviceIndexSelectorPass());
 
-    if (pass_config.form_clusters)
-      pass_manager->addPass(mlir::TFDevice::CreateClusterFormationPass());
-  } else {
-    pass_manager->addPass(mlir::CreateTFExecutorToControlDialectConversion());
-    pass_manager->addPass(mlir::TFControlFlow::CreateRaiseTFControlFlowPass());
+  if (pass_config.shape_inference) {
+    pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
   }
-
+  // Keep this pass after the shape inference pass, which couldn't do shape
+  // inference for non-tf ops.
   if (!pass_config.quant_specs.serialized_quant_stats.empty()) {
     pass_manager->addPass(
         mlir::quant::CreateImportQuantStatsPassForTFControlDialect(
             pass_config.quant_specs.serialized_quant_stats));
   }
 
-  // The conversion pipeline has to follow the following orders:
-  // 1) Try to convert ophint nodes if present first like ophint lstm.
-  // 2) Saved model related optimization like decompose resource ops
-  // 3) Convert composite functions like lstm/rnns, along with proper function
-  // inlining & dce.
-  // 4) Lower static tensor list pass.
+  pass_manager->addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
 
-  // The ophint extractions happen before lots of other passes:
-  // The assumption of ophint-extraction is each ophinted region is a black-box
-  // and nodes within this black-box is NOT connected to the nodes OUTSIDE the
-  // black-box.
-  // Some passes may merge nodes together (such as const nodes), however, this
-  // will break the ophint-extraction assumption. (The nodes within the black
-  // box is not isolated anymore).
-  // So ophint extraction and legalization needs to happen before
-  // the canonicalization pass.
-  if (pass_config.emit_builtin_tflite_ops) {
-    pass_manager->addPass(mlir::TFL::CreateExtractOphintPass());
-    // Convert composite op pass will happen after ophint extraction pass.
-    pass_manager->addPass(mlir::TFL::CreateLegalizeOphintFuncOpPass());
-  }
+  // The conversion pipeline has to follow the following orders:
+  // 1) Saved model related optimization like decompose resource ops
+  // 2) Convert composite functions like lstm/rnns, along with proper function
+  // inlining & dce.
+  // 3) Lower static tensor list pass.
 
   // This decomposes resource ops like ResourceGather into read-variable op
   // followed by gather. This is used when the saved model import path is used
@@ -114,12 +97,6 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   if (pass_config.emit_builtin_tflite_ops) {
     pass_manager->addPass(mlir::TFL::CreatePrepareCompositeFunctionsPass());
   }
-
-  // This pass marks non-exported functions as symbol visibility 'private'
-  // those deemed read-only as immutable.
-  pass_manager->addPass(
-      mlir::tf_saved_model::
-          CreateMarkFunctionVisibilityUsingSavedModelLinkagePass());
 
   pass_manager->addPass(mlir::createInlinerPass());
   pass_manager->addPass(mlir::createSymbolDCEPass());
@@ -138,6 +115,9 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     // Add a shape inference pass to optimize away the unnecessary casts.
     pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
   }
+
+  pass_manager->addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
+
   // Legalize while early to allow further constant folding.
   // TODO(jpienaar): This may not actually matter as we do canonicalization
   // after the legalize below, for now it needs to be below the above passes
@@ -172,6 +152,10 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addPass(
         mlir::TFL::CreatePrepareTFPass(pass_config.unfold_batch_matmul));
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+    if (pass_config.shape_inference) {
+      // Add a shape inference pass to optimize away the unnecessary casts.
+      pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
+    }
     pass_manager->addPass(
         mlir::TFL::CreateLegalizeTFPass(pass_config.runtime_verification));
     pass_manager->addPass(mlir::TFL::CreateOptimizePass());
@@ -179,6 +163,7 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     // so that it can target constants introduced once TensorFlow Identity ops
     // are removed during legalization.
     pass_manager->addPass(mlir::TFL::CreateOptimizeFunctionalOpsPass());
+    pass_manager->addPass(mlir::createSymbolDCEPass());
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
     // This pass should be always at the end of the floating point model
@@ -219,13 +204,8 @@ void CreateTFLStandardPipeline(OpPassManager& pm,
   OpPassManager& func_pm = pm.nest<FuncOp>();
 
   // tf_executor dialect passes - Cleaning up the IR.
-  func_pm.addPass(tf_executor::CreateSwitchFoldPass());
-  func_pm.addPass(tf_executor::CreateTFExecutorGraphPruningPass());
-  func_pm.addPass(tf_executor::CreateTFExecutorIslandCoarseningPass());
-
-  // more cleanup of executor dialect and raise to control flow.
-  pm.addPass(mlir::CreateTFExecutorToControlDialectConversion());
-  pm.addPass(mlir::TFControlFlow::CreateRaiseTFControlFlowPass());
+  mlir::TF::StandardPipelineOptions standard_pipeline_options;
+  mlir::TF::CreateTFStandardPipeline(func_pm, standard_pipeline_options);
 
   // This is needed for control flow support with TF TensorList.
   pm.addPass(mlir::TFL::CreateLowerStaticTensorListPass());
@@ -259,6 +239,7 @@ void CreateTFLStandardPipeline(OpPassManager& pm,
       mlir::TFL::CreateLegalizeTFPass(/*run_tfl_runtime_verification=*/true));
   pm.addPass(mlir::TFL::CreateOptimizePass());
   pm.addPass(mlir::TFL::CreateOptimizeFunctionalOpsPass());
+  pm.addPass(mlir::createSymbolDCEPass());
 
   // Canonicalize, CSE etc.
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());

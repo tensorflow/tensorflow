@@ -41,7 +41,7 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase,
 
   def testMultiThreadedConstructorCallWorks(self):
     def init_writer():
-      debug_events_writer.DebugEventsWriter(self.dump_root)
+      debug_events_writer.DebugEventsWriter(self.dump_root, self.tfdbg_run_id)
 
     num_threads = 4
     threads = []
@@ -66,7 +66,8 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase,
     self._readAndCheckMetadataFile()
 
   def testWriteSourceFilesAndStackFrames(self):
-    writer = debug_events_writer.DebugEventsWriter(self.dump_root)
+    writer = debug_events_writer.DebugEventsWriter(self.dump_root,
+                                                   self.tfdbg_run_id)
     num_protos = 10
     for i in range(num_protos):
       source_file = debug_event_pb2.SourceFile()
@@ -99,7 +100,8 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase,
         self.assertEqual(actuals[i].file_line_col.file_index, i * 10)
 
   def testWriteGraphOpCreationAndDebuggedGraphs(self):
-    writer = debug_events_writer.DebugEventsWriter(self.dump_root)
+    writer = debug_events_writer.DebugEventsWriter(self.dump_root,
+                                                   self.tfdbg_run_id)
     num_op_creations = 10
     for i in range(num_op_creations):
       graph_op_creation = debug_event_pb2.GraphOpCreation()
@@ -122,7 +124,8 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase,
                      "deadbeaf")
 
   def testConcurrentWritesToNonExecutionFilesWorks(self):
-    writer = debug_events_writer.DebugEventsWriter(self.dump_root)
+    writer = debug_events_writer.DebugEventsWriter(self.dump_root,
+                                                   self.tfdbg_run_id)
 
     source_file_state = {"counter": 0, "lock": threading.Lock()}
 
@@ -201,15 +204,18 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase,
 
   def testWriteAndReadMetadata(self):
     t0 = time.time()
-    writer = debug_events_writer.DebugEventsWriter(self.dump_root)
+    writer = debug_events_writer.DebugEventsWriter(self.dump_root,
+                                                   self.tfdbg_run_id)
     writer.Close()
     with debug_events_reader.DebugDataReader(self.dump_root) as reader:
       self.assertIsInstance(reader.starting_wall_time(), float)
       self.assertGreaterEqual(reader.starting_wall_time(), t0)
       self.assertEqual(reader.tensorflow_version(), versions.__version__)
+      self.assertTrue(reader.tfdbg_run_id())
 
   def testWriteExecutionEventsWithCircularBuffer(self):
-    writer = debug_events_writer.DebugEventsWriter(self.dump_root)
+    writer = debug_events_writer.DebugEventsWriter(self.dump_root,
+                                                   self.tfdbg_run_id)
     num_execution_events = debug_events_writer.DEFAULT_CIRCULAR_BUFFER_SIZE * 2
     for i in range(num_execution_events):
       execution = debug_event_pb2.Execution()
@@ -232,7 +238,8 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase,
 
   def testWriteExecutionEventsWithoutCircularBufferBehavior(self):
     # A circular buffer size of 0 abolishes the circular buffer behavior.
-    writer = debug_events_writer.DebugEventsWriter(self.dump_root, 0)
+    writer = debug_events_writer.DebugEventsWriter(self.dump_root,
+                                                   self.tfdbg_run_id, 0)
     num_execution_events = debug_events_writer.DEFAULT_CIRCULAR_BUFFER_SIZE * 2
     for i in range(num_execution_events):
       execution = debug_event_pb2.Execution()
@@ -248,7 +255,8 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase,
         self.assertEqual(execution.op_type, "OpType%d" % i)
 
   def testWriteGraphExecutionTraceEventsWithCircularBuffer(self):
-    writer = debug_events_writer.DebugEventsWriter(self.dump_root)
+    writer = debug_events_writer.DebugEventsWriter(self.dump_root,
+                                                   self.tfdbg_run_id)
     num_execution_events = debug_events_writer.DEFAULT_CIRCULAR_BUFFER_SIZE * 2
     for i in range(num_execution_events):
       trace = debug_event_pb2.GraphExecutionTrace()
@@ -272,7 +280,8 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase,
 
   def testWriteGraphExecutionTraceEventsWithoutCircularBufferBehavior(self):
     # A circular buffer size of 0 abolishes the circular buffer behavior.
-    writer = debug_events_writer.DebugEventsWriter(self.dump_root, 0)
+    writer = debug_events_writer.DebugEventsWriter(self.dump_root,
+                                                   self.tfdbg_run_id, 0)
     num_execution_events = debug_events_writer.DEFAULT_CIRCULAR_BUFFER_SIZE * 2
     for i in range(num_execution_events):
       trace = debug_event_pb2.GraphExecutionTrace()
@@ -290,6 +299,7 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase,
   def testConcurrentWritesToExecutionFiles(self):
     circular_buffer_size = 5
     writer = debug_events_writer.DebugEventsWriter(self.dump_root,
+                                                   self.tfdbg_run_id,
                                                    circular_buffer_size)
     debugged_graph = debug_event_pb2.DebuggedGraph(graph_id="graph1",
                                                    graph_name="graph1")
@@ -345,7 +355,8 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase,
       self.assertLen(op_names, len(set(op_names)))
 
   def testConcurrentSourceFileRandomReads(self):
-    writer = debug_events_writer.DebugEventsWriter(self.dump_root)
+    writer = debug_events_writer.DebugEventsWriter(self.dump_root,
+                                                   self.tfdbg_run_id)
 
     for i in range(100):
       source_file = debug_event_pb2.SourceFile(
@@ -376,6 +387,7 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase,
   def testConcurrentExecutionUpdateAndRandomRead(self):
     circular_buffer_size = -1
     writer = debug_events_writer.DebugEventsWriter(self.dump_root,
+                                                   self.tfdbg_run_id,
                                                    circular_buffer_size)
 
     writer_state = {"counter": 0, "done": False}
@@ -410,6 +422,7 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase,
   def testConcurrentExecutionRandomReads(self):
     circular_buffer_size = -1
     writer = debug_events_writer.DebugEventsWriter(self.dump_root,
+                                                   self.tfdbg_run_id,
                                                    circular_buffer_size)
 
     for i in range(100):
@@ -445,6 +458,7 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase,
   def testConcurrentGraphExecutionTraceUpdateAndRandomRead(self):
     circular_buffer_size = -1
     writer = debug_events_writer.DebugEventsWriter(self.dump_root,
+                                                   self.tfdbg_run_id,
                                                    circular_buffer_size)
     debugged_graph = debug_event_pb2.DebuggedGraph(graph_id="graph1",
                                                    graph_name="graph1")
@@ -487,6 +501,7 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase,
   def testConcurrentGraphExecutionTraceRandomReads(self):
     circular_buffer_size = -1
     writer = debug_events_writer.DebugEventsWriter(self.dump_root,
+                                                   self.tfdbg_run_id,
                                                    circular_buffer_size)
     debugged_graph = debug_event_pb2.DebuggedGraph(graph_id="graph1",
                                                    graph_name="graph1")
@@ -534,7 +549,7 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase,
   def testRangeReadingExecutions(self, begin, end, expected_begin,
                                  expected_end):
     writer = debug_events_writer.DebugEventsWriter(
-        self.dump_root, circular_buffer_size=-1)
+        self.dump_root, self.tfdbg_run_id, circular_buffer_size=-1)
     for i in range(5):
       execution = debug_event_pb2.Execution(op_type="OpType%d" % i)
       writer.WriteExecution(execution)
@@ -559,7 +574,7 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase,
   def testRangeReadingGraphExecutionTraces(self, begin, end, expected_begin,
                                            expected_end):
     writer = debug_events_writer.DebugEventsWriter(
-        self.dump_root, circular_buffer_size=-1)
+        self.dump_root, self.tfdbg_run_id, circular_buffer_size=-1)
     debugged_graph = debug_event_pb2.DebuggedGraph(
         graph_id="graph1", graph_name="graph1")
     writer.WriteDebuggedGraph(debugged_graph)
@@ -583,7 +598,7 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase,
     self.assertEqual(traces[-1].op_name, "Op_%d" % (expected_end - 1))
 
 
-class DataObjectsTest(test_util.TensorFlowTestCase):
+class DataObjectsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def jsonRoundTripCheck(self, obj):
     self.assertEqual(
@@ -660,10 +675,87 @@ class DataObjectsTest(test_util.TensorFlowTestCase):
     self.assertIsNone(json["output_tensor_ids"])
     self.assertIsNone(json["debug_tensor_values"])
 
+  @parameterized.named_parameters(
+      ("EmptyList", []),
+      ("None", None),
+  )
+  def testExecutionWithNoOutputTensorsReturnsZeroForNumOutputs(
+      self, output_tensor_ids):
+    execution = debug_events_reader.Execution(
+        debug_events_reader.ExecutionDigest(1234, 5678, "FooOp"),
+        "localhost", ("a1", "b2"),
+        debug_event_pb2.TensorDebugMode.FULL_HEALTH,
+        graph_id="abcd",
+        input_tensor_ids=[13, 37],
+        output_tensor_ids=output_tensor_ids,
+        debug_tensor_values=None)
+    self.assertEqual(execution.num_outputs, 0)
+
+  def testDebuggedDeviceToJons(self):
+    debugged_device = debug_events_reader.DebuggedDevice("/TPU:3", 4)
+    self.assertEqual(debugged_device.to_json(), {
+        "device_name": "/TPU:3",
+        "device_id": 4,
+    })
+
+  def testDebuggedGraphToJonsWitouthNameInnerOuterGraphIds(self):
+    debugged_graph = debug_events_reader.DebuggedGraph(
+        None,
+        "b1c2",
+        outer_graph_id=None,
+    )
+    self.assertEqual(
+        debugged_graph.to_json(), {
+            "name": None,
+            "graph_id": "b1c2",
+            "outer_graph_id": None,
+            "inner_graph_ids": [],
+        })
+
+  def testDebuggedGraphToJonsWithNameAndInnerOuterGraphIds(self):
+    debugged_graph = debug_events_reader.DebuggedGraph(
+        "loss_function",
+        "b1c2",
+        outer_graph_id="a0b1",
+    )
+    debugged_graph.add_inner_graph_id("c2d3")
+    debugged_graph.add_inner_graph_id("c2d3e4")
+    self.assertEqual(
+        debugged_graph.to_json(), {
+            "name": "loss_function",
+            "graph_id": "b1c2",
+            "outer_graph_id": "a0b1",
+            "inner_graph_ids": ["c2d3", "c2d3e4"],
+        })
+
+  @parameterized.named_parameters(
+      ("EmptyList", []),
+      ("None", None),
+  )
+  def testGraphOpDigestWithNoOutpusReturnsNumOutputsZero(
+      self, output_tensor_ids):
+    op_creation_digest = debug_events_reader.GraphOpCreationDigest(
+        1234,
+        5678,
+        "deadbeef",
+        "FooOp",
+        "Model_1/Foo_2",
+        output_tensor_ids,
+        "machine.cluster", ("a1", "a2"),
+        input_names=None,
+        device_name=None)
+    self.assertEqual(op_creation_digest.num_outputs, 0)
+
   def testGraphOpCreationDigestNoInputNoDeviceNameToJson(self):
     op_creation_digest = debug_events_reader.GraphOpCreationDigest(
-        1234, 5678, "deadbeef", "FooOp", "Model_1/Foo_2",
-        [135], input_names=None, device_name=None)
+        1234,
+        5678,
+        "deadbeef",
+        "FooOp",
+        "Model_1/Foo_2", [135],
+        "machine.cluster", ("a1", "a2"),
+        input_names=None,
+        device_name=None)
     json = op_creation_digest.to_json()
     self.jsonRoundTripCheck(json)
     self.assertEqual(json["wall_time"], 1234)
@@ -671,13 +763,21 @@ class DataObjectsTest(test_util.TensorFlowTestCase):
     self.assertEqual(json["op_type"], "FooOp")
     self.assertEqual(json["op_name"], "Model_1/Foo_2")
     self.assertEqual(json["output_tensor_ids"], (135,))
+    self.assertEqual(json["host_name"], "machine.cluster")
+    self.assertEqual(json["stack_frame_ids"], ("a1", "a2"))
     self.assertIsNone(json["input_names"])
     self.assertIsNone(json["device_name"])
 
   def testGraphOpCreationDigestWithInputsAndDeviceNameToJson(self):
     op_creation_digest = debug_events_reader.GraphOpCreationDigest(
-        1234, 5678, "deadbeef", "FooOp", "Model_1/Foo_2",
-        [135], input_names=["Bar_1", "Qux_2"], device_name="/device:GPU:0")
+        1234,
+        5678,
+        "deadbeef",
+        "FooOp",
+        "Model_1/Foo_2", [135],
+        "machine.cluster", ("a1", "a2"),
+        input_names=["Bar_1", "Qux_2"],
+        device_name="/device:GPU:0")
     json = op_creation_digest.to_json()
     self.jsonRoundTripCheck(json)
     self.assertEqual(json["wall_time"], 1234)
@@ -685,6 +785,8 @@ class DataObjectsTest(test_util.TensorFlowTestCase):
     self.assertEqual(json["op_type"], "FooOp")
     self.assertEqual(json["op_name"], "Model_1/Foo_2")
     self.assertEqual(json["output_tensor_ids"], (135,))
+    self.assertEqual(json["host_name"], "machine.cluster")
+    self.assertEqual(json["stack_frame_ids"], ("a1", "a2"))
     self.assertEqual(json["input_names"], ("Bar_1", "Qux_2"))
     self.assertEqual(json["device_name"], "/device:GPU:0")
 

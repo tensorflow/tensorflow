@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/bundle_v2.h"
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
@@ -45,6 +46,13 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertGraphToMlir(
     const FunctionLibraryDefinition& flib_def, const GraphImportConfig& specs,
     mlir::MLIRContext* context);
 
+// [Experimental]
+// Given a Function, returns a MLIR module containing the graph, expressed with
+// tf_executor dialect.
+stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertFunctionToMlir(
+    mlir::StringRef name, const FunctionLibraryDefinition& flib_def,
+    mlir::MLIRContext* context);
+
 // Given a SavedModel, returns a MLIR module containing the functions, expressed
 // with tf_executor dialect.
 stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(
@@ -55,6 +63,7 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(
 // expressed with tf_executor dialect.
 stream_executor::port::StatusOr<mlir::OwningModuleRef>
 ConvertSavedModelV1ToMlir(const SavedModelBundle& saved_model,
+                          absl::Span<std::string> exported_names,
                           mlir::MLIRContext* context);
 
 // Serialize a MLIR module to a string.

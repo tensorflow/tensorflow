@@ -22,7 +22,7 @@ TARGET=stm32f4
 TAGS=cmsis-nn
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR=${SCRIPT_DIR}/../../../../..
-cd ${ROOT_DIR}
+cd "${ROOT_DIR}"
 pwd
 
 source tensorflow/lite/micro/tools/ci_build/helper_functions.sh

@@ -30,9 +30,10 @@ namespace {
 void EnableLogging(PassManager *pm) {
   // Print the whole module after each pass, which requires disabling
   // multi-threading as well.
-  pm->disableMultithreading();
+  pm->getContext()->disableMultithreading();
   pm->enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>(
       /*print_module_scope=*/true));
+  pm->enableTiming(std::make_unique<tensorflow::BridgeTimingConfig>());
 }
 }  // namespace
 
@@ -86,7 +87,8 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   // because DecomposeResourceOpsPass uses pattern rewriter which hoists
   // changed constants out of tf_device.Launch.
   func_pm.addPass(TFDevice::CreateDecomposeResourceOpsPass());
-
+  pm.addNestedPass<FuncOp>(CreateTPUHostComputationExpansionPass());
+  pm.addPass(CreateTPUExtractHeadTailOutsideCompilationPass());
   // Run another shape inference pass because resource decomposition might have
   // created new partial types.
   pm.addPass(TF::CreateTFShapeInferencePass());

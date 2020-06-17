@@ -1,7 +1,7 @@
 # Tests of TensorFlow kernels written using the Python API.
 
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")  # buildifier: disable=same-origin-load
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -47,6 +47,17 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "cardinality_test",
+    srcs = ["cardinality_test.py"],
+    deps = [
+        "//tensorflow/python/data/experimental/ops:cardinality",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
     name = "checkpoint_test",
     size = "medium",
     srcs = ["checkpoint_test.py"],
@@ -81,7 +92,7 @@ tf_py_test(
 
 tf_py_test(
     name = "data_service_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["data_service_ops_test.py"],
     deps = [
         "//tensorflow:tensorflow_py",
@@ -92,8 +103,8 @@ tf_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python/data",
         "//tensorflow/python/data/experimental/ops:testing",
+        "//tensorflow/python/data/experimental/service:server_lib",
         "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/service:server_lib",
     ],
 )
 
@@ -381,6 +392,19 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/training/tracking:util",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "len_test",
+    size = "small",
+    srcs = ["len_test.py"],
+    deps = [
+        ":test_base",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_combinations",
+        "//tensorflow/python/data/ops:dataset_ops",
         "@absl_py//absl/testing:parameterized",
     ],
 )

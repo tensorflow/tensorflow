@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eval_const_tensor.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
@@ -53,7 +54,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/validate.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -589,14 +589,16 @@ void TF_DeleteDeviceList(TF_DeviceList* list) { delete list; }
 
 TF_DeviceList* TF_SessionListDevices(TF_Session* session, TF_Status* status) {
   TF_DeviceList* response = new TF_DeviceList;
-  status->status = session->session->ListDevices(&response->response);
+  if (session && session->session)
+    status->status = session->session->ListDevices(&response->response);
   return response;
 }
 
 TF_DeviceList* TF_DeprecatedSessionListDevices(TF_DeprecatedSession* session,
                                                TF_Status* status) {
   TF_DeviceList* response = new TF_DeviceList;
-  status->status = session->session->ListDevices(&response->response);
+  if (session && session->session)
+    status->status = session->session->ListDevices(&response->response);
   return response;
 }
 
@@ -1384,6 +1386,7 @@ void TF_OperationGetAttrStringList(TF_Operation* oper, const char* attr_name,
     cpp_type v;                                                              \
     status->status =                                                         \
         tensorflow::GetNodeAttr(oper->node.attrs(), attr_name, &v);          \
+    if (!status->status.ok()) return;                                        \
     *value = static_cast<c_type>(v);                                         \
   }                                                                          \
   void func##List(TF_Operation* oper, const char* attr_name, c_type* values, \
@@ -2178,6 +2181,7 @@ TF_Session* TF_NewSession(TF_Graph* graph, const TF_SessionOptions* opt,
     }
     return new_session;
   } else {
+    LOG(ERROR) << status->status;
     DCHECK_EQ(nullptr, session);
     return nullptr;
   }

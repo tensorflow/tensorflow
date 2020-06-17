@@ -91,6 +91,7 @@ tf_cc_test(
     deps = [
         ":graph_properties",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:functional_ops",
         "//tensorflow/cc:scope",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

@@ -15,23 +15,19 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_cache.h"
 
-#include <unordered_map>
-
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_client.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_remote_worker.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/distributed_runtime/worker_cache_logger.h"
 #include "tensorflow/core/distributed_runtime/worker_cache_partial.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 
 namespace {
-
-// TODO(ncteisen): consider adding a config var or flag for this
-static const size_t kGrpcWorkerCacheThreadCount = 8;
-static const size_t kNumCallbackThreads = 10;
 
 class GrpcWorkerCache : public WorkerCachePartial {
  public:
@@ -43,13 +39,7 @@ class GrpcWorkerCache : public WorkerCachePartial {
         local_worker_(local_worker),
         channel_cache_(channel_cache),
         worker_env_(worker_env),
-        next_round_robin_assignment_(0) {
-    if (worker_env_ == nullptr) {
-      worker_env_ptr_ = absl::make_unique<GrpcWorkerEnv>(
-          kGrpcWorkerCacheThreadCount, kNumCallbackThreads);
-      worker_env_ = worker_env_ptr_.get();
-    }
-  }
+        next_round_robin_assignment_(0) {}
 
   void ListWorkers(std::vector<string>* workers) const override {
     channel_cache_->ListWorkers(workers);
@@ -69,9 +59,9 @@ class GrpcWorkerCache : public WorkerCachePartial {
         return nullptr;
       }
       size_t index = AssignWorkerToThread(target);
-      return NewGrpcRemoteWorker(channel,
-                                 worker_env_->GetCompletionQueue(index),
-                                 worker_env_->GetThreadPool(), &logger_);
+      return NewGrpcRemoteWorker(
+          channel, worker_env_->GetCompletionQueue(index),
+          worker_env_->GetThreadPool(), &logger_, target);
     }
   }
 
@@ -118,8 +108,7 @@ class GrpcWorkerCache : public WorkerCachePartial {
   WorkerInterface* const local_worker_;  // Not owned.
   std::shared_ptr<GrpcChannelCache> channel_cache_;
   WorkerCacheLogger logger_;
-  GrpcWorkerEnv* worker_env_;  // Not owned, if worker_env_ptr_ is nullptr.
-  std::unique_ptr<GrpcWorkerEnv> worker_env_ptr_;
+  GrpcWorkerEnv* worker_env_;  // Not owned
 
   mutex assignment_mu_;
   std::unordered_map<std::string, size_t> target_assignments_
@@ -154,13 +143,32 @@ GrpcWorkerEnv::GrpcWorkerCacheThread::~GrpcWorkerCacheThread() {
   thread_.reset();
 }
 
-WorkerCacheInterface* NewGrpcWorkerCache(std::shared_ptr<GrpcChannelCache> cc) {
-  return new GrpcWorkerCache(cc, nullptr, "", nullptr);
+GrpcWorkerEnv* CreateGrpcWorkerEnv() {
+  int num_cpus = port::NumSchedulableCPUs();
+  int64 num_completion_queues;
+  Status status = ReadInt64FromEnvVar("TF_GRPC_WORKER_CACHE_QUEUES", 64,
+                                      &num_completion_queues);
+  if (!status.ok()) {
+    LOG(ERROR) << "Error parsing TF_GRPC_WORKER_CACHE_QUEUES: " << status;
+  }
+  int64 num_threads;
+  status = ReadInt64FromEnvVar("TF_GRPC_WORKER_CACHE_THREADS", num_cpus,
+                               &num_threads);
+  if (!status.ok()) {
+    LOG(ERROR) << "Error parsing TF_GRPC_WORKER_CACHE_THREADS: " << status;
+  }
+  return new GrpcWorkerEnv(num_completion_queues, num_threads);
+}
+
+WorkerCacheInterface* NewGrpcWorkerCache(std::shared_ptr<GrpcChannelCache> cc,
+                                         GrpcWorkerEnv* worker_env) {
+  return new GrpcWorkerCache(cc, /*local_worker=*/nullptr, /*local_target=*/"",
+                             worker_env);
 }
 
 WorkerCacheInterface* NewGrpcWorkerCacheWithLocalWorker(
-    std::shared_ptr<GrpcChannelCache> cc, WorkerInterface* local_worker,
-    const string& local_target, GrpcWorkerEnv* worker_env) {
+    std::shared_ptr<GrpcChannelCache> cc, GrpcWorkerEnv* worker_env,
+    WorkerInterface* local_worker, const string& local_target) {
   return new GrpcWorkerCache(cc, local_worker, local_target, worker_env);
 }
 

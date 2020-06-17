@@ -123,6 +123,46 @@ class PyBuiltinsTest(test.TestCase):
       tl = py_builtins.len_(data_structures.tf_tensor_list_new([3, 4, 5]))
       self.assertEqual(self.evaluate(tl), 3)
 
+  def test_len_dataset(self):
+    dataset = dataset_ops.DatasetV2.from_tensor_slices([3, 2, 1])
+    self.assertEqual(self.evaluate(py_builtins.len_(dataset)), 3)
+
+    # graph mode
+    @def_function.function(autograph=False)
+    def test_fn():
+      dataset = dataset_ops.DatasetV2.from_tensor_slices([3, 2, 1])
+      return py_builtins.len_(dataset)
+
+    self.assertEqual(self.evaluate(test_fn()), 3)
+
+  def test_len_dataset_infinite(self):
+    dataset = dataset_ops.DatasetV2.range(5).repeat().batch(2)
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      _ = self.evaluate(py_builtins.len_(dataset))
+
+    # graph mode
+    @def_function.function
+    def test_fn():
+      dataset = dataset_ops.DatasetV2.range(5).repeat().batch(2)
+      return py_builtins.len_(dataset)
+
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      self.evaluate(test_fn())
+
+  def test_len_dataset_unknown(self):
+    dataset = dataset_ops.DatasetV2.range(5).filter(lambda _: True).batch(2)
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      _ = self.evaluate(py_builtins.len_(dataset))
+
+    # graph mode
+    @def_function.function(autograph=False)
+    def test_fn():
+      dataset = dataset_ops.DatasetV2.range(5).filter(lambda _: True).batch(2)
+      return py_builtins.len_(dataset)
+
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      self.evaluate(test_fn())
+
   def test_len_scalar(self):
     with self.assertRaises(ValueError):
       py_builtins.len_(constant_op.constant(1))

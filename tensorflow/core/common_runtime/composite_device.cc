@@ -24,11 +24,19 @@ const char* const kCompositeDeviceType = "COMPOSITE";
 
 std::unique_ptr<CompositeDevice> CompositeDevice::MakeDevice(
     const std::vector<string>& underlying_devices, const int unique_device_id,
-    Status* status) {
+    const DeviceNameUtils::ParsedName& host_name, Status* status) {
   if (underlying_devices.empty()) {
     status->Update(
         errors::InvalidArgument("underlying_devices should not be empty."));
     return nullptr;
+  }
+  std::set<string> unique_devices;
+  for (const string& device : underlying_devices) {
+    if (!unique_devices.insert(device).second) {
+      status->Update(errors::InvalidArgument(
+          "Got a duplicated device in underlying_devices: ", device));
+      return nullptr;
+    }
   }
   DeviceNameUtils::ParsedName parsed_name;
   if (!DeviceNameUtils::ParseFullName(underlying_devices.at(0), &parsed_name)) {
@@ -54,13 +62,15 @@ std::unique_ptr<CompositeDevice> CompositeDevice::MakeDevice(
       return nullptr;
     }
   }
+
+  DeviceNameUtils::ParsedName parsed_composite_name = host_name;
   DeviceAttributes device_attributes;
-  parsed_name.type = kCompositeDeviceType;
-  device_attributes.set_device_type(parsed_name.type);
-  parsed_name.id = unique_device_id;
+  parsed_composite_name.type = kCompositeDeviceType;
+  parsed_composite_name.id = unique_device_id;
   const string composite_name =
-      DeviceNameUtils::ParsedNameToString(parsed_name);
+      DeviceNameUtils::ParsedNameToString(parsed_composite_name);
   device_attributes.set_name(composite_name);
+  device_attributes.set_device_type(kCompositeDeviceType);
 
   return absl::WrapUnique(
       new CompositeDevice(device_attributes, underlying_devices));

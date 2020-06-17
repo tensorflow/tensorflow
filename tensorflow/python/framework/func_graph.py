@@ -365,35 +365,33 @@ class FuncGraph(ops.Graph):
     @tf_contextlib.contextmanager
     def inner_cm():
       """Context manager for copying distribute.Strategy scope information."""
-      graph = ops.get_default_graph()
       # pylint: disable=protected-access
       # TODO(b/112906995, nareshmodi): distribution strategy depends on
       # inheriting this stack from the default graph even in eager mode. Maybe
       # it should be part of the eager context? This would also allow us to
       # remove a get_default_graph() call from the function cache lookup.
+      graph = ops.get_default_graph()
       old_strategy_stack = self._distribution_strategy_stack
       self._distribution_strategy_stack = list(
           graph._distribution_strategy_stack)
-      uses_distribution_strategy = (
-          self._distribution_strategy_stack and
-          self._distribution_strategy_stack[-1].strategy.extended
-          ._retrace_functions_for_each_device)
+
       # We ignore device placements from any outer scopes while tracing the
       # function when possible, to avoid hard-coding them in the function
       # graph. "Default" placements come from the PartitionedCallOp's placement,
       # so that the same trace of the Python function may be placed on several
       # different devices and saved functions may be placed on new devices when
       # restored.
+      # However, we need to preserve the outer device stack in the following
+      # cases in non eager context:
+      # 1. device stack is callable
+      # 2. When using distribution strategy with legacy graph mode.
       old_device_stack = self._device_function_stack
-      if context.executing_eagerly():
-        if uses_distribution_strategy:
-          self._device_function_stack = self._device_function_stack.copy()
-          self._add_device_to_stack(context.context().device_name)
-      else:
-        if (uses_distribution_strategy or
-            device_stack_has_callable(graph._device_function_stack)):
-          # Hard-code devices from device functions in the function body
-          self._device_function_stack = graph._device_function_stack.copy()
+      if (not context.executing_eagerly() and
+          (device_stack_has_callable(graph._device_function_stack) or
+           (self._distribution_strategy_stack and
+            not ops.executing_eagerly_outside_functions()))):
+        # Hard-code devices from device functions in the function body
+        self._device_function_stack = graph._device_function_stack.copy()
 
       old_creator_stack = self._variable_creator_stack
       self._variable_creator_stack = graph._variable_creator_stack
@@ -1190,13 +1188,6 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
     arg_value = nest.map_structure(_get_composite_tensor_spec, arg_value)
 
     flattened = nest.flatten(arg_value, expand_composites=True)
-    tensor_specs = [
-        arg for arg in flattened if isinstance(arg, tensor_spec.DenseSpec)
-    ]
-    specified_names = [arg.name for arg in tensor_specs if arg.name]
-    if specified_names and len(specified_names) < len(tensor_specs):
-      raise ValueError("If specifying TensorSpec names for nested structures, "
-                       "either zero or all names have to be specified.")
 
     for arg in flattened:
       # We have a shape entry for each arg, regardless of whether it's a real

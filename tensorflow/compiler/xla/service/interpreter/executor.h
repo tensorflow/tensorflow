@@ -203,7 +203,8 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
 
   std::unique_ptr<internal::StreamInterface> GetStreamImplementation()
       override {
-    return std::unique_ptr<internal::StreamInterface>(new host::HostStream());
+    return std::unique_ptr<internal::StreamInterface>(
+        new host::HostStream(/*thread_stack_size=*/0));
   }
 
   std::unique_ptr<internal::TimerInterface> GetTimerImplementation() override {

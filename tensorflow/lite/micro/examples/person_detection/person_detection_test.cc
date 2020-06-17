@@ -22,12 +22,13 @@ limitations under the License.
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
+#include "tensorflow/lite/micro/micro_optional_debug_tools.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 
 // Create an area of memory to use for input, output, and intermediate arrays.
-constexpr int tensor_arena_size = 73 * 1024;
+constexpr int tensor_arena_size = 93 * 1024;
 uint8_t tensor_arena[tensor_arena_size];
 
 TF_LITE_MICRO_TESTS_BEGIN
@@ -46,6 +47,7 @@ TF_LITE_MICRO_TEST(TestInvoke) {
                          "to supported version %d.\n",
                          model->version(), TFLITE_SCHEMA_VERSION);
   }
+  PrintModelData(model, error_reporter);
 
   // Pull in only the operation implementations we need.
   // This relies on a complete list of all the ops needed by this graph.
@@ -53,8 +55,8 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   // incur some penalty in code space for op implementations that are not
   // needed by this graph.
   //
-  // tflite::ops::micro::AllOpsResolver resolver;
-  tflite::MicroOpResolver<3> micro_op_resolver;
+  // tflite::AllOpsResolver resolver;
+  tflite::MicroMutableOpResolver<3> micro_op_resolver;
   micro_op_resolver.AddBuiltin(
       tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
       tflite::ops::micro::Register_DEPTHWISE_CONV_2D());

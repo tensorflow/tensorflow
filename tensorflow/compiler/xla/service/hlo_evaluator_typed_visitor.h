@@ -700,6 +700,38 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
+  template <
+      typename NativeT,
+      typename std::enable_if<is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleCbrt(HloInstruction* cbrt) {
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[cbrt],
+        ElementWiseUnaryOp(cbrt, [](ElementwiseT elem_operand) -> ElementwiseT {
+          return std::pow(elem_operand, static_cast<ElementwiseT>(1.0 / 3.0));
+          return elem_operand.real() < 0
+                     ? -std::pow(-elem_operand,
+                                 static_cast<ElementwiseT>(1.0 / 3.0))
+                     : std::pow(elem_operand,
+                                static_cast<ElementwiseT>(1.0 / 3.0));
+        }));
+    return Status::OK();
+  }
+
+  template <
+      typename NativeT,
+      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleCbrt(HloInstruction* cbrt) {
+    TF_ASSIGN_OR_RETURN(parent_->evaluated_[cbrt],
+                        ElementWiseUnaryOp(cbrt, [](ElementwiseT elem_operand) {
+                          return std::cbrt(elem_operand);
+                        }));
+    return Status::OK();
+  }
+
+  Status HandleCbrt(HloInstruction* cbrt) override {
+    return HandleCbrt<ElementwiseT>(cbrt);
+  }
+
   Status HandleRsqrt(HloInstruction* rsqrt) override {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[rsqrt],

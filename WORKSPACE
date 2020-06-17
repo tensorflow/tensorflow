@@ -18,8 +18,6 @@ load("//tensorflow:workspace.bzl", "tf_repositories")
 # Please add all new TensorFlow dependencies in workspace.bzl.
 tf_repositories()
 
-register_execution_platforms("@local_execution_config_platform//:platform")
-register_toolchains("@local_execution_config_python//:py_toolchain")
 register_toolchains("@local_config_python//:py_toolchain")
 
 load("@io_bazel_rules_closure//closure:defs.bzl", "closure_repositories")
@@ -113,6 +111,14 @@ http_archive(
     sha256 = "c3ec4fea3158eb111f1d932336351edfe8bd515bb6e87aad4f25dbad0a600d0c",
     urls = [
         "https://storage.googleapis.com/download.tensorflow.org/models/speech_commands_v0.01.zip",
+    ],
+)
+
+http_archive(
+    name = "person_detect_data",
+    sha256 = "170542270da256994ce24d1e357f6e84a54fdaf7d28ff2b74725a40b70b082cf",
+    urls = [
+        "https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_grayscale_2020_05_24.zip",
     ],
 )
 

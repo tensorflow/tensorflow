@@ -39,40 +39,6 @@ Status CreateHandle(OpKernelContext* ctx, T* resource,
   return Status::OK();
 }
 
-// A wrapper class that manages the lifetime of a resource handle from its
-// creation to its deletion from the resource manager.
-class OwnedResourceHandle {
- public:
-  template <typename T>
-  static Status Create(OpKernelContext* ctx, T* resource, const string& name,
-                       std::unique_ptr<OwnedResourceHandle>* result) {
-    ResourceHandle handle;
-    TF_RETURN_IF_ERROR(CreateHandle<T>(ctx, resource, name, &handle));
-    // We need to increase the refcount to match the decrease that occurs when
-    // the resource associate.
-    resource->Ref();
-    *result = absl::make_unique<OwnedResourceHandle>(ctx, std::move(handle));
-    return Status::OK();
-  }
-
-  OwnedResourceHandle(OpKernelContext* ctx, ResourceHandle&& handle)
-      : mgr_(ctx->resource_manager()), handle_(handle) {}
-
-  ~OwnedResourceHandle() {
-    Status s = mgr_->Delete(handle_);
-    if (!s.ok()) {
-      VLOG(2) << s.ToString();
-    }
-  }
-
-  // Returns the wrapped `ResourceHandle` object.
-  const ResourceHandle& handle() const { return handle_; }
-
- private:
-  ResourceMgr* mgr_;  // not owned
-  const ResourceHandle handle_;
-};
-
 template <typename T>
 class AnonymousResourceOp : public OpKernel {
  public:
@@ -97,7 +63,10 @@ class AnonymousResourceOp : public OpKernel {
 
     if (create_deleter_) {
       Tensor* deleter_t;
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(1, TensorShape({}), &deleter_t));
+      AllocatorAttributes attr;
+      attr.set_on_host(true);
+      OP_REQUIRES_OK(
+          ctx, ctx->allocate_output(1, TensorShape({}), &deleter_t, attr));
       deleter_t->scalar<Variant>()() =
           ResourceDeleter(handle, ctx->resource_manager());
     }
@@ -125,10 +94,16 @@ Status RegisterCancellationCallback(CancellationManager* cancellation_manager,
 Status VerifyTypesMatch(const DataTypeVector& expected,
                         const DataTypeVector& received);
 
+Status VerifyTypesMatch(const DataTypeVector& expected,
+                        const std::vector<Tensor>& received);
+
 // Returns Status::OK() if `expected` and `received` shapes are compatible,
 // errors::InvalidArgument otherwise.
 Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
                               const std::vector<PartialTensorShape>& received);
+
+Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
+                              const std::vector<Tensor>& received);
 
 // Returns a stable hash of the subgraph rooted at the given node.
 //

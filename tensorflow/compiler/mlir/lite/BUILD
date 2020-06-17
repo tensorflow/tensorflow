@@ -31,7 +31,7 @@ filegroup(
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/SideEffects.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
     ],
 )
 
@@ -216,16 +216,16 @@ cc_library(
         "ir/tfl_ops.h",
         "transforms/passes.h",
         "utils/attribute_utils.h",
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_traits.h",
         "@llvm-project//mlir:include/mlir/Transforms/InliningUtils.h",
     ],
     deps = [
         ":tensorflow_lite_ops_inc_gen",
         ":validators",
         "//tensorflow/compiler/mlir/lite/experimental/estimators:cost_estimators",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/lite/schema:schema_fbs",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:DerivedAttributeOpInterface",
         "@llvm-project//mlir:Dialect",
@@ -253,7 +253,26 @@ cc_library(
     deps = [
         ":tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "tftext_utils",
+    srcs = [
+        "utils/tftext_utils.cc",
+    ],
+    hdrs = [
+        "utils/tftext_utils.h",
+    ],
+    copts = ["-std=c++14"],
+    deps = [
+        ":tensorflow_lite",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
@@ -270,7 +289,7 @@ cc_library(
     ],
     deps = [
         ":tensorflow_lite",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",
     ],
@@ -285,7 +304,7 @@ tf_cc_test(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
@@ -295,12 +314,11 @@ tf_cc_test(
 cc_library(
     name = "tensorflow_lite_legalize_tf",
     srcs = [
+        "transforms/device_index_selector.cc",
         "transforms/dilated_conv.cc",
-        "transforms/extract_ophint.cc",
         "transforms/generated_legalize_tf.inc",
         "transforms/generated_lower_static_tensor_list.inc",
         "transforms/generated_prepare_tf.inc",
-        "transforms/legalize_ophint_func_op.cc",
         "transforms/legalize_tf.cc",
         "transforms/legalize_tf_while.cc",
         "transforms/lower_static_tensor_list.cc",
@@ -322,6 +340,7 @@ cc_library(
         ":lstm_utils",
         ":stateful_ops_utils",
         ":tensorflow_lite",
+        ":tftext_utils",
         ":validators",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
@@ -339,7 +358,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -365,7 +384,7 @@ cc_library(
         ":validators",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -398,7 +417,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization/lite:tfl_to_std",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/memory",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -419,12 +438,14 @@ cc_library(
     ],
     deps = [
         ":tensorflow_lite",
+        "//tensorflow/lite/tools/optimize/sparsity:format_converter",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
     ],
     alwayslink = 1,
 )
@@ -474,8 +495,8 @@ tf_native_cc_binary(
         "converter_gen.cc",
     ],
     deps = [
-        "@llvm-project//llvm:support",
-        "@llvm-project//llvm:tablegen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TableGen",
         "@llvm-project//mlir:TableGen",
     ],
 )
@@ -521,9 +542,8 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
-        "@llvm-project//llvm:analysis",
-        "@llvm-project//llvm:support",
-        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//llvm:Analysis",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:TransformUtils",
     ],
@@ -600,7 +620,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:StandardOps",
@@ -634,7 +654,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:StandardOps",
@@ -694,11 +714,11 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LoopOpsTransforms",
         "@llvm-project//mlir:MlirTranslateMain",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:SCFTransforms",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Translation",
@@ -710,6 +730,8 @@ tf_cc_binary(
     name = "flatbuffer_translate",
     deps = [
         ":flatbuffer_translate_registeration",
+        # TODO(b/155809683): Link only necessary dialects.
+        "@llvm-project//mlir:AllPassesAndDialects",
     ],
 )
 
@@ -722,7 +744,7 @@ cc_library(
         "tf_tfl_translate_cl.h",
     ],
     deps = [
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
     ],
     alwayslink = 1,
 )
@@ -734,7 +756,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -758,6 +780,13 @@ tf_cc_binary(
         ":tf_tfl_passes",
         ":tf_tfl_translate_cl_options",
         ":tf_to_tfl_flatbuffer",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        # TODO(b/155809683): Link only necessary dialects.
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/tensorflow:translate_cl_options",
         "//tensorflow/core:protos_all_cc",
@@ -765,11 +794,6 @@ tf_cc_binary(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/stream_executor/lib",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -781,17 +805,19 @@ tf_cc_binary(
     deps = [
         ":flatbuffer_translate_lib",
         ":flatbuffer_translate_registeration",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        # TODO(b/155809683): Link only necessary dialects.
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Support",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/kernels:builtin_ops",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Parser",
-        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -849,7 +875,7 @@ cc_library(
         "//tensorflow/lite/tools/optimize:quantize_weights",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
@@ -869,6 +895,6 @@ cc_library(
         "//tensorflow/lite/experimental/mlir:__subpackages__",
     ],
     deps = [
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
     ],
 )

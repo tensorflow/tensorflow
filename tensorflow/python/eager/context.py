@@ -263,7 +263,8 @@ class LogicalDevice(
 @tf_export("config.LogicalDeviceConfiguration",
            "config.experimental.VirtualDeviceConfiguration")
 class LogicalDeviceConfiguration(
-    collections.namedtuple("LogicalDeviceConfiguration", ["memory_limit"])):
+    collections.namedtuple("LogicalDeviceConfiguration",
+                           ["memory_limit", "experimental_priority"])):
   """Configuration class for a logical devices.
 
   The class specifies the parameters to configure a `tf.config.PhysicalDevice`
@@ -276,10 +277,15 @@ class LogicalDeviceConfiguration(
   Fields:
     memory_limit: (optional) Maximum memory (in MB) to allocate on the virtual
       device. Currently only supported for GPUs.
+    experimental_priority: (optional) Priority to assign to a virtual device.
+      Lower values have higher priorities and 0 is the default.
+      Within a physical GPU, the GPU scheduler will prioritize ops on virtual
+      devices with higher priority. Currently only supported for Nvidia GPUs.
   """
 
-  def __new__(cls, memory_limit=None):
-    return super(LogicalDeviceConfiguration, cls).__new__(cls, memory_limit)
+  def __new__(cls, memory_limit=None, experimental_priority=None):
+    return super(LogicalDeviceConfiguration,
+                 cls).__new__(cls, memory_limit, experimental_priority)
 
 
 @tf_export("config.PhysicalDevice")
@@ -421,7 +427,7 @@ class Context(object):
       raise ValueError(
           "execution_mode should be None/SYNC/ASYNC. Got %s" % execution_mode)
     if execution_mode is None:
-      execution_mode = SYNC
+      execution_mode = ASYNC if is_tfrt_enabled() else SYNC
     self._default_is_async = execution_mode == ASYNC
     self._lazy_remote_inputs_copy = None
     self._use_tfrt = is_tfrt_enabled()
@@ -434,6 +440,7 @@ class Context(object):
 
     self._device_lock = threading.Lock()
     self._physical_devices = None
+    self._physical_device_to_index = None
     self._visible_device_list = []
     self._memory_growth_map = None
     self._virtual_device_map = {}
@@ -444,7 +451,6 @@ class Context(object):
     self._inter_op_parallelism_threads = None
     self._soft_device_placement = None
     self._log_device_placement = None
-    self._enable_mlir_bridge = None
     self._enable_mlir_graph_optimization = None
     self._optimizer_experimental_options = {}
 
@@ -920,8 +926,7 @@ class Context(object):
     if self._log_device_placement is not None:
       config.log_device_placement = self._log_device_placement
 
-    if self._enable_mlir_bridge is not None:
-      config.experimental.enable_mlir_bridge = self._enable_mlir_bridge
+    config.experimental.enable_mlir_bridge = pywrap_tfe.TF_IsMlirBridgeEnabled()
     if self._enable_mlir_graph_optimization is not None:
       config.experimental.enable_mlir_graph_optimization = (
           self._enable_mlir_graph_optimization)
@@ -1019,12 +1024,19 @@ class Context(object):
       if self._virtual_device_map:
         vdevs = self._virtual_device_map.get(dev, [])
         device_limits = []
+        priority = []
         for virt_dev in vdevs:
           device_limits.append(virt_dev.memory_limit)
+          if virt_dev.experimental_priority is not None:
+            priority.append(virt_dev.experimental_priority)
+        # If priority is specified, it must be specified for all virtual
+        # devices.
+        if priority and len(device_limits) != len(priority):
+          raise ValueError("priority must be specified for all virtual devices")
 
         virtual_devices.append(
             config_pb2.GPUOptions.Experimental.VirtualDevices(
-                memory_limit_mb=device_limits))
+                memory_limit_mb=device_limits, priority=priority))
 
     # Only compute growth if virtual devices have not been configured and we
     # have GPUs
@@ -1123,6 +1135,22 @@ class Context(object):
     pywrap_tfe.TFE_Py_RegisterCustomDevice(self._handle, device_capsule,
                                            device_name, device_info_capsule)
 
+  def pack_eager_tensors(self, tensors):
+    """Pack multiple `EagerTensor`s of the same dtype and shape.
+
+    Args:
+      tensors: a list of EagerTensors to pack.
+
+    Returns:
+      A packed EagerTensor.
+    """
+    self.ensure_initialized()
+    if self._lazy_remote_inputs_copy is not None and (
+        not self._lazy_remote_inputs_copy):
+      raise ValueError("Packing eager tensors is not supported when "
+                       "lazy_remote_inputs_copy is disabled.")
+    return pywrap_tfe.TFE_Py_PackEagerTensors(self._handle, tensors)
+
   def remove_function(self, name):
     """Remove a function from the context.
 
@@ -1197,6 +1225,10 @@ class Context(object):
       self._physical_devices = [
           PhysicalDevice(name=d.decode(),
                          device_type=d.decode().split(":")[1]) for d in devs]
+      self._physical_device_to_index = {
+          p: i for i, p in enumerate(self._physical_devices)
+      }
+
       # Construct the visible device list from all physical devices but ignore
       # XLA devices
       self._visible_device_list = [
@@ -1229,6 +1261,37 @@ class Context(object):
       return list(self._physical_devices)
 
     return [d for d in self._physical_devices if d.device_type == device_type]
+
+  def get_device_details(self, device):  # pylint: disable=redefined-outer-name
+    """Returns details about a physical devices.
+
+    Args:
+      device: A `tf.config.PhysicalDevice` returned by
+        `tf.config.list_physical_devices` or `tf.config.get_visible_devices`.
+
+    Returns:
+      A dict with string keys.
+    """
+    if not isinstance(device, PhysicalDevice):
+      raise ValueError("device must be a tf.config.PhysicalDevice, but got: "
+                       "%s" % (device,))
+    if (self._physical_device_to_index is None or
+        device not in self._physical_device_to_index):
+      raise ValueError("The PhysicalDevice must be one obtained from "
+                       "calling `tf.config.list_physical_devices`, but got: "
+                       "%s" % (device,))
+    index = self._physical_device_to_index[device]
+    details = pywrap_tfe.TF_GetDeviceDetails(index)
+
+    # Change compute_capability from a string to a tuple
+    if "compute_capability" in details:
+      try:
+        major, minor = details["compute_capability"].split(".")
+        details["compute_capability"] = (int(major), int(minor))
+      except ValueError:
+        raise RuntimeError("Device returned compute capability an in invalid "
+                           "format: %s" % details["compute_capability"])
+    return details
 
   def _import_config(self):
     """Import config if passed in during construction.
@@ -1378,6 +1441,9 @@ class Context(object):
         if vdev.memory_limit is not None:
           raise ValueError("Setting memory limit on CPU virtual devices is "
                            "currently not supported")
+        if vdev.experimental_priority is not None:
+          raise ValueError("Setting experimental_priority on CPU virtual "
+                           " devices is currently not supported")
     elif dev.device_type == "GPU":
       for vdev in virtual_devices:
         if vdev.memory_limit is None:
@@ -1398,7 +1464,7 @@ class Context(object):
 
   @property
   def enable_mlir_bridge(self):
-    return self._enable_mlir_bridge
+    return pywrap_tfe.TF_IsMlirBridgeEnabled()
 
   @property
   def enable_mlir_graph_optimization(self):
@@ -1406,7 +1472,7 @@ class Context(object):
 
   @enable_mlir_bridge.setter
   def enable_mlir_bridge(self, enabled):
-    self._enable_mlir_bridge = enabled
+    pywrap_tfe.TF_EnableMlirBridge(enabled)
     self._thread_local_data.function_call_options = None
 
   @enable_mlir_graph_optimization.setter
@@ -1509,9 +1575,11 @@ class Context(object):
     return self.config.allow_soft_placement
 
   @soft_device_placement.setter
-  def soft_device_placement(self, enabled):
-    self._soft_device_placement = enabled
+  def soft_device_placement(self, enable):
+    if self._context_handle is not None:
+      pywrap_tfe.TFE_ContextSetSoftDevicePlacement(self._handle, enable)
 
+    self._soft_device_placement = enable
     self._thread_local_data.function_call_options = None
 
   @property
@@ -1519,15 +1587,11 @@ class Context(object):
     return self.config.log_device_placement
 
   @log_device_placement.setter
-  def log_device_placement(self, enabled):
-    if self._log_device_placement == enabled:
-      return
-
+  def log_device_placement(self, enable):
     if self._context_handle is not None:
-      raise RuntimeError(
-          "Device placement logging must be set at program startup")
+      pywrap_tfe.TFE_ContextSetLogDevicePlacement(self._handle, enable)
 
-    self._log_device_placement = enabled
+    self._log_device_placement = enable
     self._thread_local_data.function_call_options = None
 
   @property
@@ -1793,7 +1857,7 @@ def executing_eagerly():
   cases.
 
   *  Executing inside `tf.function`, unless under `tf.init_scope` or
-     `tf.config.experimental_run_functions_eagerly(True)` is previously called.
+     `tf.config.run_functions_eagerly(True)` is previously called.
   *  Executing inside a transformation function for `tf.dataset`.
   *  `tf.compat.v1.disable_eager_execution()` is called.
 
@@ -1813,10 +1877,9 @@ def executing_eagerly():
   True
   False
 
-  Inside `tf.function` after
+  Inside `tf.function` after `tf.config.run_functions_eagerly(True)` is called:
 
-  `tf.config.experimental_run_functions_eagerly(True)` is called:
-  >>> tf.config.experimental_run_functions_eagerly(True)
+  >>> tf.config.run_functions_eagerly(True)
   >>> @tf.function
   ... def fn():
   ...   with tf.init_scope():
@@ -1825,7 +1888,7 @@ def executing_eagerly():
   >>> fn()
   True
   True
-  >>> tf.config.experimental_run_functions_eagerly(False)
+  >>> tf.config.run_functions_eagerly(False)
 
   Inside a transformation function for `tf.dataset`:
 
@@ -1858,7 +1921,7 @@ def executing_eagerly_v1():
   this API might return `False` in the following use cases.
 
   *  Executing inside `tf.function`, unless under `tf.init_scope` or
-     `tf.config.experimental_run_functions_eagerly(True)` is previously called.
+     `tf.config.run_functions_eagerly(True)` is previously called.
   *  Executing inside a transformation function for `tf.dataset`.
   *  `tf.compat.v1.disable_eager_execution()` is called.
 
@@ -1881,9 +1944,9 @@ def executing_eagerly_v1():
   False
 
   Inside `tf.function`
-  after  `tf.config.experimental_run_functions_eagerly(True)` is called:
+  after  `tf.config.run_functions_eagerly(True)` is called:
 
-  >>> tf.config.experimental_run_functions_eagerly(True)
+  >>> tf.config.run_functions_eagerly(True)
   >>> @tf.function
   ... def fn():
   ...   with tf.init_scope():
@@ -1892,7 +1955,7 @@ def executing_eagerly_v1():
   >>> fn()
   True
   True
-  >>> tf.config.experimental_run_functions_eagerly(False)
+  >>> tf.config.run_functions_eagerly(False)
 
   Inside a transformation function for `tf.dataset`:
 

@@ -205,6 +205,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
   5. `use_bias` is `True`
   6. `reset_after` is `True`
   7. Inputs, if use masking, are strictly right-padded.
+  8. Eager execution is enabled in the outermost context.
 
   There are two variants of the GRU implementation. The default one is based on
   [v3](https://arxiv.org/abs/1406.1078v3) and has reset gate applied to hidden
@@ -413,7 +414,9 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     input_shape = K.int_shape(inputs)
     timesteps = input_shape[0] if self.time_major else input_shape[1]
 
-    if not self._could_use_gpu_kernel:
+    # TODO(b/156447398) Investigate why the cuDNN kernel kernel fails with
+    # ragged inputs.
+    if is_ragged_input or not self._could_use_gpu_kernel:
       kwargs = {'training': training}
       self._maybe_reset_cell_dropout_mask(self.cell)
 
@@ -601,7 +604,7 @@ def gpu_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask, time_major,
   # (6 * units)
   bias = array_ops.split(K.flatten(bias), 6)
 
-  if build_info.is_cuda_build:
+  if build_info.build_info['is_cuda_build']:
     # Note that the gate order for CuDNN is different from the canonical format.
     # canonical format is [z, r, h], whereas CuDNN is [r, z, h]. The swap need
     # to be done for kernel, recurrent_kernel, input_bias, recurrent_bias.
@@ -926,6 +929,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
   4. `unroll` is `False`
   5. `use_bias` is `True`
   6. Inputs, if use masking, are strictly right-padded.
+  7. Eager execution is enabled in the outermost context.
 
   For example:
 
@@ -1109,7 +1113,9 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
     input_shape = K.int_shape(inputs)
     timesteps = input_shape[0] if self.time_major else input_shape[1]
 
-    if not self._could_use_gpu_kernel:
+    # TODO(b/156447398) Investigate why the cuDNN kernel kernel fails with
+    # ragged inputs.
+    if is_ragged_input or not self._could_use_gpu_kernel:
       # Fall back to use the normal LSTM.
       kwargs = {'training': training}
       self._maybe_reset_cell_dropout_mask(self.cell)
@@ -1361,7 +1367,7 @@ def gpu_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
   # so that mathematically it is same as the canonical LSTM implementation.
   full_bias = array_ops.concat((array_ops.zeros_like(bias), bias), 0)
 
-  if build_info.is_rocm_build:
+  if build_info.build_info['is_rocm_build']:
     # ROCm MIOpen's weight sequence for LSTM is different from both canonical
     # and Cudnn format
     # MIOpen: [i, f, o, c] Cudnn/Canonical: [i, f, c, o]

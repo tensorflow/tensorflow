@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/conv_common.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
@@ -44,6 +45,13 @@ class ConvPowerVR : public GPUOperation {
   absl::Status Tune(const TuningParameters& params) override;
   absl::Status Compile(const CreationContext& creation_context) override;
 
+  ConvWeightsDescription GetConvWeightsDescription() const {
+    ConvWeightsDescription desc;
+    desc.layout = ConvWeightsLayout::kOHWIOGroupI4O4;
+    desc.output_group_size = conv_params_.block_size.z;
+    return desc;
+  }
+
   // Move only
   ConvPowerVR(ConvPowerVR&& operation);
   ConvPowerVR& operator=(ConvPowerVR&& operation);
@@ -56,6 +64,11 @@ class ConvPowerVR : public GPUOperation {
     LOCAL_MEM_BY_THREADS,
     GLOBAL_MEM,
     CONSTANT_MEM,
+    PRIVATE_MEM_SIMD8_BROADCAST,
+    PRIVATE_MEM_SIMD16_BROADCAST,
+    PRIVATE_MEM_SIMD32_BROADCAST,
+    PRIVATE_MEM_SIMD64_BROADCAST,
+    PRIVATE_MEM_SIMD128_BROADCAST,
   };
 
   struct ConvParams {
@@ -77,11 +90,47 @@ class ConvPowerVR : public GPUOperation {
     WeightsUploadType weights_upload_type;
     bool x_kernel_is_1;
     bool y_kernel_is_1;
+
+    bool IsPrivateMemBroadcast() const {
+      return weights_upload_type ==
+                 WeightsUploadType::PRIVATE_MEM_SIMD8_BROADCAST ||
+             weights_upload_type ==
+                 WeightsUploadType::PRIVATE_MEM_SIMD16_BROADCAST ||
+             weights_upload_type ==
+                 WeightsUploadType::PRIVATE_MEM_SIMD32_BROADCAST ||
+             weights_upload_type ==
+                 WeightsUploadType::PRIVATE_MEM_SIMD64_BROADCAST ||
+             weights_upload_type ==
+                 WeightsUploadType::PRIVATE_MEM_SIMD128_BROADCAST;
+    }
+
+    int GetSimdSize() const {
+      if (weights_upload_type ==
+          WeightsUploadType::PRIVATE_MEM_SIMD8_BROADCAST) {
+        return 8;
+      } else if (weights_upload_type ==
+                 WeightsUploadType::PRIVATE_MEM_SIMD16_BROADCAST) {
+        return 16;
+      } else if (weights_upload_type ==
+                 WeightsUploadType::PRIVATE_MEM_SIMD32_BROADCAST) {
+        return 32;
+      } else if (weights_upload_type ==
+                 WeightsUploadType::PRIVATE_MEM_SIMD64_BROADCAST) {
+        return 64;
+      } else if (weights_upload_type ==
+                 WeightsUploadType::PRIVATE_MEM_SIMD128_BROADCAST) {
+        return 128;
+      }
+      return 1;
+    }
   };
 
   ConvPowerVR(const OperationDef& definition,
               const Convolution2DAttributes& attr, const CLDevice& device,
               const BHWC* dst_shape = nullptr);
+  ConvPowerVR(const OperationDef& definition,
+              const Convolution2DAttributes& attr, const BHWC& weights_shape,
+              const CLDevice& device, const BHWC* dst_shape = nullptr);
   ConvPowerVR(const OperationDef& definition,
               const FullyConnectedAttributes& attr, const CLDevice& device,
               const BHWC* dst_shape = nullptr);
@@ -112,6 +161,11 @@ class ConvPowerVR : public GPUOperation {
                                         ConvPowerVR* result,
                                         const BHWC* dst_shape);
 
+  friend absl::Status CreateConvPowerVRDynamicWeights(
+      const CreationContext& creation_context, const OperationDef& definition,
+      const Convolution2DAttributes& attr, const BHWC& weights_shape,
+      ConvPowerVR* result, const BHWC* dst_shape);
+
   friend absl::Status CreateConvPowerVRWino4x4To6x6(
       const CreationContext& creation_context, const OperationDef& definition,
       const Convolution2DAttributes& attr, ConvPowerVR* result,
@@ -125,6 +179,11 @@ class ConvPowerVR : public GPUOperation {
   ConvParams GuessBestParams(const CLDevice& device,
                              const OperationDef& definition,
                              const Convolution2DAttributes& attr,
+                             const BHWC* dst_shape = nullptr) const;
+  ConvParams GuessBestParams(const CLDevice& device,
+                             const OperationDef& definition,
+                             const Convolution2DAttributes& attr,
+                             const BHWC& weights_shape,
                              const BHWC* dst_shape = nullptr) const;
   ConvParams GuessBestParams(const CLDevice& device,
                              const OperationDef& definition,
@@ -224,6 +283,11 @@ absl::Status CreateConvPowerVR(const CreationContext& creation_context,
                                const FullyConnectedAttributes& attr,
                                ConvPowerVR* result,
                                const BHWC* dst_shape = nullptr);
+
+absl::Status CreateConvPowerVRDynamicWeights(
+    const CreationContext& creation_context, const OperationDef& definition,
+    const Convolution2DAttributes& attr, const BHWC& weights_shape,
+    ConvPowerVR* result, const BHWC* dst_shape = nullptr);
 
 absl::Status CreateConvPowerVRWino4x4To6x6(
     const CreationContext& creation_context, const OperationDef& definition,

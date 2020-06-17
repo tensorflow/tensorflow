@@ -117,7 +117,7 @@ mlir::xla_hlo::ConvDimensionNumbers ConvertConvDimensionNumbers(
       builder->getI64IntegerAttr(dnums.kernel_output_feature_dimension()),
       Convert(kernel_spatial_dims, builder),
       builder->getI64IntegerAttr(dnums.output_batch_dimension()),
-      builder->getI64IntegerAttr(dnums.kernel_output_feature_dimension()),
+      builder->getI64IntegerAttr(dnums.output_feature_dimension()),
       Convert(output_spatial_dims, builder), builder->getContext());
 }
 

@@ -144,12 +144,14 @@ Status MKLTransposeND(OpKernelContext* context, const Tensor& in_tensor,
 
     std::vector<primitive> net;
 #ifdef ENABLE_MKLDNN_V1
+    std::shared_ptr<stream> transpose_stream;
     auto* prim = FindOrCreateReorder<T>(in.GetUsrMem(), out.GetUsrMem());
+    transpose_stream.reset(CreateStream(context, prim->GetEngine()));
     net.push_back(*(prim->GetPrimitive()));
     std::vector<MemoryArgsMap> net_args;
     net_args.push_back({{MKLDNN_ARG_FROM, *in.GetUsrMem()},
                         {MKLDNN_ARG_TO, *out.GetUsrMem()}});
-    execute_primitives(net, prim->GetStream(), net_args);
+    execute_primitives(net, transpose_stream, net_args);
 #else
     std::shared_ptr<stream> transpose_stream;
     transpose_stream.reset(new CPU_STREAM(cpu_engine));

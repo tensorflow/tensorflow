@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
@@ -763,8 +762,8 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
     TF_LITE_ENSURE_EQ(context, input_to_input_weights->dims->size, 2);
     TF_LITE_ENSURE_EQ(context, input_to_input_weights->dims->data[0], n_cell);
     TF_LITE_ENSURE_EQ(context, input_to_input_weights->dims->data[1], n_input);
-    TF_LITE_ENSURE_EQ(context, input_to_input_weights->type,
-                      input_to_forget_weights->type);
+    TF_LITE_ENSURE_TYPES_EQ(context, input_to_input_weights->type,
+                            input_to_forget_weights->type);
   }
 
   const TfLiteTensor* input_to_cell_weights =
@@ -772,8 +771,8 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
   TF_LITE_ENSURE_EQ(context, input_to_cell_weights->dims->size, 2);
   TF_LITE_ENSURE_EQ(context, input_to_cell_weights->dims->data[0], n_cell);
   TF_LITE_ENSURE_EQ(context, input_to_cell_weights->dims->data[1], n_input);
-  TF_LITE_ENSURE_EQ(context, input_to_cell_weights->type,
-                    input_to_forget_weights->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input_to_cell_weights->type,
+                          input_to_forget_weights->type);
 
   const TfLiteTensor* recurrent_to_input_weights =
       GetOptionalInputTensor(context, node, kRecurrentToInputWeightsTensor);
@@ -783,8 +782,8 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
                       n_cell);
     TF_LITE_ENSURE_EQ(context, recurrent_to_input_weights->dims->data[1],
                       n_output);
-    TF_LITE_ENSURE_EQ(context, recurrent_to_input_weights->type,
-                      input_to_forget_weights->type);
+    TF_LITE_ENSURE_TYPES_EQ(context, recurrent_to_input_weights->type,
+                            input_to_forget_weights->type);
   }
 
   const TfLiteTensor* recurrent_to_forget_weights =
@@ -794,8 +793,8 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
                     n_cell);
   TF_LITE_ENSURE_EQ(context, recurrent_to_forget_weights->dims->data[1],
                     n_output);
-  TF_LITE_ENSURE_EQ(context, recurrent_to_forget_weights->type,
-                    input_to_forget_weights->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, recurrent_to_forget_weights->type,
+                          input_to_forget_weights->type);
 
   const TfLiteTensor* recurrent_to_cell_weights =
       GetInput(context, node, kRecurrentToCellWeightsTensor);
@@ -803,8 +802,8 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
   TF_LITE_ENSURE_EQ(context, recurrent_to_cell_weights->dims->data[0], n_cell);
   TF_LITE_ENSURE_EQ(context, recurrent_to_cell_weights->dims->data[1],
                     n_output);
-  TF_LITE_ENSURE_EQ(context, recurrent_to_cell_weights->type,
-                    input_to_forget_weights->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, recurrent_to_cell_weights->type,
+                          input_to_forget_weights->type);
 
   // We make sure the input-gate's parameters are either both present (regular
   // LSTM) or not at all (CIFG-LSTM).
@@ -820,7 +819,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
   if (cell_to_input_weights) {
     TF_LITE_ENSURE_EQ(context, cell_to_input_weights->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, cell_to_input_weights->dims->data[0], n_cell);
-    TF_LITE_ENSURE_EQ(
+    TF_LITE_ENSURE_TYPES_EQ(
         context, cell_to_input_weights->type,
         is_integer ? kTfLiteInt16 : input_to_forget_weights->type);
   }
@@ -830,7 +829,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
   if (cell_to_forget_weights) {
     TF_LITE_ENSURE_EQ(context, cell_to_forget_weights->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, cell_to_forget_weights->dims->data[0], n_cell);
-    TF_LITE_ENSURE_EQ(
+    TF_LITE_ENSURE_TYPES_EQ(
         context, cell_to_forget_weights->type,
         is_integer ? kTfLiteInt16 : input_to_forget_weights->type);
   }
@@ -840,7 +839,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
   if (cell_to_output_weights) {
     TF_LITE_ENSURE_EQ(context, cell_to_output_weights->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, cell_to_output_weights->dims->data[0], n_cell);
-    TF_LITE_ENSURE_EQ(
+    TF_LITE_ENSURE_TYPES_EQ(
         context, cell_to_output_weights->type,
         is_integer ? kTfLiteInt16 : input_to_forget_weights->type);
   }
@@ -864,9 +863,9 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
     TF_LITE_ENSURE_EQ(context, input_gate_bias->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, input_gate_bias->dims->data[0], n_cell);
     if (is_integer) {
-      TF_LITE_ENSURE_EQ(context, input_gate_bias->type, kTfLiteInt32);
+      TF_LITE_ENSURE_TYPES_EQ(context, input_gate_bias->type, kTfLiteInt32);
     } else {
-      TF_LITE_ENSURE_EQ(context, input_gate_bias->type, kTfLiteFloat32);
+      TF_LITE_ENSURE_TYPES_EQ(context, input_gate_bias->type, kTfLiteFloat32);
     }
   }
 
@@ -875,18 +874,18 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
   TF_LITE_ENSURE_EQ(context, forget_gate_bias->dims->size, 1);
   TF_LITE_ENSURE_EQ(context, forget_gate_bias->dims->data[0], n_cell);
   if (is_integer) {
-    TF_LITE_ENSURE_EQ(context, forget_gate_bias->type, kTfLiteInt32);
+    TF_LITE_ENSURE_TYPES_EQ(context, forget_gate_bias->type, kTfLiteInt32);
   } else {
-    TF_LITE_ENSURE_EQ(context, forget_gate_bias->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_TYPES_EQ(context, forget_gate_bias->type, kTfLiteFloat32);
   }
 
   const TfLiteTensor* cell_bias = GetInput(context, node, kCellGateBiasTensor);
   TF_LITE_ENSURE_EQ(context, cell_bias->dims->size, 1);
   TF_LITE_ENSURE_EQ(context, cell_bias->dims->data[0], n_cell);
   if (is_integer) {
-    TF_LITE_ENSURE_EQ(context, cell_bias->type, kTfLiteInt32);
+    TF_LITE_ENSURE_TYPES_EQ(context, cell_bias->type, kTfLiteInt32);
   } else {
-    TF_LITE_ENSURE_EQ(context, cell_bias->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_TYPES_EQ(context, cell_bias->type, kTfLiteFloat32);
   }
 
   const TfLiteTensor* output_gate_bias =
@@ -894,9 +893,9 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
   TF_LITE_ENSURE_EQ(context, output_gate_bias->dims->size, 1);
   TF_LITE_ENSURE_EQ(context, output_gate_bias->dims->data[0], n_cell);
   if (is_integer) {
-    TF_LITE_ENSURE_EQ(context, output_gate_bias->type, kTfLiteInt32);
+    TF_LITE_ENSURE_TYPES_EQ(context, output_gate_bias->type, kTfLiteInt32);
   } else {
-    TF_LITE_ENSURE_EQ(context, output_gate_bias->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_TYPES_EQ(context, output_gate_bias->type, kTfLiteFloat32);
   }
 
   const TfLiteTensor* projection_weights =
@@ -905,8 +904,8 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
     TF_LITE_ENSURE_EQ(context, projection_weights->dims->size, 2);
     TF_LITE_ENSURE_EQ(context, projection_weights->dims->data[0], n_output);
     TF_LITE_ENSURE_EQ(context, projection_weights->dims->data[1], n_cell);
-    TF_LITE_ENSURE_EQ(context, projection_weights->type,
-                      input_to_forget_weights->type);
+    TF_LITE_ENSURE_TYPES_EQ(context, projection_weights->type,
+                            input_to_forget_weights->type);
   }
 
   const TfLiteTensor* projection_bias =
@@ -915,9 +914,9 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
     TF_LITE_ENSURE_EQ(context, projection_bias->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, projection_bias->dims->data[0], n_output);
     if (is_integer) {
-      TF_LITE_ENSURE_EQ(context, projection_bias->type, kTfLiteInt32);
+      TF_LITE_ENSURE_TYPES_EQ(context, projection_bias->type, kTfLiteInt32);
     } else {
-      TF_LITE_ENSURE_EQ(context, projection_bias->type, kTfLiteFloat32);
+      TF_LITE_ENSURE_TYPES_EQ(context, projection_bias->type, kTfLiteFloat32);
     }
   }
 
@@ -941,11 +940,11 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
       TF_LITE_ENSURE_EQ(context, input_layer_norm_coefficients->dims->data[0],
                         n_cell);
       if (is_integer) {
-        TF_LITE_ENSURE_EQ(context, input_layer_norm_coefficients->type,
-                          kTfLiteInt16);
+        TF_LITE_ENSURE_TYPES_EQ(context, input_layer_norm_coefficients->type,
+                                kTfLiteInt16);
       } else {
-        TF_LITE_ENSURE_EQ(context, input_layer_norm_coefficients->type,
-                          kTfLiteFloat32);
+        TF_LITE_ENSURE_TYPES_EQ(context, input_layer_norm_coefficients->type,
+                                kTfLiteFloat32);
       }
     }
 
@@ -956,11 +955,11 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
     TF_LITE_ENSURE_EQ(context, forget_layer_norm_coefficients->dims->data[0],
                       n_cell);
     if (is_integer) {
-      TF_LITE_ENSURE_EQ(context, forget_layer_norm_coefficients->type,
-                        kTfLiteInt16);
+      TF_LITE_ENSURE_TYPES_EQ(context, forget_layer_norm_coefficients->type,
+                              kTfLiteInt16);
     } else {
-      TF_LITE_ENSURE_EQ(context, forget_layer_norm_coefficients->type,
-                        kTfLiteFloat32);
+      TF_LITE_ENSURE_TYPES_EQ(context, forget_layer_norm_coefficients->type,
+                              kTfLiteFloat32);
     }
 
     const TfLiteTensor* cell_layer_norm_coefficients =
@@ -970,11 +969,11 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
     TF_LITE_ENSURE_EQ(context, cell_layer_norm_coefficients->dims->data[0],
                       n_cell);
     if (is_integer) {
-      TF_LITE_ENSURE_EQ(context, cell_layer_norm_coefficients->type,
-                        kTfLiteInt16);
+      TF_LITE_ENSURE_TYPES_EQ(context, cell_layer_norm_coefficients->type,
+                              kTfLiteInt16);
     } else {
-      TF_LITE_ENSURE_EQ(context, cell_layer_norm_coefficients->type,
-                        kTfLiteFloat32);
+      TF_LITE_ENSURE_TYPES_EQ(context, cell_layer_norm_coefficients->type,
+                              kTfLiteFloat32);
     }
 
     const TfLiteTensor* output_layer_norm_coefficients = GetOptionalInputTensor(
@@ -984,11 +983,11 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
     TF_LITE_ENSURE_EQ(context, output_layer_norm_coefficients->dims->data[0],
                       n_cell);
     if (is_integer) {
-      TF_LITE_ENSURE_EQ(context, output_layer_norm_coefficients->type,
-                        kTfLiteInt16);
+      TF_LITE_ENSURE_TYPES_EQ(context, output_layer_norm_coefficients->type,
+                              kTfLiteInt16);
     } else {
-      TF_LITE_ENSURE_EQ(context, output_layer_norm_coefficients->type,
-                        kTfLiteFloat32);
+      TF_LITE_ENSURE_TYPES_EQ(context, output_layer_norm_coefficients->type,
+                              kTfLiteFloat32);
     }
   }
 
@@ -1008,7 +1007,7 @@ TfLiteStatus PrecomputeZeroPointTimesWeightWithBias(
   TF_LITE_ENSURE_EQ(context, weight_shape.DimensionsCount(), 2);
   const int row = weight_shape.Dims(0);
   const int col = weight_shape.Dims(1);
-  *output = absl::make_unique<int32_t[]>(row);
+  output->reset(new int32_t[row]);
   if (bias_tensor == nullptr) {
     memset(output->get(), 0, row * sizeof(int32_t));
   } else {
@@ -1393,7 +1392,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     const TfLiteTensor* projection_weights =
         GetOptionalInputTensor(context, node, kProjectionWeightsTensor);
     if (projection_weights != nullptr) {
-      row_sums_rows += ceil(n_output / n_cell);
+      row_sums_rows += ceil(static_cast<float>(n_output) / n_cell);
     }
 
     TfLiteTensor* row_sums = GetTemporary(context, node, /*index=*/9);

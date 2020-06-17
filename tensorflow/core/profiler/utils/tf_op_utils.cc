@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 
+#include <string>
+#include <vector>
+
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/core/platform/regexp.h"
 
@@ -99,6 +103,13 @@ std::string TfOpEventName(const TfOp& tf_op) {
 
 std::string TfOpEventName(absl::string_view tf_op_fullname) {
   return TfOpEventName(ParseTfOpFullname(tf_op_fullname));
+}
+
+std::vector<absl::string_view> ParseTensorShapes(
+    absl::string_view tensor_shapes) {
+  absl::ConsumePrefix(&tensor_shapes, "(");
+  absl::ConsumeSuffix(&tensor_shapes, ")");
+  return absl::StrSplit(tensor_shapes, ';');
 }
 
 }  // namespace profiler

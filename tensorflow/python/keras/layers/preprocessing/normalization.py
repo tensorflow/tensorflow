@@ -22,6 +22,8 @@ import json
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine.base_preprocessing_layer import Combiner
 from tensorflow.python.keras.engine.base_preprocessing_layer import CombinerPreprocessingLayer
@@ -41,7 +43,7 @@ _VARIANCE_NAME = 'variance'
 class Normalization(CombinerPreprocessingLayer):
   """Feature-wise normalization of the data.
 
-  This layer will coerce its inputs into a normal distribution centered around
+  This layer will coerce its inputs into a distribution centered around
   0 with standard deviation 1. It accomplishes this by precomputing the mean and
   variance of the data, and calling (input-mean)/sqrt(var) at runtime.
 
@@ -55,6 +57,20 @@ class Normalization(CombinerPreprocessingLayer):
         in the specified axis. If set to 'None', the layer will perform scalar
         normalization (diving the input by a single scalar value). 0 (the batch
         axis) is not allowed.
+
+  Examples:
+
+  Calculate the mean and variance by analyzing the dataset in `adapt`.
+
+  >>> adapt_data = np.array([[1.], [2.], [3.], [4.], [5.]], dtype=np.float32)
+  >>> input_data = np.array([[1.], [2.], [3.]], np.float32)
+  >>> layer = Normalization()
+  >>> layer.adapt(adapt_data)
+  >>> layer(input_data)
+  <tf.Tensor: shape=(3, 1), dtype=float32, numpy=
+  array([[-1.4142135 ],
+         [-0.70710677],
+         [ 0.        ]], dtype=float32)>
   """
 
   def __init__(self, axis=-1, dtype=None, **kwargs):
@@ -71,7 +87,9 @@ class Normalization(CombinerPreprocessingLayer):
     self.axis = axis
 
   def build(self, input_shape):
-
+    input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    if len(input_shape) == 1:
+      input_shape = input_shape + [1]
     self._broadcast_shape = [1 for _ in range(len(input_shape))]
     if isinstance(self.axis, (tuple, list)):
       mean_and_var_shape = []
@@ -101,12 +119,19 @@ class Normalization(CombinerPreprocessingLayer):
     self.count = self._add_state_variable(
         name=_COUNT_NAME,
         shape=(),
-        dtype=dtypes.int32,
+        dtype=dtypes.int64,
         initializer=init_ops.zeros_initializer)
 
     super(Normalization, self).build(input_shape)
 
   def call(self, inputs):
+    inputs = ops.convert_to_tensor_v2(inputs)
+    if inputs.shape.rank == 1:
+      inputs = array_ops.expand_dims(inputs, 1)
+    # If the inputs are not floats, cast them to floats. This avoids issues
+    # with int-float multiplication and division below.
+    if inputs.dtype != K.floatx():
+      inputs = math_ops.cast(inputs, K.floatx())
     # We need to reshape the mean and variance data to ensure that Tensorflow
     # broadcasts the data correctly.
     mean = array_ops.reshape(self.mean, self._broadcast_shape)
@@ -150,6 +175,9 @@ class _NormalizingCombiner(Combiner):
 
   def compute(self, values, accumulator=None):
     """Compute a step in this computation, returning a new accumulator."""
+    values = np.array(values)
+    if values.ndim == 1:
+      values = np.expand_dims(values, 1)
 
     # This is the shape of all reduced axes (not specified in 'axis').
     if self.axis is None:
@@ -158,7 +186,7 @@ class _NormalizingCombiner(Combiner):
       reduction_counts = np.delete(values.shape, self.axis)
     # We get the number of elements that will be reduced by multiplying all
     # values of 'shape' corresponding to the reduced axes.
-    count = np.prod(reduction_counts, dtype=np.int32)
+    count = np.prod(reduction_counts, dtype=np.int64)
 
     # We want to reduce across dimensions except those specified in 'axis'
     # when using np.mean or np.variance; create the tuple of axes to reduce

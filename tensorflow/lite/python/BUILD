@@ -40,7 +40,6 @@ py_test(
         "no_windows",
         "noasan",  # TODO(b/137568139): enable after this is fixed.
         "nomsan",  # TODO(b/137568139): enable after this is fixed.
-        "notsan",  # TODO(b/149882556): enable after this is fixed.
     ],
     deps = [
         ":interpreter",
@@ -143,7 +142,6 @@ py_test(
     shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
-        "no_rocm",
         "no_windows",
     ],
     deps = [
@@ -158,9 +156,9 @@ py_test(
     name = "lite_v2_test",
     srcs = ["lite_v2_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
-        "no_rocm",
         "no_windows",
     ],
     deps = [

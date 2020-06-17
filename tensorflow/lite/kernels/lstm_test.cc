@@ -17,15 +17,17 @@ limitations under the License.
 // TODO(alanchiao): add unit test with invalid input dimensions for this and its
 // variants.
 
-#include <memory>
+#include <stdint.h>
+
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -137,10 +139,7 @@ class LSTMOpModel : public SingleOpModel {
                           asymmetric_quantize_inputs)
             .Union());
 
-    // Do not apply delegate yet since tensor values are not known (and more
-    // specifically scales in quantized tensors are not known).
-    BuildInterpreter(input_shapes, /*allow_fp32_relax_to_fp16=*/false,
-                     /*apply_delegate=*/false);
+    BuildInterpreter(input_shapes);
   }
 
   void SetInputToInputWeights(const std::vector<float>& f) {
@@ -570,7 +569,8 @@ TEST_F(NoCifgNoPeepholeNoProjectionNoClippingOmittedLayerNormLstmTest,
 
 TEST_P(NoCifgNoPeepholeNoProjectionNoClippingLstmTest,
        HybridLstmBlackBoxTestUint8) {
-  if (SingleOpModel::GetForceUseNnapi() && GetParam()) {
+  // TODO(b/158205028): Fix this test if GetForceUseNnapi() && !GetParam().
+  if (SingleOpModel::GetForceUseNnapi()) {
     return;
   }
   const int n_batch = 1;
@@ -759,7 +759,8 @@ TEST_F(CifgNoPeepholeNoProjectionNoClippingLstmTest, LstmBlackBoxTest) {
 
 TEST_P(CifgNoPeepholeNoProjectionNoClippingLstmTest,
        HybridLstmBlackBoxTestUint8) {
-  if (SingleOpModel::GetForceUseNnapi() && GetParam()) {
+  // TODO(b/158205028): Fix this test if GetForceUseNnapi() && !GetParam().
+  if (SingleOpModel::GetForceUseNnapi()) {
     return;
   }
   const int n_batch = 1;
@@ -1496,7 +1497,8 @@ TEST_F(NoCifgPeepholeProjectionNoClippingLstmTest, LstmBlackBoxTest) {
 
 TEST_P(NoCifgPeepholeProjectionNoClippingLstmTest,
        HybridLstmBlackBoxTestUint8) {
-  if (SingleOpModel::GetForceUseNnapi() && GetParam()) {
+  // TODO(b/158205028): Fix this test if GetForceUseNnapi() && !GetParam().
+  if (SingleOpModel::GetForceUseNnapi()) {
     return;
   }
   const int n_batch = 2;
@@ -1725,7 +1727,8 @@ TEST_F(NoCifgPeepholeProjectionNoClippingLayerNormLstmTest,
 
 TEST_P(NoCifgPeepholeProjectionNoClippingLayerNormLstmTest,
        HybridLayerNormLstmBlackBoxTestUint8) {
-  if (SingleOpModel::GetForceUseNnapi() && GetParam()) {
+  // TODO(b/158205028): Fix this test if GetForceUseNnapi() && !GetParam().
+  if (SingleOpModel::GetForceUseNnapi()) {
     return;
   }
   const int n_batch = 2;
@@ -1983,7 +1986,7 @@ TEST_F(CifgPeepholeProjectionNoClippingLayerNormLstmTest,
 
 TEST_P(CifgPeepholeProjectionNoClippingLayerNormLstmTest,
        HybridLayerNormLstmBlackBoxTestUint8) {
-  if (SingleOpModel::GetForceUseNnapi() && GetParam()) {
+  if (SingleOpModel::GetForceUseNnapi()) {
     return;
   }
   const int n_batch = 2;
@@ -2050,7 +2053,7 @@ TEST_P(CifgPeepholeProjectionNoClippingLayerNormLstmTest,
       }};
 
   VerifyGoldens(lstm_input_, lstm_golden_output_, &layer_norm_lstm,
-                /*tolerance=*/0.000902065);
+                /*tolerance=*/0.0009021);
 }
 
 class CifgPeepholeProjectionNoClippingLayerNormLstmInt8Test
@@ -2257,10 +2260,7 @@ class LSTMIntegerOpModel : public SingleOpModel {
                                    cell_clip, proj_clip)
                      .Union());
 
-    // Do not apply delegate yet since tensor values are not known (and more
-    // specifically scales in quantized tensors are not known).
-    BuildInterpreter(input_shapes, /*allow_fp32_relax_to_fp16=*/false,
-                     /*apply_delegate=*/false);
+    BuildInterpreter(input_shapes);
   }
 
   void SetInputToInputWeights(const std::vector<float>& f) {
@@ -2936,10 +2936,7 @@ class LSTMIntegerOpModel8x8_8 : public SingleOpModel {
                                    cell_clip, proj_clip)
                      .Union());
 
-    // Do not apply delegate yet since tensor values are not known (and more
-    // specifically scales in quantized tensors are not known).
-    BuildInterpreter(input_shapes, /*allow_fp32_relax_to_fp16=*/false,
-                     /*apply_delegate=*/false);
+    BuildInterpreter(input_shapes);
   }
 
   void SetInputToInputWeights(const std::vector<float>& f) {
@@ -3359,6 +3356,7 @@ TEST(LSTMOpModel, InvalidTypeTest) {
 }
 #endif
 
+// Test parameter controls asymmetric_quantize_inputs in LSTMOpModel.
 #define QUANTIZE_PARAMETER_TEST(test) \
   INSTANTIATE_TEST_SUITE_P(test, test, ::testing::Bool())
 

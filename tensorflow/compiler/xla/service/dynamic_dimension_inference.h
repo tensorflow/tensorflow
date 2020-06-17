@@ -51,6 +51,10 @@ class DynamicDimensionInference {
   HloInstruction* GetDynamicSize(HloInstruction* inst, const ShapeIndex& index,
                                  int64 dim) const;
 
+  // Returns if current instruction contains any dynamic dimension. Recursively
+  // go into tuples.
+  bool HasDynamicDimension(HloInstruction* inst) const;
+
   // Forward dynamic dimension size at `dim` and its constraint from `inst` to
   // `new_inst`.
   Status ForwardDynamicSize(HloInstruction* inst, HloInstruction* new_inst,

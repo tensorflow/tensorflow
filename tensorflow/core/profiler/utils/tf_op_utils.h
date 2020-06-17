@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_TF_OP_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_TF_OP_UTILS_H_
 
+#include <string>
 #include <vector>
 
-#include "absl/base/attributes.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 
@@ -81,6 +81,12 @@ inline bool IsMemcpyHToDOp(absl::string_view tf_op_type) {
 inline bool IsMemcpyDToHOp(absl::string_view tf_op_type) {
   return tf_op_type == kMemcpyDToHOp;
 }
+
+// Splits a string of tensor shapes in "(shape1;shape2;...)" format, i.e.,
+// delimited by '(' and ')' and separated by ';', into the individual shapes.
+std::vector<absl::string_view> ParseTensorShapes(
+    absl::string_view tensor_shapes);
+
 }  // namespace profiler
 }  // namespace tensorflow
 

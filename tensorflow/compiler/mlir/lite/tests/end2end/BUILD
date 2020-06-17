@@ -12,7 +12,6 @@ glob_lit_tests(
         "add.pbtxt": ["no_rocm"],
         "conv_2d.pbtxt": ["no_rocm"],
         "fake_quant_per_channel.pbtxt": ["no_rocm"],
-        "ophint_lstm.pbtxt": ["no_rocm"],
     },
     test_file_exts = [
         "pbtxt",

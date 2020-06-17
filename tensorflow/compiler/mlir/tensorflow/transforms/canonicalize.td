@@ -27,6 +27,8 @@ def SingleResultAndOperandHaveSameType : Constraint<
 
 def IsRank2Tensor : Type<HasAnyRankOfPred<[2]>, "Rank 2 tensor">;
 
+def IsRank4Tensor : Type<HasAnyRankOfPred<[4]>, "Rank 4 tensor">;
+
 // Checks if all the users is ReadVariableOp.
 def HasOnlyReadVariableOpUsers : Constraint<
   CPred<"llvm::all_of($0.getUsers(), [](mlir::OpOperand op) { "
@@ -65,6 +67,27 @@ def BatchMatMulV2ToMatMul : Pat<(TF_BatchMatMulV2Op $x, $y, $adj_x, $adj_y),
                               (TF_MatMulOp $x, $y, $adj_x, $adj_y),
                               [(IsRank2Tensor $x), (IsRank2Tensor $y)]>;
 
+//===----------------------------------------------------------------------===//
+// BatchToSpace op patterns.
+//===----------------------------------------------------------------------===//
+
+def BatchToSpaceBlockSizeToBlockShape : NativeCodeCall<
+  "DenseElementsAttr::get(RankedTensorType::get({2}, $_builder.getI64Type()), "
+  "ArrayRef<APInt>{$0.getValue(), $0.getValue()})">;
+
+def BatchToSpaceToBatchToSpaceND :
+    Pat<(TF_BatchToSpaceOp $input, $crops, $block_size),
+        (TF_BatchToSpaceNDOp $input,
+         (TF_ConstOp (BatchToSpaceBlockSizeToBlockShape $block_size)),
+         $crops),
+        [(IsRank4Tensor $input), (IsRank2Tensor $crops)]>;
+
+//===----------------------------------------------------------------------===//
+// BiasAddV1 op patterns.
+//===----------------------------------------------------------------------===//
+
+def BiasAddV1ToBiasAdd : Pat<(TF_BiasAddV1Op $arg0, $arg1),
+  (TF_BiasAddOp $arg0, $arg1, ConstantAttr<TF_ConvnetDataFormatAttr, "NHWC">)>;
 
 //===----------------------------------------------------------------------===//
 // Bitcast op patterns.
@@ -76,6 +99,13 @@ def BitcastSameType : Pat<(TF_BitcastOp:$res $arg), (replaceWithValue $arg),
 
 def BitcastNested : Pat<(TF_BitcastOp (TF_BitcastOp $arg)),
                         (TF_BitcastOp $arg)>;
+
+//===----------------------------------------------------------------------===//
+// Concat op patterns.
+//===----------------------------------------------------------------------===//
+
+def ConvertToConcatV2 : Pat<(TF_ConcatOp $axis, $inputs),
+                            (TF_ConcatV2Op $inputs, $axis)>;
 
 //===----------------------------------------------------------------------===//
 // Conj op patterns.
@@ -151,6 +181,23 @@ def RealDivWithSqrtDivisor : Pat<(TF_RealDivOp $arg0, (TF_SqrtOp $arg1)),
 
 def ReciprocalNested : Pat<(TF_ReciprocalOp (TF_ReciprocalOp $arg)),
                            (replaceWithValue $arg)>;
+
+//===----------------------------------------------------------------------===//
+// Select op patterns.
+//===----------------------------------------------------------------------===//
+
+def ReshapeSelectPredIfNecessary : NativeCodeCall<
+  "ReshapeSelectPredIfNecessary(&($_builder), $0.getOwner()->getLoc(), $1, "
+  "$2.getType().cast<RankedTensorType>().getRank())">;
+
+// Select supports tensor `condition` where the shape is equal to the first
+// dimension of t and e. SelectV2 op supports normal broadcasting, so in these
+// cases the condition needs to be reshaped.
+def SelectToSelectV2 : Pat<
+  (TF_SelectOp:$op StaticShapeTensorOf<[AnyType]>:$cond,
+                   StaticShapeTensorOf<[AnyType]>:$t,
+                   StaticShapeTensorOf<[AnyType]>:$e),
+  (TF_SelectV2Op (ReshapeSelectPredIfNecessary $op, $cond, $t), $t, $e)>;
 
 //===----------------------------------------------------------------------===//
 // Square op patterns.

@@ -17,9 +17,9 @@ limitations under the License.
 #define TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_PUBLIC_CONCRETE_FUNCTION_H_
 
 #include "tensorflow/c/c_api_macros.h"
-#include "tensorflow/c/eager/c_api_internal.h"
-#include "tensorflow/c/eager/c_api_unified_experimental.h"
+#include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/experimental/saved_model/public/function_metadata.h"
+#include "tensorflow/c/experimental/saved_model/public/tensorhandle_list.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -36,15 +36,12 @@ TF_CAPI_EXPORT extern TF_FunctionMetadata* TF_ConcreteFunctionGetMetadata(
     TF_ConcreteFunction* func);
 
 // Returns a list of TensorHandles implicitly captured by this function.
-TF_CAPI_EXPORT extern TF_OutputList* TF_ConcreteFunctionGetCaptures(
+TF_CAPI_EXPORT extern const TF_TensorHandleList* TF_ConcreteFunctionGetCaptures(
     TF_ConcreteFunction* func);
 
 // Returns a TFE_Op suitable for executing this function.
 TF_CAPI_EXPORT extern TFE_Op* TF_ConcreteFunctionGetCallOp(
     TF_ConcreteFunction* func);
-
-// Deletes `func`.
-TF_CAPI_EXPORT extern void TF_DeleteConcreteFunction(TF_ConcreteFunction* func);
 
 #ifdef __cplusplus
 }  // end extern "C"

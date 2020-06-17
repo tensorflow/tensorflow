@@ -112,9 +112,12 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
         "num_replicas_per_worker").set(self.extended._num_gpus_per_worker)
 
   @classmethod
-  def _from_local_devices(cls, devices):
+  def _from_local_devices(
+      cls,
+      devices,
+      communication=cross_device_ops_lib.CollectiveCommunication.AUTO):
     """A convenience method to create an object with a list of devices."""
-    obj = cls()
+    obj = cls(communication)
     obj.extended._initialize_local(TFConfigClusterResolver(), devices=devices)  # pylint: disable=protected-access
     return obj
 
@@ -175,7 +178,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._communication = communication
     self._initialize_strategy(self._cluster_resolver)
     self._cfer_fn_cache = weakref.WeakKeyDictionary()
-    assert isinstance(self._get_cross_device_ops(),
+    assert isinstance(self._cross_device_ops,
                       cross_device_ops_lib.CollectiveAllReduce)
 
   def _initialize_strategy(self, cluster_resolver):
@@ -217,12 +220,18 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._host_input_device = numpy_dataset.SingleDevice(self._worker_device)
 
     self._collective_keys = cross_device_utils.CollectiveKeys()
-    # TODO(yuefengz): remove num_gpus_per_worker from CollectiveAllReduce.
     self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
-        num_workers=self._num_workers,
-        num_gpus_per_worker=num_gpus,
+        devices=local_devices,
+        group_size=len(local_devices),
         collective_keys=self._collective_keys,
         communication=self._communication)
+    # CrossDeviceOps for per host tensors.
+    self._host_cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
+        devices=[self._worker_device],
+        group_size=self._num_workers,
+        collective_keys=self._collective_keys,
+        communication=cross_device_ops_lib.CollectiveCommunication.RING,
+    )
     super(CollectiveAllReduceExtended, self)._initialize_single_worker(
         local_devices)
 
@@ -324,14 +333,22 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
     self._collective_keys = cross_device_utils.CollectiveKeys()
     self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
-        num_workers=self._num_workers,
-        num_gpus_per_worker=num_gpus,
+        devices=local_devices,
+        group_size=len(local_devices) * self._num_workers,
         collective_keys=self._collective_keys,
         communication=self._communication)
+    # CrossDeviceOps for per host tensors.
+    self._host_cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
+        devices=[self._worker_device],
+        group_size=self._num_workers,
+        collective_keys=self._collective_keys,
+        communication=cross_device_ops_lib.CollectiveCommunication.RING,
+    )
     super(CollectiveAllReduceExtended, self)._initialize_single_worker(
         local_devices)
+    host_device = device_util.get_host_for_device(self._worker_device)
     self._input_workers = input_lib.InputWorkers(
-        [(self._worker_device, self.worker_devices)])
+        [(host_device, self.worker_devices)])
 
     # Add a default device so that ops without specified devices will not end up
     # on other workers.
@@ -408,7 +425,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         num_replicas_in_sync=self._num_replicas_in_sync)
     return input_context
 
-  def _experimental_distribute_dataset(self, dataset):
+  def _experimental_distribute_dataset(self, dataset, options):
     input_context = self._make_input_context()
     return input_lib.get_distributed_dataset(
         dataset,
@@ -416,6 +433,15 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         self._container_strategy(),
         split_batch_by=self._num_replicas_in_sync,
         input_context=input_context)
+
+  def _experimental_distribute_datasets_from_function(self, dataset_fn,
+                                                      options):
+    input_context = self._make_input_context()
+    return input_lib.get_distributed_datasets_from_function(
+        dataset_fn=dataset_fn,
+        input_workers=self._input_workers,
+        input_contexts=[input_context],
+        strategy=self._container_strategy())
 
   def _make_dataset_iterator(self, dataset):
     """Distributes the dataset to each local GPU."""
@@ -464,7 +490,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
           num_accelerators={"GPU": self._num_gpus_per_worker},
           rpc_layer=self._rpc_layer)
       self._initialize_multi_worker(cluster_resolver)
-      assert isinstance(self._get_cross_device_ops(),
+      assert isinstance(self._cross_device_ops,
                         cross_device_ops_lib.CollectiveAllReduce)
 
     if session_config:
@@ -508,6 +534,22 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
     return updated_config
 
+  def _get_cross_device_ops(self, value):
+    # CollectiveAllReduce works on a predefined set of devices. In most cases
+    # they should be the compute devices, but certain use cases may reduce host
+    # tensors as well (e.g. early stopping). We infer the cross_device_ops to
+    # use based on the number of devices, since inputs don't always have device
+    # annotations. The compute devices one is preferred since we can potentially
+    # leverage NCCL.
+    if isinstance(value, values.DistributedValues):
+      num_devices = len(value._values)  # pylint: disable=protected-access
+    else:
+      num_devices = 1
+    if num_devices == len(self.worker_devices):
+      return self._cross_device_ops
+    else:
+      return self._host_cross_device_ops
+
   def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
     if (isinstance(value, values.Mirrored) and
         reduce_op == reduce_util.ReduceOp.MEAN):
@@ -528,7 +570,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       # be 0.
       return cross_device_ops_lib.reduce_non_distributed_value(
           reduce_op, value, destinations, len(self.worker_devices))
-    return self._get_cross_device_ops().reduce(
+    return self._get_cross_device_ops(value).reduce(
         reduce_op,
         value,
         destinations=destinations,

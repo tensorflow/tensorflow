@@ -70,9 +70,9 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
              return tensorflow::PyoOrThrow(self.OutputIndices());
            })
       .def("ResizeInputTensor",
-           [](InterpreterWrapper& self, int i, py::handle& value) {
+           [](InterpreterWrapper& self, int i, py::handle& value, bool strict) {
              return tensorflow::PyoOrThrow(
-                 self.ResizeInputTensor(i, value.ptr()));
+                 self.ResizeInputTensor(i, value.ptr(), strict));
            })
       .def("NumTensors", &InterpreterWrapper::NumTensors)
       .def("TensorName", &InterpreterWrapper::TensorName)
@@ -145,5 +145,13 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
           },
           R"pbdoc(
             Adds a delegate to the interpreter.
+          )pbdoc")
+      .def(
+          "SetNumThreads",
+          [](InterpreterWrapper& self, int num_threads) {
+            return tensorflow::PyoOrThrow(self.SetNumThreads(num_threads));
+          },
+          R"pbdoc(
+             ask the interpreter to set the number of threads to use.
           )pbdoc");
 }

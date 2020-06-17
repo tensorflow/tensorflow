@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_TFE_OP_INTERNAL_H_
 #define TENSORFLOW_C_EAGER_TFE_OP_INTERNAL_H_
 
+#include "tensorflow/c/conversion_macros.h"
 #include "tensorflow/c/eager/operation_interface.h"
 
 // Wraps a pointer to an operation implementation.
@@ -23,8 +24,13 @@ limitations under the License.
 // interface cannot destruct the underlying operation object. Instead, call
 // TFE_DeleteOp who calls Release() on the operation pointer and deletes
 // the TFE_Op structure.
-struct TFE_Op {
-  tensorflow::AbstractOperationInterface* operation;
-};
+typedef struct TFE_Op TFE_Op;
+
+namespace tensorflow {
+
+DEFINE_CONVERSION_FUNCTIONS(tensorflow::AbstractOperationInterface, TFE_Op);
+DEFINE_CONVERSION_FUNCTIONS(tensorflow::AbstractOperationInterface*, TFE_Op*);
+
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_C_EAGER_TFE_OP_INTERNAL_H_

@@ -59,6 +59,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/strided_slice.h"
 #include "tensorflow/lite/kernels/internal/reference/sub.h"
+#include "tensorflow/lite/kernels/internal/reference/tanh.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -1343,59 +1344,6 @@ inline void LogSoftmax(const SoftmaxParams& params,
   }
 }
 
-inline void Tanh(const RuntimeShape& input_shape, const float* input_data,
-                 const RuntimeShape& output_shape, float* output_data) {
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  for (int i = 0; i < flat_size; i++) {
-    float val = input_data[i];
-    float result = std::tanh(val);
-    output_data[i] = result;
-  }
-}
-
-// Convenience version that allows, for example, generated-code calls to be
-// uniform between data types.
-inline void Tanh(const TanhParams&, const RuntimeShape& input_shape,
-                 const float* input_data, const RuntimeShape& output_shape,
-                 float* output_data) {
-  // Drop params: not needed.
-  Tanh(input_shape, input_data, output_shape, output_data);
-}
-
-inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
-                 const int16* input_data, const RuntimeShape& output_shape,
-                 int16* output_data) {
-  const int input_left_shift = params.input_left_shift;
-  // Support for shifts is limited until we have a parameterized version of
-  // SaturatingRoundingMultiplyByPOT().
-  TFLITE_DCHECK_GE(input_left_shift, 0);
-  TFLITE_DCHECK_LE(input_left_shift, 1);
-
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  // F0 uses 0 integer bits, range [-1, 1].
-  // This is the return type of math functions such as tanh, logistic,
-  // whose range is in [-1, 1].
-  using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
-  // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
-  using F3 = gemmlowp::FixedPoint<std::int16_t, 3>;
-
-  if (input_left_shift == 0) {
-    for (int i = 0; i < flat_size; i++) {
-      F3 input = F3::FromRaw(input_data[i]);
-      F0 output = gemmlowp::tanh(input);
-      output_data[i] = output.raw();
-    }
-  } else {
-    for (int i = 0; i < flat_size; i++) {
-      F3 input = F3::FromRaw(
-          gemmlowp::SaturatingRoundingMultiplyByPOT<1>(input_data[i]));
-      F0 output = gemmlowp::tanh(input);
-      output_data[i] = output.raw();
-    }
-  }
-}
 
 inline void Dequantize(const RuntimeShape& input_shape,
                        const Eigen::half* input_data,
@@ -2048,7 +1996,8 @@ void Transpose(const TransposeParams& params,
 inline void TransposeConv(
     const ConvParams& params, const RuntimeShape& input_shape,
     const float* input_data, const RuntimeShape& filter_shape,
-    const float* filter_data, const RuntimeShape& output_shape,
+    const float* filter_data, const RuntimeShape& bias_shape,
+    const float* bias_data, const RuntimeShape& output_shape,
     float* output_data, const RuntimeShape& im2col_shape, float* im2col_data) {
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
@@ -2069,6 +2018,9 @@ inline void TransposeConv(
   const int filter_width = filter_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
+  if (bias_data) {
+    TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
+  }
 
   // Although transpose convolution simplifies to convolution with transposed
   // weights for strides of 1, non-unitary striding complicates matters. To
@@ -2116,16 +2068,27 @@ inline void TransposeConv(
       }
     }
   }
+  if (bias_data) {
+    for (int batch = 0; batch < batches; ++batch) {
+      for (int out_y = 0; out_y < output_height; ++out_y) {
+        for (int out_x = 0; out_x < output_width; ++out_x) {
+          for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
+            output_data[Offset(output_shape, batch, out_y, out_x,
+                               out_channel)] += bias_data[out_channel];
+          }
+        }
+      }
+    }
+  }
 }
 
-inline void TransposeConv(const ConvParams& params,
-                          const RuntimeShape& input_shape,
-                          const uint8* input_data,
-                          const RuntimeShape& filter_shape,
-                          const uint8* filter_data,
-                          const RuntimeShape& output_shape, uint8* output_data,
-                          const RuntimeShape& im2col_shape, uint8* im2col_data,
-                          int32* scratch_buffer) {
+inline void TransposeConv(
+    const ConvParams& params, const RuntimeShape& input_shape,
+    const uint8* input_data, const RuntimeShape& filter_shape,
+    const uint8* filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape,
+    uint8* output_data, const RuntimeShape& im2col_shape, uint8* im2col_data,
+    int32* scratch_buffer) {
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int pad_width = params.padding_values.width;
@@ -2153,6 +2116,9 @@ inline void TransposeConv(const ConvParams& params,
   const int32 output_activation_min = params.quantized_activation_min;
   const int32 output_activation_max = params.quantized_activation_max;
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  if (bias_data) {
+    TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
+  }
 
   const int num_elements = output_shape.FlatSize();
   // We need to initialize scratch_buffer to all 0s, as we apply the same
@@ -2194,14 +2160,25 @@ inline void TransposeConv(const ConvParams& params,
       }
     }
   }
-  for (int i = 0; i < num_elements; ++i) {
-    int32 acc = scratch_buffer[i];
-    acc = MultiplyByQuantizedMultiplier(acc, output_multiplier, output_shift);
-    acc += output_offset;
-    // Clamp the output before converting back to uint8.
-    acc = std::max(acc, output_activation_min);
-    acc = std::min(acc, output_activation_max);
-    output_data[i] = static_cast<uint8>(acc);
+  for (int batch = 0; batch < batches; ++batch) {
+    for (int out_y = 0; out_y < output_height; ++out_y) {
+      for (int out_x = 0; out_x < output_width; ++out_x) {
+        for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
+          int32 acc = scratch_buffer[Offset(output_shape, batch, out_y, out_x,
+                                            out_channel)];
+          if (bias_data) {
+            acc += bias_data[out_channel];
+          }
+          int32 scaled_acc = MultiplyByQuantizedMultiplier(
+              acc, output_multiplier, output_shift);
+          scaled_acc += output_offset;
+          scaled_acc = std::max(scaled_acc, output_activation_min);
+          scaled_acc = std::min(scaled_acc, output_activation_max);
+          output_data[Offset(output_shape, batch, out_y, out_x, out_channel)] =
+              static_cast<uint8>(scaled_acc);
+        }
+      }
+    }
   }
 }
 
@@ -2568,7 +2545,7 @@ inline void HardSwish(const HardSwishParams& params,
     // significant bits in the high bits of our 16-bit fixedpoint values, so
     // that fixed-point approximate computations below are as accurate as
     // possible.
-    const int16_t input_value_on_hires_input_scale = input_value << 7;
+    const int16_t input_value_on_hires_input_scale = input_value * (1 << 7);
     // Compute the input value on essentially the output scale, just not
     // right-shifted yet. This is the value that we'll use in the (x >= +3)
     // case, and that in the general case we'll multiply against the "relu-ish"

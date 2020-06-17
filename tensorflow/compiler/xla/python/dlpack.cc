@@ -23,7 +23,9 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "include/dlpack/dlpack.h"  // from @dlpack
-#include "tensorflow/compiler/xla/python/shared_device_buffer.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
+#include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
@@ -39,7 +41,7 @@ namespace {
 const char* const kDlTensorCapsuleName = "dltensor";
 
 struct DLPackTensor {
-  std::shared_ptr<SharedDeviceBuffer> buffer;
+  std::shared_ptr<TrackedDeviceBuffer> buffer;
   std::vector<int64> shape;
   std::vector<int64> strides;
   DLManagedTensor tensor;
@@ -210,7 +212,7 @@ StatusOr<DLContext> DLContextForDevice(const Device& device) {
   return context;
 }
 
-StatusOr<Device*> DeviceForDLContext(const PyLocalClient& client,
+StatusOr<Device*> DeviceForDLContext(const PjRtClient& client,
                                      const DLContext& context) {
   se::Platform::Id platform_id;
   switch (context.device_type) {
@@ -239,12 +241,12 @@ StatusOr<Device*> DeviceForDLContext(const PyLocalClient& client,
 
 }  // namespace
 
-StatusOr<py::capsule> BufferToDLPackManagedTensor(PyLocalBuffer* buffer) {
-  auto pack = absl::make_unique<DLPackTensor>();
+StatusOr<py::capsule> BufferToDLPackManagedTensor(PyBuffer* buffer) {
+  auto pack = std::make_unique<DLPackTensor>();
   // Block on outstanding operations, so that it is safe to read or mutate the
   // returned buffer.
-  StatusOr<std::shared_ptr<SharedDeviceBuffer>> buffer_or =
-      buffer->Release(/*wait_for_operations_to_complete=*/true);
+  StatusOr<std::shared_ptr<TrackedDeviceBuffer>> buffer_or =
+      buffer->buffer()->Release(/*wait_for_operations_to_complete=*/true);
   if (!buffer_or.ok()) {
     return InvalidArgument(
         "Buffer synchronization failed converting to DLPack tensor: %s",
@@ -258,22 +260,25 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(PyLocalBuffer* buffer) {
   pack->tensor.manager_ctx = pack.get();
   pack->tensor.deleter = DLPackTensorDeleter;
   DLTensor& dt = pack->tensor.dl_tensor;
-  if (buffer->on_device_shape().IsTuple()) {
+  if (buffer->buffer()->on_device_shape().IsTuple()) {
     return Unimplemented(
         "unsafe_buffer_pointer is not implemented for tuple "
         "buffers.");
   }
   TF_RET_CHECK(pack->buffer->device_memory().size() == 1);
   dt.data = pack->buffer->device_memory().front().opaque();
-  TF_ASSIGN_OR_RETURN(dt.ctx, DLContextForDevice(*buffer->device()));
-  dt.ctx.device_id = buffer->device()->local_device_state()->device_ordinal();
-  dt.ndim = buffer->on_host_shape().dimensions_size();
-  TF_ASSIGN_OR_RETURN(dt.dtype, PrimitiveTypeToDLDataType(
-                                    buffer->on_host_shape().element_type()));
+  TF_ASSIGN_OR_RETURN(dt.ctx, DLContextForDevice(*buffer->buffer()->device()));
+  dt.ctx.device_id =
+      buffer->buffer()->device()->local_device_state()->device_ordinal();
+  dt.ndim = buffer->buffer()->on_host_shape().dimensions_size();
+  TF_ASSIGN_OR_RETURN(dt.dtype,
+                      PrimitiveTypeToDLDataType(
+                          buffer->buffer()->on_host_shape().element_type()));
 
-  pack->shape = std::vector<int64>(buffer->on_host_shape().dimensions().begin(),
-                                   buffer->on_host_shape().dimensions().end());
-  pack->strides = StridesForShape(buffer->on_host_shape());
+  pack->shape =
+      std::vector<int64>(buffer->buffer()->on_host_shape().dimensions().begin(),
+                         buffer->buffer()->on_host_shape().dimensions().end());
+  pack->strides = StridesForShape(buffer->buffer()->on_host_shape());
   dt.shape = reinterpret_cast<std::int64_t*>(pack->shape.data());
   dt.strides = reinterpret_cast<std::int64_t*>(pack->strides.data());
   dt.byte_offset = 0;
@@ -293,8 +298,8 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(PyLocalBuffer* buffer) {
   return capsule;
 }
 
-StatusOr<std::unique_ptr<PyLocalBuffer>> DLPackManagedTensorToBuffer(
-    const pybind11::capsule& tensor, PyLocalClient* client) {
+StatusOr<std::unique_ptr<PyBuffer>> DLPackManagedTensorToBuffer(
+    const pybind11::capsule& tensor, std::shared_ptr<PyClient> client) {
   if (absl::string_view(tensor.name()) != kDlTensorCapsuleName) {
     return InvalidArgument(
         "DLPack tensor must be a capsule with name \"dltensor\", got \"%s\". "
@@ -307,8 +312,9 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> DLPackManagedTensorToBuffer(
         "Number of dimensions in DLManagedTensor must be nonnegative, got %d",
         dlmt->dl_tensor.ndim);
   }
-  TF_ASSIGN_OR_RETURN(Device * device,
-                      DeviceForDLContext(*client, dlmt->dl_tensor.ctx));
+  TF_ASSIGN_OR_RETURN(
+      Device * device,
+      DeviceForDLContext(*client->pjrt_client(), dlmt->dl_tensor.ctx));
   absl::Span<int64 const> dimensions(
       reinterpret_cast<int64*>(dlmt->dl_tensor.shape), dlmt->dl_tensor.ndim);
   TF_ASSIGN_OR_RETURN(PrimitiveType element_type,
@@ -334,8 +340,8 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> DLPackManagedTensorToBuffer(
   if (dlmt->deleter) {
     on_delete_callback = [dlmt]() { dlmt->deleter(dlmt); };
   }
-  absl::Span<const std::shared_ptr<BufferDefinitionEvent>> definition_events;
-  auto device_buffer = std::make_shared<SharedDeviceBuffer>(
+  absl::Span<const std::shared_ptr<BufferSequencingEvent>> definition_events;
+  auto device_buffer = std::make_shared<TrackedDeviceBuffer>(
       /*allocator=*/nullptr, dlmt->dl_tensor.ctx.device_id,
       std::initializer_list<se::DeviceMemoryBase>{buffer}, definition_events,
       std::move(on_delete_callback));
@@ -344,8 +350,10 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> DLPackManagedTensorToBuffer(
   // capsule it cannot be used again.
   PyCapsule_SetName(tensor.ptr(), "used_dltensor");
   PyCapsule_SetDestructor(tensor.ptr(), nullptr);
-  return absl::make_unique<PyLocalBuffer>(
-      shape, shape, std::move(device_buffer), client, device);
+  auto pjrt_buffer = std::make_unique<PjRtBuffer>(
+      shape, shape, std::move(device_buffer), client->pjrt_client(), device);
+  return std::make_unique<PyBuffer>(std::move(client), std::move(pjrt_buffer),
+                                    Traceback::Get());
 }
 
 }  // namespace xla

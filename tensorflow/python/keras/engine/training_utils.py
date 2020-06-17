@@ -1935,7 +1935,7 @@ def get_input_shape_and_dtype(layer):
       raise ValueError('An empty Model cannot be used as a Layer.')
     layer = layer.layers[0]
 
-  if hasattr(layer, '_batch_input_shape'):
+  if getattr(layer, '_batch_input_shape', None):
     return layer._batch_input_shape, layer.dtype
   return None, None
 

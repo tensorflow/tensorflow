@@ -210,6 +210,22 @@ TFE_OutputTensorHandles InputTFE_OutputTensorHandles(
   return output_tensor_handles;
 }
 
+// Packs multiple `EagerTensor`s of the same dtype and shape into one
+// `EagerTensor`.
+py::object TFE_Py_PackEagerTensors_wrapper(const py::handle& context,
+                                           const py::handle& tensors) {
+  TFE_Context* ctx = tensorflow::InputTFE_Context(context);
+  TFE_InputTensorHandles handles = InputTFE_InputTensorHandles(tensors);
+  tensorflow::Safe_TF_StatusPtr status = tensorflow::make_safe(TF_NewStatus());
+  int size = handles.size();
+  TFE_TensorHandle* packed_handle =
+      TFE_CreatePackedTensorHandle(ctx, handles.data(), &size, status.get());
+  tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+  PyObject* packed_tensor =
+      EagerTensorFromHandle(packed_handle, /*is_packed=*/true);
+  return tensorflow::PyoOrThrow(packed_tensor);
+}
+
 // This function was created from fusing the typemap logic in platform/base.i.
 py::object TFE_Py_ExecuteCancelable_wrapper(
     const py::handle& context, const char* device_name, const char* op_name,
@@ -256,6 +272,16 @@ static py::object TF_ListPhysicalDevices() {
   return tensorflow::PyoOrThrow(result);
 }
 
+static std::unordered_map<string, string> TF_GetDeviceDetails(int index) {
+  tensorflow::Safe_TF_StatusPtr status = tensorflow::make_safe(TF_NewStatus());
+  std::unordered_map<string, string> device_details;
+  tensorflow::Status s =
+      tensorflow::DeviceFactory::GetAnyDeviceDetails(index, &device_details);
+  tensorflow::Set_TF_Status_from_Status(status.get(), s);
+  MaybeRaiseRegisteredFromTFStatus(status.get());
+  return device_details;
+}
+
 static py::object TFE_ClearScalarCache() {
   tensorflow::TFE_TensorHandleCache::Get()->Clear();
   return py::none();
@@ -270,7 +296,6 @@ static py::object TFE_ClearScalarCache() {
 // are only assigning this to functions that return opaque types.
 
 PYBIND11_MODULE(_pywrap_tfe, m) {
-  py::class_<TFE_Context> TFE_Context_class(m, "TFE_Context");
   py::class_<TFE_Executor> TFE_Executor_class(m, "TFE_Executor");
   py::class_<TFE_ContextOptions> TFE_ContextOptions_class(m,
                                                           "TFE_ContextOptions");
@@ -338,6 +363,14 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TF_GetXlaConstantFoldingDisabled", &TF_GetXlaConstantFoldingDisabled);
   m.def("TF_SetXlaMinClusterSize", &TF_SetXlaMinClusterSize);
   m.def("TF_IsXlaEnabled", [] { return tensorflow::IsXlaEnabled(); });
+
+  // MLIR Logic
+  m.def("TF_IsMlirBridgeEnabled", [] {
+    return tensorflow::GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge;
+  });
+  m.def("TF_EnableMlirBridge", [](bool enabled) {
+    tensorflow::GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge = enabled;
+  });
 
   // // TFE_Context Logic
   m.def(
@@ -489,6 +522,18 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     // NOTE: different from TFE_ContextSyncExecutors that raises potential
     // errors, deliberately ignore executor statuses in cleanup.
   });
+  m.def("TFE_ContextSetSoftDevicePlacement", [](py::handle& ctx, bool enable) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    TFE_ContextSetSoftDevicePlacement(tensorflow::InputTFE_Context(ctx), enable,
+                                      status.get());
+  });
+  m.def("TFE_ContextSetLogDevicePlacement", [](py::handle& ctx, bool enable) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    TFE_ContextSetSoftDevicePlacement(tensorflow::InputTFE_Context(ctx), enable,
+                                      status.get());
+  });
 
   // TFE_Executor logic
   m.def(
@@ -547,6 +592,10 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_Py_InitEagerTensor", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_InitEagerTensor(o.ptr()));
   });
+  m.def("TFE_Py_PackEagerTensors",
+        [](const py::handle& context, const py::handle& handles) {
+          return tensorflow::TFE_Py_PackEagerTensors_wrapper(context, handles);
+        });
   m.def("TFE_Py_SetEagerTensorProfiler", &TFE_Py_SetEagerTensorProfiler);
   m.def("TFE_Py_RegisterJVPFunction", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_RegisterJVPFunction(o.ptr()));
@@ -760,7 +809,9 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_ContextStartStep", [](py::handle& o) {
     TFE_ContextStartStep(tensorflow::InputTFE_Context(o.ptr()));
   });
-  m.def("TFE_ContextEndStep", &TFE_ContextEndStep);
+  m.def("TFE_ContextEndStep", [](py::handle& o) {
+    TFE_ContextEndStep(tensorflow::InputTFE_Context(o.ptr()));
+  });
   m.def("TFE_Py_RegisterVSpace", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_RegisterVSpace(o.ptr()));
   });
@@ -779,6 +830,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
   });
   m.def("TF_ListPhysicalDevices", &tensorflow::TF_ListPhysicalDevices);
+  m.def("TF_GetDeviceDetails", &tensorflow::TF_GetDeviceDetails);
   m.def("TF_DeleteDeviceList", &TF_DeleteDeviceList,
         py::return_value_policy::reference);
   m.def("TF_DeviceListCount", &TF_DeviceListCount);

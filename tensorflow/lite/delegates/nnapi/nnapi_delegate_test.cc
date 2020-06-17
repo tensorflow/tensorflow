@@ -16,6 +16,8 @@ limitations under the License.
 
 #include <sys/mman.h>
 
+#include <initializer_list>
+
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter.h"
@@ -46,19 +48,12 @@ MATCHER(QuantizedNear, "") {
 
 class SingleOpModelWithNNAPI : public SingleOpModel {
  public:
-  SingleOpModelWithNNAPI() {
-    this->SetApplyDelegate([](Interpreter* interpreter) {
-      interpreter->ModifyGraphWithDelegate(NnApiDelegate());
-    });
-  }
+  SingleOpModelWithNNAPI() { SetDelegate(NnApiDelegate()); }
 
   explicit SingleOpModelWithNNAPI(
       const StatefulNnApiDelegate::Options& options) {
     stateful_delegate_.reset(new StatefulNnApiDelegate(options));
-    auto* delegate = stateful_delegate_.get();
-    this->SetApplyDelegate([delegate](Interpreter* interpreter) {
-      interpreter->ModifyGraphWithDelegate(delegate);
-    });
+    SetDelegate(stateful_delegate_.get());
   }
 
   TfLiteStatus ResizeInputTensor(int tensor_index,
@@ -154,8 +149,8 @@ class FloatAddOpModel : public SingleOpModelWithNNAPI {
     output_ = AddOutput(output);
     SetBuiltinOp(BuiltinOperator_ADD, BuiltinOptions_AddOptions,
                  CreateAddOptions(builder_, activation_type).Union());
-    BuildInterpreter({GetShape(input1_), GetShape(input2_)},
-                     allow_fp32_relax_to_fp16);
+    BuildInterpreter({GetShape(input1_), GetShape(input2_)}, /*num_threads=*/-1,
+                     allow_fp32_relax_to_fp16, /*apply_delegate=*/true);
   }
 };
 
@@ -294,6 +289,23 @@ TEST(NNAPIDelegate, StatefulDelegateWithCompilationCaching) {
       StatefulNnApiDelegate::Options::ExecutionPreference::kLowPower;
   options.cache_dir = "/data/local/tmp";
   options.model_token = "NNAPIDelegate.StatefulDelegateWithCompilationCaching";
+
+  FloatAddOpModel m(options, {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
+  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3}));
+}
+
+// Sanity check for the state-ful NNAPI delegate with QoS hints.
+TEST(NNAPIDelegate, StatefulDelegateWithQoS) {
+  StatefulNnApiDelegate::Options options;
+  options.execution_priority = ANEURALNETWORKS_PRIORITY_HIGH;
+  options.max_compilation_timeout_duration_ns = UINT64_MAX;
+  options.max_execution_timeout_duration_ns = UINT64_MAX;
+  options.max_execution_loop_timeout_duration_ns = UINT64_MAX;
 
   FloatAddOpModel m(options, {TensorType_FLOAT32, {1, 2, 2, 1}},
                     {TensorType_FLOAT32, {1, 2, 2, 1}},
@@ -833,6 +845,113 @@ TEST(ConvolutionOpTest, SimpleTestQuantizedWithDilation) {
   // | 5 | 5 | 5 |
   EXPECT_THAT(m.GetQuantizedOutput(),
               ElementsAreArray({5, 5, 5, 5, 5, 5, 5, 5, 5}));
+}
+
+class PerChannelQuantizedConvolutionWithConstantFilterOpModel
+    : public SingleOpModelWithNNAPI {
+ public:
+  PerChannelQuantizedConvolutionWithConstantFilterOpModel(
+      const TensorData& input, const TensorData& filter,
+      std::initializer_list<int8_t> filter_data,
+      std::initializer_list<int32_t> bias_data, const TensorData& output,
+      int stride_width = 2, int stride_height = 2,
+      enum Padding padding = Padding_VALID,
+      enum ActivationFunctionType activation = ActivationFunctionType_NONE,
+      int dilation_width_factor = 1, int dilation_height_factor = 1)
+      : input_type_(input.type), filter_type_(filter.type) {
+    CHECK(filter.per_channel_quantization);
+    input_ = AddInput(input);
+    filter_ = AddConstInput(filter, filter_data);
+
+    const int bias_size = GetShape(filter_)[0];
+    const int num_channels = filter.per_channel_quantization_scales.size();
+    const std::vector<int64_t> bias_offsets(num_channels, 0);
+    std::vector<float> bias_scales(num_channels);
+    for (int i = 0; i < num_channels; i++) {
+      bias_scales[i] = input.scale * filter.per_channel_quantization_scales[i];
+    }
+    const TensorData bias{TensorType_INT32,
+                          {bias_size},
+                          /*min=*/0,
+                          /*max=*/0,
+                          /*scale=*/0,
+                          /*zero_point=*/0,
+                          /*per_channel_quantization=*/true,
+                          /*per_channel_quantization_scales=*/bias_scales,
+                          /*per_channel_quantization_offsets=*/bias_offsets,
+                          /*channel_index==*/0};
+    bias_ = AddConstInput(bias, bias_data);
+
+    output_ = AddOutput(output);
+
+    SetBuiltinOp(BuiltinOperator_CONV_2D, BuiltinOptions_Conv2DOptions,
+                 CreateConv2DOptions(
+                     builder_, padding, stride_width, stride_height, activation,
+                     dilation_width_factor, dilation_height_factor)
+                     .Union());
+
+    BuildInterpreter({GetShape(input_), GetShape(filter_), GetShape(bias_)});
+  }
+
+  void SetInput(std::initializer_list<float> data) {
+    QuantizeAndPopulate<int8_t>(input_, data);
+  }
+
+  std::vector<int8_t> GetOutput() { return ExtractVector<int8_t>(output_); }
+
+ protected:
+  int input_;
+  int filter_;
+  int bias_;
+  int output_;
+
+  const TensorType input_type_;
+  const TensorType filter_type_;
+};
+
+TEST(ConvolutionOpTest, SimplePerChannelTest) {
+  PerChannelQuantizedConvolutionWithConstantFilterOpModel m(
+      {TensorType_INT8, {1, 2, 3, 2}, -63.5, 64, 0.5, -1},
+      {TensorType_INT8,
+       // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
+       {2, 2, 2, 2},
+       /*min=*/0,
+       /*max=*/0,
+       /*scale=*/0,
+       /*zero_point=*/0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{1, 2},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/0},
+      /*filter_data=*/
+      {
+          // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
+          1, 2,  // out channel = 0, y = 0, x = 0
+          3, 4,  // out channel = 0, y = 0, x = 1
+          3, 4,  // out channel = 0, y = 1, x = 0
+          5, 6,  // out channel = 0, y = 1, x = 1
+          4, 4,  // out channel = 1, y = 0, x = 0
+          3, 3,  // out channel = 1, y = 0, x = 1
+          2, 2,  // out channel = 1, y = 1, x = 0
+          1, 1,  // out channel = 1, y = 1, x = 1
+      },
+      /*bias_data=*/{6, -2}, {TensorType_INT8, {}, -63.5, 64, 0.5, -1},
+      /*stride_width=*/1, /*stride_height=*/1);
+  m.SetInput({
+      // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
+      3, 2,    // batch = 0, y = 0, x = 0
+      1, -1,   // batch = 0, y = 0, x = 1
+      -2, -3,  // batch = 0, y = 0, x = 2
+      4, 3,    // batch = 0, y = 1, x = 0
+      2, -2,   // batch = 0, y = 1, x = 1
+      -3, -4,  // batch = 0, y = 1, x = 2
+  });
+
+  // Invoke and verify output.
+  // output has dimension [1 * 1 * 2 * 2] as [batch, y, x, output_channel]
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(),
+              testing::Pointwise(QuantizedNear(), {61, 127, -115, -93}));
 }
 
 class DepthwiseConvolutionOpModel : public SingleOpModelWithNNAPI {

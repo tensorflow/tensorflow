@@ -15,19 +15,28 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 
-#include "tensorflow/core/lib/core/errors.h"
+#include <memory>
+
+#include "absl/memory/memory.h"
 #include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/profiler_options.pb.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/env_var.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/profiler/internal/profiler_factory.h"
 #include "tensorflow/core/profiler/lib/profiler_utils.h"
 #include "tensorflow/core/profiler/utils/derived_timeline.h"
 #include "tensorflow/core/profiler/utils/group_events.h"
+#include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #endif
 
@@ -44,7 +53,7 @@ ProfileOptions GetOptions(const ProfileOptions& opts) {
 
 /*static*/ std::unique_ptr<ProfilerSession> ProfilerSession::Create(
     const ProfileOptions& options) {
-  return WrapUnique(new ProfilerSession(options));
+  return absl::WrapUnique(new ProfilerSession(options));
 }
 
 /*static*/ std::unique_ptr<ProfilerSession> ProfilerSession::Create() {
@@ -89,9 +98,10 @@ Status ProfilerSession::CollectData(profiler::XSpace* space) {
   const profiler::XPlane* cupti_driver_api_plane =
       profiler::FindPlaneWithName(*space, profiler::kCuptiDriverApiPlaneName);
   if (cupti_driver_api_plane) {
-    profiler::XPlane* host_plane =
-        profiler::GetOrCreatePlane(space, profiler::kHostThreads);
+    profiler::XPlane* host_plane = profiler::FindOrAddMutablePlaneWithName(
+        space, profiler::kHostThreadsPlaneName);
     profiler::MergePlanes(*cupti_driver_api_plane, host_plane);
+    profiler::SortXLinesBy(host_plane, profiler::XLinesComparatorByName());
     profiler::RemovePlaneWithName(space, profiler::kCuptiDriverApiPlaneName);
   }
   // 2. Normalize all timestamps by shifting timeline to profiling start time.

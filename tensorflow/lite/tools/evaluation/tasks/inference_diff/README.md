@@ -65,8 +65,7 @@ and the following optional parameters:
     instance of `tflite::evaluation::EvaluationStageMetrics`
 
 This script also supports runtime/delegate arguments introduced by the
-[delegate registrar]
-(https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/delegates).
+[delegate registrar](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/delegates).
 If there is any conflict (for example, `num_threads` vs
 `num_interpreter_threads` here), the parameters of this
 script are given precedence.

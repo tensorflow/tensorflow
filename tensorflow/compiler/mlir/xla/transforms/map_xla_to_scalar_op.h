@@ -228,6 +228,28 @@ inline Value MapLhloOpToStdScalarOp<xla_lhlo::CeilOp>(
 }
 
 template <>
+inline Value MapLhloOpToStdScalarOp<xla_lhlo::ComplexOp>(
+    Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
+    OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<CreateComplexOp>{}(loc, result_types, args,
+                                                       b);
+}
+
+template <>
+inline Value MapLhloOpToStdScalarOp<xla_lhlo::RealOp>(
+    Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
+    OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<ReOp>{}(loc, result_types, args, b);
+}
+
+template <>
+inline Value MapLhloOpToStdScalarOp<xla_lhlo::ImagOp>(
+    Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
+    OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<ImOp>{}(loc, result_types, args, b);
+}
+
+template <>
 inline Value MapLhloOpToStdScalarOp<xla_lhlo::ConvertOp>(
     Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
     OpBuilder* b) {
@@ -259,11 +281,33 @@ inline Value MapLhloOpToStdScalarOp<xla_lhlo::ConvertOp>(
     // No conversion is needed for the same width integers
     return args.front();
   }
-  // TODO(dfki-ehna): Add other primitive type conversions
-  // if (mlir::FpToSiOp::areCastCompatible(sourceType, targetType)) {
-  //   return b.create<mlir::FpToSiOp>(loc, result_types,
-  //   args,mlir::None);
-  // }
+  if (mlir::FPToSIOp::areCastCompatible(sourceType, targetType)) {
+    return b->create<mlir::FPToSIOp>(loc, result_types, args, mlir::None);
+  }
+  return nullptr;
+}
+
+template <>
+inline Value MapLhloOpToStdScalarOp<xla_lhlo::DotOp>(
+    Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
+    OpBuilder* b) {
+  // Dot Op converter from lhlo to affine only accepts float and integer types.
+  const auto& lhs = args[0];
+  const auto& rhs = args[1];
+  const auto& result = args[2];
+  Type element_type = lhs.getType();
+  if (element_type.isa<FloatType>()) {
+    Value float_mul = MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::MulFOp>{}(
+        loc, result_types, {lhs, rhs}, b);
+    return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::AddFOp>{}(
+        loc, result_types, {float_mul, result}, b);
+  }
+  if (element_type.isa<IntegerType>()) {
+    Value int_mul = MapLhloOpToStdScalarOpImpl<IntegerType, ::mlir::MulIOp>{}(
+        loc, result_types, {lhs, rhs}, b);
+    return MapLhloOpToStdScalarOpImpl<IntegerType, ::mlir::AddIOp>{}(
+        loc, result_types, {int_mul, result}, b);
+  }
   return nullptr;
 }
 
@@ -272,6 +316,14 @@ inline Value MapLhloOpToStdScalarOp<xla_lhlo::CosOp>(
     Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
     OpBuilder* b) {
   return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::CosOp>{}(
+      loc, result_types, args, b);
+}
+
+template <>
+inline Value MapLhloOpToStdScalarOp<xla_lhlo::SinOp>(
+    Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
+    OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::SinOp>{}(
       loc, result_types, args, b);
 }
 

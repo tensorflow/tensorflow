@@ -658,6 +658,16 @@ __device__ Eigen::half GpuAtomicCasHelper(Eigen::half* ptr, F accumulate) {
   }
 }
 
+template <typename F>
+__device__ long long GpuAtomicCasHelper(long long* ptr, F accumulate) {
+  return static_cast<long long>(
+      GpuAtomicCasHelper(reinterpret_cast<unsigned long long*>(ptr),
+                         [accumulate](unsigned long long a) {
+                           return static_cast<unsigned long long>(
+                               accumulate(static_cast<long long>(a)));
+                         }));
+}
+
 template <typename From, typename To>
 using ToTypeIfConvertible =
     typename std::enable_if<std::is_convertible<From, To>::value, To>::type;
@@ -670,6 +680,12 @@ using ToTypeIfConvertible =
 template <typename T, typename U>
 __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicAdd(T* ptr, U value) {
   return atomicAdd(ptr, value);
+}
+
+__device__ inline int64 GpuAtomicAdd(int64* ptr, int64 value) {
+  // This cast should be safe since module-2 addition should work fine. However,
+  // signed overflow is not handled correctly since it's undefined behavior.
+  return atomicAdd(reinterpret_cast<uint64*>(ptr), static_cast<uint64>(value));
 }
 
 __device__ inline Eigen::half GpuAtomicAdd(Eigen::half* ptr,
@@ -725,9 +741,14 @@ __device__ inline double GpuAtomicSub(double* ptr, double value) {
   return GpuAtomicAdd(ptr, -value);
 }
 
+__device__ inline tensorflow::int64 GpuAtomicSub(tensorflow::int64* ptr,
+                                                 tensorflow::int64 value) {
+  return GpuAtomicAdd(ptr, -value);
+}
+
 __device__ inline tensorflow::uint64 GpuAtomicSub(tensorflow::uint64* ptr,
                                                   tensorflow::uint64 value) {
-  return GpuAtomicAdd(ptr, -value);
+  return GpuAtomicAdd(ptr, -static_cast<tensorflow::int64>(value));
 }
 
 __device__ inline Eigen::half GpuAtomicSub(Eigen::half* ptr,
@@ -766,6 +787,11 @@ __device__ inline float GpuAtomicMax(float* ptr, float value) {
 __device__ inline double GpuAtomicMax(double* ptr, double value) {
   return detail::GpuAtomicCasHelper(
       ptr, [value](double a) { return fmax(a, value); });
+}
+
+__device__ inline long long GpuAtomicMax(long long* ptr, long long value) {
+  return detail::GpuAtomicCasHelper(
+      ptr, [value](long long a) { return max(a, value); });
 }
 
 #else
@@ -826,6 +852,11 @@ __device__ inline float GpuAtomicMin(float* ptr, float value) {
 __device__ inline double GpuAtomicMin(double* ptr, double value) {
   return detail::GpuAtomicCasHelper(
       ptr, [value](double a) { return fmin(a, value); });
+}
+
+__device__ inline long long GpuAtomicMin(long long* ptr, long long value) {
+  return detail::GpuAtomicCasHelper(
+      ptr, [value](long long a) { return min(a, value); });
 }
 
 #else

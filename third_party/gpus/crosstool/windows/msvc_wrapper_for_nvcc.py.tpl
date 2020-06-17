@@ -37,13 +37,6 @@ GCC_HOST_COMPILER_PATH = ('%{gcc_host_compiler_path}')
 NVCC_PATH = '%{nvcc_path}'
 NVCC_VERSION = '%{cuda_version}'
 NVCC_TEMP_DIR = "%{nvcc_tmp_dir}"
-DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,6.0'
-
-# Taken from environment variable for supported TF CUDA Compute Capabilities
-# eg. export TF_CUDA_COMPUTE_CAPABILITIES=3.5,3.7,5.2,6.0,6.1,7.0
-supported_cuda_compute_capabilities = os.environ.get(
-    'TF_CUDA_COMPUTE_CAPABILITIES',
-    DEFAULT_CUDA_COMPUTE_CAPABILITIES).split(',')
 
 def Log(s):
   print('gpus/crosstool: {0}'.format(s))
@@ -53,7 +46,7 @@ def GetOptionValue(argv, option):
   """Extract the list of values for option from options.
 
   Args:
-    option: The option whose value to extract, without the leading '/'.
+    option: The option whose value to extract.
 
   Returns:
     1. A list of values, either directly following the option,
@@ -62,8 +55,9 @@ def GetOptionValue(argv, option):
     2. The leftover options.
   """
 
-  parser = ArgumentParser(prefix_chars='/')
-  parser.add_argument('/' + option, nargs='*', action='append')
+  parser = ArgumentParser(prefix_chars='-/')
+  parser.add_argument(option, nargs='*', action='append')
+  option = option.lstrip('-/').replace('-', '_')
   args, leftover = parser.parse_known_args(argv)
   if args and vars(args)[option]:
     return (sum(vars(args)[option], []), leftover)
@@ -122,19 +116,22 @@ def InvokeNvcc(argv, log=False):
 
   nvcc_compiler_options, argv = GetNvccOptions(argv)
 
-  opt_option, argv = GetOptionValue(argv, 'O')
+  opt_option, argv = GetOptionValue(argv, '/O')
   opt = ['-g']
   if (len(opt_option) > 0 and opt_option[0] != 'd'):
     opt = ['-O2']
 
-  include_options, argv = GetOptionValue(argv, 'I')
+  include_options, argv = GetOptionValue(argv, '/I')
   includes = ["-I " + include for include in include_options]
 
-  defines, argv = GetOptionValue(argv, 'D')
+  defines, argv = GetOptionValue(argv, '/D')
   defines = ['-D' + define for define in defines]
 
-  undefines, argv = GetOptionValue(argv, 'U')
+  undefines, argv = GetOptionValue(argv, '/U')
   undefines = ['-U' + define for define in undefines]
+
+  fatbin_options, argv = GetOptionValue(argv, '-Xcuda-fatbinary')
+  fatbin_options = ['--fatbin-options=' + option for option in fatbin_options]
 
   # The rest of the unrecognized options should be passed to host compiler
   host_compiler_options = [option for option in argv if option not in (src_files + out_file)]
@@ -142,14 +139,25 @@ def InvokeNvcc(argv, log=False):
   m_options = ["-m64"]
 
   nvccopts = ['-D_FORCE_INLINES']
-  for capability in supported_cuda_compute_capabilities:
-    capability = capability.replace('.', '')
-    nvccopts += [r'-gencode=arch=compute_%s,"code=sm_%s,compute_%s"' % (
-        capability, capability, capability)]
+  compute_capabilities, argv = GetOptionValue(argv, "--cuda-gpu-arch")
+  for capability in compute_capabilities:
+    capability = capability[len('sm_'):]
+    nvccopts += [
+        r'-gencode=arch=compute_%s,"code=sm_%s"' % (capability, capability)
+    ]
+  compute_capabilities, argv = GetOptionValue(argv, '--cuda-include-ptx')
+  for capability in compute_capabilities:
+    capability = capability[len('sm_'):]
+    nvccopts += [
+        r'-gencode=arch=compute_%s,"code=compute_%s"' % (capability, capability)
+    ]
+  _, argv = GetOptionValue(argv, '--no-cuda-include-ptx')
+
   nvccopts += nvcc_compiler_options
   nvccopts += undefines
   nvccopts += defines
   nvccopts += m_options
+  nvccopts += fatbin_options
   nvccopts += ['--compiler-options="' + " ".join(host_compiler_options) + '"']
   nvccopts += ['-x', 'cu'] + opt + includes + out + ['-c'] + src_files
   # Specify a unique temp directory for nvcc to generate intermediate files,
@@ -163,10 +171,15 @@ def InvokeNvcc(argv, log=False):
   # Provide a unique dir for each compiling action to avoid conflicts.
   tempdir = tempfile.mkdtemp(dir = NVCC_TEMP_DIR)
   nvccopts += ['--keep', '--keep-dir', tempdir]
-  cmd = [NVCC_PATH] + nvccopts
   if log:
-    Log(cmd)
-  proc = subprocess.Popen(cmd,
+    Log([NVCC_PATH] + nvccopts)
+
+  # Store command line options in a file to avoid hitting the character limit.
+  optsfile = tempfile.NamedTemporaryFile(mode='w', dir=tempdir, delete=False)
+  optsfile.write("\n".join(nvccopts))
+  optsfile.close()
+
+  proc = subprocess.Popen([NVCC_PATH, "--options-file", optsfile.name],
                           stdout=sys.stdout,
                           stderr=sys.stderr,
                           env=os.environ.copy(),

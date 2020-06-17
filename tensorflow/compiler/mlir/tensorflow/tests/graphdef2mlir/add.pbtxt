@@ -1,6 +1,6 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-input-arrays=input0,input1 -tf-input-data-types=DT_INT32,DT_INT32 -tf-input-shapes=10:10 -tf-output-arrays=Add -o - | FileCheck %s
-# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-input-arrays=input0,input1 -tf-input-shapes=10:10 -tf-output-arrays=Add -o - | FileCheck --check-prefix=NONE %s
-# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-input-arrays=input0,input1 -tf-input-shapes=10:10 -tf-input-data-types=',DT_INT32' -tf-output-arrays=Add -o - | FileCheck --check-prefix=SOME %s
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-input-arrays=input0,input1 -tf-input-data-types=DT_INT32,DT_INT32 -tf-input-shapes=10:10 -tf-output-arrays=Add -o - | FileCheck %s
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-input-arrays=input0,input1 -tf-input-shapes=10:10 -tf-output-arrays=Add -o - | FileCheck --check-prefix=NONE %s
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-input-arrays=input0,input1 -tf-input-shapes=10:10 -tf-input-data-types=',DT_INT32' -tf-output-arrays=Add -o - | FileCheck --check-prefix=SOME %s
 
 node {
   name: "Add"
@@ -39,7 +39,7 @@ versions {
 }
 
 # CHECK-LABEL: func @main
-# CHECK-SAME:  (%[[ARG_0:[a-z0-9]+]]: tensor<10xi32>, %[[ARG_1:[a-z0-9]+]]: tensor<10xi32>) -> tensor<10xi32>
+# CHECK-SAME:  (%[[ARG_0:[a-z0-9]+]]: tensor<10xi32>, %[[ARG_1:[a-z0-9]+]]: tensor<10xi32>) -> tensor<*xi32>
 # CHECK-SAME:  control_outputs = ""
 # CHECK-SAME:  inputs = "input0,input1"
 # CHECK-SAME:  outputs = "Add"
@@ -47,7 +47,7 @@ versions {
 # CHECK:           fetch %[[add]]
 
 # SOME-LABEL: func @main
-# SOME-SAME:  (%[[ARG_0:[a-z0-9]+]]: tensor<10xi32>, %[[ARG_1:[a-z0-9]+]]: tensor<10xi32>) -> tensor<10xi32>
+# SOME-SAME:  (%[[ARG_0:[a-z0-9]+]]: tensor<10xi32>, %[[ARG_1:[a-z0-9]+]]: tensor<10xi32>) -> tensor<*xi32>
 # SOME-SAME:  control_outputs = ""
 # SOME-SAME:  inputs = "input0,input1"
 # SOME-SAME:  outputs = "Add"
@@ -55,7 +55,7 @@ versions {
 # SOME:           fetch %[[add]]
 
 # NONE-LABEL: func @main
-# NONE-SAME:  (%[[ARG_0:[a-z0-9]+]]: tensor<10xi32>, %[[ARG_1:[a-z0-9]+]]: tensor<10xi32>) -> tensor<10xi32>
+# NONE-SAME:  (%[[ARG_0:[a-z0-9]+]]: tensor<10xi32>, %[[ARG_1:[a-z0-9]+]]: tensor<10xi32>) -> tensor<*xi32>
 # NONE-SAME:  control_outputs = ""
 # NONE-SAME:  inputs = "input0,input1"
 # NONE-SAME:  outputs = "Add"

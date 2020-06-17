@@ -14,15 +14,19 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/internal/cpu/host_tracer_utils.h"
 
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/internal/parse_annotation.h"
 #include "tensorflow/core/profiler/internal/traceme_recorder.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
+#include "tensorflow/core/profiler/utils/xplane_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -94,6 +98,7 @@ void ConvertCompleteEventsToXPlane(uint64 start_timestamp_ns,
       }
     }
   }
+  SortXLinesBy(raw_plane, XLinesComparatorByName());
 }
 
 }  // namespace profiler

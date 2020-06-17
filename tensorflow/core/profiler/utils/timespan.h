@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_TIMESPAN_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_TIMESPAN_H_
 
+#include <algorithm>
+#include <string>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"

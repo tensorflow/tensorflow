@@ -20,13 +20,14 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/executor.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -154,6 +155,14 @@ TEST_F(ExecutorTest, SimpleAdd) {
   std::vector<Tensor> retvals;
   TF_ASSERT_OK(call_frame.ConsumeRetvals(&retvals, false));
   EXPECT_EQ(3.0, V(retvals[0]));  // out = 1.0 + 2.0 = 3.0
+
+  // Verify that the argument values are unchanged.
+  const Tensor* arg_0;
+  TF_ASSERT_OK(call_frame.GetArg(0, &arg_0));
+  EXPECT_EQ(1.0, V(*arg_0));
+  const Tensor* arg_1;
+  TF_ASSERT_OK(call_frame.GetArg(1, &arg_1));
+  EXPECT_EQ(2.0, V(*arg_1));
 }
 
 TEST_F(ExecutorTest, SelfAdd) {
@@ -246,6 +255,24 @@ TEST_F(ExecutorTest, OpError) {
   EXPECT_TRUE(errors::IsInvalidArgument(Run(&call_frame)));
 }
 
+TEST_F(ExecutorTest, ControlDependenciesFromSpecialNodes) {
+  auto g = absl::make_unique<Graph>(OpRegistry::Global());
+  auto in0 = test::graph::Arg(g.get(), 0, DT_FLOAT);
+  auto one = test::graph::Constant(g.get(), V(2.0));
+  auto add = test::graph::Add(g.get(), in0, one);
+  auto ret = test::graph::Retval(g.get(), 0, add);
+  g->AddControlEdge(in0, add);
+  g->AddControlEdge(one, ret);
+  FixupSourceAndSinkEdges(g.get());
+  Create(std::move(g));
+  FunctionCallFrame call_frame({DT_FLOAT}, {DT_FLOAT});
+  TF_ASSERT_OK(call_frame.SetArgs({V(1.0)}));
+  TF_ASSERT_OK(Run(&call_frame));
+  std::vector<Tensor> retvals;
+  TF_ASSERT_OK(call_frame.ConsumeRetvals(&retvals, false));
+  EXPECT_EQ(3.0, V(retvals[0]));  // out = 1.0 + 2.0 = 3.0
+}
+
 static void BM_executor(int iters, int width, int depth) {
 #ifdef PLATFORM_GOOGLE
   BenchmarkUseRealTime();
@@ -298,6 +325,36 @@ BENCHMARK(BM_executor)->ArgPair(8192, 32);
 
 // Tall fat graph
 BENCHMARK(BM_executor)->ArgPair(1024, 1024);
+
+static void BM_const_identity(int iters, int width, int outputs_per_const) {
+#ifdef PLATFORM_GOOGLE
+  BenchmarkUseRealTime();
+#endif  // PLATFORM_GOOGLE
+  Graph* g = new Graph(OpRegistry::Global());
+  for (int i = 0; i < width; ++i) {
+    Tensor i_t(i);
+    Node* const_node = test::graph::Constant(g, i_t);
+    for (int j = 0; j < outputs_per_const; ++j) {
+      test::graph::Identity(g, const_node);
+    }
+  }
+  FixupSourceAndSinkEdges(g);
+#ifdef PLATFORM_GOOGLE
+  SetBenchmarkLabel(
+      strings::StrCat("Nodes = ", (1 + outputs_per_const) * width));
+  SetBenchmarkItemsProcessed((1 + outputs_per_const) * width *
+                             static_cast<int64>(iters));
+#endif  // PLATFORM_GOOGLE
+  test::Benchmark("cpu", g, nullptr, nullptr, nullptr,
+                  "SINGLE_THREADED_EXECUTOR")
+      .Run(iters);
+}
+
+// Graph with actual op execution.
+BENCHMARK(BM_const_identity)->ArgPair(1, 1);
+BENCHMARK(BM_const_identity)->ArgPair(1, 100);
+BENCHMARK(BM_const_identity)->ArgPair(100, 1);
+BENCHMARK(BM_const_identity)->ArgPair(100, 100);
 
 // TODO(mrry): This benchmark currently crashes with a use-after free, because
 // test::Benchmark::RunWithArgs() assumes that the executor will take ownership

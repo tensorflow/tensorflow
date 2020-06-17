@@ -115,10 +115,19 @@ class BFCAllocator : public Allocator {
   bool MergeTimestampedChunks(size_t required_bytes)
       TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
+  // Return the largest free chunk bytes from the largest bin in constant time.
+  // The free chunks are sorted by size (and then address) in a bin.
+  int64 LargestFreeChunk() TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
   // Add TraceMe (in memory allocation and deallocation) for memory stats
   // profiling. The chunk_ptr is passed to get information such as address,
   // chunk size and requested_size.
-  void AddTraceMe(absl::string_view traceme_name, const void* chunk_ptr)
+  void AddTraceMe(absl::string_view traceme_name, const void* ptr)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
+  // Overloaded AddTraceMe function with chunk information.
+  void AddTraceMe(absl::string_view traceme_name, const void* chunk_ptr,
+                  int64 req_bytes, int64 alloc_bytes)
       TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // A ChunkHandle is an index into the chunks_ vector in BFCAllocator

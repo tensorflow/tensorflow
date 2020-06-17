@@ -17,11 +17,10 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/xplane_builder.h"
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -33,8 +32,12 @@ const XPlane* FindPlaneWithName(const XSpace& space, absl::string_view name);
 std::vector<const XPlane*> FindPlanesWithPrefix(const XSpace& space,
                                                 absl::string_view prefix);
 
-// Returns the plane with the given name, create it if necessary.
-XPlane* GetOrCreatePlane(XSpace* space, absl::string_view name);
+// Returns the plane with the given name in the container or null if not found.
+XPlane* FindMutablePlaneWithName(XSpace* space, absl::string_view name);
+
+// Returns the plane with the given name in the container. If necessary, adds a
+// new plane to the container.
+XPlane* FindOrAddMutablePlaneWithName(XSpace* space, absl::string_view name);
 
 // Returns true if event is nested by parent.
 bool IsNested(const tensorflow::profiler::XEvent& event,
@@ -46,26 +49,25 @@ void AddOrUpdateIntStat(int64 metadata_id, int64 value,
 void AddOrUpdateStrStat(int64 metadata_id, absl::string_view value,
                         tensorflow::profiler::XEvent* event);
 
-XEventBuilder CreateXEvent(
-    XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
-    absl::string_view event_name, int64 offset_ps, int64 duration_ps,
-    const absl::flat_hash_map<StatType, int64 /*stat_value*/>& stats);
-
-XEventBuilder CreateXEvent(
-    XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
-    HostEventType event_type, int64 offset_ps, int64 duration_ps,
-    const absl::flat_hash_map<StatType, int64 /*stat_value*/>& stats);
-
 void RemovePlaneWithName(XSpace* space, absl::string_view name);
 void RemoveEmptyPlanes(XSpace* space);
 void RemoveEmptyLines(XPlane* plane);
 
-// Returns the plane with the given name in the container or null if not found.
-XPlane* FindMutablePlaneWithName(XSpace* space, absl::string_view name);
+// Sort lines in plane with a provided comparator.
+template <class Compare>
+void SortXLinesBy(XPlane* plane, Compare comp) {
+  std::sort(plane->mutable_lines()->pointer_begin(),
+            plane->mutable_lines()->pointer_end(), comp);
+}
 
-// Returns the plane with the given name in the container. If necessary, adds a
-// new plane to the container.
-XPlane* FindOrAddMutablePlaneWithName(XSpace* space, absl::string_view name);
+class XLinesComparatorByName {
+ public:
+  bool operator()(const XLine* a, const XLine* b) const {
+    auto& line_a = a->display_name().empty() ? a->name() : a->display_name();
+    auto& line_b = b->display_name().empty() ? b->name() : b->display_name();
+    return line_a < line_b;
+  }
+};
 
 // Sorts each XLine's XEvents by offset_ps (ascending) and duration_ps
 // (descending) so nested events are sorted from outer to innermost.

@@ -26,6 +26,7 @@ from absl.testing import parameterized
 import six
 
 from tensorflow.python import tf2
+from tensorflow.python.distribute import ps_values
 from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute import values as distributed_values
 from tensorflow.python.eager import context
@@ -250,7 +251,7 @@ class VariableTrackingTest(test_util.TensorFlowTestCase):
         None, [variables.Variable(1.)], variables.VariableAggregation.SUM)
     tpu = tpu_values.TPUMirroredVariable(
         strategy=None, values=[variables.Variable(42.)], aggregation=None)
-    aggregating = distributed_values.AggregatingVariable(
+    aggregating = ps_values.AggregatingVariable(
         strategy=None, v=variables.Variable(1.), aggregation=None)
 
     m = module.Module()
@@ -514,8 +515,8 @@ class FlattenTest(parameterized.TestCase, test_util.TensorFlowTestCase):
 
     m = module.Module()
     m.layers = {non_orderable(): None, non_orderable(): None}
-    with self.assertRaisesRegexp(ValueError,
-                                 "Error processing property 'layers'"):
+    with self.assertRaisesRegex(ValueError,
+                                "Error processing property 'layers'"):
       m.variables  # pylint: disable=pointless-statement
 
 

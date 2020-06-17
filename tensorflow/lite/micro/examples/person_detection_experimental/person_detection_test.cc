@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/version.h"
 
 // Create an area of memory to use for input, output, and intermediate arrays.
-constexpr int tensor_arena_size = 125 * 1024;
+constexpr int tensor_arena_size = 136 * 1024;
 uint8_t tensor_arena[tensor_arena_size];
 
 TF_LITE_MICRO_TESTS_BEGIN
@@ -52,19 +52,18 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   // An easier approach is to just use the AllOpsResolver, but this will
   // incur some penalty in code space for op implementations that are not
   // needed by this graph.
-  tflite::MicroOpResolver<11> micro_op_resolver;
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
-                               tflite::ops::micro::Register_DEPTHWISE_CONV_2D(),
-                               1, 3);
+  tflite::MicroMutableOpResolver<5> micro_op_resolver;
+  micro_op_resolver.AddBuiltin(
+      tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
+      tflite::ops::micro::Register_DEPTHWISE_CONV_2D());
   micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_CONV_2D,
-                               tflite::ops::micro::Register_CONV_2D(), 1, 3);
+                               tflite::ops::micro::Register_CONV_2D());
   micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_AVERAGE_POOL_2D,
-                               tflite::ops::micro::Register_AVERAGE_POOL_2D(),
-                               1, 2);
+                               tflite::ops::micro::Register_AVERAGE_POOL_2D());
   micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_RESHAPE,
                                tflite::ops::micro::Register_RESHAPE());
   micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
-                               tflite::ops::micro::Register_SOFTMAX(), 1, 2);
+                               tflite::ops::micro::Register_SOFTMAX());
 
   // Build an interpreter to run the model with.
   tflite::MicroInterpreter interpreter(model, micro_op_resolver, tensor_arena,

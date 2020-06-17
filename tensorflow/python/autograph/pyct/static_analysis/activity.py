@@ -70,6 +70,9 @@ class Scope(object):
     globals: Set[qual_names.QN], names that are explicitly marked as global in
       this scope. Note that this doesn't include free read-only vars bound to
       global symbols.
+    nonlocals: Set[qual_names.QN], names that are explicitly marked as nonlocal
+      in this scope. Note that this doesn't include free read-only vars bound to
+      global symbols.
     free_vars: Set[qual_names.QN], the free variables in this scope. See
       https://docs.python.org/3/reference/executionmodel.html for a precise
       definition.
@@ -111,6 +114,7 @@ class Scope(object):
 
     self.bound = set()
     self.globals = set()
+    self.nonlocals = set()
     self.annotations = set()
 
     self.params = weakref.WeakValueDictionary()
@@ -186,6 +190,7 @@ class Scope(object):
         self.parent.modified.update(self.modified - self.isolated_names)
         self.parent.bound.update(self.bound - self.isolated_names)
         self.parent.globals.update(self.globals)
+        self.parent.nonlocals.update(self.nonlocals)
         self.parent.annotations.update(self.annotations)
       else:
         # TODO(mdan): This is not accurate.
@@ -363,6 +368,7 @@ class ActivityAnalyzer(transformer.Base):
       qn = qual_names.QN(name)
       self.scope.read.add(qn)
       self.scope.bound.add(qn)
+      self.scope.nonlocals.add(qn)
     self._exit_and_record_scope(node)
     return node
 
@@ -617,9 +623,23 @@ class ActivityAnalyzer(transformer.Base):
       # TODO(mdan): Do remove it, it's confusing.
       self._enter_scope(False)
       node.body = self.visit(node.body)
+
+      # The lambda body can contain nodes of types normally not found as
+      # statements, and may not have the SCOPE annotation needed by the CFG.
+      # So we attach one if necessary.
+      if not anno.hasanno(node.body, anno.Static.SCOPE):
+        anno.setanno(node.body, anno.Static.SCOPE, self.scope)
+
       self._exit_and_record_scope(node, NodeAnno.BODY_SCOPE)
 
+      lambda_scope = self.scope
       self._exit_and_record_scope(node, NodeAnno.ARGS_AND_BODY_SCOPE)
+
+      # Exception: lambdas are assumed to be used in the place where
+      # they are defined. Therefore, their activity is passed on to the
+      # calling statement.
+      self.scope.read.update(lambda_scope.read - lambda_scope.bound)
+
       return node
 
   def visit_With(self, node):

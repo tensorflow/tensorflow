@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -196,6 +197,34 @@ Literal LiteralBase::CreateFromShape(const Shape& shape) {
         }
       });
   return literal;
+}
+
+absl::optional<int64> LiteralBase::GetFirstInteger() const {
+  switch (shape().element_type()) {
+    case U8:
+      return GetFirstElement<uint8>();
+    case U16:
+      return GetFirstElement<uint16>();
+    case U32:
+      return GetFirstElement<uint32>();
+    case U64: {
+      int64 v = GetFirstElement<uint64>();
+      if (v < 0) {
+        return absl::nullopt;
+      }
+      return v;
+    }
+    case S8:
+      return GetFirstElement<int8>();
+    case S16:
+      return GetFirstElement<int16>();
+    case S32:
+      return GetFirstElement<int32>();
+    case S64:
+      return GetFirstElement<int64>();
+    default:
+      return absl::nullopt;
+  }
 }
 
 template <typename NativeT>
@@ -2073,6 +2102,32 @@ MutableBorrowingLiteral::MutableBorrowingLiteral(const char* src_buf_ptr,
   root_piece_ = new Piece();
   root_piece_->set_buffer(const_cast<char*>(src_buf_ptr));
   root_piece_->set_subshape(shape_.get());
+}
+
+MutableBorrowingLiteral::MutableBorrowingLiteral(absl::Span<char*> src_buf_ptrs,
+                                                 const Shape& shape)
+    : MutableLiteralBase() {
+  shape_ = absl::make_unique<Shape>(shape);
+  if (!shape_->IsTuple()) {
+    CHECK_EQ(src_buf_ptrs.size(), 1);
+    root_piece_ = new Piece();
+    root_piece_->set_buffer(const_cast<char*>(src_buf_ptrs[0]));
+    root_piece_->set_subshape(shape_.get());
+  } else {
+    CHECK(!ShapeUtil::IsNestedTuple(*shape_));
+    CHECK_EQ(src_buf_ptrs.size(), ShapeUtil::TupleElementCount(*shape_));
+    root_piece_ = new Piece();
+    root_piece_->set_subshape(shape_.get());
+
+    for (int i = 0; i < src_buf_ptrs.size(); ++i) {
+      Piece child_piece;
+      const auto& src_shape = shape_->tuple_shapes(i);
+      CHECK(src_shape.IsArray());
+      child_piece.set_subshape(&src_shape);
+      child_piece.set_buffer(src_buf_ptrs[i]);
+      root_piece_->emplace_back(std::move(child_piece));
+    }
+  }
 }
 
 MutableBorrowingLiteral::~MutableBorrowingLiteral() {

@@ -374,7 +374,8 @@ void InferenceContext::Merge() {
     auto& linkable_node = nodes_[next_nodes[0]];
     auto* elementwise =
         dynamic_cast<ElementwiseOperation*>(linkable_node.operations[0].get());
-    if (!elementwise || linkable_node.outputs.size() != 1 ||
+    if (!elementwise || !elementwise->IsLinkable() ||
+        linkable_node.outputs.size() != 1 ||
         !IsReady(ready_tensors, linkable_node)) {
       continue;
     }

@@ -37,7 +37,8 @@ mlir::OwningModuleRef GraphdefToMlirTranslateFunction(
     absl::string_view input_shapes, absl::string_view output_arrays,
     absl::string_view control_output_arrays, bool prune_unused_nodes,
     bool convert_legacy_fed_inputs, bool graph_as_function, bool upgrade_legacy,
-    mlir::MLIRContext* context);
+    // TODO(jpienaar): Remove this.
+    bool enable_shape_inference, mlir::MLIRContext* context);
 
 // Similar as the above function, but replaces all constant tensors
 // with randomly generated splat values.
@@ -47,7 +48,8 @@ mlir::OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
     absl::string_view input_shapes, absl::string_view output_arrays,
     absl::string_view control_output_arrays, bool prune_unused_nodes,
     bool convert_legacy_fed_inputs, bool graph_as_function, bool upgrade_legacy,
-    mlir::MLIRContext* context);
+    // TODO(jpienaar): Remove this.
+    bool enable_shape_inference, mlir::MLIRContext* context);
 
 // Converts a TensorFlow SavedModel stored in the directory with the given
 // `saved_model_dir` into a MLIR module. Creates MLIR entities into the
@@ -62,7 +64,8 @@ mlir::OwningModuleRef SavedModelObjectGraphToMlirImport(
 // given MLIR `context`.
 mlir::OwningModuleRef SavedModelSignatureDefsToMlirImport(
     absl::string_view saved_model_dir,
-    const std::unordered_set<std::string>& tags, mlir::MLIRContext* context);
+    const std::unordered_set<std::string>& tags,
+    absl::Span<std::string> exported_names, mlir::MLIRContext* context);
 
 }  // namespace tensorflow
 

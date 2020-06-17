@@ -38,6 +38,7 @@ inline static void Log(BridgeLoggerConfig::PrintCallbackFn print_callback,
   std::unique_ptr<llvm::raw_ostream> os;
   std::string filepath;
   if (CreateFileForDumping(name, &os, &filepath).ok()) print_callback(*os);
+  VLOG(1) << "Dumped MLIR module to " << filepath;
 }
 
 void BridgeLoggerConfig::printBeforeIfEnabled(mlir::Pass* pass,
@@ -50,6 +51,13 @@ void BridgeLoggerConfig::printAfterIfEnabled(mlir::Pass* pass,
                                              mlir::Operation* operation,
                                              PrintCallbackFn print_callback) {
   Log(print_callback, pass, operation, "after");
+}
+
+void BridgeTimingConfig::printTiming(PrintCallbackFn printCallback) {
+  std::string name = "mlir_bridge_pass_timing.txt";
+  std::unique_ptr<llvm::raw_ostream> os;
+  std::string filepath;
+  if (CreateFileForDumping(name, &os, &filepath).ok()) printCallback(*os);
 }
 
 }  // namespace tensorflow

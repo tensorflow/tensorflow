@@ -91,7 +91,7 @@ Status CreateXlaKernel(FunctionLibraryRuntime* flr, const NodeDef& node_def,
     }
     string message = absl::StrCat(
         "Function invoked by the following node is not compilable: ",
-        SummarizeNodeDef(node_def), ".\n");
+        SummarizeNodeDef(node_def, /*max_inputs_in_summary=*/10), ".\n");
     absl::StrAppend(&message, "Uncompilable nodes:");
     for (const auto& node_info : uncompilable_node_info) {
       string node_message =

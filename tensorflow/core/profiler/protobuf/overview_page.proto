@@ -3,6 +3,7 @@ syntax = "proto3";
 package tensorflow.profiler;
 
 import "google/protobuf/any.proto";
+import "tensorflow/core/profiler/protobuf/diagnostics.proto";
 import "tensorflow/core/profiler/protobuf/input_pipeline.proto";
 
 // Overview result for a TensorFlow Op.
@@ -81,9 +82,14 @@ message OverviewPageRecommendation {
   // A statement for input that recommends the next steps for investigating the
   // bottleneck.
   string statement = 2;
+  // A list of tips for tackling input bottleneck.
+  repeated OverviewPageTip input_tips = 11;
   // A statement for output that recommends the next steps for investigating the
   // bottleneck.
   string output_statement = 9;
+  // A statement that recommends the next steps for investigating tf-function
+  // related bottleneck (it is a html so that it can link to other tools/docs.
+  string tf_function_statement_html = 10;
   // A list of tips for improving host performance.
   repeated OverviewPageTip host_tips = 3;
   // A list of tips for improving device performance.
@@ -163,7 +169,7 @@ message OverviewPage {
   OverviewPageAnalysis analysis = 3;
   // The recommendation made to the user.
   OverviewPageRecommendation recommendation = 4;
-  // Errors.
-  repeated string errors = 7;
-  reserved 1, 5;
+  // Error and warning messages for diagnosing profiling issues.
+  Diagnostics diagnostics = 8;
+  reserved 1, 5, 7;
 }

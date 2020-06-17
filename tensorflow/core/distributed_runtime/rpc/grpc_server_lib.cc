@@ -70,26 +70,21 @@ class NoReusePortOption : public ::grpc::ServerBuilderOption {
                          plugins) override {}
 };
 
+// Define an option subclass in order to enable SO_REUSEPORT for the
+// server socket.
+class ReusePortOption : public ::grpc::ServerBuilderOption {
+ public:
+  void UpdateArguments(::grpc::ChannelArguments* args) override {
+    args->SetInt(GRPC_ARG_ALLOW_REUSEPORT, 1);
+  }
+
+  void UpdatePlugins(std::vector<std::unique_ptr<::grpc::ServerBuilderPlugin>>*
+                         plugins) override {}
+};
+
 // static utility function
 RendezvousMgrInterface* NewRpcRendezvousMgr(const WorkerEnv* env) {
   return new RpcRendezvousMgr(env);
-}
-
-std::unique_ptr<GrpcWorkerEnv> CreateGrpcWorkerEnv() {
-  int num_cpus = port::NumSchedulableCPUs();
-  int64 num_completion_queues;
-  Status status = ReadInt64FromEnvVar("TF_GRPC_WORKER_CACHE_QUEUES", 64,
-                                      &num_completion_queues);
-  if (!status.ok()) {
-    LOG(ERROR) << "Error parsing TF_GRPC_WORKER_CACHE_QUEUES: " << status;
-  }
-  int64 num_threads;
-  status = ReadInt64FromEnvVar("TF_GRPC_WORKER_CACHE_THREADS", num_cpus,
-                               &num_threads);
-  if (!status.ok()) {
-    LOG(ERROR) << "Error parsing TF_GRPC_WORKER_CACHE_THREADS: " << status;
-  }
-  return absl::make_unique<GrpcWorkerEnv>(num_completion_queues, num_threads);
 }
 
 }  // namespace
@@ -118,9 +113,6 @@ GrpcServer::~GrpcServer() {
   // OpSegments.)
   if (worker_env_.session_mgr != nullptr) {
     delete worker_env_.session_mgr;  // Deletes graph_mgr's.
-  } else {
-    // Note: session_mgr's legacy_session_ deletes device_mgr now.
-    delete worker_env_.device_mgr;
   }
 
   // Do not delete (as these are not owned by the server):
@@ -131,9 +123,11 @@ GrpcServer::~GrpcServer() {
 
 void GrpcServer::MaybeMutateBuilder(::grpc::ServerBuilder* builder) {}
 
-// Look up the port that has been requested for this task in `server_def`.
-Status GrpcServer::GetPort(const ServerDef& server_def, int* port) const {
+// Look up the requested host name and port for this task in `server_def`.
+Status GrpcServer::GetHostAndPort(const ServerDef& server_def,
+                                  string* host_name, int* port) const {
   *port = -1;
+  *host_name = "localhost";
   for (const auto& job : server_def.cluster().job()) {
     if (job.name() == server_def.job_name()) {
       auto iter = job.tasks().find(server_def.task_index());
@@ -152,6 +146,11 @@ Status GrpcServer::GetPort(const ServerDef& server_def, int* port) const {
           return errors::InvalidArgument(
               "Could not parse port for local server from \"", iter->second,
               "\".");
+        }
+
+        if (colon_index != string::npos &&
+            !iter->second.substr(0, colon_index).empty()) {
+          *host_name = iter->second.substr(0, colon_index);
         }
       }
       break;
@@ -175,7 +174,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   // otherwise if 'task_index=-1' the program will abort.
 
   int requested_port;
-  TF_RETURN_IF_ERROR(GetPort(server_def_, &requested_port));
+  TF_RETURN_IF_ERROR(GetHostAndPort(server_def_, &host_name_, &requested_port));
 
   SessionOptions sess_opts;
   ConfigProto config = server_def_.default_session_config();
@@ -185,12 +184,18 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   string name_prefix =
       strings::StrCat("/job:", server_def_.job_name(), "/replica:0",
                       "/task:", server_def_.task_index());
-  std::vector<std::unique_ptr<Device>> devices;
-  TF_RETURN_IF_ERROR(
-      DeviceFactory::AddDevices(sess_opts, name_prefix, &devices));
-  worker_env_.device_mgr = new StaticDeviceMgr(std::move(devices));
-  master_env_.local_devices = worker_env_.device_mgr->ListDevices();
+  if (opts.local_device_mgr == nullptr) {
+    std::vector<std::unique_ptr<Device>> devices;
+    TF_RETURN_IF_ERROR(
+        DeviceFactory::AddDevices(sess_opts, name_prefix, &devices));
+    worker_env_.device_mgr = new StaticDeviceMgr(std::move(devices));
+    owned_device_manager_.reset(worker_env_.device_mgr);
+  } else {
+    worker_env_.device_mgr = opts.local_device_mgr;
+    owned_device_manager_.reset(nullptr);
+  }
   worker_env_.local_devices = worker_env_.device_mgr->ListDevices();
+  master_env_.local_devices = worker_env_.device_mgr->ListDevices();
   worker_env_.rendezvous_mgr = opts.rendezvous_mgr_func == nullptr
                                    ? new RpcRendezvousMgr(&worker_env_)
                                    : opts.rendezvous_mgr_func(&worker_env_);
@@ -220,8 +225,18 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
                            GetServerCredentials(server_def_), &bound_port_);
   builder.SetMaxMessageSize(std::numeric_limits<int32>::max());
 
-  builder.SetOption(
-      std::unique_ptr<::grpc::ServerBuilderOption>(new NoReusePortOption));
+  bool reuse_port = false;
+  const Status status =
+      ReadBoolFromEnvVar("TF_GRPC_REUSE_PORT", false, &reuse_port);
+  if (!status.ok()) {
+    LOG(ERROR) << status.error_message();
+  }
+  auto server_build_option =
+      reuse_port
+          ? std::unique_ptr<::grpc::ServerBuilderOption>(new ReusePortOption)
+          : std::unique_ptr<::grpc::ServerBuilderOption>(new NoReusePortOption);
+  builder.SetOption(std::move(server_build_option));
+
   // Allow subclasses to specify more args to pass to the gRPC server.
   MaybeMutateBuilder(&builder);
   master_impl_ = CreateMaster(&master_env_);
@@ -243,7 +258,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
     return errors::Unknown("Could not start gRPC server");
   }
   // Create the execution environment for the GRPC workers cache.
-  grpc_worker_env_ = CreateGrpcWorkerEnv();
+  grpc_worker_env_.reset(CreateGrpcWorkerEnv());
 
   WorkerCacheInterface* worker_cache;
   WorkerCacheFactoryOptions worker_cache_factory_options(server_def_);
@@ -325,7 +340,7 @@ Status GrpcServer::ParseChannelSpec(const WorkerCacheFactoryOptions& options,
                                        task.second);
       }
       if (job.name() == *options.job_name && task.first == options.task_index) {
-        host_port = strings::StrCat("localhost:", bound_port_);
+        host_port = strings::StrCat(host_name_, ":", bound_port_);
       } else {
         host_port = task.second;
       }
@@ -369,7 +384,7 @@ Status GrpcServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
                                    " differs from expected port ", bound_port_);
   }
   *worker_cache = NewGrpcWorkerCacheWithLocalWorker(
-      channel_cache, worker_impl(), name_prefix, grpc_worker_env_.get());
+      channel_cache, grpc_worker_env(), worker_impl(), name_prefix);
   return Status::OK();
 }
 
@@ -478,7 +493,7 @@ Status GrpcServer::Join() {
 }
 
 const string GrpcServer::target() const {
-  return strings::StrCat("grpc://localhost:", bound_port_);
+  return strings::StrCat("grpc://", host_name_, ":", bound_port_);
 }
 
 std::shared_ptr<::grpc::ServerCredentials> GrpcServer::GetServerCredentials(
@@ -498,12 +513,13 @@ std::unique_ptr<Master> GrpcServer::CreateMaster(MasterEnv* master_env) {
 
 /* static */
 Status GrpcServer::Create(const ServerDef& server_def, Env* env,
+                          const DeviceMgr* local_device_mgr,
                           std::unique_ptr<ServerInterface>* out_server) {
   std::unique_ptr<GrpcServer> ret(
       new GrpcServer(server_def, env == nullptr ? Env::Default() : env));
-  ServiceInitFunction service_func = nullptr;
   GrpcServerOptions options;
   options.rendezvous_mgr_func = NewRpcRendezvousMgr;
+  options.local_device_mgr = local_device_mgr;
   Status s = ret->Init(options);
   if (!s.ok()) {
     LOG(ERROR) << s;
@@ -515,17 +531,19 @@ Status GrpcServer::Create(const ServerDef& server_def, Env* env,
 
 /* static */
 Status GrpcServer::Create(const ServerDef& server_def, Env* env,
+                          std::unique_ptr<ServerInterface>* out_server) {
+  return Create(server_def, env, nullptr, out_server);
+}
+
+/* static */
+Status GrpcServer::Create(const ServerDef& server_def, Env* env,
                           std::unique_ptr<GrpcServer>* out_server) {
-  std::unique_ptr<GrpcServer> ret(
-      new GrpcServer(server_def, env == nullptr ? Env::Default() : env));
-  GrpcServerOptions options;
-  options.rendezvous_mgr_func = NewRpcRendezvousMgr;
-  Status s = ret->Init(options);
+  std::unique_ptr<ServerInterface> server;
+  Status s = Create(server_def, env, nullptr, &server);
   if (!s.ok()) {
-    LOG(ERROR) << s;
     return s;
   }
-  *out_server = std::move(ret);
+  out_server->reset(dynamic_cast<GrpcServer*>(server.release()));
   return Status::OK();
 }
 
@@ -537,9 +555,10 @@ class GrpcServerFactory : public ServerFactory {
     return server_def.protocol() == "grpc";
   }
 
-  Status NewServer(const ServerDef& server_def,
+  Status NewServer(const ServerDef& server_def, const Options& options,
                    std::unique_ptr<ServerInterface>* out_server) override {
-    return GrpcServer::Create(server_def, Env::Default(), out_server);
+    return GrpcServer::Create(server_def, Env::Default(),
+                              options.local_device_mgr, out_server);
   }
 };
 

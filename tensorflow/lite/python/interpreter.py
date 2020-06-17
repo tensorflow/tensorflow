@@ -27,20 +27,8 @@ import numpy as np
 # pylint: disable=g-import-not-at-top
 if not __file__.endswith('tflite_runtime/interpreter.py'):
   # This file is part of tensorflow package.
-  from tensorflow.python.util.lazy_loader import LazyLoader
+  from tensorflow.lite.python.interpreter_wrapper import _pywrap_tensorflow_interpreter_wrapper as _interpreter_wrapper
   from tensorflow.python.util.tf_export import tf_export as _tf_export
-
-  # Lazy load since some of the performance benchmark skylark rules
-  # break dependencies. Must use double quotes to match code internal rewrite
-  # rule.
-  # pylint: disable=g-inconsistent-quotes
-  _interpreter_wrapper = LazyLoader(
-      "_interpreter_wrapper", globals(),
-      "tensorflow.lite.python.interpreter_wrapper."
-      '_pywrap_tensorflow_interpreter_wrapper')
-  # pylint: enable=g-inconsistent-quotes
-
-  del LazyLoader
 else:
   # This file is part of tflite_runtime package.
   from tflite_runtime import _pywrap_tensorflow_interpreter_wrapper as _interpreter_wrapper
@@ -184,7 +172,8 @@ class Interpreter(object):
   def __init__(self,
                model_path=None,
                model_content=None,
-               experimental_delegates=None):
+               experimental_delegates=None,
+               num_threads=None):
     """Constructor.
 
     Args:
@@ -193,6 +182,10 @@ class Interpreter(object):
       experimental_delegates: Experimental. Subject to change. List of
         [TfLiteDelegate](https://www.tensorflow.org/lite/performance/delegates)
           objects returned by lite.load_delegate().
+      num_threads: Sets the number of threads used by the interpreter and
+        available to CPU kernels. If not set, the interpreter will use an
+        implementation-dependent default number of threads. Currently,
+        only a subset of kernels, such as conv, support multi-threading.
 
     Raises:
       ValueError: If the interpreter was unable to create.
@@ -217,6 +210,13 @@ class Interpreter(object):
       raise ValueError('`model_path` or `model_content` must be specified.')
     else:
       raise ValueError('Can\'t both provide `model_path` and `model_content`')
+
+    if num_threads is not None:
+      if not isinstance(num_threads, int):
+        raise ValueError('type of num_threads should be int')
+      if num_threads < 1:
+        raise ValueError('num_threads should >= 1')
+      self._interpreter.SetNumThreads(num_threads)
 
     # Each delegate is a wrapper that owns the delegates that have been loaded
     # as plugins. The interpreter wrapper will be using them, but we need to
@@ -406,13 +406,23 @@ class Interpreter(object):
     """
     self._interpreter.SetTensor(tensor_index, value)
 
-  def resize_tensor_input(self, input_index, tensor_size):
+  def resize_tensor_input(self, input_index, tensor_size, strict=False):
     """Resizes an input tensor.
+
+    ```
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.resize_tensor_input(0, [1, 224, 224, 3], strict=True)
+    interpreter.allocate_tensors()
+    interpreter.invoke()
+    ```
 
     Args:
       input_index: Tensor index of input to set. This value can be gotten from
         the 'index' field in get_input_details.
       tensor_size: The tensor_shape to resize the input to.
+      strict: Only unknown dimensions can be resized when `strict` is True.
+        Unknown dimensions are indicated as `-1` in the `shape_signature`
+        attribute of a given tensor. (default False)
 
     Raises:
       ValueError: If the interpreter could not resize the input tensor.
@@ -421,7 +431,7 @@ class Interpreter(object):
     # `ResizeInputTensor` now only accepts int32 numpy array as `tensor_size
     # parameter.
     tensor_size = np.array(tensor_size, dtype=np.int32)
-    self._interpreter.ResizeInputTensor(input_index, tensor_size)
+    self._interpreter.ResizeInputTensor(input_index, tensor_size, strict)
 
   def get_output_details(self):
     """Gets model output details.

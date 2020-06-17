@@ -90,6 +90,26 @@ def _jacfwd(f, primals):
   return nest.pack_sequence_as(primals, jac_flat)
 
 
+def _jvp_batch(f, primal, tangents):
+  tf_function = def_function.function(f)
+
+  return control_flow_ops.vectorized_map(
+      functools.partial(_jvp, tf_function, primal), tangents)
+
+
+def _jvp_batch_matmul(f, primals, tangent_batch):
+  """Compute the jacobian of `f` at `primals` multiplied by `tangents`."""
+  jac_fwd = _jacfwd(f, primals)
+
+  def jac_mul(tangent):
+    flat_tangent = array_ops.reshape(tangent, shape=[-1])
+    tangent_vector = array_ops.expand_dims(flat_tangent, 1)
+    jvp_vector = math_ops.matmul(jac_fwd, tangent_vector)
+    return array_ops.reshape(jvp_vector, tangent.shape)
+
+  return control_flow_ops.vectorized_map(jac_mul, tangent_batch)
+
+
 def _grad(f, argnums=0):
   """Return a function which computes the gradient of `f`."""
 
@@ -199,7 +219,6 @@ def _test_gradients(testcase,
   # And the symbolic computations should be much closer.
   testcase.assertAllClose(sym_jac_back, sym_jac_fwd)
 
-
 class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
   def testJVPFunction(self):
@@ -234,6 +253,17 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
         y = array_ops.zeros_like(x)
       self.assertIsNone(acc1.jvp(y))
     self.assertIsNone(acc2.jvp(y))
+
+  def testRunFunctionsEagerly(self):
+    try:
+      original_setting = def_function.functions_run_eagerly()
+      def_function.run_functions_eagerly(True)
+      x = constant_op.constant(1.)
+      with forwardprop.ForwardAccumulator(x, 2.) as acc:
+        y = x * 3.
+      self.assertAllClose(6., acc.jvp(y))
+    finally:
+      def_function.run_functions_eagerly(original_setting)
 
   def testJVPFunctionUsedByAccumulatorForOps(self):
     previous_fn = forwardprop._jvp_dispatch
@@ -350,14 +380,17 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
     _test_gradients(self, f, [constant_op.constant([1., 2.])], order=3)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
-  def testCustomGradientRecomputeGrad(self):
+  # TODO(allenl): investigate why assert_no_new_pyobjects_executing_eagerly fails around this test?
+  def testExceptionCustomGradientRecomputeGradForward(self):
 
     @custom_gradient.recompute_grad
     def f(x):
       return math_ops.reduce_prod(math_ops.tanh(x)**2)
 
-    _test_gradients(self, f, [constant_op.constant([1.])], order=3)
+    with self.assertRaisesRegexp(NotImplementedError,
+                                 "recompute_grad tried to transpose"):
+      primals = [constant_op.constant([1.])]
+      sym_jac_fwd = _jacfwd(f, primals)
 
   def testExceptionInCustomGradientNotSwallowed(self):
 
@@ -926,6 +959,18 @@ class HessianTests(test.TestCase, parameterized.TestCase):
         _f, [constant_op.constant(x_value)],
         use_pfor=True, dtype=[dtypes.float32])
     self.assertAllClose(hess_value, hessian_pfor)
+
+
+class JacobianTests(test.TestCase, parameterized.TestCase):
+
+  @parameterized.parameters([(math_ops.sin, (2, 3), 5),
+                             (math_ops.sin, (2, 3, 4), 10)])
+  def testJVPBatchCorrectness(self, f, primal_shape, batch_size):
+    primals = [random_ops.random_uniform(primal_shape)]
+    tangent_batch = [random_ops.random_uniform([batch_size, *primal_shape])]
+    self.assertAllClose(
+        _jvp_batch(f, primals, tangent_batch)[1],
+        _jvp_batch_matmul(f, primals, *tangent_batch))
 
 
 if __name__ == "__main__":

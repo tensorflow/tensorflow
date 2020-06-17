@@ -23,7 +23,9 @@ import gast
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import parser
+from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import templates
+from tensorflow.python.autograph.pyct.static_analysis import activity
 from tensorflow.python.autograph.pyct.static_analysis import annos
 
 
@@ -35,15 +37,6 @@ class _Function(object):
 
 class FunctionTransformer(converter.Base):
   """Wraps function bodies around autograph-specific boilerplate."""
-
-  def visit_Return(self, node):
-    if node.value is None:
-      return node
-    node = self.generic_visit(node)
-    return templates.replace(
-        'return function_context_name.mark_return_value(value)',
-        function_context_name=self.state[_Function].context_name,
-        value=node.value)
 
   def _function_scope_options(self, fn_scope):
     """Returns the options with which to create function scopes."""
@@ -139,4 +132,7 @@ class FunctionTransformer(converter.Base):
 
 
 def transform(node, ctx):
+  node = qual_names.resolve(node)
+  node = activity.resolve(node, ctx, None)
+
   return FunctionTransformer(ctx).visit(node)

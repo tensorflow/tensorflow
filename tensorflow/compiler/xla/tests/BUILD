@@ -175,7 +175,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1104,6 +1104,7 @@ xla_test(
     shard_count = 40,
     tags = [
         "no_rocm",
+        "nozapfhahn",
         "optonly",
     ],
     deps = CONVOLUTION_TEST_DEPS + [
@@ -1500,6 +1501,7 @@ xla_test(
     srcs = ["select_and_scatter_test.cc"],
     tags = [
         "no_rocm",
+        "nozapfhahn",
         "optonly",
     ],
     deps = [
@@ -2141,7 +2143,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/stream_executor",
         "@com_google_absl//absl/memory",
-        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:Core",
     ],
 )
 

@@ -381,6 +381,29 @@ TEST_F(XlaBuilderTest, Transpose) {
   EXPECT_THAT(root, op::Transpose(op::Parameter()));
 }
 
+TEST_F(XlaBuilderTest, AllGatherR1) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4}), "x");
+  AllGather(x, /*all_gather_dimension=*/0, /*shard_count=*/4);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+
+  EXPECT_EQ(root->opcode(), HloOpcode::kAllGather);
+  EXPECT_TRUE(ShapeUtil::Equal(root->shape(), ShapeUtil::MakeShape(F32, {16})));
+}
+
+TEST_F(XlaBuilderTest, AllGatherR2) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4, 16}), "x");
+  AllGather(x, /*all_gather_dimension=*/1, /*shard_count=*/4);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+
+  EXPECT_EQ(root->opcode(), HloOpcode::kAllGather);
+  EXPECT_TRUE(
+      ShapeUtil::Equal(root->shape(), ShapeUtil::MakeShape(F32, {4, 64})));
+}
+
 TEST_F(XlaBuilderTest, AllToAll) {
   XlaBuilder b(TestName());
   auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4, 16}), "x");
@@ -407,11 +430,23 @@ TEST_F(XlaBuilderTest, CollectivePermute) {
 
 TEST_F(XlaBuilderTest, GetDimensionSize) {
   XlaBuilder b(TestName());
-  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}), "x");
+  auto x =
+      Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}, {false, true}), "x");
   GetDimensionSize(x, 1);
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kGetDimensionSize);
+}
+
+TEST_F(XlaBuilderTest, GetDimensionSizeConstant) {
+  XlaBuilder b(TestName());
+  auto x =
+      Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}, {false, true}), "x");
+  // Get dimension size from a contant dimension gives us a constant.
+  GetDimensionSize(x, 0);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kConstant);
 }
 
 TEST_F(XlaBuilderTest, ReportError) {

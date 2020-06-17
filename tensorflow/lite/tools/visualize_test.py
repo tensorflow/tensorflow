@@ -37,7 +37,7 @@ class VisualizeTest(test_util.TensorFlowTestCase):
   def testFlatbufferToDict(self):
     model = test_utils.build_mock_flatbuffer_model()
     model_dict = visualize.CreateDictFromFlatbuffer(model)
-    self.assertEqual(0, model_dict['version'])
+    self.assertEqual(test_utils.TFLITE_SCHEMA_VERSION, model_dict['version'])
     self.assertEqual(1, len(model_dict['subgraphs']))
     self.assertEqual(1, len(model_dict['operator_codes']))
     self.assertEqual(3, len(model_dict['buffers']))

@@ -33,6 +33,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import layers
@@ -1951,6 +1952,30 @@ class BinaryTruePositives(metrics.Metric):
     return self.true_positives
 
 
+class BinaryTruePositivesViaControlFlow(metrics.Metric):
+
+  def __init__(self, name='binary_true_positives', **kwargs):
+    super(BinaryTruePositivesViaControlFlow, self).__init__(name=name, **kwargs)
+    self.true_positives = self.add_weight(name='tp', initializer='zeros')
+
+  def update_state(self, y_true, y_pred, sample_weight=None):
+    y_true = math_ops.cast(y_true, dtypes.bool)
+    y_pred = math_ops.cast(y_pred, dtypes.bool)
+
+    for i in range(len(y_true)):
+      for j in range(len(y_true[i])):
+        if y_true[i][j] and y_pred[i][j]:
+          if sample_weight is None:
+            self.true_positives.assign_add(1)
+          else:
+            self.true_positives.assign_add(sample_weight[i][0])
+
+  def result(self):
+    if constant_op.constant(True):
+      return self.true_positives
+    return 0.0
+
+
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class CustomMetricsTest(test.TestCase):
 
@@ -1987,6 +2012,55 @@ class CustomMetricsTest(test.TestCase):
     sample_weight = constant_op.constant([[1.], [1.5], [2.], [2.5]])
     result = btp_obj(y_true, y_pred, sample_weight=sample_weight)
     self.assertEqual(12, self.evaluate(result))
+
+  def test_autograph(self):
+    metric = BinaryTruePositivesViaControlFlow()
+    self.evaluate(variables.variables_initializer(metric.variables))
+    y_true = constant_op.constant([[0, 0.9, 0, 1, 0], [0, 0, 1, 1, 1],
+                                   [1, 1, 1, 1, 0], [0, 0, 0, 0, 1.5]])
+    y_pred = constant_op.constant([[0, 0, 1, 5, 0], [1, 1, 1, 1, 1],
+                                   [0, 1, 0, 1, 0], [1, 10, 1, 1, 1]])
+    sample_weight = constant_op.constant([[1.], [1.5], [2.], [2.5]])
+
+    @def_function.function
+    def compute_metric(y_true, y_pred, sample_weight):
+      metric(y_true, y_pred, sample_weight)
+      return metric.result()
+
+    result = compute_metric(y_true, y_pred, sample_weight)
+    self.assertEqual(12, self.evaluate(result))
+
+  def test_metric_wrappers_autograph(self):
+    def metric_fn(y_true, y_pred):
+      x = constant_op.constant(0.0)
+      for i in range(len(y_true)):
+        for j in range(len(y_true[i])):
+          if math_ops.equal(y_true[i][j], y_pred[i][j]) and y_true[i][j] > 0:
+            x += 1.0
+      return x
+
+    mean_metric = metrics.MeanMetricWrapper(metric_fn)
+    sum_metric = metrics.SumOverBatchSizeMetricWrapper(metric_fn)
+    self.evaluate(variables.variables_initializer(mean_metric.variables))
+    self.evaluate(variables.variables_initializer(sum_metric.variables))
+
+    y_true = constant_op.constant([[0, 0, 0, 1, 0],
+                                   [0, 0, 1, 1, 1],
+                                   [1, 1, 1, 1, 0],
+                                   [1, 1, 1, 0, 1]])
+    y_pred = constant_op.constant([[0, 0, 1, 1, 0],
+                                   [1, 1, 1, 1, 1],
+                                   [0, 1, 0, 1, 0],
+                                   [1, 1, 1, 1, 1]])
+
+    @def_function.function
+    def tf_functioned_metric_fn(metric, y_true, y_pred):
+      return metric(y_true, y_pred)
+
+    metric_result = tf_functioned_metric_fn(mean_metric, y_true, y_pred)
+    self.assertAllClose(self.evaluate(metric_result), 10, 1e-2)
+    metric_result = tf_functioned_metric_fn(sum_metric, y_true, y_pred)
+    self.assertAllClose(self.evaluate(metric_result), 10, 1e-2)
 
 
 def _get_model(compile_metrics):
@@ -2173,6 +2247,23 @@ class ResetStatesTest(keras_parameterized.TestCase):
     model.evaluate(x, y)
     self.assertArrayNear(self.evaluate(m_obj.total_cm)[0], [1, 0], 1e-1)
     self.assertArrayNear(self.evaluate(m_obj.total_cm)[1], [3, 0], 1e-1)
+
+  def test_reset_states_recall_float64(self):
+    # Test case for GitHub issue 36790.
+    try:
+      backend.set_floatx('float64')
+      r_obj = metrics.Recall()
+      model = _get_model([r_obj])
+      x = np.concatenate((np.ones((50, 4)), np.zeros((50, 4))))
+      y = np.concatenate((np.ones((50, 1)), np.ones((50, 1))))
+      model.evaluate(x, y)
+      self.assertEqual(self.evaluate(r_obj.true_positives), 50.)
+      self.assertEqual(self.evaluate(r_obj.false_negatives), 50.)
+      model.evaluate(x, y)
+      self.assertEqual(self.evaluate(r_obj.true_positives), 50.)
+      self.assertEqual(self.evaluate(r_obj.false_negatives), 50.)
+    finally:
+      backend.set_floatx('float32')
 
 
 if __name__ == '__main__':

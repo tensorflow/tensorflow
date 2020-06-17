@@ -332,6 +332,10 @@ def _EinsumGrad(op, grad):
   # Obtain the gradients wrt the inputs x and y, without taking into account
   # the unbroadcasting.
   x, y = op.inputs[0], op.inputs[1]
+  if grad.dtype.is_complex:
+    x = math_ops.conj(x)
+    y = math_ops.conj(y)
+
   x_shape = array_ops.shape(x)
   y_shape = array_ops.shape(y)
   grad_x = _GetGradWrt(grad, y, x_shape, x_subs, y_subs, output_subs)

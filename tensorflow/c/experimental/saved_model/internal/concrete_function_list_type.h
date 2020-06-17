@@ -19,18 +19,12 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/c/experimental/saved_model/core/concrete_function.h"
-#include "tensorflow/c/experimental/saved_model/internal/conversion_macros.h"
 
 // Internal structures used by the SavedModel C API. These are likely to change
 // and should not be depended on.
 
-typedef struct TF_ConcreteFunctionList TF_ConcreteFunctionList;
-
-namespace tensorflow {
-
-DEFINE_CONVERSION_FUNCTIONS(std::vector<tensorflow::ConcreteFunction*>,
-                            TF_ConcreteFunctionList)
-
-}  // namespace tensorflow
+struct TF_ConcreteFunctionList {
+  std::vector<tensorflow::ConcreteFunction*> list;
+};
 
 #endif  // TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_INTERNAL_CONCRETE_FUNCTION_LIST_TYPE_H_

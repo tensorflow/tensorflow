@@ -282,6 +282,7 @@ REGISTER_KERNEL_BUILDER(
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_int64(REGISTER_GPU_KERNELS);
 TF_CALL_variant(REGISTER_GPU_KERNELS);
+TF_CALL_uint32(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 
 REGISTER_KERNEL_BUILDER(Name("_VarHandlesOp")
@@ -511,6 +512,7 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
 
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
+TF_CALL_uint32(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -524,6 +526,7 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_int64(REGISTER_GPU_KERNELS);
 TF_CALL_variant(REGISTER_GPU_KERNELS);
+TF_CALL_uint32(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -883,6 +886,17 @@ class ResourceScatterUpdateOp : public OpKernel {
     Tensor* params = v->tensor();
     const Tensor& indices = c->input(1);
     const Tensor& updates = c->input(2);
+
+    // Check that rank(updates.shape) = rank(indices.shape + params.shape[1:])
+    OP_REQUIRES(c,
+                updates.dims() == 0 ||
+                    updates.dims() == indices.dims() + params->dims() - 1,
+                errors::InvalidArgument(
+                    "Must have updates.shape = indices.shape + "
+                    "params.shape[1:] or updates.shape = [], got ",
+                    "updates.shape ", updates.shape().DebugString(),
+                    ", indices.shape ", indices.shape().DebugString(),
+                    ", params.shape ", params->shape().DebugString()));
 
     // Check that we have enough index space
     const int64 N_big = indices.NumElements();

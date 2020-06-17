@@ -69,7 +69,7 @@ def use_wrapped_call(layer, call_fn, default_training_value=None,
     inputs = args[inputs_arg_index]
     args = args[inputs_arg_index + 1:]
     outputs, losses = fn(inputs, *args, **kwargs)
-    layer.add_loss(losses, inputs)
+    layer.add_loss(losses, inputs=inputs)
 
     # TODO(kathywu): This is a temporary hack. When a network of layers is
     # revived from SavedModel, only the top-level layer will have losses. This
@@ -79,7 +79,7 @@ def use_wrapped_call(layer, call_fn, default_training_value=None,
     # child layers. This causes `.losses` to only return eager losses.
     # pylint: disable=protected-access
     if context.executing_eagerly():
-      for i in layer._gather_unique_layers():
+      for i in layer._flatten_layers():
         if i is not layer:
           i._eager_losses = [base_layer_utils.REVIVED_LOSS_PLACEHOLDER]
     # pylint: enable=protected-access

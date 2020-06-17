@@ -634,7 +634,7 @@ cc_library(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
-        "//tensorflow/core/runtime_fallback:__pkg__",
+        "//tensorflow/core/runtime_fallback:__subpackages__",
     ],
     deps = [
         ":bounds_check",
@@ -1008,6 +1008,7 @@ tf_cc_tests(
     srcs = [
         "allocator_test.cc",
         "attr_value_util_test.cc",
+        "batch_util_test.cc",
         "bfloat16_test.cc",
         "cancellation_test.cc",
         "common_shape_fns_test.cc",

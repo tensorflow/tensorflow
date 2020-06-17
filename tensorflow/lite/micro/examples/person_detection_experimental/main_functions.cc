@@ -41,7 +41,7 @@ TfLiteTensor* input = nullptr;
 // signed value.
 
 // An area of memory to use for input, output, and intermediate arrays.
-constexpr int kTensorArenaSize = 125 * 1024;
+constexpr int kTensorArenaSize = 136 * 1024;
 static uint8_t tensor_arena[kTensorArenaSize];
 }  // namespace
 
@@ -70,21 +70,20 @@ void setup() {
   // incur some penalty in code space for op implementations that are not
   // needed by this graph.
   //
-  // tflite::ops::micro::AllOpsResolver resolver;
+  // tflite::AllOpsResolver resolver;
   // NOLINTNEXTLINE(runtime-global-variables)
-  static tflite::MicroOpResolver<12> micro_op_resolver;
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
-                               tflite::ops::micro::Register_DEPTHWISE_CONV_2D(),
-                               1, 3);
+  static tflite::MicroMutableOpResolver<5> micro_op_resolver;
+  micro_op_resolver.AddBuiltin(
+      tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
+      tflite::ops::micro::Register_DEPTHWISE_CONV_2D());
   micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_CONV_2D,
-                               tflite::ops::micro::Register_CONV_2D(), 1, 3);
+                               tflite::ops::micro::Register_CONV_2D());
   micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_AVERAGE_POOL_2D,
-                               tflite::ops::micro::Register_AVERAGE_POOL_2D(),
-                               1, 2);
+                               tflite::ops::micro::Register_AVERAGE_POOL_2D());
   micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_RESHAPE,
                                tflite::ops::micro::Register_RESHAPE());
   micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
-                               tflite::ops::micro::Register_SOFTMAX(), 1, 3);
+                               tflite::ops::micro::Register_SOFTMAX());
 
   // Build an interpreter to run the model with.
   // NOLINTNEXTLINE(runtime-global-variables)

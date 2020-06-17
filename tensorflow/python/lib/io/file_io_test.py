@@ -389,6 +389,18 @@ class FileIoTest(test.TestCase):
     self.assertEqual("t", f.read(1))
     self.assertEqual("esting3\n\ntesting5", f.read())
 
+  def testReadErrorReacquiresGil(self):
+    file_path = os.path.join(self._base_dir, "temp_file")
+    with file_io.FileIO(file_path, mode="r+") as f:
+      f.write("testing1\ntesting2\ntesting3\n\ntesting5")
+    with self.assertRaises(errors.InvalidArgumentError):
+      # At present, this is sufficient to convince ourselves that the change
+      # fixes the problem. That is, this test will seg fault without the change,
+      # and pass with it. Unfortunately, this is brittle, as it relies on the
+      # Python layer to pass the argument along to the wrapped C++ without
+      # checking the argument itself.
+      f.read(-2)
+
   def testTell(self):
     file_path = os.path.join(self._base_dir, "temp_file")
     with file_io.FileIO(file_path, mode="r+") as f:

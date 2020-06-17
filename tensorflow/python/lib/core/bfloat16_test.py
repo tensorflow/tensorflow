@@ -32,15 +32,19 @@ from tensorflow.python.platform import test
 bfloat16 = _pywrap_bfloat16.TF_bfloat16_type()
 
 
-class Bfloat16Test(test.TestCase):
+def float_values():
+  """Returns values that should round trip exactly to float and back."""
+  epsilon = float.fromhex("1.0p-7")
+  return [
+      0.0, 1.0, -1, 0.5, -0.5, epsilon, 1.0 + epsilon, 1.0 - epsilon,
+      -1.0 - epsilon, -1.0 + epsilon, 3.5, 42.0, 255.0, 256.0,
+      float("inf"),
+      float("-inf"),
+      float("nan")
+  ]
 
-  def float_values(self):
-    """Returns values that should round trip exactly to float and back."""
-    epsilon = float.fromhex("1.0p-7")
-    return [
-        0.0, 1.0, -1, 0.5, -0.5, epsilon, 1.0 + epsilon, 1.0 - epsilon,
-        -1.0 - epsilon, -1.0 + epsilon, 3.5, 42.0, 255.0, 256.0,
-        float("inf"), float("-inf"), float("nan")]
+
+class Bfloat16Test(test.TestCase):
 
   def _assertFloatIdentical(self, v, w):
     if math.isnan(v):
@@ -49,7 +53,7 @@ class Bfloat16Test(test.TestCase):
       self.assertEqual(v, w)
 
   def testRoundTripToFloat(self):
-    for v in self.float_values():
+    for v in float_values():
       self._assertFloatIdentical(v, float(bfloat16(v)))
 
   def testRoundTripToInt(self):
@@ -82,7 +86,7 @@ class Bfloat16Test(test.TestCase):
 
   # Tests for Python operations
   def testNegate(self):
-    for v in self.float_values():
+    for v in float_values():
       self._assertFloatIdentical(-v, float(-bfloat16(v)))
 
   def testAdd(self):
@@ -132,33 +136,33 @@ class Bfloat16Test(test.TestCase):
     self.assertTrue(math.isnan(float(bfloat16(3.5) / bfloat16(float("nan")))))
 
   def testLess(self):
-    for v in self.float_values():
-      for w in self.float_values():
+    for v in float_values():
+      for w in float_values():
         self.assertEqual(v < w, bfloat16(v) < bfloat16(w))
 
   def testLessEqual(self):
-    for v in self.float_values():
-      for w in self.float_values():
+    for v in float_values():
+      for w in float_values():
         self.assertEqual(v <= w, bfloat16(v) <= bfloat16(w))
 
   def testGreater(self):
-    for v in self.float_values():
-      for w in self.float_values():
+    for v in float_values():
+      for w in float_values():
         self.assertEqual(v > w, bfloat16(v) > bfloat16(w))
 
   def testGreaterEqual(self):
-    for v in self.float_values():
-      for w in self.float_values():
+    for v in float_values():
+      for w in float_values():
         self.assertEqual(v >= w, bfloat16(v) >= bfloat16(w))
 
   def testEqual(self):
-    for v in self.float_values():
-      for w in self.float_values():
+    for v in float_values():
+      for w in float_values():
         self.assertEqual(v == w, bfloat16(v) == bfloat16(w))
 
   def testNotEqual(self):
-    for v in self.float_values():
-      for w in self.float_values():
+    for v in float_values():
+      for w in float_values():
         self.assertEqual(v != w, bfloat16(v) != bfloat16(w))
 
   def testNan(self):
@@ -258,6 +262,12 @@ class Bfloat16NumPyTest(test.TestCase):
     self.assertAllEqual(
         np.arange(-16384., 16384., 64., dtype=np.float32).astype(bfloat16),
         np.arange(-16384., 16384., 64., dtype=bfloat16))
+
+  def testSort(self):
+    values_to_sort = np.float32(float_values())
+    sorted_f32 = np.sort(values_to_sort)
+    sorted_bf16 = np.sort(values_to_sort.astype(bfloat16))
+    self.assertAllEqual(sorted_f32, np.float32(sorted_bf16))
 
 
 if __name__ == "__main__":

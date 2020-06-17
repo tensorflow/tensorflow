@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import json
+import os
 
 from absl.testing import parameterized
 import numpy as np
@@ -35,6 +36,7 @@ from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.engine import base_preprocessing_layer_v1
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
@@ -130,9 +132,9 @@ def get_layer():
 @keras_parameterized.run_all_keras_modes
 class PreprocessingLayerTest(keras_parameterized.TestCase):
 
-  def test_adapt_list_fails(self):
+  def test_adapt_bad_input_fails(self):
     """Test that non-Dataset/Numpy inputs cause a reasonable error."""
-    input_dataset = [1, 2, 3, 4, 5]
+    input_dataset = {"foo": 0}
 
     layer = get_layer()
     with self.assertRaisesRegex(ValueError, "requires a"):
@@ -348,6 +350,21 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
     # Further adapt this layer based on the transferred weights.
     layer_2.adapt(np.array([1, 2]), reset_state=False)
     self.assertAllEqual([[19], [20], [21]], model_2.predict([1., 2., 3.]))
+
+  def test_loading_without_providing_class_fails(self):
+    input_data = keras.Input(shape=(1,))
+    layer = get_layer()
+    output = layer(input_data)
+    model = keras.Model(input_data, output)
+
+    if not context.executing_eagerly():
+      self.evaluate(variables.variables_initializer(model.variables))
+
+    output_path = os.path.join(self.get_temp_dir(), "tf_keras_saved_model")
+    model.save(output_path, save_format="tf")
+
+    with self.assertRaisesRegex(RuntimeError, "Unable to restore a layer of"):
+      _ = keras.models.load_model(output_path)
 
 
 @keras_parameterized.run_all_keras_modes

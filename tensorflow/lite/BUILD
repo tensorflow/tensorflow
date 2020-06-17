@@ -93,6 +93,8 @@ cc_library(
 alias(
     name = "schema_fbs_version",
     actual = ":version",
+    # avoid_dep tells build_cleaner to not use schema_fbs_version.
+    tags = ["avoid_dep"],
 )
 
 cc_library(
@@ -246,13 +248,16 @@ cc_library(
         ":minimal_logging",
         ":simple_memory_arena",
         ":string",
+        ":tflite_with_xnnpack_optional",
         ":type_to_tflitetype",
         ":util",
         ":version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/delegates:status",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/experimental/resource",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/schema:schema_fbs",
     ] + select({
@@ -310,6 +315,8 @@ cc_library(
     ],
 )
 
+# Link this library to inject XNNPACK delegate to TFLite runtime automatically
+# by utilizing the weak symbols if they're supported by the platform.
 cc_library(
     name = "tflite_with_xnnpack",
     srcs = ["tflite_with_xnnpack.cc"],
@@ -320,6 +327,62 @@ cc_library(
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
     ],
     alwayslink = 1,
+)
+
+# Enables applying XNNPACK delegate for float models in TFLite runtime.
+# WARNING: This build flag is experimental and subject to change.
+config_setting(
+    name = "tflite_with_xnnpack_explicit_true",
+    values = {"define": "tflite_with_xnnpack=true"},
+)
+
+config_setting(
+    name = "tflite_with_xnnpack_explicit_false",
+    values = {"define": "tflite_with_xnnpack=false"},
+)
+
+cc_library(
+    name = "tflite_with_xnnpack_enabled",
+    defines = ["TFLITE_BUILD_WITH_XNNPACK_DELEGATE"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+    ],
+)
+
+cc_library(
+    name = "tflite_with_xnnpack_default",
+    visibility = ["//visibility:private"],
+    # TODO(b/151246885): put ":tflite_with_xnnpack_enabled" to macos/windows
+    # once we have a good testing coverage on these two platforms.
+    deps = select({
+        "//tensorflow:macos": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
+    name = "tflite_with_xnnpack_optional",
+    srcs = ["tflite_with_xnnpack_optional.cc"],
+    hdrs = [
+        "core/macros.h",
+        "tflite_with_xnnpack_optional.h",
+    ],
+    copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
+    deps = [
+        "//tensorflow/lite/c:common",
+    ] + select({
+        ":tflite_with_xnnpack_explicit_true": [
+            "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",
+            ":tflite_with_xnnpack_enabled",
+        ],
+        ":tflite_with_xnnpack_explicit_false": [],
+        "//conditions:default": [
+            "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",
+            ":tflite_with_xnnpack_default",
+        ],
+    }),
 )
 
 cc_test(
@@ -343,10 +406,13 @@ cc_test(
 cc_test(
     name = "interpreter_test",
     size = "small",
-    srcs = ["interpreter_test.cc"],
+    srcs = [
+        "interpreter_test.cc",
+    ],
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     tags = [
         "tflite_not_portable_ios",  # TODO(b/117786830)
+        "tflite_smoke_test",
     ],
     deps = [
         ":external_cpu_backend_context",
@@ -415,6 +481,7 @@ cc_test(
     ],
     tags = [
         "tflite_not_portable",
+        "tflite_smoke_test",
     ],
     deps = [
         ":framework",
@@ -463,6 +530,7 @@ cc_test(
         "no_windows",  # No weak symbols with MSVC.
         "tflite_not_portable_android",
         "tflite_not_portable_ios",
+        "tflite_smoke_test",
     ],
     deps = [
         ":framework",
@@ -470,8 +538,7 @@ cc_test(
         ":util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
-        "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -530,6 +597,9 @@ cc_library(
         "//tensorflow:ios": [
             "minimal_logging_ios.cc",
         ],
+        "//tensorflow:macos": [
+            "minimal_logging_default.cc",
+        ],
         "//conditions:default": [
             "minimal_logging_default.cc",
         ],
@@ -573,6 +643,9 @@ cc_test(
 #   - Windows: `tensorflowlite.dll`
 tflite_cc_shared_object(
     name = "tensorflowlite",
+    # Until we have more granular symbol export for the C++ API on Windows,
+    # export all symbols.
+    features = ["windows_export_all_symbols"],
     linkopts = select({
         "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location //tensorflow/lite:tflite_exported_symbols.lds)",

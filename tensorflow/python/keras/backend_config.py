@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import keras_export
 
 # The type of float to use throughout a session.
@@ -30,6 +31,7 @@ _IMAGE_DATA_FORMAT = 'channels_last'
 
 
 @keras_export('keras.backend.epsilon')
+@dispatch.add_dispatch_support
 def epsilon():
   """Returns the value of the fuzz factor used in numeric expressions.
 
@@ -110,6 +112,7 @@ def set_floatx(value):
 
 
 @keras_export('keras.backend.image_data_format')
+@dispatch.add_dispatch_support
 def image_data_format():
   """Returns the default image data format convention.
 

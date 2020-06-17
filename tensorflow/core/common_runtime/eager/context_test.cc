@@ -31,7 +31,7 @@ static Device* CreateDevice(const string& type, int n) {
     Allocator* GetAllocator(AllocatorAttributes) override { return nullptr; }
   };
   DeviceAttributes attr;
-  attr.set_name("/job:a/replica:0/task:0/device:" + type + ":" +
+  attr.set_name("/job:localhost/replica:0/task:0/device:" + type + ":" +
                 std::to_string(n));
   attr.set_device_type(type);
   return new FakeDevice(attr);
@@ -168,6 +168,38 @@ TEST_F(EagerContextTest, SelectDeviceExplicitSoftPlacement) {
   requested.Clear();
   TF_ASSERT_OK(context()->SelectDevice(requested, supported, DT_STRING, &dev));
   EXPECT_EQ(dev->device_type(), DEVICE_CPU);
+}
+
+TEST_F(EagerContextTest, CompositeDevice) {
+  InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
+  std::vector<string> underlying_devices = {
+      "/job:worker/replica:0/task:0/device:CPU:0",
+      "/job:worker/replica:0/task:0/device:CPU:1"};
+  CompositeDevice* composite_device_0 = nullptr;
+  TF_ASSERT_OK(context()->FindOrCreateCompositeDevice(underlying_devices,
+                                                      &composite_device_0));
+  EXPECT_EQ(composite_device_0->name(),
+            "/job:localhost/replica:0/task:0/device:COMPOSITE:0");
+  CompositeDevice* device = nullptr;
+  TF_EXPECT_OK(context()->FindCompositeDeviceFromName(
+      "/job:localhost/replica:0/task:0/device:COMPOSITE:0", &device));
+  EXPECT_EQ(device, composite_device_0);
+  CompositeDevice* composite_device_1 = nullptr;
+  TF_ASSERT_OK(context()->FindOrCreateCompositeDevice(underlying_devices,
+                                                      &composite_device_1));
+  EXPECT_EQ(composite_device_1, composite_device_0);
+  underlying_devices.push_back("/job:worker/replica:0/task:0/device:CPU:2");
+  CompositeDevice* composite_device_2 = nullptr;
+  TF_ASSERT_OK(context()->FindOrCreateCompositeDevice(underlying_devices,
+                                                      &composite_device_2));
+  EXPECT_EQ(composite_device_2->name(),
+            "/job:localhost/replica:0/task:0/device:COMPOSITE:1");
+  TF_EXPECT_OK(context()->FindCompositeDeviceFromName(
+      "/job:localhost/replica:0/task:0/device:COMPOSITE:1", &device));
+  EXPECT_EQ(device, composite_device_2);
+
+  EXPECT_TRUE(errors::IsNotFound(context()->FindCompositeDeviceFromName(
+      "/job:localhost/replica:0/task:0/device:COMPOSITE:2", &device)));
 }
 
 }  // namespace

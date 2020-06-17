@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
@@ -51,10 +51,10 @@ TfLiteStatus ValidateReduceGoldens(TfLiteTensor* tensors, int tensors_size,
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
-  ::tflite::ops::micro::AllOpsResolver resolver;
+  ::tflite::AllOpsResolver resolver;
 
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_MEAN, 1);
+      resolver.FindOp(tflite::BuiltinOperator_MEAN);
 
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
@@ -117,9 +117,9 @@ void TestMeanFloatInput4D(const int* input_dims_data, const float* input_data,
 
   constexpr int tensors_size = num_of_inputs + num_of_outputs;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims, "input_tensor"),
-      CreateInt32Tensor(axis_data, axis_dims, "axis_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor"),
+      CreateFloatTensor(input_data, input_dims),
+      CreateInt32Tensor(axis_data, axis_dims),
+      CreateFloatTensor(output_data, output_dims),
   };
 
   TF_LITE_MICRO_EXPECT_EQ(

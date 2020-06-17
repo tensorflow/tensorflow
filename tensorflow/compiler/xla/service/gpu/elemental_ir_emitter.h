@@ -40,16 +40,12 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
  public:
   // A NestedComputer computes an element of the output of the given computation
   // given a Span of its input elements.
-  using NestedComputer = std::function<StatusOr<llvm::Value*>(
+  using NestedComputer = std::function<StatusOr<std::vector<llvm::Value*>>(
       const HloComputation&, absl::Span<llvm::Value* const>)>;
 
   GpuElementalIrEmitter(const HloModuleConfig& hlo_module_config,
                         llvm::Module* module, llvm::IRBuilder<>* b,
                         NestedComputer compute_nested);
-
-  llvm_ir::ElementGenerator MakeElementGenerator(
-      const HloInstruction* hlo,
-      const HloToElementGeneratorMap& operand_to_generator) override;
 
  protected:
   StatusOr<llvm::Value*> EmitFloatBinaryOp(const HloInstruction* op,
@@ -91,6 +87,12 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
 
   StatusOr<llvm::Value*> EmitComplexAbs(PrimitiveType prim_type,
                                         llvm::Value* value) override;
+
+  StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
+      const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
+      absl::string_view) override {
+    return compute_nested_(callee, parameters);
+  }
 
   llvm::Value* EmitThreadId() override;
 

@@ -20,13 +20,18 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/kernels/cpu_backend_context.h"
 
 #if defined(_MSC_VER)
 #define __restrict__ __restrict
 #endif
 
 namespace tflite {
+
+// Not all backends support CpuBackendContext usage, so forward declare to avoid
+// pulling in its implementation. Use of CpuBackendContext in method
+// implementations is purely optional.
+class CpuBackendContext;
+
 namespace tensor_utils {
 
 // Checks if all entries of vector are zero for float.
@@ -55,6 +60,33 @@ void AsymmetricQuantizeFloats(const float* values, const int size,
                               int8_t* quantized_values, float* scaling_factor,
                               int32_t* offset);
 
+// Helper function to quantize floats.
+// float_data_ptr     input float vectors
+// n_batch            number of input vectors
+// n_data             size of a single input vector
+// quantized_data_ptr (out) vector with quantized data
+// scaling_factors    (out) scaling factors (one per vector)
+// zero_points        (out) zero points (one per vector)
+// do_asymmetric      controls if the quantization should be asymmetric.
+inline void BatchQuantizeFloats(const float* float_data_ptr, int n_batch,
+                                int n_data, int8_t* quantized_data_ptr,
+                                float* scaling_factors, int32_t* zero_points,
+                                bool do_asymmetric) {
+  for (int b = 0; b < n_batch; ++b) {
+    const int offset = b * n_data;
+    if (do_asymmetric) {
+      tensor_utils::AsymmetricQuantizeFloats(
+          float_data_ptr + offset, n_data, quantized_data_ptr + offset,
+          &scaling_factors[b], &zero_points[b]);
+    } else {
+      float unused_min, unused_max;
+      tensor_utils::SymmetricQuantizeFloats(
+          float_data_ptr + offset, n_data, quantized_data_ptr + offset,
+          &unused_min, &unused_max, &scaling_factors[b]);
+    }
+  }
+}
+
 // Multiplies a matrix by a "batched" vector (i.e. a matrix with a batch
 // dimension composed by input vectors independent from each other). The result
 // of the multiplication is accumulated to the passed result buffer.
@@ -64,6 +96,15 @@ void AsymmetricQuantizeFloats(const float* values, const int size,
 void MatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
                                          int m_cols, const float* vector,
                                          int n_batch, float* result);
+
+// Same as the function above, but the matrix is a sparse tensor with block
+// pattern 1x4.
+// This function assumes that m_cols is a multiple of the block size (4 in this
+// case) so that there's no incomplete block.
+void SparseMatrixBatchVectorMultiplyAccumulate1x4(
+    const float* __restrict__ matrix, const int32_t* __restrict__ segments,
+    const int32_t* __restrict__ indices, int m_rows, int m_cols,
+    const float* __restrict__ vector, int n_batch, float* __restrict__ result);
 
 // Same as the function above, but the matrix is stored in block compressed
 // sparse row format with block pattern 1x16 which consists of two arrays:
@@ -120,6 +161,27 @@ void MatrixBatchVectorMultiplyAccumulate(
     int n_batch, float* __restrict__ result, const float* per_channel_scale,
     const int32_t* input_offset, int32_t* scratch, int32_t* row_sums,
     bool* compute_row_sums, CpuBackendContext* context);
+
+// Same as the function above, but provides separate scaling factor for the
+// matrix and the vectors. The scaling factors are multiplied in the
+// scaling_factor_scratch buffer.
+inline void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float matrix_scaling_factor,
+    const float* vector_scaling_factors, int n_batch,
+    float* __restrict__ result, const float* per_channel_scale,
+    const int32_t* input_offset, int32_t* scratch, int32_t* row_sums,
+    bool* compute_row_sums, float* scaling_factor_scratch,
+    CpuBackendContext* context) {
+  for (int b = 0; b < n_batch; ++b) {
+    scaling_factor_scratch[b] =
+        vector_scaling_factors[b] * matrix_scaling_factor;
+  }
+  MatrixBatchVectorMultiplyAccumulate(matrix, m_rows, m_cols, vectors,
+                                      scaling_factor_scratch, n_batch, result,
+                                      per_channel_scale, input_offset, scratch,
+                                      row_sums, compute_row_sums, context);
+}
 
 // Same as the function above, but the matrix is stored in block compressed
 // sparse row format with block pattern 1x16 which consists of two arrays:

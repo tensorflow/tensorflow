@@ -95,7 +95,7 @@ RUN ln -s $(which python3) /usr/local/bin/python
 #   tf-nightly-gpu
 ARG TF_PACKAGE=tensorflow
 RUN apt-get update && apt-get install -y curl libhdf5-dev wget
-RUN python3 -m pip install --global-option=build_ext \
+RUN python3 -m pip install --no-cache-dir --global-option=build_ext \
             --global-option=-I/usr/include/hdf5/serial/ \
             --global-option=-L/usr/lib/powerpc64le-linux-gnu/hdf5/serial \
             h5py
@@ -115,7 +115,7 @@ RUN if [ ${TF_PACKAGE} = tensorflow-gpu ]; then \
     MINOR=`python3 -c 'import sys; print(sys.version_info[1])'`; \
     PACKAGE=$(wget -qO- ${BASE}"api/xml?xpath=//fileName&wrapper=artifacts" | grep -o "[^<>]*cp${MAJOR}${MINOR}[^<>]*.whl"); \
     wget ${BASE}"artifact/tensorflow_pkg/"${PACKAGE}; \
-    python3 -m pip install ${PACKAGE}
+    python3 -m pip install --no-cache-dir ${PACKAGE}
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc

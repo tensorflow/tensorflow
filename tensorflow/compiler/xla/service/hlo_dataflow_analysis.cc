@@ -676,6 +676,39 @@ bool HloDataflowAnalysis::UpdateWhileValueSet(HloInstruction* xla_while) {
   }
 }
 
+bool HloDataflowAnalysis::UpdateCollectivePermuteStartValueSet(
+    HloInstruction* collective_permute_start) {
+  CHECK_EQ(collective_permute_start->opcode(),
+           HloOpcode::kCollectivePermuteStart);
+  bool changed = false;
+  // CollectivePermuteStart forwards the operand value to element {0} of its
+  // output.
+  const HloValueSet& operand_value_set =
+      GetValueSet(collective_permute_start->operand(0));
+  HloValueSet& value_set = GetValueSet(collective_permute_start, {0});
+  if (value_set != operand_value_set) {
+    value_set = operand_value_set;
+    changed = true;
+  }
+  return changed;
+}
+
+bool HloDataflowAnalysis::UpdateCollectivePermuteDoneValueSet(
+    HloInstruction* collective_permute_done) {
+  CHECK_EQ(collective_permute_done->opcode(),
+           HloOpcode::kCollectivePermuteDone);
+  bool changed = false;
+  // CollectivePermuteDone forwards the operand value at {1} to its output.
+  const HloValueSet& operand_value_set =
+      GetValueSet(collective_permute_done->operand(0), {1});
+  HloValueSet& value_set = GetValueSet(collective_permute_done);
+  if (value_set != operand_value_set) {
+    value_set = operand_value_set;
+    changed = true;
+  }
+  return changed;
+}
+
 bool HloDataflowAnalysis::UpdateInstructionValueSet(
     HloInstruction* instruction) {
   // Recompute from operands.
@@ -712,6 +745,10 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
       return UpdateCopyDoneValueSet(instruction);
     case HloOpcode::kConditional:
       return UpdateConditionalValueSet(instruction);
+    case HloOpcode::kCollectivePermuteStart:
+      return UpdateCollectivePermuteStartValueSet(instruction);
+    case HloOpcode::kCollectivePermuteDone:
+      return UpdateCollectivePermuteDoneValueSet(instruction);
     default:
       // Instruction does not forward HloValues (it defines all values in its
       // output). No update is necessary.
@@ -907,6 +944,17 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
         case HloOpcode::kCopyDone:
           // CopyDone consumes a tuple produced by CopyStart and produces an
           // element. Its output aliases its input tuple element {0}.
+          break;
+        case HloOpcode::kCollectivePermuteStart:
+          // CollectivePermuteStart produces a tuple of
+          // {aliased operand, destination buffer, U32 context, U32 context}.
+          define_value_at(/*index=*/{});
+          define_value_at(/*index=*/{1});
+          define_value_at(/*index=*/{2});
+          define_value_at(/*index=*/{3});
+          break;
+        case HloOpcode::kCollectivePermuteDone:
+          // CollectivePermuteDone's output aliases its input tuple element {1}.
           break;
         case HloOpcode::kRecvDone:
           // RecvDone produces a two-element tuple. Element zero aliases its

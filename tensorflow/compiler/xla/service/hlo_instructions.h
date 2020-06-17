@@ -313,37 +313,6 @@ class HloCollectiveInstruction : public HloChannelInstruction {
     return replica_groups_;
   }
 
- protected:
-  explicit HloCollectiveInstruction(
-      HloOpcode opcode, const Shape& shape,
-      absl::Span<HloInstruction* const> operands,
-      const std::vector<ReplicaGroup>& replica_groups,
-      const absl::optional<int64>& channel_id);
-
-  HloInstructionProto ToProto() const override;
-
-  std::vector<string> ExtraAttributesToStringImpl(
-      const HloPrintOptions& options) const override;
-  bool IdenticalSlowPath(
-      const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
-          eq_computations) const override;
-
-  std::vector<ReplicaGroup> replica_groups_;
-};
-
-class HloAllReduceInstruction : public HloCollectiveInstruction {
- public:
-  explicit HloAllReduceInstruction(
-      const Shape& shape, absl::Span<HloInstruction* const> operands,
-      HloComputation* reduce_computation,
-      const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
-      const absl::optional<int64>& channel_id, bool use_global_device_ids);
-
-  // Returns true if the AllReduce does no communication, so it's equivalent
-  // to a mem copy.
-  bool IsNoop() const;
-
   // Returns true if the layout of the AllReduce is enforced by XLA client (as
   // the layout set in the shape). The only reason for the client to set the
   // layout is to separately compile computations that communicate with
@@ -358,6 +327,70 @@ class HloAllReduceInstruction : public HloCollectiveInstruction {
   // It is an error for an HloModule to have a mix of constrained and
   // unconstrained AllReduce instructions (checked by HloVerifier).
   bool constrain_layout() const { return constrain_layout_; }
+
+ protected:
+  explicit HloCollectiveInstruction(
+      HloOpcode opcode, const Shape& shape,
+      absl::Span<HloInstruction* const> operands,
+      const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
+      const absl::optional<int64>& channel_id);
+
+  HloInstructionProto ToProto() const override;
+
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+
+  std::vector<ReplicaGroup> replica_groups_;
+  bool constrain_layout_;
+};
+
+class HloAllGatherInstruction : public HloCollectiveInstruction {
+ public:
+  explicit HloAllGatherInstruction(
+      const Shape& shape, HloInstruction* operand, int64 all_gather_dimension,
+      const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
+      const absl::optional<int64>& channel_id, bool use_global_device_ids);
+  // Same as HloAllReduceInstruction::use_global_device_ids.
+  bool use_global_device_ids() const { return use_global_device_ids_; }
+
+  // The dimension on which data from different participants are concatenated.
+  int64 all_gather_dimension() const { return all_gather_dimension_; }
+
+ protected:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  HloInstructionProto ToProto() const override;
+
+ private:
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+
+  int64 all_gather_dimension_;
+  bool use_global_device_ids_;
+};
+
+class HloAllReduceInstruction : public HloCollectiveInstruction {
+ public:
+  explicit HloAllReduceInstruction(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      HloComputation* reduce_computation,
+      const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
+      const absl::optional<int64>& channel_id, bool use_global_device_ids);
+
+  // Returns true if the AllReduce does no communication, so it's equivalent
+  // to a mem copy.
+  bool IsNoop() const;
 
   // Returns true if the ids in the ReplicaGroup config represent a global id of
   // (replica_id * partition_count + partition_id) instead of a replica id.
@@ -387,7 +420,6 @@ class HloAllReduceInstruction : public HloCollectiveInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
 
-  bool constrain_layout_;
   bool use_global_device_ids_;
 };
 
@@ -395,7 +427,7 @@ class HloAllToAllInstruction : public HloCollectiveInstruction {
  public:
   explicit HloAllToAllInstruction(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      const std::vector<ReplicaGroup>& replica_groups,
+      const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
       const absl::optional<int64>& channel_id,
       const absl::optional<int64>& split_dimension);
 
@@ -431,7 +463,7 @@ class HloAllToAllInstruction : public HloCollectiveInstruction {
 class HloCollectivePermuteInstruction : public HloChannelInstruction {
  public:
   explicit HloCollectivePermuteInstruction(
-      const Shape& shape, HloInstruction* operand,
+      HloOpcode opcode, const Shape& shape, HloInstruction* operand,
       const std::vector<std::pair<int64, int64>>& source_target_pairs,
       const absl::optional<int64>& channel_id);
 
@@ -465,6 +497,7 @@ class HloReverseInstruction : public HloInstruction {
   // Returns the dimension sizes or numbers associated with this instruction.
   const std::vector<int64>& dimensions() const override { return dimensions_; }
   int64 dimensions(int64 index) const override { return dimensions()[index]; }
+  std::vector<int64>* mutable_dimensions() override { return &dimensions_; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -491,6 +524,7 @@ class HloConcatenateInstruction : public HloInstruction {
   // Returns the dimension sizes or numbers associated with this instruction.
   const std::vector<int64>& dimensions() const override { return dimensions_; }
   int64 dimensions(int64 index) const override { return dimensions()[index]; }
+  std::vector<int64>* mutable_dimensions() override { return &dimensions_; }
   // Accessor for the dimension in which a concatenate HLO should occur.
   int64 concatenate_dimension() const { return dimensions(0); }
   // Returns a serialized representation of this instruction.
@@ -520,6 +554,7 @@ class HloReduceInstruction : public HloInstruction {
   // Returns the dimension sizes or numbers associated with this instruction.
   const std::vector<int64>& dimensions() const override { return dimensions_; }
   int64 dimensions(int64 index) const override { return dimensions()[index]; }
+  std::vector<int64>* mutable_dimensions() override { return &dimensions_; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -560,6 +595,7 @@ class HloSortInstruction : public HloInstruction {
   // Returns the dimension sizes or numbers associated with this instruction.
   const std::vector<int64>& dimensions() const override { return dimensions_; }
   int64 dimensions(int64 index) const override { return dimensions()[index]; }
+  std::vector<int64>* mutable_dimensions() override { return &dimensions_; }
   // Returns the sort dimension for this instruction
   int64 sort_dimension() const { return dimensions(0); }
   // Returns a serialized representation of this instruction.
@@ -594,6 +630,7 @@ class HloTransposeInstruction : public HloInstruction {
   // Returns the dimension sizes or numbers associated with this instruction.
   const std::vector<int64>& dimensions() const override { return dimensions_; }
   int64 dimensions(int64 index) const override { return dimensions()[index]; }
+  std::vector<int64>* mutable_dimensions() override { return &dimensions_; }
   // Returns whether this instruction does a rank-2 transposition.
   bool IsRank2Transpose() const;
   // Returns a serialized representation of this instruction.
@@ -621,6 +658,7 @@ class HloBroadcastInstruction : public HloInstruction {
   // Returns the dimension sizes or numbers associated with this instruction.
   const std::vector<int64>& dimensions() const override { return dimensions_; }
   int64 dimensions(int64 index) const override { return dimensions()[index]; }
+  std::vector<int64>* mutable_dimensions() override { return &dimensions_; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -668,6 +706,7 @@ class HloMapInstruction : public HloInstruction {
   // Returns the dimension sizes or numbers associated with this instruction.
   const std::vector<int64>& dimensions() const override { return dimensions_; }
   int64 dimensions(int64 index) const override { return dimensions()[index]; }
+  std::vector<int64>* mutable_dimensions() override { return &dimensions_; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -1370,6 +1409,7 @@ class HloPadInstruction : public HloInstruction {
                              const PaddingConfig& padding_config);
   // Returns the padding configuration for a pad node.
   const PaddingConfig& padding_config() const { return padding_config_; }
+  PaddingConfig* mutable_padding_config() { return &padding_config_; }
   // Returns the padding value.
   const HloInstruction* padding_value() const { return operand(1); }
   HloInstruction* mutable_padding_value() { return mutable_operand(1); }

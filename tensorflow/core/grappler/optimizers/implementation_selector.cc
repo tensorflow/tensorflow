@@ -17,15 +17,19 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/optimizers/function_api_info.h"
+#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/graph_view.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -35,6 +39,11 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+constexpr char kConstOp[] = "Const";
+constexpr char kCaseOp[] = "Case";
+constexpr char kDeviceIndexOp[] = "DeviceIndex";
+
+// TODO(b/157615690): clean up function implementation swap code.
 // The overall idea for the function swap is like below:
 //          -----------                            -----------
 //  inp_1 ->|  P_C    | -> out_1         g_inp_1 ->|  P_C    | -> g_out_1
@@ -159,6 +168,15 @@ Status UpdateNodeDef(utils::MutableNodeView* node_view, const string& funcName,
   }
 
   if (apiInfo.function_type() == FunctionApiInfo::BACKWARD) {
+    // Strip node control dependencies. We'll add them back after updating
+    // all the data inputs.
+    std::vector<std::string> control_deps;
+    for (int i = node_def->input_size() - 1; i >= 0; --i) {
+      if (!IsControlInput(node_def->input(i))) break;
+      control_deps.push_back(node_def->input(i));
+      node_def->mutable_input()->RemoveLast();
+    }
+
     // For step 4 above.
     const int prev_input_size = node_def->input_size();
     const int diff = prev_input_size - apiInfo.input_arg_dtypes().size();
@@ -194,6 +212,11 @@ Status UpdateNodeDef(utils::MutableNodeView* node_view, const string& funcName,
       for (int i = 1; i <= -diff; ++i)
         node_def->add_input(strings::StrCat(node_name, ":", i + last_index));
     }
+
+    // Add control dependencies back.
+    for (std::string& control : control_deps)
+      node_def->add_input(std::move(control));
+
   } else if (apiInfo.function_type() == FunctionApiInfo::FORWARD) {
     // For forward function, since the DTYPE of the intermediate state might
     // have been changed, we want to update the down stream Identity node if
@@ -277,6 +300,74 @@ Status ImplementationSelector::MaybeOptimizeFunctionCall(
   return Status::OK();
 }
 
+// Finds the index of the device from the device name list.
+Status FindDeviceIndex(const utils::MutableNodeView* device_index_node,
+                       const string& device, int* index) {
+  DeviceNameUtils::ParsedName parsed_name;
+  if (!DeviceNameUtils::ParseFullName(device, &parsed_name) ||
+      !parsed_name.has_type) {
+    return errors::Internal("Could not parse device name:", device);
+  }
+  const auto& device_list =
+      device_index_node->GetAttr("device_names")->list().s();
+  auto it = absl::c_find(device_list, parsed_name.type);
+  if (it != device_list.end()) {
+    *index = it - device_list.begin();
+  } else {
+    // Sets *index to device_list.size() because the default_fn is guaranteed to
+    // be the final item in the case op branching list.
+    *index = device_list.size();
+  }
+  return Status::OK();
+}
+
+// Rewrites the device_index op to a const op with value of the index.
+void RewriteDeviceIndexOp(utils::MutableNodeView* device_index_node,
+                          int index) {
+  // Modifies the DeviceIndex node to be an Const op with correct device index.
+  auto node = device_index_node->node();
+  node->set_op(kConstOp);
+  node->clear_attr();
+  (*node->mutable_attr())["dtype"].set_type(DT_INT32);
+  auto* tensor = (*node->mutable_attr())["value"].mutable_tensor();
+  tensor->set_dtype(DT_INT32);
+  tensor->add_int_val(index);
+  VLOG(2) << "Node after rewriting:" << node->DebugString();
+}
+
+Status ImplementationSelector::SelectDeviceIndex(GraphDef* graph) const {
+  Status status;
+  VLOG(2) << "graph before rewriting device index:" << graph->DebugString();
+  utils::MutableGraphView graph_view(graph, &status);
+  TF_RETURN_IF_ERROR(status);
+  const int num_nodes = graph_view.NumNodes();
+  for (int k = 0; k < num_nodes; ++k) {
+    auto* node_view = graph_view.GetNode(k);
+    if (node_view->GetOp() != kDeviceIndexOp) {
+      continue;
+    }
+    VLOG(2) << "Found a node to rewrite the device index";
+
+    // Find the case node with device index node as input, rewrite the
+    // DeviceIndex node to have the value of the index of device type of the
+    // case node.
+    for (const auto& fanouts : node_view->GetRegularFanouts()) {
+      for (const auto& fanout : fanouts) {
+        if (fanout.node_view()->GetOp() != kCaseOp) continue;
+        int index;
+        // If any error is thrown out during device parsing, we simply skip
+        // and do not modify the DeviceIndexNode.
+        Status status =
+            FindDeviceIndex(node_view, fanout.node_view()->GetDevice(), &index);
+        if (status.ok()) {
+          RewriteDeviceIndexOp(node_view, index);
+        }
+      }
+    }
+  }
+  return Status::OK();
+}
+
 Status ImplementationSelector::SelectImplementation(GraphDef* graph) const {
   if (!graph->has_library()) {
     VLOG(2) << "Skipping graph since it does not have function def";
@@ -292,8 +383,9 @@ Status ImplementationSelector::SelectImplementation(GraphDef* graph) const {
   TF_RETURN_IF_ERROR(status);
 
   const int num_nodes = graph_view.NumNodes();
-  for (int k = 0; k < num_nodes; ++k)
+  for (int k = 0; k < num_nodes; ++k) {
     TF_RETURN_IF_ERROR(MaybeOptimizeFunctionCall(graph_view.GetNode(k)));
+  }
 
   return Status::OK();
 }
@@ -311,7 +403,13 @@ Status ImplementationSelector::Optimize(Cluster* cluster,
             << "libraries: " << status;
     return errors::Aborted("Skipped Optimization");
   }
+
   *optimized_graph = item.graph;
+  status = SelectDeviceIndex(optimized_graph);
+  if (!status.ok()) {
+    *optimized_graph = item.graph;
+    VLOG(2) << "Could not rewrite device index due to error:" << status;
+  }
   return SelectImplementation(optimized_graph);
 }
 

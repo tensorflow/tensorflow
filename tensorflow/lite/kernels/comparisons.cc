@@ -12,10 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/kernels/internal/reference/comparisons.h"
+
+#include <stdint.h>
+
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/string_util.h"
 
 namespace tflite {
 namespace ops {
@@ -120,18 +129,18 @@ void Comparison(const TfLiteTensor* input1, const TfLiteTensor* input2,
             GetTensorShape(output), GetTensorData<bool>(output));
 }
 
-template <bool (*opname)(const StringRef&, const StringRef&)>
-void ComparisonString(const TfLiteTensor* input1, const TfLiteTensor* input2,
+void ComparisonString(bool (*opname)(const StringRef&, const StringRef&),
+                      const TfLiteTensor* input1, const TfLiteTensor* input2,
                       TfLiteTensor* output, bool requires_broadcast) {
   bool* output_data = GetTensorData<bool>(output);
   if (requires_broadcast) {
-    reference_ops::BroadcastComparison4DSlowStringImpl<opname>(
-        GetTensorShape(input1), input1, GetTensorShape(input2), input2,
+    reference_ops::BroadcastComparison4DSlowStringImpl(
+        opname, GetTensorShape(input1), input1, GetTensorShape(input2), input2,
         GetTensorShape(output), output_data);
   } else {
-    reference_ops::ComparisonStringImpl<opname>(
-        GetTensorShape(input1), input1, GetTensorShape(input2), input2,
-        GetTensorShape(output), output_data);
+    reference_ops::ComparisonStringImpl(opname, GetTensorShape(input1), input1,
+                                        GetTensorShape(input2), input2,
+                                        GetTensorShape(output), output_data);
   }
 }
 
@@ -166,8 +175,8 @@ TfLiteStatus EqualEval(TfLiteContext* context, TfLiteNode* node) {
           input1, input2, output, requires_broadcast);
       break;
     case kTfLiteString:
-      ComparisonString<reference_ops::StringRefEqualFn>(input1, input2, output,
-                                                        requires_broadcast);
+      ComparisonString(reference_ops::StringRefEqualFn, input1, input2, output,
+                       requires_broadcast);
       break;
     default:
       context->ReportError(
@@ -210,8 +219,8 @@ TfLiteStatus NotEqualEval(TfLiteContext* context, TfLiteNode* node) {
           input1, input2, output, requires_broadcast);
       break;
     case kTfLiteString:
-      ComparisonString<reference_ops::StringRefNotEqualFn>(
-          input1, input2, output, requires_broadcast);
+      ComparisonString(reference_ops::StringRefNotEqualFn, input1, input2,
+                       output, requires_broadcast);
       break;
     default:
       context->ReportError(

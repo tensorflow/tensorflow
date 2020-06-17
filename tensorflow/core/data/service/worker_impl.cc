@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/core/data/service/compression_utils.h"
+#include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/master.grpc.pb.h"
@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -50,11 +51,20 @@ DataServiceWorkerImpl::DataServiceWorkerImpl(const std::string& master_address,
   tf_data_service_created->GetCell()->Set(true);
 }
 
+DataServiceWorkerImpl::~DataServiceWorkerImpl() {
+  mutex_lock l(mu_);
+  cancelled_ = true;
+  heartbeat_cv_.notify_one();
+}
+
 void DataServiceWorkerImpl::Start(const std::string& worker_address) {
   VLOG(3) << "Starting tf.data service worker at address " << worker_address;
   mutex_lock l(mu_);
   worker_address_ = worker_address;
 
+  Thread* thread = Env::Default()->StartThread(
+      {}, "data-service-worker-heartbeat", [this]() { HeartbeatThread(); });
+  heartbeat_thread_.reset(thread);
   Status s = Register();
   while (!s.ok()) {
     LOG(WARNING) << "Failed to register with master at " << master_address_
@@ -64,32 +74,6 @@ void DataServiceWorkerImpl::Start(const std::string& worker_address) {
   }
 }
 
-Status DataServiceWorkerImpl::Register() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  VLOG(3) << "Registering with master at " << master_address_;
-  if (!master_stub_) {
-    ::grpc::ChannelArguments args;
-    std::shared_ptr<::grpc::ChannelCredentials> credentials;
-    TF_RETURN_IF_ERROR(
-        CredentialsFactory::CreateClientCredentials(protocol_, &credentials));
-    auto channel =
-        ::grpc::CreateCustomChannel(master_address_, credentials, args);
-    master_stub_ = MasterService::NewStub(channel);
-  }
-  RegisterWorkerRequest req;
-  req.set_worker_address(worker_address_);
-  RegisterWorkerResponse resp;
-
-  grpc::ClientContext ctx;
-  grpc::Status s = master_stub_->RegisterWorker(&ctx, req, &resp);
-  if (!s.ok()) {
-    return grpc_util::WrapError("Failed to register worker", s);
-  }
-  for (const TaskDef& task : resp.tasks()) {
-    TF_RETURN_IF_ERROR(ProcessTaskInternal(task));
-  }
-  VLOG(3) << "Registered worker with id " << resp.worker_id();
-  return Status::OK();
-}
 
 Status DataServiceWorkerImpl::ProcessTask(const ProcessTaskRequest* request,
                                           ProcessTaskResponse* response) {
@@ -101,6 +85,7 @@ Status DataServiceWorkerImpl::ProcessTask(const ProcessTaskRequest* request,
 
 Status DataServiceWorkerImpl::ProcessTaskInternal(const TaskDef& task_def)
     EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  VLOG(3) << "Received request to process task " << task_def.task_id();
   standalone::Dataset::Params params;
   std::unique_ptr<standalone::Dataset> dataset;
   TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
@@ -117,6 +102,7 @@ Status DataServiceWorkerImpl::ProcessTaskInternal(const TaskDef& task_def)
   task.id = task_def.task_id();
   task.dataset = std::move(dataset);
   task.iterator = std::move(iterator);
+  VLOG(3) << "Began processing for task " << task_def.task_id();
   return Status::OK();
 }
 
@@ -134,23 +120,127 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
     }
     std::unique_ptr<standalone::Iterator>& iter = it->second.iterator;
     if (iter == nullptr) {
+      VLOG(3) << "Task " << request->task_id() << " is already finished";
       response->set_end_of_sequence(true);
       return Status::OK();
     }
     TF_RETURN_IF_ERROR(iter->GetNext(&outputs, &end_of_sequence));
     if (end_of_sequence) {
+      VLOG(3) << "Reached end_of_sequence for task " << request->task_id();
       // Release iterator memory and leave a null entry as a tombstone.
       iter.reset();
+      pending_completed_tasks_.push_back(request->task_id());
+      heartbeat_cv_.notify_one();
     }
   }
 
   if (!end_of_sequence) {
-    TF_RETURN_IF_ERROR(service_util::Compress(
-        outputs, response->mutable_compressed_element()));
+    VLOG(3) << "Producing an element for task " << request->task_id();
+    if (outputs.size() != 1) {
+      return errors::FailedPrecondition(
+          "Expected dataset to produce a single scalar variant tensor, but the "
+          "dataset produced ",
+          outputs.size(), " outputs");
+    }
+    if (outputs[0].dtype() != DT_VARIANT) {
+      return errors::FailedPrecondition(
+          "Expected dataset to produce a single scalar variant tensor, but "
+          "the dataset produced a tensor with type ",
+          DataTypeString(outputs[0].dtype()));
+    }
+    if (!TensorShapeUtils::IsScalar(outputs[0].shape())) {
+      return errors::FailedPrecondition(
+          "Expected dataset to produce a single scalar variant tensor, but "
+          "the dataset produced a tensor with shape ",
+          outputs[0].shape());
+    }
+    Variant& variant = outputs[0].scalar<Variant>()();
+    CompressedElement* compressed = variant.get<CompressedElement>();
+    if (compressed == nullptr) {
+      return errors::FailedPrecondition(
+          "Expected dataset to produce a CompressedElement variant tensor, but "
+          "it produced ",
+          variant.TypeName());
+    }
+    compressed->Swap(response->mutable_compressed_element());
   }
   response->set_end_of_sequence(end_of_sequence);
 
   return Status::OK();
+}
+
+Status DataServiceWorkerImpl::EnsureMasterStubInitialized()
+    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  if (!master_stub_) {
+    ::grpc::ChannelArguments args;
+    std::shared_ptr<::grpc::ChannelCredentials> credentials;
+    TF_RETURN_IF_ERROR(
+        CredentialsFactory::CreateClientCredentials(protocol_, &credentials));
+    auto channel =
+        ::grpc::CreateCustomChannel(master_address_, credentials, args);
+    master_stub_ = MasterService::NewStub(channel);
+  }
+  return Status::OK();
+}
+
+Status DataServiceWorkerImpl::Register() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  VLOG(3) << "Registering with master at " << master_address_;
+  TF_RETURN_IF_ERROR(EnsureMasterStubInitialized());
+  RegisterWorkerRequest req;
+  req.set_worker_address(worker_address_);
+  RegisterWorkerResponse resp;
+
+  grpc::ClientContext ctx;
+  grpc::Status s = master_stub_->RegisterWorker(&ctx, req, &resp);
+  if (!s.ok()) {
+    return grpc_util::WrapError("Failed to register worker", s);
+  }
+  for (const TaskDef& task : resp.tasks()) {
+    TF_RETURN_IF_ERROR(ProcessTaskInternal(task));
+  }
+  worker_id_ = resp.worker_id();
+  VLOG(3) << "Registered worker with id " << resp.worker_id();
+  return Status::OK();
+}
+
+Status DataServiceWorkerImpl::SendTaskUpdate() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  VLOG(3) << "Sending " << pending_completed_tasks_.size()
+          << " task updates to master";
+  TF_RETURN_IF_ERROR(EnsureMasterStubInitialized());
+  WorkerUpdateRequest req;
+  req.set_worker_id(worker_id_);
+  for (int task_id : pending_completed_tasks_) {
+    TaskProgress* update = req.add_updates();
+    update->set_task_id(task_id);
+    update->set_completed(true);
+  }
+
+  WorkerUpdateResponse resp;
+  grpc::ClientContext ctx;
+  grpc::Status s = master_stub_->WorkerUpdate(&ctx, req, &resp);
+  if (!s.ok()) {
+    return grpc_util::WrapError("Failed to send task updates", s);
+  }
+  pending_completed_tasks_.clear();
+  VLOG(3) << "Sent " << req.updates().size() << " task updates ";
+  return Status::OK();
+}
+
+void DataServiceWorkerImpl::HeartbeatThread() {
+  while (true) {
+    mutex_lock l(mu_);
+    while (!cancelled_ && pending_completed_tasks_.empty()) {
+      heartbeat_cv_.wait(l);
+    }
+    if (cancelled_) {
+      VLOG(3) << "Heartbeat thread shutting down";
+      return;
+    }
+    Status s = SendTaskUpdate();
+    if (!s.ok()) {
+      LOG(WARNING) << "Failed to send task updates to master: " << s;
+    }
+  }
 }
 
 }  // namespace data

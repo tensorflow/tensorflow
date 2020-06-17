@@ -1,7 +1,7 @@
 path: "tensorflow.IndexedSlices"
 tf_class {
   is_instance: "<class \'tensorflow.python.framework.indexed_slices.IndexedSlices\'>"
-  is_instance: "<class \'tensorflow.python.framework.tensor_like.TensorLike\'>"
+  is_instance: "<class \'tensorflow.python.types.internal.NativeObject\'>"
   is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
   is_instance: "<type \'object\'>"
   member {

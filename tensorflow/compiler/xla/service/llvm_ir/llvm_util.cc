@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "llvm/ADT/Triple.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/GlobalVariable.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Transforms/Utils/Cloning.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
@@ -90,7 +92,9 @@ llvm::CallInst* EmitCallToIntrinsic(
 
 llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
                           llvm::IRBuilder<>* b) {
-  if (b->getFastMathFlags().noNaNs()) {
+  // TODO(tpopp): Pass this information down from the HLO's ModuleConfig.
+  if (b->getFastMathFlags().noNaNs() ||
+      GetDebugOptionsFromFlags().xla_cpu_enable_fast_min_max()) {
     auto cmp = b->CreateFCmpUGE(lhs_value, rhs_value);
     return b->CreateSelect(cmp, lhs_value, rhs_value);
   } else {
@@ -103,7 +107,9 @@ llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
 
 llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
                           llvm::IRBuilder<>* b) {
-  if (b->getFastMathFlags().noNaNs()) {
+  // TODO(tpopp): Pass this information down from the HLO's ModuleConfig.
+  if (b->getFastMathFlags().noNaNs() ||
+      GetDebugOptionsFromFlags().xla_cpu_enable_fast_min_max()) {
     auto cmp = b->CreateFCmpULE(lhs_value, rhs_value);
     return b->CreateSelect(cmp, lhs_value, rhs_value);
   } else {
@@ -287,7 +293,7 @@ llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(llvm::Type* type,
   llvm::AllocaInst* alloca =
       b->CreateAlloca(type, element_count, AsStringRef(name));
   if (alignment != 0) {
-    alloca->setAlignment(llvm::MaybeAlign(alignment));
+    alloca->setAlignment(llvm::Align(alignment));
   }
   return alloca;
 }

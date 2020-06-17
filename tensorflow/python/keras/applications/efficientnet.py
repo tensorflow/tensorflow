@@ -26,7 +26,6 @@ from __future__ import print_function
 
 import copy
 import math
-import os
 
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.applications import imagenet_utils
@@ -34,6 +33,7 @@ from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import VersionAwareLayers
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -145,7 +145,7 @@ layers = VersionAwareLayers()
 
 BASE_DOCSTRING = """Instantiates the {name} architecture.
 
-  Reference paper:
+  Reference:
   - [EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks](
       https://arxiv.org/abs/1905.11946) (ICML 2019)
 
@@ -269,7 +269,7 @@ def EfficientNet(
   if blocks_args == 'default':
     blocks_args = DEFAULT_BLOCKS_ARGS
 
-  if not (weights in {'imagenet', None} or os.path.exists(weights)):
+  if not (weights in {'imagenet', None} or file_io.file_exists(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '

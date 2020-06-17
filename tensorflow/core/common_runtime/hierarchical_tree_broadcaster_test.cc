@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/collective_rma_local.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
-#include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/test_collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"

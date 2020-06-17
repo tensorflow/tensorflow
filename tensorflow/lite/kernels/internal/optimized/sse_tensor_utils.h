@@ -59,10 +59,9 @@ void MatrixBatchVectorMultiplyAccumulate(
     int n_batch, float* __restrict__ result, const float* per_channel_scale,
     const int32_t* input_offset, int32_t* scratch, int32_t* row_sums,
     bool* compute_row_sums, CpuBackendContext* context) {
-  PortableMatrixBatchVectorMultiplyAccumulate(
-      matrix, m_rows, m_cols, vectors, scaling_factors, n_batch, result,
-      per_channel_scale, input_offset, scratch, row_sums, compute_row_sums,
-      context);
+  SSE_OR_PORTABLE(MatrixBatchVectorMultiplyAccumulate, matrix, m_rows, m_cols,
+                  vectors, scaling_factors, n_batch, result, per_channel_scale,
+                  input_offset, scratch, row_sums, compute_row_sums, context);
 }
 
 void MatrixBatchVectorMultiplyAccumulate(
@@ -75,15 +74,12 @@ void MatrixBatchVectorMultiplyAccumulate(
                   vectors, scaling_factors, n_batch, result);
 }
 
-void MatrixBatchVectorMultiplyAccumulate(
-    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
-    const int8_t* __restrict__ vectors,
-    const float* __restrict__ scaling_factors, int n_batch,
-    float* __restrict__ result, const float* __restrict__ per_channel_scale,
-    const int32_t* __restrict__ input_offset) {
-  SSE_OR_PORTABLE(MatrixBatchVectorMultiplyAccumulate, matrix, m_rows, m_cols,
-                  vectors, scaling_factors, n_batch, result, per_channel_scale,
-                  input_offset);
+void SparseMatrixBatchVectorMultiplyAccumulate1x4(
+    const float* __restrict__ matrix, const int32_t* __restrict__ segments,
+    const int32_t* __restrict__ indices, int m_rows, int m_cols,
+    const float* __restrict__ vector, int n_batch, float* __restrict__ result) {
+  NEON_OR_PORTABLE(SparseMatrixBatchVectorMultiplyAccumulate1x4, matrix,
+                   segments, indices, m_rows, m_cols, vector, n_batch, result);
 }
 
 void SparseMatrixBatchVectorMultiplyAccumulate(
@@ -307,8 +303,8 @@ void ReductionSumVector(const int32_t* input_vector, int32_t* output_vector,
 
 void ReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
                         int output_size, int reduction_size) {
-  NEON_OR_PORTABLE(ReductionSumVector, input_vector, output_vector, output_size,
-                   reduction_size);
+  SSE_OR_PORTABLE(ReductionSumVector, input_vector, output_vector, output_size,
+                  reduction_size);
 }
 
 void MeanStddevNormalization(const float* input_vector, float* output_vector,

@@ -20,9 +20,9 @@ import (
 	"fmt"
 	"testing"
 
-	corepb "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto"
 	tspb "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/tensor_shape_go_proto"
 	typb "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/types_go_proto"
+	corepb "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto"
 )
 
 func TestSignatureFromProto(t *testing.T) {

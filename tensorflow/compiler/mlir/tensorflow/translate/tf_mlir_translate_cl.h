@@ -39,5 +39,7 @@ extern llvm::cl::opt<bool> prune_unused_nodes;
 extern llvm::cl::opt<bool> convert_legacy_fed_inputs;
 extern llvm::cl::opt<bool> graph_as_function;
 extern llvm::cl::opt<bool> upgrade_legacy;
+// TODO(jpienaar): Temporary flag, flip default and and remove.
+extern llvm::cl::opt<bool> enable_shape_inference;
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_TF_MLIR_TRANSLATE_CL_H_

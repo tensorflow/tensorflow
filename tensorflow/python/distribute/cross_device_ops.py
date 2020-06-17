@@ -19,19 +19,22 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-
 import enum
+import threading
+
 import six
 
 from tensorflow.python.client import device_lib
 from tensorflow.python.distribute import collective_util
 from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribute_utils
+from tensorflow.python.distribute import ps_values
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import context
-from tensorflow.python.eager import def_function
+from tensorflow.python.eager import executor
 from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -63,7 +66,7 @@ def validate_destinations(destinations):
   """Validates the `destination` is one of expected types."""
   if not isinstance(
       destinations,
-      (value_lib.DistributedValues, ops.Tensor, value_lib.AggregatingVariable,
+      (value_lib.DistributedValues, ops.Tensor, ps_values.AggregatingVariable,
        six.string_types, tpu_values.TPUMirroredVariable
       )) and not resource_variable_ops.is_resource_variable(destinations):
     raise ValueError("destinations must be one of a `DistributedValues` object,"
@@ -162,7 +165,8 @@ def get_devices_from(destinations):
 
 
 def _devices_match(left, right):
-  return set(get_devices_from(left)) == set(get_devices_from(right))
+  return left is right or set(get_devices_from(left)) == set(
+      get_devices_from(right))
 
 
 def _all_devices_match(value_destination_pairs):
@@ -185,7 +189,8 @@ def simple_broadcast(value, destinations, always_mirrored=False):
     for d in devices:
       value_updates.append(
           cross_device_utils.copy_tensor_or_indexed_slices_to_device(value, d))
-    return value_lib.regroup(value_updates, wrap_class=value_lib.Mirrored)
+    return distribute_utils.regroup(value_updates,
+                                    wrap_class=value_lib.Mirrored)
 
 
 def _simple_reduce(per_replica_value, reduce_to_device, accumulation_fn,
@@ -257,7 +262,7 @@ class CrossDeviceOps(object):
             per_replica_value, destinations):
       with ops.device(per_replica_value.values[0].device):
         v = array_ops.identity(per_replica_value.values[0])
-      return value_lib.regroup((v,), wrap_class=value_lib.Mirrored)
+      return distribute_utils.regroup((v,), wrap_class=value_lib.Mirrored)
 
     if experimental_hints is None:
       experimental_hints = collective_util.Hints()
@@ -307,7 +312,7 @@ class CrossDeviceOps(object):
         value_destination_pairs) and len(
             value_destination_pairs[0][0].values) == 1:
       return [
-          value_lib.regroup(v.values, wrap_class=value_lib.Mirrored)
+          distribute_utils.regroup(v.values, wrap_class=value_lib.Mirrored)
           for v, _ in value_destination_pairs
       ]
 
@@ -508,7 +513,8 @@ def _ungroup_and_make_mirrored(grouped_reduced,
           index[i].append(v / num_replicas)
       else:
         index[i].append(v)
-  return [value_lib.regroup(v, wrap_class=value_lib.Mirrored) for v in index]
+  return [distribute_utils.regroup(
+      v, wrap_class=value_lib.Mirrored) for v in index]
 
 
 class _ConcatAndSplitPacker(object):
@@ -931,28 +937,46 @@ class CollectiveAllReduce(CrossDeviceOps):
   """
 
   def __init__(self,
-               num_workers=1,
-               num_gpus_per_worker=0,
+               devices,
+               group_size,
                collective_keys=None,
                communication=CollectiveCommunication.AUTO):
     """Initializes the object.
 
     Args:
-      num_workers: number of workers in the between-graph replicated training.
-      num_gpus_per_worker: number of GPUs per worker.
+      devices: a list of device strings to run collectives on.
+      group_size: the global group size. For between-graph replicated training
+        it's the total number of devices across all workers.
       collective_keys: an optional CollectiveKey object.
       communication: indicates which collective communication to use.
     """
-    self._num_workers = num_workers
-    self._num_gpus_per_worker = num_gpus_per_worker
+    if group_size % len(devices) > 0:
+      raise ValueError("group_size must be divisible by the number of devices.")
+
+    self._devices = tuple(device_util.canonicalize(d) for d in devices)
+    self._group_size = group_size
     self._collective_keys = (collective_keys or
                              cross_device_utils.CollectiveKeys())
     self._communication = communication
+    # In a multi threaded eager program we need to ensure different groups of
+    # collectives don't interleave each other, otherwise there will be deadlock.
+    self._lock = threading.Lock()
+
+    # Collective ops requires all devices to participate and is blocking. In
+    # eager, we need one async executor for each device to be able to launch
+    # them altogether. Note that async doesn't imply concurrency. Within an
+    # async executor operations are still executed sequentially. In graph or
+    # function building, the executors are not used.
+    self._executors = []
+    for _ in range(len(devices)):
+      self._executors.append(executor.new_executor(enable_async=True))
+
     super(CollectiveAllReduce, self).__init__()
 
   @property
   def _num_between_graph_workers(self):
-    return self._num_workers
+    # Currently we only support equal number of devices on each worker.
+    return self._group_size / len(self._devices)
 
   def reduce_implementation(self, reduce_op, per_replica_value, destinations,
                             experimental_hints):
@@ -960,8 +984,7 @@ class CollectiveAllReduce(CrossDeviceOps):
                                          experimental_hints)[0]
     devices = get_devices_from(destinations)
 
-    if (isinstance(all_reduced, value_lib.Mirrored) and
-        (all_reduced._devices == devices)):  # pylint: disable=protected-access
+    if _devices_match(per_replica_value, destinations):
       return all_reduced
 
     # Convert `all_reduced` to a `Mirrored` object, as a simple and uniform
@@ -984,7 +1007,7 @@ class CollectiveAllReduce(CrossDeviceOps):
             # TODO(josh11b): Once we add support for model parallelism, get the
             # copy from the corresponding replica instead of the primary.
             index.append(array_ops.identity(all_reduced._primary))  # pylint: disable=protected-access
-    return value_lib.regroup(index, wrap_class=value_lib.Mirrored)
+    return distribute_utils.regroup(index, wrap_class=value_lib.Mirrored)
 
   def batch_reduce_implementation(self, reduce_op, value_destination_pairs,
                                   experimental_hints):
@@ -1050,52 +1073,52 @@ class CollectiveAllReduce(CrossDeviceOps):
 
     if batch_size > 1:
       logging.info(
-          "Collective batch_all_reduce: %d all-reduces, num_workers = %d, "
-          "communication_hint = %s, num_packs = %d", batch_size,
-          self._num_workers, communication, len(packs))
+          "Collective batch_all_reduce: %d all-reduces, num_devices = %d, "
+          "group_size = %d, communication_hint = %s, num_packs = %d",
+          batch_size, len(self._devices), self._group_size, communication,
+          len(packs))
     else:
       logging.log_first_n(
           logging.INFO, "Collective batch_all_reduce: %d all-reduces, "
-          "num_workers = %d, communication_hint = %s, num_packs = %d" %
-          (batch_size, self._num_workers, communication, len(packs)), 10)
+          "num_devices = %d, group_size = %d, communication_hint = %s, "
+          "num_packs = %d" % (batch_size, len(
+              self._devices), self._group_size, communication, len(packs)), 10)
 
-    def batch_fn():
-      """Wrapper function around batched all-reduce calls."""
-      reduced_values = []
-      for pack in packs:
-        # By placing all CollectiveReduce ops in a pack under single name scope,
-        # we ensure they will be picked up by the `ScopedAllocator` grappler
-        # optimizer and packed into a single all-reduce.
-        with ops.name_scope("allreduce"):
-          for per_replica in pack:
-            # Add control dependencies per device from the last gradients to the
-            # current set, in order to serialize NCCL launches.
-            if (communication == CollectiveCommunication.NCCL.value and
-                reduced_values):
-              control_inputs = [g for g in reduced_values[-1]]
-            else:
-              control_inputs = None
-            reduced_values.append(
-                cross_device_utils.build_collective_reduce(
-                    per_replica.values, self._num_workers,
-                    self._collective_keys, "Add", "Id", communication,
-                    control_inputs))
-      return reduced_values
+    reduced_values = []
+    for pack in packs:
+      # By placing all CollectiveReduce ops in a pack under single name scope,
+      # we ensure they will be picked up by the `ScopedAllocator` grappler
+      # optimizer and packed into a single all-reduce.
+      with self._lock, ops.name_scope("allreduce"):
+        for per_replica in pack:
+          # Add control dependencies per device from the last gradients to the
+          # current set, in order to serialize NCCL launches.
+          if (communication == CollectiveCommunication.NCCL.value and
+              reduced_values):
+            control_inputs = list(reduced_values[-1])
+          else:
+            control_inputs = None
+          reduced_values.append(
+              cross_device_utils.build_collective_reduce(
+                  per_replica.values,
+                  self._devices,
+                  self._group_size,
+                  self._collective_keys,
+                  "Add",
+                  "Id",
+                  communication,
+                  control_inputs,
+                  executors=self._executors))
 
-    if context.executing_eagerly():
-      batch_fn = def_function.function(batch_fn)
-
-    reduced_values = batch_fn()
     mirrored = []
     # Reverse the order of reduced value to recover the order in the input.
     for value in reversed(reduced_values):
       if reduce_op == reduce_util.ReduceOp.MEAN:
-        # Assume each worker has the same number of replicas.
-        num_replicas = len(value) * self._num_workers
         for i, v in enumerate(value):
           with ops.device(v.device):
-            value[i] = v / num_replicas
-      mirrored.append(value_lib.regroup(value, wrap_class=value_lib.Mirrored))
+            value[i] = v / self._group_size
+      mirrored.append(
+          distribute_utils.regroup(value, wrap_class=value_lib.Mirrored))
     return mirrored
 
   def _do_batch_all_reduce_sparse(self, reduce_op, per_replica_values):
@@ -1103,8 +1126,8 @@ class CollectiveAllReduce(CrossDeviceOps):
 
     logging.log_first_n(
         logging.INFO, "Collective batch_all_reduce for IndexedSlices: "
-        "%d all-reduces, num_workers = %d" %
-        (len(per_replica_values), self._num_workers), 10)
+        "%d all-reduces, group_size = %d" %
+        (len(per_replica_values), self._group_size), 10)
 
     # Pass self._communication to the runtime as a communication hint.
     communication_hint = self._communication.value
@@ -1120,19 +1143,25 @@ class CollectiveAllReduce(CrossDeviceOps):
       for per_replica in per_replica_values:
         gathered_values.append(
             cross_device_utils.build_collective_gather_indexed_slices(
-                per_replica.values, self._num_workers, self._collective_keys,
-                communication_hint))
+                per_replica.values, self._devices, self._group_size,
+                self._collective_keys, communication_hint))
 
     mirrored = []
     for value in gathered_values:
       if reduce_op == reduce_util.ReduceOp.MEAN:
         # Assume each worker has the same number of replicas.
-        num_replicas = len(value) * self._num_workers
         for i, v in enumerate(value):
           with ops.device(v.device):
-            value[i].values = value[i].values / num_replicas
-      mirrored.append(value_lib.regroup(value, wrap_class=value_lib.Mirrored))
+            value[i].values = value[i].values / self._group_size
+      mirrored.append(
+          distribute_utils.regroup(value, wrap_class=value_lib.Mirrored))
     return mirrored
+
+  def __deepcopy__(self, memo):
+    # distribute_coordinator deep-copies the strategy object, so
+    # CollectiveAllReduce needs to support deep copy as well.
+    return CollectiveAllReduce(self._devices, self._group_size,
+                               self._collective_keys, self._communication)
 
 
 def choose_the_best(devices, session_config=None):

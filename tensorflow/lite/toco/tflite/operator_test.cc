@@ -436,11 +436,25 @@ TEST_F(OperatorTest, ResizeBilinear_HalfPixelCenters) {
 TEST_F(OperatorTest, ResizeNearestNeighbor) {
   ResizeNearestNeighborOperator op;
   op.align_corners = true;
+  op.half_pixel_centers = false;
   auto output_toco_op =
       SerializeAndDeserialize(GetOperator("RESIZE_NEAREST_NEIGHBOR",
                                           OperatorType::kResizeNearestNeighbor),
                               op);
   EXPECT_EQ(op.align_corners, output_toco_op->align_corners);
+  EXPECT_EQ(op.half_pixel_centers, output_toco_op->half_pixel_centers);
+}
+
+TEST_F(OperatorTest, ResizeNearestNeighbor_HalfPixelCenters) {
+  ResizeNearestNeighborOperator op;
+  op.align_corners = true;
+  op.half_pixel_centers = true;
+  auto output_toco_op =
+      SerializeAndDeserialize(GetOperator("RESIZE_NEAREST_NEIGHBOR",
+                                          OperatorType::kResizeNearestNeighbor),
+                              op);
+  EXPECT_EQ(op.align_corners, output_toco_op->align_corners);
+  EXPECT_EQ(op.half_pixel_centers, output_toco_op->half_pixel_centers);
 }
 
 TEST_F(OperatorTest, Svdf) {
@@ -614,6 +628,13 @@ TEST_F(OperatorTest, BuiltinSquaredDifference) {
   SquaredDifferenceOperator op;
   auto output_toco_op = SerializeAndDeserialize(
       GetOperator("SQUARED_DIFFERENCE", OperatorType::kSquaredDifference), op);
+  ASSERT_NE(nullptr, output_toco_op.get());
+}
+
+TEST_F(OperatorTest, BuiltinScatterNd) {
+  ScatterNdOperator op;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("SCATTER_ND", OperatorType::kScatterNd), op);
   ASSERT_NE(nullptr, output_toco_op.get());
 }
 

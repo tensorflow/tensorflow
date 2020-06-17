@@ -379,13 +379,13 @@ public abstract class TensorBuffer {
 
     // Check if the new shape is the same as current shape.
     int newFlatSize = computeFlatSize(shape);
+    this.shape = shape.clone();
     if (flatSize == newFlatSize) {
       return;
     }
 
     // Update to the new shape.
     flatSize = newFlatSize;
-    this.shape = shape.clone();
     buffer = ByteBuffer.allocateDirect(flatSize * getTypeSize());
     buffer.order(ByteOrder.nativeOrder());
   }

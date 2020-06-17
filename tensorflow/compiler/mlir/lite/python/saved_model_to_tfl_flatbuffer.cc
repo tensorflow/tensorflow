@@ -125,8 +125,8 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
   std::vector<string> node_names;
   std::vector<string> node_dtypes;
   std::vector<std::vector<int>> node_shapes;
-  std::vector<double> node_mins;
-  std::vector<double> node_maxs;
+  std::vector<llvm::Optional<double>> node_mins;
+  std::vector<llvm::Optional<double>> node_maxs;
 
   // Populate quantization specs.
   TF_RETURN_IF_ERROR(internal::PopulateQuantizationSpecs(
@@ -145,6 +145,10 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
   auto exported_names_in_vector = std::vector<std::string>(
       saved_model_exported_names.begin(), saved_model_exported_names.end());
   absl::Span<std::string> exported_names(exported_names_in_vector);
+
+  if (exported_names.size() != 1) {
+    return errors::Unimplemented("Only support a single exported name.");
+  }
 
   TF_ASSIGN_OR_RETURN(auto module,
                       ImportSavedModel(model_flags.saved_model_dir(),

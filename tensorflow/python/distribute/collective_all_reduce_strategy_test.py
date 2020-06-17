@@ -28,11 +28,11 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_utils
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_test_lib
-from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -116,7 +116,8 @@ class CollectiveAllReduceStrategyTestBase(
         variable_instance_key_start=10000 +
         CollectiveAllReduceStrategyTestBase.collective_key_base)
     strategy.extended._collective_keys = collective_keys
-    strategy.extended._cross_device_ops._collective_keys = (collective_keys)
+    strategy.extended._cross_device_ops._collective_keys = collective_keys
+    strategy.extended._host_cross_device_ops._collective_keys = collective_keys
 
     return strategy, target, session_config
 
@@ -362,8 +363,8 @@ class CollectiveAllReduceStrategyTestBase(
 
       for expected_value in expected_values:
         next_element = iterator.get_next()
-        computed_value = sess.run([values.select_replica(r, next_element)
-                                   for r in range(len(devices))])
+        computed_value = sess.run([distribute_utils.select_replica(
+            r, next_element) for r in range(len(devices))])
         if ignore_order:
           self.assertCountEqual(list(expected_value), list(computed_value))
         else:
@@ -371,7 +372,7 @@ class CollectiveAllReduceStrategyTestBase(
 
       with self.assertRaises(errors.OutOfRangeError):
         next_element = iterator.get_next()
-        sess.run([values.select_replica(r, next_element)
+        sess.run([distribute_utils.select_replica(r, next_element)
                   for r in range(len(devices))])
 
       # After re-initializing the iterator, should be able to iterate again.
@@ -380,8 +381,9 @@ class CollectiveAllReduceStrategyTestBase(
 
         for expected_value in expected_values:
           next_element = iterator.get_next()
-          computed_value = sess.run([values.select_replica(r, next_element)
-                                     for r in range(len(devices))])
+          computed_value = sess.run([
+              distribute_utils.select_replica(r, next_element)
+              for r in range(len(devices))])
           if ignore_order:
             self.assertCountEqual(list(expected_value), list(computed_value))
           else:
@@ -594,14 +596,14 @@ class LocalCollectiveAllReduceStrategy(
 
   @combinations.generate(
       combinations.combine(
-          mode=['graph', 'eager'], required_gpus=2, use_dataset=[True, False]))
+          mode=['graph'], required_gpus=2, use_dataset=[True, False]))
   def testMakeInputFnIterator(self, required_gpus, use_dataset):
     if use_dataset:
       fn = lambda: dataset_ops.Dataset.range(5 * required_gpus)
     else:
       def fn():
         dataset = dataset_ops.Dataset.range(5 * required_gpus)
-        it = dataset.make_one_shot_iterator()
+        it = dataset_ops.make_one_shot_iterator(dataset)
         return it.get_next
 
     expected_values = [

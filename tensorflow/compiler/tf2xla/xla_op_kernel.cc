@@ -175,8 +175,9 @@ Status XlaOpKernelContext::ConstantInputReshaped(
     int index, absl::Span<const int64> new_dims,
     xla::Literal* constant_literal) {
   XlaExpression e = InputExpression(index);
+  auto* client = compiler() ? compiler()->client() : nullptr;
   xla::StatusOr<absl::optional<Tensor>> constant_or_status =
-      e.ResolveConstant(compiler()->client(), dynamic_dimension_is_minus_one_);
+      e.ResolveConstant(client, dynamic_dimension_is_minus_one_);
   if (!constant_or_status.ok()) {
     Status status = constant_or_status.status();
     errors::AppendToMessage(&status, "while evaluating input ", index, " of ",
@@ -412,8 +413,10 @@ Status ReadVariableInputTensor(const Tensor& tensor, DataType type,
   TF_RET_CHECK(variable != nullptr);
   TF_RET_CHECK(variable->kind() == XlaResource::kVariable);
   if (!variable->initialized()) {
-    return errors::FailedPrecondition("Read of uninitialized variable ",
-                                      variable->name());
+    return errors::FailedPrecondition(
+        "Read variable failure ", variable->name(),
+        ". It could mean the variable is uninitialized or the variable is on "
+        "another device ");
   }
   if (variable->type() != type) {
     return errors::InvalidArgument(
@@ -463,8 +466,10 @@ Status XlaOpKernelContext::GetVariableTypeAndShape(int index, DataType* type,
   TF_RET_CHECK(variable != nullptr);
   TF_RET_CHECK(variable->kind() == XlaResource::kVariable);
   if (!variable->initialized()) {
-    return errors::InvalidArgument("Read of uninitialized variable ",
-                                   variable->name());
+    return errors::InvalidArgument(
+        "Read variable failure ", variable->name(),
+        ". It could mean the variable is uninitialized or the variable is on "
+        "another device ");
   }
   *type = variable->type();
   *shape = variable->shape();

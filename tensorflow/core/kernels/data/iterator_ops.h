@@ -69,14 +69,9 @@ class IteratorResource : public ResourceBase {
   // Creates an iterator for `dataset`, and associates the iterator with this
   // iterator resource.
   //
-  // The `job_token` will be passed through the IteratorContext when
-  // creating the iterator. This token is used to read from a tf.data service
-  // job.
-  //
   // `SetIteratorFromDataset` should be called before calling `GetNext`, `Save`,
   // or `Restore`.
-  Status SetIteratorFromDataset(OpKernelContext* ctx, DatasetBase* dataset,
-                                JobToken job_token);
+  Status SetIteratorFromDataset(OpKernelContext* ctx, DatasetBase* dataset);
 
   string DebugString() const override { return "Iterator resource"; }
 
@@ -221,19 +216,28 @@ class MakeIteratorOp : public HybridAsyncOpKernel {
 class IteratorGetNextOp : public HybridAsyncOpKernel {
  public:
   explicit IteratorGetNextOp(OpKernelConstruction* ctx)
-      : HybridAsyncOpKernel(ctx, "tf_data_iterator_get_next") {}
+      : HybridAsyncOpKernel(ctx, "tf_data_iterator_get_next") {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+  }
 
   AsyncOpKernel* AsAsync() override;
 
  protected:
   Status DoCompute(OpKernelContext* ctx) override;
+
+ private:
+  DataTypeVector output_types_;
+  std::vector<PartialTensorShape> output_shapes_;
 };
 
-class DeleteIteratorOp : public OpKernel {
+class DeleteIteratorOp : public HybridAsyncOpKernel {
  public:
-  explicit DeleteIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit DeleteIteratorOp(OpKernelConstruction* ctx)
+      : HybridAsyncOpKernel(ctx, "tf_data_delete_iterator") {}
 
-  void Compute(OpKernelContext* ctx) override;
+ protected:
+  Status DoCompute(OpKernelContext* ctx) override;
 };
 
 class IteratorGetNextAsOptionalOp : public HybridAsyncOpKernel {

@@ -38,7 +38,8 @@ class NodeDef;
 //         dimensions as the input.
 //   EXPLICIT: The user specifies the pad values in the explicit_paddings
 //             attribute.
-// The padded area is zero-filled.
+// The padded area is typically zero-filled. For pooling ops, the padded area is
+// instead ignored. For max pool, this is equivalent to padding with -infinity.
 enum Padding {
   VALID = 1,     // No padding.
   SAME = 2,      // Input and output layers have the same size.

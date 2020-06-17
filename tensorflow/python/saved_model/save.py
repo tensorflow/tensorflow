@@ -26,7 +26,7 @@ from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.core.protobuf import saved_object_graph_pb2
-from tensorflow.python.distribute import values as ds_values
+from tensorflow.python.distribute import distribute_utils as ds_utils
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
@@ -52,6 +52,7 @@ from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import signature_serialization
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils_impl
+from tensorflow.python.training.saving import checkpoint_options
 from tensorflow.python.training.saving import functional_saver
 from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import graph_view
@@ -272,13 +273,13 @@ class _SaveableView(object):
         # pylint: enable=protected-access
         resource_map[obj.resource_handle] = new_resource
         self.captured_tensor_node_ids[obj.resource_handle] = node_id
-      elif (ds_values.is_distributed_variable(obj) or
+      elif (ds_utils.is_distributed_variable(obj) or
             resource_variable_ops.is_resource_variable(obj)):
-        obj_to_copy = obj._primary if ds_values.is_distributed_variable(  # pylint: disable=protected-access
+        obj_to_copy = obj._primary if ds_utils.is_distributed_variable(  # pylint: disable=protected-access
             obj) else obj
         new_variable = resource_variable_ops.copy_to_graph_uninitialized(
             obj_to_copy)
-        if ds_values.is_distributed_variable(obj):
+        if ds_utils.is_distributed_variable(obj):
           self.captured_tensor_node_ids[obj] = node_id
           for v in obj.values:
             object_map[v] = new_variable
@@ -941,6 +942,7 @@ def save(obj, export_dir, signatures=None, options=None):
   May not be called from within a function body.
   @end_compatibility
   """
+  options = options or save_options.SaveOptions()
   # TODO(allenl): Factor out some subset of SavedModelBuilder which is 2.x
   # compatible (no sessions) and share it with this export API rather than
   # making a SavedModel proto and writing it directly.
@@ -954,7 +956,10 @@ def save(obj, export_dir, signatures=None, options=None):
   # Write the checkpoint, copy assets into the assets directory, and write out
   # the SavedModel proto itself.
   utils_impl.get_or_create_variables_dir(export_dir)
-  object_saver.save(utils_impl.get_variables_path(export_dir))
+  ckpt_options = checkpoint_options.CheckpointOptions(
+      experimental_io_device=options.experimental_io_device)
+  object_saver.save(utils_impl.get_variables_path(export_dir),
+                    options=ckpt_options)
   builder_impl.copy_assets_to_destination_dir(asset_info.asset_filename_map,
                                               export_dir)
   # Note that this needs to be the last file operation when saving the
@@ -976,6 +981,7 @@ def save(obj, export_dir, signatures=None, options=None):
 
 def export_meta_graph(obj, filename, signatures=None, options=None):
   """Exports the MetaGraph proto to a file."""
+  options = options or save_options.SaveOptions()
   export_dir = os.path.dirname(filename)
   meta_graph_def, exported_graph, _, _ = _build_meta_graph(
       obj, export_dir, signatures, options)
@@ -1001,7 +1007,6 @@ def _build_meta_graph(obj, export_dir, signatures, options,
   if not isinstance(obj, base.Trackable):
     raise ValueError(
         "Expected a Trackable object for export, got {}.".format(obj))
-  options = options or save_options.SaveOptions()
   meta_graph_def = meta_graph_def or meta_graph_pb2.MetaGraphDef()
 
   checkpoint_graph_view = _AugmentedGraphView(obj)

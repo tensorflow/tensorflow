@@ -17,10 +17,12 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/operation_interface.h"
 #include "tensorflow/c/eager/tensor_handle_interface.h"
 #include "tensorflow/c/tensor_interface.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"
@@ -57,6 +59,20 @@ class AbstractContextInterface {
   virtual AbstractTensorInterface* CreateTensor(
       DataType dtype, absl::Span<const int64> dim_sizes) = 0;
 
+  typedef void (*MemoryReleaser)(void* data, size_t len, void* arg);
+
+  // Create a tensor instance from the given data buffer and description.
+  // `memory_releaser` will be called on destruction, and it's responsible for
+  // cleaning up the underlying buffer. `convert_string` indicates whether it
+  // has to handle tstring conversion. Expected to be removed once tstring
+  // migration is done.
+  virtual AbstractTensorInterface* CreateTensor(DataType dtype,
+                                                const int64_t* dims,
+                                                int num_dims, void* data,
+                                                size_t len, bool convert_string,
+                                                MemoryReleaser memory_releaser,
+                                                void* memory_releaser_arg) = 0;
+
   // Create a handle to wrap and manage a Tensor
   virtual AbstractTensorHandleInterface* CreateLocalHandle(
       AbstractTensorInterface* t) = 0;
@@ -68,8 +84,32 @@ class AbstractContextInterface {
   // Create an operation to perform op execution
   virtual AbstractOperationInterface* CreateOperation() = 0;
 
+  // Returns whether the runtime is backed by TFRT or the legacy TF Eager
+  // Runtime. This is necessary to decouple runtime-dependent
+  // code that is layered on top of the runtime.
+  virtual bool UsesTFRT() = 0;
+
   // List attributes of available devices
   virtual void ListDevices(std::vector<DeviceAttributes>* devices) = 0;
+
+  virtual void ClearCachesAndThreadExecutors() = 0;
+
+  // Initialize the step resource container for a training step. This is used
+  // in current TF runtime. For tfrt, it is used by fallback op handler.
+  virtual void StartStep() = 0;
+  // Destroy the step resource container for a training step.
+  virtual void EndStep() = 0;
+
+  // Block until all pending nodes are finished.
+  virtual Status AsyncWait() = 0;
+
+  // Add a function (serialized FunctionDef protocol buffer) so that it can
+  // be executed as an op. Return error if the function with the same name
+  // already exists.
+  virtual Status AddFunctionDef(const FunctionDef& fdef) = 0;
+  // Remove a function. 'func' argument is the name of a previously added
+  // FunctionDef. The name is in fdef.signature.name.
+  virtual Status RemoveFunction(const string& func) = 0;
 
  protected:
   virtual ~AbstractContextInterface() {}

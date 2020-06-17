@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_TFE_TENSORHANDLE_INTERNAL_H_
 #define TENSORFLOW_C_EAGER_TFE_TENSORHANDLE_INTERNAL_H_
 
+#include "tensorflow/c/conversion_macros.h"
 #include "tensorflow/c/eager/tensor_handle_interface.h"
 
 // Wraps a pointer to a tensor handle implementation.
@@ -23,8 +24,15 @@ limitations under the License.
 // interface cannot destruct the underlying handle object. Instead, call
 // TFE_DeleteTensorHandle who calls Release() on the handle pointer and deletes
 // the TFE_TensorHandle structure.
-struct TFE_TensorHandle {
-  tensorflow::AbstractTensorHandleInterface* handle;
-};
+typedef struct TFE_TensorHandle TFE_TensorHandle;
+
+namespace tensorflow {
+
+DEFINE_CONVERSION_FUNCTIONS(tensorflow::AbstractTensorHandleInterface,
+                            TFE_TensorHandle);
+DEFINE_CONVERSION_FUNCTIONS(tensorflow::AbstractTensorHandleInterface*,
+                            TFE_TensorHandle*);
+
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_C_EAGER_TFE_TENSORHANDLE_INTERNAL_H_

@@ -45,19 +45,6 @@ int32_t GetAndroidSdkVersion() {
       }
       result = result * 10 + digit;
     }
-    // TODO(levp): remove once SDK gets updated to 29th level
-    // Upgrade SDK version for pre-release Q to be able to test functionality
-    // available from SDK level 29.
-    if (result == 28) {
-      char versionCodename[PROP_VALUE_MAX];
-      const char* versionCodenameProp = "ro.build.version.codename";
-      length = __system_property_get(versionCodenameProp, versionCodename);
-      if (length != 0) {
-        if (versionCodename[0] == 'Q') {
-          return 29;
-        }
-      }
-    }
     return result;
   }
   return 0;
@@ -228,6 +215,29 @@ const NnApi LoadNnApi() {
                          ANeuralNetworksModel_getExtensionOperationType);
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
                          ANeuralNetworksModel_setOperandExtensionData);
+
+  // API 30 (NNAPI 1.3) methods.
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksCompilation_setTimeout);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksCompilation_setPriority);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksExecution_setTimeout);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksExecution_setLoopTimeout);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworksMemoryDesc_create);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworksMemoryDesc_free);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksMemoryDesc_addInputRole);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksMemoryDesc_addOutputRole);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksMemoryDesc_setDimensions);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworksMemoryDesc_finish);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksMemory_createFromDesc);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworksMemory_copy);
+
   return nnapi;
 }
 

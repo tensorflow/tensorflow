@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/conv_common.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
@@ -48,8 +49,14 @@ class ConvBuffer1x1 : public GPUOperation {
 
   absl::Status AddToQueue(CLCommandQueue* queue) override;
   absl::Status Tune(const TuningParameters& params) override;
-
   absl::Status Compile(const CreationContext& creation_context) override;
+
+  ConvWeightsDescription GetConvWeightsDescription() const {
+    ConvWeightsDescription desc;
+    desc.layout = ConvWeightsLayout::kOHWIOGroupI4O4;
+    desc.output_group_size = conv_params_.block_size.z;
+    return desc;
+  }
 
   struct ConvParams {
     int3 block_size = int3(1, 1, 1);
@@ -77,6 +84,10 @@ class ConvBuffer1x1 : public GPUOperation {
       const CreationContext& creation_context, const OperationDef& definition,
       const Convolution2DAttributes& attr, ConvBuffer1x1* result,
       const BHWC* shape);
+  friend absl::Status CreateConvBuffer1x1DynamicWeights(
+      const CreationContext& creation_context, const OperationDef& definition,
+      const Convolution2DAttributes& attr, const BHWC& weights_shape,
+      ConvBuffer1x1* result, const BHWC* dst_shape);
 
   template <DataType T>
   absl::Status UploadData(const tflite::gpu::Tensor<OHWI, T>& weights,
@@ -163,6 +174,10 @@ absl::Status ConvBuffer1x1::UploadWeights(
 bool IsConvBuffer1x1Supported(const OperationDef& definition,
                               const Convolution2DAttributes& attr);
 
+bool IsConvBuffer1x1Supported(const OperationDef& definition,
+                              const BHWC& weights_shape,
+                              const Convolution2DAttributes& attr);
+
 absl::Status CreateConvBuffer1x1(const CreationContext& creation_context,
                                  const OperationDef& definition,
                                  const Convolution2DAttributes& attr,
@@ -174,6 +189,11 @@ absl::Status CreateConvBuffer1x1(const CreationContext& creation_context,
                                  const FullyConnectedAttributes& attr,
                                  ConvBuffer1x1* result,
                                  const BHWC* shape = nullptr);
+
+absl::Status CreateConvBuffer1x1DynamicWeights(
+    const CreationContext& creation_context, const OperationDef& definition,
+    const Convolution2DAttributes& attr, const BHWC& weights_shape,
+    ConvBuffer1x1* result, const BHWC* dst_shape = nullptr);
 
 absl::Status CreateConvBuffer1x1Wino4x4To6x6(
     const CreationContext& creation_context, const OperationDef& definition,

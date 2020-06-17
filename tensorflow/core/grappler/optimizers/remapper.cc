@@ -219,19 +219,22 @@ bool HasDataType(const NodeDef* node, const DataType& expected,
 bool IsCpuCompatibleDataType(const NodeDef* contraction,
                              const string& type_attr = "T") {
   DataType dtype = GetDataTypeFromAttr(*contraction, type_attr);
-#if defined(INTEL_MKL) && defined(ENABLE_INTEL_MKL_BFLOAT16)
-  if (IsConv2D(*contraction)) {
+#if defined(INTEL_MKL)
+#if defined(ENABLE_INTEL_MKL_BFLOAT16)
+  if (IsConv2D(*contraction) || IsDepthwiseConv2dNative(*contraction) ||
+      IsMatMul(*contraction)) {
     return dtype == DT_FLOAT || dtype == DT_BFLOAT16;
-  } else if (IsDepthwiseConv2dNative(*contraction)) {
-    return dtype == DT_FLOAT || dtype == DT_BFLOAT16;
-  } else if (IsMatMul(*contraction)) {
-    return dtype == DT_FLOAT || dtype == DT_BFLOAT16;
+#else
+  if (IsConv2D(*contraction) || IsDepthwiseConv2dNative(*contraction) ||
+      IsMatMul(*contraction)) {
+    return dtype == DT_FLOAT;
+#endif  // ENABLE_INTEL_MKL_BFLOAT16
 #else
   if (IsConv2D(*contraction)) {
     return dtype == DT_FLOAT || dtype == DT_DOUBLE;
   } else if (IsMatMul(*contraction)) {
     return dtype == DT_FLOAT;
-#endif  // INTEL_MKL && ENABLE_INTEL_MKL_BFLOAT16
+#endif  // INTEL_MKL
   } else {
     return false;
   }
@@ -794,23 +797,27 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
     const auto* fused_batch_norm_node_def = fused_batch_norm.node();
     if (!IsFusedBatchNorm(*fused_batch_norm_node_def)) return false;
 
-    // We fuse FusedBatchNorm only on GPU, because on CPU we fuse it with
-    // contraction (MatMul or Conv2D node).
+#ifndef ENABLE_MKLDNN_V1
+    // We fuse FusedBatchNorm on GPU or MKL CPU.
     if (!NodeIsOnGpu(fused_batch_norm_node_def)) return false;
+#endif
 
     DataType t_dtype = GetDataTypeFromAttr(*fused_batch_norm_node_def, "T");
+#ifndef ENABLE_MKLDNN_V1
     if (t_dtype != DT_FLOAT && t_dtype != DT_HALF) return false;
+#else
+    if (t_dtype != DT_FLOAT && t_dtype != DT_BFLOAT16) return false;
+#endif
 
     // Get the FusedBatchNorm training mode.
     bool is_training;
     if (!GetNodeAttr(*fused_batch_norm_node_def, kIsTraining, &is_training)
              .ok())
       return false;
-
     // In training mode we rely on cuDNN for computing FusedBatchNorm with side
     // inputs and activation, and it has its own limitations. In inference mode
     // we have a custom CUDA kernel that doesn't not have these constraints.
-    if (is_training) {
+    if (is_training && NodeIsOnGpu(fused_batch_norm_node_def)) {
       // cuDNN only supports NHWC data layout.
       string data_format;
       if (!GetNodeAttr(*fused_batch_norm_node_def, kDataFormat, &data_format)
@@ -862,6 +869,12 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
 
   // Input to a Relu can be an Add node with FusedBatchNorm as one of the inputs
   if (IsAdd(*relu_fanin_0_node_def)) {
+    // Currently no CPU implementation for "FusedBatchNorm + SideInput +
+    // <Activation>""
+#ifdef ENABLE_MKLDNN_V1
+    return false;
+#endif
+
     // Check that only Relu node consumes the output of an Add node.
     if (HasControlFaninOrFanout(*relu_fanin_0_node_view) ||
         !HasAtMostOneFanoutAtPort0(*relu_fanin_0_node_view) ||
@@ -943,12 +956,17 @@ void CopyFusedBatchNormAttributes(const NodeDef& fused_batch_norm,
   (*attr)["is_training"] = src_attr.at("is_training");
   (*attr)["data_format"] = src_attr.at("data_format");
   (*attr)["epsilon"] = src_attr.at("epsilon");
+  (*attr)["exponential_avg_factor"] = src_attr.at("exponential_avg_factor");
 
   // FusedBatchNormV2 and V3 have an extra type parameter.
   if (fused_batch_norm.op() != "FusedBatchNorm") {
-    (*attr)["U"] = src_attr.at("U");
+    SetAttrValue(src_attr.at("U"), &(*attr)["U"]);
   } else {
-    (*attr)["U"] = src_attr.at("T");
+#ifndef ENABLE_MKLDNN_V1
+    SetAttrValue(src_attr.at("T"), &(*attr)["U"]);
+#else
+    SetAttrValue(DT_FLOAT, &(*attr)["U"]);
+#endif
   }
 }
 

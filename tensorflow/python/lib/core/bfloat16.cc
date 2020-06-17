@@ -313,11 +313,15 @@ PyTypeObject PyBfloat16_Type = {
 #else
     PyVarObject_HEAD_INIT(nullptr, 0)
 #endif
-    "bfloat16",                                // tp_name
-    sizeof(PyBfloat16),                        // tp_basicsize
-    0,                                         // tp_itemsize
-    nullptr,                                   // tp_dealloc
-    0,                                         // tp_print
+    "bfloat16",          // tp_name
+    sizeof(PyBfloat16),  // tp_basicsize
+    0,                   // tp_itemsize
+    nullptr,             // tp_dealloc
+#if PY_VERSION_HEX < 0x03080000
+    nullptr,  // tp_print
+#else
+    0,  // tp_vectorcall_offset
+#endif
     nullptr,                                   // tp_getattr
     nullptr,                                   // tp_setattr
     nullptr,                                   // tp_compare / tp_reserved
@@ -406,6 +410,29 @@ int NPyBfloat16_SetItem(PyObject* item, void* data, void* arr) {
 void ByteSwap16(void* value) {
   char* p = reinterpret_cast<char*>(value);
   std::swap(p[0], p[1]);
+}
+
+int NPyBfloat16_Compare(const void* a, const void* b, void* arr) {
+  bfloat16 x;
+  memcpy(&x, a, sizeof(bfloat16));
+
+  bfloat16 y;
+  memcpy(&y, b, sizeof(bfloat16));
+
+  if (x < y) {
+    return -1;
+  }
+  if (y < x) {
+    return 1;
+  }
+  // NaNs sort to the end.
+  if (!std::isnan(x) && std::isnan(y)) {
+    return -1;
+  }
+  if (std::isnan(x) && !std::isnan(y)) {
+    return 1;
+  }
+  return 0;
 }
 
 void NPyBfloat16_CopySwapN(void* dstv, npy_intp dstride, void* srcv,
@@ -557,6 +584,7 @@ bool Initialize() {
   PyArray_InitArrFuncs(&NPyBfloat16_ArrFuncs);
   NPyBfloat16_ArrFuncs.getitem = NPyBfloat16_GetItem;
   NPyBfloat16_ArrFuncs.setitem = NPyBfloat16_SetItem;
+  NPyBfloat16_ArrFuncs.compare = NPyBfloat16_Compare;
   NPyBfloat16_ArrFuncs.copyswapn = NPyBfloat16_CopySwapN;
   NPyBfloat16_ArrFuncs.copyswap = NPyBfloat16_CopySwap;
   NPyBfloat16_ArrFuncs.nonzero = NPyBfloat16_NonZero;

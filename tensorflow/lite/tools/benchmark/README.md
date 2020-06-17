@@ -48,34 +48,39 @@ and the following optional parameters:
     'enable_op_profiling'. Note, the platform-wide tracing might not work if the
     tool runs as a commandline native binary. For example, on Android, the
     ATrace-based tracing only works when the tool is launched as an APK.
+*   `profiling_output_csv_file`: `str` (default="") \
+    File path to export profile data to as CSV. The results are printed to
+    `stdout` if option is not set. Requires `enable_op_profiling` to be `true`
+    and the path to include the name of the output CSV; otherwise results are
+    printed to `stdout`.
 
 ### TFLite delegate parameters
 The tool supports all runtime/delegate parameters introduced by
-[the delegate registrar]
-(https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/delegates).
-The following simply lists the names of all of them w/ additional notes where
-applicable:
+[the delegate registrar](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/delegates).
+The following simply lists the names of these parameters and additional notes
+where applicable. For details about each parameter, please refer to
+[this page](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/delegates/README.md#tflite-delegate-registrar).
 #### Common parameters
 * `max_delegated_partitions`: `int` (default=0) \
 Note when `use_legacy_nnapi` is selected, this parameter won't work.
 * `min_nodes_per_partition`:`int` (default=0)
 
-#### GPU delegate provider
+#### GPU delegate
 * `use_gpu`: `bool` (default=false)
 * `gpu_precision_loss_allowed`: `bool` (default=true)
 * `gpu_experimental_enable_quant`: `bool` (default=true)
 * `gpu_backend`: `string` (default="")
 * `gpu_wait_type`: `str` (default="")
 
-### NNAPI delegate provider
-
+#### NNAPI delegate
 *   `use_nnapi`: `bool` (default=false) \
     Note some Android P devices will fail to use NNAPI for models in
     `/data/local/tmp/` and this benchmark tool will not correctly use NNAPI.
 *   `nnapi_accelerator_name`: `str` (default="")
 *   `disable_nnapi_cpu`: `bool` (default=false)
+*   `nnapi_allow_fp16`: `bool` (default=false)
 
-#### Hexagon delegate provider
+#### Hexagon delegate
 * `use_hexagon`: `bool` (default=false)
 * `hexagon_profiling`: `bool` (default=false) \
 Note enabling this option will not produce profiling results outputs unless
@@ -83,13 +88,14 @@ Note enabling this option will not produce profiling results outputs unless
 the profile of ops on hexagon DSP will be added to the profile table. Note that,
 the reported data on hexagon is in cycles, not in ms like on cpu.
 
-#### XNNPACK delegate provider
+#### XNNPACK delegate
 *   `use_xnnpack`: `bool` (default=false)
 
-#### CoreML delegate provider
+#### CoreML delegate
 *   `use_coreml`: `bool` (default=false)
+*   `coreml_version`: `int` (default=0)
 
-#### External delegate provider
+#### External delegate
 *   `external_delegate_path`: `string` (default="")
 *   `external_delegate_options`: `string` (default="")
 
@@ -132,8 +138,8 @@ That step is only needed when using the Hexagon delegate.
 
 ```
 bazel build --config=android_arm64 \
-  tensorflow/lite/experimental/delegates/hexagon/hexagon_nn:libhexagon_interface.so
-adb push bazel-bin/tensorflow/lite/experimental/delegates/hexagon/hexagon_nn/libhexagon_interface.so /data/local/tmp
+  tensorflow/lite/delegates/hexagon/hexagon_nn:libhexagon_interface.so
+adb push bazel-bin/tensorflow/lite/delegates/hexagon/hexagon_nn/libhexagon_interface.so /data/local/tmp
 adb push libhexagon_nn_skel*.so /data/local/tmp
 ```
 

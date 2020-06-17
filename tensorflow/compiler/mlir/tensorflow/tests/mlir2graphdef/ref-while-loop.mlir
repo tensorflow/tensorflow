@@ -9,7 +9,7 @@ func @main() {
   // CHECK:  op: "RefNextIteration"
   tf_executor.graph {
     %0:3 = tf_executor.NextIteration.Source : tensor<*x!tf.int32ref> {device = "", T = "tfdtype$DT_INT32"} loc("while/NextIteration")
-    %1:2 = tf_executor.island wraps "tf.VariableV2"() {device = "", dtype = "tfdtype$DT_INT32", value = dense<0> : tensor<i32>, shape = "tfshape$dim {\0A  size: 0\0A}\0A", container = "", shared_name = ""} : () -> tensor<!tf.int32ref> loc("Ref_Variable")
+    %1:2 = tf_executor.island wraps "tf.VariableV2"() {device = "", dtype = "tfdtype$DT_INT32", value = dense<0> : tensor<i32>, shape = #tf.shape<0>, container = "", shared_name = ""} : () -> tensor<!tf.int32ref> loc("Ref_Variable")
     %2:2 = tf_executor.Enter %1#0 frame "while/while_context" parallel_iterations 10 : (tensor<!tf.int32ref>) -> (tensor<*x!tf.int32ref>, !tf_executor.control) {device = "", T = "tfdtype$DT_INT32"} loc("while/Enter")
     %3:3 = tf_executor.Merge %2#0, %0#0 : tensor<*x!tf.int32ref> {device = "", N = 2, T = "tfdtype$DT_INT32"} loc("while/Merge")
     %4:2 = tf_executor.island(%3#2) wraps "tf.Const"() {device = "", dtype = "tfdtype$DT_INT32", value = dense<10> : tensor<i32>} : () -> tensor<i32> loc("while/Less/y")
