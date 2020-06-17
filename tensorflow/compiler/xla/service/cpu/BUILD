@@ -1080,7 +1080,7 @@ tf_cc_test(
     deps = [
         ":cpu_compiler",
         ":cpu_transfer_manager",
-	":test_header_helper",
+        ":test_header_helper",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
