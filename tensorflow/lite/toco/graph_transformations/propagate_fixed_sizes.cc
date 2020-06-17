@@ -1856,8 +1856,8 @@ void ProcessArgMinMaxOperator(Model* model, Op* op) {
   std::vector<int> output_dims;
 
   output_dims.reserve(input_dims.size() - 1);
-  for (size_t i = 0; i < input_dims.size(); ++i) {
-    if ( static_cast<int>(i) != axis) {
+  for (int i = 0, iter_limit = input_dims.size(); i < iter_limitd; ++i) {
+    if (i != axis) {
       output_dims.push_back(input_dims[i]);
     }
   }
@@ -2010,8 +2010,8 @@ void ProcessUnpackOperator(Model* model, UnpackOperator* op) {
   std::vector<int> output_dims;
 
   output_dims.reserve(input_dims.size() - 1);
-  for (size_t i = 0; i < input_dims.size(); ++i) {
-    if ( static_cast<int>(i) != op->axis) {
+  for (int i = 0, iter_limit = input_dims.size(); i < iter_limit; ++i) {
+    if ( i != op->axis) {
       output_dims.push_back(input_dims[i]);
     }
   }
