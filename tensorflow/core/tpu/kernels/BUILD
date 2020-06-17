@@ -365,3 +365,9 @@ tf_proto_library_cc(
     srcs = ["tpu_compilation_cache.proto"],
     cc_api_version = 2,
 )
+
+cc_library(
+    name = "tpu_compile_op_hdrs",
+    hdrs = ["tpu_compile_op.h"],
+    deps = ["//tensorflow/core:framework"],
+)
