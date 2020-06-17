@@ -893,7 +893,7 @@ inline void LstmStepHybrid(
     std::copy_n(output_state_ptr + b * n_output, n_output,
                 output_ptr + b * output_batch_leading_dim);
   }
-}  // namespace
+}
 
 // Fully quantized lstm kernel for 16 bit gate matmul output.
 //
