@@ -14,9 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <cstdint>
 #include <cstdlib>
-
 #include "tensorflow/core/platform/status.h"
-
 #include <fuzzer/FuzzedDataProvider.h>
 
 // This is a fuzzer for `tensorflow::StatusGroup`. Since `Status` is used almost
@@ -37,37 +35,22 @@ tensorflow::error::Code BuildRandomErrorCode(uint32_t code){
 }
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-  tensorflow::error::Code error_code;
-
   const std::string error_message = "ERROR";
-
-  tensorflow::Status s, derived_s;
-
   tensorflow::StatusGroup sg;
-
-  bool is_derived;
-
-  uint32_t code;
-
   FuzzedDataProvider fuzzed_data(data, size);
 
   while(fuzzed_data.remaining_bytes() > 0) {
-    code = fuzzed_data.ConsumeIntegral<uint32_t>();
+    uint32_t code = fuzzed_data.ConsumeIntegral<uint32_t>();
+    tensorflow::error::Code error_code = BuildRandomErrorCode(code);
+    bool is_derived = fuzzed_data.ConsumeBool();
 
-    error_code = BuildRandomErrorCode(code);
-
-    is_derived = fuzzed_data.ConsumeBool();
-
-    s = tensorflow::Status(error_code, error_message);
+    tensorflow::Status s = tensorflow::Status(error_code, error_message);
 
     if(is_derived) {
-      derived_s = tensorflow::StatusGroup::MakeDerived(s);
-
+      tensorflow::Status derived_s = tensorflow::StatusGroup::MakeDerived(s);
       sg.Update(derived_s);
-
     } else {
       sg.Update(s);
-
     }
   }
 
