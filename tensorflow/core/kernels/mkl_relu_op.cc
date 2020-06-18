@@ -79,10 +79,16 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
   //   dst_data:  output data buffer of dst
   void Execute(const T* src_data, T* dst_data,
                std::shared_ptr<stream> fwd_stream) {
+#ifdef ENABLE_MKLDNN_THREADPOOL
+    context_.src_mem->set_data_handle(
+        static_cast<void*>(const_cast<T*>(src_data)), *fwd_stream);
+    context_.dst_mem->set_data_handle(static_cast<void*>(dst_data),
+                                      *fwd_stream);
+#else
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)));
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
-
+#endif  // ENABLE_MKLDNN_THREADPOOL
 #ifdef ENABLE_MKLDNN_V1
     DCHECK_EQ(context_.fwd_primitives.size(),
               context_.fwd_primitives_args.size());
@@ -297,12 +303,20 @@ class MklEltwiseBwdPrimitive : public MklPrimitive {
   //   diff_src_data:  output data buffer of diff_src
   void Execute(const T* src_data, const T* diff_dst_data, T* diff_src_data,
                std::shared_ptr<stream> bwd_stream) {
+#ifdef ENABLE_MKLDNN_THREADPOOL
+    context_.src_mem->set_data_handle(
+        static_cast<void*>(const_cast<T*>(src_data)), *bwd_stream);
+    context_.diff_dst_mem->set_data_handle(
+        static_cast<void*>(const_cast<T*>(diff_dst_data)), *bwd_stream);
+    context_.diff_src_mem->set_data_handle(static_cast<void*>(diff_src_data),
+                                           *bwd_stream);
+#else
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)));
     context_.diff_dst_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(diff_dst_data)));
     context_.diff_src_mem->set_data_handle(static_cast<void*>(diff_src_data));
-
+#endif  // ENABLE_MKLDNN_THREADPOOL
 #ifdef ENABLE_MKLDNN_V1
     DCHECK_EQ(context_.bwd_primitives.size(),
               context_.bwd_primitives_args.size());
