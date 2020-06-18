@@ -751,16 +751,22 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostLiteral(
     // memory that has already been allocated, and a possible Event
     // allocation.
 
+    se::Stream* h2d_stream = local_device->host_to_device_stream();
     ShapedBuffer buffer = device_buffer->AsShapedBuffer(
         compact_shape, on_device_shape, client->client()->platform());
     TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
-        local_device->host_to_device_stream(), literal, buffer));
+        h2d_stream, literal, buffer));
 
     std::shared_ptr<BufferSequencingEvent> event =
         device_buffer->definition_events()[0];
     TF_CHECK_OK(AddDestinationBufferSynchronization(
-        local_device, std::move(device_buffer), event,
-        local_device->host_to_device_stream()));
+        local_device, std::move(device_buffer), event, h2d_stream));
+
+    // This can sometimes catch the case where the literal memory has been
+    // freed before the H2D transfer was issued.
+    h2d_stream->RefreshStatus()
+        .IgnoreError();  // Can return error::Unimplemented
+    QCHECK(h2d_stream->ok());
   };
   client->h2d_transfer_pool()->Schedule(transfer_h2d);
   return py_buffer;
