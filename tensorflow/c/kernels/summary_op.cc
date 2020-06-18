@@ -30,24 +30,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/types.h"
 
-// BitcastOp implements a bitcast kernel, creating an output tensor that shares
-// the same data buffer as the input but with a different shape and/or data
-// type. Its inputs are:
-//
-//   * the input tensor
-//   * an attribute named "T" containing the TF_DataType of the input tensor
-//   * an attribute named "type" containing the TF_DataType of the output tensor
-//
-// Given an input tensor of shape [...], if the input DataType "T" is larger
-// than the output DataType "type", then the shape changes from [...]
-// to [..., sizeof(T)/sizeof(type)].
-//
-// If "T" is smaller than "type", the operator requires that the rightmost
-// dimension be equal to sizeof(type)/sizeof(T). The shape then goes from
-// [..., sizeof(type)/sizeof(T)] to [...].
-//
-// Bitcast is implemented as a low-level cast, so machines with different endian
-// orderings will give different results.
+// TODO: Copy over Summary Scalar Op Doc 
 
 static void* SummaryScalarOp_Create(TF_OpKernelConstruction* ctx) {
   // TODO: replace with a void* pointer type later 
@@ -91,7 +74,7 @@ static void SummaryScalarOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
       TF_SetStatus(status, TF_INVALID_ARGUMENT, err.str().c_str());
     }
   }
-
+ // Copy tag and string data into summary protobuf 
   tensorflow::Summary s; 
   if (TF_GetCode(status) == TF_OK) {
     auto Ttags_array = static_cast<TF_TString**>(TF_TensorData(tags)); 
