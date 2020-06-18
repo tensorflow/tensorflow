@@ -6058,7 +6058,12 @@ pywrap_tensorflow_macro(
         "@ngraph_tf//:ngraph_tf",
     ]) + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",
-    ]),
+    ]) + select({
+        "//tensorflow:windows": [],  # TODO(b/159077703): Enable Flex on Windows
+        "//conditions:default": [
+            "//tensorflow/lite/delegates/flex:delegate",
+        ],
+    }),
 )
 
 # ** Targets for Windows build (start) **
