@@ -78,14 +78,14 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_16(
   auto* proj_params = static_cast<TfLiteAffineQuantization*>(
       output_tensor->quantization.params);
   if (cell_clip > 0.0) {
-    integer_lstm_param->quantized_cell_clip = static_cast<int32_t>(std::min(
+    integer_lstm_param->quantized_cell_clip = static_cast<int16_t>(std::min(
         std::max(cell_clip / cell_state_params->scale->data[0], -32768.0f),
         32767.0f));
   } else {
     integer_lstm_param->quantized_cell_clip = 0;
   }
   if (proj_clip > 0.0) {
-    integer_lstm_param->quantized_proj_clip = static_cast<int32_t>(std::min(
+    integer_lstm_param->quantized_proj_clip = static_cast<int8_t>(std::min(
         std::max(proj_clip / proj_params->scale->data[0], -128.0f), 127.0f));
   } else {
     integer_lstm_param->quantized_proj_clip = 0;
@@ -703,14 +703,15 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_8(
       output_tensor->quantization.params);
   TF_LITE_ENSURE_EQ(context, cell_state_params->scale->data[0], 1.0 / 32768);
   if (cell_clip > 0.0 && cell_clip < 1.0) {
-    integer_lstm_param->quantized_cell_clip =
-        static_cast<int>(cell_clip / cell_state_params->scale->data[0]);
+    integer_lstm_param->quantized_cell_clip = static_cast<int16_t>(std::min(
+        std::max(cell_clip / cell_state_params->scale->data[0], -32768.0f),
+        32767.0f));
   } else {
     integer_lstm_param->quantized_cell_clip = 0;
   }
   if (proj_clip > 0.0) {
-    integer_lstm_param->quantized_proj_clip =
-        proj_clip / proj_params->scale->data[0];
+    integer_lstm_param->quantized_proj_clip = static_cast<int8_t>(std::min(
+        std::max(proj_clip / proj_params->scale->data[0], -128.0f), 127.0f));
   } else {
     integer_lstm_param->quantized_proj_clip = 0;
   }

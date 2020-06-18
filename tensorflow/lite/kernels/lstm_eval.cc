@@ -1044,8 +1044,8 @@ inline void LstmStepInteger(
     const int32_t* recurrent_to_output_effective_bias,
     const int32_t* input_to_input_effective_bias,
     const int32_t* recurrent_to_input_effective_bias,
-    const int32_t* projection_effective_bias, int32 n_batch, int32 n_cell,
-    int32 n_input, int32 n_output, int8_t* output_state_ptr,
+    const int32_t* projection_effective_bias, int n_batch, int n_cell,
+    int n_input, int n_output, int8_t* output_state_ptr,
     int32_t output_state_zp, int16_t* cell_ptr, int8_t* output_ptr,
     int16_t* scratch_0_ptr, int16_t* scratch_1_ptr, int16_t* scratch_2_ptr,
     int16_t* scratch_3_ptr, int8_t* scratch_4_ptr, int32_t* scratch_5_ptr,
@@ -1362,9 +1362,9 @@ void LstmStepInteger(
     const int32_t* cell_gate_bias_ptr, const int32_t* output_bias_ptr,
     const int32_t* proj_bias_ptr, const TfLiteLSTMParams* params,
     const int32_t* intermediate_scale_a, const int32_t* intermediate_scale_b,
-    const int32_t* intermediate_zp, int32 quantized_cell_clip,
-    int32 quantized_proj_clip, int32 n_batch, int32 n_cell, int32 n_input,
-    int32 n_output, int32 output_batch_leading_dim, int8_t* output_state_ptr,
+    const int32_t* intermediate_zp, int16_t quantized_cell_clip,
+    int8_t quantized_proj_clip, int n_batch, int n_cell, int n_input,
+    int n_output, int output_batch_leading_dim, int8_t* output_state_ptr,
     int32_t output_state_zp, int16_t* cell_ptr, int8_t* output_ptr,
     int8_t* scratch0, int8_t* scratch1, int16_t* scratch2, int16_t* scratch3,
     int16_t* scratch4, int16_t* scratch5, int16_t* scratch6,
@@ -2129,8 +2129,8 @@ TfLiteStatus EvalInteger8x8_8(
   int8_t* output_state_ptr = GetTensorData<int8_t>(output_state);
   int8_t* output_ptr = nullptr;
 
-  const int32 input_zp = input->params.zero_point;
-  const int32 output_state_zp = output_state->params.zero_point;
+  const int32_t input_zp = input->params.zero_point;
+  const int32_t output_state_zp = output_state->params.zero_point;
 
   // Get params for time/batch/sequence.
   const int output_batch_leading_dim =
