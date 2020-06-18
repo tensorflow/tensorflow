@@ -406,6 +406,22 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_op_util",
+    srcs = ["tpu_op_util.cc"],
+    hdrs = ["tpu_op_util.h"],
+    deps = [
+        ":tpu_compilation_cache_key",
+        ":tpu_compile_c_api_hdrs",
+        ":tpu_mesh_state_interface",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "tpu_util",
     srcs = ["tpu_util.cc"],
     hdrs = ["tpu_util.h"],

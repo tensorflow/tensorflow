@@ -42,6 +42,13 @@ struct CompilationCacheKeyProperty {
   const XLA_TpuMeshState* mesh_state;
 };
 
+// Compilation cache key result returning both the key and a more verbose debug
+// version.
+struct CompilationCacheKeyResult {
+  const char* key;
+  const char* debug_string;
+};
+
 extern "C" {
 
 // Returns the number of available TPU core count.
@@ -49,9 +56,14 @@ TFTPU_CAPI_EXPORT int TpuTopology_AvailableCoreCount(
     const XLA_TpuMeshState* mesh_state, TpuCoreTypeEnum tpu_core_type);
 
 // Creates a unique compilation cache `key` used for `put` and `get` operations.
-// Returned buffer is heap-allocated and must be owned.
-TFTPU_CAPI_EXPORT const char* TpuCompile_CreateCompilationCacheKey(
-    CompilationCacheKeyProperty property);
+// Returned buffers are heap-allocated and must be owned.
+TFTPU_CAPI_EXPORT CompilationCacheKeyResult
+TpuCompile_CreateCompilationCacheKey(CompilationCacheKeyProperty property);
+
+// Destroys the CompilationCacheKeyResult returned by calling the
+// `TpuCompile_CreateCompilationCacheKey` API.
+TFTPU_CAPI_EXPORT void TpuCompile_DestroyCompilationCacheKey(
+    CompilationCacheKeyResult result);
 
 // Creates a guaranteed const fingerprint. Guarantee const is normally used in
 // TPU inference to avoid re-copying unchanged variables onto the TPU device.
@@ -75,6 +87,7 @@ TFTPU_CAPI_EXPORT void TpuCompile_BuildXLADeviceAssignment(
 struct TfTpu_CompileApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_AvailableCoreCount);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CreateCompilationCacheKey);
+  TFTPU_ADD_FN_IN_STRUCT(TpuCompile_DestroyCompilationCacheKey);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CreateGuaranteedConstFingerprint);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CompileAheadOfTime);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_BuildXLADeviceAssignment);

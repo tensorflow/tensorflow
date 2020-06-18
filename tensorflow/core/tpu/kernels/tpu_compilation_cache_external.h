@@ -63,14 +63,6 @@ class TpuCompilationCacheExternal : public TpuCompilationCacheInterface {
   explicit TpuCompilationCacheExternal(int64 max_cache_size)
       : TpuCompilationCacheInterface(max_cache_size) {}
 
-  static TpuCompilationCacheKey CreateCompilationCacheKey(
-      absl::string_view function_name, uint64 function_library_fingerprint,
-      absl::string_view mlir_module,
-      const tensorflow::OpInputList& guaranteed_constants,
-      const std::vector<tensorflow::TensorShape>& dynamic_shapes,
-      const tensorflow::tpu::TPUCompileMetadataProto& metadata,
-      const TpuMeshStateInterface& mesh_state);
-
   string DebugString() const override { return "TpuCompilationCacheExternal"; }
 
  private:
