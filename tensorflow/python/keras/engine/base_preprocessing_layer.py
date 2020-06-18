@@ -190,6 +190,8 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
           shape = data_element.shape
         except AttributeError:
           shape = None
+        # TODO (b/159261555): move this to base layer build.
+        self._batch_input_shape = shape
         self.build(shape)
 
       # Once we have built the Layer, we can process the input data. We do so
