@@ -690,21 +690,20 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
     self._keras_model = keras_model
     self._trackable_obj = trackable_obj
 
-  def convert(self):
-    """Converts a keras model based on instance variables.
+  def _convert_as_saved_model(self):
+    """Converts a Keras model as a saved model.
 
     Returns:
       The converted data in serialized format.
-
-    Raises:
-      ValueError:
-        Multiple concrete functions are specified.
-        Input shape is not specified.
-        Invalid quantization parameters.
     """
     temp_dir = tempfile.mkdtemp()
     try:
-      self._keras_model.save(temp_dir, save_format="tf")
+      try:
+        self._keras_model.save(temp_dir, save_format="tf")
+      except Exception:  # pylint: disable=broad-except
+        # When storing the given keras model to a saved model is failed, let's
+        # use original keras model conversion pipeline.
+        return None
       self.saved_model_dir = temp_dir
       self._saved_model_tags = set([_tag_constants.SERVING])
       self._saved_model_exported_names = [
@@ -734,6 +733,22 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
                                    output_tensors)
     finally:
       shutil.rmtree(temp_dir, True)
+
+  def convert(self):
+    """Converts a keras model based on instance variables.
+
+    Returns:
+      The converted data in serialized format.
+
+    Raises:
+      ValueError:
+        Multiple concrete functions are specified.
+        Input shape is not specified.
+        Invalid quantization parameters.
+    """
+    saved_model_convert_result = self._convert_as_saved_model()
+    if saved_model_convert_result:
+      return saved_model_convert_result
 
     input_signature = None
     # If the model's call is not a `tf.function`, then we need to first get its
@@ -1473,21 +1488,20 @@ class TFLiteKerasModelConverter(TFLiteConverterBaseV1):
     self._output_tensors = output_tensors
     self._debug_info_func = _build_debug_info_func(sess.graph)
 
-  def convert(self):
-    """Converts a Keras model based on instance variables.
+  def _convert_as_saved_model(self):
+    """Converts a Keras model as a saved model.
 
     Returns:
-      The converted data in serialized format. Either a TFLite Flatbuffer or a
-      Graphviz graph depending on value in `output_format`.
-
-    Raises:
-      ValueError:
-        Input shape is not specified.
-        None value for dimension in input_tensor.
+      The converted data in serialized format.
     """
     temp_dir = tempfile.mkdtemp()
     try:
-      self._keras_model.save(temp_dir, save_format="tf")
+      try:
+        self._keras_model.save(temp_dir, save_format="tf")
+      except Exception:  # pylint: disable=broad-except
+        # When storing the given keras model to a saved model is failed, let's
+        # use original keras model conversion pipeline.
+        return None
       tag_set = set([_tag_constants.SERVING])
       signature_key = _signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
       result = _freeze_saved_model(temp_dir, None, None, None, tag_set,
@@ -1505,6 +1519,22 @@ class TFLiteKerasModelConverter(TFLiteConverterBaseV1):
         return super(TFLiteKerasModelConverter, self).convert()
     finally:
       shutil.rmtree(temp_dir, True)
+
+  def convert(self):
+    """Converts a Keras model based on instance variables.
+
+    Returns:
+      The converted data in serialized format. Either a TFLite Flatbuffer or a
+      Graphviz graph depending on value in `output_format`.
+
+    Raises:
+      ValueError:
+        Input shape is not specified.
+        None value for dimension in input_tensor.
+    """
+    saved_model_convert_result = self._convert_as_saved_model()
+    if saved_model_convert_result:
+      return saved_model_convert_result
 
     return super(TFLiteKerasModelConverter, self).convert()
 
