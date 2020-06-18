@@ -793,11 +793,6 @@ __device__ inline double GpuAtomicMax(double* ptr, double value) {
       ptr, [value](double a) { return fmax(a, value); });
 }
 
-__device__ inline long long GpuAtomicMax(long long* ptr, long long value) {
-  return detail::GpuAtomicCasHelper(
-      ptr, [value](long long a) { return max(a, value); });
-}
-
 #else
 
 __device__ inline float GpuAtomicMax(float* ptr, float value) {
@@ -818,7 +813,7 @@ __device__ inline Eigen::half GpuAtomicMax(Eigen::half* ptr,
       ptr, [value](Eigen::half a) { return max(a, value); });
 }
 
-#if __CUDA_ARCH__ < 320
+#if TENSORFLOW_USE_ROCM || (__CUDA_ARCH__ < 320)
 __device__ inline tensorflow::uint64 GpuAtomicMax(tensorflow::uint64* ptr,
                                                   tensorflow::uint64 value) {
   return detail::GpuAtomicCasHelper(
@@ -863,11 +858,6 @@ __device__ inline double GpuAtomicMin(double* ptr, double value) {
       ptr, [value](double a) { return fmin(a, value); });
 }
 
-__device__ inline long long GpuAtomicMin(long long* ptr, long long value) {
-  return detail::GpuAtomicCasHelper(
-      ptr, [value](long long a) { return min(a, value); });
-}
-
 #else
 
 __device__ inline float GpuAtomicMin(float* ptr, float value) {
@@ -888,7 +878,7 @@ __device__ inline Eigen::half GpuAtomicMin(Eigen::half* ptr,
       ptr, [value](Eigen::half a) { return min(a, value); });
 }
 
-#if __CUDA_ARCH__ < 320
+#if TENSORFLOW_USE_ROCM || (__CUDA_ARCH__ < 320)
 __device__ inline tensorflow::uint64 GpuAtomicMin(tensorflow::uint64* ptr,
                                                   tensorflow::uint64 value) {
   return detail::GpuAtomicCasHelper(
