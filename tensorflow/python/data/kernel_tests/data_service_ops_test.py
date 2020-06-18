@@ -23,6 +23,7 @@ from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.experimental.ops import distribute_options
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.experimental.service import server_lib
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -30,6 +31,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
@@ -316,6 +318,34 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     for elem in iter2:
       results.append(elem.numpy())
     self.assertCountEqual(num_repetitions * list(range(num_elements)), results)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testApplyDeterminismOption(self):
+    elements = list(range(10))
+    master_address = self.create_cluster(1)
+
+    def dataset_fn(delay_ms):
+
+      def interleave_fn(x):
+        ds = dataset_ops.Dataset.from_tensors(x)
+        if math_ops.equal(x, 0):
+          ds = ds.apply(testing.sleep(delay_ms * 1000))
+        else:
+          ds = ds.apply(testing.sleep(0))
+        return ds
+
+      ds = dataset_ops.Dataset.from_tensor_slices(elements)
+      ds = ds.interleave(interleave_fn, cycle_length=10, num_parallel_calls=10)
+      opts = dataset_ops.Options()
+      opts.experimental_deterministic = False
+      ds = ds.with_options(opts)
+      ds = _make_distributed_dataset(ds, master_address)
+      return ds
+
+    self.checkDeterminism(
+        dataset_fn=dataset_fn,
+        expect_determinism=False,
+        expected_elements=elements)
 
   def run_stateful(self, external_state_policy):
     num_elements = 10
