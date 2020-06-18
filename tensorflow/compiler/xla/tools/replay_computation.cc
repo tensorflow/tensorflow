@@ -234,7 +234,13 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
     // Run fake computations with debug options ignoring XLA_FLAGS.  Users very
     // likely want XLA_FLAGS only to apply to the "real" computation being run,
     // not to the fake computations we use for generating arguments.
+    auto debug_opts_flags = GetDebugOptionsFromFlags();
     auto debug_opts = DefaultDebugOptionsIgnoringFlags();
+
+    // ptxas can be called during the generation of fake data.
+    // As it is cached, we want it to not ignore this flag.
+    debug_opts.set_xla_gpu_asm_extra_flags(debug_opts_flags.xla_gpu_asm_extra_flags());
+
     global_data_arguments =
         MakeFakeArgumentsOrDie(computation, client, &debug_opts);
     for (const auto& data : global_data_arguments) {
