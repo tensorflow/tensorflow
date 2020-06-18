@@ -20,9 +20,7 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.ops import readers
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import reduce_util
@@ -30,10 +28,8 @@ from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 
 
@@ -43,7 +39,7 @@ class StrategyReduceTest(test.TestCase, parameterized.TestCase):
       combinations.combine(
           strategy=[strategy_combinations.multi_worker_mirrored_two_workers] +
           strategy_combinations.strategies_minus_tpu,
-          mode=["eager"]))
+          mode=['eager']))
   def testSimpleReduce(self, strategy):
 
     def fn_eager():
@@ -72,7 +68,7 @@ class StrategyReduceTest(test.TestCase, parameterized.TestCase):
 @combinations.generate(
     combinations.combine(
         strategy=[strategy_combinations.multi_worker_mirrored_two_workers],
-        mode=["eager"]))
+        mode=['eager']))
 class DistributedCollectiveAllReduceStrategyTest(
     strategy_test_lib.DistributionTestBase,
     parameterized.TestCase):
@@ -99,37 +95,45 @@ class DistributedCollectiveAllReduceStrategyTest(
         sum_value.numpy(),
         expected_sum_on_workers[multi_worker_test_base.get_task_index()])
 
-  def testDatasetFromFunctionSingleFile(self, strategy):
-    files = [
-        test.test_src_dir_path("python/distribute/testdata/input0.txt"),
-    ]
-    dataset = readers.TextLineDataset(files).batch(4)
-    dataset = strategy.experimental_distribute_dataset(dataset)
-    # Different workers may get different errors.
-    if multi_worker_test_base.get_task_index() == 0:
-      with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  "aren't enough elements"):
-        strategy.experimental_local_results(iter(dataset).get_next())
-    else:
-      with self.assertRaisesRegex(errors.OutOfRangeError, "End of sequence"):
-        strategy.experimental_local_results(iter(dataset).get_next())
+  def testReduceHostTensor(self, strategy):
+    reduced = strategy.reduce(
+        reduce_util.ReduceOp.SUM, array_ops.identity(1.), axis=None)
+    self.assertEqual(reduced.numpy(), 2.)
 
-  def testDatasetFromFunctionSingleFileAutoShardPolicyData(self, strategy):
-    files = [
-        test.test_src_dir_path("python/distribute/testdata/input0.txt"),
-    ]
-    options = dataset_ops.Options()
-    options.experimental_distribute.auto_shard_policy = (
-        distribute_options.AutoShardPolicy.DATA)
-    dataset = readers.TextLineDataset(files).map(
-        string_ops.string_to_number).batch(4).with_options(options)
-    dataset = strategy.experimental_distribute_dataset(dataset)
-    result = strategy.experimental_local_results(iter(dataset).get_next())
-    expected_on_workers = [[[1., 2.]], [[3., 4.]]]
-    self.assertAllEqual(
-        self.evaluate(result),
-        expected_on_workers[multi_worker_test_base.get_task_index()])
+  def testReduceToHostTensor(self, strategy):
+    value = array_ops.identity(1.)
+    reduced = strategy.extended.reduce_to(reduce_util.ReduceOp.SUM, value,
+                                          value)
+    self.assertEqual(reduced.numpy(), 2.)
+
+  def testBatchReduceToHostTensor(self, strategy):
+    value = array_ops.identity(1.)
+    reduced = strategy.extended.batch_reduce_to(reduce_util.ReduceOp.SUM,
+                                                [(value, value),
+                                                 (value, value)])
+    self.assertAllEqual(reduced, [2., 2.])
+
+  def testReduceDeviceTensors(self, strategy):
+    value = strategy.run(lambda: array_ops.identity(1.))
+    reduced = strategy.reduce(reduce_util.ReduceOp.SUM, value, axis=None)
+    self.assertEqual(reduced.numpy(), 2.)
+
+  def testReduceToDeviceTensors(self, strategy):
+    value = strategy.run(lambda: array_ops.identity(1.))
+    reduced = strategy.extended.reduce_to(reduce_util.ReduceOp.SUM, value,
+                                          value)
+    self.assertEqual(reduced.numpy(), 2.)
+
+  def testBatchReduceToDeviceTensors(self, strategy):
+    value = strategy.run(lambda: array_ops.identity(1.))
+    reduced = strategy.extended.batch_reduce_to(reduce_util.ReduceOp.SUM,
+                                                [(value, value),
+                                                 (value, value)])
+    self.assertAllEqual(reduced, [2., 2.])
+
+  # TODO(crccw): add a test that mixes device and host tensors after multi
+  # worker strategy combinations can run on a fixed number of GPUs.
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   combinations.main()

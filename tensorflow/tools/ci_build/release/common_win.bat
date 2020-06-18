@@ -62,7 +62,7 @@ IF NOT DEFINED TF_CUDA_VERSION (
   SET TF_CUDA_VERSION=10.1
 )
 SET TF_CUDNN_VERSION=7
-SET TF_CUDA_COMPUTE_CAPABILITIES=3.5,3.7,5.2,6.0,6.1,7.0
+SET TF_CUDA_COMPUTE_CAPABILITIES=sm_35,sm_37,sm_52,sm_60,sm_61,compute_70
 SET CUDA_TOOLKIT_PATH=C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v%TF_CUDA_VERSION%
 SET CUDNN_INSTALL_PATH=C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v%TF_CUDA_VERSION%
 SET PATH=%CUDA_TOOLKIT_PATH%\extras\CUPTI\libx64;%PATH%
@@ -73,7 +73,7 @@ SET PATH=%CUDNN_INSTALL_PATH%\bin;%PATH%
 @REM Setup Bazel
 @REM
 :: Download Bazel from github and make sure its found in PATH.
-SET BAZEL_VERSION=2.0.0
+SET BAZEL_VERSION=3.1.0
 md C:\tools\bazel\
 wget -q https://github.com/bazelbuild/bazel/releases/download/%BAZEL_VERSION%/bazel-%BAZEL_VERSION%-windows-x86_64.exe -O C:/tools/bazel/bazel.exe
 SET PATH=C:\tools\bazel;%PATH%

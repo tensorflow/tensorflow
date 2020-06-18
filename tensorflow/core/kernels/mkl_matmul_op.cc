@@ -158,9 +158,17 @@ class MklMatMulOp : public OpKernel {
 #ifdef ENABLE_MKLDNN_V1
     char char_transa = transa ? 'T' : 'N';
     char char_transb = transb ? 'T' : 'N';
-    VLOG(2) << "MKL DNN SGEMM CALLED";
+    VLOG(2) << "MKL DNN SGEMM called";
+#ifdef ENABLE_MKLDNN_THREADPOOL
+    auto eigen_tp =
+        MklDnnThreadPoolWrapper::GetInstance().CreateThreadPoolPtr(ctx);
+
+    dnnl_sgemm_tp(char_transa, char_transb, m, n, k, alpha, a, lda, b, ldb,
+                  beta, c, ldc, eigen_tp);
+#else
     dnnl_sgemm(char_transa, char_transb, m, n, k, alpha, a, lda, b, ldb, beta,
                c, ldc);
+#endif  // ENABLE_MKLDNN_THREADPOOL
 #else
     // TODO(intel-tf): Remove this after TF2.3 fork.
     cblas_sgemm(CblasRowMajor, transa ? CblasTrans : CblasNoTrans,
@@ -182,7 +190,7 @@ class MklMatMulOp : public OpKernel {
 #ifdef ENABLE_MKLDNN_V1
     const char ftrans[] = {'N', 'T', 'C'};
     dnnl_gemm<bfloat16>(ftrans[index_transa], ftrans[index_transb], m, n, k,
-                        alpha, a, lda, b, ldb, beta, c, ldc);
+                        alpha, a, lda, b, ldb, beta, c, ldc, ctx);
 #else
     Tensor c_float;
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, {m, n}, &c_float));

@@ -139,8 +139,10 @@ py_library(
         "//tensorflow/python/keras:base_layer",
         "//tensorflow/python/keras:constraints",
         "//tensorflow/python/keras:initializers",
+        "//tensorflow/python/keras:losses",
         "//tensorflow/python/keras:regularizers",
         "//tensorflow/python/keras/engine:input_spec",
+        "//tensorflow/python/keras/engine:keras_tensor",
         "//tensorflow/python/keras/layers/ops:core",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:generic_utils",
@@ -882,5 +884,17 @@ tf_py_test(
         "//tensorflow/python/keras:combinations",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "layers_test",
+    size = "small",
+    srcs = ["layers_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":layers",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:tf2",
     ],
 )

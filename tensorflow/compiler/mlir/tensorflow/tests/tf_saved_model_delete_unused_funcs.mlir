@@ -1,4 +1,4 @@
-// RUN: tf-opt -tf-saved-model-mark-func-visibility -symbol-dce -split-input-file %s | FileCheck %s --dump-input=fail
+// RUN: tf-opt -tf-saved-model-mark-func-visibility -symbol-dce -split-input-file %s | FileCheck %s
 
 module attributes {tf_saved_model.semantics} {
 

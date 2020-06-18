@@ -1225,8 +1225,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
                [7, 7, 7, 7, 7, 7]],
               dtype=dtype))
 
-  @test_util.disable_mlir_bridge(
-      "Requires concatenate op support in MlirHloBuilder")
   def testSymmetricMirrorPad(self):
     mirror_pad = lambda t, paddings: array_ops.pad(t, paddings, "SYMMETRIC")
     for dtype in self.numeric_types:
@@ -1258,8 +1256,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
           np.array([[0, 0], [0, 0]], dtype=np.int32),
           expected=np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype))
 
-  @test_util.disable_mlir_bridge(
-      "Requires concatenate op support in MlirHloBuilder")
   def testReflectMirrorPad(self):
     mirror_pad = lambda t, paddings: array_ops.pad(t, paddings, "REFLECT")
     for dtype in self.numeric_types:

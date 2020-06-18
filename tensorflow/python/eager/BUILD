@@ -275,7 +275,7 @@ cuda_py_test(
         ":test",
         "//tensorflow/core/profiler/protobuf:trace_events_proto_py",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python/profiler:traceme",
+        "//tensorflow/python/profiler:trace",
     ],
 )
 
@@ -462,6 +462,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_seed",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:sendrecv_ops_gen",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
@@ -768,7 +769,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:while_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
-        "//tensorflow/python/profiler:traceme",
+        "//tensorflow/python/profiler:trace",
         "//tensorflow/python/training/tracking:base",
     ],
 )
@@ -803,6 +804,7 @@ cuda_py_test(
     name = "def_function_test",
     srcs = ["def_function_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":def_function",
         "//tensorflow/python:client_testlib",

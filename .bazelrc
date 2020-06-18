@@ -30,6 +30,7 @@
 #     short_logs:       Only log errors during build, skip warnings.
 #     monolithic:       Build all TF C++ code into a single shared object.
 #     dynamic_kernels:  Try to link all kernels dynamically (experimental).
+#     libc++:           Link against libc++ instead of stdlibc++
 #
 #
 # TF version options;
@@ -38,6 +39,7 @@
 #
 # Feature and Third party library support options:
 #     xla:          Build TF with XLA
+#     tpu:          Build TF with TPU support
 #     using_cuda:   CUDA is available to build system.
 #     cuda:         Build with full cuda support.
 #     rocm:         Build with AMD GPU support (rocm).
@@ -79,6 +81,14 @@
 #     elinux_armhf:    Embedded Linux options for armhf (ARMv7) CPU support.
 
 
+# Allow builds using libc++ as a linker library
+# This is mostly for OSSFuzz, so we also pass in the flags from environment to clean build file
+build:libc++ --action_env=CC
+build:libc++ --action_env=CXX
+build:libc++ --action_env=CXXFLAGS=-stdlib=libc++
+build:libc++ --action_env=PATH
+build:libc++ --define force_libcpp=enabled
+build:libc++ --linkopt -fuse-ld=lld
 
 # Android configs. Bazel needs to have --cpu and --fat_apk_cpu both set to the
 # target CPU to build transient dependencies correctly. See
@@ -171,6 +181,9 @@ build:dbg --cxxopt -DTF_LITE_DISABLE_X86_NEON
 # AWS SDK must be compiled in release mode. see: https://github.com/tensorflow/tensorflow/issues/37498
 build:dbg --copt -DDEBUG_BUILD
 
+# Config to build TPU backend
+build:tpu --define=with_tpu_support=true
+
 build:tensorrt --action_env TF_NEED_TENSORRT=1
 
 build:rocm --crosstool_top=@local_config_rocm//crosstool:toolchain
@@ -199,6 +212,8 @@ build:noaws --define=no_aws_support=true
 build:nogcp --define=no_gcp_support=true
 build:nohdfs --define=no_hdfs_support=true
 build:nonccl --define=no_nccl_support=true
+
+build:stackdriver_support --define=stackdriver_support=true
 
 build --define=use_fast_cpp_protos=true
 build --define=allow_oversize_protos=true
@@ -441,8 +456,8 @@ build:rbe_linux_py3 --python_path="/usr/bin/python3"
 build:rbe_linux_py3 --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu16.04-manylinux2010-py3_config_python"
 
 build:rbe_win --config=rbe
-build:rbe_win --crosstool_top="@org_tensorflow//third_party/toolchains/preconfig/win/bazel_211:toolchain"
-build:rbe_win --extra_toolchains="@org_tensorflow//third_party/toolchains/preconfig/win/bazel_211:cc-toolchain-x64_windows"
+build:rbe_win --crosstool_top="@org_tensorflow//third_party/toolchains/preconfig/win/tf_win_08062020:toolchain"
+build:rbe_win --extra_toolchains="@org_tensorflow//third_party/toolchains/preconfig/win/tf_win_08062020:cc-toolchain-x64_windows"
 build:rbe_win --host_javabase="@org_tensorflow//third_party/toolchains/preconfig/win:windows_jdk8"
 build:rbe_win --javabase="@org_tensorflow//third_party/toolchains/preconfig/win:windows_jdk8"
 build:rbe_win --extra_execution_platforms="@org_tensorflow//third_party/toolchains/preconfig/win:rbe_windows_ltsc2019"

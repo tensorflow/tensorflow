@@ -73,6 +73,7 @@ constexpr char kPaddingMapAttr[] = "xla_hlo.padding_map";
 constexpr char kShapeIndicesAttr[] = "shape_indices";
 constexpr char kPaddingArgIndicesAttr[] = "padding_arg_indices";
 constexpr char kShardingAttr[] = "xla_hlo.sharding";
+constexpr char kFrontendAttributesAttr[] = "xla_hlo.frontend_attributes";
 constexpr char kRepicationAttr[] = "xla_hlo.is_same_data_across_replicas";
 
 // Passes through everything except for unique_ptr, on which it calls get().
@@ -397,6 +398,25 @@ static absl::optional<xla::OpSharding> CreateOpShardingFromAttribute(
   auto sharding = op->getAttrOfType<mlir::StringAttr>(kShardingAttr);
   if (!sharding) return absl::nullopt;
   return CreateOpShardingFromStringRef(sharding.getValue());
+}
+
+// Returns a FrontendAttributes proto from the "frontend_attributes" attribute
+// of the op. An empty FrontendAttributes proto is returned if an op does not
+// have frontend attributes.
+static xla::FrontendAttributes CreateOpFrontendAttributesFromAttribute(
+    mlir::Operation* op) {
+  xla::FrontendAttributes frontend_attributes;
+  auto frontend_attributes_dict =
+      op->getAttrOfType<mlir::DictionaryAttr>(kFrontendAttributesAttr);
+
+  if (!frontend_attributes_dict) return frontend_attributes;
+
+  for (const auto& attr : frontend_attributes_dict)
+    if (auto value_str_attr = attr.second.dyn_cast<mlir::StringAttr>())
+      frontend_attributes.mutable_map()->insert(
+          {attr.first.str(), value_str_attr.getValue().str()});
+
+  return frontend_attributes;
 }
 
 // Checks if all shardings are set.
@@ -917,6 +937,11 @@ LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(FusionOp op, OpLoweringContext ctx) {
+  // TODO(whoever): currently not supported.
+  return failure();
+}
+
 }  // namespace
 }  // namespace xla_hlo
 }  // namespace mlir
@@ -959,10 +984,10 @@ StatusOr<xla::Literal> CreateLiteralFromAttr(ElementsAttr attr) {
       values.reserve(attr.getNumElements());
       for (APFloat val : attr.getValues<APFloat>()) {
         bool loses_info = false;
-        CHECK_EQ(val.convert(llvm::APFloat::IEEEsingle(),
-                             llvm::APFloat::rmTowardZero, &loses_info),
-                 llvm::APFloat::opOK);
-        CHECK(!loses_info);
+        TF_RET_CHECK(val.convert(llvm::APFloat::IEEEsingle(),
+                                 llvm::APFloat::rmTowardZero,
+                                 &loses_info) == llvm::APFloat::opOK);
+        TF_RET_CHECK(!loses_info);
         values.push_back(xla::half(val.convertToFloat()));
       }
       xla::Array<xla::half> source_data(shape.dimensions());
@@ -972,10 +997,15 @@ StatusOr<xla::Literal> CreateLiteralFromAttr(ElementsAttr attr) {
     case xla::PrimitiveType::BF16: {
       xla::Array<double> source_data(shape.dimensions());
       auto attr_values = attr.getValues<APFloat>();
-      std::vector<double> values_double(source_data.num_elements());
-      for (auto index_and_value : llvm::enumerate(attr_values)) {
-        values_double[index_and_value.index()] =
-            index_and_value.value().convertToDouble();
+      std::vector<double> values_double;
+      values_double.reserve(source_data.num_elements());
+      for (APFloat val : attr_values) {
+        bool loses_info = false;
+        TF_RET_CHECK(val.convert(llvm::APFloat::IEEEdouble(),
+                                 llvm::APFloat::rmTowardZero,
+                                 &loses_info) == llvm::APFloat::opOK);
+        TF_RET_CHECK(!loses_info);
+        values_double.push_back(val.convertToDouble());
       }
       source_data.SetValues(values_double);
       return xla::LiteralUtil::ConvertF64ToBF16(

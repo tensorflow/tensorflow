@@ -27,7 +27,6 @@ cc_library(
         ":fully_connected",
         ":max_unpooling",
         ":mean",
-        ":mul",
         ":padding",
         ":pooling",
         ":prelu",
@@ -228,6 +227,7 @@ cc_library(
     srcs = ["elementwise.cc"],
     hdrs = ["elementwise.h"],
     deps = [
+        "//tensorflow/lite/delegates/gpu/common:convert",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
@@ -379,46 +379,6 @@ ios_unit_test(
         "tflite_not_portable_android",
     ],
     deps = [":mean_test_lib"],
-)
-
-cc_library(
-    name = "mul",
-    srcs = ["mul.cc"],
-    hdrs = ["mul.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:variant",
-    ],
-)
-
-objc_library(
-    name = "mul_test_lib",
-    testonly = 1,
-    srcs = ["mul_test.mm"],
-    sdk_frameworks = ["XCTest"],
-    deps = [
-        ":mul",
-        ":test_util",
-    ],
-)
-
-ios_unit_test(
-    name = "mul_test",
-    testonly = 1,
-    minimum_os_version = "9.0",
-    runner = tflite_ios_lab_runner("IOS_LATEST"),
-    tags = tf_gpu_tests_tags() + [
-        "notap",
-        "tflite_not_portable_android",
-    ],
-    deps = [":mul_test_lib"],
 )
 
 cc_library(
@@ -953,7 +913,6 @@ objc_library(
         "elementwise_test.mm",
         "fully_connected_test.mm",
         "max_unpooling_test.mm",
-        "mul_test.mm",
         "padding_test.mm",
         "pooling_test.mm",
         "prelu_test.mm",

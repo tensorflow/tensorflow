@@ -245,6 +245,8 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
       std::vector<llvm_ir::ElementGenerator> initial_value_generators,
       const llvm_ir::IrArray::Index& index);
 
+  virtual bool fast_min_max() = 0;
+
   llvm::IRBuilder<>* const b_;
 
   llvm::Module* module_;
@@ -258,6 +260,10 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   StatusOr<llvm::Value*> EmitComplexPower(const HloInstruction* op,
                                           llvm::Value* a, llvm::Value* b,
                                           llvm::Value* c, llvm::Value* d);
+
+  // Evaluates a polynomial using Horner's method.
+  StatusOr<llvm::Value*> EvaluatePolynomial(
+      llvm::Type* type, llvm::Value* x, absl::Span<const double> coefficients);
 };
 
 }  // namespace xla

@@ -58,7 +58,7 @@ typedef enum TfLiteExternalContextType {
   kTfLiteEigenContext = 0,       // include eigen_support.h to use.
   kTfLiteGemmLowpContext = 1,    // include gemm_support.h to use.
   kTfLiteEdgeTpuContext = 2,     // Placeholder for Edge TPU support.
-  kTfLiteCpuBackendContext = 3,  // include cpu_backend_support.h to use.
+  kTfLiteCpuBackendContext = 3,  // include cpu_backend_context.h to use.
   kTfLiteMaxExternalContexts = 4
 } TfLiteExternalContextType;
 
@@ -205,6 +205,7 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
 // the current function, while also reporting the location of the error.
 // `a` and `b` may be evaluated more than once, so no side effects or
 // extremely expensive computations should be done.
+// NOTE: Use TF_LITE_ENSURE_TYPES_EQ if comparing TfLiteTypes.
 #define TF_LITE_ENSURE_EQ(context, a, b)                                   \
   do {                                                                     \
     if ((a) != (b)) {                                                      \

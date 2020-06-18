@@ -17,8 +17,13 @@ limitations under the License.
 #define TENSORFLOW_CORE_TPU_TPU_LIBRARY_LOADER_H_
 
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/tpu/kernels/tpu_compile_c_api.h"
+#include "tensorflow/core/tpu/kernels/tpu_mesh_state_c_api.h"
+#include "tensorflow/core/tpu/kernels/tpu_util_c_api.h"
 #include "tensorflow/core/tpu/libtftpu.h"
 #include "tensorflow/core/tpu/tpu_config_c_api.h"
+#include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
+#include "tensorflow/stream_executor/tpu/tpu_node_context_c_api.h"
 
 // LINT.IfChange
 namespace tensorflow {
@@ -26,9 +31,20 @@ namespace tpu {
 
 Status InitializeTpuLibrary(void* library_handle);
 
+// TODO(frankchn): Separate out API functions from the loader.
 TfTpu_BaseFn* InitializeApiFn();
 
 TfTpu_ConfigApiFn* ConfigApiFn();
+
+TfTpu_MeshStateApiFn* MeshStateApiFn();
+
+TfTpu_CompileApiFn* CompileApiFn();
+
+TfTpu_ExecutorApiFn* ExecutorApiFn();
+
+TfTpu_NodeContextApiFn* NodeContextApiFn();
+
+TfTpu_UtilApiFn* UtilApiFn();
 
 }  // namespace tpu
 }  // namespace tensorflow

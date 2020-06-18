@@ -30,10 +30,6 @@ limitations under the License.
 
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tensor_internal.h"
-#include "tensorflow/c/eager/operation_interface.h"
-#include "tensorflow/c/eager/tensor_handle_interface.h"
-#include "tensorflow/c/experimental/saved_model/core/saved_model_api.h"
-#include "tensorflow/c/experimental/saved_model/core/tf_saved_model_impl.h"
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
 #include "tensorflow/core/common_runtime/colocation_graph.h"
@@ -192,19 +188,6 @@ AbstractTensorInterface* EagerContext::CreateTensor(
   }
 }
 
-std::unique_ptr<SavedModelAPI> EagerContext::LoadSavedModelAPI(
-    const std::string& directory,
-    const absl::optional<std::unordered_set<std::string>>& tags,
-    tensorflow::Status* status) {
-  auto result = std::make_unique<TFSavedModelAPIImpl>();
-  auto load_status = TFSavedModelAPIImpl::Load(directory, tags, result.get());
-  if (!load_status.ok()) {
-    status->Update(load_status);
-    result.reset();
-  }
-  return result;
-}
-
 void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
                              const ConfigProto* config, int graph_def_version,
                              const FunctionLibraryDefinition* lib_def,
@@ -356,7 +339,28 @@ void EagerContext::SetExecutorForThread(EagerExecutor* executor) {
   if (executor == &default_executor_) {
     thread_local_executor_.erase(std::this_thread::get_id());
   } else {
-    thread_local_executor_[std::this_thread::get_id()] = executor;
+    auto thread_id = std::this_thread::get_id();
+    thread_local_executor_[thread_id] = executor;
+    auto& executors_with_cleanups = has_cleanup_[thread_id];
+    if (executors_with_cleanups.find(executor) ==
+        executors_with_cleanups.end()) {
+      executors_with_cleanups.insert(executor);
+      // If the executor is deleted before this context, we need to remove it
+      // from the map to avoid attempting to sync it in our destructor.
+      std::function<void()> cleanup([this, thread_id, executor]() {
+        {
+          tensorflow::mutex_lock l(executor_map_mu_);
+          auto existing = thread_local_executor_.find(thread_id);
+          if (existing != thread_local_executor_.end() &&
+              existing->second == executor) {
+            thread_local_executor_.erase(thread_id);
+          }
+          has_cleanup_[thread_id].erase(executor);
+        }
+      });
+      executor->AddCleanup(reinterpret_cast<intptr_t>(this),
+                           std::move(cleanup));
+    }
   }
 }
 
@@ -540,6 +544,15 @@ EagerContext::~EagerContext() {
   custom_devices_.clear();
 
   ClearCachesAndThreadExecutors();
+  std::unordered_map<std::thread::id, EagerExecutor*> executors_copy;
+  {
+    mutex_lock l(executor_map_mu_);
+    executors_copy = thread_local_executor_;
+  }
+  for (const auto& entry : executors_copy) {
+    // Let the executor know that its cleanup closure is no longer valid.
+    entry.second->RemoveCleanups(reinterpret_cast<intptr_t>(this));
+  }
   for (auto& entry : registered_functions_) {
     while (!entry.second->Unref()) {
       // remove all references.
@@ -598,6 +611,8 @@ std::vector<const FunctionDef*> EagerContext::ListRegisteredFunctions() {
 }
 
 void EagerContext::ClearRunMetadata() { run_metadata_.Clear(); }
+
+bool EagerContext::UsesTFRT() { return false; }
 
 void EagerContext::ListDevices(
     std::vector<tensorflow::DeviceAttributes>* devices) {

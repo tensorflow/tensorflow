@@ -23,6 +23,7 @@ from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.experimental.ops import distribute_options
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.experimental.service import server_lib
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -30,6 +31,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
@@ -201,13 +203,18 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     self._new_worker = server_lib.WorkerServer(
         port=port, master_address=self._master._address, protocol=PROTOCOL)
 
-    # The dataset starts over now that we read from the new worker.
-    for i in range(num_elements):
+    # There may have been some elements prefetched from the first worker
+    # before it was stopped.
+    while True:
       val = next(iterator).numpy()
-      if val == midpoint and i != midpoint:
-        # There may have been one last element prefetched from the first worker
-        # before it was stopped.
-        val = next(iterator).numpy()
+      if val == 0:
+        break
+
+    # The dataset starts over now that we read from the new worker.
+    # TODO(b/157086991): Iterate until end of sequence when we support
+    # detecting lost workers.
+    for i in range(1, num_elements // 2):
+      val = next(iterator).numpy()
       self.assertEqual(i, val)
 
   @combinations.generate(test_base.eager_only_combinations())
@@ -248,7 +255,7 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testSharedJobName(self):
-    num_elements = 10
+    num_elements = 100
     master_address = self.create_cluster(1)
     ds = dataset_ops.Dataset.range(num_elements)
     ds1 = _make_distributed_dataset(ds, master_address, job_name="job_name")
@@ -256,7 +263,7 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     iter1 = iter(ds1)
     iter2 = iter(ds2)
     results = []
-    for _ in range(3):
+    for _ in range(num_elements // 5):
       results.append(next(iter1).numpy())
       results.append(next(iter2).numpy())
     for elem in iter1:
@@ -291,7 +298,7 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testSharedJobNameRepeat(self):
-    num_elements = 10
+    num_elements = 100
     num_repetitions = 3
     master_address = self.create_cluster(1)
     ds = dataset_ops.Dataset.range(num_elements)
@@ -302,15 +309,43 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     results = []
     iter1 = iter(ds1)
     iter2 = iter(ds2)
-    for _ in range(((num_elements * num_repetitions) // 2) - 1):
+    for _ in range((num_elements * num_repetitions) // 5):
       results.append(next(iter1).numpy())
-    for _ in range(((num_elements * num_repetitions) // 2) - 1):
+    for _ in range((num_elements * num_repetitions) // 5):
       results.append(next(iter2).numpy())
     for elem in iter1:
       results.append(elem.numpy())
     for elem in iter2:
       results.append(elem.numpy())
     self.assertCountEqual(num_repetitions * list(range(num_elements)), results)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testApplyDeterminismOption(self):
+    elements = list(range(10))
+    master_address = self.create_cluster(1)
+
+    def dataset_fn(delay_ms):
+
+      def interleave_fn(x):
+        ds = dataset_ops.Dataset.from_tensors(x)
+        if math_ops.equal(x, 0):
+          ds = ds.apply(testing.sleep(delay_ms * 1000))
+        else:
+          ds = ds.apply(testing.sleep(0))
+        return ds
+
+      ds = dataset_ops.Dataset.from_tensor_slices(elements)
+      ds = ds.interleave(interleave_fn, cycle_length=10, num_parallel_calls=10)
+      opts = dataset_ops.Options()
+      opts.experimental_deterministic = False
+      ds = ds.with_options(opts)
+      ds = _make_distributed_dataset(ds, master_address)
+      return ds
+
+    self.checkDeterminism(
+        dataset_fn=dataset_fn,
+        expect_determinism=False,
+        expected_elements=elements)
 
   def run_stateful(self, external_state_policy):
     num_elements = 10

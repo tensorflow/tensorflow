@@ -794,6 +794,40 @@ This op is deprecated. Prefer `tf.nn.batch_normalization`.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_BatchToSpaceOp : TF_Op<"BatchToSpace", [NoSideEffect]> {
+  let summary = "BatchToSpace for 4-D tensors of type T.";
+
+  let description = [{
+This is a legacy version of the more general BatchToSpaceND.
+
+Rearranges (permutes) data from batch into blocks of spatial data, followed by
+cropping. This is the reverse transformation of SpaceToBatch. More specifically,
+this op outputs a copy of the input tensor where values from the `batch`
+dimension are moved in spatial blocks to the `height` and `width` dimensions,
+followed by cropping along the `height` and `width` dimensions.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+    TF_I32OrI64Tensor:$crops,
+
+    Confined<I64Attr, [IntMinValue<2>]>:$block_size
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
+
+  let hasCanonicalizer = 1;
+}
+
 def TF_BatchToSpaceNDOp : TF_Op<"BatchToSpaceND", [NoSideEffect]> {
   let summary = "BatchToSpace for N-D tensors of type T.";
 
@@ -1219,6 +1253,35 @@ subsequent operation and then be optimized away, however.)
   }];
 }
 
+def TF_BucketizeOp : TF_Op<"Bucketize", [NoSideEffect, SameOperandsAndResultShape]> {
+  let summary = "Bucketizes 'input' based on 'boundaries'.";
+
+  let description = [{
+For example, if the inputs are
+    boundaries = [0, 10, 100]
+    input = [[-5, 10000]
+             [150,   10]
+             [5,    100]]
+
+then the output will be
+    output = [[0, 3]
+              [3, 2]
+              [1, 3]]
+  }];
+
+  let arguments = (ins
+    TensorOf<[F32, F64, I32, I64]>:$input,
+
+    F32ArrayAttr:$boundaries
+  );
+
+  let results = (outs
+    I32Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_CaseOp : TF_Op<"Case", []> {
   let summary = [{
 An n-way switch statement which calls a single branch function.
@@ -1257,6 +1320,8 @@ An n-way switch statement, implementing the following:
 
   TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<1>;
   TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_CastOp : TF_Op<"Cast", [NoSideEffect, SameOperandsAndResultShape]> {
@@ -1353,7 +1418,8 @@ def TF_CollectiveBcastRecvOp : TF_Op<"CollectiveBcastRecv", []> {
     I64Attr:$group_key,
     I64Attr:$instance_key,
     TF_ShapeAttr:$shape,
-    DefaultValuedAttr<StrAttr, "auto">:$communication_hint
+    DefaultValuedAttr<StrAttr, "auto">:$communication_hint,
+    DefaultValuedAttr<F32Attr, "0.0f">:$timeout_seconds
   );
 
   let results = (outs
@@ -1376,7 +1442,8 @@ def TF_CollectiveBcastSendOp : TF_Op<"CollectiveBcastSend", []> {
     I64Attr:$group_key,
     I64Attr:$instance_key,
     TF_ShapeAttr:$shape,
-    DefaultValuedAttr<StrAttr, "auto">:$communication_hint
+    DefaultValuedAttr<StrAttr, "auto">:$communication_hint,
+    DefaultValuedAttr<F32Attr, "0.0f">:$timeout_seconds
   );
 
   let results = (outs
@@ -1401,7 +1468,8 @@ Mutually accumulates multiple tensors of identical type and shape.
     I64Attr:$group_key,
     I64Attr:$instance_key,
     TF_ShapeAttr:$shape,
-    DefaultValuedAttr<StrAttr, "auto">:$communication_hint
+    DefaultValuedAttr<StrAttr, "auto">:$communication_hint,
+    DefaultValuedAttr<F32Attr, "0.0f">:$timeout_seconds
   );
 
   let results = (outs
@@ -1429,7 +1497,8 @@ Mutually reduces multiple tensors of identical type and shape.
     TF_AnyStrAttrOf<["Id", "Div"]>:$final_op,
     I64ArrayAttr:$subdiv_offsets,
     DefaultValuedAttr<I64ArrayAttr, "{}">:$wait_for,
-    DefaultValuedAttr<StrAttr, "auto">:$communication_hint
+    DefaultValuedAttr<StrAttr, "auto">:$communication_hint,
+    DefaultValuedAttr<F32Attr, "0.0f">:$timeout_seconds
   );
 
   let results = (outs
@@ -1515,6 +1584,8 @@ def TF_ConcatOp : TF_Op<"Concat", [NoSideEffect]> {
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_ConcatOffsetOp : TF_Op<"ConcatOffset", [NoSideEffect]> {
@@ -2316,6 +2387,21 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_DeviceIndexOp : TF_Op<"DeviceIndex", [NoSideEffect]> {
+  let summary = "Return the index of device the op runs.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    StrArrayAttr:$device_names
+  );
+
+  let results = (outs
+    I32Tensor:$index
+  );
+}
+
 def TF_DiagPartOp : TF_Op<"DiagPart", [NoSideEffect]> {
   let summary = "Returns the diagonal part of the tensor.";
 
@@ -2962,6 +3048,85 @@ i.e. `exp(x) - 1` or `e^(x) - 1`, where `x` is the input tensor.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_FFTOp : TF_Op<"FFT", [NoSideEffect]> {
+  let summary = "Fast Fourier transform.";
+
+  let description = [{
+Computes the 1-dimensional discrete Fourier transform over the inner-most
+dimension of `input`.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Complex128, TF_Complex64]>:$input
+  );
+
+  let results = (outs
+    TensorOf<[TF_Complex128, TF_Complex64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tcomplex = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_FFT2DOp : TF_Op<"FFT2D", [NoSideEffect]> {
+  let summary = "2D fast Fourier transform.";
+
+  let description = [{
+Computes the 2-dimensional discrete Fourier transform over the inner-most
+2 dimensions of `input`.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Complex128, TF_Complex64]>:$input
+  );
+
+  let results = (outs
+    TensorOf<[TF_Complex128, TF_Complex64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tcomplex = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_FFT3DOp : TF_Op<"FFT3D", [NoSideEffect]> {
+  let summary = "3D fast Fourier transform.";
+
+  let description = [{
+Computes the 3-dimensional discrete Fourier transform over the inner-most 3
+dimensions of `input`.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Complex128, TF_Complex64]>:$input
+  );
+
+  let results = (outs
+    TensorOf<[TF_Complex128, TF_Complex64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tcomplex = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_FakeParamOp : TF_Op<"FakeParam", [NoSideEffect]> {
+  let summary = [{
+  This op is used as a placeholder in If branch functions. It doesn't provide a
+  valid output when run, so must either be removed (e.g. replaced with a
+  function input) or guaranteed not to be used (e.g. if mirroring an
+  intermediate output needed for the gradient computation of the other branch).
+  }];
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_ShapeAttr:$shape
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_FakeQuantWithMinMaxArgsOp : TF_Op<"FakeQuantWithMinMaxArgs", [NoSideEffect, SameOperandsAndResultType]> {
@@ -3723,6 +3888,161 @@ table will be immutable.
   );
 }
 
+def TF_IFFTOp : TF_Op<"IFFT", [NoSideEffect]> {
+  let summary = "Inverse fast Fourier transform.";
+
+  let description = [{
+Computes the inverse 1-dimensional discrete Fourier transform over the
+inner-most dimension of `input`.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Complex128, TF_Complex64]>:$input
+  );
+
+  let results = (outs
+    TensorOf<[TF_Complex128, TF_Complex64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tcomplex = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_IFFT2DOp : TF_Op<"IFFT2D", [NoSideEffect]> {
+  let summary = "Inverse 2D fast Fourier transform.";
+
+  let description = [{
+Computes the inverse 2-dimensional discrete Fourier transform over the
+inner-most 2 dimensions of `input`.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Complex128, TF_Complex64]>:$input
+  );
+
+  let results = (outs
+    TensorOf<[TF_Complex128, TF_Complex64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tcomplex = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_IFFT3DOp : TF_Op<"IFFT3D", [NoSideEffect]> {
+  let summary = "Inverse 3D fast Fourier transform.";
+
+  let description = [{
+Computes the inverse 3-dimensional discrete Fourier transform over the
+inner-most 3 dimensions of `input`.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Complex128, TF_Complex64]>:$input
+  );
+
+  let results = (outs
+    TensorOf<[TF_Complex128, TF_Complex64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tcomplex = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_IRFFTOp : TF_Op<"IRFFT", [NoSideEffect]> {
+  let summary = "Inverse real-valued fast Fourier transform.";
+
+  let description = [{
+Computes the inverse 1-dimensional discrete Fourier transform of a real-valued
+signal over the inner-most dimension of `input`.
+
+The inner-most dimension of `input` is assumed to be the result of `RFFT`: the
+`fft_length / 2 + 1` unique components of the DFT of a real-valued signal. If
+`fft_length` is not provided, it is computed from the size of the inner-most
+dimension of `input` (`fft_length = 2 * (inner - 1)`). If the FFT length used to
+compute `input` is odd, it should be provided since it cannot be inferred
+properly.
+
+Along the axis `IRFFT` is computed on, if `fft_length / 2 + 1` is smaller
+than the corresponding dimension of `input`, the dimension is cropped. If it is
+larger, the dimension is padded with zeros.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Complex128, TF_Complex64]>:$input,
+    I32Tensor:$fft_length
+  );
+
+  let results = (outs
+    TF_F32OrF64Tensor:$output
+  );
+
+  TF_DerivedResultTypeAttr Treal = TF_DerivedResultTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tcomplex = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_IRFFT2DOp : TF_Op<"IRFFT2D", [NoSideEffect]> {
+  let summary = "Inverse 2D real-valued fast Fourier transform.";
+
+  let description = [{
+Computes the inverse 2-dimensional discrete Fourier transform of a real-valued
+signal over the inner-most 2 dimensions of `input`.
+
+The inner-most 2 dimensions of `input` are assumed to be the result of `RFFT2D`:
+The inner-most dimension contains the `fft_length / 2 + 1` unique components of
+the DFT of a real-valued signal. If `fft_length` is not provided, it is computed
+from the size of the inner-most 2 dimensions of `input`. If the FFT length used
+to compute `input` is odd, it should be provided since it cannot be inferred
+properly.
+
+Along each axis `IRFFT2D` is computed on, if `fft_length` (or
+`fft_length / 2 + 1` for the inner-most dimension) is smaller than the
+corresponding dimension of `input`, the dimension is cropped. If it is larger,
+the dimension is padded with zeros.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Complex128, TF_Complex64]>:$input,
+    I32Tensor:$fft_length
+  );
+
+  let results = (outs
+    TF_F32OrF64Tensor:$output
+  );
+
+  TF_DerivedResultTypeAttr Treal = TF_DerivedResultTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tcomplex = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_IRFFT3DOp : TF_Op<"IRFFT3D", [NoSideEffect]> {
+  let summary = "Inverse 3D real-valued fast Fourier transform.";
+
+  let description = [{
+Computes the inverse 3-dimensional discrete Fourier transform of a real-valued
+signal over the inner-most 3 dimensions of `input`.
+
+The inner-most 3 dimensions of `input` are assumed to be the result of `RFFT3D`:
+The inner-most dimension contains the `fft_length / 2 + 1` unique components of
+the DFT of a real-valued signal. If `fft_length` is not provided, it is computed
+from the size of the inner-most 3 dimensions of `input`. If the FFT length used
+to compute `input` is odd, it should be provided since it cannot be inferred
+properly.
+
+Along each axis `IRFFT3D` is computed on, if `fft_length` (or
+`fft_length / 2 + 1` for the inner-most dimension) is smaller than the
+corresponding dimension of `input`, the dimension is cropped. If it is larger,
+the dimension is padded with zeros.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Complex128, TF_Complex64]>:$input,
+    I32Tensor:$fft_length
+  );
+
+  let results = (outs
+    TF_F32OrF64Tensor:$output
+  );
+
+  TF_DerivedResultTypeAttr Treal = TF_DerivedResultTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tcomplex = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_IdentityNOp : TF_Op<"IdentityN", [NoSideEffect]> {
   let summary = [{
 Returns a list of tensors with the same shapes and contents as the input
@@ -4124,6 +4444,30 @@ convolutional neural networks (NIPS 2012)](http://papers.nips.cc/paper/4824-imag
 
   let arguments = (ins
     TensorOf<[BF16, F16, F32]>:$input,
+
+    DefaultValuedAttr<I64Attr, "5">:$depth_radius,
+    DefaultValuedAttr<F32Attr, "1.0f">:$bias,
+    DefaultValuedAttr<F32Attr, "1.0f">:$alpha,
+    DefaultValuedAttr<F32Attr, "0.5f">:$beta
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_LRNGradOp : TF_Op<"LRNGrad", [NoSideEffect]> {
+  let summary = "Gradients for Local Response Normalization.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32]>:$input_grads,
+    TensorOf<[BF16, F16, F32]>:$input_image,
+    TensorOf<[BF16, F16, F32]>:$output_image,
 
     DefaultValuedAttr<I64Attr, "5">:$depth_radius,
     DefaultValuedAttr<F32Attr, "1.0f">:$bias,
@@ -6329,6 +6673,66 @@ the dimension is padded with zeros.
   TF_DerivedResultTypeAttr Tcomplex = TF_DerivedResultTypeAttr<0>;
 }
 
+def TF_RFFT2DOp : TF_Op<"RFFT2D", [NoSideEffect]> {
+  let summary = "2D real-valued fast Fourier transform.";
+
+  let description = [{
+Computes the 2-dimensional discrete Fourier transform of a real-valued signal
+over the inner-most 2 dimensions of `input`.
+
+Since the DFT of a real signal is Hermitian-symmetric, `RFFT2D` only returns the
+`fft_length / 2 + 1` unique components of the FFT for the inner-most dimension
+of `output`: the zero-frequency term, followed by the `fft_length / 2`
+positive-frequency terms.
+
+Along each axis `RFFT2D` is computed on, if `fft_length` is smaller than the
+corresponding dimension of `input`, the dimension is cropped. If it is larger,
+the dimension is padded with zeros.
+  }];
+
+  let arguments = (ins
+    TF_F32OrF64Tensor:$input,
+    I32Tensor:$fft_length
+  );
+
+  let results = (outs
+    TensorOf<[TF_Complex128, TF_Complex64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Treal = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tcomplex = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_RFFT3DOp : TF_Op<"RFFT3D", [NoSideEffect]> {
+  let summary = "3D real-valued fast Fourier transform.";
+
+  let description = [{
+Computes the 3-dimensional discrete Fourier transform of a real-valued signal
+over the inner-most 3 dimensions of `input`.
+
+Since the DFT of a real signal is Hermitian-symmetric, `RFFT3D` only returns the
+`fft_length / 2 + 1` unique components of the FFT for the inner-most dimension
+of `output`: the zero-frequency term, followed by the `fft_length / 2`
+positive-frequency terms.
+
+Along each axis `RFFT3D` is computed on, if `fft_length` is smaller than the
+corresponding dimension of `input`, the dimension is cropped. If it is larger,
+the dimension is padded with zeros.
+  }];
+
+  let arguments = (ins
+    TF_F32OrF64Tensor:$input,
+    I32Tensor:$fft_length
+  );
+
+  let results = (outs
+    TensorOf<[TF_Complex128, TF_Complex64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Treal = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tcomplex = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_RandomGammaGradOp : TF_Op<"RandomGammaGrad", [NoSideEffect, ResultsBroadcastableShape]>,
                            WithBroadcastableBinOpBuilder {
   let summary = [{
@@ -6902,6 +7306,49 @@ $$\text{variable} := \text{variable} - \text{lr}_t * m_t / (\sqrt{v_t} + \epsilo
   let results = (outs);
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<3>;
+}
+
+def TF_ResourceApplyCenteredRMSPropOp : TF_Op<"ResourceApplyCenteredRMSProp", []> {
+  let summary = "Update '*var' according to the centered RMSProp algorithm.";
+
+  let description = [{
+The centered RMSProp algorithm uses an estimate of the centered second moment
+(i.e., the variance) for normalization, as opposed to regular RMSProp, which
+uses the (uncentered) second moment. This often helps with training, but is
+slightly more expensive in terms of computation and memory.
+
+Note that in dense implementation of this algorithm, mg, ms, and mom will
+update even if the grad is zero, but in this sparse implementation, mg, ms,
+and mom will not update in iterations during which the grad is zero.
+
+mean_square = decay * mean_square + (1-decay) * gradient ** 2
+mean_grad = decay * mean_grad + (1-decay) * gradient
+
+Delta = learning_rate * gradient / sqrt(mean_square + epsilon - mean_grad ** 2)
+
+mg <- rho * mg_{t-1} + (1-rho) * grad
+ms <- rho * ms_{t-1} + (1-rho) * grad * grad
+mom <- momentum * mom_{t-1} + lr * grad / sqrt(ms - mg * mg + epsilon)
+var <- var - mom
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$var,
+    TF_ResourceTensor:$mg,
+    TF_ResourceTensor:$ms,
+    TF_ResourceTensor:$mom,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lr,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$rho,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$momentum,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$epsilon,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$grad,
+
+    DefaultValuedAttr<BoolAttr, "false">:$use_locking
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<4>;
 }
 
 def TF_ResourceApplyGradientDescentOp : TF_Op<"ResourceApplyGradientDescent", []> {
@@ -8130,6 +8577,34 @@ def TF_SoftsignGradOp : TF_Op<"SoftsignGrad", [NoSideEffect, SameOperandsAndResu
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_SpaceToBatchOp : TF_Op<"SpaceToBatch", [NoSideEffect]> {
+  let summary = "SpaceToBatch for 4-D tensors of type T.";
+
+  let description = [{
+This is a legacy version of the more general SpaceToBatchND.
+
+Zero-pads and then rearranges (permutes) blocks of spatial data into batch.
+More specifically, this op outputs a copy of the input tensor where values from
+the `height` and `width` dimensions are moved to the `batch` dimension. After
+the zero-padding, both `height` and `width` of the input must be divisible by the
+block size.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+    TF_I32OrI64Tensor:$paddings,
+
+    Confined<I64Attr, [IntMinValue<2>]>:$block_size
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
+}
+
 def TF_SpaceToBatchNDOp : TF_Op<"SpaceToBatchND", [NoSideEffect]> {
   let summary = "SpaceToBatch for N-D tensors of type T.";
 
@@ -8651,11 +9126,11 @@ particular,
 begin = [1, 2, x, x, 0, x] # x denotes don't care (usually 0)
 end = [2, 4, x, x, -3, x]
 strides = [1, 1, x, x, -1, 1]
-begin_mask = 1<<4 | 1 << 5 = 48
+begin_mask = 1<<4 | 1<<5 = 48
 end_mask = 1<<5 = 32
 ellipsis_mask = 1<<3 = 8
-new_axis_mask = 1<<2 4
-shrink_axis_mask = 1<<0
+new_axis_mask = 1<<2 = 4
+shrink_axis_mask = 1<<0 = 1
 ```
 
 In this case if `foo.shape` is (5, 5, 5, 5, 5, 5) the final shape of
@@ -8977,7 +9452,8 @@ The above computation has a replicated input of two replicas.
     Variadic<TF_Tensor>:$inputs,
 
     DefaultValuedAttr<BoolAttr, "false">:$is_mirrored_variable,
-    DefaultValuedAttr<I64Attr, "-1">:$index
+    DefaultValuedAttr<I64Attr, "-1">:$index,
+    DefaultValuedAttr<BoolAttr, "false">:$is_packed
   );
 
   let results = (outs
@@ -10837,6 +11313,98 @@ def TF_ZerosLikeOp : TF_Op<"ZerosLike", [NoSideEffect, SameOperandsAndResultType
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF__FusedConv2DOp : TF_Op<"_FusedConv2D", [NoSideEffect]> {
+  let summary = [{
+Performs a convolution followed by a specified series of operations.
+  }];
+
+  let description = [{
+The inputs to the convolution are `input` and `filter`. The series of operations
+that follows is specified by the `fused_ops` attribute, which is a list of TF op
+names specified as strings (e.g. "Relu"). They are performed in order, where the
+(first) input to each op is the output of the preceding op. The first input and
+the output of each fused_op must be of type T.
+
+Currently supported fused_op combinations are: [X] and [X,A], where X is one of
+{"BiasAdd","FusedBatchNorm"} and A is one of {"Elu","Relu","Relu6"}.
+
+* The first input to op X is the Conv2D result, and the additional input(s) to X
+are specified by `args`.
+* If there is an op A specified, the output of op X is the input to op A, and op
+A produces the _FusedConv2D output. Otherwise, op X produces the _FusedConv2D
+output.
+
+*NOTE*: Do not invoke this operator directly in Python. Grappler is expected to
+create these operators.
+  }];
+
+  let arguments = (ins
+    TF_F32OrF64Tensor:$input,
+    TF_F32OrF64Tensor:$filter,
+    Variadic<TF_F32OrF64Tensor>:$args,
+
+    I64ArrayAttr:$strides,
+    TF_AnyStrAttrOf<["SAME", "VALID", "EXPLICIT"]>:$padding,
+    DefaultValuedAttr<I64ArrayAttr, "{}">:$explicit_paddings,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
+    DefaultValuedAttr<I64ArrayAttr, "{1, 1, 1, 1}">:$dilations,
+    DefaultValuedAttr<BoolAttr, "true">:$use_cudnn_on_gpu,
+    DefaultValuedAttr<StrArrayAttr, "{}">:$fused_ops,
+    DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon
+  );
+
+  let results = (outs
+    TF_F32OrF64Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandSizeAttr num_args = TF_DerivedOperandSizeAttr<2>;
+}
+
+def TF__FusedMatMulOp : TF_Op<"_FusedMatMul", [NoSideEffect]> {
+  let summary = [{
+Performs a MatMul followed by a specified series of operations.
+  }];
+
+  let description = [{
+The inputs to the MatMul are specified by `a` and `b`. The series of operations
+that follows is specified by the `fused_ops` attribute, which is a list of TF op
+names specified as strings (e.g. "Relu"). They are performed in order, where the
+(first) input to each op is the output of the preceding op. The first input and
+the output of each fused_op must be of type T.
+
+Currently supported fused_op combinations are: ["BiasAdd"] and ["BiasAdd",A],
+where A is one of {"Elu","Relu","Relu6"}.
+
+* The first input to BiasAdd is the Conv2D result, and the additional BiasAdd
+input is specified by `args`.
+* If there is an op A specified, the output of the BiasAdd is the input to op A,
+and op A produces the _FusedConv2D output. Otherwise, the BiasAdd produces the
+_FusedConv2D output.
+
+*NOTE*: Do not invoke this operator directly in Python. Grappler is
+expected to create these operators.
+  }];
+
+  let arguments = (ins
+    F32Tensor:$a,
+    F32Tensor:$b,
+    Variadic<F32Tensor>:$args,
+
+    DefaultValuedAttr<BoolAttr, "false">:$transpose_a,
+    DefaultValuedAttr<BoolAttr, "false">:$transpose_b,
+    DefaultValuedAttr<StrArrayAttr, "{}">:$fused_ops,
+    DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon
+  );
+
+  let results = (outs
+    F32Tensor:$product
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandSizeAttr num_args = TF_DerivedOperandSizeAttr<2>;
 }
 
 def TF__HostComputeMlirOp : TF_Op<"_HostComputeMlir", []> {

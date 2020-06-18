@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/outfeed_receiver.h"
+#include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/types.h"
 
 namespace xla {
@@ -42,7 +43,7 @@ class OutfeedReceiverForPython {
       std::function<void(ClientAndPtr<Device>, uint32_t, pybind11::object)>;
 
   OutfeedReceiverForPython(CallbackToPython callback_python,
-                           std::vector<std::shared_ptr<PjRtClient>> clients,
+                           std::vector<std::shared_ptr<PyClient>> clients,
                            ssize_t max_callback_queue_size_bytes)
       : callback_python_(std::move(callback_python)),
         clients_(std::move(clients)) {
@@ -52,9 +53,10 @@ class OutfeedReceiverForPython {
           this->Callback(device, consumer_id, std::move(literal));
         };
     std::vector<PjRtClient*> client_ptrs(clients.size());
-    absl::c_transform(
-        clients_, client_ptrs.begin(),
-        [](const std::shared_ptr<PjRtClient>& client) { return client.get(); });
+    absl::c_transform(clients_, client_ptrs.begin(),
+                      [](const std::shared_ptr<PyClient>& client) {
+                        return client->pjrt_client();
+                      });
     outfeed_receiver_ = absl::make_unique<OutfeedReceiver>(
         callback, client_ptrs, max_callback_queue_size_bytes);
   }
@@ -95,8 +97,8 @@ class OutfeedReceiverForPython {
     }
     // We expect the number of clients to be small, so an O(n) search is fine.
     auto it = absl::c_find_if(
-        clients_, [device](const std::shared_ptr<PjRtClient>& client) {
-          return client.get() == device->client();
+        clients_, [device](const std::shared_ptr<PyClient>& client) {
+          return client->pjrt_client() == device->client();
         });
     CHECK(it != clients_.end());
     py::gil_scoped_acquire gil_acquire;  // Need GIL also for LiteralToPython
@@ -112,7 +114,7 @@ class OutfeedReceiverForPython {
   CallbackToPython callback_python_;
   absl::Mutex mu_;
   bool outfeed_receiver_shutting_down_ TF_GUARDED_BY(mu_) = false;
-  std::vector<std::shared_ptr<PjRtClient>> clients_;
+  std::vector<std::shared_ptr<PyClient>> clients_;
   std::unique_ptr<OutfeedReceiver> outfeed_receiver_;
 };
 
@@ -124,7 +126,7 @@ void BuildOutfeedReceiverSubmodule(py::module* m) {
   outfeed_receiver.def(
       "start",
       [](OutfeedReceiverForPython::CallbackToPython callback_to_python,
-         std::vector<std::shared_ptr<PjRtClient>> clients,
+         std::vector<std::shared_ptr<PyClient>> clients,
          ssize_t max_callback_queue_size_bytes)
           -> std::unique_ptr<OutfeedReceiverForPython> {
         auto server = absl::make_unique<OutfeedReceiverForPython>(

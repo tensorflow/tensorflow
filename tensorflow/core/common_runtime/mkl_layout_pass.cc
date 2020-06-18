@@ -394,10 +394,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.batch_matmul,
                       mkl_op_registry::GetMklOpName(csinfo_.batch_matmul),
-                      CopyAttrsAll, AlwaysRewrite, kRewriteForOpNameChange});
+                      CopyAttrsAll, MatMulRewrite, kRewriteForOpNameChange});
     rinfo_.push_back({csinfo_.batch_matmul_v2,
                       mkl_op_registry::GetMklOpName(csinfo_.batch_matmul_v2),
-                      CopyAttrsAll, AlwaysRewrite, kRewriteForOpNameChange});
+                      CopyAttrsAll, MatMulRewrite, kRewriteForOpNameChange});
     rinfo_.push_back(
         {csinfo_.concat, mkl_op_registry::GetMklOpName(csinfo_.concat),
          CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
@@ -682,18 +682,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back(
         {csinfo_.requantize, mkl_op_registry::GetMklOpName(csinfo_.requantize),
          CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
-    // Disable these two MKL operators for now due to some test failures caused
-    // by these two ops
-    /*
-    rinfo_.push_back({csinfo_.tanh,
-                      mkl_op_registry::GetMklOpName(csinfo_.tanh),
+    rinfo_.push_back({csinfo_.tanh, mkl_op_registry::GetMklOpName(csinfo_.tanh),
                       CopyAttrsAll, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
-    rinfo_.push_back({csinfo_.tanh_grad,
-                      mkl_op_registry::GetMklOpName(csinfo_.tanh_grad),
-                      CopyAttrsAll, AlwaysRewrite,
-                      kRewriteForLayoutPropagation});
-    */
+    rinfo_.push_back(
+        {csinfo_.tanh_grad, mkl_op_registry::GetMklOpName(csinfo_.tanh_grad),
+         CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
     rinfo_.push_back(
         {csinfo_.reshape, mkl_op_registry::GetMklOpName(csinfo_.reshape),
          CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});

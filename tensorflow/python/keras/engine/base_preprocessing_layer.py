@@ -41,6 +41,7 @@ from tensorflow.python.util.tf_export import keras_export
 class PreprocessingLayer(Layer):
   """Base class for PreprocessingLayers."""
   __metaclass__ = abc.ABCMeta
+  _must_restore_from_config = True
 
   @abc.abstractmethod
   def adapt(self, data, reset_state=True):
@@ -141,7 +142,8 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
       accumulator = None
     else:
       accumulator = self._combiner.restore(self._restore_updates())
-
+    if isinstance(data, (list, tuple)):
+      data = ops.convert_to_tensor_v2(data)
     if not isinstance(data,
                       (dataset_ops.DatasetV2,
                        np.ndarray,
@@ -188,6 +190,8 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
           shape = data_element.shape
         except AttributeError:
           shape = None
+        # TODO (b/159261555): move this to base layer build.
+        self._batch_input_shape = shape
         self.build(shape)
 
       # Once we have built the Layer, we can process the input data. We do so

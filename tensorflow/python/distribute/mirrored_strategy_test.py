@@ -31,6 +31,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_test_base
@@ -634,8 +635,6 @@ class MirroredVariableUpdateTest(test.TestCase):
 
   def testAssignMirroredVarReplicaContextWithoutAggregationType(self,
                                                                 distribution):
-    # Test that we always have an aggregation type set on the mirrored variable
-    # if we assign to it in replica mode.
     def var_fn():
       v = variable_scope.variable(1.0, name="foo")
       return v
@@ -648,11 +647,9 @@ class MirroredVariableUpdateTest(test.TestCase):
       def model_fn():
         return mirrored_var.assign(5.0)
 
-      with self.assertRaisesRegexp(
-          ValueError, "You must specify an aggregation method to update a "
-                      "MirroredVariable in Replica Context. You can do so by"):
-        self.evaluate(distribution.experimental_local_results(
-            distribution.extended.call_for_each_replica(model_fn)))
+      self.evaluate(distribution.experimental_local_results(
+          distribution.extended.call_for_each_replica(model_fn)))
+      self.assertEqual(5.0, self.evaluate(mirrored_var))
 
   def testAssignMirroredVarReplicaContextWithSum(self, distribution):
     # Test that we don't reduce a non-per-replica value with the "sum"
@@ -1028,8 +1025,9 @@ class MirroredStrategyDefunTest(test.TestCase):
       result = distribution.extended.call_for_each_replica(
           model_fn, args=[mock_model] + inputs)
       for r in range(len(devices)):
-        device_result = values.select_replica(r, result)
-        device_expected_result = values.select_replica(r, expected_result)
+        device_result = distribute_utils.select_replica(r, result)
+        device_expected_result = distribute_utils.select_replica(
+            r, expected_result)
         self.assertAllClose(device_expected_result,
                             self.evaluate(device_result))
 

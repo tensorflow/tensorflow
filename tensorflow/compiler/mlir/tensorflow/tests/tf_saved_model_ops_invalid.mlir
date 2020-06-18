@@ -120,7 +120,7 @@ module attributes {tf_saved_model.semantics} {
 
 module attributes {tf_saved_model.semantics} {
 
-  // expected-error@+1 {{all arguments should have 'tf_saved_model.index_path' or 'tf_saved_model.bound_input' attributes}}
+  // expected-error@+1 {{all arguments should have 'tf_saved_model.index_path', 'tf_saved_model.bound_input' or 'tf.resource_name' attributes}}
   func @f(
     %arg0: tensor<f32>
   ) attributes { tf_saved_model.exported_names = ["f"] } {
@@ -257,4 +257,37 @@ module attributes {tf_saved_model.semantics} {
 
   // expected-error@+1 {{'type' attribute for immutable 'tf_saved_model.global_tensor' should have a static shape}}
   "tf_saved_model.global_tensor"() { sym_name = "v", type = tensor<?xf32>, value = dense<1.> : tensor<1xf32> } : () -> ()
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  // expected-error@+1 {{the initializer function does not exist}}
+  "tf_saved_model.session_initializer"() { initializer = @init } : () -> ()
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  // expected-error@+1 {{the initializer function should have no output}}
+  "tf_saved_model.session_initializer"() { initializer = @init } : () -> ()
+  func @init() -> tensor<1xf32> {
+    %0 = "tf.Const"() {value = dense<[1.0]> : tensor<1xf32> } : () -> tensor<1xf32>
+    return %0 : tensor<1xf32>
+  }
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  "tf_saved_model.session_initializer"() { initializer = @init } : () -> ()
+  // expected-error@+1 {{there must be no more than one session_initializer op}}
+  "tf_saved_model.session_initializer"() { initializer = @init } : () -> ()
+  func @init() -> tensor<1xf32> {
+    %0 = "tf.Const"() {value = dense<[1.0]> : tensor<1xf32> } : () -> tensor<1xf32>
+    return %0 : tensor<1xf32>
+  }
 }

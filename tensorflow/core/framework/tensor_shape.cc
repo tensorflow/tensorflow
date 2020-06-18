@@ -182,7 +182,7 @@ void TensorShapeBase<Shape>::InitDims(gtl::ArraySlice<int64> dim_sizes) {
 
   // Allow sizes that are under kint64max^0.25 so that 4-way multiplication
   // below cannot overflow.
-  static const uint64 kMaxSmall = 0xd744;
+  static const int64 kMaxSmall = 0xd744;
   static_assert(kMaxSmall * kMaxSmall * kMaxSmall * kMaxSmall <= kint64max,
                 "bad overflow check");
   bool large_size = false;

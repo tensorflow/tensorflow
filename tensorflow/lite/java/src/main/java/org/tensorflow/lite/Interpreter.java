@@ -137,10 +137,37 @@ public final class Interpreter implements AutoCloseable {
       return this;
     }
 
+    /**
+     * Experimental: Enable an optimized set of floating point CPU kernels (provided by XNNPACK).
+     *
+     * <p>Enabling this flag will enable use of a new, highly optimized set of CPU kernels provided
+     * via the XNNPACK delegate. Currently, this is restricted to a subset of floating point
+     * operations. Eventually, we plan to enable this by default, as it can provide significant
+     * peformance benefits for many classes of floating point models. See
+     * https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/xnnpack/README.md
+     * for more details.
+     *
+     * <p>Things to keep in mind when enabling this flag:
+     *
+     * <ul>
+     *   <li>Startup time and resize time may increase.
+     *   <li>Baseline memory consumption may increase.
+     *   <li>Compatibility with other delegates (e.g., GPU) has not been fully validated.
+     *   <li>Quantized models will not see any benefit.
+     * </ul>
+     *
+     * <p>WARNING: This is an experimental interface that is subject to change.
+     */
+    public Options setUseXNNPACK(boolean useXNNPACK) {
+      this.useXNNPACK = useXNNPACK;
+      return this;
+    }
+
     int numThreads = -1;
     Boolean useNNAPI;
     Boolean allowFp16PrecisionForFp32;
     Boolean allowBufferHandleOutput;
+    Boolean useXNNPACK;
     final List<Delegate> delegates = new ArrayList<>();
   }
 
@@ -507,6 +534,8 @@ public final class Interpreter implements AutoCloseable {
     }
   }
 
+  // for Object.finalize, see https://bugs.openjdk.java.net/browse/JDK-8165641
+  @SuppressWarnings("deprecation")
   @Override
   protected void finalize() throws Throwable {
     try {

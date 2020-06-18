@@ -27,6 +27,13 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
+enum class TextureAddressMode {
+  DONT_CARE,  // translated to CLK_ADDRESS_NONE
+  ZERO,       // translated to CLK_ADDRESS_CLAMP
+};
+
+std::string TextureAddressModeToString(TextureAddressMode address_mode);
+
 enum class TensorStorageType {
   UNKNOWN,
   BUFFER,
@@ -71,6 +78,11 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   GPUResources GetGPUResources(AccessType access_type) const override;
 
   bool HasAxis(Axis axis) const;
+  void SetTextureAddressMode(TextureAddressMode mode);
+
+  absl::Status GetLinkingContextFromWriteSelector(
+      const std::vector<std::string>& args, std::string* value_name,
+      std::string* x_coord, std::string* y_coord, std::string* s_coord) const;
 
   DataType data_type = DataType::UNKNOWN;
   TensorStorageType storage_type = TensorStorageType::UNKNOWN;
@@ -100,9 +112,29 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   std::string Write(const std::string& var_name,
                     const std::string& global_address) const;
 
+  bool IsBatchedWidth() const;
+
+  TextureAddressMode ModeFromState() const;
+
   absl::Status GetDataTypeFromTemplateArgs(const std::string& template_arg,
                                            DataType* result) const;
 
+  std::string GetGlobalAddressNoDeclarationWHS(const std::string& x,
+                                               const std::string& y,
+                                               const std::string& s) const;
+  std::string GetGlobalAddressNoDeclarationWHSB(const std::string& x,
+                                                const std::string& y,
+                                                const std::string& s,
+                                                const std::string& b) const;
+  std::string GetGlobalAddressNoDeclarationWHDS(const std::string& x,
+                                                const std::string& y,
+                                                const std::string& z,
+                                                const std::string& s) const;
+  std::string GetGlobalAddressNoDeclarationWHDSB(const std::string& x,
+                                                 const std::string& y,
+                                                 const std::string& z,
+                                                 const std::string& s,
+                                                 const std::string& b) const;
   std::string GetGlobalAddressNoDeclaration(const std::string& xc,
                                             const std::string& yc,
                                             const std::string& zc,

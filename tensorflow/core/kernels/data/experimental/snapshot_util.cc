@@ -18,7 +18,6 @@ limitations under the License.
 #include <queue>
 
 #include "absl/memory/memory.h"
-#include "absl/strings/str_format.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -37,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/random.h"
+#include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/data/experimental/snapshot.pb.h"
 
@@ -50,11 +50,14 @@ namespace snapshot_util {
     CustomReader::kSnappyReaderOutputBufferSizeBytes;
 
 std::string HashDirectory(const std::string& path, uint64 hash) {
-  return io::JoinPath(path, absl::StrFormat("%d", hash));
+  return io::JoinPath(
+      path, strings::Printf("%llu", static_cast<unsigned long long>(hash)));
 }
 
 std::string RunDirectory(const std::string& hash_directory, uint64 run_id) {
-  return RunDirectory(hash_directory, absl::StrFormat("%d", run_id));
+  return RunDirectory(
+      hash_directory,
+      strings::Printf("%llu", static_cast<unsigned long long>(run_id)));
 }
 
 std::string RunDirectory(const std::string& hash_directory,
@@ -63,13 +66,17 @@ std::string RunDirectory(const std::string& hash_directory,
 }
 
 std::string ShardDirectory(const std::string& run_directory, int64 shard_id) {
-  return io::JoinPath(run_directory, absl::StrFormat("%08d%s", shard_id,
-                                                     kShardDirectorySuffix));
+  return io::JoinPath(
+      run_directory,
+      strings::Printf("%08llu%s", static_cast<unsigned long long>(shard_id),
+                      kShardDirectorySuffix));
 }
 std::string GetCheckpointFileName(const std::string& shard_directory,
                                   uint64 checkpoint_id) {
-  return io::JoinPath(shard_directory,
-                      absl::StrFormat("%08d.snapshot", checkpoint_id));
+  return io::JoinPath(
+      shard_directory,
+      strings::Printf("%08llu.snapshot",
+                      static_cast<unsigned long long>(checkpoint_id)));
 }
 
 Status Writer::Create(Env* env, const std::string& filename,

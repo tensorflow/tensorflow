@@ -50,7 +50,6 @@ def _single_identity_op_at_end():
   inputs = keras.Input(shape=(10,))
   x = keras.layers.Dense(10)(inputs)
   outputs = array_ops.identity(x)
-  assert 'Identity' in outputs.name
   return keras.Model(inputs, outputs)
 
 
@@ -186,7 +185,7 @@ def _reuse_ancillary_layer():
   return model
 
 
-@keras_parameterized.run_all_keras_modes
+@keras_parameterized.run_all_keras_modes()
 class AutoLambdaTest(keras_parameterized.TestCase):
 
   @parameterized.named_parameters(
@@ -313,11 +312,6 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     e = 3  # Fudge factor to prevent flakiness.
     self.assertLess(size_500, (10 * e) * size_50)
 
-  def test_no_mask_tracking(self):
-    x = keras.backend.placeholder((10, 10))
-    y = keras.layers.Masking(0.)(x)
-    self.assertTrue(y._keras_mask._keras_history_checked)
-
   def test_built(self):
     inputs = keras.Input(shape=(10,))
     outputs = gen_nn_ops.relu(inputs)
@@ -339,7 +333,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
 
 
 class InputInEagerTest(test.TestCase):
-  """Tests ops on graph tensors in Eager runtime.
+  """Tests ops on keras inputs in Eager runtime.
 
   Input returns graph/symbolic tensors in the Eager runtime (this
   happens, for example, with tensors returned from Keras layers). These
@@ -349,7 +343,6 @@ class InputInEagerTest(test.TestCase):
   def test_identity(self):
     with context.eager_mode():
       x = keras.Input(shape=(1,))
-      self.assertTrue(hasattr(x, 'graph'))
       ident = array_ops.identity(x)
 
       # This is now a graph tensor, and should be able to continue in graphland
@@ -358,7 +351,6 @@ class InputInEagerTest(test.TestCase):
   def test_size(self):
     with context.eager_mode():
       x = keras.Input(shape=(3,))
-      self.assertTrue(hasattr(x, 'graph'))
       self.assertAllEqual(x.get_shape().as_list(), [None, 3])
       sz = array_ops.size(x)
 

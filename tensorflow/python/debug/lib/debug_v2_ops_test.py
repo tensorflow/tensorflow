@@ -52,8 +52,9 @@ class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
     super(DebugIdentityV2OpTest, self).setUp()
     # Testing using a small circular-buffer size.
     self.circular_buffer_size = 4
+    self.tfdbg_run_id = "test_tfdbg_run"
     self.writer = debug_events_writer.DebugEventsWriter(
-        self.dump_root, self.circular_buffer_size)
+        self.dump_root, self.tfdbg_run_id, self.circular_buffer_size)
 
   def tearDown(self):
     self.writer.Close()
@@ -192,7 +193,8 @@ class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
   def testTwoDumpRoots(self):
     another_dump_root = os.path.join(self.dump_root, "another")
     another_debug_url = "file://%s" % another_dump_root
-    another_writer = debug_events_writer.DebugEventsWriter(another_dump_root)
+    another_writer = debug_events_writer.DebugEventsWriter(
+        another_dump_root, "test_tfdbg_run")
 
     @def_function.function
     def write_debug_trace(x):
@@ -264,6 +266,7 @@ class DebugIdentityV2OpUninitializedWriterTest(
       self.assertAllClose(
           write_debug_trace(np.array([i]).astype(np.float32)), [i**2.0])
     writer = debug_events_writer.DebugEventsWriter(self.dump_root,
+                                                   "test_tfdbg_run",
                                                    circular_buffer_size)
     writer.FlushNonExecutionFiles()
     writer.FlushExecutionFiles()

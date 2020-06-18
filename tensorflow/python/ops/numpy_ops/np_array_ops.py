@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
 import math
 import numpy as np
 import six
@@ -40,71 +39,27 @@ from tensorflow.python.ops.numpy_ops import np_utils
 from tensorflow.python.util import nest
 
 
+@np_utils.np_doc(np.empty)
 def empty(shape, dtype=float):  # pylint: disable=redefined-outer-name
-  """Returns an empty array with the specified shape and dtype.
-
-  Args:
-    shape: A fully defined shape. Could be - NumPy array or a python scalar,
-      list or tuple of integers, - TensorFlow tensor/ndarray of integer type and
-      rank <=1.
-    dtype: Optional, defaults to float. The type of the resulting ndarray. Could
-      be a python type, a NumPy type or a TensorFlow `DType`.
-
-  Returns:
-    An ndarray.
-  """
   return zeros(shape, dtype)
 
 
+@np_utils.np_doc(np.empty_like)
 def empty_like(a, dtype=None):
-  """Returns an empty array with the shape and possibly type of the input array.
-
-  Args:
-    a: array_like. Could be an ndarray, a Tensor or any object that can be
-      converted to a Tensor using `tf.convert_to_tensor`.
-    dtype: Optional, defaults to dtype of the input array. The type of the
-      resulting ndarray. Could be a python type, a NumPy type or a TensorFlow
-      `DType`.
-
-  Returns:
-    An ndarray.
-  """
   return zeros_like(a, dtype)
 
 
+@np_utils.np_doc(np.zeros)
 def zeros(shape, dtype=float):  # pylint: disable=redefined-outer-name
-  """Returns an ndarray with the given shape and type filled with zeros.
-
-  Args:
-    shape: A fully defined shape. Could be - NumPy array or a python scalar,
-      list or tuple of integers, - TensorFlow tensor/ndarray of integer type and
-      rank <=1.
-    dtype: Optional, defaults to float. The type of the resulting ndarray. Could
-      be a python type, a NumPy type or a TensorFlow `DType`.
-
-  Returns:
-    An ndarray.
-  """
-  if dtype:
-    dtype = np_utils.result_type(dtype)
+  dtype = (
+      np_utils.result_type(dtype) if dtype else np_dtypes.default_float_type())
   if isinstance(shape, np_arrays.ndarray):
     shape = shape.data
   return np_arrays.tensor_to_ndarray(array_ops.zeros(shape, dtype=dtype))
 
 
-def zeros_like(a, dtype=None):
-  """Returns an array of zeros with the shape and type of the input array.
-
-  Args:
-    a: array_like. Could be an ndarray, a Tensor or any object that can be
-      converted to a Tensor using `tf.convert_to_tensor`.
-    dtype: Optional, defaults to dtype of the input array. The type of the
-      resulting ndarray. Could be a python type, a NumPy type or a TensorFlow
-      `DType`.
-
-  Returns:
-    An ndarray.
-  """
+@np_utils.np_doc(np.zeros_like)
+def zeros_like(a, dtype=None):  # pylint: disable=missing-docstring
   if isinstance(a, np_arrays.ndarray):
     a = a.data
   if dtype is None:
@@ -118,19 +73,8 @@ def zeros_like(a, dtype=None):
   return np_arrays.tensor_to_ndarray(array_ops.zeros_like(a, dtype))
 
 
+@np_utils.np_doc(np.ones)
 def ones(shape, dtype=float):  # pylint: disable=redefined-outer-name
-  """Returns an ndarray with the given shape and type filled with ones.
-
-  Args:
-    shape: A fully defined shape. Could be - NumPy array or a python scalar,
-      list or tuple of integers, - TensorFlow tensor/ndarray of integer type and
-      rank <=1.
-    dtype: Optional, defaults to float. The type of the resulting ndarray. Could
-      be a python type, a NumPy type or a TensorFlow `DType`.
-
-  Returns:
-    An ndarray.
-  """
   if dtype:
     dtype = np_utils.result_type(dtype)
   if isinstance(shape, np_arrays.ndarray):
@@ -138,19 +82,8 @@ def ones(shape, dtype=float):  # pylint: disable=redefined-outer-name
   return np_arrays.tensor_to_ndarray(array_ops.ones(shape, dtype=dtype))
 
 
+@np_utils.np_doc(np.ones_like)
 def ones_like(a, dtype=None):
-  """Returns an array of ones with the shape and type of the input array.
-
-  Args:
-    a: array_like. Could be an ndarray, a Tensor or any object that can be
-      converted to a Tensor using `tf.convert_to_tensor`.
-    dtype: Optional, defaults to dtype of the input array. The type of the
-      resulting ndarray. Could be a python type, a NumPy type or a TensorFlow
-      `DType`.
-
-  Returns:
-    An ndarray.
-  """
   if isinstance(a, np_arrays.ndarray):
     a = a.data
   if dtype is None:
@@ -192,41 +125,17 @@ def eye(N, M=None, k=0, dtype=float):  # pylint: disable=invalid-name,missing-do
       array_ops.matrix_diag(diagonal=diagonal_, num_rows=N, num_cols=M, k=k))
 
 
+@np_utils.np_doc(np.identity)
 def identity(n, dtype=float):
-  """Returns a square array with ones on the main diagonal and zeros elsewhere.
-
-  Args:
-    n: number of rows/cols.
-    dtype: Optional, defaults to float. The type of the resulting ndarray. Could
-      be a python type, a NumPy type or a TensorFlow `DType`.
-
-  Returns:
-    An ndarray of shape (n, n) and requested type.
-  """
   return eye(N=n, M=n, dtype=dtype)
 
 
+@np_utils.np_doc(np.full)
 def full(shape, fill_value, dtype=None):  # pylint: disable=redefined-outer-name
-  """Returns an array with given shape and dtype filled with `fill_value`.
-
-  Args:
-    shape: A valid shape object. Could be a native python object or an object of
-      type ndarray, numpy.ndarray or tf.TensorShape.
-    fill_value: array_like. Could be an ndarray, a Tensor or any object that can
-      be converted to a Tensor using `tf.convert_to_tensor`.
-    dtype: Optional, defaults to dtype of the `fill_value`. The type of the
-      resulting ndarray. Could be a python type, a NumPy type or a TensorFlow
-      `DType`.
-
-  Returns:
-    An ndarray.
-
-  Raises:
-    ValueError: if `fill_value` can not be broadcast to shape `shape`.
-  """
+  if not isinstance(shape, np_arrays.ndarray):
+    shape = asarray(np_arrays.convert_to_tensor(shape, dtype_hint=np.int32))
+  shape = atleast_1d(shape).data
   fill_value = asarray(fill_value, dtype=dtype)
-  if np_utils.isscalar(shape):
-    shape = array_ops.reshape(shape, [1])
   return np_arrays.tensor_to_ndarray(
       array_ops.broadcast_to(fill_value.data, shape))
 
@@ -251,26 +160,13 @@ def full_like(a, fill_value, dtype=None, order='K', subok=True, shape=None):  # 
 
 
 # TODO(wangpeng): investigate whether we can make `copy` default to False.
-# TODO(wangpeng): np_utils.np_doc can't handle np.array because np.array is a
-#   builtin function. Make np_utils.np_doc support builtin functions.
+# pylint: disable=g-short-docstring-punctuation,g-no-space-after-docstring-summary,g-doc-return-or-yield,g-doc-args
+@np_utils.np_doc_only(np.array)
 def array(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=redefined-outer-name
-  """Creates an ndarray with the contents of val.
-
-  Args:
-    val: array_like. Could be an ndarray, a Tensor or any object that can be
-      converted to a Tensor using `tf.convert_to_tensor`.
-    dtype: Optional, defaults to dtype of the `val`. The type of the resulting
-      ndarray. Could be a python type, a NumPy type or a TensorFlow `DType`.
-    copy: Determines whether to create a copy of the backing buffer. Since
-      Tensors are immutable, a copy is made only if val is placed on a different
-      device than the current one. Even if `copy` is False, a new Tensor may
-      need to be built to satisfy `dtype` and `ndim`. This is used only if `val`
-      is an ndarray or a Tensor.
-    ndmin: The minimum rank of the returned array.
-
-  Returns:
-    An ndarray.
-  """
+  """Since Tensors are immutable, a copy is made only if val is placed on a
+  different device than the current one. Even if `copy` is False, a new Tensor
+  may need to be built to satisfy `dtype` and `ndim`. This is used only if `val`
+  is an ndarray or a Tensor."""  # pylint:disable=g-docstring-missing-newline
   if dtype:
     dtype = np_utils.result_type(dtype)
   if isinstance(val, np_arrays.ndarray):
@@ -296,7 +192,15 @@ def array(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=redefined-out
 
     # Handles lists of ndarrays
     result_t = nest.map_structure(maybe_data, result_t)
-    result_t = np_arrays.convert_to_tensor(result_t)
+    # EagerTensor conversion complains about "mixed types" when converting
+    # tensors with no dtype information. This is because it infers types based
+    # on one selected item in the list. So e.g. when converting [2., 2j]
+    # to a tensor, it will select float32 as the inferred type and not be able
+    # to convert the list to a float 32 tensor.
+    # Since we have some information about the final dtype we care about, we
+    # supply that information so that convert_to_tensor will do best-effort
+    # conversion to that dtype first.
+    result_t = np_arrays.convert_to_tensor(result_t, dtype_hint=dtype)
     result_t = math_ops.cast(result_t, dtype=dtype)
   elif dtype:
     result_t = math_ops.cast(result_t, dtype)
@@ -311,6 +215,7 @@ def array(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=redefined-out
   result_t = np_utils.cond(
       np_utils.greater(ndmin, ndims), true_fn, lambda: result_t)
   return np_arrays.tensor_to_ndarray(result_t)
+# pylint: enable=g-short-docstring-punctuation,g-no-space-after-docstring-summary,g-doc-return-or-yield,g-doc-args
 
 
 @np_utils.np_doc(np.asarray)
@@ -333,6 +238,7 @@ def ascontiguousarray(a, dtype=None):
 
 
 # Numerical ranges.
+@np_utils.np_doc(np.arange)
 def arange(start, stop=None, step=1, dtype=None):
   """Returns `step`-separated values in the range [start, stop).
 
@@ -371,28 +277,6 @@ def arange(start, stop=None, step=1, dtype=None):
   # is integer type.
   return np_arrays.tensor_to_ndarray(
       math_ops.cast(math_ops.range(start, limit=stop, delta=step), dtype=dtype))
-
-
-@np_utils.np_doc(np.geomspace)
-def geomspace(start, stop, num=50, endpoint=True, dtype=float):  # pylint: disable=missing-docstring
-  if dtype:
-    dtype = np_utils.result_type(dtype)
-  if num < 0:
-    raise ValueError('Number of samples {} must be non-negative.'.format(num))
-  if not num:
-    return empty([0])
-  step = 1.
-  if endpoint:
-    if num > 1:
-      step = math_ops.pow((stop / start), 1 / (num - 1))
-  else:
-    step = math_ops.pow((stop / start), 1 / num)
-  result = math_ops.cast(math_ops.range(num), step.dtype)
-  result = math_ops.pow(step, result)
-  result = math_ops.multiply(result, start)
-  if dtype:
-    result = math_ops.cast(result, dtype=dtype)
-  return np_arrays.tensor_to_ndarray(result)
 
 
 # Building matrices.
@@ -462,20 +346,8 @@ def diagonal(a, offset=0, axis1=0, axis2=1):  # pylint: disable=missing-docstrin
   return a
 
 
+@np_utils.np_doc(np.diagflat)
 def diagflat(v, k=0):
-  """Returns a 2-d array with flattened `v` as diagonal.
-
-  Args:
-    v: array_like of any rank. Gets flattened when setting as diagonal. Could be
-      an ndarray, a Tensor or any object that can be converted to a Tensor using
-      `tf.convert_to_tensor`.
-    k: Position of the diagonal. Defaults to 0, the main diagonal. Positive
-      values refer to diagonals shifted right, negative values refer to
-      diagonals shifted left.
-
-  Returns:
-    2-d ndarray.
-  """
   v = asarray(v)
   return diag(array_ops.reshape(v.data, [-1]), k)
 
@@ -485,69 +357,22 @@ def _promote_dtype(*arrays):
   return [asarray(a, dtype=dtype) for a in arrays]
 
 
+@np_utils.np_doc(np.all)
 def all(a, axis=None, keepdims=None):  # pylint: disable=redefined-builtin
-  """Whether all array elements or those along an axis evaluate to true.
-
-  Casts the array to bool type if it is not already and uses `tf.reduce_all` to
-  compute the result.
-
-  Args:
-    a: array_like. Could be an ndarray, a Tensor or any object that can be
-      converted to a Tensor using `tf.convert_to_tensor`.
-    axis: Optional. Could be an int or a tuple of integers. If not specified,
-      the reduction is performed over all array indices.
-    keepdims: If true, retains reduced dimensions with length 1.
-
-  Returns:
-    An ndarray. Note that unlike NumPy this does not return a scalar bool if
-    `axis` is None.
-  """
   a = asarray(a, dtype=bool)
   return np_utils.tensor_to_ndarray(
       math_ops.reduce_all(input_tensor=a.data, axis=axis, keepdims=keepdims))
 
 
+@np_utils.np_doc(np.any)
 def any(a, axis=None, keepdims=None):  # pylint: disable=redefined-builtin
-  """Whether any element in the entire array or in an axis evaluates to true.
-
-  Casts the array to bool type if it is not already and uses `tf.reduce_any` to
-  compute the result.
-
-  Args:
-    a: array_like. Could be an ndarray, a Tensor or any object that can be
-      converted to a Tensor using `tf.convert_to_tensor`.
-    axis: Optional. Could be an int or a tuple of integers. If not specified,
-      the reduction is performed over all array indices.
-    keepdims: If true, retains reduced dimensions with length 1.
-
-  Returns:
-    An ndarray. Note that unlike NumPy this does not return a scalar bool if
-    `axis` is None.
-  """
   a = asarray(a, dtype=bool)
   return np_utils.tensor_to_ndarray(
       math_ops.reduce_any(input_tensor=a.data, axis=axis, keepdims=keepdims))
 
 
-def compress(condition, a, axis=None):
-  """Compresses `a` by selecting values along `axis` with `condition` true.
-
-  Uses `tf.boolean_mask`.
-
-  Args:
-    condition: 1-d array of bools. If `condition` is shorter than the array axis
-      (or the flattened array if axis is None), it is padded with False.
-    a: array_like. Could be an ndarray, a Tensor or any object that can be
-      converted to a Tensor using `tf.convert_to_tensor`.
-    axis: Optional. Axis along which to select elements. If None, `condition` is
-      applied on flattened array.
-
-  Returns:
-    An ndarray.
-
-  Raises:
-    ValueError: if `condition` is not of rank 1.
-  """
+@np_utils.np_doc(np.compress)
+def compress(condition, a, axis=None):  # pylint: disable=redefined-outer-name,missing-function-docstring
   condition = asarray(condition, dtype=bool)
   a = asarray(a)
 
@@ -577,8 +402,8 @@ def compress(condition, a, axis=None):
       array_ops.boolean_mask(tensor=a_t, mask=condition_t, axis=axis))
 
 
+@np_utils.np_doc(np.copy)
 def copy(a):
-  """Returns a copy of the array."""
   return array(a, copy=True)
 
 
@@ -625,25 +450,15 @@ def cumsum(a, axis=None, dtype=None):  # pylint: disable=missing-docstring
   return np_utils.tensor_to_ndarray(math_ops.cumsum(a.data, axis))
 
 
+@np_utils.np_doc(np.imag)
 def imag(a):
-  """Returns imaginary parts of all elements in `a`.
-
-  Uses `tf.imag`.
-
-  Args:
-    a: array_like. Could be an ndarray, a Tensor or any object that can be
-      converted to a Tensor using `tf.convert_to_tensor`.
-
-  Returns:
-    An ndarray with the same shape as `a`.
-  """
   a = asarray(a)
   # TODO(srbs): np.imag returns a scalar if a is a scalar, whereas we always
   # return an ndarray.
   return np_utils.tensor_to_ndarray(math_ops.imag(a.data))
 
 
-_TO_INT64 = 0
+_TO_INT_ = 0
 _TO_FLOAT = 1
 
 
@@ -652,7 +467,7 @@ def _reduce(tf_fn,
             axis=None,
             dtype=None,
             keepdims=None,
-            promote_int=_TO_INT64,
+            promote_int=_TO_INT_,
             tf_bool_fn=None,
             preserve_bool=False):
   """A general reduction function.
@@ -665,7 +480,7 @@ def _reduce(tf_fn,
     dtype: (optional) the dtype of the result.
     keepdims: (optional) whether to keep the reduced dimension(s).
     promote_int: how to promote integer and bool inputs. There are three
-      choices. (1) `_TO_INT64` always promotes them to int64 or uint64; (2)
+      choices. (1) `_TO_INT_` always promotes them to np.int_ or np.uint; (2)
       `_TO_FLOAT` always promotes them to a float type (determined by
       dtypes.default_float_type); (3) None: don't promote.
     tf_bool_fn: (optional) the TF reduction function for bool inputs. It will
@@ -690,20 +505,23 @@ def _reduce(tf_fn,
   if dtype is None:
     dtype = a.dtype
     if np.issubdtype(dtype, np.integer) or dtype == np.bool_:
-      if promote_int == _TO_INT64:
-        # If a is an integer/bool type and whose bit width is less than 64,
-        # numpy up-casts it to 64-bit.
+      if promote_int == _TO_INT_:
+        # If a is an integer/bool type and whose bit width is less than np.int_,
+        # numpy up-casts it to np.int_ based on the documentation at
+        # https://numpy.org/doc/1.18/reference/generated/numpy.sum.html
         if dtype == np.bool_:
           is_signed = True
           width = 8  # We can use any number here that is less than 64
         else:
           is_signed = np.issubdtype(dtype, np.signedinteger)
           width = np.iinfo(dtype).bits
-        if width < 64:
+        # Numpy int_ and uint are defined as 'long' and 'unsigned long', so
+        # should have the same bit width.
+        if width < np.iinfo(np.int_).bits:
           if is_signed:
-            dtype = np.int64
+            dtype = np.int_
           else:
-            dtype = np.uint64
+            dtype = np.uint
           a = a.astype(dtype)
       elif promote_int == _TO_FLOAT:
         a = a.astype(np_dtypes.default_float_type())
@@ -771,72 +589,78 @@ def amin(a, axis=None, keepdims=None):
       preserve_bool=True)
 
 
-# TODO(wangpeng): Remove this workaround once b/157232284 is fixed
-def _reduce_variance_complex(input_tensor, axis, keepdims):
-  f = functools.partial(math_ops.reduce_variance, axis=axis, keepdims=keepdims)
-  return f(math_ops.real(input_tensor)) + f(math_ops.imag(input_tensor))
-
-
-# TODO(wangpeng): Remove this workaround once b/157232284 is fixed
-def _reduce_std_complex(input_tensor, axis, keepdims):
-  y = _reduce_variance_complex(
-      input_tensor=input_tensor, axis=axis, keepdims=keepdims)
-  return math_ops.sqrt(y)
-
-
 @np_utils.np_doc(np.var)
-def var(a, axis=None, keepdims=None):  # pylint: disable=missing-function-docstring
+def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: disable=missing-docstring
+  if dtype:
+    working_dtype = np_utils.result_type(a, dtype)
+  else:
+    working_dtype = None
+  if out is not None:
+    raise ValueError('Setting out is not supported.')
+  if ddof != 0:
+    # TF reduce_variance doesn't support ddof, so calculate it using raw ops.
+    def reduce_fn(input_tensor, axis, keepdims):
+      means = math_ops.reduce_mean(input_tensor, axis=axis, keepdims=True)
+      centered = input_tensor - means
+      if input_tensor.dtype in (dtypes.complex64, dtypes.complex128):
+        centered = math_ops.cast(
+            math_ops.real(centered * math_ops.conj(centered)),
+            input_tensor.dtype)
+      else:
+        centered = math_ops.square(centered)
+      squared_deviations = math_ops.reduce_sum(
+          centered, axis=axis, keepdims=keepdims)
 
-  def f(input_tensor, axis, keepdims):
-    if input_tensor.dtype in (dtypes.complex64, dtypes.complex128):
-      # A workaround for b/157232284
-      fn = _reduce_variance_complex
-    else:
-      fn = math_ops.reduce_variance
-    return fn(input_tensor=input_tensor, axis=axis, keepdims=keepdims)
+      if axis is None:
+        n = array_ops.size(input_tensor)
+      else:
+        if axis < 0:
+          axis += array_ops.rank(input_tensor)
+        n = math_ops.reduce_prod(
+            array_ops.gather(array_ops.shape(input_tensor), axis))
+      n = math_ops.cast(n - ddof, input_tensor.dtype)
 
-  return _reduce(
-      f, a, axis=axis, dtype=None, keepdims=keepdims, promote_int=_TO_FLOAT)
+      return math_ops.cast(math_ops.divide(squared_deviations, n), dtype)
+  else:
+    reduce_fn = math_ops.reduce_variance
+
+  result = _reduce(
+      reduce_fn,
+      a,
+      axis=axis,
+      dtype=working_dtype,
+      keepdims=keepdims,
+      promote_int=_TO_FLOAT).data
+  if dtype:
+    result = math_ops.cast(result, dtype)
+  return np_utils.tensor_to_ndarray(result)
 
 
 @np_utils.np_doc(np.std)
 def std(a, axis=None, keepdims=None):  # pylint: disable=missing-function-docstring
-
-  def f(input_tensor, axis, keepdims):
-    if input_tensor.dtype in (dtypes.complex64, dtypes.complex128):
-      # A workaround for b/157232284
-      fn = _reduce_std_complex
-    else:
-      fn = math_ops.reduce_std
-    return fn(input_tensor=input_tensor, axis=axis, keepdims=keepdims)
-
   return _reduce(
-      f, a, axis=axis, dtype=None, keepdims=keepdims, promote_int=_TO_FLOAT)
+      math_ops.reduce_std,
+      a,
+      axis=axis,
+      dtype=None,
+      keepdims=keepdims,
+      promote_int=_TO_FLOAT)
 
 
 @np_utils.np_doc(np.ravel)
 def ravel(a):  # pylint: disable=missing-docstring
   a = asarray(a)
-  if a.ndim == 1:
-    return a
-  return np_utils.tensor_to_ndarray(array_ops.reshape(a.data, [-1]))
+  out = np_utils.cond(
+      math_ops.equal(a.ndim, 1), lambda: a.data,
+      lambda: array_ops.reshape(a.data, [-1]))
+  return np_utils.tensor_to_ndarray(out)
 
 
 setattr(np_arrays.ndarray, 'ravel', ravel)
 
 
+@np_utils.np_doc(np.real)
 def real(val):
-  """Returns real parts of all elements in `a`.
-
-  Uses `tf.real`.
-
-  Args:
-    val: array_like. Could be an ndarray, a Tensor or any object that can be
-      converted to a Tensor using `tf.convert_to_tensor`.
-
-  Returns:
-    An ndarray with the same shape as `a`.
-  """
   val = asarray(val)
   # TODO(srbs): np.real returns a scalar if val is a scalar, whereas we always
   # return an ndarray.
@@ -848,7 +672,8 @@ def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
   a = asarray(a).data
   original_shape = a._shape_as_list()  # pylint: disable=protected-access
   # Best effort recovery of the shape.
-  if original_shape is not None and None not in original_shape:
+  known_shape = original_shape is not None and None not in original_shape
+  if known_shape:
     if not original_shape:
       original_shape = (repeats,)
     else:
@@ -867,7 +692,8 @@ def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
 
   repeats = asarray(repeats).data
   result = array_ops.repeat(a, repeats, axis)
-  result.set_shape(original_shape)
+  if known_shape:
+    result.set_shape(original_shape)
 
   return np_utils.tensor_to_ndarray(result)
 
@@ -891,7 +717,6 @@ def around(a, decimals=0):  # pylint: disable=missing-docstring
   return np_utils.tensor_to_ndarray(a).astype(dtype)
 
 
-round_ = around
 setattr(np_arrays.ndarray, '__round__', around)
 
 
@@ -927,51 +752,20 @@ def _reshape_method_wrapper(a, *newshape, **kwargs):
   return reshape(a, newshape, order=order)
 
 
+@np_utils.np_doc(np.expand_dims)
 def expand_dims(a, axis):
-  """Expand the shape of an array.
-
-  Args:
-    a: array_like. Could be an ndarray, a Tensor or any object that can be
-      converted to a Tensor using `tf.convert_to_tensor`.
-    axis: int. axis on which to expand the shape.
-
-  Returns:
-    An ndarray with the contents and dtype of `a` and shape expanded on axis.
-  """
   a = asarray(a)
   return np_utils.tensor_to_ndarray(array_ops.expand_dims(a.data, axis=axis))
 
 
+@np_utils.np_doc(np.squeeze)
 def squeeze(a, axis=None):
-  """Removes single-element axes from the array.
-
-  Args:
-    a: array_like. Could be an ndarray, a Tensor or any object that can be
-      converted to a Tensor using `tf.convert_to_tensor`.
-    axis: scalar or list/tuple of ints.
-  TODO(srbs): tf.squeeze throws error when axis is a Tensor eager execution is
-    enabled. So we cannot allow axis to be array_like here. Fix.
-
-  Returns:
-    An ndarray.
-  """
   a = asarray(a)
   return np_utils.tensor_to_ndarray(array_ops.squeeze(a, axis))
 
 
+@np_utils.np_doc(np.transpose)
 def transpose(a, axes=None):
-  """Permutes dimensions of the array.
-
-  Args:
-    a: array_like. Could be an ndarray, a Tensor or any object that can be
-      converted to a Tensor using `tf.convert_to_tensor`.
-    axes: array_like. A list of ints with length rank(a) or None specifying the
-      order of permutation. The i'th dimension of the output array corresponds
-      to axes[i]'th dimension of the `a`. If None, the axes are reversed.
-
-  Returns:
-    An ndarray.
-  """
   a = asarray(a)
   if axes is not None:
     axes = asarray(axes)
@@ -980,13 +774,11 @@ def transpose(a, axes=None):
 
 @np_utils.np_doc(np.swapaxes)
 def swapaxes(a, axis1, axis2):  # pylint: disable=missing-docstring
-  a = asarray(a)
+  a = asarray(a).data
 
   a_rank = array_ops.rank(a)
-  if axis1 < 0:
-    axis1 += a_rank
-  if axis2 < 0:
-    axis2 += a_rank
+  axis1 = array_ops.where_v2(axis1 < 0, axis1 + a_rank, axis1)
+  axis2 = array_ops.where_v2(axis2 < 0, axis2 + a_rank, axis2)
 
   perm = math_ops.range(a_rank)
   perm = array_ops.tensor_scatter_update(perm, [[axis1], [axis2]],
@@ -1109,37 +901,16 @@ def _setitem(arr, index, value):
         [prefix_t, array_ops.expand_dims(subarray.data, 0), postfix_t], 0)
 
 
+# TODO(wangpeng): Make a custom `setattr` that also sets docstring for the
+#   method.
 setattr(np_arrays.ndarray, 'transpose', transpose)
 setattr(np_arrays.ndarray, 'reshape', _reshape_method_wrapper)
 setattr(np_arrays.ndarray, '__setitem__', _setitem)
 
 
+@np_utils.np_doc(np.pad)
 def pad(ary, pad_width, mode, constant_values=0):
-  """Pads an array.
-
-  Args:
-    ary: array_like of rank N. Input array.
-    pad_width: {sequence, array_like, int}. Number of values padded to the edges
-      of each axis. ((before_1, after_1), ... (before_N, after_N)) unique pad
-      widths for each axis. ((before, after),) yields same before and after pad
-      for each axis. (pad,) or int is a shortcut for before = after = pad width
-      for all axes.
-    mode: string. One of the following string values: 'constant' Pads with a
-      constant value. 'reflect' Pads with the reflection of the vector mirrored
-      on the first and last values of the vector along each axis. 'symmetric'
-      Pads with the reflection of the vector mirrored along the edge of the
-      array.
-      **NOTE**: The supported list of `mode` does not match that of numpy's.
-    constant_values: scalar with same dtype as `array`. Used in 'constant' mode
-      as the pad value.  Default is 0.
-
-  Returns:
-    An ndarray padded array of rank equal to `array` with shape increased
-    according to `pad_width`.
-
-  Raises:
-    ValueError if `mode` is not supported.
-  """
+  """Only supports modes 'constant', 'reflect' and 'symmetric' currently."""
   if not (mode == 'constant' or mode == 'reflect' or mode == 'symmetric'):
     raise ValueError('Unsupported padding mode: ' + mode)
   mode = mode.upper()
@@ -1210,24 +981,19 @@ def select(condlist, choicelist, default=0):  # pylint: disable=missing-docstrin
   return output
 
 
+@np_utils.np_doc(np.shape)
 def shape(a):
-  """Return the shape of an array.
-
-  Args:
-    a: array_like. Input array.
-
-  Returns:
-    Tuple of ints.
-  """
   a = asarray(a)
   return a.shape
 
 
+@np_utils.np_doc(np.ndim)
 def ndim(a):
   a = asarray(a)
   return a.ndim
 
 
+@np_utils.np_doc(np.isscalar)
 def isscalar(a):
   return ndim(a) == 0
 
@@ -1291,7 +1057,13 @@ def broadcast_to(array, shape):  # pylint: disable=redefined-outer-name
 
 
 @np_utils.np_doc(np.stack)
-def stack(arrays, axis=0):
+def stack(arrays, axis=0):  # pylint: disable=missing-function-docstring
+  if isinstance(arrays, (np_arrays.ndarray, ops.Tensor)):
+    arrays = asarray(arrays)
+    if axis == 0:
+      return arrays
+    else:
+      return swapaxes(arrays, 0, axis)
   arrays = _promote_dtype(*arrays)  # pylint: disable=protected-access
   unwrapped_arrays = [
       a.data if isinstance(a, np_arrays.ndarray) else a for a in arrays
@@ -1454,6 +1226,8 @@ def tri(N, M=None, k=0, dtype=None):  # pylint: disable=invalid-name,missing-doc
 @np_utils.np_doc(np.tril)
 def tril(m, k=0):  # pylint: disable=missing-docstring
   m = asarray(m).data
+  if m.shape.ndims is None:
+    raise ValueError('Argument to tril should have known rank')
   m_shape = m.shape.as_list()
 
   if len(m_shape) < 2:
@@ -1474,6 +1248,8 @@ def tril(m, k=0):  # pylint: disable=missing-docstring
 @np_utils.np_doc(np.triu)
 def triu(m, k=0):  # pylint: disable=missing-docstring
   m = asarray(m).data
+  if m.shape.ndims is None:
+    raise ValueError('Argument to triu should have known rank')
   m_shape = m.shape.as_list()
 
   if len(m_shape) < 2:
@@ -1616,3 +1392,97 @@ def ix_(*args):  # pylint: disable=missing-docstring
           'Only integer and bool dtypes are supported, got {}'.format(dtype))
 
   return output
+
+
+@np_utils.np_doc(np.broadcast_arrays)
+def broadcast_arrays(*args, **kwargs):  # pylint: disable=missing-docstring
+  subok = kwargs.pop('subok', False)
+  if subok:
+    raise ValueError('subok=True is not supported.')
+  if kwargs:
+    raise ValueError('Received unsupported arguments {}'.format(kwargs.keys()))
+
+  args = [asarray(arg).data for arg in args]
+  args = np_utils.tf_broadcast(*args)
+  return [np_utils.tensor_to_ndarray(arg) for arg in args]
+
+
+@np_utils.np_doc_only(np.sign)
+def sign(x, out=None, where=None, **kwargs):  # pylint: disable=missing-docstring,redefined-outer-name
+  if out:
+    raise ValueError('tf.numpy doesnt support setting out.')
+  if where:
+    raise ValueError('tf.numpy doesnt support setting where.')
+  if kwargs:
+    raise ValueError('tf.numpy doesnt support setting {}'.format(kwargs.keys()))
+
+  x = asarray(x)
+  dtype = x.dtype
+  if np.issubdtype(dtype, np.complex):
+    result = math_ops.cast(math_ops.sign(math_ops.real(x.data)), dtype)
+  else:
+    result = math_ops.sign(x.data)
+
+  return np_utils.tensor_to_ndarray(result)
+
+
+# Note that np.take_along_axis may not be present in some supported versions of
+# numpy.
+@np_utils.np_doc(None, np_fun_name='take_along_axis')
+def take_along_axis(arr, indices, axis):  # pylint: disable=missing-docstring
+  arr = asarray(arr)
+  indices = asarray(indices)
+
+  if axis is None:
+    return take_along_axis(arr.ravel(), indices, 0)
+
+  arr = arr.data
+  indices = indices.data
+
+  rank = array_ops.rank(arr)
+  axis = array_ops.where_v2(axis < 0, axis + rank, axis)
+
+  # Broadcast shapes to match, ensure that the axis of interest is not
+  # broadcast.
+  arr_shape_original = array_ops.shape(arr)
+  indices_shape_original = array_ops.shape(indices)
+  arr_shape = array_ops.tensor_scatter_update(
+      arr_shape_original, [[axis]], [1])
+  indices_shape = array_ops.tensor_scatter_update(
+      indices_shape_original, [[axis]], [1])
+  broadcasted_shape = array_ops.broadcast_dynamic_shape(
+      arr_shape, indices_shape)
+  arr_shape = array_ops.tensor_scatter_update(
+      broadcasted_shape, [[axis]], [arr_shape_original[axis]])
+  indices_shape = array_ops.tensor_scatter_update(
+      broadcasted_shape, [[axis]], [indices_shape_original[axis]])
+  arr = array_ops.broadcast_to(arr, arr_shape)
+  indices = array_ops.broadcast_to(indices, indices_shape)
+
+  # Save indices shape so we can restore it later.
+  possible_result_shape = indices.shape
+
+  # Correct indices since gather doesn't correctly handle negative indices.
+  indices = array_ops.where_v2(indices < 0, indices + arr_shape[axis], indices)
+
+  swapaxes_ = lambda t: swapaxes(np_utils.tensor_to_ndarray(t), axis, -1).data
+
+  dont_move_axis_to_end = math_ops.equal(axis, rank - 1)
+  arr = np_utils.cond(
+      dont_move_axis_to_end, lambda: arr, lambda: swapaxes_(arr))
+  indices = np_utils.cond(
+      dont_move_axis_to_end, lambda: indices, lambda: swapaxes_(indices))
+
+  arr_shape = array_ops.shape(arr)
+  arr = array_ops.reshape(arr, [-1, arr_shape[-1]])
+
+  indices_shape = array_ops.shape(indices)
+  indices = array_ops.reshape(indices, [-1, indices_shape[-1]])
+
+  result = array_ops.gather(arr, indices, batch_dims=1)
+  result = array_ops.reshape(result, indices_shape)
+  result = np_utils.cond(
+      dont_move_axis_to_end, lambda: result, lambda: swapaxes_(result))
+  result.set_shape(possible_result_shape)
+
+  return  np_utils.tensor_to_ndarray(result)

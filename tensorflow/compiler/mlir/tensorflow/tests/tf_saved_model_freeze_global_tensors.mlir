@@ -1,4 +1,4 @@
-// RUN: tf-opt -verify-diagnostics -tf-saved-model-freeze-global-tensors -split-input-file %s | FileCheck %s --dump-input=fail
+// RUN: tf-opt -verify-diagnostics -tf-saved-model-freeze-global-tensors -split-input-file %s | FileCheck %s
 
 module attributes {tf_saved_model.semantics} {
 

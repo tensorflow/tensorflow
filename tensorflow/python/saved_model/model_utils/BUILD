@@ -62,7 +62,6 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python/keras",
         "//tensorflow/python/saved_model:signature_constants",
     ],
 )
@@ -97,7 +96,6 @@ py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python/keras",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:signature_def_utils",
     ],

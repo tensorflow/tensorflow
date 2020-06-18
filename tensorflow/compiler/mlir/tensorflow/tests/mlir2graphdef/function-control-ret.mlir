@@ -1,4 +1,4 @@
-// RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s --dump-input=fail
+// RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 29 : i32}} {
   func @main() {

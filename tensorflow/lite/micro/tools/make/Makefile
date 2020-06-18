@@ -6,6 +6,10 @@ endif
 TENSORFLOW_ROOT :=
 MAKEFILE_DIR := tensorflow/lite/micro/tools/make
 
+#  Override this on make command line to to parse thirdy party downloads during project generation 
+#  make -f tensorflow/lite/micro/tools/make/Makefile PARSE_THIRD_PARTY=true TARGET=apollo3evb generate_hello_world_make_project 
+PARSE_THIRD_PARTY := 
+
 
 # Pull in some convenience functions.
 include $(MAKEFILE_DIR)/helper_functions.inc
@@ -107,15 +111,17 @@ $(wildcard tensorflow/lite/micro/memory_planner/*test.cc)
 
 # TODO(b/152645559): move all benchmarks to benchmarks directory.
 MICROLITE_BENCHMARK_SRCS := \
-$(wildcard tensorflow/lite/micro/benchmarks/*.cc)
+$(wildcard tensorflow/lite/micro/benchmarks/*benchmark.cc)
 
 MICROLITE_TEST_HDRS := \
 $(wildcard tensorflow/lite/micro/testing/*.h)
 
 MICROLITE_CC_BASE_SRCS := \
 $(wildcard tensorflow/lite/micro/*.cc) \
+$(wildcard tensorflow/lite/micro/benchmarks/*model_data.cc) \
 $(wildcard tensorflow/lite/micro/kernels/*.cc) \
 $(wildcard tensorflow/lite/micro/memory_planner/*.cc) \
+$(wildcard tensorflow/lite/micro/testing/*model.cc) \
 tensorflow/lite/c/common.c \
 tensorflow/lite/core/api/error_reporter.cc \
 tensorflow/lite/core/api/flatbuffer_conversions.cc \
@@ -130,6 +136,7 @@ MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_BENCHMARK_SRCS), $(MICROLITE_CC_SR
 
 MICROLITE_CC_HDRS := \
 $(wildcard tensorflow/lite/micro/*.h) \
+$(wildcard tensorflow/lite/micro/benchmarks/*model_data.h) \
 $(wildcard tensorflow/lite/micro/kernels/*.h) \
 $(wildcard tensorflow/lite/micro/memory_planner/*.h) \
 LICENSE \

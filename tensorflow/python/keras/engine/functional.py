@@ -32,6 +32,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_layer as input_layer_module
+from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.engine import training as training_lib
 from tensorflow.python.keras.engine import training_utils
@@ -543,6 +544,7 @@ class Functional(training_lib.Model):
       t_rank = t_shape.rank
       ref_shape = ref_input.shape
       ref_rank = ref_shape.rank
+      keras_history = getattr(tensor, '_keras_history', None)
       if t_rank is not None and ref_rank is not None:
         # Should squeeze last dimension.
         # True if tensor is (BATCH, ..., 1) and reference is (BATCH, ...).
@@ -552,6 +554,8 @@ class Functional(training_lib.Model):
         # True if tensor is (BATCH, ...) and reference is (BATCH, ..., 1).
         elif (t_rank == ref_rank - 1 and ref_shape[-1] == 1):
           tensor = array_ops.expand_dims_v2(tensor, axis=-1)
+      if keras_history is not None:  # Restore keras history.
+        tensor._keras_history = keras_history
 
       # Add shape hints to Tensors that may have None shape dims but have shapes
       # defined by the `keras.Input` (not applicable in eager mode).
@@ -994,7 +998,8 @@ def _map_subgraph_network(inputs, outputs):
   Returns:
     A tuple of List{Node] and List[Layer].
   """
-  base_layer_utils.create_keras_history(outputs)
+  if not keras_tensor.keras_tensors_enabled():
+    base_layer_utils.create_keras_history(outputs)
   # Keep only nodes and layers in the topology between inputs and outputs.
   _, nodes_by_depth, layers, _ = _map_graph_network(inputs, outputs)
   return nest.flatten([nodes for nodes in nodes_by_depth.values()]), layers

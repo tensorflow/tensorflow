@@ -15,14 +15,65 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
+#include "absl/strings/string_view.h"
+#include "google/cloud/storage/client.h"
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
 #include "tensorflow/c/tf_status.h"
 
 // Implementation of a filesystem for GCS environments.
 // This filesystem will support `gs://` URI schemes.
+namespace gcs = google::cloud::storage;
+
+// We can cast `google::cloud::StatusCode` to `TF_Code` because they have the
+// same integer values. See
+// https://github.com/googleapis/google-cloud-cpp/blob/6c09cbfa0160bc046e5509b4dd2ab4b872648b4a/google/cloud/status.h#L32-L52
+static inline void TF_SetStatusFromGCSStatus(
+    const google::cloud::Status& gcs_status, TF_Status* status) {
+  TF_SetStatus(status, static_cast<TF_Code>(gcs_status.code()),
+               gcs_status.message().c_str());
+}
 
 static void* plugin_memory_allocate(size_t size) { return calloc(1, size); }
 static void plugin_memory_free(void* ptr) { free(ptr); }
+
+static void ParseGCSPath(absl::string_view fname, bool object_empty_ok,
+                         char** bucket, char** object, TF_Status* status) {
+  size_t scheme_end = fname.find("://") + 2;
+  if (fname.substr(0, scheme_end + 1) != "gs://") {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "GCS path doesn't start with 'gs://'.");
+    return;
+  }
+
+  size_t bucket_end = fname.find("/", scheme_end + 1);
+  if (bucket_end == absl::string_view::npos) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "GCS path doesn't contain a bucket name.");
+    return;
+  }
+  absl::string_view bucket_view =
+      fname.substr(scheme_end + 1, bucket_end - scheme_end - 1);
+  *bucket =
+      static_cast<char*>(plugin_memory_allocate(bucket_view.length() + 1));
+  memcpy(*bucket, bucket_view.data(), bucket_view.length());
+  (*bucket)[bucket_view.length()] = '\0';
+
+  absl::string_view object_view = fname.substr(bucket_end + 1);
+  if (object_view.empty()) {
+    if (object_empty_ok) {
+      *object = nullptr;
+      return;
+    } else {
+      TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                   "GCS path doesn't contain an object name.");
+      return;
+    }
+  }
+  *object =
+      static_cast<char*>(plugin_memory_allocate(object_view.length() + 1));
+  // object_view.data() is a null-terminated string_view because fname is.
+  strcpy(*object, object_view.data());
+}
 
 // SECTION 1. Implementation for `TF_RandomAccessFile`
 // ----------------------------------------------------------------------------
@@ -52,6 +103,20 @@ namespace tf_read_only_memory_region {
 // ----------------------------------------------------------------------------
 namespace tf_gcs_filesystem {
 
+// TODO(vnvo2409): Add lazy-loading and customizing parameters.
+static void Init(TF_Filesystem* filesystem, TF_Status* status) {
+  google::cloud::StatusOr<gcs::Client> client =
+      gcs::Client::CreateDefaultClient();
+  if (!client) {
+    TF_SetStatusFromGCSStatus(client.status(), status);
+    return;
+  }
+  filesystem->plugin_filesystem = plugin_memory_allocate(sizeof(gcs::Client));
+  auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
+  (*gcs_client) = client.value();
+  TF_SetStatus(status, TF_OK, "");
+}
+
 // TODO(vnvo2409): Implement later
 
 }  // namespace tf_gcs_filesystem
@@ -60,6 +125,10 @@ static void ProvideFilesystemSupportFor(TF_FilesystemPluginOps* ops,
                                         const char* uri) {
   TF_SetFilesystemVersionMetadata(ops);
   ops->scheme = strdup(uri);
+
+  ops->filesystem_ops = static_cast<TF_FilesystemOps*>(
+      plugin_memory_allocate(TF_FILESYSTEM_OPS_SIZE));
+  ops->filesystem_ops->init = tf_gcs_filesystem::Init;
 }
 
 void TF_InitPlugin(TF_FilesystemPluginInfo* info) {

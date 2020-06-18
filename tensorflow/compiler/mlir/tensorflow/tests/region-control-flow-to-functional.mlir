@@ -1,9 +1,9 @@
 // RUN: tf-opt %s -tf-region-control-flow-to-functional -split-input-file
 //| FileCheck %s --dump-input=fail
 
-// CHECK: func @tf.IfRegion_else(%arg0: tensor<*xf32>) -> tensor<*xf32> attributes {sym_visibility = "private"}
+// CHECK: func @tf.IfRegion_else(%arg0: tensor<*xf32>) -> tensor<*xf32>
 // CHECK-NEXT:   "tf.Neg"
-// CHECK: func @tf.IfRegion_then(%arg0: tensor<*xf32>) -> tensor<*xf32> attributes {sym_visibility = "private"}
+// CHECK: func @tf.IfRegion_then(%arg0: tensor<*xf32>) -> tensor<*xf32>
 // CHECK-NEXT:   "tf.Abs"
 func @testSimple(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: "tf.If"{{.+}}else_branch = @tf.IfRegion_else{{.+}}then_branch = @tf.IfRegion_then
@@ -20,9 +20,9 @@ func @testSimple(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
 // -----
 
 // Use if condition inside the regions
-// CHECK: func @tf.IfRegion_else(%arg0: tensor<i1>, %arg1: tensor<2xf32>, %arg2: tensor<2xf32>, %arg3: tensor<2xf32>) -> tensor<2xf32> attributes {sym_visibility = "private"}
+// CHECK: func @tf.IfRegion_else(%arg0: tensor<i1>, %arg1: tensor<2xf32>, %arg2: tensor<2xf32>, %arg3: tensor<2xf32>) -> tensor<2xf32>
 // CHECK-NEXT: "tf.Select"(%arg0, %arg2, %arg3)
-// CHECK: func @tf.IfRegion_then(%arg0: tensor<i1>, %arg1: tensor<2xf32>, %arg2: tensor<2xf32>, %arg3: tensor<2xf32>) -> tensor<2xf32> attributes {sym_visibility = "private"}
+// CHECK: func @tf.IfRegion_then(%arg0: tensor<i1>, %arg1: tensor<2xf32>, %arg2: tensor<2xf32>, %arg3: tensor<2xf32>) -> tensor<2xf32>
 // CHECK-NEXT: "tf.Select"(%arg0, %arg1, %arg2)
 func @testIfCondition(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
   %0 = "tf.Add"(%arg1, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
@@ -106,8 +106,8 @@ func @testNested(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
 // -----
 
 // Match existing function->Region pattern (simple)
-func @testIf1Then(tensor<*xf32>) -> tensor<*xf32> attributes {sym_visibility = "private"}
-func @testIf1Else(tensor<*xf32>) -> tensor<*xf32> attributes {sym_visibility = "private"}
+func @testIf1Then(tensor<*xf32>) -> tensor<*xf32>
+func @testIf1Else(tensor<*xf32>) -> tensor<*xf32>
 func @testIf1Result(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: "tf.If"({{.+}}) {else_branch = @testIf1Else, {{.+}} then_branch = @testIf1Then}
   %0 = "tf.IfRegion"(%arg0) ( {
@@ -124,8 +124,8 @@ func @testIf1Result(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
 
 // Match existing function->Region pattern (with casts)
 
-func @testIf1Then(tensor<*xf32>) -> tensor<*xf32> attributes {sym_visibility = "private"}
-func @testIf1Else(tensor<*xf32>) -> tensor<*xf32> attributes {sym_visibility = "private"}
+func @testIf1Then(tensor<*xf32>) -> tensor<*xf32>
+func @testIf1Else(tensor<*xf32>) -> tensor<*xf32>
 func @testIf2Result(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK: "tf.If"({{.+}}) {else_branch = @testIf1Else, {{.+}} then_branch = @testIf1Then}
   %0 = "tf.IfRegion"(%arg0) ( {
@@ -138,5 +138,51 @@ func @testIf2Result(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
     "tf.Yield"(%2) : (tensor<*xf32>) -> ()
   }) {is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
   return %0 : tensor<2xf32>
+}
+
+// -----
+
+// No inputs, some outputs
+// CHECK: func @tf.IfRegion_else() -> tensor<2xf32>
+// CHECK-NEXT:    constant dense<1.000000e+00>
+// CHECK-NEXT:   "tf.Neg"
+// CHECK: func @tf.IfRegion_then() -> tensor<2xf32>
+// CHECK-NEXT:   constant dense<0.000000e+00>
+// CHECK-NEXT:   "tf.Abs"
+func @testSimple(%arg0: tensor<i1>) -> tensor<2xf32> {
+  // CHECK: "tf.If"{{.+}}else_branch = @tf.IfRegion_else{{.+}}then_branch = @tf.IfRegion_then
+  %0 = "tf.IfRegion"(%arg0) ({
+    %cst_zero = constant dense<0.0> : tensor<2xf32>
+    %1 = "tf.Abs"(%cst_zero) : (tensor<2xf32>) -> tensor<2xf32>
+    "tf.Yield"(%1) : (tensor<2xf32>) -> ()
+    }, {
+    %cst_one = constant dense<1.0> : tensor<2xf32>
+    %2 = "tf.Neg"(%cst_one) : (tensor<2xf32>) -> tensor<2xf32>
+    "tf.Yield"(%2) : (tensor<2xf32>) -> ()
+    }) { is_stateless = true } :  (tensor<i1>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
+// No outputs, some inputs
+//
+// CHECK: func @tf.IfRegion_else(%arg0: tensor<*xf32>)
+// CHECK-NEXT:   "tf.Neg"
+// CHECK: func @tf.IfRegion_then(%arg0: tensor<*xf32>)
+// CHECK-NEXT:   "tf.Abs"
+func @printer(tensor<*xf32>) -> ()
+func @testNoOutputs(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> () {
+  // CHECK: "tf.If"{{.+}}else_branch = @tf.IfRegion_else{{.+}}then_branch = @tf.IfRegion_then
+  "tf.IfRegion"(%arg0) ({
+    %1 = "tf.Abs"(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
+    call @printer(%1) : (tensor<*xf32>) -> ()
+    "tf.Yield"() : () -> ()
+    }, {
+    %2 = "tf.Neg"(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
+    call @printer(%2) : (tensor<*xf32>) -> ()
+    "tf.Yield"() : () -> ()
+    }) { is_stateless = false } :  (tensor<i1>) -> ()
+  return
 }
 

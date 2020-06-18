@@ -76,6 +76,23 @@ static LogicalResult Verify(GlobalTensorOp global_tensor) {
   return success();
 }
 
+static LogicalResult Verify(SessionInitializerOp session_initializer) {
+  mlir::SymbolTable symbol_table(
+      session_initializer.getParentOfType<ModuleOp>());
+
+  auto init_func_op =
+      symbol_table.lookup<mlir::FuncOp>(session_initializer.initializer());
+  if (!init_func_op)
+    return session_initializer.emitOpError()
+           << "the initializer function does not exist";
+
+  if (!init_func_op.getType().getResults().empty())
+    return session_initializer.emitOpError()
+           << "the initializer function should have no output";
+
+  return success();
+}
+
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.cc.inc"
 
@@ -220,6 +237,14 @@ static LogicalResult VerifySavedModelModule(
       }
     }
   }
+
+  auto session_initializers = module.getOps<SessionInitializerOp>();
+  if (std::distance(session_initializers.begin(), session_initializers.end()) >
+      1) {
+    return (*++session_initializers.begin()).emitError()
+           << "there must be no more than one session_initializer op";
+  }
+
   SymbolTable symbol_table(module);
   auto symbol_uses = SymbolTable::getSymbolUses(&module.getBodyRegion());
   if (!symbol_uses.hasValue()) {
@@ -229,7 +254,7 @@ static LogicalResult VerifySavedModelModule(
   for (auto symbol_use : *symbol_uses) {
     auto func = symbol_table.lookup<FuncOp>(
         symbol_use.getSymbolRef().cast<FlatSymbolRefAttr>().getValue());
-    if (func && !GetExportedNames(func).empty()) {
+    if (func && IsExported(func)) {
       return symbol_use.getUser()
           ->emitError("exported function cannot be internally referenced")
           .attachNote(func.getLoc())
@@ -254,9 +279,12 @@ LogicalResult VerifyExportedFunc(FuncOp func) {
       }
       continue;
     }
+    if (func.getArgAttr(i, "tf.resource_name")) {
+      continue;
+    }
     return func.emitError()
-           << "all arguments should have 'tf_saved_model.index_path' or "
-              "'tf_saved_model.bound_input' attributes";
+           << "all arguments should have 'tf_saved_model.index_path', "
+              "'tf_saved_model.bound_input' or 'tf.resource_name' attributes";
   }
   llvm::SmallDenseSet<StringRef, 8> unique_bound_inputs;
   for (int i = 0, e = func.getNumArguments(); i < e; i++) {
@@ -328,7 +356,11 @@ SmallVector<StringRef, 2> GetExportedNames(Operation *op) {
   return ret;
 }
 
-bool IsExported(Operation *op) { return !GetExportedNames(op).empty(); }
+bool IsExported(Operation *op) {
+  auto exported_names =
+      op->getAttrOfType<ArrayAttr>("tf_saved_model.exported_names");
+  return exported_names && !exported_names.empty();
+}
 
 bool HasTfSavedModelSemantics(ModuleOp module) {
   return module.getAttr("tf_saved_model.semantics") != nullptr;
