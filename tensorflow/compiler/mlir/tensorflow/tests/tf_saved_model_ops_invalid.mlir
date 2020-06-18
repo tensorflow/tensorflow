@@ -3,7 +3,7 @@
 module attributes {tf_saved_model.semantics} {
 
   // expected-error@+1 {{unknown tf_saved_model dialect arg attribute 'tf_saved_model.not_a_real_arg_attr'}}
-  func @f(%arg0: tensor<f32> {tf_saved_model.not_a_real_arg_attr = 1 : i32}) {
+  func @f(%arg0: tensor<f32> {tf_saved_model.not_a_real_arg_attr = 1 : i32}) attributes {sym_visibility = "private"} {
     return
   }
 
@@ -233,7 +233,7 @@ module attributes {tf_saved_model.semantics} {
   "tf_saved_model.global_tensor"() { is_mutable, sym_name = "v", type = tensor<?xf32>, value = dense<1.> : tensor<1xf32> } : () -> ()
   // expected-error@+1 {{can only apply 'tf_saved_model' argument attributes to exported functions}}
   func @f(%arg0: tensor<!tf.resource<tensor<?xf32>>> {tf_saved_model.bound_input = @v})
-  -> (tensor<?xf32> {tf_saved_model.index_path = []}) {
+  -> (tensor<?xf32> {tf_saved_model.index_path = []}) attributes {sym_visibility = "private"} {
     %0 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf.resource<tensor<?xf32>>>) -> tensor<?xf32>
     return %0 : tensor<?xf32>
   }
@@ -273,7 +273,7 @@ module attributes {tf_saved_model.semantics} {
 
   // expected-error@+1 {{the initializer function should have no output}}
   "tf_saved_model.session_initializer"() { initializer = @init } : () -> ()
-  func @init() -> tensor<1xf32> {
+  func @init() -> tensor<1xf32> attributes {sym_visibility = "private"} {
     %0 = "tf.Const"() {value = dense<[1.0]> : tensor<1xf32> } : () -> tensor<1xf32>
     return %0 : tensor<1xf32>
   }
@@ -286,8 +286,34 @@ module attributes {tf_saved_model.semantics} {
   "tf_saved_model.session_initializer"() { initializer = @init } : () -> ()
   // expected-error@+1 {{there must be no more than one session_initializer op}}
   "tf_saved_model.session_initializer"() { initializer = @init } : () -> ()
-  func @init() -> tensor<1xf32> {
+  func @init() -> tensor<1xf32> attributes {sym_visibility = "private"} {
     %0 = "tf.Const"() {value = dense<[1.0]> : tensor<1xf32> } : () -> tensor<1xf32>
     return %0 : tensor<1xf32>
   }
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  // expected-error@+1 {{exported function @f should be public}}
+  func @f(
+    %arg0: tensor<f32> {tf.resource_name = "resource"}
+  ) attributes { sym_visibility = "private", tf_saved_model.exported_names = ["foo.some_func"] } {
+    return
+  }
+
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  // expected-error@+1 {{non-exported function @f should be private}}
+  func @f(
+    %arg0: tensor<f32> {tf.resource_name = "resource"}
+  ) {
+    return
+  }
+
 }

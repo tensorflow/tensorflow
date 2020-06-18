@@ -212,9 +212,6 @@ void CreateTFLStandardPipeline(OpPassManager& pm,
 
   // Saved model pass to mark global tensors immutable.
   pm.addPass(mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
-  // Used to mark non-exported functions in saved model private.
-  pm.addPass(mlir::tf_saved_model::
-                 CreateMarkFunctionVisibilityUsingSavedModelLinkagePass());
   // Op fusion pass.
   pm.addPass(mlir::TFL::CreatePrepareCompositeFunctionsPass());
 

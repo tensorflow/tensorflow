@@ -40,7 +40,7 @@ module attributes {tf_saved_model.semantics} {
     return %arg0 : tensor<f32>
   }
 
-  func @f() {
+  func @f() attributes {sym_visibility = "private"} {
     return
   }
 

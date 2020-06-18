@@ -229,8 +229,20 @@ static LogicalResult VerifySavedModelModule(
     }
   }
   for (auto func : module.getOps<FuncOp>()) {
+    const bool is_exported = IsExported(func);
+
+    if (is_exported && func.getVisibility() != FuncOp::Visibility::Public) {
+      return func.emitError()
+             << "exported function @" << func.getName() << " should be public";
+    }
+
+    if (!is_exported && func.getVisibility() == FuncOp::Visibility::Public) {
+      return func.emitError() << "non-exported function @" << func.getName()
+                              << " should be private";
+    }
+
     if (HasAnyTfSavedModelArgAttr(func)) {
-      if (!IsExported(func)) {
+      if (!is_exported) {
         return func.emitError()
                << "can only apply 'tf_saved_model' argument attributes "
                   "to exported functions";

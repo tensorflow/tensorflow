@@ -117,21 +117,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreatePromoteVarHandlesToArgsPass();
 std::unique_ptr<OperationPass<FuncOp>>
 CreateConvertReadonlyReferenceVariablesToResourceVariablesPass();
 
-// Marks function visibility using tf.entry_function specification. That is,
-// functions with tf.entry_function attributes are marked with public
-// visibility while the other functions are marked with private visibility.
-LogicalResult MarkFunctionVisibilityUsingEntryFunctionSpecification(
-    ModuleOp module);
-// Creates a pass that uses tf.entry_function specification to mark function
-// visibility.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateMarkFunctionVisibilityUsingEntryFunctionSpecificationPass();
-
-// Creates a pass that marks the main function with public visibility, while
-// other functions are marked with private visibility.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateMarkOnlyMainFunctionWithPublicVisibilityPass();
-
 // Creates a simple device assignment pass on TF dialect for CoreRT use case.
 std::unique_ptr<OperationPass<FuncOp>> CreateSimpleTFDeviceAssignmentPass(
     llvm::StringRef default_device);
@@ -314,13 +299,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateOptimizeGlobalTensorsPass();
 
 // Creates a pass that freezes tf_saved_model.global_tensor ops.
 std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeGlobalTensorsPass();
-
-// Creates a pass that uses tf_saved_model dialect linkage information
-// to mark function visibility. That is, exported functions are marked with
-// public visibility while the other functions are marked with private
-// visibility.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateMarkFunctionVisibilityUsingSavedModelLinkagePass();
 
 }  // namespace tf_saved_model
 
