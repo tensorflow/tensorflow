@@ -32,6 +32,7 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.training.saving import saveable_object
@@ -792,6 +793,17 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
       return ops.convert_to_tensor(
           self._get(), dtype=dtype, name=name, as_ref=as_ref)
+
+  def _map_resources(self):
+    """For implementing `Trackable`."""
+    new_obj = resource_variable_ops.copy_to_graph_uninitialized(self._primary)
+    obj_map, resource_map = {}, {}
+    for v in self._values:
+      obj_map[v] = new_obj
+      resource_map[v.handle] = new_obj.handle
+    obj_map[self] = new_obj
+    resource_map[self] = new_obj.handle
+    return obj_map, resource_map
 
 
 class _DistributedVariableSaveable(saveable_object.SaveableObject):
