@@ -505,6 +505,11 @@ Status LowerLHLOToGPU(mlir::ModuleOp module, LowerLHLOToGPUOptions options) {
   // Some basic cleanup.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
+  // Approximate of requested.
+  if (options.use_approximations) {
+    pm.addNestedPass<::mlir::FuncOp>(
+        ::mlir::xla::createLegalizeTanhToApproximationPass());
+  }
   // Move scalar operations into the launch to ensure smaller signatures.
   pm.addPass(absl::make_unique<MoveScalarComputationsIntoGpuLaunch>());
   // Take launches to launches with kernels.
