@@ -1540,7 +1540,6 @@ class MklDnnData {
                                   std::shared_ptr<stream> t_stream = nullptr) {
     SetUsrMemDataHandle(GetTensorBuffer(tensor), t_stream);
   }
-  }
 
   /// allocate function for data buffer
   inline void AllocateBuffer(size_t size) {
