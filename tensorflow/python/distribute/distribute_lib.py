@@ -684,7 +684,8 @@ class StrategyBase(object):
         instead.
       * Use `tf.distribute.Strategy.run` to run a function
         once per replica, taking values that may be "per-replica" (e.g.
-        from a distributed dataset) and returning "per-replica" values.
+        from a `tf.distribute.DistributedDataset` object) and returning
+        "per-replica" values.
         This function is executed in "replica context", which means each
         operation is performed separately on each replica.
       * Finally use a method (such as `tf.distribute.Strategy.reduce`) to
@@ -720,7 +721,8 @@ class StrategyBase(object):
   distributed-specific behavior.
 
   You can use the `reduce` API to aggregate results across replicas and use
-  this as a return value from one iteration over the distributed dataset. Or
+  this as a return value from one iteration over a
+  `tf.distribute.DistributedDataset`. Or
   you can use `tf.keras.metrics` (such as loss, accuracy, etc.) to
   accumulate metrics across steps in a given epoch.
 
@@ -859,12 +861,12 @@ class StrategyBase(object):
     return self.run(fn, args=args)
 
   def experimental_distribute_dataset(self, dataset, options=None):
-    """Distributes a tf.data.Dataset instance provided via `dataset`.
+    """Creates `tf.distribute.DistributedDataset` from `tf.data.Dataset`.
 
-    The returned distributed dataset can be iterated over similar to how
-    regular datasets can.
-    NOTE: Currently, the user cannot add any more transformations to a
-    distributed dataset.
+    The returned `tf.distribute.DistributedDataset` can be iterated over
+    similar to how regular datasets can.
+    NOTE: The user cannot add any more transformations to a
+    `tf.distribute.DistributedDataset`.
 
     The following is an example:
 
@@ -878,48 +880,53 @@ class StrategyBase(object):
     # Distribute that dataset
     dist_dataset = strategy.experimental_distribute_dataset(dataset)
 
-    # Iterate over the distributed dataset
+    # Iterate over the `tf.distribute.DistributedDataset`
     for x in dist_dataset:
       # process dataset elements
       strategy.run(replica_fn, args=(x,))
     ```
 
-    In the code snippet above, the dataset `dist_dataset` is batched by
-    GLOBAL_BATCH_SIZE, and we iterate through it using `for x in dist_dataset`,
-    where x is one batch of data of GLOBAL_BATCH_SIZE containing N batches of
-    data of per-replica batch size, corresponding to N replicas.
-    `tf.distribute.Strategy.run` will take care of feeding
-    the right per-replica batch to the right `replica_fn` execution on each
+    In the code snippet above, the `tf.distribute.DistributedDataset`
+    `dist_dataset` is batched by `GLOBAL_BATCH_SIZE`, and we iterate through it
+    using `for x in dist_dataset`. `x` a `tf.distribute.DistributedValues`
+    containing data for all replicas, which aggregates to a batch of
+    `GLOBAL_BATCH_SIZE`. `tf.distribute.Strategy.run` will take care of feeding
+    the right per-replica data in `x` to the right `replica_fn` executed on each
     replica.
 
-    In a multi-worker setting, we will first attempt to distribute the dataset
-    by attempting to detect whether the dataset is being created out of
-    ReaderDatasets (e.g. TFRecordDataset, TextLineDataset, etc.) and if so,
-    attempting to shard the input files. Note that there has to be at least one
-    input file per worker. If you have less than one input file per worker, we
-    suggest that you should disable distributing your dataset using the method
-    below.
+    What's under the hood of this method, when we say the `tf.data.Dataset`
+    instance - `dataset` - gets distributed? It depends on how you set the
+    `tf.data.experimental.AutoShardPolicy` through
+    `tf.data.experimental.DistributeOptions`. By default, it is set to
+    `tf.data.experimental.AutoShardPolicy.AUTO`. In a multi-worker setting, we
+    will first attempt to distribute `dataset` by detecting whether `dataset` is
+    being created out of reader datasets (e.g. `tf.data.TFRecordDataset`,
+    `tf.data.TextLineDataset`, etc.) and if so, try to shard the input files.
+    Note that there has to be at least one input file per worker. If you have
+    less than one input file per worker, we suggest that you disable dataset
+    sharding across workers, by setting the
+    `tf.data.experimental.DistributeOptions.auto_shard_policy` to be
+    `tf.data.experimental.AutoShardPolicy.OFF`.
 
-    If that attempt is unsuccessful (e.g. the dataset is created from a
-    Dataset.range), we will shard the dataset evenly at the end by appending a
-    `.shard` operation to the end of the processing pipeline. This will cause
-    the entire preprocessing pipeline for all the data to be run on every
-    worker, and each worker will do redundant work. We will print a warning
-    if this method of sharding is selected.
+    If the attempt to shard by file is unsuccessful (i.e. the dataset is not
+    read from files), we will shard the dataset evenly at the end by
+    appending a `.shard` operation to the end of the processing pipeline. This
+    will cause the entire preprocessing pipeline for all the data to be run on
+    every worker, and each worker will do redundant work. We will print a
+    warning if this route is selected.
 
-    You can disable dataset sharding across workers using the
-    `auto_shard_policy` option in `tf.data.experimental.DistributeOptions`.
-
-    Within each worker, we will also split the data among all the worker
-    devices (if more than one a present), and this will happen even if
-    multi-worker sharding is disabled using the method above.
+    As mentioned before, within each worker, we will also split the data among
+    all the worker devices (if more than one a present). This will happen
+    even if multi-worker sharding is disabled.
 
     If the above batch splitting and dataset sharding logic is undesirable,
-    please use `experimental_distribute_datasets_from_function` instead, which
-    does not do any automatic splitting or sharding.
+    please use
+    `tf.distribute.Strategy.experimental_distribute_datasets_from_function`
+    instead, which does not do any automatic splitting or sharding.
 
-    You can also use the `element_spec` property of the distributed dataset
-    returned by this API to query the `tf.TypeSpec` of the elements returned
+    You can also use the `element_spec` property of the
+    `tf.distribute.DistributedDataset` instance returned by this API to query
+    the `tf.TypeSpec` of the elements returned
     by the iterator. This can be used to set the `input_signature` property
     of a `tf.function`.
 
@@ -938,11 +945,20 @@ class StrategyBase(object):
       # train model with inputs
       return
 
-    # Iterate over the distributed dataset
+    # Iterate over the `tf.distribute.DistributedDataset`
     for x in dist_dataset:
       # process dataset elements
       strategy.run(train_step, args=(x,))
     ```
+
+    Note: The order in which the data is processed by the workers when using
+    `tf.distribute.Strategy.experimental_distribute_dataset` or
+    `tf.distribute.Strategy.experimental_distribute_datasets_from_function` is
+    not guaranteed. This is typically required if you are using
+    `tf.distribute` to scale prediction. You can however insert an index for
+    each element in the batch and order outputs accordingly. Refer to [this
+    snippet](https://www.tensorflow.org/tutorials/distribute/input#caveats)
+    for an example of how to order outputs.
 
     Args:
       dataset: `tf.data.Dataset` that will be sharded across all replicas using
@@ -951,8 +967,7 @@ class StrategyBase(object):
         dataset is distributed.
 
     Returns:
-      A "distributed `Dataset`", which acts like a `tf.data.Dataset` except
-      it produces "per-replica" values.
+      A `tf.distribute.DistributedDataset`.
     """
     return self._extended._experimental_distribute_dataset(dataset, options)  # pylint: disable=protected-access
 
@@ -978,10 +993,10 @@ class StrategyBase(object):
     The `dataset_fn` should take an `tf.distribute.InputContext` instance where
     information about batching and input replication can be accessed.
 
-    You can also use the `element_spec` property of the distributed dataset
-    returned by this API to query the `tf.TypeSpec` of the elements returned
-    by the iterator. This can be used to set the `input_signature` property
-    of a `tf.function`.
+    You can also use the `element_spec` property of the
+    `tf.distribute.DistributedDataset` returned by this API to query the
+    `tf.TypeSpec` of the elements returned by the iterator. This can be used to
+    set the `input_signature` property of a `tf.function`.
 
     >>> global_batch_size = 8
     >>> def dataset_fn(input_context):
@@ -1010,6 +1025,16 @@ class StrategyBase(object):
     the global batch size.  This may be computed using
     `input_context.get_per_replica_batch_size`.
 
+
+    Note: The order in which the data is processed by the workers when using
+    `tf.distribute.Strategy.experimental_distribute_dataset` or
+    `tf.distribute.Strategy.experimental_distribute_datasets_from_function` is
+    not guaranteed. This is typically required if you are using
+    `tf.distribute` to scale prediction. You can however insert an index for
+    each element in the batch and order outputs accordingly. Refer to [this
+    snippet](https://www.tensorflow.org/tutorials/distribute/input#caveats)
+    for an example of how to order outputs.
+
     Args:
       dataset_fn: A function taking a `tf.distribute.InputContext` instance and
         returning a `tf.data.Dataset`.
@@ -1017,8 +1042,7 @@ class StrategyBase(object):
         dataset is distributed.
 
     Returns:
-      A "distributed `Dataset`", which acts like a `tf.data.Dataset` except
-      it produces "per-replica" values.
+      A `tf.distribute.DistributedDataset`.
     """
     return self._extended._experimental_distribute_datasets_from_function(  # pylint: disable=protected-access
         dataset_fn, options)
@@ -1028,7 +1052,9 @@ class StrategyBase(object):
 
     Executes ops specified by `fn` on each replica. If `args` or `kwargs` have
     `tf.distribute.DistributedValues`, such as those produced by a
-    "distributed `Dataset`" or `experimental_distribute_values_from_function`
+    `tf.distribute.DistributedDataset` from
+    `tf.distribute.Strategy.experimental_distribute_dataset` or
+    `tf.distribute.Strategy.experimental_distribute_datasets_from_function`,
     when `fn` is executed on a particular replica, it will be executed with the
     component of `tf.distribute.DistributedValues` that correspond to that
     replica.

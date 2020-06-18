@@ -75,20 +75,21 @@ def _on_write_update_replica(var, update_fn, value, **kwargs):
 class DistributedValues(object):
   """Base class for representing distributed values.
 
-  A subclass instance of DistributedValues is created when creating variables
-  within a distribution strategy, iterating a `tf.Dataset` or through
-  `strategy.run`.  This base class should never be instantiated
-  directly.  DistributedValues contains a value per replica.  Depending on
+  A subclass instance of `tf.distribute.DistributedValues` is created when
+  creating variables within a distribution strategy, iterating a
+  `tf.distribute.DistributedDataset` or through `tf.distribute.Strategy.run`.
+  This base class should never be instantiated directly.
+  `tf.distribute.DistributedValues` contains a value per replica. Depending on
   the subclass, the values could either be synced on update, synced on demand,
   or never synced.
 
-  DistributedValues can be reduced to obtain single value across replicas,
-  as input into `run` or the per replica values inspected
-  using `experimental_local_results`.
+  `tf.distribute.DistributedValues` can be reduced to obtain single value across
+  replicas, as input into `tf.distribute.Strategy.run` or the per-replica values
+  inspected using `tf.distribute.Strategy.experimental_local_results`.
 
   Example usage:
 
-  1. Created from Dataset:
+  1. Created from a `tf.distribute.DistributedDataset`:
 
   >>> strategy = tf.distribute.MirroredStrategy()
   >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)

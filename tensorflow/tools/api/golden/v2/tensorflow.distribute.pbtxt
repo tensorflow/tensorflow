@@ -5,6 +5,14 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "DistributedDataset"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "DistributedIterator"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "DistributedValues"
     mtype: "<type \'type\'>"
   }
