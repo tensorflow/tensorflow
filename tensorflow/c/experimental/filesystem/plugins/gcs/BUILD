@@ -24,10 +24,20 @@ cc_library(
         "//tensorflow:windows": get_win_copts(),
     }),
     deps = [
-        "//tensorflow/c:env",
+        ":gcs_helper",
         "//tensorflow/c:tf_status",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "@com_github_googlecloudplatform_google_cloud_cpp//:storage_client",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "gcs_helper",
+    srcs = ["gcs_helper.cc"],
+    hdrs = ["gcs_helper.h"],
+    linkstatic = 1,
+    deps = [
+        "//tensorflow/c:env",
     ],
 )

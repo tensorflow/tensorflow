@@ -21,6 +21,7 @@ limitations under the License.
 #include "google/cloud/storage/client.h"
 #include "tensorflow/c/env.h"
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
+#include "tensorflow/c/experimental/filesystem/plugins/gcs/gcs_helper.h"
 #include "tensorflow/c/tf_status.h"
 
 // Implementation of a filesystem for GCS environments.
@@ -77,25 +78,6 @@ static void ParseGCSPath(absl::string_view fname, bool object_empty_ok,
   // object_view.data() is a null-terminated string_view because fname is.
   strcpy(*object, object_view.data());
 }
-
-class TempFile : public std::fstream {
- public:
-  // We should specify openmode each time we call TempFile.
-  TempFile(const char* temp_file_name, std::ios::openmode mode)
-      : std::fstream(temp_file_name, mode), name(temp_file_name) {}
-  TempFile(TempFile&& rhs) : std::fstream(std::move(rhs)), name(rhs.name) {
-    rhs.name = nullptr;
-  }
-  ~TempFile() {
-    std::fstream::close();
-    std::remove(name);
-    plugin_memory_free(const_cast<char*>(name));
-  }
-  const char* getName() { return name; }
-
- private:
-  const char* name;
-};
 
 // SECTION 1. Implementation for `TF_RandomAccessFile`
 // ----------------------------------------------------------------------------
