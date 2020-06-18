@@ -60,15 +60,6 @@ std::string GetImageModifier(AccessType access) {
   }
 }
 
-std::string TextureAddressModeToString(TextureAddressMode address_mode) {
-  switch (address_mode) {
-    case TextureAddressMode::DONT_CARE:
-      return "smp_none";
-    case TextureAddressMode::ZERO:
-      return "smp_zero";
-  }
-}
-
 }  // namespace
 
 std::string GetCommonDefines(CalculationsPrecision precision) {
