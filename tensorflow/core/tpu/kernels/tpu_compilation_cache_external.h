@@ -38,14 +38,11 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compile_c_api.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
+#include "tensorflow/core/tpu/kernels/tpu_op_consts.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group.h"
 
 namespace tensorflow {
 namespace tpu {
-
-constexpr char kCompilationCacheResourceName[] = "tpu_compilation_cache";
-constexpr char kCompilationCacheUnloaderResourceName[] =
-    "tpu_compilation_cache_unloader";
 
 class TpuCompilationCacheExternal : public TpuCompilationCacheInterface {
  public:

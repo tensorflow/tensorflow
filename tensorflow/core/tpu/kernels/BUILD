@@ -321,6 +321,7 @@ cc_library(
         ":tpu_compile_c_api_hdrs",
         ":tpu_compile_op_support",
         ":tpu_mesh_state_interface",
+        ":tpu_op_consts",
         ":tpu_program_group",
         ":tpu_util",
         ":trace_util_hdrs",
@@ -433,7 +434,6 @@ cc_library(
         "//tensorflow/compiler/xla/client:compile_only_client",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
@@ -459,5 +459,14 @@ cc_library(
         "//tensorflow/core:framework",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
+    name = "tpu_op_consts",
+    srcs = ["tpu_op_consts.cc"],
+    hdrs = ["tpu_op_consts.h"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
     ],
 )
