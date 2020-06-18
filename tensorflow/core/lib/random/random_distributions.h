@@ -44,10 +44,25 @@ PHILOX_DEVICE_INLINE float Uint32ToFloat(uint32 x);
 // Helper function to convert two 32-bit integers to a double between [0..1).
 PHILOX_DEVICE_INLINE double Uint64ToDouble(uint32 x0, uint32 x1);
 
+// Helper function to tell the suitable Distribution samples length
+// on different platforms.
+template <class Generator, typename T>
+PHILOX_DEVICE_INLINE constexpr int PlatformResultElementCount() {
+#ifdef __CUDA_ARCH__
+  return Generator::kResultElementCount;
+#else
+  // Set the number to be Eigen packet size of type at least, so computations
+  // can be vectorized using SIMD on CPU.
+  constexpr int kVectorLength = Eigen::internal::packet_traits<T>::size;
+  return std::max(kVectorLength, Generator::kResultElementCount);
+#endif  // __CUDA_ARCH__
+}
+
 // Helper function to format distribution result in vectorization path,
 // it creates Eigen::Tensor and reuses packet feature with SIMD.
-template <typename Distribution, typename Generator>
-typename Distribution::ResultType VectorizedFormat(
+// This function can only work on CPU
+template <class Distribution, class Generator>
+PHILOX_DEVICE_INLINE typename Distribution::ResultType VectorizedFormat(
     Generator* gen, typename Distribution::FormatFunc functor) {
   typename Generator::ResultType sample;
   typename Distribution::ResultType result;
@@ -138,12 +153,8 @@ template <class Generator>
 class UniformDistribution<Generator, bfloat16> {
  public:
   // The number of elements that will be returned.
-  // Set the number to be Eigen packet size of type at least,
-  // so computations can be vectorized using SIMD.
-  static constexpr int kVectorLength =
-      Eigen::internal::packet_traits<bfloat16>::size;
   static constexpr int kResultElementCount =
-      std::max(kVectorLength, Generator::kResultElementCount);
+      PlatformResultElementCount<Generator, bfloat16>();
   // Cost of generation of a single element (in cycles).
   static constexpr int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
@@ -156,8 +167,17 @@ class UniformDistribution<Generator, bfloat16> {
 
   PHILOX_DEVICE_INLINE
   ResultType operator()(Generator* gen) {
+#ifdef __CUDA_ARCH__
+    typename Generator::ResultType sample = (*gen)();
+    ResultType result;
+    for (int i = 0; i < kResultElementCount; ++i) {
+      result[i] = Uint16ToBfloat16(sample[i]);
+    }
+    return result;
+#else
     return VectorizedFormat<UniformDistribution<Generator, bfloat16>,
                             Generator>(gen, InternalUint16ToBfloat16);
+#endif  // __CUDA_ARCH__
   }
 };
 
@@ -165,12 +185,8 @@ template <class Generator>
 class UniformDistribution<Generator, float> {
  public:
   // The number of elements that will be returned.
-  // Set the number to be Eigen packet size of type at least,
-  // so computations can be vectorized using SIMD.
-  static constexpr int kVectorLength =
-      Eigen::internal::packet_traits<float>::size;
   static constexpr int kResultElementCount =
-      std::max(kVectorLength, Generator::kResultElementCount);
+      PlatformResultElementCount<Generator, float>();
   // Cost of generation of a single element (in cycles).
   static constexpr int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
@@ -183,8 +199,17 @@ class UniformDistribution<Generator, float> {
 
   PHILOX_DEVICE_INLINE
   ResultType operator()(Generator* gen) {
+#ifdef __CUDA_ARCH__
+    typename Generator::ResultType sample = (*gen)();
+    ResultType result;
+    for (int i = 0; i < kResultElementCount; ++i) {
+      result[i] = Uint32ToFloat(sample[i]);
+    }
+    return result;
+#else
     return VectorizedFormat<UniformDistribution<Generator, float>, Generator>(
         gen, InternalUint32ToFloat);
+#endif  // __CUDA_ARCH__
   }
 };
 
