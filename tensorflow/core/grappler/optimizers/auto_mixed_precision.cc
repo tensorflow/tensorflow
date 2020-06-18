@@ -986,6 +986,9 @@ class AutoMixedPrecisionImpl {
       absl::flat_hash_set<int>* white_set) const;
   void PropagateWhiteThroughClear(const absl::flat_hash_set<int>& black_set,
                                   absl::flat_hash_set<int>* white_set) const;
+  void PropagateWhiteFwdThroughClearAndGray(
+      const absl::flat_hash_set<int>& black_set,
+      absl::flat_hash_set<int>* white_set) const;
   Status ForceColorMatchOnRecurrentEdges(
       absl::flat_hash_set<int>* white_set) const;
   void MakeCastsWhiteIfAllOutputsWhite(
@@ -1292,6 +1295,11 @@ Status AutoMixedPrecisionImpl::Optimize() {
   //    connected to a node in the white_set via other clearlist nodes.
   //    This is done to increase the number of ops in the white_set without
   //    affecting numerical stability.
+  // 5) Add nodes to the white_set iff they are on a forward path from a 
+  //    white_set node to a clear/gray node (including the node at the end of 
+  //    the path) through non-numerically-dangerous ops. 
+  //    This is done to increase the number of ops in the white_set without
+  //    affecting numerical stability.
 
   absl::flat_hash_set<int> white_set;
   VLOG(2) << "Beginning pass 1 to add whitelist ops";
@@ -1322,6 +1330,11 @@ Status AutoMixedPrecisionImpl::Optimize() {
              "clearlist ops";
   PropagateWhiteThroughClear(black_set, &white_set);
   VLOG(2) << "Finished pass 4";
+
+  VLOG(2) << "Beginning pass 5 to propagate white forwards from white nodes "
+             "through clear/graylist ops";
+  PropagateWhiteFwdThroughClearAndGray(black_set, &white_set);
+  VLOG(2) << "Finished pass 5";
 
   VLOG(2) << "Forcing color match between data structure ops";
   for (const auto& cluster : tensor_list_clusters) {
@@ -1630,6 +1643,42 @@ void AutoMixedPrecisionImpl::PropagateWhiteThroughClear(
         }),
         DfsTypeCallbacks::PreOrder([&](int idx) {
           clear_prop_set.insert(idx);
+          bool inserted = white_set->insert(idx).second;
+          if (VLOG_IS_ON(2) && inserted) {
+            const NodeTypeId& item = *graph_type_view_.GetNode(idx);
+            VLOG(2) << "Painting type " << item.type_attr.DebugString()
+                    << " of " << item.node->op() << " node "
+                    << item.node->name() << " WHITE";
+          }
+        }));
+  }
+}
+
+void AutoMixedPrecisionImpl::PropagateWhiteFwdThroughClearAndGray(
+    const absl::flat_hash_set<int>& black_set,
+    absl::flat_hash_set<int>* white_set) const {
+  // Propagate white from white nodes through clear or gray ops.
+  absl::flat_hash_set<int> downstream_of_white_set;
+  for (int root_idx = 0; root_idx < graph_type_view_.num_nodes(); ++root_idx) {
+    const NodeTypeId& root = *graph_type_view_.GetNode(root_idx);
+    if (!ShouldProcess(*root.node) || !white_set->count(root_idx) ||
+        downstream_of_white_set.count(root_idx)) {
+      continue;
+    }
+    DfsTypeTraversal(
+        graph_type_view_, {&root},
+        TypeTraversalDirection::kFollowOutputs,
+        DfsTypePredicates::Enter([&](int idx) -> bool {
+            const NodeTypeId& item = *graph_type_view_.GetNode(idx);
+            return idx == root_idx ||
+                  (!white_set->count(idx) && !black_set.count(idx) &&
+                  ShouldProcess(*item.node) && IsFloat32(item) &&
+                  SupportsFloat16(item) &&
+                  (fp16_clearlist_.count(item.node->op()) ||
+                  fp16_graylist_.count(item.node->op())));
+        }),
+        DfsTypeCallbacks::PreOrder([&](int idx) {
+          downstream_of_white_set.insert(idx);
           bool inserted = white_set->insert(idx).second;
           if (VLOG_IS_ON(2) && inserted) {
             const NodeTypeId& item = *graph_type_view_.GetNode(idx);
