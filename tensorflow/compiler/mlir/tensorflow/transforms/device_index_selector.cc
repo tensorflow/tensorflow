@@ -21,11 +21,11 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
 namespace mlir {
-namespace TFL {
+namespace TF {
 namespace {
 
 // Folds the DeviceIndex op to a constant value. The DeviceIndex return the
@@ -55,8 +55,8 @@ void DeviceIndexSelector::runOnOperation() {
   // Convert all the DeviceIndex ops to constant values.
   func.getBody().walk([](TF::DeviceIndexOp op) {
     // This just selects the default in all cases where DeviceIndex feeds into
-    // tf.Case. This could be enhanced based on explicit TFLite specification or
-    // TAC in future.
+    // tf.Case. This could be enhanced to have some sort of policy in the
+    // future.
     OpBuilder b(op);
     RankedTensorType type = RankedTensorType::get({}, b.getIntegerType(32));
     int index = op.device_names().size();
@@ -79,7 +79,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateDeviceIndexSelectorPass() {
 }
 
 static PassRegistration<DeviceIndexSelector> pass(
-    "tfl-device-index-selector", "Fold tf.DeviceIndex to constant");
+    "tf-device-index-selector", "Fold tf.DeviceIndex to constant");
 
-}  // namespace TFL
+}  // namespace TF
 }  // namespace mlir

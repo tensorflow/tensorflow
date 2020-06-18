@@ -147,6 +147,9 @@ std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeHloToTfPass();
 // generally used beyond exporting to runtimes that supports these ops. In the
 // future these fusions may be codegen'd automatically.
 std::unique_ptr<OperationPass<FuncOp>> CreateFusedKernelMatcherPass();
+
+// Creates function pass to select device index/fold tf.DeviceIndex.
+std::unique_ptr<OperationPass<FuncOp>> CreateDeviceIndexSelectorPass();
 }  // namespace TF
 
 namespace tf_executor {
