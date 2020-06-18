@@ -450,3 +450,14 @@ cc_library(
     hdrs = ["tpu_compile_op.h"],
     deps = ["//tensorflow/core:framework"],
 )
+
+cc_library(
+    name = "tpu_compilation_cache_entry_unloader",
+    hdrs = ["tpu_compilation_cache_entry_unloader.h"],
+    deps = [
+        ":tpu_compilation_cache_interface",
+        "//tensorflow/core:framework",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
