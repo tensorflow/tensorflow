@@ -39,7 +39,7 @@ tensorflow::error::Code BuildRandomErrorCode(uint32_t code){
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
   tensorflow::error::Code error_code;
 
-  std::string error_message = "ERROR";
+  const std::string error_message = "ERROR";
 
   tensorflow::Status s, derived_s;
 
