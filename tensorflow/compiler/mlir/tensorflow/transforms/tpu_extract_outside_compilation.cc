@@ -49,8 +49,9 @@ using OutsideClusterMap =
 // TODO(b/154363171): Add example tranformations.
 
 struct TPUExtractOutsideCompilation
-    : public PassWrapper<TPUExtractOutsideCompilation, FunctionPass> {
-  void runOnFunction() override;
+    : public PassWrapper<TPUExtractOutsideCompilation,
+                         OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
 // Collects and clusters ops in `block` with the same `_xla_outside_compilation`
@@ -305,9 +306,9 @@ void CreateParallelExecuteFromOutsideClusters(
   }
 }
 
-void TPUExtractOutsideCompilation::runOnFunction() {
+void TPUExtractOutsideCompilation::runOnOperation() {
   auto extract_result =
-      getFunction().walk([&](tf_device::ClusterOp tpu_cluster) {
+      getOperation().walk([&](tf_device::ClusterOp tpu_cluster) {
         OutsideClusterMap clusters;
         if (failed(CollectAndGroupOutsideClusterOps(&tpu_cluster.GetBody(),
                                                     &clusters)))
@@ -325,7 +326,7 @@ void TPUExtractOutsideCompilation::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUExtractOutsideCompilationPass() {
   return std::make_unique<TPUExtractOutsideCompilation>();
 }
