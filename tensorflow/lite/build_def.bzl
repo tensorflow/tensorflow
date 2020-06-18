@@ -768,10 +768,10 @@ def tflite_custom_cc_library(name, models = [], srcs = [], deps = [], visibility
         name = name,
         srcs = real_srcs,
         copts = tflite_copts(),
-        linkopts = [
-            "-lm",
-            "-ldl",
-        ],
+        linkopts = select({
+            "//tensorflow:windows": [],
+            "//conditions:default": ["-lm", "-ldl"],
+        }),
         deps = depset([
             "//tensorflow/lite:framework",
             "//tensorflow/lite/kernels:builtin_ops",
