@@ -704,6 +704,8 @@ class XlaBuilder {
 
   XlaOp SetDimensionSize(XlaOp operand, XlaOp val, int64 dimension);
 
+  XlaOp RemoveDynamicDimension(XlaOp operand, int64 dimension);
+
   StatusOr<XlaOp> AddInstruction(HloInstructionProto&& instr, HloOpcode opcode,
                                  absl::Span<const XlaOp> operands = {});
 
@@ -1151,6 +1153,7 @@ class XlaBuilder {
 
   friend XlaOp GetDimensionSize(XlaOp operand, int64 dimension);
   friend XlaOp SetDimensionSize(XlaOp operand, XlaOp val, int64 dimension);
+  friend XlaOp RemoveDynamicDimension(XlaOp operand, int64 dimension);
 
  protected:
   // Returns OK status if the given op was built using this builder. Otherwise,
@@ -2148,6 +2151,9 @@ XlaOp BatchNormGrad(XlaOp operand, XlaOp scale, XlaOp batch_mean,
 XlaOp GetDimensionSize(XlaOp operand, int64 dimension);
 
 XlaOp SetDimensionSize(XlaOp operand, XlaOp val, int64 dimension);
+
+// Returns the same op but with dynamic dimension removed.
+XlaOp RemoveDynamicDimension(XlaOp operand, int64 dimension);
 
 // Implementation details below this point.
 //

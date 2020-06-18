@@ -2727,6 +2727,25 @@ XlaOp XlaBuilder::GetDimensionSize(XlaOp operand, int64 dimension) {
   });
 }
 
+XlaOp XlaBuilder::RemoveDynamicDimension(XlaOp operand, int64 dimension) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+
+    Shape shape = *operand_shape;
+    shape.set_dynamic_dimension(dimension, false);
+    // Setting an op's dynamic dimension to its static size removes the dynamic
+    // dimension.
+    XlaOp static_size =
+        ConstantR0<int32>(this, operand_shape->dimensions(dimension));
+
+    *instr.mutable_shape() = shape.ToProto();
+    instr.add_dimensions(dimension);
+    return AddInstruction(std::move(instr), HloOpcode::kSetDimensionSize,
+                          {operand, static_size});
+  });
+}
+
 XlaOp XlaBuilder::SetDimensionSize(XlaOp operand, XlaOp val, int64 dimension) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
@@ -3825,6 +3844,10 @@ XlaOp GetDimensionSize(const XlaOp operand, int64 dimension) {
 
 XlaOp SetDimensionSize(const XlaOp operand, const XlaOp val, int64 dimension) {
   return operand.builder()->SetDimensionSize(operand, val, dimension);
+}
+
+XlaOp RemoveDynamicDimension(const XlaOp operand, int64 dimension) {
+  return operand.builder()->RemoveDynamicDimension(operand, dimension);
 }
 
 }  // namespace xla
