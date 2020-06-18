@@ -297,10 +297,6 @@ REGISTER_OP("Acos").UNARY();
 
 REGISTER_OP("Atan").UNARY();
 
-REGISTER_OP("BesselI0e").UNARY_REAL();
-
-REGISTER_OP("BesselI1e").UNARY_REAL();
-
 REGISTER_OP("_UnaryOpsComposition")
     .Input("x: T")
     .Output("y: T")

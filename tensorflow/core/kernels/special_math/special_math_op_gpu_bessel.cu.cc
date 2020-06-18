@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,11 +16,25 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/cwise_ops_gpu_common.cu.h"
+#include "tensorflow/core/kernels/special_math/special_math_op_misc_impl.h"
 
 namespace tensorflow {
 namespace functor {
+DEFINE_UNARY3(bessel_i0, Eigen::half, float, double);
+DEFINE_UNARY3(bessel_i1, Eigen::half, float, double);
 DEFINE_UNARY3(bessel_i0e, Eigen::half, float, double);
 DEFINE_UNARY3(bessel_i1e, Eigen::half, float, double);
+
+DEFINE_UNARY3(bessel_k0, Eigen::half, float, double);
+DEFINE_UNARY3(bessel_k1, Eigen::half, float, double);
+DEFINE_UNARY3(bessel_k0e, Eigen::half, float, double);
+DEFINE_UNARY3(bessel_k1e, Eigen::half, float, double);
+
+DEFINE_UNARY3(bessel_j0, Eigen::half, float, double);
+DEFINE_UNARY3(bessel_j1, Eigen::half, float, double);
+DEFINE_UNARY3(bessel_y0, Eigen::half, float, double);
+DEFINE_UNARY3(bessel_y1, Eigen::half, float, double);
+
 }  // namespace functor
 }  // namespace tensorflow
 
