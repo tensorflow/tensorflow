@@ -91,10 +91,6 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"WhileOp-StartBody", kWhileOpStartBody},
       {"ForOp", kForOp},
       {"PartitionedCallOp", kPartitionedCallOp},
-      // XLA related.
-      {"LocalExecutable::ExecuteOnLocalDevices",
-       kLocalExecutableExecuteOnLocalDevice},
-      {"LocalExecutable::Execute", kLocalExecutableExecute},
       // tf.data related.
       {"IteratorGetNextOp::DoCompute", kIteratorGetNextOp},
       {"IteratorGetNextAsOptionalOp::DoCompute", kIteratorGetNextAsOptionalOp},

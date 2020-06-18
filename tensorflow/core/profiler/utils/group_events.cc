@@ -635,10 +635,7 @@ std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList() {
        {StatType::kStepId, StatType::kIterNum}},
       {HostEventType::kKernelLaunch,
        HostEventType::kKernelExecute,
-       {StatType::kCorrelationId}},
-      {HostEventType::kLocalExecutableExecuteOnLocalDevice,
-       HostEventType::kLocalExecutableExecute,
-       {StatType::kRunId}}};
+       {StatType::kCorrelationId}}};
   return connect_info_list;
 }
 
