@@ -738,9 +738,29 @@ cc_library(
         ":Pass",
         ":SCFDialect",
         ":Shape",
+        ":ShapeToStandardPatternsIncGen",
         ":StandardOps",
         ":Support",
         ":Transforms",
+    ],
+)
+
+gentbl(
+    name = "ShapeToStandardPatternsIncGen",
+    strip_include_prefix = "include/mlir/Conversion/ShapeToStandard",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "include/mlir/Conversion/ShapeToStandard/ShapeToStandardPatterns.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "lib/Conversion/ShapeToStandard/ShapeToStandardPatterns.td",
+    td_srcs = [
+        ":StdOpsTdFiles",
+        "include/mlir/Dialect/Shape/IR/ShapeBase.td",
+        "include/mlir/Dialect/Shape/IR/ShapeOps.td",
+        "include/mlir/Interfaces/InferTypeOpInterface.td",
     ],
 )
 
