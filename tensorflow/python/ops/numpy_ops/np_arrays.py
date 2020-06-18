@@ -24,10 +24,13 @@ import numbers
 import numpy as np
 import six
 
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.numpy_ops import np_dtypes
@@ -175,7 +178,38 @@ def convert_to_tensor(value, dtype=None, dtype_hint=None):
   return ops.convert_to_tensor(value, dtype=dtype, dtype_hint=dtype_hint)
 
 
-class ndarray(object):  # pylint: disable=invalid-name
+class NdarraySpec(type_spec.BatchableTypeSpec):
+  """Type specification for a `tf.experiemntal.numpy.ndarray`."""
+
+  value_type = property(lambda self: ndarray)
+
+  def __init__(self, data_spec):
+    if not isinstance(data_spec, tensor_spec.TensorSpec):
+      raise ValueError('NdarraySpec.__init__ was expecting a tf.TypeSpec, '
+                       'but got a {} instead.'.format(type(data_spec)))
+    self._data_spec = data_spec
+
+  @property
+  def _component_specs(self):
+    return self._data_spec
+
+  def _to_components(self, value):
+    return value.data
+
+  def _from_components(self, data):
+    return tensor_to_ndarray(data)
+
+  def _serialize(self):
+    return (self._data_spec,)
+
+  def _batch(self, batch_size):
+    return NdarraySpec(self._data_spec.batch(batch_size))
+
+  def _unbatch(self):
+    return NdarraySpec(self._data_spec.unbatch())
+
+
+class ndarray(composite_tensor.CompositeTensor):  # pylint: disable=invalid-name
   """Equivalent of numpy.ndarray backed by TensorFlow tensors.
 
   This does not support all features of NumPy ndarrays e.g. strides and
@@ -236,7 +270,10 @@ class ndarray(object):  # pylint: disable=invalid-name
     if dtype and dtype != buffer.dtype:
       buffer = array_ops.bitcast(buffer, dtype)
     self._data = buffer
-    self.base = None
+
+  @property
+  def _type_spec(self):
+    return NdarraySpec(type_spec.type_spec_from_value(self._data))
 
   @property
   def data(self):
