@@ -159,7 +159,7 @@ TF_LITE_MICRO_TESTS_BEGIN
 TF_LITE_MICRO_TEST(TestKeywordModelMemoryThreshold) {
   tflite::AllOpsResolver all_ops_resolver;
   tflite::RecordingMicroInterpreter interpreter(
-      tflite::GetModel(g_keyword_scrambled_model_data), &all_ops_resolver,
+      tflite::GetModel(g_keyword_scrambled_model_data), all_ops_resolver,
       keyword_model_tensor_arena, kKeywordModelTensorArenaSize,
       micro_test::reporter);
 
@@ -185,7 +185,7 @@ TF_LITE_MICRO_TEST(TestKeywordModelMemoryThreshold) {
 TF_LITE_MICRO_TEST(TestConvModelMemoryThreshold) {
   tflite::AllOpsResolver all_ops_resolver;
   tflite::RecordingMicroInterpreter interpreter(
-      tflite::GetModel(kTestConvModelData), &all_ops_resolver,
+      tflite::GetModel(kTestConvModelData), all_ops_resolver,
       test_conv_tensor_arena, kTestConvModelArenaSize, micro_test::reporter);
 
   interpreter.AllocateTensors();
