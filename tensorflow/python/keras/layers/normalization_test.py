@@ -174,10 +174,13 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
     model.fit(x, x, epochs=1000, verbose=0)
     moving_mean = keras.backend.eval(norm.moving_mean)
     moving_variance = keras.backend.eval(norm.moving_variance)
+    x_mean = x.mean(axis=(0, 1, 2, 3))
+    moving_mean_target = x_mean
+    moving_variance_target = x.var(axis=(0, 1, 2, 3))
     np.testing.assert_allclose(
-        moving_mean, np.array([936., 937., 938.]), rtol=1e-5)
+        moving_mean, moving_mean_target, rtol=1e-5)
     np.testing.assert_allclose(
-        moving_variance, np.array([292968., 292968., 292968.]), rtol=1e-2)
+        moving_variance, moving_variance_target, rtol=1e-2)
 
     beta = np.reshape(keras.backend.eval(norm.beta), (1, 1, 1, 1, 3))
     gamma = np.reshape(keras.backend.eval(norm.gamma), (1, 1, 1, 1, 3))
@@ -188,13 +191,16 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
     np.testing.assert_allclose(np.std(out, axis=(0, 1, 2, 3)), 1.0, atol=1e-2)
 
     # Test with changed input shape.
-    x = np.arange(7 * 7 * 7 * 7 * 3).reshape([7, 7, 7, 7, 3])
-    x = x.astype(np.float32)
-    out = (model.predict(x) - beta) / gamma
+    y = np.arange(7 * 7 * 7 * 7 * 3).reshape([7, 7, 7, 7, 3])
+    y = y.astype(np.float32)
+    out = (model.predict(y) - beta) / gamma
+    x_std = x.std(axis=(0, 1, 2, 3))
+    out_mean_target = (y.mean(axis=(0, 1, 2, 3)) - x_mean) / x_std
+    out_std_target = y.std(axis=(0, 1, 2, 3)) / x_std
     np.testing.assert_allclose(
-        np.mean(out, axis=(0, 1, 2, 3)), 4.92, atol=1e-2)
+        np.mean(out, axis=(0, 1, 2, 3)), out_mean_target, atol=1e-2)
     np.testing.assert_allclose(
-        np.std(out, axis=(0, 1, 2, 3)), 3.84, atol=1e-2)
+        np.std(out, axis=(0, 1, 2, 3)), out_std_target, atol=1e-2)
 
   @keras_parameterized.run_all_keras_modes
   def test_batchnorm_correctness(self):
@@ -418,6 +424,23 @@ def _run_batchnorm_correctness_test(layer, dtype='float32', fused=False):
     [normalization.BatchNormalization, normalization_v2.BatchNormalization])
 class NormalizationLayersGraphModeOnlyTest(
     test.TestCase, parameterized.TestCase):
+
+  def test_unknown_shape_batchnorm(self, layer):
+    """Test that a BN layer supports unknown input shapes in graph mode."""
+    with self.cached_session():
+      def run_model(input_shape):
+        bn = layer()
+        x = keras.layers.Input(shape=input_shape)
+        y = bn(x)
+        model = keras.models.Model(x, y)
+        model.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
+        known_shape = [2] + [5 if dim is None else dim for dim in input_shape]
+        val_a = np.random.random(known_shape)
+        _ = model.predict(val_a)
+
+      run_model((None, 10))
+      run_model((None, None, 10))
+      run_model((None, None, None, 10))
 
   def test_shared_batchnorm(self, layer):
     """Test that a BN layer can be shared across different data streams."""

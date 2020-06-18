@@ -281,15 +281,15 @@ class BatchNormalizationBase(Layer):
     this function without affecting the correctness of the computation.
 
     Arguments:
-      nd_shape: List. The original shape of the operation.
+      nd_shape: Tensor. The original shape of the operation.
       nd_axis: Integer. The original axis of the operation.
 
     Returns:
-      shape: List. A 4D shape.
+      shape: Tensor. A 4D shape.
       axis: Integer. An axis (always 1 or 3).
     """
     assert(isinstance(nd_axis, int))
-    ndims = len(nd_shape)
+    ndims = nd_shape.shape[0]
     shape = nd_shape[:]
     axis = nd_shape + nd_axis if nd_axis < 0 else nd_axis
     # First check if the axis needs to be moved.
@@ -297,37 +297,39 @@ class BatchNormalizationBase(Layer):
       # Move axis to dim 1.
       if axis == 0:
         # Transform [C, ...] to [1, C, ...].
-        shape.insert(0, 1)
+        shape = array_ops.concat([constant_op.constant([1]), shape], axis=0)
         ndims += 1
       else:
         # Merge excess pre-axis dims into first dim.
         # Transform [N, ..., C, ...] to [product(N, ...), C, ...].
-        product = 1
-        for dim in shape[:axis]:
-          product *= dim
-        shape[:axis] = [product]
+        product = math_ops.reduce_prod(shape[:axis])
+        shape = array_ops.concat([array_ops.reshape(product,
+                                                    constant_op.constant([1])),
+                                  shape[axis:]], axis=0)
         ndims -= (axis - 1)
       axis = 1
     # Now change shape to 4D.
     is_channels_last = axis == ndims - 1
     if ndims < 4:
       # Insert new dims after existing spatial dim or before channel dim.
-      new_dims = [1] * (4 - ndims)
+      new_dims = constant_op.constant([1] * (4 - ndims))
       if is_channels_last:
         # Transform [..., C] to [..., 1..., C] (ndims=4).
-        shape = shape[:-1] + new_dims + shape[-1:]
+        shape = array_ops.concat([shape[:-1], new_dims, shape[-1:]], axis=0)
       else:
         # Transform [N, C, ...] to [N, C, ..., 1...] (ndims=4).
-        shape += new_dims
+        shape = array_ops.concat([shape, new_dims], axis=0)
     elif ndims > 4:
       # Merge excess spatial dims into the second spatial dim.
       # Transform [N, C, H, W, ...] to [N, C, H, product(W, ...)].
       # Or        [N, H, W, ..., C] to [N, H, product(W, ...), C].
       merge_dim = 2 if is_channels_last else 3
-      product = 1
-      for dim in shape[merge_dim:merge_dim + 1 + (ndims - 4)]:
-        product *= dim
-      shape[merge_dim:merge_dim + 1 + (ndims - 4)] = [product]
+      product = math_ops.reduce_prod(
+          shape[merge_dim:merge_dim + 1 + (ndims - 4)])
+      shape = array_ops.concat([shape[:merge_dim],
+                                array_ops.reshape(product,
+                                                  constant_op.constant([1])),
+                                shape[merge_dim + 1 + (ndims - 4):]], axis=0)
     axis = 3 if is_channels_last else 1
     return shape, axis
 
@@ -365,7 +367,6 @@ class BatchNormalizationBase(Layer):
         raise ValueError('When using virtual_batch_size, adjustment cannot '
                          'be specified')
 
-    self._input_fused_shape = None
     if self.fused and not self._USE_V2_BEHAVIOR:
       self.fused = self._fused_can_be_used()
 
@@ -527,15 +528,18 @@ class BatchNormalizationBase(Layer):
 
     original_shape = None
     fused_axis = self.axis[0]
-    input_shape = inputs.shape.as_list()
-    ndims = len(input_shape)
+    input_shape = array_ops.shape(inputs)
+    ndims = len(inputs.shape)
     if self.axis[0] not in (1, ndims - 1) or ndims != 4:
       # The fused implementation only supports NCHW or NHWC, so we reshape the
       # input/output tensor to/from an equivalent 4D shape.
       fused_shape, fused_axis = self._get_shape_and_axis_for_fused(input_shape,
                                                                    self.axis[0])
-      original_shape = [-1] + input_shape[1:]
-      inputs = array_ops.reshape(inputs, [-1] + fused_shape[1:])
+      original_shape = array_ops.concat(
+          [constant_op.constant([-1]), input_shape[1:]], axis=0)
+      fused_shape = array_ops.concat(
+          [constant_op.constant([-1]), fused_shape[1:]], axis=0)
+      inputs = array_ops.reshape(inputs, fused_shape)
 
       # TODO(chrisying): fused batch norm is currently not supported for
       # multi-axis batch norm and by extension virtual batches. In some cases,
