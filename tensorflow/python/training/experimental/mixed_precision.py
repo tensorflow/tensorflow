@@ -18,7 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
+
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.framework import config
+from tensorflow.python.framework import ops
+from tensorflow.python.eager import context
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training import optimizer
 from tensorflow.python.training.experimental import loss_scale_optimizer as loss_scale_optimizer_v1
@@ -397,3 +402,17 @@ def disable_mixed_precision_graph_rewrite_v1():
   # We only have a separate V1 version of this function, because the V1
   # docstring mentions sessions.
   disable_mixed_precision_graph_rewrite()
+
+@contextlib.contextmanager
+@tf_export("train.experimental.disable_amp_scope")
+def disable_amp_scope():
+  if context.executing_eagerly():
+    raise RuntimeError("train.experimental.amp_scope is not supported when eager "
+                       "execution is enabled. Try use it inside tf.function.")
+
+  attrs = {"_DisableAmp": attr_value_pb2.AttrValue(b=True)}
+
+  # pylint: disable=protected-access
+  with ops.get_default_graph()._attr_scope(attrs):
+    yield
+  # pylint: enable=protected-access

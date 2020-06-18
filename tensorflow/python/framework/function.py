@@ -1229,6 +1229,10 @@ def _parse_kwargs_as_attrs(func_name, **kwargs):
   if noinline is not None:
     attrs["_noinline"] = attr_value_pb2.AttrValue(b=bool(noinline))
 
+  disableamp = kwargs.pop("disableamp", None)
+  if disableamp is not None:
+    attrs["_DisableAmp"] = attr_value_pb2.AttrValue(b=bool(disableamp))
+
   # For compatibility with previous behavior, Defun does not perform shape
   # inference through its function call operations.
   attrs["_disable_call_shape_inference"] = attr_value_pb2.AttrValue(b=True)

@@ -960,6 +960,7 @@ class AutoMixedPrecisionImpl {
   void LogSkippedNode(const NodeDef& node) const;
   bool MustPreserve(const NodeDef& node) const;
   bool IsOnGPU(const NodeDef& node) const;
+  bool DisableAmp(const NodeDef& node) const;
   bool IsOnSuitableGPUArch(const NodeDef& node) const;
   bool ShouldProcess(const NodeDef& node) const;
   bool NodeHasFP16KernelForTypeAttr(const NodeDef& node, TypeAttrId taid) const;
@@ -1081,7 +1082,9 @@ void AutoMixedPrecisionImpl::LogSkippedNode(const NodeDef& node) const {
           << " because it "
           << (MustPreserve(node)
                   ? "must be preserved"
-                  : "is not on the GPU, or the GPU arch is not suitable");
+                  : (DisableAmp(node)
+                      ? "disable_amp_scope is set"
+                      : "is not on the GPU, or the GPU arch is not suitable"));
 }
 
 bool AutoMixedPrecisionImpl::MustPreserve(const NodeDef& node) const {
@@ -1101,6 +1104,16 @@ bool AutoMixedPrecisionImpl::IsOnGPU(const NodeDef& node) const {
       absl::StrContains(absl::AsciiStrToLower(device),
                         absl::AsciiStrToLower(DEVICE_GPU))) {
     return true;
+  }
+  return false;
+}
+
+bool AutoMixedPrecisionImpl::DisableAmp(const NodeDef& node) const {
+  if (node.attr().find("_DisableAmp") != node.attr().end()) {
+    bool disable_amp = node.attr().at("_DisableAmp").b();
+    VLOG(2) << "Node " << node.name() << " of " << node.op()
+            << " will not use AutoMixedPrecision";
+    return disable_amp;
   }
   return false;
 }
@@ -1233,7 +1246,7 @@ Status AutoMixedPrecisionImpl::Optimize() {
 
   VLOG(2) << "Identifying nodes that should be processed";
   for (const NodeDef& node : graph_->node()) {
-    if (!MustPreserve(node) && IsOnGPU(node) &&
+    if (!MustPreserve(node) && IsOnGPU(node) && !DisableAmp(node) &&
         (ShouldIgnorePerformance() || IsOnSuitableGPUArch(node))) {
       should_process_nodes_.insert(&node);
     } else {

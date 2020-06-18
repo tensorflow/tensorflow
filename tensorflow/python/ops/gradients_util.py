@@ -317,6 +317,13 @@ def _SymGrad(op, out_grads):
   in_grads = functional_ops.symbolic_gradient(input=f_in, Tout=f_types, f=f)
   return in_grads
 
+def _MaybeDisableAmp(op):
+  try:
+    disable_amp = op.get_attr("_DisableAmp")
+    attrs = {"_DisableAmp" : attr_value_pb2.AttrValue(b=disable_amp)}
+  except ValueError:
+    attrs = {"_DisableAmp" : attr_value_pb2.AttrValue(b=False)}
+  return attrs
 
 def _MaybeCompile(scope, op, func, grad_fn):
   """Compile the calculation in grad_fn if op was marked as compiled."""
@@ -662,26 +669,28 @@ def _GradientsHelper(ys,
             # pylint: disable=protected-access
             with src_graph._original_op(op):
               # pylint: enable=protected-access
-              if grad_fn:
-                # If grad_fn was found, do not use SymbolicGradient even for
-                # functions.
-                in_grads = _MaybeCompile(grad_scope, op, func_call,
-                                         lambda: grad_fn(op, *out_grads))
-              else:
-                # For function call ops, we add a 'SymbolicGradient'
-                # node to the graph to compute gradients.
-                in_grads = _MaybeCompile(grad_scope, op, func_call,
-                                         lambda: _SymGrad(op, out_grads))
-              in_grads = _AsList(in_grads)
-              _VerifyGeneratedGradients(in_grads, op)
-              if gate_gradients and len([x for x in in_grads
-                                         if x is not None]) > 1:
-                with ops.device(None):
-                  with ops._colocate_with_for_gradient(  # pylint: disable=protected-access
-                      None,
-                      gradient_uid,
-                      ignore_existing=True):
-                    in_grads = control_flow_ops.tuple(in_grads)
+              attrs = _MaybeDisableAmp(op)
+              with ops.get_default_graph()._attr_scope(attrs):
+                if grad_fn:
+                  # If grad_fn was found, do not use SymbolicGradient even for
+                  # functions.
+                  in_grads = _MaybeCompile(grad_scope, op, func_call,
+                                           lambda: grad_fn(op, *out_grads))
+                else:
+                  # For function call ops, we add a 'SymbolicGradient'
+                  # node to the graph to compute gradients.
+                  in_grads = _MaybeCompile(grad_scope, op, func_call,
+                                           lambda: _SymGrad(op, out_grads))
+                in_grads = _AsList(in_grads)
+                _VerifyGeneratedGradients(in_grads, op)
+                if gate_gradients and len([x for x in in_grads
+                                           if x is not None]) > 1:
+                  with ops.device(None):
+                    with ops._colocate_with_for_gradient(  # pylint: disable=protected-access
+                        None,
+                        gradient_uid,
+                        ignore_existing=True):
+                      in_grads = control_flow_ops.tuple(in_grads)
           _LogOpGradients(op, out_grads, in_grads)
         else:
           # If no grad_fn is defined or none of out_grads is available,

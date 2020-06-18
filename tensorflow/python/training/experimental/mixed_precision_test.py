@@ -27,8 +27,11 @@ from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import function
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -173,6 +176,52 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
         self.assertNotIn('You already have existing Sessions that do not use '
                          'mixed precision', msg)
 
+  @test_util.run_v2_only
+  def test_disable_amp_scope_in_Eager(self):
+    with self.assertRaisesRegexp(
+        RuntimeError, "train.experimental.amp_scope is not supported when eager "
+        "execution is enabled. Try use it inside tf.function."):
+      with mixed_precision.disable_amp_scope():
+        constant_op.constant(1)
+
+  @test_util.build_as_function_and_v1_graph
+  def test_attrs_with_disable_amp_scope(self):
+    with self.session() as sess:
+      with mixed_precision.disable_amp_scope():
+        @function.Defun(disableamp=True)
+        def overflow_in_float16(x):
+          out = x * 2 ** 10
+          out = math_ops.matmul(out, out)
+          return array_ops.reshape(out, ())
+        x = constant_op.constant([[1.0]])
+        r = overflow_in_float16(x)
+        g_r = gradients.gradients(r, x, name="GA")[0]
+
+      graph_def = r.graph.as_graph_def()
+      func_attrs = graph_def.library.function[0].attr
+      self.assertTrue(func_attrs["_DisableAmp"].b)
+
+      grad_op = g_r.op.inputs[0].op
+      self.assertTrue(grad_op.get_attr("_DisableAmp"))
+
+
+  @test_util.build_as_function_and_v1_graph
+  def test_value_with_disable_amp_scope(self):
+    with session.Session() as sess:
+      opt = gradient_descent_v1.GradientDescentOptimizer(1.0)
+      enable_mixed_precision_graph_rewrite(opt, 123.)
+
+      var =  constant_op.constant([[1.0]])
+      with mixed_precision.disable_amp_scope():
+        @function.Defun(disableamp=True)
+        def overflow_in_float16():
+          out = var * 2 ** 10
+          out = math_ops.matmul(out, out)
+          return array_ops.reshape(out, ())
+
+      out = overflow_in_float16()
+      sess.run(variables.global_variables_initializer())
+      self.assertAlmostEqual(sess.run(out), 2 ** 20)
 
 if __name__ == '__main__':
   test.main()
