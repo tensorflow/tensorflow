@@ -61,6 +61,8 @@ const char* kModelWithMaximumOp = "maximum.bin";
 const char* kLstmCalibrated2 = "lstm_calibrated2.bin";
 const char* kLstmQuantized2 = "lstm_quantized2.bin";
 
+const char* kModelWithTranspose = "transpose.bin";
+
 const char* kSvdfCalibrated = "svdf_calibrated.bin";
 const char* kSvdfQuantized = "svdf_quantized.bin";
 

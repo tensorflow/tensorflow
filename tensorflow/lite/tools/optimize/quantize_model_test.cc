@@ -1454,6 +1454,50 @@ TEST_F(QuantizeUnpackTest, VerifyUnpack) {
                   unpack_output_1->quantization->zero_point[0]);
 }
 
+class QuantizeTransposeTest : public QuantizeModelTest {
+ protected:
+  QuantizeTransposeTest() {
+    input_model_ = ReadModel(internal::kModelWithTranspose);
+    readonly_model_ = input_model_->GetModel();
+    readonly_model_->UnPackTo(&model_);
+  }
+};
+
+TEST_F(QuantizeTransposeTest, VerifyTranspose) {
+  auto status = QuantizeModel(&builder_, &model_, &error_reporter_);
+
+  ASSERT_EQ(kTfLiteOk, status);
+
+  const auto subgraph = model_.subgraphs[0].get();
+  auto op = subgraph->operators[1].get();
+
+  auto float_graph = readonly_model_->subgraphs()->Get(0);
+
+  ASSERT_EQ(model_.operator_codes[op->opcode_index].get()->builtin_code,
+            BuiltinOperator_TRANSPOSE);
+
+  // The model should only have one input and one outputs.
+  EXPECT_EQ(subgraph->inputs.size(), 1);
+  EXPECT_EQ(subgraph->outputs.size(), 1);
+
+  // Get transpose input and output tensors
+  auto transpose_input = subgraph->tensors[op->inputs[0]].get();
+  auto transpose_output = subgraph->tensors[op->outputs[0]].get();
+
+  // Verify transpose input is quantized.
+  ASSERT_EQ(float_graph->tensors()->Get(op->inputs[0])->type(),
+            TensorType_FLOAT32);
+  EXPECT_EQ(transpose_input->type, TensorType_INT8);
+
+  // Ensure quantization parameters before and after transpose
+  // are preserved after quantization for all outputs of
+  // transpose.
+  EXPECT_FLOAT_EQ(transpose_input->quantization->scale[0],
+                  transpose_output->quantization->scale[0]);
+  EXPECT_EQ(transpose_input->quantization->zero_point[0],
+            transpose_output->quantization->zero_point[0]);
+}
+
 }  // namespace
 }  // namespace optimize
 }  // namespace tflite

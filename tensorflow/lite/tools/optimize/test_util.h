@@ -98,6 +98,9 @@ extern const char* kModelWithMaximumOp;
 extern const char* kLstmCalibrated2;
 extern const char* kLstmQuantized2;
 
+// Test model with a transpose op.
+extern const char* kModelWithTranspose;
+
 // Test model with SVDF op.
 extern const char* kSvdfCalibrated;
 extern const char* kSvdfQuantized;
