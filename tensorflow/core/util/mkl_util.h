@@ -1538,13 +1538,8 @@ class MklDnnData {
   /// Set function for data buffer of user memory primitive.
   inline void SetUsrMemDataHandle(const Tensor* tensor,
                                   std::shared_ptr<stream> t_stream = nullptr) {
-    CHECK_NOTNULL(user_memory_);
-    CHECK_NOTNULL(tensor);
-#ifdef ENABLE_MKLDNN_THREADPOOL
-    user_memory_->set_data_handle(GetTensorBuffer(tensor), *t_stream);
-#else
-    user_memory_->set_data_handle(GetTensorBuffer(tensor));
-#endif  // ENABLE_MKLDNN_THREADPOOL
+    SetUsrMemDataHandle(GetTensorBuffer(tensor), t_stream);
+  }
   }
 
   /// allocate function for data buffer
