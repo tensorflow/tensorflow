@@ -27,6 +27,16 @@ TfTpu_BaseFn* InitializeApiFn() { return nullptr; }
 
 TfTpu_ConfigApiFn* ConfigApiFn() { return nullptr; }
 
+TfTpu_MeshStateApiFn* MeshStateApiFn() { return nullptr; }
+
+TfTpu_CompileApiFn* CompileApiFn() { return nullptr; }
+
+TfTpu_ExecutorApiFn* ExecutorApiFn() { return nullptr; }
+
+TfTpu_NodeContextApiFn* NodeContextApiFn() { return nullptr; }
+
+TfTpu_UtilApiFn* UtilApiFn() { return nullptr; }
+
 Status InitializeTpuLibrary(void* library_handle) {
   return errors::Unimplemented(
       "Loading TPU library is not supported on Windows.");

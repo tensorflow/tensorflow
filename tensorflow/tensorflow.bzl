@@ -2899,6 +2899,13 @@ def if_mlir(if_true, if_false = []):
         "//conditions:default": if_false,
     })
 
+def if_tpu(if_true, if_false = []):
+    """Shorthand for select()ing whether to build for TPUs."""
+    return select({
+        str(Label("//tensorflow:with_tpu_support")): if_true,
+        "//conditions:default": if_false,
+    })
+
 def tfcompile_target_cpu():
     return ""
 

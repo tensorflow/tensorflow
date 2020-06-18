@@ -39,6 +39,7 @@
 #
 # Feature and Third party library support options:
 #     xla:          Build TF with XLA
+#     tpu:          Build TF with TPU support
 #     using_cuda:   CUDA is available to build system.
 #     cuda:         Build with full cuda support.
 #     rocm:         Build with AMD GPU support (rocm).
@@ -179,6 +180,9 @@ build:dbg --config=opt -c dbg
 build:dbg --cxxopt -DTF_LITE_DISABLE_X86_NEON
 # AWS SDK must be compiled in release mode. see: https://github.com/tensorflow/tensorflow/issues/37498
 build:dbg --copt -DDEBUG_BUILD
+
+# Config to build TPU backend
+build:tpu --define=with_tpu_support=true
 
 build:tensorrt --action_env TF_NEED_TENSORRT=1
 
