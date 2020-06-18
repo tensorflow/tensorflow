@@ -3107,6 +3107,28 @@ dimensions of `input`.
   TF_DerivedOperandTypeAttr Tcomplex = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_FakeParamOp : TF_Op<"FakeParam", [NoSideEffect]> {
+  let summary = [{
+  This op is used as a placeholder in If branch functions. It doesn't provide a
+  valid output when run, so must either be removed (e.g. replaced with a
+  function input) or guaranteed not to be used (e.g. if mirroring an
+  intermediate output needed for the gradient computation of the other branch).
+  }];
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_ShapeAttr:$shape
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_FakeQuantWithMinMaxArgsOp : TF_Op<"FakeQuantWithMinMaxArgs", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = [{
 Fake-quantize the 'inputs' tensor, type float to 'outputs' tensor of same type.
