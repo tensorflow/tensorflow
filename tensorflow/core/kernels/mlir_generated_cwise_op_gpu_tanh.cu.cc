@@ -124,7 +124,7 @@ class MlirGeneratedTanhOp : public OpKernel {
     // This has to be aligned with the configuration that was used when building
     // the kernels. See the corresponding build rules in `cubin_headers/BUILD`.
     LaunchConfig config = GetLaunchConfiguration(
-        {256}, {}, {static_cast<uint64>(inp.NumElements())});
+        {256}, {4}, {static_cast<uint64>(inp.NumElements())});
     OP_REQUIRES_OK(
         ctx, stream->parent()->Launch(stream, config.threadDim, config.blockDim,
                                       *kernel, args));
