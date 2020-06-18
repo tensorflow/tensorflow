@@ -247,7 +247,6 @@ tflite_flex_jni_library(
     models = [
         "//tensorflow/lite:testdata/multi_add_flex.bin",
     ],
-    visibility = ["//tensorflow/lite/android:__subpackages__"],
 )
 
 java_library(
