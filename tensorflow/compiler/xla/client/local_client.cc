@@ -168,26 +168,6 @@ LocalExecutable::RunHelper(const absl::Span<const Shape* const> argument_shapes,
   return std::make_pair(service_options, std::move(stream));
 }
 
-StatusOr<ExecutableRunOptions> LocalExecutable::GetExecutableRunOptions(
-    absl::Span<Shape const* const> argument_shapes,
-    const ExecutableRunOptions& run_options) {
-  TF_ASSIGN_OR_RETURN(auto options_and_stream,
-                      RunHelper(argument_shapes, run_options));
-  ExecutableRunOptions options = options_and_stream.first.run_options();
-  options.set_device_ordinal(-1);
-  return options;
-}
-
-template <typename T>
-static StatusOr<T> BlockHostUntilDoneAfterAsyncCall(
-    se::Stream* stream, std::function<StatusOr<T>()> async_callback) {
-  StatusOr<T> result = async_callback();
-  Status block_status = stream->BlockHostUntilDone();
-  TF_RETURN_IF_ERROR(result.status());
-  TF_RETURN_IF_ERROR(block_status);
-  return result;
-}
-
 StatusOr<ScopedShapedBuffer> LocalExecutable::Run(
     const absl::Span<const ShapedBuffer* const> arguments,
     ExecutableRunOptions run_options) {
@@ -196,24 +176,15 @@ StatusOr<ScopedShapedBuffer> LocalExecutable::Run(
   for (const ShapedBuffer* const arg : arguments) {
     argument_shapes.push_back(&arg->on_host_shape());
   }
-  TF_ASSIGN_OR_RETURN(ExecutableRunOptions options,
-                      GetExecutableRunOptions(argument_shapes, run_options));
-  return BlockHostUntilDoneAfterAsyncCall<xla::ScopedShapedBuffer>(
-      options.stream(), [&] { return RunAsync(arguments, options); });
-}
-
-StatusOr<ExecutionOutput> LocalExecutable::Run(
-    std::vector<ExecutionInput> arguments, ExecutableRunOptions run_options) {
-  std::vector<const Shape*> argument_shapes;
-  argument_shapes.reserve(arguments.size());
-  for (const ExecutionInput& arg : arguments) {
-    argument_shapes.push_back(&arg.shape());
-  }
-  TF_ASSIGN_OR_RETURN(ExecutableRunOptions options,
-                      GetExecutableRunOptions(argument_shapes, run_options));
-  return BlockHostUntilDoneAfterAsyncCall<ExecutionOutput>(
-      options.stream(),
-      [&] { return RunAsync(argument_shapes, std::move(arguments), options); });
+  TF_ASSIGN_OR_RETURN(auto options_and_stream,
+                      RunHelper(argument_shapes, run_options));
+  ExecutableRunOptions options = options_and_stream.first.run_options();
+  options.set_device_ordinal(-1);
+  auto result = RunAsync(arguments, options);
+  Status block_status = options.stream()->BlockHostUntilDone();
+  TF_RETURN_IF_ERROR(result.status());
+  TF_RETURN_IF_ERROR(block_status);
+  return result;
 }
 
 static std::shared_ptr<HloSnapshot> DumpArguments(

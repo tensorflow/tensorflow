@@ -51,11 +51,6 @@ class LocalExecutable {
       const absl::Span<const ShapedBuffer* const> arguments,
       ExecutableRunOptions run_options);
 
-  // Similar to Run(), but allows for donating argument buffers to the
-  // executable.
-  StatusOr<ExecutionOutput> Run(std::vector<ExecutionInput> arguments,
-                                ExecutableRunOptions run_options);
-
   // Similar to Run(), but need not block the host waiting for the computation
   // to complete before returning.
   StatusOr<ScopedShapedBuffer> RunAsync(
@@ -89,10 +84,6 @@ class LocalExecutable {
   StatusOr<std::pair<ServiceExecutableRunOptions, StreamPool::Ptr>> RunHelper(
       const absl::Span<const Shape* const> argument_shapes,
       ExecutableRunOptions run_options);
-
-  StatusOr<ExecutableRunOptions> GetExecutableRunOptions(
-      absl::Span<Shape const* const> argument_shapes,
-      const ExecutableRunOptions& run_options);
 
   // The ordinal of the device which this executable was compiled for. The
   // executable can run on all equivalent devices (as determined by
