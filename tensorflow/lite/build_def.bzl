@@ -251,7 +251,6 @@ def generated_test_models():
         "ceil",
         "concat",
         "constant",
-        # "control_dep", # b/150647401
         "conv",
         "conv_relu",
         "conv_relu1",
