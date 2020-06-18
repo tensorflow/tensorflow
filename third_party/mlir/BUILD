@@ -2868,9 +2868,9 @@ cc_library(
         ":SideEffects",
         ":StandardOps",
         ":Support",
-        "//third_party/vulkan_loader",
         "@llvm-project//llvm:Support",
         "@vulkan_headers",
+        "@vulkan_sdk//:sdk",
     ],
 )
 
