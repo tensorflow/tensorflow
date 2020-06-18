@@ -33,6 +33,7 @@ from tensorflow.python.eager import function as defun
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import error_interpolation
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -966,7 +967,16 @@ def save(obj, export_dir, signatures=None, options=None):
   # SavedModel. Users rely on checking saved_model_dir/saved_model.pb as an
   # indication that the SavedModel is completely written.
   if context.executing_eagerly():
-    context.async_wait()  # Ensure save operations have completed.
+    try:
+      context.async_wait()  # Ensure save operations have completed.
+    except errors.NotFoundError as err:
+      raise FileNotFoundError(
+          str(err) + "\n If trying to save on a different device from the "
+          "computational device, consider using setting the "
+          "`experimental_io_device` option on tf.saved_model.SaveOptions "
+          "to the io_device such as '/job:localhost'."
+      )
+
   path = os.path.join(
       compat.as_str(export_dir),
       compat.as_str(constants.SAVED_MODEL_FILENAME_PB))
