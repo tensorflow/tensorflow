@@ -55,9 +55,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
   }
 
   sg.as_summary_status();
-
   sg.as_concatenated_status();
-
   sg.AttachLogMessages();
 
   return 0;
