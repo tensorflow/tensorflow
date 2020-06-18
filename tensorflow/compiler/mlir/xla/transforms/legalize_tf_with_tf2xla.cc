@@ -337,9 +337,9 @@ LogicalResult FuncLegalizer::LegalizeOp(Operation* op) {
 
   // Only static shaped operands are supported in XLA builders for now.
   for (Type ty : op->getOperandTypes()) {
-    auto ranked_ty = ty.cast<ShapedType>();
-    if (!ranked_ty.hasStaticShape()) {
-      op->emitRemark() << "lowering requires static shaped operands";
+    auto ranked_ty = ty.dyn_cast<ShapedType>();
+    if (!ranked_ty || !ranked_ty.hasStaticShape()) {
+      op->emitRemark() << "lowering requires static shaped tensor operands";
       return success();
     }
   }
