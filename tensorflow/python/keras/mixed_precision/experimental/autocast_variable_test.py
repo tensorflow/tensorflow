@@ -304,8 +304,8 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
         self.assertAllClose(3., self.evaluate(x.assign_sub(3.)))
 
         # Assign multiple times
-        # This currently doesn't work in graph mode
-        if context.executing_eagerly() or ops.inside_function():
+        # This currently doesn't work in graph mode if a strategy is used
+        if not ds_context.has_strategy() or context.executing_eagerly():
           assign = x.assign(1.)
           self.assertAllClose(1., self.evaluate(assign))
           self.assertAllClose(0., self.evaluate(assign.assign(0.)))
