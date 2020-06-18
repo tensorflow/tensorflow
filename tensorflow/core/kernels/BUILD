@@ -3577,6 +3577,7 @@ tf_cc_tests(
 cc_library(
     name = "linalg",
     deps = [
+        ":banded_triangular_solve_op",
         ":cholesky_grad",
         ":cholesky_op",
         ":determinant_op",
@@ -3748,6 +3749,12 @@ tf_kernel_library(
     name = "matrix_square_root_op",
     prefix = "matrix_square_root_op",
     deps = LINALG_DEPS,
+)
+
+tf_kernel_library(
+    name = "banded_triangular_solve_op",
+    prefix = "banded_triangular_solve_op",
+    deps = LINALG_DEPS + [":fill_functor"],
 )
 
 tf_kernel_library(
@@ -4413,6 +4420,26 @@ tf_cuda_cc_test(
     deps = [
         ":batch_matmul_op",
         ":broadcast_to_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "banded_triangular_solve_op_test",
+    size = "small",
+    srcs = ["banded_triangular_solve_op_test.cc"],
+    deps = [
+        ":banded_triangular_solve_op",
+        ":matrix_set_diag_op",
+        ":matrix_triangular_solve_op",
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/core:core_cpu",

@@ -763,6 +763,17 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "banded_triangular_solve_op_test",
+    size = "small",
+    srcs = ["banded_triangular_solve_op_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:linalg_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
     name = "matrix_triangular_solve_op_test",
     size = "medium",
     srcs = ["matrix_triangular_solve_op_test.py"],
