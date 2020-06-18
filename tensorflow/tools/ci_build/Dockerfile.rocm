@@ -116,3 +116,7 @@ ENV HIP_HIDDEN_FREE_MEM=320
 
 # Super hacky workaround to JIRA ticket - 241253
 COPY math_functions.h $ROCM_PATH/hip/include/hip/hcc_detail/math_functions.h
+
+# Another super hacky workaround, this one for roctracer related build failure
+COPY hip_ostream_ops.h $ROCM_PATH/roctracer/include/hip_ostream_ops.h
+COPY hip_ostream_ops.h $ROCM_PATH/include/roctracer/hip_ostream_ops.h
