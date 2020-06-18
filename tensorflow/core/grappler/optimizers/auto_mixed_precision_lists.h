@@ -73,6 +73,7 @@ class AutoMixedPrecisionLists {
   static void AddTensorListOps(gtl::FlatSet<string>* list) {
     // Note: if a data structure op (such as TensorListPopBack) is added here,
     // IsTensorListReaderOp or IsTensorListWriterOp may need to be modified
+    // LINT.IfChange
     constexpr char* tensor_list_ops[] = {
         "TensorListConcat",
         "TensorListConcatLists",
@@ -90,6 +91,7 @@ class AutoMixedPrecisionLists {
         "TensorListSplit",
         "TensorListStack"
     };
+    // LINT.ThenChange(//tensorflow/core/grappler/optimizers/auto_mixed_precision.cc)
     for (auto op : tensor_list_ops) {
       list->insert(op);
     }
