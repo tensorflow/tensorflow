@@ -5277,6 +5277,7 @@ cuda_py_test(
     shard_count = 10,
     tags = [
         "no_windows_gpu",
+        "noasan",  # b/159332048
         "nomsan",  # b/148630708
     ],
     deps = [
