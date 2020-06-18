@@ -15,8 +15,11 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
+#include <fstream>
+
 #include "absl/strings/string_view.h"
 #include "google/cloud/storage/client.h"
+#include "tensorflow/c/env.h"
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
 #include "tensorflow/c/tf_status.h"
 
@@ -75,6 +78,25 @@ static void ParseGCSPath(absl::string_view fname, bool object_empty_ok,
   strcpy(*object, object_view.data());
 }
 
+class TempFile : public std::fstream {
+ public:
+  // We should specify openmode each time we call TempFile.
+  TempFile(const char* temp_file_name, std::ios::openmode mode)
+      : std::fstream(temp_file_name, mode), name(temp_file_name) {}
+  TempFile(TempFile&& rhs) : std::fstream(std::move(rhs)), name(rhs.name) {
+    rhs.name = nullptr;
+  }
+  ~TempFile() {
+    std::fstream::close();
+    std::remove(name);
+    plugin_memory_free(const_cast<char*>(name));
+  }
+  const char* getName() { return name; }
+
+ private:
+  const char* name;
+};
+
 // SECTION 1. Implementation for `TF_RandomAccessFile`
 // ----------------------------------------------------------------------------
 namespace tf_random_access_file {
@@ -86,6 +108,20 @@ namespace tf_random_access_file {
 // SECTION 2. Implementation for `TF_WritableFile`
 // ----------------------------------------------------------------------------
 namespace tf_writable_file {
+typedef struct GCSFile {
+  const char* bucket;
+  const char* object;
+  gcs::Client* gcs_client;  // not owned
+  TempFile outfile;
+  bool sync_need;
+} GCSFile;
+
+static void Cleanup(TF_WritableFile* file) {
+  auto gcs_file = static_cast<GCSFile*>(file->plugin_file);
+  plugin_memory_free(const_cast<char*>(gcs_file->bucket));
+  plugin_memory_free(const_cast<char*>(gcs_file->object));
+  delete gcs_file;
+}
 
 // TODO(vnvo2409): Implement later
 
@@ -118,6 +154,20 @@ static void Init(TF_Filesystem* filesystem, TF_Status* status) {
 }
 
 // TODO(vnvo2409): Implement later
+
+static void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
+                            TF_WritableFile* file, TF_Status* status) {
+  char* bucket;
+  char* object;
+  ParseGCSPath(path, false, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
+  TempFile outfile(TF_GetTempFileName(""), std::ios::binary | std::ios::out);
+  file->plugin_file = new tf_writable_file::GCSFile(
+      {bucket, object, gcs_client, std::move(outfile), true});
+  TF_SetStatus(status, TF_OK, "");
+}
 
 }  // namespace tf_gcs_filesystem
 
