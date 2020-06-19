@@ -182,7 +182,7 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_16(
   float input_to_output_weight_scale = default_scale;
   float recurrent_to_output_weight_scale = default_scale;
   float cell_to_output_weight_scale = default_scale;
-  float proj_weight_scale = default_scale;
+  float projection_weight_scale = default_scale;
   float layer_norm_input_scale = default_scale;
   float layer_norm_forget_scale = default_scale;
   float layer_norm_cell_scale = default_scale;
@@ -229,7 +229,7 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_16(
   }
 
   if (use_projection) {
-    proj_weight_scale = projection_weights->params.scale;
+    projection_weight_scale = projection_weights->params.scale;
   }
   output_state_scale = output_state->params.scale;
 
@@ -276,7 +276,7 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_16(
       std::pow(2, -15) / intermediate_scale[4] * std::pow(2, -15);
 
   effective_proj_scale =
-      proj_weight_scale * intermediate_scale[4] / output_state_scale;
+      projection_weight_scale * intermediate_scale[4] / output_state_scale;
 
   if (use_peephole) {
     if (!use_cifg) {
@@ -442,7 +442,7 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_8(
   int8_t* input_to_output_weight_ptr = nullptr;
   int8_t* recurrent_to_output_weight_ptr = nullptr;
   int8_t* cell_to_output_weight_ptr = nullptr;
-  int8_t* proj_weight_ptr = nullptr;
+  int8_t* projection_weight_ptr = nullptr;
   int16_t* layer_norm_input_weight_ptr = nullptr;
   int16_t* layer_norm_forget_weight_ptr = nullptr;
   int16_t* layer_norm_cell_weight_ptr = nullptr;
@@ -451,7 +451,7 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_8(
   int32_t* forget_gate_bias_ptr = nullptr;
   int32_t* cell_gate_bias_ptr = nullptr;
   int32_t* output_gate_bias_ptr = nullptr;
-  int32_t* proj_bias_ptr = nullptr;
+  int32_t* projection_bias_ptr = nullptr;
   int16_t* cell_ptr = nullptr;
   int8_t* output_state_ptr = nullptr;
 
@@ -469,7 +469,7 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_8(
   float input_to_output_weight_scale = default_scale;
   float recurrent_to_output_weight_scale = default_scale;
   float cell_to_output_weight_scale = default_scale;
-  float proj_weight_scale = default_scale;
+  float projection_weight_scale = default_scale;
   float layer_norm_input_scale = default_scale;
   float layer_norm_forget_scale = default_scale;
   float layer_norm_cell_scale = default_scale;
@@ -528,10 +528,10 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_8(
   }
 
   if (use_projection) {
-    proj_weight_ptr = projection_weights->data.int8;
-    proj_weight_scale = projection_weights->params.scale;
+    projection_weight_ptr = projection_weights->data.int8;
+    projection_weight_scale = projection_weights->params.scale;
     if (projection_bias) {
-      proj_bias_ptr = projection_bias->data.i32;
+      projection_bias_ptr = projection_bias->data.i32;
     }
   }
   output_state_scale = output_state->params.scale;
@@ -593,7 +593,7 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_8(
                                         output_state_scale /
                                         intermediate_scale[11];
   effective_proj_scale =
-      proj_weight_scale * std::pow(2, -15) / output_state_scale;
+      projection_weight_scale * std::pow(2, -15) / output_state_scale;
 
   if (use_peephole) {
     if (!use_cifg) {

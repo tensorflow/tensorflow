@@ -919,7 +919,7 @@ inline void LstmStepHybrid(
 //   cell_to_output_weights              - optional
 //
 // Quantized projection weights of size 'n_output * n_cell'
-//   proj_weight_ptr                     - optional
+//   projection_weight_ptr                     - optional
 //
 // Weight scales (scalars) for each of the weights above.
 //   effective_input_to_input_scale_a    - optional
@@ -1019,10 +1019,10 @@ inline void LstmStepInteger(
     int32_t effective_cell_to_forget_scale_b,
     const int16_t* cell_to_output_weight_ptr,
     int32_t effective_cell_to_output_scale_a,
-    int32_t effective_cell_to_output_scale_b, const int8_t* proj_weight_ptr,
-    int32_t effective_proj_scale_a, int32_t effective_proj_scale_b,
-    int32_t hidden_zp, int32_t effective_hidden_scale_a,
-    int32_t effective_hidden_scale_b,
+    int32_t effective_cell_to_output_scale_b,
+    const int8_t* projection_weight_ptr, int32_t effective_proj_scale_a,
+    int32_t effective_proj_scale_b, int32_t hidden_zp,
+    int32_t effective_hidden_scale_a, int32_t effective_hidden_scale_b,
     const int16_t* layer_norm_input_weight_ptr,
     int32_t layer_norm_input_scale_a, int32_t layer_norm_input_scale_b,
     const int16_t* layer_norm_forget_weight_ptr,
@@ -1055,7 +1055,7 @@ inline void LstmStepInteger(
   const bool use_cifg = (input_to_input_weight_ptr == nullptr);
   const bool use_peephole = (cell_to_output_weight_ptr != nullptr);
   const bool use_layer_norm = (layer_norm_forget_weight_ptr != nullptr);
-  const bool use_projection = (proj_weight_ptr != nullptr);
+  const bool use_projection = (projection_weight_ptr != nullptr);
 
   // Check for nullptrs.
   TFLITE_DCHECK(input_to_forget_effective_bias);
@@ -1208,7 +1208,7 @@ inline void LstmStepInteger(
   if (use_projection) {
     std::fill_n(output_ptr, n_batch * n_output, 0);
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-        scratch_4_ptr, projection_effective_bias, proj_weight_ptr,
+        scratch_4_ptr, projection_effective_bias, projection_weight_ptr,
         effective_proj_scale_a, effective_proj_scale_b, n_batch, n_cell,
         n_output, output_state_zp, scratch_5_ptr, output_ptr, context);
     if (quantized_proj_clip > 0) {
@@ -1245,7 +1245,7 @@ inline void LstmStepInteger(
 //   cell_to_output_weights              - optional
 //
 // Quantized projection weights of size 'n_output * n_cell'
-//   proj_weight_ptr                     - optional
+//   projection_weight_ptr                     - optional
 //
 // Weight scales (scalars) for each of the weights above.
 //   effective_input_to_input_scale_a    - optional
@@ -1348,9 +1348,9 @@ void LstmStepInteger(
     int32_t effective_cell_to_forget_scale_b,
     const int8_t* cell_to_output_weight_ptr,
     int32_t effective_cell_to_output_scale_a,
-    int32_t effective_cell_to_output_scale_b, const int8_t* proj_weight_ptr,
-    int32_t effective_proj_scale_a, int32_t effective_proj_scale_b,
-    const int16_t* layer_norm_input_weight_ptr,
+    int32_t effective_cell_to_output_scale_b,
+    const int8_t* projection_weight_ptr, int32_t effective_proj_scale_a,
+    int32_t effective_proj_scale_b, const int16_t* layer_norm_input_weight_ptr,
     int32_t layer_norm_input_scale_a, int32_t layer_norm_input_scale_b,
     const int16_t* layer_norm_forget_weight_ptr,
     int32_t layer_norm_forget_scale_a, int32_t layer_norm_forget_scale_b,
@@ -1360,7 +1360,7 @@ void LstmStepInteger(
     int32_t layer_norm_output_scale_a, int32_t layer_norm_output_scale_b,
     const int32_t* input_gate_bias_ptr, const int32_t* forget_gate_bias_ptr,
     const int32_t* cell_gate_bias_ptr, const int32_t* output_gate_bias_ptr,
-    const int32_t* proj_bias_ptr, const TfLiteLSTMParams* params,
+    const int32_t* projection_bias_ptr, const TfLiteLSTMParams* params,
     const int32_t* intermediate_scale_a, const int32_t* intermediate_scale_b,
     const int32_t* intermediate_zp, int16_t quantized_cell_clip,
     int8_t quantized_proj_clip, int n_batch, int n_cell, int n_input,
@@ -1476,8 +1476,9 @@ void LstmStepInteger(
 
   // Projection.
   tensor_utils::MatrixBatchVectorMultiply(
-      scratch3, proj_weight_ptr, effective_proj_scale_a, effective_proj_scale_b,
-      proj_bias_ptr, n_batch, n_cell, n_output, output_state_zp, output_ptr);
+      scratch3, projection_weight_ptr, effective_proj_scale_a,
+      effective_proj_scale_b, projection_bias_ptr, n_batch, n_cell, n_output,
+      output_state_zp, output_ptr);
 
   // Projection clipping.
   if (quantized_proj_clip > 0) {
@@ -2113,7 +2114,8 @@ TfLiteStatus EvalInteger8x8_8(
       GetTensorData<int8_t>(recurrent_to_output_weights);
   const int8_t* cell_to_output_weight_ptr =
       GetTensorData<int8_t>(cell_to_output_weights);
-  const int8_t* proj_weight_ptr = GetTensorData<int8_t>(projection_weights);
+  const int8_t* projection_weight_ptr =
+      GetTensorData<int8_t>(projection_weights);
   const int16_t* layer_norm_input_weight_ptr =
       GetTensorData<int16_t>(input_layer_norm_coefficients);
   const int16_t* layer_norm_forget_weight_ptr =
@@ -2128,7 +2130,7 @@ TfLiteStatus EvalInteger8x8_8(
   const int32_t* cell_gate_bias_ptr = GetTensorData<int32_t>(cell_gate_bias);
   const int32_t* output_gate_bias_ptr =
       GetTensorData<int32_t>(output_gate_bias);
-  const int32_t* proj_bias_ptr = GetTensorData<int32_t>(projection_bias);
+  const int32_t* projection_bias_ptr = GetTensorData<int32_t>(projection_bias);
   int16_t* cell_ptr = GetTensorData<int16_t>(cell_state);
   int8_t* output_state_ptr = GetTensorData<int8_t>(output_state);
   int8_t* output_ptr = nullptr;
@@ -2195,7 +2197,7 @@ TfLiteStatus EvalInteger8x8_8(
         integer_lstm_param->effective_cell_to_output_scale_a,
         integer_lstm_param->effective_cell_to_output_scale_b,
 
-        proj_weight_ptr, integer_lstm_param->effective_proj_scale_a,
+        projection_weight_ptr, integer_lstm_param->effective_proj_scale_a,
         integer_lstm_param->effective_proj_scale_b,
 
         layer_norm_input_weight_ptr,
@@ -2214,7 +2216,7 @@ TfLiteStatus EvalInteger8x8_8(
         integer_lstm_param->layer_norm_output_scale_b,
 
         input_gate_bias_ptr, forget_gate_bias_ptr, cell_gate_bias_ptr,
-        output_gate_bias_ptr, proj_bias_ptr,
+        output_gate_bias_ptr, projection_bias_ptr,
 
         params, integer_lstm_param->intermediate_scale_a,
         integer_lstm_param->intermediate_scale_b,
