@@ -97,7 +97,8 @@ output from the EM SDP.
 
 If you want to self-boot your application (start it independently from a
 debugger connection), you also need a microSD card with a minimum size of 512 MB
-and a way to write to the card from your development host
+and a way to write to the card from your development host.
+Note that the card must be formatted as FAT32 with default cluster size (but less than 32 Kbytes)
 
 ### Connect the Board
 

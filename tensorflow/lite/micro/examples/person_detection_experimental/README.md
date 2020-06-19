@@ -49,8 +49,13 @@ The example project for ARC EM SDP platform can be generated with the following
 command:
 
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile TARGET=arc_emsdp generate_person_detection_int8_make_project
+make -f tensorflow/lite/micro/tools/make/Makefile \
+TARGET=arc_emsdp TAGS=reduce_codesize \
+generate_person_detection_int8_make_project
 ```
+
+Note that `TAGS=reduce_codesize` applies example specific changes of code 
+to reduce total size of application. It can be ommited.
 
 ### Build and Run Example
 
