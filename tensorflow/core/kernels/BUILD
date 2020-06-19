@@ -4168,6 +4168,25 @@ tf_kernel_library(
     ]),
 )
 
+tf_cuda_cc_test(
+    name = "mlir_generated_op_gpu_tanh_test",
+    size = "small",
+    srcs = if_mlir_generated_gpu_kernels_enabled(["mlir_generated_op_gpu_tanh_test.cc"]),
+    tags = tf_cuda_tests_tags() + ["no_rocm"],
+    deps = [
+        ":cwise_op",
+        ":ops_testutil",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime:device",
+        "//tensorflow/core/common_runtime:device_factory",
+    ],
+)
+
 tf_kernel_library(
     name = "nextafter_op",
     prefix = "nextafter_op",
