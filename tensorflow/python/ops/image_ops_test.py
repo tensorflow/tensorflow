@@ -31,6 +31,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.compat import compat
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -1305,7 +1306,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
         image_ops.transpose, image_ops.rot90
     ]:
       transformed_unknown_rank = op(p_unknown_rank)
-      self.assertEqual(3, transformed_unknown_rank.get_shape().ndims)
+      self.assertEqual(None, transformed_unknown_rank.get_shape().ndims)
       transformed_unknown_dims_3 = op(p_unknown_dims_3)
       self.assertEqual(3, transformed_unknown_dims_3.get_shape().ndims)
       transformed_unknown_width = op(p_unknown_width)
@@ -1363,6 +1364,22 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       for k in xrange(4):
         y_np = np.rot90(image, k=k, axes=(1, 2))
         self.assertAllEqual(y_np, y_tf.eval({k_placeholder: k}))
+
+  def testFlipImageUnknownShape(self):
+    image_input = constant_op.constant(
+        [[[[0, 1, 2], [3, 4, 5]], [[6, 7, 8], [9, 10, 11]]]])
+
+    expected_output = constant_op.constant(
+        [[[[3, 4, 5], [0, 1, 2]], [[9, 10, 11], [6, 7, 8]]]])
+
+    def generator(): yield image_input
+
+    dataset = dataset_ops.Dataset.from_generator(
+        generator, output_types=dtypes.int32)
+    dataset = dataset.map(image_ops.flip_left_right)
+
+    image_flipped_via_dataset_map = next(iter(dataset))
+    self.assertAllEqual(image_flipped_via_dataset_map, expected_output)
 
 class AdjustContrastTest(test_util.TensorFlowTestCase):
 
