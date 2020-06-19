@@ -11,6 +11,7 @@ py_library(
     name = "numpy",
     srcs = [
         "__init__.py",
+        "np_accessor.py",
         "np_array_ops.py",
         "np_arrays.py",
         "np_dtypes.py",
