@@ -9190,6 +9190,32 @@ def TF_StackV2Op : TF_Op<"StackV2", []> {
   );
 }
 
+def TF_StatelessRandomUniformOp : TF_Op<"StatelessRandomUniform", [NoSideEffect]> {
+  let summary = [{
+Outputs deterministic pseudorandom random values from a uniform distribution.
+  }];
+
+  let description = [{
+The generated values follow a uniform distribution in the range `[0, 1)`. The
+lower bound 0 is included in the range, while the upper bound 1 is excluded.
+
+The outputs are a deterministic function of `shape` and `seed`.
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$shape,
+    TF_I32OrI64Tensor:$seed
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tseed = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_StopGradientOp : TF_Op<"StopGradient", [NoSideEffect, TF_AllTypesMatch<["input", "output"]>]> {
   let summary = "Stops gradient computation.";
 
