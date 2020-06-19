@@ -13,4 +13,8 @@ tf_class {
     name: "get_next"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
+  member_method {
+    name: "get_next_as_optional"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
 }

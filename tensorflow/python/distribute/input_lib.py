@@ -29,6 +29,7 @@ from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
+from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context
@@ -234,6 +235,40 @@ class DistributedIteratorInterface(collections.Iterator,
     """
     raise NotImplementedError(
         "DistributedIterator.element_spec() must be implemented in descendants")
+
+  def get_next_as_optional(self):
+    """Returns a `tf.experimental.Optional` that contains the next value for all replicas.
+
+    If the `tf.distribute.DistributedIterator` has reached the end of the
+    sequence, the returned `tf.experimental.Optional` will have no value.
+
+    Example usage:
+
+    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> global_batch_size = 2
+    >>> steps_per_loop = 2
+    >>> dataset = tf.data.Dataset.range(10).batch(global_batch_size)
+    >>> distributed_iterator = iter(
+    ...     strategy.experimental_distribute_dataset(dataset))
+    >>> def step_fn(x):
+    ...   return x
+    >>> @tf.function
+    ... def train_fn(distributed_iterator):
+    ...   for _ in tf.range(steps_per_loop):
+    ...     optional_data = distributed_iterator.get_next_as_optional()
+    ...     if not optional_data.has_value():
+    ...       break
+    ...     tf.print(strategy.run(step_fn, args=(optional_data.get_value(),)))
+    >>> train_fn(distributed_iterator)
+    ... # ([0 1],)
+    ... # ([2 3],)
+
+    Returns:
+      An `tf.experimental.Optional` object representing the next value from the
+      `tf.distribute.DistributedIterator` (if it has one) or no value.
+    """
+    raise NotImplementedError(
+        "get_next_as_optional() not implemented in descendants")
 
 
 @tf_export("distribute.DistributedDataset", v1=[])
@@ -621,6 +656,31 @@ class DistributedIteratorBase(DistributedIteratorInterface):
 
   def __iter__(self):
     return self
+
+  def get_next_as_optional(self):
+    global_has_value, replicas = _get_next_as_optional(self, self._strategy)
+
+    def return_none():
+      return optional_ops.Optional.empty(self._element_spec)
+
+    def return_value(replicas):
+      """Wraps the inputs for replicas in an `tf.experimental.Optional`."""
+      results = []
+      for i, worker in enumerate(self._input_workers.worker_devices):
+        with ops.device(worker):
+          devices = self._input_workers.compute_devices_for_worker(i)
+          for j, device in enumerate(devices):
+            with ops.device(device):
+              result = replicas[i][j]
+              results.append(result)
+      replicas = results
+
+      return optional_ops.Optional.from_value(
+          distribute_utils.regroup(replicas))
+
+    return control_flow_ops.cond(global_has_value,
+                                 lambda: return_value(replicas),
+                                 lambda: return_none())  # pylint: disable=unnecessary-lambda
 
   def get_next(self, name=None):
     """Returns the next input from the iterator for all replicas."""
