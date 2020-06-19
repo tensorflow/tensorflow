@@ -372,7 +372,6 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
         # Variable should be increased, despite it appearing to be the same
         # float16 value.
         self.evaluate(x.assign(1. + small_tensor))
-        self.assertEqual(1. + small_val, self.evaluate(x._variable))
         self.assertEqual(1., self.evaluate(x.value()))
       self.assertEqual(1. + small_val, self.evaluate(x))
 
@@ -380,7 +379,6 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
       with ops.get_default_graph()._enable_auto_casting_variables(
           dtypes.float16):
         self.evaluate(x.assign_add(small_tensor))
-        self.assertEqual(1. + small_val, self.evaluate(x._variable))
         self.assertEqual(1., self.evaluate(x.value()))
       self.assertEqual(1. + small_val, self.evaluate(x))
 
