@@ -13,20 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/tests/test_macros.h"
+#ifndef TENSORFLOW_COMPILER_XLA_TESTS_MANIFEST_CHECKING_TEST_H_
+#define TENSORFLOW_COMPILER_XLA_TESTS_MANIFEST_CHECKING_TEST_H_
 
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace xla {
 
-static bool InitModule() {
-  kDisabledManifestPath = XLA_DISABLED_MANIFEST;
-  VLOG(1) << "kDisabledManifestPath: " << kDisabledManifestPath;
-  kTestPlatform = XLA_PLATFORM;
-  VLOG(1) << "kTestPlatform: " << kTestPlatform;
-  return false;
-}
-
-static bool module_initialized = InitModule();
+// This class allows us to intercept the test name and use an arbitrary
+// heuristic to decide whether the test case should be disabled. We
+// determine whether the test case should be disabled by resolving the (test
+// case name, test name) in a manifest file.
+class ManifestCheckingTest : public ::testing::Test {
+ protected:
+  // This method runs before each test runs.
+  void SetUp() override;
+};
 
 }  // namespace xla
+
+#endif  // TENSORFLOW_COMPILER_XLA_TESTS_MANIFEST_CHECKING_TEST_H_
