@@ -789,16 +789,6 @@ tf_python_pybind_extension(
 )
 
 tf_python_pybind_extension(
-    name = "_pywrap_tf32_execution",
-    srcs = ["util/tf32.cc"],
-    module_name = "_pywrap_tf32_execution",
-    deps = [
-        "//tensorflow/core/platform:tf32_utils",
-        "@pybind11",
-    ],
-)
-
-tf_python_pybind_extension(
     name = "_pywrap_util_port",
     srcs = ["util/port_wrapper.cc"],
     hdrs = ["//tensorflow/core/util:port_hdrs"],
@@ -5688,7 +5678,6 @@ py_library(
         "//tensorflow:composite_tensor_whitelist",
     ],
     deps = [
-        ":_pywrap_tf32_execution",
         ":tf_decorator",
         ":tf_export",
         ":tf_stack",

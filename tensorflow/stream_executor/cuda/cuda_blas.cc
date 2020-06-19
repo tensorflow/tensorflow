@@ -49,7 +49,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/core/platform/tf32_utils.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/stream_executor/cuda/cuda_gpu_executor.h"
@@ -100,6 +99,18 @@ static std::string ToString(cublasStatus_t status) {
     default:
       return absl::StrCat("<invalid cublas status: ", status, ">");
   }
+}
+
+// Decide whether to enable TENSOR_OP_MATH
+static bool TensorOpMathEnabled() {
+  static bool is_enabled = [] {
+    bool is_disabled;
+    TF_CHECK_OK(
+        tensorflow::ReadBoolFromEnvVar("TF_DISABLE_CUBLAS_TENSOR_OP_MATH",
+                                       /*default_val=*/false, &is_disabled));
+    return !is_disabled;
+  }();
+  return is_enabled;
 }
 
 // cuBLAS has interfaces that permit pointers to be passed from either the host
@@ -225,19 +236,6 @@ bool CUDABlas::Init() {
     LOG(ERROR) << "failed to create cublas handle: " << ToString(ret);
     return false;
   }
-
-  absl::MutexLock lock(&mu_);
-#if CUDA_VERSION >= 9000
-#if CUBLAS_VER_MAJOR >= 11
-  ret = cublasSetMathMode(blas_, CUBLAS_TF32_TENSOR_OP_MATH);
-#else
-  ret = cublasSetMathMode(blas_, CUBLAS_TENSOR_OP_MATH);
-#endif
-  if (ret != CUBLAS_STATUS_SUCCESS) {
-    LOG(ERROR) << "failed to set cublas default math mode: " << ToString(ret);
-    return false;
-  }
-#endif
 
   return true;
 }
@@ -401,7 +399,7 @@ cudaDataType_t CUDAComputationType(blas::ComputationType ty) {
 template <typename FuncT, typename... Args>
 bool CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
                                   bool pointer_mode_host, bool err_on_failure,
-                                  Args... args) {
+                                  bool use_tensor_op_math, Args... args) {
   absl::MutexLock lock(&mu_);
 
   CHECK(blas_ != nullptr);
@@ -415,10 +413,10 @@ bool CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
                                            : CUBLAS_POINTER_MODE_DEVICE)) {
     return false;
   }
-#if CUBLAS_VER_MAJOR >= 11
+#if CUDA_VERSION >= 9000
   ScopedCublasMathMode math_mode{blas_};
-  if (!tensorflow::tf32_execution_allowed()) {
-    if (!math_mode.Init(CUBLAS_DEFAULT_MATH)) {
+  if (use_tensor_op_math) {
+    if (!math_mode.Init(CUBLAS_TENSOR_OP_MATH)) {
       return false;
     }
   }
@@ -1635,9 +1633,21 @@ bool CUDABlas::DoBlasGemm(
     }
   }
 
+  bool use_tensor_ops = false;
+#if CUDA_VERSION >= 9000
+  int cc_major, cc_minor;
+  stream->parent()->GetDeviceDescription().cuda_compute_capability(&cc_major,
+                                                                   &cc_minor);
+
+  // GPUs < sm_70 don't support tensor ops.
+  if (cc_major >= 7 && TensorOpMathEnabled()) {
+    use_tensor_ops = true;
+  }
+#endif
+
   return DoBlasInternalImpl(
       cublasSgemmEx, stream, true /* = pointer_mode_host */,
-      true /* = err_on_failure= */, CUDABlasTranspose(transa),
+      true /* = err_on_failure= */, use_tensor_ops, CUDABlasTranspose(transa),
       CUDABlasTranspose(transb), m, n, k, &alpha, GpuMemory(a),
       SE_CUDA_DATA_HALF, lda, GpuMemory(b), SE_CUDA_DATA_HALF, ldb, &beta,
       GpuMemoryMutable(c), SE_CUDA_DATA_HALF, ldc);
@@ -1911,7 +1921,8 @@ static bool TensorOpsAvailable(int cc_major) {
   // strictly correct.  We can't simply enable it, though, as that would change
   // clients' behavior significantly: Using tensor ops on fp32 inputs cause them
   // to be rounded to fp16.
-  if (cc_major >= 7 && std::is_same<InType, Eigen::half>::value) {
+  if (cc_major >= 7 && TensorOpMathEnabled() &&
+      std::is_same<InType, Eigen::half>::value) {
     return true;
   }
 #endif
@@ -2259,8 +2270,7 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
   if (stream->parent()->GetDeviceDescription().cuda_compute_capability(
           &cc_major, &cc_minor) &&
       cc_major >= 5) {
-    bool use_tensor_ops =
-        data_type == CUDA_R_16F || tensorflow::tf32_execution_allowed();
+    bool use_tensor_ops = TensorOpMathEnabled() && data_type == CUDA_R_16F;
     cublasGemmAlgo_t algo =
         (use_tensor_ops ? CUBLAS_GEMM_DFALT_TENSOR_OP : CUBLAS_GEMM_DFALT);
     cudaDataType_t compute_type =
@@ -2274,7 +2284,7 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
     bool ok;
     ok = DoBlasInternalImpl(
         AS_LAMBDA(cublasGemmBatchedEx), stream, true /* = pointer_mode_host */,
-        true /* = err_on_failure */, CUDABlasTranspose(transa),
+        true /* = err_on_failure */, use_tensor_ops, CUDABlasTranspose(transa),
         CUDABlasTranspose(transb), m, n, k, &alpha, a_void_ptrs, data_type, lda,
         b_void_ptrs, data_type, ldb, &beta, c_void_ptrs, data_type, ldc,
         batch_count, compute_type, algo);
@@ -2409,25 +2419,33 @@ bool CUDABlas::DoBlasGemmStridedBatched(
     int lda, int64 stride_a, const DeviceMemory<Eigen::half> &b, int ldb,
     int64 stride_b, float beta, DeviceMemory<Eigen::half> *c, int ldc,
     int64 stride_c, int batch_count) {
-#if CUDA_VERSION >= 9010
+  bool use_tensor_ops = false;
+#if CUDA_VERSION >= 9000
   int cc_major, cc_minor;
   if (stream->parent()->GetDeviceDescription().cuda_compute_capability(
-          &cc_major, &cc_minor) &&
-      cc_major >= 5) {
-    cublasGemmAlgo_t algo =
-        (cc_major >= 7 ? CUBLAS_GEMM_DFALT_TENSOR_OP : CUBLAS_GEMM_DFALT);
-    bool ok = DoBlasInternalImpl(
-        AS_LAMBDA(cublasGemmStridedBatchedEx), stream,
-        true /* = pointer_mode_host */, true /* = err_on_failure */,
-        CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n, k, &alpha,
-        GpuMemory(a), CUDA_R_16F, lda, stride_a, GpuMemory(b), CUDA_R_16F, ldb,
-        stride_b, &beta, GpuMemoryMutable(c), CUDA_R_16F, ldc, stride_c,
-        batch_count, CUDA_R_32F, algo);
-    if (ok) {
-      return true;
+          &cc_major, &cc_minor)) {
+    // GPUs < sm_70 don't support tensor ops.
+    if (cc_major >= 7 && TensorOpMathEnabled()) {
+      use_tensor_ops = true;
     }
-    LOG(ERROR) << "failed BLAS call, see log for details";
-    return false;
+#if CUDA_VERSION >= 9010
+    if (cc_major >= 5) {
+      cublasGemmAlgo_t algo =
+          (use_tensor_ops ? CUBLAS_GEMM_DFALT_TENSOR_OP : CUBLAS_GEMM_DFALT);
+      bool ok = DoBlasInternalImpl(
+          AS_LAMBDA(cublasGemmStridedBatchedEx), stream,
+          true /* = pointer_mode_host */, true /* = err_on_failure */,
+          use_tensor_ops, CUDABlasTranspose(transa), CUDABlasTranspose(transb),
+          m, n, k, &alpha, GpuMemory(a), CUDA_R_16F, lda, stride_a,
+          GpuMemory(b), CUDA_R_16F, ldb, stride_b, &beta, GpuMemoryMutable(c),
+          CUDA_R_16F, ldc, stride_c, batch_count, CUDA_R_32F, algo);
+      if (ok) {
+        return true;
+      }
+      LOG(ERROR) << "failed BLAS call, see log for details";
+      return false;
+    }
+#endif
   }
 #endif
   // Either CUDA_VERSION < 9.1 or SM < 5.0. Fall back to a loop.
@@ -2440,7 +2458,7 @@ bool CUDABlas::DoBlasGemmStridedBatched(
         reinterpret_cast<__half *>(GpuMemoryMutable(c) + batch * stride_c);
     bool ok = DoBlasInternalImpl(
         cublasSgemmEx, stream, true /* = pointer_mode_host */,
-        true /* = err_on_failure= */, CUDABlasTranspose(transa),
+        true /* = err_on_failure= */, use_tensor_ops, CUDABlasTranspose(transa),
         CUDABlasTranspose(transb), m, n, k, &alpha, a_matrix, SE_CUDA_DATA_HALF,
         lda, b_matrix, SE_CUDA_DATA_HALF, ldb, &beta, c_matrix,
         SE_CUDA_DATA_HALF, ldc);
