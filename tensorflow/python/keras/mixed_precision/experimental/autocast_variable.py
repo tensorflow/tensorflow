@@ -190,25 +190,20 @@ class AutoCastVariable(variables.Variable, core.Tensor):
 
   def _apply_assign_update(
       self, update_fn, value, use_locking=None, name=None, read_value=True):
-    if not read_value:
-      return update_fn(value, use_locking, name, read_value)
-
     if context.executing_eagerly() or ops.inside_function():
       assign_op = update_fn(value, use_locking, name, False)
-      with ops.control_dependencies([assign_op]):
-        return self
+      return self if read_value else assign_op
 
     # Fallback to wrapping the returned variable in graph mode if possible
     assign_var = update_fn(value, use_locking, name, read_value)
-    if resource_variable_ops.is_resource_variable(assign_var):
+    if read_value and resource_variable_ops.is_resource_variable(assign_var):
       return create_autocast_variable(assign_var)
     return assign_var
 
   def _apply_update(self, update_fn, *args, **kwargs):
     update_var = update_fn(*args, **kwargs)
     if context.executing_eagerly() or ops.inside_function():
-      with ops.control_dependencies([update_var]):
-        return self
+      return self
 
     # Fallback to wrapping the returned variable in graph mode if possible
     if resource_variable_ops.is_resource_variable(update_var):
