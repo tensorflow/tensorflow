@@ -45,7 +45,7 @@ const int kRightMargin = 78;
 
 constexpr char kEagerFallbackSuffix[] = "_eager_fallback";
 
-std::unordered_map<string, string> dtypes_map {
+std::unordered_map<string, string> dtype_type {
       {"_dtypes.float16", "_dtypes.Float16"},
       {"_dtypes.half", "_dtypes.Half"},
       {"_dtypes.float32", "_dtypes.Float32"},
@@ -164,7 +164,7 @@ class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
   bool AddEagerFastPathAndGraphCode(const string& parameters,
                                     const std::vector<string>& output_sizes,
                                     const string& eager_not_allowed_error,
-                                    std::unordered_map<string, string>& type_map);
+                                    std::unordered_map<string, string>& type_annotations);
   bool AddEagerFallbackCode(const string& parameters,
                             const std::vector<string>& output_sizes,
                             const string& num_outputs_expr,
@@ -182,9 +182,9 @@ class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
 
   std::unordered_map<string, string> GetTypeAnnotationMap();
 
-  void GenerateTypeVars(std::unordered_map<string, string>& type_map);
+  void GenerateTypeVars(std::unordered_map<string, string>& type_annotations);
 
-  void AddReturnTypeAnnotation(std::unordered_map<string, string>& type_map);
+  void AddReturnTypeAnnotation(std::unordered_map<string, string>& type_annotations);
 
   void AddAttrForArg(const string& attr, int arg_index) {
     gtl::InsertIfNotPresent(&inferred_attrs_, attr,
@@ -348,10 +348,10 @@ string GenEagerPythonOp::Code() {
     param_names_.push_back(param_and_default.first);
   }
 
-  std::unordered_map<string, string> type_map;
+  std::unordered_map<string, string> type_annotations;
   // Only populate map for whitelisted ops
   if (type_annotate_ops.find(op_def_.name()) != type_annotate_ops.end()) {
-    type_map = GetTypeAnnotationMap();
+    type_annotations = GetTypeAnnotationMap();
   }
 
   string parameters;
@@ -360,9 +360,9 @@ string GenEagerPythonOp::Code() {
     strings::StrAppend(&parameters, param.GetRenameTo());
 
     // Add type annotations to param
-    if (type_map.find(param.GetName()) != type_map.end()) {
-      if (!type_map[param.GetName()].empty()) {
-        strings::StrAppend(&parameters, ": ", type_map[param.GetName()]);
+    if (type_annotations.find(param.GetName()) != type_annotations.end()) {
+      if (!type_annotations[param.GetName()].empty()) {
+        strings::StrAppend(&parameters, ": ", type_annotations[param.GetName()]);
       }
     }
   }
@@ -374,12 +374,12 @@ string GenEagerPythonOp::Code() {
       strings::StrAppend(&parameters_with_defaults, ", ");
 
     // Add type annotations to param_and_default
-    if (type_map.find(param_and_default.first.GetName()) != type_map.end()) {
-      if (!type_map[param_and_default.first.GetName()].empty()) {
-        strings::StrAppend(&parameters, ": ", type_map[param_and_default.first.GetName()]);
+    if (type_annotations.find(param_and_default.first.GetName()) != type_annotations.end()) {
+      if (!type_annotations[param_and_default.first.GetName()].empty()) {
+        strings::StrAppend(&parameters, ": ", type_annotations[param_and_default.first.GetName()]);
         strings::StrAppend(&parameters_with_defaults,
                            param_and_default.first.GetRenameTo(), ": ",
-                           type_map[param_and_default.first.GetName()], " ",
+                           type_annotations[param_and_default.first.GetName()], " ",
                            "= ", param_and_default.second);
         continue;
       }
@@ -420,7 +420,7 @@ string GenEagerPythonOp::Code() {
   string eager_not_allowed_error = GetEagerNotAllowedError();
 
   if (!AddEagerFastPathAndGraphCode(parameters_with_defaults, output_sizes,
-                                    eager_not_allowed_error, type_map)) {
+                                    eager_not_allowed_error, type_annotations)) {
     return result_;
   }
 
@@ -433,60 +433,58 @@ string GenEagerPythonOp::Code() {
 }
 
 std::unordered_map<string, string> GenEagerPythonOp::GetTypeAnnotationMap() {
-  std::unordered_map<string, string> type_map;
+  std::unordered_map<string, string> type_annotations;
   // Mapping attrs to TypeVars
   for (const auto& attr : op_def_.attr()) {
     if (attr.type() == "type") {
       const string type_var_name = "TV_" + op_def_.name() + "_" + attr.name();
-      type_map[attr.name()] = type_var_name;
+      type_annotations[attr.name()] = type_var_name;
     } else if (attr.type() == "bool" || attr.type() == "float" ||
                attr.type() == "int" || attr.type() == "bytes") {
-      type_map[attr.name()] = attr.type();
+      type_annotations[attr.name()] = attr.type();
     }
   }
 
   // Mapping input Tensors to their types
   for (const auto& arg : op_def_.input_arg()) {
-    // Do not add type annotations to args that accept a sequence of tensors
+    // Do not add type annotations to args that accept a sequence of Tensors
     if (!arg.number_attr().empty()) continue;
     string type_annotation;
-    if (type_map.find(arg.type_attr()) != type_map.end()) {
+    if (type_annotations.find(arg.type_attr()) != type_annotations.end()) {
       // Get the correct TypeVar if input maps to an attr
-      strings::StrAppend(&type_annotation, "_ops.Tensor[", type_map[arg.type_attr()], "]");
+      strings::StrAppend(&type_annotation, "_ops.Tensor[", type_annotations[arg.type_attr()], "]");
     } else {
       // Get the dtype of the Tensor
       const string py_dtype = python_op_gen_internal::DataTypeToPython(arg.type(), "_dtypes.");
-      if (dtypes_map.find(py_dtype) != dtypes_map.end()) {
-        strings::StrAppend(&type_annotation, "_ops.Tensor[", dtypes_map[py_dtype], "]");
+      if (dtype_type.find(py_dtype) != dtype_type.end()) {
+        strings::StrAppend(&type_annotation, "_ops.Tensor[", dtype_type[py_dtype], "]");
       }
     }
 
-    type_map[arg.name()] = type_annotation;
+    type_annotations[arg.name()] = type_annotation;
   }
 
   // Mapping output Tensor to its type
   if (op_def_.output_arg_size() == 1) {
     const auto& arg = op_def_.output_arg(0);
     string type_annotation;
-    if (type_map.find(arg.type_attr()) != type_map.end()) {
-      // Get the correct TypeVar if input maps to an attr
-      strings::StrAppend(&type_annotation, "_ops.Tensor[", type_map[arg.type_attr()], "]");
+    if (type_annotations.find(arg.type_attr()) != type_annotations.end()) {
+      strings::StrAppend(&type_annotation, "_ops.Tensor[", type_annotations[arg.type_attr()], "]");
     } else {
-      // Get the dtype of the Tensor
       const string py_dtype = python_op_gen_internal::DataTypeToPython(arg.type(), "_dtypes.");
-      if (dtypes_map.find(py_dtype) != dtypes_map.end()) {
-        strings::StrAppend(&type_annotation, "_ops.Tensor[", dtypes_map[py_dtype], "]");
+      if (dtype_type.find(py_dtype) != dtype_type.end()) {
+        strings::StrAppend(&type_annotation, "_ops.Tensor[", dtype_type[py_dtype], "]");
       }
     }
 
-    type_map[arg.name()] = type_annotation;
+    type_annotations[arg.name()] = type_annotation;
   }
 
-  return type_map;
+  return type_annotations;
 }
 
 // Generate TypeVars using attrs
-void GenEagerPythonOp::GenerateTypeVars(std::unordered_map<string, string>& type_map) {
+void GenEagerPythonOp::GenerateTypeVars(std::unordered_map<string, string>& type_annotations) {
   bool added_typevar = false;
   for (const auto& attr : op_def_.attr()) {
     if (attr.type() == "type") {
@@ -494,14 +492,14 @@ void GenEagerPythonOp::GenerateTypeVars(std::unordered_map<string, string>& type
       for (int t : attr.allowed_values().list().type()) {
         DataType dtype = static_cast<DataType>(t);
         const string py_dtype = python_op_gen_internal::DataTypeToPython(dtype, "_dtypes.");
-        if (dtypes_map.find(py_dtype) != dtypes_map.end()) {
-          allowed_types.emplace_back(dtypes_map[py_dtype]);
+        if (dtype_type.find(py_dtype) != dtype_type.end()) {
+          allowed_types.emplace_back(dtype_type[py_dtype]);
         }
       }
 
       // If all dtypes are allowed, add them all
       if (allowed_types.empty()) {
-        for (std::pair<string, string> map_dtype : dtypes_map) {
+        for (std::pair<string, string> map_dtype : dtype_type) {
           allowed_types.emplace_back(map_dtype.second);
         }
       }
@@ -514,7 +512,7 @@ void GenEagerPythonOp::GenerateTypeVars(std::unordered_map<string, string>& type
         strings::StrAppend(&typevar_dtypes, *it);
       }
 
-      const string type_var_name = type_map[attr.name()];
+      const string type_var_name = type_annotations[attr.name()];
       strings::StrAppend(&result_, type_var_name, " = TypeVar(\"", type_var_name, "\", ", typevar_dtypes,")\n");
       added_typevar = true;
     }
@@ -523,14 +521,14 @@ void GenEagerPythonOp::GenerateTypeVars(std::unordered_map<string, string>& type
   if (added_typevar) strings::StrAppend(&result_, "\n");
 }
 
-void GenEagerPythonOp::AddReturnTypeAnnotation(std::unordered_map<string, string>& type_map) {
+void GenEagerPythonOp::AddReturnTypeAnnotation(std::unordered_map<string, string>& type_annotations) {
   if (op_def_.output_arg_size() == 1) {
     const auto& arg = op_def_.output_arg(0);
     // Add type annotations to param
-    if (type_map.find(arg.name()) != type_map.end()) {
-      if (!type_map[arg.name()].empty()) {
+    if (type_annotations.find(arg.name()) != type_annotations.end()) {
+      if (!type_annotations[arg.name()].empty()) {
         result_.erase(result_.length() - 2);
-        strings::StrAppend(&result_, " -> ", type_map[arg.name()], ":\n");
+        strings::StrAppend(&result_, " -> ", type_annotations[arg.name()], ":\n");
       }
     }
   }
@@ -858,9 +856,9 @@ void GenEagerPythonOp::AddEagerFunctionTeardown(
 
 bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
     const string& parameters, const std::vector<string>& output_sizes,
-    const string& eager_not_allowed_error, std::unordered_map<string, string>& type_map) {
+    const string& eager_not_allowed_error, std::unordered_map<string, string>& type_annotations) {
   if (type_annotate_ops.find(op_def_.name()) != type_annotate_ops.end()) {
-    GenerateTypeVars(type_map);
+    GenerateTypeVars(type_annotations);
   }
   if (api_def_.visibility() == ApiDef::VISIBLE) {
     strings::StrAppend(&result_, "@_dispatch.add_dispatch_list\n");
@@ -869,7 +867,7 @@ bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
   AddExport();
   AddDefLine(function_name_, parameters);
   if (type_annotate_ops.find(op_def_.name()) != type_annotate_ops.end()) {
-    AddReturnTypeAnnotation(type_map);
+    AddReturnTypeAnnotation(type_annotations);
   }
   AddDocStringDescription();
   AddDocStringArgs();
