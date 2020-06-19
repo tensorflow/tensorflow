@@ -72,6 +72,13 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
     self.assert_saved_model(path)
 
   @test_util.run_v2_only
+  def test_save_format_defaults_pathlib(self):
+    if sys.version_info >= (3, 6):
+      path = pathlib.Path(self.get_temp_dir()) / 'model_path'
+      save.save_model(self.model, path)
+      self.assert_saved_model(path)
+
+  @test_util.run_v2_only
   def test_save_hdf5(self):
     path = os.path.join(self.get_temp_dir(), 'model')
     save.save_model(self.model, path, save_format='h5')
@@ -80,6 +87,13 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
         NotImplementedError,
         'requires the model to be a Functional model or a Sequential model.'):
       save.save_model(self.subclassed_model, path, save_format='h5')
+
+  @test_util.run_v2_only
+  def test_save_load_hdf5_pathlib(self):
+    if sys.version_info >= (3, 6):
+      path = pathlib.Path(self.get_temp_dir()) / 'model'
+      save.save_model(self.model, path, save_format='h5')
+      save.load_model(path)
 
   @test_util.run_v2_only
   def test_save_tf(self):
@@ -104,6 +118,20 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
       path = pathlib.Path(self.get_temp_dir()) / 'model'
       save.save_model(self.model, path, save_format='tf')
       save.load_model(path)
+
+  @test_util.run_v2_only
+  def test_save_load_weights_tf_pathlib(self):
+    if sys.version_info >= (3, 6):
+      path = pathlib.Path(self.get_temp_dir()) / 'model'
+      self.model.save_weights(path, save_format='tf')
+      self.model.load_weights(path)
+
+  @test_util.run_v2_only
+  def test_save_load_weights_hdf5_pathlib(self):
+    if sys.version_info >= (3, 6):
+      path = pathlib.Path(self.get_temp_dir()) / 'model'
+      self.model.save_weights(path, save_format='h5')
+      self.model.load_weights(path)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_saving_with_dense_features(self):
