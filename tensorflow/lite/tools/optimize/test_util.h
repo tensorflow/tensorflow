@@ -76,6 +76,11 @@ extern const char* kModelWithFCOp;
 // reshape->custom->custom->squeeze.
 extern const char* kModelMixed;
 
+// Test model with mixed quantizable and
+// and un-quantizable ops for
+// activations in 16-bit.
+extern const char* kModelMixed16x8;
+
 // Test model with split op.
 extern const char* kModelSplit;
 

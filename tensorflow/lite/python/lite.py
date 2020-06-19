@@ -193,11 +193,13 @@ class QuantizationMode(object):
   def post_training_int8_no_float(self):
     """Post training int8 quantize, disallow float fallback."""
     return (self._is_int8_target_required() and
+            not self._is_int16x8_target_required() and
             self._representative_dataset is not None)
 
   def post_training_int8_allow_float(self):
     """Post training int8 quantize, allow float fallback."""
     return (self._any_optimization_enabled() and
+            not self._is_int16x8_target_required() and
             self._representative_dataset is not None and
             self._smallest_supported_type() == constants.INT8)
 
@@ -211,6 +213,17 @@ class QuantizationMode(object):
     return (self._any_optimization_enabled() and
             not self.post_training_dynamic_range_int8() and
             not self.post_training_fp16())
+
+  def post_training_int16x8_no_float(self):
+    """Post training int16x8 quantize, disallow float fallback."""
+    return (not self._is_int8_target_required() and
+            self._is_int16x8_target_required() and
+            not self._is_allow_float() and
+            self._representative_dataset is not None)
+
+  def post_training_int16x8_allow_float(self):
+    """Post training int16x8 quantize, allow float fallback."""
+    return (self._is_int16x8_target_required() and self._is_allow_float())
 
   def post_training_dynamic_range_int8(self):
     """Post training int8 const, on-the-fly int8 quantize of dynamic tensors."""
@@ -231,8 +244,14 @@ class QuantizationMode(object):
     return not (self.post_training_int8_no_float() or
                 self.post_training_int8_allow_float() or
                 self.training_time_int8_allow_float() or
+                self.post_training_int16x8_no_float() or
+                self.post_training_int16x8_allow_float() or
                 self.post_training_dynamic_range_int8() or
                 self.post_training_fp16())
+
+  def activations_type(self):
+    return constants.INT16 if self._is_int16x8_target_required() \
+      else constants.INT8
 
   def converter_flags(self, inference_ty=None, inference_input_ty=None):
     """Flags to the converter."""
@@ -243,7 +262,8 @@ class QuantizationMode(object):
 
     if self.training_time_int8_allow_float():
       return {
-          "inference_type": inference_ty if inference_ty else constants.INT8,
+          "inference_type": inference_ty if inference_ty else \
+            self.activations_type(),
           "inference_input_type":
               inference_input_ty if inference_input_ty else constants.FLOAT,
           "post_training_quantize": False,  # disable dynamic range quantization
@@ -278,16 +298,21 @@ class QuantizationMode(object):
 
     inference_input_type = input_ty if input_ty else constants.FLOAT
     inference_output_type = output_ty if output_ty else constants.FLOAT
-    if self.post_training_int8_no_float():
+
+    if self.post_training_int8_no_float() \
+      or self.post_training_int16x8_no_float():
       return True, {
           "inference_input_type": inference_input_type,
           "inference_output_type": inference_output_type,
+          "activations_type": self.activations_type(),
           "allow_float": False
       }
-    elif self.post_training_int8_allow_float():
+    elif self.post_training_int8_allow_float() \
+      or self.post_training_int16x8_allow_float():
       return True, {
           "inference_input_type": inference_input_type,
           "inference_output_type": inference_output_type,
+          "activations_type": self.activations_type(),
           "allow_float": True
       }
     else:
@@ -321,6 +346,17 @@ class QuantizationMode(object):
     return (set([OpsSet.TFLITE_BUILTINS_INT8]) == set(
         self._target_spec.supported_ops) or
             set(self._target_spec.supported_types) == set([constants.INT8]))
+
+  def _is_int16x8_target_required(self):
+    return bool(
+        set(self._target_spec.supported_ops).intersection([
+            OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+        ]))
+
+  def _is_allow_float(self):
+    return bool(
+        set(self._target_spec.supported_ops).intersection(
+            [OpsSet.TFLITE_BUILTINS]))
 
   def _any_optimization_enabled(self):
     return bool(
@@ -394,11 +430,13 @@ class TFLiteConverterBase(object):
     return _get_grappler_config(optimizers)
 
   def _calibrate_quantize_model(self, result, inference_input_type,
-                                inference_output_type, allow_float):
+                                inference_output_type, activations_type,
+                                allow_float):
     """Calibrate and quantize the model."""
     if not isinstance(self.representative_dataset, RepresentativeDataset):
       self.representative_dataset = RepresentativeDataset(
           self.representative_dataset)
+
     calibrate_quantize = _calibrator.Calibrator(result)
     if self._experimental_calibrate_only or self._experimental_new_quantizer:
       calibrated = calibrate_quantize.calibrate(
@@ -411,7 +449,7 @@ class TFLiteConverterBase(object):
     else:
       return calibrate_quantize.calibrate_and_quantize(
           self.representative_dataset.input_gen, inference_input_type,
-          inference_output_type, allow_float)
+          inference_output_type, allow_float, activations_type)
 
   def _is_unknown_shapes_allowed(self):
     # Unknown dimensions are only allowed with the new converter.
@@ -1930,7 +1968,6 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
         None value for dimension in input_tensor.
     """
     return super(TFLiteConverter, self).convert()
-
 
 @_tf_export(v1=["lite.TocoConverter"])
 class TocoConverter(object):

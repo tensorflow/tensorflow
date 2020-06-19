@@ -38,14 +38,11 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compile_c_api.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
+#include "tensorflow/core/tpu/kernels/tpu_op_consts.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group.h"
 
 namespace tensorflow {
 namespace tpu {
-
-constexpr char kCompilationCacheResourceName[] = "tpu_compilation_cache";
-constexpr char kCompilationCacheUnloaderResourceName[] =
-    "tpu_compilation_cache_unloader";
 
 class TpuCompilationCacheExternal : public TpuCompilationCacheInterface {
  public:
@@ -62,14 +59,6 @@ class TpuCompilationCacheExternal : public TpuCompilationCacheInterface {
 
   explicit TpuCompilationCacheExternal(int64 max_cache_size)
       : TpuCompilationCacheInterface(max_cache_size) {}
-
-  static TpuCompilationCacheKey CreateCompilationCacheKey(
-      absl::string_view function_name, uint64 function_library_fingerprint,
-      absl::string_view mlir_module,
-      const tensorflow::OpInputList& guaranteed_constants,
-      const std::vector<tensorflow::TensorShape>& dynamic_shapes,
-      const tensorflow::tpu::TPUCompileMetadataProto& metadata,
-      const TpuMeshStateInterface& mesh_state);
 
   string DebugString() const override { return "TpuCompilationCacheExternal"; }
 

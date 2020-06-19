@@ -475,6 +475,7 @@ cc_library(
         "transforms/cluster_outlining.cc",
         "transforms/collection_ops_util.cc",
         "transforms/decompose_resource_ops_pass.cc",
+        "transforms/device_index_selector.cc",
         "transforms/einsum.cc",
         "transforms/executor_island_coarsening.cc",
         "transforms/executor_tpuv1_inline_tpu_island.cc",

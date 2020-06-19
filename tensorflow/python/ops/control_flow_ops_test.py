@@ -396,10 +396,10 @@ class CondTest(test_util.TensorFlowTestCase):
         fn2=lambda: math_ops.add(y, 23))
     self.assertEquals(self.evaluate(z), 24)
 
-  @test_util.run_v1_only("Exercises Ref variables")
+  @test_util.run_deprecated_v1
   def testCondModifyBoolPred(self):
-    # We want to use the GPU here because we want to ensure that we can update
-    # a boolean ref variable on the GPU.
+    # This test in particular used to fail only when running in GPU, hence
+    # use_gpu=True.
     with test_util.use_gpu():
       bool_var = variable_scope.get_variable(
           "bool_var", dtype=dtypes.bool, initializer=True)

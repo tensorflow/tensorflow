@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/core/kernels/fuzzing/fuzz_session.h"
+#include "tensorflow/security/fuzzing/op_fuzzing/fuzz_session.h"
 
 namespace tensorflow {
 namespace fuzzing {

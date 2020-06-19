@@ -43,7 +43,6 @@ cuda_py_test(
         ":checkpoint_options",
         ":functional_saver",
         ":saveable_hook",
-        "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",
     ],
 )

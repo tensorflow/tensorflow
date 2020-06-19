@@ -1,6 +1,6 @@
 // Test DeviceIndex selector.
 
-// RUN: tf-opt --tfl-device-index-selector %s | FileCheck %s
+// RUN: tf-opt --tf-device-index-selector %s | FileCheck %s
 
 // CHECK-LABEL: func @select
 func @select(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<i32>, tensor<f32>) {

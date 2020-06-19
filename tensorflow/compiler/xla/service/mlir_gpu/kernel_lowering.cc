@@ -552,7 +552,7 @@ class LowerToNVVMPass
     // TODO(csigg): Remove once we support replacing non-root ops.
     target.addLegalOp<::mlir::gpu::GPUModuleOp, ::mlir::gpu::ModuleEndOp,
                       ::mlir::gpu::YieldOp>();
-    if (failed(mlir::applyFullConversion(m, target, patterns, &converter))) {
+    if (failed(mlir::applyFullConversion(m, target, patterns))) {
       signalPassFailure();
     }
   }

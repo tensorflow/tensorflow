@@ -14,6 +14,10 @@ EMSCRIPTEN_LINKOPTS = [
     "-s TOTAL_MEMORY=134217728",
 ]
 
+exports_files([
+    "xnnpack_delegate.h",
+])
+
 cc_library(
     name = "xnnpack_delegate",
     srcs = ["xnnpack_delegate.cc"],

@@ -478,8 +478,12 @@ class PjRtBuffer {
 
   // Returns the buffer's value as an XLA Literal. If the value has previously
   // been prefetched to the host, then returns the prefetched version, otherwise
-  // copies the buffer to the host. Blocks until the value is ready.
-  StatusOr<std::shared_ptr<Literal>> ToLiteral();
+  // copies the buffer to the host. Blocks until the value is ready. If
+  // `discard_cached_copy` is true then buffer will no longer keep hold of a
+  // cached copy of the literal (i.e. The reference to the host value will be
+  // removed.)
+  StatusOr<std::shared_ptr<Literal>> ToLiteral(
+      bool discard_cached_copy = false);
 
   // Initiates a copy of the buffer to the host. Does not block waiting for
   // the transfer to complete. The value can be retrieved by a later call to

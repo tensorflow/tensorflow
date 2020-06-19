@@ -160,6 +160,8 @@ bool IsScalarInputSupported(int builtin_code) {
     case kTfLiteBuiltinLess:
     case kTfLiteBuiltinLessEqual:
     case kTfLiteBuiltinPow:
+    case kTfLiteBuiltinMaximum:
+    case kTfLiteBuiltinMinimum:
       return true;
     default:
       return false;

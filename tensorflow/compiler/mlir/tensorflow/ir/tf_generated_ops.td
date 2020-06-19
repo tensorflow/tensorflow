@@ -164,6 +164,81 @@ def TF_AddV2Op : TF_Op<"AddV2", [Commutative, NoSideEffect, ResultsBroadcastable
   let hasFolder = 1;
 }
 
+def TF_AdjustContrastv2Op : TF_Op<"AdjustContrastv2", [NoSideEffect]> {
+  let summary = "Adjust the contrast of one or more images.";
+
+  let description = [{
+`images` is a tensor of at least 3 dimensions.  The last 3 dimensions are
+interpreted as `[height, width, channels]`.  The other dimensions only
+represent a collection of images, such as `[batch, height, width, channels].`
+
+Contrast is adjusted independently for each channel of each image.
+
+For each channel, the Op first computes the mean of the image pixels in the
+channel and then adjusts each component of each pixel to
+`(x - mean) * contrast_factor + mean`.
+  }];
+
+  let arguments = (ins
+    TensorOf<[F16, F32]>:$images,
+    F32Tensor:$contrast_factor
+  );
+
+  let results = (outs
+    TensorOf<[F16, F32]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_AdjustHueOp : TF_Op<"AdjustHue", [NoSideEffect]> {
+  let summary = "Adjust the hue of one or more images.";
+
+  let description = [{
+`images` is a tensor of at least 3 dimensions.  The last dimension is
+interpreted as channels, and must be three.
+
+The input image is considered in the RGB colorspace. Conceptually, the RGB
+colors are first mapped into HSV. A delta is then applied all the hue values,
+and then remapped back to RGB colorspace.
+  }];
+
+  let arguments = (ins
+    TensorOf<[F16, F32]>:$images,
+    F32Tensor:$delta
+  );
+
+  let results = (outs
+    TensorOf<[F16, F32]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_AdjustSaturationOp : TF_Op<"AdjustSaturation", [NoSideEffect]> {
+  let summary = "Adjust the saturation of one or more images.";
+
+  let description = [{
+`images` is a tensor of at least 3 dimensions.  The last dimension is
+interpreted as channels, and must be three.
+
+The input image is considered in the RGB colorspace. Conceptually, the RGB
+colors are first mapped into HSV. A scale is then applied all the saturation
+values, and then remapped back to RGB colorspace.
+  }];
+
+  let arguments = (ins
+    TensorOf<[F16, F32]>:$images,
+    F32Tensor:$scale
+  );
+
+  let results = (outs
+    TensorOf<[F16, F32]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_AllOp : TF_Op<"All", [NoSideEffect]> {
   let summary = [{
 Computes the "logical and" of elements across dimensions of a tensor.
@@ -3866,6 +3941,28 @@ tf.math.greater_equal(x, y) ==> [True, False, True, True]
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_HSVToRGBOp : TF_Op<"HSVToRGB", [NoSideEffect]> {
+  let summary = "Convert one or more images from HSV to RGB.";
+
+  let description = [{
+Outputs a tensor of the same shape as the `images` tensor, containing the RGB
+value of the pixels. The output is only well defined if the value in `images`
+are in `[0,1]`.
+
+See `rgb_to_hsv` for a description of the HSV encoding.
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$images
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_HashTableV2Op : TF_Op<"HashTableV2", []> {
   let summary = "Creates a non-initialized hash table.";
 
@@ -5962,11 +6059,11 @@ I.e., \\(y = -x\\).
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$x
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64]>:$x
   );
 
   let results = (outs
-    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$y
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64]>:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -6733,6 +6830,41 @@ the dimension is padded with zeros.
   TF_DerivedResultTypeAttr Tcomplex = TF_DerivedResultTypeAttr<0>;
 }
 
+def TF_RGBToHSVOp : TF_Op<"RGBToHSV", [NoSideEffect]> {
+  let summary = "Converts one or more images from RGB to HSV.";
+
+  let description = [{
+Outputs a tensor of the same shape as the `images` tensor, containing the HSV
+value of the pixels. The output is only well defined if the value in `images`
+are in `[0,1]`.
+
+`output[..., 0]` contains hue, `output[..., 1]` contains saturation, and
+`output[..., 2]` contains value. All HSV values are in `[0,1]`. A hue of 0
+corresponds to pure red, hue 1/3 is pure green, and 2/3 is pure blue.
+
+Usage Example:
+
+>>> blue_image = tf.stack([
+...    tf.zeros([5,5]),
+...    tf.zeros([5,5]),
+...    tf.ones([5,5])],
+...    axis=-1)
+>>> blue_hsv_image = tf.image.rgb_to_hsv(blue_image)
+>>> blue_hsv_image[0,0].numpy()
+array([0.6666667, 1. , 1. ], dtype=float32)
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$images
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_RandomGammaGradOp : TF_Op<"RandomGammaGrad", [NoSideEffect, ResultsBroadcastableShape]>,
                            WithBroadcastableBinOpBuilder {
   let summary = [{
@@ -7228,6 +7360,27 @@ Input images can be of different types but output images are always float.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_ResizeBilinearGradOp : TF_Op<"ResizeBilinearGrad", [NoSideEffect]> {
+  let summary = "Computes the gradient of bilinear interpolation.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    F32Tensor:$grads,
+    TF_FpTensor:$original_image,
+
+    DefaultValuedAttr<BoolAttr, "false">:$align_corners,
+    DefaultValuedAttr<BoolAttr, "false">:$half_pixel_centers
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
 }
 
 def TF_ResizeNearestNeighborOp : TF_Op<"ResizeNearestNeighbor", [NoSideEffect]> {

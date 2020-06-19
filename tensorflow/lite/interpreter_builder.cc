@@ -545,17 +545,7 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
 
 TfLiteStatus InterpreterBuilder::ApplyDelegates(Interpreter* interpreter,
                                                 int num_threads) {
-  // First, apply XNNPACK delegate if applicable.
-  if (num_fp32_tensors_ > 0) {
-    // The execution will fall back to default implementation if the XNNPACK
-    // delegate fails to be applied. Therefore, we ignore the return status
-    // here and let it fall through the rest of the code.
-    if (auto xnnpack_delegate = MaybeCreateXNNPACKDelegate(num_threads)) {
-      interpreter->ModifyGraphWithDelegate(std::move(xnnpack_delegate));
-    }
-  }
-
-  // Secondly, apply Flex delegate if applicable.
+  // Apply Flex delegate if applicable.
   if (has_flex_op_) {
     if (auto flex_delegate = AcquireFlexDelegate()) {
       return interpreter->ModifyGraphWithDelegate(std::move(flex_delegate));
@@ -670,6 +660,11 @@ TfLiteStatus InterpreterBuilder::operator()(
       }
     }
     modified_subgraph->SetVariables(std::move(variables));
+  }
+
+  if (num_fp32_tensors_ > 0) {
+    (*interpreter)->lazy_delegate_provider_ =
+        MaybeCreateXNNPACKDelegate(num_threads);
   }
 
   if (ApplyDelegates(interpreter->get(), num_threads) != kTfLiteOk)

@@ -1564,16 +1564,12 @@ XlaOp XlaBuilder::CustomCall(
     const Shape& shape, const string& opaque,
     absl::optional<absl::Span<const Shape>> operand_shapes_with_layout) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     if (absl::StartsWith(call_target_name, "$")) {
       return InvalidArgument(
           "Invalid custom_call_target \"%s\": Call targets that start with '$' "
           "are reserved for internal use.",
           call_target_name);
     }
-    *instr.mutable_shape() = shape.ToProto();
-    instr.set_custom_call_target(call_target_name);
-    instr.set_backend_config(opaque);
     if (operand_shapes_with_layout.has_value()) {
       if (!LayoutUtil::HasLayout(shape)) {
         return InvalidArgument(
@@ -1586,7 +1582,6 @@ XlaOp XlaBuilder::CustomCall(
             "with constrained layout; given %d shapes, expected %d",
             operand_shapes_with_layout->size(), operands.size());
       }
-      instr.set_constrain_layout(true);
       int64 operand_num = 0;
       for (const Shape& operand_shape : *operand_shapes_with_layout) {
         if (!LayoutUtil::HasLayout(operand_shape)) {
@@ -1595,12 +1590,29 @@ XlaOp XlaBuilder::CustomCall(
               "constrained layout.",
               operand_num);
         }
-        *instr.add_operand_shapes_with_layout() = operand_shape.ToProto();
         ++operand_num;
       }
     }
-    return AddInstruction(std::move(instr), HloOpcode::kCustomCall, operands);
+    return CustomCallInternal(call_target_name, operands, shape, opaque,
+                              operand_shapes_with_layout);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::CustomCallInternal(
+    const string& call_target_name, absl::Span<const XlaOp> operands,
+    const Shape& shape, const string& opaque,
+    absl::optional<absl::Span<const Shape>> operand_shapes_with_layout) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  instr.set_custom_call_target(call_target_name);
+  instr.set_backend_config(opaque);
+  if (operand_shapes_with_layout.has_value()) {
+    instr.set_constrain_layout(true);
+    for (const Shape& operand_shape : *operand_shapes_with_layout) {
+      *instr.add_operand_shapes_with_layout() = operand_shape.ToProto();
+    }
+  }
+  return AddInstruction(std::move(instr), HloOpcode::kCustomCall, operands);
 }
 
 XlaOp XlaBuilder::CustomCall(

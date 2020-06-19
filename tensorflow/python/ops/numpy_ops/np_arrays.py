@@ -20,138 +20,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numbers
 import numpy as np
 import six
 
 from tensorflow.python.framework import composite_tensor
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.numpy_ops import np_dtypes
-from tensorflow.python.util import nest
-
-
-_SLICE_TYPE_ERROR = (
-    'Only integers, slices (`:`), ellipsis (`...`), '
-    'tf.newaxis (`None`) and scalar tf.int32/tf.int64 tensors are valid '
-    'indices')
-
-_SUPPORTED_SLICE_DTYPES = (dtypes.int32, dtypes.int32_ref, dtypes.int64,
-                           dtypes.int64_ref)
-
-
-def _check_index(idx):
-  """Check if a given value is a valid index into a tensor."""
-  if isinstance(idx, (numbers.Integral, tensor_shape.Dimension)):
-    return
-
-  # Optimistic check. Assumptions:
-  # * any object with a dtype is supported
-  # * any object with a dtype has a sizeable shape attribute.
-  dtype = getattr(idx, 'dtype', None)
-  if (dtype is None or dtypes.as_dtype(dtype) not in _SUPPORTED_SLICE_DTYPES or
-      idx.shape and len(idx.shape) == 1):
-    # TODO(slebedev): IndexError seems more appropriate here, but it
-    # will break `_slice_helper` contract.
-    raise TypeError(_SLICE_TYPE_ERROR + ', got {!r}'.format(idx))
-
-
-def _is_undefined_dimension(d):
-  return isinstance(d, tensor_shape.Dimension) and d.value is None
-
-
-def _slice_helper(tensor, slice_spec, var=None):
-  """Copied from array_ops._slice_helper, will be merged back later."""
-  if isinstance(slice_spec, bool) or \
-  (isinstance(slice_spec, ops.Tensor) and slice_spec.dtype == dtypes.bool) or \
-  (isinstance(slice_spec, np.ndarray) and slice_spec.dtype == bool):
-    return array_ops.boolean_mask(tensor=tensor, mask=slice_spec)
-
-  if not isinstance(slice_spec, (list, tuple)):
-    slice_spec = [slice_spec]
-
-  begin, end, strides = [], [], []
-  index = 0
-
-  new_axis_mask, shrink_axis_mask = 0, 0
-  begin_mask, end_mask = 0, 0
-  ellipsis_mask = 0
-  for s in slice_spec:
-    if isinstance(s, slice):
-      if s.start is not None and not _is_undefined_dimension(s.start):
-        _check_index(s.start)
-        begin.append(s.start)
-      else:
-        begin.append(0)
-        begin_mask |= (1 << index)
-      if s.stop is not None and not _is_undefined_dimension(s.stop):
-        _check_index(s.stop)
-        end.append(s.stop)
-      else:
-        end.append(0)
-        end_mask |= (1 << index)
-      if s.step is not None and not _is_undefined_dimension(s.step):
-        _check_index(s.step)
-        strides.append(s.step)
-      else:
-        strides.append(1)
-    elif s is Ellipsis:
-      begin.append(0)
-      end.append(0)
-      strides.append(1)
-      ellipsis_mask |= (1 << index)
-    elif s is array_ops.newaxis:
-      begin.append(0)
-      end.append(0)
-      strides.append(1)
-      new_axis_mask |= (1 << index)
-    else:
-      _check_index(s)
-      begin.append(s)
-      end.append(s + 1)
-      strides.append(1)
-      shrink_axis_mask |= (1 << index)
-    index += 1
-
-  # stack possibly involves no tensors, so we must use op_scope correct graph.
-  with ops.name_scope(
-      None,
-      'strided_slice', [tensor] + begin + end + strides,
-      skip_on_eager=False) as name:
-    if begin:
-      packed_begin, packed_end, packed_strides = (array_ops.stack(begin),
-                                                  array_ops.stack(end),
-                                                  array_ops.stack(strides))
-      if (packed_begin.dtype == dtypes.int64 or
-          packed_end.dtype == dtypes.int64 or
-          packed_strides.dtype == dtypes.int64):
-        if packed_begin.dtype != dtypes.int64:
-          packed_begin = math_ops.cast(packed_begin, dtypes.int64)
-        if packed_end.dtype != dtypes.int64:
-          packed_end = math_ops.cast(packed_end, dtypes.int64)
-        if packed_strides.dtype != dtypes.int64:
-          packed_strides = math_ops.cast(packed_strides, dtypes.int64)
-    else:
-      var_empty = constant_op.constant([], dtype=dtypes.int32)
-      packed_begin = packed_end = packed_strides = var_empty
-    return array_ops.strided_slice(
-        tensor,
-        packed_begin,
-        packed_end,
-        packed_strides,
-        begin_mask=begin_mask,
-        end_mask=end_mask,
-        shrink_axis_mask=shrink_axis_mask,
-        new_axis_mask=new_axis_mask,
-        ellipsis_mask=ellipsis_mask,
-        var=var,
-        name=name)
 
 
 def convert_to_tensor(value, dtype=None, dtype_hint=None):
@@ -360,22 +239,6 @@ class ndarray(composite_tensor.CompositeTensor):  # pylint: disable=invalid-name
 
   def __bool__(self):
     return self.__nonzero__()
-
-  def __getitem__(self, slice_spec):
-    # TODO(srbs): Need to support better indexing.
-    def _gettensor(x):
-      if isinstance(x, ndarray):
-        x = x.data
-      if isinstance(x, ops.Tensor) and x.dtype not in (
-          dtypes.int32, dtypes.int64):
-        # Currently _slice_helper will only work with int32/int64 tensors, but
-        # type inference by numpy can create {u,}int{8,16}, so just cast.
-        x = math_ops.cast(x, dtypes.int32)
-      return x
-    slice_spec = nest.map_structure(_gettensor, slice_spec)
-
-    result_t = _slice_helper(self.data, slice_spec)
-    return tensor_to_ndarray(result_t)
 
   def __iter__(self):
     if not isinstance(self.data, ops.EagerTensor):
