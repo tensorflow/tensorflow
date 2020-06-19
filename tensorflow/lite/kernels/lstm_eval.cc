@@ -942,10 +942,10 @@ inline void LstmStepHybrid(
 //   effective_proj_scale_b                  - optional
 //
 // Gate biases of size 'n_cell':
-//   input_bias_ptr                 - optional
-//   forget_bias_ptr
+//   input_gate_bias_ptr                 - optional
+//   forget_gate_bias_ptr
 //   cell_gate_bias_ptr
-//   output_bias_ptr
+//   output_gate_bias_ptr
 //
 // Layer norm coefficients of size 'n_cell', representing diagonal matrices.
 //   layer_norm_input_weight_ptr    - optional
@@ -1031,8 +1031,8 @@ inline void LstmStepInteger(
     int32_t layer_norm_cell_scale_b,
     const int16_t* layer_norm_output_weight_ptr,
     int32_t layer_norm_output_scale_a, int32_t layer_norm_output_scale_b,
-    const int32_t* input_bias_ptr, const int32_t* forget_bias_ptr,
-    const int32_t* cell_gate_bias_ptr, const int32_t* output_bias_ptr,
+    const int32_t* input_gate_bias_ptr, const int32_t* forget_gate_bias_ptr,
+    const int32_t* cell_gate_bias_ptr, const int32_t* output_gate_bias_ptr,
     int16_t quantized_cell_clip, int8_t quantized_proj_clip, int32_t cell_scale,
     int32_t input_variance_guard, int32_t forget_variance_guard,
     int32_t cell_variance_guard, int32_t output_variance_guard,
@@ -1098,7 +1098,7 @@ inline void LstmStepInteger(
 
   if (use_layer_norm) {
     tensor_utils::ApplyLayerNorm(
-        scratch_1_ptr, layer_norm_forget_weight_ptr, forget_bias_ptr,
+        scratch_1_ptr, layer_norm_forget_weight_ptr, forget_gate_bias_ptr,
         layer_norm_forget_scale_a, layer_norm_forget_scale_b,
         forget_variance_guard, n_batch, n_cell, scratch_1_ptr);
   }
@@ -1149,7 +1149,7 @@ inline void LstmStepInteger(
 
     if (use_layer_norm) {
       tensor_utils::ApplyLayerNorm(
-          scratch_0_ptr, layer_norm_input_weight_ptr, input_bias_ptr,
+          scratch_0_ptr, layer_norm_input_weight_ptr, input_gate_bias_ptr,
           layer_norm_input_scale_a, layer_norm_input_scale_b,
           input_variance_guard, n_batch, n_cell, scratch_0_ptr);
     }
@@ -1190,7 +1190,7 @@ inline void LstmStepInteger(
 
   if (use_layer_norm) {
     tensor_utils::ApplyLayerNorm(
-        scratch_3_ptr, layer_norm_output_weight_ptr, output_bias_ptr,
+        scratch_3_ptr, layer_norm_output_weight_ptr, output_gate_bias_ptr,
         layer_norm_output_scale_a, layer_norm_output_scale_b,
         output_variance_guard, n_batch, n_cell, scratch_3_ptr);
   }
@@ -1268,10 +1268,10 @@ inline void LstmStepInteger(
 //   effective_proj_scale_b                  - optional
 //
 // Gate biases of size 'n_cell':
-//   input_bias_ptr                 - optional
-//   forget_bias_ptr
+//   input_gate_bias_ptr                 - optional
+//   forget_gate_bias_ptr
 //   cell_gate_bias_ptr
-//   output_bias_ptr
+//   output_gate_bias_ptr
 //
 // Layer norm coefficients of size 'n_cell', representing diagonal matrices.
 //   layer_norm_input_weight_ptr    - optional
@@ -1358,8 +1358,8 @@ void LstmStepInteger(
     int32_t layer_norm_cell_scale_b,
     const int16_t* layer_norm_output_weight_ptr,
     int32_t layer_norm_output_scale_a, int32_t layer_norm_output_scale_b,
-    const int32_t* input_bias_ptr, const int32_t* forget_bias_ptr,
-    const int32_t* cell_gate_bias_ptr, const int32_t* output_bias_ptr,
+    const int32_t* input_gate_bias_ptr, const int32_t* forget_gate_bias_ptr,
+    const int32_t* cell_gate_bias_ptr, const int32_t* output_gate_bias_ptr,
     const int32_t* proj_bias_ptr, const TfLiteLSTMParams* params,
     const int32_t* intermediate_scale_a, const int32_t* intermediate_scale_b,
     const int32_t* intermediate_zp, int16_t quantized_cell_clip,
@@ -1391,7 +1391,8 @@ void LstmStepInteger(
   // Forget gate layer norm.
   tensor_utils::ApplyLayerNormFloat(
       scratch2, layer_norm_forget_weight_ptr, layer_norm_forget_scale_a,
-      layer_norm_forget_scale_b, forget_bias_ptr, n_batch, n_cell, scratch2);
+      layer_norm_forget_scale_b, forget_gate_bias_ptr, n_batch, n_cell,
+      scratch2);
 
   // Forget gate sigmoid.
   tensor_utils::ApplySigmoidFloat(scratch2, n_batch, n_cell, scratch2);
@@ -1444,7 +1445,8 @@ void LstmStepInteger(
   // Output gate with layer norm.
   tensor_utils::ApplyLayerNormFloat(
       scratch4, layer_norm_output_weight_ptr, layer_norm_output_scale_a,
-      layer_norm_output_scale_b, output_bias_ptr, n_batch, n_cell, scratch4);
+      layer_norm_output_scale_b, output_gate_bias_ptr, n_batch, n_cell,
+      scratch4);
 
   // Output gate sigmoid.
   tensor_utils::ApplySigmoidFloat(scratch4, n_batch, n_cell, scratch4);
@@ -1512,7 +1514,7 @@ TfLiteStatus EvalFloat(
     const TfLiteTensor* aux_input_to_cell_weights,
     const TfLiteTensor* aux_input_to_output_weights,
     const TfLiteTensor* input_gate_bias, const TfLiteTensor* forget_gate_bias,
-    const TfLiteTensor* cell_bias, const TfLiteTensor* output_gate_bias,
+    const TfLiteTensor* cell_gate_bias, const TfLiteTensor* output_gate_bias,
     const TfLiteTensor* projection_weights, const TfLiteTensor* projection_bias,
     const TfLiteLSTMParams* params, bool forward_sequence, bool time_major,
     int output_offset, TfLiteTensor* scratch_buffer, TfLiteTensor* output_state,
@@ -1595,7 +1597,7 @@ TfLiteStatus EvalFloat(
           GetTensorData<float>(output_layer_norm_coefficients),
           GetTensorData<float>(input_gate_bias),
           GetTensorData<float>(forget_gate_bias),
-          GetTensorData<float>(cell_bias),
+          GetTensorData<float>(cell_gate_bias),
           GetTensorData<float>(output_gate_bias),
           GetTensorData<float>(projection_weights),
           GetTensorData<float>(projection_bias), params, n_batch, n_cell,
@@ -1656,7 +1658,7 @@ TfLiteStatus EvalFloat(
             GetTensorData<float>(output_layer_norm_coefficients),
             GetTensorData<float>(input_gate_bias),
             GetTensorData<float>(forget_gate_bias),
-            GetTensorData<float>(cell_bias),
+            GetTensorData<float>(cell_gate_bias),
             GetTensorData<float>(output_gate_bias),
             GetTensorData<float>(projection_weights),
             GetTensorData<float>(projection_bias), params, /*n_batch=*/1,
@@ -1693,7 +1695,7 @@ TfLiteStatus EvalHybrid(
     const TfLiteTensor* aux_input_to_cell_weights,
     const TfLiteTensor* aux_input_to_output_weights,
     const TfLiteTensor* input_gate_bias, const TfLiteTensor* forget_gate_bias,
-    const TfLiteTensor* cell_bias, const TfLiteTensor* output_gate_bias,
+    const TfLiteTensor* cell_gate_bias, const TfLiteTensor* output_gate_bias,
     const TfLiteTensor* projection_weights, const TfLiteTensor* projection_bias,
     const TfLiteLSTMParams* params, bool forward_sequence, bool time_major,
     int output_offset, TfLiteTensor* scratch_buffer,
@@ -1802,7 +1804,7 @@ TfLiteStatus EvalHybrid(
           GetTensorData<float>(output_layer_norm_coefficients),
           GetTensorData<float>(input_gate_bias),
           GetTensorData<float>(forget_gate_bias),
-          GetTensorData<float>(cell_bias),
+          GetTensorData<float>(cell_gate_bias),
           GetTensorData<float>(output_gate_bias),
           GetTensorData<int8_t>(projection_weights),
           GetTensorScale(projection_weights),
@@ -1888,7 +1890,7 @@ TfLiteStatus EvalHybrid(
             GetTensorData<float>(output_layer_norm_coefficients),
             GetTensorData<float>(input_gate_bias),
             GetTensorData<float>(forget_gate_bias),
-            GetTensorData<float>(cell_bias),
+            GetTensorData<float>(cell_gate_bias),
             GetTensorData<float>(output_gate_bias),
             GetTensorData<int8_t>(projection_weights),
             GetTensorScale(projection_weights),
@@ -1930,7 +1932,7 @@ TfLiteStatus EvalInteger8x8_16(
     const TfLiteTensor* cell_layer_norm_coefficients,
     const TfLiteTensor* output_layer_norm_coefficients,
     const TfLiteTensor* input_gate_bias, const TfLiteTensor* forget_gate_bias,
-    const TfLiteTensor* cell_bias, const TfLiteTensor* output_gate_bias,
+    const TfLiteTensor* cell_gate_bias, const TfLiteTensor* output_gate_bias,
     const TfLiteTensor* projection_weights, const TfLiteTensor* projection_bias,
     const TfLiteLSTMParams* params,
     const lstm_eval::IntegerLstmParameter* integer_lstm_param,
@@ -2020,7 +2022,7 @@ TfLiteStatus EvalInteger8x8_16(
         integer_lstm_param->layer_norm_output_scale_b,
         GetTensorData<int32_t>(input_gate_bias),
         GetTensorData<int32_t>(forget_gate_bias),
-        GetTensorData<int32_t>(cell_bias),
+        GetTensorData<int32_t>(cell_gate_bias),
         GetTensorData<int32_t>(output_gate_bias),
         integer_lstm_param->quantized_cell_clip,
         integer_lstm_param->quantized_proj_clip, integer_lstm_param->cell_scale,
@@ -2065,7 +2067,7 @@ TfLiteStatus EvalInteger8x8_8(
     const TfLiteTensor* cell_layer_norm_coefficients,
     const TfLiteTensor* output_layer_norm_coefficients,
     const TfLiteTensor* input_gate_bias, const TfLiteTensor* forget_gate_bias,
-    const TfLiteTensor* cell_bias, const TfLiteTensor* output_gate_bias,
+    const TfLiteTensor* cell_gate_bias, const TfLiteTensor* output_gate_bias,
     const TfLiteTensor* projection_weights, const TfLiteTensor* projection_bias,
     const TfLiteLSTMParams* params, TfLiteTensor* output_state,
     TfLiteTensor* cell_state, TfLiteTensor* output,
@@ -2120,10 +2122,12 @@ TfLiteStatus EvalInteger8x8_8(
       GetTensorData<int16_t>(cell_layer_norm_coefficients);
   const int16_t* layer_norm_output_weight_ptr =
       GetTensorData<int16_t>(output_layer_norm_coefficients);
-  const int32_t* input_bias_ptr = GetTensorData<int32_t>(input_gate_bias);
-  const int32_t* forget_bias_ptr = GetTensorData<int32_t>(forget_gate_bias);
-  const int32_t* cell_gate_bias_ptr = GetTensorData<int32_t>(cell_bias);
-  const int32_t* output_bias_ptr = GetTensorData<int32_t>(output_gate_bias);
+  const int32_t* input_gate_bias_ptr = GetTensorData<int32_t>(input_gate_bias);
+  const int32_t* forget_gate_bias_ptr =
+      GetTensorData<int32_t>(forget_gate_bias);
+  const int32_t* cell_gate_bias_ptr = GetTensorData<int32_t>(cell_gate_bias);
+  const int32_t* output_gate_bias_ptr =
+      GetTensorData<int32_t>(output_gate_bias);
   const int32_t* proj_bias_ptr = GetTensorData<int32_t>(projection_bias);
   int16_t* cell_ptr = GetTensorData<int16_t>(cell_state);
   int8_t* output_state_ptr = GetTensorData<int8_t>(output_state);
@@ -2209,8 +2213,8 @@ TfLiteStatus EvalInteger8x8_8(
         integer_lstm_param->layer_norm_output_scale_a,
         integer_lstm_param->layer_norm_output_scale_b,
 
-        input_bias_ptr, forget_bias_ptr, cell_gate_bias_ptr, output_bias_ptr,
-        proj_bias_ptr,
+        input_gate_bias_ptr, forget_gate_bias_ptr, cell_gate_bias_ptr,
+        output_gate_bias_ptr, proj_bias_ptr,
 
         params, integer_lstm_param->intermediate_scale_a,
         integer_lstm_param->intermediate_scale_b,

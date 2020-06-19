@@ -179,10 +179,10 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
   TF_LITE_ENSURE_EQ(context, forget_gate_bias->dims->size, 1);
   TF_LITE_ENSURE_EQ(context, forget_gate_bias->dims->data[0], n_cell);
 
-  const TfLiteTensor* cell_bias =
+  const TfLiteTensor* cell_gate_bias =
       GetInput(context, node, lstm::full::kCellGateBiasTensor);
-  TF_LITE_ENSURE_EQ(context, cell_bias->dims->size, 1);
-  TF_LITE_ENSURE_EQ(context, cell_bias->dims->data[0], n_cell);
+  TF_LITE_ENSURE_EQ(context, cell_gate_bias->dims->size, 1);
+  TF_LITE_ENSURE_EQ(context, cell_gate_bias->dims->data[0], n_cell);
 
   const TfLiteTensor* output_gate_bias =
       GetInput(context, node, lstm::full::kOutputGateBiasTensor);
@@ -546,7 +546,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       GetOptionalInputTensor(context, node, lstm::full::kInputGateBiasTensor);
   const TfLiteTensor* forget_gate_bias =
       GetInput(context, node, lstm::full::kForgetGateBiasTensor);
-  const TfLiteTensor* cell_bias =
+  const TfLiteTensor* cell_gate_bias =
       GetInput(context, node, lstm::full::kCellGateBiasTensor);
   const TfLiteTensor* output_gate_bias =
       GetInput(context, node, lstm::full::kOutputGateBiasTensor);
@@ -611,8 +611,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           /*aux_input_to_forget_weights=*/nullptr,
           /*aux_input_to_cell_weights=*/nullptr,
           /*aux_input_to_output_weights=*/nullptr, input_gate_bias,
-          forget_gate_bias, cell_bias, output_gate_bias, projection_weights,
-          projection_bias, &lstm_params, /*forward_sequence=*/true, time_major,
+          forget_gate_bias, cell_gate_bias, output_gate_bias,
+          projection_weights, projection_bias, &lstm_params,
+          /*forward_sequence=*/true, time_major,
           /*output_offset=*/0, scratch_buffer, output_state, cell_state,
           output);
     }
@@ -648,8 +649,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           /*aux_input_to_forget_weights=*/nullptr,
           /*aux_input_to_cell_weights=*/nullptr,
           /*aux_input_to_output_weights=*/nullptr, input_gate_bias,
-          forget_gate_bias, cell_bias, output_gate_bias, projection_weights,
-          projection_bias, &lstm_params, /*forward_sequence=*/true, time_major,
+          forget_gate_bias, cell_gate_bias, output_gate_bias,
+          projection_weights, projection_bias, &lstm_params,
+          /*forward_sequence=*/true, time_major,
           /*output_offset=*/0, scratch_buffer, scaling_factors,
           prod_scaling_factors, recovered_cell_weights, input_quantized,
           /*aux_input_quantized=*/nullptr, output_state_quantized,

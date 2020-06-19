@@ -318,11 +318,11 @@ TfLiteStatus CheckLstmTensorDimensionsAndTypes(
   TF_LITE_ENSURE_EQ(context, forget_gate_bias->dims->data[0], n_cell);
   TF_LITE_ENSURE_TYPES_EQ(context, forget_gate_bias->type, kTfLiteFloat32);
 
-  const TfLiteTensor* cell_bias =
+  const TfLiteTensor* cell_gate_bias =
       GetInput(context, node, cell_gate_bias_tensor);
-  TF_LITE_ENSURE_EQ(context, cell_bias->dims->size, 1);
-  TF_LITE_ENSURE_EQ(context, cell_bias->dims->data[0], n_cell);
-  TF_LITE_ENSURE_EQ(context, cell_bias->type, kTfLiteFloat32);
+  TF_LITE_ENSURE_EQ(context, cell_gate_bias->dims->size, 1);
+  TF_LITE_ENSURE_EQ(context, cell_gate_bias->dims->data[0], n_cell);
+  TF_LITE_ENSURE_EQ(context, cell_gate_bias->type, kTfLiteFloat32);
 
   const TfLiteTensor* output_gate_bias =
       GetInput(context, node, output_gate_bias_tensor);
@@ -886,7 +886,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       GetOptionalInputTensor(context, node, kFwInputGateBiasTensor);
   const TfLiteTensor* fw_forget_gate_bias =
       GetInput(context, node, kFwForgetGateBiasTensor);
-  const TfLiteTensor* fw_cell_bias =
+  const TfLiteTensor* fw_cell_gate_bias =
       GetInput(context, node, kFwCellGateBiasTensor);
   const TfLiteTensor* fw_output_gate_bias =
       GetInput(context, node, kFwOutputGateBiasTensor);
@@ -934,7 +934,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       GetOptionalInputTensor(context, node, kBwInputGateBiasTensor);
   const TfLiteTensor* bw_forget_gate_bias =
       GetInput(context, node, kBwForgetGateBiasTensor);
-  const TfLiteTensor* bw_cell_bias =
+  const TfLiteTensor* bw_cell_gate_bias =
       GetInput(context, node, kBwCellGateBiasTensor);
   const TfLiteTensor* bw_output_gate_bias =
       GetInput(context, node, kBwOutputGateBiasTensor);
@@ -1029,7 +1029,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           /*output_layer_norm_coefficients=*/nullptr, real_aux_input,
           fw_aux_input_to_input_weights, fw_aux_input_to_forget_weights,
           fw_aux_input_to_cell_weights, fw_aux_input_to_output_weights,
-          fw_input_gate_bias, fw_forget_gate_bias, fw_cell_bias,
+          fw_input_gate_bias, fw_forget_gate_bias, fw_cell_gate_bias,
           fw_output_gate_bias, fw_projection_weights, fw_projection_bias,
           &lstm_params,
           /*forward_sequence=*/true, time_major, /*output_offset=*/0,
@@ -1049,7 +1049,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           /*output_layer_norm_coefficients=*/nullptr, real_aux_input,
           bw_aux_input_to_input_weights, bw_aux_input_to_forget_weights,
           bw_aux_input_to_cell_weights, bw_aux_input_to_output_weights,
-          bw_input_gate_bias, bw_forget_gate_bias, bw_cell_bias,
+          bw_input_gate_bias, bw_forget_gate_bias, bw_cell_gate_bias,
           bw_output_gate_bias, bw_projection_weights, bw_projection_bias,
           &lstm_params,
           /*forward_sequence=*/false, time_major, bw_output_offset,
@@ -1099,7 +1099,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           /*output_layer_norm_coefficients=*/nullptr, real_aux_input,
           fw_aux_input_to_input_weights, fw_aux_input_to_forget_weights,
           fw_aux_input_to_cell_weights, fw_aux_input_to_output_weights,
-          fw_input_gate_bias, fw_forget_gate_bias, fw_cell_bias,
+          fw_input_gate_bias, fw_forget_gate_bias, fw_cell_gate_bias,
           fw_output_gate_bias, fw_projection_weights, fw_projection_bias,
           &lstm_params,
           /*forward_sequence=*/true, /*time_major=*/true, /*output_offset=*/0,
@@ -1125,7 +1125,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           /*output_layer_norm_coefficients=*/nullptr, real_aux_input,
           bw_aux_input_to_input_weights, bw_aux_input_to_forget_weights,
           bw_aux_input_to_cell_weights, bw_aux_input_to_output_weights,
-          bw_input_gate_bias, bw_forget_gate_bias, bw_cell_bias,
+          bw_input_gate_bias, bw_forget_gate_bias, bw_cell_gate_bias,
           bw_output_gate_bias, bw_projection_weights, bw_projection_bias,
           &lstm_params,
           /*forward_sequence=*/false, /*time_major=*/true, bw_output_offset,
