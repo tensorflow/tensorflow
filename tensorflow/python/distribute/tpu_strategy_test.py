@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context
@@ -363,24 +362,6 @@ class TPUStrategyTest(test.TestCase):
     self.assertAllEqual(
         expected_result,
         strategy.experimental_local_results(train_step(next(input_iterator))))
-
-  def test_keras_metric_outside_strategy_scope_per_replica(self):
-    strategy = get_tpu_strategy()
-    metric = keras.metrics.Mean("test_metric", dtype=dtypes.float32)
-
-    dataset = dataset_ops.Dataset.range(strategy.num_replicas_in_sync *
-                                        2).batch(2)
-    dataset = strategy.experimental_distribute_dataset(dataset)
-
-    @def_function.function
-    def step_fn(i):
-      metric.update_state(i)
-
-    with self.assertRaisesRegex(ValueError, "Trying to run metric.update_state "
-                                            "in replica context"):
-      with strategy.scope():
-        for i in dataset:
-          strategy.run(step_fn, args=(i,))
 
   # TODO(b/145574622): Remove this test once it is re-enabled in values_test.py.
   def test_all_reduce_on_sync_on_read_variable(self):
