@@ -233,28 +233,71 @@ def _is_compatible_param_kind(a, b):
   return relax(a) == relax(b)
 
 
-def np_doc(np_fun, np_fun_name=None):
-  """Attachs numpy docstring to a function.
+def _prepare_np_fun_name_and_fun(np_fun_name, np_fun):
+  """Mutually propagates information between `np_fun_name` and `np_fun`.
+
+  If one is None and the other is not, we'll try to make the former not None in
+  a best effort.
 
   Args:
-    np_fun: the numpy function whose docstring will be used.
-    np_fun_name: optional name for the np_fun symbol. At least one of np_fun or
+    np_fun_name: name for the np_fun symbol. At least one of np_fun or
       np_fun_name shoud be set.
+    np_fun: the numpy function whose docstring will be used.
 
   Returns:
-    A function decorator that attaches the docstring from `np_fun` to the
-    decorated function.
+    Processed `np_fun_name` and `np_fun`.
   """
+  if np_fun_name is not None:
+    assert isinstance(np_fun_name, str)
+  if np_fun is not None:
+    assert not isinstance(np_fun, str)
   if np_fun is None:
     assert np_fun_name is not None
     try:
       np_fun = getattr(np, str(np_fun_name))
     except AttributeError:
       np_fun = None
-  np_sig = _np_signature(np_fun)
   if np_fun_name is None:
     assert np_fun is not None
     np_fun_name = np_fun.__name__
+  return np_fun_name, np_fun
+
+
+def _np_doc_helper(f, np_f, np_fun_name=None, unsupported_params=None):
+  """Helper to get docs."""
+  assert np_f or np_fun_name
+  if not np_fun_name:
+    np_fun_name = np_f.__name__
+  doc = 'TensorFlow variant of `numpy.%s`.\n\n' % np_fun_name
+  if unsupported_params:
+    doc += 'Unsupported arguments: ' + ', '.join(
+        '`' + name + '`' for name in unsupported_params) + '.\n\n'
+  if _has_docstring(f):
+    doc += f.__doc__
+    doc = _add_blank_line(doc)
+  if _has_docstring(np_f):
+    doc += 'Documentation for `numpy.%s`:\n\n' % np_f.__name__
+    # TODO(wangpeng): It looks like code snippets in numpy doc don't work
+    # correctly with doctest. Fix that and remove the reformatting of the np_f
+    # comment.
+    doc += np_f.__doc__.replace('>>>', '>')
+  return doc
+
+
+def np_doc(np_fun_name, np_fun=None):
+  """Attachs numpy docstring to a function.
+
+  Args:
+    np_fun_name: name for the np_fun symbol. At least one of np_fun or
+      np_fun_name shoud be set.
+    np_fun: (optional) the numpy function whose docstring will be used.
+
+  Returns:
+    A function decorator that attaches the docstring from `np_fun` to the
+    decorated function.
+  """
+  np_fun_name, np_fun = _prepare_np_fun_name_and_fun(np_fun_name, np_fun)
+  np_sig = _np_signature(np_fun)
 
   def decorator(f):
     """The decorator."""
@@ -294,44 +337,24 @@ def np_doc(np_fun, np_fun_name=None):
   return decorator
 
 
-def _np_doc_helper(f, np_f, np_fun_name=None, unsupported_params=None):
-  """Helper to get docs."""
-  if not unsupported_params and not _has_docstring(f) and _has_docstring(np_f):
-    # TODO(wangpeng): It looks like code snippets in numpy doc don't work
-    # correctly with doctest. Fix that and remove the reformatting of the np_f
-    # comment, here and below.
-    return np_f.__doc__.replace('>>>', '>')
-  assert np_f or np_fun_name
-  if not np_fun_name:
-    np_fun_name = np_f.__name__
-  doc = 'TensorFlow variant of `numpy.%s`.\n\n' % np_fun_name
-  if unsupported_params:
-    doc += 'Unsupported arguments: ' + ', '.join(
-        '`' + name + '`' for name in unsupported_params) + '.\n\n'
-  if _has_docstring(f):
-    doc += f.__doc__
-    doc = _add_blank_line(doc)
-  if _has_docstring(np_f):
-    doc += 'Documentation for `numpy.%s`:\n\n' % np_f.__name__
-    doc += np_f.__doc__.replace('>>>', '>')
-  return doc
-
-
-def np_doc_only(np_f):
+def np_doc_only(np_fun_name, np_fun=None):
   """Attachs numpy docstring to a function.
 
   This differs from np_doc in that it doesn't check for a match in signature.
 
   Args:
-    np_f: the numpy function whose docstring will be used.
+    np_fun_name: name for the np_fun symbol. At least one of np_fun or
+      np_fun_name shoud be set.
+    np_fun: (optional) the numpy function whose docstring will be used.
 
   Returns:
-    A function decorator that attaches the docstring from `np_f` to the
+    A function decorator that attaches the docstring from `np_fun` to the
     decorated function.
   """
+  np_fun_name, np_fun = _prepare_np_fun_name_and_fun(np_fun_name, np_fun)
 
   def decorator(f):
-    f.__doc__ = _np_doc_helper(f, np_f)
+    f.__doc__ = _np_doc_helper(f, np_fun, np_fun_name=np_fun_name)
     return f
 
   return decorator
