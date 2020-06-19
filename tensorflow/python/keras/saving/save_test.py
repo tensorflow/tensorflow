@@ -119,6 +119,20 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
       save.save_model(self.model, path, save_format='tf')
       save.load_model(path)
 
+  @test_util.run_v2_only
+  def test_save_load_weights_tf_pathlib(self):
+    if sys.version_info >= (3, 6):
+      path = pathlib.Path(self.get_temp_dir()) / 'model'
+      self.model.save_weights(path, save_format='tf')
+      self.model.load_weights(path)
+
+  @test_util.run_v2_only
+  def test_save_load_weights_hdf5_pathlib(self):
+    if sys.version_info >= (3, 6):
+      path = pathlib.Path(self.get_temp_dir()) / 'model'
+      self.model.save_weights(path, save_format='h5')
+      self.model.load_weights(path)
+
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_saving_with_dense_features(self):
     cols = [
