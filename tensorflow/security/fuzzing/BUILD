@@ -18,17 +18,3 @@ tf_fuzz_target(
         "//tensorflow/core/platform:status",
     ],
 )
-
-# A trivial fuzzer with no pre-specified corpus.
-# TODO(mihaimaruseac): Move fuzz_session and the op fuzzers to a subdirectory
-tf_fuzz_target(
-    name = "identity_fuzz",
-    srcs = ["identity_fuzz.cc"],
-    deps = [
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/core/kernels/fuzzing:fuzz_session",
-        # Needed only to transitiviely link dependencies
-        "//tensorflow/cc:scope",
-        "//tensorflow/core:core_cpu",
-    ],
-)
