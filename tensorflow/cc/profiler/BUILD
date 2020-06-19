@@ -10,6 +10,7 @@ tf_cuda_cc_test(
     srcs = ["profiler_test.cc"],
     tags = [
         "no_cuda",  # b/77649654
+        "no_rocm",  # FAILS on ROCm 3.5
     ],
     deps = [
         ":profiler",

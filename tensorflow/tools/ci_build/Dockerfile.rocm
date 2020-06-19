@@ -3,8 +3,8 @@
 FROM ubuntu:xenial
 MAINTAINER Jeff Poznanovic <jeffrey.poznanovic@amd.com>
 
-ARG DEB_ROCM_REPO=http://repo.radeon.com/rocm/apt/3.3/
-ARG ROCM_PATH=/opt/rocm-3.3.0
+ARG DEB_ROCM_REPO=http://repo.radeon.com/rocm/apt/3.5/
+ARG ROCM_PATH=/opt/rocm-3.5.0
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV TF_NEED_ROCM 1
@@ -62,6 +62,11 @@ RUN apt-get update --allow-insecure-repositories && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# Downgrade the THUNK to ROCm3.3 as per Peng's recommendation
+# See the following page for details on why :
+# http://confluence.amd.com/display/~pensun/ROCm3.5+multi-GPU+workloads+Seg+faults+on+older+kernel+driver
+RUN cd /root && wget https://www.dropbox.com/s/6kbhm2l1yf589j4/rocm3.3-thunk.sh && bash rocm3.3-thunk.sh
+
 # Set up paths
 ENV HCC_HOME=$ROCM_PATH/hcc
 ENV HIP_PATH=$ROCM_PATH/hip
@@ -108,3 +113,10 @@ ENV TF_NEED_ROCM 1
 # By default, HIP runtime "hides" 256MB from the TF Runtime, but with recent changes (update to ROCm2.3, dynamic loading of roc* libs, et al)
 # it seems that we need to up the threshold slightly to 320MB
 ENV HIP_HIDDEN_FREE_MEM=320
+
+# Super hacky workaround to JIRA ticket - 241253
+COPY math_functions.h $ROCM_PATH/hip/include/hip/hcc_detail/math_functions.h
+
+# Another super hacky workaround, this one for roctracer related build failure
+COPY hip_ostream_ops.h $ROCM_PATH/roctracer/include/hip_ostream_ops.h
+COPY hip_ostream_ops.h $ROCM_PATH/include/roctracer/hip_ostream_ops.h

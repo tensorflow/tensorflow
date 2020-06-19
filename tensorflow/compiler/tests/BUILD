@@ -149,7 +149,7 @@ tf_xla_py_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "no_rocm"
+        "no_rocm",
     ],
     deps = [
         ":xla_test",
@@ -500,6 +500,7 @@ tf_xla_py_test(
     shard_count = 10,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "no_rocm",  # TIMEOUT on ROCm 3.5
     ],
     deps = [
         ":test_utils",
@@ -1039,8 +1040,8 @@ tf_xla_py_test(
     shard_count = 5,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "no_rocm",
         "optonly",
-        "no_rocm"
     ],
     deps = [
         ":xla_test",
@@ -1353,9 +1354,9 @@ tf_xla_py_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "no_rocm",
         "noasan",
         "notsan",
-        "no_rocm"
     ],
     deps = [
         ":xla_test",
@@ -1584,6 +1585,7 @@ cuda_py_test(
     shard_count = 5,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "no_rocm",  # FAILS on ROCm 3.5
     ],
     xla_enable_strict_auto_jit = False,
     xla_enabled = True,
@@ -1608,6 +1610,7 @@ cuda_py_test(
     srcs = ["dense_layer_test.py"],
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "no_rocm",  # FAILS on ROCm 3.5
     ],
     xla_enable_strict_auto_jit = False,
     xla_enabled = True,

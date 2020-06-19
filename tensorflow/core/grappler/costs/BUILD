@@ -88,6 +88,9 @@ tf_cc_test(
     srcs = ["graph_properties_test.cc"],
     args = ["--heap_check=local"],  # The GPU tracer leaks memory
     data = [":graph_properties_testdata"],
+    tags = [
+        "no_rocm",  # FAILS on ROCm 3.5
+    ],
     deps = [
         ":graph_properties",
         "//tensorflow/cc:cc_ops",

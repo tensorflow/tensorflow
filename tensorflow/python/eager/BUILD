@@ -269,6 +269,9 @@ cuda_py_test(
     name = "profiler_test",
     srcs = ["profiler_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_rocm",  # FAILS on ROCm 3.5
+    ],
     deps = [
         ":profiler",
         ":test",

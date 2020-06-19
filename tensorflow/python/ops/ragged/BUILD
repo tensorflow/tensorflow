@@ -1054,6 +1054,9 @@ py_test(
     srcs = ["ragged_dispatch_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = [
+        "no_rocm",  # FAILS on ROCm 3.5
+    ],
     deps = [
         ":ragged",  # fixdeps: keep
         ":ragged_factory_ops",

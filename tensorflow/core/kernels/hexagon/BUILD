@@ -20,6 +20,9 @@ tf_cc_test(
         "hexagon_graph_execution_test.cc",
     ],
     data = ["//tensorflow/core/example:example_parser_configuration_testdata"],
+    tags = [
+        "no_rocm",  # FAILS on ROCm 3.5
+    ],
     deps = [
         ":graph_transferer",
         "//tensorflow/cc:cc_ops",
@@ -98,6 +101,9 @@ tf_cc_test(
     name = "hexagon_rewriter_transform_test",
     size = "small",
     srcs = ["hexagon_rewriter_transform_test.cc"],
+    tags = [
+        "no_rocm",  # FAILS on ROCm 3.5
+    ],
     deps = [
         ":graph_transferer",
         ":hexagon_rewriter_transform",
