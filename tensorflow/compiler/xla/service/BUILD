@@ -1679,6 +1679,7 @@ cc_library(
     hdrs = ["multi_output_fusion.h"],
     deps = [
         ":hlo",
+        ":hlo_dce",
         ":hlo_pass",
         ":hlo_reachability",
         "//tensorflow/compiler/xla:debug_options_flags",
