@@ -22,8 +22,6 @@ import json
 import os
 import threading
 import time
-import unittest
-
 from absl import logging
 
 from tensorflow.python.distribute import multi_process_runner
@@ -47,26 +45,12 @@ def proc_func_that_adds_simple_return_data():
   return 'dummy_data'
 
 
-def proc_func_that_returns_args_and_kwargs(*args, **kwargs):
+def proc_func_that_return_args_and_kwargs(*args, **kwargs):
   return list(args) + list(kwargs.items())
 
 
 def proc_func_with_barrier():
   return multi_process_runner.barrier()
-
-
-def proc_func_that_returns_pid():
-  return os.getpid()
-
-
-V = None
-
-
-def proc_func_that_sets_global(val):
-  global V
-  old_val = V
-  V = val
-  return old_val
 
 
 class MultiProcessRunnerTest(test.TestCase):
@@ -111,7 +95,7 @@ class MultiProcessRunnerTest(test.TestCase):
 
   def test_multi_process_runner_args_passed_correctly(self):
     return_value = multi_process_runner.run(
-        proc_func_that_returns_args_and_kwargs,
+        proc_func_that_return_args_and_kwargs,
         multi_worker_test_base.create_cluster_spec(num_workers=1),
         args=('a', 'b'),
         kwargs={
@@ -339,55 +323,6 @@ class MultiProcessRunnerTest(test.TestCase):
         self.assertTrue(
             any('(logging) {}-0, i: {}'.format(job, iteration) in line
                 for line in list_to_assert))
-
-
-class MultiProcessPoolRunnerTest(test.TestCase):
-
-  def test_same_process_across_runs(self):
-    cluster_spec = multi_worker_test_base.create_cluster_spec(num_workers=2)
-    runner = multi_process_runner.MultiProcessPoolRunner(cluster_spec)
-    pid = runner.run(proc_func_that_returns_pid)
-    for _ in range(3):
-      self.assertAllEqual(runner.run(proc_func_that_returns_pid), pid)
-
-  def test_exceptions_in_sub_process(self):
-    cluster_spec = multi_worker_test_base.create_cluster_spec(num_workers=2)
-    runner = multi_process_runner.MultiProcessPoolRunner(cluster_spec)
-    pid = runner.run(proc_func_that_returns_pid)
-    with self.assertRaisesRegexp(ValueError, 'This is an error.'):
-      runner.run(proc_func_that_errors)
-    self.assertAllEqual(runner.run(proc_func_that_returns_pid), pid)
-
-  def test_tf_config(self):
-    cluster_spec = multi_worker_test_base.create_cluster_spec(
-        has_chief=True, num_workers=2)
-    runner = multi_process_runner.MultiProcessPoolRunner(cluster_spec)
-    result = runner.run(proc_func_that_adds_task_type_in_return_data)
-
-    job_count_dict = {'worker': 2, 'chief': 1}
-    for data in result:
-      job_count_dict[data] -= 1
-
-    self.assertEqual(job_count_dict['worker'], 0)
-    self.assertEqual(job_count_dict['chief'], 0)
-
-  @unittest.expectedFailure
-  def test_exception_in_main_process(self):
-    # When there's an exception in the main process, __del__() is not called.
-    # This test is to verify MultiProcessPoolRunner can cope with __del__() not
-    # being called.
-    cluster_spec = multi_worker_test_base.create_cluster_spec(
-        has_chief=True, num_workers=2)
-    runner = multi_process_runner.MultiProcessPoolRunner(cluster_spec)
-    runner.run(proc_func_that_returns_pid)
-    raise ValueError('failure')
-
-  def test_initializer(self):
-    cluster_spec = multi_worker_test_base.create_cluster_spec(num_workers=2)
-    runner = multi_process_runner.MultiProcessPoolRunner(
-        cluster_spec, initializer=lambda: proc_func_that_sets_global(1))
-    result = runner.run(proc_func_that_sets_global, args=(2,))
-    self.assertAllEqual(result, [1, 1])
 
 
 if __name__ == '__main__':
