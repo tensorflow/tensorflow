@@ -2,11 +2,6 @@
 
 module attributes {tf_saved_model.semantics} {
 
-  // CHECK: tf_saved_model.session_initializer
-  "tf_saved_model.session_initializer"() {
-    initializer = @f
-  } : () -> ()
-
   // Representation for constants: (immutable) global tensor.
   // CHECK: tf_saved_model.global_tensor
   "tf_saved_model.global_tensor"() {

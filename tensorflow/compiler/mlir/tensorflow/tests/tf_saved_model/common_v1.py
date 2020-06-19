@@ -84,7 +84,6 @@ def do_test(signature_def_map, show_debug_info=False):
     builder.add_meta_graph_and_variables(
         sess, [tf.saved_model.tag_constants.SERVING],
         signature_def_map,
-        main_op=tf.tables_initializer(),
         strip_default_attrs=True)
     builder.save()
 
