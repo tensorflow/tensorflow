@@ -18,3 +18,11 @@ tf_fuzz_target(
         "//tensorflow/core/platform:status",
     ],
 )
+
+tf_fuzz_target(
+    name = "status_group_fuzz",
+    srcs = ["status_group_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:status",
+    ],
+)
