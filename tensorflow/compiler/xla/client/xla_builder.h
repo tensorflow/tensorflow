@@ -527,6 +527,14 @@ class XlaBuilder {
       const Shape& shape_with_layout, const string& opaque,
       absl::optional<absl::Span<const Shape>> operand_shapes_with_layout);
 
+  // Internal version of CustomCall without computation that doesn't do op
+  // specific error handling and expects arguments to be legal. CustomCall
+  // method above calls this method after error handling.
+  virtual StatusOr<XlaOp> CustomCallInternal(
+      const string& call_target_name, absl::Span<const XlaOp> operands,
+      const Shape& shape_with_layout, const string& opaque,
+      absl::optional<absl::Span<const Shape>> operand_shapes_with_layout);
+
   XlaOp CustomCall(
       const string& call_target_name, absl::Span<const XlaOp> operands,
       const XlaComputation& computation, const Shape& shape_with_layout,
