@@ -73,9 +73,10 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
 
   @test_util.run_v2_only
   def test_save_format_defaults_pathlib(self):
-    path = pathlib.Path(self.get_temp_dir()) / 'model_path'
-    save.save_model(self.model, path)
-    self.assert_saved_model(path)
+    if sys.version_info >= (3, 6):
+      path = pathlib.Path(self.get_temp_dir()) / 'model_path'
+      save.save_model(self.model, path)
+      self.assert_saved_model(path)
 
   @test_util.run_v2_only
   def test_save_hdf5(self):
