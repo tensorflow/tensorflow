@@ -302,10 +302,8 @@ class BatchNormalizationBase(Layer):
       else:
         # Merge excess pre-axis dims into first dim.
         # Transform [N, ..., C, ...] to [product(N, ...), C, ...].
-        product = math_ops.reduce_prod(shape[:axis])
-        shape = array_ops.concat([array_ops.reshape(product,
-                                                    constant_op.constant([1])),
-                                  shape[axis:]], axis=0)
+        product = math_ops.reduce_prod(shape[:axis], keepdims=True)
+        shape = array_ops.concat([product, shape[axis:]], axis=0)
         ndims -= (axis - 1)
       axis = 1
     # Now change shape to 4D.
@@ -325,10 +323,8 @@ class BatchNormalizationBase(Layer):
       # Or        [N, H, W, ..., C] to [N, H, product(W, ...), C].
       merge_dim = 2 if is_channels_last else 3
       product = math_ops.reduce_prod(
-          shape[merge_dim:merge_dim + 1 + (ndims - 4)])
-      shape = array_ops.concat([shape[:merge_dim],
-                                array_ops.reshape(product,
-                                                  constant_op.constant([1])),
+          shape[merge_dim:merge_dim + 1 + (ndims - 4)], keepdims=True)
+      shape = array_ops.concat([shape[:merge_dim], product,
                                 shape[merge_dim + 1 + (ndims - 4):]], axis=0)
     axis = 3 if is_channels_last else 1
     return shape, axis
@@ -535,10 +531,7 @@ class BatchNormalizationBase(Layer):
       # input/output tensor to/from an equivalent 4D shape.
       fused_shape, fused_axis = self._get_shape_and_axis_for_fused(input_shape,
                                                                    self.axis[0])
-      original_shape = array_ops.concat(
-          [constant_op.constant([-1]), input_shape[1:]], axis=0)
-      fused_shape = array_ops.concat(
-          [constant_op.constant([-1]), fused_shape[1:]], axis=0)
+      original_shape = input_shape
       inputs = array_ops.reshape(inputs, fused_shape)
 
       # TODO(chrisying): fused batch norm is currently not supported for
