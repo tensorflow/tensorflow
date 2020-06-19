@@ -73,7 +73,7 @@ def parse_saved_model(export_dir):
   """Reads the savedmodel.pb or savedmodel.pbtxt file containing `SavedModel`.
 
   Args:
-    export_dir: String or Pathlike, path to the directory containing the SavedModel file.
+    export_dir: Directory containing the SavedModel file.
 
   Returns:
     A `SavedModel` protocol buffer.
