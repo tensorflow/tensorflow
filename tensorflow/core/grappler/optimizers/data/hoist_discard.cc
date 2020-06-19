@@ -32,33 +32,39 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-const std::unordered_set<string> kDataDiscarding = {
+constexpr char kHoistDiscardOpPrefix[] = "hoist_discard/";
+
+constexpr std::array<const char*, 3> kDataDiscarding = {
     "ShardDataset", "SkipDataset", "TakeDataset",
 };
 
-const std::unordered_set<string> kCardinalityPreserving = {
+constexpr std::array<const char*, 6> kCardinalityPreserving = {
     "CacheDataset", "CacheDatasetV2", "PrefetchDataset",
     "MapDataset", "ParallelMapDataset", "ParallelMapDatasetV2",
 };
 
 bool IsDataDiscarding(const NodeDef& node) {
-  auto iter = kDataDiscarding.find(node.op());
-  if (iter == kDataDiscarding.end()) {
-    return false;
+  for (const auto& discard_op : kDataDiscarding) {
+    if (node.op() == discard_op) {
+      return true;
+    }
   }
-  return true;
+  return false;
 }
 
 bool IsCardinalityPreserving(const NodeDef& node) {
-  auto iter = kCardinalityPreserving.find(node.op());
-  if (iter == kCardinalityPreserving.end()) {
-    return false;
+  for (const auto& cardinality_preserving_op : kCardinalityPreserving) {
+    if (node.op() != cardinality_preserving_op) {
+      continue;
+    }
+    // Map ops with preserve_cardinality=false do not qualify.
+    auto attr_iter = node.attr().find("preserve_cardinality");
+    if (attr_iter != node.attr().end() && !attr_iter->second.b()) {
+      return false;
+    }
+    return true;
   }
-  auto attr_iter = node.attr().find("preserve_cardinality");
-  if (attr_iter != node.attr().end() && !attr_iter->second.b()) {
-    return false;
-  }
-  return true;
+  return false;
 }
 
 }  // namepsace
@@ -72,33 +78,36 @@ Status HoistDiscard::OptimizeAndCollectStats(Cluster* cluster,
   bool updated;
   do {
     updated = false;
-    for (int i = 0; i < graph.graph()->node_size(); i++) {
-      auto node = graph.graph()->mutable_node(i);
-      if (IsDataDiscarding(*node)) {
-        NodeDef* start = node;
-        NodeDef* start_parent = graph_utils::GetInputNode(*start, graph);
-        while (IsCardinalityPreserving(*start_parent)) {
-          start = start_parent;
-          start_parent = graph_utils::GetInputNode(*start, graph);
-        }
-        if (start->name() == node->name()) {
-          continue;
-        }
-        auto parent = graph_utils::GetInputNode(*node, graph);
-        TF_RETURN_IF_ERROR(graph.UpdateFanouts(node->name(), parent->name()));
-        if (!absl::StartsWith(node->name(), "hoist_discard/")) {
-          TF_RETURN_IF_ERROR(graph.UpdateNodeName(node->name(),
-            strings::StrCat("hoist_discard/", node->name()), false));
-        }
-        for (const auto& attr_name : {"output_types", "output_shapes"}) {
-          graph_utils::CopyAttribute(attr_name, *start_parent,
-                                     node);
-        }
-        *node->mutable_input(0) = start_parent->name();
-        *start->mutable_input(0) = node->name();
-        updated = true;
-        break;
+    for (int i = 0; i < graph.graph()->node_size(); ++i) {
+      NodeDef* discard_node = graph.graph()->mutable_node(i);
+      if (!IsDataDiscarding(*discard_node)) {
+        continue;
       }
+      NodeDef* start = discard_node;
+      NodeDef* start_parent = graph_utils::GetInputNode(*start, graph);
+      while (IsCardinalityPreserving(*start_parent)) {
+        start = start_parent;
+        start_parent = graph_utils::GetInputNode(*start, graph);
+      }
+      if (start->name() == discard_node->name()) {
+        continue;
+      }
+      NodeDef* parent = graph_utils::GetInputNode(*discard_node, graph);
+      TF_RETURN_IF_ERROR(
+          graph.UpdateFanouts(discard_node->name(), parent->name()));
+      if (!absl::StartsWith(discard_node->name(), kHoistDiscardOpPrefix)) {
+        TF_RETURN_IF_ERROR(graph.UpdateNodeName(discard_node->name(),
+            strings::StrCat(kHoistDiscardOpPrefix, discard_node->name()),
+            false));
+      }
+      for (const auto& attr_name : {"output_types", "output_shapes"}) {
+        graph_utils::CopyAttribute(attr_name, *start_parent,
+                                   discard_node);
+      }
+      *discard_node->mutable_input(0) = start_parent->name();
+      *start->mutable_input(0) = discard_node->name();
+      updated = true;
+      break;
     }
   } while (updated);
   return Status::OK();

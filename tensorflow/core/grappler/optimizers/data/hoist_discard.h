@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_HOIST_DATA_DISCARDING_OPS_H_
-#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_HOIST_DATA_DISCARDING_OPS_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_HOIST_DISCARD_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_HOIST_DISCARD_H_
 
 #include "tensorflow/core/grappler/optimizers/data/optimizer_base.h"
 
@@ -22,7 +22,7 @@ namespace tensorflow {
 namespace grappler {
 
 // This optimization hoists the data discarding ops (such as `skip`, `take` and
-//  `shard`) to avoid unnecessary computation.
+// `shard`) to avoid unnecessary computation.
 class HoistDiscard : public TFDataOptimizerBase {
  public:
   HoistDiscard() = default;
@@ -48,5 +48,4 @@ class HoistDiscard : public TFDataOptimizerBase {
 }  // namespace grappler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_HOIST_DATA_DISCARDING_OPS_H_
-
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_HOIST_DISCARD_H_

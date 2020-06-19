@@ -34,11 +34,12 @@ class HoistDiscardTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(100)
     dataset = dataset.apply(
         testing.assert_next(["FiniteSkip", "FiniteTake", "Shard",
-                             "ParallelMap", "MemoryCacheImpl"]))
+                             "ParallelMap", "MemoryCacheImpl", "Prefetch"]))
     dataset = dataset.map(
         lambda x: x + 1, num_parallel_calls=10)
     dataset = dataset.skip(10)
     dataset = dataset.cache()
+    dataset = dataset.prefetch(1)
     dataset = dataset.take(50)
     dataset = dataset.shard(2, 0)
     options = dataset_ops.Options()
@@ -51,13 +52,15 @@ class HoistDiscardTest(test_base.DatasetTestBase, parameterized.TestCase):
                                               mode=["eager", "graph"]))
   def testSimpleHoistingV1(self):
     dataset = dataset_ops.Dataset.range(100)
+    # Map ops have preserve_cardinality=false in tensorflow v1.
     dataset = dataset.apply(
         testing.assert_next(["ParallelMap", "FiniteSkip", "FiniteTake",
-                             "Shard", "MemoryCacheImpl"]))
+                             "Shard", "MemoryCacheImpl", "Prefetch"]))
     dataset = dataset.map(
         lambda x: x + 1, num_parallel_calls=10)
     dataset = dataset.skip(10)
     dataset = dataset.cache()
+    dataset = dataset.prefetch(1)
     dataset = dataset.take(50)
     dataset = dataset.shard(2, 0)
     options = dataset_ops.Options()
