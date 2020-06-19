@@ -57,6 +57,7 @@ gentbl(
     td_srcs = [
         ":tensorflow_ops_td_files",
     ],
+    test = True,
 )
 
 gentbl(
@@ -88,6 +89,7 @@ gentbl(
     td_srcs = [
         ":tensorflow_ops_td_files",
     ],
+    test = True,
 )
 
 gentbl(
@@ -112,6 +114,7 @@ gentbl(
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
         "@llvm-project//mlir:include/mlir/Dialect/StandardOps/IR/Ops.td",
     ],
+    test = True,
 )
 
 gentbl(
@@ -137,6 +140,7 @@ gentbl(
         "@llvm-project//mlir:include/mlir/Dialect/StandardOps/IR/Ops.td",
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
     ],
+    test = True,
 )
 
 gentbl(
@@ -161,6 +165,7 @@ gentbl(
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
         "@llvm-project//mlir:include/mlir/Dialect/StandardOps/IR/Ops.td",
     ],
+    test = True,
 )
 
 gentbl(
