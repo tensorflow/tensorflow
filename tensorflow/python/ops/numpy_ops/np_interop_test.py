@@ -19,12 +19,18 @@ from __future__ import division
 from __future__ import print_function
 
 
+import numpy as onp
+
+
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
+from tensorflow.python.ops.numpy_ops import np_math_ops
 from tensorflow.python.platform import test
 
 
@@ -88,6 +94,50 @@ class InteropTest(test.TestCase):
     self.assertEqual(10000, fn()[0])
     self.assertEqual(10000, def_function.function(fn)()[0])
 
+  def testTensorTFNPArrayInterop(self):
+    arr = np_array_ops.asarray(0.)
+    t = constant_op.constant(10.)
+
+    arr_plus_t = arr + t
+    t_plus_arr = t + arr
+
+    self.assertIsInstance(arr_plus_t, ops.Tensor)
+    self.assertIsInstance(t_plus_arr, ops.Tensor)
+    self.assertEqual(10., arr_plus_t.numpy())
+    self.assertEqual(10., t_plus_arr.numpy())
+
+  def testTensorTFNPOp(self):
+    t = constant_op.constant(10.)
+
+    sq = np_math_ops.square(t)
+    self.assertIsInstance(sq, np_arrays.ndarray)
+    self.assertEqual(100., sq)
+
+  def testTFNPArrayTFOpInterop(self):
+    arr = np_array_ops.asarray(10.)
+
+    # TODO(nareshmodi): Test more ops.
+    sq = math_ops.square(arr)
+    self.assertIsInstance(sq, ops.Tensor)
+    self.assertEqual(100., sq.numpy())
+
+  def testTFNPArrayNPOpInterop(self):
+    arr = np_array_ops.asarray([10.])
+
+    # TODO(nareshmodi): Test more ops.
+    sq = onp.square(arr)
+    self.assertIsInstance(sq, onp.ndarray)
+    self.assertEqual(100., sq[0])
+
+    # TODO(nareshmodi): Fails since the autopacking code doesn't use
+    # nest.flatten.
+#   def testAutopacking(self):
+#     arr1 = np_array_ops.asarray(1.)
+#     arr2 = np_array_ops.asarray(2.)
+#     arr3 = np_array_ops.asarray(3.)
+#     t = ops.convert_to_tensor_v2([arr1, arr2, arr3])
+
+#     self.assertEqual(t.numpy(), [1., 2., 3.])
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

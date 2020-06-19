@@ -262,7 +262,8 @@ class ndarray(composite_tensor.CompositeTensor):  # pylint: disable=invalid-name
     """
     return np.asarray(self.data, dtype)
 
-  __array_priority__ = 110
+  # NOTE: we currently prefer interop with TF to allow TF to take precedence.
+  __array_priority__ = 90
 
   def __index__(self):
     """Returns a python scalar.
