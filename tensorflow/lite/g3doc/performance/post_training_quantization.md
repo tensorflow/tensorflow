@@ -34,7 +34,7 @@ weights from floating point to integer, which has 8-bits of precision:
 
 <pre>
 import tensorflow as tf
-converter = tf.lite.TFLiteConverter.from_keras_model(keras_model)
+converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
 <b>converter.optimizations = [tf.lite.Optimize.DEFAULT]</b>
 tflite_quant_model = converter.convert()
 </pre>
@@ -68,7 +68,7 @@ the following steps:
 
 <pre>
 import tensorflow as tf
-converter = tf.lite.TFLiteConverter.from_keras_model(keras_model)
+converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
 <b>converter.optimizations = [tf.lite.Optimize.DEFAULT]
 def representative_dataset_gen():
   for _ in range(num_calibration_steps):
@@ -96,7 +96,7 @@ the following steps:
 
 <pre>
 import tensorflow as tf
-converter = tf.lite.TFLiteConverter.from_keras_model(keras_model)
+converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
 converter.optimizations = [tf.lite.Optimize.DEFAULT]
 def representative_dataset_gen():
   for _ in range(num_calibration_steps):
@@ -120,7 +120,7 @@ quantization of weights, use the following steps:
 
 <pre>
 import tensorflow as tf
-converter = tf.lite.TFLiteConverter.from_keras_model(keras_model)
+converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
 <b>converter.optimizations = [tf.lite.Optimize.DEFAULT]
 converter.target_spec.supported_types = [tf.float16]</b>
 tflite_quant_model = converter.convert()
