@@ -226,18 +226,6 @@ bool CUDABlas::Init() {
     return false;
   }
 
-#if CUDA_VERSION >= 9000
-#if CUBLAS_VER_MAJOR >= 11
-  ret = cublasSetMathMode(blas_, CUBLAS_TF32_TENSOR_OP_MATH);
-#else
-  ret = cublasSetMathMode(blas_, CUBLAS_TENSOR_OP_MATH);
-#endif
-  if (ret != CUBLAS_STATUS_SUCCESS) {
-    LOG(ERROR) << "failed to set cublas default math mode: " << ToString(ret);
-    return false;
-  }
-#endif
-
   return true;
 }
 
@@ -1634,6 +1622,13 @@ bool CUDABlas::DoBlasGemm(
     }
   }
 
+#if CUDA_VERSION < 11000
+  ScopedCublasMathMode math_mode{blas_};
+  if (!math_mode.Init(CUBLAS_TENSOR_OP_MATH)) {
+    return false;
+  }
+#endif
+
   return DoBlasInternalImpl(
       cublasSgemmEx, stream, true /* = pointer_mode_host */,
       true /* = err_on_failure= */, CUDABlasTranspose(transa),
@@ -1681,6 +1676,16 @@ bool CUDABlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
                       "precondition violation";
     }
   }
+
+#if CUBLAS_VER_MAJOR >= 11
+  ScopedCublasMathMode math_mode{blas_};
+  if (tensorflow::tf32_execution_allowed()) {
+    if (!math_mode.Init(CUBLAS_TF32_TENSOR_OP_MATH)) {
+      return false;
+    }
+  }
+#endif
+
   return DoBlasInternal(cublasSgemm, stream, true /* = pointer_mode_host */,
                         CUDABlasTranspose(transa), CUDABlasTranspose(transb), m,
                         n, k, &alpha, GpuMemory(a), lda, GpuMemory(b), ldb,
@@ -1707,6 +1712,16 @@ bool CUDABlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
                           DeviceMemory<std::complex<float>> *c, int ldc) {
   auto cb_alpha = GpuComplexValue(alpha);
   auto cb_beta = GpuComplexValue(beta);
+
+#if CUBLAS_VER_MAJOR >= 11
+  ScopedCublasMathMode math_mode{blas_};
+  if (tensorflow::tf32_execution_allowed()) {
+    if (!math_mode.Init(CUBLAS_TF32_TENSOR_OP_MATH)) {
+      return false;
+    }
+  }
+#endif
+
   return DoBlasInternal(cublasCgemm, stream, true /* = pointer_mode_host */,
                         CUDABlasTranspose(transa), CUDABlasTranspose(transb), m,
                         n, k, GpuComplex(&cb_alpha), GpuComplex(GpuMemory(a)),
@@ -1903,20 +1918,6 @@ static bool UsesTensorOps(blas::AlgorithmType algo) {
 #endif
 }
 
-template <typename InType>
-static bool TensorOpsAvailable(int cc_major) {
-#if CUDA_VERSION >= 9000
-  // cublas *does* allow tensor ops on inputs that are not fp16, so this is not
-  // strictly correct.  We can't simply enable it, though, as that would change
-  // clients' behavior significantly: Using tensor ops on fp32 inputs cause them
-  // to be rounded to fp16.
-  if (cc_major >= 7 && std::is_same<InType, Eigen::half>::value) {
-    return true;
-  }
-#endif
-  return false;
-}
-
 template <typename InT, typename OutT, typename CompT>
 bool CUDABlas::DoBlasGemmWithAlgorithmImpl(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
@@ -1935,17 +1936,52 @@ bool CUDABlas::DoBlasGemmWithAlgorithmImpl(
     return false;
   }
 
-  if (UsesTensorOps(algorithm) && !TensorOpsAvailable<InT>(cc_major)) {
-    if (std::is_same<InT, Eigen::half>::value) {
+  bool algo_uses_tensor_ops = UsesTensorOps(algorithm);
+  cublasMath_t math_type = CUBLAS_DEFAULT_MATH;
+  if (algo_uses_tensor_ops) {
+    if (cc_major < 7) {
       VLOG(2) << "DoBlasGemmWithAlgorithm returning false because algorithm "
               << algorithm
               << " uses tensor ops, but tensor ops are not available in sm"
               << cc_major << "X devices.";
+      return false;
+    } else if (std::is_same<InT, float>::value) {
+#if CUDA_VERSION < 11000
+      VLOG(2) << "DoBlasGemmWithAlgorithm returning false because algorithm "
+              << algorithm
+              << " uses tensor ops, but tensor ops are not available for fp32"
+              << " inputs.";
+      return false;
+#else
+      if (cc_major < 8) {
+        VLOG(2) << "DoBlasGemmWithAlgorithm returning false because algorithm "
+                << algorithm
+                << " uses tensor ops, but tensor ops are not available in sm"
+                << cc_major << "X devices for float input types.";
+        return false;
+      } else if (!tensorflow::tf32_execution_allowed()) {
+        VLOG(2) << "DoBlasGemmWithAlgorithm returning false because algorithm "
+                << algorithm
+                << " uses tensor ops, but tensor ops are disabled for fp32"
+                << " inputs.";
+        return false;
+      }
+      math_type = CUBLAS_TF32_TENSOR_OP_MATH;
+#endif
+    } else if (std::is_same<InT, Eigen::half>::value) {
+#if CUDA_VERSION < 11000
+      math_type = CUBLAS_TENSOR_OP_MATH;
+#endif
     } else {
       VLOG(2) << "DoBlasGemmWithAlgorithm returning false because algorithm "
               << algorithm
-              << " uses tensor ops, but the input data type is not fp16.";
+              << " uses tensor ops, which are not supported for InT.";
+      return false;
     }
+  }
+
+  ScopedCublasMathMode math_mode{blas_};
+  if (!math_mode.Init(math_type)) {
     return false;
   }
 
@@ -2325,6 +2361,13 @@ bool CUDABlas::DoBlasGemmBatched(
     int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
   // Note: The func passed here (cublasSgemmBatched) is not actually called,
   // due to special handling of fp16 inside DoBlasGemmBatchedInternal.
+#if CUDA_VERSION < 11000
+  ScopedCublasMathMode math_mode{blas_};
+  if (!math_mode.Init(CUBLAS_TENSOR_OP_MATH)) {
+    return false;
+  }
+#endif
+
   port::Status status = DoBlasGemmBatchedInternal(
       cublasSgemmBatched, stream, transa, transb, m, n, k, alpha, a_array, lda,
       b_array, ldb, beta, c_array, ldc, batch_count, scratch_allocator);
@@ -2341,6 +2384,15 @@ bool CUDABlas::DoBlasGemmBatched(
     const port::ArraySlice<DeviceMemory<float> *> &b_array, int ldb, float beta,
     const port::ArraySlice<DeviceMemory<float> *> &c_array, int ldc,
     int batch_count, ScratchAllocator *scratch_allocator) {
+#if CUBLAS_VER_MAJOR >= 11
+  ScopedCublasMathMode math_mode{blas_};
+  if (tensorflow::tf32_execution_allowed()) {
+    if (!math_mode.Init(CUBLAS_TF32_TENSOR_OP_MATH)) {
+      return false;
+    }
+  }
+#endif
+
   port::Status status = DoBlasGemmBatchedInternal(
       cublasSgemmBatched, stream, transa, transb, m, n, k, alpha, a_array, lda,
       b_array, ldb, beta, c_array, ldc, batch_count, scratch_allocator);
@@ -2375,6 +2427,15 @@ bool CUDABlas::DoBlasGemmBatched(
     int ldb, std::complex<float> beta,
     const port::ArraySlice<DeviceMemory<std::complex<float>> *> &c_array,
     int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
+#if CUBLAS_VER_MAJOR >= 11
+  ScopedCublasMathMode math_mode{blas_};
+  if (tensorflow::tf32_execution_allowed()) {
+    if (!math_mode.Init(CUBLAS_TF32_TENSOR_OP_MATH)) {
+      return false;
+    }
+  }
+#endif
+
   port::Status status = DoBlasGemmBatchedInternal(
       cublasCgemmBatched, stream, transa, transb, m, n, k, alpha, a_array, lda,
       b_array, ldb, beta, c_array, ldc, batch_count, scratch_allocator);
@@ -2408,6 +2469,13 @@ bool CUDABlas::DoBlasGemmStridedBatched(
     int lda, int64 stride_a, const DeviceMemory<Eigen::half> &b, int ldb,
     int64 stride_b, float beta, DeviceMemory<Eigen::half> *c, int ldc,
     int64 stride_c, int batch_count) {
+#if CUDA_VERSION < 11000
+  ScopedCublasMathMode math_mode{blas_};
+  if (!math_mode.Init(CUBLAS_TENSOR_OP_MATH)) {
+    return false;
+  }
+#endif
+
 #if CUDA_VERSION >= 9010
   int cc_major, cc_minor;
   if (stream->parent()->GetDeviceDescription().cuda_compute_capability(
@@ -2457,6 +2525,14 @@ bool CUDABlas::DoBlasGemmStridedBatched(
     int64 stride_a, const DeviceMemory<float> &b, int ldb, int64 stride_b,
     float beta, DeviceMemory<float> *c, int ldc, int64 stride_c,
     int batch_count) {
+#if CUBLAS_VER_MAJOR >= 11
+  ScopedCublasMathMode math_mode{blas_};
+  if (tensorflow::tf32_execution_allowed()) {
+    if (!math_mode.Init(CUBLAS_TF32_TENSOR_OP_MATH)) {
+      return false;
+    }
+  }
+#endif
   return DoBlasInternal(
       cublasSgemmStridedBatched, stream, true /* = pointer_mode_host */,
       CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n, k, &alpha,
@@ -2484,6 +2560,14 @@ bool CUDABlas::DoBlasGemmStridedBatched(
     const DeviceMemory<std::complex<float>> &b, int ldb, int64 stride_b,
     std::complex<float> beta, DeviceMemory<std::complex<float>> *c, int ldc,
     int64 stride_c, int batch_count) {
+#if CUBLAS_VER_MAJOR >= 11
+  ScopedCublasMathMode math_mode{blas_};
+  if (tensorflow::tf32_execution_allowed()) {
+    if (!math_mode.Init(CUBLAS_TF32_TENSOR_OP_MATH)) {
+      return false;
+    }
+  }
+#endif
   auto cb_alpha = GpuComplexValue(alpha);
   auto cb_beta = GpuComplexValue(beta);
   return DoBlasInternal(
