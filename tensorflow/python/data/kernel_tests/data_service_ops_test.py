@@ -23,6 +23,7 @@ from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.experimental.ops import distribute_options
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.experimental.service import server_lib
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -30,6 +31,8 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import random_seed
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
@@ -75,6 +78,28 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     ds = _make_distributed_dataset(ds, master_address)
     results = [elem.numpy() for elem in ds]
     self.assertEqual(list(range(num_elements)), results)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDifferentShuffleOrders(self):
+    random_seed.set_random_seed(None)
+    num_elements = 100
+    master_address = self.create_cluster(2)
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds = ds.shuffle(num_elements)
+    ds = _make_distributed_dataset(ds, master_address)
+    output = [elem.numpy() for elem in ds]
+
+    # The output will be two sequences of range(num_elements)
+    # non-deterministically interleaved together. If the orders of the elements
+    # were the same, first_order and second_order computed below will be equal.
+    first_order = {}
+    second_order = {}
+    for element in output:
+      if element in first_order:
+        second_order[element] = len(second_order)
+      else:
+        first_order[element] = len(first_order)
+    self.assertNotEqual(first_order, second_order)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testMultipleEpochs(self):
@@ -316,6 +341,34 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     for elem in iter2:
       results.append(elem.numpy())
     self.assertCountEqual(num_repetitions * list(range(num_elements)), results)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testApplyDeterminismOption(self):
+    elements = list(range(10))
+    master_address = self.create_cluster(1)
+
+    def dataset_fn(delay_ms):
+
+      def interleave_fn(x):
+        ds = dataset_ops.Dataset.from_tensors(x)
+        if math_ops.equal(x, 0):
+          ds = ds.apply(testing.sleep(delay_ms * 1000))
+        else:
+          ds = ds.apply(testing.sleep(0))
+        return ds
+
+      ds = dataset_ops.Dataset.from_tensor_slices(elements)
+      ds = ds.interleave(interleave_fn, cycle_length=10, num_parallel_calls=10)
+      opts = dataset_ops.Options()
+      opts.experimental_deterministic = False
+      ds = ds.with_options(opts)
+      ds = _make_distributed_dataset(ds, master_address)
+      return ds
+
+    self.checkDeterminism(
+        dataset_fn=dataset_fn,
+        expect_determinism=False,
+        expected_elements=elements)
 
   def run_stateful(self, external_state_policy):
     num_elements = 10

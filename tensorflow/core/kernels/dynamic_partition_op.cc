@@ -164,8 +164,6 @@ class DynamicPartitionOp : public DynamicPartitionOp_Shared {
       DynamicPartitionOp<T>)
 
 TF_CALL_ALL_TYPES(REGISTER_DYNAMIC_PARTITION);
-// For partitioning fingerprints.
-TF_CALL_uint64(REGISTER_DYNAMIC_PARTITION);
 #undef REGISTER_DYNAMIC_PARTITION
 
 }  // namespace tensorflow

@@ -139,11 +139,15 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
   const xla::HloProto& hlo_metadata() const { return hlo_metadata_; }
   void set_hlo_metadata(const xla::HloProto& hlo_metadata) {
     hlo_metadata_ = hlo_metadata;
+
+    // TODO(henrytan): initialize hlo_metadatas_ for multi program support.
+    if (hlo_metadatas_.empty()) {
+      hlo_metadatas_.push_back(&hlo_metadata_);
+    }
   }
 
   xla::HloProto hlo_metadata(int core_index) const;
-  std::vector<std::shared_ptr<const xla::HloProto>> hlo_metadatas()
-      const override;
+  absl::Span<const xla::HloProto* const> hlo_metadatas() const override;
 
  private:
   std::vector<bool> may_modify_variables_;
@@ -153,6 +157,7 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
   TPUExecutableInfoProto executable_info_;
   TPUHostTransferInfoProto host_transfer_info_;
   xla::HloProto hlo_metadata_;
+  std::vector<const xla::HloProto*> hlo_metadatas_;
 };
 
 }  // namespace tpu

@@ -57,6 +57,7 @@ gentbl(
     td_srcs = [
         ":tensorflow_ops_td_files",
     ],
+    test = True,
 )
 
 gentbl(
@@ -88,6 +89,7 @@ gentbl(
     td_srcs = [
         ":tensorflow_ops_td_files",
     ],
+    test = True,
 )
 
 gentbl(
@@ -112,6 +114,7 @@ gentbl(
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
         "@llvm-project//mlir:include/mlir/Dialect/StandardOps/IR/Ops.td",
     ],
+    test = True,
 )
 
 gentbl(
@@ -137,6 +140,7 @@ gentbl(
         "@llvm-project//mlir:include/mlir/Dialect/StandardOps/IR/Ops.td",
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
     ],
+    test = True,
 )
 
 gentbl(
@@ -161,6 +165,7 @@ gentbl(
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
         "@llvm-project//mlir:include/mlir/Dialect/StandardOps/IR/Ops.td",
     ],
+    test = True,
 )
 
 gentbl(
@@ -475,6 +480,7 @@ cc_library(
         "transforms/cluster_outlining.cc",
         "transforms/collection_ops_util.cc",
         "transforms/decompose_resource_ops_pass.cc",
+        "transforms/device_index_selector.cc",
         "transforms/einsum.cc",
         "transforms/executor_island_coarsening.cc",
         "transforms/executor_tpuv1_inline_tpu_island.cc",
@@ -491,7 +497,6 @@ cc_library(
         "transforms/graph_pruning.cc",
         "transforms/launch_to_device_attribute.cc",
         "transforms/layout_optimization.cc",
-        "transforms/mark_function_visibility.cc",
         "transforms/materialize_mlir_passthrough_op.cc",
         "transforms/optimize.cc",
         "transforms/optimize_global_tensors.cc",

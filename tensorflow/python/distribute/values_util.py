@@ -61,8 +61,14 @@ def on_write_assign_sub(var, value, use_locking=False, name=None,
 
 
 def assign_on_each_device(var, assign_func, value, read_value):
-  update = control_flow_ops.group(
-      tuple(assign_func(v.device, v, value) for v in var._values))  # pylint: disable=protected-access
+  """Update the variable on each replica with the given assign_func and value."""
+  if var._packed_variable is not None:  # pylint: disable=protected-access
+    update = control_flow_ops.group(
+        tuple(
+            assign_func(d, var._packed_variable, value) for d in var._devices))  # pylint: disable=protected-access
+  else:
+    update = control_flow_ops.group(
+        tuple(assign_func(v.device, v, value) for v in var._values))  # pylint: disable=protected-access
   if not read_value:
     return update
   with ops.control_dependencies([update] if update else []):
@@ -104,7 +110,7 @@ def on_read_assign_cross_replica(var, value, read_value=True):
       # TODO(anjs): Should this be over all the replicas in sync since we
       # call `reduce` on the variable during read?
       if var.aggregation == vs.VariableAggregation.SUM:
-        tensor = math_ops.cast(tensor / len(var._values), var.dtype)  # pylint: disable=protected-access
+        tensor = math_ops.cast(tensor / len(var._devices), var.dtype)  # pylint: disable=protected-access
       return assign_on_each_device(var, assign_on_device, tensor,
                                    read_value)
 

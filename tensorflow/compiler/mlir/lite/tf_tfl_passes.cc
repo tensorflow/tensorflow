@@ -63,7 +63,7 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   standard_pipeline_options.enable_inliner = false;
   standard_pipeline_options.form_clusters = pass_config.form_clusters;
   mlir::TF::CreateTFStandardPipeline(*pass_manager, standard_pipeline_options);
-  pass_manager->addPass(mlir::TFL::CreateDeviceIndexSelectorPass());
+  pass_manager->addPass(mlir::TF::CreateDeviceIndexSelectorPass());
 
   if (pass_config.shape_inference) {
     pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
@@ -212,9 +212,6 @@ void CreateTFLStandardPipeline(OpPassManager& pm,
 
   // Saved model pass to mark global tensors immutable.
   pm.addPass(mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
-  // Used to mark non-exported functions in saved model private.
-  pm.addPass(mlir::tf_saved_model::
-                 CreateMarkFunctionVisibilityUsingSavedModelLinkagePass());
   // Op fusion pass.
   pm.addPass(mlir::TFL::CreatePrepareCompositeFunctionsPass());
 

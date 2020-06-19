@@ -299,7 +299,7 @@ TfLiteStatus EvalFloat(
     const TfLiteTensor* aux_input_to_cell_weights,
     const TfLiteTensor* aux_input_to_output_weights,
     const TfLiteTensor* input_gate_bias, const TfLiteTensor* forget_gate_bias,
-    const TfLiteTensor* cell_bias, const TfLiteTensor* output_gate_bias,
+    const TfLiteTensor* cell_gate_bias, const TfLiteTensor* output_gate_bias,
     const TfLiteTensor* projection_weights, const TfLiteTensor* projection_bias,
     const TfLiteLSTMParams* params, bool forward_sequence, bool time_major,
     int output_offset, TfLiteTensor* scratch_buffer, TfLiteTensor* output_state,
@@ -384,7 +384,7 @@ TfLiteStatus EvalFloat(
           GetTensorData<float>(output_layer_norm_coefficients),
           GetTensorData<float>(input_gate_bias),
           GetTensorData<float>(forget_gate_bias),
-          GetTensorData<float>(cell_bias),
+          GetTensorData<float>(cell_gate_bias),
           GetTensorData<float>(output_gate_bias),
           GetTensorData<float>(projection_weights),
           GetTensorData<float>(projection_bias), params, n_batch, n_cell,
@@ -446,7 +446,7 @@ TfLiteStatus EvalFloat(
             GetTensorData<float>(output_layer_norm_coefficients),
             GetTensorData<float>(input_gate_bias),
             GetTensorData<float>(forget_gate_bias),
-            GetTensorData<float>(cell_bias),
+            GetTensorData<float>(cell_gate_bias),
             GetTensorData<float>(output_gate_bias),
             GetTensorData<float>(projection_weights),
             GetTensorData<float>(projection_bias), params, /*n_batch=*/1,
@@ -527,7 +527,7 @@ TfLiteStatus lstm_eval(TfLiteContext* context, TfLiteNode* node, Logger* logger,
       context, node, ops::builtin::lstm::full::kInputGateBiasTensor);
   const TfLiteTensor* forget_gate_bias =
       GetInput(context, node, ops::builtin::lstm::full::kForgetGateBiasTensor);
-  const TfLiteTensor* cell_bias =
+  const TfLiteTensor* cell_gate_bias =
       GetInput(context, node, ops::builtin::lstm::full::kCellGateBiasTensor);
   const TfLiteTensor* output_gate_bias =
       GetInput(context, node, ops::builtin::lstm::full::kOutputGateBiasTensor);
@@ -570,8 +570,9 @@ TfLiteStatus lstm_eval(TfLiteContext* context, TfLiteNode* node, Logger* logger,
           /*aux_input_to_forget_weights=*/nullptr,
           /*aux_input_to_cell_weights=*/nullptr,
           /*aux_input_to_output_weights=*/nullptr, input_gate_bias,
-          forget_gate_bias, cell_bias, output_gate_bias, projection_weights,
-          projection_bias, params, /*forward_sequence=*/true,
+          forget_gate_bias, cell_gate_bias, output_gate_bias,
+          projection_weights, projection_bias, params,
+          /*forward_sequence=*/true,
           /*time_major=*/true,
           /*output_offset=*/0, scratch_buffer, output_state, cell_state, output,
           logger, intermediate_tensor_indexes, error_reporter);

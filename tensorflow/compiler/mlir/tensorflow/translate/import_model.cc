@@ -101,7 +101,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/protobuf_internal.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
@@ -3276,6 +3275,9 @@ class SavedModelSignatureDefImporter {
       const std::vector<std::pair<std::string, TensorInfo>>& outputs,
       const std::vector<std::string> control_outputs);
 
+  // Coarsens the islands in `module_`.
+  Status CoarsenIslands();
+
   // Creates GlobalTensorOp for each variable and moves each VarHandle op to
   // the enclosing function's arguments.
   Status LiftVariables();
@@ -3284,6 +3286,10 @@ class SavedModelSignatureDefImporter {
   // enclosing function's argument list and erases this VarHandleOp. The global
   // tensor's shape is used to provide the most accurate nested shape.
   void LiftVariable(VarHandleOp op, GlobalTensorOp global_tensor);
+
+  // Removes the variable and related ops in the init function if it is already
+  // imported as a global tensor.
+  void RemoveVariable(VarHandleOp op);
 
   using VarGlobalMap = llvm::MapVector<
       llvm::StringRef,
@@ -3335,6 +3341,12 @@ Status SavedModelSignatureDefImporter::ConvertInitializer() {
 
   mlir::OpBuilder builder(module_->getBodyRegion());
 
+  // Set the exported name of init function to an reserved name for
+  // tf_saved_model.
+  init_func_op.setAttr(
+      "tf_saved_model.exported_names",
+      builder.getStrArrayAttr({"__tf_saved_model_session_initializer"}));
+
   builder.create<mlir::tf_saved_model::SessionInitializerOp>(
       module_->getLoc(), builder.getSymbolRefAttr(init_func_op.getName()));
 
@@ -3378,10 +3390,13 @@ SavedModelSignatureDefImporter::ConvertSignatures() {
   }
 
   TF_RETURN_IF_ERROR(ConvertInitializer());
-  TF_RETURN_IF_ERROR(LiftVariables());
 
   mlir::OpBuilder builder(module_->getBodyRegion());
   module_->setAttr("tf_saved_model.semantics", builder.getUnitAttr());
+
+  TF_RETURN_IF_ERROR(CoarsenIslands());
+  TF_RETURN_IF_ERROR(LiftVariables());
+
   SortSavedModelModule(*module_);
   MarkSavedModelFunctionVisibility(*module_);
 
@@ -3464,16 +3479,28 @@ Status SavedModelSignatureDefImporter::ConvertSignature(
       sub_block->begin(), mlir::Block::iterator(sub_block->getTerminator()));
 
   return Status::OK();
-}
+}  // namespace
 
 Status SavedModelSignatureDefImporter::LiftVariables() {
   VarGlobalMap var_globals;
+  llvm::SmallVector<VarHandleOp, 4> init_vars;
 
-  auto walker = [&var_globals](mlir::Operation* op) {
-    if (auto var_handle_op = llvm::dyn_cast<VarHandleOp>(op))
-      var_globals[var_handle_op.shared_name()].second.push_back(var_handle_op);
-    else if (op->getName().getStringRef() == "tf.VariableV2")
+  auto session_initializer =
+      mlir::tf_saved_model::GetSessionInitializerOp(*module_);
+
+  auto walker = [&var_globals, &init_vars,
+                 &session_initializer](mlir::Operation* op) {
+    if (auto var_handle_op = llvm::dyn_cast<VarHandleOp>(op)) {
+      if (session_initializer &&
+          session_initializer.initializer() ==
+              var_handle_op.getParentOfType<mlir::FuncOp>().getName())
+        init_vars.push_back(var_handle_op);
+      else
+        var_globals[var_handle_op.shared_name()].second.push_back(
+            var_handle_op);
+    } else if (op->getName().getStringRef() == "tf.VariableV2") {
       return mlir::WalkResult::interrupt();
+    }
     return mlir::WalkResult::advance();
   };
   bool contains_ref_variable = module_->walk(walker).wasInterrupted();
@@ -3490,7 +3517,49 @@ Status SavedModelSignatureDefImporter::LiftVariables() {
     for (VarHandleOp var_handle : it.second.second)
       LiftVariable(var_handle, it.second.first);
 
+  for (auto op : init_vars) RemoveVariable(op);
+
   return Status::OK();
+}
+
+Status SavedModelSignatureDefImporter::CoarsenIslands() {
+  mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
+
+  mlir::PassManager pm(module_->getContext());
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::tf_executor::CreateTFExecutorIslandCoarseningPass());
+  if (mlir::failed(pm.run(*module_)))
+    return diag_handler.Combine(
+        errors::Internal("failed to coarsening islands."));
+
+  return Status::OK();
+}
+
+void SavedModelSignatureDefImporter::RemoveVariable(VarHandleOp op) {
+  llvm::SmallVector<mlir::Operation*, 4> work_list;
+  work_list.push_back(op);
+  while (!work_list.empty()) {
+    auto* op = work_list.back();
+    work_list.pop_back();
+
+    for (mlir::Value res : op->getResults()) {
+      for (mlir::Operation* user : res.getUsers()) {
+        work_list.push_back(user);
+      }
+    }
+
+    for (auto& use : op->getOpOperands()) {
+      if (mlir::Value value = use.get()) {
+        mlir::Operation* def = value.getDefiningOp();
+        work_list.push_back(def);
+      }
+    }
+
+    op->dropAllReferences();
+    op->dropAllDefinedValueUses();
+
+    op->erase();
+  }
 }
 
 void SavedModelSignatureDefImporter::LiftVariable(
@@ -3525,12 +3594,7 @@ void SavedModelSignatureDefImporter::LiftVariable(
   // Add the newly added function param to entry block's arguments.
   auto new_value = func_op.front().addArgument(resource_type);
 
-  // Remove the VarHandleOp also updating the containing island's return type.
-  DCHECK(llvm::isa<mlir::tf_executor::IslandOp>(op.getParentOp()));
-  DCHECK(llvm::cast<mlir::tf_executor::IslandOp>(op.getParentOp())
-             .WrapsSingleOp());
   op.getOperation()->replaceAllUsesWith(llvm::ArrayRef<mlir::Value>(new_value));
-  op.getParentOp()->getResult(0).setType(resource_type);
   op.getOperation()->erase();
 }
 

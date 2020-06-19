@@ -98,7 +98,9 @@ limitations under the License.
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 #include "tensorflow/stream_executor/event.h"
@@ -749,16 +751,22 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostLiteral(
     // memory that has already been allocated, and a possible Event
     // allocation.
 
+    se::Stream* h2d_stream = local_device->host_to_device_stream();
     ShapedBuffer buffer = device_buffer->AsShapedBuffer(
         compact_shape, on_device_shape, client->client()->platform());
     TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
-        local_device->host_to_device_stream(), literal, buffer));
+        h2d_stream, literal, buffer));
 
     std::shared_ptr<BufferSequencingEvent> event =
         device_buffer->definition_events()[0];
     TF_CHECK_OK(AddDestinationBufferSynchronization(
-        local_device, std::move(device_buffer), event,
-        local_device->host_to_device_stream()));
+        local_device, std::move(device_buffer), event, h2d_stream));
+
+    // This can sometimes catch the case where the literal memory has been
+    // freed before the H2D transfer was issued.
+    h2d_stream->RefreshStatus()
+        .IgnoreError();  // Can return error::Unimplemented
+    QCHECK(h2d_stream->ok());
   };
   client->h2d_transfer_pool()->Schedule(transfer_h2d);
   return py_buffer;
@@ -1069,13 +1077,17 @@ Status PjRtBuffer::CopyToHostAsync() {
   return Status::OK();
 }
 
-StatusOr<std::shared_ptr<Literal>> PjRtBuffer::ToLiteral() {
+StatusOr<std::shared_ptr<Literal>> PjRtBuffer::ToLiteral(
+    const bool discard_cached_copy) {
   tensorflow::profiler::TraceMe traceme("PjRtBuffer::ToLiteral");
   TF_RETURN_IF_ERROR(CopyToHostAsync());
   std::shared_ptr<HostValue> host_value;
   {
     absl::MutexLock lock(&mu_);
     host_value = host_value_;
+    if (discard_cached_copy) {
+      host_value_ = nullptr;
+    }
   }
   if (host_value == nullptr) {
     return InvalidArgument("ToLiteral called on invalid buffer");
@@ -1429,10 +1441,9 @@ StatusOr<ScopedShapedBuffer> PjRtExecutable::EnqueueExecution(
     int executable_idx, const RunId& run_id, const ExecuteOptions& options,
     Device* device, std::vector<PjRtBuffer::ScopedHold>* device_buffers) const {
   int device_ordinal = device->local_device_state()->device_ordinal();
-  tensorflow::profiler::TraceMe traceme([&] {
-    return absl::StrCat("LocalExecutable::Execute#run_id=", run_id.ToInt(),
-                        "#");
-  });
+  tensorflow::profiler::TraceMeConsumer activity(
+      "LocalExecutable::Execute", tensorflow::profiler::ContextType::kPjRt,
+      run_id.ToInt());
   VLOG(3) << "Replica " << replica << ", partition " << partition
           << " mapped to device ordinal for execution: " << device_ordinal;
 
@@ -1721,10 +1732,9 @@ PjRtExecutable::ExecuteOnLocalDevices(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options) const {
   RunId run_id;
-  tensorflow::profiler::TraceMe traceme([&] {
-    return absl::StrCat(
-        "LocalExecutable::ExecuteOnLocalDevices#run_id=", run_id.ToInt(), "#");
-  });
+  tensorflow::profiler::TraceMeProducer activity(
+      "LocalExecutable::ExecuteOnLocalDevices",
+      tensorflow::profiler::ContextType::kPjRt, run_id.ToInt());
 
   const int num_local_devices = local_devices_.size();
 

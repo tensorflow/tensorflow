@@ -1152,9 +1152,9 @@ void GenEagerPythonOp::AddRawOpExport(const string& parameters) {
                      function_name_, "))\n");
 }
 
-string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
-                    const std::vector<string>& hidden_ops,
-                    const string& source_file_name = "") {
+string GetPythonOpsImpl(const OpList& ops, const ApiDefMap& api_defs,
+                        const std::vector<string>& hidden_ops,
+                        const string& source_file_name = "") {
   string result;
   // Header
   // TODO(josh11b): Mention the library for which wrappers are being generated.
@@ -1241,11 +1241,17 @@ from typing import TypeVar
 
 }  // namespace
 
+string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
+                    const std::vector<string>& hidden_ops,
+                    const string& source_file_name) {
+  return GetPythonOpsImpl(ops, api_defs, hidden_ops, source_file_name);
+}
+
 void PrintPythonOps(const OpList& ops, const ApiDefMap& api_defs,
                     const std::vector<string>& hidden_ops,
                     const string& source_file_name) {
   printf("%s",
-         GetPythonOps(ops, api_defs, hidden_ops, source_file_name).c_str());
+         GetPythonOpsImpl(ops, api_defs, hidden_ops, source_file_name).c_str());
 }
 
 string GetPythonWrappers(const char* op_list_buf, size_t op_list_len) {
@@ -1253,7 +1259,7 @@ string GetPythonWrappers(const char* op_list_buf, size_t op_list_len) {
   ops.ParseFromArray(op_list_buf, op_list_len);
 
   ApiDefMap api_def_map(ops);
-  return GetPythonOps(ops, api_def_map, {});
+  return GetPythonOpsImpl(ops, api_def_map, {});
 }
 
 }  // namespace tensorflow

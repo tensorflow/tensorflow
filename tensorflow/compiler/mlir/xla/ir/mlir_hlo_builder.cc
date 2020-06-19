@@ -132,6 +132,22 @@ StatusOr<XlaOp> MlirHloBuilder::FftInternal(
   return MakeXlaOp(op);
 }
 
+StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
+    const string& call_target_name, absl::Span<const XlaOp> operands,
+    const Shape& shape, const string& opaque,
+    absl::optional<absl::Span<const Shape>> operand_shapes_with_layout) {
+  if (operand_shapes_with_layout.has_value())
+    return Unimplemented(
+        "CustomCall doesn't support operands shapes with layout");
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  auto op = builder_.create<mlir::xla_hlo::CustomCallOp>(
+      loc_, ty, GetValues(operands), builder_.getStringAttr(call_target_name),
+      /*has_side_effect=*/builder_.getBoolAttr(false),
+      builder_.getStringAttr(opaque));
+  return MakeXlaOp(op);
+}
+
 StatusOr<XlaOp> MlirHloBuilder::ReduceInternal(
     const Shape& shape, absl::Span<const XlaOp> all_operands,
     const XlaComputation& computation,

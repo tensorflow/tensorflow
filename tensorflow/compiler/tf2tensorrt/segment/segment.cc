@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/segment/union_find.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -34,8 +35,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/env_var.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 
 namespace tensorflow {
 namespace tensorrt {
@@ -748,9 +748,10 @@ Status SegmentGraph(const Graph* tf_graph,
         exclude_node(status.error_message());
       } else if (tftrt_op_blacklist.count(node->tf_node()->type_string())) {
         // WARNING verbosity since the user explicitly requests this behavior.
-        LOG(WARNING) << "Blacklisted as TF-TRT candidate, "
-                     << "(Op type: " << node->tf_node()->type_string() << "), "
-                     << "(Op name: " << node->name() << ")";
+        LOG_WARNING_WITH_PREFIX
+            << "Blacklisted as TF-TRT candidate, "
+            << "(Op type: " << node->tf_node()->type_string() << "), "
+            << "(Op name: " << node->name() << ")";
         exclude_node("Blacklisted with the env var TF_TRT_OP_BLACKLIST");
       } else {
         VLOG(2) << "Accepted as a TF-TRT candidate, "
@@ -1038,7 +1039,7 @@ Status SegmentGraph(const Graph* tf_graph,
       for (const auto& dev : dev_itr->second) {
         StrAppend(&s, dev, ", ");
       }
-      LOG(WARNING) << s;
+      LOG_WARNING_WITH_PREFIX << s;
     }
 
     segments->emplace_back(segment_nodes);
@@ -1060,5 +1061,4 @@ Status SegmentGraph(const Graph* tf_graph,
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_TENSORRT
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

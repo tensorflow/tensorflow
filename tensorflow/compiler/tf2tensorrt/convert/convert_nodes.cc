@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
@@ -58,8 +59,7 @@ limitations under the License.
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/strided_slice_op.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/tensorrt/NvInfer.h"
 #include "third_party/tensorrt/NvInferPlugin.h"
 
@@ -1214,15 +1214,16 @@ static void InitializeTrtPlugins(nvinfer1::ILogger* trt_logger) {
   nvinfer1::IPluginCreator* const* trt_plugin_creator_list =
       getPluginRegistry()->getPluginCreatorList(&num_trt_plugins);
   if (!trt_plugin_creator_list) {
-    LOG(WARNING) << "Can not find any TensorRT plugins in registry.";
+    LOG_WARNING_WITH_PREFIX << "Can not find any TensorRT plugins in registry.";
   } else {
     VLOG(1) << "Found the following " << num_trt_plugins
             << " TensorRT plugins in registry:";
     for (int i = 0; i < num_trt_plugins; ++i) {
       if (!trt_plugin_creator_list[i]) {
-        LOG(WARNING) << "TensorRT plugin at index " << i
-                     << " is not accessible (null pointer returned by "
-                        "getPluginCreatorList for this plugin)";
+        LOG_WARNING_WITH_PREFIX
+            << "TensorRT plugin at index " << i
+            << " is not accessible (null pointer returned by "
+               "getPluginCreatorList for this plugin)";
       } else {
         VLOG(1) << "  " << trt_plugin_creator_list[i]->getPluginName();
       }
@@ -1827,9 +1828,9 @@ void Converter::MaybeApplyQuantizationRanges() {
       // are tensors which are created internally by TF-TRT. The ranges for
       // these unnamed ITensors are always inferred from user provided ranges,
       // thus there will also be a warning for the range(s) the user missed.
-      LOG(WARNING) << "Quantization range was not found for "
-                   << tensor->getName() << ". "
-                   << "Setting invalid quantization range.";
+      LOG_WARNING_WITH_PREFIX << "Quantization range was not found for "
+                              << tensor->getName() << ". "
+                              << "Setting invalid quantization range.";
       // Set the range to something unusable so the engine will fail if it
       // tries to actually use the tensor's range.
       tensor->setDynamicRange(0, 0);
@@ -4424,8 +4425,13 @@ Status ConvertSquare(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}}));
+#if IS_TRT_VERSION_GE(6, 0, 1, 0)
+  TF_RETURN_IF_ERROR(AllowDataTypes(
+      *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}));
+#else
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+#endif
   if (params->validation_only) return Status::OK();
 
   // Constant 2 with same rank as input
@@ -4893,10 +4899,11 @@ Status ConvertFusedBatchNorm(OpConverterParams* params) {
     // Trying to use batchnorm in training mode is a very common problem.
     // Because the error message will only be printed in VLOG(1) by the
     // segmenter, we issue a special warning so that users will actually see it.
-    LOG(WARNING) << node_def.op() << " only supports is_training=false. If you "
-                 << "are using Keras, please call "
-                 << "keras.backend.set_learning_phase(0) before constructing "
-                 << "your model. At " << node_def.name();
+    LOG_WARNING_WITH_PREFIX
+        << node_def.op() << " only supports is_training=false. If you "
+        << "are using Keras, please call "
+        << "keras.backend.set_learning_phase(0) before constructing "
+        << "your model. At " << node_def.name();
     return errors::Unimplemented(node_def.op(),
                                  " only supports is_training=false, at ",
                                  node_def.name());
@@ -6034,7 +6041,7 @@ Status ConvertGraphDefToEngine(
         const string error_message =
             StrCat("Validation failed for ", node_name, " and input slot ",
                    slot_number, ": ", status.error_message());
-        LOG(WARNING) << error_message;
+        LOG_WARNING_WITH_PREFIX << error_message;
         return Status(status.code(), error_message);
       }
       VLOG(2) << "Adding engine input tensor " << node_name << " with shape "
@@ -6250,5 +6257,4 @@ bool OutputEdgeValidator::operator()(const Edge* out_edge) const {
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_TENSORRT
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

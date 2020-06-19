@@ -141,6 +141,10 @@ class TPUStrategy(distribute_lib.Strategy):
         "num_workers").set(self.extended.num_hosts)
     distribute_lib.distribution_strategy_replica_gauge.get_cell(
         "num_replicas_per_worker").set(self.extended.num_replicas_per_host)
+    # Packed variable is used to reduce the overhead of function execution.
+    # For a DistributedVariable, only one variable handle is captured into a
+    # function graph. It's only supported in eager mode.
+    self._enable_packed_variable_in_eager_mode = False
 
   # TODO(cjfj): Modify `_call_for_each_replica` in `TPUExtended` such that this
   # can use the default implementation.
@@ -185,6 +189,10 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
         "num_workers").set(self.extended.num_hosts)
     distribute_lib.distribution_strategy_replica_gauge.get_cell(
         "num_replicas_per_worker").set(self.extended.num_replicas_per_host)
+    # Packed variable is used to reduce the overhead of function execution.
+    # For a DistributedVariable, only one variable handle is captured into a
+    # function graph. It's only supported in eager mode.
+    self._enable_packed_variable_in_eager_mode = False
 
   @property
   def steps_per_run(self):
@@ -671,20 +679,29 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       return cross_device_ops_lib.reduce_non_distributed_value(
           reduce_op, value, destinations, self._num_replicas_in_sync)
 
+    value_list = value.values
+    # pylint: disable=protected-access
+    if isinstance(
+        value,
+        values.DistributedVariable) and value._packed_variable is not None:
+      value_list = tuple(
+          value._packed_variable.on_device(d)
+          for d in value._packed_variable.devices)
+    # pylint: enable=protected-access
+
     # Currently XLA op by op mode has a limit for the number of inputs for a
     # single op, thus we break one `add_n` op into a group of `add_n` ops to
     # work around the constraint.
     # TODO(cjfj): Detect when it is possible to use `cross_replica_sum`.
     if len(value.values) <= _XLA_OP_BY_OP_INPUTS_LIMIT:
-      output = math_ops.add_n(value.values)
+      output = math_ops.add_n(value_list)
     else:
-      output = array_ops.zeros_like(
-          value.values[0], dtype=value.values[0].dtype)
-      for i in range(0, len(value.values), _XLA_OP_BY_OP_INPUTS_LIMIT):
-        output += math_ops.add_n(value.values[i:i + _XLA_OP_BY_OP_INPUTS_LIMIT])
+      output = array_ops.zeros_like(value_list[0], dtype=value_list[0].dtype)
+      for i in range(0, len(value_list), _XLA_OP_BY_OP_INPUTS_LIMIT):
+        output += math_ops.add_n(value_list[i:i + _XLA_OP_BY_OP_INPUTS_LIMIT])
 
     if reduce_op == reduce_util.ReduceOp.MEAN:
-      output *= (1. / len(value.values))
+      output *= (1. / len(value_list))
 
     devices = cross_device_ops_lib.get_devices_from(destinations)
 
@@ -710,17 +727,28 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       else:
         return (fn(var, *args, **kwargs),)
 
-    # Otherwise, we revert to MirroredStrategy behavior and update each variable
-    # directly.
+    # Otherwise, we revert to MirroredStrategy behavior and update the variable
+    # on each replica directly.
     updates = []
-    for i, v in enumerate(var.values):
+    values_and_devices = []
+    packed_var = var._packed_variable  # pylint: disable=protected-access
+    if packed_var is not None:
+      for device in packed_var.devices:
+        values_and_devices.append((packed_var, device))
+    else:
+      for value in var.values:
+        values_and_devices.append((value, value.device))
+
+    for i, value_and_device in enumerate(values_and_devices):
+      value = value_and_device[0]
+      device = value_and_device[1]
       name = "update_%d" % i
-      with ops.device(v.device), \
+      with ops.device(device), \
            distribute_lib.UpdateContext(i), \
            ops.name_scope(name):
         # If args and kwargs are not mirrored, the value is returned as is.
         updates.append(
-            fn(v, *distribute_utils.select_replica_mirrored(i, args),
+            fn(value, *distribute_utils.select_replica_mirrored(i, args),
                **distribute_utils.select_replica_mirrored(i, kwargs)))
     return distribute_utils.update_regroup(self, updates, group)
 

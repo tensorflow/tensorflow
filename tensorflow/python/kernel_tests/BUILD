@@ -763,10 +763,9 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "matrix_triangular_solve_op_test",
-    size = "medium",
-    srcs = ["matrix_triangular_solve_op_test.py"],
-    shard_count = 3,
+    name = "banded_triangular_solve_op_test",
+    size = "small",
+    srcs = ["banded_triangular_solve_op_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:linalg_ops",
@@ -775,20 +774,14 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "parameterized_truncated_normal_op_test",
+    name = "matrix_triangular_solve_op_test",
     size = "medium",
-    srcs = ["parameterized_truncated_normal_op_test.py"],
+    srcs = ["matrix_triangular_solve_op_test.py"],
+    shard_count = 3,
     deps = [
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:random_ops",
+        "//tensorflow/python:linalg_ops",
         "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
 

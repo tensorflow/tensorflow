@@ -917,29 +917,37 @@ def diff(a, n=1, axis=-1):  # pylint: disable=missing-function-docstring
   return _scalar(f, a)
 
 
-def _flip_args(f):
+def _wrap(f, reverse=False):
+  """Wraps binary ops so they can be added as operator overloads on ndarray."""
 
   def _f(a, b):
-    return f(b, a)
+    if reverse:
+      a, b = b, a
+
+    if getattr(b, '__array_priority__',
+               0) > np_arrays.ndarray.__array_priority__:
+      return NotImplemented
+
+    return f(a, b)
 
   return _f
 
 
 setattr(np_arrays.ndarray, '__abs__', absolute)
-setattr(np_arrays.ndarray, '__floordiv__', floor_divide)
-setattr(np_arrays.ndarray, '__rfloordiv__', _flip_args(floor_divide))
-setattr(np_arrays.ndarray, '__mod__', mod)
-setattr(np_arrays.ndarray, '__rmod__', _flip_args(mod))
-setattr(np_arrays.ndarray, '__add__', add)
-setattr(np_arrays.ndarray, '__radd__', _flip_args(add))
-setattr(np_arrays.ndarray, '__sub__', subtract)
-setattr(np_arrays.ndarray, '__rsub__', _flip_args(subtract))
-setattr(np_arrays.ndarray, '__mul__', multiply)
-setattr(np_arrays.ndarray, '__rmul__', _flip_args(multiply))
-setattr(np_arrays.ndarray, '__pow__', power)
-setattr(np_arrays.ndarray, '__rpow__', _flip_args(power))
-setattr(np_arrays.ndarray, '__truediv__', true_divide)
-setattr(np_arrays.ndarray, '__rtruediv__', _flip_args(true_divide))
+setattr(np_arrays.ndarray, '__floordiv__', _wrap(floor_divide))
+setattr(np_arrays.ndarray, '__rfloordiv__', _wrap(floor_divide, True))
+setattr(np_arrays.ndarray, '__mod__', _wrap(mod))
+setattr(np_arrays.ndarray, '__rmod__', _wrap(mod, True))
+setattr(np_arrays.ndarray, '__add__', _wrap(add))
+setattr(np_arrays.ndarray, '__radd__', _wrap(add, True))
+setattr(np_arrays.ndarray, '__sub__', _wrap(subtract))
+setattr(np_arrays.ndarray, '__rsub__', _wrap(subtract, True))
+setattr(np_arrays.ndarray, '__mul__', _wrap(multiply))
+setattr(np_arrays.ndarray, '__rmul__', _wrap(multiply, True))
+setattr(np_arrays.ndarray, '__pow__', _wrap(power))
+setattr(np_arrays.ndarray, '__rpow__', _wrap(power, True))
+setattr(np_arrays.ndarray, '__truediv__', _wrap(true_divide))
+setattr(np_arrays.ndarray, '__rtruediv__', _wrap(true_divide, True))
 
 
 def _comparison(tf_fun, x1, x2, cast_bool_to_int=False):
@@ -1031,12 +1039,12 @@ def logical_not(x):
 
 
 setattr(np_arrays.ndarray, '__invert__', logical_not)
-setattr(np_arrays.ndarray, '__lt__', less)
-setattr(np_arrays.ndarray, '__le__', less_equal)
-setattr(np_arrays.ndarray, '__gt__', greater)
-setattr(np_arrays.ndarray, '__ge__', greater_equal)
-setattr(np_arrays.ndarray, '__eq__', equal)
-setattr(np_arrays.ndarray, '__ne__', not_equal)
+setattr(np_arrays.ndarray, '__lt__', _wrap(less))
+setattr(np_arrays.ndarray, '__le__', _wrap(less_equal))
+setattr(np_arrays.ndarray, '__gt__', _wrap(greater))
+setattr(np_arrays.ndarray, '__ge__', _wrap(greater_equal))
+setattr(np_arrays.ndarray, '__eq__', _wrap(equal))
+setattr(np_arrays.ndarray, '__ne__', _wrap(not_equal))
 
 
 @np_utils.np_doc(np.linspace)

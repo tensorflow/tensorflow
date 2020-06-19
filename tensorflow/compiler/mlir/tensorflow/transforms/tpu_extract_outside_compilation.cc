@@ -49,8 +49,9 @@ using OutsideClusterMap =
 // TODO(b/154363171): Add example tranformations.
 
 struct TPUExtractOutsideCompilation
-    : public PassWrapper<TPUExtractOutsideCompilation, FunctionPass> {
-  void runOnFunction() override;
+    : public PassWrapper<TPUExtractOutsideCompilation,
+                         OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
 // Collects and clusters ops in `block` with the same `_xla_outside_compilation`
@@ -106,18 +107,6 @@ tf_device::LaunchOp CreateLaunchOpForOutsideCluster(
                                        llvm::ArrayRef<Value>{});
 
   return launch_op;
-}
-
-// Propagates the return from `parallel_execute_op` to parent replicate
-// op if it exists.
-void PropagateParallelExecuteReturnToReplicate(
-    tf_device::ParallelExecuteOp parallel_execute_op) {
-  // Update the return for the parallel_execute op parent.
-  auto replicate = llvm::dyn_cast_or_null<tf_device::ReplicateOp>(
-      parallel_execute_op.getParentOp());
-  if (replicate)
-    replicate.GetBody().getTerminator()->setOperands(
-        parallel_execute_op.execute_outputs());
 }
 
 // Extracts all externally provided operands of `cluster_ops`.
@@ -305,12 +294,21 @@ void CreateParallelExecuteFromOutsideClusters(
   tpu_cluster.getOperation()->moveBefore(
       parallel_execute_tpu_block.getTerminator());
 
-  PropagateParallelExecuteReturnToReplicate(parallel_execute_op);
+  // Remap cluster results with parallel_execute results if user is outside of
+  // parallel_execute.
+  for (auto result :
+       llvm::zip(tpu_cluster.getResults(), parallel_execute_op.getResults())) {
+    Value tpu_cluster_result = std::get<0>(result);
+    Value parallel_execute_result = std::get<1>(result);
+    for (auto& use : llvm::make_early_inc_range(tpu_cluster_result.getUses()))
+      if (!parallel_execute_op.getOperation()->isProperAncestor(use.getOwner()))
+        use.set(parallel_execute_result);
+  }
 }
 
-void TPUExtractOutsideCompilation::runOnFunction() {
+void TPUExtractOutsideCompilation::runOnOperation() {
   auto extract_result =
-      getFunction().walk([&](tf_device::ClusterOp tpu_cluster) {
+      getOperation().walk([&](tf_device::ClusterOp tpu_cluster) {
         OutsideClusterMap clusters;
         if (failed(CollectAndGroupOutsideClusterOps(&tpu_cluster.GetBody(),
                                                     &clusters)))
@@ -328,7 +326,7 @@ void TPUExtractOutsideCompilation::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUExtractOutsideCompilationPass() {
   return std::make_unique<TPUExtractOutsideCompilation>();
 }

@@ -39,6 +39,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import special_math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_sparse_ops import *
@@ -2928,8 +2929,9 @@ _UNARY_OPS = [
     math_ops.sqrt,
     math_ops.erf,
     math_ops.tanh,
-    math_ops.bessel_i0e,
-    math_ops.bessel_i1e,
+    # TODO(b/157272291) Add dispatchers for rest of special functions.
+    special_math_ops.bessel_i0e,
+    special_math_ops.bessel_i1e,
 ]
 for unary_op in _UNARY_OPS:
   _UnaryMapValueDispatcher(unary_op).register(unary_op)

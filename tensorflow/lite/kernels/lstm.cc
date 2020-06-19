@@ -78,14 +78,14 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_16(
   auto* proj_params = static_cast<TfLiteAffineQuantization*>(
       output_tensor->quantization.params);
   if (cell_clip > 0.0) {
-    integer_lstm_param->quantized_cell_clip = static_cast<int32_t>(std::min(
+    integer_lstm_param->quantized_cell_clip = static_cast<int16_t>(std::min(
         std::max(cell_clip / cell_state_params->scale->data[0], -32768.0f),
         32767.0f));
   } else {
     integer_lstm_param->quantized_cell_clip = 0;
   }
   if (proj_clip > 0.0) {
-    integer_lstm_param->quantized_proj_clip = static_cast<int32_t>(std::min(
+    integer_lstm_param->quantized_proj_clip = static_cast<int8_t>(std::min(
         std::max(proj_clip / proj_params->scale->data[0], -128.0f), 127.0f));
   } else {
     integer_lstm_param->quantized_proj_clip = 0;
@@ -182,7 +182,7 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_16(
   float input_to_output_weight_scale = default_scale;
   float recurrent_to_output_weight_scale = default_scale;
   float cell_to_output_weight_scale = default_scale;
-  float proj_weight_scale = default_scale;
+  float projection_weight_scale = default_scale;
   float layer_norm_input_scale = default_scale;
   float layer_norm_forget_scale = default_scale;
   float layer_norm_cell_scale = default_scale;
@@ -229,7 +229,7 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_16(
   }
 
   if (use_projection) {
-    proj_weight_scale = projection_weights->params.scale;
+    projection_weight_scale = projection_weights->params.scale;
   }
   output_state_scale = output_state->params.scale;
 
@@ -276,7 +276,7 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_16(
       std::pow(2, -15) / intermediate_scale[4] * std::pow(2, -15);
 
   effective_proj_scale =
-      proj_weight_scale * intermediate_scale[4] / output_state_scale;
+      projection_weight_scale * intermediate_scale[4] / output_state_scale;
 
   if (use_peephole) {
     if (!use_cifg) {
@@ -407,7 +407,8 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_8(
       GetOptionalInputTensor(context, node, kInputGateBiasTensor);
   const TfLiteTensor* forget_gate_bias =
       GetInput(context, node, kForgetGateBiasTensor);
-  const TfLiteTensor* cell_bias = GetInput(context, node, kCellGateBiasTensor);
+  const TfLiteTensor* cell_gate_bias =
+      GetInput(context, node, kCellGateBiasTensor);
   const TfLiteTensor* output_gate_bias =
       GetInput(context, node, kOutputGateBiasTensor);
 
@@ -441,16 +442,16 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_8(
   int8_t* input_to_output_weight_ptr = nullptr;
   int8_t* recurrent_to_output_weight_ptr = nullptr;
   int8_t* cell_to_output_weight_ptr = nullptr;
-  int8_t* proj_weight_ptr = nullptr;
+  int8_t* projection_weight_ptr = nullptr;
   int16_t* layer_norm_input_weight_ptr = nullptr;
   int16_t* layer_norm_forget_weight_ptr = nullptr;
   int16_t* layer_norm_cell_weight_ptr = nullptr;
   int16_t* layer_norm_output_weight_ptr = nullptr;
-  int32_t* input_bias_ptr = nullptr;
-  int32_t* forget_bias_ptr = nullptr;
-  int32_t* cell_bias_ptr = nullptr;
-  int32_t* output_bias_ptr = nullptr;
-  int32_t* proj_bias_ptr = nullptr;
+  int32_t* input_gate_bias_ptr = nullptr;
+  int32_t* forget_gate_bias_ptr = nullptr;
+  int32_t* cell_gate_bias_ptr = nullptr;
+  int32_t* output_gate_bias_ptr = nullptr;
+  int32_t* projection_bias_ptr = nullptr;
   int16_t* cell_ptr = nullptr;
   int8_t* output_state_ptr = nullptr;
 
@@ -468,7 +469,7 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_8(
   float input_to_output_weight_scale = default_scale;
   float recurrent_to_output_weight_scale = default_scale;
   float cell_to_output_weight_scale = default_scale;
-  float proj_weight_scale = default_scale;
+  float projection_weight_scale = default_scale;
   float layer_norm_input_scale = default_scale;
   float layer_norm_forget_scale = default_scale;
   float layer_norm_cell_scale = default_scale;
@@ -497,7 +498,7 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_8(
   if (!use_cifg) {
     input_to_input_weight_ptr = input_to_input_weights->data.int8;
     recurrent_to_input_weight_ptr = recurrent_to_input_weights->data.int8;
-    input_bias_ptr = input_gate_bias->data.i32;
+    input_gate_bias_ptr = input_gate_bias->data.i32;
     input_to_input_weight_scale = input_to_input_weights->params.scale;
     recurrent_to_input_weight_scale = recurrent_to_input_weights->params.scale;
   }
@@ -527,10 +528,10 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_8(
   }
 
   if (use_projection) {
-    proj_weight_ptr = projection_weights->data.int8;
-    proj_weight_scale = projection_weights->params.scale;
+    projection_weight_ptr = projection_weights->data.int8;
+    projection_weight_scale = projection_weights->params.scale;
     if (projection_bias) {
-      proj_bias_ptr = projection_bias->data.i32;
+      projection_bias_ptr = projection_bias->data.i32;
     }
   }
   output_state_scale = output_state->params.scale;
@@ -547,9 +548,9 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_8(
   recurrent_to_cell_weight_scale = recurrent_to_cell_weights->params.scale;
   recurrent_to_output_weight_ptr = recurrent_to_output_weights->data.int8;
   recurrent_to_output_weight_scale = recurrent_to_output_weights->params.scale;
-  forget_bias_ptr = forget_gate_bias->data.i32;
-  cell_bias_ptr = cell_bias->data.i32;
-  output_bias_ptr = output_gate_bias->data.i32;
+  forget_gate_bias_ptr = forget_gate_bias->data.i32;
+  cell_gate_bias_ptr = cell_gate_bias->data.i32;
+  output_gate_bias_ptr = output_gate_bias->data.i32;
   output_state_ptr = output_state->data.int8;
   cell_ptr = cell_state->data.i16;
   input_scale = input->params.scale;
@@ -592,7 +593,7 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_8(
                                         output_state_scale /
                                         intermediate_scale[11];
   effective_proj_scale =
-      proj_weight_scale * std::pow(2, -15) / output_state_scale;
+      projection_weight_scale * std::pow(2, -15) / output_state_scale;
 
   if (use_peephole) {
     if (!use_cifg) {
@@ -703,14 +704,15 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_8(
       output_tensor->quantization.params);
   TF_LITE_ENSURE_EQ(context, cell_state_params->scale->data[0], 1.0 / 32768);
   if (cell_clip > 0.0 && cell_clip < 1.0) {
-    integer_lstm_param->quantized_cell_clip =
-        static_cast<int>(cell_clip / cell_state_params->scale->data[0]);
+    integer_lstm_param->quantized_cell_clip = static_cast<int16_t>(std::min(
+        std::max(cell_clip / cell_state_params->scale->data[0], -32768.0f),
+        32767.0f));
   } else {
     integer_lstm_param->quantized_cell_clip = 0;
   }
   if (proj_clip > 0.0) {
-    integer_lstm_param->quantized_proj_clip =
-        proj_clip / proj_params->scale->data[0];
+    integer_lstm_param->quantized_proj_clip = static_cast<int8_t>(std::min(
+        std::max(proj_clip / proj_params->scale->data[0], -128.0f), 127.0f));
   } else {
     integer_lstm_param->quantized_proj_clip = 0;
   }
@@ -874,13 +876,14 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
     TF_LITE_ENSURE_TYPES_EQ(context, forget_gate_bias->type, kTfLiteFloat32);
   }
 
-  const TfLiteTensor* cell_bias = GetInput(context, node, kCellGateBiasTensor);
-  TF_LITE_ENSURE_EQ(context, cell_bias->dims->size, 1);
-  TF_LITE_ENSURE_EQ(context, cell_bias->dims->data[0], n_cell);
+  const TfLiteTensor* cell_gate_bias =
+      GetInput(context, node, kCellGateBiasTensor);
+  TF_LITE_ENSURE_EQ(context, cell_gate_bias->dims->size, 1);
+  TF_LITE_ENSURE_EQ(context, cell_gate_bias->dims->data[0], n_cell);
   if (is_integer) {
-    TF_LITE_ENSURE_TYPES_EQ(context, cell_bias->type, kTfLiteInt32);
+    TF_LITE_ENSURE_TYPES_EQ(context, cell_gate_bias->type, kTfLiteInt32);
   } else {
-    TF_LITE_ENSURE_TYPES_EQ(context, cell_bias->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_TYPES_EQ(context, cell_gate_bias->type, kTfLiteFloat32);
   }
 
   const TfLiteTensor* output_gate_bias =
@@ -1525,7 +1528,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       GetOptionalInputTensor(context, node, kInputGateBiasTensor);
   const TfLiteTensor* forget_gate_bias =
       GetInput(context, node, kForgetGateBiasTensor);
-  const TfLiteTensor* cell_bias = GetInput(context, node, kCellGateBiasTensor);
+  const TfLiteTensor* cell_gate_bias =
+      GetInput(context, node, kCellGateBiasTensor);
   const TfLiteTensor* output_gate_bias =
       GetInput(context, node, kOutputGateBiasTensor);
 
@@ -1559,8 +1563,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           /*aux_input_to_forget_weights=*/nullptr,
           /*aux_input_to_cell_weights=*/nullptr,
           /*aux_input_to_output_weights=*/nullptr, input_gate_bias,
-          forget_gate_bias, cell_bias, output_gate_bias, projection_weights,
-          projection_bias, params, /*forward_sequence=*/true,
+          forget_gate_bias, cell_gate_bias, output_gate_bias,
+          projection_weights, projection_bias, params,
+          /*forward_sequence=*/true,
           /*time_major=*/true,
           /*output_offset=*/0, scratch_buffer, output_state, cell_state,
           output);
@@ -1602,8 +1607,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             /*aux_input_to_forget_weights=*/nullptr,
             /*aux_input_to_cell_weights=*/nullptr,
             /*aux_input_to_output_weights=*/nullptr, input_gate_bias,
-            forget_gate_bias, cell_bias, output_gate_bias, projection_weights,
-            projection_bias, params, /*forward_sequence=*/true,
+            forget_gate_bias, cell_gate_bias, output_gate_bias,
+            projection_weights, projection_bias, params,
+            /*forward_sequence=*/true,
             /*time_major=*/true, /*output_offset=*/0, scratch_buffer,
             scaling_factors, prod_scaling_factors, recovered_cell_weights,
             input_quantized,
@@ -1630,10 +1636,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
               cell_to_output_weights, input_layer_norm_coefficients,
               forget_layer_norm_coefficients, cell_layer_norm_coefficients,
               output_layer_norm_coefficients, input_gate_bias, forget_gate_bias,
-              cell_bias, output_gate_bias, projection_weights, projection_bias,
-              params, &op_data->integer_lstm_param, output_state, cell_state,
-              output, scratch0, scratch1, scratch2, scratch3, scratch4,
-              scratch5, CpuBackendContext::GetFromContext(context));
+              cell_gate_bias, output_gate_bias, projection_weights,
+              projection_bias, params, &op_data->integer_lstm_param,
+              output_state, cell_state, output, scratch0, scratch1, scratch2,
+              scratch3, scratch4, scratch5,
+              CpuBackendContext::GetFromContext(context));
         } else {
           TfLiteTensor* scratch0 = GetTemporary(context, node, /*index=*/0);
           TfLiteTensor* scratch1 = GetTemporary(context, node, /*index=*/1);
@@ -1652,8 +1659,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
               cell_to_output_weights, input_layer_norm_coefficients,
               forget_layer_norm_coefficients, cell_layer_norm_coefficients,
               output_layer_norm_coefficients, input_gate_bias, forget_gate_bias,
-              cell_bias, output_gate_bias, projection_weights, projection_bias,
-              params, output_state, cell_state, output,
+              cell_gate_bias, output_gate_bias, projection_weights,
+              projection_bias, params, output_state, cell_state, output,
               &op_data->integer_lstm_param, scratch0, scratch1, scratch2,
               scratch3, scratch4, scratch5, scratch6, scratch7);
           return kTfLiteOk;

@@ -251,7 +251,6 @@ def generated_test_models():
         "ceil",
         "concat",
         "constant",
-        # "control_dep", # b/150647401
         "conv",
         "conv_relu",
         "conv_relu1",
@@ -768,10 +767,10 @@ def tflite_custom_cc_library(name, models = [], srcs = [], deps = [], visibility
         name = name,
         srcs = real_srcs,
         copts = tflite_copts(),
-        linkopts = [
-            "-lm",
-            "-ldl",
-        ],
+        linkopts = select({
+            "//tensorflow:windows": [],
+            "//conditions:default": ["-lm", "-ldl"],
+        }),
         deps = depset([
             "//tensorflow/lite:framework",
             "//tensorflow/lite/kernels:builtin_ops",

@@ -131,10 +131,10 @@ def TfSavedModel_GlobalTensorOp : TfSavedModel_Op<"global_tensor"> {
 def TfSavedModel_SessionInitializerOp: TfSavedModel_Op<"session_initializer"> {
   let summary = "Initializes TensorFlow session state.";
   let description = [{
-    Represents a session initializer function initializes TensorFlow session
-    state. It is used to initialize resources in the saved model before calling
-    any exported functions. There must be no more than one session initializer
-    in a saved model.
+    The session initializer op marks a function that must be called by an
+    external agent exactly once to initialize TensorFlow session state, and this
+    must happen before any other exported functions are called. There must be no
+    more than one session initializer in a saved model.
 
     The `initializer` represents the initialization function. The function have
     no output and this function should be only called once.
@@ -150,6 +150,8 @@ def TfSavedModel_SessionInitializerOp: TfSavedModel_Op<"session_initializer"> {
 
 
   let verifier = [{ return Verify(*this); }];
+
+  let hasCanonicalizer = 1;
 }
 
 #endif // SAVED_MODEL_DIALECT
