@@ -1,7 +1,34 @@
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 """Utils for EfficientNet models for Keras.
 Write weights from  ckpt file as in original repo
 (https://github.com/tensorflow/tpu/tree/master/models/official/efficientnet)
 to h5 file for keras implementation of the models.
+
+Usage: 
+
+# use checkpoint efficientnet-b0/model.ckpt (can be downloaded from
+# https://storage.googleapis.com/cloud-tpu-checkpoints/efficientnet/ckptsaug/efficientnet-b0.tar.gz)
+# to update weight without top layers, saving to efficientnetb0_notop.h5
+python efficientnet_weight_update_util.py --model b0 --notop --ckpt efficientnet-b0/model.ckpt --o efficientnetb0_notop.h5
+
+# use checkpoint noisy_student_efficientnet-b3/model.ckpt (providing improved result for b3, can be downloaded from
+# https://storage.googleapis.com/cloud-tpu-checkpoints/efficientnet/noisystudent/noisy_student_efficientnet-b3.tar.gz)
+# to update weight with top layers, saving to efficientnetb3_new.h5
+python efficientnet_weight_update_util.py --model b0 --notop --ckpt noisy_student_efficientnet-b3/model.ckpt --o efficientnetb3_new.h5
+
 """
 
 import tensorflow as tf
