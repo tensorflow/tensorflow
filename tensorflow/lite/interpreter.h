@@ -347,10 +347,12 @@ class Interpreter {
   /// WARNING: Experimental interface, subject to change
   TfLiteStatus ReleaseNonPersistentMemory();
 
-  /// Update allocations for all tensors. This will redim dependent tensors
-  /// using the input tensor dimensionality as given. This is relatively
-  /// expensive. If you know that your sizes are not changing, you need not call
-  /// this. Returns status of success or failure.
+  // Update allocations for all tensors. This will redim dependent tensors
+  // using the input tensor dimensionality as given. This is relatively
+  // expensive. This *must be* called after the interpreter has been created
+  // and before running inference (and accessing tensor buffers), and *must be*
+  // called again if (and only if) an input tensor is resized. Returns status of
+  // success or failure.
   TfLiteStatus AllocateTensors();
 
   /// Invoke the interpreter (run the whole graph in dependency order).
@@ -540,7 +542,7 @@ class Interpreter {
                                  TfLiteExternalContext* ctx);
 
   // Sets the profiler to all subgraphs.
-  void SetSubgraphProfiler(Profiler* profiler);
+  void SetSubgraphProfiler();
 
   // Remove delegates (for fallback behaviour). The interpreter is invokable
   // afterwards.
@@ -559,10 +561,10 @@ class Interpreter {
   // interface. To avoid copying tensor metadata, this is also the definitive
   // structure to store tensors.
   // This is the primary subgraph context.
-  TfLiteContext* context_;
+  TfLiteContext* context_ = nullptr;
 
   // The error reporter delegate that tflite will forward queries errors to.
-  ErrorReporter* error_reporter_;
+  ErrorReporter* error_reporter_ = nullptr;
 
   // List of delegates that have been installed and are owned by this
   // interpreter instance. Useful if client delegate ownership is burdensome.
@@ -573,6 +575,9 @@ class Interpreter {
   // Profiler that has been installed and is owned by this interpreter instance.
   // Useful if client profiler ownership is burdensome.
   std::unique_ptr<Profiler> owned_profiler_;
+
+  // Points to the installed Profiler instance.
+  Profiler* installed_profiler_ = nullptr;
 
   bool allow_buffer_handle_output_ = false;
 
@@ -591,6 +596,11 @@ class Interpreter {
 
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap resources_;
+
+  // Indicating a delegate that the TFLite interpreter will apply by default.
+  // A nullptr value means there's no delegate to be applied by default or the
+  // delegate has been applied and doesn't need to be applied again.
+  TfLiteDelegatePtr lazy_delegate_provider_;
 };
 
 }  // namespace impl

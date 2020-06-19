@@ -60,15 +60,6 @@ std::string GetImageModifier(AccessType access) {
   }
 }
 
-std::string TextureAddressModeToString(TextureAddressMode address_mode) {
-  switch (address_mode) {
-    case TextureAddressMode::DONT_CARE:
-      return "smp_none";
-    case TextureAddressMode::ZERO:
-      return "smp_zero";
-  }
-}
-
 }  // namespace
 
 std::string GetCommonDefines(CalculationsPrecision precision) {
@@ -119,13 +110,13 @@ std::string GetCommonDefines(CalculationsPrecision precision) {
   }
 
   result +=
-      "const sampler_t smp_edge = CLK_NORMALIZED_COORDS_FALSE | "
+      "__constant sampler_t smp_edge = CLK_NORMALIZED_COORDS_FALSE | "
       "CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_NEAREST;\n";
   result +=
-      "const sampler_t smp_none = CLK_NORMALIZED_COORDS_FALSE | "
+      "__constant sampler_t smp_none = CLK_NORMALIZED_COORDS_FALSE | "
       "CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;\n";
   result +=
-      "const sampler_t smp_zero = CLK_NORMALIZED_COORDS_FALSE | "
+      "__constant sampler_t smp_zero = CLK_NORMALIZED_COORDS_FALSE | "
       "CLK_ADDRESS_CLAMP | CLK_FILTER_NEAREST;\n";
 
   return result;

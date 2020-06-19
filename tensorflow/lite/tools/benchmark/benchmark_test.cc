@@ -53,6 +53,7 @@ BenchmarkParams CreateParams(int32_t num_runs, float min_secs, float max_secs,
   params.AddParam("max_secs", BenchmarkParam::Create<float>(max_secs));
   params.AddParam("run_delay", BenchmarkParam::Create<float>(-1.0f));
   params.AddParam("num_threads", BenchmarkParam::Create<int32_t>(1));
+  params.AddParam("use_caching", BenchmarkParam::Create<bool>(false));
   params.AddParam("benchmark_name", BenchmarkParam::Create<std::string>(""));
   params.AddParam("output_prefix", BenchmarkParam::Create<std::string>(""));
   params.AddParam("warmup_runs", BenchmarkParam::Create<int32_t>(1));
@@ -395,6 +396,14 @@ TEST(BenchmarkTest, RunWithWrongFlags) {
   ScopedCommandlineArgs scoped_argv({"--num_threads=str"});
   auto status = benchmark.Run(scoped_argv.argc(), scoped_argv.argv());
   EXPECT_EQ(kTfLiteError, status);
+}
+
+TEST(BenchmarkTest, RunWithUseCaching) {
+  ASSERT_THAT(g_fp32_model_path, testing::NotNull());
+  TestBenchmark benchmark(CreateFp32Params());
+  ScopedCommandlineArgs scoped_argv({"--use_caching=false"});
+  auto status = benchmark.Run(scoped_argv.argc(), scoped_argv.argv());
+  EXPECT_EQ(kTfLiteOk, status);
 }
 
 class MaxDurationWorksTestListener : public BenchmarkListener {

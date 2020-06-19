@@ -50,11 +50,13 @@ void AddResourceMetadata(uint32 device_id,
       AppendEscapedName(json, resource.name());
       absl::StrAppend(json, "}},");
     }
+    uint32 sort_index =
+        resource.sort_index() ? resource.sort_index() : resource_id;
     absl::StrAppendFormat(
         json,
         R"({"ph":"M","pid":%u,"tid":%u,)"
         R"("name":"thread_sort_index","args":{"sort_index":%u}},)",
-        device_id, resource_id, resource_id);
+        device_id, resource_id, sort_index);
   }
 }
 

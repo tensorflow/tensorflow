@@ -171,7 +171,7 @@ CreateConvertReadonlyReferenceVariablesToResourceVariablesPass() {
 
 static PassRegistration<
     ConvertReadonlyReferenceVariablesToResourceVariablesPass>
-    pass("readonly-references-to-resources",
+    pass("tf-readonly-references-to-resources",
          "Convert readonly reference variables to resource variables.");
 
 }  // namespace TF

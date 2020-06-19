@@ -181,7 +181,7 @@ class GrpcEagerClient : public EagerClient {
                              StatusCallback done) override {
     StatusCallback done_wrapped = callback_wrapper(std::move(done));
     if (EnableStreaming()) {
-      tf_shared_lock l(mu_);
+      mutex_lock l(mu_);
       auto it = enqueue_dispatchers_.find(request->context_id());
       if (it == enqueue_dispatchers_.end()) {
         auto it_and_bool = enqueue_dispatchers_.emplace(

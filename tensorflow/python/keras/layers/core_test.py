@@ -29,6 +29,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -273,6 +274,12 @@ class LambdaLayerTest(keras_parameterized.TestCase):
     out = layer(ragged_input)
     expected_out = ragged_factory_ops.constant([[2.0], [3.0, 4.0]])
     self.assertAllClose(out, expected_out)
+
+  def test_lambda_deserialization_does_not_pollute_core(self):
+    layer = keras.layers.Lambda(lambda x: x + 1)
+    config = layer.get_config()
+    keras.layers.Lambda.from_config(config)
+    self.assertNotIn(self.__class__.__name__, dir(core))
 
 
 class TestStatefulLambda(keras_parameterized.TestCase):

@@ -41,10 +41,10 @@ namespace {
 void RecordPaddingSize(int32 padding_size, const string& model_name,
                        int32 execution_batch_size) {
   static auto* cell = tensorflow::monitoring::PercentileSampler<2>::New(
-      {"/tensorflow/serving/batching/padding_size", "model_name",
-       "execution_batch_size",
+      {"/tensorflow/serving/batching/padding_size",
        "Tracks the padding size distribution on batches by model_name (if "
-       "available)."},
+       "available).",
+       "model_name", "execution_batch_size"},
       /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
       /*max_samples=*/1024, tensorflow::monitoring::UnitOfMeasure::kNumber);
   cell->GetCell(model_name, absl::StrCat(execution_batch_size))
@@ -53,9 +53,10 @@ void RecordPaddingSize(int32 padding_size, const string& model_name,
 
 void RecordInputBatchSize(int32 batch_size, const string& model_name) {
   static auto* cell = tensorflow::monitoring::PercentileSampler<1>::New(
-      {"/tensorflow/serving/batching/input_batch_size", "model_name",
+      {"/tensorflow/serving/batching/input_batch_size",
        "Tracks the batch size distribution on the inputs by model_name (if "
-       "available)."},
+       "available).",
+       "model_name"},
       /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
       /*max_samples=*/1024, tensorflow::monitoring::UnitOfMeasure::kNumber);
   cell->GetCell(model_name)->Add(static_cast<double>(batch_size));
@@ -63,9 +64,10 @@ void RecordInputBatchSize(int32 batch_size, const string& model_name) {
 
 void RecordProcessedBatchSize(int32 batch_size, const string& model_name) {
   static auto* cell = tensorflow::monitoring::PercentileSampler<1>::New(
-      {"/tensorflow/serving/batching/processed_batch_size", "model_name",
+      {"/tensorflow/serving/batching/processed_batch_size",
        "Tracks the batch size distribution on processing by model_name (if "
-       "available)."},
+       "available).",
+       "model_name"},
       /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
       /*max_samples=*/1024, tensorflow::monitoring::UnitOfMeasure::kNumber);
   cell->GetCell(model_name)->Add(static_cast<double>(batch_size));
@@ -73,9 +75,10 @@ void RecordProcessedBatchSize(int32 batch_size, const string& model_name) {
 
 void RecordBatchDelayMs(int64 batch_delay_ms, const string& model_name) {
   static auto* cell = monitoring::PercentileSampler<1>::New(
-      {"/tensorflow/serving/batching/batch_delay_ms", "model_name",
+      {"/tensorflow/serving/batching/batch_delay_ms",
        "Tracks the batching delay for inputs by model_name (if "
-       "available)."},
+       "available).",
+       "model_name"},
       /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
       /*max_samples=*/1024, monitoring::UnitOfMeasure::kTime);
   cell->GetCell(model_name)->Add(static_cast<double>(batch_delay_ms));
@@ -97,9 +100,9 @@ typedef Eigen::SyclDevice SYCLDevice;
 #endif  // TENSORFLOW_USE_SYCL
 
 // Concatenates 'inputs' into a single tensor along the zeroth dimension.
-// Requires that all elements of 'inputs' have element type T. Writes to the
-// op's output at position 'output_index', using 'context' for the allocation to
-// ensure proper device placement.
+// Requires that all elements of 'inputs' have element type T. Writes to
+// 'output' using 'context' for the allocation to ensure proper device
+// placement.
 template <typename T>
 Status Concat(OpKernelContext* context, const gtl::ArraySlice<Tensor> inputs,
               Tensor* output) {
@@ -152,6 +155,25 @@ Status Concat(OpKernelContext* context, const gtl::ArraySlice<Tensor> inputs,
   }
 
   return Status::OK();
+}
+
+// Same as 'Concat' above, but handles Tensor dtype deduction automatically.
+Status Concat(OpKernelContext* context, const gtl::ArraySlice<Tensor> inputs,
+              Tensor* output) {
+  const DataType type = inputs[0].dtype();
+  Status concat_status;
+  switch (type) {
+#define CASE(type)                                         \
+  case DataTypeToEnum<type>::value:                        \
+    concat_status = Concat<type>(context, inputs, output); \
+    break;
+    TF_CALL_ALL_TYPES(CASE);
+#undef CASE
+    default:
+      concat_status = errors::InvalidArgument("Unsupported data type: ", type);
+      break;
+  }
+  return concat_status;
 }
 
 // The Split*() functions split 'input' with element type T into 'sizes.size()'
@@ -265,6 +287,25 @@ Status Split(OpKernelContext* context, const Tensor& input,
   return SplitCPU<T>(context, input, sizes, outputs);
 }
 
+// Same as 'Split' above, but handles Tensor dtype automatically.
+Status Split(OpKernelContext* context, const Tensor& input,
+             const gtl::ArraySlice<int64> sizes, std::vector<Tensor>* outputs) {
+  const DataType type = input.dtype();
+  Status split_status;
+  switch (type) {
+#define CASE(type)                                              \
+  case DataTypeToEnum<type>::value:                             \
+    split_status = Split<type>(context, input, sizes, outputs); \
+    break;
+    TF_CALL_ALL_TYPES(CASE);
+#undef CASE
+    default:
+      split_status = errors::InvalidArgument("Unsupported data type: ", type);
+      break;
+  }
+  return split_status;
+}
+
 // A class encapsulating the state and logic for batching tensors.
 class BatchResource : public ResourceBase {
  public:
@@ -272,6 +313,7 @@ class BatchResource : public ResourceBase {
                        int32 batch_timeout_micros, int32 max_enqueued_batches,
                        const std::vector<int32>& allowed_batch_sizes,
                        FunctionLibraryRuntime::Handle fhandle,
+                       bool enable_large_batch_splitting,
                        std::unique_ptr<BatchResource>* resource) {
     std::unique_ptr<BatchResource> new_resource(new BatchResource);
 
@@ -285,6 +327,10 @@ class BatchResource : public ResourceBase {
         max_enqueued_batches;
     new_resource->batcher_queue_options_.batch_timeout_micros =
         batch_timeout_micros;
+
+    // Support for splitting large batch is still in progress.
+    new_resource->batcher_queue_options_.enable_large_batch_splitting =
+        enable_large_batch_splitting;
 
     new_resource->allowed_batch_sizes_ = allowed_batch_sizes;
 
@@ -441,22 +487,9 @@ class BatchResource : public ResourceBase {
         }
       }
 
-      const DataType type = to_concatenate[0].dtype();
-      Status concat_status;
       Tensor concatenated_tensor;
-      switch (type) {
-#define CASE(type)                                                   \
-  case DataTypeToEnum<type>::value:                                  \
-    concat_status =                                                  \
-        Concat<type>(context, to_concatenate, &concatenated_tensor); \
-    break;
-        TF_CALL_ALL_TYPES(CASE);
-#undef CASE
-        default:
-          concat_status =
-              errors::InvalidArgument("Unsupported data type: ", type);
-          break;
-      }
+      Status concat_status =
+          Concat(context, to_concatenate, &concatenated_tensor);
       TF_RETURN_IF_ERROR(concat_status);
       concatenated_tensors->push_back(concatenated_tensor);
     }
@@ -521,7 +554,7 @@ class BatchResource : public ResourceBase {
 
       for (int j = 0; j < batch->num_tasks(); ++j) {
         BatchTask& task = *(batch->mutable_task(j));
-        task.context->set_output(i, split_tensor.at(j));
+        task.context->set_output(i, std::move(split_tensor.at(j)));
       }  // (Ignore a possible final split_tensors entry containing the
          // padding.)
     }
@@ -786,6 +819,13 @@ class BatchFunctionKernel : public AsyncOpKernel {
     OP_REQUIRES_OK(c, c->GetAttr("f", &func));
     OP_REQUIRES_OK(
         c, lib->Instantiate(func.name(), AttrSlice(&func.attr()), &fhandle_));
+
+    if (c->HasAttr("enable_large_batch_splitting")) {
+      OP_REQUIRES_OK(c, c->GetAttr("enable_large_batch_splitting",
+                                   &enable_large_batch_splitting_));
+    } else {
+      enable_large_batch_splitting_ = false;
+    }
   }
 
   bool IsExpensive() override { return false; }
@@ -794,10 +834,10 @@ class BatchFunctionKernel : public AsyncOpKernel {
     BatchResource* br;
     std::function<Status(BatchResource**)> creator = [this](BatchResource** r) {
       std::unique_ptr<BatchResource> new_resource;
-      TF_RETURN_IF_ERROR(
-          BatchResource::Create(num_batch_threads_, max_batch_size_,
-                                batch_timeout_micros_, max_enqueued_batches_,
-                                allowed_batch_sizes_, fhandle_, &new_resource));
+      TF_RETURN_IF_ERROR(BatchResource::Create(
+          num_batch_threads_, max_batch_size_, batch_timeout_micros_,
+          max_enqueued_batches_, allowed_batch_sizes_, fhandle_,
+          enable_large_batch_splitting_, &new_resource));
       *r = new_resource.release();
       return Status::OK();
     };
@@ -844,6 +884,7 @@ class BatchFunctionKernel : public AsyncOpKernel {
   int32 max_enqueued_batches_;
   std::vector<int32> allowed_batch_sizes_;
   FunctionLibraryRuntime::Handle fhandle_;
+  bool enable_large_batch_splitting_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("BatchFunction").Device(DEVICE_CPU),
@@ -876,7 +917,7 @@ class BatchKernel : public AsyncOpKernel {
       std::unique_ptr<BatchResource> new_resource;
       TF_RETURN_IF_ERROR(BatchResource::Create(
           num_batch_threads_, max_batch_size_, batch_timeout_micros_,
-          max_enqueued_batches_, allowed_batch_sizes_, kInvalidHandle,
+          max_enqueued_batches_, allowed_batch_sizes_, kInvalidHandle, false,
           &new_resource));
       *r = new_resource.release();
       return Status::OK();
@@ -985,17 +1026,7 @@ class UnbatchResource : public ResourceBase {
         batch_keys.push_back(batch_indices(i, 0));
       }
 
-      const DataType type = data_t.dtype();
-      switch (type) {
-#define CASE(type)                                                          \
-  case DataTypeToEnum<type>::value:                                         \
-    TF_RETURN_IF_ERROR(Split<type>(context, data_t, sizes, &split_inputs)); \
-    break;
-        TF_CALL_ALL_TYPES(CASE);
-#undef CASE
-        default:
-          return errors::InvalidArgument("Unsupported data type: ", type);
-      }
+      TF_RETURN_IF_ERROR(Split(context, data_t, sizes, &split_inputs));
     }
 
     // Critical section.

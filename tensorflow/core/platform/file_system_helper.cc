@@ -103,7 +103,7 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
                 children_dir_status[i] = fs->IsDirectory(child_path);
               }
             });
-    for (int i = 0; i < children.size(); ++i) {
+    for (size_t i = 0; i < children.size(); ++i) {
       const string child_path = io::JoinPath(current_dir, children[i]);
       // If the IsDirectory call was cancelled we bail.
       if (children_dir_status[i].code() == tensorflow::error::CANCELLED) {

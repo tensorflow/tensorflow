@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.distribute import ps_values as ps_distribute_values
 from tensorflow.python.distribute import values as distribute_values
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
@@ -284,6 +285,13 @@ class AutoCastVariable(variables.Variable, core.Tensor):
     # models with normal variables, and vice versa.
     return self._variable._gather_saveables_for_checkpoint()  # pylint:disable=protected-access
 
+  def _map_resources(self):
+    # By delegating this method to the wrapped variable, SavedModel with
+    # AutoCastVariables are identical to SavedModel with normal variables.
+    obj_map, resource_map = self._variable._map_resources()  # pylint:disable=protected-access
+    obj_map[self] = obj_map[self._variable]
+    return obj_map, resource_map
+
   # TODO(reedwm): Maybe encode the fact the variable is an AutoCastVariable in
   # to_proto().
   def to_proto(self, export_scope=None):
@@ -437,7 +445,7 @@ def create_autocast_variable(variable):
     An AutoCastVariable that wraps the variable.
   """
   if not isinstance(variable, (distribute_values.DistributedVariable,
-                               distribute_values.AggregatingVariable)):
+                               ps_distribute_values.AggregatingVariable)):
     return AutoCastVariable(variable)
 
   class AutoCastDistributedVariable(AutoCastVariable, variable.__class__):
@@ -448,7 +456,8 @@ def create_autocast_variable(variable):
     """
 
     def __repr__(self):
-      if issubclass(distribute_values.AggregatingVariable, variable.__class__):
+      if issubclass(ps_distribute_values.AggregatingVariable,
+                    variable.__class__):
         # AggregatingVariable's __repr__ simply calls super.__repr__. So we do
         # the same here for consistency, which calls AutoCastVariable.__repr__.
         return super(AutoCastDistributedVariable, self).__repr__()

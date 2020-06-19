@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_SUPPORT_METADATA_CC_METADATA_VERSION_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_SUPPORT_METADATA_CC_METADATA_VERSION_H_
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include <string>
 
 #include "tensorflow/lite/c/common.h"

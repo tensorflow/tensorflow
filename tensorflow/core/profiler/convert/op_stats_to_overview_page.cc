@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_function.pb.h"
-#include "tensorflow/core/profiler/utils/errors.h"
+#include "tensorflow/core/profiler/utils/diagnostics.h"
 #include "tensorflow/core/profiler/utils/html_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
@@ -175,7 +175,6 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
     op->set_flop_rate(
         SafeDivide(metrics->flops(), PicosToNanos(metrics->time_ps())));
   }
-  SetRemarks(op_stats, &analysis);
   uint64 total_device_compute_ps =
       op_stats.device_op_metrics_db().precision_stats().compute_16bit_ps() +
       op_stats.device_op_metrics_db().precision_stats().compute_32bit_ps();
@@ -297,34 +296,8 @@ OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
       bottleneck.input_classification(), bottleneck.input_statement(), "",
       hardware_type, TfFunctionRecommendationHtml(op_stats.tf_function_db()),
       overview_page.mutable_recommendation());
-  SetOverviewPageErrorMessage(op_stats, &overview_page);
+  PopulateOverviewDiagnostics(op_stats, overview_page.mutable_diagnostics());
   return overview_page;
-}
-
-void SetRemarks(const OpStats& op_stats, OverviewPageAnalysis* analysis) {
-  if (op_stats.step_db().use_incomplete_step()) {
-    analysis->set_remark_text(absl::StrCat("WARNING: ", kErrorIncompleteStep));
-    analysis->set_remark_color("red");
-  } else if (op_stats.step_db().step_sequence().empty()) {
-    analysis->set_remark_text(absl::StrCat("WARNING: ", kErrorNoStepMarker));
-    analysis->set_remark_color("red");
-  } else {
-    analysis->set_remark_text("");
-    analysis->set_remark_color("black");
-  }
-}
-
-void SetOverviewPageErrorMessage(const OpStats& op_stats,
-                                 OverviewPage* overview_page) {
-  *overview_page->mutable_errors() = op_stats.errors();
-  absl::c_sort(*overview_page->mutable_errors());
-  if (overview_page->errors().empty()) {
-    // Shows run-environment error only if there is no other existing error.
-    if (op_stats.run_environment().device_type() != "CPU" &&
-        op_stats.run_environment().device_core_count() <= 0) {
-      *overview_page->add_errors() = std::string(kNoDeviceTraceCollected);
-    }
-  }
 }
 
 }  // namespace profiler

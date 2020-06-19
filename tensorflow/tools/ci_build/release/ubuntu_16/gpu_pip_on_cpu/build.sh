@@ -34,7 +34,7 @@ export TENSORRT_INSTALL_PATH=/usr/local/tensorrt
 export CC_OPT_FLAGS='-mavx'
 export PYTHON_BIN_PATH=$(which python3.6)
 export LD_LIBRARY_PATH="/usr/local/cuda:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:$TENSORRT_INSTALL_PATH/lib"
-export TF_CUDA_COMPUTE_CAPABILITIES=3.5,3.7,5.2,6.0,6.1,7.0
+export TF_CUDA_COMPUTE_CAPABILITIES=sm_35,sm_37,sm_52,sm_60,sm_61,compute_70
 
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
@@ -45,10 +45,15 @@ bazel build --config=opt \
   --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain \
   tensorflow/tools/pip_package:build_pip_package
 
+# Set TF nightly flag so we get the proper version of estimator
+if [[ "$IS_NIGHTLY" == 1 ]]; then
+  NIGHTLY_FLAG="--nightly_flag"
+fi
+
 PIP_WHL_DIR=whl
 mkdir -p ${PIP_WHL_DIR}
 PIP_WHL_DIR=$(readlink -f ${PIP_WHL_DIR})  # Get absolute path
-bazel-bin/tensorflow/tools/pip_package/build_pip_package "${PIP_WHL_DIR}"
+bazel-bin/tensorflow/tools/pip_package/build_pip_package "${PIP_WHL_DIR}" "${NIGHTLY_FLAG}"
 WHL_PATH=$(ls "${PIP_WHL_DIR}"/*.whl)
 
 cp "${WHL_PATH}" "$(pwd)"/.

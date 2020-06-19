@@ -214,6 +214,10 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
   }
   ptxas_args.insert(ptxas_args.end(), options.extra_flags.begin(),
                     options.extra_flags.end());
+  if (VLOG_IS_ON(3)) {
+    VLOG(3) << absl::StrJoin(ptxas_args, " ");
+  }
+
   ptxas_info_dumper.SetProgram(ptxas_path, ptxas_args);
   ptxas_info_dumper.SetChannelAction(tensorflow::CHAN_STDERR,
                                      tensorflow::ACTION_PIPE);
@@ -227,6 +231,10 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
     return port::InternalError(
         absl::StrFormat("ptxas exited with non-zero error code %d, output: %s",
                         exit_status, stderr_output));
+  }
+  // Print the verbose output of ptxas.
+  if (!stderr_output.empty()) {
+    VLOG(2) << stderr_output;
   }
 
   // Read in the result of compilation and return it as a byte vector.

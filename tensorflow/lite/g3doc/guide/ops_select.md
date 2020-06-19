@@ -2,9 +2,9 @@
 
 Caution: This feature is experimental.
 
-The TensorFlow Lite builtin op library has grown rapidly, and will continue to
+The TensorFlow Lite builtin op library has grown rapidly and will continue to
 grow, but there remains a long tail of TensorFlow ops that are not yet natively
-supported by TensorFlow Lite . These unsupported ops can be a point of friction
+supported by TensorFlow Lite. These unsupported ops can be a point of friction
 in the TensorFlow Lite model conversion process. To that end, the team has
 recently been working on an experimental mechanism for reducing this friction.
 
@@ -53,9 +53,9 @@ partially supported by TensorFlow Lite, and one would like to avoid those
 limitations.
 
 The following example shows how to use this feature in the
-[`TFLiteConverter`](./convert/python_api.md) Python API.
+[`TFLiteConverter`](../convert/python_api.md) Python API.
 
-```
+```python
 import tensorflow as tf
 
 converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
@@ -69,7 +69,7 @@ The following example shows how to use this feature in the
 [`tflite_convert`](../convert/cmdline_examples.md) command line tool using the
 command line flag `target_ops`.
 
-```
+```sh
 tflite_convert \
   --output_file=/tmp/foo.tflite \
   --graph_def_file=/tmp/foo.pb \
@@ -81,7 +81,7 @@ tflite_convert \
 When building and running `tflite_convert` directly with `bazel`, please pass
 `--define=tflite_convert_with_select_tf_ops=true` as an additional argument.
 
-```
+```sh
 bazel run --define=tflite_convert_with_select_tf_ops=true tflite_convert -- \
   --output_file=/tmp/foo.tflite \
   --graph_def_file=/tmp/foo.pb \
@@ -157,7 +157,7 @@ Finally, in your app's `build.gradle`, ensure you have the `mavenLocal()`
 dependency and replace the standard TensorFlow Lite dependency with the one that
 has support for select TensorFlow ops:
 
-```
+```build
 allprojects {
     repositories {
         jcenter()
@@ -172,38 +172,66 @@ dependencies {
 
 ### iOS
 
-With XCode Command Line Tools installed, TensorFlow Lite with select TensorFlow
-ops support can be built with the following command:
+#### Using CocoaPods
 
-```sh
-tensorflow/contrib/makefile/build_all_ios_with_tflite.sh
+We provide nightly prebuilt select TF ops CocoaPods, which you can depend on
+alongside the `TensorFlowLiteSwift` or `TensorFlowLiteObjC` CocoaPods.
+
+```ruby
+# In your Podfile target:
+  pod 'TensorFlowLiteSwift'   # or 'TensorFlowLiteObjC'
+  pod 'TensorFlowLiteSelectTfOps', '~> 0.0.1-nightly'
 ```
 
-This will generate the required static linking libraries in the
-`tensorflow/contrib/makefile/gen/lib/` directory.
+After running `pod install`, you need to provide an additional linker flag to
+force load the select TF ops framework into your project. In your Xcode project,
+go to `Build Settings` -> `Other Linker Flags`, and add:
 
-The TensorFlow Lite camera example app can be used to test this. A new
-TensorFlow Lite XCode project with support for select TensorFlow ops has been
-added to
-`tensorflow/lite/examples/ios/camera/tflite_camera_example_with_select_tf_ops.xcodeproj`.
+```text
+-force_load $(SRCROOT)/Pods/TensorFlowLiteSelectTfOps/Frameworks/TensorFlowLiteSelectTfOps.framework/TensorFlowLiteSelectTfOps
+```
 
-To use this feature in your own project, either clone the example project or set
-the project settings for a new or existing project to the following:
+You should then be able to run any models converted with the `SELECT_TF_OPS` in
+your iOS app. For example, you can modify the
+[Image Classification iOS app](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios)
+to test the select TF ops feature.
 
-*   In Build Phases -> Link Binary With Libraries, add the static libraries
-    under `tensorflow/contrib/makefile/gen/lib/` directory:
-    *   `libtensorflow-lite.a`
-    *   `libprotobuf.a`
-    *   `nsync.a`
-*   In Build Settings -> Header Search Paths, add the following directories:
-    *   `tensorflow/lite/`
-    *   `tensorflow/contrib/makefile/downloads/flatbuffer/include`
-    *   `tensorflow/contrib/makefile/downloads/eigen`
-*   In Build Settings -> Other Linker Flags, add `-force_load
-    tensorflow/contrib/makefile/gen/lib/libtensorflow-lite.a`.
+*   Replace the model file with the one converted with `SELECT_TF_OPS` enabled.
+*   Add `TensorFlowLiteSelectTfOps` dependency to the `Podfile` as instructed.
+*   Add the additional linker flag as above.
+*   Run the example app and see if the model works correctly.
 
-A CocoaPod with support for select TensorFlow ops will also be released in the
-future.
+#### Using Bazel + Xcode
+
+TensorFlow Lite with select TensorFlow ops for iOS can be built using Bazel.
+First, follow the [iOS build instructions](build_ios.md) to configure your Bazel
+workspace and `.bazelrc` file correctly.
+
+Once you have configured the workspace with iOS support enabled, you can use the
+following command to build the select TF ops addon framework, which can be added
+on top of the regular `TensorFlowLiteC.framework`. Note that the select TF ops
+framework cannot be built for `i386` architecture, so you need to explicitly
+provide the list of target architectures excluding `i386`.
+
+```sh
+bazel build -c opt --config=ios --ios_multi_cpus=armv7,arm64,x86_64 \
+  //tensorflow/lite/experimental/ios:TensorFlowLiteSelectTfOps_framework
+```
+
+This will generate the framework under
+`bazel-bin/tensorflow/lite/experimental/ios/` directory. You can add this new
+framework to your Xcode project by following similar steps described under the
+[Xcode project settings](./build_ios.md#modify_xcode_project_settings_directly)
+section in the iOS build guide.
+
+After adding the framework into your app project, an additional linker flag
+should be specified in your app project to force load the select TF ops
+framework. In your Xcode project, go to `Build Settings` -> `Other Linker
+Flags`, and add:
+
+```text
+-force_load <path/to/your/TensorFlowLiteSelectTfOps.framework/TensorFlowLiteSelectTfOps>
+```
 
 ### C++
 
@@ -220,7 +248,7 @@ creating the interpreter at runtime as long as the delegate is linked into the
 client library. It is not necessary to explicitly install the delegate instance
 as is typically required with other delegate types.
 
-### Python pip Package
+### Python pip package
 
 Python support is actively under development.
 
@@ -241,7 +269,7 @@ Build                                | Time (milliseconds)
 Only built-in ops (`TFLITE_BUILTIN`) | 260.7
 Using only TF ops (`SELECT_TF_OPS`)  | 264.5
 
-### Binary Size
+### Binary size
 
 The following table describes the binary size of TensorFlow Lite for each build.
 These targets were built for Android using `--config=android_arm -c opt`.
@@ -251,22 +279,22 @@ Build                 | C++ Binary Size | Android APK Size
 Only built-in ops     | 796 KB          | 561 KB
 Built-in ops + TF ops | 23.0 MB         | 8.0 MB
 
-## Known Limitations
+## Known limitations
 
 The following is a list of some of the known limitations:
 
 *   Control flow ops are not yet supported.
 *   The
     [`post_training_quantization`](https://www.tensorflow.org/performance/post_training_quantization)
-    flag is currently not supported for TensorFlow ops so it will not quantize
+    flag is currently not supported for TensorFlow ops, so it will not quantize
     weights for any TensorFlow ops. In models with both TensorFlow Lite builtin
     ops and TensorFlow ops, the weights for the builtin ops will be quantized.
-*   Ops that require explicit initialization from resources, like HashTableV2,
+*   Ops that require explicit initialization from resources, like `HashTableV2`,
     are not yet supported.
 *   Certain TensorFlow ops may not support the full set of input/output types
     that are typically available on stock TensorFlow.
 
-## Future Plans
+## Future plans
 
 The following is a list of improvements to this pipeline that are in progress:
 
@@ -274,7 +302,6 @@ The following is a list of improvements to this pipeline that are in progress:
     generate TFLite interpreter binaries that only contain the TensorFlow ops
     required for a particular set of models.
 *   *Improved usability* - The conversion process will be simplified to only
-    require a single pass through the converter. Additionally, pre-built Android
-    AAR and iOS CocoaPod binaries will be provided.
-*   *Improved performance* - There is work being done to ensure TensorFlow Lite
-    with TensorFlow ops has performance parity to TensorFlow Mobile.
+    require a single pass through the converter.
+*   *Improved performance* - Work is being done to ensure TensorFlow Lite with
+    TensorFlow ops has performance parity to TensorFlow Mobile.

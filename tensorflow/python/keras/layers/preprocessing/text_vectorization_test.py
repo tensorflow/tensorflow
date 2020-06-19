@@ -269,10 +269,10 @@ class TextVectorizationLayerTest(keras_parameterized.TestCase,
   def test_layer_end_to_end_with_adapt(self, vocab_data, input_data, kwargs,
                                        use_dataset, expected_output):
     cls = get_layer_class()
-    if kwargs.get("output_mode") == text_vectorization.TFIDF:
-      expected_output_dtype = dtypes.float32
-    else:
+    if kwargs.get("output_mode") == text_vectorization.INT:
       expected_output_dtype = dtypes.int64
+    else:
+      expected_output_dtype = dtypes.float32
     input_shape = input_data.shape
 
     if use_dataset:
@@ -1037,6 +1037,7 @@ class TextVectorizationOutputTest(
         split=None,
         output_mode=text_vectorization.BINARY,
         pad_to_max_tokens=False)
+    layer.adapt(vocab_data)
     _ = layer(input_data)
     with self.assertRaisesRegex(RuntimeError, "vocabulary cannot be changed"):
       layer.set_vocabulary(vocab_data)
@@ -1054,6 +1055,7 @@ class TextVectorizationOutputTest(
         split=None,
         output_mode=text_vectorization.BINARY,
         pad_to_max_tokens=False)
+    layer.adapt(vocab_data)
     _ = layer(input_data)
     with self.assertRaisesRegex(RuntimeError, "can't be adapted after being"):
       layer.adapt(vocab_data)
@@ -1070,6 +1072,7 @@ class TextVectorizationOutputTest(
         split=None,
         output_mode=text_vectorization.BINARY,
         pad_to_max_tokens=False)
+    layer.adapt(["earth", "wind"])
     _ = layer(input_data)
     with self.assertRaisesRegex(RuntimeError, "vocabulary cannot be changed"):
       layer._set_state_variables(state_variables)

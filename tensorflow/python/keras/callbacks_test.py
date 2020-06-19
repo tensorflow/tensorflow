@@ -49,9 +49,11 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import save_options as save_options_lib
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.training import adam
 from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training.saving import checkpoint_options as checkpoint_options_lib
 
 try:
   import h5py  # pylint:disable=g-import-not-at-top
@@ -665,6 +667,38 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         save_best_only=save_best_only,
         mode=mode,
         save_freq=3)
+
+    # Case 9: `ModelCheckpoint` with valid and invalid `options` argument.
+    with self.assertRaisesRegexp(TypeError, 'tf.train.CheckpointOptions'):
+      keras.callbacks.ModelCheckpoint(
+          filepath,
+          monitor=monitor,
+          save_best_only=save_best_only,
+          save_weights_only=True,
+          mode=mode,
+          options=save_options_lib.SaveOptions())
+    with self.assertRaisesRegexp(TypeError, 'tf.saved_model.SaveOptions'):
+      keras.callbacks.ModelCheckpoint(
+          filepath,
+          monitor=monitor,
+          save_best_only=save_best_only,
+          save_weights_only=False,
+          mode=mode,
+          options=checkpoint_options_lib.CheckpointOptions())
+    keras.callbacks.ModelCheckpoint(
+        filepath,
+        monitor=monitor,
+        save_best_only=save_best_only,
+        save_weights_only=True,
+        mode=mode,
+        options=checkpoint_options_lib.CheckpointOptions())
+    keras.callbacks.ModelCheckpoint(
+        filepath,
+        monitor=monitor,
+        save_best_only=save_best_only,
+        save_weights_only=False,
+        mode=mode,
+        options=save_options_lib.SaveOptions())
 
   def _get_dummy_resource_for_model_checkpoint_testing(self):
 
@@ -1975,12 +2009,12 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         callbacks=[tb_cbk])
 
     with open(os.path.join(self.logdir, 'projector_config.pbtxt')) as f:
-      self.assertEqual(
-          f.readlines(), [
-              'embeddings {\n',
-              '  tensor_name: "test_embedding/.ATTRIBUTES/VARIABLE_VALUE"\n',
-              '  metadata_path: "metadata.tsv"\n',
-              '}\n'])
+      self.assertEqual(f.readlines(), [
+          'embeddings {\n',
+          ('  tensor_name: '
+           '"layer_with_weights-0/embeddings/.ATTRIBUTES/VARIABLE_VALUE"\n'),
+          '  metadata_path: "metadata.tsv"\n', '}\n'
+      ])
 
   def test_custom_summary(self):
     if not context.executing_eagerly():

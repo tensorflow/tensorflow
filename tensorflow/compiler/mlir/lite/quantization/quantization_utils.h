@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
@@ -41,6 +42,11 @@ limitations under the License.
 
 namespace mlir {
 namespace quant {
+
+// A unit attribute can be attached to the quantize/dequantize ops which are
+// added by the quantization passes. These ops can be removed erased without
+// losing accuracy.
+constexpr char kVolatileOpAttrName[] = "volatile";
 
 using QuantParams = quant::QuantizedType;
 using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
@@ -380,7 +386,8 @@ struct FoldTrivalRequantizeOp : public OpRewritePattern<RQ> {
 
     Operation* def = pre_quantized.getDefiningOp();
     if (!def) return failure();
-    if (def->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>() ||
+    if (llvm::isa<FixedOutputRangeInterface>(def) ||
+        def->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>() ||
         def->hasTrait<OpTrait::quant::NoQuantizableResult>()) {
       return failure();
     }

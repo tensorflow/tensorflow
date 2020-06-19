@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import math
 
-from tensorflow.python.compat import compat
 from tensorflow.python.distribute import distribution_strategy_context as ds
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -428,6 +427,7 @@ def compute_average_loss(per_example_loss,
 
   with losses_util.check_per_example_loss_rank(per_example_loss):
     if sample_weight is not None:
+      sample_weight = ops.convert_to_tensor(sample_weight)
       per_example_loss = losses_util.scale_losses_by_sample_weight(
           per_example_loss, sample_weight)
     per_example_loss = math_ops.cast(per_example_loss, input_dtype)
@@ -654,6 +654,15 @@ def l2_normalize_v2(x, axis=None, epsilon=1e-12, name=None):
   """
   with ops.name_scope(name, "l2_normalize", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
+    if x.dtype.is_complex:
+      square_real = math_ops.square(math_ops.real(x))
+      square_imag = math_ops.square(math_ops.imag(x))
+      square_sum = math_ops.real(
+          math_ops.reduce_sum(square_real + square_imag, axis, keepdims=True))
+      x_inv_norm = math_ops.rsqrt(math_ops.maximum(square_sum, epsilon))
+      norm_real = math_ops.multiply(math_ops.real(x), x_inv_norm)
+      norm_imag = math_ops.multiply(math_ops.imag(x), x_inv_norm)
+      return math_ops.complex(norm_real, norm_imag, name=name)
     square_sum = math_ops.reduce_sum(math_ops.square(x), axis, keepdims=True)
     x_inv_norm = math_ops.rsqrt(math_ops.maximum(square_sum, epsilon))
     return math_ops.multiply(x, x_inv_norm, name=name)
@@ -1498,7 +1507,7 @@ def batch_normalization(x,
       `tf.nn.moments(..., keepdims=False)` during training, or running averages
       thereof during inference.
 
-  See equation 11 in Algorithm 2 of source: 
+  See equation 11 in Algorithm 2 of source:
   [Batch Normalization: Accelerating Deep Network Training by
   Reducing Internal Covariate Shift; S. Ioffe, C. Szegedy]
   (http://arxiv.org/abs/1502.03167).
@@ -1607,16 +1616,11 @@ def fused_batch_norm(
       [Ioffe et al., 2015](http://proceedings.mlr.press/v37/ioffe15.html)
       ([pdf](http://proceedings.mlr.press/v37/ioffe15.pdf))
   """
-  if is_training and exponential_avg_factor == 1.0:
-    if (mean is not None) or (variance is not None):
-      raise ValueError("Both 'mean' and 'variance' must be None when "
-                       "is_training is True and "
-                       "exponential_avg_factor == 1.0.")
-  else:
-    if (mean is None) or (variance is None):
-      raise ValueError("Both 'mean' and 'variance' must be a 1D tensor when "
-                       "is_training is False or "
-                       "exponential_avg_factor != 1.0.")
+  if (not is_training or exponential_avg_factor != 1.0) and (
+      (mean is None) or (variance is None)):
+    raise ValueError("Both 'mean' and 'variance' must be a 1D tensor when "
+                     "is_training is False or "
+                     "exponential_avg_factor != 1.0.")
   x = ops.convert_to_tensor(x, name="input")
   scale = ops.convert_to_tensor(scale, name="scale")
   offset = ops.convert_to_tensor(offset, name="offset")
@@ -1630,31 +1634,18 @@ def fused_batch_norm(
   min_epsilon = 1.001e-5
   epsilon = epsilon if epsilon > min_epsilon else min_epsilon
 
-  if compat.forward_compatible(2020, 3, 6):
-    y, running_mean, running_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
-        x,
-        scale,
-        offset,
-        mean,
-        variance,
-        epsilon=epsilon,
-        exponential_avg_factor=exponential_avg_factor,
-        data_format=data_format,
-        is_training=is_training,
-        name=name)
-    return y, running_mean, running_var
-  else:
-    y, running_mean, running_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
-        x,
-        scale,
-        offset,
-        mean,
-        variance,
-        epsilon=epsilon,
-        data_format=data_format,
-        is_training=is_training,
-        name=name)
-    return y, running_mean, running_var
+  y, running_mean, running_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
+      x,
+      scale,
+      offset,
+      mean,
+      variance,
+      epsilon=epsilon,
+      exponential_avg_factor=exponential_avg_factor,
+      data_format=data_format,
+      is_training=is_training,
+      name=name)
+  return y, running_mean, running_var
 
 
 @tf_export(v1=["nn.batch_norm_with_global_normalization"])

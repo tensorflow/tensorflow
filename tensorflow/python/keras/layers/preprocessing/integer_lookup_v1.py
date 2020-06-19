@@ -19,7 +19,9 @@ from __future__ import print_function
 
 from tensorflow.python.keras.layers.preprocessing import index_lookup_v1
 from tensorflow.python.keras.layers.preprocessing import integer_lookup
+from tensorflow.python.util.tf_export import keras_export
 
 
+@keras_export(v1=["keras.layers.experimental.preprocessing.IntegerLookup"])
 class IntegerLookup(integer_lookup.IntegerLookup, index_lookup_v1.IndexLookup):
   pass

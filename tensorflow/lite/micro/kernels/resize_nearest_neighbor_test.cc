@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
@@ -26,21 +26,17 @@ namespace {
 using uint8 = std::uint8_t;
 using int32 = std::int32_t;
 
-TfLiteTensor TestCreateTensor(const float* data, TfLiteIntArray* dims,
-                              const char* name) {
-  return CreateFloatTensor(data, dims, name);
+TfLiteTensor TestCreateTensor(const float* data, TfLiteIntArray* dims) {
+  return CreateFloatTensor(data, dims);
 }
 
-TfLiteTensor TestCreateTensor(const uint8* data, TfLiteIntArray* dims,
-                              const char* name) {
-  return CreateQuantizedTensor(data, dims, name, 0, 255);
+TfLiteTensor TestCreateTensor(const uint8* data, TfLiteIntArray* dims) {
+  return CreateQuantizedTensor(data, dims, 0, 255);
 }
 
-TfLiteTensor TestCreateTensor(const int8* data, TfLiteIntArray* dims,
-                              const char* name) {
-  return CreateQuantizedTensor(data, dims, name, -128, 127);
+TfLiteTensor TestCreateTensor(const int8* data, TfLiteIntArray* dims) {
+  return CreateQuantizedTensor(data, dims, -128, 127);
 }
-
 
 // Input data expects a 4-D tensor of [batch, height, width, channels]
 // Output data should match input datas batch and channels
@@ -62,16 +58,16 @@ void TestResizeNearestNeighbor(const int* input_dims_data, const T* input_data,
 
   constexpr int tensors_size = 3;
   TfLiteTensor tensors[tensors_size] = {
-      TestCreateTensor(input_data, input_dims, "input_tensor"),
-      CreateInt32Tensor(expected_size_data, expected_size_dims, "size_tensor"),
-      TestCreateTensor(output_data, output_dims, "output_tensor"),
+      TestCreateTensor(input_data, input_dims),
+      CreateInt32Tensor(expected_size_data, expected_size_dims),
+      TestCreateTensor(output_data, output_dims),
   };
 
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  ::tflite::ops::micro::AllOpsResolver resolver;
+  ::tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_RESIZE_NEAREST_NEIGHBOR, 1);
+      resolver.FindOp(tflite::BuiltinOperator_RESIZE_NEAREST_NEIGHBOR);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteResizeNearestNeighborParams builtin_data = {

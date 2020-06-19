@@ -31,7 +31,7 @@ limitations under the License.
 // clang-format on
 
 #include "absl/types/variant.h"
-#include "tensorflow/c/eager/tensor_handle_interface.h"
+#include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle_data.h"
@@ -53,7 +53,7 @@ class EagerContext;
 // Associates a Tensor and a Device, used in the eager runtime. Internal version
 // of the TFE_TensorHandle struct and the python EagerTensor class
 // (unrelated to python TensorHandle).
-class TensorHandle : public AbstractTensorHandleInterface,
+class TensorHandle : public ImmediateExecutionTensorHandle,
                      public core::RefCounted {
   // TensorHandle for dtype != DT_RESOURCE
   TensorHandle(tensorflow::Tensor&& t, Device* d, Device* op_device,
@@ -121,7 +121,7 @@ class TensorHandle : public AbstractTensorHandleInterface,
   const char* BackingDeviceName(Status* status) const override;
   AbstractTensorInterface* Resolve(Status* status) override;
 
-  AbstractTensorHandleInterface* Copy() override;
+  ImmediateExecutionTensorHandle* Copy() override;
 
   // Return the Tensor from the default device.
   Status Tensor(const tensorflow::Tensor** t) const;
@@ -372,12 +372,12 @@ const VariantDevice kVariantDeviceNull = static_cast<Device*>(nullptr);
 // Returns the device backing the resource. Else, returns nullptr.
 Device* GetResourceDevice(const ResourceHandle& handle, EagerContext* ctx);
 
-class TensorHandleInterface : public AbstractTensorHandleInterface {
+class TensorHandleInterface : public ImmediateExecutionTensorHandle {
  public:
 };
 
-inline TensorHandle* TensorHandleFromInterface(
-    AbstractTensorHandleInterface* handle) {
+template <typename T>
+inline TensorHandle* TensorHandleFromInterface(T* handle) {
   return down_cast<TensorHandle*>(handle);
 }
 

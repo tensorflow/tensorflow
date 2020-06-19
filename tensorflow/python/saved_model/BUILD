@@ -348,6 +348,7 @@ py_library(
     deps = [
         ":constants",
         ":function_deserialization",
+        ":load_options",
         ":load_v1_in_v2",
         ":loader",
         ":nested_structure_coder",
@@ -363,6 +364,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/training/tracking",
         "//tensorflow/python/training/tracking:base",
@@ -518,6 +520,13 @@ py_library(
     srcs = ["save_options.py"],
     deps = [
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "load_options",
+    srcs = ["load_options.py"],
+    deps = [
     ],
 )
 

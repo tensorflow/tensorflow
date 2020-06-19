@@ -25,6 +25,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -211,6 +212,12 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     indices = array_ops.placeholder(dtypes.int32)
     gather_t = array_ops.gather(params, indices, axis=axis)
     self.assertEqual(None, gather_t.shape)
+
+  def testBadIndicesType(self):
+    with self.assertRaisesRegex(
+        (TypeError, errors.InvalidArgumentError),
+        "float.* not in.* list of allowed values: int32, int64"):
+      self.evaluate(array_ops.gather([0], 0.))
 
   @test_util.disable_xla(
       "Assertion inside an op is not supported in XLA. Instead XLA clamps the "

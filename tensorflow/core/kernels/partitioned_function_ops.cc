@@ -43,7 +43,8 @@ namespace tensorflow {
 PartitionedCallOp::PartitionedCallOp(OpKernelConstruction* ctx)
     : AsyncOpKernel(ctx),
       func_(new NameAttrList),
-      config_proto_(new ConfigProto) {
+      config_proto_(new ConfigProto),
+      shared_rendezvous_(false) {
   OP_REQUIRES_OK(
       ctx, ctx->GetAttr(FunctionLibraryDefinition::kFuncAttr, func_.get()));
   string deprecated_config_serialized;
@@ -138,6 +139,11 @@ Status PartitionedCallOp::FillOutputDevices(
   if (fdef == nullptr) {
     return errors::NotFound("Failed to find definition for function \"",
                             func_->name(), "\"");
+  }
+  auto func_attrs = fdef->attr();
+  auto attr = func_attrs.find(FunctionLibraryDefinition::kSharedRendezvousAttr);
+  if (attr != func_attrs.end() && attr->second.b()) {
+    shared_rendezvous_ = true;
   }
 
   bool is_type_list;
@@ -245,6 +251,9 @@ void PartitionedCallOp::RunFunction(FunctionLibraryRuntime::Handle handle,
   run_opts.source_device =
       lib->device() == nullptr ? "" : lib->device()->name();
   run_opts.allow_dead_tensors = true;
+  if (shared_rendezvous_) {
+    run_opts.rendezvous = ctx->rendezvous();
+  }
 
   std::vector<Tensor>* rets = new std::vector<Tensor>;
   const string& func_name = func_->name();
