@@ -345,6 +345,9 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(maybe_distribute)
   def test_assign_tf_function(self, distribution):
+    if not context.executing_eagerly():
+      self.skipTest("Test is not compatible with graph mode")
+
     with distribution.scope():
       x = get_var(0., dtypes.float32)
       x = autocast_variable.create_autocast_variable(x)

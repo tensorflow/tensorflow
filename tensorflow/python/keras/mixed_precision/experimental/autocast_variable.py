@@ -190,7 +190,7 @@ class AutoCastVariable(variables.Variable, core.Tensor):
 
   def _apply_assign_update(
       self, update_fn, value, use_locking=None, name=None, read_value=True):
-    if context.executing_eagerly() or ops.inside_function():
+    if ops.executing_eagerly_outside_functions():
       assign_op = update_fn(value, use_locking, name, False)
       return self if read_value else assign_op
 
@@ -202,7 +202,7 @@ class AutoCastVariable(variables.Variable, core.Tensor):
 
   def _apply_update(self, update_fn, *args, **kwargs):
     update_var = update_fn(*args, **kwargs)
-    if context.executing_eagerly() or ops.inside_function():
+    if ops.executing_eagerly_outside_functions():
       return self
 
     # Fallback to wrapping the returned variable in graph mode if possible
