@@ -485,11 +485,6 @@ TEST_F(RemapperTest, FuseConv2DWithBiasAndActivationOnGPU) {
   item.feed = {{"input", input_t}, {"filter", filter_t}, {"bias", bias_t}};
   TF_ASSERT_OK(s.ToGraphDef(&item.graph));
 
-  // Place all nodes on GPU.
-  for (int i = 0; i < item.graph.node_size(); ++i) {
-    item.graph.mutable_node(i)->set_device("/device:GPU:0");
-  }
-
   Remapper optimizer(RewriterConfig::AGGRESSIVE);  // trust placeholders shape
   //Remapper optimizer(RewriterConfig::ON);
   GraphDef output;
