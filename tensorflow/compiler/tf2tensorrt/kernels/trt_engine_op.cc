@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 #if GOOGLE_CUDA
@@ -521,6 +522,17 @@ Status TRTEngineOp::VerifyInputShapes(
   return Status::OK();
 }
 
+static bool AllowEngineNativeSegmentExecution() {
+  bool value;
+  Status status =
+      ReadBoolFromEnvVar("TF_TRT_ALLOW_ENGINE_NATIVE_SEGMENT_EXECUTION",
+                         /*default_value=*/true, &value);
+  if (!status.ok()) {
+    LOG(ERROR) << status;
+  }
+  return value;
+}
+
 void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
                                AsyncOpKernel::DoneCallback done) {
   auto helper = new AsyncHelper(done);
@@ -605,17 +617,31 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
 
   EngineContext* engine_context = status.ValueOrDie().first;
   int trt_context_idx = status.ValueOrDie().second;
+  auto may_execute_native_segment = [&] {
+    if (!AllowEngineNativeSegmentExecution()) {
+      ctx->CtxFailure(
+          errors::Aborted("User disallowed engine native segment execution"));
+      return false;
+    }
+    return true;
+  };
   if (!engine_context->cuda_engine) {
-    VLOG(1) << "Engine retrieval for input shapes: "
-            << TensorShapeUtils::ShapeListString(input_concrete_shapes)
-            << " failed. Running native segment for " << name();
-    ExecuteNativeSegment(ctx, helper);
+    LOG_WARNING_WITH_PREFIX
+        << "Engine retrieval for input shapes: "
+        << TensorShapeUtils::ShapeListString(input_concrete_shapes)
+        << " failed. Running native segment for " << name();
+    if (may_execute_native_segment()) {
+      ExecuteNativeSegment(ctx, helper);
+    }
     return;
   }
   Status stat = ExecuteTrtEngine(ctx, engine_context, trt_context_idx);
   if (!stat.ok()) {
     LOG_WARNING_WITH_PREFIX << "Failed to execute engine: " << stat
                             << " Retrying with native segment for " << name();
+    if (!may_execute_native_segment()) {
+      return;
+    }
     // Release any outputs that are allocated, ExecuteNativeSegment will
     // re-allocate them and fail if they are currently allocated.
     for (int i = 0; i < ctx->num_outputs(); i++) {
