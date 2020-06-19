@@ -1077,13 +1077,17 @@ Status PjRtBuffer::CopyToHostAsync() {
   return Status::OK();
 }
 
-StatusOr<std::shared_ptr<Literal>> PjRtBuffer::ToLiteral() {
+StatusOr<std::shared_ptr<Literal>> PjRtBuffer::ToLiteral(
+    const bool discard_cached_copy) {
   tensorflow::profiler::TraceMe traceme("PjRtBuffer::ToLiteral");
   TF_RETURN_IF_ERROR(CopyToHostAsync());
   std::shared_ptr<HostValue> host_value;
   {
     absl::MutexLock lock(&mu_);
     host_value = host_value_;
+    if (discard_cached_copy) {
+      host_value_ = nullptr;
+    }
   }
   if (host_value == nullptr) {
     return InvalidArgument("ToLiteral called on invalid buffer");
