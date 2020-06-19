@@ -1486,7 +1486,6 @@ cuda_py_test(
         "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras/layers",
     ],
 )
 

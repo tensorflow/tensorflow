@@ -325,6 +325,29 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "mirrored_strategy_test",
+    srcs = ["mirrored_strategy_test.py"],
+    python_version = "PY3",
+    tags = [
+        "multi_and_single_gpu",
+        "no_windows_gpu",  # TODO(b/130551176)
+    ],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:training_lib",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/keras/layers:core",
+    ],
+)
+
+cuda_py_test(
     name = "multi_worker_test",
     srcs = ["multi_worker_test.py"],
     python_version = "PY3",
