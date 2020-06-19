@@ -147,7 +147,7 @@ def image_dataset_from_directory(directory,
           'directory. If you wish to infer the labels from the subdirectory '
           'names in the target directory, pass `labels="inferred"`. '
           'If you wish to get a dataset that only contains images '
-          '(no labels), pass `labels=None`.')
+          '(no labels), pass `labels_mode=None`.')
     if class_names:
       raise ValueError('You can only pass `class_names` if the labels are '
                        'inferred from the subdirectory names in the target '
