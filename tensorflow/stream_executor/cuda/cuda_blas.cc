@@ -402,14 +402,6 @@ bool CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
                                            : CUBLAS_POINTER_MODE_DEVICE)) {
     return false;
   }
-#if CUBLAS_VER_MAJOR >= 11
-  ScopedCublasMathMode math_mode{blas_};
-  if (!tensorflow::tf32_execution_allowed()) {
-    if (!math_mode.Init(CUBLAS_DEFAULT_MATH)) {
-      return false;
-    }
-  }
-#endif
   cublasStatus_t ret = cublas_func(blas_, args...);
   if ((err_on_failure || VLOG_IS_ON(3)) && ret != CUBLAS_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to run cuBLAS routine: " << ToString(ret);
