@@ -361,7 +361,7 @@ string GenEagerPythonOp::Code() {
 
     // Add type annotations to param
     if (type_map.find(param.GetName()) != type_map.end()) {
-      if(!type_map[param.GetName()].empty()) {
+      if (!type_map[param.GetName()].empty()) {
         strings::StrAppend(&parameters, ": ", type_map[param.GetName()]);
       }
     }
@@ -372,6 +372,19 @@ string GenEagerPythonOp::Code() {
     if (!parameters.empty()) strings::StrAppend(&parameters, ", ");
     if (!parameters_with_defaults.empty())
       strings::StrAppend(&parameters_with_defaults, ", ");
+
+    // Add type annotations to param_and_default
+    if (type_map.find(param_and_default.first.GetName()) != type_map.end()) {
+      if (!type_map[param_and_default.first.GetName()].empty()) {
+        strings::StrAppend(&parameters, ": ", type_map[param_and_default.first.GetName()]);
+        strings::StrAppend(&parameters_with_defaults,
+                           param_and_default.first.GetRenameTo(), ": ",
+                           type_map[param_and_default.first.GetName()], " ",
+                           "= ", param_and_default.second);
+        continue;
+      }
+    }
+
     strings::StrAppend(&parameters, param_and_default.first.GetRenameTo());
     strings::StrAppend(&parameters_with_defaults,
                        param_and_default.first.GetRenameTo(), "=",
@@ -427,6 +440,9 @@ std::unordered_map<string, string> GenEagerPythonOp::GetTypeAnnotationMap() {
     if (attr.type() == "type") {
       const string type_var_name = "TV_" + op_def_.name() + "_" + attr.name();
       type_map[attr.name()] = type_var_name;
+    } else if (attr.type() == "bool" || attr.type() == "float" ||
+               attr.type() == "int" || attr.type() == "bytes") {
+      type_map[attr.name()] = attr.type();
     }
   }
 
@@ -507,7 +523,7 @@ void GenEagerPythonOp::GenerateTypeVars() {
     }
   }
 
-  if(added_typevar) strings::StrAppend(&result_, "\n");
+  if (added_typevar) strings::StrAppend(&result_, "\n");
 }
 
 void GenEagerPythonOp::AddReturnTypeAnnotation(std::unordered_map<string, string>& type_map) {
