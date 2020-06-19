@@ -180,9 +180,9 @@ class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
 
   void AddRawOpExport(const string& parameters);
 
-  void GenerateTypeVars();
-
   std::unordered_map<string, string> GetTypeAnnotationMap();
+
+  void GenerateTypeVars(std::unordered_map<string, string>& type_map);
 
   void AddReturnTypeAnnotation(std::unordered_map<string, string>& type_map);
 
@@ -435,8 +435,7 @@ string GenEagerPythonOp::Code() {
 std::unordered_map<string, string> GenEagerPythonOp::GetTypeAnnotationMap() {
   std::unordered_map<string, string> type_map;
   // Mapping attrs to TypeVars
-  for (int i = 0; i<op_def_.attr_size(); ++i) {
-    const auto& attr(op_def_.attr(i));
+  for (const auto& attr : op_def_.attr()) {
     if (attr.type() == "type") {
       const string type_var_name = "TV_" + op_def_.name() + "_" + attr.name();
       type_map[attr.name()] = type_var_name;
@@ -447,8 +446,7 @@ std::unordered_map<string, string> GenEagerPythonOp::GetTypeAnnotationMap() {
   }
 
   // Mapping input Tensors to their types
-  for (int i = 0; i < op_def_.input_arg_size(); ++i) {
-    const auto& arg = op_def_.input_arg(i);
+  for (const auto& arg : op_def_.input_arg()) {
     // Do not add type annotations to args that accept a sequence of tensors
     if (!arg.number_attr().empty()) continue;
     string type_annotation;
@@ -466,7 +464,7 @@ std::unordered_map<string, string> GenEagerPythonOp::GetTypeAnnotationMap() {
     type_map[arg.name()] = type_annotation;
   }
 
-  // Mapping output Tensor to its types
+  // Mapping output Tensor to its type
   if (op_def_.output_arg_size() == 1) {
     const auto& arg = op_def_.output_arg(0);
     string type_annotation;
@@ -488,10 +486,9 @@ std::unordered_map<string, string> GenEagerPythonOp::GetTypeAnnotationMap() {
 }
 
 // Generate TypeVars using attrs
-void GenEagerPythonOp::GenerateTypeVars() {
+void GenEagerPythonOp::GenerateTypeVars(std::unordered_map<string, string>& type_map) {
   bool added_typevar = false;
-  for (int i = 0; i<op_def_.attr_size(); ++i) {
-    const auto& attr(op_def_.attr(i));
+  for (const auto& attr : op_def_.attr()) {
     if (attr.type() == "type") {
       std::vector<string> allowed_types;
       for (int t : attr.allowed_values().list().type()) {
@@ -517,7 +514,7 @@ void GenEagerPythonOp::GenerateTypeVars() {
         strings::StrAppend(&typevar_dtypes, *it);
       }
 
-      const string type_var_name = "TV_" + op_def_.name() + "_" + attr.name();
+      const string type_var_name = type_map[attr.name()];
       strings::StrAppend(&result_, type_var_name, " = TypeVar(\"", type_var_name, "\", ", typevar_dtypes,")\n");
       added_typevar = true;
     }
@@ -863,7 +860,7 @@ bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
     const string& parameters, const std::vector<string>& output_sizes,
     const string& eager_not_allowed_error, std::unordered_map<string, string>& type_map) {
   if (type_annotate_ops.find(op_def_.name()) != type_annotate_ops.end()) {
-    GenerateTypeVars();
+    GenerateTypeVars(type_map);
   }
   if (api_def_.visibility() == ApiDef::VISIBLE) {
     strings::StrAppend(&result_, "@_dispatch.add_dispatch_list\n");
