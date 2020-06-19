@@ -11,5 +11,5 @@ ENTRY %Gather (x: f32[100,10], y: s64[4,6]) -> f32[4,6,10] {
 
 // CHECK: func @gather(%[[ARG0:.*]]: [[TYPE0:.*]], %[[ARG1:.*]]: [[TYPE1:.*]], %[[RESULT:.*]]: [[RTYPE:.*]]) {
 // CHECK:   "xla_lhlo.gather"(%[[ARG0]], %[[ARG1]], %[[RESULT]])
-// CHECK:   {collapsed_slice_dims = dense<0> : tensor<1xi64>, index_vector_dim = 2 : i64, offset_dims = dense<2> : tensor<1xi64>, slice_sizes = dense<[1, 10]> : tensor<2xi64>, start_index_map = dense<0> : tensor<1xi64>} : ([[TYPE0]], [[TYPE1]], [[RTYPE]]) -> ()
+// CHECK-SAME:   {collapsed_slice_dims = dense<0> : tensor<1xi64>, index_vector_dim = 2 : i64, offset_dims = dense<2> : tensor<1xi64>, slice_sizes = dense<[1, 10]> : tensor<2xi64>, start_index_map = dense<0> : tensor<1xi64>} : ([[TYPE0]], [[TYPE1]], [[RTYPE]]) -> ()
 // CHECK: }
