@@ -231,12 +231,12 @@ static LogicalResult VerifySavedModelModule(
   for (auto func : module.getOps<FuncOp>()) {
     const bool is_exported = IsExported(func);
 
-    if (is_exported && func.getVisibility() != FuncOp::Visibility::Public) {
+    if (is_exported && !func.isPublic()) {
       return func.emitError()
              << "exported function @" << func.getName() << " should be public";
     }
 
-    if (!is_exported && func.getVisibility() == FuncOp::Visibility::Public) {
+    if (!is_exported && func.isPublic()) {
       return func.emitError() << "non-exported function @" << func.getName()
                               << " should be private";
     }
