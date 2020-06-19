@@ -21,7 +21,6 @@ from __future__ import print_function
 
 import math
 import numbers
-from typing import Sequence
 import numpy as np
 import six
 
@@ -1684,10 +1683,10 @@ def _slice_helper(tensor, slice_spec):
 def _as_spec_tuple(slice_spec):
   """Convert slice_spec to tuple."""
   if isinstance(slice_spec,
-                Sequence) and not isinstance(slice_spec, np.ndarray):
+                (list, tuple)) and not isinstance(slice_spec, np.ndarray):
     is_index = True
     for s in slice_spec:
-      if s is None or s is Ellipsis or isinstance(s, (Sequence, slice)):
+      if s is None or s is Ellipsis or isinstance(s, (list, tuple, slice)):
         is_index = False
         break
       elif isinstance(s, (np_arrays.ndarray, np.ndarray)) and s.ndim != 0:
