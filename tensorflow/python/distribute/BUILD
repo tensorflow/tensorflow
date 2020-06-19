@@ -654,6 +654,7 @@ tpu_py_test(
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -787,6 +788,7 @@ py_library(
     name = "tpu_values",
     srcs = ["tpu_values.py"],
     deps = [
+        ":packed_distributed_variable",
         ":values",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
@@ -1602,7 +1604,7 @@ distribute_py_test(
     srcs = ["saved_model_save_load_test.py"],
     full_precision = True,
     main = "saved_model_save_load_test.py",
-    shard_count = 5,
+    shard_count = 7,
     tags = [
         "multi_and_single_gpu",
         "no_rocm",
@@ -1635,7 +1637,7 @@ distribute_py_test(
     srcs = ["saved_model_mixed_api_test.py"],
     full_precision = True,
     main = "saved_model_mixed_api_test.py",
-    shard_count = 5,
+    shard_count = 7,
     tags = [
         "multi_and_single_gpu",
         "no_rocm",

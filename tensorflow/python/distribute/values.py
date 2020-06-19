@@ -472,6 +472,12 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     # variable.
     self._var_policy = var_policy
 
+  @property
+  def _devices(self):
+    if self._packed_var is not None:
+      return tuple(d for d in self._packed_var.devices)
+    return tuple(v.device for v in self._values)
+
   def is_initialized(self, name=None):
     """Identifies if all the component variables are initialized.
 
@@ -482,6 +488,8 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
       The op that evaluates to True or False depending on if all the
       component variables are initialized.
     """
+    if self._packed_var is not None:
+      return self._packed_var.is_initialized()
     result = self._primary.is_initialized()
     # We iterate through the list of values except the last one to allow us to
     # name the final `logical_and` op the same name that is passed by the user
@@ -553,12 +561,18 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     return self._aggregation
 
   @property
+  def _packed_variable(self):
+    return self._packed_var
+
+  @property
   def handle(self):
     replica_id = values_util.get_current_replica_id_as_int()
     if replica_id is None:
       raise ValueError("`handle` is not available outside the replica context"
                        " or a `tf.distribute.Strategy.update()` call.")
     else:
+      if self._packed_var is not None:
+        return self._packed_var.handle
       return self._values[replica_id].handle
 
   def eval(self, session=None):
@@ -606,6 +620,33 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
   @property
   def _in_graph_mode(self):
     return self._primary._in_graph_mode  # pylint: disable=protected-access
+
+  def _get_replica(self, replica_id):
+    """Returns the value on a device with the given replica_id."""
+    if self._packed_var is not None:
+      return self._packed_var.on_device(self._devices[replica_id])
+    return self._values[replica_id]
+
+  def _get(self):
+    """Returns the value for the current device or raises a ValueError."""
+    replica_id = values_util.get_current_replica_id_as_int()
+    if replica_id is None:
+      return self._get_cross_replica()
+    else:
+      return self._get_replica(replica_id)
+
+  def _get_on_device_or_primary(self):
+    """Returns value in same replica or device if possible, else the _primary."""
+    replica_id = values_util.get_current_replica_id_as_int()
+    if replica_id is None:
+      # Try to find a value on the current device.
+      current_device = device_util.canonicalize(device_util.current())
+      for i, value in enumerate(self._values):
+        if device_util.canonicalize(value.device) == current_device:
+          return self._get_replica(i)
+      return self._get_replica(0)
+    else:
+      return self._get_replica(replica_id)
 
   def read_value(self):
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
@@ -778,7 +819,8 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
       if ds_context.in_cross_replica_context():
         update_replica_id = distribute_lib.get_update_replica_id()
         if update_replica_id is not None:
-          return update_fn(self._values[update_replica_id], value, **kwargs)
+          replica_value = self._get_replica(update_replica_id)
+          return update_fn(replica_value, value, **kwargs)
         return self._update_cross_replica(update_fn, value, **kwargs)
       else:
         values_util.assert_replica_context(self.distribute_strategy)
@@ -802,6 +844,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
       obj_map[v] = new_obj
       resource_map[v.handle] = new_obj.handle
     obj_map[self] = new_obj
+    resource_map[self.handle] = new_obj.handle
     resource_map[self] = new_obj.handle
     return obj_map, resource_map
 
@@ -835,6 +878,12 @@ class _MirroredSaveable(saveable_object_util.ResourceVariableSaveable):
   def restore(self, restored_tensors, restored_shapes):
     """Restore the same value into all variables."""
     tensor, = restored_tensors
+    packed_var = self._mirrored_variable._packed_variable  # pylint: disable=protected-access
+    if packed_var is not None:
+      return control_flow_ops.group(
+          tuple(
+              values_util.assign_on_device(d, packed_var, tensor)
+              for d in packed_var.devices))
     return control_flow_ops.group(
         tuple(
             values_util.assign_on_device(v.device, v, tensor)
@@ -1013,7 +1062,7 @@ class SyncOnReadVariable(DistributedVariable):
 
   def _get_cross_replica(self):
     if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
-      return self._primary
+      return self._get_replica(0)
 
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
       return self._distribute_strategy.reduce(
