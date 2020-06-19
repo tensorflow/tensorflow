@@ -289,7 +289,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_SCATTER_ND, Register_SCATTER_ND());
   AddBuiltin(BuiltinOperator_DENSIFY, Register_DENSIFY());
   AddBuiltin(BuiltinOperator_SEGMENT_SUM, Register_SEGMENT_SUM());
-  AddBuiltin(BuiltinOperator_BATCH_MATMUL, Register_BATCH_MATMUL());
+  AddBuiltin(BuiltinOperator_BATCH_MATMUL, Register_BATCH_MATMUL(),
+             /* min_version = */ 1,
+             /* max_version = */ 2);
   AddCustom("NumericVerify", tflite::ops::custom::Register_NUMERIC_VERIFY());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

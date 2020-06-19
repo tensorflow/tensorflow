@@ -953,14 +953,14 @@ in the batch dimensions and broadcasting.
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32]>:$x,
-    TFL_TensorOf<[F32]>:$y,
+    TFL_TensorOf<[F32, QI8]>:$x,
+    TFL_TensorOf<[F32, QI8]>:$y,
     DefaultValuedAttr<BoolAttr, "false">:$adj_x,
     DefaultValuedAttr<BoolAttr, "false">:$adj_y
   );
 
    let results = (outs
-    TFL_TensorOf<[F32]>:$output
+    TFL_TensorOf<[F32, QI8]>:$output
   );
 
   let hasOptions = 1;
