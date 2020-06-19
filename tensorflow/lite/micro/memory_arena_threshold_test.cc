@@ -41,9 +41,17 @@ constexpr int kKeywordModelNodeAndRegistrationCount = 15;
 
 // NOTE: These values are measured on x86-64:
 // TODO(b/158651472): Consider auditing these values on non-64 bit systems.
+//
+// Run this test with '--copt=-DTF_LITE_MICRO_OPTIMIZED_RUNTIME' to get
+// optimized memory runtime values:
+#ifdef TF_LITE_STATIC_MEMORY
+constexpr int kKeywordModelTotalSize = 18448;
+constexpr int kKeywordModelTailSize = 17776;
+#else
 constexpr int kKeywordModelTotalSize = 21040;
-constexpr int kKeywordModelHeadSize = 672;
 constexpr int kKeywordModelTailSize = 20368;
+#endif
+constexpr int kKeywordModelHeadSize = 672;
 constexpr int kKeywordModelTfLiteTensorVariableBufferDataSize = 10240;
 constexpr int kKeywordModelTfLiteTensorQuantizationDataSize = 1728;
 constexpr int kKeywordModelOpRuntimeDataSize = 148;
@@ -56,9 +64,14 @@ constexpr int kTestConvModelNodeAndRegistrationCount = 7;
 
 // NOTE: These values are measured on x86-64:
 // TODO(b/158651472): Consider auditing these values on non-64 bit systems.
+#ifdef TF_LITE_STATIC_MEMORY
+constexpr int kTestConvModelTotalSize = 10960;
+constexpr int kTestConvModelTailSize = 3216;
+#else
 constexpr int kTestConvModelTotalSize = 11680;
-constexpr int kTestConvModelHeadSize = 7744;
 constexpr int kTestConvModelTailSize = 3936;
+#endif
+constexpr int kTestConvModelHeadSize = 7744;
 constexpr int kTestConvModelTfLiteTensorQuantizationDataSize = 768;
 constexpr int kTestConvModelOpRuntimeDataSize = 136;
 
@@ -81,7 +94,7 @@ void EnsureAllocatedSizeThreshold(const char* allocation_type, size_t actual,
     TF_LITE_MICRO_EXPECT_NEAR(actual, expected, kAllocationThreshold);
     if (actual != expected) {
       TF_LITE_REPORT_ERROR(micro_test::reporter,
-                           "%s threshold failed: %ld != %ld", allocation_type,
+                           "%s threshold failed: %d != %d", allocation_type,
                            actual, expected);
     }
   } else {

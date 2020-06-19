@@ -284,7 +284,7 @@ TF_LITE_MICRO_TEST(TestIncompleteInitializationAllocationsWithSmallArena) {
 
   tflite::testing::MockOpResolver mock_resolver;
   // 1kb is too small for the ComplexMockModel:
-  constexpr size_t allocator_buffer_size = 1048;
+  constexpr size_t allocator_buffer_size = 500;
   uint8_t allocator_buffer[allocator_buffer_size];
 
   tflite::RecordingMicroAllocator* allocator =
