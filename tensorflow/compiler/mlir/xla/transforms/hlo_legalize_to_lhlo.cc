@@ -464,6 +464,7 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<xla_hlo::RealOp>,
       HloToLhloOpConverter<xla_hlo::RemOp>,
       HloToLhloOpConverter<xla_hlo::RsqrtOp>,
+      HloToLhloOpConverter<xla_hlo::ReshapeOp>,
       HloToLhloOpConverter<xla_hlo::SelectOp>,
       HloToLhloOpConverter<xla_hlo::SignOp>,
       HloToLhloOpConverter<xla_hlo::SqrtOp>,
