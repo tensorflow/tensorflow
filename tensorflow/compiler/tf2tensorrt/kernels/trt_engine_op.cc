@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
@@ -613,8 +614,8 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   }
   Status stat = ExecuteTrtEngine(ctx, engine_context, trt_context_idx);
   if (!stat.ok()) {
-    LOG(WARNING) << "Failed to execute engine: " << stat
-                 << " Retrying with native segment for " << name();
+    LOG_WARNING_WITH_PREFIX << "Failed to execute engine: " << stat
+                            << " Retrying with native segment for " << name();
     // Release any outputs that are allocated, ExecuteNativeSegment will
     // re-allocate them and fail if they are currently allocated.
     for (int i = 0; i < ctx->num_outputs(); i++) {
@@ -727,9 +728,9 @@ StatusOr<TrtUniquePtrType<nvinfer1::ICudaEngine>> TRTEngineOp::BuildEngine(
       calibrator, &engine, use_calibration, use_implicit_batch_, nullptr,
       &cache_resource->profiles_);
   if (!status.ok()) {
-    LOG(WARNING) << "Engine creation for " << name() << " failed. "
-                 << "The native segment will be used instead. "
-                 << "Reason: " << status;
+    LOG_WARNING_WITH_PREFIX << "Engine creation for " << name() << " failed. "
+                            << "The native segment will be used instead. "
+                            << "Reason: " << status;
     // Store an empty engine in the cache for these input shapes so we don't try
     // to build the same failing engine again.
     cache_resource->cache_.emplace(input_concrete_shapes,
@@ -791,8 +792,9 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
               FunctionDefToGraphDef(func_handle_, lib, &segment_graph_def_);
         }
         if (!status.ok()) {
-          LOG(WARNING) << "Getting segment graph for " << name() << " failed. "
-                       << "Reason: " << status;
+          LOG_WARNING_WITH_PREFIX << "Getting segment graph for " << name()
+                                  << " failed. "
+                                  << "Reason: " << status;
         }
       }
       auto result = BuildEngine(input_concrete_shapes, batch_size,
@@ -851,10 +853,11 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
   // If cache does not have a compatible engine then create a new engine.
   if (engine_contexts == nullptr) {
     if (!allow_build_at_runtime_) {
-      LOG(WARNING) << "Found no engine in cache matching input shapes. "
-                   << "Not building a new engine because "
-                   << "allow_build_at_runtime=False. "
-                   << "The native segment will be used instead.";
+      LOG_WARNING_WITH_PREFIX
+          << "Found no engine in cache matching input shapes. "
+          << "Not building a new engine because "
+          << "allow_build_at_runtime=False. "
+          << "The native segment will be used instead.";
       // Store an empty engine in the cache for these input shapes so we don't
       // try to build the same failing engine again.
       cache.emplace(input_concrete_shapes, absl::make_unique<EngineContext>());
