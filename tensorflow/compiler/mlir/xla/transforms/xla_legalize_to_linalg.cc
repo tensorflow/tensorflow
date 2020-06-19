@@ -867,7 +867,7 @@ struct LhloLegalizeToLinalg
 
     auto func = getFunction();
     populateLHLOToLinalgConversionPattern(func.getContext(), &patterns);
-    if (failed(applyPartialConversion(func, target, patterns, nullptr))) {
+    if (failed(applyPartialConversion(func, target, patterns))) {
       signalPassFailure();
     }
   }
@@ -882,7 +882,7 @@ struct HloLegalizeToLinalg
 
     auto func = getFunction();
     xla_hlo::populateHLOToLinalgConversionPattern(func.getContext(), &patterns);
-    if (failed(applyPartialConversion(func, target, patterns, nullptr))) {
+    if (failed(applyPartialConversion(func, target, patterns))) {
       signalPassFailure();
     }
   }
