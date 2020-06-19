@@ -72,12 +72,6 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
     self.assert_saved_model(path)
 
   @test_util.run_v2_only
-  def test_save_format_defaults_pathlib(self):
-    path = pathlib.Path(self.get_temp_dir()) / 'model_path'
-    save.save_model(self.model, path)
-    self.assert_saved_model(path)
-
-  @test_util.run_v2_only
   def test_save_hdf5(self):
     path = os.path.join(self.get_temp_dir(), 'model')
     save.save_model(self.model, path, save_format='h5')
@@ -86,13 +80,6 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
         NotImplementedError,
         'requires the model to be a Functional model or a Sequential model.'):
       save.save_model(self.subclassed_model, path, save_format='h5')
-
-  @test_util.run_v2_only
-  def test_save_load_hdf5_pathlib(self):
-    if sys.version_info >= (3, 6):
-      path = pathlib.Path(self.get_temp_dir()) / 'model'
-      save.save_model(self.model, path, save_format='h5')
-      save.load_model(path)
 
   @test_util.run_v2_only
   def test_save_tf(self):
