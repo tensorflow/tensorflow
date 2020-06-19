@@ -197,7 +197,7 @@ def model_to_dot(model,
           else:
             return str(dtype)
           
-      label = '%s|%s' % (label, dtype)
+      label = '%s|%s' % (label, format_dtype(dtype))
 
     # Rebuild the label as a table including input/output shapes.
     if show_shapes:
