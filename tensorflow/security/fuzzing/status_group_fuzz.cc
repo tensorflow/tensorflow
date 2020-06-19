@@ -54,9 +54,10 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     }
   }
 
-  sg.as_summary_status();
-  sg.as_concatenated_status();
-  sg.AttachLogMessages();
+  // Ignore warnings that these values are unused
+  sg.as_summary_status().IgnoreError();;
+  sg.as_concatenated_status().IgnoreError();;
+  sg.AttachLogMessages().IgnoreError();;
 
   return 0;
 }
