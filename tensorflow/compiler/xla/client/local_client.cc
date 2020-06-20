@@ -320,6 +320,16 @@ StatusOr<ExecutionOutput> LocalExecutable::RunAsync(
   return std::move(outputs);
 }
 
+StatusOr<ExecutionOutput> LocalExecutable::RunAsync(
+    std::vector<ExecutionInput> arguments, ExecutableRunOptions run_options) {
+  std::vector<const Shape*> argument_shapes;
+  argument_shapes.reserve(arguments.size());
+  for (const ExecutionInput& arg : arguments) {
+    argument_shapes.push_back(&arg.shape());
+  }
+  return RunAsync(argument_shapes, std::move(arguments), run_options);
+}
+
 se::Platform* LocalClient::platform() const {
   return local_service_->backend().platform();
 }

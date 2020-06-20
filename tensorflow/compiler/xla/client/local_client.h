@@ -68,6 +68,9 @@ class LocalExecutable {
       absl::Span<Shape const* const> argument_host_shapes,
       std::vector<ExecutionInput> arguments, ExecutableRunOptions run_options);
 
+  StatusOr<ExecutionOutput> RunAsync(std::vector<ExecutionInput> arguments,
+                                     ExecutableRunOptions run_options);
+
   // Return the options used to build the executable.
   const ExecutableBuildOptions& build_options() const { return build_options_; }
 
