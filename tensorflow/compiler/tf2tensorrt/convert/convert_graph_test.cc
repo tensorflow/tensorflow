@@ -34,7 +34,8 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"  // NOLINT
 #include "tensorflow/core/public/session.h"
 
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
 
 namespace tensorflow {
 namespace tensorrt {
@@ -230,4 +231,5 @@ TEST_F(ConvertAfterShapesTest, DirectlyConnectedEngines) {
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA

@@ -19,7 +19,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/types/optional.h"
 
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
 
 namespace tensorflow {
 namespace tensorrt {
@@ -216,6 +217,7 @@ UnionFind<T>* UnionFind<T>::FindRoot() {
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA
 
 #endif  // TENSORFLOW_COMPILER_TF2TENSORRT_SEGMENT_UNION_FIND_H_

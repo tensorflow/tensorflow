@@ -115,7 +115,8 @@ class LRUCache {
   }
 };
 
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
 
 struct EngineContext {
   EngineContext() {}  // Creates an empty context.
@@ -222,7 +223,8 @@ class TRTEngineCacheResource : public ResourceBase {
   TrtShapeOptimizationProfile profiles_;
 };
 
-#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA
 
 }  // namespace tensorrt
 }  // namespace tensorflow

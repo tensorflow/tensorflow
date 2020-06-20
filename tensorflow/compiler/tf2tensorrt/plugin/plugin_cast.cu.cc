@@ -17,7 +17,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin.h"
 #include "tensorflow/core/platform/logging.h"
 
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
 #define EIGEN_USE_GPU  // For definition of Eigen::GpuDevice.
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
@@ -233,4 +234,5 @@ REGISTER_TFTRT_PLUGIN(CastPluginCreator);
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_TENSORRT

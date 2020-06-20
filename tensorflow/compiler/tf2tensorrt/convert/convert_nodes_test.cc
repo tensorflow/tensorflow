@@ -21,7 +21,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -6635,4 +6636,5 @@ TEST_F(OpConverterTest, ConvertPad) {
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA

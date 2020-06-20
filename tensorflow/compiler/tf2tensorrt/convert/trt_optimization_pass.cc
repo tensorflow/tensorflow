@@ -28,7 +28,8 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stacktrace.h"
 
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
@@ -301,4 +302,5 @@ static VerboseCustomGraphOptimizerRegistrar TRTOptimizationPass_Registrar(
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
+#endif
+#endif

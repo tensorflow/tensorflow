@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/logger_registry.h"
 #include "tensorflow/core/platform/logging.h"
@@ -67,4 +68,5 @@ REGISTER_TENSORRT_LOGGER("DefaultLogger", Logger::GetLogger());
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_TENSORRT
