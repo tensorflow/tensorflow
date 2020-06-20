@@ -62,11 +62,16 @@ inline void LstmStepWithAuxInput(
     const float* projection_weights_ptr, const float* projection_bias_ptr,
     const TfLiteLSTMParams* params, int n_batch, int n_cell, int n_input,
     int n_aux_input, int n_output, int output_batch_leading_dim,
-    float* output_state_ptr, float* cell_state_ptr, float* input_gate_scratch,
-    float* forget_gate_scratch, float* cell_gate_scratch,
-    float* output_gate_scratch, float* output_ptr, Logger* logger,
-    const std::vector<int>& intermediate_tensor_indexes,
+    float* output_state_ptr, float* cell_state_ptr, float* scratch0,
+    float* scratch1, float* scratch2, float* scratch3, float* output_ptr,
+    Logger* logger, const std::vector<int>& intermediate_tensor_indexes,
     ErrorReporter* error_reporter) {
+  // Make named scratch buffers for the different gates.
+  float* input_gate_scratch = scratch0;
+  float* forget_gate_scratch = scratch1;
+  float* cell_gate_scratch = scratch2;
+  float* output_gate_scratch = scratch3;
+
   // Since we have already checked that weights are all there or none, we can
   // check the existence of only one to the get the condition.
   const bool use_cifg = (input_to_input_weights_ptr == nullptr);
