@@ -1340,7 +1340,9 @@ def meshgrid(*xi, **kwargs):
 
 
 @np_utils.np_doc('einsum')
-def einsum(subscripts, *operands, casting='safe', optimize=False):  # pylint: disable=missing-docstring
+def einsum(subscripts, *operands, **kwargs):  # pylint: disable=missing-docstring
+  casting = kwargs.get('casting', 'safe')
+  optimize = kwargs.get('optimize', False)
   if casting == 'safe':
     operands = np_array_ops._promote_dtype(*operands)  # pylint: disable=protected-access
   elif casting == 'no':
