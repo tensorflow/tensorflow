@@ -135,6 +135,10 @@ static void Init(TF_Filesystem* filesystem, TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
 }
 
+static void Cleanup(TF_Filesystem* filesystem) {
+  plugin_memory_free(filesystem->plugin_filesystem);
+}
+
 // TODO(vnvo2409): Implement later
 
 static void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
@@ -145,9 +149,37 @@ static void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
   if (TF_GetCode(status) != TF_OK) return;
 
   auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
-  TempFile outfile(TF_GetTempFileName(""), std::ios::binary | std::ios::out);
+  char* temp_file_name = TF_GetTempFileName("");
   file->plugin_file = new tf_writable_file::GCSFile(
-      {bucket, object, gcs_client, std::move(outfile), true});
+      {bucket, object, gcs_client,
+       TempFile(temp_file_name, std::ios::binary | std::ios::out), true});
+  // We are responsible for freeing the pointer returned by TF_GetTempFileName
+  free(temp_file_name);
+  TF_SetStatus(status, TF_OK, "");
+}
+
+static void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
+                              TF_WritableFile* file, TF_Status* status) {
+  char* bucket;
+  char* object;
+  ParseGCSPath(path, false, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
+  char* temp_file_name = TF_GetTempFileName("");
+
+  auto gcs_status = gcs_client->DownloadToFile(bucket, object, temp_file_name);
+  TF_SetStatusFromGCSStatus(gcs_status, status);
+  auto status_code = TF_GetCode(status);
+  if (status_code != TF_OK && status_code != TF_NOT_FOUND) {
+    return;
+  }
+  // If this file does not exist on server, we will need to sync it.
+  bool sync_need = (status_code == TF_NOT_FOUND);
+  file->plugin_file = new tf_writable_file::GCSFile(
+      {bucket, object, gcs_client,
+       TempFile(temp_file_name, std::ios::binary | std::ios::app), sync_need});
+  free(temp_file_name);
   TF_SetStatus(status, TF_OK, "");
 }
 
@@ -165,7 +197,10 @@ static void ProvideFilesystemSupportFor(TF_FilesystemPluginOps* ops,
   ops->filesystem_ops = static_cast<TF_FilesystemOps*>(
       plugin_memory_allocate(TF_FILESYSTEM_OPS_SIZE));
   ops->filesystem_ops->init = tf_gcs_filesystem::Init;
+  ops->filesystem_ops->cleanup = tf_gcs_filesystem::Cleanup;
   ops->filesystem_ops->new_writable_file = tf_gcs_filesystem::NewWritableFile;
+  ops->filesystem_ops->new_appendable_file =
+      tf_gcs_filesystem::NewAppendableFile;
 }
 
 void TF_InitPlugin(TF_FilesystemPluginInfo* info) {
