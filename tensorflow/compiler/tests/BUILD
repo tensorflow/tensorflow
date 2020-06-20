@@ -1585,7 +1585,6 @@ cuda_py_test(
     shard_count = 5,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "no_rocm",  # FAILS on ROCm 3.5
     ],
     xla_enable_strict_auto_jit = False,
     xla_enabled = True,
@@ -1610,7 +1609,6 @@ cuda_py_test(
     srcs = ["dense_layer_test.py"],
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "no_rocm",  # FAILS on ROCm 3.5
     ],
     xla_enable_strict_auto_jit = False,
     xla_enabled = True,

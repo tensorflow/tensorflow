@@ -61,7 +61,6 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "no_pip",
-        "no_rocm",  # FAILS on ROCm 3.5
     ],
     deps = [
         ":profiler_v2",
@@ -123,7 +122,6 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "no_pip",
-        "no_rocm",  # FAILS on ROCm 3.5
     ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
     deps = [

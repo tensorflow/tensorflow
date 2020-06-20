@@ -586,9 +586,6 @@ tf_cc_tests(
         "//conditions:default": [],
     }),
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = [
-        "no_rocm",  # stat_summarizer_test FAILS on ROCm 3.5
-    ],
     visibility = [
         "//tensorflow/core:__pkg__",
     ],

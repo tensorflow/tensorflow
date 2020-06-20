@@ -7991,9 +7991,6 @@ tf_cc_test(
     srcs = [
         "remote_fused_graph_execute_utils_test.cc",
     ],
-    tags = [
-        "no_rocm",  # FAILS on ROCm 3.5
-    ],
     deps = [
         ":cwise_op",
         ":remote_fused_graph_execute_op_test_utils",
@@ -8019,9 +8016,6 @@ tf_cc_test(
     size = "small",
     srcs = [
         "remote_fused_graph_execute_op_test.cc",
-    ],
-    tags = [
-        "no_rocm",  # FAILS on ROCm 3.5
     ],
     deps = [
         ":ops_testutil",
@@ -8062,9 +8056,6 @@ tf_cc_test(
     name = "remote_fused_graph_rewriter_transform_test",
     size = "small",
     srcs = ["remote_fused_graph_rewriter_transform_test.cc"],
-    tags = [
-        "no_rocm",  # FAILS on ROCm 3.5
-    ],
     deps = [
         ":remote_fused_graph_execute_op_test_utils",
         ":remote_fused_graph_execute_utils",
