@@ -31,9 +31,6 @@ array-like objects includes `ndarrays` as defined by this module, as well as
 `tf.Tensor`, in addition to types accepted by `numpy`.
 
 A subset of `numpy` dtypes are supported, along with `tf.bfloat16`.
-Additionally, support is provided for selecting the default float type
-(`np.float32` vs `np.float64`) given that some applications may prefer lower
-precision.
 
 Device Support
 -------------
