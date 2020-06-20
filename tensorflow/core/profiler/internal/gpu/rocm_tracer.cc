@@ -937,6 +937,12 @@ void RocmTracer::Enable(const RocmTracerOptions& options,
   collector_ = collector;
   api_cb_impl_ = new RocmApiCallbackImpl(options, this, collector);
   activity_cb_impl_ = new RocmActivityCallbackImpl(options, this, collector);
+
+  // From ROCm 3.5 onwards, the following call is required.
+  // don't quite know what it does (no documentation!), only that without it
+  // the call to enable api/activity tracing will run into a segfault
+  roctracer_set_properties(ACTIVITY_DOMAIN_HIP_API, NULL);
+
   EnableApiTracing().IgnoreError();
   EnableActivityTracing().IgnoreError();
   LOG(INFO) << "GpuTracer started";
