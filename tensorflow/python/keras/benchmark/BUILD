@@ -54,3 +54,14 @@ py_test(
         "//third_party/py/numpy",
     ],
 )
+
+py_library(
+  name="benchmark_util",
+  srcs=["benchmark_util.py"],
+  deps = ["distribution_util"]
+)
+
+py_library(
+  name = "distribution_util",
+  srcs = ["distribution_util.py"]
+)
