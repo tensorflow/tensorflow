@@ -134,4 +134,12 @@ void RegisterTpuPlatform() {
   }
 }
 
+REGISTER_MODULE_INITIALIZER(tpu_platform, RegisterTpuPlatform());
+
+// Note that module initialization sequencing is not supported in the
+// open-source project, so this will be a no-op there.
+REGISTER_MODULE_INITIALIZER_SEQUENCE(tpu_platform, multi_platform_manager);
+REGISTER_MODULE_INITIALIZER_SEQUENCE(multi_platform_manager_listener,
+                                     tpu_platform);
+
 }  // namespace tensorflow
