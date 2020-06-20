@@ -338,7 +338,10 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     if context.executing_eagerly():
       # In async remote eager, we want to sync the exectors before exiting the
       # program.
-      atexit.register(context.async_wait)
+      def async_wait():
+        if context.context()._context_handle is not None:  # pylint: disable=protected-access
+          context.async_wait()
+      atexit.register(async_wait)
 
   # TODO(bfontain): Remove once a proper dataset API exists for prefetching
   # a dataset to multiple devices exists.
