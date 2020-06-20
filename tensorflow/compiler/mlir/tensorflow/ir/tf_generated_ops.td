@@ -52,9 +52,6 @@ an output element, this operation computes \\(y = |x|\\).
 def TF_AcosOp : TF_Op<"Acos", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes acos of x element-wise.";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$x
   );
@@ -370,9 +367,6 @@ retained with length 1.
 
 def TF_ApproximateEqualOp : TF_Op<"ApproximateEqual", [Commutative, NoSideEffect]> {
   let summary = "Returns the truth value of abs(x-y) < tolerance element-wise.";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$x,
@@ -733,9 +727,6 @@ window in `value`.
 
 def TF_AvgPoolGradOp : TF_Op<"AvgPoolGrad", [NoSideEffect]> {
   let summary = "Computes gradients of the average pooling function.";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     I32Tensor:$orig_input_shape,
@@ -1402,9 +1393,6 @@ An n-way switch statement, implementing the following:
 def TF_CastOp : TF_Op<"Cast", [NoSideEffect, SameOperandsAndResultShape]> {
   let summary = "Cast x of type SrcT to y of DstT.";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TF_Tensor:$x,
 
@@ -1423,9 +1411,6 @@ def TF_CastOp : TF_Op<"Cast", [NoSideEffect, SameOperandsAndResultShape]> {
 
 def TF_CeilOp : TF_Op<"Ceil", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Returns element-wise smallest integer not less than x.";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     TF_FpTensor:$x
@@ -1485,9 +1470,6 @@ greater than `clip_value_max` are set to `clip_value_max`.
 def TF_CollectiveBcastRecvOp : TF_Op<"CollectiveBcastRecv", []> {
   let summary = "Receives a tensor value broadcast from another device.";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     I64Attr:$group_size,
     I64Attr:$group_key,
@@ -1506,9 +1488,6 @@ def TF_CollectiveBcastRecvOp : TF_Op<"CollectiveBcastRecv", []> {
 
 def TF_CollectiveBcastSendOp : TF_Op<"CollectiveBcastSend", []> {
   let summary = "Broadcasts a tensor value to one or more other devices.";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     TensorOf<[F16, F32, F64, I1, I32, I64]>:$input,
@@ -1533,9 +1512,6 @@ def TF_CollectiveGatherOp : TF_Op<"CollectiveGather", []> {
 Mutually accumulates multiple tensors of identical type and shape.
   }];
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TensorOf<[F16, F32, F64, I32, I64]>:$input,
 
@@ -1557,9 +1533,6 @@ Mutually accumulates multiple tensors of identical type and shape.
 def TF_CollectiveReduceOp : TF_Op<"CollectiveReduce", [SameOperandsAndResultType]> {
   let summary = [{
 Mutually reduces multiple tensors of identical type and shape.
-  }];
-
-  let description = [{
   }];
 
   let arguments = (ins
@@ -1641,9 +1614,6 @@ value is computed as \\( \sqrt{a^2 + b^2}\\).
 def TF_ConcatOp : TF_Op<"Concat", [NoSideEffect]> {
   let summary = "Concatenates tensors along one dimension.";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     I32Tensor:$concat_dim,
     Variadic<TF_Tensor>:$values
@@ -1699,9 +1669,6 @@ This is typically used by gradient computations for a concat operation.
 
 def TF_ConcatV2Op : TF_Op<"ConcatV2", [NoSideEffect]> {
   let summary = "Concatenates tensors along one dimension.";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     Variadic<TF_Tensor>:$values,
@@ -1842,9 +1809,6 @@ def TF_Conv2DBackpropFilterOp : TF_Op<"Conv2DBackpropFilter", [NoSideEffect, TF_
 Computes the gradients of convolution with respect to the filter.
   }];
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TF_FpTensor:$input,
     I32Tensor:$filter_sizes,
@@ -1876,9 +1840,6 @@ Computes the gradients of convolution with respect to the filter.
 def TF_Conv2DBackpropInputOp : TF_Op<"Conv2DBackpropInput", [NoSideEffect, TF_LayoutSensitiveInterface]> {
   let summary = [{
 Computes the gradients of convolution with respect to the input.
-  }];
-
-  let description = [{
   }];
 
   let arguments = (ins
@@ -1952,9 +1913,6 @@ def TF_Conv3DBackpropFilterV2Op : TF_Op<"Conv3DBackpropFilterV2", [NoSideEffect]
 Computes the gradients of 3-D convolution with respect to the filter.
   }];
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TF_FpTensor:$input,
     I32Tensor:$filter_sizes,
@@ -1976,9 +1934,6 @@ Computes the gradients of 3-D convolution with respect to the filter.
 def TF_Conv3DBackpropInputV2Op : TF_Op<"Conv3DBackpropInputV2", [NoSideEffect]> {
   let summary = [{
 Computes the gradients of 3-D convolution with respect to the input.
-  }];
-
-  let description = [{
   }];
 
   let arguments = (ins
@@ -2465,9 +2420,6 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
 def TF_DeviceIndexOp : TF_Op<"DeviceIndex", [NoSideEffect]> {
   let summary = "Return the index of device the op runs.";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     StrArrayAttr:$device_names
   );
@@ -2792,9 +2744,6 @@ def TF_EluGradOp : TF_Op<"EluGrad", [NoSideEffect, SameOperandsAndResultType]> {
 Computes gradients for the exponential linear (Elu) operation.
   }];
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TF_FpTensor:$gradients,
     TF_FpTensor:$outputs
@@ -2812,9 +2761,6 @@ def TF_EmptyOp : TF_Op<"Empty", []> {
 Creates a tensor with the given shape.
 
 This operation creates a tensor of `shape` and `dtype`.
-  }];
-
-  let description = [{
   }];
 
   let arguments = (ins
@@ -2946,9 +2892,6 @@ tf.math.equal(x, y) ==> array([True,  True])
 def TF_ErfOp : TF_Op<"Erf", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes the Gauss error function of `x` element-wise.";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TF_FpTensor:$x
   );
@@ -2965,9 +2908,6 @@ def TF_ErfcOp : TF_Op<"Erfc", [NoSideEffect, SameOperandsAndResultType]> {
 Computes the complementary error function of `x` element-wise.
   }];
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TF_FpTensor:$x
   );
@@ -2981,9 +2921,6 @@ Computes the complementary error function of `x` element-wise.
 
 def TF_ErfinvOp : TF_Op<"Erfinv", [NoSideEffect]> {
   let summary = "";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     TF_FpTensor:$x
@@ -3188,9 +3125,6 @@ def TF_FakeParamOp : TF_Op<"FakeParam", [NoSideEffect]> {
   valid output when run, so must either be removed (e.g. replaced with a
   function input) or guaranteed not to be used (e.g. if mirroring an
   intermediate output needed for the gradient computation of the other branch).
-  }];
-
-  let description = [{
   }];
 
   let arguments = (ins
@@ -3401,9 +3335,6 @@ fill([2, 3], 9) ==> [[9, 9, 9]
 
 def TF_FloorOp : TF_Op<"Floor", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Returns element-wise largest integer not greater than x.";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     TF_FpTensor:$x
@@ -4212,9 +4143,6 @@ def TF_IgammaGradAOp : TF_Op<"IgammaGradA", [NoSideEffect, ResultsBroadcastableS
                        WithBroadcastableBinOpBuilder {
   let summary = "Computes the gradient of `igamma(a, x)` wrt `a`.";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TF_F32OrF64Tensor:$a,
     TF_F32OrF64Tensor:$x
@@ -4487,9 +4415,6 @@ tf.math.is_nan(x) ==> [False, True, False, True, False]
 def TF_IteratorGetNextOp : TF_Op<"IteratorGetNext", []> {
   let summary = "Gets the next output from the given iterator .";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TF_ResourceTensor:$iterator
   );
@@ -4558,9 +4483,6 @@ convolutional neural networks (NIPS 2012)](http://papers.nips.cc/paper/4824-imag
 def TF_LRNGradOp : TF_Op<"LRNGrad", [NoSideEffect]> {
   let summary = "Gradients for Local Response Normalization.";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TensorOf<[BF16, F16, F32]>:$input_grads,
     TensorOf<[BF16, F16, F32]>:$input_image,
@@ -4582,9 +4504,6 @@ def TF_LRNGradOp : TF_Op<"LRNGrad", [NoSideEffect]> {
 def TF_LeakyReluOp : TF_Op<"LeakyRelu", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes rectified linear: `max(features, features * alpha)`.";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TF_FpTensor:$features,
 
@@ -4603,9 +4522,6 @@ def TF_LeakyReluOp : TF_Op<"LeakyRelu", [NoSideEffect, SameOperandsAndResultType
 def TF_LeakyReluGradOp : TF_Op<"LeakyReluGrad", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = [{
 Computes rectified linear gradients for a LeakyRelu operation.
-  }];
-
-  let description = [{
   }];
 
   let arguments = (ins
@@ -4888,9 +4804,6 @@ def TF_LogicalAndOp : TF_Op<"LogicalAnd", [Commutative, NoSideEffect, ResultsBro
 def TF_LogicalNotOp : TF_Op<"LogicalNot", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Returns the truth value of `NOT x` element-wise.";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     I1Tensor:$x
   );
@@ -4970,9 +4883,6 @@ The tensor `values` must be of the type of the table values.
 
 def TF_LookupTableSizeV2Op : TF_Op<"LookupTableSizeV2", []> {
   let summary = "Computes the number of elements in the given table.";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     TF_ResourceTensor:$table_handle
@@ -5658,9 +5568,6 @@ retained with length 1.
 def TF_MaxPoolOp : TF_Op<"MaxPool", [NoSideEffect, TF_FoldOperandsTransposeInterface]> {
   let summary = "Performs max pooling on the input.";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Qint8, TF_Uint16, TF_Uint8]>:$input,
 
@@ -5687,9 +5594,6 @@ def TF_MaxPoolOp : TF_Op<"MaxPool", [NoSideEffect, TF_FoldOperandsTransposeInter
 def TF_MaxPool3DOp : TF_Op<"MaxPool3D", [NoSideEffect]> {
   let summary = "Performs 3D max pooling on the input.";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TensorOf<[BF16, F16, F32]>:$input,
 
@@ -5708,9 +5612,6 @@ def TF_MaxPool3DOp : TF_Op<"MaxPool3D", [NoSideEffect]> {
 
 def TF_MaxPool3DGradOp : TF_Op<"MaxPool3DGrad", [NoSideEffect]> {
   let summary = "Computes gradients of 3D max pooling function.";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     TensorOf<[BF16, F16, F32]>:$orig_input,
@@ -5733,9 +5634,6 @@ def TF_MaxPool3DGradOp : TF_Op<"MaxPool3DGrad", [NoSideEffect]> {
 
 def TF_MaxPoolGradOp : TF_Op<"MaxPoolGrad", [NoSideEffect]> {
   let summary = "Computes gradients of the maxpooling function.";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     TF_IntOrFpTensor:$orig_input,
@@ -6015,9 +5913,6 @@ Returns x * y element-wise. Returns zero if y is zero, even if x if infinite or 
 def TF_MultinomialOp : TF_Op<"Multinomial", []> {
   let summary = "Draws samples from a multinomial distribution.";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TF_IntOrFpTensor:$logits,
     I32Tensor:$num_samples,
@@ -6036,9 +5931,6 @@ def TF_MultinomialOp : TF_Op<"Multinomial", []> {
 
 def TF_NdtriOp : TF_Op<"Ndtri", [NoSideEffect]> {
   let summary = "";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     TF_FpTensor:$x
@@ -6073,9 +5965,6 @@ I.e., \\(y = -x\\).
 
 def TF_NoOp : TF_Op<"NoOp", [NoSideEffect]> {
   let summary = "Does nothing. Only useful as a placeholder for control edges.";
-
-  let description = [{
-  }];
 
   let arguments = (ins);
 
@@ -6329,9 +6218,6 @@ output =
 
 def TF_OutfeedEnqueueTupleOp : TF_Op<"OutfeedEnqueueTuple", []> {
   let summary = "Enqueue multiple Tensor values on the computation outfeed.";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     Variadic<TF_Tensor>:$inputs
@@ -6617,9 +6503,6 @@ q_full, r_full = qr(a, full_matrices=True)
 def TF_QuantizeAndDequantizeOp : TF_Op<"QuantizeAndDequantize", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Use QuantizeAndDequantizeV2 instead.";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TF_FpTensor:$input,
 
@@ -6869,9 +6752,6 @@ def TF_RandomGammaGradOp : TF_Op<"RandomGammaGrad", [NoSideEffect, ResultsBroadc
                            WithBroadcastableBinOpBuilder {
   let summary = [{
 Computes the derivative of a Gamma random sample w.r.t. `alpha`.
-  }];
-
-  let description = [{
   }];
 
   let arguments = (ins
@@ -7203,9 +7083,6 @@ array([ 0.,  0., -0.,  3.], dtype=float32)
 def TF_Relu6Op : TF_Op<"Relu6", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes rectified linear 6: `min(max(features, 0), 6)`.";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TF_IntOrFpTensor:$features
   );
@@ -7219,9 +7096,6 @@ def TF_Relu6Op : TF_Op<"Relu6", [NoSideEffect, SameOperandsAndResultType]> {
 
 def TF_Relu6GradOp : TF_Op<"Relu6Grad", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes rectified linear 6 gradients for a Relu6 operation.";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     TF_IntOrFpTensor:$gradients,
@@ -7237,9 +7111,6 @@ def TF_Relu6GradOp : TF_Op<"Relu6Grad", [NoSideEffect, SameOperandsAndResultType
 
 def TF_ReluGradOp : TF_Op<"ReluGrad", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes rectified linear gradients for a Relu operation.";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     TF_IntOrFpTensor:$gradients,
@@ -7365,9 +7236,6 @@ Input images can be of different types but output images are always float.
 def TF_ResizeBilinearGradOp : TF_Op<"ResizeBilinearGrad", [NoSideEffect]> {
   let summary = "Computes the gradient of bilinear interpolation.";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     F32Tensor:$grads,
     TF_FpTensor:$original_image,
@@ -7386,9 +7254,6 @@ def TF_ResizeBilinearGradOp : TF_Op<"ResizeBilinearGrad", [NoSideEffect]> {
 def TF_ResizeNearestNeighborOp : TF_Op<"ResizeNearestNeighbor", [NoSideEffect]> {
   let summary = [{
 Resize `images` to `size` using nearest neighbor interpolation.
-  }];
-
-  let description = [{
   }];
 
   let arguments = (ins
@@ -7506,9 +7371,6 @@ var <- var - mom
 
 def TF_ResourceApplyGradientDescentOp : TF_Op<"ResourceApplyGradientDescent", []> {
   let summary = "Update '*var' by subtracting 'alpha' * 'delta' from it.";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     TF_ResourceTensor:$var,
@@ -8292,9 +8154,6 @@ select(condition, t, e) ==> [[1, 2],
 def TF_SelectV2Op : TF_Op<"SelectV2", [NoSideEffect, ResultsBroadcastableShape]> {
   let summary = "";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     I1Tensor:$condition,
     TF_Tensor:$t,
@@ -8341,9 +8200,6 @@ See [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)
 def TF_SeluGradOp : TF_Op<"SeluGrad", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = [{
 Computes gradients for the scaled exponential linear (Selu) operation.
-  }];
-
-  let description = [{
   }];
 
   let arguments = (ins
@@ -8596,9 +8452,6 @@ whose values are extracted from 'input' starting at the offsets in
 def TF_SnapshotOp : TF_Op<"Snapshot", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Returns a copy of the input tensor.";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TF_Tensor:$input
   );
@@ -8663,9 +8516,6 @@ Inputs are the logits, not probabilities.
 def TF_SoftplusOp : TF_Op<"Softplus", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes softplus: `log(exp(features) + 1)`.";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TF_FpTensor:$features
   );
@@ -8679,9 +8529,6 @@ def TF_SoftplusOp : TF_Op<"Softplus", [NoSideEffect, SameOperandsAndResultType]>
 
 def TF_SoftplusGradOp : TF_Op<"SoftplusGrad", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes softplus gradients for a softplus operation.";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     TF_FpTensor:$gradients,
@@ -8698,9 +8545,6 @@ def TF_SoftplusGradOp : TF_Op<"SoftplusGrad", [NoSideEffect, SameOperandsAndResu
 def TF_SoftsignOp : TF_Op<"Softsign", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes softsign: `features / (abs(features) + 1)`.";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TF_FpTensor:$features
   );
@@ -8714,9 +8558,6 @@ def TF_SoftsignOp : TF_Op<"Softsign", [NoSideEffect, SameOperandsAndResultType]>
 
 def TF_SoftsignGradOp : TF_Op<"SoftsignGrad", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes softsign gradients for a softsign operation.";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     TF_FpTensor:$gradients,
@@ -8965,9 +8806,6 @@ are checked during execution.
 def TF_SplitOp : TF_Op<"Split", [NoSideEffect]> {
   let summary = "Splits a tensor into `num_split` tensors along one dimension.";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     I32Tensor:$split_dim,
     TF_Tensor:$value
@@ -8985,9 +8823,6 @@ def TF_SplitOp : TF_Op<"Split", [NoSideEffect]> {
 
 def TF_SplitVOp : TF_Op<"SplitV", [NoSideEffect]> {
   let summary = "Splits a tensor into `num_split` tensors along one dimension.";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     TF_Tensor:$value,
@@ -9052,11 +8887,11 @@ I.e., \\(y = x * x = x^2\\).
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$x
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64]>:$x
   );
 
   let results = (outs
-    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$y
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64]>:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -9125,9 +8960,6 @@ shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
 def TF_StackCloseV2Op : TF_Op<"StackCloseV2", []> {
   let summary = "Delete the stack from its resource container.";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TF_ResourceTensor:$handle
   );
@@ -9137,9 +8969,6 @@ def TF_StackCloseV2Op : TF_Op<"StackCloseV2", []> {
 
 def TF_StackPopV2Op : TF_Op<"StackPopV2", []> {
   let summary = "Pop the element at the top of the stack.";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     TF_ResourceTensor:$handle
@@ -9154,9 +8983,6 @@ def TF_StackPopV2Op : TF_Op<"StackPopV2", []> {
 
 def TF_StackPushV2Op : TF_Op<"StackPushV2", []> {
   let summary = "Push an element onto the stack.";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     TF_ResourceTensor:$handle,
@@ -9174,9 +9000,6 @@ def TF_StackPushV2Op : TF_Op<"StackPushV2", []> {
 
 def TF_StackV2Op : TF_Op<"StackV2", []> {
   let summary = "A stack that produces elements in first-in last-out order.";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     I32Tensor:$max_size,
@@ -9895,9 +9718,6 @@ calculation gets its own TensorArray accumulator.
 def TF_TensorArrayReadV3Op : TF_Op<"TensorArrayReadV3", []> {
   let summary = "Read an element from the TensorArray into output `value`.";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TF_ResourceTensor:$handle,
     I32Tensor:$index,
@@ -9936,9 +9756,6 @@ Scatter the data from the input value into specific TensorArray elements.
 
 def TF_TensorArraySizeV3Op : TF_Op<"TensorArraySizeV3", []> {
   let summary = "Get the current size of the TensorArray.";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     TF_ResourceTensor:$handle,
@@ -10015,9 +9832,6 @@ Write data via Write and read via Read or Pack.
 
 def TF_TensorArrayWriteV3Op : TF_Op<"TensorArrayWriteV3", []> {
   let summary = "Push an element onto the tensor_array.";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     TF_ResourceTensor:$handle,
@@ -10138,9 +9952,6 @@ values: The tensor.
 
 def TF_TensorListGetItemOp : TF_Op<"TensorListGetItem", [NoSideEffect]> {
   let summary = "";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     TF_VariantTensor:$input_handle,
@@ -10270,9 +10081,6 @@ output_handle: The TensorList.
 
 def TF_TensorListSetItemOp : TF_Op<"TensorListSetItem", [NoSideEffect]> {
   let summary = "";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     TF_VariantTensor:$input_handle,
@@ -11063,9 +10871,6 @@ def TF_XdivyOp : TF_Op<"Xdivy", [NoSideEffect, ResultsBroadcastableShape]>,
                  WithBroadcastableBinOpBuilder {
   let summary = "Returns 0 if x == 0, and x / y otherwise, elementwise.";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$x,
     TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$y
@@ -11242,9 +11047,6 @@ def TF_XlaHostComputeOp : TF_Op<"XlaHostCompute", []> {
 A pseudo-op to represent host-side computation in an XLA program.
   }];
 
-  let description = [{
-  }];
-
   let arguments = (ins
     Variadic<TF_Tensor>:$inputs,
 
@@ -11315,9 +11117,6 @@ https://www.tensorflow.org/performance/xla/operation_semantics#pad
 def TF_XlaRecvFromHostOp : TF_Op<"XlaRecvFromHost", []> {
   let summary = "An op to receive a tensor from the host.";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TF_ShapeAttr:$shape,
     StrAttr:$key
@@ -11354,9 +11153,6 @@ https://www.tensorflow.org/performance/xla/operation_semantics#reduce .
 
 def TF_XlaReplicaIdOp : TF_Op<"XlaReplicaId", [NoSideEffect]> {
   let summary = "Replica ID.";
-
-  let description = [{
-  }];
 
   let arguments = (ins);
 
@@ -11396,9 +11192,6 @@ i=0...N-1.
 
 def TF_XlaSendToHostOp : TF_Op<"XlaSendToHost", []> {
   let summary = "An op to send a tensor to the host.";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     TF_Tensor:$input,
@@ -11443,9 +11236,6 @@ tensor such that tensor[...,:,:] = u[..., :, :] * Diag(s[..., :]) * Transpose(v[
 def TF_Xlog1pyOp : TF_Op<"Xlog1py", [NoSideEffect]> {
   let summary = "Returns 0 if x == 0, and x * log1p(y) otherwise, elementwise.";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$x,
     TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$y
@@ -11462,9 +11252,6 @@ def TF_XlogyOp : TF_Op<"Xlogy", [NoSideEffect, ResultsBroadcastableShape]>,
                  WithBroadcastableBinOpBuilder {
   let summary = "Returns 0 if x == 0, and x * log(y) otherwise, elementwise.";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$x,
     TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$y
@@ -11479,9 +11266,6 @@ def TF_XlogyOp : TF_Op<"Xlogy", [NoSideEffect, ResultsBroadcastableShape]>,
 
 def TF_ZerosLikeOp : TF_Op<"ZerosLike", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Returns a tensor of zeros with the same shape and type as x.";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     TF_Tensor:$x
@@ -11589,9 +11373,6 @@ expected to create these operators.
 def TF__HostComputeMlirOp : TF_Op<"_HostComputeMlir", []> {
   let summary = "A host-side computation called from a TPU device.";
 
-  let description = [{
-  }];
-
   let arguments = (ins
     Variadic<TF_Tensor>:$inputs,
 
@@ -11671,9 +11452,6 @@ def TF__XlaRecvAtHostOp : TF_Op<"_XlaRecvAtHost", []> {
 A placeholder op to receive values from a running XLA computation.
   }];
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TF_StrTensor:$dynamic_key,
 
@@ -11690,9 +11468,6 @@ A placeholder op to receive values from a running XLA computation.
 
 def TF__XlaSendFromHostOp : TF_Op<"_XlaSendFromHost", []> {
   let summary = "A placeholder op to send values to a running XLA computation.";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     Variadic<TF_Tensor>:$inputs,
