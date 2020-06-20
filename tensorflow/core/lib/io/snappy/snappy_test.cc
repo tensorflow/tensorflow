@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
+#include "tensorflow/core/lib/io/random_inputstream.h"
 #include "tensorflow/core/lib/io/snappy/snappy_inputbuffer.h"
+#include "tensorflow/core/lib/io/snappy/snappy_inputstream.h"
 #include "tensorflow/core/lib/io/snappy/snappy_outputbuffer.h"
 
 namespace tensorflow {
@@ -50,18 +52,17 @@ static string GenTestString(int copies = 1) {
   return result;
 }
 
-Status TestMultipleWrites(size_t compress_input_buf_size,
-                          size_t compress_output_buf_size,
-                          size_t uncompress_input_buf_size,
-                          size_t uncompress_output_buf_size, int num_writes = 1,
-                          bool with_flush = false, int num_copies = 1,
-                          bool corrupt_compressed_file = false) {
+Status TestMultipleWritesWriteFile(size_t compress_input_buf_size,
+                                   size_t compress_output_buf_size,
+                                   int num_writes, bool with_flush,
+                                   int num_copies, bool corrupt_compressed_file,
+                                   string& fname, string& data,
+                                   string& expected_result) {
   Env* env = Env::Default();
 
-  string fname = testing::TmpDir() + "/snappy_buffers_test";
-  string data = GenTestString(num_copies);
+  fname = testing::TmpDir() + "/snappy_buffers_test";
+  data = GenTestString(num_copies);
   std::unique_ptr<WritableFile> file_writer;
-  string expected_result;
 
   TF_RETURN_IF_ERROR(env->NewWritableFile(fname, &file_writer));
   io::SnappyOutputBuffer out(file_writer.get(), compress_input_buf_size,
@@ -112,6 +113,25 @@ Status TestMultipleWrites(size_t compress_input_buf_size,
     fname = corrupt_fname;
   }
 
+  return Status::OK();
+}
+
+Status TestMultipleWrites(size_t compress_input_buf_size,
+                          size_t compress_output_buf_size,
+                          size_t uncompress_input_buf_size,
+                          size_t uncompress_output_buf_size, int num_writes = 1,
+                          bool with_flush = false, int num_copies = 1,
+                          bool corrupt_compressed_file = false) {
+  Env* env = Env::Default();
+
+  string expected_result;
+  string fname;
+  string data;
+
+  TF_RETURN_IF_ERROR(TestMultipleWritesWriteFile(
+      compress_input_buf_size, compress_output_buf_size, num_writes, with_flush,
+      num_copies, corrupt_compressed_file, fname, data, expected_result));
+
   std::unique_ptr<RandomAccessFile> file_reader;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file_reader));
   io::SnappyInputBuffer in(file_reader.get(), uncompress_input_buf_size,
@@ -131,15 +151,56 @@ Status TestMultipleWrites(size_t compress_input_buf_size,
     }
     TF_RETURN_IF_ERROR(in.Reset());
   }
+
   return Status::OK();
 }
 
-void TestTell(size_t compress_input_buf_size, size_t compress_output_buf_size,
-              size_t uncompress_input_buf_size,
-              size_t uncompress_output_buf_size, int num_copies = 1) {
+Status TestMultipleWritesInputStream(
+    size_t compress_input_buf_size, size_t compress_output_buf_size,
+    size_t uncompress_input_buf_size, size_t uncompress_output_buf_size,
+    int num_writes = 1, bool with_flush = false, int num_copies = 1,
+    bool corrupt_compressed_file = false) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/snappy_buffers_test";
-  string data = GenTestString(num_copies);
+
+  string expected_result;
+  string fname;
+  string data;
+
+  TF_RETURN_IF_ERROR(TestMultipleWritesWriteFile(
+      compress_input_buf_size, compress_output_buf_size, num_writes, with_flush,
+      num_copies, corrupt_compressed_file, fname, data, expected_result));
+
+  std::unique_ptr<RandomAccessFile> file_reader;
+  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file_reader));
+  io::RandomAccessInputStream random_input_stream(file_reader.get(), false);
+  io::SnappyInputStream snappy_input_stream(&random_input_stream,
+                                            uncompress_output_buf_size);
+
+  for (int attempt = 0; attempt < 2; ++attempt) {
+    string actual_result;
+    for (int i = 0; i < num_writes; ++i) {
+      tstring decompressed_output;
+      TF_RETURN_IF_ERROR(
+          snappy_input_stream.ReadNBytes(data.size(), &decompressed_output));
+      strings::StrAppend(&actual_result, decompressed_output);
+    }
+
+    if (actual_result.compare(expected_result)) {
+      return errors::DataLoss("Actual and expected results don't match.");
+    }
+    TF_RETURN_IF_ERROR(snappy_input_stream.Reset());
+  }
+  return Status::OK();
+}
+
+void TestTellWriteFile(size_t compress_input_buf_size,
+                       size_t compress_output_buf_size,
+                       size_t uncompress_input_buf_size,
+                       size_t uncompress_output_buf_size, int num_copies,
+                       string& fname, string& data) {
+  Env* env = Env::Default();
+  fname = testing::TmpDir() + "/snappy_buffers_test";
+  data = GenTestString(num_copies);
 
   // Write the compressed file.
   std::unique_ptr<WritableFile> file_writer;
@@ -150,6 +211,18 @@ void TestTell(size_t compress_input_buf_size, size_t compress_output_buf_size,
   TF_CHECK_OK(out.Flush());
   TF_CHECK_OK(file_writer->Flush());
   TF_CHECK_OK(file_writer->Close());
+}
+
+void TestTell(size_t compress_input_buf_size, size_t compress_output_buf_size,
+              size_t uncompress_input_buf_size,
+              size_t uncompress_output_buf_size, int num_copies = 1) {
+  Env* env = Env::Default();
+  string data;
+  string fname;
+
+  TestTellWriteFile(compress_input_buf_size, compress_output_buf_size,
+                    uncompress_input_buf_size, uncompress_output_buf_size,
+                    num_copies, fname, data);
 
   tstring first_half(string(data, 0, data.size() / 2));
   tstring bytes_read;
@@ -157,6 +230,43 @@ void TestTell(size_t compress_input_buf_size, size_t compress_output_buf_size,
   TF_CHECK_OK(env->NewRandomAccessFile(fname, &file_reader));
   io::SnappyInputBuffer in(file_reader.get(), uncompress_input_buf_size,
                            uncompress_output_buf_size);
+
+  // Read the first half of the uncompressed file and expect that Tell()
+  // returns half the uncompressed length of the file.
+  TF_CHECK_OK(in.ReadNBytes(first_half.size(), &bytes_read));
+  EXPECT_EQ(in.Tell(), first_half.size());
+  EXPECT_EQ(bytes_read, first_half);
+
+  // Read the remaining half of the uncompressed file and expect that
+  // Tell() points past the end of file.
+  tstring second_half;
+  TF_CHECK_OK(in.ReadNBytes(data.size() - first_half.size(), &second_half));
+  EXPECT_EQ(in.Tell(), data.size());
+  bytes_read.append(second_half);
+
+  // Expect that the file is correctly read.
+  EXPECT_EQ(bytes_read, data);
+}
+
+void TestTellInputStream(size_t compress_input_buf_size,
+                         size_t compress_output_buf_size,
+                         size_t uncompress_input_buf_size,
+                         size_t uncompress_output_buf_size,
+                         int num_copies = 1) {
+  Env* env = Env::Default();
+  string data;
+  string fname;
+
+  TestTellWriteFile(compress_input_buf_size, compress_output_buf_size,
+                    uncompress_input_buf_size, uncompress_output_buf_size,
+                    num_copies, fname, data);
+
+  tstring first_half(string(data, 0, data.size() / 2));
+  tstring bytes_read;
+  std::unique_ptr<RandomAccessFile> file_reader;
+  TF_CHECK_OK(env->NewRandomAccessFile(fname, &file_reader));
+  io::RandomAccessInputStream random_input_stream(file_reader.get(), false);
+  io::SnappyInputStream in(&random_input_stream, uncompress_output_buf_size);
 
   // Read the first half of the uncompressed file and expect that Tell()
   // returns half the uncompressed length of the file.
@@ -187,6 +297,7 @@ TEST(SnappyBuffers, MultipleWritesWithoutFlush) {
     return;
   }
   TF_CHECK_OK(TestMultipleWrites(10000, 10000, 10000, 10000, 2));
+  TF_CHECK_OK(TestMultipleWritesInputStream(10000, 10000, 10000, 10000, 2));
 }
 
 TEST(SnappyBuffers, MultipleWriteCallsWithFlush) {
@@ -195,6 +306,8 @@ TEST(SnappyBuffers, MultipleWriteCallsWithFlush) {
     return;
   }
   TF_CHECK_OK(TestMultipleWrites(10000, 10000, 10000, 10000, 2, true));
+  TF_CHECK_OK(
+      TestMultipleWritesInputStream(10000, 10000, 10000, 10000, 2, true));
 }
 
 TEST(SnappyBuffers, SmallUncompressInputBuffer) {
@@ -208,6 +321,17 @@ TEST(SnappyBuffers, SmallUncompressInputBuffer) {
                                      COMPRESSED_RECORD_SIZE, " bytes."));
 }
 
+TEST(SnappyBuffers, SmallUncompressInputStream) {
+  if (!SnappyCompressionSupported()) {
+    fprintf(stderr, "skipping compression tests\n");
+    return;
+  }
+  CHECK_EQ(TestMultipleWritesInputStream(10000, 10000, 10000, 10, 2, true),
+           errors::ResourceExhausted(
+               "Output buffer(size: 10 bytes) too small. ",
+               "Should be larger than ", GetRecord().size(), " bytes."));
+}
+
 TEST(SnappyBuffers, CorruptBlock) {
   if (!SnappyCompressionSupported()) {
     fprintf(stderr, "skipping compression tests\n");
@@ -216,6 +340,17 @@ TEST(SnappyBuffers, CorruptBlock) {
   CHECK_EQ(TestMultipleWrites(10000, 10000, 700, 10000, 2, true, 1, true),
            errors::DataLoss("Failed to read ", COMPRESSED_RECORD_SIZE,
                             " bytes from file. ", "Possible data corruption."));
+}
+
+TEST(SnappyBuffers, CorruptBlockInputStream) {
+  if (!SnappyCompressionSupported()) {
+    fprintf(stderr, "skipping compression tests\n");
+    return;
+  }
+  CHECK_EQ(
+      TestMultipleWritesInputStream(10000, 10000, 700, 10000, 2, true, 1, true),
+      errors::DataLoss("Failed to read ", COMPRESSED_RECORD_SIZE,
+                       " bytes from file. ", "Possible data corruption."));
 }
 
 TEST(SnappyBuffers, CorruptBlockLargeInputBuffer) {
@@ -227,12 +362,31 @@ TEST(SnappyBuffers, CorruptBlockLargeInputBuffer) {
            errors::OutOfRange("EOF reached"));
 }
 
+TEST(SnappyBuffers, CorruptBlockLargeInputStream) {
+  if (!SnappyCompressionSupported()) {
+    fprintf(stderr, "skipping compression tests\n");
+    return;
+  }
+  CHECK_EQ(TestMultipleWritesInputStream(10000, 10000, 2000, 10000, 2, true, 1,
+                                         true),
+           errors::DataLoss("Failed to read ", COMPRESSED_RECORD_SIZE,
+                            " bytes from file. Possible data corruption."));
+}
+
 TEST(SnappyBuffers, Tell) {
   if (!SnappyCompressionSupported()) {
     fprintf(stderr, "skipping compression tests\n");
     return;
   }
   TestTell(10000, 10000, 2000, 10000, 2);
+}
+
+TEST(SnappyBuffers, TellInputStream) {
+  if (!SnappyCompressionSupported()) {
+    fprintf(stderr, "skipping compression tests\n");
+    return;
+  }
+  TestTellInputStream(10000, 10000, 2000, 10000, 2);
 }
 
 }  // namespace tensorflow

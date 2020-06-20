@@ -209,6 +209,19 @@ cc_library(
 )
 
 cc_library(
+    name = "snappy_inputstream",
+    srcs = ["snappy/snappy_inputstream.cc"],
+    hdrs = ["snappy/snappy_inputstream.h"],
+    deps = [
+        ":inputstream_interface",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:platform_port",
+        "@com_google_absl//absl/memory",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
     name = "cache",
     srcs = [
         "cache.cc",
@@ -354,6 +367,7 @@ filegroup(
         "record_reader.h",
         "record_writer.h",
         "snappy/snappy_inputbuffer.h",
+        "snappy/snappy_inputstream.h",
         "snappy/snappy_outputbuffer.h",
         "table.h",
         "table_builder.h",
@@ -377,7 +391,7 @@ filegroup(
         "random_inputstream_test.cc",
         "record_reader_writer_test.cc",
         "recordio_test.cc",
-        "snappy/snappy_buffers_test.cc",
+        "snappy/snappy_test.cc",
         "table_test.cc",
         "zlib_buffers_test.cc",
     ],
@@ -409,6 +423,7 @@ filegroup(
         "inputbuffer.h",
         "iterator.h",
         "snappy/snappy_inputbuffer.h",
+        "snappy/snappy_inputstream.h",
         "snappy/snappy_outputbuffer.h",
         "zlib_compression_options.h",
         "zlib_inputstream.h",
