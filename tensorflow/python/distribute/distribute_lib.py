@@ -618,7 +618,7 @@ class InputOptions(
   resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
   tf.config.experimental_connect_to_cluster(resolver)
   tf.tpu.experimental.initialize_tpu_system(resolver)
-  strategy = tf.distribute.experimental.TPUStrategy(resolver)
+  strategy = tf.distribute.TPUStrategy(resolver)
 
   dataset = tf.data.Dataset.range(16)
   distributed_dataset_on_host = (
@@ -1462,17 +1462,17 @@ class Strategy(StrategyBase):
     topology = tf.tpu.experimental.initialize_tpu_system(resolver)
     device_assignment = tf.tpu.experimental.DeviceAssignment.build(
         topology,
-        computation_shape=[1, 1, 2],
+        computation_shape=[1, 1, 1, 2],
         num_replicas=4)
-    strategy = tf.distribute.experimental.TPUStrategy(
-        resolver, device_assignment=device_assignment)
+    strategy = tf.distribute.TPUStrategy(
+        resolver, experimental_device_assignment=device_assignment)
     iterator = iter(inputs)
 
     @tf.function()
     def step_fn(inputs):
       output = tf.add(inputs, inputs)
 
-      // Add operation will be executed on logical device 0.
+      # Add operation will be executed on logical device 0.
       output = strategy.experimental_assign_to_logical_device(output, 0)
       return output
 
@@ -1517,10 +1517,10 @@ class Strategy(StrategyBase):
     topology = tf.tpu.experimental.initialize_tpu_system(resolver)
     device_assignment = tf.tpu.experimental.DeviceAssignment.build(
         topology,
-        computation_shape=[2, 2, 2],
+        computation_shape=[1, 2, 2, 2],
         num_replicas=1)
-    strategy = tf.distribute.experimental.TPUStrategy(
-        resolver, device_assignment=device_assignment)
+    strategy = tf.distribute.TPUStrategy(
+        resolver, experimental_device_assignment=device_assignment)
 
     iterator = iter(inputs)
 
@@ -1529,8 +1529,8 @@ class Strategy(StrategyBase):
       inputs = strategy.experimental_split_to_logical_devices(
         inputs, [1, 2, 4, 1])
 
-      // model() function will be executed on 8 logical devices with `inputs`
-      // split 2 * 4  ways.
+      # model() function will be executed on 8 logical devices with `inputs`
+      # split 2 * 4  ways.
       output = model(inputs)
       return output
 
@@ -1571,10 +1571,10 @@ class Strategy(StrategyBase):
     topology = tf.tpu.experimental.initialize_tpu_system(resolver)
     device_assignment = tf.tpu.experimental.DeviceAssignment.build(
         topology,
-        computation_shape=[1, 1, 2],
+        computation_shape=[1, 1, 1, 2],
         num_replicas=4)
-    strategy = tf.distribute.experimental.TPUStrategy(
-        resolver, device_assignment=device_assignment)
+    strategy = tf.distribute.TPUStrategy(
+        resolver, experimental_device_assignment=device_assignment)
 
     iterator = iter(inputs)
 
@@ -1584,12 +1584,12 @@ class Strategy(StrategyBase):
       images = strategy.experimental_split_to_logical_devices(
         inputs, [1, 2, 4, 1])
 
-      // model() function will be executed on 8 logical devices with `inputs`
-      // split 2 * 4  ways.
+      # model() function will be executed on 8 logical devices with `inputs`
+      # split 2 * 4  ways.
       output = model(inputs)
 
-      // For loss calculation, all logical devices share the same logits
-      // and labels.
+      # For loss calculation, all logical devices share the same logits
+      # and labels.
       labels = strategy.experimental_replicate_to_logical_devices(labels)
       output = strategy.experimental_replicate_to_logical_devices(output)
       loss = loss_fn(labels, output)
