@@ -20,10 +20,10 @@ limitations under the License.
 namespace xla {
 
 static bool InitModule() {
-  kDisabledManifestPath = XLA_DISABLED_MANIFEST;
-  VLOG(1) << "kDisabledManifestPath: " << kDisabledManifestPath;
-  kTestPlatform = XLA_PLATFORM;
-  VLOG(1) << "kTestPlatform: " << kTestPlatform;
+  *DisabledManifestPath() = XLA_DISABLED_MANIFEST;
+  VLOG(1) << "DisabledManifestPath: " << *DisabledManifestPath();
+  *TestPlatform() = XLA_PLATFORM;
+  VLOG(1) << "TestPlatform: " << *TestPlatform();
   return false;
 }
 
