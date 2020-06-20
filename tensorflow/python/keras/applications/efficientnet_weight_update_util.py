@@ -62,7 +62,7 @@ def write_ckpt_to_h5(path_h5, path_ckpt, keras_model, use_ema=True):
 
   print('check variables match in each block')
   for keras_block, tf_block in zip(keras_blocks, tf_blocks):
-    check_match(keras_block, tf_block, keras_weight_names, tf_weight_names)
+    check_match(keras_block, tf_block, keras_weight_names, tf_weight_names, model_name_tf)
     print(f'{keras_block} and {tf_block} match.')
 
   block_mapping = {x[0]: x[1] for x in zip(keras_blocks, tf_blocks)}
@@ -77,7 +77,7 @@ def write_ckpt_to_h5(path_h5, path_ckpt, keras_model, use_ema=True):
     elif any([x in w.name for x in ['stem', 'top', 'predictions', 'probs']]):
       tf_name = keras_name_to_tf_name_stem_top(w.name, use_ema=use_ema, model_name_tf=model_name_tf)
     elif 'normalization' in w.name:
-      # normalization is a layer in keras implementation, but preprocessing in TF implementation.
+      print(f'skipping variable {w.name}: normalization is a layer in keras implementation, but preprocessing in TF implementation.')
       continue
     else:
       raise ValueError(f'{w.name} failed to parse.')
@@ -260,7 +260,7 @@ def keras_name_to_tf_name_block(keras_name, keras_block='block1a', tf_block='blo
   return '/'.join(tf_name)
 
 
-def check_match(keras_block, tf_block, keras_weight_names, tf_weight_names):
+def check_match(keras_block, tf_block, keras_weight_names, tf_weight_names, model_name_tf):
   """ Check if the weights in h5 and ckpt match
   
   we match each name from keras_weight_names that is in keras_block 
@@ -276,9 +276,9 @@ def check_match(keras_block, tf_block, keras_weight_names, tf_weight_names):
   match_lst = []
   for x in keras_weight_names:
     if keras_block in x:
-      y = keras_name_to_tf_name_block(x, keras_block=keras_block, tf_block=tf_block)
+      y = keras_name_to_tf_name_block(x, keras_block=keras_block, tf_block=tf_block, model_name_tf=model_name_tf)
       match_lst.append(y)
-
+  
   assert len(match_lst) > 0, f'there is no weight in block {keras_block}'
   for x in tf_weight_names:
     if tf_block in x and x.split('/')[1].endswith(tf_block):
