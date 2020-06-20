@@ -40,6 +40,11 @@ from tensorflow.python.ops.numpy_ops import np_dtypes
 from tensorflow.python.ops.numpy_ops import np_utils
 
 
+pi = np.pi
+e = np.e
+inf = np.inf
+
+
 @np_utils.np_doc_only('dot')
 def dot(a, b):  # pylint: disable=missing-docstring
 
