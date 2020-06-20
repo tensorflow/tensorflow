@@ -145,7 +145,6 @@ cuda_py_test(
     size = "small",
     srcs = ["benchmark_test.py"],
     tags = [
-        "no_rocm",  # FAILS on ROCm 3.5
         "no_windows",
     ],
     deps = [
@@ -3779,9 +3778,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["while_v2_test.py"],
     grpc_enabled = True,
-    tags = [
-        "no_rocm",  # FAILS on ROCm 3.5
-    ],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",

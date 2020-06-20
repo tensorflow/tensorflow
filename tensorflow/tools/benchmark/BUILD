@@ -48,9 +48,6 @@ tf_cc_test(
     name = "benchmark_model_test",
     size = "medium",
     srcs = ["benchmark_model_test.cc"],
-    tags = [
-        "no_rocm",  # FAILS on ROCm 3.5
-    ],
     deps = [
         ":benchmark_model_lib",
         "//tensorflow/cc:cc_ops",

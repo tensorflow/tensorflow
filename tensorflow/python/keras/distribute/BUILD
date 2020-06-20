@@ -140,9 +140,6 @@ distribute_py_test(
     srcs = ["distributed_training_utils_test.py"],
     full_precision = True,
     main = "distributed_training_utils_test.py",
-    tags = [
-        "no_rocm",  # FAILS on ROCm 3.5
-    ],
     deps = [
         ":distribute",
         ":distribute_strategy_test_lib",

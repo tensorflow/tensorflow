@@ -2273,7 +2273,6 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 10,
     tags = [
-        "no_rocm",  # FAILS on ROCm 3.5
         "noasan",
         "optonly",
     ],
@@ -6533,7 +6532,6 @@ tf_py_test(
     tags = [
         "no_pip",
         "no_pip_gpu",
-        "no_rocm",  # FAILS on ROCm 3.5
         "notap",
     ],
     deps = [
@@ -7000,7 +6998,6 @@ tf_py_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # Relies on contrib
-        "no_rocm",  # FAILS on ROCm 3.5
         "no_windows",
         "notsan",  # intermittent races on a few percent of runs
     ],
@@ -7094,7 +7091,6 @@ tf_py_test(
     srcs = ["training/monitored_session_test.py"],
     tags = [
         "no_pip",
-        "no_rocm",  # FAILS on ROCm 3.5
         "notsan",  # b/67945581
     ],
     deps = [
@@ -7713,7 +7709,6 @@ cuda_py_test(
     tags = [
         "grappler",
         "no_pip",  # tf_optimizer is not available in pip.
-        "no_rocm",  # FAILS on ROCm 3.5
         "notap",  # TODO(b/135924227): Re-enable after fixing flakiness.
     ],
     # This test will not run on XLA because it primarily tests the TF Classic flow.
@@ -7928,7 +7923,6 @@ tf_py_test(
         "no_cuda_on_cpu_tap",
         "no_mac",
         "no_pip",
-        "no_rocm",  # FAILS on ROCm 3.5
         "no_windows",  # TODO(b/151942037)
     ],
     deps = [

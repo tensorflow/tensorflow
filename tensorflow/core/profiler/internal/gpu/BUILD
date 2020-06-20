@@ -68,7 +68,6 @@ tf_cc_test_gpu(
     tags = tf_cuda_tests_tags() + [
         "nomac",
         "gpu_cupti",
-        "no_rocm",  # FAILS on ROCm 3.5
     ],
     deps = [
         ":device_tracer",
