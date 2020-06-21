@@ -91,11 +91,20 @@ def _jacfwd(f, primals):
 
 
 def _jvp_batch(f, primal, tangents):
+  """Computes jvps of a compisite op `f` at `primals` for a batch of `tangents`"""
+  # Vectorized_map does create a tf.function of its loop_fn 
+  # but it is self documenting here.
   tf_function = def_function.function(f)
 
   return control_flow_ops.vectorized_map(
       functools.partial(_jvp, tf_function, primal), tangents)
 
+#TODO: Refactor tests for this once integrated in ForwardAccumulator
+def _jvp_dispatch_batch(op_name, attr_tuple, inputs, outputs, tangents):
+  """Computes jvps of a regular op for a batch of tangents"""
+  return control_flow_ops.vectorized_map(
+      functools.partial(forwardprop._jvp_dispatch, op_name, attr_tuple, inputs, outputs),
+      tangents)
 
 def _jvp_batch_matmul(f, primals, tangent_batch):
   """Compute the jacobian of `f` at `primals` multiplied by `tangents`."""
@@ -245,6 +254,38 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
             constant_op.constant([3.]),
         ))
     self.assertAllClose([2. * 5. + 3. * 4.], self.evaluate(vp))
+
+  def testJVPFunctionWithBatchOfTangents(self):
+    add_outputs = (constant_op.constant(4.),)
+    jvp_flat = _jvp_dispatch_batch(
+        op_name="Add",
+        attr_tuple=(),
+        inputs=(constant_op.constant(1.), constant_op.constant(3.)),
+        outputs=add_outputs,
+        tangents=(
+            constant_op.constant([1., 2., 3.]),
+            constant_op.constant([4., 5., 6.]),
+        ))
+    # Using evaluate and asserting with just a list wokrs too
+    self.assertAllClose(
+      [constant_op.constant([1. + 4., 2. + 5., 3. + 6.])], 
+      jvp_flat
+    )
+
+    mul_outputs = (constant_op.constant([20.]),)
+    jvp_flat = _jvp_dispatch_batch(
+        op_name="Mul",
+        attr_tuple=(),
+        inputs=(constant_op.constant([4.]), constant_op.constant([5.])),
+        outputs=mul_outputs,
+        tangents=(
+            constant_op.constant([[1.], [0.], [1.]]),
+            constant_op.constant([[0.], [1.], [1.]]),
+        ))
+    self.assertAllClose(
+      [constant_op.constant([[5.], [4.], [5. + 4.]])], 
+      jvp_flat
+    )    
 
   def testNonDifferentiableOpWithInputTangent(self):
     x = constant_op.constant(1.)
