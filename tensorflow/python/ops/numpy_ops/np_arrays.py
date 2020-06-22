@@ -306,6 +306,10 @@ class ndarray(composite_tensor.CompositeTensor):  # pylint: disable=invalid-name
   def __repr__(self):
     return 'ndarray<{}>'.format(self.data.__repr__())
 
+  @property
+  def _id(self):
+    return self.data._id  # pylint: disable=protected-access
+
 
 def tensor_to_ndarray(tensor):
   return ndarray.from_tensor(tensor)
