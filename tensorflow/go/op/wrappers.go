@@ -31850,8 +31850,8 @@ func VarHandleOpSharedName(value string) VarHandleOpAttr {
 
 // VarHandleOpAllowedDevices sets the optional allowed_devices attribute to value.
 //
-// value: The allowed devices containing the resource variable. Set when the output
-// ResourceHandle represents a per-replica/partitioned resource variable.
+// value: DEPRECATED. The allowed devices containing the resource variable. Set when the
+// output ResourceHandle represents a per-replica/partitioned resource variable.
 // If not specified, defaults to <>
 func VarHandleOpAllowedDevices(value []string) VarHandleOpAttr {
 	return func(m optionalAttr) {
