@@ -237,11 +237,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "d26ada177ed9b696a9447fc85d209932a032c8ffc51630cf15eea8629b29dad6",  # SHARED_EIGEN_SHA
-        strip_prefix = "eigen-6b9c92fe7eff0dedb031cec38004c9c3667f3057",
+        sha256 = "f632d82e43ffc46adfac9043beace700b0265748075e7edc0701d81380258038",  # SHARED_EIGEN_SHA
+        strip_prefix = "eigen-386d809bde475c65b7940f290efe80e6a05878c4",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/6b9c92fe7eff0dedb031cec38004c9c3667f3057/eigen-6b9c92fe7eff0dedb031cec38004c9c3667f3057.tar.gz",
-            "https://gitlab.com/libeigen/eigen/-/archive/6b9c92fe7eff0dedb031cec38004c9c3667f3057/eigen-6b9c92fe7eff0dedb031cec38004c9c3667f3057.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/386d809bde475c65b7940f290efe80e6a05878c4/eigen-386d809bde475c65b7940f290efe80e6a05878c4.tar.gz",
+            "https://gitlab.com/libeigen/eigen/-/archive/386d809bde475c65b7940f290efe80e6a05878c4/eigen-386d809bde475c65b7940f290efe80e6a05878c4.tar.gz",
         ],
     )
 
