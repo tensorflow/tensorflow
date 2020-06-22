@@ -168,6 +168,8 @@ absl::Status TensorDescriptor::PerformSelector(
     return PerformReadSelector(args, template_args, result);
   } else if (selector == "Write") {
     return PerformWriteSelector(args, result);
+  } else if (selector == "WriteLinear") {
+    return PerformWriteLinearSelector(args, result);
   } else if (selector == "GetAddress") {
     return PerformGetAddressSelector(args, result);
   } else {
@@ -250,6 +252,21 @@ absl::Status TensorDescriptor::PerformWriteSelector(
     return absl::NotFoundError("Unrecognized Write selector");
   }
   *result = Write(args[0], GetGlobalAddressNoDeclaration(xc, yc, zc, sc, bc));
+  return absl::OkStatus();
+}
+
+absl::Status TensorDescriptor::PerformWriteLinearSelector(
+    const std::vector<std::string>& args, std::string* result) const {
+  if (storage_type != TensorStorageType::BUFFER &&
+      storage_type != TensorStorageType::IMAGE_BUFFER) {
+    return absl::InvalidArgumentError(
+        "WriteLinear selector can be used only with linear "
+        "storages(BUFFER/IMAGE_BUFFER)");
+  }
+  if (args.size() != 2) {
+    return absl::NotFoundError("Unrecognized WriteLinear selector");
+  }
+  *result = Write(args[0], "(" + args[1] + ")");
   return absl::OkStatus();
 }
 

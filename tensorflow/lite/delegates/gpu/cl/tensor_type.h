@@ -93,6 +93,9 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   absl::Status PerformWriteSelector(const std::vector<std::string>& args,
                                     std::string* result) const;
 
+  absl::Status PerformWriteLinearSelector(const std::vector<std::string>& args,
+                                          std::string* result) const;
+
   std::string Read(DataType read_as_type,
                    const std::string& global_address) const;
   std::string Write(const std::string& var_name,
