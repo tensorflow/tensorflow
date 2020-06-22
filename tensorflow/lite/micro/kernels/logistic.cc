@@ -44,7 +44,7 @@ TfLiteStatus CalculateArithmeticOpData(TfLiteContext* context, TfLiteNode* node,
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
   if (input->type == kTfLiteInt8) {
     TF_LITE_ENSURE_EQ(context, output->params.zero_point,
                       std::numeric_limits<int8_t>::min());

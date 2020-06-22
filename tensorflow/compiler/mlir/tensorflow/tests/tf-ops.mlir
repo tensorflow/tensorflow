@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -verify-diagnostics | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -split-input-file -verify-diagnostics | FileCheck %s
 
 // Tests for TensorFlow ops with custom verifiers.
 
@@ -22,32 +22,6 @@ func @opaquetensorattr() -> () {
   "tf.opaqueStringTensor"(){bar = opaque<"tf", "0x68656C6C6F"> : tensor<2x1x4x!tf.string>} : () -> ()
 // CHECK: "tf.opaqueResourceTensor"() {bar = opaque<"tf", "0x68656C6C6F"> : tensor<2x1x4x!tf.resource>} : () -> ()
   "tf.opaqueResourceTensor"(){bar = opaque<"tf", "0x68656C6C6F"> : tensor<2x1x4x!tf.resource>} : () -> ()
-  return
-}
-
-//===--------------------------------------------------------------------===//
-//  Test raw TF operations (_tf.*)
-//===--------------------------------------------------------------------===//
-
-// Test of parsing !tf.resource type
-// CHECK-LABEL: func @testTFResource(%arg0: !tf.resource)
-func @testTFResource(!tf.resource) -> () {
-^bb0(%arg0: !tf.resource):
-  // CHECK: %0:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_Resource", name = "Const"} : () -> (tensor<*x!tf.resource>, !_tf.control)
-  %0:2 = "_tf.Const"() {device = "", name = "Const", dtype = "tfdtype$DT_Resource"} : () -> (tensor<*x!tf.resource>, !_tf.control)
-  // CHECK: %1 = "_tf.AssignAddVariableOp"(%arg0, %0#0) {device = "", name = "AssignAddVariableOp"} : (!tf.resource, tensor<*x!tf.resource>) -> !_tf.control
-  %1 = "_tf.AssignAddVariableOp"(%arg0, %0#0) {device = "", name = "AssignAddVariableOp"} : (!tf.resource, tensor<*x!tf.resource>) -> !_tf.control
-  return
-}
-
-// Test of parsing !tf.variant type
-// CHECK-LABEL: func @testTFVariant(%arg0: tensor<*x!tf.variant>)
-func @testTFVariant(tensor<*x!tf.variant>) -> () {
-^bb0(%arg0: tensor<*x!tf.variant>):
-  // CHECK: %0:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_VARIANT", name = "Const"} : () -> (!tf.variant, !_tf.control)
-  %0:2 = "_tf.Const"() {device = "", name = "Const", dtype = "tfdtype$DT_VARIANT"} : () -> (!tf.variant, !_tf.control)
-  // CHECK: %1 = "_tf.AssignAddVariableOp"(%arg0, %0#0) {device = "", name = "AssignAddVariableOp"} : (tensor<*x!tf.variant>, !tf.variant) -> !_tf.control
-  %1 = "_tf.AssignAddVariableOp"(%arg0, %0#0) {device = "", name = "AssignAddVariableOp"} : (tensor<*x!tf.variant>, !tf.variant) -> !_tf.control
   return
 }
 
@@ -865,13 +839,14 @@ func @testInvalidYieldOp(%arg0: f32) -> () {
 // Test valid tf.IfRegion operation
 // CHECK-LABEL: func @testValidIfRegionOp
 func @testValidIfRegionOp(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
-  %0 = "tf.IfRegion"(%arg0, %arg1) ({
+  %neg = "tf.Neg"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+  %0 = "tf.IfRegion"(%arg0) ({
      %t = "tf.Abs"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
      "tf.Yield"(%t) : (tensor<2xf32>) -> ()
     }, {
-     %e = "tf.Acos"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+     %e = "tf.Acos"(%neg) : (tensor<2xf32>) -> tensor<2xf32>
      "tf.Yield"(%e) : (tensor<2xf32>) -> ()
-    }) { is_stateless = false} : (tensor<i1>, tensor<2xf32>) -> tensor<2xf32>
+    }) { is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
 
   return %0 : tensor<2xf32>
 }
@@ -881,7 +856,7 @@ func @testValidIfRegionOp(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf
 // Test valid tf.IfRegion operation with multiple results
 // CHECK-LABEL: func @testValidIfRegionOpWithMultipleResults
 func @testValidIfRegionOpWithMultipleResults(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
-  %0, %1, %2 = "tf.IfRegion"(%arg0, %arg1) ({
+  %0, %1, %2 = "tf.IfRegion"(%arg0) ({
      %t0 = "tf.Abs"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
      %t1 = "tf.Acos"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
      %t2 = "tf.Acosh"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
@@ -891,7 +866,7 @@ func @testValidIfRegionOpWithMultipleResults(%arg0: tensor<i1>, %arg1: tensor<2x
      %e1 = "tf.Relu"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
      %e2 = "tf.Sin"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
      "tf.Yield"(%e0, %e1, %e2) : (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>) -> ()
-    }) { is_stateless = false} : (tensor<i1>, tensor<2xf32>) -> (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>)
+    }) { is_stateless = false} : (tensor<i1>) -> (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>)
 
   %3 = "tf.Add"(%0, %1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   %4 = "tf.Add"(%2, %3) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
@@ -903,31 +878,15 @@ func @testValidIfRegionOpWithMultipleResults(%arg0: tensor<i1>, %arg1: tensor<2x
 // Test invalid type for operand #0 for tf.IfRegion operation
 func @testInvalidIfRegionOpType0(%arg0: f32, %arg1: tensor<2xf32>) -> tensor<2xf32> {
   // expected-error @+1 {{operand #0 must be tensor of tf.dtype values}}
-  %0 = "tf.IfRegion"(%arg0, %arg1) ({
+  %0 = "tf.IfRegion"(%arg0) ({
      %t = "tf.Abs"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
      "tf.Yield"(%t) : (tensor<2xf32>) -> ()
     }, {
      %e = "tf.Acos"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
      "tf.Yield"(%e) : (tensor<2xf32>) -> ()
-    }) { is_stateless = false} : (f32, tensor<2xf32>) -> tensor<2xf32>
+    }) { is_stateless = false} : (f32) -> tensor<2xf32>
 
   return %0 : tensor<2xf32>
-}
-
-// -----
-
-// Test invalid type for operand #1 for tf.IfRegion operation
-func @testInvalidIfRegionOpType1(%arg0: tensor<i1>, %arg1: f32) -> f32 {
-  // expected-error @+1 {{operand #1 must be tensor of tf.dtype values}}
-  %0 = "tf.IfRegion"(%arg0, %arg1) ({
-     %t = addf %arg1, %arg1 : f32
-     "tf.Yield"(%t) : (f32) -> ()
-    }, {
-     %e = mulf %arg1, %arg1 : f32
-     "tf.Yield"(%e) : (f32) -> ()
-    }) { is_stateless = false} : (tensor<i1>, f32) -> f32
-
-  return %0 : f32
 }
 
 // -----
@@ -935,10 +894,10 @@ func @testInvalidIfRegionOpType1(%arg0: tensor<i1>, %arg1: f32) -> f32 {
 // tf.IfRegion operation should have 2 regions
 func @testInvalidIfRegionOp1Region(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
   // expected-error @+1 {{op expected 2 regions}}
-  %0 = "tf.IfRegion"(%arg0, %arg1) ({
+  %0 = "tf.IfRegion"(%arg0) ({
      %t = "tf.Abs"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
      "tf.Yield"(%t) : (tensor<2xf32>) -> ()
-    }) { is_stateless = false} : (tensor<i1>, tensor<2xf32>) -> tensor<2xf32>
+    }) { is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
 
   return %0 : tensor<2xf32>
 }
@@ -947,7 +906,7 @@ func @testInvalidIfRegionOp1Region(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> t
 
 func @testInvalidIfRegionOpNoRegions(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
   // expected-error @+1 {{op expected 2 regions}}
-  %0 = "tf.IfRegion"(%arg0, %arg1) { is_stateless = false} : (tensor<i1>, tensor<2xf32>) -> tensor<2xf32>
+  %0 = "tf.IfRegion"(%arg0) { is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
 
   return %0 : tensor<2xf32>
 }
@@ -956,7 +915,7 @@ func @testInvalidIfRegionOpNoRegions(%arg0: tensor<i1>, %arg1: tensor<2xf32>) ->
 
 func @testInvalidIfRegionOp3Regions(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
   // expected-error @+1 {{op expected 2 regions}}
-  %0 = "tf.IfRegion"(%arg0, %arg1) ({
+  %0 = "tf.IfRegion"(%arg0) ({
      %t = "tf.Abs"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
      "tf.Yield"(%t) : (tensor<2xf32>) -> ()
     }, {
@@ -965,7 +924,7 @@ func @testInvalidIfRegionOp3Regions(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> 
     }, {
      %e = "tf.Acos"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
      "tf.Yield"(%e) : (tensor<2xf32>) -> ()
-    }) { is_stateless = false} : (tensor<i1>, tensor<2xf32>) -> tensor<2xf32>
+    }) { is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
 
   return %0 : tensor<2xf32>
 }
@@ -976,12 +935,12 @@ func @testInvalidIfRegionOp3Regions(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> 
 func @testIfRegionThenTerminator(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
   // expected-error @+2 {{'tf.IfRegion' op expects regions to end with 'tf.Yield'}}
   // expected-note @+1 {{in custom textual format, the absence of terminator implies 'tf.Yield'}}
-  %0 = "tf.IfRegion"(%arg0, %arg1) ({
+  %0 = "tf.IfRegion"(%arg0) ({
      %t = "tf.Abs"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
    }, {
      %e = "tf.Acos"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
      "tf.Yield"(%e) : (tensor<2xf32>) -> ()
-    }) { is_stateless = false} : (tensor<i1>, tensor<2xf32>) -> tensor<2xf32>
+    }) { is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
 
   return %0 : tensor<2xf32>
 }
@@ -991,12 +950,12 @@ func @testIfRegionThenTerminator(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> ten
 func @testIfRegionElseTerminator(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
   // expected-error @+2 {{'tf.IfRegion' op expects regions to end with 'tf.Yield'}}
   // expected-note @+1 {{in custom textual format, the absence of terminator implies 'tf.Yield'}}
-  %0 = "tf.IfRegion"(%arg0, %arg1) ({
+  %0 = "tf.IfRegion"(%arg0) ({
      %t = "tf.Abs"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
      "tf.Yield"(%t) : (tensor<2xf32>) -> ()
     }, {
      %e = "tf.Acos"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
-    }) { is_stateless = false} : (tensor<i1>, tensor<2xf32>) -> tensor<2xf32>
+    }) { is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
 
   return %0 : tensor<2xf32>
 }
@@ -1006,13 +965,13 @@ func @testIfRegionElseTerminator(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> ten
 // tf.Region yield number of results should match op number of results
 func @testIfRegionThenResultCount(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
   // expected-error @+1 {{then region should have 1 result}}
-  %0 = "tf.IfRegion"(%arg0, %arg1) ({
+  %0 = "tf.IfRegion"(%arg0) ({
      %t = "tf.Abs"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
      "tf.Yield"(%t, %t) : (tensor<2xf32>, tensor<2xf32>) -> ()
     }, {
      %e = "tf.Acos"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
      "tf.Yield"(%e) : (tensor<2xf32>) -> ()
-    }) { is_stateless = false} : (tensor<i1>, tensor<2xf32>) -> tensor<2xf32>
+    }) { is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
 
   return %0 : tensor<2xf32>
 }
@@ -1021,13 +980,13 @@ func @testIfRegionThenResultCount(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> te
 
 func @testIfRegionElseResultCount(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
   // expected-error @+1 {{else region should have 1 result}}
-  %0 = "tf.IfRegion"(%arg0, %arg1) ({
+  %0 = "tf.IfRegion"(%arg0) ({
      %t = "tf.Abs"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
      "tf.Yield"(%t) : (tensor<2xf32>) -> ()
     }, {
      %e = "tf.Acos"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
      "tf.Yield"(%e, %e) : (tensor<2xf32>, tensor<2xf32>) -> ()
-    }) { is_stateless = false} : (tensor<i1>, tensor<2xf32>) -> tensor<2xf32>
+    }) { is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
 
   return %0 : tensor<2xf32>
 }
@@ -1037,12 +996,12 @@ func @testIfRegionElseResultCount(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> te
 // tf.IfRegion yield types should match op result types
 func @testIfRegionOpYieldMismatchThen(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
   // expected-error @+1 {{then result type tensor<i1> is incompatible with tf.IfRegion result type tensor<2xf32> at index 0}}
-  %0 = "tf.IfRegion"(%arg0, %arg1) ({
+  %0 = "tf.IfRegion"(%arg0) ({
      "tf.Yield"(%arg0) : (tensor<i1>) -> ()
     }, {
      %e = "tf.Acos"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
      "tf.Yield"(%e) : (tensor<2xf32>) -> ()
-    }) { is_stateless = false} : (tensor<i1>, tensor<2xf32>) -> tensor<2xf32>
+    }) { is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
 
   return %0 : tensor<2xf32>
 }
@@ -1051,12 +1010,77 @@ func @testIfRegionOpYieldMismatchThen(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -
 
 func @testIfRegionOpYieldMismatchElse(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
   // expected-error @+1 {{else result type tensor<i1> is incompatible with tf.IfRegion result type tensor<2xf32> at index 0}}
-  %0 = "tf.IfRegion"(%arg0, %arg1) ({
+  %0 = "tf.IfRegion"(%arg0) ({
      %t = "tf.Acos"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
      "tf.Yield"(%t) : (tensor<2xf32>) -> ()
     }, {
      "tf.Yield"(%arg0) : (tensor<i1>) -> ()
-    }) { is_stateless = false} : (tensor<i1>, tensor<2xf32>) -> tensor<2xf32>
+    }) { is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
+
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
+// value generated in one branch cannot be consumed in the other branch
+func @testIfRegionElseConsumingThen(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "tf.IfRegion"(%arg0) ({
+     %t = "tf.Acos"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+     "tf.Yield"(%t) : (tensor<2xf32>) -> ()
+    }, {
+     // expected-error @+1 {{use of undeclared SSA value name}}
+     "tf.Yield"(%t) : (tensor<2xf32>) -> ()
+    }) { is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
+
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
+func @testIfRegionThenConsumingElse(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+   %0 = "tf.IfRegion"(%arg0) ({
+     // expected-error @+1 {{does not dominate this use}}
+     "tf.Yield"(%t) : (tensor<2xf32>) -> ()
+    }, {
+      // expected-note @+1 {{operand defined here}}
+      %t = "tf.Acos"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+      "tf.Yield"(%t) : (tensor<2xf32>) -> ()
+    }) { is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
+
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
+// The regions for IfRegion themselves cannot have any arguments
+func @testInvalidIfRegionThenArg(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  %neg = "tf.Neg"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+  // expected-error @+1 {{then region cannot have any arguments}}
+  %0 = "tf.IfRegion"(%arg0) ({
+     ^bb(%arg_bb: tensor<2xf32>):
+     %t = "tf.Abs"(%arg_bb) : (tensor<2xf32>) -> tensor<2xf32>
+     "tf.Yield"(%t) : (tensor<2xf32>) -> ()
+    }, {
+     %e = "tf.Acos"(%neg) : (tensor<2xf32>) -> tensor<2xf32>
+     "tf.Yield"(%e) : (tensor<2xf32>) -> ()
+    }) { is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
+
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
+func @testInvalidIfRegionElseArg(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  %neg = "tf.Neg"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+  // expected-error @+1 {{else region cannot have any arguments}}
+  %0 = "tf.IfRegion"(%arg0) ({
+     %t = "tf.Abs"(%neg) : (tensor<2xf32>) -> tensor<2xf32>
+     "tf.Yield"(%t) : (tensor<2xf32>) -> ()
+    }, {
+     ^bb(%arg_bb: tensor<2xf32>):
+     %e = "tf.Acos"(%arg_bb) : (tensor<2xf32>) -> tensor<2xf32>
+     "tf.Yield"(%e) : (tensor<2xf32>) -> ()
+    }) { is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
 
   return %0 : tensor<2xf32>
 }
@@ -2848,4 +2872,141 @@ func @testSendTPUEmbeddingGradients(%x: tensor<512x256xf32>) {
   return
 }
 
+// -----
 
+//===--------------------------------------------------------------------===//
+//  tf.BatchToSpace
+//===--------------------------------------------------------------------===//
+
+func @testBatchToSpaceDynamic(%arg0: tensor<*xf32>, %arg1: tensor<*xi32>) {
+  %0 = "tf.BatchToSpace"(%arg0, %arg1) {block_size = 2 : i64} : (tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
+  return
+}
+
+func @testBatchToSpaceRankedInput(%arg0: tensor<?x?x?x?xf32>, %arg1: tensor<*xi32>) {
+  %0 = "tf.BatchToSpace"(%arg0, %arg1) {block_size = 2 : i64} : (tensor<?x?x?x?xf32>, tensor<*xi32>) -> tensor<*xf32>
+  return
+}
+
+func @testBatchToSpaceRankedCrops(%arg0: tensor<*xf32>, %arg1: tensor<?x?xi32>) {
+  %0 = "tf.BatchToSpace"(%arg0, %arg1) {block_size = 2 : i64} : (tensor<*xf32>, tensor<?x?xi32>) -> tensor<*xf32>
+  return
+}
+
+func @testBatchToSpaceRankedOutput(%arg0: tensor<*xf32>, %arg1: tensor<*xi32>) {
+  %0 = "tf.BatchToSpace"(%arg0, %arg1) {block_size = 2 : i64} : (tensor<*xf32>, tensor<*xi32>) -> tensor<?x?x?x?xf32>
+  return
+}
+
+func @testBatchToSpaceStatic(%arg0: tensor<36x8x8x8xf32>) {
+  %crops = "tf.Const"() {value = dense<[[1, 2], [3, 4]]> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
+  %0 = "tf.BatchToSpace"(%arg0, %crops) {block_size = 3 : i64} : (tensor<36x8x8x8xf32>, tensor<2x2xi32>) -> tensor<4x21x17x8xf32>
+  return
+}
+
+// -----
+
+func @testBatchToSpaceInvalidInputRank(%arg0: tensor<8xf32>, %arg1: tensor<*xi32>) {
+  // expected-error @+1 {{'tf.BatchToSpace' op requires input to be a 4D tensor, but got 'tensor<8xf32>'}}
+  %0 = "tf.BatchToSpace"(%arg0, %arg1) {block_size = 2 : i64} : (tensor<8xf32>, tensor<*xi32>) -> tensor<*xf32>
+  return
+}
+
+// -----
+
+func @testBatchToSpaceInvalidInputBatch(%arg0: tensor<2x4x6x8xf32>, %arg1: tensor<*xi32>) {
+  // expected-error @+1 {{'tf.BatchToSpace' op requires input batch (dimension 0) to be evenly divisible by (block_size * block_size), but got input batch 2 and block_size 2}}
+  %0 = "tf.BatchToSpace"(%arg0, %arg1) {block_size = 2 : i64} : (tensor<2x4x6x8xf32>, tensor<*xi32>) -> tensor<*xf32>
+  return
+}
+
+// -----
+
+func @testBatchToSpaceInvalidCropsRank(%arg0: tensor<*xf32>, %arg1: tensor<?x?x?xi32>) {
+  // expected-error @+1 {{'tf.BatchToSpace' op requires crops to be a 2D tensor, but got 'tensor<?x?x?xi32>'}}
+  %0 = "tf.BatchToSpace"(%arg0, %arg1) {block_size = 2 : i64} : (tensor<*xf32>, tensor<?x?x?xi32>) -> tensor<*xf32>
+  return
+}
+
+// -----
+
+func @testBatchToSpaceInvalidCropsFirstDim(%arg0: tensor<*xf32>, %arg1: tensor<3x?xi32>) {
+  // expected-error @+1 {{'tf.BatchToSpace' op requires crops to be a tensor<2x2>, but got 'tensor<3x?xi32>'}}
+  %0 = "tf.BatchToSpace"(%arg0, %arg1) {block_size = 2 : i64} : (tensor<*xf32>, tensor<3x?xi32>) -> tensor<*xf32>
+  return
+}
+
+// -----
+
+func @testBatchToSpaceInvalidCropsSecondDim(%arg0: tensor<*xf32>, %arg1: tensor<?x3xi32>) {
+  // expected-error @+1 {{'tf.BatchToSpace' op requires crops to be a tensor<2x2>, but got 'tensor<?x3xi32>'}}
+  %0 = "tf.BatchToSpace"(%arg0, %arg1) {block_size = 2 : i64} : (tensor<*xf32>, tensor<?x3xi32>) -> tensor<*xf32>
+  return
+}
+
+// -----
+
+func @testBatchToSpaceBadCropValues(%arg0: tensor<*xf32>) {
+  %crops = "tf.Const"() {value = dense<[[-1, -2], [-3, -4]]> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
+  // expected-error @+1 {{'tf.BatchToSpace' op requires all crop values to be nonnegative, but got dense<[[-1, -2], [-3, -4]]> : tensor<2x2xi32>}}
+  %0 = "tf.BatchToSpace"(%arg0, %crops) {block_size = 2 : i64} : (tensor<*xf32>, tensor<2x2xi32>) -> tensor<*xf32>
+  return
+}
+
+// -----
+
+func @testBatchToSpaceInvalidOutputRank(%arg0: tensor<*xf32>, %arg1: tensor<*xi32>) {
+  // expected-error @+1 {{'tf.BatchToSpace' op requires output to be a 4D tensor, but got 'tensor<8xf32>'}}
+  %0 = "tf.BatchToSpace"(%arg0, %arg1) {block_size = 2 : i64} : (tensor<*xf32>, tensor<*xi32>) -> tensor<8xf32>
+  return
+}
+
+// -----
+
+func @testBatchToSpaceInvalidOutputBatch(%arg0: tensor<16x8x8x3xf32>, %arg1: tensor<*xi32>) {
+  // expected-error @+1 {{'tf.BatchToSpace' op requires output batch (dimension 0) to be equal to input batch (dimension 0) / (block_size * block_size), but got output batch 8, input batch 16, and block_size 2}}
+  %0 = "tf.BatchToSpace"(%arg0, %arg1) {block_size = 2 : i64} : (tensor<16x8x8x3xf32>, tensor<*xi32>) -> tensor<8x8x8x3xf32>
+  return
+}
+
+// -----
+
+func @testBatchToSpaceInvalidOutputHeight(%arg0: tensor<16x8x8x3xf32>, %arg1: tensor<*xi32>) {
+  // expected-error @+1 {{'tf.BatchToSpace' op requires output height (dimension 1) to be less than or equal to input height (dimension 1) * block_size, but got output height 17, input height 8, and block_size 2}}
+  %0 = "tf.BatchToSpace"(%arg0, %arg1) {block_size = 2 : i64} : (tensor<16x8x8x3xf32>, tensor<*xi32>) -> tensor<4x17x8x3xf32>
+  return
+}
+
+// -----
+
+func @testBatchToSpaceInvalidOutputHeightCrops(%arg0: tensor<16x8x8x3xf32>) {
+  %crops = "tf.Const"() {value = dense<[[1, 2], [3, 4]]> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
+  // expected-error @+1 {{'tf.BatchToSpace' op requires output height (dimension 1) to be equal to input height (dimension 1) * block_size - crop_top - crop_bottom, but got output height 8, input height 8, crop_top 1, crop_bottom 2, and block_size 2}}
+  %0 = "tf.BatchToSpace"(%arg0, %crops) {block_size = 2 : i64} : (tensor<16x8x8x3xf32>, tensor<2x2xi32>) -> tensor<4x8x9x3xf32>
+  return
+}
+
+// -----
+
+func @testBatchToSpaceInvalidOutputWidth(%arg0: tensor<16x4x4x3xf32>, %arg1: tensor<*xi32>) {
+  // expected-error @+1 {{'tf.BatchToSpace' op requires output width (dimension 2) to be less than or equal to input width (dimension 2) * block_size, but got output width 9, input width 4, and block_size 2}}
+  %0 = "tf.BatchToSpace"(%arg0, %arg1) {block_size = 2 : i64} : (tensor<16x4x4x3xf32>, tensor<*xi32>) -> tensor<4x4x9x3xf32>
+  return
+}
+
+// -----
+
+func @testBatchToSpaceInvalidOutputWidthCrops(%arg0: tensor<16x8x8x3xf32>) {
+  %crops = "tf.Const"() {value = dense<[[1, 2], [3, 4]]> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
+  // expected-error @+1 {{'tf.BatchToSpace' op requires output width (dimension 2) to be equal to input width (dimension 2) * block_size - crop_left - crop_right, but got output width 8, input width 8, crop_left 3, crop_right 4, and block_size 2}}
+  %0 = "tf.BatchToSpace"(%arg0, %crops) {block_size = 2 : i64} : (tensor<16x8x8x3xf32>, tensor<2x2xi32>) -> tensor<4x13x8x3xf32>
+  return
+}
+
+// -----
+
+func @testBatchToSpaceInvalidOutputDepth(%arg0: tensor<16x8x8x3xf32>, %arg1: tensor<*xi32>) {
+  // expected-error @+1 {{'tf.BatchToSpace' op requires output depth (dimension 3) to be equal to input depth (dimension 3), but got output depth 8 and input depth 3}}
+  %0 = "tf.BatchToSpace"(%arg0, %arg1) {block_size = 2 : i64} : (tensor<16x8x8x3xf32>, tensor<*xi32>) -> tensor<4x8x8x8xf32>
+  return
+}

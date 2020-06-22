@@ -74,8 +74,8 @@ class StatusLogSink : public TFLogSink {
 
     mutex_lock lock(mu_);
     messages_.emplace_back(entry.ToString());
-    if (messages_.size() > static_cast<size_t>(num_messages_)){
-        messages_.pop_front();
+    if (messages_.size() > static_cast<size_t>(num_messages_)) {
+      messages_.pop_front();
     }
   }
 

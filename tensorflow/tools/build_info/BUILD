@@ -14,6 +14,7 @@ py_binary(
     srcs_version = "PY2AND3",
     tags = ["no-remote-exec"],
     deps = [
+        "@local_config_cuda//cuda:cuda_config_py",
         "@six_archive//:six",
     ],
 )

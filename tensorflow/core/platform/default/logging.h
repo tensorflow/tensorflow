@@ -265,16 +265,12 @@ inline const T& GetReferenceableValue(const T& t) {
 inline char GetReferenceableValue(char t) { return t; }
 inline unsigned char GetReferenceableValue(unsigned char t) { return t; }
 inline signed char GetReferenceableValue(signed char t) { return t; }
-inline short GetReferenceableValue(short t) { return t; }
-inline unsigned short GetReferenceableValue(unsigned short t) { return t; }
+inline int16 GetReferenceableValue(int16 t) { return t; }
+inline uint16 GetReferenceableValue(uint16 t) { return t; }
 inline int GetReferenceableValue(int t) { return t; }
 inline unsigned int GetReferenceableValue(unsigned int t) { return t; }
-inline long GetReferenceableValue(long t) { return t; }
-inline unsigned long GetReferenceableValue(unsigned long t) { return t; }
-inline long long GetReferenceableValue(long long t) { return t; }
-inline unsigned long long GetReferenceableValue(unsigned long long t) {
-  return t;
-}
+inline int64 GetReferenceableValue(int64 t) { return t; }
+inline uint64 GetReferenceableValue(uint64 t) { return t; }
 
 // This formats a value for a failing CHECK_XX statement.  Ordinarily,
 // it uses the definition for operator<<, with a few special cases below.
@@ -295,16 +291,16 @@ void MakeCheckOpValueString(std::ostream* os, const unsigned char& v);
 #if LANG_CXX11
 // We need an explicit specialization for std::nullptr_t.
 template <>
-void MakeCheckOpValueString(std::ostream* os, const std::nullptr_t& p);
+void MakeCheckOpValueString(std::ostream* os, const std::nullptr_t& v);
 #endif
 
 // A container for a string pointer which can be evaluated to a bool -
 // true iff the pointer is non-NULL.
 struct CheckOpString {
-  CheckOpString(string* str) : str_(str) {}
+  explicit CheckOpString(string* str) : str_(str) {}
   // No destructor: if str_ is non-NULL, we're about to LOG(FATAL),
   // so there's no point in cleaning up str_.
-  operator bool() const { return TF_PREDICT_FALSE(str_ != NULL); }
+  explicit operator bool() const { return TF_PREDICT_FALSE(str_ != nullptr); }
   string* str_;
 };
 
@@ -393,12 +389,12 @@ TF_DEFINE_CHECK_OP_IMPL(Check_GT, >)
 
 // In optimized mode, use CheckOpString to hint to compiler that
 // the while condition is unlikely.
-#define CHECK_OP_LOG(name, op, val1, val2)                            \
-  while (::tensorflow::internal::CheckOpString _result =              \
-             ::tensorflow::internal::name##Impl(                      \
-                 ::tensorflow::internal::GetReferenceableValue(val1), \
-                 ::tensorflow::internal::GetReferenceableValue(val2), \
-                 #val1 " " #op " " #val2))                            \
+#define CHECK_OP_LOG(name, op, val1, val2)                     \
+  while (::tensorflow::internal::CheckOpString _result{        \
+      ::tensorflow::internal::name##Impl(                      \
+          ::tensorflow::internal::GetReferenceableValue(val1), \
+          ::tensorflow::internal::GetReferenceableValue(val2), \
+          #val1 " " #op " " #val2)})                           \
   ::tensorflow::internal::LogMessageFatal(__FILE__, __LINE__) << *(_result.str_)
 
 #define CHECK_OP(name, op, val1, val2) CHECK_OP_LOG(name, op, val1, val2)

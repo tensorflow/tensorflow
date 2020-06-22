@@ -1,5 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_android_library", "flatbuffer_cc_library", "flatbuffer_java_library", "flatbuffer_py_library")
+load("//tensorflow/lite/experimental/support/metadata:build_defs.bzl", "stamp_metadata_parser_version")
 
 package(
     default_visibility = [
@@ -51,9 +52,19 @@ flatbuffer_android_library(
     custom_package = "org.tensorflow.lite.support.metadata.schema",
 )
 
+# TODO(b/157813075): move the metadata python library to metadata/python/ when migrating to the new repo.
+stamp_metadata_parser_version(
+    name = "metadata_parser_py",
+    srcs = ["metadata_parser.py.template"],
+    outs = ["metadata_parser.py"],
+)
+
 py_library(
     name = "metadata",
-    srcs = ["metadata.py"],
+    srcs = [
+        "metadata.py",
+        ":metadata_parser_py",
+    ],
     data = [
         "//tensorflow/lite/experimental/support/metadata:metadata_schema.fbs",
     ],
@@ -62,6 +73,7 @@ py_library(
     deps = [
         ":metadata_schema_py",
         ":schema_py",
+        "//tensorflow/lite/experimental/support/metadata/cc/python:_pywrap_metadata_version",
         "//tensorflow/lite/experimental/support/metadata/flatbuffers_lib:_pywrap_flatbuffers",
         "//tensorflow/python:platform",
         "@flatbuffers//:runtime_py",
@@ -86,5 +98,16 @@ py_test(
         "//tensorflow/python:platform_test",
         "@flatbuffers//:runtime_py",
         "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "metadata_parser_test",
+    srcs = ["metadata_parser_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":metadata",
+        "//tensorflow/python:client_testlib",
     ],
 )

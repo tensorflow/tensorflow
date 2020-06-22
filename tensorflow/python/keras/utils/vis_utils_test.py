@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python import keras
 from tensorflow.python.keras.utils import vis_utils
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -59,6 +60,32 @@ class ModelToDotFormatTest(test.TestCase):
     outputs = submodel(x)
     model = keras.Model(inputs, outputs)
     dot_img_file = 'model_2.png'
+    try:
+      vis_utils.plot_model(
+          model, to_file=dot_img_file, show_shapes=True, expand_nested=True)
+      self.assertTrue(file_io.file_exists(dot_img_file))
+      file_io.delete_file(dot_img_file)
+    except ImportError:
+      pass
+
+  def test_plot_model_with_add_loss(self):
+    inputs = keras.Input(shape=(None, 3))
+    outputs = keras.layers.Dense(1)(inputs)
+    model = keras.Model(inputs, outputs)
+    model.add_loss(math_ops.reduce_mean(outputs))
+    dot_img_file = 'model_3.png'
+    try:
+      vis_utils.plot_model(
+          model, to_file=dot_img_file, show_shapes=True, expand_nested=True)
+      self.assertTrue(file_io.file_exists(dot_img_file))
+      file_io.delete_file(dot_img_file)
+    except ImportError:
+      pass
+
+    model = keras.Sequential([
+        keras.Input(shape=(None, 3)), keras.layers.Dense(1)])
+    model.add_loss(math_ops.reduce_mean(model.output))
+    dot_img_file = 'model_4.png'
     try:
       vis_utils.plot_model(
           model, to_file=dot_img_file, show_shapes=True, expand_nested=True)

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
@@ -41,6 +42,20 @@ class TupleSimplifier : public HloModulePass {
   // apart from the module's entry computation. This is used by Graphcore's
   // backend.
   bool exclude_entry_computation_;
+
+  // Collapse the following structure into just 'Tuple-shaped Op':
+  //
+  //   Tuple-shaped Op
+  //         |
+  //   +-----+-----+
+  //   |     |     |
+  //  GTE   GTE   GTE
+  //   |     |     |
+  //   +-----+-----+
+  //         |
+  //       Tuple
+  //
+  StatusOr<bool> RemoveWholeTuple(HloInstruction* tuple);
 };
 
 }  // namespace xla

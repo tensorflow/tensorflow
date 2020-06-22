@@ -667,7 +667,7 @@ void GraphTransferer::RegisterNodeWithPaddingAndStrides(
       << "Op " << node.type_string() << " not found in map(id = " << op_type_id
       << ")";
   // Safety check of padding id
-  CHECK(padding == Padding::VALID ? 1 : 2);
+  CHECK(padding == Padding::SAME);
   AppendNodeParamsWithIoParams(
       shape_refiner, node, node.name(), id, node.type_string(), op_type_id,
       static_cast<int>(padding), node.num_inputs(), extra_inputs,

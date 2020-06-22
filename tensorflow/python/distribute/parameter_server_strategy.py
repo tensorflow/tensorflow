@@ -24,10 +24,12 @@ import copy
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import mirrored_run
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import numpy_dataset
+from tensorflow.python.distribute import ps_values
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
@@ -333,9 +335,9 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         compute_devices, self._variable_device)
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
-    values.validate_colocate(colocate_with_variable, self)
+    distribute_utils.validate_colocate(colocate_with_variable, self)
 
-  def _experimental_distribute_dataset(self, dataset):
+  def _experimental_distribute_dataset(self, dataset, options):
     return input_lib.get_distributed_dataset(
         dataset,
         self._input_workers,
@@ -374,7 +376,8 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
     return numpy_dataset.one_host_numpy_dataset(
         numpy_input, self._input_host_device, session)
 
-  def _experimental_distribute_datasets_from_function(self, dataset_fn):
+  def _experimental_distribute_datasets_from_function(self, dataset_fn,
+                                                      options):
     if self._cluster_spec:
       input_pipeline_id = multi_worker_util.id_in_cluster(
           self._cluster_spec, self._task_type, self._task_id)
@@ -441,8 +444,8 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
 
         # Create and wrap the variable.
         v = next_creator(**kwargs)
-        wrapped = values.AggregatingVariable(
-            self._container_strategy(), v, aggregation)
+        wrapped = ps_values.AggregatingVariable(self._container_strategy(), v,
+                                                aggregation)
 
         # Add the wrapped variable to the requested collections.
         # The handling of eager mode and the global step matches
@@ -539,7 +542,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
     return nest.map_structure(_select_fn, structured)
 
   def _update(self, var, fn, args, kwargs, group):
-    if isinstance(var, values.AggregatingVariable):
+    if isinstance(var, ps_values.AggregatingVariable):
       var = var.get()
     if not resource_variable_ops.is_resource_variable(var):
       raise ValueError(
@@ -569,7 +572,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
 
   def value_container(self, val):
     if (hasattr(val, "_aggregating_container") and
-        not isinstance(val, values.AggregatingVariable)):
+        not isinstance(val, ps_values.AggregatingVariable)):
       wrapper = val._aggregating_container()  # pylint: disable=protected-access
       if wrapper is not None:
         return wrapper

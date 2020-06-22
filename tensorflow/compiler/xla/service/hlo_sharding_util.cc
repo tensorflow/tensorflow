@@ -220,6 +220,24 @@ absl::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
   return HloSharding::Tile(new_tile_assignment);
 }
 
+HloSharding ReverseSharding(const HloSharding& sharding,
+                            absl::Span<const int64> dimensions) {
+  if (sharding.IsTileMaximal() || dimensions.empty()) {
+    return sharding;
+  }
+
+  Array<int64> new_tile_assignment(sharding.tile_assignment().dimensions());
+  new_tile_assignment.Each([&](absl::Span<const int64> indices, int64* device) {
+    std::vector<int64> original_indices(indices.begin(), indices.end());
+    for (int64 d : dimensions) {
+      original_indices[d] =
+          new_tile_assignment.dim(d) - 1 - original_indices[d];
+    }
+    *device = sharding.tile_assignment()(original_indices);
+  });
+  return HloSharding::Tile(new_tile_assignment);
+}
+
 HloSharding ReshapeToTileDimension(const HloSharding& sharding, int64 dim,
                                    absl::Span<const int64> dims) {
   CHECK(!sharding.IsTuple() && !sharding.IsTileMaximal());

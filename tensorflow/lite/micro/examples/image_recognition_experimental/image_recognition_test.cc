@@ -42,7 +42,7 @@ TF_LITE_MICRO_TEST(TestImageRecognitionInvoke) {
                          model->version(), TFLITE_SCHEMA_VERSION);
   }
 
-  tflite::MicroOpResolver<4> micro_op_resolver;
+  tflite::MicroMutableOpResolver<4> micro_op_resolver;
 
   micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_CONV_2D,
                                tflite::ops::micro::Register_CONV_2D());

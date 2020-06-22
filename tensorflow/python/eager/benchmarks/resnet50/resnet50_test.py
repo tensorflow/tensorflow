@@ -355,7 +355,7 @@ class ResNet50Benchmarks(tf.test.Benchmark):
         (images, labels) = resnet50_test_util.random_batch(
             batch_size, data_format)
         model = resnet50.ResNet50(data_format)
-        optimizer = tf.compat.v1.train.GradientDescentOptimizer(0.1)
+        optimizer = tf.keras.optimizers.SGD(0.1)
         apply_grads = apply_gradients
         if defun:
           model.call = tf.function(model.call)

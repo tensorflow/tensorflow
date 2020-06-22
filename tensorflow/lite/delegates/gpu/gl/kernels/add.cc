@@ -40,6 +40,13 @@ class Add : public NodeShader {
     auto adds = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param);
     auto scalar = absl::get_if<float>(&attr.param);
 
+    const auto* hwc_tensor =
+        absl::get_if<Tensor<HWC, DataType::FLOAT32>>(&attr.param);
+    if (hwc_tensor) {
+      return absl::UnimplementedError(
+          "Add does not support HWC constant tensor");
+    }
+
     if (!adds && !scalar) {
       // check if it is a broadcast
       if (ctx.input_shapes.size() == 2 &&

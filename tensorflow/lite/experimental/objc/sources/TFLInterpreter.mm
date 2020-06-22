@@ -23,6 +23,7 @@
 #import "tensorflow/lite/experimental/objc/apis/TFLTensor.h"
 
 #include "tensorflow/lite/c/c_api.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -45,6 +46,9 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
 /** TfLiteInterpreter backed by C API. */
 @property(nonatomic, nullable) TfLiteInterpreter *interpreter;
 
+/** TfLiteDelegate backed by C API. */
+@property(nonatomic, nullable) TfLiteDelegate *xnnpack_delegate;
+
 @end
 
 @implementation TFLInterpreter
@@ -53,6 +57,7 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
 
 - (void)dealloc {
   TfLiteInterpreterDelete(_interpreter);
+  TfLiteXNNPackDelegateDelete(_xnnpack_delegate);
 }
 
 #pragma mark - Public
@@ -103,6 +108,16 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
         TfLiteInterpreterOptionsSetNumThreads(cOptions, (int32_t)options.numberOfThreads);
       }
       TfLiteInterpreterOptionsSetErrorReporter(cOptions, TFLInterpreterErrorReporter, nullptr);
+
+      if (options.useXNNPACK) {
+        TfLiteXNNPackDelegateOptions xnnpack_options = TfLiteXNNPackDelegateOptionsDefault();
+        if (options.numberOfThreads > 0) {
+          xnnpack_options.num_threads = (int32_t)options.numberOfThreads;
+        }
+
+        _xnnpack_delegate = TfLiteXNNPackDelegateCreate(&xnnpack_options);
+        TfLiteInterpreterOptionsAddDelegate(cOptions, _xnnpack_delegate);
+      }
 
       _interpreter = TfLiteInterpreterCreate(model, cOptions);
       if (_interpreter == nullptr) {

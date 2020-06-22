@@ -229,7 +229,7 @@ AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
     mapping.emplace_back(it->second, std::move(while_args));
   }
   // Sort the mapping according to execute operand order.
-  llvm::sort(mapping);
+  llvm::sort(mapping, llvm::less_first());
   // Populate the `retval_index_for_sharding` field of the argument metadate.
   for (auto entry : llvm::enumerate(execute.device_var_reads_indices())) {
     int64_t arg_index = entry.value().cast<IntegerAttr>().getInt();
@@ -261,7 +261,6 @@ tf_device::ReplicateOp AddInputsToReplicateOp(
   // placed in logical core 0.
   // TODO(b/148913020): Remove this constraint once model parallelism is
   // supported.
-  assert(devices.size() == 1);
   assert(devices.find(tensorflow::GetDeviceAliasForLogicalCore(0))
              ->getSecond()
              .size() == num_replicas);
@@ -369,9 +368,6 @@ llvm::SmallVector<TF::VarHandleOp, 4> CreateStateVars(
 
   // TODO(b/148913020): Remove this constraint once model parallelism is
   // supported.
-  assert(devices.size() == 1 &&
-         "As model parallelism is not supported yet, tf_device.replicate "
-         "`devices` attribute should have one dictionary element.");
   const auto& device_list =
       devices.find(tensorflow::GetDeviceAliasForLogicalCore(0))->getSecond();
 

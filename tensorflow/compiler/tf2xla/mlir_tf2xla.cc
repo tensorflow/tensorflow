@@ -165,11 +165,6 @@ Status ConvertGraphDefToXlaViaMlir(
   device_set.AddDevice(&device);
   AddDevicesToOp(*module, &device_set);
 
-  if (failed(mlir::TF::MarkFunctionVisibilityUsingEntryFunctionSpecification(
-          *module))) {
-    return errors::Internal("Problem with mark function visibility");
-  }
-
   TF_RETURN_IF_ERROR(mlir::TF::RunBridgeWithStandardPipeline(
       *module, /*enable_logging=*/VLOG_IS_ON(1), /*enable_inliner=*/true));
 

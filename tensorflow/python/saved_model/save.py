@@ -19,20 +19,19 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import copy
 import os
 
 from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.core.protobuf import saved_object_graph_pb2
-from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import error_interpolation
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -240,7 +239,7 @@ class _SaveableView(object):
     Creates resource handle ops in the current default graph, whereas
     `accessible_objects` will be from an eager context. Resource mapping adds
     resource handle ops to the main GraphDef of a SavedModel, which allows the
-    C++ loader API to interact with variables.
+    C++ loader API to interact with resources.
 
     Returns:
       A tuple of (object_map, resource_map, asset_info):
@@ -264,33 +263,15 @@ class _SaveableView(object):
         asset_index={})
 
     for node_id, obj in enumerate(self.nodes):
-      if isinstance(obj, tracking.CapturableResource):
-        new_obj = object_map[obj] = copy.copy(obj)
-        # pylint: disable=protected-access
-        with ops.device(obj._resource_device):
-          new_resource = new_obj._create_resource()
-        new_obj._resource_handle = new_resource
-        # pylint: enable=protected-access
-        resource_map[obj.resource_handle] = new_resource
-        self.captured_tensor_node_ids[obj.resource_handle] = node_id
-      elif (ds_values.is_distributed_variable(obj) or
-            resource_variable_ops.is_resource_variable(obj)):
-        obj_to_copy = obj._primary if ds_values.is_distributed_variable(  # pylint: disable=protected-access
-            obj) else obj
-        new_variable = resource_variable_ops.copy_to_graph_uninitialized(
-            obj_to_copy)
-        if ds_values.is_distributed_variable(obj):
-          self.captured_tensor_node_ids[obj] = node_id
-          for v in obj.values:
-            object_map[v] = new_variable
-            resource_map[v.handle] = new_variable.handle
-            self.captured_tensor_node_ids[v.handle] = node_id
-        object_map[obj] = new_variable
-        resource_map[obj.handle] = new_variable.handle
-        self.captured_tensor_node_ids[obj.handle] = node_id
-      elif isinstance(obj, tracking.Asset):
+      if isinstance(obj, tracking.Asset):
         _process_asset(obj, asset_info, resource_map)
         self.captured_tensor_node_ids[obj.asset_path] = node_id
+      elif isinstance(obj, base.Trackable):
+        node_object_map, node_resource_map = obj._map_resources()  # pylint: disable=protected-access
+        for capturable in node_resource_map.keys():
+          self.captured_tensor_node_ids[capturable] = node_id
+        object_map.update(node_object_map)
+        resource_map.update(node_resource_map)
 
     # Note: some concrete functions can have been realized when tracing other
     # functions, and might closure-capture tensors from their parent functions.
@@ -966,7 +947,16 @@ def save(obj, export_dir, signatures=None, options=None):
   # SavedModel. Users rely on checking saved_model_dir/saved_model.pb as an
   # indication that the SavedModel is completely written.
   if context.executing_eagerly():
-    context.async_wait()  # Ensure save operations have completed.
+    try:
+      context.async_wait()  # Ensure save operations have completed.
+    except errors.NotFoundError as err:
+      raise FileNotFoundError(
+          str(err) + "\n If trying to save on a different device from the "
+          "computational device, consider using setting the "
+          "`experimental_io_device` option on tf.saved_model.SaveOptions "
+          "to the io_device such as '/job:localhost'."
+      )
+
   path = os.path.join(
       compat.as_str(export_dir),
       compat.as_str(constants.SAVED_MODEL_FILENAME_PB))

@@ -136,7 +136,7 @@ class XlaComputationLaunchContext {
   // input_mapping must be greater than or equal to `missing_ctx_input_prefix`
   // (in other words, no inputs actually required by the kernel can be missing).
   void PopulateInputs(OpKernelContext* ctx,
-                      const XlaCompiler::CompilationResult* kernel,
+                      const XlaCompiler::CompilationResult* compilation_result,
                       const std::map<int, OptionalTensor>& variables,
                       int missing_ctx_input_prefix);
 
@@ -148,10 +148,11 @@ class XlaComputationLaunchContext {
   // See jit/resource_operation_safety_analysis for details.
   //
   //
-  // Assumes that the first `missing_ctx_input_prefix` inputs to the kernel are
-  // missing and adjusts input indices accordingly.
+  // Assumes that the first `missing_ctx_input_prefix` inputs to the
+  // compilation_result are missing and adjusts input indices accordingly.
   Status PopulateOutputs(
-      OpKernelContext* ctx, const XlaCompiler::CompilationResult* kernel,
+      OpKernelContext* ctx,
+      const XlaCompiler::CompilationResult* compilation_result,
       xla::ScopedShapedBuffer output, int missing_ctx_input_prefix,
       const xla::HloInputOutputAliasConfig& input_output_alias,
       const std::map<int, OptionalTensor>& resource_var_snapshots);
@@ -165,7 +166,7 @@ class XlaComputationLaunchContext {
   se::DeviceMemoryAllocator* xla_allocator_;
   bool allocate_xla_tensors_;
   bool use_multiple_streams_;
-  std::vector<std::unique_ptr<xla::ShapedBuffer>> arg_buffers_;
+  std::deque<xla::ShapedBuffer> arg_buffers_;
   std::vector<xla::ShapedBuffer*> arg_ptrs_;
 };
 

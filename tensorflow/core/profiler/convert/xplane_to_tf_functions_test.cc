@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_test_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
@@ -42,11 +43,12 @@ constexpr double kMaxError = 0.001;
 
 TfFunctionDb ConvertXSpaceToTfFunctionDb(const XSpace& space) {
   TfFunctionDb result;
-  const XPlane* host_plane = FindPlaneWithName(space, kHostThreads);
+  const XPlane* host_plane = FindPlaneWithName(space, kHostThreadsPlaneName);
   if (host_plane) {
     XPlaneVisitor plane = CreateTfXPlaneVisitor(host_plane);
     plane.ForEachLine([&result](const XLineVisitor& line) {
-      CombineTfFunctionDb(ConvertHostThreadsXLineToTfFunctionDb(line), &result);
+      TfFunctionDb tf_function_db = ConvertHostThreadsXLineToTfFunctionDb(line);
+      CombineTfFunctionDb(tf_function_db, &result);
     });
   }
   return result;
@@ -55,7 +57,7 @@ TfFunctionDb ConvertXSpaceToTfFunctionDb(const XSpace& space) {
 TEST(ConvertXPlaneToTfFunctions, CombineTwoThreads) {
   XSpace space;
   XPlaneBuilder host_plane_builder(space.add_planes());
-  host_plane_builder.SetName(kHostThreads);
+  host_plane_builder.SetName(kHostThreadsPlaneName);
   host_plane_builder.ReserveLines(2);
   std::string kFunctionName = "decrement";
 
@@ -99,7 +101,7 @@ TEST(ConvertXPlaneToTfFunctions, CombineTwoThreads) {
 TEST(ConvertXPlaneToTfFunctions, NestedFunctions) {
   XSpace space;
   XPlaneBuilder host_plane_builder(space.add_planes());
-  host_plane_builder.SetName(kHostThreads);
+  host_plane_builder.SetName(kHostThreadsPlaneName);
   host_plane_builder.ReserveLines(1);
   std::string kOuterFunctionName = "outer";
   std::string kInnerFunctionName = "inner";
@@ -139,8 +141,7 @@ TEST(ConvertXPlaneToTfFunctions, NestedFunctions) {
 
 TEST(ConvertXPlaneToTfFunctions, EagerPlusConcrete) {
   XSpace space;
-  XPlaneBuilder host_plane_builder(space.add_planes());
-  host_plane_builder.SetName(kHostThreads);
+  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
   host_plane_builder.ReserveLines(2);
   std::string kEagerFunctionName = "i_am_eager";
   std::string kConcreteFunctionName = "i_am_concrete";

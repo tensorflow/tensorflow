@@ -66,7 +66,7 @@ void PopulateTensorFromExtra(const RecvBufRespExtra& extra,
                              Tensor* cpu_tensor) {
   char* head = reinterpret_cast<char*>(DMAHelper::base(cpu_tensor));
   for (const auto& tensor_content_chunk : extra.tensor_content()) {
-    memcpy(head, tensor_content_chunk.data(),
+    memcpy(head, std::string(tensor_content_chunk).data(),
            tensor_content_chunk.size());
     head += tensor_content_chunk.size();
   }

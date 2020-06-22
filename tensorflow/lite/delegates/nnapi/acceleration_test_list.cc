@@ -173,6 +173,11 @@ ExpOpTest/FloatTest,29
 # Only constant tensors models
 ExpandDimsOpTest/.+/1,29
 
+# fill_test
+FillOpTest/FillOpTest/FillInt32/0,30
+FillOpTest/FillOpTest/FillFloat/0,30
+FillOpTest/FillOpTest/FillFloatInt32Dims/0,30
+
 # floor_test
 FloorOpTest/.+
 
@@ -376,6 +381,7 @@ TransposeTest/.+
 
 # transpose_conv_test
 -TransposeConvOpTest/TransposeConvOpTest.SimpleTestQuantizedPerChannelSingleChannel/0
+-TransposeConvOpTest/TransposeConvOpTest.SimpleTestQuantizedPerChannel16x8/0
 -TransposeConvOpTest/TransposeConvOpTest.TestQuantizedPerChannelMultiChannel/0
 # Const tensor only
 TransposeConvOpTest/TransposeConvOpTest/.+/0,29

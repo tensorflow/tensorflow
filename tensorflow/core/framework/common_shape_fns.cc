@@ -1955,6 +1955,7 @@ Status BroadcastBinaryOpOutputShapeFnHelper(InferenceContext* c,
       // in C++ op code, we must still assert that the unknown dim is either 1
       // or the same as the known dim.
       // - If either dimension is 1, the other dimension is the output.
+      // - If both are unknown then dimension is unknown
       if (c->Value(dim_x) > 1) {
         if (!incompatible_shape_error) {
           *out = c->UnknownShape();
@@ -1973,6 +1974,8 @@ Status BroadcastBinaryOpOutputShapeFnHelper(InferenceContext* c,
         dims.push_back(dim_x);
       } else if (dim_y.SameHandle(dim_x)) {
         dims.push_back(dim_x);
+      } else if (!c->ValueKnown(dim_x) && !c->ValueKnown(dim_y)) {
+        dims.push_back(c->UnknownDim());
       } else {
         if (!incompatible_shape_error) {
           *out = c->UnknownShape();

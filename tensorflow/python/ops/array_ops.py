@@ -869,6 +869,8 @@ def _is_undefined_dimension(d):
   return isinstance(d, tensor_shape.Dimension) and d.value is None
 
 
+@tf_export("__operators__.getitem", v1=[])
+@dispatch.add_dispatch_support
 def _slice_helper(tensor, slice_spec, var=None):
   """Overload for Tensor.__getitem__.
 
@@ -913,6 +915,15 @@ def _slice_helper(tensor, slice_spec, var=None):
     - `tf.newaxis` is `None` as in NumPy.
     - An implicit ellipsis is placed at the end of the `slice_spec`
     - NumPy advanced indexing is currently not supported.
+
+  Purpose in the API:
+
+    This method is exposed in TensorFlow's API so that library developers
+    can register dispatching for `Tensor.__getitem__` to allow it to handle
+    custom composite tensors & other custom objects.
+
+    The API symbol is not intended to be called by users directly and does
+    appear in TensorFlow's generated documentation.
 
   Args:
     tensor: An ops.Tensor object.
@@ -3173,6 +3184,7 @@ def sparse_placeholder(dtype, shape=None, name=None):
       # `SparseTensor`
       dense_shape_default = tensor_shape.TensorShape(
           tuple(None if dim == -1 else dim for dim in shape))
+      shape = tuple(tensor_shape.dimension_value(dim) for dim in shape)
       shape = tuple(-1 if dim is None else dim for dim in shape)
       shape = ops.convert_to_tensor(
           shape, dtype=dtypes.int64, name=default_shape_name)
@@ -4400,7 +4412,7 @@ def where_v2(condition, x=None, y=None, name=None):
 
   The `condition` tensor acts as a mask that chooses whether the corresponding
   element / row in the output should be taken from `x`
-  (if the elemment in `condition is True) or `y` (if it is false).
+  (if the element in `condition is True) or `y` (if it is false).
 
   >>> tf.where([True, False, False, True], [1,2,3,4], [100,200,300,400])
   <tf.Tensor: shape=(4,), dtype=int32, numpy=array([  1, 200, 300,   4],
@@ -4524,6 +4536,46 @@ def reverse_sequence_v2(input,
                         seq_axis=None,
                         batch_axis=None,
                         name=None):
+  """Reverses variable length slices.
+
+  This op first slices `input` along the dimension `batch_axis`, and for
+  each slice `i`, reverses the first `seq_lengths[i]` elements along the
+  dimension `seq_axis`.
+
+  The elements of `seq_lengths` must obey `seq_lengths[i] <=
+  input.dims[seq_axis]`, and `seq_lengths` must be a vector of length
+  `input.dims[batch_axis]`.
+
+  The output slice `i` along dimension `batch_axis` is then given by
+  input slice `i`, with the first `seq_lengths[i]` slices along
+  dimension `seq_axis` reversed.
+
+  Example usage:
+
+  >>> seq_lengths = [7, 2, 3, 5]
+  >>> input = [[1, 2, 3, 4, 5, 0, 0, 0], [1, 2, 0, 0, 0, 0, 0, 0],
+  ...          [1, 2, 3, 4, 0, 0, 0, 0], [1, 2, 3, 4, 5, 6, 7, 8]]
+  >>> output = tf.reverse_sequence(input, seq_lengths, seq_axis=1, batch_axis=0)
+  >>> output
+  <tf.Tensor: shape=(4, 8), dtype=int32, numpy=
+  array([[0, 0, 5, 4, 3, 2, 1, 0],
+         [2, 1, 0, 0, 0, 0, 0, 0],
+         [3, 2, 1, 4, 0, 0, 0, 0],
+         [5, 4, 3, 2, 1, 6, 7, 8]], dtype=int32)>
+
+  Args:
+    input: A `Tensor`. The input to reverse.
+    seq_lengths: A `Tensor`. Must be one of the following types: `int32`,
+      `int64`. 1-D with length `input.dims(batch_axis)` and `max(seq_lengths) <=
+      input.dims(seq_axis)`
+    seq_axis: An `int`. The dimension which is partially reversed.
+    batch_axis: An optional `int`. Defaults to `0`. The dimension along which
+      reversal is performed.
+    name: A name for the operation (optional).
+
+  Returns:
+    A Tensor. Has the same type as input.
+  """
   return gen_array_ops.reverse_sequence(
       input=input,
       seq_lengths=seq_lengths,
@@ -4531,7 +4583,6 @@ def reverse_sequence_v2(input,
       batch_dim=batch_axis,
       name=name)
 
-reverse_sequence_v2.__doc__ = reverse_sequence.__doc__
 # pylint: enable=redefined-builtin
 
 

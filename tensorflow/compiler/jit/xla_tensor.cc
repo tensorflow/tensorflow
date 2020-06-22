@@ -27,10 +27,6 @@ namespace tensorflow {
   return xla_tensor;
 }
 
-/*static*/ bool XlaTensor::RefCountIsOne(const Tensor& tensor) {
-  return tensor.RefCountIsOne();
-}
-
 /*static*/ se::DeviceMemoryBase XlaTensor::DeviceMemoryFromTensor(
     const Tensor& tensor) {
   const XlaTensor* xla_tensor = FromTensor(&tensor);

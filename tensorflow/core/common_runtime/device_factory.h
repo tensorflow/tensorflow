@@ -55,8 +55,21 @@ class DeviceFactory {
   // CPU is are added first.
   static Status ListAllPhysicalDevices(std::vector<string>* devices);
 
+  // Get details for a specific device among all device factories.
+  // 'device_index' indexes into devices from ListAllPhysicalDevices.
+  static Status GetAnyDeviceDetails(
+      int device_index, std::unordered_map<string, string>* details);
+
   // For a specific device factory list all possible physical devices.
   virtual Status ListPhysicalDevices(std::vector<string>* devices) = 0;
+
+  // Get details for a specific device for a specific factory. Subclasses
+  // can store arbitrary device information in the map. 'device_index' indexes
+  // into devices from ListPhysicalDevices.
+  virtual Status GetDeviceDetails(int device_index,
+                                  std::unordered_map<string, string>* details) {
+    return Status::OK();
+  }
 
   // Most clients should call AddDevices() instead.
   virtual Status CreateDevices(

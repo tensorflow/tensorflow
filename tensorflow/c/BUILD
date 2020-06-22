@@ -216,6 +216,7 @@ tf_cuda_library(
     ],
     visibility = [
         "//tensorflow/c:__subpackages__",
+        "//tensorflow/compiler/mlir/tensorflow/c:__subpackages__",
     ],
     deps = select({
         "//tensorflow:android": [

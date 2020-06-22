@@ -5,8 +5,8 @@ optimizations can be applied to models so that they can be run within these
 constraints. In addition, some optimizations allow the use of specialized
 hardware for accelerated inference.
 
-Tensorflow Lite and the
-[Tensorflow Model Optimization Toolkit](https://www.tensorflow.org/model_optimization)
+TensorFlow Lite and the
+[TensorFlow Model Optimization Toolkit](https://www.tensorflow.org/model_optimization)
 provide tools to minimize the complexity of optimizing inference.
 
 It's recommended that you consider model optimization during your application
@@ -79,7 +79,7 @@ with TensorFlow Lite.
 
 ### Quantization
 
-[Quantization](https://www.tensorflow.org/model_optimization/guide/quantization)
+[Quantization](https://www.tensorflow.org/model_optimization/guide/quantization/post_training)
 works by reducing the precision of the numbers used to represent a model's
 parameters, which by default are 32-bit floating point numbers. This results in
 a smaller model size and faster computation.
@@ -146,7 +146,7 @@ For cases where the accuracy and latency targets are not met, or hardware
 accelerator support is important,
 [quantization-aware training](https://www.tensorflow.org/model_optimization/guide/quantization/training){:.external}
 is the better option. See additional optimization techniques under the
-[Tensorflow Model Optimization Toolkit](https://www.tensorflow.org/model_optimization).
+[TensorFlow Model Optimization Toolkit](https://www.tensorflow.org/model_optimization).
 
 If you want to further reduce your model size, you can try [pruning](#pruning)
 prior to quantizing your models.

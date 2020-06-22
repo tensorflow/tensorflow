@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/debug_log.h"
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
@@ -45,10 +45,10 @@ void TestUnpackThreeOutputsFloat(
   constexpr int output_size = 3;
   constexpr int tensors_size = input_size + output_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims, "input_tensor"),
-      CreateFloatTensor(output1_data, output1_dims, "output1_tensor"),
-      CreateFloatTensor(output2_data, output2_dims, "output2_tensor"),
-      CreateFloatTensor(output3_data, output3_dims, "output3_tensor")};
+      CreateFloatTensor(input_data, input_dims),
+      CreateFloatTensor(output1_data, output1_dims),
+      CreateFloatTensor(output2_data, output2_dims),
+      CreateFloatTensor(output3_data, output3_dims)};
 
   // Place a unique value in the uninitialized output buffer.
   for (int i = 0; i < output1_dims_count; ++i) {
@@ -65,9 +65,9 @@ void TestUnpackThreeOutputsFloat(
 
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  tflite::ops::micro::AllOpsResolver resolver;
+  tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_UNPACK, /* version= */ 1);
+      resolver.FindOp(tflite::BuiltinOperator_UNPACK);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteUnpackParams builtin_data = {
@@ -132,8 +132,8 @@ void TestUnpackOneOutputFloat(std::initializer_list<int> input_dims_data,
   constexpr int output_size = 1;
   constexpr int tensors_size = input_size + output_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims, "input_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor")};
+      CreateFloatTensor(input_data, input_dims),
+      CreateFloatTensor(output_data, output_dims)};
 
   // Place a unique value in the uninitialized output buffer.
   for (int i = 0; i < output_dims_count; ++i) {
@@ -142,9 +142,9 @@ void TestUnpackOneOutputFloat(std::initializer_list<int> input_dims_data,
 
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  tflite::ops::micro::AllOpsResolver resolver;
+  tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_UNPACK, /* version= */ 1);
+      resolver.FindOp(tflite::BuiltinOperator_UNPACK);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteUnpackParams builtin_data = {
@@ -211,13 +211,10 @@ void TestUnpackThreeOutputsQuantized(
       // CreateQuantizedTensor needs min/max values as input, but these values
       // don't matter as to the functionality of UNPACK, so just set as 0
       // and 10.
-      CreateQuantizedTensor(input_data, input_dims, "input_tensor", 0, 10),
-      CreateQuantizedTensor(output1_data, output1_dims, "output1_tensor", 0,
-                            10),
-      CreateQuantizedTensor(output2_data, output2_dims, "output2_tensor", 0,
-                            10),
-      CreateQuantizedTensor(output3_data, output3_dims, "output3_tensor", 0,
-                            10)};
+      CreateQuantizedTensor(input_data, input_dims, 0, 10),
+      CreateQuantizedTensor(output1_data, output1_dims, 0, 10),
+      CreateQuantizedTensor(output2_data, output2_dims, 0, 10),
+      CreateQuantizedTensor(output3_data, output3_dims, 0, 10)};
 
   // Place a unique value in the uninitialized output buffer.
   for (int i = 0; i < output1_dims_count; ++i) {
@@ -234,9 +231,9 @@ void TestUnpackThreeOutputsQuantized(
 
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  tflite::ops::micro::AllOpsResolver resolver;
+  tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_UNPACK, /* version= */ 1);
+      resolver.FindOp(tflite::BuiltinOperator_UNPACK);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteUnpackParams builtin_data = {
@@ -307,13 +304,10 @@ void TestUnpackThreeOutputsQuantized32(
   constexpr int output_size = 3;
   constexpr int tensors_size = input_size + output_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantized32Tensor(input_data, input_dims, "input_tensor", 1.0),
-      CreateQuantized32Tensor(output1_data, output1_dims, "output1_tensor",
-                              1.0),
-      CreateQuantized32Tensor(output2_data, output2_dims, "output2_tensor",
-                              1.0),
-      CreateQuantized32Tensor(output3_data, output3_dims, "output3_tensor",
-                              1.0)};
+      CreateQuantized32Tensor(input_data, input_dims, 1.0),
+      CreateQuantized32Tensor(output1_data, output1_dims, 1.0),
+      CreateQuantized32Tensor(output2_data, output2_dims, 1.0),
+      CreateQuantized32Tensor(output3_data, output3_dims, 1.0)};
 
   // Place a unique value in the uninitialized output buffer.
   for (int i = 0; i < output1_dims_count; ++i) {
@@ -330,9 +324,9 @@ void TestUnpackThreeOutputsQuantized32(
 
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  tflite::ops::micro::AllOpsResolver resolver;
+  tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_UNPACK, /* version= */ 1);
+      resolver.FindOp(tflite::BuiltinOperator_UNPACK);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteUnpackParams builtin_data = {
