@@ -954,6 +954,7 @@ setattr(np_arrays.ndarray, '__pow__', _wrap(power))
 setattr(np_arrays.ndarray, '__rpow__', _wrap(power, True))
 setattr(np_arrays.ndarray, '__truediv__', _wrap(true_divide))
 setattr(np_arrays.ndarray, '__rtruediv__', _wrap(true_divide, True))
+setattr(np_arrays.ndarray, '__matmul__', _wrap(matmul))
 
 
 def _comparison(tf_fun, x1, x2, cast_bool_to_int=False):
