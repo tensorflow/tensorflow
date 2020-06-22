@@ -36,7 +36,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_math_ops
-from tensorflow.python.platform import 
+from tensorflow.python.platform import test
 
 
 class InteropTest(test.TestCase):
