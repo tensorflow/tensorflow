@@ -53,6 +53,8 @@ using gpuEvent_t = cudaEvent_t;
 #define gpuEventCreate cudaEventCreate
 #define gpuEventCreateWithFlags cudaEventCreateWithFlags
 #define gpuEventDisableTiming cudaEventDisableTiming
+#define gpuDeviceSynchronize cudaDeviceSynchronize
+#define gpuFree cudaFree
 #elif TENSORFLOW_USE_ROCM
 using gpuFloatComplex = hipFloatComplex;
 using gpuDoubleComplex = hipDoubleComplex;
@@ -68,6 +70,8 @@ using cudaError_t = int;
 #define gpuEventCreate hipEventCreate
 #define gpuEventCreateWithFlags hipEventCreateWithFlags
 #define gpuEventDisableTiming hipEventDisableTiming
+#define gpuDeviceSynchronize hipDeviceSynchronize
+#define gpuFree hipFree
 static std::string cudaGetErrorString(int err) { return std::to_string(err); }
 #endif
 
