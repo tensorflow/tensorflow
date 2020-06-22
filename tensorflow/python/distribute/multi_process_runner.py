@@ -463,13 +463,27 @@ class MultiProcessRunner(object):
     process_statuses = self._queue_to_list(self._process_status_queue)
     if not self._all_forced_terminated and len(
         process_statuses) != self._outstanding_subprocess_count:
-      raise RuntimeError(
-          'missing statuses from %d subproceses.' %
-          (self._outstanding_subprocess_count - len(process_statuses)))
+      raise UnexpectedSubprocessExitError(
+          'Missing status(es) from %d subprocess(es). See logs for details.' %
+          (self._outstanding_subprocess_count - len(process_statuses)),
+          self._get_mpr_result(process_statuses))
     for process_status in process_statuses:
       assert isinstance(process_status, _ProcessStatusInfo)
       if not process_status.is_successful:
         six.reraise(*process_status.exc_info)
+
+    # Checking all the processes that are expected to exit properly.
+    for (task_type, task_id), p in self._processes.items():
+      if self._dependence_on_chief and task_type != 'chief':
+        # If _dependence_on_chief, other processes may have been
+        # forced-terminated, which is expected.
+        continue
+      # Successfully exiting process has exit code 0.
+      if p.exitcode > 0:
+        raise UnexpectedSubprocessExitError(
+            'Subprocess %s-%d exited with exit code %d. See logs for details.' %
+            (task_type, task_id, p.exitcode),
+            self._get_mpr_result(process_statuses))
 
     logging.info('Joining log reading threads.')
     for thread in self._reading_threads:
@@ -506,6 +520,8 @@ class MultiProcessRunner(object):
     for (task_type, task_id), p in self._processes.items():
       try:
         os.kill(p.pid, sig)
+        logging.info('%s-%d terminated with signal %r.', task_type, task_id,
+                     sig)
       except ProcessLookupError:
         logging.info('Attempting to kill %s-%d but it does not exist.',
                      task_type, task_id)
@@ -658,6 +674,9 @@ class _ProcFunc(object):
       self._resources.process_status_queue.put(info)
       self._close_streaming()
 
+    # Exit with code 0 as it's considered successful exit at this point.
+    sys.exit(0)
+
 
 class SubprocessTimeoutError(RuntimeError):
   """An error that indicates there is at least one subprocess timing out.
@@ -669,6 +688,19 @@ class SubprocessTimeoutError(RuntimeError):
 
   def __init__(self, msg, mpr_result):
     super(SubprocessTimeoutError, self).__init__(msg)
+    self.mpr_result = mpr_result
+
+
+class UnexpectedSubprocessExitError(RuntimeError):
+  """An error indicating there is at least one subprocess with unexpected exit.
+
+  When this is raised, a `MultiProcessRunnerResult` object can be retrieved by
+  `UnexpectedSubprocessExitError`'s mpr_result attribute. See
+  `MultiProcessRunner.join()` for more information.
+  """
+
+  def __init__(self, msg, mpr_result):
+    super(UnexpectedSubprocessExitError, self).__init__(msg)
     self.mpr_result = mpr_result
 
 
