@@ -8,6 +8,7 @@ change the baseline version of numpy API being supported. A list of some
 systematic differences with numpy are listed later in the "Differences with
 Numpy" section.
 
+
 ## Getting Started
 
 ```python
@@ -22,6 +23,7 @@ The module provide an `ndarray` class which wraps an immutable `tf.Tensor`.
 Additional functions are provided which accept array-like objects. Here
 array-like objects includes `ndarrays` as defined by this module, as well as
 `tf.Tensor`, in addition to types accepted by `numpy`.
+
 
 A subset of `numpy` dtypes are supported. Type promotion follows numpy
 semantics.
@@ -65,6 +67,7 @@ have GPU and TPU support on par with TensorFlow. Also the code can be wrapped
 with `tf.function` and XLA compiled. Device placement can be controlled by using
 `with tf.device` scopes.
 
+
 ```python
 with tf.device("GPU:0"):
   x = np.ones([1, 2])
@@ -75,6 +78,7 @@ print(tf.convert_to_tensor(x).device)
 
 Eager mode execution should typically match numpy semantics of executing
 op-by-op. However the same code can be executed in graph mode, by putting it
+
 inside a `tf.function`. The function body can contain numpy code, and the inputs
 can be ndarray as well.
 
@@ -108,6 +112,7 @@ operations like slice assigns are not supported. This may change in the future.
 There is currently no explict construct on par with `tf.Variable`. However one
 can directly construct a `tf.Variable` and use that with the numpy APIs in this
 module. See section on Interop.
+
 
 ## Differences with Numpy
 
