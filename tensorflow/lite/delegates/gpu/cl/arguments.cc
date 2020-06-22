@@ -221,8 +221,9 @@ void Arguments::AddObjectRef(const std::string& name, AccessType access_type,
 }
 
 void Arguments::AddObject(const std::string& name, AccessType access_type,
-                          GPUObjectPtr&& object) {
-  objects_[name] = {access_type, std::move(object)};
+                          GPUObjectPtr&& object,
+                          GPUObjectDescriptorPtr&& descriptor_ptr) {
+  objects_[name] = {access_type, std::move(object), std::move(descriptor_ptr)};
 }
 
 void Arguments::AddGPUResources(const std::string& name,
@@ -411,7 +412,8 @@ absl::Status Arguments::Merge(Arguments&& args, const std::string& postfix) {
       return absl::InvalidArgumentError(
           absl::StrCat("Object name collision. Name - ", name));
     }
-    objects_[name] = {v.second.access_type, std::move(v.second.obj_ptr)};
+    objects_[name] = {v.second.access_type, std::move(v.second.obj_ptr),
+                      std::move(v.second.descriptor)};
   }
   for (const auto& v : args.int_values_) {
     AddInt(RenameArg(object_names, postfix, v.first), v.second.value);
@@ -677,7 +679,7 @@ absl::Status Arguments::ResolveSelector(
     desc_ptr = it->second.descriptor.get();
     access_type = it->second.access_type;
   } else if (auto it = objects_.find(object_name); it != objects_.end()) {
-    desc_ptr = it->second.obj_ptr->GetGPUDescriptor();
+    desc_ptr = it->second.descriptor.get();
     access_type = it->second.access_type;
   } else {
     return absl::NotFoundError(
@@ -760,8 +762,7 @@ absl::Status Arguments::ResolveSelectorsPass(
 absl::Status Arguments::AddObjectArgs() {
   for (auto& t : objects_) {
     AddGPUResources(t.first,
-                    t.second.obj_ptr->GetGPUDescriptor()->GetGPUResources(
-                        t.second.access_type));
+                    t.second.descriptor->GetGPUResources(t.second.access_type));
     RETURN_IF_ERROR(SetGPUResources(
         t.first, t.second.obj_ptr->GetGPUResources(t.second.access_type)));
   }

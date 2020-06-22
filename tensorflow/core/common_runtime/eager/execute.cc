@@ -415,7 +415,7 @@ Status GetOrCreateKernelAndDevice(
       TF_RETURN_IF_ERROR(GetDeviceForInput(ctx, input, &input_device));
       input_dev_ptrs.push_back(input_device);
       CompositeDevice* composite_device = nullptr;
-      if (ctx.FindCompositeDeviceFromName(input_device->name().c_str(),
+      if (ctx.FindCompositeDeviceFromName(input_device->name(),
                                           &composite_device)
               .ok()) {
         composite_devices[input_device->name()] =
@@ -432,13 +432,12 @@ Status GetOrCreateKernelAndDevice(
         // looking it up in ResourceMgr, which is slow). So we just get
         // resource_dtypes_and_shapes for all DT_RESOURCE inputs. If
         // resource_dtypes_and_shapes is not empty, take the first element.
-        TensorHandle::ResourceHandleInfo resource_handle_info;
-        TF_RETURN_IF_ERROR(input->GetResourceHandleInfo(&resource_handle_info));
-        std::vector<DtypeAndPartialTensorShape>* resource_dtypes_and_shapes =
-            &resource_handle_info.dtypes_and_shapes;
-        if (!resource_dtypes_and_shapes->empty()) {
+        std::vector<DtypeAndPartialTensorShape> resource_dtypes_and_shapes;
+        TF_RETURN_IF_ERROR(input->GetResourceHandleDtypesAndShapes(
+            &resource_dtypes_and_shapes));
+        if (!resource_dtypes_and_shapes.empty()) {
           const DtypeAndPartialTensorShape& dtype_and_shape =
-              resource_dtypes_and_shapes->at(0);
+              resource_dtypes_and_shapes.at(0);
           input_resource_variable_dtypes_and_shapes[i] = dtype_and_shape;
 
           // Add _Arg index, dtype and shape to "cache_key".
@@ -695,13 +694,8 @@ Status StoreResourceDtypesAndShapes(const eager::Operation& remote_op,
     TF_RETURN_IF_ERROR(attr_slice.Find("dtype", &dtype));
     const AttrValue* shape;
     TF_RETURN_IF_ERROR(attr_slice.Find("shape", &shape));
-    TensorHandle::ResourceHandleInfo resource_handle_info = {
-        {DtypeAndPartialTensorShape{dtype->type(), shape->shape()}}, {}};
-    // "allowed_devices" is set only when the output represents a
-    // per-replica/partitioned resource variable.
-    TryGetNodeAttr(attr_slice, "allowed_devices",
-                   &resource_handle_info.allowed_devices);
-    retvals[0]->SetResourceHandleInfo(std::move(resource_handle_info));
+    retvals[0]->SetResourceHandleDtypeAndShape(
+        {DtypeAndPartialTensorShape{dtype->type(), shape->shape()}});
   }
   return Status::OK();
 }
@@ -985,18 +979,6 @@ Status MaybeUpdateOpDevice(EagerOperation* op) {
       // is a resource we must pin it to prevent different device selection.
       // TODO(iga): null device can mean "unspecified" or "CPU". Clean this up.
       if (resource_device != op_device || op->Device() == kVariantDeviceNull) {
-        std::vector<string> allowed_devices;
-        TF_RETURN_IF_ERROR(
-            tensor_handle->GetResourceAllowedDevices(&allowed_devices));
-        if (!allowed_devices.empty()) {
-          // TODO(b/145922293): Support allowed_devices specified in wildcard
-          // patterns.
-          if (std::find(allowed_devices.begin(), allowed_devices.end(),
-                        op->DeviceName()) != allowed_devices.end()) {
-            TF_RETURN_IF_ERROR(ctx.FindDeviceFromName(op->DeviceName().c_str(),
-                                                      &resource_device));
-          }
-        }
         DVLOG(1) << (resource_device != op_device ? "Changing " : "Setting ")
                  << "device of operation " << op->Name() << " to "
                  << resource_device->name() << " because input #" << i

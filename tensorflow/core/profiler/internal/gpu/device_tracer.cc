@@ -241,7 +241,7 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
   std::string ReportDroppedEvents() {
     absl::MutexLock lock(&mutex_);
     string result;
-    for (const auto dropped : dropped_events_) {
+    for (const auto& dropped : dropped_events_) {
       absl::StrAppend(&result, " ", dropped.second, " events dropped because ",
                       dropped.first, ";");
     }

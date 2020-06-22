@@ -301,7 +301,7 @@ struct RewriteKernelSignature
         signalPassFailure();
         return;
       }
-      if (func.getBlocks().size() != 1) {
+      if (!llvm::hasSingleElement(func)) {
         func.emitError() << "surrounding function has more than one block";
         signalPassFailure();
         return;

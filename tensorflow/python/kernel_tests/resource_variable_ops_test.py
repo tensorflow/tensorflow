@@ -30,7 +30,6 @@ from tensorflow.core.framework import tensor_pb2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
@@ -1511,42 +1510,6 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       result = resource_variable_ops.resource_gather(
           var.handle, indices, dtype=dtype)
     self.assertAllEqual(expected, result)
-
-
-class PerReplicaResourceHandleTest(test_util.TensorFlowTestCase):
-
-  def setUp(self):
-    super(PerReplicaResourceHandleTest, self).setUp()
-    cpus = config.list_physical_devices("CPU")
-    # Set 2 virtual CPUs
-    config.set_logical_device_configuration(cpus[0], [
-        context.LogicalDeviceConfiguration(),
-        context.LogicalDeviceConfiguration(),
-    ])
-
-  @test_util.disable_tfrt("Multiple device support. b/154956430")
-  def testAllowedDevices(self):
-    device0 = "/job:localhost/replica:0/task:0/device:CPU:0"
-    device1 = "/job:localhost/replica:0/task:0/device:CPU:1"
-    value0 = 1
-    value1 = 2
-    with context.eager_mode():
-      handle = resource_variable_ops.var_handle_op(
-          dtype=dtypes.int32, shape=[], allowed_devices=[device0, device1])
-      with ops.device(device0):
-        assign0 = resource_variable_ops.assign_variable_op(handle, value0)
-      with ops.device(device1):
-        assign1 = resource_variable_ops.assign_variable_op(handle, value1)
-      with ops.control_dependencies([assign0, assign1]):
-        with ops.device(device0):
-          read0 = resource_variable_ops.read_variable_op(
-              handle, dtype=dtypes.int32)
-        with ops.device(device1):
-          read1 = resource_variable_ops.read_variable_op(
-              handle, dtype=dtypes.int32)
-
-      self.assertAllEqual(value0, read0)
-      self.assertAllEqual(value1, read1)
 
 
 if __name__ == "__main__":

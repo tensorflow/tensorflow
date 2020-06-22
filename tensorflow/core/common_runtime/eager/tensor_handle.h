@@ -94,7 +94,7 @@ class TensorHandle : public ImmediateExecutionTensorHandle,
   static Status CreatePackedHandle(std::vector<TensorHandle*>&& handles,
                                    const tensorflow::DataType dtype,
                                    const tensorflow::TensorShape& shape,
-                                   EagerContext* ctx,
+                                   const string& device_name, EagerContext* ctx,
                                    TensorHandle** packed_handle);
   static Status CreatePackedHandle(std::vector<TensorHandle*>&& handles,
                                    EagerContext* ctx,
@@ -226,19 +226,13 @@ class TensorHandle : public ImmediateExecutionTensorHandle,
 
   string DebugString() const;
 
-  struct ResourceHandleInfo {
-    std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes;
-    std::vector<string> allowed_devices;
-  };
-
-  void SetResourceHandleInfo(ResourceHandleInfo&& resource_handle_info);
+  void SetResourceHandleDtypeAndShape(
+      std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes);
 
   // If this TensorHandle is 1) a local tensor, and 2) a resource handle,
-  // return data types, shapes and allowed devices of the underlying resource.
-  Status GetResourceHandleInfo(ResourceHandleInfo* result);
+  // return data types and shapes of the underlying resource.
   Status GetResourceHandleDtypesAndShapes(
       std::vector<DtypeAndPartialTensorShape>* result);
-  Status GetResourceAllowedDevices(std::vector<string>* result);
 
   // Returns the number of packed handles. 0 if the handle type is not PACKED.
   int NumPackedHandles() const;
@@ -260,8 +254,6 @@ class TensorHandle : public ImmediateExecutionTensorHandle,
   // to either SetTensor or SetRemoteShape which replaces the underlying data
   // with a ready version of the tensor handle data.
   bool IsReady() const;
-
-  Status GetResourceHandleInfoImpl(std::function<void()> set_resource_info);
 
   VariantDevice const device_;
 
@@ -308,9 +300,9 @@ class TensorHandle : public ImmediateExecutionTensorHandle,
   Status is_poisoned_;
 
   // If this TensorHandle 1) is a local tensor, and 2) is a resource handle or
-  // refers to a remote resource handle, we store data types, shapes and allowed
-  // devices for the underlying resource.
-  ResourceHandleInfo resource_handle_info_;
+  // refers to a remote resource handle, we store data types and shapes for
+  // the underlying resource.
+  std::vector<DtypeAndPartialTensorShape> handle_dtypes_and_shapes_;
 
   // A handle data which refers to multiple TensorHandles of the same dtype and
   // shape.

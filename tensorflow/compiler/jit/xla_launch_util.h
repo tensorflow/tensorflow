@@ -34,36 +34,17 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Struct that represents a possibly-absent Tensor.
-struct OptionalTensor {
-  string name;           // A descriptive name
-  bool present = false;  // Is the tensor present?
-  Tensor value;          // If present, what is the Tensor's value?
-};
-
-// Takes a snapshot of the values of resource variable arguments, whose indices
-// are specified in `variable_indices` argument. We snapshot tensors that back
-// resource variables since concurrent updates may modify the shape, and it is
-// important that the shapes used for compilation match the true shapes of the
-// buffers.
-//
-// We snapshot the entire set of resource variables as one atomic operation.
-// This models Read->* dependencies between resource variable operations.  See
-// jit/resource_operation_safety_analysis for details.
-//
-// Returns a map of TensorFlow argument index to resource variable. If a
-// resource variable is not initialized, the corresponding OptionalTensor
-// will have its `present` field set to false.
-Status SnapshotResourceVariables(OpKernelContext* ctx,
-                                 absl::Span<const int> variable_indices,
-                                 std::map<int, OptionalTensor>* result);
+// Snapshot of resource variables for a TF kernel invocation, mapping from
+// parameter number to values at execution time. If the resource variable is not
+// initialized, the value will not be present.
+using ResourceVarsSnapshot = absl::flat_hash_map<int, absl::optional<Tensor>>;
 
 // Information about the state of a variable passed as input to the _XlaCompile
 // and _XlaRun operators.  Unlocks the resource variable and decrements its
 // refcount on destruction.
 class VariableInfo {
  public:
-  explicit VariableInfo(int index, Var* var);
+  explicit VariableInfo(int index, absl::string_view name, Var* var);
   VariableInfo(VariableInfo&& other);
 
   VariableInfo& operator=(VariableInfo&& other);
@@ -79,6 +60,9 @@ class VariableInfo {
   // "empty", i.e. it does not track a resource variable.
   Var* var() const { return var_; }
 
+  // Returns the variable name.
+  absl::string_view name() const { return name_; }
+
   // Returns true if the resource variable lock was successfully acquired by
   // this thread.
   bool lock_held() const { return lock_held_; }
@@ -88,6 +72,7 @@ class VariableInfo {
 
  private:
   int index_;
+  std::string name_;
   Var* var_;
 
   // We can't use a optional<mutex_lock> here because it confuses the compiler's
@@ -96,6 +81,20 @@ class VariableInfo {
   bool lock_held_ = false;
 };
 
+// Takes a snapshot of the values of resource variable arguments, whose indices
+// are specified in `variable_indices` argument. We snapshot tensors that back
+// resource variables since concurrent updates may modify the shape, and it is
+// important that the shapes used for compilation match the true shapes of the
+// buffers.
+//
+// We snapshot the entire set of resource variables as one atomic operation.
+// This models Read->* dependencies between resource variable operations.  See
+// jit/resource_operation_safety_analysis for details.
+Status SnapshotResourceVariables(OpKernelContext* ctx,
+                                 absl::Span<const int> variable_indices,
+                                 absl::Span<VariableInfo const> variable_infos,
+                                 ResourceVarsSnapshot* result);
+
 // Acquires the mutexes for all the variables in `variables` using a
 // deadlock-safe protocol (acquire the mutexes in increasing-address order).
 //
@@ -103,6 +102,13 @@ class VariableInfo {
 // variable (i.e. variables[i].var() can be null for some i).
 Status LockVariables(absl::Span<VariableInfo> variables)
     TF_EXCLUSIVE_LOCK_FUNCTION();
+
+// Returns a vector of VariableInfo instances for the resource variable inputs
+// to the kernel with context `ctx`.  The input indices for the resource
+// variable inputs are in `variable_indices`.
+Status GetVariableInfosFromCtxInputs(OpKernelContext* ctx,
+                                     absl::Span<const int> variable_indices,
+                                     std::vector<VariableInfo>* result);
 
 // Helper class to perform the marshalling of TensorFlow inputs and outputs to
 // ShapedBuffers suitable for passing to an XLA computation.
@@ -123,9 +129,10 @@ class XlaComputationLaunchContext {
 
   // Builds a XlaCompiler::Argument vector from the arguments to an XlaLaunch
   // op.
+  // Precondition: variables in `variable_args` are locked.
   static Status BuildXlaCompilerArguments(
       const std::map<int, Tensor>& constant_args,
-      const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
+      absl::Span<VariableInfo const> variable_args, OpKernelContext* ctx,
       std::vector<XlaCompiler::Argument>* args);
 
   // Add all inputs within `ctx` as XLA arguments (returned by arguments()).
@@ -137,7 +144,7 @@ class XlaComputationLaunchContext {
   // (in other words, no inputs actually required by the kernel can be missing).
   void PopulateInputs(OpKernelContext* ctx,
                       const XlaCompiler::CompilationResult* compilation_result,
-                      const std::map<int, OptionalTensor>& variables,
+                      const ResourceVarsSnapshot& variables,
                       int missing_ctx_input_prefix);
 
   // Given the XLA output in `output`, populate all outputs of `ctx`.  Also
@@ -155,7 +162,7 @@ class XlaComputationLaunchContext {
       const XlaCompiler::CompilationResult* compilation_result,
       xla::ScopedShapedBuffer output, int missing_ctx_input_prefix,
       const xla::HloInputOutputAliasConfig& input_output_alias,
-      const std::map<int, OptionalTensor>& resource_var_snapshots);
+      const ResourceVarsSnapshot& resource_var_snapshots);
 
   // Return the argument list. Only valid after PopulateInputs() has been
   // called.

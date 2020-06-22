@@ -114,7 +114,7 @@ inline bool TryStripSuffixString(absl::string_view str,
 bool Arg<toco::IntList>::Parse(std::string text) {
   parsed_value_.elements.clear();
   specified_ = true;
-  // strings::Split("") produces {""}, but we need {} on empty input.
+  // absl::StrSplit("") produces {""}, but we need {} on empty input.
   // TODO(aselle): Moved this from elsewhere, but ahentz recommends we could
   // use absl::SplitLeadingDec32Values(text.c_str(), &parsed_values_.elements)
   if (!text.empty()) {

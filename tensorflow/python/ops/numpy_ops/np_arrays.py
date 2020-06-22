@@ -149,10 +149,23 @@ class ndarray(composite_tensor.CompositeTensor):  # pylint: disable=invalid-name
     if dtype and dtype != buffer.dtype:
       buffer = array_ops.bitcast(buffer, dtype)
     self._data = buffer
+    self._type_spec_internal = None
+
+  @classmethod
+  def from_tensor(cls, tensor):
+    o = cls.__new__(cls, None)
+    # pylint: disable=protected-access
+    o._data = tensor
+    o._type_spec_internal = None
+    # pylint: enable=protected-access
+    return o
 
   @property
   def _type_spec(self):
-    return NdarraySpec(type_spec.type_spec_from_value(self._data))
+    if self._type_spec_internal is None:
+      self._type_spec_internal = NdarraySpec(
+          type_spec.type_spec_from_value(self._data))
+    return self._type_spec_internal
 
   @property
   def data(self):
@@ -293,9 +306,13 @@ class ndarray(composite_tensor.CompositeTensor):  # pylint: disable=invalid-name
   def __repr__(self):
     return 'ndarray<{}>'.format(self.data.__repr__())
 
+  @property
+  def _id(self):
+    return self.data._id  # pylint: disable=protected-access
+
 
 def tensor_to_ndarray(tensor):
-  return ndarray(tensor._shape_tuple(), dtype=tensor.dtype, buffer=tensor)  # pylint: disable=protected-access
+  return ndarray.from_tensor(tensor)
 
 
 def ndarray_to_tensor(arr, dtype=None, name=None, as_ref=False):

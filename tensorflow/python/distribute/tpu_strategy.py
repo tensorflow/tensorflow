@@ -47,12 +47,14 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device_spec
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.tpu import device_assignment as device_assignment_lib  # pylint: disable=unused-import
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_strategy_util
@@ -515,7 +517,6 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     self._require_static_shapes = True
 
     self.experimental_enable_get_next_as_optional = True
-    self._prefetch_to_device = True
 
     self._logical_device_stack = [0]
 
@@ -526,16 +527,6 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         if context.context()._context_handle is not None:  # pylint: disable=protected-access
           context.async_wait()
       atexit.register(async_wait)
-
-  # TODO(bfontain): Remove once a proper dataset API exists for prefetching
-  # a dataset to multiple devices exists.
-  # If value is true, this forces prefetch of data to the host's memeory rather
-  # than the individual TPU device's memory. This is needed when using for TPU
-  # Embeddings as a) sparse tensors cannot be prefetched to the TPU device
-  # memory and b) TPU Embedding enqueue operation are CPU ops and this avoids
-  # a copy back to the host for dense tensors
-  def _set_prefetch_on_host(self, value):
-    self._prefetch_to_device = not value
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     distribute_utils. validate_colocate(colocate_with_variable, self)
@@ -575,17 +566,32 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         session)
 
   def _get_input_workers(self, options):
-    prefetch_to_device = self._prefetch_to_device
-    if options:
-      prefetch_to_device = options.experimental_prefetch_to_device
-    if prefetch_to_device:
+    if not options or options.experimental_prefetch_to_device:
       return input_lib.InputWorkers(
           tuple(self._device_input_worker_devices.items()))
     else:
       return input_lib.InputWorkers(
           tuple(self._host_input_worker_devices.items()))
 
+  def _check_spec(self, element_spec):
+    if isinstance(element_spec, values.PerReplicaSpec):
+      element_spec = element_spec._component_specs  # pylint: disable=protected-access
+    specs = nest.flatten_with_joined_string_paths(element_spec)
+    for path, spec in specs:
+      if isinstance(spec, (sparse_tensor.SparseTensorSpec,
+                           ragged_tensor.RaggedTensorSpec)):
+        raise ValueError(
+            "Found tensor {} with spec {}. TPUStrategy does not support "
+            "distributed datasets with device prefetch when using sparse or "
+            "ragged tensors. If you indend to use sparse or ragged tensors, "
+            "please pass a tf.distribute.InputOptions object with "
+            "experimental_prefetch_to_device set to False to your dataset "
+            "distribution function.".format(path, type(spec)))
+
   def _experimental_distribute_dataset(self, dataset, options):
+    if options is None or options.experimental_prefetch_to_device:
+      self._check_spec(dataset.element_spec)
+
     return input_lib.get_distributed_dataset(
         dataset,
         self._get_input_workers(options),
@@ -603,11 +609,16 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           input_pipeline_id=i,
           num_replicas_in_sync=self._num_replicas_in_sync))
 
-    return input_lib.get_distributed_datasets_from_function(
+    distributed_dataset = input_lib.get_distributed_datasets_from_function(
         dataset_fn,
         input_workers,
         input_contexts,
         self._container_strategy())
+
+    # We can only check after the dataset_fn is called.
+    if options is None or options.experimental_prefetch_to_device:
+      self._check_spec(distributed_dataset.element_spec)
+    return distributed_dataset
 
   def _experimental_distribute_values_from_function(self, value_fn):
     per_replica_values = []

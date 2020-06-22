@@ -2036,43 +2036,73 @@ class CacheCorrectnessTest(keras_parameterized.TestCase):
 
   def test_training_passed_during_construction(self):
 
+    def _call(inputs, training):
+      if training is None:
+        return inputs * -1.0
+      elif training:
+        return inputs
+      else:
+        return inputs * 0.0
+
     class MyLayer(base_layer.Layer):
 
-      def call(self, x, training=None):
-        if training is None:
-          return x * -1.0
-        elif training:
-          return x
-        else:
-          return x * 0.0
+      def call(self, inputs, training=True):
+        return _call(inputs, training)
 
     my_layer = MyLayer()
     x = np.ones((1, 10))
 
+    # Hard-coded `true` value passed during construction is respected.
     inputs = input_layer_lib.Input(10)
     outputs = my_layer(inputs, training=True)
     network = functional.Functional(inputs, outputs)
+    self.assertAllEqual(network(x, training=True), _call(x, True))
+    self.assertAllEqual(network(x, training=False), _call(x, True))
+    self.assertAllEqual(network(x), _call(x, True))
 
-    # Hard-coded value passed during construction is respected.
-    self.assertAllEqual(network(x, training=False), x)
-
+    # Hard-coded `false` value passed during construction is respected.
     inputs = input_layer_lib.Input(10)
     outputs = my_layer(inputs, training=False)
     network = functional.Functional(inputs, outputs)
+    self.assertAllEqual(network(x, training=True), _call(x, False))
+    self.assertAllEqual(network(x, training=False), _call(x, False))
+    self.assertAllEqual(network(x), _call(x, False))
 
-    network(x, training=True)
-    # Hard-coded value passed during construction is respected.
-    self.assertAllEqual(network(x, training=True), x * 0.0)
+    if context.executing_eagerly():
+      # In v2, construction still works when no `training` is specified
+      # When no value passed during construction, it uses the runtime value.
+      inputs = input_layer_lib.Input(10)
+      outputs = my_layer(inputs)
+      network = functional.Functional(inputs, outputs)
+      self.assertAllEqual(network(x, training=True), _call(x, True))
+      self.assertAllEqual(network(x, training=False), _call(x, False))
+      self.assertAllEqual(network(x), _call(x, False))
 
+    # `None` value passed positionally during construction is ignored at runtime
+    inputs = input_layer_lib.Input(10)
+    outputs = my_layer(inputs, None)
+    network = functional.Functional(inputs, outputs)
+    self.assertAllEqual(network(x, training=True), _call(x, True))
+    self.assertAllEqual(network(x, training=False), _call(x, False))
+    if context.executing_eagerly():
+      self.assertAllEqual(network(x), _call(x, False))
+    else:
+      # in v1 training would have defaulted to using the `None` inside the layer
+      # if training is not passed at runtime
+      self.assertAllEqual(network(x), _call(x, None))
+
+    # `None` value passed as kwarg during construction is ignored at runtime.
     inputs = input_layer_lib.Input(10)
     outputs = my_layer(inputs, training=None)
     network = functional.Functional(inputs, outputs)
-
-    # `None` value passed during construction is overridden.
-    self.assertAllEqual(network(x, training=True), x)
-    # `None` value passed during construction is overridden.
-    self.assertAllEqual(network(x, training=False), x * 0.0)
-
+    self.assertAllEqual(network(x, training=True), _call(x, True))
+    self.assertAllEqual(network(x, training=False), _call(x, False))
+    if context.executing_eagerly():
+      self.assertAllEqual(network(x), _call(x, False))
+    else:
+      # in v1 training would have defaulted to using the `None` inside the layer
+      # if training is not passed at runtime
+      self.assertAllEqual(network(x), _call(x, None))
 
 if __name__ == '__main__':
   test.main()

@@ -1024,7 +1024,7 @@ class GradientTape(object):
             "derivatives.", 1)
 
     flat_targets = []
-    for t in nest.flatten(target, expand_composites=True):
+    for t in nest.flatten(target):
       if not backprop_util.IsTrainable(t):
         logging.vlog(
             logging.WARN, "The dtype of the target tensor must be "
@@ -1035,7 +1035,7 @@ class GradientTape(object):
           t = ops.convert_to_tensor(t)
       flat_targets.append(t)
 
-    flat_sources = nest.flatten(sources, expand_composites=True)
+    flat_sources = nest.flatten(sources)
     flat_sources_raw = flat_sources
     flat_sources = [_handle_or_self(x) for x in flat_sources]
     for t in flat_sources_raw:
@@ -1051,8 +1051,7 @@ class GradientTape(object):
 
     if output_gradients is not None:
       output_gradients = [None if x is None else ops.convert_to_tensor(x)
-                          for x in nest.flatten(
-                              output_gradients, expand_composites=True)]
+                          for x in nest.flatten(output_gradients)]
 
     flat_grad = imperative_grad.imperative_grad(
         self._tape,
@@ -1067,7 +1066,7 @@ class GradientTape(object):
       self._watched_variables = self._tape.watched_variables()
       self._tape = None
 
-    grad = nest.pack_sequence_as(sources, flat_grad, expand_composites=True)
+    grad = nest.pack_sequence_as(sources, flat_grad)
     return grad
 
   def jacobian(self,

@@ -28,7 +28,6 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.eager import tape as tape_lib
 from tensorflow.python.eager import test
-from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -37,7 +36,6 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
-from tensorflow.python.framework import type_spec
 from tensorflow.python.framework.memory_checker import MemoryChecker
 from tensorflow.python.layers.pooling import max_pooling3d
 from tensorflow.python.ops import array_ops
@@ -54,44 +52,6 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import training
-from tensorflow.python.util import nest
-
-
-# TODO(nareshmodi): This is copied from composite_tensor_test.py. Extract it out
-# to a common library to avoid duplication.
-class CTSpec(type_spec.TypeSpec):
-  """A generic CompositeTensor TypeSpec, used for constructing tests."""
-
-  def __init__(self, component_specs):
-    self.component_specs = component_specs
-
-  value_type = property(lambda self: CT)
-  _component_specs = property(lambda self: self.component_specs)
-
-  def _serialize(self):
-    return (self.component_specs,)
-
-  def _to_components(self, value):
-    return value.components
-
-  def _from_components(self, tensor_list):
-    return CT(tensor_list)
-
-
-class CT(composite_tensor.CompositeTensor):
-  """A generic CompositeTensor, used for constructing tests."""
-  _type_spec_class = CTSpec
-
-  def __init__(self, components):
-    if isinstance(components, list):
-      components = tuple(components)
-    self.components = components
-
-  @property
-  def _type_spec(self):
-    component_specs = nest.map_structure(type_spec.type_spec_from_value,
-                                         self.components)
-    return self._type_spec_class(component_specs)
 
 
 class BackpropTest(test.TestCase, parameterized.TestCase):
@@ -1620,35 +1580,6 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
 
     memory_checker.report()
     memory_checker.assert_no_leak_if_all_possibly_except_one()
-
-  def testCompositeTensorAsSource(self):
-    t = CT([constant_op.constant(3.), constant_op.constant(2.)])
-    with backprop.GradientTape() as gt:
-      gt.watch(t)
-      y = CT([t.components[0] * 2, t.components[1] * 3])
-
-    grad = gt.gradient(y, t)
-    expected_grad = CT([constant_op.constant(2.), constant_op.constant(3.)])
-
-    flat_grads = nest.flatten(grad, expand_composites=True)
-    flat_expected_grads = nest.flatten(expected_grad, expand_composites=True)
-
-    self.assertAllClose(flat_grads, flat_expected_grads)
-
-  def testCompositeTensorAsOutputGradients(self):
-    t = CT([constant_op.constant(3.), constant_op.constant(2.)])
-    with backprop.GradientTape() as gt:
-      gt.watch(t)
-      y = CT([t.components[0] * 2, t.components[1] * 3])
-
-    output_gradients = CT([constant_op.constant(5.), constant_op.constant(10.)])
-    grad = gt.gradient(y, t, output_gradients=output_gradients)
-    expected_grad = CT([constant_op.constant(10.), constant_op.constant(30.)])
-
-    flat_grads = nest.flatten(grad, expand_composites=True)
-    flat_expected_grads = nest.flatten(expected_grad, expand_composites=True)
-
-    self.assertAllClose(flat_grads, flat_expected_grads)
 
 
 class JacobianTest(test.TestCase):

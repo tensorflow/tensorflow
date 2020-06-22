@@ -145,13 +145,13 @@ Status TensorHandle::PackedTensorHandleData::ExtractPackedHandle(
   return Status::OK();
 }
 
-void TensorHandle::SetResourceHandleInfo(
-    ResourceHandleInfo&& resource_handle_info) {
-  resource_handle_info_ = std::move(resource_handle_info);
+void TensorHandle::SetResourceHandleDtypeAndShape(
+    std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes) {
+  handle_dtypes_and_shapes_ = std::move(dtypes_and_shapes);
 }
 
-Status TensorHandle::GetResourceHandleInfoImpl(
-    std::function<void()> set_resource_info) {
+Status TensorHandle::GetResourceHandleDtypesAndShapes(
+    std::vector<DtypeAndPartialTensorShape>* result) {
   if (dtype != DT_RESOURCE) {
     return errors::InvalidArgument(
         "TensorHandle::GetResourceDtypeAndShape should be called on tensor "
@@ -160,7 +160,7 @@ Status TensorHandle::GetResourceHandleInfoImpl(
   }
 
   if (Type() != LOCAL) {
-    set_resource_info();
+    *result = handle_dtypes_and_shapes_;
     return Status::OK();
   }
 
@@ -170,30 +170,8 @@ Status TensorHandle::GetResourceHandleInfoImpl(
   auto& data = absl::get<LocalTensorHandleData>(data_);
   TF_RETURN_IF_ERROR(data.WaitReady("TensorHandle::GetResourceHandleInfo"));
 
-  set_resource_info();
+  *result = handle_dtypes_and_shapes_;
   return Status::OK();
-}
-
-Status TensorHandle::GetResourceHandleInfo(ResourceHandleInfo* result) {
-  auto get_resource_info = [result, this]() {
-    *result = resource_handle_info_;
-  };
-  return GetResourceHandleInfoImpl(get_resource_info);
-}
-
-Status TensorHandle::GetResourceHandleDtypesAndShapes(
-    std::vector<DtypeAndPartialTensorShape>* result) {
-  auto get_resource_info = [result, this]() {
-    *result = resource_handle_info_.dtypes_and_shapes;
-  };
-  return GetResourceHandleInfoImpl(get_resource_info);
-}
-
-Status TensorHandle::GetResourceAllowedDevices(std::vector<string>* result) {
-  auto get_resource_info = [result, this]() {
-    *result = resource_handle_info_.allowed_devices;
-  };
-  return GetResourceHandleInfoImpl(get_resource_info);
 }
 
 int TensorHandle::NumPackedHandles() const {
@@ -270,9 +248,8 @@ TensorHandle::TensorHandle(tensorflow::Tensor&& t, Device* d, Device* op_device,
       resource_remote_device_incarnation_(
           GetRemoteDeviceIncarnation(resource_device_)),
       ctx_(ctx),
-      resource_handle_info_(
-          {t.flat<class ResourceHandle>()(0).dtypes_and_shapes(),
-           t.flat<class ResourceHandle>()(0).allowed_devices()}),
+      handle_dtypes_and_shapes_(
+          t.flat<class ResourceHandle>()(0).dtypes_and_shapes()),
       data_(absl::in_place_type<LocalTensorHandleData>, std::move(t)) {
   DVLOG(3) << "Creating Local TensorHandle: " << this
            << " device: " << VariantDeviceDebugString(device_)
@@ -320,16 +297,17 @@ TensorHandle::TensorHandle(Device* d, Device* op_device,
 Status TensorHandle::CreatePackedHandle(std::vector<TensorHandle*>&& handles,
                                         const tensorflow::DataType dtype,
                                         const tensorflow::TensorShape& shape,
+                                        const string& device_name,
                                         EagerContext* ctx,
                                         TensorHandle** packed_handle) {
   if (handles.empty()) {
     return errors::InvalidArgument("Handles should not be empty.");
   }
 
-  ResourceHandleInfo resource_handle_info;
+  std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes;
   if (dtype == DT_RESOURCE) {
     TF_RETURN_IF_ERROR(
-        handles.at(0)->GetResourceHandleInfo(&resource_handle_info));
+        handles.at(0)->GetResourceHandleDtypesAndShapes(&dtypes_and_shapes));
   }
   std::vector<string> devices;
   for (auto* handle : handles) {
@@ -343,11 +321,12 @@ Status TensorHandle::CreatePackedHandle(std::vector<TensorHandle*>&& handles,
   }
 
   CompositeDevice* composite_device = nullptr;
-  TF_RETURN_IF_ERROR(
-      ctx->FindOrCreateCompositeDevice(devices, &composite_device));
+  TF_RETURN_IF_ERROR(ctx->FindOrCreateCompositeDevice(devices, device_name,
+                                                      &composite_device));
   *packed_handle =
       new TensorHandle(std::move(handles), composite_device, dtype, shape, ctx);
-  (*packed_handle)->SetResourceHandleInfo(std::move(resource_handle_info));
+  (*packed_handle)
+      ->SetResourceHandleDtypeAndShape(std::move(dtypes_and_shapes));
   return Status::OK();
 }
 
@@ -363,8 +342,8 @@ Status TensorHandle::CreatePackedHandle(std::vector<TensorHandle*>&& handles,
   tensorflow::DataType dtype = handles.at(0)->dtype;
   tensorflow::TensorShape shape;
   TF_RETURN_IF_ERROR(handles.at(0)->Shape(&shape));
-  return CreatePackedHandle(std::move(handles), dtype, shape, ctx,
-                            packed_handle);
+  return CreatePackedHandle(std::move(handles), dtype, shape,
+                            /*device_name*/ "", ctx, packed_handle);
 }
 
 TensorHandle::TensorHandle(std::vector<TensorHandle*>&& handles, Device* device,
@@ -897,8 +876,7 @@ Status TensorHandle::SetTensor(tensorflow::Tensor&& t, const Device* d) {
 
     if (t.dtype() == DT_RESOURCE && t.NumElements() > 0) {
       auto& resource_handle = t.flat<class ResourceHandle>()(0);
-      resource_handle_info_ = {resource_handle.dtypes_and_shapes(),
-                               resource_handle.allowed_devices()};
+      handle_dtypes_and_shapes_ = resource_handle.dtypes_and_shapes();
     }
     auto& data = absl::get<LocalTensorHandleData>(data_);
     return data.SetTensor(std::move(t));
