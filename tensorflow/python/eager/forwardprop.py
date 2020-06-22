@@ -157,19 +157,13 @@ def _jvp_helper_wrapper(
   """
   if batch_size:
     for primal, tangent in zip(inputs, tangents):
-      if tangent.rank == primal.rank + 1:
-        if tangent.shape != array_ops.concat([batch_size], primal.shape):
-          raise ValueError(
-            "Tangent {} was expected to be of shape "
-            "{} but is instead of shape {}".format(
-            tangent, [batch_size] + primal.shape, tangent.shape
-          )
+      if tangent.shape != array_ops.concat([batch_size], primal.shape, 0):
+        raise ValueError(
+          "Tangent {} was expected to be of shape "
+          "{} but is instead of shape {}".format(
+          tangent, [batch_size] + primal.shape, tangent.shape
         )
-        else:
-          raise ValueError(
-            "Invalid argument batch_size for rank "
-            "{}, {} tangents and primals".format(tangent.rank, primal.rank)
-          )
+      )
 
   if batch_size:
     return control_flow_ops.vectorized_map(
