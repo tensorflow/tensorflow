@@ -523,6 +523,7 @@ cc_library(
     deps = [
         ":cl_command_queue",
         ":cl_context",
+        ":gpu_object",
         ":opencl_wrapper",
         ":tensor_type",
         ":util",
