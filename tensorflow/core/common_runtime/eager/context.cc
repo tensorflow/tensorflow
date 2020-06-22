@@ -893,7 +893,7 @@ Status EagerContext::FindDeviceFromName(const char* device_name,
 }
 
 Status EagerContext::FindCompositeDeviceFromName(
-    const char* device_name, CompositeDevice** device) const {
+    StringPiece device_name, CompositeDevice** device) const {
   tf_shared_lock l(composite_devices_mu_);
   for (const auto& d : composite_devices_) {
     if (d.second->name() == device_name) {
@@ -939,8 +939,13 @@ Status EagerContext::RegisterCustomDevice(
 }
 
 Status EagerContext::FindOrCreateCompositeDevice(
-    const std::vector<string>& underlying_devices,
+    const std::vector<string>& underlying_devices, const string& device_name,
     CompositeDevice** composite_device) {
+  if (!device_name.empty() &&
+      FindCompositeDeviceFromName(device_name, composite_device).ok()) {
+    return Status::OK();
+  }
+
   const uint64 hash_key = Fingerprint64(absl::StrJoin(underlying_devices, ","));
 
   mutex_lock l(composite_devices_mu_);
@@ -951,11 +956,16 @@ Status EagerContext::FindOrCreateCompositeDevice(
   }
 
   Status s;
-  // Create a CompositeDevice on the same task as the host CPU, in order to
-  // trigger packed TensorHandle copy from a client to a remote worker.
-  auto device =
-      CompositeDevice::MakeDevice(underlying_devices, composite_devices_.size(),
-                                  HostCPU()->parsed_name(), &s);
+  std::unique_ptr<CompositeDevice> device;
+  if (device_name.empty()) {
+    // Create a CompositeDevice on the same task as the host CPU, in order to
+    // trigger packed TensorHandle copy from a client to a remote worker.
+    device = CompositeDevice::MakeDevice(underlying_devices,
+                                         composite_devices_.size(),
+                                         HostCPU()->parsed_name(), &s);
+  } else {
+    device = CompositeDevice::MakeDevice(underlying_devices, device_name, &s);
+  }
   TF_RETURN_IF_ERROR(s);
   *composite_device = device.get();
   pflr_->AddCompositeDevice(*composite_device);

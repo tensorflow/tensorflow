@@ -415,7 +415,7 @@ Status GetOrCreateKernelAndDevice(
       TF_RETURN_IF_ERROR(GetDeviceForInput(ctx, input, &input_device));
       input_dev_ptrs.push_back(input_device);
       CompositeDevice* composite_device = nullptr;
-      if (ctx.FindCompositeDeviceFromName(input_device->name().c_str(),
+      if (ctx.FindCompositeDeviceFromName(input_device->name(),
                                           &composite_device)
               .ok()) {
         composite_devices[input_device->name()] =

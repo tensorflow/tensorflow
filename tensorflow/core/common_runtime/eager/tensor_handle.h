@@ -94,7 +94,7 @@ class TensorHandle : public ImmediateExecutionTensorHandle,
   static Status CreatePackedHandle(std::vector<TensorHandle*>&& handles,
                                    const tensorflow::DataType dtype,
                                    const tensorflow::TensorShape& shape,
-                                   EagerContext* ctx,
+                                   const string& device_name, EagerContext* ctx,
                                    TensorHandle** packed_handle);
   static Status CreatePackedHandle(std::vector<TensorHandle*>&& handles,
                                    EagerContext* ctx,

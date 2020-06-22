@@ -320,6 +320,7 @@ TensorHandle::TensorHandle(Device* d, Device* op_device,
 Status TensorHandle::CreatePackedHandle(std::vector<TensorHandle*>&& handles,
                                         const tensorflow::DataType dtype,
                                         const tensorflow::TensorShape& shape,
+                                        const string& device_name,
                                         EagerContext* ctx,
                                         TensorHandle** packed_handle) {
   if (handles.empty()) {
@@ -343,8 +344,8 @@ Status TensorHandle::CreatePackedHandle(std::vector<TensorHandle*>&& handles,
   }
 
   CompositeDevice* composite_device = nullptr;
-  TF_RETURN_IF_ERROR(
-      ctx->FindOrCreateCompositeDevice(devices, &composite_device));
+  TF_RETURN_IF_ERROR(ctx->FindOrCreateCompositeDevice(devices, device_name,
+                                                      &composite_device));
   *packed_handle =
       new TensorHandle(std::move(handles), composite_device, dtype, shape, ctx);
   (*packed_handle)->SetResourceHandleInfo(std::move(resource_handle_info));
@@ -363,8 +364,8 @@ Status TensorHandle::CreatePackedHandle(std::vector<TensorHandle*>&& handles,
   tensorflow::DataType dtype = handles.at(0)->dtype;
   tensorflow::TensorShape shape;
   TF_RETURN_IF_ERROR(handles.at(0)->Shape(&shape));
-  return CreatePackedHandle(std::move(handles), dtype, shape, ctx,
-                            packed_handle);
+  return CreatePackedHandle(std::move(handles), dtype, shape,
+                            /*device_name*/ "", ctx, packed_handle);
 }
 
 TensorHandle::TensorHandle(std::vector<TensorHandle*>&& handles, Device* device,

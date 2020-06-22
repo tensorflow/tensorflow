@@ -486,7 +486,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   Status FindDeviceFromName(const char* device_name, Device** device) const;
 
-  Status FindCompositeDeviceFromName(const char* device_name,
+  Status FindCompositeDeviceFromName(StringPiece device_name,
                                      CompositeDevice** device) const;
 
   Status FindCustomDeviceFromName(const string& device_name,
@@ -495,9 +495,10 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   Status RegisterCustomDevice(const string& name,
                               std::unique_ptr<CustomDevice> device);
 
-  // Find or create a composite device with the given `underlying_devices`.
+  // Find or create a composite device with the given `underlying_devices` and
+  // `device_name` (if not empty).
   Status FindOrCreateCompositeDevice(
-      const std::vector<string>& underlying_devices,
+      const std::vector<string>& underlying_devices, const string& device_name,
       CompositeDevice** composite_device);
 
   bool OnSameTask(const Device* first, const Device* second) const;

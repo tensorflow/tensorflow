@@ -685,7 +685,7 @@ Status EagerServiceImpl::SendPackedHandle(
   // Create a unshaped packed TensorHandle.
   TF_RETURN_IF_ERROR(TensorHandle::CreatePackedHandle(
       std::move(handles_to_pack), handles.at(0)->dtype, TensorShape(),
-      eager_context, &packed_handle));
+      send_packed_handle.device_name(), eager_context, &packed_handle));
 
   for (auto* h : handles) {
     // Unref handle since it has a ref in the packed handle now.
