@@ -560,6 +560,7 @@ py_library(
         "//tensorflow/python:graph_to_function_def",
         "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python:util",
+        "//tensorflow/python/ops/numpy_ops:numpy",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
