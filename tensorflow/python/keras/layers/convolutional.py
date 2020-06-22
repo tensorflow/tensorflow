@@ -421,7 +421,7 @@ class Conv1D(Conv):
       specifying the stride length of the convolution.
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
-    padding: One of `"valid"`, `"causal"` or `"same"` (case-insensitive).
+    padding: One of `"valid"`, `"same"` or `"causal"` (case-insensitive).
       `"valid"` means no padding. `"same"` results in padding evenly to 
       the left/right or up/down of the input such that output has the same 
       height/width dimension as the input.
