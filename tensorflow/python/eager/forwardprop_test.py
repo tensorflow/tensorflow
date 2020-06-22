@@ -257,7 +257,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
             constant_op.constant([1., 2., 3.]),
             constant_op.constant([4., 5., 6.]),
         ),
-	batch_size=3)
+        batch_size=3)
 
     # Using evaluate and asserting with just a list works too
     # but the output is more explicit this way
@@ -276,7 +276,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
             constant_op.constant([[1.], [0.], [1.]]),
             constant_op.constant([[0.], [1.], [1.]]),
         ),
-	batch_size=3)
+        batch_size=3)
     self.assertAllClose(
       [constant_op.constant([[5.], [4.], [5. + 4.]])],
       jvp_flat

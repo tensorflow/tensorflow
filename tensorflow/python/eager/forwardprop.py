@@ -141,9 +141,9 @@ def _jvp_helper(op_name, attr_tuple, inputs, outputs, tangents):
 
 
 def _jvp_helper_wrapper(
-    op_name, attr_tuple, inputs, outputs, tangents, batch_size
+  op_name, attr_tuple, inputs, outputs, tangents, batch_size
 ):
-    """Computes a batch of Jacobian-vector product for an op.
+  """Computes a batch of Jacobian-vector product for an op.
 
   Args:
     op_name: A string, the type of operation being executed.
@@ -155,12 +155,10 @@ def _jvp_helper_wrapper(
   Returns:
     A flat list of tangents corresponding to `outputs`.
   """
-  use_pfor = False
-  if batch_size is not None:
-    use_pfor = True
+  if batch_size:
     for primal, tangent in zip(inputs, tangents):
       if tangent.rank == primal.rank + 1:
-        if tangent.shape != [batch_size] + primal.shape:
+        if tangent.shape != array_ops.concat([batch_size], primal.shape):
           raise ValueError(
             "Tangent {} was expected to be of shape "
             "{} but is instead of shape {}".format(
@@ -173,7 +171,7 @@ def _jvp_helper_wrapper(
             "{}, {} tangents and primals".format(tangent.rank, primal.rank)
           )
 
-  if use_pfor:
+  if batch_size:
     return control_flow_ops.vectorized_map(
       functools.partial(_jvp_helper, op_name, attr_tuple, inputs, outputs),
       tangents,
