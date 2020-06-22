@@ -64,7 +64,7 @@ class ModelToDotFormatTest(test.TestCase):
     try:
       vis_utils.plot_model(
           model, to_file=dot_img_file, show_shapes=True,
-          show_dtype=True expand_nested=True)
+          show_dtype=True, expand_nested=True)
       self.assertTrue(file_io.file_exists(dot_img_file))
       file_io.delete_file(dot_img_file)
     except ImportError:
