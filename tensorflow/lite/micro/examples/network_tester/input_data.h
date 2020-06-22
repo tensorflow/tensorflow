@@ -16,9 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_EXAMPLES_NETWORK_TESTER_INPUT_DATA_H_
 #define TENSORFLOW_LITE_MICRO_EXAMPLES_NETWORK_TESTER_INPUT_DATA_H_
 
-static const bool input_use_default_quant_params = true;
-static const float input_scale = 0;     // NOT USED
-static const int input_zero_point = 0;  // NOT USED
 static const int input_data_len = 16;
 static const unsigned char input_data[1][16] = {
     {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}};
