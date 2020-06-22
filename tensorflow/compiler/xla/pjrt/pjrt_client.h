@@ -20,15 +20,18 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/pjrt/local_device_state.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
@@ -481,14 +484,17 @@ class PjRtBuffer {
   // copies the buffer to the host. Blocks until the value is ready. If
   // `discard_cached_copy` is true then buffer will no longer keep hold of a
   // cached copy of the literal (i.e. The reference to the host value will be
-  // removed.)
+  // removed.) If a layout is passed than a literal with this layout will be
+  // returned.
   StatusOr<std::shared_ptr<Literal>> ToLiteral(
-      bool discard_cached_copy = false);
+      bool discard_cached_copy = false,
+      absl::optional<xla::Layout> layout = {});
 
   // Initiates a copy of the buffer to the host. Does not block waiting for
   // the transfer to complete. The value can be retrieved by a later call to
-  // ToLiteral().
-  Status CopyToHostAsync();
+  // ToLiteral(). If a layout is passed then a cached copy with this layout will
+  // be created.
+  Status CopyToHostAsync(absl::optional<xla::Layout> layout = {});
 
   // Drops the buffer's reference to its associated device memory, leaving the
   // buffer in an invalid state. The memory will be freed lazily when all async
@@ -596,6 +602,14 @@ class PjRtBuffer {
   // successfully donated to an execution.
   void ConfirmDonation(TrackedDeviceBuffer* device_buffer);
 
+  // Initiates a copy of the buffer to the host. Does not block waiting for
+  // the transfer to complete. A host value is returned and if
+  // `discard_cached_copy` is false stored in an internal buffer so that future
+  // transfers don't have to transfer the data from host again. If a layout is
+  // passed then a literal of this layout will be returned and possibly cached.
+  StatusOr<std::shared_ptr<HostValue>> CopyToHostAsyncInternal(
+      bool discard_cached_copy, absl::optional<xla::Layout> layout);
+
   // Drops a hold without taking any other action. Does a sanity check that
   // buffer==device_buffer_ or device_buffer_==nullptr.
   void DropHold(ScopedHold::Type type, TrackedDeviceBuffer* buffer);
@@ -614,6 +628,8 @@ class PjRtBuffer {
 
   mutable absl::Mutex mu_;
   std::shared_ptr<TrackedDeviceBuffer> device_buffer_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<xla::Layout, std::shared_ptr<HostValue>> host_values_
+      TF_GUARDED_BY(mu_);
   std::shared_ptr<HostValue> host_value_ TF_GUARDED_BY(mu_);
   // Count of holds on the buffer.
   std::array<int, ScopedHold::Type::kMaxValue> holds_ TF_GUARDED_BY(mu_);
