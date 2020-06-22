@@ -11448,6 +11448,11 @@ func AssertNextDataset(scope *Scope, input_dataset tf.Output, transformations tf
 }
 
 // Return the index of device the op runs.
+//
+// Given a list of device names, this operation returns the index of the device
+// this op runs. The length of the list is returned in two cases:
+// (1) Device does not exist in the given device list.
+// (2) It is in XLA compilation.
 func DeviceIndex(scope *Scope, device_names []string) (index tf.Output) {
 	if scope.Err() != nil {
 		return
