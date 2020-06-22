@@ -1,5 +1,7 @@
 # TensorFlow Security Advisories
 
+[![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/tensorflow.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:tensorflow)
+
 We regularly publish security advisories about using TensorFlow.
 
 *Note*: In conjunction with these security advisories, we strongly encourage

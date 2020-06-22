@@ -301,7 +301,7 @@ successfully run.
 TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
 ```
 
-### 12. Obtain the output
+### 13. Obtain the output
 
 The model's output tensor can be obtained by calling `output(0)` on the
 `tflite::MicroInterpreter`, where `0` represents the first (and only) output
@@ -328,7 +328,7 @@ float value = output->data.f[0];
 TF_LITE_MICRO_EXPECT_NEAR(0., value, 0.05);
 ```
 
-### 13. Run inference again
+### 14. Run inference again
 
 The remainder of the code runs inference several more times. In each instance,
 we assign a value to the input tensor, invoke the interpreter, and read the
@@ -351,7 +351,7 @@ value = output->data.f[0];
 TF_LITE_MICRO_EXPECT_NEAR(-0.959, value, 0.05);
 ```
 
-### 14. Read the application code
+### 15. Read the application code
 
 Once you have walked through this unit test, you should be able to understand
 the example's application code, located in

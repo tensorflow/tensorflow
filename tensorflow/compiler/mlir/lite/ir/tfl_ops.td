@@ -127,7 +127,7 @@ class TFL_OperandsHaveSameShapesOrBroadcastableShape<
     list<int> indices, int max_bcast_rank> :
   TFL_RuntimePredOpTrait<"operands do not have the same shape or "
       "broadcastable shapes within the rank " # max_bcast_rank,
-    CPred<"TFL::IsOperandsHaveSameShapesOrBroadcastableShape("
+    CPred<"TFL::VerifyOperandsHaveSameShapesOrBroadcastableShape("
             "$_op, llvm::ArrayRef<unsigned>({" # StrJoinInt<indices>.result #
             "}), " # max_bcast_rank # ")">>;
 
@@ -436,7 +436,7 @@ class TFL_Op<string mnemonic, list<OpTrait> traits = []> :
 class TFL_ConvOp<string mnemonic, string opSummary, int index> :
     TFL_Op<mnemonic, [NoSideEffect, AccumulatorUniformScale<2, 0, 1>,
     TFL_ChannelDimIndexInterface, AffineOpCoefficient<index, 1>,
-    TFL_GpuTargetOp]> {
+    TFL_GpuTargetOp, TFL_SparseOp]> {
   let summary = opSummary # " operator";
 
   let description = [{
@@ -491,7 +491,8 @@ an output element, this operation computes \\(y = |x|\\).
 }
 
 def TFL_AddOp : TFL_Op<"add", [
-    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 5>,
+    TFL_RuntimePredOpTrait<"Operands do not have valid shapes",
+      CPred<"TFL::VerifyAddOpShapeConstraints(llvm::cast<AddOp>($_op))">>,
     ResultsBroadcastableShape,
     NoSideEffect,
     Commutative,
@@ -570,7 +571,8 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
     TFL_OperandHasRank<2, 4>,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 2>>,
-    TFL_GpuTargetOp]> {
+    TFL_GpuTargetOp,
+    TFL_SparseOp]> {
   let summary = "Transpose convolution operator";
 
   let description = [{
@@ -592,6 +594,13 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
   let hasOptions = 1;
 
   let verifier = [{ return Verify(*this); }];
+
+  let extraClassDeclaration = [{
+    // SparseOpInterface:
+    std::vector<int> GetSparseOperands() { return {1}; }
+    std::vector<std::vector<int>> GetFloatBlockSize() { return {}; }
+    std::vector<std::vector<int>> GetQuantizedBlockSize() { return {}; }
+  }];
 }
 
 def TFL_AveragePool2DOp:
@@ -825,6 +834,10 @@ def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0> {
   let extraClassDeclaration = [{
     // ChannelDimIndexInterface:
     int GetChannelDimIndex() { return 0; }
+    // SparseOpInterface:
+    std::vector<int> GetSparseOperands() { return {1}; }
+    std::vector<std::vector<int>> GetFloatBlockSize() { return {}; }
+    std::vector<std::vector<int>> GetQuantizedBlockSize() { return {}; }
   }];
 }
 
@@ -865,6 +878,10 @@ def TFL_DepthwiseConv2DOp :
   let extraClassDeclaration = [{
     // ChannelDimIndexInterface:
     int GetChannelDimIndex() { return 3; }
+    // SparseOpInterface:
+    std::vector<int> GetSparseOperands() { return {1}; }
+    std::vector<std::vector<int>> GetFloatBlockSize() { return {}; }
+    std::vector<std::vector<int>> GetQuantizedBlockSize() { return {}; }
   }];
 }
 
@@ -936,14 +953,14 @@ in the batch dimensions and broadcasting.
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32]>:$x,
-    TFL_TensorOf<[F32]>:$y,
+    TFL_TensorOf<[F32, QI8]>:$x,
+    TFL_TensorOf<[F32, QI8]>:$y,
     DefaultValuedAttr<BoolAttr, "false">:$adj_x,
     DefaultValuedAttr<BoolAttr, "false">:$adj_y
   );
 
    let results = (outs
-    TFL_TensorOf<[F32]>:$output
+    TFL_TensorOf<[F32, QI8]>:$output
   );
 
   let hasOptions = 1;
@@ -2171,7 +2188,8 @@ def TFL_MulOp : TFL_Op<"mul", [
     NoSideEffect,
     Commutative,
     BinaryOpSameElementTypeConstraint,
-    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 5>,
+    TFL_RuntimePredOpTrait<"Operands do not have valid shapes",
+      CPred<"TFL::VerifyMulOpShapeConstraints(llvm::cast<MulOp>($_op))">>,
     TFL_GpuTargetOp]> {
   let summary = "Multiplication operator";
 
@@ -2832,7 +2850,8 @@ def TFL_SquareOp: TFL_Op<"square", [
 def TFL_SubOp : TFL_Op<"sub", [
     ResultsBroadcastableShape,
     BinaryOpSameElementTypeConstraint,
-    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 5>,
+    TFL_RuntimePredOpTrait<"Operands do not have valid shapes",
+      CPred<"TFL::VerifySubOpShapeConstraints(llvm::cast<SubOp>($_op))">>,
     NoSideEffect]> {
   let summary = "Subtraction operator";
 

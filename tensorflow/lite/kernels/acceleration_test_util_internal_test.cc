@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/acceleration_test_util_internal.h"
 
+#include <functional>
 #include <optional>
+#include <string>
 #include <unordered_map>
 
 #include <gmock/gmock.h>

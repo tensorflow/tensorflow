@@ -61,6 +61,10 @@ GlobalTensorOp LookupBoundInput(FuncOp func, int arg_index,
 // should have.
 Type GetBoundInputArgTypeFor(GlobalTensorOp global_tensor);
 
+// Returns the session initializer of this module if it exists. Returns null
+// otherwise.
+SessionInitializerOp GetSessionInitializerOp(mlir::ModuleOp op);
+
 }  // namespace tf_saved_model
 }  // namespace mlir
 

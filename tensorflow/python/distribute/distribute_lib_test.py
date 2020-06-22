@@ -89,7 +89,8 @@ class _TestExtended(distribute_lib.StrategyExtendedV1):
                                            [distribute_lib.InputContext()],
                                            self._container_strategy())
 
-  def _experimental_distribute_datasets_from_function(self, dataset_fn):
+  def _experimental_distribute_datasets_from_function(self, dataset_fn,
+                                                      options):
     return dataset_fn(distribute_lib.InputContext())
 
   def _local_results(self, value):

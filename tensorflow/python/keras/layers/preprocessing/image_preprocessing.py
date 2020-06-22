@@ -36,6 +36,7 @@ from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateful_random_ops
 from tensorflow.python.ops import stateless_random_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.util.tf_export import keras_export
 
 ResizeMethod = image_ops.ResizeMethod
@@ -1292,11 +1293,32 @@ class RandomWidth(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+# TODO(b/147877541, b/158339556): This class is added to temporarily enable
+# creating generators within distribution strategies. Remove it when the proper
+# API is in place.
+class _RandomGenerator(stateful_random_ops.Generator):
+  """A subclass that allows creation inside distribution strategies.
+
+  This is a temporary solution to allow creating tf.random.Generator inside
+  distribution strategies. It will be removed when proper API is in place.
+
+  All replicas will have the same RNG state and generate the same random
+  numbers.
+  """
+
+  def _create_variable(self, *args, **kwargs):
+    # This function does the same thing as the base class's namesake, except
+    # that it skips the distribution-strategy check. When we are inside a
+    # distribution-strategy scope, variables.Variable will pick a proper
+    # variable class (e.g. MirroredVariable).
+    return variables.Variable(*args, **kwargs)
+
+
 def make_generator(seed=None):
   if seed:
-    return stateful_random_ops.Generator.from_seed(seed)
+    return _RandomGenerator.from_seed(seed)
   else:
-    return stateful_random_ops.Generator.from_non_deterministic_state()
+    return _RandomGenerator.from_non_deterministic_state()
 
 
 def get_interpolation(interpolation):

@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <limits>
 #include <numeric>
 
 #include "llvm/ADT/ArrayRef.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -54,6 +56,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -879,6 +882,31 @@ static Type GetAccumulationType(Type ty) {
   // Upcast 16 bit sum reductions to 32 bit to reduce the precision loss from
   // repeated floating point additions.
   return (ty.isF16() || ty.isBF16()) ? FloatType::getF32(ty.getContext()) : ty;
+}
+
+//===----------------------------------------------------------------------===//
+// Softplus op utilities.
+//===----------------------------------------------------------------------===//
+
+static DenseElementsAttr GetEpsilonValue(Type ty) {
+  auto element_ty = ty.cast<TensorType>().getElementType();
+  auto scalar_ty = RankedTensorType::get({}, element_ty);
+  if (element_ty.isF16()) {
+    uint16_t raw_epsilon = Eigen::NumTraits<Eigen::half>::epsilon().x;
+    auto value = APFloat(APFloat::IEEEhalf(), APInt(16, raw_epsilon));
+    return DenseElementsAttr::get(scalar_ty, value);
+  } else if (element_ty.isBF16()) {
+    uint16_t raw_epsilon = tensorflow::bfloat16::epsilon().value;
+    auto value = APFloat(APFloat::BFloat(), APInt(16, raw_epsilon));
+    return DenseElementsAttr::get(scalar_ty, value);
+  } else if (element_ty.isF32()) {
+    auto value = APFloat(std::numeric_limits<float>::epsilon());
+    return DenseElementsAttr::get(scalar_ty, value);
+  } else if (element_ty.isF64()) {
+    auto value = APFloat(std::numeric_limits<double>::epsilon());
+    return DenseElementsAttr::get(scalar_ty, value);
+  }
+  llvm_unreachable("unsupported element type for tf.SoftPlus");
 }
 
 //===----------------------------------------------------------------------===//
@@ -4387,45 +4415,6 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
   }
 };
 
-// Converts tf.VariableShape op to a XLA HLO constant representing the variable
-// shape.
-class ConvertVariableShapeOp : public OpRewritePattern<TF::VariableShapeOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(TF::VariableShapeOp op,
-                                PatternRewriter &rewriter) const override {
-    // The input type should be a tensor<!tf.resource<resource-type>>. We need
-    // to get the inner resource type.
-    auto input_type = op.input().getType().cast<TensorType>();
-    auto subtypes =
-        input_type.getElementType().cast<TF::ResourceType>().getSubtypes();
-    // It can be missing; then we cannot convert.
-    if (subtypes.empty()) return failure();
-
-    auto resource_type = subtypes[0].cast<TensorType>();
-    if (!resource_type.hasStaticShape()) return failure();
-
-    auto resource_shape = resource_type.getShape();
-    Attribute const_attr;
-
-    // We need to match the original op result's element type.
-    auto element_type = op.getType().cast<TensorType>().getElementType();
-    unsigned bitwidth = element_type.cast<IntegerType>().getWidth();
-    if (bitwidth == 32) {
-      SmallVector<int32_t, 4> shape(resource_shape.begin(),
-                                    resource_shape.end());
-      const_attr = GetI32ElementsAttr(shape, &rewriter);
-    } else {
-      assert(bitwidth == 64);
-      const_attr = GetI64ElementsAttr(resource_shape, &rewriter);
-    }
-
-    rewriter.replaceOpWithNewOp<xla_hlo::ConstOp>(op, const_attr);
-    return success();
-  }
-};
-
 // Converts an XlaSharding op to a XLA HLO shard op with sharding attributes.
 class ConvertXlaShardingOp : public OpRewritePattern<TF::XlaShardingOp> {
  public:
@@ -4621,45 +4610,19 @@ class ConvertShapeOp : public OpRewritePattern<TF::ShapeOp> {
   LogicalResult matchAndRewrite(TF::ShapeOp op,
                                 PatternRewriter &rewriter) const override {
     Value input = op.input();
-    auto input_ty = input.getType().dyn_cast<RankedTensorType>();
-    // If the shape is static it can be canonicalized.
-    if (!input_ty || input_ty.hasStaticShape()) {
+
+    auto shape_op = rewriter.create<shape::ShapeOfOp>(op.getLoc(), input);
+    auto result_ty = op.getResult().getType().dyn_cast<RankedTensorType>();
+    if (!result_ty) {
       return failure();
     }
 
-    auto result_ty = op.getResult().getType().cast<RankedTensorType>();
-    auto element_ty = result_ty.getElementType();
+    auto index_tensor =
+        RankedTensorType::get(result_ty.getShape(), rewriter.getIndexType());
+    auto extent_tensor = rewriter.create<shape::ToExtentTensorOp>(
+        op.getLoc(), index_tensor, shape_op);
 
-    int64_t rank = input_ty.getRank();
-    auto shape_op = rewriter.create<shape::ShapeOfOp>(op.getLoc(), input);
-
-    auto index_ty = RankedTensorType::get({1}, element_ty);
-    llvm::SmallVector<Value, 4> dim_values;
-    for (int64_t i = 0; i < rank; ++i) {
-      if (!input_ty.isDynamicDim(i)) {
-        auto dim_attr = DenseElementsAttr::get(
-            index_ty,
-            rewriter.getIntegerAttr(element_ty, input_ty.getDimSize(i)));
-        auto index = rewriter.create<xla_hlo::ConstOp>(op.getLoc(), dim_attr);
-        dim_values.push_back(index);
-        continue;
-      }
-
-      auto extent_op = rewriter.create<shape::GetExtentOp>(
-          op.getLoc(), shape_op, rewriter.getI64IntegerAttr(i));
-      auto index_op = rewriter.create<shape::SizeToIndexOp>(
-          op.getLoc(), rewriter.getIndexType(), extent_op);
-      auto int_op =
-          rewriter.create<IndexCastOp>(op.getLoc(), element_ty, index_op);
-      auto from_tensor = rewriter.create<TensorFromElementsOp>(
-          op.getLoc(), int_op.getResult());
-      auto reshape_op =
-          rewriter.create<ReshapeOp>(op.getLoc(), index_ty, from_tensor);
-      dim_values.push_back(reshape_op);
-    }
-
-    rewriter.replaceOpWithNewOp<ConcatenateOp>(op, result_ty, dim_values,
-                                               rewriter.getI64IntegerAttr(0));
+    rewriter.replaceOpWithNewOp<IndexCastOp>(op, result_ty, extent_tensor);
     return success();
   }
 };
@@ -5250,7 +5213,7 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
       ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,
       ConvertUnpackOp, ConvertUnsortedSegmentMaxOp, ConvertUnsortedSegmentMinOp,
       ConvertUnsortedSegmentProdOp, ConvertUnsortedSegmentSumOp,
-      ConvertRandomShuffleOp, ConvertVariableShapeOp, ConvertXlaShardingOp,
+      ConvertRandomShuffleOp, ConvertXlaShardingOp,
       ConvertXlaDynamicUpdateSliceOp>(op->getContext());
 
   // Populate with CHLO->HLO lowerings to account for TF ops legalized to
@@ -5275,8 +5238,8 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
     // Fully qualify ReturnOp here as xla_hlo dialect also defines a ReturnOp.
     target.addLegalOp<ModuleOp, FuncOp, ModuleTerminatorOp, ::mlir::ReturnOp>();
     DenseSet<Operation *> nonlegalized_ops;
-    LogicalResult result = applyPartialConversion(
-        op, target, patterns, /*converter=*/nullptr, &nonlegalized_ops);
+    LogicalResult result =
+        applyPartialConversion(op, target, patterns, &nonlegalized_ops);
     // In order to enforce that the conversion result is fully converted,
     // fail if there are any nonlegalized ops in the set.
     if (failed(result) || !nonlegalized_ops.empty()) {

@@ -1071,7 +1071,7 @@ const char* TensorHandle::BackingDeviceName(Status* status) const {
   }
 }
 
-tensorflow::AbstractTensorHandleInterface* TensorHandle::Copy() {
+tensorflow::ImmediateExecutionTensorHandle* TensorHandle::Copy() {
   Ref();
   return this;
 }

@@ -37,7 +37,7 @@ using ManifestT = absl::flat_hash_map<std::string, std::vector<std::string>>;
 ManifestT ReadManifest() {
   ManifestT manifest;
 
-  absl::string_view path = absl::NullSafeStringView(kDisabledManifestPath);
+  absl::string_view path = absl::NullSafeStringView(*DisabledManifestPath());
   if (path.empty()) {
     return manifest;
   }
@@ -115,7 +115,7 @@ void ManifestCheckingTest::SetUp() {
 
   // Expect a full match vs. one of the platform regexps to disable the test.
   const std::vector<std::string>& disabled_platforms = it->second;
-  auto platform_string = kTestPlatform;
+  auto platform_string = *TestPlatform();
   for (const auto& s : disabled_platforms) {
     if (RE2::FullMatch(/*text=*/platform_string, /*re=*/s)) {
       GTEST_SKIP();

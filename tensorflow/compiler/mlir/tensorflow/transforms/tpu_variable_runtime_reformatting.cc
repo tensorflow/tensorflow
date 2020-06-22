@@ -261,7 +261,6 @@ tf_device::ReplicateOp AddInputsToReplicateOp(
   // placed in logical core 0.
   // TODO(b/148913020): Remove this constraint once model parallelism is
   // supported.
-  assert(devices.size() == 1);
   assert(devices.find(tensorflow::GetDeviceAliasForLogicalCore(0))
              ->getSecond()
              .size() == num_replicas);
@@ -369,9 +368,6 @@ llvm::SmallVector<TF::VarHandleOp, 4> CreateStateVars(
 
   // TODO(b/148913020): Remove this constraint once model parallelism is
   // supported.
-  assert(devices.size() == 1 &&
-         "As model parallelism is not supported yet, tf_device.replicate "
-         "`devices` attribute should have one dictionary element.");
   const auto& device_list =
       devices.find(tensorflow::GetDeviceAliasForLogicalCore(0))->getSecond();
 

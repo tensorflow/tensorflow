@@ -65,7 +65,7 @@ from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import resource_variable_ops
 
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.profiler import traceme
+from tensorflow.python.profiler import trace
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lazy_loader
@@ -86,6 +86,7 @@ ag_ctx = lazy_loader.LazyLoader(
 FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
 BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
 IMPLEMENTS_ATTRIBUTE_NAME = "_implements"
+SHARED_RENDEZVOUS_ATTRIBUTE_NAME = "shared_rendezvous"
 
 
 def _make_input_signature_hashable(elem, variable_map=None):
@@ -737,7 +738,11 @@ class _DelayedRewriteGradientFunctions(object):
     cleaned_doutputs = []
     for doutput, placeholder in zip(doutputs, self._func_graph.outputs):
       if backprop_util.IsTrainable(placeholder):
-        if doutput is not None:
+        if isinstance(doutput, ops.IndexedSlices):
+          # Gradient passed to a backward ConcreteFunction must be tf.Tensor,
+          # so we convert tf.IndexedSlices to tf.Tensor.
+          cleaned_doutputs.append(ops.convert_to_tensor(doutput))
+        elif doutput is not None:
           cleaned_doutputs.append(doutput)
         else:
           cleaned_doutputs.append(default_gradient.zeros_like(placeholder))
@@ -1645,8 +1650,7 @@ class ConcreteFunction(object):
 
   def _call_impl(self, args, kwargs, cancellation_manager=None):
     """See `__call__` for details."""
-    with traceme.TraceMe(self._func_graph.name,
-                         tf_function_call="concrete"):
+    with trace.Trace(self._func_graph.name, tf_function_call="concrete"):
       # Construct the list of input tensors: check if the structured signature
       # applies first; and if not, then use the flat signature.
       if self._function_spec is not None:
@@ -2622,7 +2626,9 @@ def _is_ndarray(value):
       # For legacy reasons we do not automatically promote Numpy strings.
       or isinstance(value, np.str_)
       # NumPy dtypes have __array__ as unbound methods.
-      or isinstance(value, type))
+      or isinstance(value, type)
+      # CompositeTensors should be flattened instead.
+      or isinstance(value, composite_tensor.CompositeTensor))
 
 
 def _convert_numpy_inputs(inputs):
@@ -2977,9 +2983,10 @@ class Function(object):
     if not executing_eagerly:
       # We want to force function retracing for each different
       # XLAControlFlowContext, so add `xla_context_id` to the cache key.
-      tpu_context = _enclosing_xla_context()
-      if tpu_context is not None:
-        xla_context_id = id(tpu_context)
+      xla_context = _enclosing_xla_context()
+      if xla_context is not None and \
+            xla_context.RequiresUniqueFunctionRetracing():
+        xla_context_id = id(xla_context)
 
       with ops.init_scope():
         # The graph, or whether we're executing eagerly, should be a part of the

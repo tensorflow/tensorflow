@@ -334,7 +334,7 @@ def EfficientNet(
   blocks_args = copy.deepcopy(blocks_args)
 
   b = 0
-  blocks = float(sum(args['repeats'] for args in blocks_args))
+  blocks = float(sum(round_repeats(args['repeats']) for args in blocks_args))
   for (i, args) in enumerate(blocks_args):
     assert args['repeats'] > 0
     # Update block input and output filters based on depth multiplier.

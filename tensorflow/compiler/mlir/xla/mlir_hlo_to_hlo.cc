@@ -937,6 +937,11 @@ LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(FusionOp op, OpLoweringContext ctx) {
+  // TODO(whoever): currently not supported.
+  return failure();
+}
+
 }  // namespace
 }  // namespace xla_hlo
 }  // namespace mlir

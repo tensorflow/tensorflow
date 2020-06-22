@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
+#include "tensorflow/compiler/xla/service/dynamic_padder.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gpu/alias_passthrough_params.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
@@ -64,6 +65,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/reduction_degenerate_dim_remover.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_dimension_grouper.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_layout_normalizer.h"
+#include "tensorflow/compiler/xla/service/gpu/reduction_splitter.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
@@ -157,29 +159,31 @@ Status GpuCompiler::OptimizeHloModule(
     // most ops.
     pipeline.AddPass<HloElementTypeConverter>(BF16, F32);
 
+    // If cudnn batchnorms are enabled, rewrite batchnorm HLOs to cudnn calls
+    // where possible.  Not every batchnorm op can be implemented as a call to
+    // cudnn, so decompose any remaining batchnorm ops into a soup of HLOs.
+    if (hlo_module->config().debug_options().xla_gpu_use_cudnn_batchnorm()) {
+      // Since BatchNorm inference is essentially pointwise operations, it is
+      // always advantageous to use kernel fusion rather than cudnn.
+      pipeline.AddPass<BatchNormExpander>(
+          /*rewrite_training_op=*/false,
+          /*rewrite_inference_op=*/true,
+          /*rewrite_grad_op=*/false);
+      pipeline.AddPass<CudnnBatchNormRewriter>();
+    }
+    pipeline.AddPass<BatchNormExpander>(
+        /*rewrite_training_op=*/true,
+        /*rewrite_inference_op=*/true,
+        /*rewrite_grad_op=*/true);
+
+    pipeline.AddPass<DynamicPadder>();
+
     {
       auto& pass =
           pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
       pass.AddInvariantCheckerDebug<HloVerifier>(
           /*layout_sensitive=*/false,
           /*allow_mixed_precision=*/false);
-
-      // If cudnn batchnorms are enabled, rewrite batchnorm HLOs to cudnn calls
-      // where possible.  Not every batchnorm op can be implemented as a call to
-      // cudnn, so decompose any remaining batchnorm ops into a soup of HLOs.
-      if (hlo_module->config().debug_options().xla_gpu_use_cudnn_batchnorm()) {
-        // Since BatchNorm inference is essentially pointwise operations, it is
-        // always advantageous to use kernel fusion rather than cudnn.
-        pass.AddPass<BatchNormExpander>(
-            /*rewrite_training_op=*/false,
-            /*rewrite_inference_op=*/true,
-            /*rewrite_grad_op=*/false);
-        pass.AddPass<CudnnBatchNormRewriter>();
-      }
-      pass.AddPass<BatchNormExpander>(
-          /*rewrite_training_op=*/true,
-          /*rewrite_inference_op=*/true,
-          /*rewrite_grad_op=*/true);
 
       pipeline.AddPass<HloGetDimensionSizeRewriter>();
 
@@ -368,6 +372,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<ReductionDegenerateDimRemover>();
   pipeline.AddPass<ReductionLayoutNormalizer>();
   pipeline.AddPass<ReductionDimensionGrouper>();
+  pipeline.AddPass<HloPassFix<ReductionSplitter>>();
 
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
@@ -499,6 +504,8 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
           /*allocate_buffers_for_constants=*/true,
           /*colorer=*/BufferAssigner::DefaultColorer(),
           /*must_not_live_out=*/{}, GetCanShareBuffer()));
+  VLOG(1) << "Buffer Assignment Stats "
+          << buffer_assignment->GetStats().ToString();
   DumpHloModuleIfEnabled(*module, *buffer_assignment, "after_optimizations");
 
   IrEmitterContext ir_emitter_context(

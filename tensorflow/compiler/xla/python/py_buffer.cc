@@ -25,10 +25,31 @@ namespace py = pybind11;
 
 PyBuffer::PyBuffer(std::shared_ptr<PyClient> client,
                    std::unique_ptr<PjRtBuffer> buffer,
-                   std::unique_ptr<Traceback> traceback)
+                   std::shared_ptr<Traceback> traceback)
     : client_(std::move(client)),
       buffer_(std::move(buffer)),
-      traceback_(std::move(traceback)) {}
+      traceback_(std::move(traceback)) {
+  CHECK(PyGILState_Check());
+  next_ = client_->buffers_;
+  client_->buffers_ = this;
+  prev_ = nullptr;
+  if (next_) {
+    next_->prev_ = this;
+  }
+}
+
+PyBuffer::~PyBuffer() {
+  CHECK(PyGILState_Check());
+  if (client_->buffers_ == this) {
+    client_->buffers_ = next_;
+  }
+  if (prev_) {
+    prev_->next_ = next_;
+  }
+  if (next_) {
+    next_->prev_ = prev_;
+  }
+}
 
 ClientAndPtr<Device> PyBuffer::device() const {
   return WrapWithClient(client_, buffer_->device());
@@ -38,10 +59,12 @@ StatusOr<std::unique_ptr<PyBuffer>> PyBuffer::CopyToDevice(
     const ClientAndPtr<Device>& dst_device) const {
   CHECK(dst_device.get() != nullptr);
   GlobalPyRefManager()->CollectGarbage();
+  std::unique_ptr<PjRtBuffer> out;
+  {
+    py::gil_scoped_release gil_release;
+    TF_ASSIGN_OR_RETURN(out, buffer_->CopyToDevice(dst_device.get()));
+  }
   auto traceback = Traceback::Get();
-  py::gil_scoped_release gil_release;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> out,
-                      buffer_->CopyToDevice(dst_device.get()));
   return std::make_unique<PyBuffer>(dst_device.client, std::move(out),
                                     std::move(traceback));
 }

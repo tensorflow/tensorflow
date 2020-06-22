@@ -160,6 +160,8 @@ bool IsScalarInputSupported(int builtin_code) {
     case kTfLiteBuiltinLess:
     case kTfLiteBuiltinLessEqual:
     case kTfLiteBuiltinPow:
+    case kTfLiteBuiltinMaximum:
+    case kTfLiteBuiltinMinimum:
       return true;
     default:
       return false;
@@ -1180,7 +1182,8 @@ class NNAPIOpBuilder {
           "setting new operand per channel quantization params", nnapi_errno_);
     }
     if (tensor->allocation_type == kTfLiteMmapRo) {
-      if (IsQuantized(tensor_type) && need_int8_conversion) {
+      if (IsQuantized(tensor_type) && need_int8_conversion &&
+          nn_type != ANEURALNETWORKS_TENSOR_QUANT8_SYMM_PER_CHANNEL) {
         // We need to to add a tensor and convert the weights into uint8.
         // Currently this is only needed for fully_connected. The new_tensor is
         // needed for lifetime management for the converted weights.

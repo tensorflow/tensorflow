@@ -544,6 +544,7 @@ class Functional(training_lib.Model):
       t_rank = t_shape.rank
       ref_shape = ref_input.shape
       ref_rank = ref_shape.rank
+      keras_history = getattr(tensor, '_keras_history', None)
       if t_rank is not None and ref_rank is not None:
         # Should squeeze last dimension.
         # True if tensor is (BATCH, ..., 1) and reference is (BATCH, ...).
@@ -553,6 +554,8 @@ class Functional(training_lib.Model):
         # True if tensor is (BATCH, ...) and reference is (BATCH, ..., 1).
         elif (t_rank == ref_rank - 1 and ref_shape[-1] == 1):
           tensor = array_ops.expand_dims_v2(tensor, axis=-1)
+      if keras_history is not None:  # Restore keras history.
+        tensor._keras_history = keras_history
 
       # Add shape hints to Tensors that may have None shape dims but have shapes
       # defined by the `keras.Input` (not applicable in eager mode).
@@ -1004,10 +1007,12 @@ def _map_subgraph_network(inputs, outputs):
 
 def _should_skip_first_node(layer):
   """Returns True if the first layer node should not be saved or loaded."""
-  # Networks start with a pre-existing node linking their input to output.
-  # For a sequential model, it is first created with _is_graph_network = False,
-  # we have to keep the _is_graph_network check here.
-  return isinstance(layer, Functional) and layer._is_graph_network
+  # Networks that are constructed with an Input layer/shape start with a
+  # pre-existing node linking their input to output. This node is excluded from
+  # the network config.
+  return (isinstance(layer, Functional) and
+          # Filter out Sequential models without an input shape.
+          isinstance(layer._layers[0], input_layer_module.InputLayer))
 
 
 def _deserialize_keras_tensors(kwargs, layer_map):

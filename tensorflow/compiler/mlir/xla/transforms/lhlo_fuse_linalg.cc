@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
@@ -52,10 +53,17 @@ class LhloFuseLinalg : public PassWrapper<LhloFuseLinalg, FunctionPass> {
     // The fusion in Linalg is currently possible only when the consumer op is
     // tiled. In order to greedily fuse the ops, we have to start from the tiled
     // root linalg ops, i.e. linalg ops that write to output buffers of the
-    // function.
-    llvm::SmallDenseSet<Value> func_args;
+    // function or are returned in case of escaping allocations.
+    llvm::SmallDenseSet<Value> result_buffers;
     for (auto func_arg : func.getArguments()) {
-      func_args.insert(func_arg);
+      result_buffers.insert(func_arg);
+    }
+    for (auto& block : func.getBlocks()) {
+      auto returnOp = mlir::dyn_cast<mlir::ReturnOp>(block.getTerminator());
+      if (!returnOp) continue;
+      for (auto operand : returnOp.getOperands()) {
+        result_buffers.insert(operand);
+      }
     }
     MLIRContext* ctx = func.getContext();
     OpBuilder b(func);
@@ -68,7 +76,7 @@ class LhloFuseLinalg : public PassWrapper<LhloFuseLinalg, FunctionPass> {
       }
       auto op = cast<LinalgOp>(generic_op.getOperation());
       for (const Value result : op.getOutputBuffers()) {
-        if (!func_args.count(result)) continue;
+        if (!result_buffers.count(result)) continue;
         if (tileGenericOp(op, tile_sizes, &b)) {
           generic_op.erase();
           return;

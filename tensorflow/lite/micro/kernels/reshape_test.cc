@@ -116,18 +116,18 @@ void TestReshape(std::initializer_list<int> input_dims_data,
                  bool expect_failure = false) {
   TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
-  TfLiteTensor input_tensor = CreateTensor<T, tensor_input_type>(
-      input_data, input_dims, "input_tensor");
+  TfLiteTensor input_tensor =
+      CreateTensor<T, tensor_input_type>(input_data, input_dims);
   T* output_data = reinterpret_cast<T*>(output_data_raw);
-  TfLiteTensor output_tensor = CreateTensor<T, tensor_input_type>(
-      output_data, output_dims, "input_tensor");
+  TfLiteTensor output_tensor =
+      CreateTensor<T, tensor_input_type>(output_data, output_dims);
   // Reshape param is passed as op's param.
   TestReshapeImpl<T>(&input_tensor, nullptr, &output_tensor, expected_output,
                      expected_dims, expect_failure);
   // Reshape param is passed as a tensor.
   TfLiteIntArray* shape_dims = IntArrayFromInitializer(shape_dims_data);
-  auto shape_tensor = CreateTensor<int32_t, kTfLiteInt32>(
-      shape_data, shape_dims, "shape_tensor");
+  auto shape_tensor =
+      CreateTensor<int32_t, kTfLiteInt32>(shape_data, shape_dims);
   TestReshapeImpl<T>(&input_tensor, &shape_tensor, &output_tensor,
                      expected_output, expected_dims, expect_failure);
 }
@@ -194,12 +194,11 @@ TF_LITE_MICRO_TEST(InvalidShape) {
   using tflite::testing::IntArrayFromInts;
   TfLiteIntArray* input_dims = IntArrayFromInitializer({3, 1, 2, 2});
   auto input_data = {3.0f};
-  auto input_tensor = CreateFloatTensor(input_data, input_dims, "input_tensor");
+  auto input_tensor = CreateFloatTensor(input_data, input_dims);
   float output_data[4];
   int output_dims_data[6] = {2, 2, 1, 2, 2, 1};
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
-  auto output_tensor =
-      CreateFloatTensor(output_data, output_dims, "input_tensor");
+  auto output_tensor = CreateFloatTensor(output_data, output_dims);
   tflite::testing::TestReshapeImpl<float>(&input_tensor,   // input_tensor
                                           nullptr,         // shape_tensor
                                           &output_tensor,  // output_tensor
@@ -258,15 +257,14 @@ TF_LITE_MICRO_TEST(LegacyScalarOutput) {
   using tflite::testing::IntArrayFromInts;
   TfLiteIntArray* input_dims = IntArrayFromInitializer({1, 1});
   auto input_data = {3.0f};
-  auto input_tensor = CreateFloatTensor(input_data, input_dims, "input_tensor");
+  auto input_tensor = CreateFloatTensor(input_data, input_dims);
   float output_data[1];
   int output_dims_data[2] = {1, 0};
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
-  auto output_tensor =
-      CreateFloatTensor(output_data, output_dims, "input_tensor");
+  auto output_tensor = CreateFloatTensor(output_data, output_dims);
   TfLiteIntArray* shape_dims = tflite::testing::IntArrayFromInitializer({1, 0});
-  auto shape_tensor = tflite::testing::CreateTensor<int32_t, kTfLiteInt32>(
-      {0}, shape_dims, "shape_tensor");
+  auto shape_tensor =
+      tflite::testing::CreateTensor<int32_t, kTfLiteInt32>({0}, shape_dims);
   tflite::testing::TestReshapeImpl<float>(&input_tensor,   // input_tensor
                                           &shape_tensor,   // shape_tensor
                                           &output_tensor,  // output_tensor

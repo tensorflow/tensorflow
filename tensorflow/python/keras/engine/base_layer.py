@@ -40,7 +40,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import function
 from tensorflow.python.eager import monitoring
-from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -286,16 +285,34 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       module.Module._TF_MODULE_IGNORED_PROPERTIES
   ))
 
+  # When loading from a SavedModel, Layers typically can be revived into a
+  # generic Layer wrapper. Sometimes, however, layers may implement methods
+  # that go beyond this wrapper, as in the case of PreprocessingLayers'
+  # `adapt` method. When this is the case, layer implementers can override
+  # must_restore_from_config to return True; layers with this property must
+  # be restored into their actual objects (and will fail if the object is
+  # not available to the restoration code).
+  _must_restore_from_config = False
+
   @trackable.no_automatic_dependency_tracking
-  def __init__(self, trainable=True, name=None, dtype=None, dynamic=False,
+  def __init__(self,
+               trainable=True,
+               name=None,
+               dtype=None,
+               dynamic=False,
                **kwargs):
     # These properties should be set by the user via keyword arguments.
     # note that 'dtype', 'input_shape' and 'batch_input_shape'
     # are only applicable to input layers: do not pass these keywords
     # to non-input layers.
     allowed_kwargs = {
-        'input_dim', 'input_shape', 'batch_input_shape', 'batch_size',
-        'weights', 'activity_regularizer', 'autocast'
+        'input_dim',
+        'input_shape',
+        'batch_input_shape',
+        'batch_size',
+        'weights',
+        'activity_regularizer',
+        'autocast',
     }
     # Validate optional keyword arguments.
     generic_utils.validate_kwargs(kwargs, allowed_kwargs)
@@ -637,7 +654,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         Python dictionary.
     """
     all_args = tf_inspect.getfullargspec(self.__init__).args
-    config = {'name': self.name, 'trainable': self.trainable}
+    config = {
+        'name': self.name,
+        'trainable': self.trainable,
+    }
     if hasattr(self, '_batch_input_shape'):
       config['batch_input_shape'] = self._batch_input_shape
     config['dtype'] = policy.serialize(self._dtype_policy)
@@ -1084,17 +1104,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
           try:
             with ops.enable_auto_cast_variables(self._compute_dtype_object):
-              # Add auto_control_deps in V2 when they are not already added by
-              # a `tf.function`.
-              if (ops.executing_eagerly_outside_functions() and
-                  not base_layer_utils.is_in_eager_or_tf_function()):
-                with auto_control_deps.AutomaticControlDependencies() as acd:
-                  outputs = call_fn(cast_inputs, *args, **kwargs)
-                  # Wrap Tensors in `outputs` in `tf.identity` to avoid
-                  # circular dependencies.
-                  outputs = base_layer_utils.mark_as_return(outputs, acd)
-              else:
-                outputs = call_fn(cast_inputs, *args, **kwargs)
+              outputs = call_fn(cast_inputs, *args, **kwargs)
 
           except errors.OperatorNotAllowedInGraphError as e:
             raise TypeError('You are attempting to use Python control '
@@ -1327,10 +1337,13 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     return self.trainable_weights + self.non_trainable_weights
 
   @property
-  @doc_controls.do_not_doc_inheritable
+  @deprecation.deprecated(
+      date=None,
+      instructions='This property should not be used in TensorFlow 2.0, '
+      'as updates are applied automatically.')
+  @doc_controls.do_not_generate_docs
   def updates(self):
-    if (keras_tensor.keras_tensors_enabled()
-        and ops.executing_eagerly_outside_functions()):
+    if keras_tensor.keras_tensors_enabled():
       return []
 
     collected_updates = []
@@ -1709,54 +1722,15 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       inputs: Deprecated, will be automatically inferred.
     """
     call_context = base_layer_utils.call_context()
-
-    if (ds_context.has_strategy() and
-        ds_context.in_cross_replica_context() and
-        # When saving the model, the distribution strategy context should be
-        # ignored, following the default path for adding updates.
-        not call_context.saving):
-      # Updates don't need to be run in a cross-replica context.
+    # No need to run updates during Functional API construction.
+    if call_context.in_keras_graph:
       return
 
-    updates = generic_utils.to_list(updates)
-
-    # All updates can be run immediately in Eager or in a tf.function.
-    if base_layer_utils.is_in_eager_or_tf_function():
-      if not call_context.frozen:
-        for update in updates:
-          if callable(update):
-            update()
-      return
-
-    def process_update(x):
-      """Standardize update ops.
-
-      Arguments:
-        x: Tensor, op, or callable.
-
-      Returns:
-        An update op.
-      """
-      if callable(x):
-        update = lambda: process_update(x())
-        if not ops.executing_eagerly_outside_functions():
-          # In V1 mode, call the callable right away and process. This is needed
-          # for TPU strategy.
-          return update()
-      elif isinstance(x, ops.Operation):
-        update = x
-      elif hasattr(x, 'op'):
-        update = x.op
-      else:
-        update = ops.convert_to_tensor_v2(x)
-      return update
-
-    updates = [process_update(x) for x in updates]
-    # Non-callable Updates are run automatically inside `call` in V2, so
-    # they do not need to be tracked later.
-    if ops.executing_eagerly_outside_functions() and call_context.in_call:
-      updates = [u for u in updates if callable(u)]
-    self._updates.extend(updates)
+    # Callable updates are disabled by setting `trainable=False`.
+    if not call_context.frozen:
+      for update in nest.flatten(updates):
+        if callable(update):
+          update()
 
   def set_weights(self, weights):
     """Sets the weights of the layer, from Numpy arrays.

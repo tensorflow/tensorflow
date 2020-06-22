@@ -88,7 +88,12 @@ static bool IsOpWhitelisted(Operation* op) {
     TypeID::get<TF::AddNOp>(),
     TypeID::get<TF::AddV2Op>(),
     TypeID::get<TF::AngleOp>(),
+    TypeID::get<TF::AdjustContrastv2Op>(),
+    TypeID::get<TF::AdjustHueOp>(),
+    TypeID::get<TF::AdjustSaturationOp>(),
     TypeID::get<TF::ApproximateEqualOp>(),
+    TypeID::get<TF::ArgMaxOp>(),
+    TypeID::get<TF::ArgMinOp>(),
     TypeID::get<TF::AsinhOp>(),
     TypeID::get<TF::AsinOp>(),
     TypeID::get<TF::Atan2Op>(),
@@ -100,6 +105,7 @@ static bool IsOpWhitelisted(Operation* op) {
     TypeID::get<TF::BitwiseAndOp>(),
     TypeID::get<TF::BitwiseOrOp>(),
     TypeID::get<TF::BitwiseXorOp>(),
+    TypeID::get<TF::BucketizeOp>(),
     TypeID::get<TF::CastOp>(),
     TypeID::get<TF::ClipByValueOp>(),
     TypeID::get<TF::ComplexAbsOp>(),
@@ -116,13 +122,25 @@ static bool IsOpWhitelisted(Operation* op) {
     TypeID::get<TF::ErfcOp>(),
     TypeID::get<TF::ErfOp>(),
     TypeID::get<TF::Expm1Op>(),
+    TypeID::get<TF::FFT2DOp>(),
+    TypeID::get<TF::FFT3DOp>(),
+    TypeID::get<TF::FFTOp>(),
     TypeID::get<TF::FloorDivOp>(),
     TypeID::get<TF::FloorModOp>(),
     TypeID::get<TF::GatherNdOp>(),
     TypeID::get<TF::GreaterEqualOp>(),
     TypeID::get<TF::GreaterOp>(),
+    TypeID::get<TF::HSVToRGBOp>(),
+    TypeID::get<TF::IFFT2DOp>(),
+    TypeID::get<TF::IFFT3DOp>(),
+    TypeID::get<TF::IFFTOp>(),
+    TypeID::get<TF::IRFFT2DOp>(),
+    TypeID::get<TF::IRFFT3DOp>(),
+    TypeID::get<TF::IRFFTOp>(),
     TypeID::get<TF::InvertOp>(),
     TypeID::get<TF::InvOp>(),
+    TypeID::get<TF::LRNOp>(),
+    TypeID::get<TF::LRNGradOp>(),
     TypeID::get<TF::LeakyReluGradOp>(),
     TypeID::get<TF::LeakyReluOp>(),
     TypeID::get<TF::LeftShiftOp>(),
@@ -134,16 +152,24 @@ static bool IsOpWhitelisted(Operation* op) {
     TypeID::get<TF::LogicalOrOp>(),
     TypeID::get<TF::LogOp>(),
     TypeID::get<TF::MatMulOp>(),
+    TypeID::get<TF::MirrorPadOp>(),
     TypeID::get<TF::MulOp>(),
     TypeID::get<TF::NegOp>(),
     TypeID::get<TF::NotEqualOp>(),
     TypeID::get<TF::PadOp>(),
     TypeID::get<TF::PlaceholderWithDefaultOp>(),
     TypeID::get<TF::PowOp>(),
+    TypeID::get<TF::RFFT2DOp>(),
+    TypeID::get<TF::RFFT3DOp>(),
+    TypeID::get<TF::RGBToHSVOp>(),
     TypeID::get<TF::RealDivOp>(),
     TypeID::get<TF::ReciprocalOp>(),
     TypeID::get<TF::ReciprocalGradOp>(),
     TypeID::get<TF::Relu6GradOp>(),
+    TypeID::get<TF::ResizeBilinearOp>(),
+    TypeID::get<TF::ResizeBilinearGradOp>(),
+    TypeID::get<TF::ResizeNearestNeighborOp>(),
+    TypeID::get<TF::ReverseSequenceOp>(),
     TypeID::get<TF::RightShiftOp>(),
     TypeID::get<TF::RintOp>(),
     TypeID::get<TF::RoundOp>(),
@@ -156,6 +182,7 @@ static bool IsOpWhitelisted(Operation* op) {
     TypeID::get<TF::SoftplusGradOp>(),
     TypeID::get<TF::SoftsignGradOp>(),
     TypeID::get<TF::SoftsignOp>(),
+    TypeID::get<TF::SparseToDenseOp>(),
     TypeID::get<TF::SqrtGradOp>(),
     TypeID::get<TF::SquareOp>(),
     TypeID::get<TF::SubOp>(),
@@ -318,9 +345,9 @@ LogicalResult FuncLegalizer::LegalizeOp(Operation* op) {
 
   // Only static shaped operands are supported in XLA builders for now.
   for (Type ty : op->getOperandTypes()) {
-    auto ranked_ty = ty.cast<ShapedType>();
-    if (!ranked_ty.hasStaticShape()) {
-      op->emitRemark() << "lowering requires static shaped operands";
+    auto ranked_ty = ty.dyn_cast<ShapedType>();
+    if (!ranked_ty || !ranked_ty.hasStaticShape()) {
+      op->emitRemark() << "lowering requires static shaped tensor operands";
       return success();
     }
   }

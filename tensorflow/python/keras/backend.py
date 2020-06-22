@@ -423,6 +423,30 @@ def set_learning_phase(value):
   Raises:
       ValueError: if `value` is neither `0` nor `1`.
   """
+  deprecated_internal_set_learning_phase(value)
+
+
+def deprecated_internal_set_learning_phase(value):
+  """A deprecated internal implementation of set_learning_phase.
+
+  This method is an internal-only version of `set_learning_phase` that
+  does not raise a deprecation error. It is required because
+  saved_model needs to keep working with user code that uses the deprecated
+  learning phase methods until those apis are fully removed from the public api.
+
+  Specifically SavedModel saving needs to make sure the learning phase is 0
+  during tracing even if users overwrote it to a different value.
+
+  But, we don't want to raise deprecation warnings for users when savedmodel
+  sets learning phase just for compatibility with code that relied on
+  explicitly setting the learning phase for other values.
+
+  Arguments:
+      value: Learning phase value, either 0 or 1 (integers). 0 = test, 1 = train
+
+  Raises:
+      ValueError: if `value` is neither `0` nor `1`.
+  """
   global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
   if value not in {0, 1}:
     raise ValueError('Expected learning phase to be 0 or 1.')
@@ -435,6 +459,9 @@ def set_learning_phase(value):
     _GRAPH_LEARNING_PHASES[get_graph()] = value
 
 
+@deprecated('2020-10-11',
+            'Simply pass a True/False value to the `training` argument '
+            'of the `__call__` method of your layer or model.')
 @keras_export('keras.backend.learning_phase_scope')
 @tf_contextlib.contextmanager
 def learning_phase_scope(value):
@@ -445,6 +472,35 @@ def learning_phase_scope(value):
   Arguments:
      value: Learning phase value, either 0 or 1 (integers).
             0 = test, 1 = train
+
+  Yields:
+    None.
+
+  Raises:
+     ValueError: if `value` is neither `0` nor `1`.
+  """
+  with deprecated_internal_learning_phase_scope(value):
+    try:
+      yield
+    finally:
+      pass
+
+
+@tf_contextlib.contextmanager
+def deprecated_internal_learning_phase_scope(value):
+  """An internal-only version of `learning_phase_scope`.
+
+  Unlike the public method, this method does not raise a deprecation warning.
+  This is needed because saved model saving needs to set learning phase
+  to maintain compatibility
+  with code that sets/gets the learning phase, but saved model
+  saving itself shouldn't raise a deprecation warning.
+
+  We can get rid of this method and its usages when the public api is
+  removed.
+
+  Arguments:
+     value: Learning phase value, either 0 or 1 (integers). 0 = test, 1 = train
 
   Yields:
     None.
@@ -464,7 +520,7 @@ def learning_phase_scope(value):
 
   learning_phase_previously_set = _DUMMY_EAGER_GRAPH.learning_phase_is_set
   try:
-    set_learning_phase(value)
+    deprecated_internal_set_learning_phase(value)
     yield
   finally:
     # Restore learning phase to initial value.
@@ -4581,12 +4637,6 @@ def softsign(x):
   return nn.softsign(x)
 
 
-def _backtrack_identity(tensor):
-  while tensor.op.type == 'Identity':
-    tensor = tensor.op.inputs[0]
-  return tensor
-
-
 @keras_export('keras.backend.categorical_crossentropy')
 @dispatch.add_dispatch_support
 def categorical_crossentropy(target, output, from_logits=False, axis=-1):
@@ -4639,17 +4689,16 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
     return nn.softmax_cross_entropy_with_logits_v2(
         labels=target, logits=output, axis=axis)
 
-  if not isinstance(output, (ops.EagerTensor, variables_module.Variable)):
-    output = _backtrack_identity(output)
-    if output.op.type == 'Softmax':
-      # When softmax activation function is used for output operation, we
-      # use logits from the softmax function directly to compute loss in order
-      # to prevent collapsing zero when training.
-      # See b/117284466
-      assert len(output.op.inputs) == 1
-      output = output.op.inputs[0]
-      return nn.softmax_cross_entropy_with_logits_v2(
-          labels=target, logits=output, axis=axis)
+  if (not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
+      output.op.type == 'Softmax'):
+    # When softmax activation function is used for output operation, we
+    # use logits from the softmax function directly to compute loss in order
+    # to prevent collapsing zero when training.
+    # See b/117284466
+    assert len(output.op.inputs) == 1
+    output = output.op.inputs[0]
+    return nn.softmax_cross_entropy_with_logits_v2(
+        labels=target, logits=output, axis=axis)
 
   # scale preds so that the class probas of each sample sum to 1
   output = output / math_ops.reduce_sum(output, axis, True)
@@ -4684,17 +4733,16 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
   target = ops.convert_to_tensor_v2(target)
   output = ops.convert_to_tensor_v2(output)
 
-  if not from_logits and not isinstance(
-      output, (ops.EagerTensor, variables_module.Variable)):
-    output = _backtrack_identity(output)
-    if output.op.type == 'Softmax':
-      # When softmax activation function is used for output operation, we
-      # use logits from the softmax function directly to compute loss in order
-      # to prevent collapsing zero when training.
-      # See b/117284466
-      assert len(output.op.inputs) == 1
-      output = output.op.inputs[0]
-      from_logits = True
+  if (not from_logits and
+      not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
+      output.op.type == 'Softmax'):
+    # When softmax activation function is used for output operation, we
+    # use logits from the softmax function directly to compute loss in order
+    # to prevent collapsing zero when training.
+    # See b/117284466
+    assert len(output.op.inputs) == 1
+    output = output.op.inputs[0]
+    from_logits = True
 
   if not from_logits:
     epsilon_ = _constant_to_tensor(epsilon(), output.dtype.base_dtype)
@@ -4765,15 +4813,14 @@ def binary_crossentropy(target, output, from_logits=False):
   if from_logits:
     return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
 
-  if not isinstance(output, (ops.EagerTensor, variables_module.Variable)):
-    output = _backtrack_identity(output)
-    if output.op.type == 'Sigmoid':
-      # When sigmoid activation function is used for output operation, we
-      # use logits from the sigmoid function directly to compute loss in order
-      # to prevent collapsing zero when training.
-      assert len(output.op.inputs) == 1
-      output = output.op.inputs[0]
-      return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
+  if (not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
+      output.op.type == 'Sigmoid'):
+    # When sigmoid activation function is used for output operation, we
+    # use logits from the sigmoid function directly to compute loss in order
+    # to prevent collapsing zero when training.
+    assert len(output.op.inputs) == 1
+    output = output.op.inputs[0]
+    return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
 
   epsilon_ = _constant_to_tensor(epsilon(), output.dtype.base_dtype)
   output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)

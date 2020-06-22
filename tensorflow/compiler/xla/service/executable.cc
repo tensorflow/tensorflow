@@ -124,6 +124,17 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
   return result;
 }
 
+StatusOr<ExecutionOutput> Executable::ExecuteOnStreamWrapper(
+    const ServiceExecutableRunOptions* run_options,
+    std::vector<ExecutionInput> arguments) {
+  StatusOr<ExecutionOutput> result =
+      ExecuteAsyncOnStreamWrapper(run_options, std::move(arguments));
+  Status block_status = run_options->stream()->BlockHostUntilDone();
+  TF_RETURN_IF_ERROR(result.status());
+  TF_RETURN_IF_ERROR(block_status);
+  return result;
+}
+
 struct ExecuteAsyncOnStreamWrapperState {
   ExecutionProfile* profile;
   std::shared_ptr<se::Timer> timer;
@@ -246,5 +257,17 @@ StatusOr<ExecutionOutput> Executable::ExecuteAsyncOnStreamWrapper(
 }
 
 int64 Executable::SizeOfGeneratedCodeInBytes() const { return -1; }
+
+void Executable::MarkToBeReleasedArguments(absl::Span<ExecutionInput> arguments,
+                                           ExecutionOutput& result) {
+  for (ExecutionInput& argument : arguments) {
+    for (auto& index_buffer : *argument.MutableBuffers()) {
+      if (absl::optional<se::OwningDeviceMemory> maybe_owning_buffer =
+              index_buffer.second.Release()) {
+        result.AddToBeReleased(std::move(*maybe_owning_buffer));
+      }
+    }
+  }
+}
 
 }  // namespace xla

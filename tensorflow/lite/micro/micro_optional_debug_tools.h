@@ -20,6 +20,9 @@ limitations under the License.
 #include "tensorflow/lite/micro/micro_interpreter.h"
 
 namespace tflite {
+// Helper function to print model flatbuffer data. This function is not called
+// by default. Hence it's not linked in to the final binary code.
+void PrintModelData(const Model* model, ErrorReporter* error_reporter);
 // Prints a dump of what tensors and what nodes are in the interpreter.
 void PrintInterpreterState(MicroInterpreter* interpreter);
 }  // namespace tflite
