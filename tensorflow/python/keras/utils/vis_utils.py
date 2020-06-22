@@ -192,10 +192,10 @@ def model_to_dot(model,
     # Rebuild the label as a table including the layer's dtype.
     if show_dtype: 
       def format_dtype(dtype):
-          if dtype is None:
-            return '?'
-          else:
-            return str(dtype)
+        if dtype is None:
+          return '?'
+        else:
+          return str(dtype)
           
       label = '%s|%s' % (label, format_dtype(layer.dtype))
 
