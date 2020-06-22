@@ -67,4 +67,4 @@ const unsigned char network_model[] = {
     0x08, 0x00, 0x07, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x11};
 const unsigned int network_model_len = 576;
 
-#endif
+#endif  // TENSORFLOW_LITE_MICRO_EXAMPLES_NETWORK_TESTER_NETWORK_MODEL_H_
