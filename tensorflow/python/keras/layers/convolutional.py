@@ -2937,7 +2937,7 @@ class ZeroPadding3D(Layer):
           ' (left_dim3_pad, right_dim2_pad)). '
           'Found: ' + str(padding))
     self.input_spec = InputSpec(ndim=5)
-
+  # test
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if self.data_format == 'channels_first':
