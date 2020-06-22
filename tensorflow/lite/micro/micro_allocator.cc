@@ -166,11 +166,12 @@ class AllocationInfoBuilder {
   //  - If there's no metadata available, offline_planner_offsets is not set
   //  - If there's metadata available, offline_planner_offsets will point to the
   //    first offset in the metadata buffer list.
-  TfLiteStatus GetOfflinePlannedOffsets(const Model* model,
-                                        int32_t** offline_planner_offsets);
+  TfLiteStatus GetOfflinePlannedOffsets(
+      const Model* model, const int32_t** offline_planner_offsets);
 
   // Add allocaiton information for the tensors.
-  TfLiteStatus AddTensors(const SubGraph* subgraph, int32_t* offline_offsets,
+  TfLiteStatus AddTensors(const SubGraph* subgraph,
+                          const int32_t* offline_offsets,
                           TfLiteTensor* runtime_tensors);
 
   // Add allocation information for the scratch buffers.
@@ -206,7 +207,7 @@ TfLiteStatus AllocationInfoBuilder::Allocate() {
 }
 
 TfLiteStatus AllocationInfoBuilder::AddTensors(const SubGraph* subgraph,
-                                               int32_t* offline_offsets,
+                                               const int32_t* offline_offsets,
                                                TfLiteTensor* runtime_tensors) {
   // Set up allocation info for all tensors.
   for (size_t i = 0; i < tensor_count_; ++i) {
@@ -299,7 +300,7 @@ TfLiteStatus AllocationInfoBuilder::AddTensors(const SubGraph* subgraph,
 // |    4    | Arena byte offset of tensor #1 or -1 to allocate at runtime     |
 // | 3+(n-1) | Arena byte offset of tensor #(n-1) or -1 to allocate at runtime |
 TfLiteStatus AllocationInfoBuilder::GetOfflinePlannedOffsets(
-    const Model* model, int32_t** offline_planner_offsets) {
+    const Model* model, const int32_t** offline_planner_offsets) {
   if (model->metadata()) {
     for (size_t i = 0; i < model->metadata()->size(); ++i) {
       auto metadata = model->metadata()->Get(i);
@@ -309,9 +310,11 @@ TfLiteStatus AllocationInfoBuilder::GetOfflinePlannedOffsets(
             model->buffers();
         auto* buffer = (*buffers)[metadata->buffer()];
         auto* array = buffer->data();
-        const uint32_t* metadata_buffer = (uint32_t*)array->data();
-        const size_t nbr_tensors = (size_t)metadata_buffer[2];
-        *offline_planner_offsets = (int32_t*)&metadata_buffer[3];
+        const uint32_t* metadata_buffer =
+            reinterpret_cast<const uint32_t*>(array->data());
+        const size_t nbr_tensors = static_cast<size_t>(metadata_buffer[2]);
+        *offline_planner_offsets =
+            reinterpret_cast<const int32_t*>(&metadata_buffer[3]);
 
         if (tensor_count_ != nbr_tensors) {
           TF_LITE_REPORT_ERROR(reporter_,
@@ -893,7 +896,7 @@ TfLiteStatus MicroAllocator::CommitStaticMemoryPlan(const Model* model,
     TF_LITE_ENSURE_STATUS(
         builder.Init(subgraph->tensors()->size(), scratch_buffer_count_));
 
-    int32_t* offline_planner_offsets = nullptr;
+    const int32_t* offline_planner_offsets = nullptr;
     TF_LITE_ENSURE_STATUS(
         builder.GetOfflinePlannedOffsets(model, &offline_planner_offsets));
     TF_LITE_ENSURE_STATUS(builder.AddTensors(subgraph, offline_planner_offsets,
