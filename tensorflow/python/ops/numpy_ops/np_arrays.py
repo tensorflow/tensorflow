@@ -282,7 +282,7 @@ class ndarray(composite_tensor.CompositeTensor):  # pylint: disable=invalid-name
     # TODO(wangpeng): Handle graph mode
     if not isinstance(self.data, ops.EagerTensor):
       raise TypeError('Indexing using symbolic tensor is not allowed')
-    return np.asscalar(self.data.numpy())
+    return self.data.numpy().item()
 
   def tolist(self):
     return self.data.numpy().tolist()
