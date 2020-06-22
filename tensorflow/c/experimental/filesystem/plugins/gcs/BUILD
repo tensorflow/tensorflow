@@ -61,6 +61,7 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
     ] + [
         "//tensorflow/c:tf_status_helper",
-        "@com_google_googletest//:gtest",
+        "//tensorflow/core/platform:stacktrace_handler",
+        "//tensorflow/core/platform:test",
     ],
 )

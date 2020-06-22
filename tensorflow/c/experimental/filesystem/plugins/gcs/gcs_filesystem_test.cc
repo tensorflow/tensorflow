@@ -12,9 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "gtest/gtest.h"
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/core/platform/stacktrace_handler.h"
+#include "tensorflow/core/platform/test.h"
 
 #define ASSERT_TF_OK(x) ASSERT_EQ(TF_OK, TF_GetCode(x))
 
@@ -54,6 +55,7 @@ TEST_F(GCSFilesystemTest, TestInit) { ASSERT_TF_OK(status); }
 }  // namespace tensorflow
 
 GTEST_API_ int main(int argc, char** argv) {
+  tensorflow::testing::InstallStacktraceHandler();
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
