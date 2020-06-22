@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_IMMEDIATE_EXECUTION_CONTEXT_H_
 #define TENSORFLOW_C_EAGER_IMMEDIATE_EXECUTION_CONTEXT_H_
 
+#include <memory>
 #include <vector>
 
 #include "absl/types/optional.h"
@@ -106,6 +107,20 @@ class ImmediateExecutionContext : public AbstractContext {
   ImmediateExecutionContext() : AbstractContext(kKind) {}
   ~ImmediateExecutionContext() override {}
 };
+
+namespace internal {
+struct ImmediateExecutionContextDeleter {
+  void operator()(ImmediateExecutionContext* p) const {
+    if (p != nullptr) {
+      p->Release();
+    }
+  }
+};
+}  // namespace internal
+
+using ImmediateContextPtr =
+    std::unique_ptr<ImmediateExecutionContext,
+                    internal::ImmediateExecutionContextDeleter>;
 
 }  // namespace tensorflow
 

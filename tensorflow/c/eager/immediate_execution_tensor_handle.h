@@ -59,6 +59,20 @@ class ImmediateExecutionTensorHandle : public AbstractTensorHandle {
   ~ImmediateExecutionTensorHandle() override {}
 };
 
+namespace internal {
+struct ImmediateExecutionTensorHandleDeleter {
+  void operator()(ImmediateExecutionTensorHandle* p) const {
+    if (p != nullptr) {
+      p->Release();
+    }
+  }
+};
+}  // namespace internal
+
+using ImmediateTensorHandlePtr =
+    std::unique_ptr<ImmediateExecutionTensorHandle,
+                    internal::ImmediateExecutionTensorHandleDeleter>;
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_C_EAGER_IMMEDIATE_EXECUTION_TENSOR_HANDLE_H_

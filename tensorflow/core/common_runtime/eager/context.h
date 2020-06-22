@@ -722,6 +722,19 @@ inline EagerContext* ContextFromInterface(ImmediateExecutionContext* context) {
   return down_cast<EagerContext*>(context);
 }
 
+namespace internal {
+struct EagerContextDeleter {
+  void operator()(EagerContext* p) const {
+    if (p != nullptr) {
+      p->Release();
+    }
+  }
+};
+}  // namespace internal
+
+using EagerContextPtr =
+    std::unique_ptr<EagerContext, internal::EagerContextDeleter>;
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_CONTEXT_H_

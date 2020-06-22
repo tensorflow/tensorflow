@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_ABSTRACT_CONTEXT_H_
 #define TENSORFLOW_C_EAGER_ABSTRACT_CONTEXT_H_
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/c/eager/abstract_function.h"
@@ -63,6 +64,19 @@ class AbstractContext {
  private:
   const AbstractContextKind kind_;
 };
+
+namespace internal {
+struct AbstractContextDeleter {
+  void operator()(AbstractContext* p) const {
+    if (p != nullptr) {
+      p->Release();
+    }
+  }
+};
+}  // namespace internal
+
+using AbstractContextPtr =
+    std::unique_ptr<AbstractContext, internal::AbstractContextDeleter>;
 
 }  // namespace tensorflow
 

@@ -15,44 +15,6 @@ package(
 )
 
 cc_library(
-    name = "owned_eager_op",
-    hdrs = [
-        "owned_eager_op.h",
-    ],
-    deps = [
-        "//tensorflow/c/eager:immediate_execution_operation",
-    ],
-)
-
-cc_library(
-    name = "owned_tensor_handle",
-    hdrs = [
-        "owned_tensor_handle.h",
-    ],
-    deps = [
-        "//tensorflow/c/eager:immediate_execution_tensor_handle",
-        "//tensorflow/core/common_runtime/eager:tensor_handle",
-    ],
-)
-
-cc_library(
-    name = "owned_eager_context",
-    hdrs = ["owned_eager_context.h"],
-    deps = [
-        "//tensorflow/c/eager:immediate_execution_context",
-        "//tensorflow/core/common_runtime/eager:context",
-    ],
-)
-
-cc_library(
-    name = "owned_tensor",
-    hdrs = ["owned_tensor.h"],
-    deps = [
-        "//tensorflow/c:tensor_interface",
-    ],
-)
-
-cc_library(
     name = "variable_ops",
     srcs = [
         "variable_ops.cc",
@@ -61,10 +23,10 @@ cc_library(
         "variable_ops.h",
     ],
     deps = [
-        ":owned_eager_op",
-        ":owned_tensor_handle",
+        "//tensorflow/c/eager:abstract_operation",
         "//tensorflow/c/eager:abstract_tensor_handle",
         "//tensorflow/c/eager:immediate_execution_context",
+        "//tensorflow/c/eager:immediate_execution_operation",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -79,11 +41,11 @@ tf_cc_test(
         "variable_ops_test.cc",
     ],
     deps = [
-        ":owned_eager_context",
-        ":owned_tensor",
-        ":owned_tensor_handle",
         ":variable_ops",
-        "//tensorflow/core:all_kernels",
+        "//tensorflow/c:tensor_interface",
+        "//tensorflow/c/eager:abstract_tensor_handle",
+        "//tensorflow/c/eager:immediate_execution_context",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

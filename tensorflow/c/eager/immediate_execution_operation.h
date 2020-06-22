@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_IMMEDIATE_EXECUTION_OPERATION_H_
 #define TENSORFLOW_C_EAGER_IMMEDIATE_EXECUTION_OPERATION_H_
 
+#include <memory>
+
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
@@ -47,6 +49,20 @@ class ImmediateExecutionOperation : public AbstractOperation {
   ImmediateExecutionOperation() : AbstractOperation(kKind) {}
   ~ImmediateExecutionOperation() override {}
 };
+
+namespace internal {
+struct ImmediateExecutionOperationDeleter {
+  void operator()(ImmediateExecutionOperation* p) const {
+    if (p != nullptr) {
+      p->Release();
+    }
+  }
+};
+}  // namespace internal
+
+using ImmediateOpPtr =
+    std::unique_ptr<ImmediateExecutionOperation,
+                    internal::ImmediateExecutionOperationDeleter>;
 
 }  // namespace tensorflow
 

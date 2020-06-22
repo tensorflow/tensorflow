@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_ABSTRACT_TENSOR_HANDLE_H_
 #define TENSORFLOW_C_EAGER_ABSTRACT_TENSOR_HANDLE_H_
 
+#include <memory>
+
 namespace tensorflow {
 
 // Abstract interface to a Tensor handle in either tracing or immediate
@@ -39,6 +41,20 @@ class AbstractTensorHandle {
  private:
   const AbstractTensorHandleKind kind_;
 };
+
+namespace internal {
+struct AbstractTensorHandleDeleter {
+  void operator()(AbstractTensorHandle* p) const {
+    if (p != nullptr) {
+      p->Release();
+    }
+  }
+};
+}  // namespace internal
+
+using AbstractTensorHandlePtr =
+    std::unique_ptr<AbstractTensorHandle,
+                    internal::AbstractTensorHandleDeleter>;
 
 }  // namespace tensorflow
 
