@@ -230,10 +230,10 @@ struct HloToLhloReduceOpConverter : public BaseOpConversion<xla_hlo::ReduceOp> {
     auto loc = op.getLoc();
     // TODO(b/137624192) Implement variadic reduce.
     if (op.getNumResults() != 1) return failure();
-    if (op.getParentRegion()->getBlocks().size() != 1) {
-      op.emitOpError() << "tensor to buffer conversion expects a single block "
-                          "in the region containing the operation";
-      return failure();
+    if (!llvm::hasSingleElement(op.body())) {
+      return op.emitOpError()
+             << "tensor to buffer conversion expects a single block "
+                "in the region containing the operation";
     }
     const auto& original_results = op.getResults();
     SmallVector<Value, 4> buffer_args(operands.begin(), operands.end());
