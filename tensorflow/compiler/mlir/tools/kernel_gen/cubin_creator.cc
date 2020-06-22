@@ -135,11 +135,11 @@ Status LowerTfOpToLhloWithDynamicShapes(mlir::ModuleOp module) {
   return Status::OK();
 }
 
-struct PropagateStaticKnowledge
-    : public mlir::PassWrapper<PropagateStaticKnowledge,
+struct PropagateTensorFlowABIKnowledge
+    : public mlir::PassWrapper<PropagateTensorFlowABIKnowledge,
                                mlir::OperationPass<mlir::LLVM::LLVMFuncOp>> {
-  explicit PropagateStaticKnowledge(mlir::FunctionType type,
-                                    llvm::ArrayRef<uint32_t> same_shape_)
+  explicit PropagateTensorFlowABIKnowledge(mlir::FunctionType type,
+                                           llvm::ArrayRef<uint32_t> same_shape_)
       : func_type(type), same_shape(same_shape_) {}
 
   void runOnOperation() override {
@@ -148,6 +148,11 @@ struct PropagateStaticKnowledge
     // we insert constants into the code and replace usages accordingly.
     // We do not change the signature so that we keep a somewhat stable ABI
     // that is easy to undertand by tools.
+    // We also know that tensorflow aligns all allocated pointers by 16, so
+    // we pass this on. Furthermore, we know that arguments never alias. More
+    // precicely, they may only alias (due to reuse) if the kernel does not
+    // read from a position it previously has written to. We express this with
+    // the noalias attribute.
     mlir::LLVM::LLVMFuncOp func = getOperation();
 
     // This only works if the function is local and we can rewrite it.
@@ -172,6 +177,9 @@ struct PropagateStaticKnowledge
         return;
       }
       positions.push_back(arg_pos);
+      // Set alignment and aliasing on the pointers.
+      func.setArgAttr(arg_pos + 1, "llvm.noalias", b.getBoolAttr(true));
+      func.setArgAttr(arg_pos + 1, "llvm.align", b.getIndexAttr(16));
       // Replace the offset with zero. Offset is argument number 3.
       func.getArgument(arg_pos + 2).replaceAllUsesWith(zero);
       // Forward over base_ptr, aligned_ptr, offset, size and stride arguments.
@@ -213,7 +221,7 @@ struct PropagateStaticKnowledge
   llvm::ArrayRef<uint32_t> same_shape;
 };
 
-Status PropagateStaticShapeKnowledgeToKernel(
+Status PropagateTensorFlowABIKnowledgeToKernel(
     mlir::ModuleOp module, llvm::ArrayRef<uint32_t> same_shape) {
   // Grab the original signature from the single function.
   auto func = *module.getBody()->op_begin<mlir::FuncOp>();
@@ -228,7 +236,8 @@ Status PropagateStaticShapeKnowledgeToKernel(
                       /*printAfterOnlyOnChange=*/false, llvm::dbgs());
   auto& kernel_pm = pm.nest<::mlir::gpu::GPUModuleOp>();
   kernel_pm.addNestedPass<mlir::LLVM::LLVMFuncOp>(
-      absl::make_unique<PropagateStaticKnowledge>(func.getType(), same_shape));
+      absl::make_unique<PropagateTensorFlowABIKnowledge>(func.getType(),
+                                                         same_shape));
 
   if (failed(pm.run(module))) {
     return InternalError("Static knowledge propagation failed.");
@@ -263,7 +272,7 @@ StatusOr<std::vector<uint8_t>> tensorflow::kernel_gen::GenerateCubinForTfCode(
   }
   TF_RETURN_IF_ERROR(xla::mlir_gpu::LowerKernelBodiesToNVVM(module.get()));
   TF_RETURN_IF_ERROR(
-      PropagateStaticShapeKnowledgeToKernel(module.get(), same_shape));
+      PropagateTensorFlowABIKnowledgeToKernel(module.get(), same_shape));
 
   mlir::OwningModuleRef kernel_module =
       xla::mlir_gpu::ExtractKernelModule(*module).ValueOrDie();
