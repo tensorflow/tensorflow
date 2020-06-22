@@ -438,7 +438,6 @@ cc_library(
     name = "reference_base",
     srcs = [],
     hdrs = [
-        "reference/activations.h",
         "reference/add.h",
         "reference/arg_min_max.h",
         "reference/batch_matmul.h",

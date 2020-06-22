@@ -451,8 +451,8 @@ void TestTanhFloat(const int input_dims_data[], const float* input_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims, "input_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor"),
+      CreateFloatTensor(input_data, input_dims),
+      CreateFloatTensor(output_data, output_dims),
   };
 
   TfLiteContext context;
@@ -519,9 +519,9 @@ void TestTanhQuantized(const int input_dims_data[], const float* input_data,
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input_data, input_quantized, input_dims,
-                            input_scale, input_zero_point, "input_tensor"),
+                            input_scale, input_zero_point),
       CreateQuantizedTensor(output_quantized, output_dims, output_scale,
-                            output_zero_point, "output_tensor")};
+                            output_zero_point)};
 
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);

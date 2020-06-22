@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/optimized/activations.h"
-#include "tensorflow/lite/kernels/internal/reference/activations.h"
+#include "tensorflow/lite/kernels/internal/reference/tanh.h"
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
