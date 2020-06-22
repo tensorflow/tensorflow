@@ -698,6 +698,7 @@ cc_library(
         "lib/Target/AArch64/*.c",
         "lib/Target/AArch64/*.cpp",
         "lib/Target/AArch64/*.inc",
+        "lib/Target/AArch64/GISel/*.cpp",
     ]),
     hdrs = glob([
         "include/llvm/Target/AArch64/*.h",
