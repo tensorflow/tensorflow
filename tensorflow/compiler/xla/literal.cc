@@ -1225,6 +1225,7 @@ typename std::enable_if<(sizeof(NativeSrcT) != sizeof(NativeDestT)),
                         Literal>::type
 BitcastBetweenNativeTypes(const LiteralBase& src_literal) {
   LOG(FATAL) << "Invalid bitcast between types of different sizes.";
+  return {};
 }
 
 template <PrimitiveType primitive_src_type, PrimitiveType primitive_dest_type>

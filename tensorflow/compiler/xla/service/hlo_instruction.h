@@ -1618,12 +1618,15 @@ class HloInstruction {
   // Returns the dimension sizes or numbers associated with this instruction.
   virtual const std::vector<int64>& dimensions() const {
     LOG(FATAL) << "Unimplemented method.";
+    return {};
   }
   virtual int64 dimensions(int64 index) const {
     LOG(FATAL) << "Unimplemented method.";
+    return {};
   }
   virtual std::vector<int64>* mutable_dimensions() {
     LOG(FATAL) << "Unimplemented method.";
+    return {};
   }
 
   // Delegates to HloConcatenateInstruction::concatenate_dimension.
@@ -1771,6 +1774,7 @@ class HloInstruction {
   // convolution.
   virtual const Window& window() const {
     LOG(FATAL) << "Unimplemented method.";
+    return {};
   }
 
   // Sets the window data in a windowed operation such as convolution.
@@ -1779,7 +1783,10 @@ class HloInstruction {
   }
 
   // Returns the unique_indices field.
-  virtual bool unique_indices() const { LOG(FATAL) << "Unimplemented method."; }
+  virtual bool unique_indices() const {
+    LOG(FATAL) << "Unimplemented method.";
+    return {};
+  }
 
   // Returns data on the dimension numbers used for a convolution operation,
   // which may be a kConvolution instruction or a kCustomCall that implements a
@@ -1937,6 +1944,7 @@ class HloInstruction {
       HloCloneContext* context) const {
     // TODO(b/80131774): This should be pure virtual.
     LOG(FATAL) << "Unimplemented method.";
+    return {};
   }
 
   // Implementation for non-common logic of ExtraAttributesToString.

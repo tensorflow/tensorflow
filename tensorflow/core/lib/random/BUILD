@@ -29,7 +29,6 @@ cc_library(
     name = "philox",
     srcs = [
         "distribution_sampler.cc",
-        "random_distributions.cc",
         "simple_philox.cc",
     ],
     hdrs = [

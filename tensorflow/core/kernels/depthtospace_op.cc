@@ -112,7 +112,7 @@ class DepthToSpaceOp : public OpKernel {
     auto Tinput = input.tensor<T, kDims>();
     auto Toutput = outputs_tensor->tensor<T, kDims>();
 
-    if (std::is_same<Device, GPUDevice>::value) {
+    if constexpr (std::is_same_v<Device, GPUDevice>) {
       if (is_int8x4) {
         // NCHW_VECT_C with 4 x qint8 can be treated as NCHW int32.
         auto Tinput_v = input.template reinterpret_last_dimension<int32, 4>();

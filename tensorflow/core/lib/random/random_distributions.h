@@ -363,6 +363,12 @@ class SingleSampleAdapter {
   int used_result_index_;
 };
 
+template <> PHILOX_DEVICE_INLINE
+void SingleSampleAdapter<PhiloxRandom>::SkipFromGenerator(uint64 num_skips) {
+  // Use the O(1) PhiloxRandom::Skip instead of the default O(N) impl.
+  generator_->Skip(num_skips);
+}
+
 // A class that generates unit normal distribution random numbers from the
 // underlying random integer generator.
 // Arguments:

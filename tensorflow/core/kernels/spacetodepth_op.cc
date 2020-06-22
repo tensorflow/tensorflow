@@ -126,7 +126,7 @@ class SpaceToDepthOp : public OpKernel {
                                        output_width, output_depth),
                        &outputs_tensor));
 
-    if (std::is_same<Device, GPUDevice>::value) {
+    if constexpr (std::is_same_v<Device, GPUDevice>) {
       using RT = typename RawType<T>::type;
       if (data_format_ == FORMAT_NCHW_VECT_C) {
         // NCHW_VECT_C with 4 x qint8 can be treated as NCHW int32.
