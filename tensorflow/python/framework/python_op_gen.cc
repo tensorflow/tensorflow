@@ -449,29 +449,13 @@ std::unordered_map<string, string> GenEagerPythonOp::GetTypeAnnotationMap() {
   for (const auto& arg : op_def_.input_arg()) {
     // Do not add type annotations to args that accept a sequence of Tensors
     if (!arg.number_attr().empty()) continue;
-    if (type_annotations.find(arg.type_attr()) != type_annotations.end()) {
-      // Get the correct TypeVar if input maps to an attr
-      type_annotations[arg.name()] = "_ops.Tensor[" + type_annotations[arg.type_attr()] + "]";
-    } else {
-      // Get the dtype of the Tensor
-      const string py_dtype = python_op_gen_internal::DataTypeToPython(arg.type(), "_dtypes.");
-      if (dtype_type.find(py_dtype) != dtype_type.end()) {
-        type_annotations[arg.name()] = "_ops.Tensor[" + dtype_type[py_dtype] + "]";
-      }
-    }
+    type_annotations[arg.name()] = GetArgAnnotation(arg, type_annotations);
   }
 
   // Mapping output Tensor to its type
   if (op_def_.output_arg_size() == 1) {
     const auto& arg = op_def_.output_arg(0);
-    if (type_annotations.find(arg.type_attr()) != type_annotations.end()) {
-      type_annotations[arg.name()] = "_ops.Tensor[" + type_annotations[arg.type_attr()] + "]";
-    } else {
-      const string py_dtype = python_op_gen_internal::DataTypeToPython(arg.type(), "_dtypes.");
-      if (dtype_type.find(py_dtype) != dtype_type.end()) {
-        type_annotations[arg.name()] = "_ops.Tensor[" + dtype_type[py_dtype] + "]";
-      }
-    }
+    type_annotations[arg.name()] = GetArgAnnotation(arg, type_annotations);
   }
 
   return type_annotations;
@@ -526,8 +510,6 @@ void GenEagerPythonOp::AddReturnTypeAnnotation(std::unordered_map<string, string
     }
   }
 }
-
-
 
 void GenEagerPythonOp::HandleGraphMode(
     const string& function_setup, const std::vector<string>& output_sizes) {
@@ -1260,6 +1242,21 @@ string GetPythonWrappers(const char* op_list_buf, size_t op_list_len) {
 
   ApiDefMap api_def_map(ops);
   return GetPythonOpsImpl(ops, api_def_map, {});
+}
+
+string GetArgAnnotation(const auto& arg, std::unordered_map<string, string>& type_annotations) {
+  if (type_annotations.find(arg.type_attr()) != type_annotations.end()) {
+    // Get the correct TypeVar if arg maps to an attr
+    return "_ops.Tensor[" + type_annotations[arg.type_attr()] + "]";
+  } else {
+    // Get the dtype of the Tensor
+    const string py_dtype = python_op_gen_internal::DataTypeToPython(arg.type(), "_dtypes.");
+    if (dtype_type.find(py_dtype) != dtype_type.end()) {
+      return "_ops.Tensor[" + dtype_type[py_dtype] + "]";
+    }
+  }
+
+  return "Any";
 }
 
 }  // namespace tensorflow

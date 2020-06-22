@@ -49,6 +49,12 @@ void PrintPythonOps(const OpList& ops, const ApiDefMap& api_defs,
 // length of that buffer.
 string GetPythonWrappers(const char* op_list_buf, size_t op_list_len);
 
+// Get the type annotation for an arg
+// `arg` should be an input or output of an op
+// `type_annotations` should contain attr names mapped to TypeVar names
+string GetArgAnnotation(const auto& arg,
+                        std::unordered_map<string, string>& type_annotations);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_PYTHON_FRAMEWORK_PYTHON_OP_GEN_H_
