@@ -420,8 +420,9 @@ class CallbackList(object):
 
     Arguments:
         batch: Integer, index of batch within the current epoch.
-        logs: Dict. Has keys `batch` and `size` representing the current batch
-          number and the size of the batch.
+        logs: Dict, contains the return value of `model.train_step`. Typically,
+          the values of the `Model`'s metrics are returned.  Example:
+          `{'loss': 0.2, 'accuracy': 0.7}`.
     """
     # TODO(b/150629188): Make ProgBarLogger callback not use batch hooks
     # when verbose != 1
@@ -443,8 +444,9 @@ class CallbackList(object):
 
     Arguments:
         batch: Integer, index of batch within the current epoch.
-        logs: Dict. Has keys `batch` and `size` representing the current batch
-          number and the size of the batch.
+        logs: Dict, contains the return value of `model.test_step`. Typically,
+          the values of the `Model`'s metrics are returned.  Example:
+          `{'loss': 0.2, 'accuracy': 0.7}`.
     """
     if self._should_call_test_batch_hooks:
       self._call_batch_hook(ModeKeys.TEST, 'begin', batch, logs=logs)
@@ -464,8 +466,9 @@ class CallbackList(object):
 
     Arguments:
         batch: Integer, index of batch within the current epoch.
-        logs: Dict. Has keys `batch` and `size` representing the current batch
-          number and the size of the batch.
+        logs: Dict, contains the return value of `model.predict_step`,
+          it typically returns a dict with a key 'outputs' containing
+          the model's outputs.
     """
     if self._should_call_predict_batch_hooks:
       self._call_batch_hook(ModeKeys.PREDICT, 'begin', batch, logs=logs)
