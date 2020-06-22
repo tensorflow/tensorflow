@@ -660,26 +660,26 @@ bool Initialize() {
   const std::array<int, 3> compare_types = {
       {npy_bfloat16_, npy_bfloat16_, NPY_BOOL}};
 
-  if (!register_ufunc("equal", CompareUFunc<Bfloat16EqFunctor>,
+  if (!register_ufunc("equal", (PyUFuncGenericFunction) CompareUFunc<Bfloat16EqFunctor>,
                       compare_types)) {
     return false;
   }
-  if (!register_ufunc("not_equal", CompareUFunc<Bfloat16NeFunctor>,
+  if (!register_ufunc("not_equal", (PyUFuncGenericFunction) CompareUFunc<Bfloat16NeFunctor>,
                       compare_types)) {
     return false;
   }
-  if (!register_ufunc("less", CompareUFunc<Bfloat16LtFunctor>, compare_types)) {
+  if (!register_ufunc("less", (PyUFuncGenericFunction) CompareUFunc<Bfloat16LtFunctor>, compare_types)) {
     return false;
   }
-  if (!register_ufunc("greater", CompareUFunc<Bfloat16GtFunctor>,
+  if (!register_ufunc("greater", (PyUFuncGenericFunction) CompareUFunc<Bfloat16GtFunctor>,
                       compare_types)) {
     return false;
   }
-  if (!register_ufunc("less_equal", CompareUFunc<Bfloat16LeFunctor>,
+  if (!register_ufunc("less_equal", (PyUFuncGenericFunction) CompareUFunc<Bfloat16LeFunctor>,
                       compare_types)) {
     return false;
   }
-  if (!register_ufunc("greater_equal", CompareUFunc<Bfloat16GeFunctor>,
+  if (!register_ufunc("greater_equal", (PyUFuncGenericFunction) CompareUFunc<Bfloat16GeFunctor>,
                       compare_types)) {
     return false;
   }
