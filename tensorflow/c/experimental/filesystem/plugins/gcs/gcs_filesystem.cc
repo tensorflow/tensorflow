@@ -24,6 +24,14 @@ limitations under the License.
 #include "tensorflow/c/experimental/filesystem/plugins/gcs/gcs_helper.h"
 #include "tensorflow/c/tf_status.h"
 
+#ifdef TF_GCS_FILESYSTEM_TEST
+// For testing purpose, we expose some functions.
+#define TF_STATIC
+#else
+// Otherwise, we don't expose any symbol.
+#define TF_STATIC static
+#endif
+
 // Implementation of a filesystem for GCS environments.
 // This filesystem will support `gs://` URI schemes.
 namespace gcs = google::cloud::storage;
@@ -122,7 +130,7 @@ namespace tf_read_only_memory_region {
 namespace tf_gcs_filesystem {
 
 // TODO(vnvo2409): Add lazy-loading and customizing parameters.
-static void Init(TF_Filesystem* filesystem, TF_Status* status) {
+TF_STATIC void Init(TF_Filesystem* filesystem, TF_Status* status) {
   google::cloud::StatusOr<gcs::Client> client =
       gcs::Client::CreateDefaultClient();
   if (!client) {
