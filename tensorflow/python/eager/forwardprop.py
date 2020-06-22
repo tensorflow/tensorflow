@@ -176,6 +176,12 @@ def _jvp_dispatch(op_name, attr_tuple, inputs, outputs, tangents):
 pywrap_tfe.TFE_Py_RegisterJVPFunction(_jvp_dispatch)
 
 
+def _jvp_dispatch_batch(op_name, attr_tuple, inputs, outputs, tangents):
+  """Computes jvps of a regular op for a batch of tangents"""
+  return control_flow_ops.vectorized_map(
+      functools.partial(_jvp_dispatch, op_name, attr_tuple, inputs, outputs),
+      tangents)
+
 @tf_export("autodiff.ForwardAccumulator", v1=[])
 class ForwardAccumulator(object):
   """Computes Jacobian-vector products ("JVP"s) using forward-mode autodiff.
