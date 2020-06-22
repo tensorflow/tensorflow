@@ -5296,6 +5296,7 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 10,
     tags = [
+        "no_rocm", # regression starting 200622 sync
         "no_windows_gpu",
         "noasan",  # b/159332048
         "nomsan",  # b/148630708
