@@ -13,14 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// TODO(frankchn): Rename to `tpu_api_dlsym_initializer` or similar.
-
-#include "tensorflow/core/tpu/tpu_library_loader.h"
+#include "tensorflow/core/tpu/tpu_api_dlsym_initializer.h"
 
 #include <dlfcn.h>
 
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_node_context_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
 
@@ -38,41 +37,6 @@ namespace tensorflow {
 namespace tpu {
 
 #include "tensorflow/core/tpu/tpu_library_init_fns.inc"
-
-TfTpu_BaseFn* InitializeApiFn() {
-  static TfTpu_BaseFn base_fn;
-  return &base_fn;
-}
-
-TfTpu_ConfigApiFn* ConfigApiFn() {
-  static TfTpu_ConfigApiFn config_api_fn;
-  return &config_api_fn;
-}
-
-TfTpu_MeshStateApiFn* MeshStateApiFn() {
-  static TfTpu_MeshStateApiFn mesh_state_api_fn;
-  return &mesh_state_api_fn;
-}
-
-TfTpu_CompileApiFn* CompileApiFn() {
-  static TfTpu_CompileApiFn compile_api_fn;
-  return &compile_api_fn;
-}
-
-TfTpu_ExecutorApiFn* ExecutorApiFn() {
-  static TfTpu_ExecutorApiFn executor_api_fn;
-  return &executor_api_fn;
-}
-
-TfTpu_NodeContextApiFn* NodeContextApiFn() {
-  static TfTpu_NodeContextApiFn node_context_api_fn;
-  return &node_context_api_fn;
-}
-
-TfTpu_UtilApiFn* UtilApiFn() {
-  static TfTpu_UtilApiFn util_api_fn;
-  return &util_api_fn;
-}
 
 Status InitializeTpuLibrary(void* library_handle) {
   bool shared_object_loaded = true;

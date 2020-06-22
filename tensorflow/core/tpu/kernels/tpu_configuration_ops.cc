@@ -24,10 +24,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
+#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_config_c_api.h"
 #include "tensorflow/core/tpu/tpu_configuration.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
-#include "tensorflow/core/tpu/tpu_library_loader.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
 
 namespace tensorflow {

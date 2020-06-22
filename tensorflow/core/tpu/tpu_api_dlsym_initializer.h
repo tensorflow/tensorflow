@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_TPU_TPU_LIBRARY_LOADER_H_
-#define TENSORFLOW_CORE_TPU_TPU_LIBRARY_LOADER_H_
+#ifndef TENSORFLOW_CORE_TPU_TPU_API_DLSYM_INITIALIZER_H_
+#define TENSORFLOW_CORE_TPU_TPU_API_DLSYM_INITIALIZER_H_
 
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_c_api.h"
@@ -31,23 +31,8 @@ namespace tpu {
 
 Status InitializeTpuLibrary(void* library_handle);
 
-// TODO(frankchn): Separate out API functions from the loader.
-TfTpu_BaseFn* InitializeApiFn();
-
-TfTpu_ConfigApiFn* ConfigApiFn();
-
-TfTpu_MeshStateApiFn* MeshStateApiFn();
-
-TfTpu_CompileApiFn* CompileApiFn();
-
-TfTpu_ExecutorApiFn* ExecutorApiFn();
-
-TfTpu_NodeContextApiFn* NodeContextApiFn();
-
-TfTpu_UtilApiFn* UtilApiFn();
-
 }  // namespace tpu
 }  // namespace tensorflow
-// LINT.ThenChange(//tensorflow/core/tpu/tpu_library_loader_windows.cc)
+// LINT.ThenChange(//tensorflow/core/tpu/tpu_api_dlsym_initializer_windows.cc)
 
-#endif  // TENSORFLOW_CORE_TPU_TPU_LIBRARY_LOADER_H_
+#endif  // TENSORFLOW_CORE_TPU_TPU_API_DLSYM_INITIALIZER_H_

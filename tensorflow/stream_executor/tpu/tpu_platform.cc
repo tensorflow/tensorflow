@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
 
 #include "tensorflow/c/tf_status.h"
-#include "tensorflow/core/tpu/tpu_library_loader.h"
+#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor.h"

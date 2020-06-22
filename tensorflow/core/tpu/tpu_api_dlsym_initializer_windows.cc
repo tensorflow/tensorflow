@@ -15,27 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/tpu/tpu_library_loader.h"
+#include "tensorflow/core/tpu/tpu_api_dlsym_initializer.h"
 
-// Reminder: Update tpu_library_loader.cc if you are adding new publicly
-// visible methods.
+// Reminder: Update tpu_api_dlsym_initializer_windows.cc if you are adding new
+// publicly visible methods.
 
 namespace tensorflow {
 namespace tpu {
-
-TfTpu_BaseFn* InitializeApiFn() { return nullptr; }
-
-TfTpu_ConfigApiFn* ConfigApiFn() { return nullptr; }
-
-TfTpu_MeshStateApiFn* MeshStateApiFn() { return nullptr; }
-
-TfTpu_CompileApiFn* CompileApiFn() { return nullptr; }
-
-TfTpu_ExecutorApiFn* ExecutorApiFn() { return nullptr; }
-
-TfTpu_NodeContextApiFn* NodeContextApiFn() { return nullptr; }
-
-TfTpu_UtilApiFn* UtilApiFn() { return nullptr; }
 
 Status InitializeTpuLibrary(void* library_handle) {
   return errors::Unimplemented(

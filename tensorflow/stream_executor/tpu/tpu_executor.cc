@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/tpu/tpu_library_loader.h"
+#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/tpu/c_api_conversions.h"

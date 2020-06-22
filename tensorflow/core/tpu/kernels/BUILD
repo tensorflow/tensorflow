@@ -72,10 +72,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:refcount",
+        "//tensorflow/core/tpu:tpu_api",
         "//tensorflow/core/tpu:tpu_config_c_api",
         "//tensorflow/core/tpu:tpu_configuration",
         "//tensorflow/core/tpu:tpu_defs",
-        "//tensorflow/core/tpu:tpu_library_loader",
         "//tensorflow/stream_executor/tpu:proto_helper",
     ],
     alwayslink = 1,
@@ -224,7 +224,7 @@ cc_library(
         "//tensorflow/compiler/xla/service",
         "//tensorflow/core:framework",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
-        "//tensorflow/core/tpu:tpu_library_loader",
+        "//tensorflow/core/tpu:tpu_api",
     ],
 )
 

@@ -70,7 +70,7 @@ cc_library(
         ":status_helper",
         ":tpu_executor_c_api_hdrs",
         ":tpu_stream_interface",
-        "//tensorflow/core/tpu:tpu_library_loader",
+        "//tensorflow/core/tpu:tpu_api",
         "//tensorflow/stream_executor:stream",
     ],
 )
@@ -81,7 +81,7 @@ cc_library(
     deps = [
         ":tpu_executor_c_api_hdrs",
         "//tensorflow/core/platform:types",
-        "//tensorflow/core/tpu:tpu_library_loader",
+        "//tensorflow/core/tpu:tpu_api",
         "//tensorflow/stream_executor:stream",
     ],
 )
@@ -101,7 +101,7 @@ cc_library(
         ":tpu_timer",
         "//tensorflow/c:tf_status",
         "//tensorflow/core:lib",
-        "//tensorflow/core/tpu:tpu_library_loader",
+        "//tensorflow/core/tpu:tpu_api",
         "//tensorflow/stream_executor:stream",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -151,7 +151,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:stream_pool",
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/core:framework",
-        "//tensorflow/core/tpu:tpu_library_loader",
+        "//tensorflow/core/tpu:tpu_api",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/memory",
@@ -169,7 +169,7 @@ cc_library(
         ":tpu_platform_interface",
         "//tensorflow/c:tf_status",
         "//tensorflow/core/platform:types",
-        "//tensorflow/core/tpu:tpu_library_loader",
+        "//tensorflow/core/tpu:tpu_api",
         "//tensorflow/stream_executor:stream",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
@@ -201,7 +201,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
-        "//tensorflow/core/tpu:tpu_library_loader",
+        "//tensorflow/core/tpu:tpu_api",
         "//tensorflow/stream_executor:stream",
     ],
 )
