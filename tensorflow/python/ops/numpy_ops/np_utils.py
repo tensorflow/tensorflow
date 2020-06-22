@@ -24,13 +24,13 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_dtypes
+from tensorflow.python.types import core
 from tensorflow.python.util import nest
 
 tensor_to_ndarray = np_arrays.tensor_to_ndarray
@@ -43,7 +43,7 @@ def _canonicalize_axis(axis, rank):
 def _canonicalize_axes(axes, rank):
   rank = _maybe_static(rank)
 
-  if isinstance(rank, ops.Tensor):
+  if isinstance(rank, core.Tensor):
     canonicalizer = (
         lambda axis: cond(axis < 0, lambda: axis + rank, lambda: axis))
   else:
@@ -102,7 +102,7 @@ def isscalar(val):
   """Returns whether `val` is a scalar value or scalar Tensor."""
   if isinstance(val, np_arrays.ndarray):
     val = val.data
-  if isinstance(val, ops.Tensor):
+  if isinstance(val, core.Tensor):
     ndims = val.shape.ndims
     if ndims is not None:
       return ndims == 0
@@ -127,7 +127,7 @@ def result_type(*arrays_and_dtypes):
     # Don't put np.ndarray in this list, because np.result_type looks at the
     # value (not just dtype) of np.ndarray to decide the result type.
     if isinstance(
-        x, (np_arrays.ndarray, ops.Tensor, indexed_slices.IndexedSlices)):
+        x, (np_arrays.ndarray, core.Tensor, indexed_slices.IndexedSlices)):
       return _to_numpy_type(x.dtype)
     elif isinstance(x, dtypes.DType):
       return _to_numpy_type(x)
@@ -393,7 +393,7 @@ def get_static_value(x):
     Same as `tf.get_static_value`, except that it returns None when `x` has a
     float dtype.
   """
-  if isinstance(x, ops.Tensor) and (x.dtype.is_floating or x.dtype.is_complex):
+  if isinstance(x, core.Tensor) and (x.dtype.is_floating or x.dtype.is_complex):
     return None
   return tensor_util.constant_value(x)
 
