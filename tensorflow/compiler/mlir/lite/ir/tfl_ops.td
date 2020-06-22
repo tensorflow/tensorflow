@@ -571,6 +571,8 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
     TFL_OperandHasRank<2, 4>,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 2>>,
+    AccumulatorUniformScale<3, 1, 2>,
+    TFL_ChannelDimIndexInterface, AffineOpCoefficient<0, 2>,
     TFL_GpuTargetOp,
     TFL_SparseOp]> {
   let summary = "Transpose convolution operator";
@@ -596,6 +598,8 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
   let verifier = [{ return Verify(*this); }];
 
   let extraClassDeclaration = [{
+    // ChannelDimIndexInterface:
+    int GetChannelDimIndex() { return 0; }
     // SparseOpInterface:
     std::vector<int> GetSparseOperands() { return {1}; }
     std::vector<std::vector<int>> GetFloatBlockSize() { return {}; }
