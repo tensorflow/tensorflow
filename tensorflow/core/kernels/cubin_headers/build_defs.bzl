@@ -5,7 +5,7 @@ load("@local_config_cuda//cuda:build_defs.bzl", "cuda_gpu_architectures", "if_cu
 def _lookup_file(filegroup, path):
     """Extracts file at (relative) path in filegroup."""
     for file in filegroup.files.to_list():
-        if file.path.endswith(path):
+        if file.path.endswith(path) or file.path.endswith(path + ".exe"):
             return file
     return None
 
