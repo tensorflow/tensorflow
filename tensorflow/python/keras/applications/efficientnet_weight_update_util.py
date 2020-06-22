@@ -27,7 +27,7 @@ python efficientnet_weight_update_util.py --model b0 --notop --ckpt efficientnet
 # use checkpoint noisy_student_efficientnet-b3/model.ckpt (providing improved result for b3, can be downloaded from
 # https://storage.googleapis.com/cloud-tpu-checkpoints/efficientnet/noisystudent/noisy_student_efficientnet-b3.tar.gz)
 # to update weight with top layers, saving to efficientnetb3_new.h5
-python efficientnet_weight_update_util.py --model b0 --notop --ckpt noisy_student_efficientnet-b3/model.ckpt --o efficientnetb3_new.h5
+python efficientnet_weight_update_util.py --model b3 --notop --ckpt noisy_student_efficientnet-b3/model.ckpt --o efficientnetb3_new.h5
 
 """
 
