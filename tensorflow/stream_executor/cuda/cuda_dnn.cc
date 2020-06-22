@@ -1176,11 +1176,11 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
     }
 
     cudnnMathType_t math_type;
-    if (use_tensor_ops) {
-      math_type = CUDNN_TENSOR_OP_MATH;
-    } else {
-      math_type = CUDNN_VERSION >= 8000 ? CUDNN_FMA_MATH : CUDNN_DEFAULT_MATH;
-    }
+#if CUDNN_VERSION >= 8000
+    math_type = use_tensor_ops ? CUDNN_TENSOR_OP_MATH : CUDNN_FMA_MATH;
+#else
+    math_type = use_tensor_ops ? CUDNN_TENSOR_OP_MATH : CUDNN_DEFAULT_MATH;
+#endif
     CHECK_CUDNN_OK(cudnnSetRNNMatrixMathType(rnn_desc.get(), math_type));
 #endif  // CUDNN_VERSION >= 7000
 
