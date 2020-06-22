@@ -423,6 +423,18 @@ class MultiProcessRunner(object):
   def join(self, timeout=_DEFAULT_TIMEOUT_SEC):
     """Joins all the processes with timeout.
 
+    If any of the subprocesses does not exit approximately after `timeout`
+    seconds has passed after `join` call, this raises a
+    `SubprocessTimeoutError`.
+
+    Note: At timeout, it uses SIGTERM to terminate the subprocesses, in order to
+    log the stack traces of the subprocesses when they exit. However, this
+    results in timeout when the test runs with tsan (thread sanitizer); if tsan
+    is being run on the test targets that rely on timeout to assert information,
+    `MultiProcessRunner.terminate_all()` must be called after `join()`, before
+    the test exits, so the subprocesses are terminated with SIGKILL, and data
+    race is removed.
+
     Args:
       timeout: if set and not all processes report status within roughly
         `timeout` seconds, a `SubprocessTimeoutError` exception will be raised.

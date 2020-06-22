@@ -1794,7 +1794,7 @@ py_test(
     name = "multi_process_runner_test",
     srcs = ["multi_process_runner_test.py"],
     python_version = "PY3",
-    tags = ["notsan"],  # TODO(b/158874970)
+    shard_count = 12,
     deps = [
         ":multi_process_runner",
         ":multi_worker_test_base",
