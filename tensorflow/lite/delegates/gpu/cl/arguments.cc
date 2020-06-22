@@ -746,6 +746,9 @@ absl::Status Arguments::ResolveSelectorsPass(
       size_t close_bracket_pos;
       RETURN_IF_ERROR(ParseArgsInsideBrackets(*code, next_position,
                                               &close_bracket_pos, &args));
+      for (auto& arg : args) {
+        RETURN_IF_ERROR(ResolveSelectorsPass({}, &arg));
+      }
       std::string patch;
       RETURN_IF_ERROR(ResolveSelector(linkables, object_name, selector_name,
                                       args, template_args, &patch));
