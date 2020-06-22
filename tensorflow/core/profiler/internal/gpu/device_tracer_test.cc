@@ -277,15 +277,10 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
 #if GOOGLE_CUDA
   const XPlane* host_plane = FindPlaneWithName(space, kCuptiDriverApiPlaneName);
   ASSERT_NE(host_plane, nullptr);
-<<<<<<< HEAD
-  EXPECT_EQ(host_plane->id(), kCuptiDriverApiPlaneId);
-#elif GOOGLE_CUDA
+#elif TENSORFLOW_USE_ROCM
   const XPlane* host_plane = FindPlaneWithName(space, kRocmTracerPlaneName);
   ASSERT_NE(host_plane, nullptr);
-  EXPECT_EQ(host_plane->id(), kRocmTracerPlaneId);
 #endif
-=======
->>>>>>> google_upstream/master
 
   const XPlane* device_plane =
       FindPlaneWithName(space, strings::StrCat(kGpuPlanePrefix, 0));

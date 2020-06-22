@@ -133,14 +133,10 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
         // "DepthwiseConv2dNativeBackpropInput",
         "MatMul",
     };
-<<<<<<< HEAD
 #if TENSORFLOW_USE_ROCM
     if (true) {
 #else
-    if (cuda_version >= 9010) {
-=======
     if (cuda_version_ >= 9010) {
->>>>>>> google_upstream/master
       // Fp16 BatchMatMul is slow before CUDA 9.1.
 #endif
       list.insert("BatchMatMul");
@@ -154,14 +150,10 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
       list.insert("Conv3DBackpropInput");
       list.insert("Conv3DBackpropInputV2");
     }
-<<<<<<< HEAD
 #if TENSORFLOW_USE_ROCM
       list.insert("_ROCmFusedConvolutionBiasActivation");
 #endif
-    UpdateList(&list, to_add, to_remove);
-=======
     UpdateList("WHITELIST", &list);
->>>>>>> google_upstream/master
     return list;
   }
 
@@ -215,7 +207,6 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
         "Tanh",
         "TanhGrad",
     };
-<<<<<<< HEAD
 #if TENSORFLOW_USE_ROCM
       list.insert("_FusedMulAdd");
       list.insert("_FusedMulAdd2");
@@ -229,10 +220,7 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
       list.insert("_ROCmFusedBatchNormActivationBackward");
       list.insert("_ROCmFusedConvolutionBiasBatchNormActivation");
 #endif
-    UpdateList(&list, to_add, to_remove);
-=======
     UpdateList("GRAYLIST", &list);
->>>>>>> google_upstream/master
     return list;
   }
 

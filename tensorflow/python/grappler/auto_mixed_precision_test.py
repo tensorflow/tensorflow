@@ -19,12 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-<<<<<<< HEAD
-import unittest
-=======
 
 from absl.testing import parameterized
->>>>>>> google_upstream/master
 import numpy as np
 
 from tensorflow.core.framework import types_pb2
@@ -517,44 +513,11 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
   @test_util.disable_xla('This test does not pass with XLA')
   def test_conv_bn_dropout(self, mode):
     """Test dropout precision of convolution batch norm graph."""
-<<<<<<< HEAD
-    if test.is_gpu_available():
-      random_seed.set_random_seed(0)
-      x = _input([2, 8, 8, 1])
-      y = _conv_bn(x)
-      y = nn.dropout(y, rate=0.5, seed=1337)
-      y = math_ops.add(y, 1, name='addition')
-      y = _conv_bn(y)
-      y = array_ops.identity(y)
-      optimizer = gradient_descent.GradientDescentOptimizer(
-          learning_rate=0.01)
-      g = optimizer.compute_gradients(y, [x])
-      output = (y, g)
-
-      output_val_ref, output_val, cost_graph = self._run(output)
-      node_map = _build_node_map(cost_graph.node)
-      self._assert_output_fp16(node_map, 'Conv2D')
-      self._assert_output_fp16(node_map, 'FusedBatchNormV3')
-        # We do not assert dropout's dtype because we do not want to rely on the
-        # node names of dropout's internal implementation.
-        # self._assert_output_fp16(node_map, 'dropout/mul')
-      # We do not assert dropout's dtype because we do not want to rely on the
-      # node names of dropout's internal implementation.
-      self._assert_output_fp16(node_map, 'addition')
-      self._assert_output_fp16(node_map, 'Conv2D_1')
-      #output_val_ref, output_val, cost_graph = self._run(output)
-      # Bump up the tolerance for the ROCm platform
-      # The default tolerance (1e-3) results in a tiny fraction (<1%) of
-      # miscompares on ROCm platform, and hence the tolerance bump
-      tol = 2e-3 if test.is_built_with_rocm else 1e-3
-      self.assertAllClose(output_val_ref, output_val, atol=tol, rtol=tol)
-
-=======
     self._maybe_skip(mode)
     random_seed.set_random_seed(0)
     x = _input([2, 8, 8, 1])
     y = _conv_bn(x)
-    y = nn.dropout(y, rate=0.5)
+    y = nn.dropout(y, rate=0.5, seed=1337)
     y = math_ops.add(y, 1, name='addition')
     y = _conv_bn(y)
     y = array_ops.identity(y)
@@ -581,30 +544,10 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
   # TODO(reedwm): Fix and enable this test with MKL. Currently this crashes with
   # MKL
   @parameterized.parameters(['cuda'])
->>>>>>> google_upstream/master
   @test_util.run_deprecated_v1
   @test_util.disable_xla('This test does not pass with XLA')
   def test_conv_pool(self, mode):
     """Test graph with convolution followed by pooling."""
-<<<<<<< HEAD
-    if test.is_gpu_available():
-      random_seed.set_random_seed(0)
-      x = _input([2, 8, 8, 1])
-      output = _conv_pool(x)
-
-      output_val_ref, output_val, cost_graph = self._run(output)
-      node_map = _build_node_map(cost_graph.node)
-      num_to_fp16, num_to_fp32 = _count_casts(cost_graph.node)
-
-      self._assert_output_fp16(node_map, 'Conv2D')
-      self._assert_output_fp16(node_map, 'Relu')
-      self._assert_output_fp16(node_map, 'MaxPool')
-      self._assert_output_fp16(node_map, 'Conv2D_1')
-      self.assertEqual(num_to_fp16, 4)
-      self.assertEqual(num_to_fp32, 1)
-      self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
-
-=======
     self._maybe_skip(mode)
     random_seed.set_random_seed(0)
     x = _input([2, 8, 8, 1])
@@ -624,7 +567,6 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(output_val_ref, output_val, atol=tol, rtol=tol)
 
   @parameterized.parameters(['cuda', 'mkl'])
->>>>>>> google_upstream/master
   @test_util.run_v1_only('b/138749235')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_simple_loop(self, mode):

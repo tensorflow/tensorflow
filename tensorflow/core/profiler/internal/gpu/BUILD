@@ -50,10 +50,7 @@ tf_cuda_library(
         "//tensorflow/core/profiler/utils:xplane_utils",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:flat_hash_map",
-<<<<<<< HEAD
-=======
         "@com_google_absl//absl/container:flat_hash_set",
->>>>>>> google_upstream/master
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
