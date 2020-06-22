@@ -330,7 +330,7 @@ class Subgraph {
         *output_min = 0.0f;
         *output_max = +std::numeric_limits<float>::infinity();
         return kTfLiteOk;
-      case kTfLiteActRelu1:
+      case kTfLiteActReluN1To1:
         *output_min = -1.0f;
         *output_max = +1.0f;
         return kTfLiteOk;
@@ -497,7 +497,7 @@ class Subgraph {
             context, "unsupported fused activation (Relu) in node #%d",
             node_index);
         return kTfLiteOk;
-      case kTfLiteActRelu1:
+      case kTfLiteActReluN1To1:
         TF_LITE_MAYBE_KERNEL_LOG(
             context, "unsupported fused activation (ReluMinus1To1) in node #%d",
             node_index);
