@@ -64,7 +64,8 @@ class InteropTest(test.TestCase):
 
     dx, dy = t.gradient([xx, yy], [x, y])
 
-    # TODO(nareshmodi): Gradient tape returns tensors. Is it possible to rewrap?
+    self.assertIsInstance(dx, np_arrays.ndarray)
+    self.assertIsInstance(dy, np_arrays.ndarray)
     self.assertAllClose(dx, 2.0)
     self.assertAllClose(dy, 3.0)
 
