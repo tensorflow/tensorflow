@@ -2806,6 +2806,27 @@ the corresponding feature.
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
+def TF_EnsureShapeOp : TF_Op<"EnsureShape", [NoSideEffect]> {
+  let summary = "Ensures that the tensor's shape matches the expected shape.";
+
+  let description = [{
+Raises an error if the input tensor's shape does not match the specified shape.
+Returns the input tensor otherwise.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+
+    TF_ShapeAttr:$shape
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_EqualOp : TF_Op<"Equal", [Commutative, NoSideEffect]> {
   let summary = "Returns the truth value of (x == y) element-wise.";
 
