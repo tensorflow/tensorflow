@@ -32,6 +32,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_CPU_BACKEND_GEMM_CUSTOM_GEMV_H_
 #define TENSORFLOW_LITE_KERNELS_CPU_BACKEND_GEMM_CUSTOM_GEMV_H_
 
+#include <stdint.h>
+
+#include <algorithm>
 #include <type_traits>
 #include <vector>
 
@@ -40,6 +43,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 
 namespace tflite {
 namespace cpu_backend_gemm {

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -62,6 +63,7 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   standard_pipeline_options.enable_inliner = false;
   standard_pipeline_options.form_clusters = pass_config.form_clusters;
   mlir::TF::CreateTFStandardPipeline(*pass_manager, standard_pipeline_options);
+  pass_manager->addPass(mlir::TF::CreateDeviceIndexSelectorPass());
 
   if (pass_config.shape_inference) {
     pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
@@ -73,6 +75,8 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
         mlir::quant::CreateImportQuantStatsPassForTFControlDialect(
             pass_config.quant_specs.serialized_quant_stats));
   }
+
+  pass_manager->addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
 
   // The conversion pipeline has to follow the following orders:
   // 1) Saved model related optimization like decompose resource ops
@@ -111,6 +115,9 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     // Add a shape inference pass to optimize away the unnecessary casts.
     pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
   }
+
+  pass_manager->addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
+
   // Legalize while early to allow further constant folding.
   // TODO(jpienaar): This may not actually matter as we do canonicalization
   // after the legalize below, for now it needs to be below the above passes
@@ -205,9 +212,6 @@ void CreateTFLStandardPipeline(OpPassManager& pm,
 
   // Saved model pass to mark global tensors immutable.
   pm.addPass(mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
-  // Used to mark non-exported functions in saved model private.
-  pm.addPass(mlir::tf_saved_model::
-                 CreateMarkFunctionVisibilityUsingSavedModelLinkagePass());
   // Op fusion pass.
   pm.addPass(mlir::TFL::CreatePrepareCompositeFunctionsPass());
 

@@ -573,6 +573,7 @@ void AlgebraicSimplifierVisitor::ReplaceWithBitcast(HloInstruction* instruction,
 
   auto bitcast = computation_->AddInstruction(
       HloInstruction::CreateBitcast(instruction->shape(), operand));
+  bitcast->set_metadata(instruction->metadata());
   TF_CHECK_OK(ReplaceInstruction(instruction, bitcast));
 }
 
@@ -2454,6 +2455,25 @@ Status AlgebraicSimplifierVisitor::HandleMultiply(HloInstruction* multiply) {
     return Status::OK();
   }
 
+  {
+    HloInstruction *convert_operand, *operand;
+    // Mul(Convert(Pred), operand) => select(pred, operand, 0)
+    if (Match(multiply,
+              m::MultiplyAnyOrder(
+                  m::Op(&operand),
+                  m::Convert(
+                      m::Op(&convert_operand)
+                          .WithShape(m::Shape().WithElementType(PRED)))))) {
+      HloInstruction* zero_like_multiply =
+          BroadcastZeros(computation_, multiply->shape().element_type(),
+                         multiply->shape().dimensions());
+      return ReplaceWithNewInstruction(
+          multiply, HloInstruction::CreateTernary(
+                        multiply->shape(), HloOpcode::kSelect, convert_operand,
+                        operand, zero_like_multiply));
+    }
+  }
+
   VLOG(10) << "trying transform [(A * C1) * C2 => A * (C1 * C2)]";
   HloInstruction *a, *c1, *c2;
   if (Match(multiply,
@@ -2795,6 +2815,28 @@ Status AlgebraicSimplifierVisitor::HandleCompare(HloInstruction* compare) {
   HloInstruction* lhs;
   HloInstruction* rhs;
   CHECK(Match(compare, m::Compare(m::Op(&lhs), m::Op(&rhs))));
+  {
+    // compare(broadcast(a) + x, broadcast(b)) ==>
+    //   compare(x, broadcast(b-a))
+    HloInstruction *x, *a, *b;
+    if (Match(compare,
+              m::Compare(
+                  m::AddAnyOrder(m::Op(&x), m::Broadcast(m::Op(&a).WithShape(
+                                                m::Shape().IsScalar()))),
+                  m::Broadcast(m::Op(&b).WithShape(m::Shape().IsScalar()))))) {
+      if (ShapeUtil::ElementIsSigned(x->shape())) {
+        HloInstruction* sub =
+            computation_->AddInstruction(HloInstruction::CreateBinary(
+                b->shape(), HloOpcode::kSubtract, b, a));
+        HloInstruction* broadcast = computation_->AddInstruction(
+            HloInstruction::CreateBroadcast(x->shape(), sub, {}));
+        HloInstruction* new_compare = computation_->AddInstruction(
+            HloInstruction::CreateCompare(compare->shape(), x, broadcast,
+                                          compare->comparison_direction()));
+        return ReplaceInstruction(compare, new_compare);
+      }
+    }
+  }
 
   if (compare->comparison_direction() == ComparisonDirection::kLt &&
       lhs->opcode() == HloOpcode::kIota && IsAll(rhs, 0)) {

@@ -209,15 +209,8 @@ xla::HloProto TpuProgramGroup::hlo_metadata(int core_index) const {
       serialized_hlo_proto);
 }
 
-std::vector<std::shared_ptr<const xla::HloProto>>
-TpuProgramGroup::hlo_metadatas() const {
-  const size_t metadata_count = program_count();
-  std::vector<std::shared_ptr<const xla::HloProto>> hlo_metadatas;
-  hlo_metadatas.resize(metadata_count);
-  for (size_t i = 0; i < metadata_count; ++i) {
-    hlo_metadatas[i] = std::make_shared<const xla::HloProto>(hlo_metadata(i));
-  }
-  return hlo_metadatas;
+absl::Span<const xla::HloProto* const> TpuProgramGroup::hlo_metadatas() const {
+  return absl::MakeConstSpan(hlo_metadatas_);
 }
 
 }  // namespace tpu

@@ -109,7 +109,7 @@ TfLiteFusedActivation ConvertActivation(ActivationFunctionType activation) {
     case ActivationFunctionType_RELU:
       return kTfLiteActRelu;
     case ActivationFunctionType_RELU_N1_TO_1:
-      return kTfLiteActRelu1;
+      return kTfLiteActReluN1To1;
     case ActivationFunctionType_RELU6:
       return kTfLiteActRelu6;
     case ActivationFunctionType_TANH:

@@ -13,6 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """ndarray class."""
+
+# pylint: disable=g-direct-tensorflow-import
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -20,8 +23,11 @@ from __future__ import print_function
 import numpy as np
 import six
 
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.numpy_ops import np_dtypes
@@ -30,13 +36,16 @@ from tensorflow.python.ops.numpy_ops import np_dtypes
 def convert_to_tensor(value, dtype=None, dtype_hint=None):
   """Wrapper over `tf.convert_to_tensor`.
 
-     Args:
-       value: value to convert
-       dtype: (optional) the type we would like it to be converted to.
-       dtype_hint: (optional) soft preference for the type we would like it to
-         be converted to. `tf.convert_to_tensor` will attempt to convert value
-         to this type first, but will not fail if conversion is not possible
-         falling back to inferring the type instead.
+  Args:
+    value: value to convert
+    dtype: (optional) the type we would like it to be converted to.
+    dtype_hint: (optional) soft preference for the type we would like it to be
+      converted to. `tf.convert_to_tensor` will attempt to convert value to this
+      type first, but will not fail if conversion is not possible falling back
+      to inferring the type instead.
+
+  Returns:
+    Value converted to tf.Tensor.
   """
   # A safer version of `tf.convert_to_tensor` to work around b/149876037.
   # TODO(wangpeng): Remove this function once the bug is fixed.
@@ -48,7 +57,38 @@ def convert_to_tensor(value, dtype=None, dtype_hint=None):
   return ops.convert_to_tensor(value, dtype=dtype, dtype_hint=dtype_hint)
 
 
-class ndarray(object):  # pylint: disable=invalid-name
+class NdarraySpec(type_spec.BatchableTypeSpec):
+  """Type specification for a `tf.experiemntal.numpy.ndarray`."""
+
+  value_type = property(lambda self: ndarray)
+
+  def __init__(self, data_spec):
+    if not isinstance(data_spec, tensor_spec.TensorSpec):
+      raise ValueError('NdarraySpec.__init__ was expecting a tf.TypeSpec, '
+                       'but got a {} instead.'.format(type(data_spec)))
+    self._data_spec = data_spec
+
+  @property
+  def _component_specs(self):
+    return self._data_spec
+
+  def _to_components(self, value):
+    return value.data
+
+  def _from_components(self, data):
+    return tensor_to_ndarray(data)
+
+  def _serialize(self):
+    return (self._data_spec,)
+
+  def _batch(self, batch_size):
+    return NdarraySpec(self._data_spec.batch(batch_size))
+
+  def _unbatch(self):
+    return NdarraySpec(self._data_spec.unbatch())
+
+
+class ndarray(composite_tensor.CompositeTensor):  # pylint: disable=invalid-name
   """Equivalent of numpy.ndarray backed by TensorFlow tensors.
 
   This does not support all features of NumPy ndarrays e.g. strides and
@@ -109,7 +149,10 @@ class ndarray(object):  # pylint: disable=invalid-name
     if dtype and dtype != buffer.dtype:
       buffer = array_ops.bitcast(buffer, dtype)
     self._data = buffer
-    self.base = None
+
+  @property
+  def _type_spec(self):
+    return NdarraySpec(type_spec.type_spec_from_value(self._data))
 
   @property
   def data(self):
@@ -129,8 +172,12 @@ class ndarray(object):  # pylint: disable=invalid-name
 
   @property
   def shape(self):
-    """Returns a tuple of array dimensions."""
-    return self.data._shape_tuple()  # pylint: disable=protected-access
+    """Returns a tuple or tf.Tensor of array dimensions."""
+    shape = self.data.shape
+    if shape.is_fully_defined():
+      return tuple(shape.as_list())
+    else:
+      return array_ops.shape(self.data)
 
   @property
   def dtype(self):
@@ -138,19 +185,30 @@ class ndarray(object):  # pylint: disable=invalid-name
 
   @property
   def ndim(self):
-    return self.data.shape.ndims
+    ndims = self.data.shape.ndims
+    if ndims is None:
+      return array_ops.rank(self.data)
+    else:
+      return ndims
 
   @property
   def size(self):
     """Returns the number of elements in the array."""
-    return np.prod(self.shape)
+    shape = self.shape
+    if isinstance(shape, ops.Tensor):
+      return array_ops.size(self.data)
+    else:
+      return np.prod(self.shape)
 
   @property
   def T(self):  # pylint: disable=invalid-name
     return self.transpose()
 
   def __len__(self):
-    if self.shape:
+    shape = self.shape
+    if isinstance(shape, ops.Tensor):
+      raise TypeError('len() of symbolic tensor undefined')
+    elif shape:
       return self.shape[0]
     else:
       raise TypeError('len() of unsized object.')
@@ -182,12 +240,9 @@ class ndarray(object):  # pylint: disable=invalid-name
   def __bool__(self):
     return self.__nonzero__()
 
-  def __getitem__(self, slice_spec):
-    # TODO(srbs): Need to support better indexing.
-    result_t = self.data.__getitem__(slice_spec)
-    return tensor_to_ndarray(result_t)
-
   def __iter__(self):
+    if not isinstance(self.data, ops.EagerTensor):
+      raise TypeError('Iteration over symbolic tensor is not allowed')
     for i in range(self.shape[0]):
       result_t = self.data[i]
       yield tensor_to_ndarray(result_t)
@@ -207,7 +262,8 @@ class ndarray(object):  # pylint: disable=invalid-name
     """
     return np.asarray(self.data, dtype)
 
-  __array_priority__ = 110
+  # NOTE: we currently prefer interop with TF to allow TF to take precedence.
+  __array_priority__ = 90
 
   def __index__(self):
     """Returns a python scalar.
@@ -224,6 +280,8 @@ class ndarray(object):  # pylint: disable=invalid-name
       ValueError: If the array does not have size 1.
     """
     # TODO(wangpeng): Handle graph mode
+    if not isinstance(self.data, ops.EagerTensor):
+      raise TypeError('Indexing using symbolic tensor is not allowed')
     return np.asscalar(self.data.numpy())
 
   def tolist(self):
@@ -252,5 +310,3 @@ def ndarray_to_tensor(arr, dtype=None, name=None, as_ref=False):
 
 
 ops.register_tensor_conversion_function(ndarray, ndarray_to_tensor)
-
-

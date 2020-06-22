@@ -23,8 +23,8 @@ cc_library(
     ],
     deps = [
         ":function_metadata",
-        "//tensorflow/c/eager:operation_interface",
-        "//tensorflow/c/eager:tensor_handle_interface",
+        "//tensorflow/c/eager:immediate_execution_operation",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
         "//tensorflow/core:protos_all_cc",
     ],
 )

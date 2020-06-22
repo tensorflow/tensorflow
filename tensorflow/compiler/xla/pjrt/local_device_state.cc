@@ -127,11 +127,15 @@ std::unique_ptr<se::Stream> LocalDeviceState::BorrowStreamFromPool() {
   } else {
     std::unique_ptr<se::Stream> stream = std::move(usage_stream_pool_.top());
     usage_stream_pool_.pop();
+    stream->RefreshStatus().IgnoreError();  // Can return error::Unimplemented
+    QCHECK(stream->ok());
     return stream;
   }
 }
 
 void LocalDeviceState::ReturnStreamToPool(std::unique_ptr<se::Stream> stream) {
+  stream->RefreshStatus().IgnoreError();  // Can return error::Unimplemented
+  QCHECK(stream->ok());
   absl::MutexLock lock(&mu_);
   usage_stream_pool_.push(std::move(stream));
 }

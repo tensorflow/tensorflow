@@ -471,6 +471,12 @@ def LHLO_BatchNormTrainingOp : LHLO_Op<"batch_norm_training", []>,
   );
 }
 
+// TODO(timshen): add a custom verifier.
+def LHLO_BitcastOp: LHLO_Op<"bitcast", []> {
+  let arguments = (ins Arg<LHLO_Buffer, "", [MemRead]>:$input,
+                       Arg<LHLO_Buffer, "", [MemWrite]>:$output);
+}
+
 def LHLO_BroadcastOp : LHLO_Op<"broadcast",
       []>, BASE_HLO_BroadcastOp {
   let arguments = (ins
@@ -578,6 +584,19 @@ def LHLO_ReshapeOp: LHLO_Op<"reshape", []>, BASE_HLO_ReshapeOp {
   );
 }
 
+def LHLO_ScatterOp: LHLO_Op<"scatter", []>, BASE_HLO_ScatterOp {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<LHLO_Buffer, "", [MemRead]>:$scatter_indices,
+    Arg<LHLO_Buffer, "", [MemRead]>:$updates,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+    ScatterDimensionNumbers<LHLO_Dialect>:$scatter_dimension_numbers,
+    DefaultValuedAttr<BoolAttr, "false">:$indices_are_sorted,
+    DefaultValuedAttr<BoolAttr, "false">:$unique_indices
+  );
+
+  let regions = (region SizedRegion<1>:$update_computation);
+}
 
 def LHLO_SelectOp: LHLO_Op<"select", []>, BASE_HLO_SelectOp {
   let arguments = (ins
@@ -709,6 +728,44 @@ def LHLO_TriangularSolveOp: LHLO_Op<"triangular_solve", [SameOperandsElementType
     BoolAttr:$lower,
     BoolAttr:$unit_diagonal,
     HLO_TransposeAttr:$transpose_a
+  );
+}
+
+// TODO(timshen): add a custom verifier.
+def LHLO_MapOp: LHLO_Op<"map", [SameOperandsShape]>, BASE_HLO_MapOp {
+  let arguments = (ins
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+    I64ElementsAttr:$dimensions
+  );
+  let regions = (region SizedRegion<1>:$computation);
+}
+
+def LHLO_RngGetAndUpdateStateOp: LHLO_Op<"rng_get_and_update_state", []> {
+  let arguments = (ins
+    Arg<MemRefOf<[UI64]>, "", [MemRead, MemWrite]>:$state,
+    I64Attr:$delta
+  );
+}
+
+// TODO(timshen): add a custom verifier.
+def LHLO_SortOp: LHLO_Op<"sort", []>, BASE_HLO_SortOp {
+  let arguments = (ins
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
+    LHLO_BufferOrTuple:$output,
+    DefaultValuedAttr<I64Attr, "-1">:$dimension,
+    DefaultValuedAttr<BoolAttr, "false">:$is_stable
+  );
+
+  let regions = (region SizedRegion<1>:$comparator);
+}
+
+def LHLO_TupleSelectOp: LHLO_Op<"tuple_select", [SameOperandsShape]> {
+  let arguments = (ins
+    Arg<LHLO_PredBuffer, "", [MemRead]>:$pred,
+    Arg<LHLO_Buffer, "", [MemRead]>:$on_true,
+    Arg<LHLO_Buffer, "", [MemRead]>:$on_false,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output
   );
 }
 

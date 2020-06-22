@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
+#include "tensorflow/compiler/xla/tests/manifest_checking_test.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/bitmap.h"
@@ -62,7 +63,7 @@ std::vector<TestCase> ExpandUseBfloat16(
 }
 
 // A client library test establishes an in-process XLA client connection.
-class ClientLibraryTestBase : public ::testing::Test {
+class ClientLibraryTestBase : public ManifestCheckingTest {
  protected:
   explicit ClientLibraryTestBase(se::Platform* platform = nullptr);
 

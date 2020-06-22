@@ -96,8 +96,7 @@ void SetRunEnvironment(int32 accelerator_count, RunEnvironment* env) {
 }
 
 void ProcessHostPlane(const XPlane* host_plane, bool use_device_step_events,
-                      OpMetricsDb* op_metrics_db, StepEvents* step_events,
-                      TfFunctionDb* tf_function_db) {
+                      OpMetricsDb* op_metrics_db, StepEvents* step_events) {
   absl::flat_hash_map<int64, TfOp> tf_ops =
       CollectTfOpsFromHostThreadsXPlane(*host_plane);
   OpMetricsDbCombiner combiner(op_metrics_db);
@@ -108,8 +107,6 @@ void ProcessHostPlane(const XPlane* host_plane, bool use_device_step_events,
     CombineStepEvents(ConvertHostThreadsXLineToStepEvents(
                           line, use_device_step_events, *step_events),
                       step_events);
-    CombineTfFunctionDb(ConvertHostThreadsXLineToTfFunctionDb(line),
-                        tf_function_db);
   });
 }
 
@@ -132,7 +129,7 @@ void PropagateXSpaceDiagnosticsToOpStats(const XSpace& space,
 }
 
 OpStats ConvertXSpaceToOpStats(const XSpace& space) {
-  const XPlane* host_plane = FindPlaneWithName(space, kHostThreads);
+  const XPlane* host_plane = FindPlaneWithName(space, kHostThreadsPlaneName);
   std::vector<const XPlane*> device_planes =
       FindPlanesWithPrefix(space, kGpuPlanePrefix);
   OpStats op_stats;
@@ -166,8 +163,7 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space) {
   bool has_device = !device_planes.empty();
   if (host_plane) {
     ProcessHostPlane(host_plane, has_device,
-                     op_stats.mutable_host_op_metrics_db(), &step_events,
-                     op_stats.mutable_tf_function_db());
+                     op_stats.mutable_host_op_metrics_db(), &step_events);
   }
   StepEvents nonoverlapped_step_events = ToNonOverlappedStepEvents(step_events);
   *op_stats.mutable_step_db() =

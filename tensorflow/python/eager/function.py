@@ -2626,7 +2626,9 @@ def _is_ndarray(value):
       # For legacy reasons we do not automatically promote Numpy strings.
       or isinstance(value, np.str_)
       # NumPy dtypes have __array__ as unbound methods.
-      or isinstance(value, type))
+      or isinstance(value, type)
+      # CompositeTensors should be flattened instead.
+      or isinstance(value, composite_tensor.CompositeTensor))
 
 
 def _convert_numpy_inputs(inputs):

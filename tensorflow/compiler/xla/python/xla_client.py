@@ -304,6 +304,7 @@ def computation_count():
 Device = _xla.Device
 CompileOptions = _xla.CompileOptions
 
+HostBufferSemantics = _xla.HostBufferSemantics
 
 # An Executable is a C++ class that duck types with the following API:
 # class Executable(object):

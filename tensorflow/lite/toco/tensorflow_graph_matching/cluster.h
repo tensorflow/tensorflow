@@ -47,7 +47,7 @@ class Cluster {
   // 2- All the nodes in GraphDef which belong to this cluster.
   void SetGraphDefInfo(const tensorflow::GraphDef* graph_def);
 
-  const string& GetName() const { return name_; }
+  const std::string& GetName() const { return name_; }
 
   const std::vector<std::unique_ptr<tensorflow::NodeDef>>& GetNewNodes() const {
     return new_nodes_;
@@ -55,18 +55,18 @@ class Cluster {
 
   const std::vector<const tensorflow::NodeDef*>& GetNodes() { return nodes_; }
 
-  void SetName(const string& name) { name_ = name; }
+  void SetName(const std::string& name) { name_ = name; }
 
-  void SetDevice(const string& device) { device_ = device; }
+  void SetDevice(const std::string& device) { device_ = device; }
 
   // Find the input(s) and output(s) of this Cluster.
   bool FindClusterInputsAndOutputs();
 
  protected:
-  string name_;
-  string device_;
-  std::vector<string> inputs_;
-  std::vector<string> outputs_;
+  std::string name_;
+  std::string device_;
+  std::vector<std::string> inputs_;
+  std::vector<std::string> outputs_;
 
   // Used to hold the pointers to nodes which are in this cluster. These nodes
   // are pointing to the nodes in graph_def_.

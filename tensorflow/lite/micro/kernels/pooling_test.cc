@@ -417,7 +417,8 @@ TF_LITE_MICRO_TEST(SimpleAveragePoolTestInt8PaddingValidStride1Stride2Relu) {
       kTfLitePaddingValid, kTfLiteActRelu, output_data);
 }
 
-TF_LITE_MICRO_TEST(SimpleAveragePoolTestInt8PaddingValidStride2Stride1Relu1) {
+TF_LITE_MICRO_TEST(
+    SimpleAveragePoolTestInt8PaddingValidStride2Stride1ReluN1To1) {
   using tflite::testing::F2QS;
 
   const float input_min = -15.9375;
@@ -439,7 +440,7 @@ TF_LITE_MICRO_TEST(SimpleAveragePoolTestInt8PaddingValidStride2Stride1Relu1) {
        F2QS(-0.25, output_min, output_max), F2QS(0.75, output_min, output_max)},
       {4, 1, 1, 2, 1},         // Output shape
       output_min, output_max,  // output quantization range
-      kTfLitePaddingValid, kTfLiteActRelu1, output_data);
+      kTfLitePaddingValid, kTfLiteActReluN1To1, output_data);
 }
 
 TF_LITE_MICRO_TEST(SimpleAveragePoolTestInt8PaddingValidStride2Relu6) {
@@ -532,7 +533,7 @@ TF_LITE_MICRO_TEST(SimpleMaxPoolTestFloatRelu) {
                                     output_data);
 }
 
-TF_LITE_MICRO_TEST(SimpleMaxPoolTestFloatRelu1) {
+TF_LITE_MICRO_TEST(SimpleMaxPoolTestFloatReluN1To1) {
   float output_data[2];
   tflite::testing::TestMaxPoolFloat({4, 1, 2, 4, 1},  // Input shape
                                     {
@@ -548,7 +549,7 @@ TF_LITE_MICRO_TEST(SimpleMaxPoolTestFloatRelu1) {
                                         0.7,
                                     },
                                     {4, 1, 1, 2, 1},  // Output shape
-                                    kTfLitePaddingValid, kTfLiteActRelu1,
+                                    kTfLitePaddingValid, kTfLiteActReluN1To1,
                                     output_data);
 
   tflite::testing::TestMaxPoolFloat({4, 1, 2, 4, 1},  // Input shape
@@ -565,7 +566,7 @@ TF_LITE_MICRO_TEST(SimpleMaxPoolTestFloatRelu1) {
                                         1.0,
                                     },
                                     {4, 1, 1, 2, 1},  // Output shape
-                                    kTfLitePaddingValid, kTfLiteActRelu1,
+                                    kTfLitePaddingValid, kTfLiteActReluN1To1,
                                     output_data);
 }
 
@@ -713,7 +714,7 @@ TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActRelu) {
       kTfLitePaddingValid, kTfLiteActRelu, output_data);
 }
 
-TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActRelu1) {
+TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActReluN1To1) {
   using tflite::testing::F2Q;
 
   uint8_t output_data[2];
@@ -743,7 +744,7 @@ TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActRelu1) {
       {// Output values
        F2Q(-1.0, output_min, output_max), F2Q(1.0, output_min, output_max)},
       output_min, output_max, {4, 1, 1, 2, 1},  // Output shape
-      kTfLitePaddingValid, kTfLiteActRelu1, output_data);
+      kTfLitePaddingValid, kTfLiteActReluN1To1, output_data);
 }
 
 TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActRelu6) {
@@ -944,7 +945,7 @@ TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActRelu) {
       kTfLitePaddingValid, kTfLiteActRelu, output_data);
 }
 
-TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActRelu1) {
+TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActReluN1To1) {
   using tflite::testing::F2QS;
 
   int8_t output_data[2];
@@ -974,7 +975,7 @@ TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActRelu1) {
       {// Output values
        F2QS(-1.0, output_min, output_max), F2QS(1.0, output_min, output_max)},
       output_min, output_max, {4, 1, 1, 2, 1},  // Output shape
-      kTfLitePaddingValid, kTfLiteActRelu1, output_data);
+      kTfLitePaddingValid, kTfLiteActReluN1To1, output_data);
 }
 
 TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActRelu6) {

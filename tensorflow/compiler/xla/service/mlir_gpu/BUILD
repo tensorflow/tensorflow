@@ -167,6 +167,7 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:lhlo_legalize_to_affine",
         "//tensorflow/compiler/mlir/xla:lhlo_legalize_to_gpu",
         "//tensorflow/compiler/mlir/xla:xla_dialect_registration",
+        "//tensorflow/compiler/mlir/xla:xla_legalize_tanh_to_approximation",
         "//tensorflow/compiler/mlir/xla:xla_legalize_to_linalg",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",

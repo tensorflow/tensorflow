@@ -116,7 +116,8 @@ class CollectiveAllReduceStrategyTestBase(
         variable_instance_key_start=10000 +
         CollectiveAllReduceStrategyTestBase.collective_key_base)
     strategy.extended._collective_keys = collective_keys
-    strategy.extended._cross_device_ops._collective_keys = (collective_keys)
+    strategy.extended._cross_device_ops._collective_keys = collective_keys
+    strategy.extended._host_cross_device_ops._collective_keys = collective_keys
 
     return strategy, target, session_config
 

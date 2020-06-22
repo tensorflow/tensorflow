@@ -107,7 +107,7 @@ class MatrixSolveLsOpTest(test_lib.TestCase):
       np_ans = _SolveWithNumpy(x, y, l2_regularizer=l2_regularizer)
       np_r = np.dot(np.conj(a.T), b - np.dot(a, np_ans))
       np_r_norm = np.sqrt(np.sum(np.conj(np_r) * np_r))
-      if batch_shape is not ():
+      if batch_shape != ():
         a = np.tile(a, batch_shape + (1, 1))
         b = np.tile(b, batch_shape + (1, 1))
         np_ans = np.tile(np_ans, batch_shape + (1, 1))

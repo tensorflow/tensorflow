@@ -136,3 +136,10 @@ TfLiteStatus FlexDelegate::CopyFromBufferHandle(
 }
 
 }  // namespace tflite
+
+// Exported C interface function which is used by AcquireFlexDelegate() at
+// interpreter_build.cc. To export the function name globally, the function name
+// must be matched with patterns in tf_version_script.lds
+extern "C" tflite::TfLiteDelegateUniquePtr TF_AcquireFlexDelegate() {
+  return tflite::AcquireFlexDelegate();
+}

@@ -26,12 +26,17 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-const absl::string_view kHostThreads = "/host:CPU";
+const absl::string_view kHostThreadsPlaneName = "/host:CPU";
 const absl::string_view kGpuPlanePrefix = "/device:GPU:";
 const absl::string_view kCuptiDriverApiPlaneName = "/host:CUPTI";
+<<<<<<< HEAD
 const absl::string_view kRocmTracerPlaneName = "/host:ROCmTRACER";
 const absl::string_view kMetadataPlane = "/host:metadata";
 const absl::string_view kTFStreamzPlane = "/host:tfstreamz";
+=======
+const absl::string_view kMetadataPlaneName = "/host:metadata";
+const absl::string_view kTFStreamzPlaneName = "/host:tfstreamz";
+>>>>>>> google_upstream/master
 
 const absl::string_view kStepLineName = "Steps";
 const absl::string_view kTensorFlowNameScopeLineName = "TensorFlow Name Scope";
@@ -40,6 +45,7 @@ const absl::string_view kXlaModuleLineName = "XLA Modules";
 const absl::string_view kXlaOpLineName = "XLA Ops";
 const absl::string_view kKernelLaunchLineName = "Launch Stats";
 
+<<<<<<< HEAD
 const int32 kHostPlaneId = 49;
 const int32 kGpuPlaneBaseId = 0;
 const int32 kCuptiDriverApiPlaneId = 50;
@@ -50,6 +56,8 @@ const int32 kTFStreamzPlaneId = 98;
 const int32 kThreadGroupMinPlaneId = kCuptiDriverApiPlaneId + 1;
 const int32 kThreadGroupMaxPlaneId = kTFStreamzPlaneId - 1;
 
+=======
+>>>>>>> google_upstream/master
 namespace {
 
 constexpr int kNumHostEventTypes =
@@ -102,10 +110,6 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"WhileOp-StartBody", kWhileOpStartBody},
       {"ForOp", kForOp},
       {"PartitionedCallOp", kPartitionedCallOp},
-      // XLA related.
-      {"LocalExecutable::ExecuteOnLocalDevices",
-       kLocalExecutableExecuteOnLocalDevice},
-      {"LocalExecutable::Execute", kLocalExecutableExecute},
       // tf.data related.
       {"IteratorGetNextOp::DoCompute", kIteratorGetNextOp},
       {"IteratorGetNextAsOptionalOp::DoCompute", kIteratorGetNextAsOptionalOp},
@@ -177,6 +181,8 @@ const StatTypeMap& GetStatTypeMap() {
       {"is_eager", kIsEager},
       {"tf_function_call", kTfFunctionCall},
       {"tracing_count", kTfFunctionTracingCount},
+      {"flops", kFlops},
+      {"bytes_accessed", kBytesAccessed},
       // Performance counter related.
       {"Raw Value", kRawValue},
       {"Scaled Value", kScaledValue},
@@ -238,7 +244,8 @@ bool IsInternalStat(absl::optional<int64> stat_type) {
       StatType::kKernelDetails, StatType::kLevel0,
       StatType::kProducerType,  StatType::kProducerId,
       StatType::kConsumerType,  StatType::kConsumerId,
-      StatType::kIsRoot,        StatType::kIsAsync};
+      StatType::kIsRoot,        StatType::kIsAsync,
+      StatType::kFlops,         StatType::kBytesAccessed};
   return stat_type.has_value() && kInternalStats->contains(*stat_type);
 }
 
