@@ -3452,7 +3452,7 @@ _VALUE_SET_CODE_STRING = """
   >>> print(K.get_value(v))
   3.0
 
-  Variable semantics in TensorFlow 2 are eager execution friendly. The above 
+  Variable semantics in TensorFlow 2 are eager execution friendly. The above
   code is roughly equivalent to:
 
   >>> v = tf.Variable(1.)
@@ -4555,7 +4555,7 @@ def relu(x, alpha=0., max_value=None, threshold=0):
 
   if threshold != 0:
     # computes x for x > threshold else 0
-    x = x * math_ops.cast(math_ops.greater(x, threshold), floatx())
+    x = x * math_ops.cast(math_ops.greater(x, threshold), x.dtype)
   elif max_value == 6:
     # if no threshold, then can use nn.relu6 native TF op for performance
     x = nn.relu6(x)
