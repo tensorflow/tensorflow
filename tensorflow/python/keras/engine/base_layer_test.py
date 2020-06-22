@@ -629,6 +629,96 @@ class BaseLayerTest(keras_parameterized.TestCase):
     self.assertTrue(layer.built)
     self.assertEqual([None, 3], layer._build_input_shape.as_list())
 
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def custom_layer_training_arg(self):
+    class CustomLayerNoTrainingArg(base_layer.Layer):
+
+      def __init__(self, nested_layer=None):
+        self._nested_layer = nested_layer or array_ops.identity
+
+      def call(self, inputs):
+        return self._nested_layer(inputs)
+
+    class CustomLayerDefaultTrainingMissing(base_layer.Layer):
+
+      def __init__(self, nested_layer=None):
+        self._nested_layer = nested_layer or array_ops.identity
+
+      def call(self, inputs, training):
+        if training:
+          return self._nested_layer(inputs)
+        else:
+          return self._nested_layer(inputs) * 0.5
+
+    class CustomLayerDefaultTrainingFalse(base_layer.Layer):
+
+      def __init__(self, nested_layer=None):
+        self._nested_layer = nested_layer or array_ops.identity
+
+      def call(self, inputs, training=False):
+        if training:
+          return self._nested_layer(inputs)
+        else:
+          return self._nested_layer(inputs) * 0.5
+
+    class CustomLayerDefaultTrainingTrue(base_layer.Layer):
+
+      def __init__(self, nested_layer=None):
+        self._nested_layer = nested_layer or array_ops.identity
+
+      def call(self, inputs, training=True):
+        if training:
+          return self._nested_layer(inputs)
+        else:
+          return self._nested_layer(inputs) * 0.5
+
+    x = array_ops.ones(shape=(1, 1))
+
+    # If the layer signature doesn't specify a default training arg,
+    # run it in inference mode when to training arg is passed
+    # to __call__
+    layer = CustomLayerDefaultTrainingMissing()
+    self.assertAllEqual(layer(x), x * 0.5)
+    self.assertAllEqual(layer(x, training=False), x * 0.5)
+    self.assertAllEqual(layer(x, training=True), x)
+
+    # If the layer signature specifies `False` as the default training arg,
+    # run it in inference mode when no training arg is passed
+    # to __call__
+    layer = CustomLayerDefaultTrainingFalse()
+    self.assertAllEqual(layer(x), x * 0.5)
+    self.assertAllEqual(layer(x, training=False), x * 0.5)
+    self.assertAllEqual(layer(x, training=True), x)
+
+    # If the layer signature specifies `True` as the default training arg,
+    # explicitly run it in training mode when no training arg is passed
+    # to __call__
+    layer = CustomLayerDefaultTrainingTrue()
+    self.assertAllEqual(layer(x), x)
+    self.assertAllEqual(layer(x, training=False), x * 0.5)
+    self.assertAllEqual(layer(x, training=True), x)
+
+    # Outer layers/models should set the training context implicitly for all
+    # nested layers, respecting whatever mode the outer layer was run with.
+    layer = CustomLayerDefaultTrainingTrue(CustomLayerDefaultTrainingFalse())
+    self.assertAllEqual(layer(x), x)
+    self.assertAllEqual(layer(x, training=False), x * 0.25)
+    self.assertAllEqual(layer(x, training=True), x)
+
+    layer = CustomLayerDefaultTrainingFalse(CustomLayerDefaultTrainingTrue())
+    self.assertAllEqual(layer(x), x * 0.25)
+    self.assertAllEqual(layer(x, training=False), x * 0.25)
+    self.assertAllEqual(layer(x, training=True), x)
+
+    # If the outer layer `call` doesn't take a training argument at all,
+    # it'll set the nested scope as inference when no training arg is passed in.
+    # If a training arg is passed in it won't use it directly in `call`, but
+    # it will set the nested training mode.
+    layer = CustomLayerNoTrainingArg(CustomLayerDefaultTrainingTrue())
+    self.assertAllEqual(layer(x), x * 0.5)
+    self.assertAllEqual(layer(x, training=False), x * 0.5)
+    self.assertAllEqual(layer(x, training=True), x)
+
   def test_activity_regularizer_string(self):
 
     class MyLayer(base_layer.Layer):
@@ -1387,6 +1477,7 @@ class DTypeTest(keras_parameterized.TestCase):
     class IdentityLayerWithArgs(base_layer.Layer):
 
       def call(self, inputs, *args, **kwargs):
+        kwargs.pop('training', None)
         return nest.flatten([inputs, args, kwargs])
 
     layer = IdentityLayerWithArgs(dtype='float64')
