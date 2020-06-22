@@ -44,6 +44,7 @@ from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
@@ -475,9 +476,11 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
 
       return dataset.map(make_sparse)
 
-    strategy.extended._set_prefetch_on_host(True)  # pylint: disable=protected-access
     dataset = iter(
-        strategy.experimental_distribute_datasets_from_function(dataset_fn))
+        strategy.experimental_distribute_datasets_from_function(
+            dataset_fn,
+            distribute_lib.InputOptions(
+                experimental_prefetch_to_device=False)))
 
     result = sparse_lookup(dataset)
     self.assertAllEqual(result,
@@ -520,9 +523,11 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
 
       return dataset.map(make_sparse)
 
-    strategy.extended._set_prefetch_on_host(True)  # pylint: disable=protected-access
     dataset = iter(
-        strategy.experimental_distribute_datasets_from_function(dataset_fn))
+        strategy.experimental_distribute_datasets_from_function(
+            dataset_fn,
+            options=distribute_lib.InputOptions(
+                experimental_prefetch_to_device=False)))
 
     result = sparse_lookup(dataset)
     self.assertAllEqual(result, [[0.0, 2.0], [1.5, 5.0]])
@@ -593,6 +598,62 @@ class TPUStrategyDataPrefetchTest(test.TestCase):
     dataset_location = tf_device.DeviceSpec.from_string(
         dataset_item.values[0].device)
     self.assertEqual(dataset_location.device_type, "CPU")
+
+  def test_prefetch_to_device_sparse_dataset(self):
+    strategy = get_tpu_strategy()
+    # Values here aren't important.
+    dataset = dataset_ops.Dataset.from_tensors(
+        sparse_tensor.SparseTensor(indices=[[0, 0], [0, 1], [1, 0]],
+                                   values=[1, 2, 3],
+                                   dense_shape=[2, 2]))
+    dataset = dataset.repeat()
+    dataset = dataset.batch(strategy.num_replicas_in_sync)
+
+    with self.assertRaisesRegex(ValueError, "TPUStrategy does not support"):
+      iter(strategy.experimental_distribute_dataset(dataset))
+
+  def test_prefetch_to_device_ragged_dataset(self):
+    strategy = get_tpu_strategy()
+    # Values here aren't important.
+    dataset = dataset_ops.Dataset.from_tensors(
+        ragged_tensor.RaggedTensor.from_row_splits(
+            values=[1, 2, 3],
+            row_splits=[0, 2, 3]))
+    dataset = dataset.repeat()
+    dataset = dataset.batch(strategy.num_replicas_in_sync)
+
+    with self.assertRaisesRegex(ValueError, "TPUStrategy does not support"):
+      iter(strategy.experimental_distribute_dataset(dataset))
+
+  def test_prefetch_to_device_sparse_dataset_fn(self):
+    strategy = get_tpu_strategy()
+    def dataset_fn(ctx):
+      del ctx
+      # Values here aren't important.
+      dataset = dataset_ops.Dataset.from_tensors(
+          sparse_tensor.SparseTensor(indices=[[0, 0], [0, 1], [1, 0]],
+                                     values=[1, 2, 3],
+                                     dense_shape=[2, 2]))
+      dataset = dataset.repeat()
+      return dataset.batch(strategy.num_replicas_in_sync)
+
+    with self.assertRaisesRegex(ValueError, "TPUStrategy does not support"):
+      iter(strategy.experimental_distribute_datasets_from_function(dataset_fn))
+
+  def test_prefetch_to_device_ragged_dataset_fn(self):
+    strategy = get_tpu_strategy()
+    def dataset_fn(ctx):
+      del ctx
+      # Values here aren't important.
+      dataset = dataset_ops.Dataset.from_tensors(
+          ragged_tensor.RaggedTensor.from_row_splits(
+              values=[1, 2, 3],
+              row_splits=[0, 2, 3]))
+      dataset = dataset.repeat()
+      return dataset.batch(strategy.num_replicas_in_sync)
+
+    with self.assertRaisesRegex(ValueError, "TPUStrategy does not support"):
+      iter(strategy.experimental_distribute_datasets_from_function(dataset_fn))
 
 if __name__ == "__main__":
   test.main()
