@@ -112,7 +112,7 @@ cuda_py_test(
     srcs = ["np_interop_test.py"],
     deps = [
         ":numpy",
-        "//tensorflow/python:platform",
-        "@absl_py//absl/testing:parameterized",
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
     ],
 )
