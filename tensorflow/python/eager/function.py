@@ -92,7 +92,7 @@ IMPLEMENTS_ATTRIBUTE_NAME = "_implements"
 SHARED_RENDEZVOUS_ATTRIBUTE_NAME = "shared_rendezvous"
 
 
-def _make_input_signature_hashable(elem, variable_map=None):
+def _make_input_signature_hashable(elem):
   """Rewrite input signature to be hashable.
 
   We replace nested variables in the input signature with TensorSpec in order to
@@ -100,18 +100,13 @@ def _make_input_signature_hashable(elem, variable_map=None):
 
   Args:
     elem: Input signature element
-    variable_map: Internal argument used for tracking variable aliases
 
   Returns:
     A hashable object for the requested input signature
   """
-  if variable_map is None:
-    variable_map = {}
-
   # TODO(slebedev): consider using nest.
   if isinstance(elem, tuple):
-    return tuple(map(lambda e: _make_input_signature_hashable(e, variable_map),
-                     elem))
+    return tuple(map(_make_input_signature_hashable, elem))
 
   try:
     hash(elem)
@@ -122,15 +117,17 @@ def _make_input_signature_hashable(elem, variable_map=None):
     v = elem()
 
     if resource_variable_ops.is_resource_variable(v):
-      idx = variable_map.get(id(v))
-      if idx is None:
-        idx = len(variable_map)
-        variable_map[id(v)] = idx
-
-      # We include the class name to avoid having different types of variables
-      # having the same hash. We Also include the variable index which allows
-      # us to return a different hash if variables have been aliased in a call.
-      return v.__class__, tensor_spec.TensorSpec(v.shape, v.dtype), idx
+      # We special case variables here to use unique_id as the cache key. This
+      # ensures we have to retrace whenever a different variable is passed in.
+      # This is needed to support cases where the user may use the id of a
+      # variable in the function perhaps as a lookup in a dictionary.
+      #
+      # This choice leads to more retracing when we could have possibly used the
+      # shape and dtype instead. However, we expect the number of variables in a
+      # program to be bounded, and correspondingly the number of retraces.
+      #
+      # Note we also include the class name to avoid collisions with strings.
+      return v.__class__, v._unique_id  # pylint: disable=protected-access
 
     if _is_ndarray(v):
       # Numpy arrays are not hashable, but when calling functions we treat them

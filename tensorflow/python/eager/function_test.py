@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import copy
 import functools
 import itertools
 import multiprocessing.pool
@@ -2930,30 +2931,57 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # should only get a miss if the aliasing changed.
     defined(x, y, z)
     self.assertLen(total_function_cache(defined), 1)
-
-    # Calling again is a cache hit
     defined(x, y, z)
     self.assertLen(total_function_cache(defined), 1)
 
-    # Re-arranging arguments doesn't change signature
+    # Re-arranging arguments causes cache miss
     defined(z, y, x)
-    self.assertLen(total_function_cache(defined),
-                   1 if ops.Tensor._USE_EQUALITY else 2)
+    self.assertLen(total_function_cache(defined), 2)
+    defined(z, y, x)
+    self.assertLen(total_function_cache(defined), 2)
 
     # Aliasing causes cache miss
     defined(x, x, z)
-    self.assertLen(total_function_cache(defined),
-                   2 if ops.Tensor._USE_EQUALITY else 3)
+    self.assertLen(total_function_cache(defined), 3)
+    defined(x, x, z)
+    self.assertLen(total_function_cache(defined), 3)
 
-    # Re-arranging arguments doesn't change signature
+    # Re-arranging arguments causes cache miss
     defined(y, y, z)
-    self.assertLen(total_function_cache(defined),
-                   2 if ops.Tensor._USE_EQUALITY else 4)
+    self.assertLen(total_function_cache(defined), 4)
+    defined(y, y, z)
+    self.assertLen(total_function_cache(defined), 4)
 
     # Different alias positions causes cache miss
     defined(z, y, y)
-    self.assertLen(total_function_cache(defined),
-                   3 if ops.Tensor._USE_EQUALITY else 5)
+    self.assertLen(total_function_cache(defined), 5)
+    defined(z, y, y)
+    self.assertLen(total_function_cache(defined), 5)
+
+    x_copy = copy.deepcopy(x)
+
+    # Deep copy causes cache miss
+    defined(x_copy, y, z)
+    self.assertLen(total_function_cache(defined), 6)
+    defined(x_copy, y, z)
+    self.assertLen(total_function_cache(defined), 6)
+
+  def testVariableRetracing(self):
+    v1 = variables.Variable(1.)
+    v2 = variables.Variable(1.)
+    v3 = copy.deepcopy(variables.Variable(1.))
+
+    var_dict = {id(v1): constant_op.constant(1),
+                id(v2): constant_op.constant(2),
+                id(v3): constant_op.constant(3)}
+
+    @function.defun
+    def lookup_tensor(v):
+      return var_dict[id(v)]
+
+    self.assertEqual(1, lookup_tensor(v1).numpy())
+    self.assertEqual(2, lookup_tensor(v2).numpy())
+    self.assertEqual(3, lookup_tensor(v3).numpy())
 
   def testDecoratedMethodInspect(self):
 

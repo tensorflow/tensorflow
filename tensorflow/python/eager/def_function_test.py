@@ -568,10 +568,10 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(trace_count[0], 1)
     self.assertEqual(self.evaluate(v1), 2.0)
     double_variable(v2)
-    self.assertEqual(trace_count[0], 1 if ops.Tensor._USE_EQUALITY else 2)
+    self.assertEqual(trace_count[0], 2)
     self.assertEqual(self.evaluate(v2), 4.0)
     double_variable(v3)
-    self.assertEqual(trace_count[0], 2 if ops.Tensor._USE_EQUALITY else 3)
+    self.assertEqual(trace_count[0], 3)
     self.assertEqual(self.evaluate(v3), 8)
 
   def testShapeCache(self):
