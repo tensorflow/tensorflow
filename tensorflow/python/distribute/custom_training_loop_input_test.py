@@ -796,10 +796,6 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
           mode=["eager"]
       ))
   def testMultiDeviceDataCapturedFunction(self, distribution):
-    if getattr(distribution, "_enable_packed_variable_in_eager_mode", False):
-      self.skipTest(
-          "Dataset captured function doesn't support packed tensors yet "
-          "(b/145922293).")
     inputs = constant_op.constant([2., 3.])
     dataset = lambda _: dataset_ops.Dataset.from_tensor_slices(inputs).repeat(5)
     input_iterator = iter(

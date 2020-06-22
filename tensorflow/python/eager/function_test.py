@@ -224,6 +224,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       return read0, read1, read2, read3
 
+    arg_attrs = read_var.get_concrete_function().function_def.arg_attr
+    self.assertLen(arg_attrs, 2)
+    self.assertEqual(arg_attrs[0].attr['_composite_device'].s,
+                     compat.as_bytes(packed_var_0.device))
+    self.assertEqual(arg_attrs[1].attr['_composite_device'].s,
+                     compat.as_bytes(packed_var_1.device))
+
     self.assertAllEqual(read_var(), (1 + 5, 2 + 5, 3 + 6, 4 + 6))
 
   def testImplementsAttributeBasic(self):
