@@ -81,9 +81,6 @@ from tensorflow.python.util import tf_inspect
 ag_ctx = lazy_loader.LazyLoader(
     "ag_ctx", globals(),
     "tensorflow.python.autograph.core.ag_ctx")
-np_arrays = lazy_loader.LazyLoader(
-    "np_arrays", globals(),
-    "tensorflow.python.ops.numpy_ops.np_arrays")
 
 
 FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
@@ -1487,11 +1484,6 @@ class ConcreteFunction(object):
     self._func_graph = func_graph
     self._captured_inputs = self._func_graph.external_captures
     self._captured_closures = self._func_graph.deferred_external_captures
-    structured_outputs = self._func_graph.structured_outputs
-    self._ndarrays_list = (
-        isinstance(structured_outputs, (list, tuple)) and
-        all([isinstance(o, np_arrays.ndarray) for o in structured_outputs]))
-    self._ndarray_singleton = isinstance(structured_outputs, np_arrays.ndarray)
 
     # function_spec defines the structured signature.
     self._set_function_spec(function_spec)
@@ -2158,15 +2150,9 @@ class ConcreteFunction(object):
     if self._func_graph.structured_outputs is None:
       return result
 
-    if result:
-      if self._ndarrays_list:
-        return [np_arrays.tensor_to_ndarray(o) for o in result]
-      elif self._ndarray_singleton:
-        return np_arrays.tensor_to_ndarray(result[0])
-
     # Replace outputs with results, skipping over any 'None' values.
-    outputs_list = nest.flatten(
-        self._func_graph.structured_outputs, expand_composites=True)
+    outputs_list = nest.flatten(self._func_graph.structured_outputs,
+                                expand_composites=True)
     j = 0
     for i, o in enumerate(outputs_list):
       if o is not None:
