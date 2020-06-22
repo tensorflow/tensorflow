@@ -48,7 +48,7 @@ def allow_tensor_float_32_execution(allowed):
   future version.
   
   Args:
-    allow: whether to allow TensorFloat-32 execution
+    allowed: whether to allow TensorFloat-32 execution
   """
   _pywrap_tf32_execution.allow(allowed)
 
