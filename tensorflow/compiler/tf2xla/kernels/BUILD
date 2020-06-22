@@ -32,6 +32,7 @@ tf_kernel_library(
         "data_format_ops.cc",
         "depthtospace_op.cc",
         "dequantize_op.cc",
+        "device_index_op.cc",
         "diag_op.cc",
         "dynamic_slice_ops.cc",
         "dynamic_stitch_op.cc",
