@@ -50,7 +50,8 @@ class Arguments {
   void AddObjectRef(const std::string& name, AccessType access_type,
                     GPUObjectDescriptorPtr&& descriptor_ptr);
   void AddObject(const std::string& name, AccessType access_type,
-                 GPUObjectPtr&& object);
+                 GPUObjectPtr&& object,
+                 GPUObjectDescriptorPtr&& descriptor_ptr);
 
   absl::Status SetInt(const std::string& name, int value);
   absl::Status SetFloat(const std::string& name, float value);
@@ -162,6 +163,7 @@ class Arguments {
   struct ObjectArg {
     AccessType access_type;
     GPUObjectPtr obj_ptr;
+    GPUObjectDescriptorPtr descriptor;
   };
   std::map<std::string, ObjectArg> objects_;
 };

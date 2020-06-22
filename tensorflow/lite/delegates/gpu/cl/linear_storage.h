@@ -92,9 +92,6 @@ class LinearStorage : public GPUObject {
   std::string ReadLinearFLT4(const std::string& z_coord) const;
   std::string GetDeclaration() const;
 
-  const GPUObjectDescriptor* GetGPUDescriptor() const override {
-    return &desc_;
-  }
   GPUResourcesWithValue GetGPUResources(AccessType access_type) const override;
 
  private:
@@ -115,7 +112,6 @@ class LinearStorage : public GPUObject {
   std::string name_;
   LinearStorageType storage_type_;
   DataType data_type_;
-  TensorLinearDescriptor desc_;
 };
 
 absl::Status CreateBufferLinearStorage(int size, DataType data_type, void* data,
@@ -134,6 +130,31 @@ template <DataType T>
 absl::Status CreateLinearStorage(const LinearStorageCreateInfo& creation_info,
                                  const tflite::gpu::Tensor<Linear, T>& tensor,
                                  CLContext* context, LinearStorage* result) {
+  int size = creation_info.aligned_size != 0 ? creation_info.aligned_size
+                                             : tensor.shape.v;
+  const int depth = DivideRoundUp(size, 4);
+  if (creation_info.data_type == DataType::FLOAT32) {
+    std::vector<float4> gpu_data(depth);
+    CopyLinearFLT4(tensor, absl::MakeSpan(gpu_data));
+    RETURN_IF_ERROR(CreateLinearStorage(creation_info, depth, gpu_data.data(),
+                                        context, result));
+  } else {
+    std::vector<half4> gpu_data(depth);
+    CopyLinearFLT4(tensor, absl::MakeSpan(gpu_data));
+    RETURN_IF_ERROR(CreateLinearStorage(creation_info, depth, gpu_data.data(),
+                                        context, result));
+  }
+  result->SetName(creation_info.name);
+  return absl::OkStatus();
+}
+
+template <DataType T>
+absl::Status CreateLinearStorage(const TensorLinearDescriptor& descriptor,
+                                 const tflite::gpu::Tensor<Linear, T>& tensor,
+                                 CLContext* context, LinearStorage* result) {
+  LinearStorageCreateInfo creation_info;
+  creation_info.storage_type = descriptor.storage_type;
+  creation_info.data_type = descriptor.element_type;
   int size = creation_info.aligned_size != 0 ? creation_info.aligned_size
                                              : tensor.shape.v;
   const int depth = DivideRoundUp(size, 4);
