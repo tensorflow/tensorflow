@@ -52,7 +52,8 @@ const char kPossibleNonVariableResourceHintMessage[] =
     "resource inputs to XLA.";
 }  // anonymous namespace
 
-VariableInfo::VariableInfo(int index, Var* var) : index_(index), var_(var) {}
+VariableInfo::VariableInfo(int index, absl::string_view name, Var* var)
+    : index_(index), name_(name), var_(var) {}
 VariableInfo::VariableInfo(VariableInfo&& other)
     : index_(other.index_), var_(other.var_), lock_held_(other.lock_held_) {
   other.index_ = -1;
@@ -87,16 +88,15 @@ VariableInfo::~VariableInfo() {
 // Returns a vector of VariableInfo instances for the resource variable inputs
 // to the kernel with context `ctx`.  The input indices for the resource
 // variable inputs are in `variable_indices`.
-static Status GetVariableInfosFromCtxInputs(
-    OpKernelContext* ctx, absl::Span<const int> variable_indices,
-    std::vector<VariableInfo>* result) {
+Status GetVariableInfosFromCtxInputs(OpKernelContext* ctx,
+                                     absl::Span<const int> variable_indices,
+                                     std::vector<VariableInfo>* result) {
   std::vector<const ResourceHandle*> resource_handles;
   absl::c_transform(
       variable_indices, std::back_inserter(resource_handles),
       [&](int variable_idx) { return &HandleFromInput(ctx, variable_idx); });
 
   std::vector<core::RefCountPtr<Var>> variables;
-
   Status s = LookupResources(ctx, resource_handles, &variables);
   if (!s.ok()) {
     errors::AppendToMessage(&s, kPossibleNonVariableResourceHintMessage);
@@ -109,7 +109,9 @@ static Status GetVariableInfosFromCtxInputs(
     // *Release* the variable because we're going to unref it later in
     // ~VariableInfo.
     Var* variable = variables[i].release();
-    result->emplace_back(variable_indices[i], variable);
+    int input_idx = variable_indices[i];
+    std::string var_name = HandleFromInput(ctx, input_idx).name();
+    result->emplace_back(input_idx, var_name, variable);
   }
 
   return Status::OK();
@@ -162,21 +164,12 @@ Status LockVariables(absl::Span<VariableInfo> variables) {
 
 Status SnapshotResourceVariables(OpKernelContext* ctx,
                                  absl::Span<const int> variable_indices,
-                                 std::map<int, OptionalTensor>* result) {
-  std::vector<VariableInfo> variable_infos;
-  TF_RETURN_IF_ERROR(
-      GetVariableInfosFromCtxInputs(ctx, variable_indices, &variable_infos));
-  TF_RETURN_IF_ERROR(LockVariables(absl::MakeSpan(variable_infos)));
-
+                                 absl::Span<VariableInfo const> variable_infos,
+                                 ResourceVarsSnapshot* result) {
   for (int i = 0; i < variable_indices.size(); i++) {
-    if (variable_infos[i].var()) {
-      OptionalTensor& tensor = (*result)[variable_indices[i]];
-      tensor.name = HandleFromInput(ctx, variable_indices[i]).name();
-      tensor.present = true;
-      tensor.value = *variable_infos[i].var()->tensor();
-    } else {
-      (*result)[variable_indices[i]] = OptionalTensor();
-    }
+    Var* var = variable_infos[i].var();
+    (*result)[variable_indices[i]] =
+        var ? absl::make_optional(*var->tensor()) : absl::nullopt;
   }
   return Status::OK();
 }
@@ -197,8 +190,7 @@ XlaComputationLaunchContext::XlaComputationLaunchContext(
 void XlaComputationLaunchContext::PopulateInputs(
     OpKernelContext* ctx,
     const XlaCompiler::CompilationResult* compilation_result,
-    const std::map<int, OptionalTensor>& variables,
-    int missing_ctx_input_prefix) {
+    const ResourceVarsSnapshot& variables, int missing_ctx_input_prefix) {
   // Build ShapedBuffers that point directly to the Tensor buffers.
   arg_ptrs_ =
       std::vector<ShapedBuffer*>(compilation_result->xla_input_shapes.size());
@@ -210,7 +202,7 @@ void XlaComputationLaunchContext::PopulateInputs(
     CHECK_GE(arg_num, missing_ctx_input_prefix);
     const xla::Shape& shape = compilation_result->xla_input_shapes[i];
     const Tensor* t = variables.count(arg_num)
-                          ? &(variables.at(arg_num).value)
+                          ? &(variables.at(arg_num).value())
                           : &(ctx->input(arg_num - missing_ctx_input_prefix));
     CHECK(t);
 
@@ -262,7 +254,7 @@ static const Tensor* FindAliasedTensorForOutput(
     int output_num, OpKernelContext* ctx, int missing_ctx_input_prefix,
     const xla::HloInputOutputAliasConfig& input_output_alias,
     absl::Span<const int> input_mapping,
-    const std::map<int, OptionalTensor>& resource_var_snapshots) {
+    const ResourceVarsSnapshot& resource_var_snapshots) {
   if (MustAliasOutput(input_output_alias, output_num)) {
     int xla_param = input_output_alias.GetAliasedParameter({output_num})
                         .value()
@@ -274,8 +266,8 @@ static const Tensor* FindAliasedTensorForOutput(
     // entry time.
     if (input_tensor->dtype() == DT_RESOURCE) {
       auto& v = resource_var_snapshots.at(missing_ctx_input_prefix + tf_param);
-      CHECK(v.present);
-      return &v.value;
+      CHECK(v.has_value());
+      return &v.value();
     }
     return input_tensor;
   }
@@ -298,9 +290,9 @@ static Tensor GetOrCreateTensorForOutput(
     int output_num, OpKernelContext* ctx, int missing_ctx_input_prefix,
     const xla::HloInputOutputAliasConfig& input_output_alias,
     absl::Span<const int> input_mapping,
-    const std::map<int, OptionalTensor>& resource_var_snapshots,
-    DataType output_dtype, const TensorShape& output_shape,
-    se::DeviceMemoryBase output_buffer, Allocator* output_allocator) {
+    const ResourceVarsSnapshot& resource_var_snapshots, DataType output_dtype,
+    const TensorShape& output_shape, se::DeviceMemoryBase output_buffer,
+    Allocator* output_allocator) {
   if (const Tensor* aliased_tensor = FindAliasedTensorForOutput(
           output_num, ctx, missing_ctx_input_prefix, input_output_alias,
           input_mapping, resource_var_snapshots)) {
@@ -431,13 +423,13 @@ static xla::StatusOr<std::vector<VariableInfo>> GatherVariableInfo(
     // TODO(b/35625933): tensorflow::Var should contain a PersistentTensor,
     // not a Tensor.
     Var* variable = nullptr;
-    TF_RETURN_IF_ERROR(LookupOrCreateResource<Var>(
-        ctx, HandleFromInput(ctx, actual_input_index), &variable,
-        [&write](Var** ptr) {
-          *ptr = new Var(write.type);
-          return Status::OK();
-        }));
-    variable_infos.emplace_back(actual_input_index, variable);
+    const ResourceHandle handle = HandleFromInput(ctx, actual_input_index);
+    TF_RETURN_IF_ERROR(LookupOrCreateResource<Var>(ctx, handle, &variable,
+                                                   [&write](Var** ptr) {
+                                                     *ptr = new Var(write.type);
+                                                     return Status::OK();
+                                                   }));
+    variable_infos.emplace_back(actual_input_index, handle.name(), variable);
   }
   return variable_infos;
 }
@@ -447,7 +439,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
     const XlaCompiler::CompilationResult* compilation_result,
     ScopedShapedBuffer output, int missing_ctx_input_prefix,
     const xla::HloInputOutputAliasConfig& input_output_alias,
-    const std::map<int, OptionalTensor>& resource_var_snapshots) {
+    const ResourceVarsSnapshot& resource_var_snapshots) {
   se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
   Allocator* allocator = ctx->device()->GetAllocator({});
@@ -564,12 +556,21 @@ Status XlaComputationLaunchContext::PopulateOutputs(
 
 Status XlaComputationLaunchContext::BuildXlaCompilerArguments(
     const std::map<int, Tensor>& constant_args,
-    const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
+    absl::Span<VariableInfo const> variable_args, OpKernelContext* ctx,
     std::vector<XlaCompiler::Argument>* args) {
   args->resize(ctx->num_inputs());
 
+  absl::flat_hash_map<int, const VariableInfo*> variable_info_lookup;
+  for (const VariableInfo& info : variable_args) {
+    CHECK(!info.var() || info.lock_held())
+        << "Need to hold the lock on resource variables "
+           "before calling BuildXlaCompilerArguments";
+    variable_info_lookup.emplace(info.index(), &info);
+  }
+
   for (int64 input_num = 0; input_num < ctx->num_inputs(); ++input_num) {
     XlaCompiler::Argument& arg = (*args)[input_num];
+
     if (constant_args.count(input_num) > 0) {
       // Handles compile-time constants.
       const Tensor& input = constant_args.at(input_num);
@@ -578,7 +579,7 @@ Status XlaComputationLaunchContext::BuildXlaCompilerArguments(
       arg.type = input.dtype();
       arg.shape = input.shape();
       arg.constant_value = input;
-    } else if (variable_args.count(input_num) == 0) {
+    } else if (variable_info_lookup.count(input_num) == 0) {
       // Handles the non-constant arguments.
       const Tensor& input = ctx->input(input_num);
       TF_RET_CHECK(input.dtype() != DT_RESOURCE);
@@ -594,14 +595,14 @@ Status XlaComputationLaunchContext::BuildXlaCompilerArguments(
       // Handles resource variables.
       const Tensor& input = ctx->input(input_num);
       TF_RET_CHECK(input.dtype() == DT_RESOURCE);
-      const OptionalTensor& variable = variable_args.at(input_num);
-      arg.name = variable.name;
+      const VariableInfo& variable = *variable_info_lookup[input_num];
+      arg.name = std::string(variable.name());
       arg.kind = XlaCompiler::Argument::kResource;
       arg.resource_kind = XlaResource::kVariable;
-      if (variable.present) {
-        const Tensor& value = variable.value;
-        arg.type = value.dtype();
-        arg.shape = value.shape();
+      if (variable.var()) {
+        const Tensor* value = variable.var()->tensor();
+        arg.type = value->dtype();
+        arg.shape = value->shape();
         arg.initialized = true;
       } else {
         // The values of uninitialized variables are not passed as inputs, since
