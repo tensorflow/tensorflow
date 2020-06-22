@@ -1864,6 +1864,7 @@ cc_library(
         "//tensorflow/core/lib/io:random_inputstream",
         "//tensorflow/core/lib/io:record_reader",
         "//tensorflow/core/lib/io:record_writer",
+        "//tensorflow/core/lib/io:snappy_compression_options",
         "//tensorflow/core/lib/io:snappy_inputbuffer",
         "//tensorflow/core/lib/io:snappy_inputstream",
         "//tensorflow/core/lib/io:snappy_outputbuffer",
