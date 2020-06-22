@@ -41,20 +41,6 @@ struct TensorLinearDescriptor : public GPUObjectDescriptor {
   LinearStorageType storage_type;
   DataType element_type;  // FLOAT32 or FLOAT16
 
-  TensorLinearDescriptor() = default;
-  TensorLinearDescriptor(const TensorLinearDescriptor& desc)
-      : GPUObjectDescriptor(desc),
-        storage_type(desc.storage_type),
-        element_type(desc.element_type) {}
-  TensorLinearDescriptor& operator=(const TensorLinearDescriptor& desc) {
-    if (this != &desc) {
-      storage_type = desc.storage_type;
-      element_type = desc.element_type;
-      GPUObjectDescriptor::operator=(desc);
-    }
-    return *this;
-  }
-
   absl::Status PerformSelector(const std::string& selector,
                                const std::vector<std::string>& args,
                                const std::vector<std::string>& template_args,

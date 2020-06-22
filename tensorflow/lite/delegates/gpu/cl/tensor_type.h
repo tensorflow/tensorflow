@@ -48,20 +48,6 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   TensorDescriptor() = default;
   TensorDescriptor(DataType dt, TensorStorageType st, Layout l)
       : data_type(dt), storage_type(st), layout(l) {}
-  TensorDescriptor(const TensorDescriptor& desc)
-      : GPUObjectDescriptor(desc),
-        data_type(desc.data_type),
-        storage_type(desc.storage_type),
-        layout(desc.layout) {}
-  TensorDescriptor& operator=(const TensorDescriptor& desc) {
-    if (this != &desc) {
-      data_type = desc.data_type;
-      storage_type = desc.storage_type;
-      layout = desc.layout;
-      GPUObjectDescriptor::operator=(desc);
-    }
-    return *this;
-  }
 
   bool operator==(const TensorDescriptor& d) const {
     return data_type == d.data_type && storage_type == d.storage_type &&

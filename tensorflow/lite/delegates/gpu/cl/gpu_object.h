@@ -105,14 +105,6 @@ struct GPUResourcesWithValue {
 class GPUObjectDescriptor {
  public:
   GPUObjectDescriptor() = default;
-  GPUObjectDescriptor(const GPUObjectDescriptor& obj_desc)
-      : state_vars_(obj_desc.state_vars_) {}
-  GPUObjectDescriptor& operator=(const GPUObjectDescriptor& obj_desc) {
-    if (this != &obj_desc) {
-      state_vars_ = obj_desc.state_vars_;
-    }
-    return *this;
-  }
   virtual ~GPUObjectDescriptor() = default;
 
   void SetStateVar(const std::string& key, const std::string& value) const {
