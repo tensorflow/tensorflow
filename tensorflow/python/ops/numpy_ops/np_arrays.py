@@ -82,10 +82,10 @@ class NdarraySpec(type_spec.BatchableTypeSpec):
     return (self._data_spec,)
 
   def _batch(self, batch_size):
-    return NdarraySpec(self._data_spec.batch(batch_size))
+    return NdarraySpec(self._data_spec._batch(batch_size))  # pylint: disable=protected-access
 
   def _unbatch(self):
-    return NdarraySpec(self._data_spec.unbatch())
+    return NdarraySpec(self._data_spec._unbatch())  # pylint: disable=protected-access
 
 
 class ndarray(composite_tensor.CompositeTensor):  # pylint: disable=invalid-name
@@ -305,10 +305,6 @@ class ndarray(composite_tensor.CompositeTensor):  # pylint: disable=invalid-name
 
   def __repr__(self):
     return 'ndarray<{}>'.format(self.data.__repr__())
-
-  @property
-  def _id(self):
-    return self.data._id  # pylint: disable=protected-access
 
 
 def tensor_to_ndarray(tensor):
