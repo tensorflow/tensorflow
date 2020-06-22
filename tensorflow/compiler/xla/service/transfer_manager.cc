@@ -355,7 +355,9 @@ StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
         ShapeUtil::GetSubshape(shaped_buffer.on_device_shape(), index);
     TF_ASSIGN_OR_RETURN(auto memory,
                         allocator->Allocate(shaped_buffer.device_ordinal(),
-                                            GetByteSizeRequirement(subshape)));
+                                            GetByteSizeRequirement(subshape),
+                                            /*retry_on_failure=*/true,
+                                            subshape.layout().memory_space()));
     // Move the allocated buffer into the ScopedShapedBuffer, which owns it.
     memory_base = memory.Release();
   }
