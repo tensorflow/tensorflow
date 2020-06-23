@@ -31,11 +31,13 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.compat import compat
+from tensorflow.python.data.experimental.ops import get_single_element
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -1375,10 +1377,13 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     def generator(): yield image_input
 
     dataset = dataset_ops.Dataset.from_generator(
-        generator, output_types=dtypes.int32)
+        generator,
+        output_types=dtypes.int32,
+        output_shapes=tensor_shape.TensorShape([1, 2, 2, 3]))
     dataset = dataset.map(image_ops.flip_left_right)
 
-    image_flipped_via_dataset_map = next(iter(dataset))
+    image_flipped_via_dataset_map = get_single_element.get_single_element(
+        dataset.take(1))
     self.assertAllEqual(image_flipped_via_dataset_map, expected_output)
 
 class AdjustContrastTest(test_util.TensorFlowTestCase):
