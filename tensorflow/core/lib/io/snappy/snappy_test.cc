@@ -25,7 +25,11 @@ namespace tensorflow {
 // The current implementation of snappy compresses the below block to 619 bytes.
 // We use this to validate the error messages. Please change this number if
 // a new snappy implementation compresses to a different size.
+#if defined(__s390x__)
+const int COMPRESSED_RECORD_SIZE = 620;
+#else 
 const int COMPRESSED_RECORD_SIZE = 619;
+#endif
 
 static string GetRecord() {
   static const string lorem_ipsum =
