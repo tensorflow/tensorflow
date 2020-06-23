@@ -932,7 +932,8 @@ SaturateCastDType = TypeVar("SaturateCastDType",
                             dtypes.UInt8, dtypes.UInt16, dtypes.UInt32,
                             dtypes.UInt64, dtypes.Int8, dtypes.Int16,
                             dtypes.Int32, dtypes.Int64, dtypes.Float16,
-                            dtypes.Float32, dtypes.Float64, dtypes.BFloat16)
+                            dtypes.Half, dtypes.Float32, dtypes.Float64,
+                            dtypes.BFloat16)
 
 @tf_export("dtypes.saturate_cast", "saturate_cast")
 @dispatch.add_dispatch_support
