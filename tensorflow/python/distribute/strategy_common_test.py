@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import parameterized
-import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
@@ -32,6 +31,7 @@ from tensorflow.python.distribute.tpu_strategy import TPUStrategy
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -83,7 +83,7 @@ class DistributedCollectiveAllReduceStrategyTest(
       return d.shard(input_context.num_input_pipelines,
                      input_context.input_pipeline_id)
 
-    expected_data_on_worker = [[0, 1, 2, 3, 4], [5, 6, 7, 8, 9]]
+    expected_sum_on_workers = [10, 35]
     input_iterator = iter(
         strategy.experimental_distribute_datasets_from_function(dataset_fn))
 
@@ -92,59 +92,10 @@ class DistributedCollectiveAllReduceStrategyTest(
       return strategy.experimental_local_results(iterator.get_next())
 
     result = run(input_iterator)
-    self.assertTrue(
-        np.array_equal(
-            result[0].numpy(),
-            expected_data_on_worker[multi_worker_test_base.get_task_index()]))
-
-  def testSimpleInputFromDatasetLastPartialBatch(self, strategy):
-    global_batch_size = 8
-    dataset = dataset_ops.DatasetV2.range(14).batch(
-        global_batch_size, drop_remainder=False)
-    input_iterator = iter(strategy.experimental_distribute_dataset(dataset))
-
-    @def_function.function
-    def run(input_iterator):
-      return strategy.run(lambda x: x, args=(next(input_iterator),))
-
-    # Let the complete batch go.
-    run(input_iterator)
-
-    # `result` is an incomplete batch
-    result = run(input_iterator)
-    expected_data_on_worker = [[8, 9, 10], [11, 12, 13]]
-    self.assertTrue(
-        np.array_equal(
-            result.numpy(),
-            expected_data_on_worker[multi_worker_test_base.get_task_index()]))
-
-  def testSimpleInputFromFnLastPartialBatch(self, strategy):
-
-    def dataset_fn(input_context):
-      global_batch_size = 8
-      batch_size = input_context.get_per_replica_batch_size(global_batch_size)
-      dataset = dataset_ops.DatasetV2.range(14).batch(
-          batch_size, drop_remainder=False)
-      return dataset.shard(input_context.num_input_pipelines,
-                           input_context.input_pipeline_id)
-
-    input_iterator = iter(
-        strategy.experimental_distribute_datasets_from_function(dataset_fn))
-
-    @def_function.function
-    def run(input_iterator):
-      return strategy.run(lambda x: x, args=(next(input_iterator),))
-
-    # Let the complete batch go.
-    run(input_iterator)
-    # `result` is an incomplete batch
-    result = run(input_iterator)
-
-    expected_data_on_worker = [[8, 9, 10, 11], [12, 13]]
-    self.assertTrue(
-        np.array_equal(
-            result.numpy(), expected_data_on_worker[
-                multi_worker_test_base.get_task_index()]))
+    sum_value = math_ops.reduce_sum(result)
+    self.assertEqual(
+        sum_value.numpy(),
+        expected_sum_on_workers[multi_worker_test_base.get_task_index()])
 
   def testReduceHostTensor(self, strategy):
     reduced = strategy.reduce(
