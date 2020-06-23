@@ -261,7 +261,7 @@ TEST(PythonOpGen, TypeAnnotateDefaultParams) {
 
   string code = GetPythonOps(op_defs, api_def_map, {}, "", type_annotate_ops);
 
-  const string params = "def foo_bar(x: _ops.Tensor[_dtypes.Float32], t: TV_FooBar_t, var1: bool = False, var2: int = 0, name=None)";
+  const string params = "def foo_bar(x: _ops.Tensor[_dtypes.Float32], t: TV_FooBar_t, var1:bool=False, var2:int=0, name=None)";
   const string params_fallback = "def foo_bar_eager_fallback(x: _ops.Tensor[_dtypes.Float32], t: TV_FooBar_t, var1: bool, var2: int, name, ctx)";
   ExpectHasSubstr(code, params);
   ExpectHasSubstr(code, params_fallback);

@@ -109,7 +109,7 @@ void PrintAllPythonOps(const std::vector<string>& op_list,
                        const std::vector<string>& api_def_dirs,
                        const string& source_file_name,
                        bool op_list_is_whitelist,
-                       std::unordered_set<string> type_annotate_ops) {
+                       const std::unordered_set<string> type_annotate_ops) {
   OpList ops;
   OpRegistry::Global()->Export(false, &ops);
 
@@ -159,7 +159,7 @@ int main(int argc, char* argv[]) {
       argv[1], ",", tensorflow::str_util::SkipEmpty());
 
   // Add op name to this set to add type annotations
-  std::unordered_set<tensorflow::string> type_annotate_ops {
+  const std::unordered_set<tensorflow::string> type_annotate_ops {
   };
 
   if (argc == 2) {

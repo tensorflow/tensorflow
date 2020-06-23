@@ -33,7 +33,7 @@ namespace tensorflow {
 string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
                     const std::vector<string>& hidden_ops,
                     const string& source_file_name,
-                    std::unordered_set<string> type_annotate_ops);
+                    const std::unordered_set<string> type_annotate_ops);
 
 // Prints the output of GetPrintOps to stdout.
 // hidden_ops should be a list of Op names that should get a leading _
@@ -43,7 +43,7 @@ string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
 void PrintPythonOps(const OpList& ops, const ApiDefMap& api_defs,
                     const std::vector<string>& hidden_ops,
                     const string& source_file_name,
-                    std::unordered_set<string> type_annotate_ops);
+                    const std::unordered_set<string> type_annotate_ops);
 
 // Get the python wrappers for a list of ops in a OpList.
 // `op_list_buf` should be a pointer to a buffer containing
@@ -55,7 +55,7 @@ string GetPythonWrappers(const char* op_list_buf, size_t op_list_len);
 // `arg` should be an input or output of an op
 // `type_annotations` should contain attr names mapped to TypeVar names
 string GetArgAnnotation(const auto& arg,
-                        std::unordered_map<string, string>& type_annotations);
+                        const std::unordered_map<string, string>& type_annotations);
 
 }  // namespace tensorflow
 
