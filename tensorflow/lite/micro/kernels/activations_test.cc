@@ -204,9 +204,9 @@ void TestHardSwishQuantized(int size, const T* output_data, T* input_data_quanti
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(float_input_values, input_data_quantized, input_dims,
-                            input_scale, input_zero_point, "input_tensor"),
+                            input_scale, input_zero_point),
       CreateQuantizedTensor(output_data, output_dims, output_scale,
-                            output_zero_point, "output_tensor"),
+                            output_zero_point),
   };
 
   TfLiteContext context;
@@ -316,9 +316,9 @@ void TestHardSwishQuantizedBias(const int size, const T* output_data, T* input_d
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(float_input_values, input_data_quantized, input_dims,
-                            input_scale, input_zero_point, "input_tensor"),
+                            input_scale, input_zero_point),
       CreateQuantizedTensor(output_data, output_dims, output_scale,
-                            output_zero_point, "output_tensor"),
+                            output_zero_point),
   };
 
   TfLiteContext context;
@@ -394,8 +394,8 @@ void TestHardSwishFloat(const int size, float* output_data, std::minstd_rand* ra
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(float_input_values, input_dims, "input_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor"),
+      CreateFloatTensor(float_input_values, input_dims),
+      CreateFloatTensor(output_data, output_dims),
   };
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
