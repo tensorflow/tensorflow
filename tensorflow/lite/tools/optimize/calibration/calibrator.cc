@@ -378,8 +378,8 @@ TfLiteStatus BuildLoggingInterpreter(
   // Prepare the logging op resolver to use |LoggingEval| for kernel
   // invocations.
   auto logging_op_resolver = absl::make_unique<LoggingOpResolver>(
-      builtin_op_and_versions, custom_op_and_versions, op_resolver,
-      LoggingEval);
+      builtin_op_and_versions, custom_op_and_versions, op_resolver, LoggingEval,
+      error_reporter);
   tflite::InterpreterBuilder(tflite_model, *logging_op_resolver,
                              error_reporter)(interpreter);
 

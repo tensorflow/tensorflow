@@ -19,8 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
-
 import numpy as np
 
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
@@ -48,6 +46,11 @@ from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
+
+try:
+  from collections import abc as collections_abc  # pylint: disable=g-import-not-at-top
+except ImportError:  # For Python 2
+  import collections as collections_abc  # pylint: disable=g-import-not-at-top
 
 
 RECURRENT_DROPOUT_WARNING_MSG = (
@@ -828,7 +831,7 @@ class RNN(Layer):
     # input shape: `(samples, time (padded with zeros), input_dim)`
     # note that the .build() method of subclasses MUST define
     # self.input_spec and self.state_spec with complete input shapes.
-    if (isinstance(inputs, collections.Sequence)
+    if (isinstance(inputs, collections_abc.Sequence)
         and not isinstance(inputs, tuple)):
       # get initial_state from full input spec
       # as they could be copied to multiple GPU.

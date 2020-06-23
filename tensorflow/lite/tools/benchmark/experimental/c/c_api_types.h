@@ -58,7 +58,7 @@ typedef enum TfLiteExternalContextType {
   kTfLiteEigenContext = 0,       // include eigen_support.h to use.
   kTfLiteGemmLowpContext = 1,    // include gemm_support.h to use.
   kTfLiteEdgeTpuContext = 2,     // Placeholder for Edge TPU support.
-  kTfLiteCpuBackendContext = 3,  // include cpu_backend_support.h to use.
+  kTfLiteCpuBackendContext = 3,  // include cpu_backend_context.h to use.
   kTfLiteMaxExternalContexts = 4
 } TfLiteExternalContextType;
 
@@ -205,6 +205,7 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
 // the current function, while also reporting the location of the error.
 // `a` and `b` may be evaluated more than once, so no side effects or
 // extremely expensive computations should be done.
+// NOTE: Use TF_LITE_ENSURE_TYPES_EQ if comparing TfLiteTypes.
 #define TF_LITE_ENSURE_EQ(context, a, b)                                   \
   do {                                                                     \
     if ((a) != (b)) {                                                      \
@@ -374,6 +375,7 @@ typedef struct TfLiteSparsity {
 
 // An tensor in the interpreter system which is a wrapper around a buffer of
 // data including a dimensionality (or NULL if not currently defined).
+#ifndef TF_LITE_STATIC_MEMORY
 typedef struct TfLiteTensor {
   // The data type specification for data stored in `data`. This affects
   // what member of `data` union should be used.
@@ -438,6 +440,51 @@ typedef struct TfLiteTensor {
   // `dims_signature` contains [1, -1, -1, 3]).
   const TfLiteIntArray* dims_signature;
 } TfLiteTensor;
+#else
+// Specific reduced TfLiteTensor struct for TF Micro runtime. This struct
+// contains only the minimum fields required to initialize and prepare a micro
+// inference graph. The fields in this struct have been ordered from
+// largest-to-smallest for optimal struct sizeof.
+//
+// NOTE: This flag is opt-in only at compile time.
+typedef struct TfLiteTensor {
+  // TODO(b/155784997): Consider consolidating these quantization fields:
+  // Quantization information. Replaces params field above.
+  TfLiteQuantization quantization;
+
+  // Quantization information.
+  TfLiteQuantizationParams params;
+
+  // A union of data pointers. The appropriate type should be used for a typed
+  // tensor based on `type`.
+  TfLitePtrUnion data;
+
+  // A pointer to a structure representing the dimensionality interpretation
+  // that the buffer should have. NOTE: the product of elements of `dims`
+  // and the element datatype size should be equal to `bytes` below.
+  TfLiteIntArray* dims;
+
+  // The number of bytes required to store the data of this Tensor. I.e.
+  // (bytes of each element) * dims[0] * ... * dims[n-1].  For example, if
+  // type is kTfLiteFloat32 and dims = {3, 2} then
+  // bytes = sizeof(float) * 3 * 2 = 4 * 3 * 2 = 24.
+  size_t bytes;
+
+  // The data type specification for data stored in `data`. This affects
+  // what member of `data` union should be used.
+  TfLiteType type;
+
+  // How memory is mapped
+  //  kTfLiteMmapRo: Memory mapped read only.
+  //  i.e. weights
+  //  kTfLiteArenaRw: Arena allocated read write memory
+  //  (i.e. temporaries, outputs).
+  TfLiteAllocationType allocation_type;
+
+  // True if the tensor is a variable.
+  bool is_variable;
+} TfLiteTensor;
+#endif  // TF_LITE_STATIC_MEMORY
 
 #ifndef TF_LITE_STATIC_MEMORY
 // Free data memory of tensor `t`.

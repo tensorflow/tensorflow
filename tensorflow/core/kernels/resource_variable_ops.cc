@@ -222,8 +222,6 @@ VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
   OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_and_shape_.dtype));
   PartialTensorShape shape;
   OP_REQUIRES_OK(context, context->GetAttr("shape", &dtype_and_shape_.shape));
-  OP_REQUIRES_OK(context,
-                 context->GetAttr("allowed_devices", &allowed_devices_));
 
   is_anonymous_ = name_ == ResourceHandle::ANONYMOUS_NAME;
 
@@ -234,8 +232,7 @@ VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
                                                    &resource_, attr));
     resource_.scalar<ResourceHandle>()() = MakeResourceHandle<Var>(
         context, container_, name_,
-        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_},
-        allowed_devices_);
+        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_});
   }
 }
 
@@ -248,8 +245,7 @@ void VarHandleOp::Compute(OpKernelContext* ctx) {
         ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}), &handle, attr));
     handle.scalar<ResourceHandle>()() = MakeResourceHandle<Var>(
         ctx, container_, name_,
-        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_},
-        allowed_devices_);
+        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_});
     ctx->set_output(0, handle);
   } else {
     ctx->set_output(0, resource_);
@@ -512,7 +508,6 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
 
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
-TF_CALL_uint32(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -886,6 +881,17 @@ class ResourceScatterUpdateOp : public OpKernel {
     Tensor* params = v->tensor();
     const Tensor& indices = c->input(1);
     const Tensor& updates = c->input(2);
+
+    // Check that rank(updates.shape) = rank(indices.shape + params.shape[1:])
+    OP_REQUIRES(c,
+                updates.dims() == 0 ||
+                    updates.dims() == indices.dims() + params->dims() - 1,
+                errors::InvalidArgument(
+                    "Must have updates.shape = indices.shape + "
+                    "params.shape[1:] or updates.shape = [], got ",
+                    "updates.shape ", updates.shape().DebugString(),
+                    ", indices.shape ", indices.shape().DebugString(),
+                    ", params.shape ", params->shape().DebugString()));
 
     // Check that we have enough index space
     const int64 N_big = indices.NumElements();

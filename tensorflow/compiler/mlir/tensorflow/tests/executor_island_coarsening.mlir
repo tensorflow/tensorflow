@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-executor-island-coarsening | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -tf-executor-island-coarsening | FileCheck %s
 
 
 // Test that islands linked by a control dependency are merged.

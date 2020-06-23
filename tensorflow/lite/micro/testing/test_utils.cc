@@ -149,20 +149,17 @@ void PopulateContext(TfLiteTensor* tensors, int tensors_size,
 }
 
 TfLiteTensor CreateFloatTensor(std::initializer_list<float> data,
-                               TfLiteIntArray* dims, const char* name,
-                               bool is_variable) {
-  return CreateFloatTensor(data.begin(), dims, name, is_variable);
+                               TfLiteIntArray* dims, bool is_variable) {
+  return CreateFloatTensor(data.begin(), dims, is_variable);
 }
 
 TfLiteTensor CreateBoolTensor(std::initializer_list<bool> data,
-                              TfLiteIntArray* dims, const char* name,
-                              bool is_variable) {
-  return CreateBoolTensor(data.begin(), dims, name, is_variable);
+                              TfLiteIntArray* dims, bool is_variable) {
+  return CreateBoolTensor(data.begin(), dims, is_variable);
 }
 
 TfLiteTensor CreateQuantizedTensor(const uint8_t* data, TfLiteIntArray* dims,
-                                   const char* name, float min, float max,
-                                   bool is_variable) {
+                                   float min, float max, bool is_variable) {
   TfLiteTensor result;
   result.type = kTfLiteUInt8;
   result.data.uint8 = const_cast<uint8_t*>(data);
@@ -171,21 +168,18 @@ TfLiteTensor CreateQuantizedTensor(const uint8_t* data, TfLiteIntArray* dims,
                    ZeroPointFromMinMax<uint8_t>(min, max)};
   result.allocation_type = kTfLiteMemNone;
   result.bytes = ElementCount(*dims) * sizeof(uint8_t);
-  result.allocation = nullptr;
-  result.name = name;
   result.is_variable = false;
   return result;
 }
 
 TfLiteTensor CreateQuantizedTensor(std::initializer_list<uint8_t> data,
-                                   TfLiteIntArray* dims, const char* name,
-                                   float min, float max, bool is_variable) {
-  return CreateQuantizedTensor(data.begin(), dims, name, min, max, is_variable);
+                                   TfLiteIntArray* dims, float min, float max,
+                                   bool is_variable) {
+  return CreateQuantizedTensor(data.begin(), dims, min, max, is_variable);
 }
 
 TfLiteTensor CreateQuantizedTensor(const int8_t* data, TfLiteIntArray* dims,
-                                   const char* name, float min, float max,
-                                   bool is_variable) {
+                                   float min, float max, bool is_variable) {
   TfLiteTensor result;
   result.type = kTfLiteInt8;
   result.data.int8 = const_cast<int8_t*>(data);
@@ -194,21 +188,18 @@ TfLiteTensor CreateQuantizedTensor(const int8_t* data, TfLiteIntArray* dims,
                    ZeroPointFromMinMax<int8_t>(min, max)};
   result.allocation_type = kTfLiteMemNone;
   result.bytes = ElementCount(*dims) * sizeof(int8_t);
-  result.allocation = nullptr;
-  result.name = name;
   result.is_variable = is_variable;
   return result;
 }
 
 TfLiteTensor CreateQuantizedTensor(std::initializer_list<int8_t> data,
-                                   TfLiteIntArray* dims, const char* name,
-                                   float min, float max, bool is_variable) {
-  return CreateQuantizedTensor(data.begin(), dims, name, min, max, is_variable);
+                                   TfLiteIntArray* dims, float min, float max,
+                                   bool is_variable) {
+  return CreateQuantizedTensor(data.begin(), dims, min, max, is_variable);
 }
 
 TfLiteTensor CreateQuantizedTensor(float* data, uint8_t* quantized_data,
-                                   TfLiteIntArray* dims, const char* name,
-                                   bool is_variable) {
+                                   TfLiteIntArray* dims, bool is_variable) {
   TfLiteTensor result;
   SymmetricQuantize(data, dims, quantized_data, &result.params.scale);
   result.data.uint8 = quantized_data;
@@ -217,15 +208,12 @@ TfLiteTensor CreateQuantizedTensor(float* data, uint8_t* quantized_data,
   result.params.zero_point = 128;
   result.allocation_type = kTfLiteMemNone;
   result.bytes = ElementCount(*dims) * sizeof(uint8_t);
-  result.allocation = nullptr;
-  result.name = name;
   result.is_variable = is_variable;
   return result;
 }
 
 TfLiteTensor CreateQuantizedTensor(float* data, int8_t* quantized_data,
-                                   TfLiteIntArray* dims, const char* name,
-                                   bool is_variable) {
+                                   TfLiteIntArray* dims, bool is_variable) {
   TfLiteTensor result;
   SignedSymmetricQuantize(data, dims, quantized_data, &result.params.scale);
   result.data.int8 = quantized_data;
@@ -234,15 +222,12 @@ TfLiteTensor CreateQuantizedTensor(float* data, int8_t* quantized_data,
   result.params.zero_point = 0;
   result.allocation_type = kTfLiteMemNone;
   result.bytes = ElementCount(*dims) * sizeof(int8_t);
-  result.allocation = nullptr;
-  result.name = name;
   result.is_variable = is_variable;
   return result;
 }
 
 TfLiteTensor CreateQuantizedTensor(float* data, int16_t* quantized_data,
-                                   TfLiteIntArray* dims, const char* name,
-                                   bool is_variable) {
+                                   TfLiteIntArray* dims, bool is_variable) {
   TfLiteTensor result;
   SignedSymmetricQuantize(data, dims, quantized_data, &result.params.scale);
   result.data.i16 = quantized_data;
@@ -251,15 +236,12 @@ TfLiteTensor CreateQuantizedTensor(float* data, int16_t* quantized_data,
   result.params.zero_point = 0;
   result.allocation_type = kTfLiteMemNone;
   result.bytes = ElementCount(*dims) * sizeof(int16_t);
-  result.allocation = nullptr;
-  result.name = name;
   result.is_variable = is_variable;
   return result;
 }
 
 TfLiteTensor CreateQuantized32Tensor(const int32_t* data, TfLiteIntArray* dims,
-                                     const char* name, float scale,
-                                     bool is_variable) {
+                                     float scale, bool is_variable) {
   TfLiteTensor result;
   result.type = kTfLiteInt32;
   result.data.i32 = const_cast<int32_t*>(data);
@@ -270,16 +252,14 @@ TfLiteTensor CreateQuantized32Tensor(const int32_t* data, TfLiteIntArray* dims,
   result.params = {scale, 0};
   result.allocation_type = kTfLiteMemNone;
   result.bytes = ElementCount(*dims) * sizeof(int32_t);
-  result.allocation = nullptr;
-  result.name = name;
   result.is_variable = is_variable;
   return result;
 }
 
 TfLiteTensor CreateQuantized32Tensor(std::initializer_list<int32_t> data,
-                                     TfLiteIntArray* dims, const char* name,
-                                     float scale, bool is_variable) {
-  return CreateQuantized32Tensor(data.begin(), dims, name, scale, is_variable);
+                                     TfLiteIntArray* dims, float scale,
+                                     bool is_variable) {
+  return CreateQuantized32Tensor(data.begin(), dims, scale, is_variable);
 }
 
 }  // namespace testing

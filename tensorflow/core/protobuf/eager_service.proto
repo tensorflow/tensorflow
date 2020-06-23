@@ -258,6 +258,8 @@ message SendPackedHandleOp {
   }
 
   repeated Handle handles = 2;
+
+  string device_name = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

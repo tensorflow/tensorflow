@@ -57,6 +57,15 @@ void PythonRefManager::AddGarbage(absl::Span<py::object> garbage) {
   }
 }
 
+void PythonRefManager::AddGarbage(
+    absl::Span<std::pair<PyCodeObject*, int> const> garbage) {
+  absl::MutexLock lock(&mu_);
+  for (const auto& o : garbage) {
+    python_garbage_.push_back(py::reinterpret_steal<py::object>(
+        reinterpret_cast<PyObject*>(o.first)));
+  }
+}
+
 void PythonRefManager::CollectGarbage() {
   // TODO(phawkins): we should CHECK(PyGILState_Check());
   std::deque<pybind11::object> garbage;

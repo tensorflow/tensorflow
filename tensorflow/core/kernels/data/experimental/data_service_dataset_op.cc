@@ -448,7 +448,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         TF_LOCKS_EXCLUDED(mu_) {
       VLOG(3) << "Getting an element for task id " << task->task_id;
       tensorflow::profiler::TraceMe activity(
-          "GetElement", tensorflow::profiler::TraceMeLevel::kInfo);
+          "GetDataServiceElement", tensorflow::profiler::TraceMeLevel::kInfo);
       CompressedElement compressed;
       bool end_of_sequence;
       for (int num_retries = 0;; ++num_retries) {

@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-tpu-extract-outside-compilation | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-tpu-extract-outside-compilation | FileCheck %s
 
 // Tests that missing `_xla_outside_compilation` attribute value results in an error.
 
@@ -262,7 +262,6 @@ func @single_outside_compiled_input_output_single_outside_compilation(%arg0: ten
   return %1 : tensor<?xi32>
 }
 
-
 // Tests extraction of a single outside compiled cluster with multiple input/output.
 
 // CHECK-LABEL: func @multiple_outside_compiled_input_output_single_outside_compilation
@@ -437,5 +436,26 @@ func @multiple_outside_compiled_inputs_single_outside_compilation(%arg0: tensor<
     tf_device.return %2 : tensor<?xi32>
   }
 
+  return %1 : tensor<?xi32>
+}
+
+// Tests only directly used results of tpu cluster are remapped with
+// parallel_execute.
+
+// CHECK-LABEL: func @remapped_results
+func @remapped_results(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+  %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+  // CHECK: %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
+  // CHECK:   %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:2 = "tf_device.parallel_execute"
+  // CHECK: tf_device.return %[[PARALLEL_EXECUTE_OUTPUT]]#1 : tensor<?xi32>
+  %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<?xi32>) {n = 2 : i32} {
+    %2:2 = "tf_device.cluster"() ( {
+      %3 = "tf.A"() : () -> (tensor<?xi32>)
+      %4 = "tf.B"(%3) {_xla_outside_compilation = "cluster1"} : (tensor<?xi32>) -> (tensor<?xi32>)
+      %5:2 = "tf.C"(%4) : (tensor<?xi32>) -> (tensor<?xi32>, tensor<?xi32>)
+      tf_device.return %5#0, %5#1 : tensor<?xi32>, tensor<?xi32>
+    }) {cluster_attr = "cluster_attr"} : () -> (tensor<?xi32>, tensor<?xi32>)
+    tf_device.return %2#1 : tensor<?xi32>
+  }
   return %1 : tensor<?xi32>
 }

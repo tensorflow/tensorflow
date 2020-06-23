@@ -65,7 +65,7 @@ from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import resource_variable_ops
 
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.profiler import traceme
+from tensorflow.python.profiler import trace
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lazy_loader
@@ -81,14 +81,18 @@ from tensorflow.python.util import tf_inspect
 ag_ctx = lazy_loader.LazyLoader(
     "ag_ctx", globals(),
     "tensorflow.python.autograph.core.ag_ctx")
+np_arrays = lazy_loader.LazyLoader(
+    "np_arrays", globals(),
+    "tensorflow.python.ops.numpy_ops.np_arrays")
 
 
 FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
 BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
 IMPLEMENTS_ATTRIBUTE_NAME = "_implements"
+SHARED_RENDEZVOUS_ATTRIBUTE_NAME = "shared_rendezvous"
 
 
-def _make_input_signature_hashable(elem, variable_map=None):
+def _make_input_signature_hashable(elem):
   """Rewrite input signature to be hashable.
 
   We replace nested variables in the input signature with TensorSpec in order to
@@ -96,18 +100,13 @@ def _make_input_signature_hashable(elem, variable_map=None):
 
   Args:
     elem: Input signature element
-    variable_map: Internal argument used for tracking variable aliases
 
   Returns:
     A hashable object for the requested input signature
   """
-  if variable_map is None:
-    variable_map = {}
-
   # TODO(slebedev): consider using nest.
   if isinstance(elem, tuple):
-    return tuple(map(lambda e: _make_input_signature_hashable(e, variable_map),
-                     elem))
+    return tuple(map(_make_input_signature_hashable, elem))
 
   try:
     hash(elem)
@@ -118,15 +117,17 @@ def _make_input_signature_hashable(elem, variable_map=None):
     v = elem()
 
     if resource_variable_ops.is_resource_variable(v):
-      idx = variable_map.get(id(v))
-      if idx is None:
-        idx = len(variable_map)
-        variable_map[id(v)] = idx
-
-      # We include the class name to avoid having different types of variables
-      # having the same hash. We Also include the variable index which allows
-      # us to return a different hash if variables have been aliased in a call.
-      return v.__class__, tensor_spec.TensorSpec(v.shape, v.dtype), idx
+      # We special case variables here to use unique_id as the cache key. This
+      # ensures we have to retrace whenever a different variable is passed in.
+      # This is needed to support cases where the user may use the id of a
+      # variable in the function perhaps as a lookup in a dictionary.
+      #
+      # This choice leads to more retracing when we could have possibly used the
+      # shape and dtype instead. However, we expect the number of variables in a
+      # program to be bounded, and correspondingly the number of retraces.
+      #
+      # Note we also include the class name to avoid collisions with strings.
+      return v.__class__, v._unique_id  # pylint: disable=protected-access
 
     if _is_ndarray(v):
       # Numpy arrays are not hashable, but when calling functions we treat them
@@ -737,7 +738,11 @@ class _DelayedRewriteGradientFunctions(object):
     cleaned_doutputs = []
     for doutput, placeholder in zip(doutputs, self._func_graph.outputs):
       if backprop_util.IsTrainable(placeholder):
-        if doutput is not None:
+        if isinstance(doutput, ops.IndexedSlices):
+          # Gradient passed to a backward ConcreteFunction must be tf.Tensor,
+          # so we convert tf.IndexedSlices to tf.Tensor.
+          cleaned_doutputs.append(ops.convert_to_tensor(doutput))
+        elif doutput is not None:
           cleaned_doutputs.append(doutput)
         else:
           cleaned_doutputs.append(default_gradient.zeros_like(placeholder))
@@ -1482,6 +1487,12 @@ class ConcreteFunction(object):
     self._func_graph = func_graph
     self._captured_inputs = self._func_graph.external_captures
     self._captured_closures = self._func_graph.deferred_external_captures
+    structured_outputs = self._func_graph.structured_outputs
+    self._ndarrays_list = (
+        isinstance(structured_outputs, (list, tuple)) and
+        structured_outputs and
+        all([isinstance(o, np_arrays.ndarray) for o in structured_outputs]))
+    self._ndarray_singleton = isinstance(structured_outputs, np_arrays.ndarray)
 
     # function_spec defines the structured signature.
     self._set_function_spec(function_spec)
@@ -1645,8 +1656,7 @@ class ConcreteFunction(object):
 
   def _call_impl(self, args, kwargs, cancellation_manager=None):
     """See `__call__` for details."""
-    with traceme.TraceMe(self._func_graph.name,
-                         tf_function_call="concrete"):
+    with trace.Trace(self._func_graph.name, tf_function_call="concrete"):
       # Construct the list of input tensors: check if the structured signature
       # applies first; and if not, then use the flat signature.
       if self._function_spec is not None:
@@ -2149,9 +2159,15 @@ class ConcreteFunction(object):
     if self._func_graph.structured_outputs is None:
       return result
 
+    if result:
+      if self._ndarrays_list:
+        return [np_arrays.tensor_to_ndarray(o) for o in result]
+      elif self._ndarray_singleton:
+        return np_arrays.tensor_to_ndarray(result[0])
+
     # Replace outputs with results, skipping over any 'None' values.
-    outputs_list = nest.flatten(self._func_graph.structured_outputs,
-                                expand_composites=True)
+    outputs_list = nest.flatten(
+        self._func_graph.structured_outputs, expand_composites=True)
     j = 0
     for i, o in enumerate(outputs_list):
       if o is not None:
@@ -2622,7 +2638,9 @@ def _is_ndarray(value):
       # For legacy reasons we do not automatically promote Numpy strings.
       or isinstance(value, np.str_)
       # NumPy dtypes have __array__ as unbound methods.
-      or isinstance(value, type))
+      or isinstance(value, type)
+      # CompositeTensors should be flattened instead.
+      or isinstance(value, composite_tensor.CompositeTensor))
 
 
 def _convert_numpy_inputs(inputs):
@@ -2977,9 +2995,10 @@ class Function(object):
     if not executing_eagerly:
       # We want to force function retracing for each different
       # XLAControlFlowContext, so add `xla_context_id` to the cache key.
-      tpu_context = _enclosing_xla_context()
-      if tpu_context is not None:
-        xla_context_id = id(tpu_context)
+      xla_context = _enclosing_xla_context()
+      if xla_context is not None and \
+            xla_context.RequiresUniqueFunctionRetracing():
+        xla_context_id = id(xla_context)
 
       with ops.init_scope():
         # The graph, or whether we're executing eagerly, should be a part of the

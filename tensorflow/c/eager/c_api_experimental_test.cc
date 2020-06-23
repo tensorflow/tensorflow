@@ -212,6 +212,35 @@ TEST(CAPI, CancellationManager) {
   TFE_DeleteCancellationManager(c_mgr);
 }
 
+TEST(CAPI, ExecutorContextDestructionOrder) {
+  TF_Status* status = TF_NewStatus();
+
+  {
+    TFE_ContextOptions* opts = TFE_NewContextOptions();
+    TFE_Context* ctx = TFE_NewContext(opts, status);
+    ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
+    TFE_DeleteContextOptions(opts);
+    TFE_Executor* executor = TFE_NewExecutor(/*is_async=*/false);
+    TFE_ContextSetExecutorForThread(ctx, executor);
+
+    TFE_DeleteContext(ctx);
+    TFE_DeleteExecutor(executor);
+  }
+
+  {
+    TFE_ContextOptions* opts = TFE_NewContextOptions();
+    TFE_Context* ctx = TFE_NewContext(opts, status);
+    ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
+    TFE_DeleteContextOptions(opts);
+    TFE_Executor* executor = TFE_NewExecutor(/*is_async=*/false);
+    TFE_ContextSetExecutorForThread(ctx, executor);
+
+    TFE_DeleteExecutor(executor);
+    TFE_DeleteContext(ctx);
+  }
+  TF_DeleteStatus(status);
+}
+
 TEST(CAPI, Function_ident_CPU) {
   // First create a simple identity function.
   TF_Graph* function_graph = TF_NewGraph();

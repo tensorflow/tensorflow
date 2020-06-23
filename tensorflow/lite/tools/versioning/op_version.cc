@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -69,10 +70,13 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 3;
       }
       // If the op is a signed int8 hybrid operation, we need to return
-      // version 2.
+      // version 2 or 5 if per channel.
       if (op_sig.input_types.at(0) == TensorType_FLOAT32 &&
           op_sig.input_types.at(1) == TensorType_INT8 &&
           op_sig.output_types.at(0) == TensorType_FLOAT32) {
+        if (op_sig.options.conv_2d.is_per_channel_quantized) {
+          return 5;
+        }
         return 2;
       }
       return 1;
@@ -86,10 +90,13 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
 
       // If the op is a signed int8 hybrid operation, we need to return
-      // version 4.
+      // version 4 or 6 if per-channel.
       if (op_sig.input_types.at(0) == TensorType_FLOAT32 &&
           op_sig.input_types.at(1) == TensorType_INT8 &&
           op_sig.output_types.at(0) == TensorType_FLOAT32) {
+        if (op_sig.options.depthwise_conv_2d.is_per_channel_quantized) {
+          return 6;
+        }
         return 4;
       }
       // If the op has signed int8 op_sig.inputs and op_sig.outputs, its
@@ -153,6 +160,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (op_sig.input_types.at(0) == TensorType_FLOAT32 &&
           op_sig.input_types.at(1) == TensorType_INT8 &&
           op_sig.output_types.at(0) == TensorType_FLOAT32) {
+        if (op_sig.options.fully_connected.asymmetric_quantize_inputs) {
+          // This is to use the updated quantization scheme.
+          return 9;
+        }
         return 3;
       }
       // For float and uint8 fixed point kernels, if the weight is
@@ -184,6 +195,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (op_sig.input_types.at(0) == TensorType_FLOAT32 &&
           op_sig.input_types.at(1) == TensorType_INT8 &&
           op_sig.output_types.at(0) == TensorType_FLOAT32) {
+        // This is to use the updated quantization scheme
+        if (op_sig.options.input_quantization.asymmetric_quantize_inputs) {
+          return 4;
+        }
         return 2;
       }
       return 1;
@@ -250,6 +265,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
           op_sig.input_types.at(0) == TensorType_FLOAT32 &&
           op_sig.input_types.at(2) == TensorType_INT8 &&
           op_sig.output_types.at(0) == TensorType_FLOAT32) {
+        if (op_sig.options.lstm.asymmetric_quantize_inputs) {
+          return 4;
+        }
         return 3;
       }
       // KERNEL_BASIC was added in version 2.
@@ -264,6 +282,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (op_sig.input_types.at(0) == TensorType_FLOAT32 &&
           op_sig.input_types.at(2) == TensorType_INT8 &&
           op_sig.output_types.at(0) == TensorType_FLOAT32) {
+        if (op_sig.options.lstm.asymmetric_quantize_inputs) {
+          return 3;
+        }
         return 2;
       }
       return 1;
@@ -471,7 +492,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 2;
       }
       return 1;
-
     case BuiltinOperator_TANH:
     case BuiltinOperator_LOGISTIC:
       if (op_sig.input_types.at(0) == TensorType_INT16 &&
@@ -521,6 +541,20 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_RNN:
+    case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN:
+    case BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN:
+    case BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM:
+      if (op_sig.input_types.at(1) == TensorType_INT8 &&
+          op_sig.output_types.at(0) == TensorType_FLOAT32) {
+        if (op_sig.options.input_quantization.asymmetric_quantize_inputs) {
+          return 3;
+        } else {
+          return 2;
+        }
+      }
+      return 1;
+
     case BuiltinOperator_PAD:
     case BuiltinOperator_PADV2:
     case BuiltinOperator_SPACE_TO_DEPTH:
@@ -539,6 +573,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_LESS:
     case BuiltinOperator_LESS_EQUAL:
     case BuiltinOperator_SELECT:
+    case BuiltinOperator_BATCH_MATMUL:
       if (op_sig.input_types.at(0) == TensorType_INT8) {
         return 2;
       }
@@ -585,6 +620,16 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
         op_sig.options.depthwise_conv_2d.dilation_h_factor =
             conv_option->dilation_h_factor();
       }
+      const Tensor* filter_tensor =
+          subgraph->tensors()->Get(op->inputs()->Get(1));
+      const QuantizationParameters* filter_quant =
+          filter_tensor->quantization();
+      int num_channels = filter_tensor->shape()->Get(3);
+      if (filter_quant && filter_quant->scale() &&
+          filter_quant->scale()->Length() &&
+          filter_quant->scale()->Length() == num_channels) {
+        op_sig.options.depthwise_conv_2d.is_per_channel_quantized = true;
+      }
     } break;
 
     case BuiltinOperator_FAKE_QUANT: {
@@ -603,6 +648,8 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
             fully_connected_option->keep_num_dims();
         op_sig.options.fully_connected.weights_format =
             fully_connected_option->weights_format();
+        op_sig.options.fully_connected.asymmetric_quantize_inputs =
+            fully_connected_option->asymmetric_quantize_inputs();
       }
 
       const Tensor* weight_tensor =
@@ -683,6 +730,18 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
         op_sig.options.resize.half_pixel_centers =
             resize_nn_option->half_pixel_centers();
         op_sig.options.resize.align_corners = resize_nn_option->align_corners();
+      }
+    } break;
+    case BuiltinOperator_CONV_2D: {
+      const Tensor* filter_tensor =
+          subgraph->tensors()->Get(op->inputs()->Get(1));
+      const QuantizationParameters* filter_quant =
+          filter_tensor->quantization();
+      int num_channels = filter_tensor->shape()->Get(0);
+      if (filter_quant && filter_quant->scale() &&
+          filter_quant->scale()->Length() &&
+          filter_quant->scale()->Length() == num_channels) {
+        op_sig.options.conv_2d.is_per_channel_quantized = true;
       }
     } break;
     // TODO(b/150176627): Add tests for GetOpSignature.

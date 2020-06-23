@@ -232,6 +232,7 @@ else_branch: A function that takes 'inputs' and returns a list of
 
 def TF_YieldOp : TF_Op<"Yield", [Terminator]> {
   let summary = "Yield operation";
+
   let description = [{
     The "yield" operation represents a return operation within the conditional
     and body of structured control flow (e.g., if and while). The operation
@@ -358,6 +359,41 @@ def TF_LegacyCallOp : TF_Op<"LegacyCall",
   }];
 }
 
+def TF_ParseExampleOp : TF_Op<"ParseExample",
+                               [NoSideEffect,
+                                AttrSizedResultSegments,
+                                AttrSizedOperandSegments]> {
+
+  let summary =
+    "Transforms a vector of tf.Example protos (as strings) into typed tensors.";
+
+  let arguments = (ins
+    TF_StrTensor:$serialized,
+    TF_StrTensor:$names,
+    Variadic<TF_StrTensor>:$sparse_keys,
+    Variadic<TF_StrTensor>:$dense_keys,
+    Variadic<TensorOf<[F32, I64, TF_Str]>>:$dense_defaults,
+
+    TF_ShapeAttrArray:$dense_shapes,
+    I32ElementsAttr:$result_segment_sizes,
+    I32ElementsAttr:$operand_segment_sizes
+  );
+
+  let results = (outs
+    Variadic<I64Tensor>:$sparse_indices,                    // len(sparse_types)
+    Variadic<TensorOf<[F32, I64, TF_Str]>>:$sparse_values,  // len(sparse_types)
+    Variadic<I64Tensor>:$sparse_shapes,                     // len(sparse_types)
+    Variadic<TensorOf<[F32, I64, TF_Str]>>:$dense_values    // len(Tdense)
+  );
+
+  TF_DerivedOperandSizeAttr Nsparse = TF_DerivedOperandSizeAttr<2>;
+  TF_DerivedOperandSizeAttr Ndense = TF_DerivedOperandSizeAttr<3>;
+  TF_DerivedOperandTypeListAttr Tdense = TF_DerivedOperandTypeListAttr<4>;
+  TF_DerivedResultTypeListAttr sparse_types = TF_DerivedResultTypeListAttr<1>;
+
+  let verifier = ?;
+}
+
 def TF_ParseExampleV2Op : TF_Op<"ParseExampleV2",
                                 [NoSideEffect,
                                  AttrSizedResultSegments]> {
@@ -462,6 +498,7 @@ Inserts a placeholder for a tensor that will be always fed.
 
 def TF_PlaceholderWithDefaultOp : TF_Op<"PlaceholderWithDefault", [NoSideEffect]> {
   let summary = "Placeholder op";
+
   let description = [{
     A placeholder op that passes through input when its output is not fed.
   }];
@@ -804,9 +841,6 @@ def TF_XlaShardingOp : TF_Op<"XlaSharding", [NoSideEffect]> {
 An op which shards the input based on the given sharding attribute.
   }];
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TF_Tensor:$input,
 
@@ -822,9 +856,6 @@ An op which shards the input based on the given sharding attribute.
 
 def TF_InfeedDequeueTupleOp : TF_Op<"InfeedDequeueTuple", []> {
   let summary = "Fetches multiple values from infeed as an XLA tuple.";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     OptionalAttr<StrAttr>:$_XlaSharding
@@ -867,9 +898,6 @@ Formats a string template using a list of tensors, pretty-printing tensor summar
 def TF_BatchDatasetV2Op : TF_Op<"BatchDatasetV2", [NoSideEffect]> {
   let summary = [{
 Creates a dataset that batches `batch_size` elements from `input_dataset`.
-  }];
-
-  let description = [{
   }];
 
   let arguments = (ins
@@ -1008,6 +1036,48 @@ operation create / operate on a copy of `x`.
 
   let results = (outs
     TF_Tensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_BesselI0eOp : TF_Op<"BesselI0e", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes the Bessel i0e function of `x` element-wise.";
+
+  let description = [{
+Exponentially scaled modified Bessel function of order 0 defined as
+`bessel_i0e(x) = exp(-abs(x)) bessel_i0(x)`.
+
+This function is faster and numerically stabler than `bessel_i0(x)`.
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$x
+  );
+
+  let results = (outs
+    TF_FpTensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_BesselI1eOp : TF_Op<"BesselI1e", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes the Bessel i1e function of `x` element-wise.";
+
+  let description = [{
+Exponentially scaled modified Bessel function of order 0 defined as
+`bessel_i1e(x) = exp(-abs(x)) bessel_i1(x)`.
+
+This function is faster and numerically stabler than `bessel_i1(x)`.
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$x
+  );
+
+  let results = (outs
+    TF_FpTensor:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;

@@ -20,12 +20,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
-#include "tensorflow/compiler/xla/python/traceback_manager.h"
+#include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 
@@ -38,7 +37,8 @@ class PyExecutable {
  public:
   PyExecutable(std::shared_ptr<PyClient> client,
                std::unique_ptr<PjRtExecutable> executable,
-               absl::optional<TracebackManager::Traceback> traceback);
+               std::shared_ptr<Traceback> traceback);
+  ~PyExecutable();
 
   std::shared_ptr<PyClient> client() const { return client_; }
 
@@ -62,14 +62,19 @@ class PyExecutable {
 
   StatusOr<std::vector<std::shared_ptr<HloModule>>> HloModules() const;
 
-  const absl::optional<TracebackManager::Traceback>& traceback() {
-    return traceback_;
-  }
+  Traceback* traceback() { return traceback_.get(); }
 
  private:
+  friend class PyClient;
+
   std::shared_ptr<PyClient> client_;
   std::unique_ptr<PjRtExecutable> executable_;
-  absl::optional<TracebackManager::Traceback> traceback_;
+  std::shared_ptr<Traceback> traceback_;
+
+  // Doubly-linked list of all executables known to the client. Protected by the
+  // GIL.
+  PyExecutable* next_;
+  PyExecutable* prev_;
 };
 
 }  // namespace xla

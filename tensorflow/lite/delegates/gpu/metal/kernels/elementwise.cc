@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/substitute.h"
+#include "tensorflow/lite/delegates/gpu/common/convert.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
@@ -77,20 +78,20 @@ std::string TwoInputFunctor(OperationType op_type, const std::string& value0,
 
 std::vector<ComputeTaskDescriptorPtr> ElementwiseWithTwoInputs(
     int id, std::vector<ValueId> input_ids, ValueId output_id,
-    OperationType op_type, const ElementwiseBroadcastSettings& settings) {
+    const BHWC& second_shape, OperationType op_type) {
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
   desc->is_linkable = true;
-  const std::string x_coord = settings.width ? "0" : "int(gid.x)";
-  const std::string y_coord = settings.height ? "0" : "int(gid.y)";
-  const std::string s_coord = settings.channels ? "0" : "int(gid.z)";
+  const std::string x_coord = second_shape.w == 1 ? "0" : "int(gid.x)";
+  const std::string y_coord = second_shape.h == 1 ? "0" : "int(gid.y)";
+  const std::string s_coord = second_shape.c == 1 ? "0" : "int(gid.z)";
   std::string code =
       "FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid, device FLT4* "
       "const second_tensor, int2 second_size) {\n";
   code += "  int second_index = (" + s_coord + " * second_size.y + " + y_coord +
           ") * second_size.x + " + x_coord + ";\n";
   code += "  FLT4 src_1 = second_tensor[second_index];\n";
-  if (settings.channels) {
+  if (second_shape.c == 1) {
     code += "  src_1.y = src_1.x;\n";
     code += "  src_1.z = src_1.x;\n";
     code += "  src_1.w = src_1.x;\n";
@@ -138,19 +139,22 @@ std::vector<ComputeTaskDescriptorPtr> ElementwiseWithOneInput(
 
 std::vector<ComputeTaskDescriptorPtr> ElementwiseWithOneInputAndConstantArguent(
     int id, ValueId input_id, ValueId output_id, const RuntimeOptions& options,
-    OperationType op_type, const ElementwiseAttributes& attr) {
+    OperationType op_type, const TensorOrScalar& attr) {
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
   desc->is_linkable = true;
-  auto scalar = absl::get_if<float>(&attr.param);
-  auto linear_buf =
-      absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param);
+  auto scalar = absl::get_if<float>(&attr);
+  auto linear_buf = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr);
+  auto hwc_buf = absl::get_if<Tensor<HWC, DataType::FLOAT32>>(&attr);
   std::string param_desc;
   if (scalar) {
     param_desc += ", float scalar_val";
   }
   if (linear_buf) {
     param_desc += ", device FLT4* const linear_buf";
+  }
+  if (hwc_buf) {
+    param_desc += ", device FLT4* const hwc_buf, int2 hwc_size";
   }
   desc->shader_source =
       "FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid" + param_desc +
@@ -159,6 +163,18 @@ std::vector<ComputeTaskDescriptorPtr> ElementwiseWithOneInputAndConstantArguent(
     desc->shader_source += "     FLT4 second_arg = FLT4(scalar_val);\n";
   } else if (linear_buf) {
     desc->shader_source += "     FLT4 second_arg = linear_buf[gid.z];\n";
+  } else if (hwc_buf) {
+    const std::string x_coord = hwc_buf->shape.w == 1 ? "0" : "int(gid.x)";
+    const std::string y_coord = hwc_buf->shape.h == 1 ? "0" : "int(gid.y)";
+    const std::string s_coord = hwc_buf->shape.c == 1 ? "0" : "int(gid.z)";
+    std::string index = "(" + s_coord + " * hwc_size.y + " + y_coord +
+                        ") * hwc_size.x + " + x_coord;
+    desc->shader_source += "  FLT4 second_arg = hwc_buf[" + index + "];\n";
+    if (hwc_buf->shape.c == 1) {
+      desc->shader_source += "  second_arg.y = second_arg.x;\n";
+      desc->shader_source += "  second_arg.z = second_arg.x;\n";
+      desc->shader_source += "  second_arg.w = second_arg.x;\n";
+    }
   }
   desc->shader_source +=
       "    return " + TwoInputFunctor(op_type, "value", "second_arg") + ";\n";
@@ -179,6 +195,20 @@ std::vector<ComputeTaskDescriptorPtr> ElementwiseWithOneInputAndConstantArguent(
     desc->immutable_buffers = {
         {"device FLT4* const",
          GetByteBufferConverted(linear_buf->data, options.storage_precision)},
+    };
+  } else if (hwc_buf) {
+    std::vector<uint8_t> size_bits =
+        GetByteBuffer(std::vector<int>{hwc_buf->shape.w, hwc_buf->shape.h});
+    desc->uniform_buffers = {
+        {"constant int2&",
+         [size_bits](const std::map<ValueId, BHWC>& buffers) {
+           return size_bits;
+         }},
+    };
+    desc->immutable_buffers = {
+        {"device FLT4* const",
+         GetByteBufferConverted(ConvertToPHWC4(*hwc_buf),
+                                options.storage_precision)},
     };
   }
   return {desc};

@@ -141,7 +141,7 @@ bool IsTailOfShape(const Shape& tail, const Shape& shape) {
   }
 
   // EXTRA CHECKS ON CONNECTING ARRAY
-  for (const string& output_array : model->flags.output_arrays()) {
+  for (const std::string& output_array : model->flags.output_arrays()) {
     if (binary_op->inputs[variable_input_idx] == output_array) {
       AddMessageF(
           "Not moving %s because the output of reshape op %s is an output op.",

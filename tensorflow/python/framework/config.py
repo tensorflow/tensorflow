@@ -18,9 +18,40 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python import _pywrap_tf32_execution
 from tensorflow.python.eager import context
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
+
+
+# No tf_export until TF is built against CUDA11 which is required for TF32.
+def tensor_float_32_execution_allowed():
+  """Get if TensorFloat-32 operations are enabled on supported hardware.
+
+  Returns:
+    True if TensorFloat-32 execution is enabled and False otherwise.
+  """
+  return _pywrap_tf32_execution.is_allowed()
+
+
+# No tf_export until TF is built against CUDA11 which is required for TF32.
+def allow_tensor_float_32_execution(allowed):
+  """Allow use of TensorFloat-32 with float32 ops on supported hardware.
+
+  TensorFloat-32 is a math mode introduced with the NVIDIA Ampere architecture.
+  TensorFloat-32 kernels take float32 inputs and produce float32 outputs.
+  Internally, the inputs are cast to a custom representation with 10-bit
+  mantissa (similar to float16) and 8-bit exponent (similar to float32) and are
+  executed using TensorCores with float32 accumulation. For more information,
+  see https://blogs.nvidia.com/blog/2020/05/14/tensorfloat-32-precision-format/.
+
+  TensorFloat-32 execution is disabled by default, but this may change in a
+  future version.
+
+  Args:
+    allowed: whether to allow TensorFloat-32 execution
+  """
+  _pywrap_tf32_execution.allow(allowed)
 
 
 @tf_export('config.threading.get_intra_op_parallelism_threads')
@@ -498,6 +529,51 @@ def set_memory_growth(device, enable):
     RuntimeError: Runtime is already initialized.
   """
   context.context().set_memory_growth(device, enable)
+
+
+@tf_export('config.experimental.get_device_details')
+def get_device_details(device):
+  """Returns details about a physical devices.
+
+  This API takes in a `tf.config.PhysicalDevice` returned by
+  `tf.config.list_physical_devices`. It returns a dict with string keys
+  containing various details about the device. Each key is only supported by a
+  subset of devices, so you should not assume the returned dict will have any
+  particular key.
+
+  >>> gpu_devices = tf.config.list_physical_devices('GPU')
+  >>> if gpu_devices:
+  ...   details = tf.config.experimental.get_device_details(gpu_devices[0])
+  ...   details.get('device_name', 'Unknown GPU')
+
+  Currently, details are only returned for GPUs. This function returns an
+  empty dict if passed a non-GPU device.
+
+  The returned dict may have the following keys:
+  * `'device_name'`: A human-readable name of the device as a string, e.g.
+    "Titan V". Unlike `tf.config.PhysicalDevice.name`, this will be the same for
+    multiple devices if each device is the same model. Currently only available
+    for GPUs.
+  * `'compute_capability'`: The
+    [compute capability](https://developer.nvidia.com/cuda-gpus) of the device
+    as a tuple of two ints, in the form `(major_version, minor_version)`. Only
+    available for NVIDIA GPUs
+
+  Note: This is similar to `tf.sysconfig.get_build_info` in that both functions
+  can return information relating to GPUs. However, this function returns
+  run-time information about a specific device (such as a GPU's compute
+  capability), while `tf.sysconfig.get_build_info` returns compile-time
+  information about how TensorFlow was built (such as what version of CUDA
+  TensorFlow was built for).
+
+  Args:
+    device: A `tf.config.PhysicalDevice` returned by
+      `tf.config.list_physical_devices` or `tf.config.get_visible_devices`.
+
+  Returns:
+    A dict with string keys.
+  """
+  return context.context().get_device_details(device)
 
 
 @tf_export('config.get_logical_device_configuration',

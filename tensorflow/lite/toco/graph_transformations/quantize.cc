@@ -121,7 +121,7 @@ bool SupportOutputTypeFloatInQuantizedOp(const Operator& op) {
   }
   return false;
 }
-const MinMax& GetOrComputeMinMax(Model* model, const string& array_name) {
+const MinMax& GetOrComputeMinMax(Model* model, const std::string& array_name) {
   auto& array = model->GetArray(array_name);
   // Normally we should have a MinMax recorded on this Array,
   // so we just use it.

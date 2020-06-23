@@ -17,12 +17,15 @@ limitations under the License.
 // TensorFlow dialect to their region based counterparts, i.e.,
 // tf.If -> tf.IfRegion
 
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
@@ -36,8 +39,9 @@ namespace TF {
 namespace {
 
 struct FunctionalControlFlowToRegions
-    : public PassWrapper<FunctionalControlFlowToRegions, FunctionPass> {
-  void runOnFunction() override;
+    : public PassWrapper<FunctionalControlFlowToRegions,
+                         OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
 // Create a call to function `fn` with arguments `args` and return the CallOp.
@@ -48,11 +52,11 @@ CallOp CreateCall(Location loc, Operation::operand_range args, FuncOp fn,
   llvm::SmallVector<Value, 4> operands;
   int num_operands = fn_type.getNumInputs();
   operands.reserve(num_operands);
-  for (int i = 0; i < num_operands; ++i) {
-    Value arg = args[i];
-    Type expected = fn_type.getInput(i);
-    if (arg.getType() != expected) {
-      arg = builder->create<CastOp>(loc, expected, arg,
+  for (const auto& ArgAndType : zip(args, fn_type.getInputs())) {
+    Value arg = std::get<0>(ArgAndType);
+    Type expected_type = std::get<1>(ArgAndType);
+    if (arg.getType() != expected_type) {
+      arg = builder->create<CastOp>(loc, expected_type, arg,
                                     /*Truncate=*/builder->getBoolAttr(false));
     }
     operands.push_back(arg);
@@ -60,7 +64,7 @@ CallOp CreateCall(Location loc, Operation::operand_range args, FuncOp fn,
   return builder->create<CallOp>(loc, fn, operands);
 }
 
-// Transform a functional IfOp to a region based IfRegionOp
+// Transform a functional IfOp to a region based IfRegionOp.
 LogicalResult ConvertIfOp(IfOp if_op) {
   auto if_region = OpBuilder(if_op).create<TF::IfRegionOp>(
       if_op.getLoc(), if_op.getResultTypes(), if_op.cond(),
@@ -75,8 +79,6 @@ LogicalResult ConvertIfOp(IfOp if_op) {
         symbol.getValue());
     auto call = CreateCall(if_op.getLoc(), if_op.input(), func, &builder);
     builder.create<YieldOp>(if_op.getLoc(), call.getResults());
-    // Mark old function as private so that it can be DCE'd if not called.
-    func.setVisibility(SymbolTable::Visibility::Private);
   };
 
   create_region_with_call(if_op.then_branchAttr(), if_region.then_branch());
@@ -87,25 +89,22 @@ LogicalResult ConvertIfOp(IfOp if_op) {
   return success();
 }
 
-void FunctionalControlFlowToRegions::runOnFunction() {
-  for (Block& block : getFunction()) {
-    auto result = block.walk([](Operation* op) {
-      if (IfOp if_op = llvm::dyn_cast<IfOp>(op)) {
-        if (failed(ConvertIfOp(if_op))) {
-          if_op.emitOpError() << " failed to convert to region form";
-          return WalkResult::interrupt();
-        }
+void FunctionalControlFlowToRegions::runOnOperation() {
+  ModuleOp module = getOperation();
+  auto result = module.walk([](Operation* op) {
+    if (IfOp if_op = llvm::dyn_cast<IfOp>(op)) {
+      if (failed(ConvertIfOp(if_op))) {
+        if_op.emitOpError() << " failed to convert to region form";
+        return WalkResult::interrupt();
       }
-      return WalkResult::advance();
-    });
-
-    if (result.wasInterrupted()) return signalPassFailure();
-  }
+    }
+    return WalkResult::advance();
+  });
+  if (result.wasInterrupted()) return signalPassFailure();
 }
-
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFFunctionalControlFlowToRegions() {
   return std::make_unique<FunctionalControlFlowToRegions>();
 }

@@ -396,10 +396,10 @@ class CondTest(test_util.TensorFlowTestCase):
         fn2=lambda: math_ops.add(y, 23))
     self.assertEquals(self.evaluate(z), 24)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("Exercises Ref variables")
   def testCondModifyBoolPred(self):
-    # This test in particular used to fail only when running in GPU, hence
-    # use_gpu=True.
+    # We want to use the GPU here because we want to ensure that we can update
+    # a boolean ref variable on the GPU.
     with test_util.use_gpu():
       bool_var = variable_scope.get_variable(
           "bool_var", dtype=dtypes.bool, initializer=True)
@@ -1273,6 +1273,26 @@ class ExecuteFnForDeviceTest(test_util.TensorFlowTestCase):
       self.assertEqual(6., self.evaluate(r))
       self.assertEqual(6., self.evaluate(result))
       self.assertEqual([2.], self.evaluate(grad))
+
+  def testCompile(self):
+    if not test_util.is_gpu_available():
+      return
+
+    def cpu_fn(x):
+      return x + x
+
+    def gpu_fn(x):
+      return x * x
+
+    @def_function.function(experimental_compile=True)
+    def flexible_defun(a):
+      branches = {"CPU": lambda: cpu_fn(a), "GPU": lambda: gpu_fn(a)}
+      return control_flow_ops.execute_fn_for_device(branches, lambda: cpu_fn(a))
+
+    # Always execute the default branch in xla compilation case.
+    a = array_ops.constant(3.)
+    r = flexible_defun(a)
+    self.assertEqual(6., self.evaluate(r))
 
   def testFallBack(self):
 

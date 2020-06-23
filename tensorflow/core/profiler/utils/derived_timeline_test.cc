@@ -44,7 +44,7 @@ TEST(DerivedTimelineTest, HloModuleNameTest) {
   const absl::string_view kKernelDetails = "kernel_details";
   XSpace space;
   EventGroupNameMap event_group_name_map;
-  XPlane* plane = space.add_planes();
+  XPlane* plane = GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
   XPlaneBuilder plane_builder(plane);
   auto line_builder = plane_builder.GetOrCreateLine(0);
   CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100,
@@ -74,7 +74,7 @@ TEST(DerivedTimelineTest, TfOpLineTest) {
   const absl::string_view kKernelDetails = "kernel_details";
   XSpace space;
   EventGroupNameMap event_group_name_map;
-  XPlane* plane = space.add_planes();
+  XPlane* plane = GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
   XPlaneBuilder plane_builder(plane);
   auto line_builder = plane_builder.GetOrCreateLine(0);
   CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100,
@@ -102,19 +102,22 @@ TEST(DerivedTimelineTest, TfOpLineTest) {
 // Checks that the dependency between the step line and the TF op line prevents
 // TF op events from being expanded.
 TEST(DerivedTimelineTest, DependencyTest) {
+  constexpr int64 kFirstGroupId = 0;
+  constexpr int64 kSecondGroupId = 1;
+
   const absl::string_view kTfOpName = "mul:Mul";
   const absl::string_view kKernelDetails = "kernel_details";
   XSpace space;
   EventGroupNameMap event_group_name_map({{0, "train 0"}, {1, "train 1"}});
-  XPlane* plane = space.add_planes();
+  XPlane* plane = GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
   XPlaneBuilder plane_builder(plane);
   auto line_builder = plane_builder.GetOrCreateLine(0);
   CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100,
-               {{StatType::kGroupId, 0},
+               {{StatType::kGroupId, kFirstGroupId},
                 {StatType::kLevel0, kTfOpName},
                 {StatType::kKernelDetails, kKernelDetails}});
   CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300,
-               {{StatType::kGroupId, 1},
+               {{StatType::kGroupId, kSecondGroupId},
                 {StatType::kLevel0, kTfOpName},
                 {StatType::kKernelDetails, kKernelDetails}});
   GenerateDerivedTimeLines(event_group_name_map, &space);
@@ -135,7 +138,7 @@ TEST(DerivedTimelineTest, TfOpNameScopeTest) {
   const absl::string_view kKernelDetails = "kernel_details";
   XSpace space;
   EventGroupNameMap event_group_name_map;
-  XPlane* plane = space.add_planes();
+  XPlane* plane = GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
   XPlaneBuilder plane_builder(plane);
   auto line_builder = plane_builder.GetOrCreateLine(0);
   CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100,

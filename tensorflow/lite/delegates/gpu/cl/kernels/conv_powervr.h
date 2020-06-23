@@ -64,6 +64,11 @@ class ConvPowerVR : public GPUOperation {
     LOCAL_MEM_BY_THREADS,
     GLOBAL_MEM,
     CONSTANT_MEM,
+    PRIVATE_MEM_SIMD8_BROADCAST,
+    PRIVATE_MEM_SIMD16_BROADCAST,
+    PRIVATE_MEM_SIMD32_BROADCAST,
+    PRIVATE_MEM_SIMD64_BROADCAST,
+    PRIVATE_MEM_SIMD128_BROADCAST,
   };
 
   struct ConvParams {
@@ -85,6 +90,39 @@ class ConvPowerVR : public GPUOperation {
     WeightsUploadType weights_upload_type;
     bool x_kernel_is_1;
     bool y_kernel_is_1;
+
+    bool IsPrivateMemBroadcast() const {
+      return weights_upload_type ==
+                 WeightsUploadType::PRIVATE_MEM_SIMD8_BROADCAST ||
+             weights_upload_type ==
+                 WeightsUploadType::PRIVATE_MEM_SIMD16_BROADCAST ||
+             weights_upload_type ==
+                 WeightsUploadType::PRIVATE_MEM_SIMD32_BROADCAST ||
+             weights_upload_type ==
+                 WeightsUploadType::PRIVATE_MEM_SIMD64_BROADCAST ||
+             weights_upload_type ==
+                 WeightsUploadType::PRIVATE_MEM_SIMD128_BROADCAST;
+    }
+
+    int GetSimdSize() const {
+      if (weights_upload_type ==
+          WeightsUploadType::PRIVATE_MEM_SIMD8_BROADCAST) {
+        return 8;
+      } else if (weights_upload_type ==
+                 WeightsUploadType::PRIVATE_MEM_SIMD16_BROADCAST) {
+        return 16;
+      } else if (weights_upload_type ==
+                 WeightsUploadType::PRIVATE_MEM_SIMD32_BROADCAST) {
+        return 32;
+      } else if (weights_upload_type ==
+                 WeightsUploadType::PRIVATE_MEM_SIMD64_BROADCAST) {
+        return 64;
+      } else if (weights_upload_type ==
+                 WeightsUploadType::PRIVATE_MEM_SIMD128_BROADCAST) {
+        return 128;
+      }
+      return 1;
+    }
   };
 
   ConvPowerVR(const OperationDef& definition,

@@ -109,7 +109,13 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                                           params);
   }
 
-  int64 Cardinality() const override { return input_->Cardinality(); }
+  int64 Cardinality() const override {
+    if (preserve_cardinality_) {
+      return input_->Cardinality();
+    } else {
+      return kUnknownCardinality;
+    }
+  }
 
   Status CheckExternalState() const override {
     TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());

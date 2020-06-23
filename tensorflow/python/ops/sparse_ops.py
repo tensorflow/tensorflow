@@ -39,6 +39,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import special_math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_sparse_ops import *
@@ -119,7 +120,7 @@ def from_dense(tensor, name=None):
   with ops.name_scope(name, "dense_to_sparse"):
     tensor = ops.convert_to_tensor(tensor)
     indices = array_ops.where_v2(
-        math_ops.not_equal(tensor, array_ops.constant(0, tensor.dtype)))
+        math_ops.not_equal(tensor, array_ops.zeros_like(tensor)))
     values = array_ops.gather_nd(tensor, indices)
     shape = array_ops.shape(tensor, out_type=dtypes.int64)
     return sparse_tensor.SparseTensor(indices, values, shape)
@@ -2928,8 +2929,9 @@ _UNARY_OPS = [
     math_ops.sqrt,
     math_ops.erf,
     math_ops.tanh,
-    math_ops.bessel_i0e,
-    math_ops.bessel_i1e,
+    # TODO(b/157272291) Add dispatchers for rest of special functions.
+    special_math_ops.bessel_i0e,
+    special_math_ops.bessel_i1e,
 ]
 for unary_op in _UNARY_OPS:
   _UnaryMapValueDispatcher(unary_op).register(unary_op)

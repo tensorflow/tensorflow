@@ -4,7 +4,7 @@
 // Lowering to STD dialect and store forwarding pass would be required to get
 // rid of them. This is exactly what is done in the real MLIR GPU pipeline, but
 // here we disable verification with `verify-each=0` to check the output IR.
-// RUN: xla-opt %s -lhlo-legalize-to-parallel-loops -canonicalize --verify-each=0 | FileCheck %s --dump-input-on-failure
+// RUN: xla-opt %s -lhlo-legalize-to-parallel-loops -canonicalize --verify-each=0 | FileCheck %s
 
 func @select_and_scatter(%arg: memref<112x112xf32>,
                          %src: memref<56x56xf32>,
@@ -38,15 +38,15 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
 // CHECK-SAME:   [[RESULT_BUF:%.*]]: memref<112x112xf32>) {
 
 // Constants.
-// CHECK:  [[C56:%.*]] = constant 56 : index
-// CHECK:  [[C1:%.*]] = constant 1 : index
-// CHECK:  [[C0_F32:%.*]] = constant 0.000000e+00 : f32
-// CHECK:  [[CFALSE:%.*]] = constant false
-// CHECK:  [[C3:%.*]] = constant 3 : index
-// CHECK:  [[C2:%.*]] = constant 2 : index
-// CHECK:  [[C0:%.*]] = constant 0 : index
-// CHECK:  [[C112:%.*]] = constant 112 : index
-// CHECK:  [[CTRUE:%.*]] = constant true
+// CHECK-DAG:  [[C56:%.*]] = constant 56 : index
+// CHECK-DAG:  [[C0:%.*]] = constant 0 : index
+// CHECK-DAG:  [[C1:%.*]] = constant 1 : index
+// CHECK-DAG:  [[C0_F32:%.*]] = constant 0.000000e+00 : f32
+// CHECK-DAG:  [[CFALSE:%.*]] = constant false
+// CHECK-DAG:  [[C3:%.*]] = constant 3 : index
+// CHECK-DAG:  [[C2:%.*]] = constant 2 : index
+// CHECK-DAG:  [[C112:%.*]] = constant 112 : index
+// CHECK-DAG:  [[CTRUE:%.*]] = constant true
 
 // Parallel loop to initialize the output buffer.
 // CHECK:    [[INIT:%.*]] = load [[INIT_BUF]][] : memref<f32>
@@ -80,23 +80,17 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
 
 // Compute index I of the ARG buffer and check whether it is in padding area.
 // CHECK:  [[START_I:%.*]] = muli [[II]], [[C2]] : index
-// CHECK:  [[OFFSET_I:%.*]] = subi [[WIN_I]], [[C0]] : index
-// CHECK:  [[ARG_I:%.*]] = addi [[START_I]], [[OFFSET_I]] : index
+// CHECK:  [[ARG_I:%.*]] = addi [[START_I]], [[WIN_I]] : index
 // CHECK:  [[ARG_I_FITS:%.*]] = cmpi "ult", [[ARG_I]], [[C112]] : index
-
-// Update `INBOUNDS`, i.e. whether or not ARG indices are inside the boundaries
-// of the buffer or they are in the padding area.
-// CHECK:      [[INBOUNDS_0:%.*]] = and [[ARG_I_FITS]], [[CTRUE]] : i1
 
 // Compute index J of the ARG buffer and check whether it is in padding area.
 // CHECK:  [[START_J:%.*]] = muli [[JJ]], [[C2]] : index
-// CHECK:  [[OFFSET_J:%.*]] = subi [[WIN_J]], [[C0]] : index
-// CHECK:  [[ARG_J:%.*]] = addi [[START_J]], [[OFFSET_J]] : index
+// CHECK:  [[ARG_J:%.*]] = addi [[START_J]], [[WIN_J]] : index
 // CHECK:  [[ARG_J_FITS:%.*]] = cmpi "ult", [[ARG_J]], [[C112]] : index
 
 // Update `INBOUNDS`, i.e. whether or not ARG indices are inside the boundaries
 // of the buffer or they are in the padding area.
-// CHECK:  [[INBOUNDS_1:%.*]] = and [[INBOUNDS_0]], [[ARG_J_FITS]] : i1
+// CHECK:  [[INBOUNDS_1:%.*]] = and [[ARG_I_FITS]], [[ARG_J_FITS]] : i1
 
 // If ARG ivs are in the padding area, then 'select' function does not have to
 // be applied, current selected ivs (SEL_I, SEL_J) and value (SEL_VAL) are

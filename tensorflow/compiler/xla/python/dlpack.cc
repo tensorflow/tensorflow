@@ -25,7 +25,7 @@ limitations under the License.
 #include "include/dlpack/dlpack.h"  // from @dlpack
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
-#include "tensorflow/compiler/xla/python/traceback_manager.h"
+#include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
@@ -353,7 +353,7 @@ StatusOr<std::unique_ptr<PyBuffer>> DLPackManagedTensorToBuffer(
   auto pjrt_buffer = std::make_unique<PjRtBuffer>(
       shape, shape, std::move(device_buffer), client->pjrt_client(), device);
   return std::make_unique<PyBuffer>(std::move(client), std::move(pjrt_buffer),
-                                    TracebackManager::Get()->GetTraceback());
+                                    Traceback::Get());
 }
 
 }  // namespace xla

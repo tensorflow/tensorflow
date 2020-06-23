@@ -345,4 +345,4 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
 
 
 if __name__ == '__main__':
-  multi_process_runner.test_main(barrier_parties=2)
+  multi_process_runner.test_main()

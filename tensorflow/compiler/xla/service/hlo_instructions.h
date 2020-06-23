@@ -1141,6 +1141,7 @@ class HloOutfeedInstruction : public HloInstruction {
   const Shape& outfeed_shape() const { return outfeed_shape_; }
   // Returns the config for the Outfeed instruction.
   const string& outfeed_config() const { return outfeed_config_; }
+  void set_outfeed_config(const string& config) { outfeed_config_ = config; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 

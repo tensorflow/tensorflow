@@ -177,16 +177,23 @@ class DataServiceMasterImpl {
   };
 
   // Registers a dataset with the given fingerprint, returning a new dataset id.
-  int64 RegisterDataset(uint64 fingerprint, const DatasetDef& dataset);
+  int64 RegisterDataset(uint64 fingerprint, const DatasetDef& dataset)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Initializes a workers stub, if it hasn't been initialized already.
   Status EnsureWorkerStubInitialized(Worker* worker);
   // Instructs a worker to begin processing a task.
-  Status AllocateTaskToWorker(const Task& task_id, Worker* worker);
+  Status AllocateTaskToWorker(const Task& task_id, Worker* worker)
+      LOCKS_EXCLUDED(mu_);
   // Creates a job and stores its job_id in `*job_id`.
   Status CreateJob(int64 dataset_id, ProcessingMode processing_mode,
-                   absl::optional<std::string> job_name, int64* out_job_id);
-  // Creates a new task for a job, returning the new task's id.
-  int64 CreateTask(Job* job, const std::string& worker_address);
+                   absl::optional<std::string> job_name, int64* out_job_id)
+      LOCKS_EXCLUDED(mu_);
+  // Creates a new task for a job, returning a reference to the task.
+  const Task& CreateTask(Job* job, const std::string& worker_address)
+      LOCKS_EXCLUDED(mu_);
+  // Same as `CreateTask`, but expects that the master lock is already held.
+  const Task& CreateTaskLocked(Job* job, const std::string& worker_address)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Validates that an existing job matches the given processing_mode and
   // dataset_id, returning an error status describing any difference.
   Status ValidateMatchingJob(const Job& job, ProcessingMode processing_mode,
@@ -202,7 +209,7 @@ class DataServiceMasterImpl {
   int64 next_task_id_ TF_GUARDED_BY(mu_) = 0;
 
   // Registered workers.
-  std::vector<Worker> workers_ TF_GUARDED_BY(mu_);
+  std::vector<std::shared_ptr<Worker>> workers_ TF_GUARDED_BY(mu_);
   // Registered datasets, keyed by dataset ids.
   absl::flat_hash_map<int64, std::shared_ptr<Dataset>> datasets_by_id_
       TF_GUARDED_BY(mu_);
