@@ -4541,6 +4541,7 @@ def relu(x, alpha=0., max_value=None, threshold=0):
   Returns:
       A tensor.
   """
+
   if isinstance(x, tf.Tensor) or isinstance(x, np.ndarray):
     dtype = x.dtype
   else:
