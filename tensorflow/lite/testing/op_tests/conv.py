@@ -52,7 +52,7 @@ def make_conv_tests(options):
           "constant_filter": [True, False],
           "channel_multiplier": [1, 2],
           "fully_quantize": [False],
-          "quantize_mode_16x8": [True]
+          "quantize_mode_16x8": [True],
           "dynamic_range_quantize": [False],
       },
       # TODO(b/134702301): The fully_quantize param is just ignored by the MLIR
