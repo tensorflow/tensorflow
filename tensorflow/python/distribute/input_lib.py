@@ -1216,12 +1216,6 @@ class DistributedDatasetsFromFunction(_IterableInput):
   @property
   def element_spec(self):
     """The type specification of an element of this dataset."""
-    if self._element_spec is None:
-      raise ValueError("You must create an iterator before calling "
-                       "`element_spec` on the distributed dataset or iterator. "
-                       "This is because the dataset function is not called "
-                       "before an iterator is created.")
-
     return self._element_spec
 
 
