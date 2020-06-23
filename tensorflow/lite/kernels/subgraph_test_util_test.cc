@@ -14,10 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/kernels/subgraph_test_util.h"
+
+#include <stdint.h>
+
+#include <memory>
+#include <vector>
+
 #include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/test_util.h"
+#include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 

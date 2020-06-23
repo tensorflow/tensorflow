@@ -863,3 +863,124 @@ func @while_memrefs(%arg0: memref<i64>, %arg_out: memref<i64>) -> () {
   ) : (memref<i64>, memref<i64>) -> ()
   return
 }
+
+// -----
+
+// CHECK-LABEL: func @bitcast_memrefs
+func @bitcast_memrefs(%arg0: memref<1xf64>, %arg_out: memref<2xi32>) -> () {
+  "xla_lhlo.bitcast"(%arg0, %arg_out) : (memref<1xf64>, memref<2xi32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @scatter_memrefs
+func @scatter_memrefs(%input: memref<200x100x300xf32>, %indices: memref<10x2xi32>,
+                      %updates: memref<10x300xf32>, %arg_out: memref<200x100x300xf32>) -> () {
+  "xla_lhlo.scatter" (%input, %indices, %updates, %arg_out) ({
+  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>): // no predecessors
+    %add = xla_hlo.add %lhs, %rhs : tensor<f32>
+    "xla_hlo.return"(%add) : (tensor<f32>) -> ()
+  }) {
+    scatter_dimension_numbers = {
+      update_window_dims = dense<[1]> : tensor<1xi64>,
+      inserted_window_dims = dense<[0, 1]> : tensor<2xi64>,
+      scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>,
+      index_vector_dim = 1 : i64
+    },
+    indices_are_sorted = true,
+    unique_indices = true
+  } : (memref<200x100x300xf32>, memref<10x2xi32>, memref<10x300xf32>, memref<200x100x300xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @map_memrefs
+func @map_memrefs(%arg0: memref<20xf32>, %arg1: memref<20xf32>, %arg_out: memref<20xf32>) -> () {
+  "xla_lhlo.map"(%arg0, %arg1, %arg_out) ({
+    ^bb0(%a: tensor<f32>, %b: tensor<f32>):
+    %c = xla_hlo.add %a, %b : tensor<f32>
+    "xla_hlo.return"(%c) : (tensor<f32>) -> ()
+  }) {dimensions = dense<0> : tensor<1xi64>} : (memref<20xf32>, memref<20xf32>, memref<20xf32>) -> ()
+  return
+}
+
+// -----
+
+func @map_memrefs(%arg0: memref<20xf32>, %arg1: memref<20xf32>, %arg_out: memref<10xf32>) -> () {
+  // expected-error@+1{{requires the same shape for all operands}}
+  "xla_lhlo.map"(%arg0, %arg1, %arg_out) ({
+    ^bb0(%a: tensor<f32>, %b: tensor<f32>):
+    %c = xla_hlo.add %a, %b : tensor<f32>
+    "xla_hlo.return"(%c) : (tensor<f32>) -> ()
+  }) {dimensions = dense<0> : tensor<1xi64>} : (memref<20xf32>, memref<20xf32>, memref<10xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @rng_get_and_update_state_memrefs
+func @rng_get_and_update_state_memrefs(%state: memref<1xui64>) -> () {
+  "xla_lhlo.rng_get_and_update_state"(%state) { delta = 1 : i64 } : (memref<1xui64>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @sort_memrefs
+func @sort_memrefs(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf16>,
+                   %arg_out: tuple<memref<16x16xf32>, memref<16x16xf16>>) -> () {
+  "xla_lhlo.sort"(%arg0, %arg1, %arg_out) ( {
+  ^bb0(%a: tensor<f32>, %b: tensor<f32>, %c: tensor<f16>, %d: tensor<f16>):
+    %7 = "xla_hlo.compare"(%a, %b) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    "xla_hlo.return"(%7) : (tensor<i1>) -> ()
+  }) {dimension = 1 : i64, is_stable = true} : (memref<16x16xf32>, memref<16x16xf16>, tuple<memref<16x16xf32>, memref<16x16xf16>>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @sort_memrefs
+func @sort_memrefs(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf16>,
+                   %arg_out: tuple<memref<16x16xf32>, memref<16x16xf16>>) -> () {
+  "xla_lhlo.sort"(%arg0, %arg1, %arg_out) ( {
+  ^bb0(%a: tensor<f32>, %b: tensor<f32>, %c: tensor<f16>, %d: tensor<f16>):
+    %7 = "xla_hlo.compare"(%a, %b) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    "xla_hlo.return"(%7) : (tensor<i1>) -> ()
+  }) {dimension = 1 : i64} : (memref<16x16xf32>, memref<16x16xf16>, tuple<memref<16x16xf32>, memref<16x16xf16>>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @sort_memrefs
+func @sort_memrefs(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf16>,
+                   %arg_out: tuple<memref<16x16xf32>, memref<16x16xf16>>) -> () {
+  "xla_lhlo.sort"(%arg0, %arg1, %arg_out) ( {
+  ^bb0(%a: tensor<f32>, %b: tensor<f32>, %c: tensor<f16>, %d: tensor<f16>):
+    %7 = "xla_hlo.compare"(%a, %b) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    "xla_hlo.return"(%7) : (tensor<i1>) -> ()
+  }) : (memref<16x16xf32>, memref<16x16xf16>, tuple<memref<16x16xf32>, memref<16x16xf16>>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @tuple_select_memrefs
+func @tuple_select_memrefs(%pred: memref<20xi1>, %true_values: memref<20xf32>,
+                           %false_values: memref<20xf32>, %arg_out: memref<20xf32>) -> () {
+  "xla_lhlo.tuple_select"(%pred, %true_values, %false_values, %arg_out)
+      : (memref<20xi1>, memref<20xf32>, memref<20xf32>, memref<20xf32>) -> ()
+  return
+}
+
+// -----
+
+func @tuple_select_memrefs(%pred: memref<10xi1>, %true_values: memref<20xf32>,
+                           %false_values: memref<20xf32>, %arg_out: memref<20xf32>) -> () {
+  // expected-error@+1{{requires the same shape for all operands}}
+  "xla_lhlo.tuple_select"(%pred, %true_values, %false_values, %arg_out)
+      : (memref<10xi1>, memref<20xf32>, memref<20xf32>, memref<20xf32>) -> ()
+  return
+}

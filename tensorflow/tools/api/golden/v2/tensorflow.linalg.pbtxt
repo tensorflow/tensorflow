@@ -97,6 +97,10 @@ tf_module {
     argspec: "args=[\'input\', \'num_lower\', \'num_upper\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "banded_triangular_solve"
+    argspec: "args=[\'bands\', \'rhs\', \'lower\', \'adjoint\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'False\', \'None\'], "
+  }
+  member_method {
     name: "batch_gemm"
     argspec: "args=[\'a\', \'b\', \'c\', \'transpose_a\', \'transpose_b\', \'alpha\', \'beta\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'1.0\', \'0.0\', \'None\'], "
   }

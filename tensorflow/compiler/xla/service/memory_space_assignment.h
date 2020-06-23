@@ -84,18 +84,10 @@ class MemorySpaceAssignmentCostAnalysis {
     absl::flat_hash_map<const HloInstruction*, float> while_nest_multiplier;
   };
 
-  MemorySpaceAssignmentCostAnalysis(
+  static StatusOr<std::unique_ptr<MemorySpaceAssignmentCostAnalysis>> Create(
       const HloCostAnalysis& cost_analysis,
       float async_copy_bandwidth_bytes_per_second,
-      float alternate_mem_bandwidth_bytes_per_second,
-      const HloLiveRange& hlo_live_range, const CallGraph& call_graph)
-      : cost_analysis_(cost_analysis),
-        async_copy_bandwidth_bytes_per_second_(
-            async_copy_bandwidth_bytes_per_second),
-        alternate_mem_bandwidth_bytes_per_second_(
-            alternate_mem_bandwidth_bytes_per_second),
-        hlo_live_range_(hlo_live_range),
-        call_graph_(call_graph) {}
+      float alternate_mem_bandwidth_bytes_per_second, const HloModule& module);
 
   const HloCostAnalysis& cost_analysis() const { return cost_analysis_; }
 
@@ -153,14 +145,31 @@ class MemorySpaceAssignmentCostAnalysis {
   // 0 means it is not in a while loop.
   int CalculateWhileLoopNestLevel(const HloInstruction* instruction) const;
 
-  const HloLiveRange& hlo_live_range() const { return hlo_live_range_; }
+  const HloLiveRange& hlo_live_range() const { return *hlo_live_range_; }
 
  private:
+  MemorySpaceAssignmentCostAnalysis(
+      const HloCostAnalysis& cost_analysis,
+      float async_copy_bandwidth_bytes_per_second,
+      float alternate_mem_bandwidth_bytes_per_second,
+      std::unique_ptr<HloAliasAnalysis> alias_analysis,
+      std::unique_ptr<HloLiveRange> hlo_live_range,
+      std::unique_ptr<CallGraph> call_graph)
+      : cost_analysis_(cost_analysis),
+        async_copy_bandwidth_bytes_per_second_(
+            async_copy_bandwidth_bytes_per_second),
+        alternate_mem_bandwidth_bytes_per_second_(
+            alternate_mem_bandwidth_bytes_per_second),
+        alias_analysis_(std::move(alias_analysis)),
+        hlo_live_range_(std::move(hlo_live_range)),
+        call_graph_(std::move(call_graph)) {}
+
   const HloCostAnalysis& cost_analysis_;
   float async_copy_bandwidth_bytes_per_second_;
   float alternate_mem_bandwidth_bytes_per_second_;
-  const HloLiveRange& hlo_live_range_;
-  const CallGraph& call_graph_;
+  std::unique_ptr<HloAliasAnalysis> alias_analysis_;
+  std::unique_ptr<HloLiveRange> hlo_live_range_;
+  std::unique_ptr<CallGraph> call_graph_;
 };
 
 // Abstract base class that memory space assignment uses to pick prefetch
@@ -908,10 +917,6 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // allocation is alive at that time.
   static MemorySpaceAssignment::Allocation* GetLiveAllocationAt(
       const MemorySpaceAssignment::AllocationSequence& allocations, int64 time);
-
-  // Returns true if this buffer is allowed to be placed in the alternate
-  // memory.
-  bool IsIntervalAllowedInAlternateMemory(const BufferInterval& interval) const;
 
   // Returns true if the use is allowed in the alternate memory.
   bool IsUseAllowedInAlternateMemory(const AllocationValue& value,

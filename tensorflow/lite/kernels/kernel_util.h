@@ -15,10 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_KERNEL_UTIL_H_
 #define TENSORFLOW_LITE_KERNELS_KERNEL_UTIL_H_
 
-#include <algorithm>
+#include <stdint.h>
+
 #include <limits>
 
-#include "flatbuffers/flatbuffers.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 
@@ -169,7 +169,7 @@ void CalculateActivationRange(TfLiteFusedActivation activation,
   } else if (activation == kTfLiteActRelu6) {
     *activation_min = 0;
     *activation_max = 6;
-  } else if (activation == kTfLiteActRelu1) {
+  } else if (activation == kTfLiteActReluN1To1) {
     *activation_min = -1;
     *activation_max = 1;
   } else {

@@ -30,6 +30,7 @@ from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -136,8 +137,52 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
 
   @combinations.generate(
       combinations.combine(
-          distribution=strategy_combinations.tpu_strategies,
-          mode=["eager"]))
+          distribution=strategy_combinations.all_strategies, mode=["eager"]))
+  def testGetNextAsOptional(self, distribution):
+    data = [5., 6., 7., 8.]
+    dataset = get_dataset_from_tensor_slices(data).batch(2)
+    dist_dataset = distribution.experimental_distribute_dataset(dataset)
+    iterator = iter(dist_dataset)
+
+    def train_step(data):
+      return math_ops.square(data)
+
+    @def_function.function
+    def run(iterator):
+      return distribution.experimental_local_results(
+          distribution.run(
+              train_step, args=(iterator.get_next_as_optional().get_value(),)))
+
+    self.assert_equal_flattened([[25., 36.]], [run(iterator)])
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies, mode=["eager"]))
+  def testGetNextAsOptionalExampleUsage(self, distribution):
+    global_batch_size = 2
+    steps_per_loop = 6
+    dataset = dataset_ops.Dataset.range(
+        8, output_type=dtypes.int32).batch(global_batch_size)
+    distributed_iterator = iter(
+        distribution.experimental_distribute_dataset(dataset))
+
+    @def_function.function
+    def train_fn(distributed_iterator):
+
+      def step_fn(x):
+        return x
+
+      for _ in math_ops.range(steps_per_loop):
+        optional_data = distributed_iterator.get_next_as_optional()
+        if not optional_data.has_value():
+          break
+        distribution.run(step_fn, args=(optional_data.get_value(),))
+
+    train_fn(distributed_iterator)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.tpu_strategies, mode=["eager"]))
   def testFullEagerTPU(self, distribution):
     dataset = get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
 
@@ -197,7 +242,8 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
       combinations.combine(
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-              strategy_combinations.tpu_strategy
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.tpu_strategy_packed_var,
           ],
           mode=["eager"]))
   def testNestedOutput(self, distribution):
@@ -748,6 +794,10 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
           mode=["eager"]
       ))
   def testMultiDeviceDataCapturedFunction(self, distribution):
+    if getattr(distribution, "_enable_packed_variable_in_eager_mode", False):
+      self.skipTest(
+          "Dataset captured function doesn't support packed tensors yet "
+          "(b/145922293).")
     inputs = constant_op.constant([2., 3.])
     dataset = lambda _: dataset_ops.Dataset.from_tensor_slices(inputs).repeat(5)
     input_iterator = iter(

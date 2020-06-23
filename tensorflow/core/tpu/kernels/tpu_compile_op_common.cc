@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/protobuf/tpu/dynamic_padding.pb.h"
+#include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
 #include "tensorflow/core/tpu/tpu_configuration.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
@@ -118,7 +119,7 @@ Status SetPerCoreArgShapes(
 
 }  // namespace
 
-Status TPUCompileOpKernelCommon::AssignReturnValueToCore(
+Status TpuCompileOpKernelCommon::AssignReturnValueToCore(
     std::vector<tpu::ShardingAndIndex>* retval_core_mapping) {
   std::vector<int> per_core_retval_counts(metadata_.num_cores_per_replica(), 0);
   for (int i = 0; i < metadata_.retvals_size(); ++i) {
@@ -149,7 +150,7 @@ Status TPUCompileOpKernelCommon::AssignReturnValueToCore(
   return Status::OK();
 }
 
-Status TPUCompileOpKernelCommon::BuildComputationArgumentDescriptions(
+Status TpuCompileOpKernelCommon::BuildComputationArgumentDescriptions(
     const std::vector<TensorShape>& arg_shapes,
     const OpInputList& guaranteed_constants, const XlaCompiler& compiler,
     std::vector<XlaCompiler::Argument>* args,
@@ -207,7 +208,7 @@ Status TPUCompileOpKernelCommon::BuildComputationArgumentDescriptions(
   return Status::OK();
 }
 
-Status TPUCompileOpKernelCommon::GetShardingInfo(
+Status TpuCompileOpKernelCommon::GetShardingInfo(
     absl::Span<const TensorShape> arg_shapes,
     const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
@@ -230,7 +231,7 @@ Status TPUCompileOpKernelCommon::GetShardingInfo(
   return Status::OK();
 }
 
-Status TPUCompileOpKernelCommon::CompileTFFunctionToHlo(
+Status TpuCompileOpKernelCommon::CompileTFFunctionToHlo(
     const FunctionLibraryDefinition& flib_def, int graph_def_version,
     const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
     const std::vector<TensorShape>& arg_shapes,
@@ -260,7 +261,7 @@ Status TPUCompileOpKernelCommon::CompileTFFunctionToHlo(
   std::vector<tpu::ShardingAndIndex> retval_core_mapping(
       metadata_.retvals_size());
   TF_RETURN_IF_ERROR(
-      TPUCompileOpKernelCommon::AssignReturnValueToCore(&retval_core_mapping));
+      TpuCompileOpKernelCommon::AssignReturnValueToCore(&retval_core_mapping));
 
   LOG(INFO) << "Instantiating function:" << function.name();
   FunctionLibraryRuntime::Handle handle;
@@ -341,7 +342,7 @@ Status TPUCompileOpKernelCommon::CompileTFFunctionToHlo(
                                 args, compilation_result);
 }
 
-/* static */ void TPUCompileOpKernelCommon::ExitCountdown(
+/* static */ void TpuCompileOpKernelCommon::ExitCountdown(
     OpKernelContext* ctx, std::shared_ptr<std::atomic<bool>> done) {
   const int kSleepSeconds = 300;
   LOG(INFO) << "TpuCompileOp was cancelled. Sleeping for " << kSleepSeconds
@@ -352,10 +353,10 @@ Status TPUCompileOpKernelCommon::CompileTFFunctionToHlo(
     return;
   }
 
-  LogAndExit(42);
+  std::exit(42);
 }
 
-/* static */ Status TPUCompileOpKernelCommon::GetDynamicShapes(
+/* static */ Status TpuCompileOpKernelCommon::GetDynamicShapes(
     OpKernelContext* ctx, std::vector<TensorShape>* shapes) {
   OpInputList dynamic_shapes;
   TF_RETURN_IF_ERROR(ctx->input_list("dynamic_shapes", &dynamic_shapes));
@@ -368,7 +369,7 @@ Status TPUCompileOpKernelCommon::CompileTFFunctionToHlo(
   return Status::OK();
 }
 
-/* static */ Status TPUCompileOpKernelCommon::ComputeArgumentShapes(
+/* static */ Status TpuCompileOpKernelCommon::ComputeArgumentShapes(
     const tpu::TPUCompileMetadataProto& metadata,
     const std::vector<TensorShape>& dynamic_shapes,
     std::vector<TensorShape>* arg_shapes) {
@@ -409,7 +410,7 @@ Status TPUCompileOpKernelCommon::CompileTFFunctionToHlo(
 
 // Function arguments and return values lose their device assignments, so we
 // must recreate them.
-/* static */ Status TPUCompileOpKernelCommon::AssignDevicesToArgsAndRetvals(
+/* static */ Status TpuCompileOpKernelCommon::AssignDevicesToArgsAndRetvals(
     absl::Span<const tpu::ShardingAndIndex> arg_core_mapping,
     absl::Span<const tpu::ShardingAndIndex> retval_core_mapping, Graph* graph) {
   auto assign = [&](Node* node, const xla::OpSharding& sharding) -> Status {
@@ -444,7 +445,7 @@ Status TPUCompileOpKernelCommon::CompileTFFunctionToHlo(
 
 // Performs shape inference on the body of `graph`. Shapes for arguments
 // are taken from `metadata` and `arg_shapes`.
-/* static */ Status TPUCompileOpKernelCommon::RunShapeInferenceOnComputation(
+/* static */ Status TpuCompileOpKernelCommon::RunShapeInferenceOnComputation(
     const tpu::TPUCompileMetadataProto& metadata,
     const std::vector<PartialTensorShape>& arg_shapes, Graph* graph,
     FunctionLibraryRuntime* flr, GraphShapeInfo* shape_info) {
@@ -476,7 +477,7 @@ Status TPUCompileOpKernelCommon::CompileTFFunctionToHlo(
       shape_info);
 }
 
-Status TPUCompileOpKernelCommon::OptimizeGraph(
+Status TpuCompileOpKernelCommon::OptimizeGraph(
     const tpu::TPUCompileMetadataProto& metadata,
     const std::vector<PartialTensorShape>& arg_shapes,
     std::unique_ptr<Graph>* graph, FunctionLibraryRuntime* flr,

@@ -49,7 +49,7 @@ def save(model, filepath, overwrite, include_optimizer, signatures=None,
     signatures: Signatures to save with the SavedModel. Applicable to the 'tf'
       format only. Please see the `signatures` argument in `tf.saved_model.save`
       for details.
-    options: Optional`tf.saved_model.SaveOptions` object that specifies
+    options: Optional `tf.saved_model.SaveOptions` object that specifies
       options for saving to SavedModel.
 
   Raises:

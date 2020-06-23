@@ -707,14 +707,8 @@ gentbl(
 
 cc_library(
     name = "Shape",
-    srcs = glob(
-        [
-            "lib/Dialect/Shape/IR/*.cpp",
-        ],
-    ),
-    hdrs = glob([
-        "include/mlir/Dialect/Shape/IR/*.h",
-    ]),
+    srcs = glob(["lib/Dialect/Shape/IR/*.cpp"]),
+    hdrs = ["include/mlir/Dialect/Shape/IR/Shape.h"],
     includes = ["include"],
     deps = [
         ":CallOpInterfaces",
@@ -737,22 +731,55 @@ cc_library(
         "lib/Conversion/ShapeToStandard/*.cpp",
         "lib/Conversion/ShapeToStandard/*.h",
     ]) + ["lib/Conversion/PassDetail.h"],
-    hdrs = glob([
-        "include/mlir/Conversion/ShapeToStandard/*.h",
-    ]),
+    hdrs = ["include/mlir/Conversion/ShapeToStandard/ShapeToStandard.h"],
     includes = ["include"],
     deps = [
-        ":Affine",
+        ":ConversionPassIncGen",
+        ":Pass",
+        ":SCFDialect",
+        ":Shape",
+        ":ShapeToStandardPatternsIncGen",
+        ":StandardOps",
+        ":Support",
+        ":Transforms",
+    ],
+)
+
+gentbl(
+    name = "ShapeToStandardPatternsIncGen",
+    strip_include_prefix = "include/mlir/Conversion/ShapeToStandard",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "include/mlir/Conversion/ShapeToStandard/ShapeToStandardPatterns.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "lib/Conversion/ShapeToStandard/ShapeToStandardPatterns.td",
+    td_srcs = [
+        ":StdOpsTdFiles",
+        "include/mlir/Dialect/Shape/IR/ShapeBase.td",
+        "include/mlir/Dialect/Shape/IR/ShapeOps.td",
+        "include/mlir/Interfaces/InferTypeOpInterface.td",
+    ],
+)
+
+cc_library(
+    name = "ShapeToSCF",
+    srcs = glob([
+        "lib/Conversion/ShapeToSCF/*.cpp",
+        "lib/Conversion/ShapeToSCF/*.h",
+    ]) + ["lib/Conversion/PassDetail.h"],
+    hdrs = ["include/mlir/Conversion/ShapeToSCF/ShapeToSCF.h"],
+    includes = ["include"],
+    deps = [
         ":ConversionPassIncGen",
         ":IR",
         ":Pass",
         ":SCFDialect",
         ":Shape",
         ":StandardOps",
-        ":Support",
         ":Transforms",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -774,18 +801,15 @@ cc_library(
         "lib/Dialect/Shape/Transforms/*.cpp",
         "lib/Dialect/Shape/Transforms/*.h",
     ]),
-    hdrs = glob(["include/mlir/Dialect/Shape/Transforms/*.h"]),
+    hdrs = ["include/mlir/Dialect/Shape/Transforms/Passes.h"],
     includes = ["include"],
     deps = [
-        #":Analysis",
-        #":ControlFlowInterfaces",
         ":IR",
         ":Pass",
         ":Shape",
         ":ShapeTransformsPassIncGen",
         ":Support",
         ":Transforms",
-        #"@llvm-project//llvm:Support",
     ],
 )
 
@@ -801,9 +825,7 @@ cc_library(
     hdrs = glob([
         "include/mlir/Dialect/StandardOps/IR/*.h",
         "include/mlir/Dialect/StandardOps/EDSC/*.h",
-    ]) + [
-        "include/mlir/Transforms/InliningUtils.h",
-    ],
+    ]) + ["include/mlir/Transforms/InliningUtils.h"],
     includes = ["include"],
     deps = [
         ":CallOpInterfaces",
@@ -2126,6 +2148,7 @@ cc_library(
         ":Analysis",
         ":ControlFlowInterfaces",
         ":IR",
+        ":LinalgOps",
         ":LoopLikeInterface",
         ":Pass",
         ":SCFDialect",
@@ -2612,6 +2635,7 @@ cc_library(
         ":Parser",
         ":Pass",
         ":SCFTransforms",
+        ":ShapeToSCF",
         ":ShapeToStandard",
         ":ShapeTransforms",
         ":StandardOpsTransforms",
@@ -2712,6 +2736,7 @@ cc_library(
         ":SPIRVPassIncGen",
         ":SPIRVToLLVM",
         ":Shape",
+        ":ShapeToSCF",
         ":ShapeToStandard",
         ":ShapeTransforms",
         ":ShapeTransformsPassIncGen",
@@ -2863,9 +2888,9 @@ cc_library(
         ":SideEffects",
         ":StandardOps",
         ":Support",
-        "//third_party/vulkan_loader",
         "@llvm-project//llvm:Support",
         "@vulkan_headers",
+        "@vulkan_sdk//:sdk",
     ],
 )
 

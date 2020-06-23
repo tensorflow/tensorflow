@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
-import collections
 import contextlib
 import functools
 import itertools
@@ -57,7 +56,6 @@ try:
   from scipy import sparse as scipy_sparse  # pylint: disable=g-import-not-at-top
 except ImportError:
   scipy_sparse = None
-
 try:
   import pandas as pd  # pylint: disable=g-import-not-at-top
 except ImportError:
@@ -786,7 +784,6 @@ class GeneratorDataAdapter(DataAdapter):
     # Since we have to know the dtype of the python generator when we build the
     # dataset, we have to look at a batch to infer the structure.
     peek, x = self._peek_and_restore(x)
-    assert_not_namedtuple(peek)
     peek = self._standardize_batch(peek)
     peek = _process_tensorlike(peek)
 
@@ -1068,21 +1065,6 @@ def broadcast_sample_weight_modes(target_structure, sample_weight_modes):
             "structure:\n  {}\n    to  \n  {}".format(target_str, mode_str))
 
   return sample_weight_modes
-
-
-def assert_not_namedtuple(x):
-  if (isinstance(x, tuple) and
-      # TODO(b/144192902): Use a namedtuple checking utility.
-      hasattr(x, "_fields") and
-      isinstance(x._fields, collections.Sequence) and
-      all(isinstance(f, six.string_types) for f in x._fields)):
-    raise ValueError(
-        "Received namedtuple ({}) with fields `{}` as input. namedtuples "
-        "cannot, in general, be unambiguously resolved into `x`, `y`, "
-        "and `sample_weight`. For this reason Keras has elected not to "
-        "support them. If you would like the value to be unpacked, "
-        "please explicitly convert it to a tuple before passing it to "
-        "Keras.".format(x.__class__, x._fields))
 
 
 class DataHandler(object):

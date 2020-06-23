@@ -53,22 +53,18 @@ class MemorySpaceAssignmentTest : public HloTestBase,
       TF_CHECK_OK(computation->Accept(&hlo_cost_analysis));
     }
     auto alias_analysis = HloAliasAnalysis::Run(module).ValueOrDie();
-    std::unique_ptr<HloLiveRange> hlo_live_range =
-        HloLiveRange::Run(module->schedule(), *alias_analysis,
-                          module->entry_computation())
-            .ValueOrDie();
-    std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
-    MemorySpaceAssignmentCostAnalysis cost_analysis(
-        hlo_cost_analysis, kAsyncCopyBandwidth, kAlternateMemBandwidth,
-        *hlo_live_range, *call_graph);
+    auto cost_analysis = MemorySpaceAssignmentCostAnalysis::Create(
+                             hlo_cost_analysis, kAsyncCopyBandwidth,
+                             kAlternateMemBandwidth, *module)
+                             .ValueOrDie();
     CostAnalysisPrefetchIntervalPicker prefetch_interval_picker(
         CostAnalysisPrefetchIntervalPicker(
-            cost_analysis, /*min_async_copy_to_overlap_ratio=*/0.8,
+            *cost_analysis, /*min_async_copy_to_overlap_ratio=*/0.8,
             /*max_async_copy_to_overlap_ratio=*/10.0));
     return AssignMemorySpace(
         module, /*max_outstanding_async_copies=*/-1,
         MemorySpaceAssignment::GetMemoryBoundednessBufferIntervalCompare(
-            cost_analysis, &cache_),
+            *cost_analysis, &cache_),
         &prefetch_interval_picker);
   }
 

@@ -279,11 +279,12 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
 
   void Export(XSpace* space) {
     uint64 end_gputime_ns = RocmTracer::GetTimestamp();
-    XPlaneBuilder host_plane(GetOrCreatePlane(space, kRocmTracerPlaneName));
+    XPlaneBuilder host_plane(
+        FindOrAddMutablePlaneWithName(space, kRocmTracerPlaneName));
     for (int i = 0; i < options_.num_gpus; ++i) {
-      std::string name = absl::StrCat(kGpuPlanePrefix, i);
-      XPlaneBuilder device_plane(GetOrCreatePlane(space, name));
-      device_plane.SetId(kGpuPlaneBaseId + i);
+      std::string name = GpuPlaneName(i);
+      XPlaneBuilder device_plane(FindOrAddMutablePlaneWithName(space, name));
+      device_plane.SetId(i);
       per_device_collector_[i].Export(start_walltime_ns_, start_gputime_ns_,
                                       end_gputime_ns, &device_plane,
                                       &host_plane);

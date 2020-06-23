@@ -1098,6 +1098,15 @@ class BASE_HLO_ReshapeOp {
   }];
 }
 
+class ScatterDimensionNumbers<Dialect dialect> : StructAttr<
+    "ScatterDimensionNumbers", dialect, [
+      StructFieldAttr<"update_window_dims", I64ElementsAttr>,
+      StructFieldAttr<"inserted_window_dims", I64ElementsAttr>,
+      StructFieldAttr<"scatter_dims_to_operand_dims", I64ElementsAttr>,
+      StructFieldAttr<"index_vector_dim", I64Attr>]> {
+  let description = "Structure of dimension information for scatter";
+}
+
 class BASE_HLO_ScatterOp {
   string summary = "Scatter operator";
 

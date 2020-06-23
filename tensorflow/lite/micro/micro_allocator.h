@@ -40,7 +40,7 @@ TfLiteStatus InitializeTfLiteTensorFromFlatbuffer(
 
 // A handle tracking scratch buffer allocation. This handle is created by
 // `RequestScratchBufferInArena`. `data` field is populated in
-// `FinishTensorAllocation` after static memory planning.
+// `FinishModelAllocation` after static memory planning.
 // TODO(b/150257460) As a future optimization, this struct could be replaced by
 // a union, since once `data` is populated, `bytes` and `node_idx` is not
 // needed.
@@ -126,7 +126,7 @@ class MicroAllocator {
 
   // Register a scratch buffer of size `bytes` for Node with `node_id`.
   // This method only allocates a BufferHandle holding information for memory
-  // planning. The buffer ptr is ready after `FinishTensorAllocation` and can
+  // planning. The buffer ptr is ready after `FinishModelAllocation` and can
   // be retrieved by `GetScratchBuffer` method using the returned buffer_idx.
   // Note that there should be no tail allocation between two consecutive
   // `RequestScratchBufferInArena` calls.
@@ -136,7 +136,7 @@ class MicroAllocator {
   void* GetScratchBuffer(int buffer_idx) const;
 
   // Returns the arena usage in bytes, only available after
-  // `FinishTensorAllocation`. Otherwise, it will return 0.
+  // `FinishModelAllocation`. Otherwise, it will return 0.
   size_t used_bytes() const;
 
  protected:
@@ -189,7 +189,8 @@ class MicroAllocator {
 
   // Commits a memory plan for all non-persistent buffer allocations in the
   // 'head' section of the memory arena.
-  virtual TfLiteStatus CommitStaticMemoryPlan(TfLiteContext* context,
+  virtual TfLiteStatus CommitStaticMemoryPlan(const Model* model,
+                                              TfLiteContext* context,
                                               const SubGraph* subgraph);
 
   // A simple memory allocator that always allocate from the arena tail or head.

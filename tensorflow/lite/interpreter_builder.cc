@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/interpreter_builder.h"
 
+#if !defined(__ANDROID__) && !defined(__APPLE__) && !defined(_WIN32)
+#include <dlfcn.h>
+#endif
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -114,6 +117,20 @@ const char* kEmptyTensorName = "";
 // For flex delegate, see also the strong override in
 // lite/delegates/flex/delegate.cc.
 TFLITE_ATTRIBUTE_WEAK Interpreter::TfLiteDelegatePtr AcquireFlexDelegate() {
+#if !defined(__ANDROID__) && !defined(__APPLE__) && !defined(_WIN32)
+  // If _pywrap_tensorflow_internal.so is available, use
+  // TF_AcquireFlexDelegate() to initialize flex delegate.
+  void* lib_tf_internal =
+      dlopen("_pywrap_tensorflow_internal.so", RTLD_NOW | RTLD_LOCAL);
+  if (lib_tf_internal) {
+    auto TF_AcquireFlexDelegate =
+        reinterpret_cast<Interpreter::TfLiteDelegatePtr (*)()>(
+            dlsym(lib_tf_internal, "TF_AcquireFlexDelegate"));
+    if (TF_AcquireFlexDelegate) {
+      return TF_AcquireFlexDelegate();
+    }
+  }
+#endif
   return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
 }
 
@@ -528,17 +545,7 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
 
 TfLiteStatus InterpreterBuilder::ApplyDelegates(Interpreter* interpreter,
                                                 int num_threads) {
-  // First, apply XNNPACK delegate if applicable.
-  if (num_fp32_tensors_ > 0) {
-    // The execution will fall back to default implementation if the XNNPACK
-    // delegate fails to be applied. Therefore, we ignore the return status
-    // here and let it fall through the rest of the code.
-    if (auto xnnpack_delegate = MaybeCreateXNNPACKDelegate(num_threads)) {
-      interpreter->ModifyGraphWithDelegate(std::move(xnnpack_delegate));
-    }
-  }
-
-  // Secondly, apply Flex delegate if applicable.
+  // Apply Flex delegate if applicable.
   if (has_flex_op_) {
     if (auto flex_delegate = AcquireFlexDelegate()) {
       return interpreter->ModifyGraphWithDelegate(std::move(flex_delegate));
@@ -653,6 +660,11 @@ TfLiteStatus InterpreterBuilder::operator()(
       }
     }
     modified_subgraph->SetVariables(std::move(variables));
+  }
+
+  if (num_fp32_tensors_ > 0) {
+    (*interpreter)->lazy_delegate_provider_ =
+        MaybeCreateXNNPACKDelegate(num_threads);
   }
 
   if (ApplyDelegates(interpreter->get(), num_threads) != kTfLiteOk)

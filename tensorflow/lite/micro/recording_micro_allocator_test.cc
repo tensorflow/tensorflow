@@ -93,7 +93,6 @@ TF_LITE_MICRO_TEST(TestRecordsTensorArrayQuantizationData) {
       quantized_tensor_count++;
       size_t num_channels = quantization_params->scale()->size();
       quantized_channel_bytes += TfLiteIntArrayGetSizeInBytes(num_channels);
-      quantized_channel_bytes += TfLiteFloatArrayGetSizeInBytes(num_channels);
     }
   }
 
@@ -106,10 +105,9 @@ TF_LITE_MICRO_TEST(TestRecordsTensorArrayQuantizationData) {
       micro_allocator->GetRecordedAllocation(
           tflite::RecordedAllocationType::kTfLiteTensorArrayQuantizationData);
 
-  // Each quantized tensors has 3 mallocs (quant struct, scale dimensions, zero
-  // point dimensions):
+  // Each quantized tensors has 2 mallocs (quant struct, zero point dimensions):
   TF_LITE_MICRO_EXPECT_EQ(recorded_allocation.count,
-                          quantized_tensor_count * 3);
+                          quantized_tensor_count * 2);
   TF_LITE_MICRO_EXPECT_EQ(recorded_allocation.requested_bytes,
                           expected_requested_bytes);
   TF_LITE_MICRO_EXPECT_GE(recorded_allocation.used_bytes,

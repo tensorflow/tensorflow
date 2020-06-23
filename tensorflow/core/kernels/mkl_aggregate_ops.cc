@@ -178,6 +178,9 @@ class MklAddNOp : public OpKernel {
         dnn_fmt = MklTensorFormatToMklDnnDataFormat(mkl_data_format);
       }
 
+      std::shared_ptr<stream> fwd_cpu_stream;
+      fwd_cpu_stream.reset(CreateStream(ctx, cpu_engine));
+
       // Create memory descriptor for MKL-DNN.
       // If all input in Tensorflow format, create block memory descriptor,
       // else convert TF format to MKL memory descriptor
@@ -215,6 +218,7 @@ class MklAddNOp : public OpKernel {
         srcs_pd.push_back(memory::primitive_desc(md, cpu_engine));
 #endif
         src.SetUsrMem(md, &src_tensor);
+        src.SetUsrMemDataHandle(&src_tensor, fwd_cpu_stream);
         inputs.push_back(src.GetOpMem());
       }
 
@@ -240,11 +244,10 @@ class MklAddNOp : public OpKernel {
       }
       AllocateOutputSetMklShape(ctx, kOutputIdx, &dst_tensor, output_tf_shape,
                                 output_mkl_shape);
-      dst.SetUsrMemDataHandle(dst_tensor);
+      dst.SetUsrMemDataHandle(dst_tensor, fwd_cpu_stream);
 
       // Create Sum op, and submit net for execution.
       std::vector<primitive> net;
-      stream* fwd_cpu_stream = CreateStream(ctx, cpu_engine);
 #ifdef ENABLE_MKLDNN_V1
       mkldnn::sum sum_op(sum_pd);
       std::unordered_map<int, memory> net_args = {

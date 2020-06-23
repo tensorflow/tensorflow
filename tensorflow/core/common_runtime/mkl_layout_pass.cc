@@ -682,18 +682,15 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back(
         {csinfo_.requantize, mkl_op_registry::GetMklOpName(csinfo_.requantize),
          CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
-    // Disable these two MKL operators for now due to some test failures caused
-    // by these two ops
-    /*
-    rinfo_.push_back({csinfo_.tanh,
-                      mkl_op_registry::GetMklOpName(csinfo_.tanh),
+#ifdef ENABLE_MKLDNN_V1
+    // Optimized TanhGrad support exists only in DNNL 1.x.
+    rinfo_.push_back({csinfo_.tanh, mkl_op_registry::GetMklOpName(csinfo_.tanh),
                       CopyAttrsAll, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
-    rinfo_.push_back({csinfo_.tanh_grad,
-                      mkl_op_registry::GetMklOpName(csinfo_.tanh_grad),
-                      CopyAttrsAll, AlwaysRewrite,
-                      kRewriteForLayoutPropagation});
-    */
+    rinfo_.push_back(
+        {csinfo_.tanh_grad, mkl_op_registry::GetMklOpName(csinfo_.tanh_grad),
+         CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
+#endif  // ENABLE_MKLDNN_V1
     rinfo_.push_back(
         {csinfo_.reshape, mkl_op_registry::GetMklOpName(csinfo_.reshape),
          CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});

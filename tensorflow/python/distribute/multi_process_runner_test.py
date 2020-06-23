@@ -314,8 +314,12 @@ class MultiProcessRunnerTest(test.TestCase):
           timeout=5)
 
     list_to_assert = cm.exception.mpr_result.stdout
+    # We should see 5 iterations from worker and ps, however sometime on TAP
+    # due to CPU throttling and slugginess of msan/asan build, this became
+    # flaky. Therefore we allow more margin of errors to only check the first
+    # 3 iterations.
     for job in ['worker', 'ps']:
-      for iteration in range(0, 5):
+      for iteration in range(0, 3):
         self.assertTrue(
             any('(logging) {}-0, i: {}'.format(job, iteration) in line
                 for line in list_to_assert))

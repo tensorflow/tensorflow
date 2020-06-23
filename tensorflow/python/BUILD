@@ -3,7 +3,10 @@
 #  ":platform" - Low-level and platform-specific Python code.
 
 load("//tensorflow:tensorflow.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "if_xla_available", "py_test", "py_tests", "tf_cc_shared_object", "tf_cuda_library", "tf_gen_op_wrapper_py")
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "if_xla_available", "py_test", "py_tests", "tf_cc_shared_object", "tf_cc_test", "tf_cuda_library", "tf_gen_op_wrapper_py")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_monitoring_python_deps")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
@@ -1055,11 +1058,12 @@ cc_library(
         ":safe_ptr",
         "//tensorflow/c:tensor_interface",
         "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/c/eager:tfe_context_internal",
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//third_party/python_runtime:headers",
+        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
     ],
 )
 
@@ -1230,6 +1234,19 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
     ],
     alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "python_op_gen_test",
+    srcs = ["framework/python_op_gen_test.cc"],
+    deps = [
+        ":python_op_gen",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:op_gen_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
 )
 
 py_library(
@@ -5279,7 +5296,9 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 10,
     tags = [
+        "no_rocm", # regression starting 200622 sync
         "no_windows_gpu",
+        "noasan",  # b/159332048
         "nomsan",  # b/148630708
     ],
     deps = [
@@ -6055,12 +6074,18 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/util/tensor_bundle",
         "//tensorflow/compiler/mlir/python:mlir",
     ] + (tf_additional_lib_deps() +
+         tf_monitoring_python_deps() +
          tf_additional_plugin_deps() +
          tf_additional_profiler_deps()) + if_ngraph([
         "@ngraph_tf//:ngraph_tf",
     ]) + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",
-    ]),
+    ]) + select({
+        "//tensorflow:windows": [],  # TODO(b/159077703): Enable Flex on Windows
+        "//conditions:default": [
+            "//tensorflow/lite/delegates/flex:delegate",
+        ],
+    }),
 )
 
 # ** Targets for Windows build (start) **

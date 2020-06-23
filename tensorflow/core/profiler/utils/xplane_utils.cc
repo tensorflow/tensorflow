@@ -65,12 +65,19 @@ std::vector<const XPlane*> FindPlanesWithPrefix(const XSpace& space,
   return result;
 }
 
-XPlane* GetOrCreatePlane(XSpace* space, absl::string_view name) {
+XPlane* FindMutablePlaneWithName(XSpace* space, absl::string_view name) {
   for (XPlane& plane : *space->mutable_planes()) {
     if (plane.name() == name) return &plane;
   }
-  XPlane* plane = space->add_planes();
-  plane->set_name(std::string(name));
+  return nullptr;
+}
+
+XPlane* FindOrAddMutablePlaneWithName(XSpace* space, absl::string_view name) {
+  XPlane* plane = FindMutablePlaneWithName(space, name);
+  if (plane == nullptr) {
+    plane = space->add_planes();
+    plane->set_name(name.data(), name.size());
+  }
   return plane;
 }
 
@@ -126,22 +133,6 @@ void RemoveEmptyLines(XPlane* plane) {
                    lines->begin(), lines->end(),
                    [&](const XLine& line) { return line.events_size() == 0; }),
                lines->end());
-}
-
-XPlane* FindMutablePlaneWithName(XSpace* space, absl::string_view name) {
-  for (XPlane& plane : *space->mutable_planes()) {
-    if (plane.name() == name) return &plane;
-  }
-  return nullptr;
-}
-
-XPlane* FindOrAddMutablePlaneWithName(XSpace* space, absl::string_view name) {
-  XPlane* plane = FindMutablePlaneWithName(space, name);
-  if (plane == nullptr) {
-    plane = space->add_planes();
-    plane->set_name(std::string(name));
-  }
-  return plane;
 }
 
 void SortXPlane(XPlane* plane) {

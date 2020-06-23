@@ -331,6 +331,15 @@ class Executable {
   bool dumping_snapshot() const { return hlo_proto_ != nullptr; }
   HloProto const* hlo_proto() const { return hlo_proto_.get(); }
 
+  // Gather unused but donated buffers, return them to the caller of this API.
+  // We don't free buffers inside this function since the caller could have
+  // different preferences for buffer deallocation. For example, in TensorFlow,
+  // buffers are mostly efficiently deallocated as soon as a program has been
+  // launched. However, in XRT, the buffers are expected to be deallocated after
+  // the program has finished since XRT doesn't support async deallocation.
+  void MarkToBeReleasedArguments(absl::Span<ExecutionInput> arguments,
+                                 ExecutionOutput& result);
+
  protected:
   // HloModule this was compiled from. BufferAssignment keeps pointers to
   // HloInstructions owned by the HloModule so we need to keep the HloModule

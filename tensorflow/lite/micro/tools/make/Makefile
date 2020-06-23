@@ -75,6 +75,8 @@ TEST_SCRIPT := tensorflow/lite/micro/testing/test_linux_binary.sh
 MICROLITE_LIBS := -lm
 
 # TODO(b/150240249): Add in -fno-rtti once that works for the Xtensa toolchain.
+# TODO(b/159155203): Consider TF_LITE_STATIC_MEMORY to align more with the fact
+# this flag is for an optimized micro runtime.
 CXXFLAGS := -std=c++11 -DTF_LITE_STATIC_MEMORY
 CCFLAGS  := -std=c11   -DTF_LITE_STATIC_MEMORY
 ARFLAGS := -r

@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
-#include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/optimized/sparse_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -102,13 +101,13 @@ inline TfLiteStatus CheckTypes(TfLiteContext* context,
 
   if (is_quantized) {
     if (is_shuffled) {
-      TF_LITE_ENSURE_EQ(context, input->type, kTfLiteUInt8);
-      TF_LITE_ENSURE_EQ(context, filter->type, kTfLiteUInt8);
-      TF_LITE_ENSURE_EQ(context, output->type, kTfLiteInt16);
+      TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteUInt8);
+      TF_LITE_ENSURE_TYPES_EQ(context, filter->type, kTfLiteUInt8);
+      TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteInt16);
       TF_LITE_ENSURE_EQ(context, is_optional_bias_int, true);
     } else if (is_hybrid) {
-      TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
-      TF_LITE_ENSURE_EQ(context, output->type, kTfLiteFloat32);
+      TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteFloat32);
+      TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteFloat32);
       TF_LITE_ENSURE_EQ(context, is_optional_bias_float, true);
     } else {
       TF_LITE_ENSURE(context, input->type == kTfLiteUInt8 ||
@@ -121,9 +120,9 @@ inline TfLiteStatus CheckTypes(TfLiteContext* context,
     }
   } else {
     // Only float32 is supported currently
-    TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
-    TF_LITE_ENSURE_EQ(context, output->type, kTfLiteFloat32);
-    TF_LITE_ENSURE_EQ(context, filter->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_TYPES_EQ(context, filter->type, kTfLiteFloat32);
     TF_LITE_ENSURE_EQ(context, is_optional_bias_float, true);
   }
 
@@ -313,7 +312,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   if (!is_pie && !is_hybrid) {
     TF_LITE_ENSURE(context, params->activation == kTfLiteActNone ||
                                 params->activation == kTfLiteActRelu ||
-                                params->activation == kTfLiteActRelu1 ||
+                                params->activation == kTfLiteActReluN1To1 ||
                                 params->activation == kTfLiteActRelu6);
   }
   return PrepareImpl(context, node);

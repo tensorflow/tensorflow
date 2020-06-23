@@ -120,10 +120,20 @@ py_library(
 cuda_py_test(
     name = "device_util_test",
     srcs = ["device_util_test.py"],
+    python_version = "PY3",
+    tags = ["no_oss_py2"],
     deps = [
+        ":combinations",
         ":device_util",
+        ":multi_worker_test_base",
+        ":multi_worker_util",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training_server_lib",
+        "//tensorflow/python/eager:context",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -643,7 +653,7 @@ tpu_py_test(
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -733,14 +743,12 @@ py_library(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tf_export",
         "//tensorflow/python:type_spec",
-        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:tape",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
         "//tensorflow/python/training/tracking:base",
@@ -779,6 +787,7 @@ py_library(
     name = "tpu_values",
     srcs = ["tpu_values.py"],
     deps = [
+        ":packed_distributed_variable",
         ":values",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
@@ -1028,14 +1037,21 @@ cuda_py_test(
         ":collective_util",
         ":combinations",
         ":cross_device_ops",
-        ":mirrored_strategy",
+        ":cross_device_utils",
+        ":device_util",
         ":multi_worker_test_base",
+        ":multi_worker_util",
+        ":reduce_util",
         ":strategy_combinations",
         ":values",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:collective_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:kernels",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "@absl_py//absl/testing:parameterized",
@@ -1469,7 +1485,6 @@ cuda_py_test(
         "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras/layers",
     ],
 )
 
@@ -1495,7 +1510,6 @@ cuda_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras/layers",
     ],
 )
 
@@ -1587,7 +1601,7 @@ distribute_py_test(
     srcs = ["saved_model_save_load_test.py"],
     full_precision = True,
     main = "saved_model_save_load_test.py",
-    shard_count = 5,
+    shard_count = 7,
     tags = [
         "multi_and_single_gpu",
     ],
@@ -1619,7 +1633,7 @@ distribute_py_test(
     srcs = ["saved_model_mixed_api_test.py"],
     full_precision = True,
     main = "saved_model_mixed_api_test.py",
-    shard_count = 5,
+    shard_count = 7,
     tags = [
         "multi_and_single_gpu",
     ],
@@ -1692,7 +1706,6 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
-        "no_windows",  # TODO(b/156428279): reenable this test once the image is updated.
     ],
     # b/141096229: Non-atomic AssignAdd
     xla_enable_strict_auto_jit = False,

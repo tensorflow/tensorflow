@@ -268,6 +268,7 @@ tflite_micro_cc_test(
         ":micro_framework",
         ":micro_utils",
         ":op_resolvers",
+        ":recording_allocators",
         ":test_helpers",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/micro/testing:micro_test",
