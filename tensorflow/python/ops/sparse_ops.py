@@ -2734,7 +2734,7 @@ def sparse_transpose(sp_input, perm=None, name=None):
     return transposed_st
 
 
-@tf_export("sparse.map_values")
+@tf_export("sparse.map_values", v1=[])
 @dispatch.add_dispatch_support
 def map_values(op, *args, **kwargs):
   """Applies `op` to the values of one or more `SparseTensor`s.
