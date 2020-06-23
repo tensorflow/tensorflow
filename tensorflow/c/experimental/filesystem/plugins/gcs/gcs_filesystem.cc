@@ -17,6 +17,7 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
+#include "absl/strings/numbers.h"
 #include "google/cloud/storage/client.h"
 #include "tensorflow/c/env.h"
 #include "tensorflow/c/experimental/filesystem/plugins/gcs/gcs_helper.h"
@@ -76,27 +77,24 @@ void ParseGCSPath(const std::string& fname, bool object_empty_ok,
 // ----------------------------------------------------------------------------
 namespace tf_random_access_file {
 typedef struct GCSFile {
-  const char* bucket;
-  const char* object;
+  const std::string bucket;
+  const std::string object;
   gcs::Client* gcs_client;  // not owned
 } GCSFile;
 
-TF_STATIC void Cleanup(TF_RandomAccessFile* file) {
+void Cleanup(TF_RandomAccessFile* file) {
   auto gcs_file = static_cast<GCSFile*>(file->plugin_file);
-  plugin_memory_free(const_cast<char*>(gcs_file->bucket));
-  plugin_memory_free(const_cast<char*>(gcs_file->object));
   delete gcs_file;
 }
 
 // TODO(vnvo2409): Adding cache.
 // `google-cloud-cpp` is working on a feature that we may want to use.
 // See https://github.com/googleapis/google-cloud-cpp/issues/4013.
-TF_STATIC int64_t Read(const TF_RandomAccessFile* file, uint64_t offset,
-                       size_t n, char* buffer, TF_Status* status) {
+int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
+             char* buffer, TF_Status* status) {
   auto gcs_file = static_cast<GCSFile*>(file->plugin_file);
-  auto stream =
-      gcs_file->gcs_client->ReadObject(gcs_file->bucket, gcs_file->object,
-                                       gcs::ReadRange(offset, offset + n));
+  auto stream = gcs_file->gcs_client->ReadObject(
+      gcs_file->bucket, gcs_file->object, gcs::ReadRange(offset, offset + n));
   TF_SetStatusFromGCSStatus(stream.status(), status);
   if ((TF_GetCode(status) != TF_OK) &&
       (TF_GetCode(status) != TF_OUT_OF_RANGE)) {
@@ -288,11 +286,9 @@ void Cleanup(TF_Filesystem* filesystem) {
 }
 
 // TODO(vnvo2409): Implement later
-TF_STATIC void NewRandomAccessFile(const TF_Filesystem* filesystem,
-                                   const char* path, TF_RandomAccessFile* file,
-                                   TF_Status* status) {
-  char* bucket;
-  char* object;
+void NewRandomAccessFile(const TF_Filesystem* filesystem, const char* path,
+                         TF_RandomAccessFile* file, TF_Status* status) {
+  std::string bucket, object;
   ParseGCSPath(path, false, &bucket, &object, status);
   if (TF_GetCode(status) != TF_OK) return;
 
