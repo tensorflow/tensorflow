@@ -204,6 +204,7 @@ py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//third_party/py/numpy",
     ],
 )
@@ -1847,10 +1848,11 @@ py_test(
     ],
 )
 
-cuda_py_test(
+distribute_py_test(
     name = "strategy_common_test",
     srcs = ["strategy_common_test.py"],
     python_version = "PY3",
+    shard_count = 12,
     tags = [
         "multi_and_single_gpu",
         # TODO(b/155301154): Enable this test on multi-gpu guitar once multi process
@@ -1859,6 +1861,7 @@ cuda_py_test(
     ],
     xla_enable_strict_auto_jit = True,
     deps = [
+        ":collective_all_reduce_strategy",
         ":combinations",
         ":multi_worker_test_base",
         ":reduce_util",

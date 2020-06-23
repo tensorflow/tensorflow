@@ -345,6 +345,18 @@ class TPUStrategy(distribute_lib.Strategy):
     options = options or distribute_lib.RunOptions()
     return self.extended.tpu_run(fn, args, kwargs, options)
 
+  @property
+  def cluster_resolver(self):
+    """Returns the cluster resolver associated with this strategy.
+
+    `tf.distribute.experimental.TPUStrategy` provides the
+    associated `tf.distribute.cluster_resolver.ClusterResolver`. If the user
+    provides one in `__init__`, that instance is returned; if the user does
+    not, a default
+    `tf.distribute.cluster_resolver.TPUClusterResolver` is provided.
+    """
+    return self.extended._tpu_cluster_resolver  # pylint: disable=protected-access
+
 
 @tf_export(v1=["distribute.experimental.TPUStrategy"])
 class TPUStrategyV1(distribute_lib.StrategyV1):

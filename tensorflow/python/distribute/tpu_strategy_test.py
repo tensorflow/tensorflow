@@ -555,6 +555,13 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
       update_variable.get_concrete_function()
       self.assertLen(strategy.extended.worker_devices, trace_count[0])
 
+  def test_cluster_resolver_available(self, enable_packed_var):
+    resolver = get_tpu_cluster_resolver()
+    remote.connect_to_cluster(resolver)
+    tpu_strategy_util.initialize_tpu_system(resolver)
+    strategy = tpu_lib.TPUStrategy(resolver)
+    self.assertIs(strategy.cluster_resolver, resolver)
+
 
 class TPUStrategyDataPrefetchTest(test.TestCase):
 
