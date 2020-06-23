@@ -164,7 +164,7 @@ def _jvp_helper_wrapper(
   """
   if use_batch:
     for primal, tangent in zip(inputs, tangents):
-      if tangent.shape.is_compatible_with(primal.shape): 
+      if not tangent.shape.is_compatible_with([None] + primal.shape): 
         raise ValueError(
           "Tangent {} was expected to be of shape "
           "{} but is instead of shape {}".format(
