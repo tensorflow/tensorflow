@@ -29,8 +29,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/stringprintf.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -243,10 +241,6 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       RecordStop(ctx);
       result->notification.WaitForNotification();
       RecordStart(ctx);
-      profiler::TraceMe traceme([&] {
-        return profiler::TraceMeEncode("ParallelMapConsume",
-                                       {{"element_id", result->id}});
-      });
       return ProcessResult(ctx, result, out_tensors, end_of_sequence);
     }
 
@@ -364,14 +358,10 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
 
    private:
     struct InvocationResult {
-      InvocationResult() {}
-      explicit InvocationResult(int64 id) : id(id) {}
-
       Notification notification;
       Status status;
       std::vector<Tensor> return_values;
       bool end_of_input;
-      int64 id;
     };
 
     void CancelThreads(bool wait) TF_LOCKS_EXCLUDED(mu_) {
@@ -412,10 +402,6 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     void CallFunction(const std::shared_ptr<IteratorContext>& ctx,
                       const std::shared_ptr<InvocationResult>& result)
         TF_LOCKS_EXCLUDED(*mu_) {
-      profiler::TraceMe traceme([&] {
-        return profiler::TraceMeEncode("ParallelMapProduce",
-                                       {{"element_id", result->id}});
-      });
       // Get the next input element.
       std::vector<Tensor> input_element;
       result->status = input_impl_->GetNext(ctx.get(), &input_element,
@@ -504,8 +490,6 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         return num_calls_ >= num_parallel_calls ||
                invocation_results_.size() >= num_parallel_calls;
       };
-      // Counts the total number of calls to use as an id of InvocationResult.
-      int64 num_total_calls = 0;
       while (true) {
         {
           mutex_lock l(*mu_);
@@ -518,8 +502,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
             return;
           }
           while (!busy()) {
-            invocation_results_.push_back(
-                std::make_shared<InvocationResult>(num_total_calls++));
+            invocation_results_.push_back(std::make_shared<InvocationResult>());
             new_calls.push_back(invocation_results_.back());
             num_calls_++;
           }
