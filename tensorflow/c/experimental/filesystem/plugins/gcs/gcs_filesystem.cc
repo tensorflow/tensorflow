@@ -75,8 +75,45 @@ void ParseGCSPath(const std::string& fname, bool object_empty_ok,
 // SECTION 1. Implementation for `TF_RandomAccessFile`
 // ----------------------------------------------------------------------------
 namespace tf_random_access_file {
+typedef struct GCSFile {
+  const char* bucket;
+  const char* object;
+  gcs::Client* gcs_client;  // not owned
+} GCSFile;
 
-// TODO(vnvo2409): Implement later
+TF_STATIC void Cleanup(TF_RandomAccessFile* file) {
+  auto gcs_file = static_cast<GCSFile*>(file->plugin_file);
+  plugin_memory_free(const_cast<char*>(gcs_file->bucket));
+  plugin_memory_free(const_cast<char*>(gcs_file->object));
+  delete gcs_file;
+}
+
+// TODO(vnvo2409): Adding cache.
+// `google-cloud-cpp` is working on a feature that we may want to use.
+// See https://github.com/googleapis/google-cloud-cpp/issues/4013.
+TF_STATIC int64_t Read(const TF_RandomAccessFile* file, uint64_t offset,
+                       size_t n, char* buffer, TF_Status* status) {
+  auto gcs_file = static_cast<GCSFile*>(file->plugin_file);
+  auto stream =
+      gcs_file->gcs_client->ReadObject(gcs_file->bucket, gcs_file->object,
+                                       gcs::ReadRange(offset, offset + n));
+  TF_SetStatusFromGCSStatus(stream.status(), status);
+  if ((TF_GetCode(status) != TF_OK) &&
+      (TF_GetCode(status) != TF_OUT_OF_RANGE)) {
+    return -1;
+  }
+  int64_t read;
+  if (!absl::SimpleAtoi(stream.headers().find("content-length")->second,
+                        &read)) {
+    TF_SetStatus(status, TF_UNKNOWN, "Could not get content-length header");
+    return -1;
+  }
+  if (read != n) {
+    TF_SetStatus(status, TF_OUT_OF_RANGE, "Read less bytes than requested");
+  }
+  stream.read(buffer, read);
+  return read;
+}
 
 }  // namespace tf_random_access_file
 
@@ -251,6 +288,19 @@ void Cleanup(TF_Filesystem* filesystem) {
 }
 
 // TODO(vnvo2409): Implement later
+TF_STATIC void NewRandomAccessFile(const TF_Filesystem* filesystem,
+                                   const char* path, TF_RandomAccessFile* file,
+                                   TF_Status* status) {
+  char* bucket;
+  char* object;
+  ParseGCSPath(path, false, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
+  file->plugin_file =
+      new tf_random_access_file::GCSFile({bucket, object, gcs_client});
+  TF_SetStatus(status, TF_OK, "");
+}
 
 void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
                      TF_WritableFile* file, TF_Status* status) {
@@ -322,6 +372,11 @@ static void ProvideFilesystemSupportFor(TF_FilesystemPluginOps* ops,
   TF_SetFilesystemVersionMetadata(ops);
   ops->scheme = strdup(uri);
 
+  ops->random_access_file_ops = static_cast<TF_RandomAccessFileOps*>(
+      plugin_memory_allocate(TF_RANDOM_ACCESS_FILE_OPS_SIZE));
+  ops->random_access_file_ops->cleanup = tf_random_access_file::Cleanup;
+  ops->random_access_file_ops->read = tf_random_access_file::Read;
+
   ops->writable_file_ops = static_cast<TF_WritableFileOps*>(
       plugin_memory_allocate(TF_WRITABLE_FILE_OPS_SIZE));
   ops->writable_file_ops->cleanup = tf_writable_file::Cleanup;
@@ -330,6 +385,8 @@ static void ProvideFilesystemSupportFor(TF_FilesystemPluginOps* ops,
       plugin_memory_allocate(TF_FILESYSTEM_OPS_SIZE));
   ops->filesystem_ops->init = tf_gcs_filesystem::Init;
   ops->filesystem_ops->cleanup = tf_gcs_filesystem::Cleanup;
+  ops->filesystem_ops->new_random_access_file =
+      tf_gcs_filesystem::NewRandomAccessFile;
   ops->filesystem_ops->new_writable_file = tf_gcs_filesystem::NewWritableFile;
   ops->filesystem_ops->new_appendable_file =
       tf_gcs_filesystem::NewAppendableFile;
