@@ -27,6 +27,7 @@ import numpy as np
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import forwardprop
 from tensorflow.python.eager import forwardprop_util
@@ -257,7 +258,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
             constant_op.constant([1., 2., 3.]),
             constant_op.constant([4., 5., 6.]),
         ),
-        batch_size=3)
+        use_batch=True)
 
     # Using evaluate and asserting with just a list works too
     # but the output is more explicit this way
@@ -276,11 +277,30 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
             constant_op.constant([[1.], [0.], [1.]]),
             constant_op.constant([[0.], [1.], [1.]]),
         ),
-        batch_size=3)
+        use_batch=True)
     self.assertAllClose(
       [constant_op.constant([[5.], [4.], [5. + 4.]])],
       jvp_flat
     )
+
+  def testJVPFunctionRaisesError(self):
+    context.ensure_initialized()
+    ctx = context.context()
+
+    sum_outputs = (constant_op.constant(6.),)
+    
+    with self.assertRaises(ValueError):
+      forwardprop._jvp_dispatch(
+        op_name="Add",
+        attr_tuple=(),
+        inputs=(constant_op.constant(2.), constant_op.constant(4.)),
+        outputs=sum_outputs,
+        tangents=(
+	  constant_op.constant([1., 2.]),
+	  constant_op.constant([[1.], [2.]])
+	),
+        use_batch=True
+      )
 
   def testNonDifferentiableOpWithInputTangent(self):
     x = constant_op.constant(1.)
