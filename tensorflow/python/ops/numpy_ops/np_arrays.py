@@ -141,13 +141,12 @@ class ndarray(composite_tensor.CompositeTensor):  # pylint: disable=invalid-name
         raise ValueError('Unexpected type for `buffer` {}. Must be an ndarray,'
                          ' Tensor or np.ndarray.'.format(type(buffer)))
 
-      if shape is not None and tuple(shape) != buffer._shape_tuple():  # pylint: disable=protected-access
-        # TODO(srbs): NumPy allows this. Investigate if/how to support this.
-        raise ValueError('shape arg must match buffer.shape.')
+      if shape is not None:
+        buffer.set_shape(shape)
 
     assert isinstance(buffer, ops.Tensor)
     if dtype and dtype != buffer.dtype:
-      buffer = array_ops.bitcast(buffer, dtype)
+      buffer = math_ops.cast(buffer, dtype)
     self._data = buffer
     self._type_spec_internal = None
 
