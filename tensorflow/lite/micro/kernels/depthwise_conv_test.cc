@@ -1035,8 +1035,13 @@ TF_LITE_MICRO_TEST(Int8Input32x4Filter32x4ShouldMatchGolden) {
   // Errors due to quantization should not exceed 1.
   constexpr int kQuantizationTolerance = 1;
 
+  TfLiteDepthwiseConvParams conv_params;
+  conv_params.activation = kTfLiteActNone;
+  conv_params.dilation_width_factor = 1;
+  conv_params.dilation_height_factor = 1;
+
   TfLiteStatus status = tflite::testing::ValidateDepthwiseConvGoldens(
-      golden_quantized, output_elements, kTfLiteActNone, kQuantizationTolerance,
+      golden_quantized, output_elements, &conv_params, kQuantizationTolerance,
       kTensorsSize, tensors);
 }
 
