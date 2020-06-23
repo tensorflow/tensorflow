@@ -268,6 +268,7 @@ StatusOr<std::vector<uint8_t>> tensorflow::kernel_gen::GenerateCubinForTfCode(
     options.tile_sizes = tile_sizes;
     options.unroll_factors = unroll_factors;
     options.collapse_parallel_loops = false;
+    options.use_approximations = true;
     TF_RETURN_IF_ERROR(xla::mlir_gpu::LowerLHLOToGPU(module.get(), options));
   }
   TF_RETURN_IF_ERROR(xla::mlir_gpu::LowerKernelBodiesToNVVM(module.get()));
@@ -287,10 +288,15 @@ StatusOr<std::vector<uint8_t>> tensorflow::kernel_gen::GenerateCubinForTfCode(
   xla::HloModuleConfig config;
   config.set_debug_options(xla::GetDebugOptionsFromFlags());
 
+  auto enable_fusion = [](llvm::TargetMachine* target) {
+    target->Options.AllowFPOpFusion = llvm::FPOpFusion::FPOpFusionMode::Fast;
+  };
+
   TF_ASSIGN_OR_RETURN(std::string libdevice_dir, GetLibdeviceDir(config));
-  TF_ASSIGN_OR_RETURN(std::string ptx, xla::gpu::nvptx::CompileToPtx(
-                                           llvmModule.get(), compute_capability,
-                                           config, libdevice_dir));
+  TF_ASSIGN_OR_RETURN(
+      std::string ptx,
+      xla::gpu::nvptx::CompileToPtx(llvmModule.get(), compute_capability,
+                                    config, libdevice_dir, enable_fusion));
   VLOG(1) << ptx;
 
 #if GOOGLE_CUDA
