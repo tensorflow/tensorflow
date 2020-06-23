@@ -910,7 +910,7 @@ class OptimizerV2(trackable.Trackable):
       return value()
     if tensor_util.is_tensor(value):
       return backend.get_value(value)
-    return float(value)
+    return value
 
   def variables(self):
     """Returns variables of this Optimizer based on the order created."""
