@@ -1,5 +1,9 @@
 # Release 2.3.0
 
+<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+
+# Release 2.3.0
+
 ## Breaking Changes
 
 *   `tf.image.extract_glimpse` has been updated to correctly process the case
